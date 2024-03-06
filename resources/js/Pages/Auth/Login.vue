@@ -6,6 +6,7 @@ import InputLabel from '@/Components/InputLabel.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import TextInput from '@/Components/TextInput.vue';
 import { Head, Link, useForm } from '@inertiajs/vue3';
+import { ref } from 'vue';
 
 defineProps({
     canResetPassword: {
@@ -17,10 +18,13 @@ defineProps({
 });
 
 const form = useForm({
+    username: '',
     email: '',
     password: '',
     remember: false,
 });
+
+const useUsername = ref(true)
 
 const submit = () => {
     form.post(route('login'), {
@@ -38,7 +42,23 @@ const submit = () => {
         </div>
 
         <form @submit.prevent="submit">
-            <div>
+            <div v-if="useUsername">
+                <InputLabel for="username" value="Username" />
+
+                <TextInput
+                    id="username"
+                    type="text"
+                    class="mt-1 block w-full"
+                    v-model="form.username"
+                    required
+                    autofocus
+                    autocomplete="username"
+                />
+
+                <InputError class="mt-2" :message="form.errors.username" />
+            </div>
+
+            <div v-if="!useUsername">
                 <InputLabel for="email" value="Email" />
 
                 <TextInput
@@ -71,12 +91,26 @@ const submit = () => {
 
             <div class="block mt-4">
                 <label class="flex items-center">
+                    <Checkbox name="remember" v-model:checked="useUsername" />
+                    <span class="ms-2 text-sm text-gray-600">Login with username</span>
+                </label>
+            </div>
+
+            <div class="block mt-4">
+                <label class="flex items-center">
                     <Checkbox name="remember" v-model:checked="form.remember" />
                     <span class="ms-2 text-sm text-gray-600">Remember me</span>
                 </label>
             </div>
 
             <div class="flex items-center justify-end mt-4">
+                <Link
+                    :href="route('register')"
+                    class="underline text-sm mr-2 text-gray-600 hover:text-gray-900 rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                >
+                    Want to register?
+                </Link>
+
                 <Link
                     v-if="canResetPassword"
                     :href="route('password.request')"

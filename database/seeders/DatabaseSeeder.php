@@ -3,7 +3,13 @@
 namespace Database\Seeders;
 
 // use Illuminate\Database\Console\Seeds\WithoutModelEvents;
+
+use App\Enums\AdministratorTypeEnum;
+use App\Enums\LicensingTypeEnum;
+use App\Models\Language;
+use App\Models\User;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Hash;
 
 class DatabaseSeeder extends Seeder
 {
@@ -14,9 +20,44 @@ class DatabaseSeeder extends Seeder
     {
         // \App\Models\User::factory(10)->create();
 
-        // \App\Models\User::factory()->create([
-        //     'name' => 'Test User',
-        //     'email' => 'test@example.com',
-        // ]);
+        $user = User::factory()->create([
+            'username' => 'mr_robertamoah',
+            'firstName' => 'Robert',
+            'lastName' => 'Amoah',
+            'email' => 'mr_robertamoah@yahoo.com',
+            'password' => Hash::make(env('SUPER_PASSWORD', 'password'))
+        ]);
+
+        $user->administrator()->create([
+            'verified_at' => now(),
+            'type' => AdministratorTypeEnum::super->value
+        ]);
+
+        $user->addedLanguages()->createMany([
+            ['name' => 'English'],
+            ['name' => 'French'],
+            ['name' => 'Twi'],
+            ['name' => 'Ewe'],
+            ['name' => 'Ga'],
+        ]);
+
+        $user->addedReligions()->createMany([
+            ['name' => 'Christianity'],
+            ['name' => 'Islam'],
+            ['name' => 'Traditional'],
+            ['name' => 'Atheist'],
+        ]);
+
+        $user->addedTherapyCases()->createMany([
+            ['name' => 'Anxiety'],
+            ['name' => 'Stress'],
+            ['name' => 'Depression'],
+            ['name' => 'Addiction'],
+        ]);
+
+        $user->addedLicensingAuthorities()->createMany([
+            ['name' => 'National Identification Authority', 'license_type' => LicensingTypeEnum::number->value, 'country' => 'Ghana'],
+            ['name' => 'Ghana Psychological Association', 'license_type' => LicensingTypeEnum::number->value, 'country' => 'Ghana'],
+        ]);
     }
 }

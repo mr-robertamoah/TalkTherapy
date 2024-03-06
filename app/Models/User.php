@@ -18,9 +18,16 @@ class User extends Authenticatable
      * @var array<int, string>
      */
     protected $fillable = [
-        'name',
+        'firstName',
+        'lastName',
+        'otherNames',
+        'username',
+        'gender',
+        'settings',
+        'country',
         'email',
         'password',
+        'dob',
     ];
 
     /**
@@ -40,6 +47,46 @@ class User extends Authenticatable
      */
     protected $casts = [
         'email_verified_at' => 'datetime',
+        'dob' => 'datetime',
         'password' => 'hashed',
+        'settings' => 'array',
     ];
+
+    public function administrator() {
+        return $this->hasOne(Administrator::class);
+    }
+
+    public function isAdmin() {
+        return $this->administrator()->exists();
+    }
+
+    public function addedLanguages() {
+        return $this->morphMany(Language::class, 'addedby');
+    }
+
+    public function addedReligions() {
+        return $this->morphMany(Religion::class, 'addedby');
+    }
+
+    public function addedLicensingAuthorities() {
+        return $this->morphMany(LicensingAuthority::class, 'addedby');
+    }
+
+    public function addedTherapyCases() {
+        return $this->morphMany(TherapyCase::class, 'addedby');
+    }
+
+    public function addedProfessions() {
+        return $this->morphMany(Profession::class, 'addedby');
+    }
+
+    public function starredby()
+    {
+        return $this->morphMany(Star::class, 'starredby');
+    }
+
+    public function starred()
+    {
+        return $this->morphMany(Star::class, 'starred');
+    }
 }
