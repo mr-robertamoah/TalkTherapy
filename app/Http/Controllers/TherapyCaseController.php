@@ -19,6 +19,8 @@ class TherapyCaseController extends Controller
         $request->validate([
             'name' => ['required', 'string', 'unique:therapy_cases,name'],
             'description' => ['nullable', 'string'],
+            'addedbyType' => ['nullable', 'string'],
+            'addedbyId' => ['nullable', 'integer'],
         ]);
 
         $therapyCase = TherapyCaseService::new()->createCase(
@@ -27,8 +29,8 @@ class TherapyCaseController extends Controller
                 'name' => $request->name,
                 'description' => $request->description,
                 'addedby' => GetModelWithModelNameAndIdAction::new()->execute(
-                    $request->addedby_type,
-                    $request->addedby_id,
+                    $request->addedbyType,
+                    $request->addedbyId,
                 )
             ])
         );

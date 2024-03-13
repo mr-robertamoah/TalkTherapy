@@ -2,6 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Actions\EnsureNameStaysRetrievableAction;
+use App\Actions\User\GetCounsellorCreationStepOfUserAction;
+use App\DTOs\CheckNameRetrievabilityDTO;
 use App\Http\Requests\ProfileUpdateRequest;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Http\RedirectResponse;
@@ -21,16 +24,7 @@ class ProfileController extends Controller
         return Inertia::render('Profile/Show', [
             'mustVerifyEmail' => $request->user() instanceof MustVerifyEmail,
             'status' => session('status'),
-        ]);
-    }
-    /**
-     * Display the user's profile form.
-     */
-    public function edit(Request $request): Response
-    {
-        return Inertia::render('Profile/Edit', [
-            'mustVerifyEmail' => $request->user() instanceof MustVerifyEmail,
-            'status' => session('status'),
+            'counsellorCreationStep' => GetCounsellorCreationStepOfUserAction::new()->execute($request->user())
         ]);
     }
 
@@ -39,6 +33,18 @@ class ProfileController extends Controller
      */
     public function update(ProfileUpdateRequest $request): RedirectResponse
     {
+        EnsureNameStaysRetrievableAction::new()->execute(
+            CheckNameRetrievabilityDTO::new()->fromArray([
+                'newName' => constructName(
+                    $request->firstName,
+                    $request->lastName,
+                    $request->otherNames,
+                ),
+                'user' => $request->user(),
+                'changing' => 'user'
+            ])
+        );
+        
         $request->user()->fill($request->validated());
 
         if ($request->user()->isDirty('email')) {
@@ -47,7 +53,7 @@ class ProfileController extends Controller
 
         $request->user()->save();
 
-        return Redirect::route('profile.edit');
+        return Redirect::route('profile.show');
     }
 
     /**

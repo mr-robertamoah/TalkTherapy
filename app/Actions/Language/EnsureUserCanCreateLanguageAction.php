@@ -12,6 +12,6 @@ class EnsureUserCanCreateLanguageAction extends Action
     public function execute(User $user) {
         if (EnsureUserExistsAction::new()->execute($user)) return;
 
-        throw new UserCanCreateLanguageException('You are not allowed to create a therapy language.');
+        throw new UserCanCreateLanguageException('You are not allowed to create a therapy language.', 422);
     }
 }

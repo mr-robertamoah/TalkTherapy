@@ -11,6 +11,6 @@ class EnsureMinimumModelsForStarExistsAction extends Action
     {
         if ($createStarDTO->starreable && $createStarDTO->starred) return;
 
-        throw new MinimumModelsForStarDoesNotExistException('Enough data was not provided.');
+        throw new MinimumModelsForStarDoesNotExistException('Enough data was not provided.', 422);
     }
 }

@@ -52,7 +52,7 @@ function clickedUpdate() {
             <p v-else class="mt-1 text-sm text-gray-600 mb-8">
                 Ensure your account is well protected from other persons. Use strong password. You can have your password changed here. Start by clicking update.
             </p>
-            <PrimaryButton v-if="!update" @click="clickedUpdate" class="mr-2 my-2">Update</PrimaryButton>
+            <PrimaryButton v-if="!update" @click="clickedUpdate" class="mr-2 my-2 float-right">Update</PrimaryButton>
         </header>
 
         <form

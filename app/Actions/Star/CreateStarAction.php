@@ -22,6 +22,8 @@ class CreateStarAction extends Action
                 : GetSuperAdministratorAction::new()->execute()
         );
 
+        $star->save();
+
         return $star;
     }
 }

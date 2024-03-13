@@ -14,11 +14,11 @@ return new class extends Migration
         Schema::create('files', function (Blueprint $table) {
             $table->id();
             $table->nullableMorphs('addedby'); // counsellor, administrator, user
-            $table->nullableMorphs('fileable'); // license, post, counsellor, therapy, message
             $table->string('name');
             $table->string('mime');
             $table->integer('size');
             $table->string('path');
+            $table->string('storage');
             $table->timestamps();
         });
     }

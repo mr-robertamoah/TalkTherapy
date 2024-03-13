@@ -11,6 +11,6 @@ class EnsureUserCanCreateCaseAction extends Action
     public function execute(User $user) {
         if (EnsureUserExistsAction::new()->execute($user)) return;
 
-        throw new UserCanCreateCaseException('You are not allowed to create a therapy case.');
+        throw new UserCanCreateCaseException('You are not allowed to create a therapy case.', 422);
     }
 }

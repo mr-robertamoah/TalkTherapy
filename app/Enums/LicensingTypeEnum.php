@@ -8,5 +8,5 @@ enum LicensingTypeEnum : string {
 
     case number = 'NUMBER';
     case file = 'FILE';
-    case file_Number = 'FILE_NUMBER';
+    case both = 'BOTH';
 }

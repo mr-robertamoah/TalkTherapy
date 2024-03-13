@@ -11,6 +11,6 @@ class EnsureStarTypeIsValidAction extends Action
     {
         if (in_array(strtoupper($type), StarTypeEnum::values())) return;
 
-        throw new StarTypeIsInvalidException("{$type} is not a valid star type.");
+        throw new StarTypeIsInvalidException("{$type} is not a valid star type.", 422);
     }
 }

@@ -18,6 +18,8 @@ class LanguageController extends Controller
         $request->validate([
             'name' => ['required', 'string', 'unique:languages,name'],
             'about' => ['nullable', 'string'],
+            'addedbyType' => ['nullable', 'string'],
+            'addedbyId' => ['nullable', 'integer'],
         ]);
 
         $language = LanguageService::new()->createLanguage(
@@ -26,8 +28,8 @@ class LanguageController extends Controller
                 'name' => $request->name,
                 'about' => $request->about,
                 'addedby' => GetModelWithModelNameAndIdAction::new()->execute(
-                    $request->addedby_type,
-                    $request->addedby_id,
+                    $request->addedbyType,
+                    $request->addedbyId,
                 )
             ])
         );

@@ -43,7 +43,7 @@ onBeforeMount(() => {
 })
 
 function getDate(dob) {
-    const dateSplit = new Date(user.dob).toISOString().split('T')
+    const dateSplit = new Date(dob).toISOString().split('T')
 
     if (dateSplit.length) return dateSplit[0]
 
@@ -133,7 +133,7 @@ function clickedUpdate() {
                     />
                 </div>
             </template>
-            <PrimaryButton v-if="!update" @click="clickedUpdate" class="mr-2 mb-8 mt-2">Update</PrimaryButton>
+            <PrimaryButton v-if="!update" @click="clickedUpdate" class="mr-2 mt-2 float-right">Update</PrimaryButton>
         </header>
 
         <form
@@ -190,7 +190,6 @@ function clickedUpdate() {
                     type="email"
                     class="mt-1 block w-full"
                     v-model="form.email"
-                    required
                     autocomplete="email"
                 />
 

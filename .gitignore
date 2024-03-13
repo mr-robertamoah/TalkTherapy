@@ -12,6 +12,7 @@
 Homestead.json
 Homestead.yaml
 auth.json
+todo.txt
 npm-debug.log
 yarn-error.log
 /.fleet

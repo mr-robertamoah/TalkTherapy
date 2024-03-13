@@ -13,6 +13,6 @@ class EnsureUserExistsAction extends Action
 
         if (!$throwException) return false;
 
-        throw new UserDoesNotExistException('User does not exist.');
+        throw new UserDoesNotExistException('User does not exist.', 422);
     }
 }

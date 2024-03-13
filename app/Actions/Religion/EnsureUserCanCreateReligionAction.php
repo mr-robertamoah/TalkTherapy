@@ -12,6 +12,6 @@ class EnsureUserCanCreateReligionAction extends Action
     public function execute(User $user) {
         if (EnsureUserExistsAction::new()->execute($user)) return;
 
-        throw new UserCanCreateReligionException('You are not allowed to create a therapy religion.');
+        throw new UserCanCreateReligionException('You are not allowed to create a religion.', 422);
     }
 }

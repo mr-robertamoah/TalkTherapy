@@ -10,6 +10,6 @@ class EnsureCaseNameIsUniqueAction extends Action
     public function execute(String $name) {
         if (!TherapyCase::query()->where('name', $name)->exists()) return;
 
-        throw new CaseNameIsNotUniqueException('Please use a case name that has not already been used.');
+        throw new CaseNameIsNotUniqueException('Please use a case name that has not already been used.', 422);
     }
 }

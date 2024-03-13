@@ -12,6 +12,7 @@ import TextBox from '@/Components/TextBox.vue';
 import useAlert from '@/Composables/useAlert';
 import useErrorHandler from '@/Composables/useErrorHandler';
 import Checkbox from '@/Components/Checkbox.vue';
+import StyledLink from '@/Components/StyledLink.vue';
 
 const form = useForm({
     selectedCases: [],
@@ -20,6 +21,7 @@ const form = useForm({
     anonymous: false
 })
 
+const preferenceChanged = ref(false)
 const loader = ref({
     show: false, type: ''
 })
@@ -115,7 +117,6 @@ function setCasesAndLanguages() {
         form.anonymous = settings.anonymous
     }
 
-    console.log(props.cases?.data?.length)
     if (props.cases?.data?.length)
         selectedCases.value = [...props.cases.data]
     if (props.languages?.data?.length)
@@ -196,7 +197,7 @@ async function getReligions() {
     loader.value.show = true
 
     await axios
-    .get(`religion?name=${religionsSearch.value}&page=${religionsPage.value}`)
+    .get(`religions?name=${religionsSearch.value}&page=${religionsPage.value}`)
     .then((res) => {
         console.log(res)
         if (religionsPage.value > 1) {
@@ -205,8 +206,8 @@ async function getReligions() {
             return
         }
 
-        languages.value = [...res.data.data]
-        updateLanguagesPage(res)
+        religions.value = [...res.data.data]
+        updateReligionsPage(res)
     })
     .catch((err) => {
         console.log(err)
@@ -365,28 +366,93 @@ function clearReligionData() {
     religionData.value.about = ''
 }
 
+function checkPreferences() {
+    preferenceChanged.value = false
+
+    const props = usePage().props
+    if (props.auth?.user.settings?.anonymous !== form.anonymous) {
+        preferenceChanged.value = true
+        return
+    }
+
+    let data = props.cases?.data?.map(c => c.id)
+    if (
+        !selectedCases.value.length && data?.length ||
+        selectedCases.value.length && !data?.length ||
+        selectedCases.value.length !== !data?.length
+    ) {
+        preferenceChanged.value = true
+        return
+    }
+
+    selectedCases.value.forEach(c => {
+        if (data.includes(c)) return
+        preferenceChanged.value = true
+    })
+
+    if (preferenceChanged.value) return
+
+    data = props.languages?.data?.map(c => c.id)
+    if (
+        !selectedLanguages.value.length && data?.length ||
+        selectedLanguages.value.length && !data?.length ||
+        selectedLanguages.value.length !== !data?.length
+    ) {
+        preferenceChanged.value = true
+        return
+    }
+
+    selectedLanguages.value.forEach(c => {
+        if (data.includes(c)) return
+        preferenceChanged.value = true
+    })
+
+    if (preferenceChanged.value) return
+    
+    data = props.religions?.data?.map(c => c.id)
+    if (
+        !selectedReligions.value.length && data?.length ||
+        selectedReligions.value.length && !data?.length ||
+        selectedReligions.value.length !== !data?.length
+    ) {
+        preferenceChanged.value = true
+        return
+    }
+
+    selectedReligions.value.forEach(c => {
+        if (data.includes(c)) return
+        preferenceChanged.value = true
+    })
+}
+
 function addCaseToSelected(newCase) {
     selectedCases.value = [...selectedCases.value.filter((c) => c.id !== newCase.id), newCase]
+    checkPreferences()
 }
 
 function removeCaseFromSelected(oldCase) {
     selectedCases.value = [...selectedCases.value.filter((c) => c.id !== oldCase.id)]
+    checkPreferences()
 }
 
 function addLanguageToSelected(newLanguage) {
     selectedLanguages.value = [...selectedLanguages.value.filter((c) => c.id !== newLanguage.id), newLanguage]
+    checkPreferences()
 }
 
 function removeLanguageFromSelected(oldLanguage) {
     selectedLanguages.value = [...selectedLanguages.value.filter((c) => c.id !== oldLanguage.id)]
+    checkPreferences()
 }
 
 function addReligionToSelected(newReligion) {
     selectedReligions.value = [...selectedReligions.value.filter((c) => c.id !== newReligion.id), newReligion]
+    checkPreferences()
 }
 
 function removeReligionFromSelected(oldReligion) {
     selectedReligions.value = [...selectedReligions.value.filter((c) => c.id !== oldReligion.id)]
+    checkPreferences()
 }
 
 </script>
@@ -408,14 +474,10 @@ function removeReligionFromSelected(oldReligion) {
 
         <div class="py-12">
             <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
-                <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg my-8">
-                    <!-- add skipping to profile -->
-                    <Link :href="route('profile.edit')" class="p-2 float-right my-2 mr-2 px-4 py-2 bg-gray-800 border border-transparent rounded-md font-semibold text-xs text-white uppercase tracking-widest hover:bg-gray-700 focus:bg-gray-700 active:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition ease-in-out duration-150">
-                        skip
-                    </Link>
-                    <div class="w-full text-center capitalize my-4 font-bold">Set your preferences</div>
-                    <div class="text-sm text-center capitalize mb-2 font-bold">note</div>
-                    <div class="text-sm text-center capitalize w-[80%] mx-auto mb-4">
+                <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg my-8 p-6">
+                    <StyledLink :href="route('profile.show')" class="float-right my-2 mr-2" title="go to profile" :text="'skip'"/>
+                    <div class="w-full text-justify capitalize mt-4 mb-1 text-lg font-medium text-gray-900">Set your preferences</div>
+                    <div class="text-sm text-justify text-gray-600 mb-4">
                         You can set your preferences now or skip to your profile. You can always set them at any time.
                     </div>
                 </div>
@@ -423,16 +485,15 @@ function removeReligionFromSelected(oldReligion) {
                 <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg my-8">
                     <div class="p-6 text-gray-900">
                         <div>
-                            <div class="capitalize font-bold mb-4">Anonymity</div>
-                            <div class="text-sm text-center capitalize mb-2 font-bold">note</div>
-                            <div class="text-sm text-center capitalize w-[80%] mx-auto mb-4">
+                            <div class="w-full text-justify capitalize mt-4 mb-1 text-lg font-medium text-gray-900">Anonymity</div>
+                            <div class="text-sm text-justify text-gray-600 mb-4">
                                 Most people feel more open about their issues when they stay anonymous. Once you set this preference, you will be automatically anonymous in every therapy you engage in, unless you change this preference or specifically unset the anonymous attribute of the therapy.
                             </div>
                             <div class="text-sm text-center capitalize mb-2 font-bold">select preferences</div>
                             
                             <div class="block mt-4">
                                 <label class="flex items-center">
-                                    <Checkbox name="anonymous" v-model:checked="form.anonymous" />
+                                    <Checkbox name="anonymous" @change="() => checkPreferences()" v-model:checked="form.anonymous" />
                                     <span class="ms-2 text-sm text-gray-600">Automatically stay anonymous</span>
                                 </label>
                             </div>
@@ -443,9 +504,8 @@ function removeReligionFromSelected(oldReligion) {
                 <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg my-8">
                     <div class="p-6 text-gray-900">
                         <div>
-                            <div class="capitalize font-bold mb-4">cases</div>
-                            <div class="text-sm text-center capitalize mb-2 font-bold">note</div>
-                            <div class="text-sm text-center capitalize w-[80%] mx-auto mb-4">
+                            <div class="w-full text-justify capitalize mt-4 mb-1 text-lg font-medium text-gray-900">cases</div>
+                            <div class="text-sm text-justify text-gray-600 mb-4">
                                 Selected case preferences will help us get you the most helpful posted therapies as well as counsellors with the expertise of handling your preferred cases.
                             </div>
                             <div class="text-sm text-center capitalize mb-2 font-bold">select preferences</div>
@@ -466,7 +526,7 @@ function removeReligionFromSelected(oldReligion) {
                                         :key="c.id"
                                         :title="c.description ?? ''"
                                         @click="() => addCaseToSelected(c)"
-                                        class="mr-3 rounded text-sm p-2 min-w-[100px] text-gray-700 bg-gray-300 transition duration-75 cursor-pointer hover:bg-gray-600 hover:text-white text-center"
+                                        class="capitalize mr-3 rounded text-sm p-2 min-w-[100px] text-gray-700 bg-gray-300 select-none transition duration-75 cursor-pointer hover:bg-gray-600 hover:text-white text-center"
                                     >{{ c.name }}</div>
                                     <div 
                                         v-if="casesPage != 0"
@@ -498,7 +558,7 @@ function removeReligionFromSelected(oldReligion) {
                                     <div
                                         v-for="c in selectedCases"
                                         :key="c.id"
-                                        class="mr-3 rounded relative text-sm p-2 min-w-[100px] text-gray-700 bg-gray-300 cursor-pointer text-center"
+                                        class="capitalize mr-3 rounded relative text-sm p-2 min-w-[100px] text-gray-700 bg-gray-300 select-none cursor-pointer text-center"
                                     >
                                         {{ c.name }}
                                         <div 
@@ -518,9 +578,8 @@ function removeReligionFromSelected(oldReligion) {
                 <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg my-8">
                     <div class="p-6 text-gray-900">
                         <div>
-                            <div class="capitalize font-bold mb-4">languages</div>
-                            <div class="text-sm text-center capitalize mb-2 font-bold">note</div>
-                            <div class="text-sm text-center capitalize w-[80%] mx-auto mb-4">
+                            <div class="w-full text-justify capitalize mt-4 mb-1 text-lg font-medium text-gray-900">languages</div>
+                            <div class="text-sm text-justify text-gray-600 mb-4">
                                 Selected language preferences will help us connect you to therapies with sessions in that language as well as counsellors conversant with these languages.
                             </div>
                             <div class="text-sm text-center capitalize mb-2 font-bold">select preferences</div>
@@ -541,7 +600,7 @@ function removeReligionFromSelected(oldReligion) {
                                         :key="l.id"
                                         :title="l.about ?? ''"
                                         @click="() => addLanguageToSelected(l)"
-                                        class="mr-3 rounded text-sm p-2 min-w-[100px] text-gray-700 bg-gray-300 transition duration-75 cursor-pointer hover:bg-gray-600 hover:text-white text-center"
+                                        class="capitalize mr-3 rounded text-sm p-2 min-w-[100px] text-gray-700 bg-gray-300 select-none transition duration-75 cursor-pointer hover:bg-gray-600 hover:text-white text-center"
                                     >{{ l.name }}</div>
                                     <div 
                                         v-if="languagesPage != 0"
@@ -573,7 +632,7 @@ function removeReligionFromSelected(oldReligion) {
                                     <div
                                         v-for="l in selectedLanguages"
                                         :key="l.id"
-                                        class="mr-3 rounded relative text-sm p-2 min-w-[100px] text-gray-700 bg-gray-300 cursor-pointer text-center"
+                                        class="capitalize mr-3 rounded relative text-sm p-2 min-w-[100px] text-gray-700 bg-gray-300 select-none cursor-pointer text-center"
                                     >
                                         {{ l.name }}
                                         <div 
@@ -593,9 +652,8 @@ function removeReligionFromSelected(oldReligion) {
                 <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg my-8">
                     <div class="p-6 text-gray-900">
                         <div>
-                            <div class="capitalize font-bold mb-4">religions</div>
-                            <div class="text-sm text-center capitalize mb-2 font-bold">note</div>
-                            <div class="text-sm text-center capitalize w-[80%] mx-auto mb-4">
+                            <div class="w-full text-justify capitalize mt-4 mb-1 text-lg font-medium text-gray-900">religions</div>
+                            <div class="text-sm text-justify text-gray-600 mb-4">
                                 Some people feel more confident and find it easier when interacting with persons with whom they have similar religious inclinations. This preference helps us to connect you to persons with similar inclinations.
                             </div>
                             <div class="text-sm text-center capitalize mb-2 font-bold">select preferences</div>
@@ -616,7 +674,7 @@ function removeReligionFromSelected(oldReligion) {
                                         :key="l.id"
                                         :title="l.about ?? ''"
                                         @click="() => addReligionToSelected(l)"
-                                        class="mr-3 rounded text-sm p-2 min-w-[100px] text-gray-700 bg-gray-300 transition duration-75 cursor-pointer hover:bg-gray-600 hover:text-white text-center"
+                                        class="capitalize mr-3 rounded text-sm p-2 min-w-[100px] text-gray-700 bg-gray-300 select-none transition duration-75 cursor-pointer hover:bg-gray-600 hover:text-white text-center"
                                     >{{ l.name }}</div>
                                     <div 
                                         v-if="religionsPage != 0"
@@ -648,7 +706,7 @@ function removeReligionFromSelected(oldReligion) {
                                     <div
                                         v-for="l in selectedReligions"
                                         :key="l.id"
-                                        class="mr-3 rounded relative text-sm p-2 min-w-[100px] text-gray-700 bg-gray-300 cursor-pointer text-center"
+                                        class="capitalize mr-3 rounded relative text-sm p-2 min-w-[100px] text-gray-700 bg-gray-300 select-none cursor-pointer text-center"
                                     >
                                         {{ l.name }}
                                         <div 
@@ -669,7 +727,7 @@ function removeReligionFromSelected(oldReligion) {
                     <PrimaryButton
                         class="ms-4" 
                         :class="{ 'opacity-25': (loader.show && loader.type == 'preference') }" 
-                        :disabled="loader.type == 'preference'"
+                        :disabled="loader.type == 'preference' || !preferenceChanged"
                         @click="submitPreferences"
                     >
                         set preferences

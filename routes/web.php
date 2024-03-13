@@ -1,7 +1,10 @@
 <?php
 
+use App\Http\Controllers\CounsellorController;
+use App\Http\Controllers\HomeController;
 use App\Http\Controllers\PreferenceController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\TherapyController;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -17,25 +20,30 @@ use Inertia\Inertia;
 |
 */
 
-Route::get('/', function () {
-    return Inertia::render('Welcome', [
-        'canLogin' => Route::has('login'),
-        'canRegister' => Route::has('register'),
-        'laravelVersion' => Application::VERSION,
-        'phpVersion' => PHP_VERSION,
-    ]);
-});
+// Route::get('/', function () {
+//     return Inertia::render('Welcome', [
+//         'canLogin' => Route::has('login'),
+//         'canRegister' => Route::has('register'),
+//         'laravelVersion' => Application::VERSION,
+//         'phpVersion' => PHP_VERSION,
+//     ]);
+// });
 
-Route::get('/dashboard', function () {
-    return Inertia::render('Dashboard');
-})->middleware(['auth', 'verified'])->name('dashboard');
+Route::get('/',[HomeController::class, 'goHome'])
+    // ->middleware(['auth', 'verified'])
+    ->name('home');
 
 Route::middleware('auth')->group(function () {
+    Route::get('/therapies', [TherapyController::class, 'index'])->name('therapies');
+
     Route::get('/preferences', [PreferenceController::class, 'show'])->name('preferences');
     Route::post('/preferences', [PreferenceController::class, 'set'])->name('preferences.set');
 
     // Route::get('/profile', [ProfileController::class, 'show'])->name('profile.show');
-    Route::get('/profile/edit', [ProfileController::class, 'edit'])->name('profile.edit');
+    Route::get('/counsellor/{counsellorId}', [CounsellorController::class, 'show'])->name('counsellor.show');
+    Route::post('/counsellor/{counsellorId}', [CounsellorController::class, 'updateCounsellor'])->name('counsellor.update');
+
+    Route::get('/profile', [ProfileController::class, 'show'])->name('profile.show');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 });

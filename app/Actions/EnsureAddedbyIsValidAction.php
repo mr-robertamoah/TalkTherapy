@@ -18,6 +18,6 @@ class EnsureAddedbyIsValidAction extends Action
 
         if ($dto->addedby::class == Counsellor::class && $dto->user->is($dto->addedby->user)) return;
 
-        throw new AddedbyIsInvalidException('Data on added by is not valid to perform this action.');
+        throw new AddedbyIsInvalidException('Data on added by is not valid to perform this action.', 422);
     }
 }
