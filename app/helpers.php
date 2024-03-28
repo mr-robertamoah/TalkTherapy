@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\File;
+use Illuminate\Support\Facades\Storage;
 
 function constructName(
     ?string $firstName = null,
@@ -19,9 +20,11 @@ function constructName(
 }
 
 function getUrlFor(File $file) {
-    $path = $file->path;
-
-    if ($path) $path .= '/';
-
+    $path = 'storage';
+    
+    if ($file->path) $path .= '/';
+    
+    $path .= $file->path . '/';
+    
     return asset($path . $file->name);
 }

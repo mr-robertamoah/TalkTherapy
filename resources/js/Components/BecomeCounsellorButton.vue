@@ -130,10 +130,10 @@ function clickedBecome() {
             :text="'verify counsellor account'"
         />
         <div
-            class="p-2 bg-green-700 text-green-200 rounded select-none cursor-none"
+            class="p-2 bg-green-700 text-green-200 rounded select-none cursor-none w-fit"
             v-else-if="step == 4">certified counsellor</div>
         <div
-            class="p-2 bg-blue-700 text-blue-200 rounded select-none cursor-none"
+            class="p-2 bg-blue-700 text-blue-200 rounded select-none cursor-none w-fit"
             v-else-if="step > 1">verified counsellor</div>
         <Modal
             :show="modalData.show"
@@ -147,8 +147,8 @@ function clickedBecome() {
                     >Become Counsellor</div>
                     <hr>
                 </div>
-                <p class="mt-1 text-sm text-gray-600" v-if="!$page.props.auth.user?.dob">
-                    You must be an adult, hence, make sure you update your date of birth before you continue with this registration.
+                <p class="mt-1 text-sm text-gray-600" v-if="!$page.props.auth.user?.isAdult">
+                    You must be an adult (above 18 years), hence, make sure you update your date of birth before you continue with this registration.
                 </p>
 
                 <CounsellorCreationSteps
@@ -158,7 +158,7 @@ function clickedBecome() {
                 />
 
                 <div class="relative">
-                    <FormLoader :show="loading" :text="'getting you registered'"/>
+                    <FormLoader class="mx-auto" :show="loading" :text="'getting you registered'"/>
                     <form 
                         @submit.prevent="becomeCounsellor"
                     >

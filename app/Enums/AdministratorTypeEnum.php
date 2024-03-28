@@ -6,6 +6,6 @@ use App\Traits\EnumTrait;
 enum AdministratorTypeEnum : string {
     use EnumTrait;
 
-    case super = 'super';
-    case normal = 'normal';
+    case super = 'SUPER';
+    case normal = 'NORMAL';
 }

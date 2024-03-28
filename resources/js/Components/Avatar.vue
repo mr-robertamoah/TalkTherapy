@@ -24,13 +24,20 @@ const props = defineProps({
 const classes = computed(() => {
     const mainSize =  props.size + (props.size / 4)
 
-    return `w-[${props.size}px] h-[${props.size}px] p-2 rounded-full sm:w-[${mainSize}px] sm:h-[${mainSize}px] bg-white`
+    return `w-[${props.size}px] h-[${props.size}px] rounded-full sm:w-[${mainSize}px] sm:h-[${mainSize}px] bg-white`
+})
+
+const computedPadding = computed(() => {
+    let padding = 'p-2'
+    if (props.size < 50) padding = 'p-[2px]'
+
+    return padding
 })
 </script>
 
 <template>
-    <div :class="classes">
-        <div class="w-full h-full bg-gray-300 rounded-full p-2 flex items-center justify-center">
+    <div :class="`${classes} ${computedPadding}`" >
+        <div class="w-full h-full bg-gray-300 rounded-full flex items-center justify-center" :class="computedPadding">
             <img 
                 v-if="src.length"
                 :src="src" :alt="alt"

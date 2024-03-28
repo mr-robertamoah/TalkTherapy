@@ -5,6 +5,7 @@ namespace Database\Seeders;
 // use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 
 use App\Enums\AdministratorTypeEnum;
+use App\Enums\GenderEnum;
 use App\Enums\LicensingTypeEnum;
 use App\Models\Language;
 use App\Models\User;
@@ -56,8 +57,35 @@ class DatabaseSeeder extends Seeder
         ]);
 
         $user->addedLicensingAuthorities()->createMany([
-            ['name' => 'National Identification Authority', 'license_type' => LicensingTypeEnum::number->value, 'country' => 'Ghana'],
-            ['name' => 'Ghana Psychological Association', 'license_type' => LicensingTypeEnum::number->value, 'country' => 'Ghana'],
+            [
+                'name' => 'National Identification Authority',
+                'license_type' => LicensingTypeEnum::both->value,
+                'country' => 'Ghana',
+                'validated' => true
+            ],
+            [
+                'name' => 'Ghana Psychological Association',
+                'license_type' => LicensingTypeEnum::both->value,
+                'country' => 'Ghana',
+                'validated' => true
+            ],
+        ]);
+
+        // dderick
+        $dderick = User::factory()->create([
+            'username' => 'dderick',
+            'firstName' => 'Derrick',
+            'lastName' => 'Amponsah',
+            'password' => Hash::make('password123'),
+            'gender' => GenderEnum::male->value
+        ]);
+
+        $dderick->counsellor()->create([
+            'email' => 'dderik@gmail.com',
+            'phone' => '+233233453423',
+            'about' => 'I will humbly take you through sessions till we can both help you out of the hole.',
+            'email_verified_at' => now(),
+            'verified_at' => now()
         ]);
     }
 }

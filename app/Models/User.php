@@ -71,6 +71,11 @@ class User extends Authenticatable
         return $this->administrator()->exists();
     }
 
+    public function isNotAdmin()
+    {
+        return !$this->isAdmin();
+    }
+
     public function addedLanguages()
     {
         return $this->morphMany(Language::class, 'addedby');
@@ -101,7 +106,49 @@ class User extends Authenticatable
         return $this->morphMany(Profession::class, 'addedby');
     }
 
-    public function starredby()
+    public function sentMessages()
+    {
+        return $this->morphMany(Message::class, 'from');
+    }
+
+    public function receivedMessages()
+    {
+        return $this->morphMany(Message::class, 'to');
+    }
+
+    public function addedTherapies()
+    {
+        return $this->morphMany(Therapy::class, 'addedby');
+    }
+
+    public function addedGroupTherapies()
+    {
+        return $this->morphMany(GroupTherapy::class, 'addedby');
+    }
+
+    public function groupTherapies()
+    {
+        return $this->belongsToMany(GroupTherapy::class, 'group_therapy_user', 'user_id', 'group_therapy_id')
+            ->withPivot(['background_story'])
+            ->withTimestamps();
+    }
+
+    public function sentRequests()
+    {
+        return $this->morphMany(Request::class, 'from');
+    }
+
+    public function receivedRequests()
+    {
+        return $this->morphMany(Request::class, 'to');
+    }
+
+    public function requests()
+    {
+        return $this->morphMany(Request::class, 'for');
+    }
+
+    public function starred()
     {
         return $this->morphMany(Star::class, 'starredby');
     }
@@ -111,7 +158,7 @@ class User extends Authenticatable
         return $this->hasOne(Counsellor::class);
     }
 
-    public function starred()
+    public function stars()
     {
         return $this->morphMany(Star::class, 'starred');
     }

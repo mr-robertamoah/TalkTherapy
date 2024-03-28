@@ -22,6 +22,6 @@ class Profession extends Model
     }
 
     public function addedBy() {
-        return $this->morphTo();
+        return $this->morphTo('addedby');
     }
 }

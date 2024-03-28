@@ -2,6 +2,9 @@
 
 namespace App\Models;
 
+use App\Enums\ConstantsEnum;
+use App\Enums\RequestStatusEnum;
+use App\Enums\RequestTypeEnum;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphToMany;
@@ -17,17 +20,127 @@ class Counsellor extends Model
         'email_verified_at',
         'avatar_id',
         'cover_id',
-        'professional_id',
+        'profession_id',
         'contact_visible',
         'email',
         'phone',
     ];
+
+    public function getFreeTherapiesCountAttribute()
+    {
+        return 0; // TODO
+    }
+
+    public function getPaidTherapiesCountAttribute()
+    {
+        return 0; // TODO
+    }
+
+    public function getFreeGroupTherapiesCountAttribute()
+    {
+        return 0; // TODO
+    }
+
+    public function getPaidGroupTherapiesCountAttribute()
+    {
+        return 0; // TODO
+    }
+
+    public function getOnlineSessionsCountAttribute()
+    {
+        return 0; // TODO
+    }
+
+    public function getInPersonSessionsCountAttribute()
+    {
+        return 0; // TODO
+    }
+
+    public function getGroupTherapiesCountAttribute()
+    {
+        return 0; // TODO
+    }
+
+    public function getHeldSessionsCountAttribute()
+    {
+        return 0; // TODO
+    }
+
+    public function getSessionsCountAttribute()
+    {
+        return 0; // TODO
+    }
+
+    public function getTherapiesCountAttribute()
+    {
+        return 0; // TODO
+    }
+
+    public function hasNationalIdentification()
+    {
+        return $this->licensesFor()
+            ->where(function ($query) {
+                $query
+                    ->where('for_id', $this->id)
+                    ->where('for_type', $this::class);
+            })
+            ->whereHas('licensingAuthority', function ($query) {
+                $query->where('name', ConstantsEnum::nationalId->value);
+            })
+            ->where('validated', true)
+            ->exists();
+    }
+
+    public function licensesFor()
+    {
+        return $this->morphMany(License::class, 'for');
+    }
 
     public function getName()
     {
         return $this->name
             ? $this->name 
             : $this->user->name;
+    }
+
+    public function groupTherapies()
+    {
+        return $this->belongsToMany(GroupTherapy::class, 'counsellor_group_therapy', 'counsellor_id', 'group_therapy_id')
+            ->withPivot(['state'])
+            ->withTimestamps();
+    }
+
+    public function sentMessages()
+    {
+        return $this->morphMany(Message::class, 'from');
+    }
+
+    public function receivedMessages()
+    {
+        return $this->morphMany(Message::class, 'to');
+    }
+
+    public function sentRequests()
+    {
+        return $this->morphMany(Request::class, 'from');
+    }
+
+    public function receivedRequests()
+    {
+        return $this->morphMany(Request::class, 'to');
+    }
+
+    public function requests()
+    {
+        return $this->morphMany(Request::class, 'for');
+    }
+
+    public function hasPendingCounsellorVerificationRequest()
+    {
+        return $this->sentRequests()
+            ->where('type', RequestTypeEnum::counsellor->value)
+            ->where('status', RequestStatusEnum::pending->value)
+            ->exists();
     }
 
     public function addedLanguages()
@@ -55,12 +168,12 @@ class Counsellor extends Model
         return $this->morphMany(Profession::class, 'addedby');
     }
 
-    public function starredby()
+    public function starred()
     {
         return $this->morphMany(Star::class, 'starredby');
     }
 
-    public function starred()
+    public function stars()
     {
         return $this->morphMany(Star::class, 'starred');
     }

@@ -111,7 +111,7 @@ async function createProfession() {
             </div>
             
             <div>
-                <FormLoader :show="loading" :text="'creating profession...'"/>
+                <FormLoader class="mx-auto" :show="loading" :text="'creating profession...'"/>
                 <form 
                     @submit.prevent="createProfession"
                 >

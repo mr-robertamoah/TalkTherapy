@@ -1,0 +1,42 @@
+<?php
+
+namespace App\Http\Requests;
+
+use App\Enums\TherapyPaymentTypeEnum;
+use App\Enums\TherapySessionTypeEnum;
+use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
+
+class CreateTherapyRequest extends FormRequest
+{
+    /**
+     * Determine if the user is authorized to make this request.
+     */
+    public function authorize(): bool
+    {
+        return true;
+    }
+
+    /**
+     * Get the validation rules that apply to the request.
+     *
+     * @return array<string, \Illuminate\Contracts\Validation\ValidationRule|array<mixed>|string>
+     */
+    public function rules(): array
+    {
+        return [
+            'name' => ['required', 'string', 'max:255'],
+            'backgroundStory' => ['required', 'string'],
+            'anonymous' => ['required', 'boolean'],
+            'allowInPerson' => ['required', 'boolean'],
+            'public' => ['required', 'boolean'],
+            'cases' => ['nullable', 'array'],
+            'sessionType' => ['required', Rule::in(TherapySessionTypeEnum::values())],
+            'paymentType' => ['required', Rule::in(TherapyPaymentTypeEnum::values())],
+            'maxSessions' => ['nullable', Rule::requiredIf($this->get('sessionType') == TherapySessionTypeEnum::periodic->value), 'integer'],
+            'per' => ['nullable', Rule::requiredIf($this->get('paymentType') == TherapyPaymentTypeEnum::paid->value), 'string'],
+            'amount' => ['nullable', Rule::requiredIf($this->get('paymentType') == TherapyPaymentTypeEnum::paid->value), 'numeric'],
+            'currency' => ['nullable', Rule::requiredIf($this->get('paymentType') == TherapyPaymentTypeEnum::paid->value), 'string'],
+        ];
+    }
+}

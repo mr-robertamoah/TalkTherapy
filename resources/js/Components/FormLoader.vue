@@ -1,7 +1,8 @@
 <template>
     <div class="fixed w-full z-10">
         <div
-            class="text-green-700 bg-green-300 rounded my-2 transition duration-100 text-center w-[80%] py-1 px-2 mx-auto"
+            v-bind="$attrs"
+            class="text-green-700 bg-green-300 rounded my-2 transition duration-100 text-center w-[80%] py-1 px-2"
             :class="[show ? 'visible opacity-100 h-fit' : 'invisible opacity-0 h-0']"
         >{{ text }}...</div>
     </div>

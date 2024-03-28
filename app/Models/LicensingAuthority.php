@@ -11,8 +11,8 @@ class LicensingAuthority extends Model
 
     protected $fillable = [
         'name',
-        'licensing_type',
-        'licensing_format',
+        'license_type',
+        'license_format',
         'about',
         'is_public',
         'country',
@@ -20,5 +20,23 @@ class LicensingAuthority extends Model
         'type',
         'email',
         'phone',
+        'validated',
     ];
+
+    public function licenses()
+    {
+        return $this->hasMany(License::class);
+    }
+
+    public function validate()
+    {
+        return $this->update([
+            'validated' => true
+        ]);
+    }
+
+    public function isNotValidated()
+    {
+        return !$this->validated;
+    }
 }

@@ -111,7 +111,7 @@ async function createReligion() {
             </div>
             
             <div>
-                <FormLoader :show="loading" :text="'creating religion...'"/>
+                <FormLoader class="mx-auto" :show="loading" :text="'creating religion...'"/>
                 <form 
                     @submit.prevent="createReligion"
                 >

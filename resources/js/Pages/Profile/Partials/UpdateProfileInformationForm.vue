@@ -39,6 +39,8 @@ const countries = ref([
 const update = ref(false)
 
 onBeforeMount(() => {
+    const c = localStorage.getItem('countries')
+    if (c) countries.value = c.split(',')
     getCountries()
 })
 
@@ -60,6 +62,7 @@ async function getCountries() {
         const retrievedCountries = JSON.parse(res.data).data
 
        countries.value = retrievedCountries.map(c => c.name)
+       localStorage.setItem('countries', [...countries.value].toString())
     })
     .catch(err => {
         console.log(err)

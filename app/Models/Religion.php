@@ -17,7 +17,7 @@ class Religion extends Model
     ];
 
     public function addedBy() {
-        return $this->morphTo();
+        return $this->morphTo('addedby');
     }
 
     public function counsellors(): MorphToMany

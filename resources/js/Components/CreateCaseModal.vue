@@ -111,7 +111,7 @@ async function createCase() {
             </div>
             
             <div>
-                <FormLoader :show="loading" :text="'creating case...'"/>
+                <FormLoader class="mx-auto" :show="loading" :text="'creating case...'"/>
                 <form 
                     @submit.prevent="createCase"
                 >

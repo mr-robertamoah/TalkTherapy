@@ -39,7 +39,8 @@ return [
         'public' => [
             'driver' => 'local',
             'root' => storage_path('app/public'),
-            'url' => env('APP_URL').'/storage',
+            'url' => 'http://127.0.0.1:8000/storage',
+            // 'url' => env('APP_URL').'/storage',
             'visibility' => 'public',
             'throw' => false,
         ],
@@ -70,8 +71,11 @@ return [
     */
 
     'links' => [
-        public_path('avatars') => storage_path('app/public/avatars'),
-        public_path('covers') => storage_path('app/public/covers'),
+        public_path('storage/avatars') => storage_path('app/public/avatars'),
+        public_path('storage/covers') => storage_path('app/public/covers'),
+        public_path('storage/licenses') => storage_path('app/public/licenses'),
+        public_path('storage/messages') => storage_path('app/public/messages'),
+        public_path('storage/others') => storage_path('app/public/others'),
     ],
 
 ];

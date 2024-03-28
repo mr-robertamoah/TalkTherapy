@@ -15,25 +15,25 @@ class UpdateCounsellorAction extends Action
         $fileService = FileService::new();
 
         if ($updateCounsellorDTO->cover) {
-            $data = $fileService->uploadFile(FileUploadDTO::new()->fromArray([
+            $fileData = $fileService->uploadFile(FileUploadDTO::new()->fromArray([
                 'disk' => 'public',
                 'path' => 'covers',
                 'file' => $updateCounsellorDTO->cover
             ]));
 
-            $file = $fileService->saveFile($updateCounsellorDTO->user, $data);
+            $file = $fileService->saveFile($updateCounsellorDTO->user, $fileData);
             $data['cover_id'] = $file->id;
         }
-
+        
         if ($updateCounsellorDTO->avatar) {
             // TODO resize image
-            $data = $fileService->uploadFile(FileUploadDTO::new()->fromArray([
+            $fileData = $fileService->uploadFile(FileUploadDTO::new()->fromArray([
                 'disk' => 'public',
                 'path' => 'avatars',
                 'file' => $updateCounsellorDTO->avatar
             ]));
 
-            $file = $fileService->saveFile($updateCounsellorDTO->user, $data);
+            $file = $fileService->saveFile($updateCounsellorDTO->user, $fileData);
             $data['avatar_id'] = $file->id;
         }
 
@@ -54,7 +54,7 @@ class UpdateCounsellorAction extends Action
         if (!is_null($updateCounsellorDTO->contactVisible)) $data['contact_visible'] = $updateCounsellorDTO->contactVisible;
         if ($updateCounsellorDTO->name) $data['name'] = $updateCounsellorDTO->name;
         if ($updateCounsellorDTO->about) $data['about'] = $updateCounsellorDTO->about;
-        if ($updateCounsellorDTO->email) $data['email'] = $updateCounsellorDTO->email; // TODO request email verification
+        if ($updateCounsellorDTO->email) $data['email'] = $updateCounsellorDTO->email;
         if ($updateCounsellorDTO->phone) $data['phone'] = $updateCounsellorDTO->phone;
         if ($updateCounsellorDTO->professionId) $data['profession_id'] = $updateCounsellorDTO->professionId;
 
@@ -68,7 +68,14 @@ class UpdateCounsellorAction extends Action
             $updateCounsellorDTO->counsellor->religions()->sync($updateCounsellorDTO->selectedReligions);
         }
 
-        $updateCounsellorDTO->counsellor->update($data);
+        $updateCounsellorDTO->counsellor->fill($data);
+
+        if ($updateCounsellorDTO->counsellor->isDirty('email')) {
+            // TODO send database and mail notifications for verification
+            $updateCounsellorDTO->counsellor->email_verified_at = null;
+        }
+        
+        $updateCounsellorDTO->counsellor->save();
 
         return $updateCounsellorDTO->counsellor->refresh();
     }

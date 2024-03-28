@@ -42,8 +42,8 @@ defineExpose({ focus: () => input.value.focus() });
             <option
                 v-for="(opt, idx) in options"
                 :key="idx"
-                :value="opt.toUpperCase()"
-                class="mb-2 p-2 capitalize">{{ opt }}</option>
+                :value="typeof opt == 'string' ? opt.toUpperCase() : opt.value?.toUpperCase()"
+                class="mb-2 p-2 capitalize">{{ typeof opt == 'string' ? opt : opt.name }}</option>
         </optgroup>
     </select>
 </template>

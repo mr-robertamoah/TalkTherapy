@@ -3,11 +3,12 @@
 namespace App\Actions\Counsellor;
 use App\Actions\Action;
 use App\DTOs\UpdateCounsellorDTO;
+use App\DTOs\VerifyCounsellorDTO;
 use App\Exceptions\CannotUpdateCounsellorException;
 
 class EnsureCanUpdateCounsellorAction extends Action
 {
-    public function execute(UpdateCounsellorDTO $updateCounsellorDTO)
+    public function execute(UpdateCounsellorDTO|VerifyCounsellorDTO $updateCounsellorDTO)
     {
         if (
             $updateCounsellorDTO->user?->isAdmin() ||

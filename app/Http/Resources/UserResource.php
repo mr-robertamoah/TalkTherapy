@@ -26,9 +26,11 @@ class UserResource extends JsonResource
             'gender' => $this->gender,
             'country' => $this->country,
             'dob' => $this->dob,
+            'isAdult' => $this->dob?->age >= 18,
             'settings' => $this->settings,
             'counsellor' => $this->counsellor ? new CounsellorMiniResource($this->counsellor) : null,
             'createdAt' => $this->created_at->diffForHumans(),
+            'isAdmin' => $this->when($this->isAdmin(), true)
         ];
     }
 }

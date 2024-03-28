@@ -8,7 +8,7 @@
         "php": "^8.1",
         "guzzlehttp/guzzle": "^7.2",
         "inertiajs/inertia-laravel": "^0.6.8",
-        "laradumps/laradumps": "^2.2",
+        "laradumps/laradumps": "^2.5",
         "laravel/breeze": "^1.28",
         "laravel/framework": "^10.10",
         "laravel/sanctum": "^3.2",

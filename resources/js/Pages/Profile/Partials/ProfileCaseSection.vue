@@ -79,6 +79,8 @@ function setCases() {
 
     if (props.selectedCases.length)
         selectedCases.value = [...props.selectedCases]
+
+    if (!cases.value.length) getCases()
 }
 
 function addCaseToSelected(newCase) {

@@ -9,6 +9,8 @@ import BecomeCounsellorButton from '@/Components/BecomeCounsellorButton.vue';
 import StyledLink from '@/Components/StyledLink.vue';
 import useAlert from '@/Composables/useAlert';
 import Alert from '@/Components/Alert.vue';
+import RequestModal from '@/Components/RequestModal.vue';
+import CreateTherapyButton from '@/Components/CreateTherapyButton.vue';
 
 const { alertData, clearAlertData, setAlertData } = useAlert()
 
@@ -27,18 +29,25 @@ watchEffect(
     }
 )
 
+const showRequest = ref(false);
 const showingNavigationDropdown = ref(false);
 const showBecomeCounsellorButton = computed(() => {
     return !(route().current() == 'profile.show' || route().params?.counsellorId == usePage().props.auth.user?.counsellor?.id)
 })
 const showCounsellorLink = computed(() => {
-    return !(route().params?.counsellorId == usePage().props.auth.user?.counsellor?.id)
+    return usePage().props.auth.user?.counsellor && !(route().params?.counsellorId == usePage().props.auth.user?.counsellor?.id)
+})
+const showRequestLink = computed(() => {
+    return !!usePage().props.auth.user
+})
+const showAdministratorLink = computed(() => {
+    return usePage().props.auth.user?.isAdmin && route().current() != 'administrator'
 })
 </script>
 
 <template>
     <div>
-        <div class="min-h-screen bg-gray-100">
+        <div class="min-h-screen bg-stone-100">
             <nav class="bg-white border-b border-gray-100">
                 <!-- Primary Navigation Menu -->
                 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -58,7 +67,8 @@ const showCounsellorLink = computed(() => {
                                 <!-- <NavLink :href="route('dashboard')" :active="route().current('dashboard')">
                                     Dashboard
                                 </NavLink> -->
-                                <BecomeCounsellorButton v-if="showBecomeCounsellorButton" class=" flex items-center" :text="'become counsellor'"/>
+                                <CreateTherapyButton class="flex items-center"/>
+                                <BecomeCounsellorButton v-if="showBecomeCounsellorButton" class="flex items-center" :text="'become counsellor'"/>
                             </div>
                         </div>
 
@@ -97,6 +107,17 @@ const showCounsellorLink = computed(() => {
                                                 v-if="showCounsellorLink"
                                                 :href="route('counsellor.show', $page.props.auth.user?.counsellor.id)"
                                             > Counsellor Profile </DropdownLink>
+                                            <div
+                                                v-if="showRequestLink"
+                                                @click="() => {
+                                                    showRequest = true
+                                                }"
+                                                class="cursor-pointer block w-full px-4 py-2 text-start text-sm leading-5 text-gray-700 hover:bg-gray-100 focus:outline-none focus:bg-gray-100 transition duration-150 ease-in-out"
+                                            >Requests</div>
+                                            <DropdownLink
+                                                v-if="showAdministratorLink"
+                                                :href="route('administrator')"
+                                            > Administrator </DropdownLink>
                                             <DropdownLink :href="route('logout')" method="post" as="button">
                                                 Log Out
                                             </DropdownLink>
@@ -150,6 +171,7 @@ const showCounsellorLink = computed(() => {
                         </div>
                     </div>
                 </div>
+                <CreateTherapyButton v-if="$page.props.auth.user" class="block sm:hidden mb-2 ml-4"/>
 
                 <!-- Responsive Navigation Menu -->
                 <div
@@ -179,6 +201,21 @@ const showCounsellorLink = computed(() => {
                                 v-if="showCounsellorLink"
                                 :href="route('counsellor.show', $page.props.auth.user?.counsellor.id)"
                             > Counsellor Profile </ResponsiveNavLink>
+                            <div
+                                v-if="showRequestLink"
+                                @click="() => {
+                                    showRequest = true
+                                }"
+                                class="cursor-pointer"
+                                :class="[
+                                    showRequest
+                                    ? 'block w-full ps-3 pe-4 py-2 border-l-4 border-indigo-400 text-start text-base font-medium text-indigo-700 bg-indigo-50 focus:outline-none focus:text-indigo-800 focus:bg-indigo-100 focus:border-indigo-700 transition duration-150 ease-in-out'
+                                    : 'block w-full ps-3 pe-4 py-2 border-l-4 border-transparent text-start text-base font-medium text-gray-600 hover:text-gray-800 hover:bg-gray-50 hover:border-gray-300 focus:outline-none focus:text-gray-800 focus:bg-gray-50 focus:border-gray-300 transition duration-150 ease-in-out']" 
+                            >Requests</div>
+                            <ResponsiveNavLink
+                                v-if="showAdministratorLink"
+                                :href="route('administrator')"
+                            > Administrator </ResponsiveNavLink>
                             <ResponsiveNavLink :href="route('logout')" method="post" as="button">
                                 Log Out
                             </ResponsiveNavLink>
@@ -207,5 +244,12 @@ const showCounsellorLink = computed(() => {
         :message="alertData.message"
         :time="alertData.time"
         @close="clearAlertData"
+    />
+
+    <RequestModal
+        :show="showRequest"
+        @close-modal="() => {
+            showRequest = false
+        }"
     />
 </template>

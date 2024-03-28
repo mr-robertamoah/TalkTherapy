@@ -28,11 +28,21 @@ class CounsellorResource extends JsonResource
             'email' => $this->when($contactVisible, $this->email),
             'avatar' => $this->avatar?->url,
             'cover' => $this->cover?->url,
+            'contactVisible' => (bool) $this->contact_visible,
+            'emailVerified' => (bool) $this->email_verified_at,
+            'verified' => (bool) $this->verified_at,
             // TODO therapies
             'cases' => $this->when($this->cases, TherapyCaseResource::collection($this->cases), []),
             'religions' => $this->when($this->religions, TherapyCaseResource::collection($this->religions), []),
             'languages' => $this->when($this->languages, TherapyCaseResource::collection($this->languages), []),
             'createdAt' => $this->created_at->diffForHumans(),
+            'freeTherapiesCount' => $this->freeTherapiesCount,
+            'paidTherapiesCount' => $this->paidTherapiesCount,
+            'groupTherapiesCount' => $this->groupTherapiesCount,
+            'onlineSessionsCount' => $this->onlineSessionsCount,
+            'inPersonSessionsCount' => $this->inPersonSessionsCount,
+            'hasNationalIdentification' => $this->hasNationalIdentification(),
+            'hasPendingCounsellorVerificationRequest' => $this->hasPendingCounsellorVerificationRequest()
         ];
     }
 }

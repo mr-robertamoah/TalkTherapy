@@ -5,8 +5,11 @@ namespace App\Http\Controllers;
 use App\Actions\Counsellor\GetCounsellorAccountForProfileViewAction;
 use App\Actions\User\GetCounsellorCreationStepOfUserAction;
 use App\DTOs\CreateCounsellorDTO;
+use App\DTOs\DeleteCounsellorDTO;
 use App\DTOs\UpdateCounsellorDTO;
+use App\DTOs\VerifyCounsellorDTO;
 use App\Http\Requests\UpdateCounsellorRequest;
+use App\Http\Requests\VerifyCounsellorRequest;
 use App\Http\Resources\CounsellorMiniResource;
 use App\Http\Resources\CounsellorResource;
 use App\Models\Counsellor;
@@ -84,12 +87,55 @@ class CounsellorController extends Controller
                     'name' => $request->name,
                     'email' => $request->email,
                     'contactVisible' => $request->contactVisible,
+                    'deleteCover' => $request->deleteCover,
+                    'deleteAvatar' => $request->deleteAvatar,
                     'about' => $request->about,
                     'phone' => $request->phone,
                     'selectedCases' => $request->selectedCases,
                     'selectedLanguages' => $request->selectedLanguages,
                     'selectedReligions' => $request->selectedReligions,
                     'professionId' => $request->professionId,
+                    'user' => $request->user(),
+                    'counsellor' => Counsellor::find($request->counsellorId)
+                ])
+            );
+
+            return Redirect::back();
+        } catch (Throwable $th) {
+            $message = $th->getCode() == 500 ? "Something unfortunate happened. Please try again shortly." : $th->getMessage();
+
+            throw new Exception($message);
+        }
+    }
+
+    public function deleteCounsellor(Request $request)
+    {
+        try {
+            CounsellorService::new()->deleteCounsellor(
+                DeleteCounsellorDTO::new()->fromArray([
+                    'user' => $request->user(),
+                    'counsellor' => Counsellor::find($request->counsellorId)
+                ])
+            );
+
+            return Redirect::route('profile.show');
+        } catch (Throwable $th) {
+            $message = $th->getCode() == 500 ? "Something unfortunate happened. Please try again shortly." : $th->getMessage();
+
+            throw new Exception($message);
+        }
+    }
+
+    public function verifyCounsellor(VerifyCounsellorRequest $request)
+    {
+        try {
+            CounsellorService::new()->verifyCounsellor(
+                VerifyCounsellorDTO::new()->fromArray([
+                    'licenseFile' => $request->file('licenseFile'),
+                    'nationalIdFile' => $request->file('nationalIdFile'),
+                    'licenseNumber' => $request->licenseNumber,
+                    'nationalIdNumber' => $request->nationalIdNumber,
+                    'licensingAuthorityId' => $request->licensingAuthorityId,
                     'user' => $request->user(),
                     'counsellor' => Counsellor::find($request->counsellorId)
                 ])

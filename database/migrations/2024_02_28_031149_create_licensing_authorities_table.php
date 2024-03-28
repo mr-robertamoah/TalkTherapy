@@ -27,6 +27,7 @@ return new class extends Migration
             $table->string('license_format')->nullable();
             $table->boolean('is_public')->default(true);
             $table->text('about')->nullable();
+            $table->boolean('validated')->default(false);
             $table->timestamps();
         });
     }

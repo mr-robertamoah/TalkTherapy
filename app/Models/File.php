@@ -22,7 +22,7 @@ class File extends Model
     public function licenses(): MorphToMany
     {
         return $this
-            ->morphedByMany(Counsellor::class, 'fileable', 'fileables')
+            ->morphedByMany(License::class, 'fileable', 'fileables')
             ->withTimestamps();
     }
 }

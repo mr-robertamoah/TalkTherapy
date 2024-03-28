@@ -7,9 +7,11 @@ use App\Models\User;
 
 class GetCounsellorCreationStepOfUserAction extends Action
 {
-    public function execute(User $user)
+    public function execute(User|null $user)
     {
         $step = 0;
+
+        if (!$user) return $step;
 
         if ($user->isNotCounsellor()) return $step;
 

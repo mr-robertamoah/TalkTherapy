@@ -18,6 +18,7 @@ return new class extends Migration
             $table->nullableMorphs('for'); // counsellors, administrators
             $table->foreignIdFor(LicensingAuthority::class);
             $table->string('number')->nullable();
+            $table->boolean('validated')->default(false);
             $table->timestamps();
         });
     }

@@ -6,6 +6,8 @@ use App\Models\Counsellor;
 use App\Models\Discussion;
 use App\Models\GroupTherapy;
 use App\Models\Language;
+use App\Models\License;
+use App\Models\LicensingAuthority;
 use App\Models\Profession;
 use App\Models\Religion;
 use App\Models\Therapy;
@@ -18,7 +20,7 @@ class CreateStarDTO extends BaseDTO
 {   
     public User|Counsellor|null $starredby = null;
     public User|Counsellor|null $starred = null;
-    public Language|TherapyCase|Discussion|Therapy|GroupTherapy|Religion|Profession|null $starreable = null;
+    public Language|TherapyCase|Discussion|Therapy|GroupTherapy|Religion|Profession|License|LicensingAuthority|null $starreable = null;
     public ?String $type = null;
     
     /**

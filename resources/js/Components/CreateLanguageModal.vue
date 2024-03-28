@@ -111,7 +111,7 @@ async function createLanguage() {
             </div>
             
             <div>
-                <FormLoader :show="loading" :text="'creating language...'"/>
+                <FormLoader class="mx-auto" :show="loading" :text="'creating language...'"/>
                 <form 
                     @submit.prevent="createLanguage"
                 >
