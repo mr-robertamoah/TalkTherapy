@@ -17,10 +17,10 @@ class TherapyResource extends JsonResource
         return [
             'id' => $this->id,
             'name' => $this->name,
-            'user' => $this->when($this->addedBy->is($request->user()) || !$this->anonymous, new UserMiniResource($this->addedBy)),
+            'user' => $this->when($this->addedBy->is($request->user()) || !$this->anonymous, new UserMiniResource($this->addedBy), ['fullName' => 'anonymous']),
             'public' => (bool) $this->public,
             'anonymous' => (bool) $this->anonymous,
-            'allowInPerson' => (bool) $this->alow_in_persion,
+            'allowInPerson' => (bool) $this->allow_in_person,
             'counsellor' => $this->when($this->counsellor, new CounsellorMiniResource($this->counsellor)),
             'backgroundStory' => $this->background_story,
             'sessionsHeld' => $this->sessionsHeld,
@@ -33,6 +33,7 @@ class TherapyResource extends JsonResource
             'freeSessions' => $this->freeSessions,
             'cases' => TherapyCaseResource::collection($this->cases),
             'maxSessions' => $this->max_sessions,
+            'topicsCount' => $this->topicsCount,
             'createdAt' => $this->created_at->diffForHumans()
         ];
     }

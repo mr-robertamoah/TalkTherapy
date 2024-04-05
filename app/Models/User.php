@@ -106,6 +106,11 @@ class User extends Authenticatable
         return $this->morphMany(Profession::class, 'addedby');
     }
 
+    public function addedSessions()
+    {
+        return $this->morphMany(Session::class, 'addedby');
+    }
+
     public function sentMessages()
     {
         return $this->morphMany(Message::class, 'from');

@@ -32,9 +32,25 @@ use App\Http\Resources\AdminCounsellorResource;
 use App\Http\Resources\AdminCounsellorStatsResource;
 use App\Models\Counsellor;
 use App\Models\LicensingAuthority;
+use App\Models\User;
 
 class CounsellorService extends Service
 {
+    public function getCounsellors(User $user, String|null $name)
+    {
+        $query = Counsellor::query();
+
+        $query->when($name, function($query) use ($name) {
+            $query->whereName($name);
+        });
+        
+        $query->whereNotUser($user);
+        $query->withCount('stars');
+        $query->orderBy('stars_count');
+
+        return $query->paginate(PaginationEnum::pagination->value);
+    }
+
     public function getCounsellorData(): array
     {
         $data = [

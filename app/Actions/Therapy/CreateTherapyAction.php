@@ -23,7 +23,8 @@ class CreateTherapyAction extends Action
             'payment_data' => [
                 'per' => $createTherapyDTO->per,
                 'amount' => $createTherapyDTO->amount,
-                'currency' => $createTherapyDTO->currency
+                'currency' => $createTherapyDTO->currency,
+                'inPersonAmount' => $createTherapyDTO->inPersonAmount ?: '',
             ]
         ]);
 

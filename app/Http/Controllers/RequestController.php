@@ -3,8 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\DTOs\RequestResponseDTO;
-use App\Http\Resources\AdminCounsellorVerificationRequestResource;
-use App\Http\Resources\RequestResource;
 use App\Models\Request as ModelsRequest;
 use App\Services\RequestService;
 use Illuminate\Http\Request;
@@ -23,7 +21,7 @@ class RequestController extends Controller
     public function respond(Request $request)
     {
         try {
-            $req = RequestService::new()->respondToRequest(
+            $requestResource = RequestService::new()->respondToRequest(
                 RequestResponseDTO::new()->fromArray([
                     'user' => $request->user(),
                     'response' => $request->response,
@@ -33,11 +31,11 @@ class RequestController extends Controller
 
             return response()->json([
                 'status' => true,
-                'request' => new AdminCounsellorVerificationRequestResource($req)
+                'request' => $requestResource
             ], 201);
         } catch (Throwable $th) {
             $message = $th->getCode() == 500 ? "Something unfortunate happened. Please try again shortly." : $th->getMessage();
-
+            ds($th);
             return response()->json([
                 'status' => true,
                 'request' => null,

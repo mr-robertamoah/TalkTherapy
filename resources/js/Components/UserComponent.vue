@@ -29,7 +29,7 @@ function clickedResponse(response) {
             <Avatar v-if="user.avatar" :avatar-text="'...'" :size="40" :src="user?.avatar ?? ''"/>
             <div class="text-gray-600 flex justify-start items-center ml-2">
                 <div class="capitalize mr-2">{{ user.fullName }}</div>
-                <div>({{ user.username }})</div>
+                <div v-if="user.username">({{ user.username }})</div>
             </div>
         </div>
         <div class="flex justify-end" v-if="online">

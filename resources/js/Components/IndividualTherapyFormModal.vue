@@ -1,5 +1,5 @@
 <script setup>
-import { inject, ref, watch, watchEffect } from 'vue';
+import { computed, inject, ref, watch, watchEffect } from 'vue';
 import TextInput from '@/Components/TextInput.vue';
 import InputLabel from '@/Components/InputLabel.vue';
 import InputError from '@/Components/InputError.vue';
@@ -43,8 +43,9 @@ const therapyData = ref({
     'paymentType': '',
     'counsellorId': '',
     'per': '',
-    'amount': '',
-    'maxSessions': '',
+    'amount': 0,
+    'inPersonAmount': 0,
+    'maxSessions': 0,
     'currency': 'GHȻ',
     'cases': []
 })
@@ -81,6 +82,10 @@ watch(
         }
     }
 )
+
+const computedShowInPersonAmount = computed(() => {
+    return therapyData.value.allowInPerson && therapyData.value.paymentType == 'PAID' && therapyData.value.per == 'PER_SESSION'
+})
  
 async function createTherapy() {
     if (!therapyData.value.name) {
@@ -150,6 +155,9 @@ async function createTherapy() {
 
     if (props.counsellor)
         therapyData.value.counsellorId = props.counsellor.id
+
+    if (therapyData.value.paymentType == 'PAID' && therapyData.value.per == 'PER_SESSION' && !therapyData.value.inPersonAmount)
+        therapyData.value.inPersonAmount = therapyData.value.amount
 
     await axios
     .post(route(`therapies.create`), {
@@ -235,177 +243,193 @@ function closeModal() {
             </div>
 
             <FormLoader class="mx-auto" :show="loading" :text="`creating individual therapy`"/>
-            <div class="p-4 relative overflow-hidden overflow-y-auto h-[70vh] px-4 pb-4">
+            <div class="p-4 relative">
                 <form 
                     @submit.prevent="createTherapy"
                 >
-                    <template v-if="counsellor">
-                        <div class="p-4 rounded bg-gray-200 shadow-sm">
-                            <CounsellorComponent
-                                :counsellor="counsellor"
-                                :has-view="false"
-                            />
-                        </div>
-                        <hr class="my-4">
-                    </template>
-
-                    <div class="p-4 rounded bg-gray-200 shadow-sm">
-                        <div class="text-sm text-gray-600 text-start mb-4 font-semibold">This section can be updated any time.</div>
-                        <div class="mt-4 mx-auto max-w-[400px]">
-                            <InputLabel for="name" value="Name" />
-
-                            <TextInput
-                                id="name"
-                                type="text"
-                                class="mt-1 block w-full"
-                                v-model="therapyData.name"
-                                required
-                                autofocus
-                            />
-                            
-                            <InputError class="mt-2" :message="therapyErrors.name" />
-                        </div>
-
-                        <div class="mt-4 mx-auto max-w-[400px]">
-                            <InputLabel for="backgroundStory" value="Background Story" />
-
-                            <TextBox
-                                id="story"
-                                class="mt-1 block w-full"
-                                v-model="therapyData.backgroundStory"
-                                rows="5"
-                            />
-
-                            <div class="mt-2 text-xs text-gray-500">This gives the potential counsellor a background story to start with.</div>
-                            <InputError class="mt-2" :message="therapyErrors.backgroundStory" />
-                        </div>
-
-                        <div class="mt-4 mx-auto max-w-[400px]">
-                            <label class="flex items-center">
-                                <Checkbox name="remember" v-model:checked="therapyData.anonymous" />
-                                <span class="ms-2 text-sm text-gray-600">Stay anonymous.</span>
-                            </label>
-
-                            <div class="mt-2 text-xs text-gray-500">If you check this box, not even your counsellor will know who you are unless you reveal yourself to him/her.</div>
-                            <InputError class="mt-2" :message="therapyErrors.anonymous" />
-                        </div>
-
-                        <div class="mt-4 mx-auto max-w-[400px]">
-                            <label class="flex items-center">
-                                <Checkbox name="remember" v-model:checked="therapyData.allowInPerson" />
-                                <span class="ms-2 text-sm text-gray-600">Allow in person sessions.</span>
-                            </label>
-
-                            <div class="mt-2 text-xs text-gray-500">If you check this box, counsellor can schedule in-person sessions with you.</div>
-                            <InputError class="mt-2" :message="therapyErrors.allowInPerson" />
-                        </div>
-                    </div>
-
-                    <ProfileCaseSection
-                        :addedby="{
-                            type: 'User',
-                            id: $page.props.auth.user?.id
-                        }"
-                        @on-data="(data) => {
-                            therapyData.cases = [...data.map((c) => c.id)]
-                        }"
-                        class="rounded bg-gray-200 shadow-sm"
-                    />
-                    <hr class="my-4">
-
-                    <div class="p-4 rounded bg-gray-200 shadow-sm">
-                        <div class="text-sm text-gray-600 text-start mb-4 font-semibold">This section cannot be updated after the first session.</div>
-                        <div class="mx-auto max-w-[400px]">
-                            <label class="flex items-center" :disabled="therapyData.paymentType == 'FREE'">
-                                <Checkbox :disabled="therapyData.paymentType == 'FREE'" name="remember" v-model:checked="therapyData.public" />
-                                <span class="ms-2 text-sm text-gray-600">Share to public.</span>
-                            </label>
-
-                            <div class="mt-2 text-xs text-gray-500">Free therapies are public. Do not worry about your anonymity. If you check anonymous, you will still stay anonymous even when the therapy is shared to the public.</div>
-                            <InputError class="mt-2" :message="therapyErrors.public" />
-                        </div>
-
-                        <div class="mt-4 mx-auto max-w-[400px]">
-                            <InputLabel for="sessionType" value="Session Type" />
-
-                            <Select
-                                id="sessionType"
-                                class="mt-1 block w-full"
-                                v-model="therapyData.sessionType"
-                                autocomplete="sessionType"
-                                :options="['Once', 'Periodic']"
-                                :default-option="'select sessionType'"
-                                required
-                            />
-
-                            <div class="mt-2 text-xs text-gray-500">For Once, there can be only one session and therapy ends. Otherwise, counsellor can create as many sessions as possible.</div>
-                            <InputError class="mt-2" :message="therapyErrors.sessionType" />
-                        </div>
-
-                        <div class="mt-4 mx-auto max-w-[400px]" v-if="therapyData.sessionType == 'PERIODIC'">
-                            <InputLabel for="maxSessions" value="Maximum Sessions" />
-
-                            <TextInput
-                                id="maxSessions"
-                                type="text"
-                                class="mt-1 block w-full"
-                                v-model="therapyData.maxSessions"
-                            />
-                            
-                            <InputError class="mt-2" :message="therapyErrors.maxSessions" />
-                        </div>
-
-                        <div class="mt-4 mx-auto max-w-[400px]">
-                            <InputLabel for="paymentType" value="Payment Type" />
-
-                            <Select
-                                id="paymentType"
-                                class="mt-1 block w-full"
-                                v-model="therapyData.paymentType"
-                                autocomplete="paymentType"
-                                :options="['Free', 'Paid']"
-                                :default-option="'select payment type'"
-                                required
-                            />
-
-                            <div class="mt-2 text-xs text-gray-500">If free is selected, your therapy becomes automatically public. The publicity does not affect your anonymity.</div>
-                            <InputError class="mt-2" :message="therapyErrors.sessionType" />
-                        </div>
-
-                        <div class="mt-4 mx-auto max-w-[400px]" v-if="therapyData.paymentType == 'PAID'">
-                            <div>
-                                <InputLabel for="per" value="Amount Per" />
-                                <Select
-                                    id="per"
-                                    class="mt-1 block w-full"
-                                    v-model="therapyData.per"
-                                    autocomplete="per"
-                                    :options="[{name: 'Therapy', value: 'PER_THERAPY'}, {name: 'Session', value: 'PER_SESSION'}]"
-                                    :default-option="'payment per?'"
-                                    :disabled="therapyData.paymentType == 'PAID' && therapyData.sessionType == 'ONCE'"
+                    <div class="overflow-hidden overflow-y-auto h-[70vh] px-4 pb-4">
+                        <template v-if="counsellor">
+                            <div class="p-4 rounded bg-gray-200 shadow-sm">
+                                <CounsellorComponent
+                                    :counsellor="counsellor"
+                                    :has-view="false"
+                                    :visit-page="true"
                                 />
+                            </div>
+                            <hr class="my-4">
+                        </template>
 
-                                <InputLabel class="mt-4" for="amount" value="Amount" />
-                                <div class="flex justify-start items-center">
-                                    <TextInput
-                                        id="name"
-                                        type="text"
-                                        class="mt-1 block w-[30%] max-w-[100px] text-end"
-                                        v-model="therapyData.currency"
-                                        required
-                                    />
-                                    <TextInput
-                                        id="amount"
-                                        type="number"
-                                        class="mt-1 block w-full"
-                                        v-model="therapyData.amount"
-                                        required
-                                    />
-                                </div>
+                        <div class="p-4 rounded bg-gray-200 shadow-sm">
+                            <div class="text-sm text-gray-600 text-start mb-4 font-semibold">This section can be updated any time.</div>
+                            <div class="mt-4 mx-auto max-w-[400px]">
+                                <InputLabel for="name" value="Name" />
+
+                                <TextInput
+                                    id="name"
+                                    type="text"
+                                    class="mt-1 block w-full"
+                                    v-model="therapyData.name"
+                                    required
+                                    autofocus
+                                />
+                                
+                                <InputError class="mt-2" :message="therapyErrors.name" />
                             </div>
 
-                            <div class="mt-2 text-xs text-gray-500">Payment will automatically be PER THERAPY when session type is ONCE.</div>
-                            <InputError class="mt-2" :message="therapyErrors.amount" />
+                            <div class="mt-4 mx-auto max-w-[400px]">
+                                <InputLabel for="backgroundStory" value="Background Story" />
+
+                                <TextBox
+                                    id="story"
+                                    class="mt-1 block w-full"
+                                    v-model="therapyData.backgroundStory"
+                                    rows="5"
+                                />
+
+                                <div class="mt-2 text-xs text-gray-500">This gives the potential counsellor a background story to start with.</div>
+                                <InputError class="mt-2" :message="therapyErrors.backgroundStory" />
+                            </div>
+
+                            <div class="mt-4 mx-auto max-w-[400px]">
+                                <label class="flex items-center">
+                                    <Checkbox name="remember" v-model:checked="therapyData.anonymous" />
+                                    <span class="ms-2 text-sm text-gray-600">Stay anonymous.</span>
+                                </label>
+
+                                <div class="mt-2 text-xs text-gray-500">If you check this box, not even your counsellor will know who you are unless you reveal yourself to him/her.</div>
+                                <InputError class="mt-2" :message="therapyErrors.anonymous" />
+                            </div>
+
+                            <div class="mt-4 mx-auto max-w-[400px]">
+                                <label class="flex items-center">
+                                    <Checkbox name="remember" v-model:checked="therapyData.allowInPerson" />
+                                    <span class="ms-2 text-sm text-gray-600">Allow in person sessions.</span>
+                                </label>
+
+                                <div class="mt-2 text-xs text-gray-500">If you check this box, counsellor can schedule in-person sessions with you.</div>
+                                <InputError class="mt-2" :message="therapyErrors.allowInPerson" />
+                            </div>
+                        </div>
+
+                        <ProfileCaseSection
+                            :addedby="{
+                                type: 'User',
+                                id: $page.props.auth.user?.id
+                            }"
+                            @on-data="(data) => {
+                                therapyData.cases = [...data.map((c) => c.id)]
+                            }"
+                            class="rounded bg-gray-200 shadow-sm"
+                        />
+                        <hr class="my-4">
+
+                        <div class="p-4 rounded bg-gray-200 shadow-sm">
+                            <div class="text-sm text-gray-600 text-start mb-4 font-semibold">This section cannot be updated after the first session.</div>
+                            <div class="mx-auto max-w-[400px]">
+                                <label class="flex items-center" :disabled="therapyData.paymentType == 'FREE'">
+                                    <Checkbox :disabled="therapyData.paymentType == 'FREE'" name="remember" v-model:checked="therapyData.public" />
+                                    <span class="ms-2 text-sm text-gray-600">Share to public.</span>
+                                </label>
+
+                                <div class="mt-2 text-xs text-gray-500">Free therapies are public. Do not worry about your anonymity. If you check anonymous, you will still stay anonymous even when the therapy is shared to the public.</div>
+                                <InputError class="mt-2" :message="therapyErrors.public" />
+                            </div>
+
+                            <div class="mt-4 mx-auto max-w-[400px]">
+                                <InputLabel for="sessionType" value="Session Type" />
+
+                                <Select
+                                    id="sessionType"
+                                    class="mt-1 block w-full"
+                                    v-model="therapyData.sessionType"
+                                    autocomplete="sessionType"
+                                    :options="['Once', 'Periodic']"
+                                    :default-option="'select sessionType'"
+                                    required
+                                />
+
+                                <div class="mt-2 text-xs text-gray-500">For Once, there can be only one session and therapy ends. Otherwise, counsellor can create as many sessions as possible.</div>
+                                <InputError class="mt-2" :message="therapyErrors.sessionType" />
+                            </div>
+
+                            <div class="mt-4 mx-auto max-w-[400px]" v-if="therapyData.sessionType == 'PERIODIC'">
+                                <InputLabel for="maxSessions" value="Maximum Sessions" />
+
+                                <TextInput
+                                    id="maxSessions"
+                                    type="text"
+                                    class="mt-1 block w-full"
+                                    v-model="therapyData.maxSessions"
+                                />
+                                
+                                <InputError class="mt-2" :message="therapyErrors.maxSessions" />
+                            </div>
+
+                            <div class="mt-4 mx-auto max-w-[400px]">
+                                <InputLabel for="paymentType" value="Payment Type" />
+
+                                <Select
+                                    id="paymentType"
+                                    class="mt-1 block w-full"
+                                    v-model="therapyData.paymentType"
+                                    autocomplete="paymentType"
+                                    :options="['Free', 'Paid']"
+                                    :default-option="'select payment type'"
+                                    required
+                                />
+
+                                <div class="mt-2 text-xs text-gray-500">If free is selected, your therapy becomes automatically public. The publicity does not affect your anonymity.</div>
+                                <InputError class="mt-2" :message="therapyErrors.sessionType" />
+                            </div>
+
+                            <div class="mt-4 mx-auto max-w-[400px]" v-if="therapyData.paymentType == 'PAID'">
+                                <div>
+                                    <InputLabel for="per" value="Amount Per" />
+                                    <Select
+                                        id="per"
+                                        class="mt-1 block w-full"
+                                        v-model="therapyData.per"
+                                        autocomplete="per"
+                                        :options="[{name: 'Therapy', value: 'PER_THERAPY'}, {name: 'Session', value: 'PER_SESSION'}]"
+                                        :default-option="'payment per?'"
+                                        :disabled="therapyData.paymentType == 'PAID' && therapyData.sessionType == 'ONCE'"
+                                    />
+
+                                    <InputLabel class="mt-4" for="amount" value="Amount" />
+                                    <div class="flex justify-start items-center">
+                                        <TextInput
+                                            id="currency"
+                                            type="text"
+                                            class="mt-1 block w-[30%] max-w-[100px] text-end"
+                                            v-model="therapyData.currency"
+                                            required
+                                        />
+                                        <TextInput
+                                            id="amount"
+                                            type="number"
+                                            class="mt-1 block w-full"
+                                            v-model="therapyData.amount"
+                                            required
+                                        />
+                                    </div>
+                                    
+                                    <template v-if="computedShowInPersonAmount">
+                                        
+                                        <InputLabel class="mt-4" for="inPersonAmount" value="In-person Amount" />
+                                        <TextInput
+                                            id="inPersonAmount"
+                                            type="number"
+                                            class="mt-1 block w-full"
+                                            v-model="therapyData.inPersonAmount"
+                                            required
+                                        />
+                                    </template>
+                                </div>
+
+                                <div class="mt-2 text-xs text-gray-500">Payment will automatically be PER THERAPY when session type is ONCE.</div>
+                                <div class="mt-2 text-xs text-gray-500" v-if="computedShowInPersonAmount">We recommend that in-person therapies amount should be at least twice that of your online session amount.</div>
+                                <InputError class="mt-2" :message="therapyErrors.amount" />
+                            </div>
                         </div>
                     </div>
 

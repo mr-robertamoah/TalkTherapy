@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\RequestStatusEnum;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -29,6 +30,15 @@ class Request extends Model
         return $this->morphTo();
     }
 
+    public function scopeWhereFor($query, $for)
+    {
+        return $query->where(function ($q) use ($for) {
+
+            $q->where('for_id', $for->id);
+            $q->where('for_type', $for::class);
+        });
+    }
+
     public function scopeWhereTo($query, $to)
     {
         return $query->where(function ($q) use ($to) {
@@ -36,6 +46,11 @@ class Request extends Model
             $q->where('to_id', $to->id);
             $q->where('to_type', $to::class);
         });
+    }
+
+    public function scopeWherePending($query)
+    {
+        return $query->where('status', RequestStatusEnum::pending->value);
     }
 
     public function scopeWhereFrom($query, $from)

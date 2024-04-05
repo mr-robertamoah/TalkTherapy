@@ -7,8 +7,10 @@ use App\Http\Controllers\LicensingAuthorityController;
 use App\Http\Controllers\ProfessionController;
 use App\Http\Controllers\ReligionController;
 use App\Http\Controllers\RequestController;
+use App\Http\Controllers\SessionController;
 use App\Http\Controllers\TherapyCaseController;
 use App\Http\Controllers\TherapyController;
+use App\Http\Controllers\TherapyTopicController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -38,12 +40,35 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/administrator/counsellors', [AdministratorController::class, 'getCounsellors'])->name('admin.counsellors');
     Route::get('/administrator/counsellors/{counsellorId}/stats', [AdministratorController::class, 'getCounsellorStats'])->name('admin.counsellors.stats');
     
+    Route::get('/requests/counsellors', [CounsellorController::class, 'getCounsellors'])->name('counsellors.request.get');
+    
     Route::get('/licensing_authorities', [LicensingAuthorityController::class, 'getLicensingAuthorities'])->name('licensing_authorities');
     Route::post('/licensing_authorities', [LicensingAuthorityController::class, 'createLicensingAuthority'])->name('licensing_authorities.create');
     
     Route::get('/requests', [RequestController::class, 'getRequests'])->name('requests.get');
     Route::post('/requests/{requestId}', [RequestController::class, 'respond'])->name('requests.respond');
 
+    
+    Route::get('/therapies', [TherapyController::class, 'show'])->name('api.therapies');
+    Route::get('/therapies/{therapyId}', [TherapyController::class, 'getTherapy'])->name('api.therapies.get');
+    Route::patch('/therapies/{therapyId}', [TherapyController::class, 'updateTherapy'])->name('api.therapies.update');
+    Route::delete('/therapies/{therapyId}', [TherapyController::class, 'deleteTherapy'])->name('api.therapies.delete');
+    Route::post('/therapies/{therapyId}', [TherapyController::class, 'endTherapy'])->name('api.therapies.end');
+
+    Route::get('/therapies/{therapyId}/sessions', [SessionController::class, 'getSessions'])->name('api.sessions.get');
+    Route::post('/therapies/{therapyId}/sessions', [SessionController::class, 'createSession'])->name('api.sessions.create');
+    Route::patch('/sessions/{sessionId}', [SessionController::class, 'updateSession'])->name('api.sessions.update');
+    Route::delete('/sessions/{sessionId}', [SessionController::class, 'deleteSession'])->name('api.sessions.delete');
+    Route::post('/sessions/{sessionId}/end', [SessionController::class, 'endSession'])->name('api.sessions.end');
+    Route::post('/sessions/{sessionId}/fail', [SessionController::class, 'failSession'])->name('api.sessions.fail');
+    Route::post('/sessions/{sessionId}/abandon', [SessionController::class, 'abandonSession'])->name('api.sessions.abandon');
+
+    Route::get('/therapies/{therapyId}/topics', [TherapyTopicController::class, 'getTherapyTopics'])->name('api.topics.get');
+    Route::post('/therapies/{therapyId}/topics', [TherapyTopicController::class, 'createTherapyTopic'])->name('api.topics.create');
+    Route::patch('/topics/{topicId}', [TherapyTopicController::class, 'updateTherapyTopic'])->name('api.topics.update');
+    Route::delete('/topics/{topicId}', [TherapyTopicController::class, 'deleteTherapyTopic'])->name('api.topics.delete');
+
+    Route::post('/therapies/{therapyId}/assist', [TherapyController::class, 'sendAssistanceRequest'])->name('therapies.assist');
     Route::post('/therapies', [TherapyController::class, 'createTherapy'])->name('therapies.create');
 
     Route::post('/counsellors', [CounsellorController::class, 'createCounsellor'])->name('counsellors.create');

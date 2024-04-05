@@ -1,5 +1,8 @@
 <?php
 
+use App\Enums\MessageStatusEnum;
+use App\Enums\MessageTypeEnum;
+use App\Models\Message;
 use App\Models\TherapyTopic;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
@@ -17,8 +20,13 @@ return new class extends Migration
             $table->nullableMorphs('from');
             $table->nullableMorphs('to');
             $table->nullableMorphs('for');
+            $table->enum('type', MessageTypeEnum::values());
+            $table->enum('status', MessageStatusEnum::values());
+            $table->foreignIdFor(Message::class)->nullable();
             $table->foreignIdFor(TherapyTopic::class)->nullable();
             $table->text('content')->nullable();
+            $table->boolean('confidential')->default(false);
+            $table->timestamp('deleted_at')->nullable();
             $table->timestamps();
         });
     }

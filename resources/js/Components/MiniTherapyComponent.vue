@@ -28,6 +28,9 @@ const computedIsParticipant = computed(() => {
 
     return false
 })
+const computedCanViewPage = computed(() => {
+    return computedIsParticipant.value || props.therapy.public || usePage().props.auth.user?.isAdmin
+})
 
 </script>
 
@@ -38,13 +41,15 @@ const computedIsParticipant = computed(() => {
         <div class="my-2 w-full h-1 rounded bg-stone-400"></div>
         
         <div class="py-2 my-2 max-h-[300px] overflow-hidden overflow-y-auto">
-            <div v-if="computedIsParticipant || therapy.public" class="p-2 flex justify-end">
+            <div v-if="computedCanViewPage" class="p-2 flex justify-end">
                 <StyledLink :text="'go to therapy'" :href="route('therapies.get', { therapyId: therapy.id})"/>
             </div>
             <div class="p-2">
                 <CounsellorComponent
                     :counsellor="therapy.counsellor"
                     v-if="therapy.counsellor"
+                    :visit-page="true"
+                    :has-view="false"
                 />
                 <div v-else class="text-sm text-gray-600 text-center p-4 rounded bg-stone-100">no counsellor yet</div>
             </div>

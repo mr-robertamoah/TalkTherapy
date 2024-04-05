@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Actions\Request\EnsureRequestExistsAction;
 use App\Actions\Request\EnsureUserCanRespondToRequestAction;
+use App\Actions\Request\GetRequestResourceAction;
 use App\Actions\Request\RespondToRequestAction;
 use App\DTOs\CreateRequestDTO;
 use App\DTOs\GetVerificationRequestsDTO;
@@ -77,6 +78,9 @@ class RequestService extends Service
         
         EnsureUserCanRespondToRequestAction::new()->execute($requestResponseDTO);
 
-        return RespondToRequestAction::new()->execute($requestResponseDTO);
+        $request = RespondToRequestAction::new()->execute($requestResponseDTO);
+
+        // TODO dispatch event
+        return GetRequestResourceAction::new()->execute($request);
     }
 }

@@ -4,6 +4,12 @@ import Modal from './Modal.vue';
 import { watch } from 'vue';
 import RequestBadge from './RequestBadge.vue';
 import { computed } from 'vue';
+import useAuth from '@/Composables/useAuth';
+import Alert from './Alert.vue';
+import useAlert from '@/Composables/useAlert';
+
+const { goToLogin } = useAuth()
+const { alertData, clearAlertData, setAlertData } = useAlert()
 
 const RequestStatus = {
     accepted: 'ACCEPTED',
@@ -21,44 +27,59 @@ const props = defineProps({
 const emits = defineEmits(['closeModal'])
 
 const loading = ref(false)
-const page = ref(1)
+const pages = ref({
+    [RequestStatus.pending]: 1,
+    [RequestStatus.accepted]: 1,
+    [RequestStatus.rejected]: 1,
+})
 const pendingRequests = ref([])
 const acceptedRequests = ref([])
 const rejectedRequests = ref([])
 const requestStatus = ref(RequestStatus.pending)
 
 watch(() => requestStatus.value, () => {
-    if (page.value != 1) {
-        page.value = 1
+    if (pages.value[requestStatus.value] == 1) {
         debouncedGet()
     }
 })
 watch(() => props.show, () => {
     if (props.show) {
-        page.value = 1
+        pages.value[requestStatus.value] = 1
         debouncedGet()
         return
     }
 
-    page.value = 0
+    setPages(1)
     acceptedRequests.value = []
     pendingRequests.value = []
     rejectedRequests.value = []
     requestStatus.value = RequestStatus.pending
 })
 
+function setPages(num) {
+    pages.value[RequestStatus.accepted] = num
+    pages.value[RequestStatus.rejected] = num
+    pages.value[RequestStatus.pending] = num
+}
+
 function closeModal() {
     emits('closeModal')
+}
+
+function setAlert(alertData) {
+    setAlertData({
+        ...alertData
+    })
 }
 
 async function getRequests() {
     loading.value = true
 
     await axios
-    .get(`requests?status=${requestStatus.value}&page=${page.value}`)
+    .get(`requests?status=${requestStatus.value}&page=${pages.value[requestStatus.value]}`)
     .then((res) => {
         console.log(res)
-        if (page.value > 1) {
+        if (pages.value[requestStatus.value] > 1) {
             updateRequests(res.data.data)
             updatePage(res)
             return
@@ -69,6 +90,7 @@ async function getRequests() {
     })
     .catch((err) => {
         console.log(err)
+        goToLogin(err)
     })
     .finally(() => {
         loading.value = false
@@ -108,8 +130,8 @@ function updateRequests(data) {
 }
 
 function updatePage(res) {
-    if (res.data.links.next) page.value += 1
-    else page.value = 0
+    if (res.data.links.next) pages.value[requestStatus.value] += 1
+    else pages.value[requestStatus.value] = 0
 }
 
 const hasRequests = computed(() => {
@@ -117,6 +139,10 @@ const hasRequests = computed(() => {
         (acceptedRequests.value.length && requestStatus.value == RequestStatus.accepted) ||
         (rejectedRequests.value.length && requestStatus.value == RequestStatus.rejected)
 })
+
+function removeFromPendingRequests(request) {
+    pendingRequests.value = [...pendingRequests.value.filter((c) => c.id !== request.id)]
+}
 </script>
 
 <template>
@@ -128,7 +154,7 @@ const hasRequests = computed(() => {
             <div class="w-full mt-2 mb-4">
                 <div
                     class="w-fit mx-auto text-2xl font-bold bg-gradient-to-r from-gray-800 to-gray-500 bg-clip-text text-transparent mb-2"
-                >Counsellor Requests</div>
+                >User Requests</div>
                 <hr>
             </div>
 
@@ -166,6 +192,12 @@ const hasRequests = computed(() => {
                                 v-for="request in pendingRequests"
                                 :key="request.id"
                                 :request="request"
+                                @on-data="(req) => {
+                                    removeFromPendingRequests(req)
+                                }"
+                                @alert="(alertData) => {
+                                    setAlert(alertData)
+                                }"
                             />
                         </template>
                         <template v-if="requestStatus == RequestStatus.rejected">
@@ -189,11 +221,19 @@ const hasRequests = computed(() => {
                         <div class="lowercase">no {{ requestStatus }} requests</div>
                     </div>
 
-                    <div v-if="page && !loading" @click="debouncedGet" title="get more requests" class="mt-6 mb-4 p-4 flex justify-center items-center h-full text-gray-600 text-sm cursor-pointer">
-                        <div>...</div>
+                    <div v-if="pages[requestStatus] && !loading" @click="debouncedGet" title="get more requests" class="mt-6 mb-4 p-4 flex justify-center items-center h-full text-gray-600 text-sm cursor-pointer">
+                        <div class="text-gray-600 text-lg cursor-pointer p-2">...</div>
                     </div>
                 </div>
             </div>
         </div>
     </Modal>
+
+    <Alert
+        :show="alertData.show"
+        :type="alertData.type"
+        :message="alertData.message"
+        :time="alertData.time"
+        @close="clearAlertData"
+    />
 </template>

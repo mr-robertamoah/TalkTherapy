@@ -20,6 +20,7 @@ class CounsellorMiniResource extends JsonResource
             'name' => $this->getName(),
             'verifiedAt' => $this->verified_at,
             'avatar' => $this->avatar?->url,
+            'isCounsellor' => true
         ];
     }
 }

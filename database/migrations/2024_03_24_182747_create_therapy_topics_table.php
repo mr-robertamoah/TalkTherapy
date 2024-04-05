@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Counsellor;
+use App\Models\Therapy;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
@@ -15,9 +16,10 @@ return new class extends Migration
         Schema::create('therapy_topics', function (Blueprint $table) {
             $table->id();
             $table->foreignIdFor(Counsellor::class);
-            $table->nullableMorphs('for');
+            $table->foreignIdFor(Therapy::class);
             $table->string('name');
             $table->text('description')->nullable();
+            $table->timestamp('deleted_at')->nullable();
             $table->timestamps();
         });
     }

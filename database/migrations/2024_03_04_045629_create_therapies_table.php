@@ -27,6 +27,7 @@ return new class extends Migration
             $table->boolean('public');
             $table->boolean('anonymous');
             $table->boolean('allow_in_person');
+            $table->timestamp('deleted_at')->nullable();
             $table->json('payment_data')->nullable();
             $table->integer('max_sessions')->default(10);
             $table->timestamps();

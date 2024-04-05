@@ -18,6 +18,8 @@
         "vue": "^3.4.0"
     },
     "dependencies": {
+        "@googlemaps/js-api-loader": "^1.16.2",
+        "date-fns": "^3.6.0",
         "lodash": "^4.17.21"
     }
 }

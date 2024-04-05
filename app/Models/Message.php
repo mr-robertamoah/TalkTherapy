@@ -5,12 +5,14 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphToMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Message extends Model
 {
-    use HasFactory;
+    use HasFactory,
+    SoftDeletes;
 
-    protected $fillable = ['content'];
+    protected $fillable = ['content', 'type', 'confidential'];
 
     public function from()
     {
@@ -30,6 +32,16 @@ class Message extends Model
     public function therapyTopic()
     {
         return $this->belongsTo(TherapyTopic::class);
+    }
+
+    public function replying()
+    {
+        return $this->belongsTo(Message::class, 'message_id');
+    }
+
+    public function replies()
+    {
+        return $this->hasMany(Message::class, 'message_id');
     }
 
     public function files(): MorphToMany

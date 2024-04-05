@@ -10,6 +10,7 @@ use App\DTOs\UpdateCounsellorDTO;
 use App\DTOs\VerifyCounsellorDTO;
 use App\Http\Requests\UpdateCounsellorRequest;
 use App\Http\Requests\VerifyCounsellorRequest;
+use App\Http\Resources\AssistanceRequestCounsellorResource;
 use App\Http\Resources\CounsellorMiniResource;
 use App\Http\Resources\CounsellorResource;
 use App\Models\Counsellor;
@@ -124,6 +125,13 @@ class CounsellorController extends Controller
 
             throw new Exception($message);
         }
+    }
+    
+    public function getCounsellors(Request $request)
+    {
+        return AssistanceRequestCounsellorResource::collection(
+            CounsellorService::new()->getCounsellors($request->user(), $request->name)
+        );
     }
 
     public function verifyCounsellor(VerifyCounsellorRequest $request)

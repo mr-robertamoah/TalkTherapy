@@ -2,16 +2,19 @@
 
 namespace App\Models;
 
+use App\Enums\SessionStatusEnum;
 use App\Enums\TherapyStatusEnum;
 use App\Traits\Starreable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphToMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Therapy extends Model
 {
     use HasFactory,
-    Starreable;
+    Starreable,
+    SoftDeletes;
 
     protected $fillable = [
         'session_type', 'payment_type', 'background_story', 'allow_in_person', 'name',
@@ -24,22 +27,22 @@ class Therapy extends Model
 
     public function getSessionsHeldAttribute()
     {
-        return 0; // TODO
+        return $this->sessions()->whereHeld()->count();
     }
 
     public function getSessionsCreatedAttribute()
     {
-        return 0; // TODO
+        return $this->sessions()->count();
     }
 
     public function getPaidSessionsAttribute()
     {
-        return 0; // TODO
+        return $this->sessions()->wherePaid()->count();
     }
 
     public function getFreeSessionsAttribute()
     {
-        return 0; // TODO
+        return $this->sessions()->whereFree()->count();
     }
 
     public function getStatus()
@@ -70,6 +73,11 @@ class Therapy extends Model
         return $this->belongsTo(Counsellor::class);
     }
 
+    public function sessions()
+    {
+        return $this->hasMany(Session::class);
+    }
+
     public function cases(): MorphToMany
     {
         return $this
@@ -96,16 +104,84 @@ class Therapy extends Model
         return $this->addedBy->is($user) || $this->counsellor?->user->is($user);
     }
 
+    public function isNotParticipant(User $user)
+    {
+        return !$this->isParticipant($user);
+    }
+
+    public function scopeWhereAddedby($query, Model $model)
+    {
+        return $query->where(function ($query) use ($model) {
+            $query
+                ->where('addedby_type', $model::class)
+                ->where('addedby_id', $model->id);
+        });
+    }
+
+    public function scopeWhereCounsellor($query, Counsellor $counsellor)
+    {
+        return $query->where(function ($query) use ($counsellor) {
+            $query->where('counsellor_id', $counsellor->id);
+        });
+    }
+
     public function scopeWhereParticipant($query, User $user)
     {
-        return $query->where(function ($query) use ($user) {
-            $query
-                ->where('addedby_type', $user::class)
-                ->where('addedby_id', $user->id);
-        })->when($user->counsellor, function ($query) use ($user) {
-            $query->orWhere(function ($query) use ($user) {
-                $query->where('counsellor_id', $user->counsellor->id);
+        return $query
+            ->whereAddedby($user)
+            ->when($user->counsellor, function ($query) use ($user) {
+                $query->orWhere(function ($query) use ($user) {
+                    $query->whereCounsellor($user->counsellor);
+                });
             });
-        });
+    }
+
+    public function hasAssistance()
+    {
+        return $this->counsellor()->exists();
+    }
+
+    public function doesNotHaveAssistance()
+    {
+        return !$this->hasAssistance();
+    }
+
+    public function endSessions()
+    {
+        $this->sessions()
+            ->wherePending()
+            ->update(['status' => SessionStatusEnum::failed->value]);
+
+        $this->sessions()
+            ->wherePastEndTime()
+            ->update(['status' => SessionStatusEnum::held->value]);
+        
+        $this->sessions()
+            ->whereStatusIn([
+                SessionStatusEnum::held_confirmation->value,
+                SessionStatusEnum::in_session->value,
+                SessionStatusEnum::in_session_confirmation->value
+            ])
+            ->update(['status' => SessionStatusEnum::abandoned->value]);
+    }
+
+    public function getTopicsCountAttribute()
+    {
+        return $this->topics()->count();
+    }
+
+    public function topics()
+    {
+        return $this->hasMany(TherapyTopic::class);
+    }
+
+    public function isUser(User $user)
+    {
+        return $this->addedBy->is($user);
+    }
+
+    public function isCounsellor(Counsellor $counsellor)
+    {
+        return $this->counsellor->is($counsellor);
     }
 }

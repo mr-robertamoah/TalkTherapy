@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use App\Enums\TherapyPaymentTypeEnum;
+use App\Enums\TherapyPerPaymentEnum;
 use App\Enums\TherapySessionTypeEnum;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -36,6 +37,11 @@ class CreateTherapyRequest extends FormRequest
             'maxSessions' => ['nullable', Rule::requiredIf($this->get('sessionType') == TherapySessionTypeEnum::periodic->value), 'integer'],
             'per' => ['nullable', Rule::requiredIf($this->get('paymentType') == TherapyPaymentTypeEnum::paid->value), 'string'],
             'amount' => ['nullable', Rule::requiredIf($this->get('paymentType') == TherapyPaymentTypeEnum::paid->value), 'numeric'],
+            'inPersonAmount' => ['nullable', Rule::requiredIf(
+                $this->get('paymentType') == TherapyPaymentTypeEnum::paid->value &&
+                $this->get('per') == TherapyPerPaymentEnum::session->value &&
+                $this->get('allowInPerson')
+            ), 'numeric'],
             'currency' => ['nullable', Rule::requiredIf($this->get('paymentType') == TherapyPaymentTypeEnum::paid->value), 'string'],
         ];
     }

@@ -5,6 +5,7 @@ use App\Http\Controllers\CounsellorController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\PreferenceController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\SessionController;
 use App\Http\Controllers\TherapyController;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
@@ -43,6 +44,17 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/therapies', [TherapyController::class, 'show'])->name('therapies');
     Route::get('/therapies/{therapyId}', [TherapyController::class, 'getTherapy'])->name('therapies.get');
+    Route::patch('/therapies/{therapyId}', [TherapyController::class, 'updateTherapy'])->name('therapies.update');
+    Route::delete('/therapies/{therapyId}', [TherapyController::class, 'deleteTherapy'])->name('therapies.delete');
+    Route::post('/therapies/{therapyId}', [TherapyController::class, 'endTherapy'])->name('therapies.end');
+
+    Route::post('/therapies/{therapyId}/sessions', [SessionController::class, 'createSession'])->name('sessions.create');
+    Route::patch('/therapies/{therapyId}/sessions/{sessionId}', [SessionController::class, 'updateSession'])->name('sessions.update');
+    Route::delete('/therapies/{therapyId}/sessions/{sessionId}', [SessionController::class, 'deleteSession'])->name('sessions.delete');
+    Route::post('/therapies/{therapyId}/sessions/{sessionId}/in_session', [SessionController::class, 'getInSession'])->name('sessions.in_session');
+    Route::post('/therapies/{therapyId}/sessions/{sessionId}/end', [SessionController::class, 'endSession'])->name('sessions.end');
+    Route::post('/therapies/{therapyId}/sessions/{sessionId}/fail', [SessionController::class, 'failSession'])->name('sessions.fail');
+    Route::post('/therapies/{therapyId}/sessions/{sessionId}/abandon', [SessionController::class, 'abandonSession'])->name('sessions.abandon');
 
     Route::get('/preferences', [PreferenceController::class, 'show'])->name('preferences');
     Route::post('/preferences', [PreferenceController::class, 'set'])->name('preferences.set');

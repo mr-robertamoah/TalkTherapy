@@ -13,6 +13,10 @@ class EnsureUserHasAccessToTherapyAction extends Action
         if (
             $getTherapyDTO->therapy->public ||
             $getTherapyDTO->therapy->isParticipant($getTherapyDTO->user) ||
+            (
+                $getTherapyDTO->user->counsellor && 
+                $getTherapyDTO->user->counsellor->hasPendingRequestFor($getTherapyDTO->therapy)
+            ) ||
             $getTherapyDTO->user->isAdmin()
         ) return;
 

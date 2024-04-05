@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\ConstantsEnum;
 use App\Enums\RequestStatusEnum;
 use App\Enums\RequestTypeEnum;
+use App\Enums\TherapyPaymentTypeEnum;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphToMany;
@@ -28,12 +29,16 @@ class Counsellor extends Model
 
     public function getFreeTherapiesCountAttribute()
     {
-        return 0; // TODO
+        return $this->therapies()
+            ->where('payment_type', TherapyPaymentTypeEnum::free->value)
+            ->count();
     }
 
     public function getPaidTherapiesCountAttribute()
     {
-        return 0; // TODO
+        return $this->therapies()
+            ->where('payment_type', TherapyPaymentTypeEnum::paid->value)
+            ->count();
     }
 
     public function getFreeGroupTherapiesCountAttribute()
@@ -58,7 +63,7 @@ class Counsellor extends Model
 
     public function getGroupTherapiesCountAttribute()
     {
-        return 0; // TODO
+        return $this->groupTherapies()->count();
     }
 
     public function getHeldSessionsCountAttribute()
@@ -73,7 +78,12 @@ class Counsellor extends Model
 
     public function getTherapiesCountAttribute()
     {
-        return 0; // TODO
+        return $this->therapies()->count();
+    }
+
+    public function getAllTherapiesCountAttribute()
+    {
+        return $this->therapiesCount + $this->groupTherapiesCount;
     }
 
     public function hasNationalIdentification()
@@ -108,6 +118,11 @@ class Counsellor extends Model
         return $this->belongsToMany(GroupTherapy::class, 'counsellor_group_therapy', 'counsellor_id', 'group_therapy_id')
             ->withPivot(['state'])
             ->withTimestamps();
+    }
+
+    public function therapies()
+    {
+        return $this->hasMany(Therapy::class);
     }
 
     public function sentMessages()
@@ -166,6 +181,11 @@ class Counsellor extends Model
     public function addedProfessions()
     {
         return $this->morphMany(Profession::class, 'addedby');
+    }
+
+    public function addedSessions()
+    {
+        return $this->morphMany(Session::class, 'addedby');
     }
 
     public function starred()
@@ -244,5 +264,40 @@ class Counsellor extends Model
     public function hasNotHeldATherapySession()
     {
         return !$this->hasHeldATherapySession();
+    }
+
+    public function scopeWhereName($query, $name)
+    {
+        return $query->where('name', 'LIKE', "%{$name}%")
+            ->orWhereHas('user', function ($query) use ($name) {
+                $query
+                    ->where('username', 'LIKE', "%{$name}%")
+                    ->orWhere('firstName', 'LIKE', "%{$name}%")
+                    ->orWhere('lastName', 'LIKE', "%{$name}%")
+                    ->orWhere('otherNames', 'LIKE', "%{$name}%");
+            });
+    }
+
+    public function scopeWhereNotUser($query, $user)
+    {
+        return $query->where(function ($query) use ($user) {
+                $query
+                    ->whereNot('user_id', $user->id);
+            });
+    }
+
+    public function hasPendingRequestFor(Model $model)
+    {
+        return (bool) Request::query()
+            ->wherePending()
+            ->whereFor($model)
+            ->whereTo($this)
+            ->orWhereFrom($this)
+            ->count();
+    }
+
+    public function doesNotHavePendingRequestFor(Model $model)
+    {
+        return !$this->hasPendingRequestFor($model);
     }
 }
