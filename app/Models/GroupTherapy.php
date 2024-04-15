@@ -21,9 +21,19 @@ class GroupTherapy extends Model
         'payment_data' => 'array'
     ];
 
-    public function addedBy()
+    public function getIsTherapyAttribute()
+    {
+        return false;
+    }
+
+    public function addedby()
     {
         return $this->morphTo('addedby');
+    }
+
+    public function sessions()
+    {
+        return $this->morphMany(Session::class, 'for');
     }
 
     public function counsellors()
@@ -45,15 +55,38 @@ class GroupTherapy extends Model
         return $this->morphMany(TherapyTopic::class, 'for');
     }
 
-    public function messages()
-    {
-        return $this->morphMany(Message::class, 'for');
-    }
-
     public function cases(): MorphToMany
     {
         return $this
             ->morphToMany(TherapyCase::class, 'caseable', 'caseables', relatedPivotKey: 'case_id')
             ->withTimestamps();
+    }
+
+    public function isCounsellor(Counsellor $counsellor)
+    {
+        return false; // TODO
+    }
+
+    public function isParticipant(User $user)
+    {
+        return false; // TODO
+    }
+
+    public function getUsers()
+    {
+        $users = [];
+       
+        // TODO
+
+        return $users;
+    }
+
+    public function getOtherUsers(User $user)
+    {
+        $users = [];
+       
+        // TODO
+
+        return $users;
     }
 }

@@ -1,8 +1,9 @@
 #!/usr/bin/env php
 <?php
 
-define('LARAVEL_START', microtime(true));
+use Symfony\Component\Console\Input\ArgvInput;
 
+define('LARAVEL_START', microtime(true));
 /*
 |--------------------------------------------------------------------------
 | Register The Auto Loader
@@ -17,7 +18,7 @@ define('LARAVEL_START', microtime(true));
 
 require __DIR__.'/vendor/autoload.php';
 
-$app = require_once __DIR__.'/bootstrap/app.php';
+// $app = require_once __DIR__.'/bootstrap/app.php';
 
 /*
 |--------------------------------------------------------------------------
@@ -30,12 +31,12 @@ $app = require_once __DIR__.'/bootstrap/app.php';
 |
 */
 
-$kernel = $app->make(Illuminate\Contracts\Console\Kernel::class);
+// $kernel = $app->make(Illuminate\Contracts\Console\Kernel::class);
 
-$status = $kernel->handle(
-    $input = new Symfony\Component\Console\Input\ArgvInput,
-    new Symfony\Component\Console\Output\ConsoleOutput
-);
+// $status = $kernel->handle(
+//     $input = new Symfony\Component\Console\Input\ArgvInput,
+//     new Symfony\Component\Console\Output\ConsoleOutput
+// );
 
 /*
 |--------------------------------------------------------------------------
@@ -48,6 +49,8 @@ $status = $kernel->handle(
 |
 */
 
-$kernel->terminate($input, $status);
+// $kernel->terminate($input, $status);
+$status = (require_once __DIR__.'/bootstrap/app.php')
+    ->handleCommand(new ArgvInput);
 
 exit($status);

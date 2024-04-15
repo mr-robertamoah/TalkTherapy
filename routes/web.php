@@ -7,7 +7,12 @@ use App\Http\Controllers\PreferenceController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\SessionController;
 use App\Http\Controllers\TherapyController;
+use App\Models\Counsellor;
+use App\Models\Session;
+use App\Models\User;
+use App\Notifications\SessionDueNotification;
 use Illuminate\Foundation\Application;
+use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -31,10 +36,30 @@ use Inertia\Inertia;
 //     ]);
 // });
 
+
+Route::get('/testing',function() {
+    try {
+    $counsellor = User::first();
+    $session = Session::first();
+
+    $counsellor->notify(new SessionDueNotification($session));
+
+    return 'done';
+    } catch (Throwable $th) {
+        ds($th);
+    }
+});
+
+
 Route::get('/',[HomeController::class, 'goHome'])
     // ->middleware(['auth', 'verified'])
     ->name('home');
 
+Route::get('/therapies/{therapyId}', [TherapyController::class, 'getTherapy'])->name('therapies.get');
+
+Route::get('/counsellor/{counsellorId}/verify-email/{hash}', [CounsellorController::class, 'verifyEmail'])
+    ->middleware(['throttle:6,1'])
+    ->name('counsellor.verification.verify');
 Route::get('/counsellor/{counsellorId}', [CounsellorController::class, 'show'])->name('counsellor.show');
 
 Route::middleware('auth')->group(function () {
@@ -43,7 +68,6 @@ Route::middleware('auth')->group(function () {
     Route::get('/administrator', [AdministratorController::class, 'show'])->name('administrator');
 
     Route::get('/therapies', [TherapyController::class, 'show'])->name('therapies');
-    Route::get('/therapies/{therapyId}', [TherapyController::class, 'getTherapy'])->name('therapies.get');
     Route::patch('/therapies/{therapyId}', [TherapyController::class, 'updateTherapy'])->name('therapies.update');
     Route::delete('/therapies/{therapyId}', [TherapyController::class, 'deleteTherapy'])->name('therapies.delete');
     Route::post('/therapies/{therapyId}', [TherapyController::class, 'endTherapy'])->name('therapies.end');
@@ -60,9 +84,10 @@ Route::middleware('auth')->group(function () {
     Route::post('/preferences', [PreferenceController::class, 'set'])->name('preferences.set');
 
     // Route::get('/profile', [ProfileController::class, 'show'])->name('profile.show');
+
     Route::post('/counsellor/{counsellorId}', [CounsellorController::class, 'updateCounsellor'])->name('counsellor.update');
     Route::post('/counsellor/{counsellorId}/verify', [CounsellorController::class, 'verifyCounsellor'])->name('counsellor.verify');
-    Route::post('/counsellor/{counsellorId}/verify-email', [CounsellorController::class, 'verifyCounsellorEmail'])->name('counsellor.email.verification');
+    Route::post('/counsellor/{counsellorId}/verify-email', [CounsellorController::class, 'sendVerificationEmail'])->name('counsellor.email.verification');
 
     Route::get('/profile', [ProfileController::class, 'show'])->name('profile.show');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');

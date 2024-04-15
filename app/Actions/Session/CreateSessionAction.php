@@ -22,19 +22,21 @@ class CreateSessionAction extends Action
             'name' => $createSessionDTO->name,
             'about' => $createSessionDTO->about,
             'landmark' => $createSessionDTO->landmark,
-            'therapy_id' => $createSessionDTO->therapy->id,
             'longitude' => $createSessionDTO->longitude,
             'latitude' => $createSessionDTO->latitude,
             'start_time' => $createSessionDTO->startTime,
             'end_time' => $createSessionDTO->endTime,
         ]);
 
+        $session->for()->associate($createSessionDTO->for);
+        $session->save();
+
         if ($createSessionDTO->cases && count($createSessionDTO->cases)) {
             $session->cases()->attach($createSessionDTO->cases);
         }
 
-        if ($createSessionDTO->therapy->status == TherapyStatusEnum::pending->value)
-            $createSessionDTO->therapy->update(['status' => TherapyStatusEnum::in_session->value]);
+        if ($createSessionDTO->for->status == TherapyStatusEnum::pending->value)
+            $createSessionDTO->for->update(['status' => TherapyStatusEnum::in_session->value]);
 
         return $session->refresh();
     }

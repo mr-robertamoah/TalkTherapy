@@ -9,4 +9,5 @@ enum RequestStatusEnum : string {
     case pending = 'PENDING';
     case rejected = 'REJECTED';
     case accepted = 'ACCEPTED';
+    case inconsequencial = 'INCONSEQUENCIAL';
 }

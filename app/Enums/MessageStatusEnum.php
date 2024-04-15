@@ -8,4 +8,5 @@ enum MessageStatusEnum : string {
 
     case sent = 'SENT';
     case seen = 'SEEN';
+    case received = 'RECEIVED';
 }

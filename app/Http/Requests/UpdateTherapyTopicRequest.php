@@ -2,7 +2,9 @@
 
 namespace App\Http\Requests;
 
+use App\Models\TherapyTopic;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class UpdateTherapyTopicRequest extends FormRequest
 {
@@ -11,7 +13,7 @@ class UpdateTherapyTopicRequest extends FormRequest
      */
     public function authorize(): bool
     {
-        return false;
+        return true;
     }
 
     /**
@@ -22,7 +24,9 @@ class UpdateTherapyTopicRequest extends FormRequest
     public function rules(): array
     {
         return [
-            //
+            'name' => ['nullable', 'string', 'max:255'],
+            'description' => ['nullable', 'string'],
+            'sessions' => ['nullable', 'array']
         ];
     }
 }

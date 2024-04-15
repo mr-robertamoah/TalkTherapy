@@ -10,4 +10,9 @@ class Discussion extends Model
 {
     use HasFactory,
     Starreable;
+
+    public function messages()
+    {
+        return $this->morphMany(Message::class, 'for');
+    }
 }

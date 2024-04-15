@@ -16,7 +16,7 @@ class Religion extends Model
         'name', 'about',
     ];
 
-    public function addedBy() {
+    public function addedby() {
         return $this->morphTo('addedby');
     }
 

@@ -404,6 +404,8 @@ function scrollToItem(item) {
                             :therapy="therapy"
                             :newSession="newSession"
                             :is-participant="computedIsParticipant"
+                            :is-user="computedIsUser"
+                            :is-counsellor="computedIsCounsellor"
                         />
                     </div>
                 </div>

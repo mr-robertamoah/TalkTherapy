@@ -54,7 +54,10 @@ class UpdateCounsellorAction extends Action
         if (!is_null($updateCounsellorDTO->contactVisible)) $data['contact_visible'] = $updateCounsellorDTO->contactVisible;
         if ($updateCounsellorDTO->name) $data['name'] = $updateCounsellorDTO->name;
         if ($updateCounsellorDTO->about) $data['about'] = $updateCounsellorDTO->about;
-        if ($updateCounsellorDTO->email) $data['email'] = $updateCounsellorDTO->email;
+        if ($updateCounsellorDTO->email) {
+            $data['email'] = $updateCounsellorDTO->email;
+            $data['email_verified_at'] = null;
+        }
         if ($updateCounsellorDTO->phone) $data['phone'] = $updateCounsellorDTO->phone;
         if ($updateCounsellorDTO->professionId) $data['profession_id'] = $updateCounsellorDTO->professionId;
 

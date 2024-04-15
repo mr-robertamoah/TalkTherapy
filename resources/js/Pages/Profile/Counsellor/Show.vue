@@ -264,20 +264,6 @@ function closeModal() {
     modalData.value.show = false
 }
 
-async function getOtherLicensingAuthorities() {
-    loading.value = true
-    axios.get(route('licensing_authorities'))
-        .then((res) => {
-            console.log(res)
-        })
-        .catch((err) => {
-            console.log(err)
-        })
-        .finally(() => {
-            loading.value = false
-        })
-}
-
 </script>
 
 <template>

@@ -19,7 +19,7 @@ return new class extends Migration
             $table->id();
             $table->nullableMorphs('addedby');
             $table->nullableMorphs('updatedby');
-            $table->foreignIdFor(Therapy::class);
+            $table->nullableMorphs('for');
             $table->string('name');
             $table->string('landmark')->nullable();
             $table->text('about');

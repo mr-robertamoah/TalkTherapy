@@ -19,7 +19,8 @@ class TherapyTopic extends Model
 
     public function sessions()
     {
-        return $this->belongsToMany(Session::class, 'therapy_topic_session');
+        return $this->belongsToMany(Session::class, 'therapy_topic_session')
+            ->withTimestamps();
     }
 
     public function therapy()
@@ -35,5 +36,20 @@ class TherapyTopic extends Model
     public function messages()
     {
         return $this->hasMany(Message::class);
+    }
+
+    public function scopeWhereTherapyId($query, $therapyId)
+    {
+        return $query->where('therapy_id', $therapyId);
+    }
+
+    public function scopeWhereName($query, $name)
+    {
+        return $query->where('name', $name);
+    }
+
+    public function scopeWhereNameLike($query, $name)
+    {
+        return $query->where('name', 'LIKE', "%{$name}%");
     }
 }

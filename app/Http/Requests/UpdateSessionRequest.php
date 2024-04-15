@@ -4,7 +4,6 @@ namespace App\Http\Requests;
 
 use App\Enums\SessionTypeEnum;
 use App\Enums\TherapyPaymentTypeEnum;
-use App\Enums\TherapySessionTypeEnum;
 use Carbon\Carbon;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -27,20 +26,21 @@ class UpdateSessionRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'name' => ['required', 'string', 'max:255', 'unique:sessions,name'],
-            'about' => ['required', 'string'],
+            'name' => ['nullable', 'string', 'max:255'],
+            'about' => ['nullable', 'string'],
             'landmark' => ['nullable', 'string'],
             'lat' => ['nullable', Rule::requiredIf($this->get('type') == SessionTypeEnum::in_person->value), 'numeric', 'between:-90,90'],
             'lng' => ['nullable', Rule::requiredIf($this->get('type') == SessionTypeEnum::in_person->value), 'numeric', 'between:-180,180'],
-            'startTime' => ['required', 'date', Rule::prohibitedIf(
+            'startTime' => ['nullable', 'date', Rule::prohibitedIf(
                 !(now()->addMinutes(30)->lessThanOrEqualTo(new Carbon($this->get('startTime')))
             ))],
-            'endTime' => ['required', 'date', Rule::prohibitedIf(
+            'endTime' => ['nullable', 'date', Rule::prohibitedIf(
                 !((new Carbon($this->get('startTime')))->addMinutes(30)->lessThanOrEqualTo(new Carbon($this->get('endTime'))))
             )],
             'cases' => ['nullable', 'array'],
-            'paymentType' => ['required', Rule::in(TherapyPaymentTypeEnum::values())],
-            'type' => ['required', Rule::in(TherapySessionTypeEnum::values())],
+            'topics' => ['nullable', 'array'],
+            'paymentType' => ['nullable', Rule::in(TherapyPaymentTypeEnum::values())],
+            'type' => ['nullable', Rule::in(SessionTypeEnum::values())],
         ];
     }
 }

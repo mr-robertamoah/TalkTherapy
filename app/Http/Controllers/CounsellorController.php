@@ -15,10 +15,6 @@ use App\Http\Resources\CounsellorMiniResource;
 use App\Http\Resources\CounsellorResource;
 use App\Models\Counsellor;
 use App\Services\CounsellorService;
-use App\Services\LanguageService;
-use App\Services\ProfessionService;
-use App\Services\ReligionService;
-use App\Services\TherapyCaseService;
 use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Redirect;
@@ -28,6 +24,36 @@ use Throwable;
 
 class CounsellorController extends Controller
 {
+    public function verifyEmail(Request $request)
+    {
+        try {
+            CounsellorService::new()->verifyEmail(
+                UpdateCounsellorDTO::new()->fromArray([
+                    'counsellor' => Counsellor::find($request->counsellorId),
+                    'request' => $request,
+                ])
+            );        
+
+            return redirect()->route('counsellor.show', ['counsellorId' => $request->counsellorId]);
+        } catch (Throwable $th) {
+            $message = $th->getCode() == 500 ? "Something unfortunate happened. Please try again shortly." : $th->getMessage();
+
+            return redirect()->back()->withErrors('message', $message);
+        }
+    }
+
+    public function sendVerificationEmail(Request $request)
+    {
+        CounsellorService::new()->sendVerificationEmail(
+            UpdateCounsellorDTO::new()->fromArray([
+                'counsellor' => Counsellor::find($request->counsellorId),
+                'user' => $request->user(),
+            ])
+        );        
+
+        return redirect()->back()->with('message', 'verification email sent.');
+    }
+        
     public function createCounsellor(Request $request)
     {
         try {
@@ -72,7 +98,13 @@ class CounsellorController extends Controller
                 $data = array_merge($data, CounsellorService::new()->getCounsellorData());
             }
 
-            return Inertia::render('Profile/Counsellor/Show', $data);
+            $page = Inertia::render('Profile/Counsellor/Show', $data);
+
+            $message = session('message');
+
+            if ($message) $page->with('message', $message);
+
+            return $page;
         } catch (Throwable $th) {
             return Redirect::route('home')->with('message', $th->getMessage());
         }

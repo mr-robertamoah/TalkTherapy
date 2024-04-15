@@ -28,8 +28,14 @@
     />
     <UpdateSessionFormModal
         :session="session"
+        :therapy="therapy"
+        :loaded-topics="loadedTopics"
+        :loaded-topics-page="loadedTopicsPage"
         :show="modalData.type == 'update' && modalData.show"
         @close="closeModal"
+        @on-update="(data) => {
+            if (data) emits('onUpdate', data)
+        }"
         v-if="session"
     />
     <MiniModal
@@ -41,46 +47,85 @@
             <div class="text-gray-600 text-center font-bold tracking-wide">Actions</div>
             <hr class="my-2">
 
-            <div class="flex p-4 flex-col items-center justify-center mx-auto w-[90%] md:w-[75%]">
-                <PrimaryButton @click="() => showModal('update')">update</PrimaryButton>
-                <PrimaryButton @click="() => showModal('delete')">delete</PrimaryButton>
+            <div class="p-4 flex flex-col items-center justify-center mx-auto w-[90%] md:w-[75%]">
+                <PrimaryButton class="mb-2 text-center" @click="() => showModal('update')">update</PrimaryButton>
+                <PrimaryButton class="mb-2 text-center" @click="() => showModal('delete')">delete</PrimaryButton>
             </div>
         </div>
         <div v-if="modalData.type == 'delete'" class="relative">
-            <div class="text-gray-600 text-center font-bold tracking-wide">Actions</div>
+            <div class="text-red-700 text-center font-bold tracking-wide">Delete Session</div>
             <hr class="my-2">
-            <FormLoader :danger="true" :show="loading" :text="'deleting session...'"/>
-            <div class="text-red-700 my-4">Are sure you want to delete this session.</div>
+            <FormLoader :danger="true" :show="loading" :text="'deleting session'"/>
+            <div class="text-red-700 my-4 w-[90%] mx-auto text-center">Are sure you want to delete this session.</div>
             <div class="flex p-4 items-center justify-end mx-auto w-[90%] md:w-[75%]">
                 <PrimaryButton @click="closeModal">cancel</PrimaryButton>
-                <PrimaryButton @click="deleteSession">delete</PrimaryButton>
+                <DangerButton class="ml-2" @click="deleteSession">delete</DangerButton>
             </div>
         </div>
     </MiniModal>
+
+    <Alert
+        :show="alertData.show"
+        :type="alertData.type"
+        :message="alertData.message"
+        :time="alertData.time"
+        @close="clearAlertData"
+    />
 </template>
 
 <script setup>
 import useModal from '@/Composables/useModal';
 import { usePage } from '@inertiajs/vue3';
-import { computed, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch, watchEffect } from 'vue';
 import SessionModal from './SessionModal.vue';
 import MiniModal from './MiniModal.vue';
 import PrimaryButton from './PrimaryButton.vue';
 import UpdateSessionFormModal from './UpdateSessionFormModal.vue';
 import FormLoader from './FormLoader.vue';
+import DangerButton from './DangerButton.vue';
+import useAlert from '@/Composables/useAlert';
+import Alert from './Alert.vue';
 
 const { modalData, closeModal, showModal } = useModal()
+const { alertData, setAlertData, setFailedAlertData, clearAlertData } = useAlert()
+
+const emits = defineEmits(['onUpdate', 'onDelete', 'onMessageCreated'])
 
 const props = defineProps({
     session: {
         default: null
-    }
+    },
+    therapy: {
+        default: null
+    },
+    loadedTopics: {
+        default: []
+    },
+    loadedTopicsPage: {
+        default: 0
+    },
 })
 
 const mainSession = ref(null)
+const loading = ref(false)
 
-watch(() => props.session?.id, () => {
-    if (props.session?.id) mainSession.value = {...props.session}
+onBeforeUnmount(() => {
+    Echo.leave(`sessions.${props.session.id}`)
+})
+
+watchEffect(() => {
+    if (props.session?.id) {
+        mainSession.value = {...props.session}
+
+        Echo
+            .private(`sessions.${props.session.id}`)
+            .listen('.message.created', (data) => {
+                if (data.message?.fromUserId == usePage().props.auth.user?.id)
+                    return
+
+                emits('onMessageCreated', data.message)
+            })
+    }
 })
 
 const computedAbout = computed(() => {
@@ -90,7 +135,47 @@ const computedCanPerformActions = computed(() => {
     return props.session?.userId == usePage().props.auth.user?.id
 })
 
-function deleteSession() {
-    
+async function deleteSession() {
+    loading.value = true    
+
+    await axios.delete(route(`api.sessions.delete`, { sessionId: props.session.id }))
+        .then((res) => {
+            console.log(res)
+            
+            setAlertData({
+                message: 'Your session has been successfully deleted.',
+                type: 'success',
+                show: true,
+                time: 4000
+            })
+            emits('onDelete', res.data.session)
+            closeModal()
+        })
+        .catch((err) => {
+            console.log(err)
+            if (err.response?.data?.message) {
+                setFailedAlertData({
+                    message: err.response.data.message,
+                    time: 5000,
+                })
+                return
+            }
+
+            if (err.alert) {
+                setFailedAlertData({
+                    message: err.alert,
+                    time: 5000,
+                })
+                return
+            }
+
+            setFailedAlertData({
+                message: 'Something unfortunate happened. Please try again later.',
+                time: 4000
+            })
+        })
+        .finally(() => {
+            loading.value = false
+        })
 }
 </script>

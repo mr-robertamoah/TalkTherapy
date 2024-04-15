@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeMount, ref, watch } from 'vue';
+import { computed, onBeforeMount, ref, unref, watch, watchEffect } from 'vue';
 import TextInput from '@/Components/TextInput.vue';
 import InputLabel from '@/Components/InputLabel.vue';
 import InputError from '@/Components/InputError.vue';
@@ -17,7 +17,7 @@ import { addMinutes, format, setMilliseconds, setSeconds } from 'date-fns';
 
 const { alertData, clearAlertData, setAlertData, setFailedAlertData } = useAlert()
 const { getCurrentLocation, currentLocation } = useLocation()
-const { initMap, createMap, mapDetails, setMarkerPosition, markerPosition } = useMap()
+const { initMap, createMap, mapDetails, addMarker, map, markerPosition } = useMap()
 
 const props = defineProps({
     show: {
@@ -31,6 +31,7 @@ const props = defineProps({
 
 const emits = defineEmits(['closeModal', 'onSuccess'])
 
+const sessionCreationMap = ref(null)
 const loading = ref(false)
 const startTime = ref('')
 const endTime = ref('')
@@ -51,19 +52,21 @@ const sessionForm = useForm({
 onBeforeMount(() => {
     startTime.value = getDefaultTime(30)
     endTime.value = getDefaultTime(70)
-
-    if (props.therapy.allowInPerson) {
-        initMap()
-    }
 })
 
-watch(() => mapDetails.value.Map, () => {
-    if (mapDetails.value.Map)
-        createMap('sessionCreationMap', markerPosition.value)
+watchEffect(() => {
+
+    if (!props.therapy.allowInPerson) return
+
+    initMap()
+    getCurrentLocation()
+    
+    if (mapDetails.value.Map && sessionCreationMap.value && props.therapy.allowInPerson && sessionForm.type == 'IN_PERSON')
+        createMap(sessionCreationMap.value, currentLocation.value)
 })
-watch(() => currentLocation.value, () => {
-    if (currentLocation.value)
-        setMarkerPosition(currentLocation.value)
+watch(() => markerPosition.value.lat || markerPosition.value.lng, () => {
+    sessionForm.lat = markerPosition.value.lat ?? ''
+    sessionForm.lng = markerPosition.value.lng ?? ''
 })
 watch(() => props.therapy.allowInPerson, () => {
     if (props.therapy.allowInPerson)
@@ -117,12 +120,7 @@ function isMinutesBefore({firstTime, secondTime = null, minutes}) {
 function getDefaultTime(minutes) {
     const now = new Date()
     let time = addMinutes(now, minutes).toISOString().slice(0, 16)
-    // time = setSecondsAndMilliseconds(time)
     return time
-}
-
-function setSecondsAndMilliseconds(time) {
-    return setSeconds(setMilliseconds(time, 0), 0)
 }
 
 function formatDateTimeForFrontend(dateTime) {
@@ -209,7 +207,8 @@ async function createSession() {
                 show: true,
                 time: 4000
             })
-            emits('onSuccess', res.session)
+            if (res.props.session)
+                emits('onSuccess', res.props.session)
             closeModal()
         }
     })
@@ -242,6 +241,15 @@ function addCaseToSelected(newCase) {
 
 function removeCaseFromSelected(oldCase) {
     selectedCases.value = [...selectedCases.value.filter((c) => c.id !== oldCase.id)]
+}
+
+function useCurrentLocation() {
+    getCurrentLocation()
+    map.value.setCenter({
+        lat: parseFloat(currentLocation.value.lat),
+        lng: parseFloat(currentLocation.value.lng),
+    })
+    addMarker(unref(map), currentLocation.value)
 }
 </script>
 
@@ -369,8 +377,8 @@ function removeCaseFromSelected(oldCase) {
                             <div class="font-bold text-start text-gray-600 capitalize my-2">location information</div>
                             <div class="w-full flex flex-col mt-2 mb-4 p-2">
                                 <div>
-                                    <div class="text-gray-600 text-sm mb-2 text-center">Location data (We recommend you just pick location on map).</div>
-                                    <div class="w-full h-[200px] bg-blue-200" id="sessionCreationMap"></div>
+                                    <div class="text-gray-600 text-sm mb-2 text-center">Location data (We recommend you pick location on map by clicking anywhere on the map).</div>
+                                    <div class="w-full h-[300px] bg-blue-200" ref="sessionCreationMap" id="sessionCreationMap"></div>
                                     <div class="flex justify-start items-center flex-col">
                                         <TextInput
                                             placeholder="longitude" 
@@ -379,6 +387,7 @@ function removeCaseFromSelected(oldCase) {
                                             name="lng"
                                             class="my-2 w-full"
                                             v-model="sessionForm.lng"
+                                            disabled
                                             required
                                         ></TextInput>
                                         <InputError :message="sessionForm.errors.lng" class="mt-2" />
@@ -390,12 +399,13 @@ function removeCaseFromSelected(oldCase) {
                                             name="lat"
                                             class="my-2 w-full"
                                             v-model="sessionForm.lat"
+                                            disabled
                                             required
                                         ></TextInput>
                                         <InputError :message="sessionForm.errors.lat" class="mt-2" />
                                     <div class="flex justify-end w-full">
                                         <div 
-                                        @click="getCurrentLocation"
+                                        @click="useCurrentLocation"
                                         :class="[
                                             (currentLocation.lat == sessionForm.lat && currentLocation.lng == sessionForm.lng)
                                             ? 'bg-blue-700 text-blue-300' 

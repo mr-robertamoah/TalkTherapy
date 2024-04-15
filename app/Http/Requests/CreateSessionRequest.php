@@ -39,6 +39,7 @@ class CreateSessionRequest extends FormRequest
                 !((new Carbon($this->get('startTime')))->addMinutes(30)->lessThanOrEqualTo(new Carbon($this->get('endTime'))))
             )],
             'cases' => ['nullable', 'array'],
+            'topics' => ['nullable', 'array'],
             'paymentType' => ['required', Rule::in(TherapyPaymentTypeEnum::values())],
             'type' => ['required', Rule::in(SessionTypeEnum::values())],
         ];

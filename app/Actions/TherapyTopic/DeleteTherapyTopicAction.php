@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Actions\Session;
+namespace App\Actions\TherapyTopic;
 
 use App\Actions\Action;
 use App\DTOs\CreateTherapyTopicDTO;

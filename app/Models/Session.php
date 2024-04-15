@@ -29,15 +29,35 @@ class Session extends Model
 
     public function therapy()
     {
-        return $this->belongsTo(Therapy::class);
+        return $this->for::class == Therapy::class
+            ? $this->for
+            : null;
+    }
+
+    public function groupTherapy()
+    {
+        return $this->for::class == GroupTherapy::class
+            ? $this->for
+            : null;
+    }
+
+    public function for()
+    {
+        return $this->morphTo();
     }
 
     public function topics()
     {
-        return $this->belongsToMany(TherapyTopic::class, 'therapy_topic_session');
+        return $this->belongsToMany(TherapyTopic::class, 'therapy_topic_session')
+            ->withTimestamps();
     }
 
-    public function addedBy()
+    public function messages()
+    {
+        return $this->morphMany(Message::class, 'for');
+    }
+
+    public function addedby()
     {
         return $this->morphTo('addedby');
     }
@@ -52,6 +72,28 @@ class Session extends Model
         return $this
             ->morphToMany(TherapyCase::class, 'caseable', 'caseables', relatedPivotKey: 'case_id')
             ->withTimestamps();
+    }
+
+    public function getUsersAttribute()
+    {
+        $users = [];
+
+        if ($this->isTherapy)
+        {
+            $users = 
+        }
+
+        return $users;
+    }
+
+    public function isParticipant(User $user)
+    {
+        return $this->for?->isParticipant($user);
+    }
+
+    public function isNotParticipant(User $user)
+    {
+        return $this->for?->isNotParticipant($user);
     }
 
     public function scopeWhereName($query, $name)
@@ -81,10 +123,15 @@ class Session extends Model
             ->whereDate('end_time', '>=', $date);
     }
 
-    public function scopeWhereIsNot30MinituesBeforeOrAfter($query, $startDate)
+    public function scopeWhereIsNot30MinituesBeforeOrAfter($query, $startDate, $endDate)
     {
         return $query
-            ->whereDateFallsBetween((new Carbon($startDate))->subMinutes(30)->toTimeString());
+            ->where(function ($query) use ($startDate) {
+                $query->whereDateFallsBetween((new Carbon($startDate))->subMinutes(30)->toTimeString());
+            })
+            ->orWhere(function ($query) use ($endDate) {
+                $query->whereDateFallsBetween((new Carbon($endDate))->addMinutes(30)->toTimeString());
+            });
     }
 
     public function scopeWhereStatusIn($query, $statuses)
@@ -105,5 +152,24 @@ class Session extends Model
     public function scopeWhereTherapyId($query, $therapyId)
     {
         return $query->where('therapy_id', $therapyId);
+    }
+
+    public function scopeWhereNameLike($query, $name)
+    {
+        return $query->where('name', 'LIKE', "%{$name}%");
+    }
+
+    public function getNotificationActionData()
+    {
+        if ($this->for->isTherapy) {
+            $type = 'Therapy';
+            $url = url("therapies/{$this->for->id}");
+        }
+        else {
+            $type = 'Group Therapy';
+            $url = url("group_therapies/{$this->for->id}");
+        }
+        
+        return [$type, $url];
     }
 }

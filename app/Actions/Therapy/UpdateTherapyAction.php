@@ -15,10 +15,9 @@ class UpdateTherapyAction extends Action
     {
         $this->setData($createTherapyDTO);
 
-        ds($this->data);
         $createTherapyDTO->therapy->update($this->data);
 
-        if ($createTherapyDTO->cases && count($createTherapyDTO->cases)) {
+        if (is_array($createTherapyDTO->cases)) {
             
             $createTherapyDTO->therapy->cases()->detach();
             $createTherapyDTO->therapy->cases()->attach($createTherapyDTO->cases);

@@ -17,7 +17,11 @@ class TherapyResource extends JsonResource
         return [
             'id' => $this->id,
             'name' => $this->name,
-            'user' => $this->when($this->addedBy->is($request->user()) || !$this->anonymous, new UserMiniResource($this->addedBy), ['fullName' => 'anonymous']),
+            'user' => $this->when(
+                    $this->addedby->is($request->user()) || !$this->anonymous, 
+                    new UserMiniResource($this->addedby), 
+                    ['id' => $this->addedby->id, 'fullName' => 'anonymous']
+                ),
             'public' => (bool) $this->public,
             'anonymous' => (bool) $this->anonymous,
             'allowInPerson' => (bool) $this->allow_in_person,

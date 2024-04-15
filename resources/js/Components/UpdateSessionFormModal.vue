@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeMount, ref, watch } from 'vue';
+import { computed, ref, unref, watch } from 'vue';
 import TextInput from '@/Components/TextInput.vue';
 import InputLabel from '@/Components/InputLabel.vue';
 import InputError from '@/Components/InputError.vue';
@@ -11,14 +11,15 @@ import useLocation from "@/Composables/useLocation";
 import useMap from "@/Composables/useMap";
 import Alert from "./Alert.vue";
 import PrimaryButton from "./PrimaryButton.vue";
+import TopicSection from "./TopicSection.vue";
 import Select from "./Select.vue";
-import { addMinutes, format, setMilliseconds, setSeconds } from 'date-fns';
+import { addMinutes, format } from 'date-fns';
 import useErrorHandler from '@/Composables/useErrorHandler';
 
 const { alertData, clearAlertData, setAlertData, setFailedAlertData } = useAlert()
-const { setErrorData } = useErrorHandler()
+const { setErrorData, clearErrorData } = useErrorHandler()
 const { getCurrentLocation, currentLocation } = useLocation()
-const { initMap, createMap, mapDetails, setMarkerPosition, markerPosition } = useMap()
+const { initMap, createMap, mapDetails, markerPosition, map } = useMap()
 
 const props = defineProps({
     show: {
@@ -30,15 +31,22 @@ const props = defineProps({
     },
     session: {
         default: null,
-    }
+    },
+    loadedTopics: {
+        default: []
+    },
+    loadedTopicsPage: {
+        default: 0
+    },
 })
 
-const emits = defineEmits(['closeModal', 'onSuccess'])
+const emits = defineEmits(['close', 'onUpdate'])
 
 const loading = ref(false)
 const startTime = ref('')
 const endTime = ref('')
 const selectedCases = ref([])
+const selectedTopics = ref([])
 const sessionData = ref({
     'name': '',
     'about': '',
@@ -49,7 +57,8 @@ const sessionData = ref({
     'landmark': '',
     'type': '',
     'paymentType': '',
-    'cases': []
+    'cases': [],
+    'topics': [],
 })
 const sessionErrors = ref({
     'name': '',
@@ -61,23 +70,26 @@ const sessionErrors = ref({
     'landmark': '',
     'type': '',
     'paymentType': '',
-    'cases': []
+    'cases': '',
+    'topics': '',
 })
 
-onBeforeMount(() => {
+watch(() => props.show, () => {
+    if (!props.show) return
+
     setSessionFormData()
     if (props.therapy.allowInPerson) {
         initMap()
     }
+        
 })
-
 watch(() => mapDetails.value.Map, () => {
     if (mapDetails.value.Map)
         createMap('sessionCreationMap', markerPosition.value)
 })
-watch(() => currentLocation.value, () => {
-    if (currentLocation.value)
-        setMarkerPosition(currentLocation.value)
+watch(() => markerPosition.value.lat || markerPosition.value.lng, () => {
+    sessionData.value.lat = markerPosition.value.lat ?? ''
+    sessionData.value.lng = markerPosition.value.lng ?? ''
 })
 watch(() => props.therapy.allowInPerson, () => {
     if (props.therapy.allowInPerson)
@@ -148,7 +160,6 @@ async function updateSession() {
         return
     }
 
-    // start cannot be before 30 mins from now, end cannot be 30 mins before start
     if (!isMinutesBefore({ firstTime: startTime.value, minutes: 25 })) {
         setFailedAlertData({
             message: 'Start time must be at least 25 minutes away from current time. Please increase the start time.',
@@ -165,20 +176,41 @@ async function updateSession() {
         return
     }
 
-    if (selectedCases.value.length)
-        sessionData.value.cases = [...selectedCases.value.map((c) => c.id)]
+    sessionData.value.topics = [...selectedTopics.value.map((c) => c.id)]
+    sessionData.value.cases = [...selectedCases.value.map((c) => c.id)]
 
     sessionData.value.startTime = new Date(startTime.value).toISOString()
     sessionData.value.endTime = new Date(endTime.value).toISOString()
 
     loading.value = true
 
-    await axios.patch(route(`api.sessions.update`, { sessionId: props.session.id }), sessionData)
-        .finally(() => {
-            loading.value = false
+    await axios.patch(route(`api.sessions.update`, { sessionId: props.session.id }), {...sessionData.value})
+        .then((res) => {
+            console.log(res)
+            
+            setAlertData({
+                message: 'Your session has been successfully updated.',
+                type: 'success',
+                show: true,
+                time: 4000
+            })
+            emits('onUpdate', res.data.session)
+            closeModal()
         })
         .catch((err) => {
-            console.log(err)
+            console.log(err, err.response?.data?.errors)
+            if (err.response?.data?.errors) {
+                setErrorData(sessionErrors, err.response.data.errors, [
+                    'name', 'about', 'startTime', 'endTime', 'lng', 'lat', 'landmark', 'type',
+                    'paymentType', 'cases'
+                ])
+                setFailedAlertData({
+                    message: 'There has been a validation error. Please check your form.',
+                    time: 5000,
+                })
+                return
+            }
+
             if (err.response?.data?.message) {
                 setFailedAlertData({
                     message: err.response.data.message,
@@ -200,17 +232,8 @@ async function updateSession() {
                 time: 4000
             })
         })
-        .then((res) => {
-            console.log(res)
-            
-            setAlertData({
-                message: 'Your session has been successfully updated.',
-                type: 'success',
-                show: true,
-                time: 4000
-            })
-            emits('onSuccess', res.data.session)
-            closeModal()
+        .finally(() => {
+            loading.value = false
         })
 }
 
@@ -244,11 +267,17 @@ function setSessionFormData() {
     sessionData.value.landmark = props.session.landmark
     sessionData.value.cases = props.session.cases?.map((c) => c.id)
     selectedCases.value = props.session.cases
+    sessionData.value.topics = props.session.topics?.map((c) => c.id)
+    selectedTopics.value = props.session.topics
 }
 
 function closeModal() {
     clearData()
-    emits('closeModal')
+    clearErrorData(sessionErrors, [
+        'name', 'about', 'startTime', 'endTime', 'lng', 'lat', 'landmark', 'type',
+        'paymentType', 'cases'
+    ])
+    emits('close')
 }
 
 function addCaseToSelected(newCase) {
@@ -258,12 +287,22 @@ function addCaseToSelected(newCase) {
 function removeCaseFromSelected(oldCase) {
     selectedCases.value = [...selectedCases.value.filter((c) => c.id !== oldCase.id)]
 }
+
+function useCurrentLocation() {
+    getCurrentLocation()
+    map.value.setCenter({
+        lat: parseFloat(currentLocation.value.lat),
+        lng: parseFloat(currentLocation.value.lng),
+    })
+    addMarker(unref(map), currentLocation.value)
+}
 </script>
 
 <template>
     <Modal
         :show="show"
         @close="closeModal"
+        v-bind="$attrs"
     >
         <div class="select-none relative">
 
@@ -323,7 +362,7 @@ function removeCaseFromSelected(oldCase) {
                                     required
                                 />
 
-                                <InputError class="mt-2" :message="sessionErrors.sessionType" />
+                                <InputError class="mt-2" :message="sessionErrors.type" />
                             </div>
 
                             <div class="mt-4 mx-auto max-w-[400px]" v-if="therapy.paymentType == 'PAID'">
@@ -361,7 +400,7 @@ function removeCaseFromSelected(oldCase) {
                             <div class="text-sm text-center mb-2 font-bold">Selected cases</div>
                             <div class="p-2 flex justify-start items-center overflow-hidden overflow-x-auto my-2">
                                 
-                                <template v-if="selectedCases.length">
+                                <template v-if="selectedCases?.length">
                                     <div
                                         v-for="c in selectedCases"
                                         :key="c.id"
@@ -380,6 +419,20 @@ function removeCaseFromSelected(oldCase) {
                             </div>
                         </div>
 
+                        <div class="p-4 rounded bg-gray-200 shadow-sm my-4">
+                            <TopicSection
+                                :loaded-topics="loadedTopics"
+                                :loaded-topics-page="loadedTopicsPage"
+                                :selected-topics="session.topics"
+                                :therapy="therapy"
+                                @on-data="(data) => {
+                                    if (data) selectedTopics = [...data]
+                                }"
+                            />
+
+                            <InputError class="mt-2" :message="sessionErrors.topics" />
+                        </div>
+
                         <div class="my-4 p-4 bg-gray-200 rounded shadow-sm" v-if="therapy.allowInPerson && sessionData.type == 'IN_PERSON'">
                             <div class="font-bold text-start text-gray-600 capitalize my-2">location information</div>
                             <div class="w-full flex flex-col mt-2 mb-4 p-2">
@@ -394,6 +447,7 @@ function removeCaseFromSelected(oldCase) {
                                             name="lng"
                                             class="my-2 w-full"
                                             v-model="sessionData.lng"
+                                            disabled
                                             required
                                         ></TextInput>
                                         <InputError :message="sessionErrors.lng" class="mt-2" />
@@ -405,12 +459,13 @@ function removeCaseFromSelected(oldCase) {
                                             name="lat"
                                             class="my-2 w-full"
                                             v-model="sessionData.lat"
+                                            disabled
                                             required
                                         ></TextInput>
                                         <InputError :message="sessionErrors.lat" class="mt-2" />
                                     <div class="flex justify-end w-full">
                                         <div 
-                                        @click="getCurrentLocation"
+                                        @click="useCurrentLocation"
                                         :class="[
                                             (currentLocation.lat == sessionData.lat && currentLocation.lng == sessionData.lng)
                                             ? 'bg-blue-700 text-blue-300' 

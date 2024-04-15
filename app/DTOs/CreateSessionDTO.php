@@ -2,6 +2,7 @@
 
 namespace App\DTOs;
 
+use App\Models\GroupTherapy;
 use App\Models\Session;
 use App\Models\Therapy;
 use App\Models\User;
@@ -20,10 +21,11 @@ class CreateSessionDTO extends BaseDTO
     public ?String $about = null;
     public Carbon|string|null $startTime = null;
     public Carbon|string|null $endTime = null;
-    public ?Therapy $therapy = null;
+    public Therapy|GroupTherapy $for = null;
     public ?String $type = null;
     public ?String $paymentType = null;
     public ?array $cases = null;
+    public ?array $topics = null;
     
     /**
      * assign data (filled or validated) to the dto properties as an 

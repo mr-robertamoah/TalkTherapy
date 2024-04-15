@@ -26,7 +26,7 @@ class HomeController extends Controller
         ]);
 
         if ($message) {
-            $page->with('message', $message);
+            $page->with('errorMessage', $message);
         }
 
         return $page;

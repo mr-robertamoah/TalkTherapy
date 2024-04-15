@@ -21,8 +21,6 @@ export default function useLocation() {
                         lat: `${position.coords.latitude}`,
                         lng: `${position.coords.longitude}`,
                     })
-
-                    addMarker(reportMap, {lat: position.coords.latitude, lng: position.coords.longitude})
                 },
                 (err) => {
                     console.log(err)
@@ -31,6 +29,11 @@ export default function useLocation() {
                         time: 5000,
                     })
                 },
+                {
+                    enableHighAccuracy: true,
+                    maximumAge: 10000,
+                    timeout: 10000,
+                }
             )
         } else {
             setFailedAlertData({

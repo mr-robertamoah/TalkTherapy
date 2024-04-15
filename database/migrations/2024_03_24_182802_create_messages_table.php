@@ -21,11 +21,12 @@ return new class extends Migration
             $table->nullableMorphs('to');
             $table->nullableMorphs('for');
             $table->enum('type', MessageTypeEnum::values());
-            $table->enum('status', MessageStatusEnum::values());
             $table->foreignIdFor(Message::class)->nullable();
             $table->foreignIdFor(TherapyTopic::class)->nullable();
             $table->text('content')->nullable();
+            $table->enum('status', MessageStatusEnum::values());
             $table->boolean('confidential')->default(false);
+            $table->text('deleted_for')->nullable();
             $table->timestamp('deleted_at')->nullable();
             $table->timestamps();
         });

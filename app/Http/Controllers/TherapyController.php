@@ -131,7 +131,8 @@ class TherapyController extends Controller
             );
 
             return Inertia::render('Therapy/Index', [
-                'therapy' => new TherapyResource($therapy)
+                'therapy' => new TherapyResource($therapy),
+                'session' => session('session')
             ]);
         } catch (Throwable $th) {
             return Redirect::route('home')->with('message', $th->getMessage());

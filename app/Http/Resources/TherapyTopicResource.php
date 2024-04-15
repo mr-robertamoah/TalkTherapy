@@ -19,6 +19,7 @@ class TherapyTopicResource extends JsonResource
             'name' => $this->name,
             'userId' => $this->counsellor->user->id,
             'description' => $this->description,
+            'sessions' => SessionMiniResource::collection($this->sessions),
             'createdAt' => $this->created_at->diffForHumans(),
         ];
     }

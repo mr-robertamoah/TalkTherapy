@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Actions\Session;
+namespace App\Actions\TherapyTopic;
 
 use App\Actions\Action;
 use App\DTOs\CreateTherapyTopicDTO;
@@ -15,8 +15,7 @@ class UpdateTherapyTopicAction extends Action
 
         $createTherapyTopicDTO->therapyTopic->update($this->data);
 
-        if ($createTherapyTopicDTO->sessions && count($createTherapyTopicDTO->sessions)) {
-            
+        if (is_array($createTherapyTopicDTO->sessions)) {
             $createTherapyTopicDTO->therapyTopic->sessions()->detach();
             $createTherapyTopicDTO->therapyTopic->sessions()->attach($createTherapyTopicDTO->sessions);
         }

@@ -17,7 +17,7 @@ class License extends Model
         return $this->belongsTo(LicensingAuthority::class);
     }
 
-    public function addedBy()
+    public function addedby()
     {
         return $this->morphTo('addedby');
     }

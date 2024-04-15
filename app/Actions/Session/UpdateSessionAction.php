@@ -17,10 +17,16 @@ class UpdateSessionAction extends Action
 
         $createSessionDTO->session->update($this->data);
 
-        if ($createSessionDTO->cases && count($createSessionDTO->cases)) {
+        if (is_array($createSessionDTO->cases)) {
             
             $createSessionDTO->session->cases()->detach();
             $createSessionDTO->session->cases()->attach($createSessionDTO->cases);
+        }
+
+        if (is_array($createSessionDTO->topics)) {
+            
+            $createSessionDTO->session->topics()->detach();
+            $createSessionDTO->session->topics()->attach($createSessionDTO->topics);
         }
 
         // TODO dispatch update event

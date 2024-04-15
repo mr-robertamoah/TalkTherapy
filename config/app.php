@@ -1,8 +1,5 @@
 <?php
 
-use Illuminate\Support\Facades\Facade;
-use Illuminate\Support\ServiceProvider;
-
 return [
 
     /*
@@ -16,7 +13,7 @@ return [
     |
     */
 
-    'name' => env('APP_NAME', 'Laravel'),
+    'name' => env('APP_NAME', 'TalkTherapy'),
 
     /*
     |--------------------------------------------------------------------------
@@ -55,9 +52,9 @@ return [
     |
     */
 
-    'url' => env('APP_URL', 'http://localhost'),
+    'url' => env('APP_URL', 'http://127.0.0.1:8000'),
 
-    'asset_url' => env('ASSET_URL'),
+    // 'asset_url' => env('ASSET_URL'),
 
     /*
     |--------------------------------------------------------------------------
@@ -70,7 +67,7 @@ return [
     |
     */
 
-    'timezone' => 'UTC',
+    'timezone' => env('APP_TIMEZONE', 'UTC'),
 
     /*
     |--------------------------------------------------------------------------
@@ -83,20 +80,9 @@ return [
     |
     */
 
-    'locale' => 'en',
+    'locale' => env('APP_LOCALE', 'en'),
 
-    /*
-    |--------------------------------------------------------------------------
-    | Application Fallback Locale
-    |--------------------------------------------------------------------------
-    |
-    | The fallback locale determines the locale to use when the current one
-    | is not available. You may change the value to correspond to any of
-    | the language folders that are provided through your application.
-    |
-    */
-
-    'fallback_locale' => 'en',
+    'fallback_locale' => env('APP_FALLBACK_LOCALE', 'en'),
 
     /*
     |--------------------------------------------------------------------------
@@ -109,7 +95,7 @@ return [
     |
     */
 
-    'faker_locale' => 'en_US',
+    'faker_locale' => env('APP_FAKER_LOCALE', 'en_US'),
 
     /*
     |--------------------------------------------------------------------------
@@ -121,10 +107,16 @@ return [
     | will not be safe. Please do this before deploying an application!
     |
     */
-
+    
+    'cipher' => 'AES-256-CBC',
+    
     'key' => env('APP_KEY'),
 
-    'cipher' => 'AES-256-CBC',
+    'previous_keys' => [
+        ...array_filter(
+            explode(',', env('APP_PREVIOUS_KEYS', ''))
+        ),
+    ],
 
     /*
     |--------------------------------------------------------------------------
@@ -140,8 +132,8 @@ return [
     */
 
     'maintenance' => [
-        'driver' => 'file',
-        // 'store' => 'redis',
+        'driver' => env('APP_MAINTENANCE_DRIVER', 'file'),
+        'store' => env('APP_MAINTENANCE_STORE', 'database'),
     ],
 
     /*
@@ -155,34 +147,6 @@ return [
     |
     */
 
-    'providers' => ServiceProvider::defaultProviders()->merge([
-        /*
-         * Package Service Providers...
-         */
 
-        /*
-         * Application Service Providers...
-         */
-        App\Providers\AppServiceProvider::class,
-        App\Providers\AuthServiceProvider::class,
-        // App\Providers\BroadcastServiceProvider::class,
-        App\Providers\EventServiceProvider::class,
-        App\Providers\RouteServiceProvider::class,
-    ])->toArray(),
-
-    /*
-    |--------------------------------------------------------------------------
-    | Class Aliases
-    |--------------------------------------------------------------------------
-    |
-    | This array of class aliases will be registered when this application
-    | is started. However, feel free to register as many as you wish as
-    | the aliases are "lazy" loaded so they don't hinder performance.
-    |
-    */
-
-    'aliases' => Facade::defaultAliases()->merge([
-        // 'Example' => App\Facades\Example::class,
-    ])->toArray(),
 
 ];

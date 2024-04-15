@@ -35,7 +35,10 @@ class RespondToTherapyAssistanceRequestAction extends Action
                 ->whereNot('id', $requestResponseDTO->request->id)
                 ->whereFor($requestResponseDTO->request->for)
                 ->update([
-                    'status' => RequestStatusEnum::rejected->value
+                    'status' => RequestStatusEnum::inconsequencial->value,
+                    'data' => [
+                        'reason' => 'A similar request for therapy has been accepted by someone else.'
+                    ]
                 ]);
 
             // TODO dispatch counsellor to frontend

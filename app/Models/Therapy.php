@@ -30,6 +30,11 @@ class Therapy extends Model
         return $this->sessions()->whereHeld()->count();
     }
 
+    public function getIsTherapyAttribute()
+    {
+        return true;
+    }
+
     public function getSessionsCreatedAttribute()
     {
         return $this->sessions()->count();
@@ -53,7 +58,7 @@ class Therapy extends Model
         return $this->status;
     }
 
-    public function addedBy()
+    public function addedby()
     {
         return $this->morphTo('addedby');
     }
@@ -75,7 +80,7 @@ class Therapy extends Model
 
     public function sessions()
     {
-        return $this->hasMany(Session::class);
+        return $this->morphMany(Session::class, 'for');
     }
 
     public function cases(): MorphToMany
@@ -101,7 +106,7 @@ class Therapy extends Model
 
     public function isParticipant(User $user)
     {
-        return $this->addedBy->is($user) || $this->counsellor?->user->is($user);
+        return $this->addedby->is($user) || $this->counsellor?->user->is($user);
     }
 
     public function isNotParticipant(User $user)
@@ -177,7 +182,30 @@ class Therapy extends Model
 
     public function isUser(User $user)
     {
-        return $this->addedBy->is($user);
+        return $this->addedby->is($user);
+    }
+
+    public function getUsers()
+    {
+        $users = [];
+        if ($this->addedby_type == User::class)
+            $users[] = $this->addedby;
+
+        $users[] = $this->counsellor->user;
+
+        return $users;
+    }
+
+    public function getOtherUsers(User $user)
+    {
+        $users = [];
+        if ($this->addedby_type == User::class && !$this->addedby->is($user))
+            $users[] = $this->addedby;
+
+        if (!$this->counsellor->user->is($user))
+            $users[] = $this->counsellor->user;
+
+        return $users;
     }
 
     public function isCounsellor(Counsellor $counsellor)

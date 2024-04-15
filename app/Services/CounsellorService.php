@@ -13,10 +13,12 @@ use App\Actions\Counsellor\EnsureCounsellorDoesNotHavePendingVerificationRequest
 use App\Actions\Counsellor\EnsureCounsellorExistsAction;
 use App\Actions\Counsellor\EnsureDataAdequacyAction;
 use App\Actions\Counsellor\EnsureDataValidityAction;
+use App\Actions\Counsellor\EnsureUrlSignatureIsValidAction;
 use App\Actions\Counsellor\EnsureUserCanBecomeCounsellorAction;
 use App\Actions\Counsellor\EnsureVerificationRequestDataIsValidAction;
 use App\Services\LicenseService;
 use App\Actions\Counsellor\UpdateCounsellorAction;
+use App\Actions\Counsellor\VerifyEmailAction;
 use App\Actions\EnsureNameStaysRetrievableAction;
 use App\DTOs\CheckNameRetrievabilityDTO;
 use App\DTOs\CreateCounsellorDTO;
@@ -33,9 +35,29 @@ use App\Http\Resources\AdminCounsellorStatsResource;
 use App\Models\Counsellor;
 use App\Models\LicensingAuthority;
 use App\Models\User;
+use App\Notifications\VerifyCounsellorEmailNotification;
+use Illuminate\Http\Request;
 
 class CounsellorService extends Service
 {
+    public function verifyEmail(UpdateCounsellorDTO $updateCounsellorDTO)
+    {
+        EnsureCounsellorExistsAction::new()->execute($updateCounsellorDTO);
+
+        EnsureUrlSignatureIsValidAction::new()->execute($updateCounsellorDTO);
+
+        VerifyEmailAction::new()->execute($updateCounsellorDTO);
+    }
+
+    public function sendVerificationEmail(UpdateCounsellorDTO $updateCounsellorDTO)
+    {
+        EnsureCounsellorExistsAction::new()->execute($updateCounsellorDTO);
+
+        EnsureCanUpdateCounsellorAction::new()->execute($updateCounsellorDTO);
+
+        $updateCounsellorDTO->counsellor->notify(new VerifyCounsellorEmailNotification());
+    }
+
     public function getCounsellors(User $user, String|null $name)
     {
         $query = Counsellor::query();

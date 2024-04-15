@@ -17,7 +17,7 @@ use Throwable;
 
 class TherapyTopicController extends Controller
 {
-    public function createSession(CreateTherapyTopicRequest $request)
+    public function createTherapyTopic(CreateTherapyTopicRequest $request)
     {
         try {
             $topic = TherapyTopicService::new()->createTherapyTopic(
@@ -40,24 +40,25 @@ class TherapyTopicController extends Controller
     public function getTherapyTopics(Request $request)
     {
         return TherapyTopicService::new()->getTherapyTopics(
-            Session::find($request->sessionId),
-            $request->user()
+            Therapy::find($request->therapyId),
+            $request->user(),
+            $request->name
         );
     }
 
     public function updateTherapyTopic(UpdateTherapyTopicRequest $request)
     {
         $topic = TherapyTopic::find($request->topicId);
-        
+        ds($request->sessions);
         try {
             $topic = TherapyTopicService::new()->updateTherapyTopic(
                 CreateTherapyTopicDTO::new()->fromArray([
                     'user' => $request->user(),
                     'name' => $request->name,
-                    'about' => $request->about,
+                    'description' => $request->description,
                     'sessions' => $request->sessions,
                     'therapy' => $topic?->therapy,
-                    'topic' => $topic,
+                    'therapyTopic' => $topic,
                 ])
             );
 
@@ -77,7 +78,7 @@ class TherapyTopicController extends Controller
                 CreateTherapyTopicDTO::new()->fromArray([
                     'user' => $request->user(),
                     'therapy' => $topic?->therapy,
-                    'topic' => $topic,
+                    'therapyTopic' => $topic,
                 ])
             );
 

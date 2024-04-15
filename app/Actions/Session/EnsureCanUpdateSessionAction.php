@@ -14,7 +14,7 @@ class EnsureCanUpdateSessionAction extends Action
             $createSessionDTO->user->isAdmin() ||
             (
                 $createSessionDTO->user->counsellor &&
-                $createSessionDTO->user->counsellor->is($createSessionDTO->session->addedBy)
+                $createSessionDTO->user->counsellor->is($createSessionDTO->session->addedby)
             )
         ) return;
 

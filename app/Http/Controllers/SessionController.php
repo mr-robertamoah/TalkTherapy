@@ -3,9 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\DTOs\CreateSessionDTO;
+use App\DTOs\GetSessionsDTO;
 use App\Http\Requests\CreateSessionRequest;
 use App\Http\Requests\UpdateSessionRequest;
 use App\Http\Resources\SessionResource;
+use App\Models\GroupTherapy;
 use App\Models\Session;
 use App\Models\Therapy;
 use App\Services\SessionService;
@@ -30,10 +32,11 @@ class SessionController extends Controller
                     'latitude' => $request->lat,
                     'startTime' => $request->startTime,
                     'endTime' => $request->endTime,
-                    'therapy' => Therapy::find($request->therapyId),
+                    'for' => $this->getFor($request),
                     'type' => $request->type,
                     'paymentType' => $request->paymentType,
                     'cases' => $request->cases,
+                    'topics' => $request->topics,
                 ])
             );
 
@@ -47,8 +50,11 @@ class SessionController extends Controller
     public function getSessions(Request $request)
     {
         return SessionService::new()->getSessions(
-            Therapy::find($request->therapyId),
-            $request->user()
+            GetSessionsDTO::new()->fromArray([
+                'therapy' => $this->getFor($request),
+                'user' => $request->user(),
+                'name' => $request->name
+            ])
         );
     }
 
@@ -72,6 +78,7 @@ class SessionController extends Controller
                     'type' => $request->type,
                     'paymentType' => $request->paymentType,
                     'cases' => $request->cases,
+                    'topics' => $request->topics,
                 ])
             );
 
@@ -90,7 +97,7 @@ class SessionController extends Controller
             SessionService::new()->deleteSession(
                 CreateSessionDTO::new()->fromArray([
                     'user' => $request->user(),
-                    'therapy' => $session?->therapy,
+                    'for' => $session?->for,
                     'session' => $session,
                 ])
             );
@@ -110,7 +117,7 @@ class SessionController extends Controller
             $session = SessionService::new()->failSession(
                 CreateSessionDTO::new()->fromArray([
                     'user' => $request->user(),
-                    'therapy' => $session?->therapy,
+                    'for' => $session?->for,
                     'session' => $session,
                 ])
             );
@@ -130,7 +137,7 @@ class SessionController extends Controller
             $session = SessionService::new()->endSession(
                 CreateSessionDTO::new()->fromArray([
                     'user' => $request->user(),
-                    'therapy' => $session?->therapy,
+                    'for' => $session?->for,
                     'session' => $session,
                 ])
             );
@@ -150,7 +157,7 @@ class SessionController extends Controller
             $session = SessionService::new()->getInSession(
                 CreateSessionDTO::new()->fromArray([
                     'user' => $request->user(),
-                    'therapy' => $session?->therapy,
+                    'for' => $session?->for,
                     'session' => $session,
                 ])
             );
@@ -170,7 +177,7 @@ class SessionController extends Controller
             $session = SessionService::new()->abandonSession(
                 CreateSessionDTO::new()->fromArray([
                     'user' => $request->user(),
-                    'therapy' => $session?->therapy,
+                    'for' => $session?->for,
                     'session' => $session,
                 ])
             );
@@ -180,6 +187,13 @@ class SessionController extends Controller
 
             return $this->returnFailure($request, $th);
         }
+    }
+
+    private function getFor(Request $request)
+    {
+        return $request->therapyId
+            ? Therapy::find($request->therapyId)
+            : GroupTherapy::find($request->groupTherapyId);
     }
 
     private function returnSuccess(Request $request, Session $session)

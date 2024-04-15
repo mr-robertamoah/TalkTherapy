@@ -13,7 +13,7 @@ class LicenseService extends Service
             'number' => $createLicenseDTO->number
         ]);
 
-        $license->addedBy()->associate($createLicenseDTO->addedby);
+        $license->addedby()->associate($createLicenseDTO->addedby);
 
         $license->for()->associate($createLicenseDTO->for);
 

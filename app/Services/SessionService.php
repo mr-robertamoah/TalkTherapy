@@ -13,27 +13,37 @@ use App\Actions\Session\EnsureSessionDataIsValidAction;
 use App\Actions\Session\EnsureSessionExistsAction;
 use App\Actions\Session\UpdateSessionAction;
 use App\Actions\Star\CreateStarAction;
-use App\Actions\Therapy\EnsureTherapyExistsAction;
+use App\Actions\Session\EnsureTherapyExistsAction;
 use App\DTOs\CreateSessionDTO;
 use App\DTOs\CreateStarDTO;
+use App\DTOs\GetSessionsDTO;
 use App\Enums\PaginationEnum;
 use App\Enums\SessionStatusEnum;
 use App\Enums\StarTypeEnum;
 use App\Http\Resources\SessionResource;
 use App\Models\Therapy;
-use App\Models\User;
+use App\Notifications\SessionCreatedNotification;
+use App\Notifications\SessionDeletedNotification;
+use App\Notifications\SessionDueNotification;
+use App\Notifications\SessionStatusChangedNotification;
+use App\Notifications\SessionUpdatedNotification;
+use Illuminate\Support\Facades\Notification;
 
 class SessionService extends Service
 {
-    public function getSessions(Therapy $therapy, User $user)
+    public function getSessions(GetSessionsDTO $getSessionsDTO)
     {
         if (
-            $user->isNotAdmin() &&
-            !$therapy->public &&
-            $therapy->isNotParticipant($user)
+            $getSessionsDTO?->user?->isNotAdmin() &&
+            !$getSessionsDTO->therapy->public &&
+            $getSessionsDTO->therapy->isNotParticipant($getSessionsDTO->user)
         ) return [];
         
-        return SessionResource::collection($therapy->sessions()->latest()->paginate(
+        $query = $getSessionsDTO->therapy->sessions()->when($getSessionsDTO->name, function($query) use ($getSessionsDTO) {
+            $query->whereNameLike($getSessionsDTO->name);
+        });
+        
+        return SessionResource::collection($query->latest()->paginate(
             PaginationEnum::preferencesPagination->value
         ));
     }
@@ -57,6 +67,11 @@ class SessionService extends Service
             ])
         );
 
+        Notification::send(
+            $createSessionDTO->session->for->getUsers(), 
+            new SessionCreatedNotification($session)
+        );
+
         return $session;
     }
 
@@ -68,7 +83,14 @@ class SessionService extends Service
 
         EnsureSessionDataIsValidAction::new()->execute($createSessionDTO);
 
-        return UpdateSessionAction::new()->execute($createSessionDTO);
+        $session = UpdateSessionAction::new()->execute($createSessionDTO);
+
+        Notification::send(
+            $createSessionDTO->session->for->getOtherUsers($createSessionDTO->user), 
+            new SessionUpdatedNotification($session)
+        );
+
+        return $session;
     }
 
     public function endSession(CreateSessionDTO $createSessionDTO)
@@ -77,7 +99,14 @@ class SessionService extends Service
 
         EnsureCanEndSessionAction::new()->execute($createSessionDTO);
 
-        return ChangeSessionStatusAction::new()->execute($createSessionDTO, SessionStatusEnum::held->value);
+        $session = ChangeSessionStatusAction::new()->execute($createSessionDTO, SessionStatusEnum::held->value);
+
+        Notification::send(
+            $createSessionDTO->session->for->getOtherUsers($createSessionDTO->user), 
+            new SessionStatusChangedNotification($session)
+        );
+
+        return $session;
     }
 
     public function getInSession(CreateSessionDTO $createSessionDTO)
@@ -86,7 +115,14 @@ class SessionService extends Service
 
         EnsureCanEndSessionAction::new()->execute($createSessionDTO);
 
-        return ChangeSessionStatusAction::new()->execute($createSessionDTO, SessionStatusEnum::in_session->value);
+        $session = ChangeSessionStatusAction::new()->execute($createSessionDTO, SessionStatusEnum::in_session->value);
+
+        Notification::send(
+            $createSessionDTO->session->for->getOtherUsers($createSessionDTO->user), 
+            new SessionStatusChangedNotification($session)
+        );
+
+        return $session;
     }
 
     public function abandonSession(CreateSessionDTO $createSessionDTO)
@@ -95,7 +131,14 @@ class SessionService extends Service
 
         EnsureCanEndSessionAction::new()->execute($createSessionDTO);
 
-        return ChangeSessionStatusAction::new()->execute($createSessionDTO, SessionStatusEnum::abandoned->value);
+        $session = ChangeSessionStatusAction::new()->execute($createSessionDTO, SessionStatusEnum::abandoned->value);
+
+        Notification::send(
+            $createSessionDTO->session->for->getOtherUsers($createSessionDTO->user), 
+            new SessionStatusChangedNotification($session)
+        );
+
+        return $session;
     }
 
     public function failSession(CreateSessionDTO $createSessionDTO)
@@ -104,7 +147,14 @@ class SessionService extends Service
 
         EnsureCanEndSessionAction::new()->execute($createSessionDTO);
 
-        return ChangeSessionStatusAction::new()->execute($createSessionDTO, SessionStatusEnum::failed->value);
+        $session = ChangeSessionStatusAction::new()->execute($createSessionDTO, SessionStatusEnum::failed->value);
+
+        Notification::send(
+            $createSessionDTO->session->for->getOtherUsers($createSessionDTO->user), 
+            new SessionStatusChangedNotification($session)
+        );
+
+        return $session;
     }
 
     public function deleteSession(CreateSessionDTO $createSessionDTO)
@@ -113,6 +163,13 @@ class SessionService extends Service
 
         EnsureCanDeleteSessionAction::new()->execute($createSessionDTO);
 
-        return DeleteSessionAction::new()->execute($createSessionDTO);
+        $session = DeleteSessionAction::new()->execute($createSessionDTO);
+
+        Notification::send(
+            $createSessionDTO->session->for->getOtherUsers($createSessionDTO->user), 
+            new SessionDeletedNotification($session)
+        );
+
+        return $session;
     }
 }

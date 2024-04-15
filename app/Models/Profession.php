@@ -21,7 +21,7 @@ class Profession extends Model
         return $this->hasMany(Counsellor::class);
     }
 
-    public function addedBy() {
+    public function addedby() {
         return $this->morphTo('addedby');
     }
 }

@@ -17,7 +17,7 @@ class SessionResource extends JsonResource
     {
         return [
             'id' => $this->id,
-            'userId' => $this->addedby_type == Counsellor::class ? $this->addedBy->user->id : $this->addedby_id,
+            'userId' => $this->addedby_type == Counsellor::class ? $this->addedby->user->id : $this->addedby_id,
             'updatedById' => $this->updatedby_type == Counsellor::class ? $this->updatedBy->user->id : $this->updatedby_id,
             'name' => $this->name,
             'about' => $this->about,
@@ -25,6 +25,8 @@ class SessionResource extends JsonResource
             'lng' => $this->longitude,
             'lat' => $this->latitude,
             'status' => $this->status,
+            'topics' => TherapyTopicMiniResource::collection($this->topics),
+            'cases' => TherapyCaseResource::collection($this->cases),
             'startTime' => $this->start_time,
             'endTime' => $this->end_time,
             'paymentType' => $this->payment_type,

@@ -9,10 +9,11 @@ use App\Enums\TherapyPaymentTypeEnum;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphToMany;
+use Illuminate\Notifications\Notifiable;
 
 class Counsellor extends Model
 {
-    use HasFactory;
+    use HasFactory, Notifiable;
 
     protected $fillable = [
         'name',
@@ -26,6 +27,18 @@ class Counsellor extends Model
         'email',
         'phone',
     ];
+
+    public function receivesBroadcastNotificationOn()
+    {
+        return "counsellors.{$this->id}";
+    }
+
+    public function routeNotificationForMail()
+    {
+        return [
+            $this->email => $this->getName()
+        ];
+    }
 
     public function getFreeTherapiesCountAttribute()
     {

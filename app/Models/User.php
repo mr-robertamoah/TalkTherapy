@@ -28,6 +28,7 @@ class User extends Authenticatable
         'email',
         'password',
         'dob',
+        'email_verified_at',
     ];
 
     /**
@@ -51,6 +52,18 @@ class User extends Authenticatable
         'password' => 'hashed',
         'settings' => 'array',
     ];
+
+    public function receivesBroadcastNotificationOn()
+    {
+        return "users.{$this->id}";
+    }
+
+    public function routeNotificationForMail()
+    {
+        return [
+            $this->email => $this->name
+        ];
+    }
 
     public function getNameAttribute()
     {

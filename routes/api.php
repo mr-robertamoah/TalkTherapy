@@ -4,6 +4,7 @@ use App\Http\Controllers\AdministratorController;
 use App\Http\Controllers\CounsellorController;
 use App\Http\Controllers\LanguageController;
 use App\Http\Controllers\LicensingAuthorityController;
+use App\Http\Controllers\MessageController;
 use App\Http\Controllers\ProfessionController;
 use App\Http\Controllers\ReligionController;
 use App\Http\Controllers\RequestController;
@@ -12,6 +13,7 @@ use App\Http\Controllers\TherapyCaseController;
 use App\Http\Controllers\TherapyController;
 use App\Http\Controllers\TherapyTopicController;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -35,7 +37,7 @@ Route::get('/religions', [ReligionController::class, 'getReligions'])->name('rel
 Route::get('/professions', [ProfessionController::class, 'getProfessions'])->name('professions.get');
 
 Route::middleware('auth:sanctum')->group(function () {
-
+    
     Route::get('/administrator/verification/requests', [AdministratorController::class, 'getVerificationRequests'])->name('admin.verification.requests');
     Route::get('/administrator/counsellors', [AdministratorController::class, 'getCounsellors'])->name('admin.counsellors');
     Route::get('/administrator/counsellors/{counsellorId}/stats', [AdministratorController::class, 'getCounsellorStats'])->name('admin.counsellors.stats');
@@ -67,6 +69,15 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/therapies/{therapyId}/topics', [TherapyTopicController::class, 'createTherapyTopic'])->name('api.topics.create');
     Route::patch('/topics/{topicId}', [TherapyTopicController::class, 'updateTherapyTopic'])->name('api.topics.update');
     Route::delete('/topics/{topicId}', [TherapyTopicController::class, 'deleteTherapyTopic'])->name('api.topics.delete');
+
+    Route::get('/sessions/{sessionId}/messages', [MessageController::class, 'getSessionMessages'])->name('api.session.messages.get');
+    Route::get('/topics/{topicId}/messages', [MessageController::class, 'getTopicMessages'])->name('api.topic.messages.get');
+    Route::get('/discussions/{discussionId}/messages', [MessageController::class, 'getDiscussionMessages'])->name('api.discussion.messages.get');
+    Route::post('messages', [MessageController::class, 'createMessage'])->name('api.messages.create');
+    Route::post('/messages/{messageId}', [MessageController::class, 'updateMessage'])->name('api.messages.update');
+    Route::delete('/messages/{messageId}', [MessageController::class, 'deleteMessage'])->name('api.messages.delete');
+    Route::delete('/messages/{messageId}/me', [MessageController::class, 'deleteMessageForMe'])->name('api.messages.delete.me');
+    Route::get('/messages/{messageId}/replies', [MessageController::class, 'getMessageReplies'])->name('api.message.replies.get');
 
     Route::post('/therapies/{therapyId}/assist', [TherapyController::class, 'sendAssistanceRequest'])->name('therapies.assist');
     Route::post('/therapies', [TherapyController::class, 'createTherapy'])->name('therapies.create');

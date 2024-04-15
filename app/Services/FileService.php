@@ -15,7 +15,7 @@ class FileService extends Service
     {
         if (is_null($fileUploadDTO->file)) return null;
 
-        $disk = env('FILESYSTEM_DISK', $fileUploadDTO->disk);
+        $disk = $fileUploadDTO->disk ?: env('FILESYSTEM_DISK');
         
         $data = [];
         $data['mime'] = $fileUploadDTO->file->getClientMimeType();

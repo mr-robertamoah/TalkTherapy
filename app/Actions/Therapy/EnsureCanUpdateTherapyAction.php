@@ -12,7 +12,7 @@ class EnsureCanUpdateTherapyAction extends Action
     {
         if (
             $createTherapyDTO->user->isAdmin() ||
-            $createTherapyDTO->user->is($createTherapyDTO->therapy->addedBy)
+            $createTherapyDTO->user->is($createTherapyDTO->therapy->addedby)
         ) return;
 
         throw new TherapyException("You are not allowed to update therapy with name: {$createTherapyDTO->therapy->name}.", 422);

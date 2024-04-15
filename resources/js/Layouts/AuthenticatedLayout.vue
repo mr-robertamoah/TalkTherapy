@@ -14,20 +14,24 @@ import CreateTherapyButton from '@/Components/CreateTherapyButton.vue';
 
 const { alertData, clearAlertData, setAlertData } = useAlert()
 
-watchEffect(
-    () => {
-        if (usePage().props.message?.length) {
-            setTimeout(() => {
-                
-                setAlertData({
-                    show: true,
-                    type: 'failed',
-                    message: usePage().props.message
-                })
-            }, 1000);
-        }
+watchEffect(() => {
+    if (usePage().props.errorMessage?.length) {
+        setAlertData({
+            show: true,
+            type: 'failed',
+            message: usePage().props.errorMessage
+        })
     }
-)
+    
+    if (usePage().props.message?.length) {
+        setAlertData({
+            show: true,
+            type: 'successs',
+            time: 4000,
+            message: usePage().props.message
+        })
+    }
+})
 
 const showRequest = ref(false);
 const showingNavigationDropdown = ref(false);

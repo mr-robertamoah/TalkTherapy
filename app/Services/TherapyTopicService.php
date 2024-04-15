@@ -2,14 +2,15 @@
 
 namespace App\Services;
 
-use App\Actions\Session\DeleteTherapyTopicAction;
-use App\Actions\Session\EnsureCanCreateSessionAction;
-use App\Actions\Session\EnsureCanUpdateTherapyTopicAction;
-use App\Actions\Session\EnsureTherapyTopicExistsAction;
-use App\Actions\Session\UpdateTherapyTopicAction;
+use App\Actions\TherapyTopic\DeleteTherapyTopicAction;
+use App\Actions\TherapyTopic\EnsureCanCreateTherapyTopicAction;
+use App\Actions\TherapyTopic\EnsureCanUpdateTherapyTopicAction;
+use App\Actions\TherapyTopic\EnsureTherapyTopicExistsAction;
+use App\Actions\TherapyTopic\UpdateTherapyTopicAction;
 use App\Actions\Star\CreateStarAction;
 use App\Actions\Therapy\EnsureTherapyExistsAction;
 use App\Actions\TherapyTopic\CreateTherapyTopicAction;
+use App\Actions\TherapyTopic\EnsureDataIsValidAction;
 use App\DTOs\CreateStarDTO;
 use App\DTOs\CreateTherapyTopicDTO;
 use App\Enums\PaginationEnum;
@@ -21,15 +22,19 @@ use App\Models\User;
 
 class TherapyTopicService extends Service
 {
-    public function getTherapyTopics(Session $session, User $user)
+    public function getTherapyTopics(Therapy $therapy, User $user, String|null $name)
     {
         if (
             $user->isNotAdmin() &&
-            !$session->therapy->public &&
-            $session->therapy->isNotParticipant($user)
+            !$therapy->public &&
+            $therapy->isNotParticipant($user)
         ) return [];
         
-        return TherapyTopicResource::collection($session->topics()->latest()->paginate(
+        $query = $therapy->topics()->when($name, function($query) use ($name) {
+            $query->whereNameLike($name);
+        });
+
+        return TherapyTopicResource::collection($query->latest()->paginate(
             PaginationEnum::preferencesPagination->value
         ));
     }
@@ -38,7 +43,9 @@ class TherapyTopicService extends Service
     {
         EnsureTherapyExistsAction::new()->execute($createTherapyTopicDTO);
 
-        EnsureCanCreateSessionAction::new()->execute($createTherapyTopicDTO);
+        EnsureCanCreateTherapyTopicAction::new()->execute($createTherapyTopicDTO);
+
+        EnsureDataIsValidAction::new()->execute($createTherapyTopicDTO);
         
         $topic = CreateTherapyTopicAction::new()->execute($createTherapyTopicDTO);
 
@@ -59,6 +66,8 @@ class TherapyTopicService extends Service
         EnsureTherapyTopicExistsAction::new()->execute($createTherapyTopicDTO);
 
         EnsureCanUpdateTherapyTopicAction::new()->execute($createTherapyTopicDTO);
+        
+        EnsureDataIsValidAction::new()->execute($createTherapyTopicDTO);
 
         return UpdateTherapyTopicAction::new()->execute($createTherapyTopicDTO);
     }

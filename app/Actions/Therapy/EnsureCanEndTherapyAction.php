@@ -15,7 +15,7 @@ class EnsureCanEndTherapyAction extends Action
             (
                 $createTherapyDTO->therapy->sessionsHeld &&
                 (
-                    $createTherapyDTO->user->is($createTherapyDTO->therapy->addedBy) ||
+                    $createTherapyDTO->user->is($createTherapyDTO->therapy->addedby) ||
                     $createTherapyDTO->user->is($createTherapyDTO->therapy->counsellor?->user)
                 )
             ) ||

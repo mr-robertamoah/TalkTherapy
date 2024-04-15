@@ -18,7 +18,7 @@ class ChangeSessionStatusAction extends Action
             is_null($createSessionDTO->session->updatedBy)
         ) {
             $status = SessionStatusEnum::in_session_confirmation->value;
-            $updatedby = $createSessionDTO->user->is($createSessionDTO->session->addedBy)
+            $updatedby = $createSessionDTO->user->is($createSessionDTO->session->addedby)
                 ? $createSessionDTO->user
                 : $createSessionDTO->user->counsellor;
         }
@@ -29,7 +29,7 @@ class ChangeSessionStatusAction extends Action
             is_null($createSessionDTO->session->updatedBy)
         ) {
             $status = SessionStatusEnum::held_confirmation->value;
-            $updatedby = $createSessionDTO->user->is($createSessionDTO->session->addedBy)
+            $updatedby = $createSessionDTO->user->is($createSessionDTO->session->addedby)
                 ? $createSessionDTO->user
                 : $createSessionDTO->user->counsellor;
         }

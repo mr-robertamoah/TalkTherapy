@@ -16,7 +16,7 @@ class TherapyCase extends Model
         'name', 'description',
     ];
 
-    public function addedBy() {
+    public function addedby() {
         return $this->morphTo('addedby');
     }
 
