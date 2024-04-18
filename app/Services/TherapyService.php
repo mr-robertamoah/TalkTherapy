@@ -177,7 +177,9 @@ class TherapyService extends Service
                 });
         });
 
-        $query->inRandomOrder();
+        $query
+            ->wherePublic()
+            ->inRandomOrder();
 
         return $query->paginate(PaginationEnum::preferencesPagination->value);
     }

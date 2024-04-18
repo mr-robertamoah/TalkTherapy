@@ -153,6 +153,11 @@ class Therapy extends Model
         });
     }
 
+    public function scopeWherePublic($query)
+    {
+        return $query->where('public', true);
+    }
+
     public function scopeWhereParticipant($query, User $user)
     {
         return $query

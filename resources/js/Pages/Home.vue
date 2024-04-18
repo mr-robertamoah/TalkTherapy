@@ -181,7 +181,7 @@ const computedLeadingCounsellors = computed(() => {
             
             <div class="max-w-7xl mx-auto sm:px-6 lg:px-8" v-if="$page.props.auth.user">
                 <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
-                    <div class="p-6 text-gray-900">Your recent therapies</div>
+                    <div class="p-6 text-gray-900">Your Recent Therapies</div>
                     <div class="m-2 p-2 overflow-hidden overflow-x-auto space-x-2 flex justify-start items-center" v-if="recentTherapies?.length">
                         <MiniTherapyComponent
                             v-for="therapy in recentTherapies"
@@ -194,22 +194,27 @@ const computedLeadingCounsellors = computed(() => {
                 </div>
             </div>
             
-            <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 mt-8 px-6 bg-white flex min-h-[100px] justify-start py-4 items-start overflow-hidden overflow-x-auto">
-                <template v-if="randomTherapies.data?.length">
-                    <MiniTherapyComponent
-                        v-for="therapy in randomTherapies.data"
-                        :key="therapy.id"
-                        :therapy="therapy"
-                        class="w-[250px]"
-                    />
-                </template>
-                <div v-else-if="!getting.show && getting.type !== 'therapies'" class="text-center text-sm w-full text-gray-600">there are no therapies for public at the moment.</div>
-                <div v-if="getting.show && getting.type == 'therapies'" class="text-center text-sm w-full text-green-600">getting more therapies.</div>
-                <div
-                    v-if="randomTherapies.page > 1 && !getting.show && getting.type !== 'therapies'"
-                    class="text-center text-sm w-fit mx-auto p-4 text-gray-600 cursor-pointer"
-                    @click="getRandomTherapies"
-                >...</div>
+            <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 mt-8">
+                <div class="bg-white shadow-sm sm:rounded-lg">
+                    <div class="p-6 text-gray-900">Public Therapies</div>
+                    <div class="px-6 flex min-h-[100px] justify-start py-4 items-start overflow-hidden overflow-x-auto">
+                        <template v-if="randomTherapies.data?.length">
+                            <MiniTherapyComponent
+                                v-for="therapy in randomTherapies.data"
+                                :key="therapy.id"
+                                :therapy="therapy"
+                                class="w-[250px]"
+                            />
+                        </template>
+                        <div v-else-if="!getting.show && getting.type !== 'therapies'" class="text-center text-sm w-full text-gray-600">there are no therapies for public at the moment.</div>
+                        <div v-if="getting.show && getting.type == 'therapies'" class="text-center text-sm w-full text-green-600">getting more therapies.</div>
+                        <div
+                            v-if="randomTherapies.page > 1 && !getting.show && getting.type !== 'therapies'"
+                            class="text-center text-sm w-fit mx-auto p-4 text-gray-600 cursor-pointer"
+                            @click="getRandomTherapies"
+                        >...</div>
+                    </div>
+                </div>
             </div>
         </div>
     </AuthenticatedLayout>
