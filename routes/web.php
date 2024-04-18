@@ -8,9 +8,12 @@ use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\SessionController;
 use App\Http\Controllers\TherapyController;
 use App\Models\Counsellor;
+use App\Models\Request;
 use App\Models\Session;
 use App\Models\User;
 use App\Notifications\SessionDueNotification;
+use App\Notifications\TherapyAssistanceRequestAcceptedNotification;
+use App\Notifications\VerifyCounsellorEmailNotification;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Route;
@@ -39,12 +42,9 @@ use Inertia\Inertia;
 
 Route::get('/testing',function() {
     try {
-    $counsellor = User::first();
-    $session = Session::first();
-
-    $counsellor->notify(new SessionDueNotification($session));
-
-    return 'done';
+        $counsellor = Counsellor::first();
+        $user = User::first();
+        return (new TherapyAssistanceRequestAcceptedNotification(Request::find(1)))->toMail($user);
     } catch (Throwable $th) {
         ds($th);
     }

@@ -4,7 +4,7 @@ namespace App\Actions;
 
 class GetModelWithModelNameAndIdAction extends Action
 {
-    public function execute(String|int|null $modelName, String|int|null $modelId)
+    public function execute(String|null $modelName, String|int|null $modelId)
     {
         if (is_null($modelId) || is_null($modelName)) return null;
 

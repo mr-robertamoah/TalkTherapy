@@ -13,6 +13,7 @@ use App\Actions\TherapyTopic\CreateTherapyTopicAction;
 use App\Actions\TherapyTopic\EnsureDataIsValidAction;
 use App\DTOs\CreateStarDTO;
 use App\DTOs\CreateTherapyTopicDTO;
+use App\DTOs\GetTherapyTopicsDTO;
 use App\Enums\PaginationEnum;
 use App\Enums\StarTypeEnum;
 use App\Http\Resources\TherapyTopicResource;
@@ -22,17 +23,18 @@ use App\Models\User;
 
 class TherapyTopicService extends Service
 {
-    public function getTherapyTopics(Therapy $therapy, User $user, String|null $name)
+    public function getTherapyTopics(GetTherapyTopicsDTO $getTherapyTopicsDTO)
     {
         if (
-            $user->isNotAdmin() &&
-            !$therapy->public &&
-            $therapy->isNotParticipant($user)
+            $getTherapyTopicsDTO->user?->isNotAdmin() &&
+            !$getTherapyTopicsDTO->therapy?->public &&
+            $getTherapyTopicsDTO->therapy?->isNotParticipant($getTherapyTopicsDTO->user)
         ) return [];
         
-        $query = $therapy->topics()->when($name, function($query) use ($name) {
-            $query->whereNameLike($name);
-        });
+        $query = $getTherapyTopicsDTO->therapy->topics()
+            ->when($getTherapyTopicsDTO->name, function($query) use ($getTherapyTopicsDTO) {
+                $query->whereNameLike($getTherapyTopicsDTO->name);
+            });
 
         return TherapyTopicResource::collection($query->latest()->paginate(
             PaginationEnum::preferencesPagination->value

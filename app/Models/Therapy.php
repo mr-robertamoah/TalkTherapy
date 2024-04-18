@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\SessionStatusEnum;
 use App\Enums\TherapyStatusEnum;
+use App\Traits\Alertable;
 use App\Traits\Starreable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -14,6 +15,7 @@ class Therapy extends Model
 {
     use HasFactory,
     Starreable,
+    Alertable,
     SoftDeletes;
 
     protected $fillable = [
@@ -24,6 +26,20 @@ class Therapy extends Model
     protected $casts = [
         'payment_data' => 'array'
     ];
+
+    public function getActiveSessionAttribute()
+    {
+        return $this
+            ->sessions()
+            ->whereInSession()
+            ->where(function ($query) {
+                $query->whereHasStartedAndNotEnded();
+            })
+            ->orWhere(function ($query) {
+                $query->whereFiveOrLessMinutesToStart();
+            })
+            ->first();
+    }
 
     public function getSessionsHeldAttribute()
     {

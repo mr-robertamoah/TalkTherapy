@@ -81,45 +81,78 @@
                 <hr>
             </div>
 
-            <div class="p-2 pb-4 h-[70vh] overflow-hidden overflow-y-auto">
+            <div class="p-2 pb-4 h-[70vh] overflow-hidden overflow-y-auto w-full">
 
-                <div class="p-2 mt-2 mb-4 flex flex-col justify-center items-start bg-gray-200 rounded">
+                <div class="p-2 mt-2 mb-4 flex flex-col justify-center items-start bg-gray-200 mx-auto rounded min-h-[200px] w-[90%]">
                     <div class="text-sm text-gray-600 mt-1">Message</div>
-                    <div v-if="msg.content">
-                        {{ msg.content }}
+                    <div>
+                        <div v-if="msg.content">{{ msg.content }}</div>
                     </div>
-                    <div v-if="msg.files?.length">
-                        showfiles
+                    <div v-if="msg.files?.length" class="w-[90%] mx-auto my-2">
+                        <div class="flex justify-start items-center overflow-hidden overflow-x-auto p-2 space-x-2">
+                            <FilePreview
+                                v-for="(file, idx) in msg.files"
+                                :key="idx"
+                                :file="file"
+                                class="h-[300px] w-[300px] cursor-pointer"
+                                :show-remove="false"
+                                
+                                @click="() => {
+                                    if (!id) return
+                                    showFileModal = true
+                                    currentFileIdx = idx
+                                }"
+                            />
+                        </div>
                     </div>
                 </div>
-                <div class="p-2 mt-2 mb-4 flex justify-center items-start bg-gray-200 rounded overflow-hidden overflow-x-auto space-x-3">
-
-                    <div v-if="msg.replying">
-                        <div class="text-sm text-gray-600 mt-1">Message replies</div>
-                        <div v-if="msg.replying.content">
-                            {{ msg.replying.content }}
+                <div class="flex justify-start items-start overflow-hidden overflow-x-auto space-x-3 p-2">
+                    <div class="p-2 mt-2 mb-4 bg-gray-200 mx-auto rounded min-h-[200px] w-[90%]">
+                        <div class="text-sm text-gray-600 mt-1">Message replies:</div>
+                        <div v-if="msg.replying">
+                            <div v-if="msg.replying.content">
+                                {{ msg.replying.content }}
+                            </div>
+                            <div v-if="msg.replying.files?.length" class="w-[90%] mx-auto my-2">
+                                <div class="flex justify-start items-center overflow-hidden overflow-x-auto p-2 space-x-2">
+                                    <FilePreview
+                                        v-for="(file, idx) in msg.files"
+                                        :key="idx"
+                                        :file="file"
+                                        class="h-[300px] w-[300px] cursor-pointer"
+                                        :show-remove="false"
+                                        
+                                        @click="() => {
+                                            if (!id) return
+                                            showFileModal = true
+                                            currentFileIdx = idx
+                                        }"
+                                    />
+                                </div>
+                            </div>
                         </div>
-                        <div v-if="msg.replying.files?.length">
-                            showfiles
-                        </div>
+                        <div v-else class="text-sm text-center text-gray-600 font-bold my-6">no message</div>
                     </div>
-                    <div>
+                    <div class="p-2 mt-2 mb-4 bg-gray-200 mx-auto rounded min-h-[200px] w-[90%]">
                         <div class="text-sm text-gray-600 mt-1">Replies to message</div>
                         <div class="flex flex-col overflow-hidden overflow-y-auto p-2">
-                            <MessageBadge 
-                                :item="item"
-                                v-for="(m, idx) in replies.data"
-                                :key="idx"
-                                :allow-details="false"
-                                :msg="m" 
-                            />
+                            <template v-if="replies.data?.length">
+                                <MessageBadge 
+                                    :item="item"
+                                    v-for="(m, idx) in replies.data"
+                                    :key="idx"
+                                    :allow-details="false"
+                                    :allow-actions="false"
+                                    :msg="m" 
+                                />
+                            </template>
                             <div class="font-bold p-2 cursor-pointer w-full flex justify-center items-center" v-if="replies.page && !getting">
                                 <div
                                     @click="getMessageReplies" 
                                     class="cursor-pointer">...</div>
                             </div>
                             <div class="w-full text-green-600 text-sm my-2 text-center tracking-wide" v-if="getting">getting replies...</div>
-                            <div class="" v-if="!replies.data.length">no replies</div>
+                            <div class="text-sm text-center text-gray-600 font-bold my-4" v-if="!replies.data.length">no replies</div>
                         </div>
                     </div>
                 </div>

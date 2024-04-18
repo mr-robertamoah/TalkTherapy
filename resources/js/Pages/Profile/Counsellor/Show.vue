@@ -33,7 +33,7 @@ import StyledLink from '@/Components/StyledLink.vue';
 import CreateTherapyButton from '@/Components/CreateTherapyButton.vue';
 
 const { modalData, showModal } = useModal()
-const { alertData, clearAlertData, setAlertData } = useAlert()
+const { alertData, clearAlertData, setAlertData, setFailedAlertData } = useAlert()
 
 const props = defineProps({
     counsellor: {},
@@ -79,6 +79,15 @@ watch(
     () => props.errors,
     () => {
         alertCounsellor()
+    }
+)
+watchEffect(
+    () => {
+        if (props.errors.message)
+            setFailedAlertData({
+                message: props.errors.message,
+                time: 5000
+            })
     }
 )
 

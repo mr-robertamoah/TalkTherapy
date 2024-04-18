@@ -50,7 +50,7 @@ class SessionDeletedNotification extends Notification implements ShouldQueue
             ->subject("'{$this->session->name}' Session")
             ->greeting("Hello {$name}!")
             ->line("The session with name: '{$this->session->name}' for '{$this->session->for->name}' " . ($this->session->for->isTherapy ? "Therapy" : "Group Therapy") . " has been deleted.")
-            ->action("visit {$type} page", $url)
+            ->action("Visit {$type} Page", $url)
             ->line("Thank you for choosing to 'TalkTherapy'.");
     }
 

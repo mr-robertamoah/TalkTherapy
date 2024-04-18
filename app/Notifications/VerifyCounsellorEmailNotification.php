@@ -9,7 +9,7 @@ use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 use Illuminate\Support\Facades\URL;
 
-class VerifyCounsellorEmailNotification extends Notification implements ShouldQueue
+class VerifyCounsellorEmailNotification extends Notification
 {
     use Queueable;
 
@@ -41,7 +41,7 @@ class VerifyCounsellorEmailNotification extends Notification implements ShouldQu
             Carbon::now()->addMinutes(120),
             [
                 'counsellorId' => $notifiable->id,
-                'hash' => sha1($notifiable->getEmailForVerification()),
+                'hash' => sha1($notifiable->email),
             ]
         );
         $name = $notifiable->getName();
@@ -51,7 +51,7 @@ class VerifyCounsellorEmailNotification extends Notification implements ShouldQu
             ->subject('Verify Email Address')
             ->line('Please click the button below to verify your email address.')
             ->action('Verify Email Address', $url)
-            ->line('Not that the verification email link expires in about 2 hours time.')
+            ->line('Note that the verification email link expires in about 2 hours time.')
             ->line("Thank you for choosing to 'TalkTherapy'.");
     }
 

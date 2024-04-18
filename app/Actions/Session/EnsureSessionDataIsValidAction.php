@@ -37,20 +37,21 @@ class EnsureSessionDataIsValidAction extends Action
             throw new SessionException("You cannot create a PAID session for a FREE therapy.", 422);
 
         $startTime = new Carbon($createSessionDTO->startTime);
+        $endTime = new Carbon($createSessionDTO->endTime);
         if (
             $startTime->addMinutes(30)->greaterThan(new Carbon($createSessionDTO->endTime))
         ) 
             throw new SessionException("The end time must be at least 30 minutes from the start time.", 422);
             
         if (
-            $createSessionDTO->for->sessions()->whereDateFallsBetween($startTime->toTimeString())->exists()
+            $createSessionDTO->for->sessions()->whereDateFallsBetween($startTime)->exists()
         ) 
             throw new SessionException("The start time of a session cannot fall within the start and end time of other sessions.", 422);
 
         if (
             $createSessionDTO->for
                 ->sessions()
-                ->whereIsNot30MinituesBeforeOrAfter($createSessionDTO->startTime, $createSessionDTO->endTime)
+                ->whereIsNot30MinituesBeforeOrAfter($startTime, $endTime)
                 ->exists()
         ) 
             throw new SessionException("The session must start at least 30 minutes before or after other sessions of this therapy.", 422);
@@ -59,7 +60,7 @@ class EnsureSessionDataIsValidAction extends Action
             $createSessionDTO->for
                 ->addedby
                 ->addedSessions()
-                ->whereIsNot30MinituesBeforeOrAfter($createSessionDTO->startTime, $createSessionDTO->endTime)
+                ->whereIsNot30MinituesBeforeOrAfter($startTime, $endTime)
                 ->exists()
         ) 
             throw new SessionException("The user has sessions that are less than 30 minutes before or after the time for this session.", 422);
@@ -68,7 +69,7 @@ class EnsureSessionDataIsValidAction extends Action
             $createSessionDTO->for
                 ->counsellor
                 ->addedSessions()
-                ->whereIsNot30MinituesBeforeOrAfter($createSessionDTO->startTime, $createSessionDTO->endTime)
+                ->whereIsNot30MinituesBeforeOrAfter($startTime, $endTime)
                 ->exists()
         ) 
             throw new SessionException("Counsellor for this therapy has sessions that are less than 30 minutes before or after the time for this session.", 422);

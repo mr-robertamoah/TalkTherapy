@@ -3,9 +3,9 @@
 namespace App\Models;
 
 use App\Enums\SessionStatusEnum;
+use App\Enums\SessionTypeEnum;
 use App\Enums\TherapyPaymentTypeEnum;
 use App\Traits\Starreable;
-use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphToMany;
@@ -78,12 +78,24 @@ class Session extends Model
     {
         $users = [];
 
-        if ($this->isTherapy)
-        {
-            $users = 
+        if ($this->isTherapy) {
+            $users[] = $this->for->addedby;
+            $users[] = $this->for->counsellor->user;
+        } else {
+
         }
 
         return $users;
+    }
+
+    public function scopeWhereInSession($query)
+    {
+        return $query
+            ->whereStatusIn([
+                SessionStatusEnum::pending->value,
+                SessionStatusEnum::in_session->value,
+                SessionStatusEnum::in_session_confirmation->value,
+            ]);
     }
 
     public function isParticipant(User $user)
@@ -113,7 +125,12 @@ class Session extends Model
 
     public function scopeWherePastEndTime($query)
     {
-        return $query->whereDate('end_time', '<=', now()->toTimeString());
+        return $query->whereDate('end_time', '<=', now());
+    }
+
+    public function scopeWhereStartsInTheFuture($query)
+    {
+        return $query->whereDate('start_time', '>', now()->subMinutes(5));
     }
 
     public function scopeWhereDateFallsBetween($query, $date)
@@ -123,20 +140,52 @@ class Session extends Model
             ->whereDate('end_time', '>=', $date);
     }
 
+    public function scopeWhereAboutToStart($query)
+    {
+        $now = now();
+
+        return $query
+            ->whereDate('start_time', '>=', $now)
+            ->whereDate('start_time', '<=', $now->addMinutes(30));
+    }
+
+    public function scopeWhereHasStartedAndNotEnded($query)
+    {
+        $now = now();
+
+        return $query
+            ->whereDate('start_time', '<=', $now)
+            ->whereDate('end_time', '>', $now);
+    }
+
+    public function scopeWhereFiveOrLessMinutesToStart($query)
+    {
+        $time = now()->addMinutes(5);
+
+        return $query
+            ->whereDate('start_time', '<=', $time)
+            ->whereDate('end_time', '>', $time);
+    }
+
     public function scopeWhereIsNot30MinituesBeforeOrAfter($query, $startDate, $endDate)
     {
         return $query
             ->where(function ($query) use ($startDate) {
-                $query->whereDateFallsBetween((new Carbon($startDate))->subMinutes(30)->toTimeString());
+                $query->whereDateFallsBetween($startDate->subMinutes(30));
             })
             ->orWhere(function ($query) use ($endDate) {
-                $query->whereDateFallsBetween((new Carbon($endDate))->addMinutes(30)->toTimeString());
+                $query->whereDateFallsBetween($endDate->addMinutes(30));
             });
     }
 
     public function scopeWhereStatusIn($query, $statuses)
     {
         return $query->whereIn('status', $statuses);
+    }
+
+    public function scopeWhereStatusNotIn($query, $statuses)
+    {
+        return $query->whereNotIn('status', $statuses);
     }
 
     public function scopeWherePaid($query)
@@ -151,12 +200,43 @@ class Session extends Model
 
     public function scopeWhereTherapyId($query, $therapyId)
     {
-        return $query->where('therapy_id', $therapyId);
+        return $query
+            ->whereTherapy()
+            ->where('for_id', $therapyId);
+    }
+
+    public function scopeWhereGroupTherapyId($query, $groupTherapyId)
+    {
+        return $query
+            ->whereGroupTherapy()
+            ->where('for_id', $groupTherapyId);
+    }
+
+    public function scopeWhereGroupTherapy($query)
+    {
+        return $query->where(function ($query) {
+            $query->where('for_type', GroupTherapy::class);
+        });
     }
 
     public function scopeWhereNameLike($query, $name)
     {
         return $query->where('name', 'LIKE', "%{$name}%");
+    }
+
+    public function scopeWhereOnline($query)
+    {
+        return $query->where('type', SessionTypeEnum::online->value);
+    }
+
+    public function scopeWhereNotPending($query)
+    {
+        return $query->whereNot('status', SessionStatusEnum::pending->value);
+    }
+
+    public function scopeWhereInPerson($query)
+    {
+        return $query->where('type', SessionTypeEnum::in_person->value);
     }
 
     public function getNotificationActionData()
@@ -171,5 +251,13 @@ class Session extends Model
         }
         
         return [$type, $url];
+    }
+
+    public function getForChannelName()
+    {
+        if ($this->for_type == Therapy::class)
+            return "therapies.{$this->for_id}";
+        
+        return "grouptherapies.{$this->for_id}";
     }
 }

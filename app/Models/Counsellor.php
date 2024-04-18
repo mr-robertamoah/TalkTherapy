@@ -9,11 +9,12 @@ use App\Enums\TherapyPaymentTypeEnum;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphToMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Notifications\Notifiable;
 
 class Counsellor extends Model
 {
-    use HasFactory, Notifiable;
+    use HasFactory, Notifiable, SoftDeletes;
 
     protected $fillable = [
         'name',
@@ -66,12 +67,12 @@ class Counsellor extends Model
 
     public function getOnlineSessionsCountAttribute()
     {
-        return 0; // TODO
+        return $this->addedSessions()->whereOnline()->count();
     }
 
     public function getInPersonSessionsCountAttribute()
     {
-        return 0; // TODO
+        return $this->addedSessions()->whereInPerson()->count();
     }
 
     public function getGroupTherapiesCountAttribute()
@@ -81,12 +82,12 @@ class Counsellor extends Model
 
     public function getHeldSessionsCountAttribute()
     {
-        return 0; // TODO
+        return $this->addedSessions()->whereHeld()->count();
     }
 
     public function getSessionsCountAttribute()
     {
-        return 0; // TODO
+        return $this->addedSessions()->count();
     }
 
     public function getTherapiesCountAttribute()
@@ -201,6 +202,26 @@ class Counsellor extends Model
         return $this->morphMany(Session::class, 'addedby');
     }
 
+    public function hasNoPendingSessions()
+    {
+        return !$this->hasPendingSessions();
+    }
+
+    public function hasPendingSessions()
+    {
+        return $this->addedSessions()
+            ->where(function ($query) {
+                $query->wherePending();
+            })
+            ->orWhere(function ($query) {
+                $query->whereStartsInTheFuture();
+            })
+            ->orWhere(function ($query) {
+                $query->whereAboutToStart();
+            })
+            ->exists();
+    }
+
     public function starred()
     {
         return $this->morphMany(Star::class, 'starredby');
@@ -259,8 +280,7 @@ class Counsellor extends Model
 
     public function engagesAUserInTherapy()
     {
-        // TODO
-        return false;
+        return $this->therapies()->exists();
     }
 
     public function hasNotEngagedAUserInTherapy()
@@ -270,8 +290,9 @@ class Counsellor extends Model
 
     public function hasHeldATherapySession()
     {
-        // TODO
-        return false;
+        return $this->addedSessions()
+            ->whereHeld()
+            ->exists();
     }
 
     public function hasNotHeldATherapySession()

@@ -23,3 +23,11 @@ Artisan::command('inspire', function () {
 Schedule::call(function () {
     AppService::new()->notifyParticipantsOfStartingSessions();
 })->everyThirtyMinutes();
+
+Schedule::call(function () {
+    AppService::new()->failUnheldSessions();
+})->everyTwoHours();
+
+Schedule::call(function () {
+    AppService::new()->broadcastStartedSessions();
+})->everyFiveMinutes();

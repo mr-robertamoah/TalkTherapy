@@ -143,7 +143,10 @@ async function createTherapy() {
 
     await axios
     .post(route(`therapies.create`), {
-        ...therapyData.value
+        ...therapyData.value,
+        public: therapyData.value.public ? 1 : 0,
+        public: therapyData.value.allowInPerson ? 1 : 0,
+        public: therapyData.value.anonymous ? 1 : 0,
     })
     .then((res) => {
         console.log(res)

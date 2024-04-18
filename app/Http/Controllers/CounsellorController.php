@@ -37,8 +37,8 @@ class CounsellorController extends Controller
             return redirect()->route('counsellor.show', ['counsellorId' => $request->counsellorId]);
         } catch (Throwable $th) {
             $message = $th->getCode() == 500 ? "Something unfortunate happened. Please try again shortly." : $th->getMessage();
-
-            return redirect()->back()->withErrors('message', $message);
+            ds($th);
+            return redirect()->route('counsellor.show', ['counsellorId' => $request->counsellorId])->withErrors('message', $message);
         }
     }
 

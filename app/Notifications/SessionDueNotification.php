@@ -52,7 +52,7 @@ class SessionDueNotification extends Notification implements ShouldQueue
             ->greeting("Hello {$name}!")
             ->line("The session with name: '{$this->session->name}' which was created for " . "'{$this->session->for->name}' " . ($this->session->for->isTherapy ? "Therapy" : "Group Therapy") . " is about to start.")
             ->line("This session will be starting in less than 30 minutes. Please do not disappoint. Be on time.")
-            ->action("visit {$type} page now", $url)
+            ->action("Visit {$type} Page now", $url)
             ->line("Thank you for choosing to 'TalkTherapy'.");
     }
 

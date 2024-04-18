@@ -10,7 +10,7 @@ class VerifyEmailAction extends Action
     public function execute(UpdateCounsellorDTO $dto)
     {
         return $dto->counsellor->update([
-            'email_verified_at' => now()->toTimeString()
+            'email_verified_at' => now()
         ]);
     }
 }

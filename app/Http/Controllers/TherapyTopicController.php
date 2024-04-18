@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\DTOs\CreateTherapyTopicDTO;
+use App\DTOs\GetTherapyTopicsDTO;
 use App\Http\Requests\CreateTherapyTopicRequest;
 use App\Http\Requests\UpdateTherapyTopicRequest;
 use App\Http\Resources\TherapyTopicResource;
@@ -39,17 +40,23 @@ class TherapyTopicController extends Controller
     
     public function getTherapyTopics(Request $request)
     {
-        return TherapyTopicService::new()->getTherapyTopics(
-            Therapy::find($request->therapyId),
-            $request->user(),
-            $request->name
-        );
+        try {
+            return TherapyTopicService::new()->getTherapyTopics(
+                GetTherapyTopicsDTO::new()->fromArray([
+                    'therapy' => Therapy::find($request->therapyId),
+                    'user' => $request->user(),
+                    'name' => $request->name,
+                ])
+            );
+        } catch (Throwable $th) {
+            
+            return $this->returnFailure($request, $th);
+        }
     }
 
     public function updateTherapyTopic(UpdateTherapyTopicRequest $request)
     {
         $topic = TherapyTopic::find($request->topicId);
-        ds($request->sessions);
         try {
             $topic = TherapyTopicService::new()->updateTherapyTopic(
                 CreateTherapyTopicDTO::new()->fromArray([

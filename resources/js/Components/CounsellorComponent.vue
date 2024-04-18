@@ -49,77 +49,80 @@ function goToPage() {
         class="w-full max-w-[400px] bg-stone-200 p-2 rounded shadow-sm select-none"
         @dblclick="goToPage"
     >
-        <div class="flex justify-start items-center mb-3 cursor-pointer">
-            <Avatar :avatar-text="'...'" :size="40" :src="counsellor?.avatar ?? ''"/>
-            <div class="text-gray-600 flex justify-start items-center ml-2">
-                <div class="capitalize mr-2">{{ counsellor.name }}</div>
-                <div>{{ counsellor.username ? `(${counsellor.username})` : '' }}</div>
-            </div>
-        </div>
-        <div class="mt-3 flex justify-end items-center" v-if="hasView">
-            <div
-                @click="() => view = true"
-                class="p-2 bg-blue-700 text-blue-200 cursor-pointer tracking-wide rounded min-w-[80px] text-center hover:bg-blue-400 hover:text-blue-700 transition duration-75">view</div>
-        </div>
-        <div class="" v-if="forRequest">
-            <div class="my-2">
-                <ActivityBadge
-                    :name="'number of therapies'"
-                    :value="counsellor.allTherapiesCount ?? 0"
-                />
-            </div>
-            <div 
-                class="flex flex-col justify-center items-center w-full"
-            >
-                <div class="my-2 flex justify-start w-full overflow-hidden overflow-x-auto p-2 space-x-2">
-                    <div
-                        v-for="(item, idx) in ['profession', 'cases', 'languages', 'religions']"
-                        :key="idx"
-                        @click="() => {
-                            selectedItem = item
-                        }"
-                        class="px-2 py-1 cursor-pointer rounded transition duration-100"
-                        :class="[selectedItem == item ? 'bg-slate-300 text-slate-800' : 'bg-slate-200 text-slate-600']"
-                    >{{ item }}</div>
+        <div v-if="counsellor.deleted" class="p-2 text-red-700 text-center text-sm">counsellor account has been deleted</div>
+        <template v-else>
+            <div class="flex justify-start items-center mb-3 cursor-pointer">
+                <Avatar :avatar-text="'...'" :size="40" :src="counsellor?.avatar ?? ''"/>
+                <div class="text-gray-600 flex justify-start items-center ml-2">
+                    <div class="capitalize mr-2">{{ counsellor.name }}</div>
+                    <div>{{ counsellor.username ? `(${counsellor.username})` : '' }}</div>
                 </div>
+            </div>
+            <div class="mt-3 flex justify-end items-center" v-if="hasView">
                 <div
-                    v-if="selectedItem"
-                >
-                    <div v-if="selectedItem == 'profession'" class="p-2">
-                        <div
-                            v-if="counsellor[selectedItem]"
-                            :title="counsellor[selectedItem].about ?? ''"
-                            class="capitalize mr-3 rounded text-sm p-2 min-w-[100px] text-gray-700 bg-gray-300 select-none transition duration-75 cursor-pointer hover:bg-gray-600 hover:text-white text-center"
-                        >{{ counsellor[selectedItem].name }}</div>
-
-                        <div v-else class="text-gray-600 w-full my-2 text-center text-sm">has no {{ selectedItem }} set</div>
-                    </div>
-                    <div v-else class="p-2 flex items-center overflow-hidden overflow-x-auto">
-                        <template v-if="counsellor[selectedItem]?.length">
-                            <div
-                                v-for="(item, idx) in counsellor[selectedItem]"
-                                :title="item.about ?? ''"
-                                :key="idx"
-                                class="capitalize mr-3 rounded text-sm p-2 min-w-[100px] text-gray-700 bg-gray-300 select-none transition duration-75 cursor-pointer hover:bg-gray-600 hover:text-white text-center"
-                            >{{ item.name }}</div>
-
-                        </template>
-
-                        <div v-else class="text-gray-600 w-full my-2 text-center text-sm">has no {{ selectedItem }} set</div>
-                    </div>
+                    @click="() => view = true"
+                    class="p-2 bg-blue-700 text-blue-200 cursor-pointer tracking-wide rounded min-w-[80px] text-center hover:bg-blue-400 hover:text-blue-700 transition duration-75">view</div>
+            </div>
+            <div class="" v-if="forRequest">
+                <div class="my-2">
+                    <ActivityBadge
+                        :name="'number of therapies'"
+                        :value="counsellor.allTherapiesCount ?? 0"
+                    />
                 </div>
-                <div v-else class="text-gray-600 w-full my-2 text-center text-sm">nothing selected yet</div>
-            </div>
-        </div>
-        <div class="flex justify-end" v-if="online">
-            <div 
-                class="mx-2 w-4 h-4 p-1 rounded-full flex justify-center items-center mr-2 bg-green-700"
-            >
                 <div 
-                    class="w-full h-full rounded-full bg-green-300"
-                ></div>
+                    class="flex flex-col justify-center items-center w-full"
+                >
+                    <div class="my-2 flex justify-start w-full overflow-hidden overflow-x-auto p-2 space-x-2">
+                        <div
+                            v-for="(item, idx) in ['profession', 'cases', 'languages', 'religions']"
+                            :key="idx"
+                            @click="() => {
+                                selectedItem = item
+                            }"
+                            class="px-2 py-1 cursor-pointer rounded transition duration-100"
+                            :class="[selectedItem == item ? 'bg-slate-300 text-slate-800' : 'bg-slate-200 text-slate-600']"
+                        >{{ item }}</div>
+                    </div>
+                    <div
+                        v-if="selectedItem"
+                    >
+                        <div v-if="selectedItem == 'profession'" class="p-2">
+                            <div
+                                v-if="counsellor[selectedItem]"
+                                :title="counsellor[selectedItem].about ?? ''"
+                                class="capitalize mr-3 rounded text-sm p-2 min-w-[100px] text-gray-700 bg-gray-300 select-none transition duration-75 cursor-pointer hover:bg-gray-600 hover:text-white text-center"
+                            >{{ counsellor[selectedItem].name }}</div>
+
+                            <div v-else class="text-gray-600 w-full my-2 text-center text-sm">has no {{ selectedItem }} set</div>
+                        </div>
+                        <div v-else class="p-2 flex items-center overflow-hidden overflow-x-auto">
+                            <template v-if="counsellor[selectedItem]?.length">
+                                <div
+                                    v-for="(item, idx) in counsellor[selectedItem]"
+                                    :title="item.about ?? ''"
+                                    :key="idx"
+                                    class="capitalize mr-3 rounded text-sm p-2 min-w-[100px] text-gray-700 bg-gray-300 select-none transition duration-75 cursor-pointer hover:bg-gray-600 hover:text-white text-center"
+                                >{{ item.name }}</div>
+
+                            </template>
+
+                            <div v-else class="text-gray-600 w-full my-2 text-center text-sm">has no {{ selectedItem }} set</div>
+                        </div>
+                    </div>
+                    <div v-else class="text-gray-600 w-full my-2 text-center text-sm">nothing selected yet</div>
+                </div>
             </div>
-        </div>
+            <div class="flex justify-end" v-if="online">
+                <div 
+                    class="mx-2 w-4 h-4 p-1 rounded-full flex justify-center items-center mr-2 bg-green-700"
+                >
+                    <div 
+                        class="w-full h-full rounded-full bg-green-300"
+                    ></div>
+                </div>
+            </div>
+        </template>
     </div>
 
     <CounsellorModal

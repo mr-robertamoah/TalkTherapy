@@ -8,6 +8,7 @@ use App\Enums\RequestStatusEnum;
 use App\Enums\TherapyStatusEnum;
 use App\Models\Counsellor;
 use App\Models\Request;
+use App\Notifications\TherapyAssistanceRequestAcceptedNotification;
 
 class RespondToTherapyAssistanceRequestAction extends Action
 {
@@ -37,11 +38,14 @@ class RespondToTherapyAssistanceRequestAction extends Action
                 ->update([
                     'status' => RequestStatusEnum::inconsequencial->value,
                     'data' => [
-                        'reason' => 'A similar request for therapy has been accepted by someone else.'
+                        'reason' => 'A similar request for therapy assistance has been accepted by someone else.'
                     ]
                 ]);
 
             // TODO dispatch counsellor to frontend
+            $requestResponseDTO->request->from->notify(
+                new TherapyAssistanceRequestAcceptedNotification($requestResponseDTO->request)
+            );
         }
         
         return $requestResponseDTO->request->refresh();
@@ -56,7 +60,7 @@ class RespondToTherapyAssistanceRequestAction extends Action
         
         if (
             $requestResponseDTO->request->to->is($requestResponseDTO->user) &&
-            $requestResponseDTO->request->from::class == Counsellor::class
+            $requestResponseDTO->request->from_type == Counsellor::class
         ) return $requestResponseDTO->request->from->id;
 
         return null;

@@ -14,6 +14,9 @@ class TherapyResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
+        $activeSession = $this->activeSession;
+        $counsellor = $this->counsellor()->withTrashed()->first();
+        
         return [
             'id' => $this->id,
             'name' => $this->name,
@@ -25,7 +28,7 @@ class TherapyResource extends JsonResource
             'public' => (bool) $this->public,
             'anonymous' => (bool) $this->anonymous,
             'allowInPerson' => (bool) $this->allow_in_person,
-            'counsellor' => $this->when($this->counsellor, new CounsellorMiniResource($this->counsellor)),
+            'counsellor' => $this->when($counsellor, new CounsellorMiniResource($counsellor)),
             'backgroundStory' => $this->background_story,
             'sessionsHeld' => $this->sessionsHeld,
             'status' => $this->getStatus(),
@@ -38,7 +41,8 @@ class TherapyResource extends JsonResource
             'cases' => TherapyCaseResource::collection($this->cases),
             'maxSessions' => $this->max_sessions,
             'topicsCount' => $this->topicsCount,
-            'createdAt' => $this->created_at->diffForHumans()
+            'createdAt' => $this->created_at->diffForHumans(),
+            'activeSession' => $activeSession ? new SessionResource($activeSession) : null,
         ];
     }
 }

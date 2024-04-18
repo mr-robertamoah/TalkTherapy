@@ -27,6 +27,7 @@ return new class extends Migration
             $table->boolean('contact_visible')->default(true);
             $table->timestamp('verified_at')->nullable();
             $table->timestamp('email_verified_at')->nullable();
+            $table->timestamp('deleted_at')->nullable();
             $table->timestamps();
         });
     }

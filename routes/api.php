@@ -31,6 +31,13 @@ Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
     return $request->user();
 });
 
+Route::get('/therapies/{therapyId}/topics', [TherapyTopicController::class, 'getTherapyTopics'])->name('api.topics.get');
+Route::get('/therapies/{therapyId}/sessions', [SessionController::class, 'getSessions'])->name('api.sessions.get');
+
+Route::get('/sessions/{sessionId}/messages', [MessageController::class, 'getSessionMessages'])->name('api.session.messages.get');
+Route::get('/topics/{topicId}/messages', [MessageController::class, 'getTopicMessages'])->name('api.topic.messages.get');
+Route::get('/messages/{messageId}/replies', [MessageController::class, 'getMessageReplies'])->name('api.message.replies.get');
+
 Route::get('/therapy-cases', [TherapyCaseController::class, 'getCases'])->name('cases.get');
 Route::get('/languages', [LanguageController::class, 'getLanguages'])->name('languages.get');
 Route::get('/religions', [ReligionController::class, 'getReligions'])->name('religions.get');
@@ -57,7 +64,6 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/therapies/{therapyId}', [TherapyController::class, 'deleteTherapy'])->name('api.therapies.delete');
     Route::post('/therapies/{therapyId}', [TherapyController::class, 'endTherapy'])->name('api.therapies.end');
 
-    Route::get('/therapies/{therapyId}/sessions', [SessionController::class, 'getSessions'])->name('api.sessions.get');
     Route::post('/therapies/{therapyId}/sessions', [SessionController::class, 'createSession'])->name('api.sessions.create');
     Route::patch('/sessions/{sessionId}', [SessionController::class, 'updateSession'])->name('api.sessions.update');
     Route::delete('/sessions/{sessionId}', [SessionController::class, 'deleteSession'])->name('api.sessions.delete');
@@ -65,19 +71,15 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/sessions/{sessionId}/fail', [SessionController::class, 'failSession'])->name('api.sessions.fail');
     Route::post('/sessions/{sessionId}/abandon', [SessionController::class, 'abandonSession'])->name('api.sessions.abandon');
 
-    Route::get('/therapies/{therapyId}/topics', [TherapyTopicController::class, 'getTherapyTopics'])->name('api.topics.get');
     Route::post('/therapies/{therapyId}/topics', [TherapyTopicController::class, 'createTherapyTopic'])->name('api.topics.create');
     Route::patch('/topics/{topicId}', [TherapyTopicController::class, 'updateTherapyTopic'])->name('api.topics.update');
     Route::delete('/topics/{topicId}', [TherapyTopicController::class, 'deleteTherapyTopic'])->name('api.topics.delete');
 
-    Route::get('/sessions/{sessionId}/messages', [MessageController::class, 'getSessionMessages'])->name('api.session.messages.get');
-    Route::get('/topics/{topicId}/messages', [MessageController::class, 'getTopicMessages'])->name('api.topic.messages.get');
     Route::get('/discussions/{discussionId}/messages', [MessageController::class, 'getDiscussionMessages'])->name('api.discussion.messages.get');
     Route::post('messages', [MessageController::class, 'createMessage'])->name('api.messages.create');
     Route::post('/messages/{messageId}', [MessageController::class, 'updateMessage'])->name('api.messages.update');
     Route::delete('/messages/{messageId}', [MessageController::class, 'deleteMessage'])->name('api.messages.delete');
     Route::delete('/messages/{messageId}/me', [MessageController::class, 'deleteMessageForMe'])->name('api.messages.delete.me');
-    Route::get('/messages/{messageId}/replies', [MessageController::class, 'getMessageReplies'])->name('api.message.replies.get');
 
     Route::post('/therapies/{therapyId}/assist', [TherapyController::class, 'sendAssistanceRequest'])->name('therapies.assist');
     Route::post('/therapies', [TherapyController::class, 'createTherapy'])->name('therapies.create');

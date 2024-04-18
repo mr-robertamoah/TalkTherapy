@@ -14,6 +14,14 @@ class CounsellorMiniResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
+        if ($this->deleted_at)
+            return [
+                'id' => $this->id,
+                'userId' => $this->user_id,
+                'isCounsellor' => true,
+                'deleted' => true,
+            ];
+
         return [
             'id' => $this->id,
             'userId' => $this->user_id,

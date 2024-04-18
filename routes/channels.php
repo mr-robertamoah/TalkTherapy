@@ -3,6 +3,7 @@
 use App\Models\Discussion;
 use App\Models\Message;
 use App\Models\Session;
+use App\Models\Therapy;
 use Illuminate\Support\Facades\Broadcast;
 
 /*
@@ -26,6 +27,14 @@ Broadcast::channel('counsellors.{counsellorId}', function ($user, $counsellorId)
 
 Broadcast::channel('sessions.{sessionId}', function ($user, $sessionId) {
     return Session::find($sessionId)?->isParticipant($user);
+});
+
+Broadcast::channel('therapies.{therapyId}', function ($user, $therapyId) {
+    if (Therapy::find($therapyId)?->isParticipant($user)) {
+        return ['id' => $user->id, 'name' => $user->name];
+    }
+
+    return false;
 });
 
 Broadcast::channel('discussions.{discussionId}', function ($user, $discussionId) {

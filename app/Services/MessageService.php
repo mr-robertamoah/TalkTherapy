@@ -13,7 +13,9 @@ use App\Actions\Message\EnsureMessageDataIsValidAction;
 use App\Actions\Message\EnsureMessageExistsAction;
 use App\Actions\Message\UpdateMessageAction;
 use App\DTOs\CreateMessageDTO;
-use App\DTOs\GetSessionMessageDTO;
+use App\DTOs\GetDiscussionMessagesDTO;
+use App\DTOs\GetSessionMessagesDTO;
+use App\DTOs\GetTherapyTopicMessagesDTO;
 use App\Enums\PaginationEnum;
 use App\Events\MessageDeletedEvent;
 use App\Events\MessageSentEvent;
@@ -27,26 +29,27 @@ use Illuminate\Support\Facades\DB;
 
 class MessageService extends Service
 {
-    public function getSessionMessages(GetSessionMessageDTO $getSessionMessageDTO)
+    public function getSessionMessages(GetSessionMessagesDTO $getSessionMessagesDTO)
     {
         if (
-            $getSessionMessageDTO->user?->isNotAdmin() &&
-            !$getSessionMessageDTO->session?->for?->public &&
-            $getSessionMessageDTO->session?->for?->isNotParticipant($getSessionMessageDTO->user)
+            $getSessionMessagesDTO->user?->isNotAdmin() &&
+            !$getSessionMessagesDTO->session?->for?->public &&
+            $getSessionMessagesDTO->session?->for?->isNotParticipant($getSessionMessagesDTO->user)
         ) return [];
         
-        $query = $getSessionMessageDTO->session->messages()
+        $query = $getSessionMessagesDTO->session->messages()
+            ->withTrashed()
             ->with(['therapyTopic'])
-            ->when($getSessionMessageDTO->like, function($query) use ($getSessionMessageDTO) {
-                $query->whereLike($getSessionMessageDTO->like);
+            ->when($getSessionMessagesDTO->like, function($query) use ($getSessionMessagesDTO) {
+                $query->whereLike($getSessionMessagesDTO->like);
             })
-            ->when($getSessionMessageDTO->topicId, function($query) use ($getSessionMessageDTO) {
-                $query->whereTherapyTopicId($getSessionMessageDTO->topicId);
+            ->when($getSessionMessagesDTO->topicId, function($query) use ($getSessionMessagesDTO) {
+                $query->whereTherapyTopicId($getSessionMessagesDTO->topicId);
             })
-            ->when($getSessionMessageDTO->replyId, function($query) use ($getSessionMessageDTO) {
-                $query->whereReplyId($getSessionMessageDTO->replyId);
+            ->when($getSessionMessagesDTO->replyId, function($query) use ($getSessionMessagesDTO) {
+                $query->whereReplyId($getSessionMessagesDTO->replyId);
             })
-            ->when($getSessionMessageDTO->groupBy, function ($query) {
+            ->when($getSessionMessagesDTO->groupBy, function ($query) {
                 $query
                     ->leftJoin('therapy_topics', 'messages.therapy_topic_id', '=', 'therapy_topic.id')
                     ->select('messages.*', DB::raw('COALESCE(therapy_topic.name, "No Topic") as topic_name'))
@@ -58,11 +61,69 @@ class MessageService extends Service
         ));
     }
     
+    public function getDiscussionMessages(GetDiscussionMessagesDTO $getDiscussionMessagesDTO)
+    {
+        if (
+            $getDiscussionMessagesDTO->user?->isNotAdmin() &&
+            $getDiscussionMessagesDTO->discussion?->isNotParticipant($getDiscussionMessagesDTO->user)
+        ) return [];
+        
+        $query = $getDiscussionMessagesDTO->discussion->messages()
+            ->withTrashed()
+            ->when($getDiscussionMessagesDTO->like, function($query) use ($getDiscussionMessagesDTO) {
+                $query->whereLike($getDiscussionMessagesDTO->like);
+            })
+            ->when($getDiscussionMessagesDTO->replyId, function($query) use ($getDiscussionMessagesDTO) {
+                $query->whereReplyId($getDiscussionMessagesDTO->replyId);
+            });
+        
+        return MessageResource::collection($query->latest()->paginate(
+            PaginationEnum::preferencesPagination->value
+        ));
+    }
+    
+    public function getTherapyTopicMessages(GetTherapyTopicMessagesDTO $getTherapyTopicMessagesDTO)
+    {
+        $therapy = $getTherapyTopicMessagesDTO->topic->sessions()
+            ->where('session_id', $getTherapyTopicMessagesDTO->sessionId)->first()
+            ?->for;
+
+        if (
+            $getTherapyTopicMessagesDTO->user?->isNotAdmin() &&
+            !$therapy?->public &&
+            $therapy?->isNotParticipant($getTherapyTopicMessagesDTO->user)
+        ) return [];
+        
+        $query = $getTherapyTopicMessagesDTO->topic->messages()
+            ->withTrashed()
+            ->with(['for'])
+            ->when($getTherapyTopicMessagesDTO->like, function($query) use ($getTherapyTopicMessagesDTO) {
+                $query->whereLike($getTherapyTopicMessagesDTO->like);
+            })
+            ->when($getTherapyTopicMessagesDTO->sessionId, function($query) use ($getTherapyTopicMessagesDTO) {
+                $query->whereSessionId($getTherapyTopicMessagesDTO->sessionId);
+            })
+            ->when($getTherapyTopicMessagesDTO->replyId, function($query) use ($getTherapyTopicMessagesDTO) {
+                $query->whereReplyId($getTherapyTopicMessagesDTO->replyId);
+            })
+            ->when($getTherapyTopicMessagesDTO->groupBy, function ($query) {
+                $query
+                    ->where('for_type', Session::class)
+                    ->leftJoin('sessions', 'messages.for_id', '=', 'session.id')
+                    ->select('messages.*', DB::raw('COALESCE(session.name, "No Session") as session_name'))
+                    ->groupBy('session_name');
+            });
+        
+        return MessageResource::collection($query->latest()->paginate(
+            PaginationEnum::preferencesPagination->value
+        ));
+    }
+    
     public function getMessageReplies(?Message $message)
     {
         if (!$message) return [];
         
-        $query = $message->replies();
+        $query = $message->replies()->withTrashed();
         
         return MessageResource::collection($query->latest()->paginate(
             PaginationEnum::preferencesPagination->value

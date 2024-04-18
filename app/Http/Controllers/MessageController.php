@@ -4,7 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Actions\GetModelWithModelNameAndIdAction;
 use App\DTOs\CreateMessageDTO;
-use App\DTOs\GetSessionMessageDTO;
+use App\DTOs\GetSessionMessagesDTO;
+use App\DTOs\GetTherapyTopicMessagesDTO;
 use App\Http\Requests\CreateMessageRequest;
 use App\Http\Requests\UpdateMessageRequest;
 use App\Http\Resources\MessageResource;
@@ -29,7 +30,7 @@ class MessageController extends Controller
     public function getSessionMessages(Request $request)
     {
         return MessageService::new()->getSessionMessages(
-            GetSessionMessageDTO::new()->fromArray([
+            GetSessionMessagesDTO::new()->fromArray([
                 'user' => $request->user(),
                 'session' => Session::find($request->sessionId),
                 'like' => $request->like,
@@ -40,9 +41,22 @@ class MessageController extends Controller
         );
     }
     
-    public function getTopicMessages()
+    public function getTopicMessages(Request $request)
     {
-        //
+        try {
+            return MessageService::new()->getTherapyTopicMessages(
+                GetTherapyTopicMessagesDTO::new()->fromArray([
+                    'user' => $request->user(),
+                    'sessionId' => $request->sessionId,
+                    'like' => $request->like,
+                    'groupBy' => $request->groupBy,
+                    'topic' => TherapyTopic::find($request->topicId),
+                ])
+            );
+        } catch (Throwable $th) {
+            
+            return $this->returnFailure($request, $th);
+        }
     }
     
     public function getDiscussionMessages(Request $request)

@@ -56,7 +56,7 @@ class SessionCreatedNotification extends Notification implements ShouldQueue
             ->greeting("Hello {$name}!")
             ->line("A session with name: '{$this->session->name}' has been created for '{$this->session->for->name}' " . ($this->session->for->isTherapy ? "Therapy." : "Group Therapy."))
             ->line("This session will start on {$startTime}. The session will last {$duration} minutes. Please take notice.")
-            ->action("visit {$type} page", $url)
+            ->action("Visit {$type} Page", $url)
             ->line("You may receive other reminders before the starting time.")
             ->line("Thank you for choosing to 'TalkTherapy'.");
     }

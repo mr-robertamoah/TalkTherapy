@@ -82,8 +82,8 @@ function readFile(f) {
             :class="` w-full h-full text-center`"
         >
             <img v-if="imgSrc" alt="cannot load" :src="imgSrc" class="object-scale-down w-full h-full">
-            <audio v-else-if="audioSrc" alt="cannot load" class="min-w-[100px] mx-auto w-full" :src="audioSrc" controls></audio>
-            <video v-else-if="videoSrc" alt="cannot load" class="min-w-[100px] mx-auto w-full" :src="videoSrc" controls></video>
+            <audio v-else-if="audioSrc" alt="cannot load" class="min-w-[100px] mx-auto object-scale-down w-full h-full" :src="audioSrc" controls></audio>
+            <video v-else-if="videoSrc" alt="cannot load" class="min-w-[100px] mx-auto object-scale-down w-full h-full" :src="videoSrc" controls></video>
             <div v-else class="text-xs text-gray-600 mt-4">{{ file.name }}</div>
         </div>
     </div>

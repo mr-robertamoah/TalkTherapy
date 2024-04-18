@@ -15,4 +15,14 @@ class Discussion extends Model
     {
         return $this->morphMany(Message::class, 'for');
     }
+
+    public function isNotParticipant(User $user)
+    {
+        return !$this->isParticipant($user);
+    }
+
+    public function isParticipant(User $user)
+    {
+        return false; // TODO
+    }
 }

@@ -2,6 +2,11 @@
     <div
         class="relative w-full"
     >
+        <PrimaryButton
+            class="my-2"
+            @click="clickedSwitchToActiveSession"
+            v-if="selectedSession?.id && selectedSession?.id == activeSession?.id"
+        >switch to active session</PrimaryButton>
         <div class="text-gray-600 font-bold capitalize">Filter By</div>
     
         <div class="mt-4">
@@ -98,6 +103,7 @@
                         :id="`message_${idx}`"
                         :msg="msg"
                         :item="selectedSession"
+                        :allow-actions="computedCanSendMessage"
                         :show="!computedSubItem?.id || computedSubItem?.id == msg.topicId"
                         :current-reply="message.replying?.id && message.replying?.id == msg.id"
                         @on-success="(data) => replaceFirstMessage(data)"
@@ -110,8 +116,8 @@
                 <div v-else class="text-gray-600 text-sm font-bold w-full h-[300px] flex justify-center items-center my-auto">no messages</div>
             </div>
         </div>
-        <!-- v-if="computedCanSendMessage && !getting" -->
-        <div class="rounded-lg bg-stone-100 w-full p-2" >
+        
+        <div class="rounded-lg bg-stone-100 w-full p-2" v-if="computedCanSendMessage && !getting">
             <div v-if="computedSubItem?.id" class="text-center text-xs text-gray-600 my-1">
                 filtered by: <span class="font-bold">{{ computedSubItem.name }}</span>
             </div>
@@ -226,6 +232,8 @@ const { goToLogin } = useAuth()
 const { alertData, setFailedAlertData, clearAlertData } = useAlert()
 const { modalData, showModal, closeModal } = useModal()
 
+const emits = defineEmits(['deselectActiveSession'])
+
 const props = defineProps({
     therapy: {
         default: null
@@ -235,6 +243,13 @@ const props = defineProps({
     },
     newSession: {
         default: null
+    },
+    activeSession: {
+        default: null
+    },
+    selectedActiveSession: {
+        default: false,
+        type: Boolean
     },
     isParticipant: {
         default: false,
@@ -328,14 +343,21 @@ watch(() => props.newSession?.id, () => {
 watch(() => props.newTopic?.id, () => {
     if (props.newTopic?.id) topics.value = [props.newTopic, ...topics.value]
 })
-// watch(() => selectedSessionTopic.value?.id, () => {
-    
-//     messages.sessions[selectedSession.value.id].page = 1
-//     getSessionMessages()
-// })
+watchEffect(() => {
+    if (props.activeSession?.id || props.selectedActiveSession)
+        clickedSwitchToActiveSession()
+
+    if (
+        props.activeSession?.id &&
+        selectedSession.value?.id && 
+        props.activeSession?.id == selectedSession.value?.id
+    ) emits('deselectActiveSession')
+})
 
 const computedCanSendMessage = computed(() => {
-    return props.isParticipant && selectedSession.value?.status == 'IN_SESSION'
+    return props.isParticipant && props.activeSession?.id &&
+        selectedSession.value?.id && 
+        props.activeSession?.id == selectedSession.value?.id
 })
 const computedFiltered = computed(() => {
     return ['session', 'topic'].includes(computedCurrentFilter.value)
@@ -380,6 +402,10 @@ const computedMessagesPage = computed(() => {
 const computedHasMessage = computed(() => {
     return message.value.content || files.value?.length || deletedFiles.value?.length
 })
+
+function clickedSwitchToActiveSession() {
+    selectedSession.value = props.activeSession
+}
 
 function clickedGetMore() {
     if (computedCurrentFilter.value == 'session') {
@@ -454,8 +480,10 @@ function deselectItem() {
         handleSelectedSessionChange()
     }
     
-    if (computedCurrentFilter.value == 'topic')
+    if (computedCurrentFilter.value == 'topic') {
         selectedTopic.value = null
+        handleSelectedTopicChange()
+    }
 
     selectedItemType.value = null
     scrollToBottom()
@@ -481,14 +509,36 @@ function handleSelectedSessionChange() {
     chatMessages.value = []
 }
 
+function handleSelectedTopicChange() {
+    if (!selectedTopic.value?.id) {
+        chatMessages.value = []
+        return
+    }
+    
+    if (messages.topics[selectedTopic.value.id]?.data?.length) {
+        chatMessages.value = [...messages.topics[selectedTopic.value.id].data]
+        return
+    }
+
+    if (!messages.topics[selectedTopic.value.id]) {
+        messages.topics[selectedTopic.value.id] = { data: [], page: 1 }
+        getTopicMessages()
+        return
+    }
+    
+    chatMessages.value = []
+}
+
 function clickedFilterItem(item) {
     if (computedCurrentFilter.value == 'session') {
         selectedSession.value = item
         handleSelectedSessionChange()
     }
 
-    if (computedCurrentFilter.value == 'topic')
+    if (computedCurrentFilter.value == 'topic') {
         selectedTopic.value = item
+        handleSelectedTopicChange()
+    }
 }
 
 function changeFile(e) {
@@ -671,6 +721,54 @@ async function getSessionMessages() {
             chatMessages.value = [...messages.sessions[selectedSession.value?.id].data.toReversed()]
             
             if (messages.sessions[selectedSession.value?.id].page == 1)
+                scrollToBottom()
+            else
+                scrollToMessageId(`message_${res.data.data.length - 1}`)
+
+            updateMessagesPage(res)
+        })
+        .catch((err) => {
+            console.log(err)
+            if (err?.response?.status == 429) {
+                selectedSession.value = null
+                setFailedAlertData({
+                    message: 'You have made too many requests within a short period. Try again shortly.',
+                    time: 5000
+                })
+                return
+            }
+
+            goToLogin(err)
+        })
+        .finally(() => {
+            getting.value = false
+        })
+}
+
+async function getTopicMessages() {
+    if (getting.value) return
+
+    getting.value = true
+
+    await axios
+        .get(route('api.topic.messages.get', {
+            sessionId: selectedTopicSession.value?.id,
+            topicId: selectedTopic.value?.id,
+            page: messages.topics[selectedTopic.value?.id]?.page
+        }))
+        .then(async (res) => {
+            console.log(res)
+            if (messages.topics[selectedTopic.value?.id].page == 1)
+                messages.topics[selectedTopic.value?.id].data = []
+
+            messages.topics[selectedTopic.value?.id].data = [
+                ...messages.topics[selectedTopic.value?.id].data,
+                ...res.data.data,
+            ]
+
+            chatMessages.value = [...messages.topics[selectedTopic.value?.id].data.toReversed()]
+            
+            if (messages.topics[selectedTopic.value?.id].page == 1)
                 scrollToBottom()
             else
                 scrollToMessageId(`message_${res.data.data.length - 1}`)
