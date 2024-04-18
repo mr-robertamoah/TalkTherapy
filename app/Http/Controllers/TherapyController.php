@@ -21,6 +21,19 @@ use Throwable;
 
 class TherapyController extends Controller
 {
+    public function getRandomTherapies(Request $request)
+    {
+        try {
+            $therapies = TherapyService::new()->getRandomTherapies($request->user());        
+
+            return TherapyMiniResource::collection($therapies);
+        } catch (Throwable $th) {
+            $message = $th->getCode() == 500 ? "Something unfortunate happened. Please try again shortly." : $th->getMessage();
+            ds($th);
+            throw new Exception($message);
+        }
+    }
+
     public function createTherapy(CreateTherapyRequest $request)
     {
         try {

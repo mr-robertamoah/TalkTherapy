@@ -13,6 +13,7 @@ use App\Http\Requests\VerifyCounsellorRequest;
 use App\Http\Resources\AssistanceRequestCounsellorResource;
 use App\Http\Resources\CounsellorMiniResource;
 use App\Http\Resources\CounsellorResource;
+use App\Http\Resources\StarredCounsellorResource;
 use App\Models\Counsellor;
 use App\Services\CounsellorService;
 use Exception;
@@ -39,6 +40,19 @@ class CounsellorController extends Controller
             $message = $th->getCode() == 500 ? "Something unfortunate happened. Please try again shortly." : $th->getMessage();
             ds($th);
             return redirect()->route('counsellor.show', ['counsellorId' => $request->counsellorId])->withErrors('message', $message);
+        }
+    }
+    
+    public function getRandomCounsellors(Request $request)
+    {
+        try {
+            $counsellors = CounsellorService::new()->getRandomCounsellors($request->user());        
+
+            return StarredCounsellorResource::collection($counsellors);
+        } catch (Throwable $th) {
+            $message = $th->getCode() == 500 ? "Something unfortunate happened. Please try again shortly." : $th->getMessage();
+            ds($th);
+            throw new Exception($message);
         }
     }
 

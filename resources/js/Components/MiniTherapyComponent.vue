@@ -22,8 +22,8 @@ const computedIsParticipant = computed(() => {
     const user = usePage().props.auth.user
 
     if (
-        user.id == props.therapy?.userId ||
-        user.id == props.therapy?.counsellor?.userId
+        user?.id == props.therapy?.userId ||
+        user?.id == props.therapy?.counsellor?.userId
     ) return true
 
     return false

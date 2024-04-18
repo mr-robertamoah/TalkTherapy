@@ -18,7 +18,10 @@ const props = defineProps({
 })
 
 const newTherapy = ref(null)
+const getting = ref({ show: false, type: '' })
 const recentTherapies = ref([])
+const randomTherapies = ref({ data: [], page: 1 })
+const randomCounsellors = ref({ data: [], page: 1 })
 
 watch(() => newTherapy.value, () => {
     if (newTherapy.value)
@@ -31,12 +34,80 @@ onBeforeMount(() => {
     
     if (props.recentTherapies?.data?.length)
         recentTherapies.value = [...props.recentTherapies.data]
+
+    getRandomCounsellors()
+    getRandomTherapies()
 })
 
 provide('onCreatedNewTherapy', { newTherapy, updateNewTherapy })
 
 function updateNewTherapy(value) {
     newTherapy.value = value
+}
+
+function updatePage(res, items) {
+    if (res.data?.links?.next) items.value.page += 1
+    else items.value.page = 0
+}
+
+async function getRandomCounsellors() {
+    if (!randomCounsellors.value.page) return
+
+    setGetting('counsellors')
+    await axios.get(`${route('api.counsellors.random')}?page=${randomCounsellors.value.page}`)
+        .then((res) => {
+            console.log(res)
+            if (randomCounsellors.value.page == 1)
+                randomCounsellors.value.data = []
+            
+            randomCounsellors.value.data = [
+                ...randomCounsellors.value.data,
+                ...res.data.data,
+            ]
+
+            updatePage(res, randomCounsellors)
+        })
+        .catch((err) => {
+            console.log(err)
+        })
+        .finally(() => {
+            clearGetting()
+        })
+}
+
+function getRandomTherapies() {
+    if (!randomTherapies.value.page) return
+
+    setGetting('therapies')
+    axios.get(`${route('api.therapies.random')}?page=${randomTherapies.value.page}`)
+        .then((res) => {
+            console.log(res)
+            if (randomTherapies.value.page == 1)
+                randomTherapies.value.data = []
+            
+            randomTherapies.value.data = [
+                ...randomTherapies.value.data,
+                ...res.data.data,
+            ]
+
+            updatePage(res, randomTherapies)
+        })
+        .catch((err) => {
+            console.log(err)
+        })
+        .finally(() => {
+            clearGetting()
+        })
+}
+
+function clearGetting() {
+    getting.value.type = ''
+    getting.value.show = false
+}
+
+function setGetting(type) {
+    getting.value.type = type
+    getting.value.show = true
 }
 
 const computedBestCounsellors = computed(() => {
@@ -53,21 +124,6 @@ const computedLeadingCounsellors = computed(() => {
 
     <AuthenticatedLayout>
         <div class="pt-6 pb-12">
-            <div class="max-w-7xl mx-auto sm:px-6 lg:px-8" v-if="$page.props.auth.user">
-                <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
-                    <div class="p-6 text-gray-900">Your recent therapies</div>
-                    <div class="m-2 p-2 overflow-hidden overflow-x-auto space-x-2 flex justify-start items-center" v-if="recentTherapies?.length">
-                        <MiniTherapyComponent
-                            v-for="therapy in recentTherapies"
-                            :key="therapy.id"
-                            :therapy="therapy"
-                            class="w-[250px]"
-                        />
-                    </div>
-                    <div v-else class="text-center text-sm w-full my-4 text-gray-600">there are no therapies</div>
-                </div>
-            </div>
-            
             <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 mt-4">
                 <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
                     <div class="p-6 text-gray-900">Starred Counsellors (previous month)</div>
@@ -101,10 +157,59 @@ const computedLeadingCounsellors = computed(() => {
                 </div>
             </div>
             
-            <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 mt-4 flex justify-center">
-                <div class="">
-
+            <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 mt-4">
+                <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
+                    <div class="p-6 text-gray-900">Counsellors</div>
+                    <div class="m-2 p-2 overflow-hidden overflow-x-auto space-x-2 flex justify-start items-center" v-if="randomCounsellors.data?.length">
+                        <StarredCounsellorComponent
+                            v-for="(counsellor, idx) in randomCounsellors.data"
+                            :key="counsellor.id"
+                            :position="idx + 1"
+                            :counsellor="counsellor"
+                            class="w-[250px]"
+                        />
+                    </div>
+                    <div v-else-if="!getting.show && getting.type !== 'counsellors'" class="text-center text-sm w-full text-gray-600">we have no counsellors for now.</div>
+                    <div v-if="getting.show && getting.type == 'counsellors'" class="text-center text-sm w-full text-green-600">getting more therapies.</div>
+                    <div
+                        v-if="randomCounsellors.page > 1 && !getting.show && getting.type !== 'counsellors'"
+                        class="text-center text-sm w-fit mx-auto p-4 text-gray-600 cursor-pointer"
+                        @click="getRandomCounsellors"
+                    >...</div>
                 </div>
+            </div>
+            
+            <div class="max-w-7xl mx-auto sm:px-6 lg:px-8" v-if="$page.props.auth.user">
+                <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
+                    <div class="p-6 text-gray-900">Your recent therapies</div>
+                    <div class="m-2 p-2 overflow-hidden overflow-x-auto space-x-2 flex justify-start items-center" v-if="recentTherapies?.length">
+                        <MiniTherapyComponent
+                            v-for="therapy in recentTherapies"
+                            :key="therapy.id"
+                            :therapy="therapy"
+                            class="w-[250px]"
+                        />
+                    </div>
+                    <div v-else class="text-center text-sm w-full my-4 text-gray-600">you have no therapies</div>
+                </div>
+            </div>
+            
+            <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 mt-8 px-6 bg-white flex min-h-[100px] justify-start py-4 items-start overflow-hidden overflow-x-auto">
+                <template v-if="randomTherapies.data?.length">
+                    <MiniTherapyComponent
+                        v-for="therapy in randomTherapies.data"
+                        :key="therapy.id"
+                        :therapy="therapy"
+                        class="w-[250px]"
+                    />
+                </template>
+                <div v-else-if="!getting.show && getting.type !== 'therapies'" class="text-center text-sm w-full text-gray-600">there are no therapies for public at the moment.</div>
+                <div v-if="getting.show && getting.type == 'therapies'" class="text-center text-sm w-full text-green-600">getting more therapies.</div>
+                <div
+                    v-if="randomTherapies.page > 1 && !getting.show && getting.type !== 'therapies'"
+                    class="text-center text-sm w-fit mx-auto p-4 text-gray-600 cursor-pointer"
+                    @click="getRandomTherapies"
+                >...</div>
             </div>
         </div>
     </AuthenticatedLayout>

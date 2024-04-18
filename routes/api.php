@@ -34,6 +34,9 @@ Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
 Route::get('/therapies/{therapyId}/topics', [TherapyTopicController::class, 'getTherapyTopics'])->name('api.topics.get');
 Route::get('/therapies/{therapyId}/sessions', [SessionController::class, 'getSessions'])->name('api.sessions.get');
 
+Route::get('/therapies/random', [TherapyController::class, 'getRandomTherapies'])->name('api.therapies.random');
+Route::get('/counsellors/random', [CounsellorController::class, 'getRandomCounsellors'])->name('api.counsellors.random');
+
 Route::get('/sessions/{sessionId}/messages', [MessageController::class, 'getSessionMessages'])->name('api.session.messages.get');
 Route::get('/topics/{topicId}/messages', [MessageController::class, 'getTopicMessages'])->name('api.topic.messages.get');
 Route::get('/messages/{messageId}/replies', [MessageController::class, 'getMessageReplies'])->name('api.message.replies.get');

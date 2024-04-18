@@ -146,6 +146,13 @@ class Therapy extends Model
         });
     }
 
+    public function scopeWhereNotCounsellor($query, Counsellor $counsellor)
+    {
+        return $query->where(function ($query) use ($counsellor) {
+            $query->whereNot('counsellor_id', $counsellor->id);
+        });
+    }
+
     public function scopeWhereParticipant($query, User $user)
     {
         return $query

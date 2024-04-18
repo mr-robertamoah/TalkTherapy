@@ -158,4 +158,27 @@ class TherapyService extends Service
             ])
         );
     }
+
+    public function getRandomTherapies(?User $user)
+    {
+        $query = Therapy::query();
+
+        $query->when($user, function ($query) use ($user) {
+            $query
+                ->where(function ($query) use ($user) {
+                    $query->whereNot('user_id', $user->id);
+                });
+        });
+        
+        $query->when($user?->counsellor, function ($query) use ($user) {
+            $query
+                ->where(function ($query) use ($user) {
+                    $query->whereNotCounsellor($user->counsellor);
+                });
+        });
+
+        $query->inRandomOrder();
+
+        return $query->paginate(PaginationEnum::preferencesPagination->value);
+    }
 }

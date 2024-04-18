@@ -122,11 +122,11 @@ function updatePage(res) {
     else pages[currentLink.value][currentSubLink.value] = 0
 }
 
-function getVerificationRequests() {
+async function getVerificationRequests() {
     if (!computedPage.value) return
 
     loading.value = true
-    axios.get(`${route('admin.verification.requests')}?page=${computedPage.value}`)
+    await axios.get(`${route('admin.verification.requests')}?page=${computedPage.value}`)
         .then((res) => {
             console.log(res)
             if (computedPage.value > 1) {
@@ -150,7 +150,7 @@ const debouncedGetCounsellors = _.debounce(() => {
     getCounsellors()
 }, 1000)
 
-function getCounsellors() {
+async function getCounsellors() {
     if (!computedPage.value) return
     let filterType = '', filterValue = ''
 
@@ -160,7 +160,7 @@ function getCounsellors() {
     }
 
     loading.value = true
-    axios.get(`${route('admin.counsellors')}?page=${computedPage.value}&filterType=${filterValue}`)
+    await axios.get(`${route('admin.counsellors')}?page=${computedPage.value}&filterType=${filterValue}`)
         .then((res) => {
             console.log(res)
             if (computedPage.value > 1) {

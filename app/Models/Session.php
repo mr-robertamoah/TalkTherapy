@@ -239,6 +239,46 @@ class Session extends Model
         return $query->where('type', SessionTypeEnum::in_person->value);
     }
 
+    public function isNotUpdateable()
+    {
+        return $this
+            ->where(function ($query) {
+                $query->whereNotPending();
+            })
+            ->orWhere(function ($query) {
+                $query->wherePastEndTime();
+            })
+            ->orWhere(function ($query) {
+                $query->whereAboutToStart();
+            })
+            ->orWhere(function ($query) {
+                $query->whereDateFallsBetween(now());
+            })
+            ->exists();
+    }
+
+    public function isUpdateable()
+    {
+        return !$this->isNotUpdateable();
+    }
+
+    public function isNotDeleteable()
+    {
+        return $this
+            ->where(function ($query) {
+                $query->whereAboutToStart();
+            })
+            ->orWhere(function ($query) {
+                $query->whereDateFallsBetween(now());
+            })
+            ->exists();
+    }
+
+    public function isDeleteable()
+    {
+        return !$this->isNotDeleteable();
+    }
+
     public function getNotificationActionData()
     {
         if ($this->for->isTherapy) {

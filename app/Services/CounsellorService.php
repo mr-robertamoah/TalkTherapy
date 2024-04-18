@@ -234,4 +234,17 @@ class CounsellorService extends Service
 
         return $query->get();
     }
+
+    public function getRandomCounsellors(?User $user)
+    {
+        $query = Counsellor::query();
+
+        $query->when($user, function ($query) use ($user) {
+            $query->whereNot('user_id', $user->id);
+        });
+
+        $query->inRandomOrder();
+
+        return $query->paginate(PaginationEnum::preferencesPagination->value);
+    }
 }
