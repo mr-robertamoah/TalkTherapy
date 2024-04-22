@@ -29,7 +29,10 @@ class SendTherapyAssistanceRequestAction extends Action
             ])
         );
 
-        $therapyAssistanceRequestDTO->to->notify(new TherapyAssistanceRequestSentNotification($request));
+        $therapyAssistanceRequestDTO->to->notify(
+            new TherapyAssistanceRequestSentNotification($request)
+        );
+        
         return $request;
     }
 }

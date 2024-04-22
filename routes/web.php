@@ -47,24 +47,6 @@ use Inertia\Inertia;
 // });
 
 
-Route::get('/testing',function() {
-    try {
-        $session = Session::find(3);
-        $session = SessionService::new()->getInSession(
-            CreateSessionDTO::new()->fromArray([
-                'user' => User::find(1),
-                'for' => $session?->for,
-                'session' => $session,
-            ])
-        );
-        ds($session);
-        return 'done';
-    } catch (Throwable $th) {
-        ds($th);
-    }
-});
-
-
 Route::get('/',[HomeController::class, 'goHome'])
     // ->middleware(['auth', 'verified'])
     ->name('home');
