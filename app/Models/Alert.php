@@ -10,6 +10,8 @@ class Alert extends Model
 {
     use HasFactory;
 
+    protected $fillable = ['status', 'alertable_type', 'alertable_id'];
+
     public function alertable()
     {
         return $this->morphTo();

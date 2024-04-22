@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AdministratorController;
+use App\Http\Controllers\AlertController;
 use App\Http\Controllers\CounsellorController;
 use App\Http\Controllers\LanguageController;
 use App\Http\Controllers\LicensingAuthorityController;
@@ -53,6 +54,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/administrator/counsellors/{counsellorId}/stats', [AdministratorController::class, 'getCounsellorStats'])->name('admin.counsellors.stats');
     
     Route::get('/requests/counsellors', [CounsellorController::class, 'getCounsellors'])->name('counsellors.request.get');
+
+    Route::post('/alerts', [AlertController::class, 'waitingForAlert'])->name('alert.wait');
     
     Route::get('/licensing_authorities', [LicensingAuthorityController::class, 'getLicensingAuthorities'])->name('licensing_authorities');
     Route::post('/licensing_authorities', [LicensingAuthorityController::class, 'createLicensingAuthority'])->name('licensing_authorities.create');
@@ -66,11 +69,12 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::patch('/therapies/{therapyId}', [TherapyController::class, 'updateTherapy'])->name('api.therapies.update');
     Route::delete('/therapies/{therapyId}', [TherapyController::class, 'deleteTherapy'])->name('api.therapies.delete');
     Route::post('/therapies/{therapyId}', [TherapyController::class, 'endTherapy'])->name('api.therapies.end');
-
+    
     Route::post('/therapies/{therapyId}/sessions', [SessionController::class, 'createSession'])->name('api.sessions.create');
     Route::patch('/sessions/{sessionId}', [SessionController::class, 'updateSession'])->name('api.sessions.update');
     Route::delete('/sessions/{sessionId}', [SessionController::class, 'deleteSession'])->name('api.sessions.delete');
     Route::post('/sessions/{sessionId}/end', [SessionController::class, 'endSession'])->name('api.sessions.end');
+    Route::post('/sessions/{sessionId}/in_session', [SessionController::class, 'getInSession'])->name('api.sessions.in_session');
     Route::post('/sessions/{sessionId}/fail', [SessionController::class, 'failSession'])->name('api.sessions.fail');
     Route::post('/sessions/{sessionId}/abandon', [SessionController::class, 'abandonSession'])->name('api.sessions.abandon');
 

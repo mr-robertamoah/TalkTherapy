@@ -5,6 +5,7 @@
                 :session="item" 
                 :therapy="therapy"
                 :loaded-topics="loadedTopics"
+                :is-active="isActive"
                 :loaded-topics-page="loadedTopicsPage"
                 @on-update="(data) => emits('onUpdate', data)"
                 @on-delete="(data) => emits('onDelete', data)"
@@ -37,6 +38,9 @@ const props = defineProps({
     },
     therapy: {
         default: null
+    },
+    isActive: {
+        default: false
     },
     type: {
         default: '',

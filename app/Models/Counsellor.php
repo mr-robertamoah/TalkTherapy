@@ -29,11 +29,6 @@ class Counsellor extends Model
         'phone',
     ];
 
-    public function receivesBroadcastNotificationOn()
-    {
-        return "counsellors.{$this->id}";
-    }
-
     public function routeNotificationForMail()
     {
         return [
@@ -230,6 +225,19 @@ class Counsellor extends Model
     public function stars()
     {
         return $this->morphMany(Star::class, 'starred');
+    }
+
+    public function getOverallStarsCountAttribute()
+    {
+        return Star::query()->whereStarredCounsellor($this)->count();
+    }
+
+    public function getCurrentMonthStarsCountAttribute()
+    {
+        return Star::query()
+            ->whereStarredCounsellor($this)
+            ->whereWithinCurrentMonth()
+            ->count();
     }
 
     public function user()

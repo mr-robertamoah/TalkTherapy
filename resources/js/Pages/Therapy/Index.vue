@@ -21,9 +21,11 @@ import Alert from '@/Components/Alert.vue';
 import UpdateIndividualTherapyFormModal from '@/Components/UpdateIndividualTherapyFormModal.vue';
 import CreateSessionFormModal from '@/Components/CreateSessionFormModal.vue';
 import useAuth from '@/Composables/useAuth';
+import useLocalDateTimed from '@/Composables/useLocalDateTime';
 
 const { modalData, showModal, closeModal } = useModal()
 const { goToLogin } = useAuth()
+const { toDiffForHumans } = useLocalDateTimed()
 const { alertData, clearAlertData, setAlertData, setSuccessAlertData, setFailedAlertData } = useAlert()
 
 const props = defineProps({
@@ -50,6 +52,9 @@ const timer = ref({
     beforeEnd: 0,
 })
 const counsellorSearch = ref('')
+const sessionActionRunning = ref('')
+const showAll = ref(false)
+const interval = ref(null)
 const mainDiv = ref(null)
 const newSession = ref(null)
 const activeSession = ref(null)
@@ -66,8 +71,14 @@ watch(() => counsellorSearch.value, () => {
         debouncedGetCounsellors()
 })
 watchEffect(() => {
-    if (props.therapy?.activeSession)
+    if (props.therapy?.id)
+        waitForAlert()
+})
+watch(() => props.therapy?.activeSession?.id, () => {
+    if (props.therapy?.activeSession?.id) {
         activeSession.value = props.therapy.activeSession
+        startTimer()
+    }
 })
 watchEffect(() => {
     let currentTherapy = props.therapy?.data ? props.therapy?.data : props.therapy
@@ -114,9 +125,14 @@ watchEffect(() => {
         .listen(`.session.started`, (data) => {
             activeSession.value = data.session
         })
+        .listen(`.session.updated`, (data) => {
+            if (activeSession.value?.id == data.session.id)
+                activeSession.value = data.session
+        })
 })
 
 onBeforeUnmount(() => {
+    if (interval.value) clearInterval(interval.value)
     let currentTherapy = props.therapy?.data ? props.therapy?.data : props.therapy
 
     if (!userId || !currentTherapy.id) return
@@ -125,10 +141,16 @@ onBeforeUnmount(() => {
 })
 
 const computedIsUser = computed(() => {
-    return usePage().props.auth.user?.id == computedTherapy.value.user?.id
+    return userId == computedTherapy.value.user?.id
 })
 const computedIsCounsellor = computed(() => {
-    return usePage().props.auth.user?.id == computedTherapy.value.counsellor?.userId
+    return userId == computedTherapy.value.counsellor?.userId
+})
+const computedIsInSession = computed(() => {
+    let session = activeSession?.value ?? computedTherapy.value?.activeSession
+
+    return ['IN_SESSION', 'IN_SESSION_CONFIRMATION', 'HELD_CONFIRMATION'].includes(session?.status) ||
+        session?.status == 'PENDING' && timer.value.beforeStart < 5
 })
 const computedIsParticipant = computed(() => {
     return computedIsUser.value || computedIsCounsellor.value
@@ -305,6 +327,8 @@ function clickedReport() {
 }
 
 function clickedActiveSession() {
+    if (activeSession.value?.status == 'ABANDONED') return
+
     selectedActiveSession.value = true
 }
 
@@ -312,7 +336,7 @@ async function sendAssistanceRequest() {
     setLoader('assistance')
     await axios
         .post(route(`therapies.assist`, { therapyId: computedTherapy.value?.id}),{
-            // TODO
+            counsellorIds: selectedCounsellors.value.map((c) => c.id)
         })
         .then((res) => {
             console.log(res)
@@ -322,6 +346,8 @@ async function sendAssistanceRequest() {
                     : "You have successfully sent an assistance request for this therapy.",
                 time: 4000,
             })
+
+            closeModal()
         })
         .catch((err) => {
             console.log(err)
@@ -333,6 +359,27 @@ async function sendAssistanceRequest() {
         })
 
     endLoader()
+}
+
+function isNotParticipant() {
+    return userId !== props.therapy?.counsellor?.userId && userId !== props.therapy?.user?.id
+}
+
+async function waitForAlert() {
+    if (isNotParticipant()) return
+
+    await axios
+        .post(route(`alert.wait`),{
+            alertableType: 'Therapy',
+            alertableId: props.therapy?.id
+        })
+        .then((res) => {
+            console.log(res)
+        })
+        .catch((err) => {
+            console.log(err)
+            goToLogin(err)
+        })
 }
 
 async function getCounsellors() {
@@ -365,6 +412,79 @@ function scrollToItem(item) {
         activeItemId.value = item.id
     }
 }
+
+async function clickedAbandonSession() {
+    if (!activeSession.value?.id) return
+
+    sessionActionRunning.value = 'abandoning session'
+    await axios.post(route('api.sessions.abandon', activeSession.value.id))
+        .then((res) => {
+            activeSession.value = res.data.session
+        })
+        .catch((err) => {
+            console.log(err);
+            goToLogin(err)
+            setFailedAlertData({
+                message: `Something unfortunate happened while ${sessionActionRunning.value}. Try again shortly.`,
+                timer: 4000,
+            })
+        })
+        .finally(() => {
+            sessionActionRunning.value = ''
+        })
+}
+
+async function clickedStartSession() {
+    if (!activeSession.value?.id) return
+
+    sessionActionRunning.value = 'starting session'
+    await axios.post(route('api.sessions.in_session', activeSession.value.id))
+        .then((res) => {
+            activeSession.value = res.data.session
+        })
+        .catch((err) => {
+            console.log(err);
+            goToLogin(err)
+            setFailedAlertData({
+                message: `Something unfortunate happened while ${sessionActionRunning.value}. Try again shortly.`,
+                timer: 4000,
+            })
+        })
+        .finally(() => {
+            sessionActionRunning.value = ''
+        })
+}
+
+async function clickedEndSession() {
+    if (!activeSession.value?.id) return
+
+    sessionActionRunning.value = 'ending session'
+    await axios.post(route('api.sessions.end', activeSession.value.id))
+        .then((res) => {
+            activeSession.value = res.data.session
+        })
+        .catch((err) => {
+            console.log(err);
+            goToLogin(err)
+            setFailedAlertData({
+                message: `Something unfortunate happened while ${sessionActionRunning.value}. Try again shortly.`,
+                timer: 4000,
+            })
+        })
+        .finally(() => {
+            sessionActionRunning.value = ''
+        })
+}
+
+function clickedShowAll() {
+    if (computedTherapy.value?.activeSession && !activeSession.value) {
+        activeSession.value = computedTherapy.value.activeSession
+        startTimer()
+    }
+
+    showAll.value = !showAll.value
+}
+
 </script>
 
 <template>
@@ -374,27 +494,54 @@ function scrollToItem(item) {
         <template #header>
             <div class="flex justify-start items-center">
                 <h2 class="font-semibold text-xl text-gray-800 leading-tight capitalize">{{ computedTherapy.name }}</h2>
-                <div class="ml-2 lowercase text-sm"> . {{ computedTherapy.createdAt }}</div>
+                <div class="ml-2 lowercase text-sm"> . {{ toDiffForHumans(computedTherapy.createdAt) }}</div>
             </div>
         </template>
 
-        <div class="w-full sticky top-0 z-10 pt-2" v-if="computedIsParticipant">
+        <div 
+            class="w-full sticky top-0 z-10 pt-2"
+            :class="{'p-2 bg-white': showAll}"
+            v-if="computedIsParticipant && (activeSession?.status !== 'HELD' && computedTherapy.activeSession?.status !== 'HELD')"
+        >
             <div
-                class="p-2 bg-green-300 w-[80%] md:w-[70%] lg:w-[60%] mx-auto rounded-lg"
-                @dblclick="clickedActiveSession"
-                v-if="activeSession"
-            >
-                <div class="flex justify-end items-center text-sm space-x-2 font-bold">
-                    <div class="text-blue-600 p-2 rounded bg-blue-200" v-if="timer.beforeStart">{{ timer.beforeStart }} minutes to start</div>
-                    <div class="text-green-800 p-2 rounded bg-green-200" v-if="timer.beforeEnd > 0">{{ timer.beforeEnd }} minutes to end</div>
-                    <div class="text-gray-600 p-2 rounded bg-gray-200" v-if="timer.beforeEnd < 0">{{ timer.beforeEnd }} minutes beyond end time</div>
-                </div>
-                <div class="my-2 mx-auto w-[90%] text-center ">{{ activeSession.name }}</div>
+                v-if="activeSession || computedTherapy.activeSession"
+                class="w-[80%] md:w-[70%] lg:w-[60%] mb-2 mx-auto">
+            
+                <div
+                    @click="clickedShowAll" 
+                    class="p-2 bg-green-300 w-fit ml-auto rounded-lg text-green-800 text-center cursor-pointer"
+                >{{ showAll ? 'hide session information' : 'show session information'}}</div>
             </div>
-            <div 
-                v-if="onlineParticipants.length > 1"
-                class="p-2 text-center text-gray-600 font-bold text-sm w-[80%] md:w-[70%] lg:w-[60%] mx-auto rounded-lg bg-slate-200"
-            >{{ onlineParticipants.find((u) => u.id !== userId).name }} is online</div>
+            <template v-if="showAll">
+                <div
+                    class="p-2 w-[80%] md:w-[70%] lg:w-[60%] mx-auto rounded-lg select-none cursor-pointer"
+                    :class="[activeSession?.status == 'ABANDONED' ? 'bg-red-300' : 'bg-green-300']"
+                    @dblclick="clickedActiveSession"
+                    v-if="activeSession"
+                >
+                    <div
+                        class="flex justify-end items-center text-sm space-x-2 font-bold"
+                        v-if="activeSession?.status !== 'ABANDONED'"
+                    >
+                        <div class="text-blue-600 p-2 rounded bg-blue-200" v-if="timer.beforeStart > 0">{{ timer.beforeStart }} minutes to start</div>
+                        <div class="text-green-800 p-2 rounded bg-green-200" v-if="timer.beforeEnd > 0">{{ timer.beforeEnd }} minutes to end</div>
+                        <div class="text-gray-600 p-2 rounded bg-gray-200" v-if="timer.beforeEnd < 0">{{ timer.beforeEnd }} minutes beyond end time</div>
+                    </div>
+                    <div v-else class="text-red-600 p-2 rounded bg-red-200 w-fit ml-auto">abandoned</div>
+                    <div 
+                        class="my-2 mx-auto w-[90%] text-center"
+                        :class="[activeSession?.status == 'ABANDONED' ? 'text-red-800' : 'text-green-800']"
+                    >{{ activeSession.name }}</div>
+                </div>
+                <div 
+                    v-if="onlineParticipants.length > 1"
+                    class="p-2 text-center mt-2 text-gray-600 select-none font-bold text-sm w-[80%] md:w-[70%] lg:w-[60%] mx-auto rounded-lg bg-slate-300"
+                >{{ onlineParticipants.find((u) => u.id !== userId).name }} is online</div>
+            </template>
+
+            <div
+                v-if="sessionActionRunning"
+                class="p-2 bg-green-300 w-[80%] md:w-[70%] lg:w-[60%] mt-2 mx-auto rounded-lg text-green-800 text-center">{{ sessionActionRunning }}</div>
         </div>
 
         <div class="pt-6 pb-12">
@@ -556,6 +703,7 @@ function scrollToItem(item) {
                             :is-user="computedIsUser"
                             :is-counsellor="computedIsCounsellor"
                             @deselect-active-session="() => selectedActiveSession = false"
+                            @update-active-session="(data) => activeSession = data"
                         />
                     </div>
                 </div>
@@ -569,10 +717,26 @@ function scrollToItem(item) {
                         <PrimaryButton @click="clickedReport" class="shrink-0" v-if="$page.props.auth.user">report</PrimaryButton>
                         <template v-if="computedTherapy.status !== 'ENDED'">
                             <PrimaryButton @click="clickedCreateSession" class="shrink-0" v-if="computedIsCounsellor && computedTherapy.maxSessions > computedTherapy.sessionsHeld">create session</PrimaryButton>
-                            <PrimaryButton @click="clickedEndTherapy" v-if="computedTherapy.status !== 'ENDED' && computedTherapy.sessionsHeld" class="shrink-0">end therapy</PrimaryButton>
-                            <template v-if="computedIsUser">
-                                <PrimaryButton @click="clickedUpdate" class="shrink-0">update therapy</PrimaryButton>
-                                <DangerButton @click="clickedDelete" class="shrink-0">delete therapy</DangerButton>
+                            <template v-if="!computedIsInSession">
+                                <PrimaryButton @click="clickedEndTherapy" v-if="computedIsParticipant && computedTherapy.status !== 'ENDED' && computedTherapy.sessionsHeld" class="shrink-0">end therapy</PrimaryButton>
+                                <template v-if="computedIsUser">
+                                    <PrimaryButton @click="clickedUpdate" class="shrink-0">update therapy</PrimaryButton>
+                                    <DangerButton @click="clickedDelete" class="shrink-0">delete therapy</DangerButton>
+                                </template>
+                            </template>
+                            <template v-if="activeSession && activeSession?.status !== 'ABANDONED'">
+                                <PrimaryButton
+                                    :disabled="!!sessionActionRunning"
+                                    v-if="(['PENDING', 'IN_SESSION_CONFIRMATION'].includes(activeSession?.status) && userId !== activeSession?.updatedById) && activeSession?.status !== 'IN_SESSION' && timer.beforeEnd > 0"
+                                    @click="clickedStartSession" class="shrink-0">start session for you</PrimaryButton>
+                                <PrimaryButton
+                                    :disabled="!!sessionActionRunning"
+                                    v-if="['PENDING', 'IN_SESSION', 'IN_SESSION_CONFIRMATION'].includes(activeSession?.status) && timer.beforeEnd > 0 && computedIsInSession"
+                                    @click="clickedAbandonSession" class="shrink-0">abondon session</PrimaryButton>
+                                <PrimaryButton
+                                    :disabled="!!sessionActionRunning"
+                                    v-if="computedIsInSession && timer.beforeEnd < 0 && userId !== activeSession?.updatedById"
+                                    @click="clickedEndSession" class="shrink-0">end session for you</PrimaryButton>
                             </template>
                         </template>
                     </div>
@@ -612,7 +776,7 @@ function scrollToItem(item) {
                             />
                         </div>
 
-                        <div class="p-2 flex items-center space-x-2 justify-start overflow-hidden overflow-x-auto">
+                        <div class="p-2 flex items-center space-x-4 justify-start overflow-hidden overflow-x-auto">
                             <template v-if="searchedCounsellors.length">
 
                                 <CounsellorComponent 
@@ -620,6 +784,7 @@ function scrollToItem(item) {
                                     :counsellor="counsellor"
                                     :key="idx"
                                     :has-view="false"
+                                    :visit-page="false"
                                     :for-request="true"
                                     title="double click to select"
                                     @dblclick="() => {
@@ -665,7 +830,7 @@ function scrollToItem(item) {
                     </div>
 
                     <div class="flex justify-end mt-4 ">
-                        <PrimaryButton :disabled="(computedIsUser && !selectedCounsellors.length) || (!computedIsUser && $page.props.auth.user?.counsellor)" @click="sendAssistanceRequest">send request</PrimaryButton>
+                        <PrimaryButton :disabled="(computedIsUser && !selectedCounsellors.length) || (!$page.props.auth.user?.counsellor)" @click="sendAssistanceRequest">send request</PrimaryButton>
                     </div>
                 </div>
             </template>

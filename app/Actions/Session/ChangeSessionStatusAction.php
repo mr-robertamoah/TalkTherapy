@@ -14,34 +14,49 @@ class ChangeSessionStatusAction extends Action
 
         if (
             $status == SessionStatusEnum::in_session->value &&
-            $createSessionDTO->session->status !== SessionStatusEnum::in_session->value &&
-            is_null($createSessionDTO->session->updatedBy)
-        ) {
-            $status = SessionStatusEnum::in_session_confirmation->value;
-            $updatedby = $createSessionDTO->user->is($createSessionDTO->session->addedby)
-                ? $createSessionDTO->user
-                : $createSessionDTO->user->counsellor;
-        }
+            !in_array($createSessionDTO->session->status, [
+                SessionStatusEnum::in_session->value,
+                SessionStatusEnum::in_session_confirmation->value,
+            ])
+        ) $status = SessionStatusEnum::in_session_confirmation->value;
 
         if (
             $status == SessionStatusEnum::held->value &&
-            $createSessionDTO->session->status !== SessionStatusEnum::held->value &&
-            is_null($createSessionDTO->session->updatedBy)
-        ) {
-            $status = SessionStatusEnum::held_confirmation->value;
-            $updatedby = $createSessionDTO->user->is($createSessionDTO->session->addedby)
-                ? $createSessionDTO->user
-                : $createSessionDTO->user->counsellor;
-        }
+            !in_array($createSessionDTO->session->status, [
+                SessionStatusEnum::held->value,
+                SessionStatusEnum::held_confirmation->value,
+            ])
+        ) $status = SessionStatusEnum::held_confirmation->value;
+
+        $updatedby = $this->getUpdatedByBasedOnStatus($createSessionDTO, $status);
 
         $createSessionDTO->session->update([
             'status' => $status
         ]);
 
-        $createSessionDTO->session->updatedBy()->associate($updatedby);
+        if ($createSessionDTO->session->updatedby) $createSessionDTO->session->updatedby()->dissociate();
+        
+        if ($updatedby) {
+            $createSessionDTO->session->updatedby()->associate($updatedby);
+        }
+        
         $createSessionDTO->session->save();
             
-        // TODO dispatch update event
         return $createSessionDTO->session->refresh();
+    }
+
+    private function getUpdatedByBasedOnStatus(CreateSessionDTO $createSessionDTO, String $status)
+    {
+        if (
+            in_array($status, [
+                SessionStatusEnum::in_session_confirmation->value,
+                SessionStatusEnum::held_confirmation->value,
+                SessionStatusEnum::pending->value,
+            ])
+        ) return $createSessionDTO->user->counsellor?->is($createSessionDTO->session->addedby)
+            ? $createSessionDTO->user->counsellor
+            : $createSessionDTO->user;
+
+        return null;
     }
 }

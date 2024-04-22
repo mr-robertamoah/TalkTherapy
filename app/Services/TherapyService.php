@@ -153,7 +153,7 @@ class TherapyService extends Service
         SendTherapyAssistanceRequestAction::new()->execute(
             TherapyAssistanceRequestDTO::new()->fromArray([
                 'from' => $assistTherapyDTO->user->counsellor,
-                'to' => $assistTherapyDTO->therapy->addeBy,
+                'to' => $assistTherapyDTO->therapy->addedby,
                 'for' => $assistTherapyDTO->therapy,
             ])
         );
@@ -166,7 +166,7 @@ class TherapyService extends Service
         $query->when($user, function ($query) use ($user) {
             $query
                 ->where(function ($query) use ($user) {
-                    $query->whereNot('user_id', $user->id);
+                    $query->whereNotUser($user);
                 });
         });
         
@@ -178,9 +178,13 @@ class TherapyService extends Service
         });
 
         $query
+            ->orWhere(function ($query) {
+                $query->whereNoCounsellor();
+            })
             ->wherePublic()
             ->inRandomOrder();
 
+        // ds($query->get());
         return $query->paginate(PaginationEnum::preferencesPagination->value);
     }
 }

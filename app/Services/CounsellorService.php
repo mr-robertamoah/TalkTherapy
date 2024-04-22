@@ -34,6 +34,7 @@ use App\Http\Resources\AdminCounsellorResource;
 use App\Http\Resources\AdminCounsellorStatsResource;
 use App\Models\Counsellor;
 use App\Models\LicensingAuthority;
+use App\Models\Star;
 use App\Models\User;
 use App\Notifications\VerifyCounsellorEmailNotification;
 use Illuminate\Http\Request;
@@ -205,33 +206,35 @@ class CounsellorService extends Service
 
     public function getLeadingCounsellorsForCurrentMonth()
     {
-        $firstDayOfMonth = now()->startOfMonth();
-        $lastDayOfMonth = now()->endOfMonth();
-        $query = Counsellor::query();
+        $query = User::query();
 
-        $query->withCount(['stars' => function ($q) use ($firstDayOfMonth, $lastDayOfMonth) {
-            $q->whereBetween('created_at', [$firstDayOfMonth, $lastDayOfMonth]);
-        }]);
+        $query
+            ->with(['stars', 'counsellor'])
+            ->withCount(['stars' => function ($q) {
+                $q->whereWithinCurrentMonth();
+            }])
+            ->has('counsellor');
 
         $query->orderBy('stars_count', 'desc');
         $query->limit(5);
-
+        
         return $query->get();
     }
 
     public function getBestCounsellorsForPreviousMonth()
     {
-        $firstDayOfPreviousMonth = now()->subMonth()->startOfMonth();
-        $lastDayOfPreviousMonth = now()->subMonth()->endOfMonth();
-        $query = Counsellor::query();
+        $query = User::query();
 
-        $query->withCount(['stars' => function ($q) use ($firstDayOfPreviousMonth, $lastDayOfPreviousMonth) {
-            $q->whereBetween('created_at', [$firstDayOfPreviousMonth, $lastDayOfPreviousMonth]);
-        }]);
+        $query
+            ->with(['stars', 'counsellor'])
+            ->withCount(['stars' => function ($q) {
+                $q->whereWithinPreviousMonth();
+            }])
+            ->has('counsellor');
 
         $query->orderBy('stars_count', 'desc');
         $query->limit(5);
-
+        
         return $query->get();
     }
 

@@ -41,7 +41,7 @@ class TherapyResource extends JsonResource
             'cases' => TherapyCaseResource::collection($this->cases),
             'maxSessions' => $this->max_sessions,
             'topicsCount' => $this->topicsCount,
-            'createdAt' => $this->created_at->diffForHumans(),
+            'createdAt' => $this->created_at,
             'activeSession' => $activeSession ? new SessionResource($activeSession) : null,
         ];
     }

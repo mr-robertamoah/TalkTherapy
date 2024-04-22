@@ -129,8 +129,8 @@ async function clickedResponse(response) {
         
         <div class="flex justify-end items-center space-x-2">
                 <StyledLink v-if="request.type == RequestTypes.therapy" :href="route('therapies.get', { therapyId: request.for.id })" :text="'visit therapy page'"/>
-                <PrimaryButton :disabled="responding" @click="() => clickedResponse('accepted')">accept</PrimaryButton>
-                <DangerButton :disabled="responding" @click="() => clickedResponse('rejected')" class="ml-2">reject</DangerButton>
+                <PrimaryButton v-if="request.status == RequestStatuses.pending" :disabled="responding" @click="() => clickedResponse('accepted')">accept</PrimaryButton>
+                <DangerButton v-if="request.status == RequestStatuses.pending" :disabled="responding" @click="() => clickedResponse('rejected')" class="ml-2">reject</DangerButton>
         </div>
         </template>
     </div>

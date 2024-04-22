@@ -13,6 +13,7 @@ use App\Enums\PaginationEnum;
 use App\Enums\StarTypeEnum;
 use App\Http\Resources\ReligionResource;
 use App\Models\Religion;
+use App\Models\User;
 
 class ReligionService extends Service
 {
@@ -38,7 +39,13 @@ class ReligionService extends Service
         CreateStarAction::new()->execute(
             CreateStarDTO::fromArray([
                 'starredby' => null,
-                'starred' => $createReligionDTO->addedby ? $createReligionDTO->addedby : $createReligionDTO->user,
+                'starred' => $createReligionDTO->addedby
+                    ? (
+                        $createReligionDTO->addedby::class == User::class
+                            ? $createReligionDTO->addedby
+                            : $createReligionDTO->addedby->user
+                    ) 
+                    : $createReligionDTO->user,
                 'starreable' => $religion,
                 'type' => StarTypeEnum::contribution->value,
             ])

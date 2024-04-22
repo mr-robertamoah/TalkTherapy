@@ -1,5 +1,7 @@
 <?php
 
+use App\DTOs\CreateSessionDTO;
+use App\Events\TestEvent;
 use App\Http\Controllers\AdministratorController;
 use App\Http\Controllers\CounsellorController;
 use App\Http\Controllers\HomeController;
@@ -7,6 +9,7 @@ use App\Http\Controllers\PreferenceController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\SessionController;
 use App\Http\Controllers\TherapyController;
+use App\Mail\TestMail;
 use App\Models\Counsellor;
 use App\Models\Request;
 use App\Models\Session;
@@ -14,8 +17,12 @@ use App\Models\User;
 use App\Notifications\SessionDueNotification;
 use App\Notifications\TherapyAssistanceRequestAcceptedNotification;
 use App\Notifications\VerifyCounsellorEmailNotification;
+use App\Notifications\VisitorsStatusNotification;
+use App\Services\AppService;
+use App\Services\SessionService;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Broadcast;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -42,9 +49,16 @@ use Inertia\Inertia;
 
 Route::get('/testing',function() {
     try {
-        $counsellor = Counsellor::first();
-        $user = User::first();
-        return (new TherapyAssistanceRequestAcceptedNotification(Request::find(1)))->toMail($user);
+        $session = Session::find(3);
+        $session = SessionService::new()->getInSession(
+            CreateSessionDTO::new()->fromArray([
+                'user' => User::find(1),
+                'for' => $session?->for,
+                'session' => $session,
+            ])
+        );
+        ds($session);
+        return 'done';
     } catch (Throwable $th) {
         ds($th);
     }
@@ -75,10 +89,11 @@ Route::middleware('auth')->group(function () {
     Route::post('/therapies/{therapyId}/sessions', [SessionController::class, 'createSession'])->name('sessions.create');
     Route::patch('/therapies/{therapyId}/sessions/{sessionId}', [SessionController::class, 'updateSession'])->name('sessions.update');
     Route::delete('/therapies/{therapyId}/sessions/{sessionId}', [SessionController::class, 'deleteSession'])->name('sessions.delete');
-    Route::post('/therapies/{therapyId}/sessions/{sessionId}/in_session', [SessionController::class, 'getInSession'])->name('sessions.in_session');
-    Route::post('/therapies/{therapyId}/sessions/{sessionId}/end', [SessionController::class, 'endSession'])->name('sessions.end');
-    Route::post('/therapies/{therapyId}/sessions/{sessionId}/fail', [SessionController::class, 'failSession'])->name('sessions.fail');
-    Route::post('/therapies/{therapyId}/sessions/{sessionId}/abandon', [SessionController::class, 'abandonSession'])->name('sessions.abandon');
+    
+    Route::post('/sessions/{sessionId}/in_session', [SessionController::class, 'getInSession'])->name('sessions.in_session');
+    Route::post('/sessions/{sessionId}/end', [SessionController::class, 'endSession'])->name('sessions.end');
+    Route::post('/sessions/{sessionId}/fail', [SessionController::class, 'failSession'])->name('sessions.fail');
+    Route::post('/sessions/{sessionId}/abandon', [SessionController::class, 'abandonSession'])->name('sessions.abandon');
 
     Route::get('/preferences', [PreferenceController::class, 'show'])->name('preferences');
     Route::post('/preferences', [PreferenceController::class, 'set'])->name('preferences.set');

@@ -301,8 +301,8 @@ function closeModal() {
                     </div>
                     <Avatar :src="counsellor?.avatar ?? ''" class="absolute z-10 -bottom-[60px] sm:-bottom-[75px] left-2" :alt="'counsellor avatar'"/>
                     <StarBadge class="absolute z-10 -bottom-[50px] right-1 sm:right-7"
-                        :overall="4"
-                        :month="1" 
+                        :overall="counsellor?.overallStarsCount"
+                        :month="counsellor?.currentMonthStarsCount" 
                     />
                     <!-- TODO get actual stars -->
                 </div>
@@ -391,7 +391,7 @@ function closeModal() {
                             class="mt-1 text-sm text-gray-600"
                         >No email or phone number has been made available</div>
 
-                        <div class="mt-4 flex justify-end">
+                        <div class="mt-4 flex justify-end" v-if="isCounsellor && !counsellor?.emailVerified">
                             <PrimaryButton @click="requestEmailVerification">request email verification</PrimaryButton>
                         </div>
                     </div>

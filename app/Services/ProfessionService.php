@@ -13,6 +13,7 @@ use App\Enums\PaginationEnum;
 use App\Enums\StarTypeEnum;
 use App\Http\Resources\ProfessionResource;
 use App\Models\Profession;
+use App\Models\User;
 
 class ProfessionService extends Service
 {
@@ -39,7 +40,13 @@ class ProfessionService extends Service
         CreateStarAction::new()->execute(
             CreateStarDTO::fromArray([
                 'starredby' => null,
-                'starred' => $createProfessionDTO->addedby ? $createProfessionDTO->addedby : $createProfessionDTO->user,
+                'starred' => $createProfessionDTO->addedby
+                ? (
+                    $createProfessionDTO->addedby::class == User::class
+                        ? $createProfessionDTO->addedby
+                        : $createProfessionDTO->addedby->user
+                ) 
+                : $createProfessionDTO->user,
                 'starreable' => $profession,
                 'type' => StarTypeEnum::contribution->value,
             ])

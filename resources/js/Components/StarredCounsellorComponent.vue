@@ -39,8 +39,8 @@ defineProps({
             </div>
 
             <StarBadge
-                :overall="4"
-                :month="1"
+                :overall="counsellor?.overallStars"
+                :month="counsellor?.stars"
                 v-if="showStars"
                 class="mt-2"
             />

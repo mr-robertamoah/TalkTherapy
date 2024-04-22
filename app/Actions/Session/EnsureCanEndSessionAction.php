@@ -15,10 +15,10 @@ class EnsureCanEndSessionAction extends Action
             (
                 now()->greaterThan($createSessionDTO->session->end_time) &&
                 (
-                    $createSessionDTO->therapy->isUser($createSessionDTO->user) ||
+                    $createSessionDTO->for->isUser($createSessionDTO->user) ||
                     (
                         $createSessionDTO->user->counsellor && 
-                        $createSessionDTO->therapy->isCounsellor($createSessionDTO->user->counsellor)
+                        $createSessionDTO->for->isCounsellor($createSessionDTO->user->counsellor)
                     )
                 )
             )

@@ -1,10 +1,10 @@
 <script setup>
-import { ref, watch, computed, watchEffect } from 'vue';
+import { ref, watch, computed, watchEffect, onBeforeUnmount } from 'vue';
 import ApplicationLogo from '@/Components/ApplicationLogo.vue';
 import Dropdown from '@/Components/Dropdown.vue';
 import DropdownLink from '@/Components/DropdownLink.vue';
 import ResponsiveNavLink from '@/Components/ResponsiveNavLink.vue';
-import { Link, usePage } from '@inertiajs/vue3';
+import { Link, router, usePage } from '@inertiajs/vue3';
 import BecomeCounsellorButton from '@/Components/BecomeCounsellorButton.vue';
 import StyledLink from '@/Components/StyledLink.vue';
 import useAlert from '@/Composables/useAlert';
@@ -12,24 +12,70 @@ import Alert from '@/Components/Alert.vue';
 import RequestModal from '@/Components/RequestModal.vue';
 import CreateTherapyButton from '@/Components/CreateTherapyButton.vue';
 
-const { alertData, clearAlertData, setAlertData } = useAlert()
+const { alertData, clearAlertData, setAlertData, setSuccessAlertData } = useAlert()
+
+const page = usePage()
+
+const props = defineProps({
+    
+})
+
+onBeforeUnmount(() => {
+    if (page.props.auth.user?.id)
+        Echo.leave(`users.${page.props.auth.user?.id}`)
+})
 
 watchEffect(() => {
-    if (usePage().props.errorMessage?.length) {
+
+    if (page.props.errorMessage?.length) {
         setAlertData({
             show: true,
             type: 'failed',
-            message: usePage().props.errorMessage
+            message: page.props.errorMessage
         })
     }
     
-    if (usePage().props.message?.length) {
+    if (page.props.message?.length) {
         setAlertData({
             show: true,
             type: 'successs',
             time: 4000,
-            message: usePage().props.message
+            message: page.props.message
         })
+    }
+
+    if (page.props.auth.user?.id) {
+        Echo
+            .private(`App.Models.User.${page.props.auth.user?.id}`)
+            .notification((notification) => {
+                const therapyRoute = notification.forType == 'Therapy' ? 'therapies.get' : 'grouptherapies.get'
+                if (
+                    notification.type == 'session.due' && 
+                    !route().current(therapyRoute, notification.forId)
+                ) {
+                    const key = notification.forType == 'Therapy' ? 'therapyId' : 'groupTherapyId'
+                    setSuccessAlertData({
+                        message: `The session with name: '${notification.session.name}' for ${notification.forType} with name: '${notification.forName}' is about to start in less than 30 minutes time. Visit the therapy page by click this alert.`,
+                        time: 20000,
+                        data: {
+                            [key]: notification.forId
+                        }
+                    })
+                }
+                
+                if (
+                    notification.type == 'session.status'
+                ) {
+                    const key = notification.forType == 'Therapy' ? 'therapyId' : 'groupTherapyId'
+                    setSuccessAlertData({
+                        message: notification.message,
+                        time: 20000,
+                        data: {
+                            [key]: notification.forId
+                        }
+                    })
+                }
+            })
     }
 })
 
@@ -47,10 +93,14 @@ const showRequestLink = computed(() => {
 const showAdministratorLink = computed(() => {
     return usePage().props.auth.user?.isAdmin && route().current() != 'administrator'
 })
+
+function goToTherapy(data) {
+    router.get(route(`therapies.get`, { therapyId: data.therapyId}))
+}
 </script>
 
 <template>
-    <div>
+    <div v-bind="$attrs">
         <div class="min-h-screen bg-stone-100">
             <nav class="bg-white border-b border-gray-100">
                 <!-- Primary Navigation Menu -->
@@ -242,12 +292,17 @@ const showAdministratorLink = computed(() => {
         </div>
     </div>
 
+    <div class="hidden w-[40px] h-[40px] sm:w-[50px] sm:h-[50px] w-[120px] h-[120px] sm:w-[150px] sm:h-[150px] w-[80px] h-[80px] sm:w-[100px] sm:h-[100px]"></div>
     <Alert
         :show="alertData.show"
         :type="alertData.type"
+        :clickedData="alertData.data"
         :message="alertData.message"
         :time="alertData.time"
         @close="clearAlertData"
+        @clicked="(data) => {
+            goToTherapy(data)
+        }"
     />
 
     <RequestModal

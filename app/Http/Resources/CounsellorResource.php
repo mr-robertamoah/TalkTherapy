@@ -31,6 +31,8 @@ class CounsellorResource extends JsonResource
             'contactVisible' => (bool) $this->contact_visible,
             'emailVerified' => (bool) $this->email_verified_at,
             'verified' => (bool) $this->verified_at,
+            'overallStarsCount' => $this->overallStarsCount,
+            'currentMonthStarsCount' => $this->currentMonthStarsCount,
             // TODO therapies
             'cases' => $this->when($this->cases, TherapyCaseResource::collection($this->cases), []),
             'religions' => $this->when($this->religions, TherapyCaseResource::collection($this->religions), []),

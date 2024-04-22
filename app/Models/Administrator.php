@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\AdministratorTypeEnum;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -15,5 +16,11 @@ class Administrator extends Model
 
     public function user() {
         return $this->belongsTo(User::class);
+    }
+
+    public function scopeWhereSuperAdmin($query)
+    {
+        return $query
+            ->where('type', AdministratorTypeEnum::super->value);
     }
 }

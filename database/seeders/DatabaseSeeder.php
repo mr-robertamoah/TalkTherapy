@@ -26,7 +26,8 @@ class DatabaseSeeder extends Seeder
             'firstName' => 'Robert',
             'lastName' => 'Amoah',
             'email' => 'mr_robertamoah@yahoo.com',
-            'password' => Hash::make(env('SUPER_PASSWORD', 'password'))
+            'password' => Hash::make(env('SUPER_PASSWORD', 'password')),
+            'email_verified_at' => now(),
         ]);
 
         $user->administrator()->create([

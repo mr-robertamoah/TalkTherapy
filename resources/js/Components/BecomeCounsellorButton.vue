@@ -123,11 +123,12 @@ function clickedBecome() {
 
 <template>
     <div>
-        <PrimaryButton v-if="step < 1" @click="clickedBecome" class="capitalize">{{ text }}</PrimaryButton>
+        <PrimaryButton v-if="step < 1" @click="clickedBecome" class="capitalize text-center text-nowrap">{{ text }}</PrimaryButton>
         <StyledLink
             v-else-if="step == 1"
             :href="route('counsellor.show', counsellorId)"
             :text="'verify counsellor account'"
+            class="text-center text-nowrap"
         />
         <div
             class="p-2 bg-green-700 text-green-200 rounded select-none cursor-none w-fit"

@@ -13,6 +13,7 @@ use App\Enums\PaginationEnum;
 use App\Enums\StarTypeEnum;
 use App\Http\Resources\LanguageResource;
 use App\Models\Language;
+use App\Models\User;
 
 class LanguageService extends Service
 {
@@ -38,7 +39,13 @@ class LanguageService extends Service
         CreateStarAction::new()->execute(
             CreateStarDTO::fromArray([
                 'starredby' => null,
-                'starred' => $createLanguageDTO->addedby ? $createLanguageDTO->addedby : $createLanguageDTO->user,
+                'starred' => $createLanguageDTO->addedby 
+                    ? (
+                        $createLanguageDTO->addedby::class == User::class
+                            ? $createLanguageDTO->addedby
+                            : $createLanguageDTO->addedby->user
+                    ) 
+                    : $createLanguageDTO->user,
                 'starreable' => $language,
                 'type' => StarTypeEnum::contribution->value,
             ])

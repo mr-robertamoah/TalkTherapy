@@ -14,6 +14,9 @@ class EnsureCanSendMessageToForAction extends Action
         if (!$createMessageDTO->for)
             throw new MessageException("A message has to be created for a discussion or session.", 422);
         
+        if ($createMessageDTO->for->doesNotAcceptMessage())
+            throw new MessageException("The message cannot be sent because the discussion or session may no more be in session.", 422);
+        
         if ($createMessageDTO->for::class == Discussion::class)
             return $this->validateForDiscussion($createMessageDTO);
 

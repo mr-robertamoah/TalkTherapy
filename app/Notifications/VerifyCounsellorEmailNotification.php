@@ -49,7 +49,7 @@ class VerifyCounsellorEmailNotification extends Notification
         return (new MailMessage)
             ->greeting("Hello {$name}!")
             ->subject('Verify Email Address')
-            ->line('Please click the button below to verify your email address.')
+            ->line('Please click the button below to verify your email address. Without verification, you cannot receive emails from this application.')
             ->action('Verify Email Address', $url)
             ->line('Note that the verification email link expires in about 2 hours time.')
             ->line("Thank you for choosing to 'TalkTherapy'.");
@@ -67,7 +67,7 @@ class VerifyCounsellorEmailNotification extends Notification
         ];
     }
 
-    public function broadcastType(object $notifiable): string
+    public function broadcastType(): string
     {
         return 'verify.email';
     }

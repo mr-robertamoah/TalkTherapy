@@ -62,7 +62,24 @@ class GroupTherapy extends Model
             ->withTimestamps();
     }
 
+    public function getActiveSessionAttribute()
+    {
+        return $this
+            ->sessions()
+            ->whereInSession()
+            ->whereFiveOrLessMinutesToStart()
+            ->orWhere(function ($query) {
+                $query->whereOnGoing();
+            })
+            ->first();
+    }
+
     public function isCounsellor(Counsellor $counsellor)
+    {
+        return false; // TODO
+    }
+
+    public function isUser(User $user)
     {
         return false; // TODO
     }

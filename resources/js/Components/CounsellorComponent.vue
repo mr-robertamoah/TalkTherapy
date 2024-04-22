@@ -110,7 +110,7 @@ function goToPage() {
                             <div v-else class="text-gray-600 w-full my-2 text-center text-sm">has no {{ selectedItem }} set</div>
                         </div>
                     </div>
-                    <div v-else class="text-gray-600 w-full my-2 text-center text-sm">nothing selected yet</div>
+                    <!-- <div v-else class="text-gray-600 w-full my-2 text-center text-sm">nothing selected yet</div> -->
                 </div>
             </div>
             <div class="flex justify-end" v-if="online">

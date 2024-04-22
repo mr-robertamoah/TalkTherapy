@@ -5,11 +5,13 @@ namespace App\Notifications;
 use App\Http\Resources\SessionResource;
 use App\Models\Counsellor;
 use App\Models\Session;
+use App\Models\Therapy;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\BroadcastMessage;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
+use Throwable;
 
 class SessionDueNotification extends Notification implements ShouldQueue
 {
@@ -70,12 +72,20 @@ class SessionDueNotification extends Notification implements ShouldQueue
     
     public function toBroadcast(object $notifiable): BroadcastMessage
     {
+        $item = $this->session->for_type == Therapy::class ? 'Therapy' : 'Group Therapy';
+
         return (new BroadcastMessage([
-            'session' => new SessionResource($this->session)
+            'forName' => $this->session->for->name,
+            'forId' => $this->session->for->id,
+            'forType' => $item,
+            'session' => [
+                'id' => $this->session->id,
+                'name' => $this->session->name,
+            ]
         ]));
     }
 
-    public function broadcastType(object $notifiable): string
+    public function broadcastType(): string
     {
         return 'session.due';
     }

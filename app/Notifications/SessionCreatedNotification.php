@@ -80,7 +80,7 @@ class SessionCreatedNotification extends Notification implements ShouldQueue
         ]));
     }
 
-    public function broadcastType(object $notifiable): string
+    public function broadcastType(): string
     {
         return 'session.created';
     }

@@ -39,7 +39,13 @@ class TherapyCaseService extends Service
         CreateStarAction::new()->execute(
             CreateStarDTO::fromArray([
                 'starredby' => null,
-                'starred' => $createCaseDTO->addedby ? $createCaseDTO->addedby : $createCaseDTO->user,
+                'starred' => $createCaseDTO->addedby
+                    ? (
+                        $createCaseDTO->addedby::class == User::class
+                            ? $createCaseDTO->addedby
+                            : $createCaseDTO->addedby->user
+                    ) 
+                    : $createCaseDTO->user,
                 'starreable' => $therapyCase,
                 'type' => StarTypeEnum::contribution->value,
             ])

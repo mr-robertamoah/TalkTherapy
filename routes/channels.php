@@ -17,7 +17,7 @@ use Illuminate\Support\Facades\Broadcast;
 |
 */
 
-Broadcast::channel('users.{id}', function ($user, $id) {
+Broadcast::channel('App.Models.User.{id}', function ($user, $id) {
     return (int) $user->id === (int) $id;
 });
 
@@ -42,5 +42,5 @@ Broadcast::channel('discussions.{discussionId}', function ($user, $discussionId)
 });
 
 Broadcast::channel('messages.{messageId}', function ($user, $messageId) {
-    return Message::find($messageId)?->isParty($user);
+    return Message::withTrashed()->find($messageId)?->isParty($user);
 });

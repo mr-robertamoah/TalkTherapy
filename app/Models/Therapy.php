@@ -32,11 +32,9 @@ class Therapy extends Model
         return $this
             ->sessions()
             ->whereInSession()
-            ->where(function ($query) {
-                $query->whereHasStartedAndNotEnded();
-            })
+            ->whereFiveOrLessMinutesToStart()
             ->orWhere(function ($query) {
-                $query->whereFiveOrLessMinutesToStart();
+                $query->whereOnGoing();
             })
             ->first();
     }
@@ -153,6 +151,32 @@ class Therapy extends Model
         });
     }
 
+    public function scopeWhereNoCounsellor($query)
+    {
+        return $query
+            ->where(function ($query) {
+                $query->whereNull('counsellor_id');
+            });
+    }
+
+    public function scopeWhereUser($query, User $user)
+    {
+        return $query->where(function ($query) use ($user) {
+            $query
+                ->where('addedby_id', $user->id)
+                ->where('addedby_type', $user::class);
+        });
+    }
+
+    public function scopeWhereNotUser($query, User $user)
+    {
+        return $query->where(function ($query) use ($user) {
+            $query
+                ->whereNot('addedby_id', $user->id)
+                ->where('addedby_type', $user::class);
+        });
+    }
+
     public function scopeWherePublic($query)
     {
         return $query->where('public', true);
@@ -227,7 +251,7 @@ class Therapy extends Model
     public function getOtherUsers(User $user)
     {
         $users = [];
-        if ($this->addedby_type == User::class && !$this->addedby->is($user))
+        if ($this->addedby_type == User::class && $this->addedby_id !== $user->id)
             $users[] = $this->addedby;
 
         if (!$this->counsellor->user->is($user))

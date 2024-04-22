@@ -55,11 +55,6 @@ class User extends Authenticatable
         'settings' => 'array',
     ];
 
-    public function receivesBroadcastNotificationOn()
-    {
-        return "users.{$this->id}";
-    }
-
     public function routeNotificationForMail()
     {
         return [
@@ -213,6 +208,14 @@ class User extends Authenticatable
         return $query
             ->whereHas('alerts', function ($query) {
                 $query->whereWaiting();
+            });
+    }
+
+    public function scopeWhereSuperAdmin($query)
+    {
+        return $query
+            ->whereHas('administrator', function ($query) {
+                $query->whereSuperAdmin();
             });
     }
 }

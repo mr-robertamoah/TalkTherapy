@@ -23,6 +23,10 @@ return Application::configure(basePath: dirname(__DIR__))
             // \Illuminate\Routing\Middleware\ThrottleRequests::class.':api',
             \Illuminate\Routing\Middleware\SubstituteBindings::class,
         ]);
+
+        $middleware->use([
+            \App\Http\Middleware\StoreVisitationMiddleware::class
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
         //

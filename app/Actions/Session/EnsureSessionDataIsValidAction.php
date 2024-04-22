@@ -8,6 +8,7 @@ use App\Enums\SessionTypeEnum;
 use App\Enums\TherapyPaymentTypeEnum;
 use App\Enums\TherapyStatusEnum;
 use App\Exceptions\SessionException;
+use App\Models\Session;
 use Carbon\Carbon;
 
 class EnsureSessionDataIsValidAction extends Action
@@ -44,32 +45,48 @@ class EnsureSessionDataIsValidAction extends Action
             throw new SessionException("The end time must be at least 30 minutes from the start time.", 422);
             
         if (
-            $createSessionDTO->for->sessions()->whereDateFallsBetween($startTime)->exists()
+            $createSessionDTO->for->sessions()
+            ->when($createSessionDTO->session, function ($query) use ($createSessionDTO) {
+                $query->whereNot('id', $createSessionDTO->session->id);
+            })
+            ->whereDateIsBetweenStartAndEndTimes($startTime)
+            ->exists()
         ) 
             throw new SessionException("The start time of a session cannot fall within the start and end time of other sessions.", 422);
 
         if (
             $createSessionDTO->for
                 ->sessions()
-                ->whereIsNot30MinituesBeforeOrAfter($startTime, $endTime)
+                ->when($createSessionDTO->session, function ($query) use ($createSessionDTO) {
+                    $query->whereNot('id', $createSessionDTO->session->id);
+                })
+                ->whereIsThirtyMinituesBeforeOrAfter($startTime, $endTime)
                 ->exists()
         ) 
             throw new SessionException("The session must start at least 30 minutes before or after other sessions of this therapy.", 422);
         
         if (
-            $createSessionDTO->for
-                ->addedby
-                ->addedSessions()
-                ->whereIsNot30MinituesBeforeOrAfter($startTime, $endTime)
+            Session::query()
+                ->whereDoesntHave('for', function ($query) use ($createSessionDTO) {
+                    $query->whereParticipant($createSessionDTO->for->addedby);
+                })
+                ->when($createSessionDTO->session, function ($query) use ($createSessionDTO) {
+                    $query->whereNot('id', $createSessionDTO->session->id);
+                })
+                ->whereIsThirtyMinituesBeforeOrAfter($startTime, $endTime)
                 ->exists()
         ) 
             throw new SessionException("The user has sessions that are less than 30 minutes before or after the time for this session.", 422);
 
         if (
-            $createSessionDTO->for
-                ->counsellor
-                ->addedSessions()
-                ->whereIsNot30MinituesBeforeOrAfter($startTime, $endTime)
+            Session::query()
+                ->whereDoesntHave('for', function ($query) use ($createSessionDTO) {
+                    $query->whereParticipant($createSessionDTO->for->counsellor->user);
+                })
+                ->when($createSessionDTO->session, function ($query) use ($createSessionDTO) {
+                    $query->whereNot('id', $createSessionDTO->session->id);
+                })
+                ->whereIsThirtyMinituesBeforeOrAfter($startTime, $endTime)
                 ->exists()
         ) 
             throw new SessionException("Counsellor for this therapy has sessions that are less than 30 minutes before or after the time for this session.", 422);

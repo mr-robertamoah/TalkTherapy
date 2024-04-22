@@ -12,7 +12,7 @@
                 <hr>
             </div>
 
-            <div class="overflow-hidden overflow-y-auto h-[70vh] w-[90%] mx-auto md:w-[70%]">
+            <div class="overflow-hidden overflow-y-auto h-[70vh] w-[90%] mx-auto md:w-[70%] px-2 py-4">
                 <div v-if="session.about" class="p-4 rounded bg-gray-200 shadow-sm min-h-[100px]">
                     <div class="w-full text-justify capitalize mt-4 mb-1 text-lg font-medium text-gray-900">about</div>
                     <div class="mt-2 text-sm text-gray-600 text-justify">{{ session.about }}</div>
@@ -84,7 +84,7 @@
                                     : (['FAILED', 'ABANDONED'].includes(session.status) ? 'Was to end on ' : 'Ended on')
                             }} <span class="text-gray-700 font-bold">{{ (new Date(session.endTime)).toGMTString() }}</span></div>
                         </div>
-                        <div class="text-end text-gray-600 text-sm my-2">created {{ session.createdAt }}</div>
+                        <div class="text-end text-gray-600 text-sm my-2">created {{ toDiffForHumans(session.createdAt) }}</div>
                     </div>
                 </div>
             </div>
@@ -93,6 +93,7 @@
 </template>
 
 <script setup>
+import useLocalDateTimed from '@/Composables/useLocalDateTime';
 import useLocation from '@/Composables/useLocation';
 import useMap from '@/Composables/useMap';
 import Modal from './Modal.vue';
@@ -100,6 +101,7 @@ import NameAndValue from './NameAndValue.vue';
 
 const { addMarker, createMap, setMarkerPosition, markerPosition } = useMap();
 const { currentLocation, getCurrentLocation } = useLocation();
+const { toDiffForHumans } = useLocalDateTimed()
 
 const emits = defineEmits(['close'])
 

@@ -12,6 +12,7 @@ export default function useAlert() {
         type: '',
         message: '',
         time: 2000,
+        data: {}
     })
 
     const clearAlertData = () => {
@@ -28,18 +29,20 @@ export default function useAlert() {
         alertData.value.show = show
     }
 
-    const setSuccessAlertData = ({ message = '', time = 2000}) => {
+    const setSuccessAlertData = ({ message = '', time = 2000, data = {} }) => {
         alertData.value.type = 'success'
         alertData.value.message = message
         alertData.value.time = time
         alertData.value.show = true
+        alertData.value.data = data
     }
 
-    const setFailedAlertData = ({ message = '', time = 2000}) => {
+    const setFailedAlertData = ({ message = '', time = 2000, data = {} }) => {
         alertData.value.type = 'failed'
         alertData.value.message = message
         alertData.value.time = time
         alertData.value.show = true
+        alertData.value.data = data
     }
 
     return { alertData, clearAlertData, setAlertData, setFailedAlertData, setSuccessAlertData, AlertType }

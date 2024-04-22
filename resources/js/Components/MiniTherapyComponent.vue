@@ -35,7 +35,7 @@ const computedCanViewPage = computed(() => {
 </script>
 
 <template>
-    <div class="rounded p-2 max-w-[300px] w-full shadow-sm bg-stone-200">
+    <div class="rounded p-2 max-w-[350px] min-w-[250px] w-full shadow-sm bg-stone-200">
         <div class="text-center mx-auto font-bold w-fit bg-gradient-to-r from-slate-800 to-gray-600 my-2 bg-clip-text text-transparent capitalize">{{ therapy.name }}</div>
         
         <div class="my-2 w-full h-1 rounded bg-stone-400"></div>

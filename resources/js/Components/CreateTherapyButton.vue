@@ -24,7 +24,7 @@ function clickedCreate() {
 
 <template>
     <div>
-        <PrimaryButton @click="clickedCreate" class="capitalize">create therapy</PrimaryButton>
+        <PrimaryButton @click="clickedCreate" class="capitalize text-center text-nowrap">create therapy</PrimaryButton>
         
         <IndividualTherapyFormModal
             :show="modalData.show && modalData.type == 'individual'"

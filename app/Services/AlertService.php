@@ -7,8 +7,6 @@ use App\Actions\Alert\DeleteAlertAction;
 use App\Actions\Alert\EnsureAlertableExistsAction;
 use App\Actions\User\EnsureUserExistsAction;
 use App\DTOs\AlertServiceDTO;
-use App\Enums\SessionStatusEnum;
-use App\Models\Session;
 
 class AlertService extends Service
 {

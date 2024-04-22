@@ -13,6 +13,7 @@ use App\Enums\ConstantsEnum;
 use App\Enums\PaginationEnum;
 use App\Enums\StarTypeEnum;
 use App\Models\LicensingAuthority;
+use App\Models\User;
 
 class LicensingAuthorityService extends Service
 {
@@ -40,7 +41,11 @@ class LicensingAuthorityService extends Service
             CreateStarDTO::fromArray([
                 'starredby' => null,
                 'starred' => $createLicensingAuthorityDTO->addedby
-                    ? $createLicensingAuthorityDTO->addedby
+                    ? (
+                        $createLicensingAuthorityDTO->addedby::class == User::class
+                            ? $createLicensingAuthorityDTO->addedby
+                            : $createLicensingAuthorityDTO->addedby->user
+                    ) 
                     : $createLicensingAuthorityDTO->user,
                 'starreable' => $licensingAuthority,
                 'type' => StarTypeEnum::contribution->value,

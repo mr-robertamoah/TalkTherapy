@@ -9,6 +9,7 @@ use App\Actions\Session\EnsureCanCreateSessionAction;
 use App\Actions\Session\EnsureCanDeleteSessionAction;
 use App\Actions\Session\EnsureCanEndSessionAction;
 use App\Actions\Session\EnsureCanUpdateSessionAction;
+use App\Actions\Session\EnsureCanUpdateSessionStatusAction;
 use App\Actions\Session\EnsureSessionDataIsValidAction;
 use App\Actions\Session\EnsureSessionExistsAction;
 use App\Actions\Session\UpdateSessionAction;
@@ -20,6 +21,7 @@ use App\DTOs\GetSessionsDTO;
 use App\Enums\PaginationEnum;
 use App\Enums\SessionStatusEnum;
 use App\Enums\StarTypeEnum;
+use App\Events\SessionUpdatedEvent;
 use App\Http\Resources\SessionResource;
 use App\Models\Therapy;
 use App\Notifications\SessionCreatedNotification;
@@ -68,7 +70,7 @@ class SessionService extends Service
         );
 
         Notification::send(
-            $createSessionDTO->session->for->getUsers(), 
+            $session->for->getUsers(), 
             new SessionCreatedNotification($session)
         );
 
@@ -86,7 +88,7 @@ class SessionService extends Service
         $session = UpdateSessionAction::new()->execute($createSessionDTO);
 
         Notification::send(
-            $createSessionDTO->session->for->getOtherUsers($createSessionDTO->user), 
+            $session->for->getOtherUsers($createSessionDTO->user), 
             new SessionUpdatedNotification($session)
         );
 
@@ -101,6 +103,8 @@ class SessionService extends Service
 
         $session = ChangeSessionStatusAction::new()->execute($createSessionDTO, SessionStatusEnum::held->value);
 
+        broadcast(new SessionUpdatedEvent($session))->toOthers();
+        
         Notification::send(
             $createSessionDTO->session->for->getOtherUsers($createSessionDTO->user), 
             new SessionStatusChangedNotification($session)
@@ -113,10 +117,12 @@ class SessionService extends Service
     {
         EnsureSessionExistsAction::new()->execute($createSessionDTO);
 
-        EnsureCanEndSessionAction::new()->execute($createSessionDTO);
+        EnsureCanUpdateSessionStatusAction::new()->execute($createSessionDTO);
 
         $session = ChangeSessionStatusAction::new()->execute($createSessionDTO, SessionStatusEnum::in_session->value);
 
+        broadcast(new SessionUpdatedEvent($session))->toOthers();
+        
         Notification::send(
             $createSessionDTO->session->for->getOtherUsers($createSessionDTO->user), 
             new SessionStatusChangedNotification($session)
@@ -129,10 +135,12 @@ class SessionService extends Service
     {
         EnsureSessionExistsAction::new()->execute($createSessionDTO);
 
-        EnsureCanEndSessionAction::new()->execute($createSessionDTO);
+        EnsureCanUpdateSessionStatusAction::new()->execute($createSessionDTO);
 
         $session = ChangeSessionStatusAction::new()->execute($createSessionDTO, SessionStatusEnum::abandoned->value);
 
+        broadcast(new SessionUpdatedEvent($session))->toOthers();
+        
         Notification::send(
             $createSessionDTO->session->for->getOtherUsers($createSessionDTO->user), 
             new SessionStatusChangedNotification($session)

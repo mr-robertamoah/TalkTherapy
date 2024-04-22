@@ -2,6 +2,7 @@
 
 namespace App\Events;
 
+use App\Http\Resources\SessionResource;
 use App\Models\Session;
 use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
@@ -32,6 +33,18 @@ class SessionStartedEvent implements ShouldBroadcast
     {
         return [
             new PresenceChannel($this->session->getForChannelName()),
+        ];
+    }
+
+    public function broadcastAs(): string
+    {
+        return 'session.started';
+    }
+
+    public function broadcastWith(): array
+    {
+        return [
+            'session' => new SessionResource($this->session)
         ];
     }
 }

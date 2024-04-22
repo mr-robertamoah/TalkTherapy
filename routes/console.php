@@ -26,8 +26,16 @@ Schedule::call(function () {
 
 Schedule::call(function () {
     AppService::new()->failUnheldSessions();
-})->everyTwoHours();
+})->everyFourHours();
 
 Schedule::call(function () {
     AppService::new()->broadcastStartedSessions();
 })->everyFiveMinutes();
+
+Schedule::call(function () {
+    AppService::new()->clearVisitors();
+})->dailyAt('00:01');
+
+Schedule::call(function () {
+    AppService::new()->alertSuperAdminWithStatus();
+})->everyFourHours()->between('0:00', '24:00');

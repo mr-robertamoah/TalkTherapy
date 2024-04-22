@@ -49,22 +49,22 @@ class TherapyAssistanceRequestAcceptedNotification extends Notification
         $name = $notifiable::class == Counsellor::class ? $notifiable->getName() : $notifiable->name;
 
         return (new MailMessage)
-        ->success()
-        ->subject("Assistance Request Accepted")
-        ->greeting("Hello {$name}!")
-        ->when($isCounsellor, function ($mail) {
-            $mail
-                ->line("Your request to render assistance for the therapy with name: '{$this->request->for->name}' has been accepted by user with name: '{$this->request->to->name}'.")
-                ->line("Start creating sessions and lets help make user's wellbeing better.");
-        })
-        ->when(!$isCounsellor, function ($mail) {
-            $mail
-                ->line("Your request for assistance for the therapy with name: '{$this->request->for->name}' has been accepted by counsellor with name: '{$this->request->to->getName()}'.")
-                ->action("Visit Counsellor Page", url("counsellors/{$this->request->to_id}"));
-        })
-        ->line("You may receive other reminders before the starting time.")
-        ->action("Visit Therapy Page", url("therapies/{$this->request->for->id}"))
-        ->line("Thank you for choosing to 'TalkTherapy'.");
+            ->success()
+            ->subject("Assistance Request Accepted")
+            ->greeting("Hello {$name}!")
+            ->when($isCounsellor, function ($mail) {
+                $mail
+                    ->line("Your request to render assistance for the therapy with name: '{$this->request->for->name}' has been accepted by user with name: '{$this->request->to->name}'.")
+                    ->line("Start creating sessions and lets help make user's wellbeing better.");
+            })
+            ->when(!$isCounsellor, function ($mail) {
+                $mail
+                    ->line("Your request for assistance for the therapy with name: '{$this->request->for->name}' has been accepted by counsellor with name: '{$this->request->to->getName()}'.")
+                    ->action("Visit Counsellor Page", url("counsellors/{$this->request->to_id}"));
+            })
+            ->line("You may receive other reminders before the starting time.")
+            ->action("Visit Therapy Page", url("therapies/{$this->request->for->id}"))
+            ->line("Thank you for choosing to 'TalkTherapy'.");
     }
 
     /**
@@ -93,7 +93,7 @@ class TherapyAssistanceRequestAcceptedNotification extends Notification
         ]));
     }
 
-    public function broadcastType(object $notifiable): string
+    public function broadcastType(): string
     {
         return 'therapy.assistance';
     }

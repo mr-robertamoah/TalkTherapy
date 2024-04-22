@@ -5,7 +5,7 @@
         <PrimaryButton
             class="my-2"
             @click="clickedSwitchToActiveSession"
-            v-if="selectedSession?.id && selectedSession?.id == activeSession?.id"
+            v-if="selectedSession?.id && activeSession?.id && selectedSession?.id !== activeSession?.id"
         >switch to active session</PrimaryButton>
         <div class="text-gray-600 font-bold capitalize">Filter By</div>
     
@@ -44,6 +44,7 @@
                     :loaded-sessions-page="pages.session"
                     :loaded-topics="topics"
                     :loaded-topics-page="pages.topic"
+                    :is-active="item.id == activeSession?.id && computedCurrentFilter == 'session'"
                     class="w-[60%] shrink-0"
                     @dblclick="() => clickedFilterItem(item)"
                     @on-update="(data) => onUpdateItem(data)"
@@ -70,6 +71,7 @@
             <div 
                 :title="`double click to deselect.`"
                 @click.self="deselectItem"
+                @dblclick="deselectItem"
                 class="text-sm text-gray-600 mb-2 capitalize select-none cursor-pointer w-[90%] mx-auto rounded-b p-2 text-center font-bold tracking-wide bg-white"
                 v-if="computedSelectedItem"
             >
@@ -85,7 +87,6 @@
                         :class="[(c.id == computedSubItem?.id) ? 'hover:text-gray-700 hover:bg-gray-300 bg-gray-600 text-white' : 'text-gray-700 bg-gray-300 hover:bg-gray-600 hover:text-white']"
                     >{{ c.name }}</div>
                 </div>
-                <div>status and timing</div>
             </div>
             <div class="h-[350px] p-2 overflow-hidden overflow-y-auto space-y-2 flex items-center flex-col"
                 :class="{'justify-end': chatMessages?.length <= 3}"
@@ -113,7 +114,10 @@
                         :is-participant="isParticipant"
                     />
                 </template>
-                <div v-else class="text-gray-600 text-sm font-bold w-full h-[300px] flex justify-center items-center my-auto">no messages</div>
+                <div
+                    v-else
+                    class="text-gray-600 text-sm font-bold w-full h-[300px] flex justify-center items-center my-auto"
+                >{{computedSelectedItem?.isSession && computedSelectedItem?.type == 'IN_PERSON' ? 'it is an in-person session' : 'no messages'}}</div>
             </div>
         </div>
         
@@ -232,7 +236,7 @@ const { goToLogin } = useAuth()
 const { alertData, setFailedAlertData, clearAlertData } = useAlert()
 const { modalData, showModal, closeModal } = useModal()
 
-const emits = defineEmits(['deselectActiveSession'])
+const emits = defineEmits(['deselectActiveSession', 'updateActiveSession'])
 
 const props = defineProps({
     therapy: {
@@ -344,19 +348,25 @@ watch(() => props.newTopic?.id, () => {
     if (props.newTopic?.id) topics.value = [props.newTopic, ...topics.value]
 })
 watchEffect(() => {
-    if (props.activeSession?.id || props.selectedActiveSession)
-        clickedSwitchToActiveSession()
-
     if (
         props.activeSession?.id &&
         selectedSession.value?.id && 
         props.activeSession?.id == selectedSession.value?.id
     ) emits('deselectActiveSession')
 })
+watchEffect(() => {
+    if (props.selectedActiveSession) {
+        clickedSwitchToActiveSession()
+    }
+})
 
 const computedCanSendMessage = computed(() => {
-    return props.isParticipant && props.activeSession?.id &&
-        selectedSession.value?.id && 
+    return props.isParticipant && computedSelectSessionIsActive.value &&
+        !['FAILED', 'ABANDONED', 'HELD', 'HELD_CONFIRMATION', 'PENDING', 'IN_SESSION_CONFIRMATION'].includes(props.activeSession?.status) &&
+        props.activeSession?.type == 'ONLINE'
+})
+const computedSelectSessionIsActive = computed(() => {
+    return props.activeSession?.id && selectedSession.value?.id && 
         props.activeSession?.id == selectedSession.value?.id
 })
 const computedFiltered = computed(() => {
@@ -376,9 +386,11 @@ const computedCurrentFilter = computed(() => {
         : ( filters.value.topics ? 'topic' : '' )
 })
 const computedSelectedItem = computed(() => {
-    return filters.value.sessions
+    const selected = filters.value.sessions
         ? selectedSession.value 
         : ( filters.value.topics ? selectedTopic.value : null )
+
+    return selected ?? (props.selectedActiveSession ? props.activeSession : null)
 })
 const computedSubItems = computed(() => {
     return (computedCurrentFilter.value == 'session' ? (computedSelectedItem.value.topics) : computedSelectedItem.value.sessions)
@@ -404,7 +416,10 @@ const computedHasMessage = computed(() => {
 })
 
 function clickedSwitchToActiveSession() {
+    if (!filters.value.sessions) filters.value.sessions = true
+
     selectedSession.value = props.activeSession
+    handleSelectedSessionChange()
 }
 
 function clickedGetMore() {
@@ -530,7 +545,7 @@ function handleSelectedTopicChange() {
 }
 
 function clickedFilterItem(item) {
-    if (computedCurrentFilter.value == 'session') {
+    if (computedCurrentFilter.value == 'session' || props.activeSession?.id !== item?.id) {
         selectedSession.value = item
         handleSelectedSessionChange()
     }
@@ -698,18 +713,18 @@ function addNewMessage(newMessage) {
 }
 
 async function getSessionMessages() {
-    if (getting.value) return
+    if (getting.value || selectedSession.value?.type !== 'ONLINE') return
 
     getting.value = true
 
     await axios
         .get(route('api.session.messages.get', {
             sessionId: selectedSession.value?.id,
-            topicId: selectedSessionTopic.value?.id,
             page: messages.sessions[selectedSession.value?.id]?.page
         }))
         .then(async (res) => {
             console.log(res)
+
             if (messages.sessions[selectedSession.value?.id].page == 1)
                 messages.sessions[selectedSession.value?.id].data = []
 
@@ -752,7 +767,6 @@ async function getTopicMessages() {
 
     await axios
         .get(route('api.topic.messages.get', {
-            sessionId: selectedTopicSession.value?.id,
             topicId: selectedTopic.value?.id,
             page: messages.topics[selectedTopic.value?.id]?.page
         }))
@@ -907,14 +921,16 @@ function onUpdateItem(item) {
     let itemsRef = sessions
     let selectedItem = selectedSession
 
-    if (computedCurrentFilter.value == 'topic') {
+    if (item.isSession && item.id == props.activeSession?.id) emits('updateActiveSession', item)
+
+    if (!item.isSession) {
         itemsRef = topics
         selectedItem = selectedTopic
     }
 
     itemsRef.value.splice(itemsRef.value.findIndex((data) => data.id == item.id), 1, item)
     
-    if (selectedItem.value.id == item.id)
+    if (selectedItem.value?.id == item.id && selectedItem.value?.isSession == item.isSession)
         selectedItem.value = item
 }
 
@@ -922,14 +938,14 @@ function onDeleteItem(item) {
     let itemsRef = sessions
     let selectedItem = selectedSession
 
-    if (computedCurrentFilter.value == 'topic') {
+    if (!item.isSession) {
         itemsRef = topics
         selectedItem = selectedTopic
     }
 
     itemsRef.value.splice(itemsRef.value.findIndex((data) => data.id == item.id), 1)
     
-    if (selectedItem.value.id == item.id)
+    if (selectedItem.value.id == item.id && selectedItem.value?.isSession == item.isSession)
         selectedItem.value = null
 }
 </script>

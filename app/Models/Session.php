@@ -19,7 +19,8 @@ class Session extends Model
 
     protected $fillable = [
         'name', 'about', 'start_time', 'end_time', 'payment_type',
-        'type', 'status', 'longitude', 'latitude', 'landmark', 'therapy_id'
+        'type', 'status', 'longitude', 'latitude', 'landmark', 'therapy_id',
+        'updatedby_type', 'updatedby_id'
     ];
     
     protected $casts = [
@@ -62,7 +63,7 @@ class Session extends Model
         return $this->morphTo('addedby');
     }
 
-    public function updatedBy()
+    public function updatedby()
     {
         return $this->morphTo('updatedby');
     }
@@ -78,7 +79,7 @@ class Session extends Model
     {
         $users = [];
 
-        if ($this->isTherapy) {
+        if ($this->for_type == Therapy::class) {
             $users[] = $this->for->addedby;
             $users[] = $this->for->counsellor->user;
         } else {
@@ -125,56 +126,84 @@ class Session extends Model
 
     public function scopeWherePastEndTime($query)
     {
-        return $query->whereDate('end_time', '<=', now());
+        return $query->where('end_time', '<=', now());
     }
 
     public function scopeWhereStartsInTheFuture($query)
     {
-        return $query->whereDate('start_time', '>', now()->subMinutes(5));
+        return $query->where('start_time', '>', now()->subMinutes(5));
     }
 
-    public function scopeWhereDateFallsBetween($query, $date)
+    public function scopeWhereDateIsBetweenStartAndEndTimes($query, $date)
     {
         return $query
-            ->whereDate('start_time', '<=', $date)
-            ->whereDate('end_time', '>=', $date);
+            ->where('start_time', '<=', $date)
+            ->where('end_time', '>=', $date);
+    }
+
+    public function doesNotAcceptMessage()
+    {
+        return !$this->acceptsMessage();
+    }
+
+    public function acceptsMessage()
+    {
+        return $this->type == SessionTypeEnum::online->value &&
+            in_array($this->status, [
+                SessionStatusEnum::pending->value,
+                SessionStatusEnum::in_session->value,
+                SessionStatusEnum::in_session_confirmation->value,
+            ]);
+    }
+
+    public function scopeWhereOnGoing($query)
+    {
+        return $query
+            ->where(function ($query) {
+                $query
+                    ->where('start_time', '<=', now())
+                    ->where('end_time', '>=', now());
+            })
+            ->orWhere(function ($query) {
+                $query
+                    ->wherePastEndTime()
+                    ->whereInSession();
+            });
     }
 
     public function scopeWhereAboutToStart($query)
     {
-        $now = now();
-
         return $query
-            ->whereDate('start_time', '>=', $now)
-            ->whereDate('start_time', '<=', $now->addMinutes(30));
+            ->whereBetween('start_time', [now(), now()->addMinutes(30)]);
     }
 
     public function scopeWhereHasStartedAndNotEnded($query)
     {
-        $now = now();
-
         return $query
-            ->whereDate('start_time', '<=', $now)
-            ->whereDate('end_time', '>', $now);
+            ->where('start_time', '<=', now())
+            ->where('end_time', '>', now());
     }
 
     public function scopeWhereFiveOrLessMinutesToStart($query)
     {
-        $time = now()->addMinutes(5);
-
         return $query
-            ->whereDate('start_time', '<=', $time)
-            ->whereDate('end_time', '>', $time);
+            ->whereBetween('start_time', [now(), now()->addMinutes(5)]);
     }
 
-    public function scopeWhereIsNot30MinituesBeforeOrAfter($query, $startDate, $endDate)
+    public function scopeWhereIsThirtyMinituesBeforeOrAfter($query, $startDate = null, $endDate = null)
     {
         return $query
-            ->where(function ($query) use ($startDate) {
-                $query->whereDateFallsBetween($startDate->subMinutes(30));
+            ->when($startDate, function ($query) use ($startDate) {
+                $query
+                    ->where(function ($query) use ($startDate) {
+                        $query->whereDateIsBetweenStartAndEndTimes($startDate->subMinutes(30));
+                    });
             })
-            ->orWhere(function ($query) use ($endDate) {
-                $query->whereDateFallsBetween($endDate->addMinutes(30));
+            ->when($endDate, function ($query) use ($endDate) {
+                $query
+                    ->orWhere(function ($query) use ($endDate) {
+                        $query->whereDateIsBetweenStartAndEndTimes($endDate->addMinutes(30));
+                    });
             });
     }
 
@@ -203,6 +232,12 @@ class Session extends Model
         return $query
             ->whereTherapy()
             ->where('for_id', $therapyId);
+    }
+
+    public function scopeWhereTherapy($query)
+    {
+        return $query
+            ->where('for_type', Therapy::class);
     }
 
     public function scopeWhereGroupTherapyId($query, $groupTherapyId)
@@ -241,18 +276,16 @@ class Session extends Model
 
     public function isNotUpdateable()
     {
-        return $this
+        return Session::query()
+            ->where('id', $this->id)
             ->where(function ($query) {
-                $query->whereNotPending();
-            })
-            ->orWhere(function ($query) {
                 $query->wherePastEndTime();
             })
             ->orWhere(function ($query) {
                 $query->whereAboutToStart();
             })
             ->orWhere(function ($query) {
-                $query->whereDateFallsBetween(now());
+                $query->whereDateIsBetweenStartAndEndTimes(now());
             })
             ->exists();
     }
@@ -269,7 +302,7 @@ class Session extends Model
                 $query->whereAboutToStart();
             })
             ->orWhere(function ($query) {
-                $query->whereDateFallsBetween(now());
+                $query->whereDateIsBetweenStartAndEndTimes(now());
             })
             ->exists();
     }

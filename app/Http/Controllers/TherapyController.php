@@ -49,6 +49,7 @@ class TherapyController extends Controller
                     'inPersonAmount' => $request->inPersonAmount ? (float) $request->inPersonAmount : null,
                     'allowInPerson' => $request->allowInPerson,
                     'anonymous' => $request->anonymous,
+                    'public' => $request->public,
                     'sessionType' => $request->sessionType,
                     'paymentType' => $request->paymentType,
                     'maxSessions' => $request->maxSessions,
@@ -61,7 +62,7 @@ class TherapyController extends Controller
             ]);
         } catch (Throwable $th) {
             $message = $th->getCode() == 500 ? "Something unfortunate happened. Please try again shortly." : $th->getMessage();
-
+            ds($th);
             throw new Exception($message);
         }
     }

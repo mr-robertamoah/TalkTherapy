@@ -9,13 +9,33 @@ use App\Models\GroupTherapy;
 use App\Models\Session;
 use App\Models\Therapy;
 use App\Models\User;
+use App\Models\Visitor;
 use App\Notifications\SessionDueNotification;
+use App\Notifications\SessionFailedNotification;
 use App\Notifications\SessionStartedNotification;
+use App\Notifications\VisitorsStatusNotification;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Support\Facades\Notification;
 
 class AppService extends Service
 {
+    public function alertSuperAdminWithStatus()
+    {
+        $superAdmins = User::query()->whereSuperAdmin()->get();
+
+        Notification::send($superAdmins, new VisitorsStatusNotification());
+    }
+    
+    public function clearVisitors()
+    {
+        Visitor::query()
+            ->whereUser()
+            ->orWhere(function ($query) {
+                $query->whereNonUser();
+            })
+            ->delete();
+    }
+
     public function notifyParticipantsOfStartingSessions()
     {
         $this->alertSessionParticipants();
@@ -31,9 +51,12 @@ class AppService extends Service
                 ]);
             }])
             ->get();
-        
+
         $sessions->each(function ($session) {
-            Notification::send($session->users, new SessionDueNotification($session));
+            Notification::send(
+                $session->users, 
+                new SessionDueNotification($session)
+            );
         });
 
     }
@@ -44,8 +67,8 @@ class AppService extends Service
             ->whereWaiting()
             ->with(['alertable' => function (MorphTo $query) {
                 $query->morphWith([
-                    Therapy::class => ['sessions.addedby', 'sessions.counsellor.user'],
-                    Therapy::class => ['sessions.addedby',],
+                    Therapy::class => ['sessions.addedby', 'sessions.addedby.user'],
+                    GroupTherapy::class => ['sessions.addedby',],
                 ]);
             }, 'user'])
             ->get();
@@ -56,20 +79,28 @@ class AppService extends Service
             if (!$activeSession) return;
             
             SessionStartedEvent::broadcast($activeSession);
+            $alert->delete();
         });
-
-        $alerts->delete();
     }
 
     public function failUnheldSessions()
     {
-        Session::query()
+        $sessions = Session::query()
             ->whereStatusIn([
-                SessionStatusEnum::pending->value
+                SessionStatusEnum::pending->value,
+                SessionStatusEnum::in_session_confirmation->value
             ])
             ->wherePastEndTime()
-            ->update([
-                'status' => SessionStatusEnum::failed->value
-            ]);
+            ->get();
+            
+        $sessions->each(function ($session) {
+            Notification::send(
+                $session->users, 
+                new SessionFailedNotification($session)
+            );
+
+            $session->status = SessionStatusEnum::failed->value;
+            $session->save();
+        });
     }
 }

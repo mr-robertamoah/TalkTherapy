@@ -6,6 +6,7 @@ use App\Actions\Action;
 use App\DTOs\CreateSessionDTO;
 use App\Enums\TherapyPaymentTypeEnum;
 use App\Enums\TherapyStatusEnum;
+use Carbon\Carbon;
 
 class UpdateSessionAction extends Action
 {
@@ -57,7 +58,10 @@ class UpdateSessionAction extends Action
         if (
             !is_null($createSessionDTO->$objectKey) &&
             $createSessionDTO->$objectKey !== $createSessionDTO->session->$dataKey
-        )        
+        ) {
+            if (in_array($dataKey, ['start_time', 'end_time'])) return $this->data[$dataKey] = (new Carbon($createSessionDTO->$objectKey))->utc();
+            
             $this->data[$dataKey] = $createSessionDTO->$objectKey;
+        }
     }
 }

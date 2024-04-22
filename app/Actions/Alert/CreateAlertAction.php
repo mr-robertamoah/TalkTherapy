@@ -9,12 +9,11 @@ class CreateAlertAction extends Action
 {
     public function execute(AlertServiceDTO $alertServiceDTO)
     {
-        $alert = $alertServiceDTO->user->alerts()->create([
-            'status' => $alertServiceDTO->status
+        $alert = $alertServiceDTO->user->alerts()->updateOrCreate([
+            'status' => $alertServiceDTO->status,
+            'alertable_type' => $alertServiceDTO->alertable::class,
+            'alertable_id' => $alertServiceDTO->alertable->id,
         ]);
-
-        $alert->alertable()->associate($alertServiceDTO->alertable);
-        $alert->save();
 
         return $alert;
     }

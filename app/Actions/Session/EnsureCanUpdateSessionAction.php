@@ -11,7 +11,7 @@ class EnsureCanUpdateSessionAction extends Action
     public function execute(CreateSessionDTO $createSessionDTO)
     {
         if ($createSessionDTO->session->isNotUpdateable())
-            throw new SessionException("{$createSessionDTO->session->name} session cannot be updated because it is either in session or has ended.", 422);
+            throw new SessionException("'{$createSessionDTO->session->name}' session cannot be updated because it is either in session or has ended.", 422);
 
         if (
             $createSessionDTO->user->isAdmin() ||
