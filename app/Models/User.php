@@ -2,7 +2,8 @@
 
 namespace App\Models;
 
-// use Illuminate\Contracts\Auth\MustVerifyEmail;
+use App\Notifications\VerifyEmailNotification;
+use Illuminate\Contracts\Auth\MustVerifyEmail as MustVerifyEmailContract;
 
 use Illuminate\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -10,7 +11,7 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 
-class User extends Authenticatable
+class User extends Authenticatable implements MustVerifyEmailContract
 {
     use HasApiTokens, HasFactory, Notifiable, MustVerifyEmail;
 
@@ -198,6 +199,16 @@ class User extends Authenticatable
         return $this->counsellor()->whereNotNull('verified_at')->exists();
     }
 
+    public function addedPosts()
+    {
+        return $this->morphMany(Post::class, 'addedby');
+    }
+
+    public function addedReports()
+    {
+        return $this->morphMany(Report::class, 'addedby');
+    }
+
     public function isCounsellor()
     {
         return $this->counsellor()->exists();
@@ -217,5 +228,16 @@ class User extends Authenticatable
             ->whereHas('administrator', function ($query) {
                 $query->whereSuperAdmin();
             });
+    }
+
+    public function scopeWhereAdmin($query)
+    {
+        return $query
+            ->whereHas('administrator');
+    }
+
+    public function sendEmailVerificationNotification()
+    {
+        $this->notify(new VerifyEmailNotification);
     }
 }

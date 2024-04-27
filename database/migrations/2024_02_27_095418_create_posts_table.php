@@ -13,7 +13,7 @@ return new class extends Migration
     {
         Schema::create('posts', function (Blueprint $table) {
             $table->id();
-            $table->nullableMorphs('postedby');
+            $table->nullableMorphs('addedby');
             $table->nullableMorphs('postable');
             $table->text('content')->nullable();
             $table->timestamps();

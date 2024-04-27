@@ -47,6 +47,16 @@ use Inertia\Inertia;
 // });
 
 
+Route::get('/testing',function() {
+    try {
+        AppService::new()->alertSuperAdminWithStatus();
+        return 'done';
+    } catch (Throwable $th) {
+        ds($th);
+    }
+});
+
+
 Route::get('/',[HomeController::class, 'goHome'])
     // ->middleware(['auth', 'verified'])
     ->name('home');
@@ -54,7 +64,7 @@ Route::get('/',[HomeController::class, 'goHome'])
 Route::get('/therapies/{therapyId}', [TherapyController::class, 'getTherapy'])->name('therapies.get');
 
 Route::get('/counsellor/{counsellorId}/verify-email/{hash}', [CounsellorController::class, 'verifyEmail'])
-    ->middleware(['throttle:6,1'])
+    ->middleware(['signed','throttle:6,1'])
     ->name('counsellor.verification.verify');
 Route::get('/counsellor/{counsellorId}', [CounsellorController::class, 'show'])->name('counsellor.show');
 

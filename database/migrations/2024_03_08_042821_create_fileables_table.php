@@ -15,7 +15,7 @@ return new class extends Migration
         Schema::create('fileables', function (Blueprint $table) {
             $table->id();
             $table->foreignIdFor(File::class);
-            $table->nullableMorphs('fileable'); // license, post, counsellor, therapy, message
+            $table->nullableMorphs('fileable'); // license, post, counsellor, therapy, message, report
             $table->timestamps();
         });
     }

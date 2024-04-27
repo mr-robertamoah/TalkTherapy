@@ -3,6 +3,7 @@ import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import DeleteUserForm from './Partials/DeleteUserForm.vue';
 import UpdatePasswordForm from './Partials/UpdatePasswordForm.vue';
 import UpdateProfileInformationForm from './Partials/UpdateProfileInformationForm.vue';
+import VerifyEmailSection from './Partials/VerifyEmailSection.vue';
 import BecomeCounsellorForm from './Partials/BecomeCounsellorForm.vue';
 import { ref, computed } from 'vue';
 import { Head, Link } from '@inertiajs/vue3';
@@ -59,7 +60,15 @@ function changeStep(value) {
                 
                 <div class="p-4 sm:p-8 bg-white shadow sm:rounded-lg">
                     <UpdateProfileInformationForm
-                        :must-verify-email="mustVerifyEmail"
+                        class="max-w-xl"
+                    />
+                </div>
+                
+                <div
+                    class="p-4 sm:p-8 bg-white shadow sm:rounded-lg"
+                    v-if="mustVerifyEmail && !$page.props.auth.user?.email_verified_at"
+                >
+                    <VerifyEmailSection
                         :status="status"
                         class="max-w-xl"
                     />

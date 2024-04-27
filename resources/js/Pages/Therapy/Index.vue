@@ -4,6 +4,7 @@ import CounsellorComponent from '@/Components/CounsellorComponent.vue';
 import ActivityBadge from '@/Components/ActivityBadge.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import UserComponent from '@/Components/UserComponent.vue';
+import CreateReportModal from '@/Components/CreateReportModal.vue';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { Head, useForm, usePage } from '@inertiajs/vue3'
 import { computed, onBeforeUnmount, ref, watch, watchEffect } from 'vue';
@@ -323,7 +324,7 @@ function clickedCreateSession() {
 }
 
 function clickedReport() {
-    
+    showModal('report')
 }
 
 function clickedActiveSession() {
@@ -453,6 +454,10 @@ async function clickedStartSession() {
         .finally(() => {
             sessionActionRunning.value = ''
         })
+}
+
+function reportCreated(report) {
+    console.log(report)
 }
 
 async function clickedEndSession() {
@@ -617,7 +622,7 @@ function clickedShowAll() {
                                             v-for="l in computedTherapy.cases"
                                             :key="l.id"
                                             :title="l.about ?? ''"
-                                            class="capitalize mr-3 rounded text-sm p-2 min-w-[100px] text-gray-700 bg-gray-300 select-none transition duration-75 cursor-pointer hover:bg-gray-600 hover:text-white text-center"
+                                            class="capitalize mr-3 rounded text-sm w-fit p-2 min-w-[100px] text-gray-700 bg-gray-300 select-none transition duration-75 cursor-pointer hover:bg-gray-600 hover:text-white text-center"
                                         >{{ l.name }}</div>
                                     </template>
                                     <div v-else class="text-gray-600 text-sm text-center my-2">there are no therapy cases added.</div>
@@ -714,7 +719,7 @@ function clickedShowAll() {
                     <div class="text-gray-600 font-semibold tracking-wide text-center mb-4">Actions</div>
 
                     <div class="flex space-x-2 justify-start items-center w-full overflow-hidden overflow-x-auto p-2">
-                        <PrimaryButton @click="clickedReport" class="shrink-0" v-if="$page.props.auth.user">report</PrimaryButton>
+                        <PrimaryButton @click="clickedReport" class="shrink-0" v-if="$page.props.auth.user">make a report</PrimaryButton>
                         <template v-if="computedTherapy.status !== 'ENDED'">
                             <PrimaryButton @click="clickedCreateSession" class="shrink-0" v-if="computedIsCounsellor && computedTherapy.maxSessions > computedTherapy.sessionsHeld">create session</PrimaryButton>
                             <template v-if="!computedIsInSession">
@@ -899,6 +904,14 @@ function clickedShowAll() {
         @on-success="(data) => {
             if (data) newSession = data
         }"
+    />
+        
+    <CreateReportModal
+        :show="modalData.show && modalData.type == 'report'"
+        :item="computedTherapy"
+        :type="'Therapy'"
+        @close-modal="closeModal"
+        @on-success="() => reportCreated(report)"
     />
 
     <Alert

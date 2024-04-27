@@ -65,7 +65,7 @@ function readFile(f) {
 </script>
 
 <template>
-    <div class="p-2 bg-gray-300 rounded-md"
+    <div class="p-2 bg-gray-300 rounded-md relative"
         :class="{'min-w-[120px]': computedIsVideoOrAudio}"
     >
         <div class="text-sm absolute "

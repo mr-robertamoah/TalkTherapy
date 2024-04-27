@@ -1,5 +1,6 @@
 <script setup>
 import CreateReligionModal from '@/Components/CreateReligionModal.vue';
+import PreferenceItem from '@/Components/PreferenceItem.vue';
 import TextInput from '@/Components/TextInput.vue';
 import { watch } from 'vue';
 import { onBeforeMount, ref } from 'vue';
@@ -111,13 +112,12 @@ function removeReligionFromSelected(oldReligion) {
                         >create it</div>
                     </div>
                     <div class="w-full p-2 flex justify-start items-center overflow-hidden overflow-x-auto" v-if="religions.length">
-                        <div
-                            v-for="l in religions"
-                            :key="l.id"
-                            :title="l.about ?? ''"
-                            @click="() => addReligionToSelected(l)"
-                            class="capitalize mr-3 rounded text-sm p-2 min-w-[100px] text-gray-700 bg-gray-300 select-none transition duration-75 cursor-pointer hover:bg-gray-600 hover:text-white text-center"
-                        >{{ l.name }}</div>
+                        <PreferenceItem
+                            v-for="c in religions"
+                            :key="c.id"
+                            :item="c"
+                            @select-item="(data) => addReligionToSelected(data)"
+                        />
                         <div 
                             v-if="religionsPage != 0"
                             class="p-2 text-gray-500 transition duration-75 cursor-pointer hover:text-gray-700"
@@ -148,7 +148,7 @@ function removeReligionFromSelected(oldReligion) {
                         <div
                             v-for="l in selectedReligions"
                             :key="l.id"
-                            class="capitalize mr-3 rounded relative text-sm p-2 min-w-[100px] text-gray-700 bg-gray-300 select-none cursor-pointer text-center"
+                            class="capitalize mr-3 rounded relative text-sm p-2 w-fit min-w-[100px] text-gray-700 bg-gray-300 select-none cursor-pointer text-center"
                         >
                             {{ l.name }}
                             <div 

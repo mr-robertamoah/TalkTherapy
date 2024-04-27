@@ -11,10 +11,12 @@
         "laradumps/laradumps": "^2.5",
         "laravel/breeze": "^2.0",
         "laravel/framework": "^11.0",
-        "laravel/sanctum": "^4.0",
         "laravel/reverb": "^1.0.0-beta5",
+        "laravel/sanctum": "^4.0",
         "laravel/tinker": "^2.8",
         "mr-robertamoah/dto": "^1.0",
+        "symfony/http-client": "^7.0",
+        "symfony/mailgun-mailer": "^7.0",
         "tightenco/ziggy": "^1.0"
     },
     "require-dev": {

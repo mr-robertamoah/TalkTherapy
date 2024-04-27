@@ -6,10 +6,12 @@ use App\Enums\SessionStatusEnum;
 use App\Events\SessionStartedEvent;
 use App\Models\Alert;
 use App\Models\GroupTherapy;
+use App\Models\Report;
 use App\Models\Session;
 use App\Models\Therapy;
 use App\Models\User;
 use App\Models\Visitor;
+use App\Notifications\ReportNotification;
 use App\Notifications\SessionDueNotification;
 use App\Notifications\SessionFailedNotification;
 use App\Notifications\SessionStartedNotification;
@@ -24,6 +26,14 @@ class AppService extends Service
         $superAdmins = User::query()->whereSuperAdmin()->get();
 
         Notification::send($superAdmins, new VisitorsStatusNotification());
+    }
+
+    public function alertAdminWithReport(Report $report)
+    {
+        $admins = User::query()->whereAdmin()->inRandomOrder()->limit(2)->get();
+
+        ds($admins);
+        Notification::send($admins, new ReportNotification($report));
     }
     
     public function clearVisitors()

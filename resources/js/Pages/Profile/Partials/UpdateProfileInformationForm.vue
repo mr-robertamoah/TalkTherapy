@@ -8,15 +8,6 @@ import ProfileInformationDisplay from '@/Components/ProfileInformationDisplay.vu
 import { Link, useForm, usePage } from '@inertiajs/vue3';
 import { onBeforeMount, ref } from 'vue';
 
-defineProps({
-    mustVerifyEmail: {
-        type: Boolean,
-    },
-    status: {
-        type: String,
-    },
-});
-
 const user = usePage().props.auth.user;
 
 const form = useForm({
@@ -100,39 +91,39 @@ function clickedUpdate() {
                     <ProfileInformationDisplay
                         class="my-8"
                         label="first name"
-                        :text="$page.props.auth.user?.firstName ?? ''"
+                        :text="user?.firstName ?? ''"
                     />
                     <ProfileInformationDisplay
                         class="my-8"
                         label="last name"
-                        :text="$page.props.auth.user?.lastName ?? ''"
+                        :text="user?.lastName ?? ''"
                     />
                     <ProfileInformationDisplay
                         class="my-8"
                         label="other names"
-                        :text="$page.props.auth.user?.otherNames ?? ''"
+                        :text="user?.otherNames ?? ''"
                     />
                     <ProfileInformationDisplay
                         class="my-8"
                         label="email"
                         :capitalize="false"
-                        :text="$page.props.auth.user?.email ?? ''"
+                        :text="user?.email ?? ''"
                     />
                     <ProfileInformationDisplay
                         class="my-8"
                         label="date of birth"
                         :capitalize="false"
-                        :text="$page.props.auth.user?.dob ? new Date($page.props.auth.user.dob).toDateString() : ''"
+                        :text="user?.dob ? new Date(user.dob).toDateString() : ''"
                     />
                     <ProfileInformationDisplay
                         class="my-8"
                         label="gender"
-                        :text="$page.props.auth.user?.gender ?? ''"
+                        :text="user?.gender ?? ''"
                     />
                     <ProfileInformationDisplay
                         class="my-8"
                         label="country"
-                        :text="$page.props.auth.user?.country ?? ''"
+                        :text="user?.country ?? ''"
                     />
                 </div>
             </template>
@@ -241,27 +232,6 @@ function clickedUpdate() {
                 />
 
                 <InputError class="mt-2" :message="form.errors.country" />
-            </div>
-
-            <div v-if="mustVerifyEmail && user.email_verified_at === null">
-                <p class="text-sm mt-2 text-gray-800">
-                    Your email address is unverified.
-                    <Link
-                        :href="route('verification.send')"
-                        method="post"
-                        as="button"
-                        class="underline text-sm text-gray-600 hover:text-gray-900 rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                    >
-                        Click here to re-send the verification email.
-                    </Link>
-                </p>
-
-                <div
-                    v-show="status === 'verification-link-sent'"
-                    class="mt-2 font-medium text-sm text-green-600"
-                >
-                    A new verification link has been sent to your email address.
-                </div>
             </div>
 
             <div class="flex items-center gap-4">

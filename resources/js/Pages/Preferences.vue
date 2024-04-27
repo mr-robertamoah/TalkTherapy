@@ -5,6 +5,7 @@ import Modal from '@/Components/Modal.vue';
 import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
 import { onBeforeMount, ref, watch, watchEffect } from 'vue';
 import InputError from '@/Components/InputError.vue';
+import PreferenceItem from '@/Components/PreferenceItem.vue';
 import InputLabel from '@/Components/InputLabel.vue';
 import Alert from '@/Components/Alert.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
@@ -105,7 +106,6 @@ watch(() => religionData.value.name, () => {
 
 function setCasesAndLanguages() {
     const props = usePage().props
-    console.log(props.cases)
     cases.value = [...props.loadedCases.data]
     languages.value = [...props.loadedLanguages.data]
     religions.value = [...props.loadedReligions.data]
@@ -521,13 +521,12 @@ function removeReligionFromSelected(oldReligion) {
                                     >create it</div>
                                 </div>
                                 <template v-if="cases.length">
-                                    <div
+                                    <PreferenceItem
                                         v-for="c in cases"
                                         :key="c.id"
-                                        :title="c.description ?? ''"
-                                        @click="() => addCaseToSelected(c)"
-                                        class="capitalize mr-3 rounded text-sm p-2 min-w-[100px] text-gray-700 bg-gray-300 select-none transition duration-75 cursor-pointer hover:bg-gray-600 hover:text-white text-center"
-                                    >{{ c.name }}</div>
+                                        :item="c"
+                                        @select-item="(data) => addCaseToSelected(data)"
+                                    />
                                     <div 
                                         v-if="casesPage != 0"
                                         class="p-2 text-gray-500 transition duration-75 cursor-pointer hover:text-gray-700"
@@ -558,7 +557,7 @@ function removeReligionFromSelected(oldReligion) {
                                     <div
                                         v-for="c in selectedCases"
                                         :key="c.id"
-                                        class="capitalize mr-3 rounded relative text-sm p-2 min-w-[100px] text-gray-700 bg-gray-300 select-none cursor-pointer text-center"
+                                        class="capitalize mr-3 rounded relative text-sm p-2 w-fit min-w-[100px] text-gray-700 bg-gray-300 select-none cursor-pointer text-center"
                                     >
                                         {{ c.name }}
                                         <div 
@@ -595,13 +594,12 @@ function removeReligionFromSelected(oldReligion) {
                                     >create it</div>
                                 </div>
                                 <template v-if="languages.length">
-                                    <div
-                                        v-for="l in languages"
-                                        :key="l.id"
-                                        :title="l.about ?? ''"
-                                        @click="() => addLanguageToSelected(l)"
-                                        class="capitalize mr-3 rounded text-sm p-2 min-w-[100px] text-gray-700 bg-gray-300 select-none transition duration-75 cursor-pointer hover:bg-gray-600 hover:text-white text-center"
-                                    >{{ l.name }}</div>
+                                    <PreferenceItem
+                                        v-for="language in languages"
+                                        :key="language.id"
+                                        :item="language"
+                                        @select-item="(data) => addLanguageToSelected(data)"
+                                    />
                                     <div 
                                         v-if="languagesPage != 0"
                                         class="p-2 text-gray-500 transition duration-75 cursor-pointer hover:text-gray-700"
@@ -632,7 +630,7 @@ function removeReligionFromSelected(oldReligion) {
                                     <div
                                         v-for="l in selectedLanguages"
                                         :key="l.id"
-                                        class="capitalize mr-3 rounded relative text-sm p-2 min-w-[100px] text-gray-700 bg-gray-300 select-none cursor-pointer text-center"
+                                        class="capitalize mr-3 rounded relative text-sm p-2 w-fit min-w-[100px] text-gray-700 bg-gray-300 select-none cursor-pointer text-center"
                                     >
                                         {{ l.name }}
                                         <div 
@@ -669,13 +667,12 @@ function removeReligionFromSelected(oldReligion) {
                                     >create it</div>
                                 </div>
                                 <template v-if="religions.length">
-                                    <div
-                                        v-for="l in religions"
-                                        :key="l.id"
-                                        :title="l.about ?? ''"
-                                        @click="() => addReligionToSelected(l)"
-                                        class="capitalize mr-3 rounded text-sm p-2 min-w-[100px] text-gray-700 bg-gray-300 select-none transition duration-75 cursor-pointer hover:bg-gray-600 hover:text-white text-center"
-                                    >{{ l.name }}</div>
+                                    <PreferenceItem
+                                        v-for="religion in religions"
+                                        :key="religion.id"
+                                        :item="religion"
+                                        @select-item="(data) => addReligionToSelected(data)"
+                                    />
                                     <div 
                                         v-if="religionsPage != 0"
                                         class="p-2 text-gray-500 transition duration-75 cursor-pointer hover:text-gray-700"
@@ -706,7 +703,7 @@ function removeReligionFromSelected(oldReligion) {
                                     <div
                                         v-for="l in selectedReligions"
                                         :key="l.id"
-                                        class="capitalize mr-3 rounded relative text-sm p-2 min-w-[100px] text-gray-700 bg-gray-300 select-none cursor-pointer text-center"
+                                        class="capitalize mr-3 rounded relative text-sm p-2 w-fit min-w-[100px] text-gray-700 bg-gray-300 select-none cursor-pointer text-center"
                                     >
                                         {{ l.name }}
                                         <div 

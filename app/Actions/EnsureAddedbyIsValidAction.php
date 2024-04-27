@@ -8,7 +8,7 @@ use MrRobertAmoah\DTO\BaseDTO;
 
 class EnsureAddedbyIsValidAction extends Action
 {
-    public function execute(BaseDTO $dto)
+    public function execute(BaseDTO $dto, ?string $errorMessage = null)
     {
         if (is_null($dto->addedby)) return;
 
@@ -18,6 +18,6 @@ class EnsureAddedbyIsValidAction extends Action
 
         if ($dto->addedby::class == Counsellor::class && $dto->user->is($dto->addedby->user)) return;
 
-        throw new AddedbyIsInvalidException('Data on added by is not valid to perform this action.', 422);
+        throw new AddedbyIsInvalidException($errorMessage ?: 'Data on added by is not valid to perform this action.', 422);
     }
 }

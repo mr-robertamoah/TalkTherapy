@@ -106,6 +106,9 @@ const props = defineProps({
     isActive: {
         default: false
     },
+    listen: {
+        default: true
+    },
     loadedTopics: {
         default: []
     },
@@ -118,11 +121,12 @@ const mainSession = ref(null)
 const loading = ref(false)
 
 onBeforeUnmount(() => {
-    Echo.leave(`sessions.${props.session.id}`)
+    if (props.listen)
+        Echo.leave(`sessions.${props.session.id}`)
 })
 
 watchEffect(() => {
-    if (props.session?.id) {
+    if (props.session?.id && props.listen) {
         mainSession.value = {...props.session}
 
         Echo

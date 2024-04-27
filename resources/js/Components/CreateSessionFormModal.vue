@@ -13,7 +13,8 @@ import Alert from "./Alert.vue";
 import PrimaryButton from "./PrimaryButton.vue";
 import Select from "./Select.vue";
 import { useForm } from '@inertiajs/vue3';
-import { addMinutes, format, setMilliseconds, setSeconds } from 'date-fns';
+import { addMinutes, format } from 'date-fns';
+import PreferenceItem from './PreferenceItem.vue';
 
 const { alertData, clearAlertData, setAlertData, setFailedAlertData } = useAlert()
 const { getCurrentLocation, currentLocation } = useLocation()
@@ -341,13 +342,12 @@ function useCurrentLocation() {
                             <div class="text-sm text-center mb-2 font-bold">Select case(s) pertaining to session</div>
                             <div class="p-2 flex justify-start items-start flex-col overflow-hidden my-2 mb-4">
                                 <div class="w-full p-2 flex justify-start items-center overflow-hidden overflow-x-auto">
-                                    <div
+                                    <PreferenceItem
                                         v-for="c in therapy.cases"
                                         :key="c.id"
-                                        :title="c.description ?? ''"
-                                        @click="() => addCaseToSelected(c)"
-                                        class="capitalize mr-3 rounded text-sm p-2 min-w-[100px] text-gray-700 bg-gray-300 select-none transition duration-75 cursor-pointer hover:bg-gray-600 hover:text-white text-center"
-                                    >{{ c.name }}</div>
+                                        :item="c"
+                                        @select-item="(data) => addCaseToSelected(data)"
+                                    />
                                 </div>
                             </div>
 
@@ -358,7 +358,7 @@ function useCurrentLocation() {
                                     <div
                                         v-for="c in selectedCases"
                                         :key="c.id"
-                                        class="capitalize mr-3 rounded relative text-sm p-2 min-w-[100px] text-gray-700 bg-gray-300 select-none cursor-pointer text-center"
+                                        class="capitalize mr-3 rounded relative text-sm p-2 w-fit min-w-[100px] text-gray-700 bg-gray-300 select-none cursor-pointer text-center"
                                     >
                                         {{ c.name }}
                                         <div 

@@ -217,6 +217,21 @@ class Counsellor extends Model
             ->exists();
     }
 
+    public function isVerified()
+    {
+        return !!$this->verified_at;
+    }
+
+    public function addedPosts()
+    {
+        return $this->morphMany(Post::class, 'addedby');
+    }
+
+    public function addedReports()
+    {
+        return $this->morphMany(Report::class, 'addedby');
+    }
+
     public function starred()
     {
         return $this->morphMany(Star::class, 'starredby');

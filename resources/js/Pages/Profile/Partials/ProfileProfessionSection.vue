@@ -1,5 +1,6 @@
 <script setup>
 import CreateProfessionModal from '@/Components/CreateProfessionModal.vue';
+import PreferenceItem from '@/Components/PreferenceItem.vue';
 import TextInput from '@/Components/TextInput.vue';
 import { watch } from 'vue';
 import { onBeforeMount, ref } from 'vue';
@@ -111,13 +112,12 @@ function removeProfessionFromSelected() {
                         >create it</div>
                     </div>
                     <div class="w-full p-2 flex justify-start items-center overflow-hidden overflow-x-auto" v-if="professions.length">
-                        <div
-                            v-for="l in professions"
-                            :key="l.id"
-                            :title="l.about ?? ''"
-                            @click="() => addProfessionToSelected(l)"
-                            class="capitalize mr-3 rounded text-sm p-2 min-w-[100px] text-gray-700 bg-gray-300 select-none transition duration-75 cursor-pointer hover:bg-gray-600 hover:text-white text-center"
-                        >{{ l.name }}</div>
+                        <PreferenceItem
+                            v-for="c in professions"
+                            :key="c.id"
+                            :item="c"
+                            @select-item="(data) => addProfessionToSelected(data)"
+                        />
                         <div 
                             v-if="professionsPage != 0"
                             class="p-2 text-gray-500 transition duration-75 cursor-pointer hover:text-gray-700"
@@ -146,7 +146,7 @@ function removeProfessionFromSelected() {
                     
                     <div
                         v-if="selectedProfession"
-                        class="capitalize mr-3 rounded relative text-sm p-2 min-w-[100px] text-gray-700 bg-gray-300 select-none cursor-pointer text-center"
+                        class="capitalize mr-3 rounded relative text-sm p-2 w-fit min-w-[100px] text-gray-700 bg-gray-300 select-none cursor-pointer text-center"
                     >
                         {{ selectedProfession.name }}
                         <div 

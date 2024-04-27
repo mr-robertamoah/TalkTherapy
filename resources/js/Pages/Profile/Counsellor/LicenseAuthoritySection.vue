@@ -137,7 +137,7 @@ async function getOtherLicensingAuthorities() {
                             @click="() => {
                                 selectedAuthority = {...c}
                             }"
-                            class="mr-3 rounded text-sm p-2 min-w-[100px] text-gray-700 bg-gray-300 select-none transition duration-75 cursor-pointer hover:bg-gray-600 hover:text-white text-center"
+                            class="mr-3 rounded text-sm p-2 min-w-[100px] w-fit text-gray-700 bg-gray-300 select-none transition duration-75 cursor-pointer hover:bg-gray-600 hover:text-white text-center"
                         >
                             <div>{{ c.name }}</div>
                             <div class="capitalize w-full text-justify text-xs ">{{ c.about }}</div>
@@ -172,7 +172,7 @@ async function getOtherLicensingAuthorities() {
                     
                     <template v-if="selectedAuthority">
                         <div
-                            class="capitalize mr-3 rounded relative text-sm p-2 min-w-[100px] max-w-[350px] text-gray-700 bg-gray-300 select-none cursor-pointer text-center"
+                            class="capitalize mr-3 rounded w-fit relative text-sm p-2 min-w-[100px] max-w-[350px] text-gray-700 bg-gray-300 select-none cursor-pointer text-center"
                         >
                             {{ selectedAuthority.name }}
                             <div 

@@ -1,5 +1,6 @@
 <script setup>
 import CreateCaseModal from '@/Components/CreateCaseModal.vue';
+import PreferenceItem from '@/Components/PreferenceItem.vue';
 import TextInput from '@/Components/TextInput.vue';
 import { watch } from 'vue';
 import { onBeforeMount, ref } from 'vue';
@@ -113,13 +114,12 @@ function removeCaseFromSelected(oldCase) {
                         >create it</div>
                     </div>
                     <div class="w-full p-2 flex justify-start items-center overflow-hidden overflow-x-auto" v-if="cases.length">
-                        <div
+                        <PreferenceItem
                             v-for="c in cases"
                             :key="c.id"
-                            :title="c.description ?? ''"
-                            @click="() => addCaseToSelected(c)"
-                            class="capitalize mr-3 rounded text-sm p-2 min-w-[100px] text-gray-700 bg-gray-300 select-none transition duration-75 cursor-pointer hover:bg-gray-600 hover:text-white text-center"
-                        >{{ c.name }}</div>
+                            :item="c"
+                            @select-item="(data) => addCaseToSelected(data)"
+                        />
                         <div 
                             v-if="casesPage != 0"
                             class="p-2 text-gray-500 transition duration-75 cursor-pointer hover:text-gray-700"
@@ -150,7 +150,7 @@ function removeCaseFromSelected(oldCase) {
                         <div
                             v-for="c in selectedCases"
                             :key="c.id"
-                            class="capitalize mr-3 rounded relative text-sm p-2 min-w-[100px] text-gray-700 bg-gray-300 select-none cursor-pointer text-center"
+                            class="capitalize mr-3 rounded relative text-sm p-2 w-fit min-w-[100px] text-gray-700 bg-gray-300 select-none cursor-pointer text-center"
                         >
                             {{ c.name }}
                             <div 

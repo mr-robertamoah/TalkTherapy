@@ -24,13 +24,12 @@
                     <div class="p-2 flex justify-start items-center overflow-hidden overflow-x-auto my-2">
                                 
                         <template v-if="topic.sessions?.length">
-                            <div
+                            <PreferenceItem
                                 v-for="c in topic.sessions"
                                 :key="c.id"
-                                class="capitalize mr-3 rounded relative text-sm p-2 min-w-[100px] text-gray-700 bg-gray-300 select-none cursor-pointer text-center"
-                            >
-                                {{ c.name }}
-                            </div>
+                                :item="c"
+                                :show-actions="false"
+                            />
                         </template>
                         <div v-else class="w-full text-center text-sm text-gray-600">no sessions</div>
                     </div>
@@ -50,6 +49,7 @@
 <script setup>
 import Modal from './Modal.vue';
 import NameAndValue from './NameAndValue.vue';
+import PreferenceItem from './PreferenceItem.vue';
 
 const emits = defineEmits(['close'])
 

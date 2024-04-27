@@ -6,8 +6,10 @@ use App\Http\Controllers\CounsellorController;
 use App\Http\Controllers\LanguageController;
 use App\Http\Controllers\LicensingAuthorityController;
 use App\Http\Controllers\MessageController;
+use App\Http\Controllers\PostController;
 use App\Http\Controllers\ProfessionController;
 use App\Http\Controllers\ReligionController;
+use App\Http\Controllers\ReportController;
 use App\Http\Controllers\RequestController;
 use App\Http\Controllers\SessionController;
 use App\Http\Controllers\TherapyCaseController;
@@ -63,6 +65,17 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/requests', [RequestController::class, 'getRequests'])->name('requests.get');
     Route::post('/requests/{requestId}', [RequestController::class, 'respond'])->name('requests.respond');
 
+    Route::get('/reports', [ReportController::class, 'getReports'])->name('api.reports');
+    Route::get('/reports/{reportId}', [ReportController::class, 'getReport'])->name('api.reports.get');
+    Route::post('/reports', [ReportController::class, 'createReport'])->name('api.reports.create');
+    Route::post('/reports/{reportId}', [ReportController::class, 'updateReport'])->name('api.reports.update');
+    Route::delete('/reports/{reportId}', [ReportController::class, 'deleteReport'])->name('api.reports.delete');
+
+    Route::get('/posts', [PostController::class, 'getPosts'])->name('api.posts');
+    Route::get('/posts/{postId}', [PostController::class, 'gePosts'])->name('api.posts.get');
+    Route::post('/posts', [PostController::class, 'creatPosts'])->name('api.posts.create');
+    Route::post('/posts/{postId}', [PostController::class, 'updatPosts'])->name('api.posts.update');
+    Route::delete('/posts/{postId}', [PostController::class, 'deletPosts'])->name('api.posts.delete');
     
     Route::get('/therapies', [TherapyController::class, 'show'])->name('api.therapies');
     Route::get('/therapies/{therapyId}', [TherapyController::class, 'getTherapy'])->name('api.therapies.get');

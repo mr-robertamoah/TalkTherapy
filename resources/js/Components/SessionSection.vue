@@ -3,13 +3,12 @@
         <div class="text-sm text-center mb-2 font-bold">Select session(s)</div>
         <div class="p-2 flex justify-start items-start flex-col overflow-hidden my-2 mb-4">
             <div class="w-full p-2 flex justify-start items-center overflow-hidden overflow-x-auto">
-                <div
+                <PreferenceItem
                     v-for="c in sessions"
                     :key="c.id"
-                    :title="c.description ?? ''"
-                    @click="() => addSessionToSelected(c)"
-                    class="capitalize mr-3 rounded text-sm p-2 min-w-[100px] text-gray-700 bg-gray-300 select-none transition duration-75 cursor-pointer hover:bg-gray-600 hover:text-white text-center"
-                >{{ c.name }}</div>
+                    :item="c"
+                    @select-item="(data) => addSessionToSelected(data)"
+                />
                 <div 
                     v-if="page !== 0 && sessions.length"
                     class="p-2 text-gray-500 transition duration-75 cursor-pointer hover:text-gray-700"
@@ -42,7 +41,7 @@
                 <div
                     v-for="c in selectedSessions"
                     :key="c.id"
-                    class="capitalize mr-3 rounded relative text-sm p-2 min-w-[100px] text-gray-700 bg-gray-300 select-none cursor-pointer text-center"
+                    class="capitalize mr-3 rounded relative text-sm w-fit p-2 min-w-[100px] text-gray-700 bg-gray-300 select-none cursor-pointer text-center"
                 >
                     {{ c.name }}
                     <div 
@@ -61,6 +60,7 @@
 <script setup>
 import TextInput from '@/Components/TextInput.vue';
 import { ref, watch, watchEffect } from "vue"
+import PreferenceItem from './PreferenceItem.vue';
 
 
 const emits = defineEmits(['onData'])

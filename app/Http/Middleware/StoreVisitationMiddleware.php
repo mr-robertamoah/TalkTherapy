@@ -16,7 +16,7 @@ class StoreVisitationMiddleware
      */
     public function handle(Request $request, Closure $next): Response
     {
-        StoreVisitationJob::dispatch($request);
+        StoreVisitationJob::dispatch($request->user(), $request->ip());
         return $next($request);
     }
 }

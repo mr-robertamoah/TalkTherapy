@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Models\User;
 use App\Services\VisitorService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -17,7 +18,7 @@ class StoreVisitationJob implements ShouldQueue
     /**
      * Create a new job instance.
      */
-    public function __construct(private Request $request)
+    public function __construct(private ?User $user, private ?string $ipAddress)
     {
         //
     }
@@ -27,6 +28,6 @@ class StoreVisitationJob implements ShouldQueue
      */
     public function handle(): void
     {
-        VisitorService::new()->storeVisitor($this->request);
+        VisitorService::new()->storeVisitor($this->user, $this->ipAddress);
     }
 }
