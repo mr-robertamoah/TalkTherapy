@@ -24,13 +24,14 @@ class UserResource extends JsonResource
             'email' => $this->email,
             'email_verified_at' => $this->email_verified_at,
             'gender' => $this->gender,
+            'isUser' => true,
             'country' => $this->country,
             'dob' => $this->dob,
             'isAdult' => $this->dob?->age >= 18,
             'settings' => $this->settings,
             'counsellor' => $this->counsellor ? new CounsellorMiniResource($this->counsellor) : null,
             'createdAt' => $this->created_at->diffForHumans(),
-            'isAdmin' => $this->when($this->isAdmin(), true)
+            'isAdmin' => $this->when($this->isAdmin(), true, false)
         ];
     }
 }

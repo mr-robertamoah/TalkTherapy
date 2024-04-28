@@ -96,7 +96,7 @@ class ReportController extends Controller
     public function getReports(Request $request)
     {
         try {
-            $posts = ReportService::new()->getReports(
+            $reports = ReportService::new()->getReports(
                 CreateReportDTO::new()->fromArray([
                     'user' => $request->user(),
                     'like' => $request->like,
@@ -105,7 +105,7 @@ class ReportController extends Controller
                 ])
             );
 
-            return ReportResource::collection($posts);
+            return ReportResource::collection($reports);
         } catch (Throwable $th) {
             
             return $this->returnFailure($request, $th);

@@ -1,4 +1,5 @@
 <script setup>
+import TestimonialComponent from '@/Components/TestimonialComponent.vue';
 import Alert from '@/Components/Alert.vue';
 import CounsellorComponent from '@/Components/CounsellorComponent.vue';
 import TextInput from '@/Components/TextInput.vue';
@@ -10,7 +11,7 @@ import { Head } from '@inertiajs/vue3';
 import { ref, computed, reactive, watch } from 'vue';
 import { default as _ } from 'lodash';
 
-const { alertData, clearAlertData, setAlertData } = useAlert()
+const { alertData, clearAlertData, setAlertData, setFailedAlertData, setSuccessAlertData } = useAlert()
 
 const props = defineProps({
     administrator: {
@@ -34,7 +35,7 @@ const filters = reactive({
 })
 const pages = reactive({
     users: {
-        therapies: 1, 'group therapies': 1,
+        testimonials: 1, therapies: 1, 'group therapies': 1,
     },
     counsellors: {
         show: 1, 'verification requests': 1, therapies: 1, 'group therapies': 1,
@@ -51,7 +52,7 @@ const pages = reactive({
 })
 const data = reactive({
     users: {
-        therapies: [], 'group therapies': [],
+        testimonials: [], therapies: [], 'group therapies': [],
     },
     counsellors: {
         show: [], 'verification requests': [], therapies: [], 'group therapies': [],
@@ -79,7 +80,7 @@ watch(() => filters.name, () => {
 
 const computedSubLink = computed(() => {
     return {
-        [links.users]: ['therapies', 'group therapies'],
+        [links.users]: ['testimonials', 'therapies', 'group therapies'],
         [links.counsellors]: ['show', 'verification requests', 'therapies', 'group therapies'],
         [links.therapies]: ['sessions', 'discussions'],
         [links.groupTherapies]: ['counsellors', 'users', 'sessions'],
@@ -88,7 +89,7 @@ const computedSubLink = computed(() => {
 })
 const loadingMessage = computed(() => {
     return {
-        [links.users]: {'therapies': '', 'group therapies': ''},
+        [links.users]: {'testimonials': 'getting testimonials', 'therapies': '', 'group therapies': ''},
         [links.counsellors]: {'show': 'getting counsellors', 'verification requests': 'getting verification requests for counsellors', 'therapies': '', 'group therapies': ''},
         [links.therapies]: {'sessions': '', 'discussions': ''},
         [links.groupTherapies]: {'counsellors': '', 'users': '', 'sessions': ''},
@@ -97,7 +98,7 @@ const loadingMessage = computed(() => {
 })
 const computedCallable = computed(() => {
     return {
-        [links.users]: {'therapies': '', 'group therapies': ''},
+        [links.users]: {'testimonials': getTestimonials, 'therapies': '', 'group therapies': ''},
         [links.counsellors]: {'show': getCounsellors, 'verification requests': getVerificationRequests, 'therapies': '', 'group therapies': ''},
         [links.therapies]: {'sessions': '', 'discussions': ''},
         [links.groupTherapies]: {'counsellors': '', 'users': '', 'sessions': ''},
@@ -120,6 +121,33 @@ const computedPage = computed(() => {
 function updatePage(res) {
     if (res.data?.links?.next) pages[currentLink.value][currentSubLink.value] += 1
     else pages[currentLink.value][currentSubLink.value] = 0
+}
+
+async function getTestimonials() {
+    loading.value = true
+
+    await axios.get(`${route('api.testimonials')}?page=${computedPage.value}`)
+        .then((res) => {
+            console.log(res)
+            if (computedPage.value > 1) {
+                data.users['testimonials'] = [...data.users['testimonials'], ...res.data.data]
+                updatePage(res)
+                return
+            }
+
+            data.users['testimonials'] = [...res.data.data]
+            updatePage(res)
+        })
+        .catch((err) => {
+            console.log(err)
+
+            setFailedAlertData({
+                message: 'Something unfortunate happened. Please try again later.',
+                time: 5000
+            })
+        })
+
+    loading.value = false
 }
 
 async function getVerificationRequests() {
@@ -260,7 +288,7 @@ function respondToVerificationRequest(requestId, response) {
         <div v-if="computedHasData || loading" class="my-12 relative w-full sm:w-[90%] md:w-[75%] mx-auto flex flex-col justify-center items-center p-4 rounded-md bg-white">
             <FormLoader class="mx-auto" :show="loading" :text="loadingMessage"/>
             
-            <template v-if="data.counsellors['verification requests']">
+            <template v-if="currentLink == 'counsellors' && currentSubLink == 'verification requests'">
                 <VerificationRequest
                     v-for="request in data.counsellors['verification requests']"
                     :key="request.id"
@@ -269,7 +297,16 @@ function respondToVerificationRequest(requestId, response) {
                 />
             </template>
             
-            <template v-if="data.counsellors.show">
+            <template v-else-if="currentLink == 'users' && currentSubLink == 'testimonials'">
+                <TestimonialComponent
+                    v-for="testimonial in data.users.testimonials"
+                    :key="testimonial.id"
+                    :testimonial="testimonial"
+                    class="mb-4 w-full"
+                />
+            </template>
+            
+            <template v-else-if="currentLink == 'counsellors' && currentSubLink == 'show'">
                 <div>
                     <TextInput
                         v-model="filters.name"

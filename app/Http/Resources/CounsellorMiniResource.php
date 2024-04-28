@@ -25,6 +25,7 @@ class CounsellorMiniResource extends JsonResource
         return [
             'id' => $this->id,
             'userId' => $this->user_id,
+            'username' => $this->user->username,
             'name' => $this->getName(),
             'verifiedAt' => $this->verified_at,
             'avatar' => $this->avatar?->url,

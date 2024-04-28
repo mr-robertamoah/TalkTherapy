@@ -100,7 +100,7 @@ const computedDataHasBoth = computed(() => {
 async function createReport() {
     if (!reportData.value.description) {
         setFailedAlertData({
-            message: "Description is required for a session.",
+            message: "Description is required for a report.",
             time: 5000,
         });
         return
@@ -144,8 +144,8 @@ async function createReport() {
                 time: 4000
             })
 
-            if (res.data.session)
-                emits('onSuccess', res.data.session)
+            if (res.data.report)
+                emits('onSuccess', res.data.report)
 
             closeModal()
         })
@@ -187,8 +187,8 @@ function clearData() {
     reportData.value.description = ''
     reportData.value.reportableId = ''
     reportData.value.reportableType = ''
-    reportData.value.addedbyId = ''
-    reportData.value.addedbyType = ''
+    reportData.value.addedbyId = user ? user.id : ''
+    reportData.value.addedbyType = 'User'
     reportData.value.files = ''
     reportData.value.data = ''
 }
@@ -260,7 +260,7 @@ function closeModal() {
                 <hr>
             </div>
 
-            <FormLoader class="mx-auto" :show="loading" :text="`creating session`"/>
+            <FormLoader class="mx-auto" :show="loading" :text="`making report`"/>
             <div class="p-4 relative">
                 <form 
                     @submit.prevent="createReport"

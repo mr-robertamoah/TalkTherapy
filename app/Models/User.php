@@ -122,6 +122,26 @@ class User extends Authenticatable implements MustVerifyEmailContract
         return $this->morphMany(Session::class, 'addedby');
     }
 
+    public function addedContacts()
+    {
+        return $this->morphMany(Contact::class, 'addedby');
+    }
+
+    public function addedTestimonials()
+    {
+        return $this->morphMany(Testimonial::class, 'addedby');
+    }
+
+    public function hasTestimonial()
+    {
+        return $this->addedTestimonials()->exists();
+    }
+
+    public function doesNotHaveTestimonial()
+    {
+        return !$this->hasTestimonial();
+    }
+
     public function sentMessages()
     {
         return $this->morphMany(Message::class, 'from');

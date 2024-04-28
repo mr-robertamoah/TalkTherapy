@@ -31,6 +31,7 @@ import LicenseAuthoritySection from './LicenseAuthoritySection.vue';
 import StarBadge from '@/Components/StarBadge.vue';
 import StyledLink from '@/Components/StyledLink.vue';
 import CreateTherapyButton from '@/Components/CreateTherapyButton.vue';
+import TestimonialSection from '@/Components/TestimonialSection.vue';
 
 const { modalData, showModal } = useModal()
 const { alertData, clearAlertData, setAlertData, setFailedAlertData } = useAlert()
@@ -355,6 +356,17 @@ function closeModal() {
                             class="mt-6 text-sm text-gray-600 text-center w-full"
                         >nothing yet</div>
                     </div>
+                </div>
+            </div>
+                
+            <div class="w-full sm:w-[90%] md:w-[75%] lg:w-[60%] mx-auto sm:px-6 lg:px-8 mt-8 relative">
+                <div class="p-4 sm:p-8 bg-white shadow sm:rounded-lg">
+                    <TestimonialSection
+                        class="max-w-xl"
+                        :addedby="counsellor"
+                        :byId="counsellor?.id"
+                        :byType="'Counsellor'"
+                    />
                 </div>
             </div>
 

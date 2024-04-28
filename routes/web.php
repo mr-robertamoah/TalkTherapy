@@ -2,6 +2,7 @@
 
 use App\DTOs\CreateSessionDTO;
 use App\Events\TestEvent;
+use App\Http\Controllers\AboutController;
 use App\Http\Controllers\AdministratorController;
 use App\Http\Controllers\CounsellorController;
 use App\Http\Controllers\HomeController;
@@ -58,8 +59,9 @@ Route::get('/testing',function() {
 
 
 Route::get('/',[HomeController::class, 'goHome'])
-    // ->middleware(['auth', 'verified'])
     ->name('home');
+Route::get('/about', AboutController::class)
+    ->name('about');
 
 Route::get('/therapies/{therapyId}', [TherapyController::class, 'getTherapy'])->name('therapies.get');
 

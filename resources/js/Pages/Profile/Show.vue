@@ -5,6 +5,7 @@ import UpdatePasswordForm from './Partials/UpdatePasswordForm.vue';
 import UpdateProfileInformationForm from './Partials/UpdateProfileInformationForm.vue';
 import VerifyEmailSection from './Partials/VerifyEmailSection.vue';
 import BecomeCounsellorForm from './Partials/BecomeCounsellorForm.vue';
+import TestimonialSection from '@/Components/TestimonialSection.vue';
 import { ref, computed } from 'vue';
 import { Head, Link } from '@inertiajs/vue3';
 
@@ -55,6 +56,15 @@ function changeStep(value) {
                         :counsellor-creation-step="currentStep"
                         @change-step="changeStep"
                         class="max-w-xl"
+                    />
+                </div>
+                
+                <div class="p-4 sm:p-8 bg-white shadow sm:rounded-lg">
+                    <TestimonialSection
+                        class="max-w-xl"
+                        :addedby="$page.props.auth.user"
+                        :byId="$page.props.auth.user?.id"
+                        :byType="'User'"
                     />
                 </div>
                 

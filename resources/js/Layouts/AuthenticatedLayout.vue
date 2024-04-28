@@ -172,6 +172,10 @@ function goToTherapy(data) {
                                                 v-if="showAdministratorLink"
                                                 :href="route('administrator')"
                                             > Administrator </DropdownLink>
+                                            <DropdownLink
+                                                v-if="!route().current('about')"
+                                                :href="route('about')"
+                                            > About </DropdownLink>
                                             <DropdownLink :href="route('logout')" method="post" as="button">
                                                 Log Out
                                             </DropdownLink>
@@ -213,14 +217,22 @@ function goToTherapy(data) {
                         </template>
                         <div class="flex justify-end items-center" v-else>
                             <StyledLink
-                                :href="route('login')" 
+                                :href="route('login')"
+                                v-if="!route().current('login')" 
                                 class="my-auto mr-2"
                                 :text="'login'"
                             />
                             <StyledLink
-                                :href="route('register')" 
+                                :href="route('register')"
+                                v-if="!route().current('register')" 
                                 class="my-auto mr-2"
                                 :text="'register'"
+                            />
+                            <StyledLink
+                                :href="route('about')"
+                                v-if="!route().current('about')" 
+                                class="my-auto mr-2"
+                                :text="'about'"
                             />
                         </div>
                     </div>
@@ -270,6 +282,10 @@ function goToTherapy(data) {
                                 v-if="showAdministratorLink"
                                 :href="route('administrator')"
                             > Administrator </ResponsiveNavLink>
+                            <ResponsiveNavLink
+                                v-if="!route().current('about')"
+                                :href="route('about')"
+                            > About </ResponsiveNavLink>
                             <ResponsiveNavLink :href="route('logout')" method="post" as="button">
                                 Log Out
                             </ResponsiveNavLink>

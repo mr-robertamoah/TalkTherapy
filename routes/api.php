@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AdministratorController;
 use App\Http\Controllers\AlertController;
+use App\Http\Controllers\ContactController;
 use App\Http\Controllers\CounsellorController;
 use App\Http\Controllers\LanguageController;
 use App\Http\Controllers\LicensingAuthorityController;
@@ -12,6 +13,7 @@ use App\Http\Controllers\ReligionController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\RequestController;
 use App\Http\Controllers\SessionController;
+use App\Http\Controllers\TestimonialController;
 use App\Http\Controllers\TherapyCaseController;
 use App\Http\Controllers\TherapyController;
 use App\Http\Controllers\TherapyTopicController;
@@ -44,6 +46,10 @@ Route::get('/sessions/{sessionId}/messages', [MessageController::class, 'getSess
 Route::get('/topics/{topicId}/messages', [MessageController::class, 'getTopicMessages'])->name('api.topic.messages.get');
 Route::get('/messages/{messageId}/replies', [MessageController::class, 'getMessageReplies'])->name('api.message.replies.get');
 
+Route::get('/testimonials', [TestimonialController::class, 'getTestimonials'])->name('api.testimonials');
+
+Route::post('/contacts', [ContactController::class, 'createContact'])->name('api.contacts.create');
+
 Route::get('/therapy-cases', [TherapyCaseController::class, 'getCases'])->name('cases.get');
 Route::get('/languages', [LanguageController::class, 'getLanguages'])->name('languages.get');
 Route::get('/religions', [ReligionController::class, 'getReligions'])->name('religions.get');
@@ -64,6 +70,15 @@ Route::middleware('auth:sanctum')->group(function () {
     
     Route::get('/requests', [RequestController::class, 'getRequests'])->name('requests.get');
     Route::post('/requests/{requestId}', [RequestController::class, 'respond'])->name('requests.respond');
+    
+    Route::post('/testimonials', [TestimonialController::class, 'createTestimonial'])->name('api.testimonials.create');
+    Route::delete('/testimonials/{testimonialId}', [TestimonialController::class, 'deleteTestimonial'])->name('api.testimonials.delete');
+    Route::post('/testimonials/{testimonialId}', [TestimonialController::class, 'updateTestimonial'])->name('api.testimonials.update');
+    Route::post('/testimonials/{testimonialId}/mark', [TestimonialController::class, 'markTestimonial'])->name('api.testimonials.mark');
+
+    Route::delete('/contacts/{contactId}', [ContactController::class, 'deleteContact'])->name('api.contacts.delete');
+    Route::post('/contacts/{contactId}', [ContactController::class, 'updateContact'])->name('api.contacts.update');
+    Route::get('/contacts', [ContactController::class, 'getContacts'])->name('api.contacts');
 
     Route::get('/reports', [ReportController::class, 'getReports'])->name('api.reports');
     Route::get('/reports/{reportId}', [ReportController::class, 'getReport'])->name('api.reports.get');

@@ -227,6 +227,26 @@ class Counsellor extends Model
         return $this->morphMany(Post::class, 'addedby');
     }
 
+    public function addedContacts()
+    {
+        return $this->morphMany(Contact::class, 'addedby');
+    }
+
+    public function addedTestimonials()
+    {
+        return $this->morphMany(Testimonial::class, 'addedby');
+    }
+
+    public function hasTestimonial()
+    {
+        return $this->addedTestimonials()->exists();
+    }
+
+    public function doesNotHaveTestimonial()
+    {
+        return !$this->hasTestimonial();
+    }
+
     public function addedReports()
     {
         return $this->morphMany(Report::class, 'addedby');

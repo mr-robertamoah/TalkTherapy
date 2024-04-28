@@ -13,7 +13,7 @@ import NameAndValue from '@/Components/NameAndValue.vue';
 import TherapyComponent from '@/Components/TherapyComponent.vue';
 import MiniModal from '@/Components/MiniModal.vue';
 import useModal from '@/Composables/useModal';
-import TextInput from '../TextInput.vue';
+import TextInput from '@/Components/TextInput.vue';
 import FormLoader from '@/Components/FormLoader.vue';
 import { default as _ } from 'lodash';
 import { differenceInMinutes } from 'date-fns';
