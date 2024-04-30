@@ -212,7 +212,7 @@ function clickedUpdate() {
                     class="mt-1 block w-full"
                     v-model="form.gender"
                     autocomplete="gender"
-                    :options="['male', 'female', 'non-binary']"
+                    :options="['male', 'female', {value: 'NON_BINARY', name: 'non-binary'}]"
                     :default-option="'select gender'"
                 />
 

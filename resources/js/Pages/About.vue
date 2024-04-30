@@ -118,16 +118,20 @@ const robertAvatar = `/storage/others/robertamoah.png`
                                 :text="'Website'"
                             /> -->
                             <StyledA
+                                :href="'https://github.com/mr-robertamoah'"
+                                :text="'GitHub'"
+                            />
+                            <StyledA
+                                :href="'https://www.linkedin.com/in/mr-robert-amoah'"
+                                :text="'LinkedIn'"
+                            />
+                            <StyledA
                                 :href="'https://www.x.com/Mr_robertamoah'"
                                 :text="'X'"
                             />
                             <StyledA
                                 :href="'https://www.facebook.com/share/Mj7V4hrem4NfVPg4'"
                                 :text="'Facebook'"
-                            />
-                            <StyledA
-                                :href="'https://github.com/mr-robertamoah'"
-                                :text="'GitHub'"
                             />
                         </div>
                     </div>
