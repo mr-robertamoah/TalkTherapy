@@ -7,6 +7,7 @@ import TextInput from '@/Components/TextInput.vue';
 import ProfileInformationDisplay from '@/Components/ProfileInformationDisplay.vue';
 import { Link, useForm, usePage } from '@inertiajs/vue3';
 import { onBeforeMount, ref } from 'vue';
+import { computed } from 'vue';
 
 const user = usePage().props.auth.user;
 
@@ -33,6 +34,10 @@ onBeforeMount(() => {
     const c = localStorage.getItem('countries')
     if (c) countries.value = c.split(',')
     getCountries()
+})
+
+const computedGender = computed(() => {
+    return user?.gender == 'NON_BINARY' ? 'NON-BINARY' : (user?.gender ?? '')
 })
 
 function getDate(dob) {
@@ -118,7 +123,7 @@ function clickedUpdate() {
                     <ProfileInformationDisplay
                         class="my-8"
                         label="gender"
-                        :text="user?.gender ?? ''"
+                        :text="computedGender"
                     />
                     <ProfileInformationDisplay
                         class="my-8"

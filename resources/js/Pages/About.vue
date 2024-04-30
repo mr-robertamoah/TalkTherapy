@@ -192,7 +192,7 @@ const robertAvatar = `/storage/others/robertamoah.png`
                     </div>
                 </div>
             </div>
-            
+            <!-- TODO add whats in the pipeline for the future -->
             <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 mt-4">
                 <div class="overflow-hidden p-4 py-8">
                     <div class="cursor-pointer bg-gradient-to-br from-blue-800 to-violet-500 bg-clip-text text-transparent font-bold text-lg">#TalkTherapy</div>
