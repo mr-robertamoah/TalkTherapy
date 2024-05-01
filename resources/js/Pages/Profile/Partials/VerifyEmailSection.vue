@@ -20,7 +20,8 @@ defineProps({
 
             <div class="text-sm text-gray-600">
                 <p class="text-sm mt-2 text-gray-800">
-                    Your email address is unverified. Click the button below to have the verification email sent.
+                    Your email address is unverified. Click the 'VERIFY EMAIL' button to have the verification email sent to you. 
+                    Check you mail box for our verification email and click 'Verify Email Address' button in the email to have your email verified.
                 </p>
 
                 <div
