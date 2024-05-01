@@ -16,6 +16,7 @@ defineProps({
 
             <p class="mt-1 text-sm text-gray-600">
                 Your email has to be verified before you can continue to receive email notifications regarding things like therapies/requests/etc.
+                Most importantly, you cannot create a therapy without a verified email.
             </p>
 
             <div class="text-sm text-gray-600">
@@ -31,7 +32,11 @@ defineProps({
                     A new verification link has been sent to your email address.
                 </div>
             </div>
-            <StyledLink :text="'verify email'" :method="'post'" :href="route('verification.send')" class="mr-2 mt-2 float-right"/>
+            <StyledLink 
+                :text="'verify email'" 
+                :as="'button'" 
+                :method="'post'" 
+                :href="route('verification.send')" class="mr-2 mt-2 float-right"/>
         </header>
     </section>
 </template>

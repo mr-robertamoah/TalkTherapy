@@ -8,6 +8,7 @@ import ProfileInformationDisplay from '@/Components/ProfileInformationDisplay.vu
 import { Link, useForm, usePage } from '@inertiajs/vue3';
 import { onBeforeMount, ref } from 'vue';
 import { computed } from 'vue';
+import { subYears } from 'date-fns';
 
 const user = usePage().props.auth.user;
 
@@ -37,7 +38,12 @@ onBeforeMount(() => {
 })
 
 const computedGender = computed(() => {
-    return user?.gender == 'NON_BINARY' ? 'NON-BINARY' : (user?.gender ?? '')
+    const u = usePage().props.auth.user
+
+    return u?.gender == 'NON_BINARY' ? 'NON-BINARY' : (u?.gender ?? '')
+})
+const computedMaxDOB = computed(() => {
+    return subYears(new Date(), 10).toISOString().slice(0, 10)
 })
 
 function getDate(dob) {
@@ -101,24 +107,24 @@ function clickedUpdate() {
                     <ProfileInformationDisplay
                         class="my-8"
                         label="last name"
-                        :text="user?.lastName ?? ''"
+                        :text="$page.props.auth.user?.lastName ?? ''"
                     />
                     <ProfileInformationDisplay
                         class="my-8"
                         label="other names"
-                        :text="user?.otherNames ?? ''"
+                        :text="$page.props.auth.user?.otherNames ?? ''"
                     />
                     <ProfileInformationDisplay
                         class="my-8"
                         label="email"
                         :capitalize="false"
-                        :text="user?.email ?? ''"
+                        :text="$page.props.auth.user?.email ?? ''"
                     />
                     <ProfileInformationDisplay
                         class="my-8"
                         label="date of birth"
                         :capitalize="false"
-                        :text="user?.dob ? new Date(user.dob).toDateString() : ''"
+                        :text="$page.props.auth.user?.dob ? new Date($page.props.auth.user.dob).toDateString() : ''"
                     />
                     <ProfileInformationDisplay
                         class="my-8"
@@ -128,7 +134,7 @@ function clickedUpdate() {
                     <ProfileInformationDisplay
                         class="my-8"
                         label="country"
-                        :text="user?.country ?? ''"
+                        :text="$page.props.auth.user?.country ?? ''"
                     />
                 </div>
             </template>
@@ -203,6 +209,7 @@ function clickedUpdate() {
                     type="date"
                     class="mt-1 block w-full"
                     v-model="form.dob"
+                    :max="computedMaxDOB"
                     autocomplete="dob"
                 />
 

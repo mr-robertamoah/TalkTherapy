@@ -45,7 +45,10 @@ class ProfileController extends Controller
             ])
         );
         
-        $request->user()->fill($request->validated());
+        $request->user()->fill(array_merge(
+            $request->validated(), 
+            ['dob' => !!$request->dob ? $request->dob : null]
+        ));
 
         if ($request->user()->isDirty('email')) {
             $request->user()->email_verified_at = null;

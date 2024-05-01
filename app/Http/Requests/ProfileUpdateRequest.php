@@ -21,8 +21,8 @@ class ProfileUpdateRequest extends FormRequest
             'lastName' => ['nullable', 'string', 'max:255'],
             'otherNames' => ['nullable', 'string', 'max:255'],
             'email' => ['nullable', 'string', 'email', 'max:255', Rule::unique(User::class)->ignore($this->user()->id)],
-            'dob' => ['nullable', 'date', 'max:255'],
-            'gender' => ['nullable', 'string', 'max:255', Rule::in(GenderEnum::values())],
+            'dob' => ['nullable', 'date',],
+            'gender' => ['nullable', 'string', Rule::in(GenderEnum::values())],
             'country' => ['nullable', 'string', 'max:255'],
         ];
     }
