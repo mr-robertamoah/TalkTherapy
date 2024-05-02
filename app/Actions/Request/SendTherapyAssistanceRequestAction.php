@@ -13,7 +13,6 @@ class SendTherapyAssistanceRequestAction extends Action
 {
     public function execute(TherapyAssistanceRequestDTO $therapyAssistanceRequestDTO)
     {
-        ds($therapyAssistanceRequestDTO);
         if (
             is_null($therapyAssistanceRequestDTO->from) ||
             is_null($therapyAssistanceRequestDTO->for) ||

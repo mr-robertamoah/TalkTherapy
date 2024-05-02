@@ -102,7 +102,7 @@ function clickedUpdate() {
                     <ProfileInformationDisplay
                         class="my-8"
                         label="first name"
-                        :text="user?.firstName ?? ''"
+                        :text="$page.props.auth.user?.firstName ?? ''"
                     />
                     <ProfileInformationDisplay
                         class="my-8"

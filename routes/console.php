@@ -38,4 +38,4 @@ Schedule::call(function () {
 
 Schedule::call(function () {
     AppService::new()->alertSuperAdminWithStatus();
-})->everyFourHours()->between('0:00', '24:00');
+})->dailyAt('0:00');

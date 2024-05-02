@@ -2,6 +2,8 @@
 
 namespace App\Http\Requests\Auth;
 
+use App\Jobs\StoreVisitationJob;
+use App\Models\User;
 use Illuminate\Auth\Events\Lockout;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Facades\Auth;
@@ -41,8 +43,9 @@ class LoginRequest extends FormRequest
     public function authenticate(): void
     {
         $this->ensureIsNotRateLimited();
+        $key = $this->getMainKey();
 
-        if (! Auth::attempt($this->only($this->getMainKey(), 'password'), $this->boolean('remember'))) {
+        if (! Auth::attempt($this->only($key, 'password'), $this->boolean('remember'))) {
             RateLimiter::hit($this->throttleKey());
 
             throw ValidationException::withMessages([
@@ -50,6 +53,10 @@ class LoginRequest extends FormRequest
             ]);
         }
 
+
+        if ($user = User::where($key, $this->get($key)))
+            StoreVisitationJob::dispatch($user, $this->ip());
+        
         RateLimiter::clear($this->throttleKey());
     }
 

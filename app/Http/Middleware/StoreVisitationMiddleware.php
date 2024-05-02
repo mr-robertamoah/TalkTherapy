@@ -16,7 +16,8 @@ class StoreVisitationMiddleware
      */
     public function handle(Request $request, Closure $next): Response
     {
-        StoreVisitationJob::dispatch($request->user(), $request->ip());
+        if ($request->getPathInfo() !== '/login');
+            StoreVisitationJob::dispatch($request->user(), $request->ip());
         return $next($request);
     }
 }

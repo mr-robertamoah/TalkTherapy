@@ -25,15 +25,14 @@ class AppService extends Service
     {
         $superAdmins = User::query()->whereSuperAdmin()->get();
 
-        Notification::send($superAdmins, new VisitorsStatusNotification());
+        Notification::send($superAdmins->unique(), new VisitorsStatusNotification());
     }
 
     public function alertAdminWithReport(Report $report)
     {
         $admins = User::query()->whereAdmin()->inRandomOrder()->limit(2)->get();
 
-        ds($admins);
-        Notification::send($admins, new ReportNotification($report));
+        Notification::send($admins->unique(), new ReportNotification($report));
     }
     
     public function clearVisitors()
