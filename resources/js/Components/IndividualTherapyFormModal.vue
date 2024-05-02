@@ -242,6 +242,7 @@ function closeModal() {
                 <div
                     class="capitalize w-fit mx-auto text-2xl font-bold bg-gradient-to-r from-gray-800 to-gray-500 bg-clip-text text-transparent mb-2"
                 >Create individual therapy</div>
+                <div class="mt-3 text-sm text-gray-600 text-justify">You must have your email verified and date of birth set before you can create a therapy</div>
                 <hr>
             </div>
 

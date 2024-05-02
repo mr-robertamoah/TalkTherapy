@@ -19,6 +19,7 @@ use App\Actions\Therapy\EnsureThereIsNoPendingRequestForCounsellorAction;
 use App\Actions\Therapy\EnsureThereIsNoPendingRequestForCounsellorsAction;
 use App\Actions\Therapy\EnsureUserHasAccessToTherapyAction;
 use App\Actions\Therapy\UpdateTherapyAction;
+use App\Actions\User\EnsureUserMeetsTherapyRequirementsAction;
 use App\DTOs\AssistTherapyDTO;
 use App\DTOs\CreateStarDTO;
 use App\DTOs\CreateTherapyDTO;
@@ -33,7 +34,7 @@ class TherapyService extends Service
 {
     public function createTherapy(CreateTherapyDTO $createTherapyDTO)
     {
-        EnsureCanCreateTherapyAction::new()->execute($createTherapyDTO);
+        EnsureUserMeetsTherapyRequirementsAction::new()->execute($createTherapyDTO->user);
 
         EnsureCanCreateTherapyAction::new()->execute($createTherapyDTO);
 

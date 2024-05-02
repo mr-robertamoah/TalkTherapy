@@ -12,7 +12,7 @@ class EnsureCanCreateTherapyAction extends Action
     {
         if (
             $createTherapyDTO->user->isAdmin() ||
-            $createTherapyDTO->user->counsellor
+            $createTherapyDTO->user
             // TODO not banned from creating or suspending from the app
         ) return;
 
