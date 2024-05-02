@@ -23,6 +23,7 @@
         "@googlemaps/js-api-loader": "^1.16.2",
         "date-fns": "^3.6.0",
         "get-blob-duration": "^1.2.0",
-        "lodash": "^4.17.21"
+        "lodash": "^4.17.21",
+        "vue-select": "^4.0.0-beta.6"
     }
 }

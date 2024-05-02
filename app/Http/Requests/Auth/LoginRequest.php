@@ -53,8 +53,7 @@ class LoginRequest extends FormRequest
             ]);
         }
 
-
-        if ($user = User::where($key, $this->get($key)))
+        if ($user = User::where($key, $this->get($key))->first())
             StoreVisitationJob::dispatch($user, $this->ip());
         
         RateLimiter::clear($this->throttleKey());
