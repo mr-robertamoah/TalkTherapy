@@ -1,53 +1,70 @@
 <script setup>
-import { onMounted, ref } from 'vue';
+import { ref, watch, watchEffect } from 'vue';
 
-const model = defineModel({
-    type: String,
-    required: true,
-});
+
+const emits = defineEmits(['selected'])
+
+const selectedOption = ref()
 
 const props = defineProps({
     options: {
         type: Array,
         required: true,
     },
-    defaultOption: {
+    label: {
         type: String,
-        required: false,
-    }
+        default: 'name',
+    },
+    value: {
+        type: Object,
+    },
 });
 
-const input = ref(null);
-
-onMounted(() => {
-    if (input.value.hasAttribute('autofocus')) {
-        input.value.focus();
+watch(() => selectedOption.value, () => {
+    emits('selected', selectedOption.value)
+})
+watchEffect(() => {
+    if (!props.value) {
+        selectedOption.value = undefined
+        return
     }
-});
 
-defineExpose({ focus: () => input.value.focus() });
+    if (
+        props.value[props.label] && !selectedOption.value ||
+        props.value[props.label] !== selectedOption.value[props.label]
+    )
+        selectedOption.value = props.value
+})
+
 </script>
 
 <template>
-    <select
-        class="border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 rounded-md shadow-sm capitalize"
-        v-model="model"
-        ref="input"
+    <v-select
+        class="new-styles border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 rounded-md shadow-sm capitalize"
+        v-model="selectedOption"
+        :label="label"
+        :options="options"
     >
-        <optgroup class="p-2">
-            
-            <option v-if="defaultOption" disabled class="capitalize my-2">
-                {{ defaultOption }}
-            </option>
-            <option
-                v-for="(opt, idx) in options"
-                :key="idx"
-                :value="typeof opt == 'string' ? opt.toUpperCase() : opt.value?.toUpperCase()"
-                class="mb-2 p-2 capitalize">{{ typeof opt == 'string' ? opt.toLowerCase() : opt.name.toLowerCase() }}</option>
-        </optgroup>
-    </select>
+    </v-select>
 </template>
 
 <style>
 @import "vue-select/dist/vue-select.css";
+
+#vs1__combobox {
+    padding: 6px 4px 6px 2px;
+    border-radius: 6px;
+    --tw-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+    --tw-shadow-colored: 0 1px 2px 0 var(--tw-shadow-color);
+    box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow);
+}
+
+.vs--open .vs__dropdown-toggle {
+    border-color: rgb(99 102 241 / 1);
+    border-width: 2px;
+    
+    --tw-ring-opacity: 1;
+    --tw-ring-color: rgb(99 102 241 / var(--tw-ring-opacity));
+}
+
 </style>

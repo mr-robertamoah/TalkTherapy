@@ -1,5 +1,8 @@
 <script setup>
+import useUtilities from '@/Composables/useUtilities';
 import { onMounted, ref } from 'vue';
+
+const { toCapitalize } = useUtilities()
 
 const model = defineModel({
     type: String,
@@ -43,7 +46,7 @@ defineExpose({ focus: () => input.value.focus() });
                 v-for="(opt, idx) in options"
                 :key="idx"
                 :value="typeof opt == 'string' ? opt.toUpperCase() : opt.value?.toUpperCase()"
-                class="mb-2 p-2 capitalize">{{ typeof opt == 'string' ? opt.toLowerCase() : opt.name.toLowerCase() }}</option>
+                class="mb-2 p-2 capitalize">{{ typeof opt == 'string' ? toCapitalize(opt) : toCapitalize(opt.name) }}</option>
         </optgroup>
     </select>
 </template>

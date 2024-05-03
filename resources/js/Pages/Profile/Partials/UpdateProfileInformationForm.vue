@@ -3,6 +3,7 @@ import InputError from '@/Components/InputError.vue';
 import InputLabel from '@/Components/InputLabel.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import Select from '@/Components/Select.vue';
+import SelectSearch from '@/Components/SelectSearch.vue';
 import TextInput from '@/Components/TextInput.vue';
 import ProfileInformationDisplay from '@/Components/ProfileInformationDisplay.vue';
 import { Link, useForm, usePage } from '@inertiajs/vue3';
@@ -44,6 +45,9 @@ const computedGender = computed(() => {
 })
 const computedMaxDOB = computed(() => {
     return subYears(new Date(), 10).toISOString().slice(0, 10)
+})
+const computedFormCountry = computed(() => {
+    return !form.country ? null : {name: form.country}
 })
 
 function getDate(dob) {
@@ -234,13 +238,21 @@ function clickedUpdate() {
             <div>
                 <InputLabel for="country" value="Country" />
 
-                <Select
+                <SelectSearch
                     id="country"
                     class="mt-1 block w-full"
-                    v-model="form.country"
-                    autocomplete="country"
-                    :options="countries"
-                    :default-option="'select country'"
+                    @selected="(data) => {
+                        if (data) {
+                            form.country = data.name
+                            return
+                        }
+
+                        form.country = ''
+                    }"
+                    :options="countries.map(c => {
+                        return {name: c}
+                    })"
+                    :value="computedFormCountry"
                 />
 
                 <InputError class="mt-2" :message="form.errors.country" />
