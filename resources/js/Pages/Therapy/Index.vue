@@ -849,7 +849,7 @@ function clickedShowAll() {
 
                 <div class="relative">
                     <FormLoader
-                        :text="'deleting therapy...'"
+                        :text="'deleting therapy'"
                         :show="loader.show"
                         :danger="true"
                     />
@@ -874,7 +874,7 @@ function clickedShowAll() {
 
                 <div class="relative">
                     <FormLoader
-                        :text="'ending therapy...'"
+                        :text="'ending therapy'"
                         :show="loader.show"
                     />
 

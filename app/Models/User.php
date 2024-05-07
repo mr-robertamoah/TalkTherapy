@@ -3,17 +3,19 @@
 namespace App\Models;
 
 use App\Notifications\VerifyEmailNotification;
+use Carbon\Carbon;
 use Illuminate\Contracts\Auth\MustVerifyEmail as MustVerifyEmailContract;
 
 use Illuminate\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 
 class User extends Authenticatable implements MustVerifyEmailContract
 {
-    use HasApiTokens, HasFactory, Notifiable, MustVerifyEmail;
+    use HasApiTokens, HasFactory, Notifiable, MustVerifyEmail, SoftDeletes;
 
     /**
      * The attributes that are mass assignable.
@@ -56,6 +58,13 @@ class User extends Authenticatable implements MustVerifyEmailContract
         'settings' => 'array',
     ];
 
+    public function getAgeAttribute()
+    {
+        return !!$this->dob 
+            ? (int) now()->diffInYears((new Carbon($this->dob))->subYears(20)->addMonths(4), true) 
+            : 0;
+    }
+
     public function routeNotificationForMail()
     {
         return [
@@ -75,6 +84,24 @@ class User extends Authenticatable implements MustVerifyEmailContract
     public function administrator()
     {
         return $this->hasOne(Administrator::class);
+    }
+
+    public function isSuperAdmin()
+    {
+        return $this
+            ->administrator()
+            ->whereSuperAdmin()
+            ->exists();
+    }
+
+    public function addedHowTos()
+    {
+        return $this->hasMany(HowTo::class);
+    }
+
+    public function addedHowToSteps()
+    {
+        return $this->hasMany(HowToStep::class);
     }
 
     public function isAdmin()

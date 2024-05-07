@@ -1,6 +1,7 @@
 <script setup>
 import MiniTherapyComponent from '@/Components/MiniTherapyComponent.vue';
 import StarredCounsellorComponent from '@/Components/StarredCounsellorComponent.vue';
+import HelpButton from '@/Components/HelpButton.vue';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { Head, usePage } from '@inertiajs/vue3';
 import { computed, onBeforeMount, provide, ref, watch } from 'vue';
@@ -124,6 +125,12 @@ const computedLeadingCounsellors = computed(() => {
 
     <AuthenticatedLayout>
         <div class="pt-6 pb-12">
+            <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 my-4 flex justify-end">
+                <HelpButton
+                    title="get help on Home Page"
+                    :page="'Home'"
+                />
+            </div>
             <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 mt-4">
                 <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
                     <div class="p-6 text-gray-900">Starred Counsellors (previous month)</div>

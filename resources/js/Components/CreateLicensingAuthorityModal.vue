@@ -14,7 +14,7 @@ import Select from './Select.vue';
 import { onBeforeMount } from 'vue';
 
 const { setErrorData, clearError } = useErrorHandler()
-const { alertData, clearAlertData, setAlertData} = useAlert()
+const { alertData, clearAlertData, setAlertData, setFailedAlertData } = useAlert()
 
 const props = defineProps({
     show: {
@@ -217,6 +217,13 @@ async function createLicensingAuthory() {
             setErrorData(licensingAuthorityErrors, err.response.data.errors, ['name', 'description'])
             return
         }
+        if (err.response?.data?.message) {
+            setFailedAlertData({
+                message: err.response.data.message,
+                time: 4000,
+            })
+            return
+        }
 
         setAlertData({
             message: 'Something unfortunate happened. Please try again later.',
@@ -246,7 +253,7 @@ async function createLicensingAuthory() {
             </div>
             
             <div class="overflow-hidden overflow-y-auto h-[80vh]">
-                <FormLoader class="mx-auto" :show="loading" :text="'creating licensing authority...'"/>
+                <FormLoader class="mx-auto" :show="loading" :text="'creating licensing authority'"/>
                 <form 
                     @submit.prevent="createLicensingAuthory"
                 >

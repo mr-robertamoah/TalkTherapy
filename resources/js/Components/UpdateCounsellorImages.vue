@@ -206,7 +206,7 @@ function thereIsNoData() {
                 <hr>
             </div>
 
-            <FormLoader class="top-14 mx-auto" :show="loading" :text="'updating images...'"/>
+            <FormLoader class="top-14 mx-auto" :show="loading" :text="'updating images'"/>
             <div class="max-h-[80vh] overflow-hidden p-2 overflow-y-auto">
                 <form 
                     @submit.prevent="updateCounsellor"

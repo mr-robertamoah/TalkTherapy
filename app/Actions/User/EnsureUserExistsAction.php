@@ -8,8 +8,8 @@ use App\Models\User;
 
 class EnsureUserExistsAction extends Action
 {
-    public function execute(User $user, bool $throwException = false): bool {
-        if (User::query()->where('id', $user->id)->exists()) return true;
+    public function execute(?User $user, bool $throwException = false): bool {
+        if (User::query()->where('id', $user?->id)->exists()) return true;
 
         if (!$throwException) return false;
 

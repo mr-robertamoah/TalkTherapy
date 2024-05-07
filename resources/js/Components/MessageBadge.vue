@@ -502,6 +502,15 @@ async function createMessage() {
             console.log(err)
             goToLogin(err)
             status.value = 'failed'
+            
+            if (err.response?.data?.message) {
+                setFailedAlertData({
+                    message: err.response.data.message,
+                    time: 4000,
+                })
+                return
+            }
+
             setFailedAlertData({
                 message: "Message was not sent. Clicked 'failed' to retry."
             })

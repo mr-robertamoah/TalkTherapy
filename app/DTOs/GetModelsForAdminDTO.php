@@ -6,10 +6,13 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use MrRobertAmoah\DTO\BaseDTO;
 
-class GetCounsellorsForAdminDTO extends BaseDTO
+class GetModelsForAdminDTO extends BaseDTO
 {
     public ?User $user = null;
     public ?string $filterType = null;
+    public ?string $username = null;
+    public ?string $name = null;
+    public ?string $age = null;
     public string|bool|null $filterValue = null;
     
     /**

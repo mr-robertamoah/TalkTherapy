@@ -132,7 +132,7 @@ const computedCanAdd = computed(() => {
 async function getTestimonial() {
     loading.value = true
 
-    await axios.get(route(`api.testimonials`), { addedbyType: props.byType, addedbyId: props.byId })
+    await axios.get(route(`api.testimonials`, { addedbyType: props.byType, addedbyId: props.byId }))
         .then((res) => {
             console.log(res)
             testimonial.value = res.data.data?.length ? res.data.data[0] : null

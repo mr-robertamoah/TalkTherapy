@@ -49,6 +49,9 @@ const computedMaxDOB = computed(() => {
 const computedFormCountry = computed(() => {
     return !form.country ? null : {name: form.country}
 })
+const computedUserDOB = computed(() => {
+    return form.dob ? (new Date(form.dob)).toDateString() : ''
+})
 
 function getDate(dob) {
     const dateSplit = new Date(dob).toISOString().split('T')
@@ -217,6 +220,7 @@ function clickedUpdate() {
                     autocomplete="dob"
                 />
 
+                <div v-if="computedUserDOB"  class="mt-2 text-xs text-gray-600 text-end">{{ computedUserDOB }}</div>
                 <InputError class="mt-2" :message="form.errors.dob" />
             </div>
 

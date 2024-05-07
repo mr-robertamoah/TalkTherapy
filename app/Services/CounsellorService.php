@@ -24,7 +24,7 @@ use App\DTOs\CheckNameRetrievabilityDTO;
 use App\DTOs\CreateCounsellorDTO;
 use App\DTOs\CreateLicenseDTO;
 use App\DTOs\DeleteCounsellorDTO;
-use App\DTOs\GetCounsellorsForAdminDTO;
+use App\DTOs\GetModelsForAdminDTO;
 use App\DTOs\GetCounsellorStatsForAdminDTO;
 use App\DTOs\UpdateCounsellorDTO;
 use App\DTOs\VerifyCounsellorDTO;
@@ -170,23 +170,23 @@ class CounsellorService extends Service
         return CreateCounsellorVerificationRequestAction::new()->execute($verifyCounsellorDTO);
     }
 
-    public function geCounsellorsForAdmin(GetCounsellorsForAdminDTO $getCounsellorsForAdminDTO)
+    public function geCounsellorsForAdmin(GetModelsForAdminDTO $getModelsForAdminDTO)
     {
-        if (is_null($getCounsellorsForAdminDTO->user) || $getCounsellorsForAdminDTO->user?->isNotAdmin()) {
+        if (is_null($getModelsForAdminDTO->user) || $getModelsForAdminDTO->user?->isNotAdmin()) {
             return [];
         }
 
         $query = Counsellor::query();
 
-        if ($getCounsellorsForAdminDTO->filterType == 'name') {
+        if ($getModelsForAdminDTO->filterType == 'name') {
             $query
-                ->where($getCounsellorsForAdminDTO->filterType, 'LIKE', "%{$getCounsellorsForAdminDTO->filterValue}%")
-                ->orWhereHas('user', function ($q) use ($getCounsellorsForAdminDTO) {
+                ->where($getModelsForAdminDTO->filterType, 'LIKE', "%{$getModelsForAdminDTO->filterValue}%")
+                ->orWhereHas('user', function ($q) use ($getModelsForAdminDTO) {
                     $q
-                        ->where('firstName', 'LIKE', "%{$getCounsellorsForAdminDTO->filterValue}%")
-                        ->orWhere('lastName', 'LIKE', "%{$getCounsellorsForAdminDTO->filterValue}%")
-                        ->orWhere('otherNames', 'LIKE', "%{$getCounsellorsForAdminDTO->filterValue}%")
-                        ->orWhere('username', 'LIKE', "%{$getCounsellorsForAdminDTO->filterValue}%");
+                        ->where('firstName', 'LIKE', "%{$getModelsForAdminDTO->filterValue}%")
+                        ->orWhere('lastName', 'LIKE', "%{$getModelsForAdminDTO->filterValue}%")
+                        ->orWhere('otherNames', 'LIKE', "%{$getModelsForAdminDTO->filterValue}%")
+                        ->orWhere('username', 'LIKE', "%{$getModelsForAdminDTO->filterValue}%");
                 });
         }
 

@@ -53,7 +53,7 @@
         <div v-if="modalData.type == 'delete'" class="relative">
             <div class="text-gray-600 text-center font-bold tracking-wide">Actions</div>
             <hr class="my-2">
-            <FormLoader :danger="true" :show="loading" :text="'deleting topic...'"/>
+            <FormLoader :danger="true" :show="loading" :text="'deleting topic'"/>
             <div class="text-red-700 my-4 w-[90%] mx-auto text-center">Are sure you want to delete this topic.</div>
             <div class="flex p-4 items-center justify-end mx-auto w-[90%] md:w-[75%]">
                 <PrimaryButton @click="closeModal">cancel</PrimaryButton>

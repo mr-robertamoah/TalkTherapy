@@ -729,7 +729,7 @@ function closeModal() {
             </div>
 
             <div>
-                <FormLoader class="mx-auto" :show="loading" :text="'deleting counsellor account...'"/>
+                <FormLoader class="mx-auto" :show="loading" :text="'deleting counsellor account'"/>
                 <div class="my-6 w-full text-center text-red-700">
                     Are you sure you want to delete this account?
                 </div>

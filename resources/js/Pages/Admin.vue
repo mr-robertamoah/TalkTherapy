@@ -1,5 +1,7 @@
 <script setup>
 import TestimonialComponent from '@/Components/TestimonialComponent.vue';
+import AdminHowTosComponent from '@/Components/AdminHowTosComponent.vue';
+import AdminUsersComponent from '@/Components/AdminUsersComponent.vue';
 import Alert from '@/Components/Alert.vue';
 import CounsellorComponent from '@/Components/CounsellorComponent.vue';
 import TextInput from '@/Components/TextInput.vue';
@@ -25,6 +27,7 @@ const links = {
     therapies: 'therapies',
     groupTherapies: 'group therapies',
     statistics: 'statistics',
+    others: 'others',
 }
 
 const loading = ref(false)
@@ -52,7 +55,10 @@ const pages = reactive({
 })
 const data = reactive({
     users: {
-        testimonials: [], therapies: [], 'group therapies': [],
+        show: false, testimonials: [], therapies: [], 'group therapies': [],
+    },
+    others: {
+        howTos: false, contacts: false,
     },
     counsellors: {
         show: [], 'verification requests': [], therapies: [], 'group therapies': [],
@@ -80,7 +86,8 @@ watch(() => filters.name, () => {
 
 const computedSubLink = computed(() => {
     return {
-        [links.users]: ['testimonials', 'therapies', 'group therapies'],
+        [links.users]: ['show', 'testimonials', 'therapies', 'group therapies'],
+        [links.others]: ['contacts', 'howTos'],
         [links.counsellors]: ['show', 'verification requests', 'therapies', 'group therapies'],
         [links.therapies]: ['sessions', 'discussions'],
         [links.groupTherapies]: ['counsellors', 'users', 'sessions'],
@@ -94,20 +101,25 @@ const loadingMessage = computed(() => {
         [links.therapies]: {'sessions': '', 'discussions': ''},
         [links.groupTherapies]: {'counsellors': '', 'users': '', 'sessions': ''},
         [links.statistics]: {'daily': '', 'weekly': '', 'monthly': '', 'yearly': ''},
+        [links.others]: {'howTos': '', 'contacts': ''},
     }[currentLink.value][currentSubLink.value]
 })
 const computedCallable = computed(() => {
     return {
-        [links.users]: {'testimonials': getTestimonials, 'therapies': '', 'group therapies': ''},
+        [links.users]: {'show': showUsers, 'testimonials': getTestimonials, 'therapies': '', 'group therapies': ''},
         [links.counsellors]: {'show': getCounsellors, 'verification requests': getVerificationRequests, 'therapies': '', 'group therapies': ''},
         [links.therapies]: {'sessions': '', 'discussions': ''},
         [links.groupTherapies]: {'counsellors': '', 'users': '', 'sessions': ''},
         [links.statistics]: {'daily': '', 'weekly': '', 'monthly': '', 'yearly': ''},
+        [links.others]: {'howTos': showHowTos, 'contacts': ''},
     }[currentLink.value][currentSubLink.value]
 })
 const computedHasData = computed(() => {
-    if (data[currentLink.value] && data[currentLink.value][currentSubLink.value])
-        return data[currentLink.value][currentSubLink.value].length
+    if (data[currentLink.value] && data[currentLink.value][currentSubLink.value]) {
+        const value = data[currentLink.value][currentSubLink.value]
+
+        return (typeof value == 'boolean') ? value : value.length
+    }
 
     return false
 })
@@ -121,6 +133,14 @@ const computedPage = computed(() => {
 function updatePage(res) {
     if (res.data?.links?.next) pages[currentLink.value][currentSubLink.value] += 1
     else pages[currentLink.value][currentSubLink.value] = 0
+}
+
+function showUsers() {
+    data.users.show = true
+}
+
+function showHowTos() {
+    data.others.howTos = true
 }
 
 async function getTestimonials() {
@@ -286,7 +306,7 @@ function respondToVerificationRequest(requestId, response) {
         </div>
 
         <div v-if="computedHasData || loading" class="my-12 relative w-full sm:w-[90%] md:w-[75%] mx-auto flex flex-col justify-center items-center p-4 rounded-md bg-white">
-            <FormLoader class="mx-auto" :show="loading" :text="loadingMessage"/>
+            <FormLoader class="mx-auto" :show="loading" :text="loadingMessage ?? ''"/>
             
             <template v-if="currentLink == 'counsellors' && currentSubLink == 'verification requests'">
                 <VerificationRequest
@@ -302,6 +322,20 @@ function respondToVerificationRequest(requestId, response) {
                     v-for="testimonial in data.users.testimonials"
                     :key="testimonial.id"
                     :testimonial="testimonial"
+                    class="mb-4 w-full"
+                />
+            </template>
+            
+            <template v-else-if="currentLink == 'users' && currentSubLink == 'show'">
+                <AdminUsersComponent
+                    :show="!!data.users.show"
+                    class="mb-4 w-full"
+                />
+            </template>
+            
+            <template v-else-if="currentLink == 'others' && currentSubLink == 'howTos'">
+                <AdminHowTosComponent
+                    :show="!!data.others.howTos"
                     class="mb-4 w-full"
                 />
             </template>

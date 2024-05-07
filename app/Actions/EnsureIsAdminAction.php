@@ -3,7 +3,6 @@
 namespace App\Actions;
 
 use App\Exceptions\AddedbyIsInvalidException;
-use App\Models\Counsellor;
 use MrRobertAmoah\DTO\BaseDTO;
 
 class EnsureIsAdminAction extends Action

@@ -4,6 +4,7 @@ use App\Http\Controllers\AdministratorController;
 use App\Http\Controllers\AlertController;
 use App\Http\Controllers\ContactController;
 use App\Http\Controllers\CounsellorController;
+use App\Http\Controllers\HowToController;
 use App\Http\Controllers\LanguageController;
 use App\Http\Controllers\LicensingAuthorityController;
 use App\Http\Controllers\MessageController;
@@ -55,12 +56,21 @@ Route::get('/languages', [LanguageController::class, 'getLanguages'])->name('lan
 Route::get('/religions', [ReligionController::class, 'getReligions'])->name('religions.get');
 Route::get('/professions', [ProfessionController::class, 'getProfessions'])->name('professions.get');
 
+Route::get('how-tos', [HowToController::class, 'getHowTos'])->name('api.how-tos');
+
 Route::middleware('auth:sanctum')->group(function () {
     
     Route::get('/administrator/verification/requests', [AdministratorController::class, 'getVerificationRequests'])->name('admin.verification.requests');
     Route::get('/administrator/counsellors', [AdministratorController::class, 'getCounsellors'])->name('admin.counsellors');
     Route::get('/administrator/counsellors/{counsellorId}/stats', [AdministratorController::class, 'getCounsellorStats'])->name('admin.counsellors.stats');
+    Route::get('/administrator/users', [AdministratorController::class, 'getUsers'])->name('admin.users');
+    Route::post('/administrator/users/{userId}', [AdministratorController::class, 'updateUser'])->name('admin.users.update');
+    Route::delete('/administrator/users/{userId}', [AdministratorController::class, 'deleteUser'])->name('admin.users.delete');
     
+    Route::post('/administrator/how-tos', [HowToController::class, 'createHowTo'])->name('admin.how-tos.create');
+    Route::post('/administrator/how-tos/{howToId}', [HowToController::class, 'updateHowTo'])->name('admin.how-tos.update');
+    Route::delete('/administrator/how-tos/{howToId}', [HowToController::class, 'deleteHowTo'])->name('admin.how-tos.delete');
+
     Route::get('/requests/counsellors', [CounsellorController::class, 'getCounsellors'])->name('counsellors.request.get');
 
     Route::post('/alerts', [AlertController::class, 'waitingForAlert'])->name('alert.wait');

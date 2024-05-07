@@ -12,7 +12,7 @@ import useAlert from '@/Composables/useAlert';
 import Alert from './Alert.vue';
 
 const { setErrorData } = useErrorHandler()
-const { alertData, clearAlertData, setAlertData} = useAlert()
+const { alertData, clearAlertData, setAlertData, setFailedAlertData } = useAlert()
 
 const props = defineProps({
     show: {
@@ -82,6 +82,13 @@ async function createReligion() {
             setErrorData(religionErrors, err.response.data.errors, ['name', 'about'])
             return
         }
+        if (err.response?.data?.message) {
+            setFailedAlertData({
+                message: err.response.data.message,
+                time: 4000,
+            })
+            return
+        }
 
         setAlertData({
             message: 'Something unfortunate happened. Please try again later.',
@@ -111,7 +118,7 @@ async function createReligion() {
             </div>
             
             <div>
-                <FormLoader class="mx-auto" :show="loading" :text="'creating religion...'"/>
+                <FormLoader class="mx-auto" :show="loading" :text="'creating religion'"/>
                 <form 
                     @submit.prevent="createReligion"
                 >

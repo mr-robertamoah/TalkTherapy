@@ -228,6 +228,13 @@ async function getSessions() {
         })
         .catch((err) => {
             console.log(err)
+            if (err.response?.data?.message) {
+                setFailedAlertData({
+                    message: err.response.data.message,
+                    time: 4000,
+                })
+                return
+            }
             goToLogin(err)
         })
         .finally(() => {

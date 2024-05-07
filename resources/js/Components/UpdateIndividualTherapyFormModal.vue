@@ -227,7 +227,7 @@ function closeModal() {
                 <hr>
             </div>
 
-            <FormLoader class="mx-auto" :show="loading" :text="`updating therapy ...`"/>
+            <FormLoader class="mx-auto" :show="loading" :text="`updating therapy`"/>
             <div class="p-4 relative">
                 <form 
                     @submit.prevent="updateTherapy"

@@ -70,7 +70,7 @@ function clickedResponse(response) {
                         )
                 }}
             </div>
-            <FormLoader class="mx-auto" :show="responding" :text="'responding to verification request.'"/>
+            <FormLoader class="mx-auto" :show="responding" :text="'responding to verification request'"/>
             <hr class="my-2">
 
             <div
