@@ -13,7 +13,7 @@
                 <hr>
             </div>
 
-            <FormLoader class="mx-auto" :show="loading" :text="`getting help`"/>
+            <FormLoader v-if="loading" class="mx-auto" :show="loading" :text="`getting help`"/>
             <div class="p-4 relative">
                 <div v-if="howTos.length" class="text-sm text-center text-gray-600 mb-2">double click/tap a how-to to view steps</div>
                 <div class="overflow-hidden overflow-y-auto h-[65vh] px-4 pb-4">

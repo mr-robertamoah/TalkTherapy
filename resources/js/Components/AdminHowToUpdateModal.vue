@@ -190,9 +190,11 @@ import TextBox from "./TextBox.vue";
 import AdminHowToStepCreateModal from "./AdminHowToStepCreateModal.vue";
 import useModal from "@/Composables/useModal";
 import { computed } from "vue";
+import useHowToPages from "@/Composables/useHowToPages";
 
 
 const { goToLogin } = useAuth()
+const { appPages } = useHowToPages()
 const { setErrorData } = useErrorHandler()
 const { modalData, showModal } = useModal()
 const { alertData, setFailedAlertData, clearAlertData, setSuccessAlertData } = useAlert()
@@ -224,25 +226,6 @@ const howToErrors = ref({
 })
 const deletedHowToSteps = ref([])
 const addedHowToSteps = ref([])
-const appPages = ref([
-    'Preference', 
-    'User Profile', 
-    'Home', 
-    'Register', 
-    'Login', 
-    'Therapy',
-    'Therapy Index', 
-    'Counsellor Profile',
-    'Create Therapy',
-    'Update Therapy',
-    'Create Session',
-    'Have Session',
-    'Check Requests',
-    'User Email Verification',
-    'Counsellor Email Verification',
-    'Counsellor Profile Update',
-    'User Profile Update',
-])
 
 watch(() => props.show, () => {
     if (!props.show) return

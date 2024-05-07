@@ -21,17 +21,11 @@ class HowToService extends Service
     {
         $query = HowTo::query();
 
-        $query->when($getHowToDTO->name, function ($query) use ($getHowToDTO) {
-            $query->whereNameLike($getHowToDTO->name);
-        });
+        $query->whereNameLike($getHowToDTO->name);
 
-        $query->when($getHowToDTO->pageLike, function ($query) use ($getHowToDTO) {
-            $query->wherePageLike($getHowToDTO->pageLike);
-        });
+        $query->wherePageLike($getHowToDTO->pageLike);
 
-        $query->orWhere(function ($query) {
-            $query->whereAll();
-        });
+        $query->orWhere('page', 'all');
 
         return HowToResource::collection($query->paginate(PaginationEnum::preferencesPagination->value));
     }

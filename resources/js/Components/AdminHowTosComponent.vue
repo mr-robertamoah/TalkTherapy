@@ -27,13 +27,13 @@
                 </div>
                 <div class="mt-4 mx-auto max-w-[400px]">
                     <label class="flex items-center">
-                        <Checkbox name="filter-page" v-model:checked="filterChecked.page" />
+                        <Checkbox name="filter-page" v-model:checked="filterChecked.pageLike" />
                         <span class="ms-2 text-sm text-gray-600">by page.</span>
                     </label>
 
                     <TextInput
-                        v-if="filterChecked.page"
-                        v-model="filters.page"
+                        v-if="filterChecked.pageLike"
+                        v-model="filters.pageLike"
                         type="text"
                         class="w-full mt-4"
                         placeholder="page of how-tos"
@@ -113,11 +113,11 @@ const howTos = ref({
 })
 const filters = ref({
     name: '',
-    page: '',
+    pageLike: '',
 })
 const filterChecked = ref({
     name: false,
-    page: false,
+    pageLike: false,
 })
 
 onBeforeMount(() => {
@@ -129,7 +129,7 @@ function getFilters() {
     let data = {}
 
     Object.keys(unref(filters)).forEach((key) => {
-        data[key] = filters.value[key]
+        data[key] = filters.value[key] ?? null
     })
 
     return data

@@ -149,10 +149,12 @@ import useErrorHandler from "@/Composables/useErrorHandler";
 import AdminHowToStepComponent from "./AdminHowToStepComponent.vue";
 import AdminHowToStepCreateModal from "./AdminHowToStepCreateModal.vue";
 import useModal from "@/Composables/useModal";
+import useHowToPages from "@/Composables/useHowToPages";
 import TextBox from "./TextBox.vue";
 
 
 const { goToLogin } = useAuth()
+const { appPages } = useHowToPages()
 const { showModal, modalData, closeModal } = useModal()
 const { setErrorData } = useErrorHandler()
 const { alertData, setFailedAlertData, clearAlertData, setSuccessAlertData } = useAlert()
@@ -179,25 +181,6 @@ const howToErrors = ref({
     page: '',
     howToSteps: '',
 })
-const appPages = ref([
-    'Preference', 
-    'User Profile', 
-    'Home', 
-    'Register', 
-    'Login', 
-    'Therapy',
-    'Therapy Index', 
-    'Counsellor Profile',
-    'Create Therapy',
-    'Update Therapy',
-    'Create Session',
-    'Have Session',
-    'Check Requests',
-    'User Email Verification',
-    'Counsellor Email Verification',
-    'Counsellor Profile Update',
-    'User Profile Update',
-])
 
 function closeHowToModal() {
     clearHowToData()

@@ -35,4 +35,9 @@ class HowTo extends Model
     {
         return $query->where('page', "all");
     }
+
+    public function scopeOrWhereAll($query)
+    {
+        return $query->orWhere('page', "all");
+    }
 }
