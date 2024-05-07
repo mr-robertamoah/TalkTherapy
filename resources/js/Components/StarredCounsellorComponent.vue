@@ -35,7 +35,7 @@ defineProps({
         <div class="p-2 absolute top-0 left-0 w-full h-full bg-opacity-40 bg-gray-600">
             <div class="flex justify-start items-center">
                 <Avatar :size="80" :src="counsellor?.avatar ?? ''" class="shrink-0" :alt="'...'"/>
-                <div class="mt-2 text-start shrink-0 max-w-[90%] text-ellipsis ml-2 text-white text-sm font-bold capitalize">{{ counsellor.name }}</div>
+                <div class="mt-2 text-start max-w-[90%] text-ellipsis ml-2 text-white text-sm font-bold capitalize">{{ counsellor.name }}</div>
             </div>
 
             <StarBadge
