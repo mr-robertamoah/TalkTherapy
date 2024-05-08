@@ -137,7 +137,10 @@
                                 </div>
                             </div>
 
-                            <div v-else class="text-center text-gray-600 text-sm mt-2 h-24 flex justify-center items-center">no steps yet</div>
+                            <div
+                                v-if="!howToData.howToSteps?.length && !addedHowToSteps?.length && !deletedHowToSteps?.length"
+                                class="text-center text-gray-600 text-sm mt-2 h-24 flex justify-center items-center"
+                            >no steps yet</div>
 
                             <InputError class="mt-2" :message="howToErrors.howToSteps" />
                         </div>

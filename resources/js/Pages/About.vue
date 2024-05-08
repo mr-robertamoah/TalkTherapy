@@ -1,18 +1,19 @@
 <script setup>
-import MiniTherapyComponent from '@/Components/MiniTherapyComponent.vue';
-import StarredCounsellorComponent from '@/Components/StarredCounsellorComponent.vue';
+import FeatureComponent from '@/Components/FeatureComponent.vue';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { Head, usePage } from '@inertiajs/vue3';
-import { computed, onBeforeMount, provide, ref, watch } from 'vue';
+import { ref, watch } from 'vue';
 import WriteableText from '@/Components/WriteableText.vue';
 import StyledA from '@/Components/StyledA.vue';
 import Avatar from '@/Components/Avatar.vue';
 import useModal from '@/Composables/useModal';
+import useFeatures from '@/Composables/useFeatures';
 import CreateTestimonialModal from '@/Components/CreateTestimonialModal.vue';
 import ContactUsModal from '../Components/ContactUsModal.vue';
 import PrimaryButton from '../Components/PrimaryButton.vue';
 
 const { closeModal, showModal, modalData } = useModal()
+const { features } = useFeatures()
 const user = usePage().props.auth.user
 
 const props = defineProps({
@@ -192,6 +193,60 @@ const robertAvatar = `/storage/others/robertamoah.png`
                     </div>
                 </div>
             </div>
+
+            <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 mt-4">
+                <div class="overflow-hidden shadow-sm sm:rounded-lg min-h-[50vh] p-4">
+                    <div class="mt-4 ml-2 text-2xl font-bold w-fit bg-gradient-to-br from-blue-800 to-violet-500 bg-clip-text text-transparent uppercase">
+                        Features
+                    </div>
+
+                    <div v-if="features.current.length" class="mt-8">
+                        <div
+                            class="text-lg font-bold w-fit bg-gradient-to-br from-blue-800 to-violet-500 bg-clip-text text-transparent capitalize mb-2 mx-auto">current</div>
+                        <div class="text-sm text-gray-600 text-justify mb-2">These are the features that are currently available.</div>
+                        <div class="mt-4 space-x-3 flex justify-center items-center overflow-hidden overflow-x-auto p-2">
+                            <FeatureComponent
+                                v-for="(feature, idx) in features.current"
+                                :key="idx"
+                                :feature="feature"
+                                :type="'available'"
+                                class="w-[90%]"
+                            />
+                        </div>
+                    </div>
+
+                    <div v-if="features.next.length" class="mt-8">
+                        <div
+                            class="text-lg font-bold w-fit bg-gradient-to-br from-blue-800 to-violet-500 bg-clip-text text-transparent capitalize mb-2 mx-auto">next</div>
+                        <div class="text-sm text-gray-600 text-justify mb-2">These are the features that are bein worked on.</div>
+                        <div class="mt-4 space-x-3 flex justify-center items-center overflow-hidden overflow-x-auto p-2">
+                            <FeatureComponent
+                                v-for="(feature, idx) in features.next"
+                                :key="idx"
+                                :feature="feature"
+                                :type="'next'"
+                                class="w-[90%]"
+                            />
+                        </div>
+                    </div>
+
+                    <div v-if="features.future.length" class="mt-8">
+                        <div
+                            class="text-lg font-bold w-fit bg-gradient-to-br from-blue-800 to-violet-500 bg-clip-text text-transparent capitalize mb-2 mx-auto">future</div>
+                        <div class="text-sm text-gray-600 text-justify mb-2">These are the features that are being considered for the future.</div>
+                        <div class="mt-4 space-x-3 flex justify-center items-center overflow-hidden overflow-x-auto p-2">
+                            <FeatureComponent
+                                v-for="(feature, idx) in features.future"
+                                :key="idx"
+                                :feature="feature"
+                                :type="'future'"
+                                class="w-[90%]"
+                            />
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- TODO add whats in the pipeline for the future -->
             <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 mt-4">
                 <div class="overflow-hidden p-4 py-8">

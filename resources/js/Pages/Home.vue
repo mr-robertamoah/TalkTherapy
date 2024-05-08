@@ -129,6 +129,7 @@ const computedLeadingCounsellors = computed(() => {
                 <HelpButton
                     title="get help on Home Page"
                     :page="'Home'"
+                    class="mr-2"
                 />
             </div>
             <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 mt-4">
