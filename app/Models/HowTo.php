@@ -21,13 +21,15 @@ class HowTo extends Model
         return $this->hasMany(HowToStep::class);
     }
 
-    public function scopeWhereNameLike($query, string $name)
+    public function scopeWhereNameLike($query, ?string $name)
     {
+        if (is_null($name)) $name = '';
         return $query->where('name', "LIKE", "%{$name}%");
     }
 
-    public function scopeWherePageLike($query, string $page)
+    public function scopeWherePageLike($query, ?string $page)
     {
+        if (is_null($page)) $page = '';
         return $query->where('page', "LIKE", "%{$page}%");
     }
 
