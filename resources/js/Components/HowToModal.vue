@@ -36,11 +36,12 @@
                             class="w-fit mx-auto h-[380px] mb-4"
                         />
                         <div 
-                            v-if="computedDescription"
+                            v-if="computedHasDescription"
                             @click="() => showMoreDescription = !showMoreDescription" 
-                            :class="[showMoreDescription ? 'bottom-0' : '-bottom-8' ]"
+                            :class="[showMoreDescription ? 'bottom-0' : '-bottom-3' ]"
                             class="cursor-pointer absolute w-full text-justify bg-gray-600 text-gray-200 p-2 rounded">
-                            {{ computedDescription }}
+                            <div :class="{'mb-2': showMoreDescription}" class="text-center font-bold">click to toggle description</div>
+                            <div v-if="showMoreDescription">{{ howTo.howToSteps[index].description }}</div>
                         </div>
                     </div>
                     <div 
@@ -87,8 +88,10 @@ const computedDescription = computed(() => {
     if (!props.howTo.howToSteps[index.value].description) return ''
 
     return showMoreDescription.value ? props.howTo.howToSteps[index.value].description : 
-        (props.howTo.howToSteps[index.value].description.slice(0, 50) + 
-            (props.howTo.howToSteps[index.value].description.length > 50 ? '...' : ''))
+        'toggle to '
+})
+const computedHasDescription = computed(() => {
+    return props.howTo.howToSteps[index.value]?.description ? true : false
 })
 
 function closeModal(){

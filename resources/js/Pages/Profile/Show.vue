@@ -8,6 +8,7 @@ import BecomeCounsellorForm from './Partials/BecomeCounsellorForm.vue';
 import TestimonialSection from '@/Components/TestimonialSection.vue';
 import { ref, computed } from 'vue';
 import { Head, Link } from '@inertiajs/vue3';
+import HelpButton from '@/Components/HelpButton.vue';
 
 const props = defineProps({
     mustVerifyEmail: {
@@ -43,6 +44,13 @@ function changeStep(value) {
         </template>
 
         <div class="py-12">
+            <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 my-4 flex justify-end">
+                <HelpButton
+                    title="get help on your profile page"
+                    :page="'User Profile'"
+                    class="mr-4"
+                />
+            </div>
             <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 space-y-6">
                 <div class="p-4 sm:p-8 bg-white shadow sm:rounded-lg">
                     <div class="flex justify-center items-end font-bold text-2xl">

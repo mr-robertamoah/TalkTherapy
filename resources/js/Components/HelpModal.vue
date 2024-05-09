@@ -48,10 +48,12 @@ import { ref, watch } from 'vue'
 import HowToComponent from './HowToComponent.vue';
 import useAuth from '@/Composables/useAuth';
 import useAlert from '@/Composables/useAlert';
+import { usePage } from '@inertiajs/vue3';
 
 
 const { goToLogin } = useAuth()
 const { alertData, setFailedAlertData, clearAlertData } = useAlert()
+const user = usePage().props.auth.user
 
 const emits = defineEmits(['close'])
 
@@ -88,10 +90,18 @@ async function getHowTos() {
     }))
         .then((res) => {
             console.log(res)
-            
-            howTos.value = [
+            let data = [
                 ...res.data.data,
             ]
+
+            if (user)
+                data = data.filter((h) => {
+                    const name = h.name?.toLowerCase()
+                    if (!name) return true
+                    return !name.includes('log') && !name.includes('regist')
+                })
+
+            howTos.value = data
         })
         .catch((err) => {
             console.log(err)

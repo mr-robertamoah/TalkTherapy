@@ -147,14 +147,14 @@ const robertAvatar = `/storage/others/robertamoah.png`
                 <div class="overflow-hidden min-h-[20vh] p-4 flex flex-col justify-center items-start mx-auto w-[90%] sm:w-[80%]">
                     <div class="bg-gradient-to-br from-blue-800 to-violet-500 bg-clip-text text-transparent font-bold text-2xl">Background Story</div>
 
-                    <div class="text-gray-600 text-lg mt-4 font-medium">Sometimes a bad situation can lead to something positive.</div>
+                    <div class="text-gray-600 text-base mt-4 font-medium">Sometimes a bad situation can lead to something positive.</div>
 
-                    <p class="text-gray-600 text-base mt-8 text-justify">
+                    <p class="text-gray-600 text-sm mt-8 text-justify">
                         I was expectant of a positive result from the selection process of a program in which I was very much interested. Throughout the selection process, I gave my all and I was very certain about getting picked for the program.
                         To me, it was a lifechanging opportunity. After the fourth stage, I suddenly didn't hear from the coordinator, even after leaving numerous texts. It dawned on me. I was out! This broke me. Yes, I know I am not some wood to be broken, but you get it.
                         Everything seemed alright till I suddenly couldn't get myself to do anything, one day. It was a terrible experience. I was <strong>depressed</strong> and I couldn't do anything about it.
                     </p>
-                    <p class="text-gray-600 text-base mt-2 text-justify">
+                    <p class="text-gray-600 text-sm mt-2 text-justify">
                         I know myself to be strong, and so I could not bring myself to finding someone with whom to talk. I cannot tell if I was simply shy or too proud. The issue persisted for weeks.
                         This led to me deferring from an online software engineering program. I finally got myself out with a smiling face but a worried mind.
                         It was in this abyss that the idea to have a platform that can help individuals, like myself, with mental health issues, popped up in my mind.

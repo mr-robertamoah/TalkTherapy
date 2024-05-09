@@ -14,6 +14,7 @@ import useAlert from '@/Composables/useAlert';
 import useErrorHandler from '@/Composables/useErrorHandler';
 import Checkbox from '@/Components/Checkbox.vue';
 import StyledLink from '@/Components/StyledLink.vue';
+import HelpButton from '@/Components/HelpButton.vue';
 
 const form = useForm({
     selectedCases: [],
@@ -473,6 +474,13 @@ function removeReligionFromSelected(oldReligion) {
         </template>
 
         <div class="py-12">
+            <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 my-4 flex justify-end">
+                <HelpButton
+                    title="get help on Preference Page"
+                    :page="'Preference'"
+                    class="mr-4"
+                />
+            </div>
             <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
                 <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg my-8 p-6">
                     <StyledLink :href="route('profile.show')" class="float-right my-2 mr-2" title="go to profile" :text="'skip'"/>

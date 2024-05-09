@@ -5,7 +5,6 @@
         <div class="my-4 p-2 flex justify-start items-center overflow-hidden overflow-x-auto space-x-3">
             <div class="text-sm">{{ howTo.howToSteps.length }} steps</div>
         </div>
-        <div class="text-xs text-gray-600 text-end mt-4 mb-2">{{ toDiffForHumans(howTo.createdAt) }}</div>
     </div>
 
     <HowToModal
