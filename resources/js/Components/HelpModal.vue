@@ -53,7 +53,6 @@ import { usePage } from '@inertiajs/vue3';
 
 const { goToLogin } = useAuth()
 const { alertData, setFailedAlertData, clearAlertData } = useAlert()
-const user = usePage().props.auth.user
 
 const emits = defineEmits(['close'])
 
@@ -83,6 +82,8 @@ function closeModal(){
 async function getHowTos() {
     if (howTos.value.length) return
 
+    const user = usePage().props.auth.user
+
     loading.value = true
 
     await axios.get(route('api.how-tos', {
@@ -90,16 +91,22 @@ async function getHowTos() {
     }))
         .then((res) => {
             console.log(res)
+            if (!user) {
+                howTos.value = [
+                    ...res.data.data,
+                ]
+                return
+            }
+
             let data = [
                 ...res.data.data,
             ]
 
-            if (user)
-                data = data.filter((h) => {
-                    const name = h.name?.toLowerCase()
-                    if (!name) return true
-                    return !name.includes('log') && !name.includes('regist')
-                })
+            data = data.filter((h) => {
+                const name = h.name?.toLowerCase()
+                if (!name) return true
+                return (name.includes('log') || name.includes('regist')) ? false : true
+            })
 
             howTos.value = data
         })

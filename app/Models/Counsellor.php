@@ -167,6 +167,11 @@ class Counsellor extends Model
             ->exists();
     }
 
+    public function addedDiscussions()
+    {
+        return $this->morphMany(Discussion::class, 'addedby');
+    }
+
     public function addedLanguages()
     {
         return $this->morphMany(Language::class, 'addedby');

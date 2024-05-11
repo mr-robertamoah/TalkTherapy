@@ -4,13 +4,15 @@ namespace App\Actions\Therapy;
 
 use App\Actions\Action;
 use App\DTOs\AssistTherapyDTO;
+use App\DTOs\CreateDiscussionDTO;
 use App\Exceptions\MustBeCounsellorException;
 
 class EnsureIsCounsellorAction extends Action
 {
-    public function execute(AssistTherapyDTO $assistTherapyDTO)
+    public function execute(AssistTherapyDTO|CreateDiscussionDTO $assistTherapyDTO)
     {
         if (
+            $assistTherapyDTO->user->isAdmin() ||
             $assistTherapyDTO->user->counsellor
         ) return;
 

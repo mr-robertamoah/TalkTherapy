@@ -2,64 +2,101 @@
 
 namespace App\Http\Controllers;
 
+use App\Actions\GetModelWithModelNameAndIdAction;
+use App\DTOs\CreateDiscussionDTO;
+use App\Http\Requests\CreateDiscussionRequest;
+use App\Http\Resources\DiscussionResource;
 use App\Models\Discussion;
+use App\Models\Session;
+use App\Services\DiscussionService;
+use Exception;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Redirect;
+use Throwable;
 
 class DiscussionController extends Controller
 {
-    /**
-     * Display a listing of the resource.
-     */
-    public function index()
+    public function createDiscussion(CreateDiscussionRequest $request)
     {
-        //
+        try {
+            $discussion = DiscussionService::new()->createDiscussion(
+                CreateDiscussionDTO::new()->fromArray([
+                    'user' => $request->user(),
+                    'description' => $request->description,
+                    'name' => $request->name,
+                    'startTime' => $request->startTime,
+                    'endTime' => $request->endTime,
+                    'session' => Session::find($request->sessionId),
+                    'from' => GetModelWithModelNameAndIdAction::new()->execute($request->addedbyType, $request->addedbyId),
+                    'for' => GetModelWithModelNameAndIdAction::new()->execute($request->forType, $request->forId),
+                ])
+            );
+
+            return $this->returnSuccess($request, $discussion);
+        } catch (Throwable $th) {
+            
+            return $this->returnFailure($request, $th);
+        }
+    }
+    
+    public function updateDiscussion(Request $request)
+    {
+        $discussion = Discussion::find($request->discussionId);
+        
+        try {
+            $discussion = DiscussionService::new()->updateDiscussion(
+                CreateDiscussionDTO::new()->fromArray([
+                    'user' => $request->user(),
+                    'description' => $request->description,
+                    'name' => $request->name,
+                    'discussion' => $discussion,
+                    'startTime' => $request->startTime,
+                    'endTime' => $request->endTime,
+                    'session' => Session::find($request->sessionId),
+                    'for' => $discussion?->for,
+                ])
+            );
+
+            return $this->returnSuccess($request, $discussion);
+        } catch (Throwable $th) {
+            
+            return $this->returnFailure($request, $th);
+        }
+    }
+    
+    public function deleteDiscussion(Request $request)
+    {
+        try {
+            DiscussionService::new()->deleteDiscussion(
+                CreateDiscussionDTO::new()->fromArray([
+                    'user' => $request->user(),
+                    'discussion' => $discussion = Discussion::find($request->discussionId),
+                ])
+            );
+
+            return $this->returnSuccess($request, $discussion);
+        } catch (Throwable $th) {
+            
+            return $this->returnFailure($request, $th);
+        }
     }
 
-    /**
-     * Show the form for creating a new resource.
-     */
-    public function create()
+    private function returnSuccess(Request $request, Discussion $discussion)
     {
-        //
+        $discussion = new DiscussionResource($discussion);
+        
+        if ($request->acceptsJson()) return response()->json(['discussion' => $discussion]);
+        
+        return Redirect::back()->with(['discussion' => $discussion]);
     }
 
-    /**
-     * Store a newly created resource in storage.
-     */
-    public function store(Request $request)
+    private function returnFailure(Request $request, Throwable $th)
     {
-        //
-    }
+        $message = $th->getCode() == 500 ? "Something unfortunate happened. Please try again shortly." : $th->getMessage();
+        
+        ds($th);
 
-    /**
-     * Display the specified resource.
-     */
-    public function show(Discussion $discussion)
-    {
-        //
-    }
-
-    /**
-     * Show the form for editing the specified resource.
-     */
-    public function edit(Discussion $discussion)
-    {
-        //
-    }
-
-    /**
-     * Update the specified resource in storage.
-     */
-    public function update(Request $request, Discussion $discussion)
-    {
-        //
-    }
-
-    /**
-     * Remove the specified resource from storage.
-     */
-    public function destroy(Discussion $discussion)
-    {
-        //
+        if ($request->acceptsJson()) throw new Exception($message);
+        return Redirect::back()->withErrors(['alert'=> $message]);
     }
 }

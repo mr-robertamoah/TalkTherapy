@@ -8,9 +8,12 @@ use MrRobertAmoah\DTO\BaseDTO;
 
 class EnsureAddedbyIsValidAction extends Action
 {
-    public function execute(BaseDTO $dto, ?string $errorMessage = null)
+    public function execute(BaseDTO $dto, ?string $errorMessage = null, bool $force = false)
     {
-        if (is_null($dto->addedby)) return;
+        if (is_null($dto->addedby) && !$force) return;
+
+        if (is_null($dto->addedby) && $force)
+            throw new AddedbyIsInvalidException($errorMessage ?: 'Data on added by is required to perform this action.', 422);
 
         if ($dto->user->isAdmin()) return;
 

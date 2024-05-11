@@ -2,7 +2,7 @@
     <div
         @dblclick="clickedItem"
         v-bind="$attrs"
-        class="capitalize mr-3 relative rounded text-sm p-2 min-w-[100px] w-fit text-gray-700 bg-gray-300 select-none transition duration-75 cursor-pointer hover:bg-gray-600 hover:text-white text-center"
+        class="capitalize mr-3 relative rounded text-sm p-2 w-fit text-gray-700 bg-gray-300 select-none transition duration-75 cursor-pointer hover:bg-gray-600 hover:text-white text-center"
     >
         <div>{{ item.name }}</div>
         <div class="absolute z-[9] -top-10 text-left right-0 p-1 text-xs cursor-pointer rounded text-gray-600 bg-gray-200" v-if="showDetails">
