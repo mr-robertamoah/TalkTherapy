@@ -8,6 +8,7 @@ use App\Actions\Discussion\DeleteDiscussionAction;
 use App\Actions\Discussion\EnsureCanDeleteDiscussionAction;
 use App\Actions\Discussion\EnsureCanEndDiscussionAction;
 use App\Actions\Discussion\EnsureCanUpdateDiscussionAction;
+use App\Actions\Discussion\EnsureCanUpdateDiscussionStatusAction;
 use App\Actions\Discussion\EnsureDiscussionDataIsValidAction;
 use App\Actions\Discussion\EnsureDiscussionExistsAction;
 use App\Actions\Discussion\UpdateDiscussionAction;
@@ -18,6 +19,7 @@ use App\DTOs\CreateDiscussionDTO;
 use App\DTOs\CreateStarDTO;
 use App\Enums\DiscussionStatusEnum;
 use App\Enums\StarTypeEnum;
+use App\Events\DiscussionUpdatedEvent;
 use App\Models\Discussion;
 use App\Notifications\DiscussionDeletedNotification;
 use App\Notifications\DiscussionStatusChangedNotification;
@@ -74,16 +76,16 @@ class DiscussionService extends Service
 
         EnsureCanEndDiscussionAction::new()->execute($createDiscussionDTO);
 
-        $session = ChangeDiscussionStatusAction::new()->execute($createDiscussionDTO, DiscussionStatusEnum::held->value);
+        $discussion = ChangeDiscussionStatusAction::new()->execute($createDiscussionDTO, DiscussionStatusEnum::held->value);
 
-        broadcast(new DiscussionUpdatedEvent($session))->toOthers();
+        broadcast(new DiscussionUpdatedEvent($discussion))->toOthers();
         
         Notification::send(
-            $createDiscussionDTO->session->for->getOtherUsers($createDiscussionDTO->user), 
-            new DiscussionStatusChangedNotification($session)
+            $createDiscussionDTO->discussion->getOtherUsers($createDiscussionDTO->user), 
+            new DiscussionStatusChangedNotification($discussion)
         );
 
-        return $session;
+        return $discussion;
     }
 
     public function getInDiscussion(CreateDiscussionDTO $createDiscussionDTO)
@@ -92,16 +94,16 @@ class DiscussionService extends Service
 
         EnsureCanUpdateDiscussionStatusAction::new()->execute($createDiscussionDTO);
 
-        $session = ChangeDiscussionStatusAction::new()->execute($createDiscussionDTO, DiscussionStatusEnum::in_session->value);
+        $discussion = ChangeDiscussionStatusAction::new()->execute($createDiscussionDTO, DiscussionStatusEnum::in_session->value);
 
-        broadcast(new DiscussionUpdatedEvent($session))->toOthers();
+        broadcast(new DiscussionUpdatedEvent($discussion))->toOthers();
         
         Notification::send(
-            $createDiscussionDTO->session->for->getOtherUsers($createDiscussionDTO->user), 
-            new DiscussionStatusChangedNotification($session)
+            $createDiscussionDTO->discussion->getOtherUsers($createDiscussionDTO->user), 
+            new DiscussionStatusChangedNotification($discussion)
         );
 
-        return $session;
+        return $discussion;
     }
 
     public function abandonDiscussion(CreateDiscussionDTO $createDiscussionDTO)
@@ -110,16 +112,16 @@ class DiscussionService extends Service
 
         EnsureCanUpdateDiscussionStatusAction::new()->execute($createDiscussionDTO);
 
-        $session = ChangeDiscussionStatusAction::new()->execute($createDiscussionDTO, DiscussionStatusEnum::abandoned->value);
+        $discussion = ChangeDiscussionStatusAction::new()->execute($createDiscussionDTO, DiscussionStatusEnum::abandoned->value);
 
-        broadcast(new DiscussionUpdatedEvent($session))->toOthers();
+        broadcast(new DiscussionUpdatedEvent($discussion))->toOthers();
         
         Notification::send(
-            $createDiscussionDTO->session->for->getOtherUsers($createDiscussionDTO->user), 
-            new DiscussionStatusChangedNotification($session)
+            $createDiscussionDTO->discussion->getOtherUsers($createDiscussionDTO->user), 
+            new DiscussionStatusChangedNotification($discussion)
         );
 
-        return $session;
+        return $discussion;
     }
 
     public function failDiscussion(CreateDiscussionDTO $createDiscussionDTO)
@@ -131,7 +133,7 @@ class DiscussionService extends Service
         $discussion = ChangeDiscussionStatusAction::new()->execute($createDiscussionDTO, DiscussionStatusEnum::failed->value);
 
         Notification::send(
-            $createDiscussionDTO->discussion->for->getOtherUsers($createDiscussionDTO->user), 
+            $createDiscussionDTO->discussion->getOtherUsers($createDiscussionDTO->user), 
             new DiscussionStatusChangedNotification($discussion)
         );
 

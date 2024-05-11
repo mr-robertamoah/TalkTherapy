@@ -7,7 +7,6 @@ import Alert from "./Alert.vue";
 import FormLoader from "./FormLoader.vue";
 import PrimaryButton from "./PrimaryButton.vue";
 import Modal from "./Modal.vue";
-import ProfileProfessionSection from "@/Pages/Profile/Partials/ProfileProfessionSection.vue";
 import { computed } from "vue";
 import InputError from "./InputError.vue";
 import Avatar from "./Avatar.vue";
@@ -129,6 +128,7 @@ function updateCounsellor() {
 }
 
 function clickedChangeFile(type) {
+    console.log(type);
     if (type == 'avatar')
         return avatar.value.click()
 
@@ -276,6 +276,6 @@ function thereIsNoData() {
         @close="clearAlertData"
     />
     
-    <input ref="avatar" type="file" name="avatar" id="avatar" class="hidden" accept="image/*" @change="changeAvatar">
+    <input ref="avatar" type="file" name="counsellor-avatar" id="counsellor-avatar" class="hidden" accept="image/*" @change="changeAvatar">
     <input ref="cover" type="file" name="cover" id="cover" class="hidden" accept="image/*" @change="changeCover">
 </template>
