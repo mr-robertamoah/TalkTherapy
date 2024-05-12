@@ -100,6 +100,7 @@ function removeLanguageFromSelected(oldLanguage) {
                     Selected language settings will help us connect you to potential clients that require professionals conversant with these languages.
                 </div>
                 <div class="text-sm text-center capitalize mb-2 font-bold">select</div>
+                <div class="text-sm text-center mb-2 text-gray-600">double click/tap to a language to see options.</div>
                 <div class="p-2 flex justify-start items-start flex-col overflow-hidden my-2 mb-4">
                     <div
                         class="mb-4 rounded text-sm p-2 min-w-[200px] text-white bg-blue-400 text-center"

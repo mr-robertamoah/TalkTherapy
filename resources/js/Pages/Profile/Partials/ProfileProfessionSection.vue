@@ -100,6 +100,7 @@ function removeProfessionFromSelected() {
                     This is a way to set your profession on this platform. This goes a long way to indicate to a potential client what it is to expect from you. <em class="font-bold">You can only select one profession.</em>
                 </div>
                 <div class="text-sm text-center capitalize mb-2 font-bold">select</div>
+                <div class="text-sm text-center mb-2 text-gray-600">double click/tap to a profession to see options.</div>
                 <div class="p-2 flex justify-start items-start flex-col overflow-hidden my-2 mb-4">
                     <div
                         class="mb-4 rounded text-sm p-2 min-w-[200px] text-white bg-blue-400 text-center"

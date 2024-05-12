@@ -172,6 +172,12 @@ class Counsellor extends Model
         return $this->morphMany(Discussion::class, 'addedby');
     }
 
+    public function verify()
+    {
+        $this->verified_at = now()->utc();
+        $this->save();
+    }
+
     public function addedLanguages()
     {
         return $this->morphMany(Language::class, 'addedby');

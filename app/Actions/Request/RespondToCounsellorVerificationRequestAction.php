@@ -29,6 +29,11 @@ class RespondToCounsellorVerificationRequestAction extends Action
                 : strtoupper($requestResponseDTO->response)
         ]);
         
-        return $requestResponseDTO->request->refresh();
+        $request = $requestResponseDTO->request->refresh();
+
+        if ($request->status == RequestStatusEnum::accepted->value)
+            $request->from->verify();
+        
+        return $request;
     }
 }

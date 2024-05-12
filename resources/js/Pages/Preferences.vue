@@ -517,6 +517,7 @@ function removeReligionFromSelected(oldReligion) {
                                 Selected case preferences will help us get you the most helpful posted therapies as well as counsellors with the expertise of handling your preferred cases.
                             </div>
                             <div class="text-sm text-center capitalize mb-2 font-bold">select preferences</div>
+                            <div class="text-sm text-center mb-2 text-gray-600">double click/tap to a case to see options.</div>
                             <div class="p-2 flex justify-start items-center overflow-hidden overflow-x-auto my-2 mb-4">
                                 <div
                                     class="mr-3 rounded text-sm p-2 min-w-[200px] text-white bg-blue-400 text-center"
@@ -590,6 +591,7 @@ function removeReligionFromSelected(oldReligion) {
                                 Selected language preferences will help us connect you to therapies with sessions in that language as well as counsellors conversant with these languages.
                             </div>
                             <div class="text-sm text-center capitalize mb-2 font-bold">select preferences</div>
+                            <div class="text-sm text-center mb-2 text-gray-600">double click/tap to a language to see options.</div>
                             <div class="p-2 flex justify-start items-center overflow-hidden overflow-x-auto my-2 mb-4">
                                 <div
                                     class="mr-3 rounded text-sm p-2 min-w-[200px] text-white bg-blue-400 text-center"
@@ -663,6 +665,7 @@ function removeReligionFromSelected(oldReligion) {
                                 Some people feel more confident and find it easier when interacting with persons with whom they have similar religious inclinations. This preference helps us to connect you to persons with similar inclinations.
                             </div>
                             <div class="text-sm text-center capitalize mb-2 font-bold">select preferences</div>
+                            <div class="text-sm text-center mb-2 text-gray-600">double click/tap to a religion to see options.</div>
                             <div class="p-2 flex justify-start items-center overflow-hidden overflow-x-auto my-2 mb-4">
                                 <div
                                     class="mr-3 rounded text-sm p-2 min-w-[200px] text-white bg-blue-400 text-center"
