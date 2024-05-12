@@ -148,7 +148,7 @@ function removeReligionFromSelected(oldReligion) {
                         <div
                             v-for="l in selectedReligions"
                             :key="l.id"
-                            class="capitalize mr-3 rounded relative text-sm p-2 w-fit min-w-[100px] text-gray-700 bg-gray-300 select-none cursor-pointer text-center"
+                            class="capitalize mr-3 rounded relative text-sm p-2 w-fit text-gray-700 bg-gray-300 select-none cursor-pointer text-center"
                         >
                             {{ l.name }}
                             <div 
