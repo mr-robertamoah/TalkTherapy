@@ -218,12 +218,12 @@ function thereIsNoData() {
                                 <div
                                     v-if="counsellor.cover"
                                     @click="deleteCover"
-                                    class="w-fit p-2 transition duration-75 text-sm tracking-wide rounded cursor-pointer mr-2"
+                                    class="w-fit p-2 transition duration-75 text-xs sm:text-sm tracking-wide rounded cursor-pointer mr-2"
                                     :class="[!coverUrl ? 'hover:bg-green-600 hover:text-green-200 bg-green-300 text-green-700' : 'hover:bg-red-600 hover:text-red-200 bg-red-300 text-red-700']"
                                 >{{ !coverUrl ? 'restore' : 'remove' }} image</div>
                                 <div
                                     @click="() => clickedChangeFile('cover')"
-                                    class="w-fit p-2 hover:bg-gray-600 hover:text-gray-200 transition duration-75 bg-gray-300 text-gray-700 text-sm tracking-wide rounded cursor-pointer"
+                                    class="w-fit p-2 hover:bg-gray-600 hover:text-gray-200 transition duration-75 bg-gray-300 text-gray-700 text-xs sm:text-sm tracking-wide rounded cursor-pointer"
                                 >{{ computedCoverUrl ? 'change' : 'add' }} cover image</div>
                             </div>
                             <img 
@@ -236,18 +236,20 @@ function thereIsNoData() {
                         </div>
                         <div class="absolute z-10 bottom-[42px] sm:bottom-[32px] left-2 block xs:flex items-center">
 
-                            <div class="flex items-center z-[1]">
+                            <div class="flex items-center z-[1] space-x-2">
                                 <Avatar :size="80" :src="computedAvatarUrl ?? ''" :alt="'counsellor avatar'"/>
-                                <div
-                                    @click="() => clickedChangeFile('avatar')"
-                                    class="w-fit p-2 pl-8 -ml-4 hover:bg-gray-600 hover:text-gray-200 transition duration-75 bg-gray-300 text-gray-700 text-sm tracking-wide rounded cursor-pointer -z-[1]"
-                                >{{ computedAvatarUrl ? 'change' : 'add' }} avatar</div>
-                                <div
-                                    v-if="counsellor.avatar"
-                                    @click="deleteAvatar"
-                                    class="w-fit p-2 pl-8 -ml-4 transition duration-75 text-sm tracking-wide rounded cursor-pointer -z-[2]"
-                                    :class="[!avatarUrl ? 'hover:bg-green-600 hover:text-green-200 bg-green-300 text-green-700' : 'hover:bg-red-600 hover:text-red-200 bg-red-300 text-red-700']"
-                                >{{ !avatarUrl ? 'restore' : 'remove' }} avatar</div>
+                                <div class="flex justify-center space-y-2 xs:space-y-0 xs:space-x-2 flex-col xs:flex-row">
+                                    <div
+                                        @click="() => clickedChangeFile('avatar')"
+                                        class="w-fit p-2 text-center hover:bg-gray-600 hover:text-gray-200 transition duration-75 bg-gray-300 text-gray-700 text-xs xs:text-sm tracking-wide rounded cursor-pointer z-0 xs:-z-[1]"
+                                    >{{ computedAvatarUrl ? 'change' : 'add' }} avatar</div>
+                                    <div
+                                        v-if="counsellor.avatar"
+                                        @click="deleteAvatar"
+                                        class="w-fit p-2 text-center transition duration-75 text-xs xs:text-sm tracking-wide rounded cursor-pointer z-0 xs:-z-[2]"
+                                        :class="[!avatarUrl ? 'hover:bg-green-600 hover:text-green-200 bg-green-300 text-green-700' : 'hover:bg-red-600 hover:text-red-200 bg-red-300 text-red-700']"
+                                    >{{ !avatarUrl ? 'restore' : 'remove' }} avatar</div>
+                                </div>
                             </div>
 
                             <div class="shrink rounded bg-white p-2 text-sm" v-if="updateForm.errors.avatar || updateForm.errors.cover">

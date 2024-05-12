@@ -317,8 +317,10 @@ function closeModal() {
                     />
                 </div>
                 <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
-                    <div class="p-6 w-fit text-center mx-auto">
-                        <div class="text-3xl border-b-2 pb-2 border-gray-300 tracking-widest w-fit capitalize font-bold bg-gradient-to-r from-slate-800 to-slate-600 bg-clip-text text-transparent">{{ counsellor.name }}</div>
+                    <div class="p-6 w-fit text-center mx-auto"
+                        :class="{'pt-10': isCounsellor}"
+                    >
+                        <div class="text-lg sm:text-2xl md:text-3xl border-b-2 pb-2 border-gray-300 tracking-widest w-fit capitalize font-bold bg-gradient-to-r from-slate-800 to-slate-600 bg-clip-text text-transparent">{{ counsellor.name }}</div>
                         <div
                             v-if="counsellor.profession"
                             class="text-gray-600 capitalize text-sm tracking-wide mt-2 font-semibold"
