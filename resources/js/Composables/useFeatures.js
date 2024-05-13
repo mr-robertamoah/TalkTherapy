@@ -34,7 +34,10 @@ export default function useFeatures() {
             },
         ],
         future: [
-
+            {
+                name: "Institutionalisation",
+                description: "We are currently considering the possibily of adding a feature that allows users to suggest persons who need institutionalisation. With the help of mental institutions and donors, we would be able to institutionalise these persons and help them get back to their better selves. This feature is currently only in consideration stage because it requires unestablished coordination between us and other institutions.",
+            },
         ],
     })
 
