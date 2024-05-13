@@ -79,14 +79,14 @@ const robertAvatar = `/storage/others/robertamoah.png`
                         <div class="text-lg">To <span class="bg-gradient-to-br from-blue-800 to-violet-500 bg-clip-text text-transparent font-bold">User</span></div>
                         <div class="text-gray-600 text-base mt-4 text-justify">
                             <p>
-                                There are countless issues facing us every second of every day. We deal with these issues differently. How will deal with the issues tend to either make us better or worse.
+                                There are countless issues facing us every second of every day. We deal with these issues differently. How we deal with the issues tend to either make us better or worse.
                                 We do not have to deal with these issues alone. You can decide to '<strong>TalkTherapy</strong>' with a counsellor so you can navigate your emotional, psycological and social life with some tact and confidence.
                             </p>
                             <p>
-                                There are times you do not know what is really wrong, you just do not know feel right. Yes, you can '<strong>TalkTherapy</strong>'.
+                                There are times you do not know what is really wrong, you just do not feel alright. Yes, you can '<strong>TalkTherapy</strong>'.
                             </p>
                             <p>
-                                On this app, the power is in you hands. You decide whether you stay anonymous or not, whether you pay or not, as well as the amount you choose to pay.
+                                On this app, the power is in your hands. You decide whether you stay anonymous or not, whether you pay or not, as well as the amount you choose to pay. Remember though, that these counsellors are using their time, expertise and experience to help make your life better hence try to at least make a donation to them when they help you.
                             </p>
                             <p class="font-bold">Not everyone with an advice to give can give you a helpful advice.</p>
                         </div>
@@ -96,7 +96,7 @@ const robertAvatar = `/storage/others/robertamoah.png`
                         <div class="text-lg">To <span class="bg-gradient-to-br from-blue-800 to-violet-500 bg-clip-text text-transparent font-bold">Counsellor</span></div>
                         <div class="text-gray-600 text-base mt-4 text-justify">
                             We help counsellors express themselves through creating <strong>posts</strong> on this platform which is created solely to promote mental health issues.
-                            Counsellors get to send or receive requests to assist individuals with <strong>therapies</strong> that have been created. Therapies can free or paid (payment can be suggested for the entire therapy or for individual sessions).
+                            Counsellors get to send or receive requests to assist individuals with <strong>therapies</strong> that have been created. Therapies can be free or paid (payment can be suggested for the entire therapy or for individual sessions).
                             Even with free sessions, you can still receive donations from the user you are assisting or from other users on the platform.
                         </div>
                     </div>
@@ -151,13 +151,13 @@ const robertAvatar = `/storage/others/robertamoah.png`
 
                     <p class="text-gray-600 text-sm mt-8 text-justify">
                         I was expectant of a positive result from the selection process of a program in which I was very much interested. Throughout the selection process, I gave my all and I was very certain about getting picked for the program.
-                        To me, it was a lifechanging opportunity. After the fourth stage, I suddenly didn't hear from the coordinator, even after leaving numerous texts. It dawned on me. I was out! This broke me. Yes, I know I am not some wood to be broken, but you get it.
-                        Everything seemed alright till I suddenly couldn't get myself to do anything, one day. It was a terrible experience. I was <strong>depressed</strong> and I couldn't do anything about it.
+                        To me, it was a lifechanging opportunity. After the fourth selection stage (the stages being five), I suddenly stopped hearing from the coordinator, even after leaving numerous texts in her DM. After a while it dawned on me. I could not get into the program! This broke me. Yes, I know I am not some wood to be broken, but you get it.
+                        Everything seemed alright till I suddenly couldn't get myself to do anything. This took weeks. It was a terrible experience. I was <strong>depressed</strong> and I couldn't do anything about it.
                     </p>
                     <p class="text-gray-600 text-sm mt-2 text-justify">
                         I know myself to be strong, and so I could not bring myself to finding someone with whom to talk. I cannot tell if I was simply shy or too proud. The issue persisted for weeks.
-                        This led to me deferring from an online software engineering program. I finally got myself out with a smiling face but a worried mind.
-                        It was in this abyss that the idea to have a platform that can help individuals, like myself, with mental health issues, popped up in my mind.
+                        This led to me deferring from an online software engineering program. Even when I finally got myself out with a smiling face, I still had a worried mind.
+                        It was in this abyss that the idea to have a platform that can help individuals, like myself, with mental health issues, popped up in my mind. The question whose answer birthed this application was: <strong>Could there be a platform which allowed individuals stay anonymous and still seek help from professionals?</strong>
                     </p>
                 </div>
             </div>
