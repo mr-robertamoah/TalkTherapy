@@ -158,7 +158,7 @@ function removeFromPendingRequests(request) {
                 <hr>
             </div>
 
-            <div class="max-h-[80vh] overflow-hidden p-2 overflow-y-auto">
+            <div class="p-2">
                 <div class="flex my-2 justify-between items-center mx-auto w-[90%]">
                     <div
                         @click="() => {
@@ -183,7 +183,7 @@ function removeFromPendingRequests(request) {
                     >Rejected</div>
                 </div>
                 <hr class="mt-4">
-                <div class="min-h-[30vh] max-h-[80vh] overflow-hidden overflow-y-auto p-2 flex justify-center items-center flex-col">
+                <div class="h-[65vh] overflow-hidden overflow-y-auto p-2 flex justify-center items-center flex-col">
                     <div v-if="loading" class="p-2 text-center lowercase my-2 text-green-300 transition duration-100 rounded mx-auto w-[90%] bg-green-700">getting {{ requestStatus }} ...</div>
                     <div v-if="hasRequests" class="h-full w-full flex flex-col items-center">
                         <template v-if="requestStatus == RequestStatus.pending">

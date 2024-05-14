@@ -8,6 +8,7 @@ use App\DTOs\GetTherapyDTO;
 use App\Http\Requests\TherapyAssistanceRequest;
 use App\Http\Requests\CreateTherapyRequest;
 use App\Http\Requests\UpdateTherapyRequest;
+use App\Http\Resources\RequestResource;
 use App\Http\Resources\TherapyMiniResource;
 use App\Http\Resources\TherapyResource;
 use App\Models\Counsellor;
@@ -144,9 +145,12 @@ class TherapyController extends Controller
                 ])
             );
 
+            $pendingRequest = $therapy->pendingRequestFor($request->user()->counsellor);
+
             return Inertia::render('Therapy/Index', [
                 'therapy' => new TherapyResource($therapy),
-                'session' => session('session')
+                'session' => session('session'),
+                'pendingRequest' => $pendingRequest ? new RequestResource($pendingRequest) : null
             ]);
         } catch (Throwable $th) {
             return Redirect::route('home')->with('message', $th->getMessage());

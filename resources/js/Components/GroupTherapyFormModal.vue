@@ -226,7 +226,7 @@ function closeModal() {
             </div>
 
             <FormLoader class="mx-auto" :show="loading" :text="`creating individual therapy`"/>
-            <div class="p-4 relative overflow-hidden overflow-y-auto h-[70vh] px-4 pb-4">
+            <div class="p-4 relative overflow-hidden overflow-y-auto h-[60vh] px-4 pb-4">
                 <form 
                     @submit.prevent="createTherapy"
                 >

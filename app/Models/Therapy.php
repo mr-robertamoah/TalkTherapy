@@ -128,6 +128,18 @@ class Therapy extends Model
         return !$this->isParticipant($user);
     }
 
+    public function pendingRequestFor(?Counsellor $counsellor)
+    {
+        if (is_null($counsellor)) return null;
+
+        return Request::query()
+            ->wherePending()
+            ->whereFor($this)
+            ->whereTo($counsellor)
+            ->latest()
+            ->first();
+    }
+
     public function scopeWhereAddedby($query, Model $model)
     {
         return $query->where(function ($query) use ($model) {

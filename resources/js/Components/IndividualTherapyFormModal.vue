@@ -14,6 +14,7 @@ import Checkbox from "./Checkbox.vue";
 import Select from "./Select.vue";
 import ProfileCaseSection from "@/Pages/Profile/Partials/ProfileCaseSection.vue";
 import CounsellorComponent from './CounsellorComponent.vue';
+import { usePage } from '@inertiajs/vue3';
 
 const { setErrorData } = useErrorHandler()
 const { alertData, clearAlertData, setAlertData } = useAlert()
@@ -85,6 +86,17 @@ watch(
 
 const computedShowInPersonAmount = computed(() => {
     return therapyData.value.allowInPerson && therapyData.value.paymentType == 'PAID' && therapyData.value.per == 'PER_SESSION'
+})
+const computedMessage = computed(() => {
+    const user = usePage().props.auth.user
+
+    if (user.emailVerifiedAt && user.dob) return ''
+
+    if (!user.emailVerifiedAt && user.dob) return 'You must verify your email before you can create a therapy.'
+
+    if (user.emailVerifiedAt && !user.dob) return 'You must set your date of birth before you can create a therapy.'
+
+    return 'You must have your email verified and date of birth set before you can create a therapy.'
 })
  
 async function createTherapy() {
@@ -242,7 +254,7 @@ function closeModal() {
                 <div
                     class="capitalize w-fit mx-auto text-2xl font-bold bg-gradient-to-r from-gray-800 to-gray-500 bg-clip-text text-transparent mb-2"
                 >Create individual therapy</div>
-                <div class="mt-3 text-sm text-gray-600 text-justify">You must have your email verified and date of birth set before you can create a therapy</div>
+                <div v-if="computedMessage" class="mt-3 text-sm text-gray-600 text-justify">{{ computedMessage }}</div>
                 <hr>
             </div>
 
@@ -251,7 +263,7 @@ function closeModal() {
                 <form 
                     @submit.prevent="createTherapy"
                 >
-                    <div class="overflow-hidden overflow-y-auto h-[70vh] px-4 pb-4">
+                    <div class="overflow-hidden overflow-y-auto h-[60vh] px-4 pb-4">
                         <template v-if="counsellor">
                             <div class="p-4 rounded bg-gray-200 shadow-sm">
                                 <CounsellorComponent

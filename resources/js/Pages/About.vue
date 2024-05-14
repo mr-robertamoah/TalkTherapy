@@ -210,7 +210,7 @@ const robertAvatar = `/storage/others/robertamoah.png`
                                 :key="idx"
                                 :feature="feature"
                                 :type="'available'"
-                                class="w-[90%]"
+                                class="w-[90%] shrink-0"
                             />
                         </div>
                     </div>
@@ -225,7 +225,7 @@ const robertAvatar = `/storage/others/robertamoah.png`
                                 :key="idx"
                                 :feature="feature"
                                 :type="'next'"
-                                class="w-[90%]"
+                                class="w-[90%] shrink-0"
                             />
                         </div>
                     </div>
@@ -240,7 +240,7 @@ const robertAvatar = `/storage/others/robertamoah.png`
                                 :key="idx"
                                 :feature="feature"
                                 :type="'future'"
-                                class="w-[90%]"
+                                class="w-[90%] shrink-0"
                             />
                         </div>
                     </div>

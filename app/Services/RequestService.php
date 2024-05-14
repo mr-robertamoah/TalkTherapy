@@ -21,18 +21,31 @@ class RequestService extends Service
 {
     public function getRequests(String $status = '', User $user) {
         $query = Request::query();
-        
-        if ($status) $query->where('status',  $status);
 
-        $query->whereFrom($user);
-        $query->orWhereTo($user);
+        $query->where(function ($query) use ($status, $user) {
+            $query->whereFrom($user);
+            if ($status) $query->where('status',  $status);
+        });
+
+        $query->orWhere(function ($query) use ($status, $user) {
+            $query->whereTo($user);
+            if ($status) $query->where('status',  $status);
+        });
 
         $counsellor = $user->counsellor;
         $query->when($counsellor, function ($query) use ($counsellor, $status) {
-            $query->orWhereFrom($counsellor);
-            $query->orWhereTo($counsellor);
-            if ($status) $query->where('status',  $status);
+
+            $query->orWhere(function ($query) use ($status, $counsellor) {
+                $query->whereFrom($counsellor);
+                if ($status) $query->where('status',  $status);
+            });
+            $query->orWhere(function ($query) use ($status, $counsellor) {
+                $query->whereTo($counsellor);
+                if ($status) $query->where('status',  $status);
+            });
         });
+
+        if ($status) $query->where('status',  $status);
 
         return RequestResource::collection($query->paginate(
             PaginationEnum::preferencesPagination->value

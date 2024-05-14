@@ -32,6 +32,9 @@ const { alertData, clearAlertData, setAlertData, setSuccessAlertData, setFailedA
 const props = defineProps({
     therapy: {
         default: null
+    },
+    pendingRequest: {
+        default: null
     }
 })
 const scrollItems = [
@@ -54,11 +57,13 @@ const timer = ref({
 })
 const counsellorSearch = ref('')
 const sessionActionRunning = ref('')
+const request = ref({ responding: false, status: null })
 const showAll = ref(false)
 const interval = ref(null)
 const mainDiv = ref(null)
 const newSession = ref(null)
 const activeSession = ref(null)
+const counsellor = ref(null)
 const selectedActiveSession = ref(false)
 const activeItemId = ref(scrollItems[0].id)
 const onlineParticipants = ref([])
@@ -72,8 +77,12 @@ watch(() => counsellorSearch.value, () => {
         debouncedGetCounsellors()
 })
 watchEffect(() => {
-    if (props.therapy?.id)
+    if (props.therapy?.id) {
         waitForAlert()
+        counsellor.value = props.therapy.data 
+            ? props.therapy.data.counsellor
+            : props.therapy.counsellor
+    }
 })
 watch(() => props.therapy?.activeSession?.id, () => {
     if (props.therapy?.activeSession?.id) {
@@ -145,7 +154,7 @@ const computedIsUser = computed(() => {
     return userId == computedTherapy.value.user?.id
 })
 const computedIsCounsellor = computed(() => {
-    return userId == computedTherapy.value.counsellor?.userId
+    return userId == counsellor.value?.userId
 })
 const computedIsInSession = computed(() => {
     let session = activeSession?.value ?? computedTherapy.value?.activeSession
@@ -490,6 +499,40 @@ function clickedShowAll() {
     showAll.value = !showAll.value
 }
 
+async function clickedResponse(response) {
+    request.value.responding = true
+    await axios.post(route('requests.respond', { requestId: props.pendingRequest.id }), { response })
+        .then((res) => {
+            console.log(res)
+
+            request.value.status = res.data.request.status
+            if (res.data.request?.status !== response.toUpperCase() && response == 'accepted') {
+                setSuccessAlertData({
+                    time: 5000,
+                    message: res.data.request.type == RequestTypes.therapy ? 'Your response was successful, but another counsellor may have already accepted to assist.' : ''
+                })
+                return
+            }
+
+            if (res.data.request?.status == 'ACCEPTED')
+                counsellor.value = res.data.request.to
+
+            setSuccessAlertData({
+                time: 5000,
+                message: 'You have successful responded to the request.'
+            })
+        })
+        .catch((err) => {
+            console.log(err)
+
+            setFailedAlertData({
+                time: 5000,
+                message: 'Something unfortunate happened. Please try again shortly.'
+            })
+        })
+    request.value.responding = false
+}
+
 </script>
 
 <template>
@@ -582,12 +625,29 @@ function clickedShowAll() {
                         <div class="w-full shrink-0" id="therapy_participants">
                             <div class="bg-white p-6 w-full">
                                 <div class="text-gray-600 tracking-wide font-semibold">Counsellor</div>
-                                <div v-if="computedTherapy.counsellor" class="my-4">
+                                <div v-if="counsellor" class="my-4">
                                     <CounsellorComponent
-                                        :counsellor="computedTherapy.counsellor"
+                                        :counsellor="counsellor"
                                         :has-view="false"
                                         :visit-page="!computedIsCounsellor"
                                     />
+                                </div>
+                                <div v-else-if="pendingRequest" class="relative">
+                                    <FormLoader :show="request.responding" :text="'responding'"/>
+                                    <div
+                                        class="text-center text-sm text-gray-600 w-full"
+                                        v-if="pendingRequest.from.isCounsellor && pendingRequest.from.userId == $page.props.auth.user?.id">you have already sent a request to assist.</div>
+                                    
+                                    <template v-else>
+
+                                        <div
+                                            class="text-center text-sm text-gray-600 w-full">you have a pending request to assist.</div>
+
+                                        <div class="flex justify-end items-center p-2 overflow-hidden overflow-x-auto space-x-2">
+                                            <PrimaryButton :disabled="request.responding" @click="() => clickedResponse('accepted')" class="shrink-0">accept</PrimaryButton>
+                                            <DangerButton :disabled="request.responding" @click="() => clickedResponse('rejected')" class="shrink-0">reject</DangerButton>
+                                        </div> 
+                                    </template>
                                 </div>
                                 <div v-else class="my-4 flex justify-center items-start flex-col">
                                     <PrimaryButton
@@ -795,6 +855,7 @@ function clickedShowAll() {
                                     @dblclick="() => {
                                         addToSelected(counsellor)
                                     }"
+                                    class="shrink-0"
                                 />
                                 <div 
                                     v-if="page !== 0 && searchedCounsellors.length"
@@ -835,7 +896,7 @@ function clickedShowAll() {
                     </div>
 
                     <div class="flex justify-end mt-4 ">
-                        <PrimaryButton :disabled="(computedIsUser && !selectedCounsellors.length) || (!$page.props.auth.user?.counsellor)" @click="sendAssistanceRequest">send request</PrimaryButton>
+                        <PrimaryButton :disabled="!(computedIsUser && selectedCounsellors.length) && (!$page.props.auth.user?.counsellor)" @click="sendAssistanceRequest">send request</PrimaryButton>
                     </div>
                 </div>
             </template>

@@ -305,7 +305,7 @@ function respondToVerificationRequest(requestId, response) {
             <div>Hello, please select a sub link</div>
         </div>
 
-        <div v-if="computedHasData || loading" class="my-12 relative w-full sm:w-[90%] md:w-[75%] mx-auto flex flex-col justify-center items-center p-4 rounded-md bg-white">
+        <div v-if="computedHasData || loading" class="my-12 relative w-full sm:w-[90%] md:w-[75%] mx-auto flex flex-col justify-center space-y-3 items-center p-4 rounded-md bg-white">
             <FormLoader class="mx-auto" :show="loading" :text="loadingMessage ?? ''"/>
             
             <template v-if="currentLink == 'counsellors' && currentSubLink == 'verification requests'">
@@ -322,21 +322,21 @@ function respondToVerificationRequest(requestId, response) {
                     v-for="testimonial in data.users.testimonials"
                     :key="testimonial.id"
                     :testimonial="testimonial"
-                    class="mb-4 w-full"
+                    class="w-full"
                 />
             </template>
             
             <template v-else-if="currentLink == 'users' && currentSubLink == 'show'">
                 <AdminUsersComponent
                     :show="!!data.users.show"
-                    class="mb-4 w-full"
+                    class="w-full"
                 />
             </template>
             
             <template v-else-if="currentLink == 'others' && currentSubLink == 'howTos'">
                 <AdminHowTosComponent
                     :show="!!data.others.howTos"
-                    class="mb-4 w-full"
+                    class="w-full"
                 />
             </template>
             
@@ -345,7 +345,7 @@ function respondToVerificationRequest(requestId, response) {
                     <TextInput
                         v-model="filters.name"
                         placeholder="search by name/username"
-                        class="w-[90%] mx-auto mb-4"
+                        class="w-[90%] mx-auto"
                     />
                 </div>
                 <CounsellorComponent

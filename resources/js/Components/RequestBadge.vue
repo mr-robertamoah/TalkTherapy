@@ -89,7 +89,7 @@ async function clickedResponse(response) {
                 emits('alert', {
                     type: 'success',
                     time: 5000,
-                    message: res.data.request.type == RequestTypes.therapy ? 'You response was successful, but another counsellor may have already accept to assist.' : ''
+                    message: res.data.request.type == RequestTypes.therapy ? 'Your response was successful, but another counsellor may have already accepted to assist.' : ''
                 })
                 return
             }
@@ -127,10 +127,12 @@ async function clickedResponse(response) {
             
         <template v-if="showActions">
         
-        <div class="flex justify-end items-center space-x-2">
-                <StyledLink v-if="request.type == RequestTypes.therapy" :href="route('therapies.get', { therapyId: request.for.id })" :text="'visit therapy page'"/>
-                <PrimaryButton v-if="request.status == RequestStatuses.pending" :disabled="responding" @click="() => clickedResponse('accepted')">accept</PrimaryButton>
-                <DangerButton v-if="request.status == RequestStatuses.pending" :disabled="responding" @click="() => clickedResponse('rejected')" class="ml-2">reject</DangerButton>
+        <div class="flex justify-start items-center space-x-2 p-2 overflow-hidden overflow-x-auto">
+                <StyledLink class="shrink-0" v-if="request.type == RequestTypes.therapy" :href="route('therapies.get', { therapyId: request.for.id })" :text="'visit therapy page'"/>
+                <template v-if="request.status == RequestStatuses.pending && computedIsTo">
+                    <PrimaryButton :disabled="responding" @click="() => clickedResponse('accepted')" class="shrink-0">accept</PrimaryButton>
+                    <DangerButton :disabled="responding" @click="() => clickedResponse('rejected')" class="shrink-0">reject</DangerButton>
+                </template>
         </div>
         </template>
     </div>

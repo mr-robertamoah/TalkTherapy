@@ -84,7 +84,7 @@ function changeStep(value) {
                 
                 <div
                     class="p-4 sm:p-8 bg-white shadow sm:rounded-lg"
-                    v-if="mustVerifyEmail && !$page.props.auth.user?.email_verified_at"
+                    v-if="mustVerifyEmail && !$page.props.auth.user?.emailVerifiedAt"
                 >
                     <VerifyEmailSection
                         :status="status"

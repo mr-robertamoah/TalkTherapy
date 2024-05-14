@@ -51,10 +51,10 @@ function goToPage() {
     >
         <div v-if="counsellor.deleted" class="p-2 text-red-700 text-center text-sm">counsellor account has been deleted</div>
         <template v-else>
-            <div class="flex justify-start items-center mb-3 cursor-pointer">
-                <Avatar :avatar-text="'...'" :size="40" :src="counsellor?.avatar ?? ''"/>
-                <div class="text-gray-600 flex justify-start items-center ml-2">
-                    <div class="capitalize mr-2">{{ counsellor.name }}</div>
+            <div class="flex justify-start items-center mb-3 cursor-pointer space-x-2">
+                <Avatar class="shrink-0" :avatar-text="'...'" :size="40" :src="counsellor?.avatar ?? ''"/>
+                <div class="text-gray-600 flex justify-start items-center shrink space-x-2 text-sm sm:text-base">
+                    <div class="capitalize">{{ counsellor.name }}</div>
                     <div>{{ counsellor.username ? `(${counsellor.username})` : '' }}</div>
                 </div>
             </div>
@@ -96,13 +96,13 @@ function goToPage() {
 
                             <div v-else class="text-gray-600 w-full my-2 text-center text-sm">has no {{ selectedItem }} set</div>
                         </div>
-                        <div v-else class="p-2 flex items-center overflow-hidden overflow-x-auto">
+                        <div v-else class="p-2 flex justify-start items-center overflow-hidden overflow-x-auto">
                             <template v-if="counsellor[selectedItem]?.length">
                                 <div
                                     v-for="(item, idx) in counsellor[selectedItem]"
                                     :title="item.about ?? ''"
                                     :key="idx"
-                                    class="capitalize mr-3 rounded text-sm p-2 min-w-[100px] text-gray-700 bg-gray-300 select-none transition duration-75 cursor-pointer hover:bg-gray-600 hover:text-white text-center"
+                                    class="capitalize mr-3 rounded shrink-0 text-sm p-2 min-w-[100px] text-gray-700 bg-gray-300 select-none transition duration-75 cursor-pointer hover:bg-gray-600 hover:text-white text-center"
                                 >{{ item.name }}</div>
 
                             </template>
