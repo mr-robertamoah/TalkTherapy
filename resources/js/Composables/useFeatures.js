@@ -25,6 +25,10 @@ export default function useFeatures() {
         ],
         next: [
             {
+                name: "Group Therapy",
+                description: "This feature allows a group of counsellors the opportunity to have sessions with multiple users having similar cases. A user or counsellor will be able to create a group therapy and send requests to counsellors as well as users. There will be an invitation link both for group administrators, counsellors and users to make easy to join group therapies.",
+            },
+            {
                 name: "Post",
                 description: "This feature allows counsellors make posts that last seven days. This post allows text and images and can be used by counsellors to educate user on mental health matters.",
             },

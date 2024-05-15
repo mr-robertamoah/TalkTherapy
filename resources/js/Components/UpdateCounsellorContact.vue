@@ -1,7 +1,7 @@
 <script setup>
 import useAlert from "@/Composables/useAlert";
 import useModal from "@/Composables/useModal";
-import { useForm } from "@inertiajs/vue3";
+import { useForm, usePage } from "@inertiajs/vue3";
 import { ref, watch, watchEffect } from "vue";
 import Alert from "./Alert.vue";
 import FormLoader from "./FormLoader.vue";
@@ -11,6 +11,7 @@ import InputError from "./InputError.vue";
 import Checkbox from "./Checkbox.vue";
 import PrimaryButton from "./PrimaryButton.vue";
 import Modal from "./Modal.vue";
+import { computed } from "vue";
 
 const { modalData, closeModal } = useModal()
 const { alertData, setAlertData, clearAlertData } = useAlert()
@@ -37,6 +38,7 @@ const backendPhone = ref('')
 const code = ref('')
 const phoneNumber = ref('')
 const loading = ref(false)
+const useUserEmail = ref(false)
 const phoneData = ref(null)
 const formDataChanged = ref(false)
 
@@ -46,6 +48,20 @@ watch(
         modalData.value.show = props.show
 
         if (props.show) setUpdateData()
+    }
+)
+watch(
+    () => updateForm.email,
+    () => {
+        if (updateForm.email !== usePage().props.auth.user?.email)
+            useUserEmail.value = false
+    }
+)
+watch(
+    () => useUserEmail.value,
+    () => {
+        if (useUserEmail.value)
+            updateForm.email = usePage().props.auth.user?.email ?? ''
     }
 )
 watch(
@@ -79,6 +95,12 @@ watchEffect(() => {
 
     if (updateForm.contactVisible !== props.counsellor?.contactVisible)
         return formDataChanged.value = true
+})
+
+const canUseUserEmail = computed(() => {
+    const user = usePage().props.auth.user
+
+    return (user.email && user.emailVerifiedAt && user.email !== updateForm.email) ? true : false
 })
 
 function closeThisModal() {
@@ -208,6 +230,10 @@ function thereIsNoData() {
                                 v-model="updateForm.email"
                                 autofocus
                             />
+                            <label class="flex items-center mt-2" v-if="canUseUserEmail">
+                                <Checkbox name="remember" v-model:checked="useUserEmail" />
+                                <span class="ms-2 text-sm text-gray-600">use your user account email.</span>
+                            </label>
 
                             <div class="mt-2 text-xs text-gray-500">
                                 This field is required if you would want to be verified as a counsellor.

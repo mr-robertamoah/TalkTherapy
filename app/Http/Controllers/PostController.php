@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Actions\GetModelWithModelNameAndIdAction;
 use App\DTOs\CreatePostDTO;
+use App\Http\Requests\CreatePostRequest;
 use App\Http\Resources\PostResource;
 use App\Models\Post;
 use App\Services\PostService;
@@ -14,7 +15,7 @@ use Throwable;
 
 class PostController extends Controller
 {
-    public function createPost(Request $request)
+    public function createPost(CreatePostRequest $request)
     {
         try {
             $post = PostService::new()->createPost(

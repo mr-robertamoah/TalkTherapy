@@ -145,7 +145,7 @@ class TherapyController extends Controller
                 ])
             );
 
-            $pendingRequest = $therapy->pendingRequestFor($request->user()->counsellor);
+            $pendingRequest = $therapy->pendingRequestFor($request->user()?->counsellor);
 
             return Inertia::render('Therapy/Index', [
                 'therapy' => new TherapyResource($therapy),
@@ -153,6 +153,7 @@ class TherapyController extends Controller
                 'pendingRequest' => $pendingRequest ? new RequestResource($pendingRequest) : null
             ]);
         } catch (Throwable $th) {
+            ds($th);
             return Redirect::route('home')->with('message', $th->getMessage());
         }
     }

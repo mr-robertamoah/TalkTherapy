@@ -173,15 +173,15 @@ class TherapyService extends Service
         
         $query->when($user?->counsellor, function ($query) use ($user) {
             $query
-                ->where(function ($query) use ($user) {
+                ->orWhere(function ($query) use ($user) {
                     $query->whereNotCounsellor($user->counsellor);
                 });
         });
 
         $query
-            ->orWhere(function ($query) {
-                $query->whereNoCounsellor();
-            })
+            // ->where(function ($query) use ($user) {
+            //     $query->whereNoCounsellor();
+            // })
             ->wherePublic()
             ->inRandomOrder();
 

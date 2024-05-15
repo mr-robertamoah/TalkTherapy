@@ -2,9 +2,10 @@
 import MiniTherapyComponent from '@/Components/MiniTherapyComponent.vue';
 import StarredCounsellorComponent from '@/Components/StarredCounsellorComponent.vue';
 import HelpButton from '@/Components/HelpButton.vue';
+import PostComponent from '@/Components/PostComponent.vue';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { Head, usePage } from '@inertiajs/vue3';
-import { computed, onBeforeMount, provide, ref, watch } from 'vue';
+import { computed, onBeforeMount, provide, ref, watch, watchEffect } from 'vue';
 
 const props = defineProps({
     recentTherapies: {
@@ -21,12 +22,16 @@ const props = defineProps({
 const newTherapy = ref(null)
 const getting = ref({ show: false, type: '' })
 const recentTherapies = ref([])
+const posts = ref({ data: [], page: 1 })
 const randomTherapies = ref({ data: [], page: 1 })
 const randomCounsellors = ref({ data: [], page: 1 })
 
 watch(() => newTherapy.value, () => {
     if (newTherapy.value)
         recentTherapies.value = [newTherapy.value, ...recentTherapies.value]
+})
+watch(() => usePage().props.auth.user?.id, () => {
+    loadContent()
 })
 
 onBeforeMount(() => {
@@ -36,11 +41,17 @@ onBeforeMount(() => {
     if (props.recentTherapies?.data?.length)
         recentTherapies.value = [...props.recentTherapies.data]
 
-    getRandomCounsellors()
-    getRandomTherapies()
+    loadContent()
 })
 
 provide('onCreatedNewTherapy', { newTherapy, updateNewTherapy })
+
+const computedBestCounsellors = computed(() => {
+    return props.bestCounsellors.data?.length ? props.bestCounsellors.data : props.bestCounsellors
+})
+const computedLeadingCounsellors = computed(() => {
+    return props.leadingCounsellors.data?.length ? props.leadingCounsellors.data : props.leadingCounsellors
+})
 
 function updateNewTherapy(value) {
     newTherapy.value = value
@@ -49,6 +60,16 @@ function updateNewTherapy(value) {
 function updatePage(res, items) {
     if (res.data?.links?.next) items.value.page += 1
     else items.value.page = 0
+}
+
+function loadContent() {
+    randomCounsellors.value.page = 1
+    randomTherapies.value.page = 1
+    posts.value.page = 1
+
+    getRandomCounsellors()
+    getRandomTherapies()
+    getPosts()
 }
 
 async function getRandomCounsellors() {
@@ -67,6 +88,31 @@ async function getRandomCounsellors() {
             ]
 
             updatePage(res, randomCounsellors)
+        })
+        .catch((err) => {
+            console.log(err)
+        })
+        .finally(() => {
+            clearGetting()
+        })
+}
+
+async function getPosts() {
+    if (!posts.value.page) return
+
+    setGetting('posts')
+    await axios.get(`${route('api.posts')}?page=${posts.value.page}`)
+        .then((res) => {
+            console.log(res)
+            if (posts.value.page == 1)
+                posts.value.data = []
+            
+            posts.value.data = [
+                ...posts.value.data,
+                ...res.data.data,
+            ]
+
+            updatePage(res, posts)
         })
         .catch((err) => {
             console.log(err)
@@ -111,13 +157,6 @@ function setGetting(type) {
     getting.value.show = true
 }
 
-const computedBestCounsellors = computed(() => {
-    return props.bestCounsellors.data?.length ? props.bestCounsellors.data : props.bestCounsellors
-})
-
-const computedLeadingCounsellors = computed(() => {
-    return props.leadingCounsellors.data?.length ? props.leadingCounsellors.data : props.leadingCounsellors
-})
 </script>
 
 <template>
@@ -132,96 +171,118 @@ const computedLeadingCounsellors = computed(() => {
                     class="mr-4"
                 />
             </div>
-            <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 mt-4">
-                <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
-                    <div class="p-6 text-gray-900">Starred Counsellors (previous month)</div>
-                    <div class="m-2 p-2 overflow-hidden overflow-x-auto space-x-4 flex justify-start items-center" v-if="computedBestCounsellors?.length">
-                        <StarredCounsellorComponent
-                            v-for="(counsellor, idx) in computedBestCounsellors"
-                            :key="counsellor.id"
-                            :position="idx + 1"
-                            :counsellor="counsellor"
-                            :showStars="false"
-                            class="w-[250px]"
-                        />
+            <div class="block space-y-4 md:flex justify-start items-start md:space-y-0 md:space-x-4">
+                <div class="w-full md:w-[50%]">
+                    <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 mt-4">
+                        <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
+                            <div class="p-6 text-gray-900">Starred Counsellors (previous month)</div>
+                            <div class="m-2 p-2 overflow-hidden overflow-x-auto space-x-4 flex justify-start items-center" v-if="computedBestCounsellors?.length">
+                                <StarredCounsellorComponent
+                                    v-for="(counsellor, idx) in computedBestCounsellors"
+                                    :key="counsellor.id"
+                                    :position="idx + 1"
+                                    :counsellor="counsellor"
+                                    :showStars="false"
+                                    class="w-[250px] shrink-0"
+                                />
+                            </div>
+                            <div v-else class="text-center text-sm w-full my-4 text-gray-600">there are no best counsellors for the previous month.</div>
+                        </div>
                     </div>
-                    <div v-else class="text-center text-sm w-full my-4 text-gray-600">there are no best counsellors for the previous month.</div>
+                    
+                    <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 mt-4">
+                        <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
+                            <div class="p-6 text-gray-900">Leading Counsellors (current month)</div>
+                            <div class="m-2 p-2 overflow-hidden overflow-x-auto space-x-4 flex justify-start items-center" v-if="computedLeadingCounsellors?.length">
+                                <StarredCounsellorComponent
+                                    v-for="(counsellor, idx) in computedLeadingCounsellors"
+                                    :key="counsellor.id"
+                                    :position="idx + 1"
+                                    :counsellor="counsellor"
+                                    class="w-[250px] shrink-0"
+                                />
+                            </div>
+                            <div v-else class="text-center text-sm w-full my-4 text-gray-600">there are no leading counsellors for this month.</div>
+                        </div>
+                    </div>
+                    
+                    <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 mt-4">
+                        <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
+                            <div class="p-6 text-gray-900">Counsellors</div>
+                            <div class="m-2 p-2 overflow-hidden overflow-x-auto space-x-4 flex justify-start items-center" v-if="randomCounsellors.data?.length">
+                                <StarredCounsellorComponent
+                                    v-for="(counsellor) in randomCounsellors.data"
+                                    :key="counsellor.id"
+                                    :counsellor="counsellor"
+                                    :showStars="false"
+                                    class="w-[250px] shrink-0"
+                                />
+                            </div>
+                            <div v-else-if="!getting.show && getting.type !== 'counsellors'" class="text-center text-sm w-full my-4 text-gray-600">we have no counsellors for now.</div>
+                            <div v-if="getting.show && getting.type == 'counsellors'" class="text-center text-sm w-full text-green-600">getting more therapies.</div>
+                            <div
+                                v-if="randomCounsellors.page > 1 && !getting.show && getting.type !== 'counsellors'"
+                                class="text-center text-sm w-fit mx-auto p-4 text-gray-600 cursor-pointer"
+                                @click="getRandomCounsellors"
+                            >...</div>
+                        </div>
+                    </div>
+                    
+                    <div class="max-w-7xl mx-auto sm:px-6 lg:px-8" v-if="$page.props.auth.user">
+                        <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
+                            <div class="p-6 text-gray-900">Your Recent Therapies</div>
+                            <div class="m-2 p-2 overflow-hidden overflow-x-auto space-x-5 flex justify-start items-center" v-if="recentTherapies?.length">
+                                <MiniTherapyComponent
+                                    v-for="therapy in recentTherapies"
+                                    :key="therapy.id"
+                                    :therapy="therapy"
+                                    class="w-[250px] shrink-0"
+                                />
+                            </div>
+                            <div v-else class="text-center text-sm w-full my-4 text-gray-600">you have no therapies</div>
+                        </div>
+                    </div>
+                    
+                    <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 mt-8">
+                        <div class="bg-white shadow-sm sm:rounded-lg">
+                            <div class="p-6 text-gray-900">Public Therapies</div>
+                            <div class="px-6 flex min-h-[100px] justify-start py-4 items-start overflow-hidden overflow-x-auto space-x-5">
+                                <template v-if="randomTherapies.data?.length">
+                                    <MiniTherapyComponent
+                                        v-for="therapy in randomTherapies.data"
+                                        :key="therapy.id"
+                                        :therapy="therapy"
+                                        class="w-[250px] shrink-0"
+                                    />
+                                </template>
+                                <div v-else-if="!getting.show && getting.type !== 'therapies'" class="text-center text-sm w-full text-gray-600">there are no therapies for public at the moment.</div>
+                                <div v-if="getting.show && getting.type == 'therapies'" class="text-center text-sm w-full text-green-600">getting more therapies.</div>
+                                <div
+                                    v-if="randomTherapies.page > 1 && !getting.show && getting.type !== 'therapies'"
+                                    class="text-center text-sm w-fit mx-auto p-4 text-gray-600 cursor-pointer"
+                                    @click="getRandomTherapies"
+                                >...</div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
-            </div>
-            
-            <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 mt-4">
-                <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
-                    <div class="p-6 text-gray-900">Leading Counsellors (current month)</div>
-                    <div class="m-2 p-2 overflow-hidden overflow-x-auto space-x-4 flex justify-start items-center" v-if="computedLeadingCounsellors?.length">
-                        <StarredCounsellorComponent
-                            v-for="(counsellor, idx) in computedLeadingCounsellors"
-                            :key="counsellor.id"
-                            :position="idx + 1"
-                            :counsellor="counsellor"
-                            class="w-[250px] shrink-0"
-                        />
+                <div class="w-full md:w-[50%]">
+                    <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 mt-4">
+                        <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
+                            <div class="p-6 text-gray-900">Posts</div>
+                            <div class="m-2 p-2 overflow-hidden overflow-y-auto space-y-4" v-if="posts?.length">
+                                <PostComponent
+                                    v-for="(post, idx) in posts"
+                                    :key="post.id"
+                                    :position="idx + 1"
+                                    :post="post"
+                                    class="w-[250px] sm:w-[300px] shrink-0 mx-auto"
+                                />
+                            </div>
+                            <div v-else class="text-sm text-gray-600 w-full h-[200px] flex justify-center items-center">no posts yet</div>
+                        </div>
                     </div>
-                    <div v-else class="text-center text-sm w-full my-4 text-gray-600">there are no leading counsellors for this month.</div>
-                </div>
-            </div>
-            
-            <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 mt-4">
-                <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
-                    <div class="p-6 text-gray-900">Counsellors</div>
-                    <div class="m-2 p-2 overflow-hidden overflow-x-auto space-x-4 flex justify-start items-center" v-if="randomCounsellors.data?.length">
-                        <StarredCounsellorComponent
-                            v-for="(counsellor) in randomCounsellors.data"
-                            :key="counsellor.id"
-                            :counsellor="counsellor"
-                            :showStars="false"
-                            class="w-[250px] shrink-0"
-                        />
-                    </div>
-                    <div v-else-if="!getting.show && getting.type !== 'counsellors'" class="text-center text-sm w-full my-4 text-gray-600">we have no counsellors for now.</div>
-                    <div v-if="getting.show && getting.type == 'counsellors'" class="text-center text-sm w-full text-green-600">getting more therapies.</div>
-                    <div
-                        v-if="randomCounsellors.page > 1 && !getting.show && getting.type !== 'counsellors'"
-                        class="text-center text-sm w-fit mx-auto p-4 text-gray-600 cursor-pointer"
-                        @click="getRandomCounsellors"
-                    >...</div>
-                </div>
-            </div>
-            
-            <div class="max-w-7xl mx-auto sm:px-6 lg:px-8" v-if="$page.props.auth.user">
-                <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
-                    <div class="p-6 text-gray-900">Your Recent Therapies</div>
-                    <div class="m-2 p-2 overflow-hidden overflow-x-auto space-x-5 flex justify-start items-center" v-if="recentTherapies?.length">
-                        <MiniTherapyComponent
-                            v-for="therapy in recentTherapies"
-                            :key="therapy.id"
-                            :therapy="therapy"
-                            class="w-[250px] shrink-0"
-                        />
-                    </div>
-                    <div v-else class="text-center text-sm w-full my-4 text-gray-600">you have no therapies</div>
-                </div>
-            </div>
-            
-            <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 mt-8">
-                <div class="bg-white shadow-sm sm:rounded-lg">
-                    <div class="p-6 text-gray-900">Public Therapies</div>
-                    <div class="px-6 flex min-h-[100px] justify-start py-4 items-start overflow-hidden overflow-x-auto space-x-5">
-                        <template v-if="randomTherapies.data?.length">
-                            <MiniTherapyComponent
-                                v-for="therapy in randomTherapies.data"
-                                :key="therapy.id"
-                                :therapy="therapy"
-                                class="w-[250px] shrink-0"
-                            />
-                        </template>
-                        <div v-else-if="!getting.show && getting.type !== 'therapies'" class="text-center text-sm w-full text-gray-600">there are no therapies for public at the moment.</div>
-                        <div v-if="getting.show && getting.type == 'therapies'" class="text-center text-sm w-full text-green-600">getting more therapies.</div>
-                        <div
-                            v-if="randomTherapies.page > 1 && !getting.show && getting.type !== 'therapies'"
-                            class="text-center text-sm w-fit mx-auto p-4 text-gray-600 cursor-pointer"
-                            @click="getRandomTherapies"
-                        >...</div>
-                    </div>
+
                 </div>
             </div>
         </div>

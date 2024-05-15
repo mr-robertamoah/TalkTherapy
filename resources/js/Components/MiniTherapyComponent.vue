@@ -21,12 +21,30 @@ const computedBackgroundStory = computed(() => {
 const computedIsParticipant = computed(() => {
     const user = usePage().props.auth.user
 
+    if (!user) return false
+
     if (
         user?.id == props.therapy?.userId ||
         user?.id == props.therapy?.counsellor?.userId
     ) return true
 
     return false
+})
+const computedIsUser = computed(() => {
+    const user = usePage().props.auth.user
+
+    if (!user) return false
+
+    if (
+        user?.id == props.therapy?.userId
+    ) return true
+
+    return false
+})
+const computedAnonymity = computed(() => {
+    const startOfMessage = computedIsUser.value ? 'you are' : 'user is'
+    
+    return `${startOfMessage} ${ props.therapy.anonymous ? '' : 'not ' }anonymous`
 })
 const computedCanViewPage = computed(() => {
     return computedIsParticipant.value || props.therapy.public || usePage().props.auth.user?.isAdmin
@@ -92,7 +110,7 @@ const computedCanViewPage = computed(() => {
                                 :class="[therapy.anonymous ? 'bg-green-300' : 'bg-blue-300']"
                                 ></div>
                             </div>
-                            <div>you are {{ therapy.anonymous ? '' : 'not ' }}anonymous</div>
+                            <div>{{ computedAnonymity }}</div>
                         </div>
                     </template>
                 </div>

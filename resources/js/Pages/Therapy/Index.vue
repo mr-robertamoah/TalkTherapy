@@ -77,7 +77,7 @@ watch(() => counsellorSearch.value, () => {
         debouncedGetCounsellors()
 })
 watchEffect(() => {
-    if (props.therapy?.id) {
+    if (props.therapy?.id || props.therapy?.data?.id) {
         waitForAlert()
         counsellor.value = props.therapy.data 
             ? props.therapy.data.counsellor
@@ -372,7 +372,12 @@ async function sendAssistanceRequest() {
 }
 
 function isNotParticipant() {
-    return userId !== props.therapy?.counsellor?.userId && userId !== props.therapy?.user?.id
+    const counsellor = props.therapy?.data ? props.therapy?.data?.counsellor : props.therapy?.counsellor
+    const user = props.therapy?.data ? props.therapy?.data?.user : props.therapy?.user
+
+    if (!counsellor || !user) return false
+
+    return userId !== counsellor?.userId && userId !== user?.id
 }
 
 async function waitForAlert() {
@@ -388,7 +393,7 @@ async function waitForAlert() {
         })
         .catch((err) => {
             console.log(err)
-            goToLogin(err)
+            // goToLogin(err)
         })
 }
 

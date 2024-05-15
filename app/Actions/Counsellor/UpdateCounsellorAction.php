@@ -58,6 +58,12 @@ class UpdateCounsellorAction extends Action
             $data['email'] = $updateCounsellorDTO->email;
             $data['email_verified_at'] = null;
         }
+
+        if (
+            $updateCounsellorDTO->email == $updateCounsellorDTO->counsellor->user->email &&
+            !!$updateCounsellorDTO->counsellor->user->email_verified_at
+        ) $data['email_verified_at'] = now()->utc();
+
         if ($updateCounsellorDTO->phone) $data['phone'] = $updateCounsellorDTO->phone;
         if ($updateCounsellorDTO->professionId) $data['profession_id'] = $updateCounsellorDTO->professionId;
 

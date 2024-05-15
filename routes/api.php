@@ -58,6 +58,8 @@ Route::get('/professions', [ProfessionController::class, 'getProfessions'])->nam
 
 Route::get('how-tos', [HowToController::class, 'getHowTos'])->name('api.how-tos');
 
+Route::get('/posts', [PostController::class, 'getPosts'])->name('api.posts');
+
 Route::middleware('auth:sanctum')->group(function () {
     
     Route::get('/administrator/verification/requests', [AdministratorController::class, 'getVerificationRequests'])->name('admin.verification.requests');
@@ -96,7 +98,6 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/reports/{reportId}', [ReportController::class, 'updateReport'])->name('api.reports.update');
     Route::delete('/reports/{reportId}', [ReportController::class, 'deleteReport'])->name('api.reports.delete');
 
-    Route::get('/posts', [PostController::class, 'getPosts'])->name('api.posts');
     Route::get('/posts/{postId}', [PostController::class, 'gePosts'])->name('api.posts.get');
     Route::post('/posts', [PostController::class, 'creatPosts'])->name('api.posts.create');
     Route::post('/posts/{postId}', [PostController::class, 'updatPosts'])->name('api.posts.update');
