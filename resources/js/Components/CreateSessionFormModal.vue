@@ -13,7 +13,7 @@ import Alert from "./Alert.vue";
 import PrimaryButton from "./PrimaryButton.vue";
 import Select from "./Select.vue";
 import { useForm } from '@inertiajs/vue3';
-import { addMinutes, format } from 'date-fns';
+import { addMinutes, format, differenceInMinutes } from 'date-fns';
 import PreferenceItem from './PreferenceItem.vue';
 
 const { alertData, clearAlertData, setAlertData, setFailedAlertData } = useAlert()
@@ -109,6 +109,9 @@ const computedEndTime = computed(() => {
 const computedNow = computed(() => {
     return new Date().toISOString().slice(0, 16)
 })
+const computedDuration = computed(() => {
+    return (endTime.value && startTime.value) ? differenceInMinutes(new Date(endTime.value), new Date(startTime.value)) : ''
+})
 
 function isMinutesBefore({firstTime, secondTime = null, minutes}) {
     if (!firstTime) return null
@@ -172,12 +175,23 @@ async function createSession() {
     sessionForm.post(route(`sessions.create`, { therapyId: props.therapy.id }), {
         onStart: () => {
             loading.value = true
+            sessionForm.clearErrors()
+            console.log(sessionForm.hasErrors)
         },
         onFinish: () => {
             loading.value = false
         },
         onError: (err) => {
             console.log(err)
+            if (sessionForm.hasErrors) {
+                const errKeys = Object.keys(err).join(', ')
+                setFailedAlertData({
+                    message: `You have errors regarding the following: '${errKeys}'. Please check the form again.`,
+                    time: 10000
+                })
+                return
+            }
+
             if (err.alert) {
                 setFailedAlertData({
                     message: err.alert,
@@ -462,6 +476,10 @@ function useCurrentLocation() {
                                 
                                 <div class="text-xs p-1 text-end text-gray-600">{{ computedEndTime }}</div>
                                 <InputError class="mt-2" :message="sessionForm.errors.endTime" />
+                            </div>
+                            
+                            <div class="mt-4 mx-auto max-w-[400px]" v-if="computedDuration">
+                                <div class="text-xs p-1 text-end text-gray-600">Duration: {{ computedDuration }} minutes</div>
                             </div>
                         </div>
 
