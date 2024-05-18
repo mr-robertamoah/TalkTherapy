@@ -61,6 +61,8 @@ const computedLeadingCounsellors = computed(() => {
 const computedCanCreatePost = computed(() => {
     const user = usePage().props.auth.user
 
+    if (!user) return false
+
     if (user.isAdmin) return true
 
     return (!!user.counsellor) ? true : false
