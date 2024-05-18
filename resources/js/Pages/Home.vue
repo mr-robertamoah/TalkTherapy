@@ -58,6 +58,13 @@ const computedBestCounsellors = computed(() => {
 const computedLeadingCounsellors = computed(() => {
     return props.leadingCounsellors.data?.length ? props.leadingCounsellors.data : props.leadingCounsellors
 })
+const computedCanCreatePost = computed(() => {
+    const user = usePage().props.auth.user
+
+    if (user.isAdmin) return true
+
+    return (!!user.counsellor) ? true : false
+})
 
 function updateNewTherapy(value) {
     newTherapy.value = value
@@ -298,7 +305,9 @@ function deletePost(idx) {
                         <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
                             <div class="p-6 text-gray-900 flex justify-between items-center">
                                 <div>Posts</div>
-                                <PrimaryButton @click="() => showModal('create post')">create post</PrimaryButton>
+                                <PrimaryButton
+                                    v-if="computedCanCreatePost"
+                                    @click="() => showModal('create post')">create post</PrimaryButton>
                             </div>
                             <div class="m-2 p-2 overflow-hidden overflow-y-auto space-y-4" v-if="posts.data?.length">
                                 <PostComponent
