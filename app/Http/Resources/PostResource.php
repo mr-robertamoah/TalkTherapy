@@ -21,7 +21,7 @@ class PostResource extends JsonResource
             'counsellor' => $this->addedby_type == Counsellor::class ? new CounsellorMiniResource($this->addedby) : null,
             'content' => $this->content,
             'files' => FileResource::collection($this->files),
-            'createdAt' => $this->created_at,
+            'createdAt' => $this->created_at->diffForHumans(),
         ];
     }
 }

@@ -56,7 +56,7 @@
                     if (msg.id) updateMessage()
                 }"
             >failed</div>
-            <div v-if="post?.createdAt" class="text-xs text-gray-600">{{ toDiffForHumans(post.createdAt) }}</div>
+            <div v-if="post?.createdAt" class="text-xs text-gray-600">{{ post.createdAt }}</div>
         </div>
     </div>
 
@@ -135,12 +135,10 @@ import FormLoader from './FormLoader.vue';
 import { computed } from 'vue';
 import { usePage } from '@inertiajs/vue3';
 import Avatar from './Avatar.vue';
-import useLocalDateTimed from '@/Composables/useLocalDateTime';
 
 
 const { alertData, clearAlertData, setFailedAlertData } = useAlert()
 const { modalData, closeModal, showModal } = useModal()
-const { toDiffForHumans } = useLocalDateTimed()
 
 const emits = defineEmits(['updated', 'deleted', 'created'])
 
