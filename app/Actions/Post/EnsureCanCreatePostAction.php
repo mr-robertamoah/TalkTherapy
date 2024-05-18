@@ -16,6 +16,6 @@ class EnsureCanCreatePostAction extends Action
             ($createPostDTO->addedby::class == Counsellor::class && $createPostDTO->addedby->isVerified())
         ) return;
 
-        throw new PostException("You are not allowed to create a post with the account provided.", 422);
+        throw new PostException("You are not allowed to create a post with the account provided. Account is not a verified counsellor.", 422);
     }
 }

@@ -26,6 +26,8 @@ class DeletePostAction extends Action
 
         $createPostDTO->post->files()->detach($files);
 
+        $createPostDTO->post->starreable()->delete();
+
         return $createPostDTO->post->delete();
     }
 }

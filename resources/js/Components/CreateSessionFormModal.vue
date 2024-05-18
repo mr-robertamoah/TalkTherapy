@@ -172,6 +172,12 @@ async function createSession() {
     sessionForm.startTime = new Date(startTime.value).toISOString()
     sessionForm.endTime = new Date(endTime.value).toISOString()
 
+    if (props.therapy.paymentType == 'FREE' && !sessionForm.paymentType)
+        sessionForm.paymentType = 'FREE'
+
+    if (props.therapy.allowInPerson && !sessionForm.type)
+        sessionForm.type = 'ONLINE'
+
     sessionForm.post(route(`sessions.create`, { therapyId: props.therapy.id }), {
         onStart: () => {
             loading.value = true
@@ -183,7 +189,7 @@ async function createSession() {
         },
         onError: (err) => {
             console.log(err)
-            if (sessionForm.hasErrors) {
+            if (sessionForm.hasErrors && !err.alert) {
                 const errKeys = Object.keys(err).join(', ')
                 setFailedAlertData({
                     message: `You have errors regarding the following: '${errKeys}'. Please check the form again.`,

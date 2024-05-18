@@ -10,8 +10,11 @@ use App\Actions\Post\EnsureCanUpdatePostAction;
 use App\Actions\Post\EnsurePostDataIsValidAction;
 use App\Actions\Post\EnsurePostExistsAction;
 use App\Actions\Post\UpdatePostAction;
+use App\Actions\Star\CreateStarAction;
 use App\DTOs\CreatePostDTO;
+use App\DTOs\CreateStarDTO;
 use App\Enums\PaginationEnum;
+use App\Enums\StarTypeEnum;
 use App\Http\Resources\PostResource;
 use App\Models\Post;
 
@@ -28,7 +31,18 @@ class PostService extends Service
 
         EnsurePostDataIsValidAction::new()->execute($createPostDTO);
 
-        return CreatePostAction::new()->execute($createPostDTO);
+        $post = CreatePostAction::new()->execute($createPostDTO);
+
+        CreateStarAction::new()->execute(
+            CreateStarDTO::fromArray([
+                'starredby' => null,
+                'starred' => $createPostDTO->addedby ?: $createPostDTO->user,
+                'starreable' => $post,
+                'type' => StarTypeEnum::contribution->value,
+            ])
+        );
+
+        return $post;
     }
 
     public function updatePost(CreatePostDTO $createPostDTO)

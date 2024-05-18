@@ -50,7 +50,7 @@ function clickedPrevious() {
         :show="show"
         @close="closeModal"
     >
-        <div class="w-full p-2 h-[80vh] overflow-hidden relative text-sm text-gray-600 flex justify-center items-center">
+        <div class="w-full select-none p-2 h-[80vh] overflow-hidden relative text-sm text-gray-600 flex justify-center items-center">
             <div v-if="previous" @click="clickedPrevious" class="shrink-0 text-3xl font-bold mx-2 p-2 cursor-pointer" title="check previous image">
                 {{"<"}}
             </div>

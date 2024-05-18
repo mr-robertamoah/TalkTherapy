@@ -42,6 +42,7 @@ class PostController extends Controller
                 CreatePostDTO::new()->fromArray([
                     'user' => $request->user(),
                     'content' => $request->content,
+                    'deletedFiles' => $request->deletedFiles,
                     'post' => Post::find($request->postId),
                     'files' => $request->file('files'),
                     'postable' => GetModelWithModelNameAndIdAction::new()->execute($request->postableType, $request->postableId),
@@ -59,7 +60,7 @@ class PostController extends Controller
     {
         $post = Post::find($request->postId);
         try {
-            PostService::new()->getPost(
+            PostService::new()->deletePost(
                 CreatePostDTO::new()->fromArray([
                     'user' => $request->user(),
                     'post' => $post,

@@ -99,9 +99,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/reports/{reportId}', [ReportController::class, 'deleteReport'])->name('api.reports.delete');
 
     Route::get('/posts/{postId}', [PostController::class, 'gePosts'])->name('api.posts.get');
-    Route::post('/posts', [PostController::class, 'creatPosts'])->name('api.posts.create');
-    Route::post('/posts/{postId}', [PostController::class, 'updatPosts'])->name('api.posts.update');
-    Route::delete('/posts/{postId}', [PostController::class, 'deletPosts'])->name('api.posts.delete');
+    Route::post('/posts', [PostController::class, 'createPost'])->name('api.posts.create');
+    Route::post('/posts/{postId}', [PostController::class, 'updatePost'])->name('api.posts.update');
+    Route::delete('/posts/{postId}', [PostController::class, 'deletePost'])->name('api.posts.delete');
     
     Route::get('/therapies', [TherapyController::class, 'show'])->name('api.therapies');
     Route::get('/therapies/{therapyId}', [TherapyController::class, 'getTherapy'])->name('api.therapies.get');

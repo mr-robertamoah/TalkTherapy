@@ -29,11 +29,12 @@ class Therapy extends Model
 
     public function getActiveSessionAttribute()
     {
-        return $this
-            ->sessions()
+        return Session::query()
+            ->whereTherapyId($this->id)
             ->whereInSession()
             ->whereFiveOrLessMinutesToStart()
             ->orWhere(function ($query) {
+                $query->whereTherapyId($this->id);
                 $query->whereOnGoing();
             })
             ->first();
@@ -167,7 +168,7 @@ class Therapy extends Model
     {
         return $query
             ->where(function ($query) {
-                $query->whereNull('counsellor_id');
+                $query->where('counsellor_id', null);
             });
     }
 

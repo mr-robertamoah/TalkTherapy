@@ -60,7 +60,7 @@ class UpdatePostAction extends Action
 
     private function setData(CreatePostDTO $createPostDTO)
     {
-        if ($createPostDTO->content && $createPostDTO->content !== $createPostDTO->post->content)
+        if ($createPostDTO->content !== $createPostDTO->post->content)
             $this->data['content'] = $createPostDTO->content;
     }
 }

@@ -164,28 +164,18 @@ class TherapyService extends Service
     {
         $query = Therapy::query();
 
-        $query->when($user, function ($query) use ($user) {
-            $query
-                ->where(function ($query) use ($user) {
-                    $query->whereNotUser($user);
-                });
-        });
+        $query->wherePublic();
         
-        $query->when($user?->counsellor, function ($query) use ($user) {
-            $query
-                ->orWhere(function ($query) use ($user) {
-                    $query->whereNotCounsellor($user->counsellor);
-                });
-        });
-
         $query
-            // ->where(function ($query) use ($user) {
-            //     $query->whereNoCounsellor();
-            // })
-            ->wherePublic()
+            ->when($user, function ($query) use ($user) {
+                $query->orWhereNot('addedby_id', $user->id);
+            })
+            ->when($user?->counsellor, function ($query) use ($user) {
+                $query->whereNoCounsellor($user->counsellor);
+                $query->orWhereNot('counsellor_id', $user->counsellor->id);
+            })
             ->inRandomOrder();
 
-        // ds($query->get());
         return $query->paginate(PaginationEnum::preferencesPagination->value);
     }
 }

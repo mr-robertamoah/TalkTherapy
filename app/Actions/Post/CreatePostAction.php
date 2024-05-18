@@ -12,7 +12,9 @@ class CreatePostAction extends Action
 {
     public function execute(CreatePostDTO $createPostDTO)
     {
-        $post = $createPostDTO->addedby->addedPosts()->create([
+        $addedby = $createPostDTO->addedby ?: $createPostDTO->user;
+
+        $post = $addedby->addedPosts()->create([
             'content' => $createPostDTO->content
         ]);
 
@@ -35,7 +37,7 @@ class CreatePostAction extends Action
                 ])
             );
 
-            $files[] = $fileService->saveFile($createPostDTO->addedby, $fileData);
+            $files[] = $fileService->saveFile($addedby, $fileData);
         }
 
         $post->files()->attach(array_map(fn($f) => $f->id, $files));

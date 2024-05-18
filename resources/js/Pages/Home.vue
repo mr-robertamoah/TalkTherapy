@@ -1,11 +1,17 @@
 <script setup>
 import MiniTherapyComponent from '@/Components/MiniTherapyComponent.vue';
+import CreatePostModal from '@/Components/CreatePostModal.vue';
 import StarredCounsellorComponent from '@/Components/StarredCounsellorComponent.vue';
 import HelpButton from '@/Components/HelpButton.vue';
 import PostComponent from '@/Components/PostComponent.vue';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { Head, usePage } from '@inertiajs/vue3';
 import { computed, onBeforeMount, provide, ref, watch, watchEffect } from 'vue';
+import PrimaryButton from '@/Components/PrimaryButton.vue';
+import useModal from '@/Composables/useModal';
+
+
+const { modalData, showModal, closeModal } = useModal()
 
 const props = defineProps({
     recentTherapies: {
@@ -157,6 +163,27 @@ function setGetting(type) {
     getting.value.show = true
 }
 
+function createPost(post) {
+    const counsellorId = usePage().props.auth.user?.counsellor?.id
+
+    posts.value.data = [
+        {...post, 
+            status: 'sending',
+            addedbyId: counsellorId,
+            addedbyType: 'Counsellor',
+        },
+        ...posts.value.data
+    ]
+}
+
+function updatePost(post, idx) {
+    posts.value.data.splice(idx, 1, post)
+}
+
+function deletePost(idx) {
+    posts.value.data.splice(idx, 1)
+}
+
 </script>
 
 <template>
@@ -269,14 +296,20 @@ function setGetting(type) {
                 <div class="w-full md:w-[50%]">
                     <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 mt-4">
                         <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
-                            <div class="p-6 text-gray-900">Posts</div>
-                            <div class="m-2 p-2 overflow-hidden overflow-y-auto space-y-4" v-if="posts?.length">
+                            <div class="p-6 text-gray-900 flex justify-between items-center">
+                                <div>Posts</div>
+                                <PrimaryButton @click="() => showModal('create post')">create post</PrimaryButton>
+                            </div>
+                            <div class="m-2 p-2 overflow-hidden overflow-y-auto space-y-4" v-if="posts.data?.length">
                                 <PostComponent
-                                    v-for="(post, idx) in posts"
+                                    v-for="(post, idx) in posts.data"
                                     :key="post.id"
                                     :position="idx + 1"
                                     :post="post"
-                                    class="w-[250px] sm:w-[300px] shrink-0 mx-auto"
+                                    @created="(post) => updatePost(post, idx)"
+                                    @updated="(post) => updatePost(post, idx)"
+                                    @deleted="() => deletePost(idx)"
+                                    class="w-[300px] lg:w-[350px] shrink-0 mx-auto mb-4"
                                 />
                             </div>
                             <div v-else class="text-sm text-gray-600 w-full h-[200px] flex justify-center items-center">no posts yet</div>
@@ -287,4 +320,10 @@ function setGetting(type) {
             </div>
         </div>
     </AuthenticatedLayout>
+
+    <CreatePostModal
+        :show="modalData.show && modalData.type == 'create post'"
+        @close="closeModal"
+        @created="createPost"
+    />
 </template>
