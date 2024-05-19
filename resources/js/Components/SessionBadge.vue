@@ -1,6 +1,6 @@
 <template>
     <div v-bind="$attrs" 
-        class="w-full rounded shadow-sm p-2 select-none cursor-pointer"
+        class="rounded shadow-sm p-2 select-none cursor-pointer"
         :class="[isActive ? 'bg-green-300' : 'bg-white']"
     >
         <div class="text-xs my-2 w-fit ml-auto mr-2 text-gray-600">{{ toDiffForHumans(session.createdAt) }}</div>

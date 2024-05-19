@@ -23,6 +23,8 @@ import UpdateIndividualTherapyFormModal from '@/Components/UpdateIndividualThera
 import CreateSessionFormModal from '@/Components/CreateSessionFormModal.vue';
 import useAuth from '@/Composables/useAuth';
 import useLocalDateTimed from '@/Composables/useLocalDateTime';
+import SessionBadge from '@/Components/SessionBadge.vue';
+import TopicBadge from '@/Components/TopicBadge.vue';
 
 const { modalData, showModal, closeModal } = useModal()
 const { goToLogin } = useAuth()
@@ -31,6 +33,12 @@ const { alertData, clearAlertData, setAlertData, setSuccessAlertData, setFailedA
 
 const props = defineProps({
     therapy: {
+        default: null
+    },
+    recentSessions: {
+        default: null
+    },
+    recentTopics: {
         default: null
     },
     pendingRequest: {
@@ -64,8 +72,12 @@ const mainDiv = ref(null)
 const newSession = ref(null)
 const activeSession = ref(null)
 const counsellor = ref(null)
+const currentUpdatedSessionOrTopic = ref(null)
+const currentDeletedSessionOrTopic = ref(null)
 const selectedActiveSession = ref(false)
 const activeItemId = ref(scrollItems[0].id)
+const recentSessions = ref([])
+const recentTopics = ref([])
 const onlineParticipants = ref([])
 const searchedCounsellors = ref([])
 const selectedCounsellors = ref([])
@@ -89,6 +101,20 @@ watch(() => props.therapy?.activeSession?.id, () => {
         activeSession.value = props.therapy.activeSession
         startTimer()
     }
+})
+watchEffect(() => {
+    if (props.recentSessions?.data?.length)
+        recentSessions.value = [...props.recentSessions.data]
+
+    if (props.recentSessions?.length)
+        recentSessions.value = [...props.recentSessions]
+})
+watchEffect(() => {
+    if (props.recentTopics?.data?.length)
+        recentTopics.value = [...props.recentTopics.data]
+
+    if (props.recentTopics?.length)
+        recentTopics.value = [...props.recentTopics]
 })
 watchEffect(() => {
     let currentTherapy = props.therapy?.data ? props.therapy?.data : props.therapy
@@ -538,6 +564,33 @@ async function clickedResponse(response) {
     request.value.responding = false
 }
 
+function deleteSessionOrTopic(item) {
+    if (item.isSession) {
+        recentSessions.value.splice(recentSessions.value.findIndex((session) => session.id == item.id), 1)
+        return
+    }
+
+    recentTopics.value.splice(recentTopics.value.findIndex((session) => session.id == item.id), 1)
+}
+
+function updateSessionOrTopic(item) {
+    if (item.isSession) {
+        recentSessions.value.splice(recentSessions.value.findIndex((session) => session.id == item.id), 1, item)
+        return
+    }
+
+    recentTopics.value.splice(recentTopics.value.findIndex((session) => session.id == item.id), 1, item)
+}
+
+function addSessionOrTopic(item) {
+    if (item.isSession) {
+        recentSessions.value = [item, ...recentSessions.value]
+        return
+    }
+
+    recentTopics.value = [item, ...recentTopics.value]
+}
+
 </script>
 
 <template>
@@ -598,6 +651,48 @@ async function clickedResponse(response) {
         </div>
 
         <div class="pt-6 pb-12">
+            
+            <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
+                <div class="p-6 overflow-hidden shadow-sm sm:rounded-lg my-8 bg-slate-200">
+                    <div class="text-gray-600 font-semibold tracking-wide text-center mb-4">Most Recent Sessions</div>
+                    <div v-if="recentSessions?.length" class="flex space-x-3 justify-start items-center p-2 overflow-hidden overflow-x-auto w-full">
+                        <SessionBadge
+                            v-for="(item, idx) in recentSessions"
+                            :key="idx"
+                            :session="item" 
+                            :therapy="therapy"
+                            @on-update="(item) => {
+                                updateSessionOrTopic(item)
+                                currentUpdatedSessionOrTopic = item
+                            }"
+                            @on-delete="(item) => {
+                                deleteSessionOrTopic(item)
+                                currentDeletedSessionOrTopic = item
+                            }"
+                            class="w-[60%] shrink-0"
+                        />
+                    </div>
+                    <div v-else class="text-sm text-center text-gray-600 my-2">no recent session</div>
+                </div>
+            </div>
+            
+            <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
+                <div class="p-6 overflow-hidden shadow-sm sm:rounded-lg my-8 bg-slate-200">
+                    <div class="text-gray-600 font-semibold tracking-wide text-center mb-4">Most Recent Topics</div>
+                    <div v-if="recentTopics?.length" class="flex space-x-3 justify-start items-center p-2 overflow-hidden overflow-x-auto w-full">
+                        <TopicBadge
+                            v-for="(item, idx) in recentTopics"
+                            :key="idx"
+                            :topic="item" 
+                            :therapy="therapy"
+                            @on-update="updateSessionOrTopic"
+                            @on-delete="deleteSessionOrTopic"
+                            class="w-[60%] shrink-0 bg-slate-200 rounded"
+                        />
+                    </div>
+                    <div v-else class="text-sm text-center text-gray-600 my-2">no recent session</div>
+                </div>
+            </div>
 
             <div class="bg-gray-100 z-[2] top-0 max-w-7xl mx-auto sm:px-6 lg:px-8 my-4 p-2 flex justify-start items-center overflow-x-auto overflow-hidden">
                 <div
@@ -768,12 +863,19 @@ async function clickedResponse(response) {
                             :therapy="computedTherapy"
                             :newSession="newSession"
                             :activeSession="activeSession"
+                            :deletedSessionOrTopic="currentDeletedSessionOrTopic"
+                            :updatedSessionOrTopic="currentUpdatedSessionOrTopic"
                             :selectedActiveSession="selectedActiveSession"
                             :is-participant="computedIsParticipant"
                             :is-user="computedIsUser"
                             :is-counsellor="computedIsCounsellor"
                             @deselect-active-session="() => selectedActiveSession = false"
                             @update-active-session="(data) => activeSession = data"
+                            @created="addSessionOrTopic"
+                            @updated="updateSessionOrTopic"
+                            @done-updating="() => currentUpdatedSessionOrTopic = null"
+                            @done-deleting="() => currentDeletedSessionOrTopic = null"
+                            @deleted="deleteSessionOrTopic"
                         />
                     </div>
                 </div>

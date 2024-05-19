@@ -2,11 +2,13 @@
 
 use App\Http\Controllers\AdministratorController;
 use App\Http\Controllers\AlertController;
+use App\Http\Controllers\CommentController;
 use App\Http\Controllers\ContactController;
 use App\Http\Controllers\CounsellorController;
 use App\Http\Controllers\HowToController;
 use App\Http\Controllers\LanguageController;
 use App\Http\Controllers\LicensingAuthorityController;
+use App\Http\Controllers\LikeController;
 use App\Http\Controllers\MessageController;
 use App\Http\Controllers\PostController;
 use App\Http\Controllers\ProfessionController;
@@ -60,6 +62,10 @@ Route::get('how-tos', [HowToController::class, 'getHowTos'])->name('api.how-tos'
 
 Route::get('/posts', [PostController::class, 'getPosts'])->name('api.posts');
 
+Route::get('/likes', [LikeController::class, 'getLikes'])->name('api.likes');
+
+Route::get('/comments', [CommentController::class, 'getComments'])->name('api.comments');
+
 Route::middleware('auth:sanctum')->group(function () {
     
     Route::get('/administrator/verification/requests', [AdministratorController::class, 'getVerificationRequests'])->name('admin.verification.requests');
@@ -98,10 +104,15 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/reports/{reportId}', [ReportController::class, 'updateReport'])->name('api.reports.update');
     Route::delete('/reports/{reportId}', [ReportController::class, 'deleteReport'])->name('api.reports.delete');
 
-    Route::get('/posts/{postId}', [PostController::class, 'gePosts'])->name('api.posts.get');
     Route::post('/posts', [PostController::class, 'createPost'])->name('api.posts.create');
     Route::post('/posts/{postId}', [PostController::class, 'updatePost'])->name('api.posts.update');
     Route::delete('/posts/{postId}', [PostController::class, 'deletePost'])->name('api.posts.delete');
+
+    Route::post('/comments', [CommentController::class, 'createComment'])->name('api.comments.create');
+    Route::delete('/comments/{commentId}', [CommentController::class, 'deleteComment'])->name('api.comments.delete');
+
+    Route::post('/likes', [LikeController::class, 'like'])->name('api.likes.create');
+    Route::post('/likes/delete', [LikeController::class, 'dislike'])->name('api.likes.delete');
     
     Route::get('/therapies', [TherapyController::class, 'show'])->name('api.therapies');
     Route::get('/therapies/{therapyId}', [TherapyController::class, 'getTherapy'])->name('api.therapies.get');

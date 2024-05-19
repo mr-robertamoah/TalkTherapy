@@ -20,6 +20,8 @@ class PostResource extends JsonResource
             'fromAdmin' => $this->addedby_type == Counsellor::class ? false : $this->addedby?->isAdmin(),
             'counsellor' => $this->addedby_type == Counsellor::class ? new CounsellorMiniResource($this->addedby) : null,
             'content' => $this->content,
+            'likes' => $this->likes->map(fn($like) => $like->user_id),
+            'comments' => $this->comments()->count(),
             'files' => FileResource::collection($this->files),
             'createdAt' => $this->created_at->diffForHumans(),
         ];

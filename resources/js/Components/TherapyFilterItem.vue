@@ -10,6 +10,7 @@
                 @on-update="(data) => emits('onUpdate', data)"
                 @on-delete="(data) => emits('onDelete', data)"
                 @on-message-created="(data) => emits('onMessageCreated', data)"
+                class="w-full"
             />
         </template>
         <template v-if="type == 'topic'">
@@ -21,6 +22,7 @@
                 @on-update="(data) => emits('onUpdate', data)"
                 @on-delete="(data) => emits('onDelete', data)"
                 @on-message-created="(data) => emits('onMessageCreated', data)"
+                class="w-full"
             />
         </template>
     </div>

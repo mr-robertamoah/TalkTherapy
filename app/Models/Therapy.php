@@ -5,6 +5,8 @@ namespace App\Models;
 use App\Enums\SessionStatusEnum;
 use App\Enums\TherapyStatusEnum;
 use App\Traits\Alertable;
+use App\Traits\Commentable;
+use App\Traits\Likeable;
 use App\Traits\Starreable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -16,6 +18,8 @@ class Therapy extends Model
     use HasFactory,
     Starreable,
     Alertable,
+    Likeable,
+    Commentable,
     SoftDeletes;
 
     protected $fillable = [

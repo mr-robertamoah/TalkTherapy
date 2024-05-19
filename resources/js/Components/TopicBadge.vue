@@ -1,5 +1,5 @@
 <template>
-    <div v-bind="$attrs" class="w-full rounded bg-white shadow-sm p-2 select-none cursor-pointer">
+    <div v-bind="$attrs" class="rounded bg-white shadow-sm p-2 select-none cursor-pointer">
         <div class="text-xs my-2 w-fit ml-auto mr-2 text-gray-600">{{ topic.createdAt }}</div>
         <div class="capitalize text-gray-600 font-bold tracking-wide px-2">
             {{ topic.name }}

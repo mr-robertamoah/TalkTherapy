@@ -9,8 +9,10 @@ use App\Http\Requests\TherapyAssistanceRequest;
 use App\Http\Requests\CreateTherapyRequest;
 use App\Http\Requests\UpdateTherapyRequest;
 use App\Http\Resources\RequestResource;
+use App\Http\Resources\SessionResource;
 use App\Http\Resources\TherapyMiniResource;
 use App\Http\Resources\TherapyResource;
+use App\Http\Resources\TherapyTopicResource;
 use App\Models\Counsellor;
 use App\Models\Therapy;
 use App\Services\TherapyService;
@@ -150,7 +152,9 @@ class TherapyController extends Controller
             return Inertia::render('Therapy/Index', [
                 'therapy' => new TherapyResource($therapy),
                 'session' => session('session'),
-                'pendingRequest' => $pendingRequest ? new RequestResource($pendingRequest) : null
+                'pendingRequest' => $pendingRequest ? new RequestResource($pendingRequest) : null,
+                'recentSessions' => SessionResource::collection($therapy->sessions()->latest()->take(5)->get()),
+                'recentTopics' => TherapyTopicResource::collection($therapy->topics()->latest()->take(5)->get()),
             ]);
         } catch (Throwable $th) {
             ds($th);

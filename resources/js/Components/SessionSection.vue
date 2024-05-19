@@ -8,6 +8,7 @@
                     :key="c.id"
                     :item="c"
                     @select-item="(data) => addSessionToSelected(data)"
+                    class="w-fit shrink-0"
                 />
                 <div 
                     v-if="page !== 0 && sessions.length"

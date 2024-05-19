@@ -1,52 +1,5 @@
 <template>
-<svg
-   width="112.1234"
-   height="74.806763"
-   viewBox="0 0 112.1234 74.806763"
-   version="1.1"
-   id="svg1"
-   xmlns="http://www.w3.org/2000/svg"
-   xmlns:svg="http://www.w3.org/2000/svg">
-  <defs
-     id="defs1" />
-  <g
-     id="layer1"
-     style="display:inline;mix-blend-mode:normal"
-     transform="translate(-2.0116293,-26.315338)">
-    <text
-       xml:space="preserve"
-       style="font-size:101.348px;line-height:0;fill:#000000;stroke-width:1.58355"
-       x="3.0320954"
-       y="93.168457"
-       id="text1"
-       transform="scale(0.92457658,1.0815762)"><tspan
-         id="tspan1"
-         x="3.0320954"
-         y="93.168457"
-         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:101.348px;line-height:0;font-family:'Ink Free';-inkscape-font-specification:'Ink Free';fill:#271424;fill-opacity:0.805785;stroke:#271424;stroke-width:1.58355;stroke-opacity:0.803922">T</tspan></text>
-    <text
-       xml:space="preserve"
-       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:22.6667px;line-height:0;font-family:'Ink Free';-inkscape-font-specification:'Ink Free';fill:#271424;fill-opacity:0.805785;stroke:#271424;stroke-width:1.7;stroke-linejoin:miter;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:0.803922;paint-order:normal"
-       x="63.855251"
-       y="60.578892"
-       id="text2"
-       transform="scale(1.0616005,0.94197393)"><tspan
-         id="tspan2"
-         x="63.855251"
-         y="60.578892"
-         style="font-size:22.6667px;stroke:#271424;stroke-width:1.7;stroke-linejoin:miter;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:0.803922;paint-order:normal">alk</tspan></text>
-    <text
-       xml:space="preserve"
-       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:22.6667px;line-height:0;font-family:'Ink Free';-inkscape-font-specification:'Ink Free';fill:#271424;fill-opacity:0.805785;stroke:#271424;stroke-width:1.7;stroke-dasharray:none;stroke-opacity:0.803922"
-       x="47.380325"
-       y="94.581596"
-       id="text3"
-       transform="scale(1.0077746,0.99228536)"><tspan
-         id="tspan3"
-         x="47.380325"
-         y="94.581596"
-         style="font-size:22.6667px;fill:#271424;fill-opacity:0.805785;stroke:#271424;stroke-width:1.7;stroke-dasharray:none;stroke-opacity:0.803922">herapy</tspan></text>
-  </g>
-</svg>
-
+   <div>
+      <svg viewBox="0 0 123.502 117.417" xmlns="http://www.w3.org/2000/svg"><path d="M7.723.5h108.135a7.144 7.144 0 017.144 7.144v100.991a8.281 8.281 0 01-8.281 8.282H8.702A8.202 8.202 0 01.5 108.715V7.723A7.223 7.223 0 017.723.5z" fill="#271424" fill-opacity=".804" stroke="#fff"/><path d="M17.967 12.94h80.16a6.35 6.35 0 016.35 6.35v8.987h-79.95a6.56 6.56 0 01-6.56-6.56z" fill="#fff"/><path d="M48.654 14.523h26.459v89.958a7.408 7.408 0 01-7.409 7.409H57.333a8.678 8.678 0 01-8.679-8.679z" fill="#fff"/><path d="M22.99 16.11h70.114l5.333 9.237H29.34z" fill="#271424"/><path d="M52.888 23.254h17.727v82.021h-8.732l-8.466-17.026z" fill="#271424"/></svg>
+   </div>
 </template>

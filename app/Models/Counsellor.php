@@ -6,6 +6,7 @@ use App\Enums\ConstantsEnum;
 use App\Enums\RequestStatusEnum;
 use App\Enums\RequestTypeEnum;
 use App\Enums\TherapyPaymentTypeEnum;
+use App\Traits\Likeable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphToMany;
@@ -14,7 +15,8 @@ use Illuminate\Notifications\Notifiable;
 
 class Counsellor extends Model
 {
-    use HasFactory, Notifiable, SoftDeletes;
+    use HasFactory, Notifiable, 
+    Likeable, SoftDeletes;
 
     protected $fillable = [
         'name',

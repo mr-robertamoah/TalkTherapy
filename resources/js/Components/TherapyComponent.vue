@@ -188,6 +188,7 @@
             @close="closeModal"
             @on-success="(data) => {
                 topics = [data, ...topics]
+                emits('created', data)
             }"
         />
 
@@ -236,16 +237,22 @@ const { goToLogin } = useAuth()
 const { alertData, setFailedAlertData, clearAlertData } = useAlert()
 const { modalData, showModal, closeModal } = useModal()
 
-const emits = defineEmits(['deselectActiveSession', 'updateActiveSession'])
+const emits = defineEmits([
+    'deselectActiveSession', 'updateActiveSession', 'created', 'updated', 'deleted',
+    'doneUpdating', 'doneDeleting'
+])
 
 const props = defineProps({
     therapy: {
         default: null
     },
-    newTopic: {
+    newSession: {
         default: null
     },
-    newSession: {
+    updatedSessionOrTopic: {
+        default: null
+    },
+    deletedSessionOrTopic: {
         default: null
     },
     activeSession: {
@@ -341,11 +348,38 @@ watch(() => filters.value.topics, () => {
     if (pages.value.topic == 1 && filters.value.topics)
         getTopics()
 })
-watch(() => props.newSession?.id, () => {
-    if (props.newSession?.id) sessions.value = [props.newSession, ...sessions.value]
+watch(() => props.updatedSessionOrTopic?.id, () => {
+    if (!props.updatedSessionOrTopic?.id) return
+    
+    if (props.updatedSessionOrTopic.isSession)
+        sessions.value.splice(
+            sessions.value.findIndex((s) => s.id == props.updatedSessionOrTopic.id),
+            1,
+            {...props.updatedSessionOrTopic}
+        )
+    else
+        topics.value.splice(
+            topics.value.findIndex((s) => s.id == props.updatedSessionOrTopic.id),
+            1,
+            {...props.updatedSessionOrTopic}
+        )
+
+    emits('doneUpdating')
 })
-watch(() => props.newTopic?.id, () => {
-    if (props.newTopic?.id) topics.value = [props.newTopic, ...topics.value]
+watch(() => props.deletedSessionOrTopic?.id, () => {
+    if (!props.deletedSessionOrTopic?.id) return
+    
+    if (props.deletedSessionOrTopic.isSession)
+        sessions.value.splice(sessions.value.findIndex((s) => s.id == props.deletedSessionOrTopic.id), 1)
+    else
+        topics.value.splice(topics.value.findIndex((s) => s.id == props.deletedSessionOrTopic.id), 1)
+
+    emits('doneDeleting')
+})
+watch(() => props.newSession?.id, () => {
+    if (!props.newSession?.id) return
+    
+    sessions.value = [{...props.newSession}, ...sessions.value]
 })
 watchEffect(() => {
     if (
@@ -921,6 +955,8 @@ function onUpdateItem(item) {
     let itemsRef = sessions
     let selectedItem = selectedSession
 
+    emits('updated', item)
+
     if (item.isSession && item.id == props.activeSession?.id) emits('updateActiveSession', item)
 
     if (!item.isSession) {
@@ -938,6 +974,8 @@ function onDeleteItem(item) {
     let itemsRef = sessions
     let selectedItem = selectedSession
 
+    emits('deleted', item)
+
     if (!item.isSession) {
         itemsRef = topics
         selectedItem = selectedTopic
@@ -945,7 +983,7 @@ function onDeleteItem(item) {
 
     itemsRef.value.splice(itemsRef.value.findIndex((data) => data.id == item.id), 1)
     
-    if (selectedItem.value.id == item.id && selectedItem.value?.isSession == item.isSession)
+    if (selectedItem.value?.id == item.id && selectedItem.value?.isSession == item.isSession)
         selectedItem.value = null
 }
 </script>

@@ -81,6 +81,16 @@ class User extends Authenticatable implements MustVerifyEmailContract
         );
     }
 
+    public function likes()
+    {
+        return $this->hasMany(Like::class);
+    }
+
+    public function comments()
+    {
+        return $this->hasMany(Comment::class);
+    }
+
     public function administrator()
     {
         return $this->hasOne(Administrator::class);

@@ -302,7 +302,7 @@ function deletePost(idx) {
                         </div>
                     </div>
                 </div>
-                <div class="w-full md:w-[50%]">
+                <div class="w-full md:w-[50%] shrink-0">
                     <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 mt-4">
                         <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
                             <div class="p-6 text-gray-900 flex justify-between items-center">
@@ -320,7 +320,7 @@ function deletePost(idx) {
                                     @created="(post) => updatePost(post, idx)"
                                     @updated="(post) => updatePost(post, idx)"
                                     @deleted="() => deletePost(idx)"
-                                    class="w-[300px] lg:w-[350px] shrink-0 mx-auto mb-4"
+                                    class="w-[350px] md:w-[300px] lg:w-[350px] shrink-0 mx-auto mb-8"
                                 />
                             </div>
                             <div v-else class="text-sm text-gray-600 w-full h-[200px] flex justify-center items-center">no posts yet</div>

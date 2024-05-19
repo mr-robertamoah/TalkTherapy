@@ -1,62 +1,89 @@
 <template>
-    <div v-bind="$attrs" class="relative bg-stone-200 rounded w-80 p-2">
-        <FormLoader :show="loading" :text="post?.id ? 'updating' : 'creating' "/>
-        <div class="flex space-x-2 justify-end items-center w-full p-2" v-if="computedIsAddedby">
-            <PrimaryButton @click="() => showModal('update')" class="shrink-0">update</PrimaryButton>
-            <DangerButton @click="() => showModal('delete')" class="shrink-0">delete</DangerButton>
-        </div>
-        <div v-if="computedIsAddedby" class="my-1 h-1 bg-white"></div>
-        <div class="text-xs text-gray-600 font-bold text-end mt-2" v-if="post?.id">
-            <div v-if="post?.fromAdmin">Posted by Admin</div>
-            <div v-else>Posted by Counsellor</div>
-        </div>
+    <div v-bind="$attrs" class="relative">
+        <div class="relative bg-stone-200 rounded p-2">
+            <FormLoader :show="loading" :text="post?.id ? 'updating' : 'creating' "/>
+            <div class="flex space-x-2 justify-end items-center w-full p-2" v-if="computedIsAddedby">
+                <PrimaryButton @click="() => showModal('update')" class="shrink-0">update</PrimaryButton>
+                <DangerButton @click="() => showModal('delete')" class="shrink-0">delete</DangerButton>
+            </div>
+            <div v-if="computedIsAddedby" class="my-1 h-1 bg-white"></div>
+            <div class="text-xs text-gray-600 font-bold text-end mt-2" v-if="post?.id">
+                <div v-if="post?.fromAdmin">Posted by Admin</div>
+                <div v-else>Posted by Counsellor</div>
+            </div>
 
-        <div v-if="post?.counsellor" class="flex justify-start items-center my-3 cursor-pointer space-x-2 p-2 bg-stone-100 rounded">
-            <Avatar class="shrink-0" :avatar-text="'...'" :size="40" :src="post?.counsellor?.avatar ?? ''"/>
-            <div class="text-gray-600 flex justify-start items-center shrink space-x-2 text-xs">
-                <div class="capitalize">{{ post?.counsellor.name }}</div>
-                <div>{{ post?.counsellor.username ? `(${post?.counsellor.username})` : '' }}</div>
+            <div v-if="post?.counsellor" class="flex justify-start items-center my-3 cursor-pointer space-x-2 p-2 bg-stone-100 rounded">
+                <Avatar class="shrink-0" :avatar-text="'...'" :size="40" :src="post?.counsellor?.avatar ?? ''"/>
+                <div class="text-gray-600 flex justify-start items-center shrink space-x-2 text-xs">
+                    <div class="capitalize">{{ post?.counsellor.name }}</div>
+                    <div>{{ post?.counsellor.username ? `(${post?.counsellor.username})` : '' }}</div>
+                </div>
             </div>
-        </div>
-        <div 
-            v-if="post?.content" 
-            class="text-sm text-gray-600 text-pretty my-2 w-[90%] mx-auto"
-        >
-            <span>{{ computedContent }}</span>
-            <span
-                @click="() => showMore = !showMore"
-                v-if="post?.content?.length > 100"
-                class="ml-2 cursor-pointer text-xs my-1 text-blue-600 underline">show {{ showMore ? 'less' : 'more' }}</span>
-        </div>
-        <div v-if="post.files?.length" class="w-[90%] mx-auto my-2">
-            <div class="flex justify-start items-center overflow-hidden overflow-x-auto p-2 space-x-2">
-                <FilePreview
-                    v-for="(file, idx) in post.files"
-                    :key="idx"
-                    :file="file"
-                    class="w-[200px] cursor-pointer shrink-0"
-                    :show-remove="false"
-                    
-                    @click="() => {
-                        if (!id) return
-                        showModal('file')
-                        currentFileIdx = idx
-                    }"
-                />
-            </div>
-            <div v-if="post.files[0].id" class="text-xs text-gray-400 text-center my-2">click image to view</div>
-        </div>
-        <div class="flex justify-end items-center space-x-2">
             <div 
-                class="text-xs text-end my-1 lowercase"
-                :class="[['sending', 'retrying', 'updating'].includes(status) ? 'text-green-700' : (failed ? 'text-red-700 cursor-pointer' : 'text-gray-600')]"
-                v-if="failed"
-                @click="() => {
-                    if (!msg.id) createMessage()
-                    if (msg.id) updateMessage()
-                }"
-            >failed</div>
-            <div v-if="post?.createdAt" class="text-xs text-gray-600">{{ post.createdAt }}</div>
+                v-if="post?.content" 
+                class="text-sm text-gray-600 text-pretty my-2 w-[90%] mx-auto"
+            >
+                <span>{{ computedContent }}</span>
+                <span
+                    @click="() => showMore = !showMore"
+                    v-if="post?.content?.length > 100"
+                    class="ml-2 cursor-pointer text-xs my-1 text-blue-600 underline">show {{ showMore ? 'less' : 'more' }}</span>
+            </div>
+            <div v-if="post.files?.length" class="w-[90%] mx-auto my-2">
+                <div class="flex justify-start items-center overflow-hidden overflow-x-auto p-2 space-x-2">
+                    <FilePreview
+                        v-for="(file, idx) in post.files"
+                        :key="idx"
+                        :file="file"
+                        class="w-[200px] cursor-pointer shrink-0"
+                        :show-remove="false"
+                        
+                        @click="() => {
+                            if (!id) return
+                            showModal('file')
+                            currentFileIdx = idx
+                        }"
+                    />
+                </div>
+                <div v-if="post.files[0].id" class="text-xs text-gray-400 text-center my-2">click image to view</div>
+            </div>
+            <div class="flex justify-end items-center space-x-2">
+                <div 
+                    class="text-xs text-end my-1 lowercase"
+                    :class="[['sending', 'retrying', 'updating'].includes(status) ? 'text-green-700' : (failed ? 'text-red-700 cursor-pointer' : 'text-gray-600')]"
+                    v-if="failed"
+                    @click="() => {
+                        if (!msg.id) createMessage()
+                        if (msg.id) updateMessage()
+                    }"
+                >failed</div>
+                <div v-if="post?.createdAt" class="text-xs text-gray-600">{{ post.createdAt }}</div>
+            </div>
+        </div>
+        <div class="w-full h-2 bg-white"></div>
+        <div class="relative bg-stone-200 rounded p-2 flex justify-between text-xs items-center space-x-2 select-none">
+            <div class="flex flex-col justify-center p-2 items-center space-x-2">
+                <div class="flex justify-start items-center space-x-4">
+                    <DarkLikeIcon
+                        @click="clickedDislike"
+                        title="unlike post" v-if="computedHasLiked" class="cursor-pointer w-5 h-5 text-green-600"/>
+                    <LikeIcon
+                        @click="clickedLike"
+                        :title="$page.props.auth.user ? 'like post' : ''" v-else class="cursor-pointer w-5 h-5 text-green-600"/>
+                    <div class="text-sm font-bold">{{ post.likes?.length }}</div>
+                </div>
+                <div class="mt-2 text-stone-400 font-bold">likes</div>
+            </div>
+            <div class="flex flex-col justify-center p-2 items-center space-x-2">
+                <div class="flex justify-start items-center space-x-4">
+                    <CommentIcon
+                        @click="() => showModal('comments')"
+                        title="show comments"
+                        class="cursor-pointer w-5 h-5 text-green-600"/>
+                    <div class="text-sm font-bold">{{ post.comments }}</div>
+                </div>
+                <div class="mt-2 text-stone-400 font-bold">comments</div>
+            </div>
         </div>
     </div>
 
@@ -73,6 +100,15 @@
         :post="post"
         @updated="updatePost"
         @close="() => closeModal()"
+    />
+
+    <CommentsModal
+        :show="modalData.show && modalData.type == 'comments'"
+        :commentable="post"
+        :commentableType="'Post'"
+        @close="() => closeModal()"
+        @deleted="commentDeleted"
+        @created="commentCreated"
     />
 
     <FileModal
@@ -123,6 +159,9 @@
 <script setup>
 import useAlert from '@/Composables/useAlert';
 import useModal from '@/Composables/useModal';
+import LikeIcon from '@/Icons/LikeIcon.vue';
+import DarkLikeIcon from '@/Icons/DarkLikeIcon.vue';
+import CommentIcon from '@/Icons/CommentIcon.vue';
 import { ref, watchEffect } from 'vue';
 import Alert from './Alert.vue';
 import DangerButton from './DangerButton.vue';
@@ -132,6 +171,7 @@ import MiniModal from './MiniModal.vue';
 import FileModal from './FileModal.vue';
 import FilePreview from './FilePreview.vue';
 import FormLoader from './FormLoader.vue';
+import CommentsModal from './CommentsModal.vue';
 import { computed } from 'vue';
 import { usePage } from '@inertiajs/vue3';
 import Avatar from './Avatar.vue';
@@ -149,6 +189,7 @@ const props = defineProps({
 })
 
 const loading = ref(false)
+const liking = ref(false)
 const showMore = ref(false)
 const failed = ref(false)
 const status = ref('')
@@ -171,8 +212,20 @@ watchEffect(() => {
         id.value = props.post.id
 })
 
+const computedHasLiked = computed(() => {
+    const user = usePage().props.auth.user
+
+    if (!user || !props.post?.likes?.length) return false
+
+    if (props.post.likes.find((userId) => userId == user.id)) return true
+
+    return false
+})
+
 const computedIsAddedby = computed(() => {
     const user = usePage().props.auth.user
+
+    if (!user) return false
 
     if (props.post?.fromAdmin && user.isAdmin) return true
     
@@ -187,6 +240,14 @@ const computedContent = computed(() => {
     
     return props.post?.content?.length > 100 ? props.post?.content.slice(0, 100) + '...' : props.post?.content
 })
+
+function commentCreated(comment) {
+    emits('updated', {...props.post, comments: props.post.comments + 1})
+}
+
+function commentDeleted(comment) {
+    emits('updated', {...props.post, comments: props.post.comments - 1})
+}
 
 async function createPost() {
     if (loading.value) return
@@ -228,6 +289,93 @@ async function createPost() {
         })
         .finally(() => {
             loading.value = false
+        })
+}
+
+async function clickedDislike() {
+    if (liking.value) return
+
+    const user = usePage().props.auth.user
+    if (!user) return
+    
+    liking.value = true
+
+    let likes = [...props.post.likes]
+    likes.splice(props.post.likes.indexOf(user.id), 1)
+    console.log(likes)
+    emits('updated', {...props.post, likes})
+    await axios
+        .post(route('api.likes.delete'), {
+            likeableType: 'Post',
+            likeableId: props.post?.id,
+        })
+        .then((res) => {
+            console.log(res)
+        })
+        .catch((err) => {
+            console.log(err)
+            goToLogin(err)
+            
+            emits('updated', {...props.post, likes: [user.id, ...likes]})
+            
+            if (err.response?.data?.message) {
+                setFailedAlertData({
+                    message: err.response.data.message,
+                    time: 4000,
+                })
+                return
+            }
+
+            setFailedAlertData({
+                message: "Unliking failed, please try again shortly.",
+                time: 4000,
+            })
+        })
+        .finally(() => {
+            liking.value = false
+        })
+}
+
+async function clickedLike() {
+    if (liking.value) return
+
+    const user = usePage().props.auth.user
+    if (!user) return
+    
+    liking.value = true
+
+    let likes = [user.id, ...props.post.likes]
+    emits('updated', {...props.post, likes})
+    await axios
+        .post(route('api.likes.create'), {
+            likeableType: 'Post',
+            likeableId: props.post?.id,
+        })
+        .then((res) => {
+            console.log(res)
+        })
+        .catch((err) => {
+            console.log(err)
+            goToLogin(err)
+            
+            likes.splice(likes.indexOf(user.id), 1)
+            emits('updated', {...props.post, likes})
+            
+            if (err.response?.data?.message) {
+                setFailedAlertData({
+                    message: err.response.data.message,
+                    time: 4000,
+                })
+                return
+            }
+
+            setFailedAlertData({
+                message: "Liking failed, please try again shortly.",
+                time: 4000,
+            })
+        })
+        .finally(() => {
+            liking.value = false
         })
 }
 

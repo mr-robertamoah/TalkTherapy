@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Traits\Commentable;
+use App\Traits\Likeable;
 use App\Traits\Starreable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -10,6 +12,8 @@ use Illuminate\Database\Eloquent\Relations\MorphToMany;
 class Post extends Model
 {
     use HasFactory,
+    Likeable,
+    Commentable,
     Starreable;
 
     protected $fillable = ['content'];
