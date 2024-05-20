@@ -4,6 +4,7 @@ import CreatePostModal from '@/Components/CreatePostModal.vue';
 import StarredCounsellorComponent from '@/Components/StarredCounsellorComponent.vue';
 import HelpButton from '@/Components/HelpButton.vue';
 import PostComponent from '@/Components/PostComponent.vue';
+import PostModal from '@/Components/PostModal.vue';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { Head, usePage } from '@inertiajs/vue3';
 import { computed, onBeforeMount, provide, ref, watch, watchEffect } from 'vue';
@@ -22,6 +23,9 @@ const props = defineProps({
     },
     leadingCounsellors: {
         default: []
+    },
+    post: {
+        default: null
     }
 })
 
@@ -38,6 +42,10 @@ watch(() => newTherapy.value, () => {
 })
 watch(() => usePage().props.auth.user?.id, () => {
     loadContent()
+})
+watchEffect(() => {
+    if (props.post?.id || props.post?.data?.id)
+        showPost()
 })
 
 onBeforeMount(() => {
@@ -193,6 +201,18 @@ function deletePost(idx) {
     posts.value.data.splice(idx, 1)
 }
 
+function updatePostById(post) {
+    posts.value.data.splice(posts.value.data.findIndex((p) => p.id == post.id), 1, post)
+}
+
+function deletePostById(post) {
+    posts.value.data.splice(posts.value.data.findIndex((p) => p.id == post.id), 1)
+}
+
+function showPost() {
+    showModal('post')
+}
+
 </script>
 
 <template>
@@ -331,6 +351,14 @@ function deletePost(idx) {
             </div>
         </div>
     </AuthenticatedLayout>
+
+    <PostModal
+        :show="modalData.show && modalData.type == 'post'"
+        @close="closeModal"
+        :post="post?.data ? post.data : post"
+        @updated="updatePostById"
+        @deleted="deletePostById"
+    />
 
     <CreatePostModal
         :show="modalData.show && modalData.type == 'create post'"

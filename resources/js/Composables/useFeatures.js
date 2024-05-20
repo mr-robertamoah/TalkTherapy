@@ -22,15 +22,15 @@ export default function useFeatures() {
                 name: "Counsellor",
                 description: "You can become a counsellor on this application by first creating a counsellor account. With this account, you remain unverified by default. To be verified, you need to set you email as counsellor and seek email verification. Once this is done, you can, you can send a counsellor veriification request with National Identification number/image as well as license or any document that makes you a recognised counsellor by a governmental, non-governmental or regigious body. In sending the request, if the said body is not know to the platform, you easily create, select and add the relevant number/image.",
             },
+            {
+                name: "Post",
+                description: "This feature allows counsellors make posts. This post allows text and images and can be used by counsellors to educate user on mental health matters. Users can like and comment on these posts.",
+            },
         ],
         next: [
             {
                 name: "Group Therapy",
                 description: "This feature allows a group of counsellors the opportunity to have sessions with multiple users having similar cases. A user or counsellor will be able to create a group therapy and send requests to counsellors as well as users. There will be an invitation link both for group administrators, counsellors and users to make easy to join group therapies.",
-            },
-            {
-                name: "Post",
-                description: "This feature allows counsellors make posts that last seven days. This post allows text and images and can be used by counsellors to educate user on mental health matters.",
             },
             {
                 name: "Discussion",

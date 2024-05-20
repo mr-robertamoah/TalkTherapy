@@ -76,16 +76,10 @@ class PostController extends Controller
 
     public function getPost(Request $request)
     {
-        $post = Post::find($request->postId);
         try {
-            PostService::new()->getPost(
-                CreatePostDTO::new()->fromArray([
-                    'user' => $request->user(),
-                    'post' => $post,
-                ])
-            );
-
-            return $this->returnSuccess($request, $post);
+            session()->put('postId', $request->postId);
+            
+            return Redirect::route('home');
         } catch (Throwable $th) {
             
             return $this->returnFailure($request, $th);

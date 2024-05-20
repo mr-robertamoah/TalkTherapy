@@ -6,6 +6,7 @@ use App\Http\Controllers\AboutController;
 use App\Http\Controllers\AdministratorController;
 use App\Http\Controllers\CounsellorController;
 use App\Http\Controllers\HomeController;
+use App\Http\Controllers\PostController;
 use App\Http\Controllers\PreferenceController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\SessionController;
@@ -69,6 +70,8 @@ Route::get('/counsellor/{counsellorId}/verify-email/{hash}', [CounsellorControll
     ->middleware(['signed','throttle:6,1'])
     ->name('counsellor.verification.verify');
 Route::get('/counsellor/{counsellorId}', [CounsellorController::class, 'show'])->name('counsellor.show');
+
+Route::get('/posts/{postId}', [PostController::class, 'getPost'])->name('posts.get');
 
 Route::middleware('auth')->group(function () {
     Route::get('/therapies', [TherapyController::class, 'index'])->name('therapies');

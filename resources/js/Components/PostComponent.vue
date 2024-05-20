@@ -30,7 +30,10 @@
                     class="ml-2 cursor-pointer text-xs my-1 text-blue-600 underline">show {{ showMore ? 'less' : 'more' }}</span>
             </div>
             <div v-if="post.files?.length" class="w-[90%] mx-auto my-2">
-                <div class="flex justify-start items-center overflow-hidden overflow-x-auto p-2 space-x-2">
+                <div 
+                    class="flex items-center overflow-hidden overflow-x-auto p-2 space-x-2"
+                    :class="[post.files?.length == 1 ? 'justify-center' : 'justify-start']"
+                >
                     <FilePreview
                         v-for="(file, idx) in post.files"
                         :key="idx"
@@ -85,6 +88,13 @@
                 <div class="mt-2 text-stone-400 font-bold">comments</div>
             </div>
         </div>
+        <div v-if="showShare" class="flex justify-end my-2">
+            <ShareIcon
+                @click="() => showModal('share')"
+                title="share post"
+                class="cursor-pointer w-5 h-5 text-green-600"
+            />
+        </div>
     </div>
 
     <Alert
@@ -131,7 +141,7 @@
     />
 
     <MiniModal
-        :show="modalData.show && ['delete'].includes(modalData.type)"
+        :show="modalData.show && ['delete', 'share'].includes(modalData.type)"
         @close="closeModal"
     >
         <div v-if="modalData.type == 'delete'">
@@ -152,7 +162,24 @@
                 <DangerButton @click="deletePost" class="shrink-0">delete</DangerButton>
             </div>
         </div>
+        <div v-if="modalData.type == 'share'">
+            <div class="text-gray-600 text-center font-bold tracking-wide">
+                Copy Link
+            </div>
 
+            <hr class="my-2">
+
+            <div class="relative">
+                <div class="flex justify-end my-2">
+                    <CopyIcon
+                        @click="copyLink"
+                        title="copy"
+                        class="cursor-pointer w-5 h-5 text-green-600"/>
+                </div>
+                <div class="text-sm text-center w-[90%] mx-auto text-blue-600">talktherapy.tech/posts/{{ post.id }}</div>
+                <div v-if="copying" class="text-xs text-gray-600 my-2 text-end w-full">{{ copying }}</div>
+            </div>
+        </div>
     </MiniModal>
 </template>
 
@@ -171,6 +198,8 @@ import MiniModal from './MiniModal.vue';
 import FileModal from './FileModal.vue';
 import FilePreview from './FilePreview.vue';
 import FormLoader from './FormLoader.vue';
+import ShareIcon from '@/Icons/ShareIcon.vue';
+import CopyIcon from '@/Icons/CopyIcon.vue';
 import CommentsModal from './CommentsModal.vue';
 import { computed } from 'vue';
 import { usePage } from '@inertiajs/vue3';
@@ -186,9 +215,13 @@ const props = defineProps({
     post: {
         default: null
     },
+    showShare: {
+        default: true
+    }
 })
 
 const loading = ref(false)
+const copying = ref('')
 const liking = ref(false)
 const showMore = ref(false)
 const failed = ref(false)
@@ -240,6 +273,17 @@ const computedContent = computed(() => {
     
     return props.post?.content?.length > 100 ? props.post?.content.slice(0, 100) + '...' : props.post?.content
 })
+
+function copyLink() {
+    copying.value = 'copying...'
+    setTimeout(() => {
+        copying.value = 'copied.'
+    }, 1000)
+    navigator.clipboard.writeText(`www.talktherapy.tech/posts/${props.post.id}`)
+    setTimeout(() => {
+        copying.value = ''
+    }, 2000)
+}
 
 function commentCreated(comment) {
     emits('updated', {...props.post, comments: props.post.comments + 1})
