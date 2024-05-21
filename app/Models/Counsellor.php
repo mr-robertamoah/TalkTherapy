@@ -66,9 +66,9 @@ class Counsellor extends Model
         return 0; // TODO
     }
 
-    public function getOnlineSessionsCountAttribute()
+    public function getOnlineSessionsHeldCountAttribute()
     {
-        return $this->addedSessions()->whereOnline()->count();
+        return $this->addedSessions()->whereOnline()->whereHeld()->count();
     }
 
     public function getInPersonSessionsCountAttribute()

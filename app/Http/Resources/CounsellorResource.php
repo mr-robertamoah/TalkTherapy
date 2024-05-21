@@ -41,7 +41,7 @@ class CounsellorResource extends JsonResource
             'freeTherapiesCount' => $this->freeTherapiesCount,
             'paidTherapiesCount' => $this->paidTherapiesCount,
             'groupTherapiesCount' => $this->groupTherapiesCount,
-            'onlineSessionsCount' => $this->onlineSessionsCount,
+            'onlineSessionsHeldCount' => $this->onlineSessionsHeldCount,
             'inPersonSessionsCount' => $this->inPersonSessionsCount,
             'hasNationalIdentification' => $this->hasNationalIdentification(),
             'hasPendingCounsellorVerificationRequest' => $this->hasPendingCounsellorVerificationRequest()

@@ -65,22 +65,29 @@
         </div>
         <div class="w-full h-2 bg-white"></div>
         <div class="relative bg-stone-200 rounded p-2 flex justify-between text-xs items-center space-x-2 select-none">
-            <div class="flex flex-col justify-center p-2 items-center space-x-2">
+            <div class="flex flex-col justify-center p-2 items-center space-x-2"
+                @click="() => {
+                    if (computedHasLiked) {
+                        clickedDislike()
+                        return
+                    }
+                    clickedLike()
+                }"
+            >
                 <div class="flex justify-start items-center space-x-4">
                     <DarkLikeIcon
-                        @click="clickedDislike"
                         title="unlike post" v-if="computedHasLiked" class="cursor-pointer w-5 h-5 text-green-600"/>
                     <LikeIcon
-                        @click="clickedLike"
                         :title="$page.props.auth.user ? 'like post' : ''" v-else class="cursor-pointer w-5 h-5 text-green-600"/>
                     <div class="text-sm font-bold">{{ post.likes?.length }}</div>
                 </div>
                 <div class="mt-2 text-stone-400 font-bold">likes</div>
             </div>
-            <div class="flex flex-col justify-center p-2 items-center space-x-2">
+            <div class="flex flex-col justify-center p-2 items-center space-x-2"
+                @click="() => showModal('comments')"
+            >
                 <div class="flex justify-start items-center space-x-4">
                     <CommentIcon
-                        @click="() => showModal('comments')"
                         title="show comments"
                         class="cursor-pointer w-5 h-5 text-green-600"/>
                     <div class="text-sm font-bold">{{ post.comments }}</div>
@@ -92,7 +99,7 @@
             <ShareIcon
                 @click="() => showModal('share')"
                 title="share post"
-                class="cursor-pointer w-5 h-5 text-green-600"
+                class="cursor-pointer w-5 h-5 text-green-600 p-2"
             />
         </div>
     </div>

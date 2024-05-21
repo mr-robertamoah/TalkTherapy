@@ -42,7 +42,6 @@ class SessionFailedNotification extends Notification implements ShouldQueue
             ->error()
             ->subject("Session Failed.")
             ->line("For some reason the session with name: '{$this->session->name}' for {$type} with name: {$this->session->for->name} failed to happen.")
-            ->line('The introduction to the notification.')
             ->action("Visit {$type} Page", $url)
             ->line("Thank you for choosing to 'TalkTherapy'.");
     }

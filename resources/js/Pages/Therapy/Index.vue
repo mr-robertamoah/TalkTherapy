@@ -661,6 +661,7 @@ function addSessionOrTopic(item) {
                             :key="idx"
                             :session="item" 
                             :therapy="therapy"
+                            :is-active="activeSession?.id == item.id"
                             @on-update="(item) => {
                                 updateSessionOrTopic(item)
                                 currentUpdatedSessionOrTopic = item
@@ -696,12 +697,12 @@ function addSessionOrTopic(item) {
 
             <div class="bg-gray-100 z-[2] top-0 max-w-7xl mx-auto sm:px-6 lg:px-8 my-4 p-2 flex justify-start items-center overflow-x-auto overflow-hidden">
                 <div
-                    v-for="item in scrollItems.filter(item => computedTherapy.paymentType == 'PAID' ? item : item.name != 'therapy_payment_details')"
+                    v-for="item in scrollItems.filter(item => computedTherapy.paymentType == 'PAID' ? item : item.id !== 'therapy_payment_details')"
                     :key="item.id"
                     @click="() => {
                         scrollToItem(item)
                     }"
-                    class="py-1 px-2 cursor-pointer text-sm mr-2 text-center text-gray-600 border-b-2 transition duration-75 hover:border-gray-400"
+                    class="py-1 px-2 cursor-pointer shrink-0 text-sm mr-2 text-center text-gray-600 border-b-2 transition duration-75 hover:border-gray-400"
                     :class="[activeItemId == item.id ? 'border-gray-600' : 'border-transparent']"
                 >
                     {{ item.name }}

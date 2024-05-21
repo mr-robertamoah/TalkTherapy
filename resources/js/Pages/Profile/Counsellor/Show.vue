@@ -543,7 +543,7 @@ function closeModal() {
                             />
                             <ActivityBadge
                                 :name="'online sessions held'"
-                                :value="counsellor.onlineSessionsCount"
+                                :value="counsellor.onlineSessionsHeldCount"
                                 class="mt-4"
                             />
                             <ActivityBadge
