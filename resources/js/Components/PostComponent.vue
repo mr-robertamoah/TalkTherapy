@@ -96,11 +96,12 @@
             </div>
         </div>
         <div v-if="showShare" class="flex justify-end my-2">
-            <ShareIcon
-                @click="() => showModal('share')"
-                title="share post"
-                class="cursor-pointer w-5 h-5 text-green-600 p-2"
-            />
+            <div class="p-2" @click="() => showModal('share')">
+                <ShareIcon
+                    title="share post"
+                    class="cursor-pointer w-5 h-5 text-green-600"
+                />
+            </div>
         </div>
     </div>
 

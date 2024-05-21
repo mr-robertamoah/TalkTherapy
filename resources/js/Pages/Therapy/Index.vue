@@ -670,7 +670,7 @@ function addSessionOrTopic(item) {
                                 deleteSessionOrTopic(item)
                                 currentDeletedSessionOrTopic = item
                             }"
-                            class="w-[60%] shrink-0"
+                            class="w-[60%] min-w-[300px] shrink-0"
                         />
                     </div>
                     <div v-else class="text-sm text-center text-gray-600 my-2">no recent session</div>
