@@ -37,12 +37,12 @@ function closeModal() {
                 <hr>
             </div>
             
-            <div>
+            <div class="h-[80vh] overflow-hidden overflow-y-auto">
                 <PostComponent
                     :post="post"
                     @updated="(post) => emits('updated', post)"
                     @deleted="() => emits('deleted', post)"
-                    class="w-[350px] md:w-[300px] lg:w-[350px] shrink-0 mx-auto mb-8"
+                    class="w-[300px] md:w-[350px] lg:w-[350px] shrink-0 mx-auto mb-8"
                     :show-share="false"
                 />
             </div>
