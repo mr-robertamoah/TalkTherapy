@@ -38,7 +38,7 @@
                         v-for="(file, idx) in post.files"
                         :key="idx"
                         :file="file"
-                        class="w-[200px] cursor-pointer shrink-0"
+                        class="w-[300px] cursor-pointer shrink-0"
                         :show-remove="false"
                         
                         @click="() => {
