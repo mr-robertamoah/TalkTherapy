@@ -19,16 +19,19 @@ use App\Actions\Therapy\EnsureThereIsNoPendingRequestForCounsellorAction;
 use App\Actions\Therapy\EnsureThereIsNoPendingRequestForCounsellorsAction;
 use App\Actions\Therapy\EnsureUserHasAccessToTherapyAction;
 use App\Actions\Therapy\UpdateTherapyAction;
+use App\Actions\User\AlertGuardianAction;
 use App\Actions\User\EnsureUserMeetsTherapyRequirementsAction;
 use App\DTOs\AssistTherapyDTO;
 use App\DTOs\CreateStarDTO;
 use App\DTOs\CreateTherapyDTO;
 use App\DTOs\GetTherapyDTO;
+use App\DTOs\GuardianAlertDTO;
 use App\DTOs\TherapyAssistanceRequestDTO;
 use App\Enums\PaginationEnum;
 use App\Enums\StarTypeEnum;
 use App\Models\Therapy;
 use App\Models\User;
+use App\Notifications\TherapyCreatedNotification;
 
 class TherapyService extends Service
 {
@@ -48,6 +51,13 @@ class TherapyService extends Service
                 'starred' => $createTherapyDTO->user,
                 'starreable' => $therapy,
                 'type' => StarTypeEnum::participation->value,
+            ])
+        );
+
+        AlertGuardianAction::new()->execute(
+            GuardianAlertDTO::new()->fromArray([
+                'user' => $createTherapyDTO->user,
+                'notification' => new TherapyCreatedNotification($therapy)
             ])
         );
 
@@ -175,6 +185,40 @@ class TherapyService extends Service
                 $query->orWhereNot('counsellor_id', $user->counsellor->id);
             })
             ->inRandomOrder();
+
+        return $query->paginate(PaginationEnum::preferencesPagination->value);
+    }
+
+    public function getCounsellorTherapies(?User $user)
+    {
+        if (!$user->counsellor) return [];
+
+        $query = Therapy::query();
+        
+        $query->where('counsellor_id', $user->counsellor->id);
+        $query->orWhere(function ($query) use ($user) {
+            $query->whereHas('discussions', function ($query) use ($user) {
+                $query->whereHas('counsellors', function ($query) use ($user) {
+                    $query->where('counsellor_id', $user->counsellor->id);
+                });
+            });
+        });
+
+        $query->latest();
+
+        return $query->paginate(PaginationEnum::preferencesPagination->value);
+    }
+
+    public function getUserTherapies(?User $user)
+    {
+        if (!$user) return [];
+
+        $query = Therapy::query();
+        
+        $query->where('addedby_id', $user->id);
+        $query->where('addedby_type', User::class);
+
+        $query->latest();
 
         return $query->paginate(PaginationEnum::preferencesPagination->value);
     }

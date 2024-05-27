@@ -32,8 +32,19 @@ class EnsureDiscussionDataIsValidAction extends Action
             
         if (
             Discussion::query()
-                ->wherePending()
-                ->whereAddedby($createDiscussionDTO->addedby)
+                ->when($createDiscussionDTO->discussion, function ($query) use ($createDiscussionDTO) {
+                    $query->whereNot('id', $createDiscussionDTO->discussion->id);
+                })
+                ->where(function ($query) use ($createDiscussionDTO) {
+                    $query
+                        ->wherePending()
+                        ->whereAddedby($createDiscussionDTO->addedby);
+                })
+                ->orWhere(function ($query) use ($createDiscussionDTO) {
+                    $query
+                        ->wherePending()
+                        ->whereCounsellor($createDiscussionDTO->addedby);
+                })
                 ->whereDateIsBetweenStartAndEndTimes($startTime)
                 ->exists()
         ) 
@@ -41,8 +52,19 @@ class EnsureDiscussionDataIsValidAction extends Action
 
         if (
             Discussion::query()
-                ->wherePending()
-                ->whereAddedby($createDiscussionDTO->addedby)
+                ->when($createDiscussionDTO->discussion, function ($query) use ($createDiscussionDTO) {
+                    $query->whereNot('id', $createDiscussionDTO->discussion->id);
+                })
+                ->where(function ($query) use ($createDiscussionDTO) {
+                    $query
+                        ->wherePending()
+                        ->whereAddedby($createDiscussionDTO->addedby);
+                })
+                ->orWhere(function ($query) use ($createDiscussionDTO) {
+                    $query
+                        ->wherePending()
+                        ->whereCounsellor($createDiscussionDTO->addedby);
+                })
                 ->whereIsThirtyMinituesBeforeOrAfter($startTime, $endTime)
                 ->exists()
         ) 
@@ -69,7 +91,9 @@ class EnsureDiscussionDataIsValidAction extends Action
         if (
             Session::query()
                 ->wherePending()
-                ->whereParticipant($therapy->counsellor)
+                ->whereHas('for', function ($query) use ($therapy) {
+                    $query->whereParticipant($therapy->counsellor->user);
+                })
                 ->whereIsThirtyMinituesBeforeOrAfter($startTime, $endTime)
                 ->exists()
         ) 

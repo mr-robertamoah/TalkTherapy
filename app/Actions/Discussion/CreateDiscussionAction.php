@@ -14,7 +14,7 @@ class CreateDiscussionAction extends Action
         $discussion = $createDiscussionDTO->addedby->addedDiscussions()->create([
             'name' => $createDiscussionDTO->name,
             'description' => $createDiscussionDTO->description,
-            'start_ime' => (new Carbon($createDiscussionDTO->startTime))->utc(),
+            'start_time' => (new Carbon($createDiscussionDTO->startTime))->utc(),
             'end_time' => (new Carbon($createDiscussionDTO->endTime))->utc(),
             'session_id' => $createDiscussionDTO->session?->id,
         ]);

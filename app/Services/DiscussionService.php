@@ -17,9 +17,13 @@ use App\Actions\Star\CreateStarAction;
 use App\Actions\Therapy\EnsureIsCounsellorAction;
 use App\DTOs\CreateDiscussionDTO;
 use App\DTOs\CreateStarDTO;
+use App\DTOs\GetDiscussionsDTO;
 use App\Enums\DiscussionStatusEnum;
+use App\Enums\PaginationEnum;
 use App\Enums\StarTypeEnum;
 use App\Events\DiscussionUpdatedEvent;
+use App\Http\Resources\DiscussionMiniResource;
+use App\Models\Counsellor;
 use App\Models\Discussion;
 use App\Notifications\DiscussionDeletedNotification;
 use App\Notifications\DiscussionStatusChangedNotification;
@@ -60,7 +64,9 @@ class DiscussionService extends Service
         
         EnsureDiscussionDataIsValidAction::new()->execute($createDiscussionDTO);
 
-        $discussion = UpdateDiscussionAction::new()->execute($createDiscussionDTO);
+        UpdateDiscussionAction::new()->execute($createDiscussionDTO);
+
+        $discussion = $createDiscussionDTO->discussion->refresh();
 
         Notification::send(
             $discussion->getOtherUsers($createDiscussionDTO->user), 
@@ -154,5 +160,51 @@ class DiscussionService extends Service
         );
 
         return $discussion;
+    }
+
+    public function getDiscussions(GetDiscussionsDTO $getDiscussionsDTO)
+    {
+        $counsellor = $getDiscussionsDTO->user?->counsellor;
+        if (is_null($counsellor)) return [];
+
+        $query = Discussion::query();
+
+        $query->where(function ($query) use ($counsellor, $getDiscussionsDTO) {
+
+            if ($getDiscussionsDTO->name)
+                $query->where('name', 'LIKE', "%{$getDiscussionsDTO->name}%");
+    
+            if ($getDiscussionsDTO->for)
+                $query->whereFor($getDiscussionsDTO->for);
+            
+            $query->whereAddedby($counsellor);
+        });
+
+        $query->orWhere(function ($query) use ($counsellor, $getDiscussionsDTO) {
+
+            if ($getDiscussionsDTO->name)
+                $query->where('name', 'LIKE', "%{$getDiscussionsDTO->name}%");
+    
+            if ($getDiscussionsDTO->for)
+                $query->whereFor($getDiscussionsDTO->for);
+
+            $query->whereCounsellor($counsellor);
+        });
+
+        return DiscussionMiniResource::collection($query->paginate(PaginationEnum::pagination->value));
+    }
+
+    public function getDiscussionCounsellors(GetDiscussionsDTO $getDiscussionsDTO)
+    {
+        if (is_null($getDiscussionsDTO->discussion)) return [];
+
+        $query = Counsellor::query();
+
+        $query->whereDiscussion($getDiscussionsDTO->discussion);
+
+        if ($getDiscussionsDTO->name)
+            $query->whereName($getDiscussionsDTO->name);
+
+        return DiscussionMiniResource::collection($query->paginate(PaginationEnum::pagination->value));
     }
 }

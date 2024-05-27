@@ -71,6 +71,17 @@ class Counsellor extends Model
         return $this->addedSessions()->whereOnline()->whereHeld()->count();
     }
 
+    public function addedLinks()
+    {
+        return $this->morphMany(Link::class, 'addedby');
+    }
+
+    public function discussions()
+    {
+        return $this->belongsToMany(Counsellor::class, 'counsellor_discussion', 'counsellor_id', 'discussion_id')
+            ->withTimestamps();
+    }
+
     public function getInPersonSessionsCountAttribute()
     {
         return $this->addedSessions()->whereInPerson()->count();
@@ -369,6 +380,15 @@ class Counsellor extends Model
                     ->orWhere('firstName', 'LIKE', "%{$name}%")
                     ->orWhere('lastName', 'LIKE', "%{$name}%")
                     ->orWhere('otherNames', 'LIKE', "%{$name}%");
+            });
+    }
+
+    public function scopeWhereDiscussion($query, Discussion $discussion)
+    {
+        return $query
+            ->whereHas('discussions', function ($query) use ($discussion) {
+                $query
+                    ->where('discussion_id', $discussion->id);
             });
     }
 

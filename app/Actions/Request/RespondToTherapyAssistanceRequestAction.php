@@ -3,11 +3,14 @@
 namespace App\Actions\Request;
 
 use App\Actions\Action;
+use App\Actions\User\AlertGuardianAction;
+use App\DTOs\GuardianAlertDTO;
 use App\DTOs\RequestResponseDTO;
 use App\Enums\RequestStatusEnum;
 use App\Enums\TherapyStatusEnum;
 use App\Models\Counsellor;
 use App\Models\Request;
+use App\Notifications\TherapyAssistanceRequestAcceptedGuardianNotification;
 use App\Notifications\TherapyAssistanceRequestAcceptedNotification;
 
 class RespondToTherapyAssistanceRequestAction extends Action
@@ -34,6 +37,7 @@ class RespondToTherapyAssistanceRequestAction extends Action
 
             Request::query()
                 ->whereNot('id', $requestResponseDTO->request->id)
+                ->wherePending()
                 ->whereFor($requestResponseDTO->request->for)
                 ->update([
                     'status' => RequestStatusEnum::inconsequencial->value,
@@ -45,6 +49,17 @@ class RespondToTherapyAssistanceRequestAction extends Action
             // TODO dispatch counsellor to frontend
             $requestResponseDTO->request->from->notify(
                 new TherapyAssistanceRequestAcceptedNotification($requestResponseDTO->request)
+            );
+
+            AlertGuardianAction::new()->execute(
+                GuardianAlertDTO::new()->fromArray([
+                    'user' => $requestResponseDTO->request->from::class == Counsellor::class
+                        ? $requestResponseDTO->request->from->user
+                        : $requestResponseDTO->request->from,
+                    'notification' => new TherapyAssistanceRequestAcceptedGuardianNotification(
+                        $requestResponseDTO->request->for
+                    )
+                ])
             );
         }
         

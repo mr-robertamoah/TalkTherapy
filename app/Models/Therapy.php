@@ -220,6 +220,11 @@ class Therapy extends Model
         return !$this->hasAssistance();
     }
 
+    public function discussions()
+    {
+        return $this->morphMany(Discussion::class, 'for');
+    }
+
     public function endSessions()
     {
         $this->sessions()
@@ -260,9 +265,20 @@ class Therapy extends Model
         if ($this->addedby_type == User::class)
             $users[] = $this->addedby;
 
-        $users[] = $this->counsellor->user;
+        if ($this->counsellor)
+            $users[] = $this->counsellor->user;
+
+        if (!$this->addedby->isAdult() && $this->addedby->guardians()->count())
+            $users = array_merge($users, User::query()->whereWard($this->addedby)->get()->toArray());
 
         return $users;
+    }
+
+    public function scopeWhereWard($query, $user)
+    {
+        return $query->whereHas('guardians', function ($query) use ($user) {
+            $query->where('ward_id', $user->id);
+        });
     }
 
     public function getOtherUsers(User $user)
@@ -273,6 +289,10 @@ class Therapy extends Model
 
         if (!$this->counsellor->user->is($user))
             $users[] = $this->counsellor->user;
+
+        if (!$this->addedby->isAdult() && $this->addedby->guardians()->count())
+            $users = array_merge($users, User::query()->whereNot('id', $user->id)
+                ->whereWard($this->addedby)->get()->toArray());
 
         return $users;
     }

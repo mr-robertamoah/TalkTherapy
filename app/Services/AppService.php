@@ -23,9 +23,9 @@ class AppService extends Service
 {
     public function alertSuperAdminWithStatus()
     {
-        $superAdmins = User::query()->whereSuperAdmin()->get();
+        $superAdmin = User::query()->whereSuperAdmin()->first();
 
-        Notification::send($superAdmins->unique(), new VisitorsStatusNotification());
+        $superAdmin->notify( new VisitorsStatusNotification());
     }
 
     public function alertAdminWithReport(Report $report)

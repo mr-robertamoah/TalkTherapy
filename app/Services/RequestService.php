@@ -47,7 +47,7 @@ class RequestService extends Service
 
         if ($status) $query->where('status',  $status);
 
-        return RequestResource::collection($query->paginate(
+        return RequestResource::collection($query->latest()->paginate(
             PaginationEnum::preferencesPagination->value
         ));
     }
@@ -68,22 +68,6 @@ class RequestService extends Service
         return AdminCounsellorVerificationRequestResource::collection($query->paginate(
             PaginationEnum::preferencesPagination->value
         ));
-    }
-
-    public function createRequest(CreateRequestDTO $createRequestDTO)
-    {
-        $request = $createRequestDTO->from->sentRequests()->create([
-            'data' => $createRequestDTO->data,
-            'type' => $createRequestDTO->type
-        ]);
-
-        $request->to()->associate($createRequestDTO->to);
-
-        $request->for()->associate($createRequestDTO->for);
-
-        $request->save();
-
-        return $request->refresh();
     }
 
     public function respondToRequest(RequestResponseDTO $requestResponseDTO)

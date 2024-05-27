@@ -255,6 +255,10 @@ function closeModal() {
                     class="capitalize w-fit mx-auto text-2xl font-bold bg-gradient-to-r from-gray-800 to-gray-500 bg-clip-text text-transparent mb-2"
                 >Create individual therapy</div>
                 <div v-if="computedMessage" class="mt-3 text-sm text-gray-600 text-justify">{{ computedMessage }}</div>
+                <div 
+                    v-if="!$page.props.auth.user?.isAdult || !!$page.props.auth.user?.dob"
+                    class="mt-3 text-sm text-gray-600 text-justify"
+                >You need to have at least one guardian before you can create a therapy since you are not an adult or have not set your date of birth.</div>
                 <hr>
             </div>
 
@@ -263,7 +267,7 @@ function closeModal() {
                 <form 
                     @submit.prevent="createTherapy"
                 >
-                    <div class="overflow-hidden overflow-y-auto h-[60vh] px-4 pb-4">
+                    <div class="overflow-hidden overflow-y-auto h-[50vh] px-4 pb-4">
                         <template v-if="counsellor">
                             <div class="p-4 rounded bg-gray-200 shadow-sm">
                                 <CounsellorComponent

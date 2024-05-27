@@ -19,7 +19,7 @@ class SendTherapyAssistanceRequestAction extends Action
             is_null($therapyAssistanceRequestDTO->to)
         ) return null;
 
-        $request = RequestService::new()->createRequest(
+        $request = CreateRequestAction::new()->execute(
             CreateRequestDTO::new()->fromArray([
                 'from' => $therapyAssistanceRequestDTO->from,
                 'to' => $therapyAssistanceRequestDTO->to,

@@ -18,6 +18,7 @@ class CreateDiscussionDTO extends BaseDTO
     public ?User $user = null;
     public ?Discussion $discussion = null;
     public ?Session $session = null;
+    public ?Session $deletedSession = null;
     public User|Counsellor|null $addedby = null;
     public Therapy|GroupTherapy|null $for = null;
     public ?string $name = null;

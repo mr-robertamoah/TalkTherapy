@@ -2,6 +2,7 @@
 
 namespace App\Events;
 
+use App\Http\Resources\DiscussionResource;
 use App\Models\Discussion;
 use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
@@ -31,7 +32,20 @@ class DiscussionUpdatedEvent implements ShouldBroadcast
     public function broadcastOn(): array
     {
         return [
-            new PrivateChannel('channel-name'),
+            new PresenceChannel($this->discussion->getForChannelName()),
+            new PrivateChannel("discussions.{$this->discussion->id}"),
+        ];
+    }
+
+    public function broadcastAs(): string
+    {
+        return 'discussion.updated';
+    }
+
+    public function broadcastWith(): array
+    {
+        return [
+            'discussion' => new DiscussionResource($this->discussion)
         ];
     }
 }

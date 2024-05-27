@@ -12,7 +12,7 @@ class GetRequestResourceAction extends Action
 {
     public function execute(Request $request)
     {
-        if ($request->type == RequestTypeEnum::therapy->value)
+        if (in_array($request->type, [RequestTypeEnum::therapy->value, RequestTypeEnum::guardianship->value]))
             return new RequestResource($request);
 
         return new AdminCounsellorVerificationRequestResource($request);

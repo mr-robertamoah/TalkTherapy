@@ -23,7 +23,7 @@ function clickedResponse(response) {
 
 <template>
     <div
-        class="w-full max-w-[400px] bg-stone-200 p-2 rounded shadow-sm select-none"
+        class="w-full max-w-[400px] bg-stone-200 p-2 rounded select-none"
     >
         <div class="flex justify-start items-center mb-3 cursor-pointer">
             <Avatar v-if="user.avatar" :avatar-text="'...'" :size="40" :src="user?.avatar ?? ''"/>
@@ -41,5 +41,6 @@ function clickedResponse(response) {
                 ></div>
             </div>
         </div>
+        <slot></slot>
     </div>
 </template>

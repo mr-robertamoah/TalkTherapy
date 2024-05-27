@@ -61,7 +61,7 @@ class User extends Authenticatable implements MustVerifyEmailContract
     public function getAgeAttribute()
     {
         return !!$this->dob 
-            ? (int) now()->diffInYears((new Carbon($this->dob))->subYears(20)->addMonths(4), true) 
+            ? (int) now()->diffInYears(new Carbon($this->dob), true) 
             : 0;
     }
 
@@ -84,6 +84,26 @@ class User extends Authenticatable implements MustVerifyEmailContract
     public function likes()
     {
         return $this->hasMany(Like::class);
+    }
+
+    public function guardians()
+    {
+        return $this->hasMany(Guardianship::class, 'ward_id');
+    }
+
+    public function isAdult()
+    {
+        return $this->age && $this->age >= 18;
+    }
+
+    public function isGuardianOf(User $user)
+    {
+        return $this->guardians()->where('ward_id', $user->id)->exists();
+    }
+
+    public function wards()
+    {
+        return $this->hasMany(Guardianship::class, 'guardian_id');
     }
 
     public function comments()
@@ -122,6 +142,11 @@ class User extends Authenticatable implements MustVerifyEmailContract
     public function isNotAdmin()
     {
         return !$this->isAdmin();
+    }
+
+    public function addedLinks()
+    {
+        return $this->morphMany(Link::class, 'addedby');
     }
 
     public function addedLanguages()

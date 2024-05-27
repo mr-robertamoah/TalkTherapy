@@ -11,7 +11,7 @@ use Illuminate\Notifications\Messages\BroadcastMessage;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
-class TherapyAssistanceRequestAcceptedNotification extends Notification
+class TherapyAssistanceRequestAcceptedNotification extends Notification implements ShouldQueue
 {
     use Queueable;
 

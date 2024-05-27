@@ -4,8 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Actions\GetModelWithModelNameAndIdAction;
 use App\DTOs\CreateDiscussionDTO;
+use App\DTOs\GetDiscussionsDTO;
 use App\Http\Requests\CreateDiscussionRequest;
 use App\Http\Resources\DiscussionResource;
+use App\Models\Counsellor;
 use App\Models\Discussion;
 use App\Models\Session;
 use App\Services\DiscussionService;
@@ -27,7 +29,7 @@ class DiscussionController extends Controller
                     'startTime' => $request->startTime,
                     'endTime' => $request->endTime,
                     'session' => Session::find($request->sessionId),
-                    'from' => GetModelWithModelNameAndIdAction::new()->execute($request->addedbyType, $request->addedbyId),
+                    'addedby' => GetModelWithModelNameAndIdAction::new()->execute($request->addedbyType, $request->addedbyId),
                     'for' => GetModelWithModelNameAndIdAction::new()->execute($request->forType, $request->forId),
                 ])
             );
@@ -52,7 +54,9 @@ class DiscussionController extends Controller
                     'discussion' => $discussion,
                     'startTime' => $request->startTime,
                     'endTime' => $request->endTime,
+                    'addedby' => $discussion->addedby,
                     'session' => Session::find($request->sessionId),
+                    'deletedSession' => Session::find($request->deletedSessionId),
                     'for' => $discussion?->for,
                 ])
             );
@@ -75,6 +79,39 @@ class DiscussionController extends Controller
             );
 
             return $this->returnSuccess($request, $discussion);
+        } catch (Throwable $th) {
+            
+            return $this->returnFailure($request, $th);
+        }
+    }
+    
+    public function getDiscussions(Request $request)
+    {
+        try {
+            return DiscussionService::new()->getDiscussions(
+                GetDiscussionsDTO::new()->fromArray([
+                    'user' => $request->user(),
+                    'name' => $request->name,
+                    'counsellor' => Counsellor::find($request->counsellorId),
+                    'for' => GetModelWithModelNameAndIdAction::new()->execute($request->forType, $request->forId),
+                ])
+            );
+        } catch (Throwable $th) {
+            
+            return $this->returnFailure($request, $th);
+        }
+    }
+    
+    public function getDiscussionCounsellors(Request $request)
+    {
+        try {
+            return DiscussionService::new()->getDiscussionCounsellors(
+                GetDiscussionsDTO::new()->fromArray([
+                    'user' => $request->user(),
+                    'name' => $request->name,
+                    'discussion' => Discussion::find($request->discussionId),
+                ])
+            );
         } catch (Throwable $th) {
             
             return $this->returnFailure($request, $th);

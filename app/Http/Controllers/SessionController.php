@@ -191,9 +191,9 @@ class SessionController extends Controller
 
     private function getFor(Request $request)
     {
-        return $request->therapyId
-            ? Therapy::find($request->therapyId)
-            : GroupTherapy::find($request->groupTherapyId);
+        return $request->groupTherapyId
+            ? GroupTherapy::find($request->groupTherapyId)
+            : Therapy::find($request->therapyId);
     }
 
     private function returnSuccess(Request $request, Session $session)

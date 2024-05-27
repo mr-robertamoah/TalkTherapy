@@ -210,7 +210,7 @@ class Session extends Model
 
     public function getNotificationActionData()
     {
-        if ($this->for->isTherapy) {
+        if ($this->for_type == Therapy::class) {
             $type = 'Therapy';
             $url = url("therapies/{$this->for->id}");
         }

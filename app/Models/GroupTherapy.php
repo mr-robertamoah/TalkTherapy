@@ -66,6 +66,11 @@ class GroupTherapy extends Model
             ->withTimestamps();
     }
 
+    public function discussions()
+    {
+        return $this->morphMany(Discussion::class, 'for');
+    }
+
     public function getActiveSessionAttribute()
     {
         return $this

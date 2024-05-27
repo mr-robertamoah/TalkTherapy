@@ -10,9 +10,12 @@ import { Head, usePage } from '@inertiajs/vue3';
 import { computed, onBeforeMount, provide, ref, watch, watchEffect } from 'vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import useModal from '@/Composables/useModal';
+import useAlert from '@/Composables/useAlert';
+import Alert from '@/Components/Alert.vue';
 
 
 const { modalData, showModal, closeModal } = useModal()
+const { alertData, clearAlertData, setFailedAlertData } = useAlert()
 
 const props = defineProps({
     recentTherapies: {
@@ -26,7 +29,10 @@ const props = defineProps({
     },
     post: {
         default: null
-    }
+    },
+    alert: {
+        default: null
+    },
 })
 
 const newTherapy = ref(null)
@@ -46,6 +52,9 @@ watch(() => usePage().props.auth.user?.id, () => {
 watchEffect(() => {
     if (props.post?.id || props.post?.data?.id)
         showPost()
+
+    if (props.alert)
+        showAlert()
 })
 
 onBeforeMount(() => {
@@ -93,6 +102,13 @@ function loadContent() {
     getRandomCounsellors()
     getRandomTherapies()
     getPosts()
+}
+
+function showAlert() {
+    setFailedAlertData({
+        message: props.alert,
+        time: 5000
+    })
 }
 
 async function getRandomCounsellors() {
@@ -358,6 +374,14 @@ function showPost() {
         :post="post?.data ? post.data : post"
         @updated="updatePostById"
         @deleted="deletePostById"
+    />
+
+    <Alert
+        :show="alertData.show"
+        :type="alertData.type"
+        :message="alertData.message"
+        :time="alertData.time"
+        @close="clearAlertData"
     />
 
     <CreatePostModal

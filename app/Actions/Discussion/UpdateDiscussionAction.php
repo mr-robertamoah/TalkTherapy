@@ -32,8 +32,18 @@ class UpdateDiscussionAction extends Action
         $this->setValueOnData('start_time', $createDiscussionDTO, 'startTime');
         $this->setValueOnData('end_time', $createDiscussionDTO, 'endTime');
 
-        if ($createDiscussionDTO->session)
+        if (
+            $createDiscussionDTO->deletedSession && 
+            $createDiscussionDTO->discussion->session->id == $createDiscussionDTO->deletedSession->id
+        )
+            $this->data['session_id'] = null;
+
+        if (
+            $createDiscussionDTO->session && 
+            $createDiscussionDTO->discussion->session->id !== $createDiscussionDTO->session->id
+        )
             $this->data['session_id'] = $createDiscussionDTO->session->id;
+        
     }
     
     private function setValueOnData(

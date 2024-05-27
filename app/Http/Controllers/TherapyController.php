@@ -37,6 +37,28 @@ class TherapyController extends Controller
         }
     }
 
+    public function getUserTherapies(Request $request)
+    {
+        try {
+            $therapies = TherapyService::new()->getUserTherapies($request->user());        
+
+            return TherapyMiniResource::collection($therapies);
+        } catch (Throwable $th) {
+           $this->returnFailure($request, $th);
+        }
+    }
+
+    public function getCounsellorTherapies(Request $request)
+    {
+        try {
+            $therapies = TherapyService::new()->getCounsellorTherapies($request->user());        
+
+            return TherapyMiniResource::collection($therapies);
+        } catch (Throwable $th) {
+           $this->returnFailure($request, $th);
+        }
+    }
+
     public function createTherapy(CreateTherapyRequest $request)
     {
         try {
@@ -184,12 +206,18 @@ class TherapyController extends Controller
         }
     }
 
-    public function show(Request $request)
+    public function show()
     {
-        return Inertia::render('Therapy/Show', [
-            'therapies' => TherapyResource::collection(
-                TherapyService::new()->getTherapies($request->user())
-            )
-        ]);
+        return Inertia::render('Therapy/Show');
+    }
+
+    private function returnFailure(Request $request, Throwable $th)
+    {
+        $message = $th->getCode() == 500 ? "Something unfortunate happened. Please try again shortly." : $th->getMessage();
+        
+        ds($th);
+
+        if ($request->acceptsJson()) throw new Exception($message);
+        return Redirect::back()->withErrors(['alert'=> $message]);
     }
 }

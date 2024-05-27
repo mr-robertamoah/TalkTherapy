@@ -17,7 +17,8 @@ class EnsureUserHasAccessToTherapyAction extends Action
                 $getTherapyDTO->user->counsellor && 
                 $getTherapyDTO->user->counsellor->hasPendingRequestFor($getTherapyDTO->therapy)
             ) ||
-            $getTherapyDTO->user->isAdmin()
+            $getTherapyDTO->user->isAdmin() ||
+            $getTherapyDTO->user->isGuardianOf($getTherapyDTO->therapy->addedby)
         ) return;
 
         throw new TherapyAccessDeniedException("You are not allowed to assess therapy with id: {$getTherapyDTO->therapy->id}", 422);

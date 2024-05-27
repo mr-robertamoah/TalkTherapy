@@ -5,7 +5,9 @@ import UpdatePasswordForm from './Partials/UpdatePasswordForm.vue';
 import UpdateProfileInformationForm from './Partials/UpdateProfileInformationForm.vue';
 import VerifyEmailSection from './Partials/VerifyEmailSection.vue';
 import BecomeCounsellorForm from './Partials/BecomeCounsellorForm.vue';
+import TherapiesSection from './Partials/TherapiesSection.vue';
 import TestimonialSection from '@/Components/TestimonialSection.vue';
+import GuardianshipSection from '@/Components/GuardianshipSection.vue';
 import { ref, computed } from 'vue';
 import { Head, Link } from '@inertiajs/vue3';
 import HelpButton from '@/Components/HelpButton.vue';
@@ -51,7 +53,7 @@ function changeStep(value) {
                     class="mr-4"
                 />
             </div>
-            <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 space-y-6">
+            <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 space-y-10">
                 <div class="p-4 sm:p-8 bg-white shadow sm:rounded-lg">
                     <div class="flex justify-center items-end font-bold text-2xl">
                         <div class="mr-4">Welcome</div>
@@ -63,6 +65,18 @@ function changeStep(value) {
                     <BecomeCounsellorForm
                         :counsellor-creation-step="currentStep"
                         @change-step="changeStep"
+                        class="max-w-xl"
+                    />
+                </div>
+                
+                <div class="p-4 sm:p-8 bg-white shadow sm:rounded-lg">
+                    <TherapiesSection
+                        class="max-w-xl"
+                    />
+                </div>
+                
+                <div class="p-4 sm:p-8 bg-white shadow sm:rounded-lg">
+                    <GuardianshipSection
                         class="max-w-xl"
                     />
                 </div>

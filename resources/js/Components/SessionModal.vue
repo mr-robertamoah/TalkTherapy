@@ -82,7 +82,7 @@
                                     : (['FAILED', 'ABANDONED'].includes(session.status) ? 'Was to end on ' : 'Ended on')
                             }} <span class="text-gray-700 font-bold">{{ (new Date(session.endTime)).toGMTString() }}</span></div>
                         </div>
-                        <div class="text-end text-gray-600 text-sm my-2">created {{ toDiffForHumans(session.createdAt) }}</div>
+                        <div v-if="session.createdAt" class="text-end text-gray-600 text-sm my-2">created {{ toDiffForHumans(session.createdAt) }}</div>
                     </div>
                 </div>
             </div>

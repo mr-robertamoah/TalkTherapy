@@ -511,9 +511,9 @@ function closeModal() {
 
                         <div class="mt-4 mb-2 flex items-end p-2 flex-col space-y-4" v-if="isCounsellor">
                             <PrimaryButton v-if="!counsellor.hasPendingCounsellorVerificationRequest && counsellorCreationStep == 1" @click="() => showModal('verify')">request verification</PrimaryButton>
-                            <div v-if="counsellor.hasPendingCounsellorVerificationRequest && counsellorCreationStep == 1" class=" text-sm text-gray-600 text-right">You have a pending verification request.</div>
-                            <div v-if="counsellorCreationStep == 2" class=" text-sm text-gray-600 text-right">You have been verified and awaiting certification. Request to <Link :href="route('home')" class="font-bold mx-1 cursor-pointer p-1 rounded bg-gray-200">assist</Link> a user needing therapy.</div>
-                            <div v-if="counsellorCreationStep == 3" class=" text-sm text-gray-600 text-right">At least you have one therapy. Have at least one session. Visit Your <Link :href="route('therapies')" class="font-bold mx-1 cursor-pointer p-1 rounded bg-gray-200">therapies</Link> to start a session now.</div>      
+                            <div v-if="counsellor.hasPendingCounsellorVerificationRequest && counsellorCreationStep == 1" class=" text-sm text-gray-600 w-full text-start">You have a pending verification request.</div>
+                            <div v-if="counsellorCreationStep == 2" class=" text-sm text-gray-600 w-full text-start">You have been verified and awaiting certification. Request to <Link :href="route('home')" class="font-bold mx-1 cursor-pointer p-1 rounded bg-gray-200">assist</Link> a user needing therapy.</div>
+                            <div v-if="counsellorCreationStep >= 3" class=" text-sm text-gray-600 w-full text-start">At least you have one therapy. Have at least one session. Visit Your <Link :href="route('therapies')" class="font-bold mx-1 cursor-pointer p-1 rounded bg-gray-200">therapies</Link> to start a session now.</div>      
                         </div>
                     </div>
                 </div>

@@ -20,6 +20,7 @@ const props = defineProps({
 const emits = defineEmits(['onData', 'alert'])
 
 const RequestTypes = {
+    guardianship: 'GUARDIANSHIP',
     counsellor: 'COUNSELLOR_VERIFICATION_REQUEST',
     administrator: 'ADMINISTRATION_REQUEST',
     therapy: 'THERAPY_ASSISTANCE_REQUEST',
@@ -43,6 +44,7 @@ watchEffect(() => {
 
 const computedTypeMessage = computed(() => {
     return { // updated sentences based on status of request
+        [RequestTypes.guardianship]: computedIsFrom.value ? `You ${props.request.status == RequestStatuses.pending ? 'have ' : ''}sent a guardianship request.` : `You ${props.request.status == RequestStatuses.pending ? 'have ' : ''}received a guardianship request.`,
         [RequestTypes.counsellor]: computedIsFrom.value ? `You ${props.request.status == RequestStatuses.pending ? 'have ' : ''}sent a counsellor verification request.` : `You ${props.request.status == RequestStatuses.pending ? 'have ' : ''}received a counsellor verification request.`,
         [RequestTypes.administrator]: computedIsFrom.value ? '' : 'You accepted the request.',
         [RequestTypes.therapy]: computedIsFrom.value ? `You ${props.request.status == RequestStatuses.pending ? 'have ' : ''}sent an assistance request for therapy with name: ${props.request.for.name}.` 
@@ -115,25 +117,30 @@ async function clickedResponse(response) {
 
 <template>
     <div v-bind="$attrs" class="bg-stone-300 rounded w-full max-w-[400px] select-none p-2 relative">
-        <FormLoader class="relative" :show="responding" :text="'responding to request'"/>
+        <FormLoader v-if="responding" class="relative" :show="responding" :text="'responding to request'"/>
         <div class="text-gray-600 text-sm tracking-wide">{{ computedTypeMessage }}</div>
-        <div 
-            @dblclick="() => {
-                showActions = !showActions
-            }"
-            :title="computedIsTo && request.status == 'PENDING' ? 'double click to show/hide actions' : ''"
-            :class="computedStatusClasses"
-            class="text-xs my-2 text-end p-2 rounded w-fit ml-auto cursor-pointer">{{ computedStatus }}</div>
+        <div class="flex justify-end items-center w-full text-xs my-2">
+            <div v-if="computedIsFrom && request.to" class="flex text-gray-600">to: {{ request.to.isCounsellor ? request.to.name : `@${request.to.username}` }}</div>
+            <div v-if="computedIsTo && request.from" class="flex text-gray-600">from: {{ request.from.isCounsellor ? request.from.name : `@${request.from.username}` }}</div>
+            <div 
+                @dblclick="() => {
+                    if (computedIsTo)
+                        showActions = !showActions
+                }"
+                :title="computedIsTo && request.status == 'PENDING' ? 'double click to show/hide actions' : ''"
+                :class="computedStatusClasses"
+                class="text-center p-2 rounded w-fit ml-auto cursor-pointer"
+            >{{ computedStatus }}</div>
+        </div>
             
         <template v-if="showActions">
-        
-        <div class="flex justify-start items-center space-x-2 p-2 overflow-hidden overflow-x-auto">
-                <StyledLink class="shrink-0" v-if="request.type == RequestTypes.therapy" :href="route('therapies.get', { therapyId: request.for.id })" :text="'visit therapy page'"/>
-                <template v-if="request.status == RequestStatuses.pending && computedIsTo">
-                    <PrimaryButton :disabled="responding" @click="() => clickedResponse('accepted')" class="shrink-0">accept</PrimaryButton>
-                    <DangerButton :disabled="responding" @click="() => clickedResponse('rejected')" class="shrink-0">reject</DangerButton>
-                </template>
-        </div>
+            <div class="flex justify-end items-center space-x-2 p-2 overflow-hidden overflow-x-auto">
+                    <StyledLink class="shrink-0" v-if="request.type == RequestTypes.therapy" :href="route('therapies.get', { therapyId: request.for.id })" :text="'visit therapy page'"/>
+                    <template v-if="request.status == RequestStatuses.pending && computedIsTo">
+                        <PrimaryButton :disabled="responding" @click="() => clickedResponse('accepted')" class="shrink-0">accept</PrimaryButton>
+                        <DangerButton :disabled="responding" @click="() => clickedResponse('rejected')" class="shrink-0">reject</DangerButton>
+                    </template>
+            </div>
         </template>
     </div>
 

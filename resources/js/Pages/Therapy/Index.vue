@@ -1,4 +1,5 @@
 <script setup>
+import DiscussionBadge from '@/Components/DiscussionBadge.vue';
 import BooleanAttribute from '@/Components/BooleanAttribute.vue';
 import CounsellorComponent from '@/Components/CounsellorComponent.vue';
 import ActivityBadge from '@/Components/ActivityBadge.vue';
@@ -25,10 +26,14 @@ import useAuth from '@/Composables/useAuth';
 import useLocalDateTimed from '@/Composables/useLocalDateTime';
 import SessionBadge from '@/Components/SessionBadge.vue';
 import TopicBadge from '@/Components/TopicBadge.vue';
+import LinkComponent from '@/Components/LinkComponent.vue';
+import useAppLink from '@/Composables/useAppLink';
+import CreateDiscussionFormModal from '@/Components/CreateDiscussionFormModal.vue';
 
 const { modalData, showModal, closeModal } = useModal()
 const { goToLogin } = useAuth()
 const { toDiffForHumans } = useLocalDateTimed()
+const { createLink, getlinks } = useAppLink()
 const { alertData, clearAlertData, setAlertData, setSuccessAlertData, setFailedAlertData } = useAlert()
 
 const props = defineProps({
@@ -72,7 +77,13 @@ const mainDiv = ref(null)
 const newSession = ref(null)
 const activeSession = ref(null)
 const counsellor = ref(null)
+const counsellorLinks = ref({ page: 1, data: []})
+const discussions = ref({ page: 1, data: []})
 const currentUpdatedSessionOrTopic = ref(null)
+const getting = ref({
+    show: false,
+    type: '',
+})
 const currentDeletedSessionOrTopic = ref(null)
 const selectedActiveSession = ref(false)
 const activeItemId = ref(scrollItems[0].id)
@@ -120,6 +131,12 @@ watchEffect(() => {
     let currentTherapy = props.therapy?.data ? props.therapy?.data : props.therapy
 
     if (!userId || !currentTherapy.id) return
+
+    if (!currentTherapy.counsellor)
+        getCounsellorlinks()
+
+    if (usePage().props.auth.user?.counsellor)
+        getDiscussions(currentTherapy)
 
     Echo
         .join(`therapies.${currentTherapy.id}`)
@@ -358,6 +375,10 @@ function clickedCreateSession() {
     showModal('create session')
 }
 
+function clickedCreateDiscussion() {
+    showModal('create discussion')
+}
+
 function clickedReport() {
     showModal('report')
 }
@@ -441,6 +462,59 @@ async function getCounsellors() {
             console.log(err)
             goToLogin(err)
         })
+
+    endLoader()
+}
+
+async function getDiscussions(therapy) {
+    if (!discussions.value.page) return
+
+    setLoader('discussions')
+    await axios.get(route('api.discussions', {
+        page: discussions.value.page, 
+        counsellorId: usePage().props.auth.user?.counsellor?.id,
+        forId: therapy.id,
+        forType: 'Therapy'
+    }))
+    .then((res) => {
+        console.log(res)
+        
+        if (discussions.value.page == 1)
+            discussions.value.data = []
+        
+        discussions.value.data = [
+            ...discussions.value.data,
+            ...res.data.data,
+        ]
+        
+        if (res.data.links.next) discussions.value.page = discussions.value.page + 1
+        else discussions.value.page = 0
+    })
+    .catch((err) => {
+        console.log(err)
+        goToLogin(err)
+
+        if (err.response?.data?.message) {
+            setFailedAlertData({
+                message: err.response.data.message,
+                time: 10000
+            })
+            return
+        }
+
+        if (err.alert) {
+            setFailedAlertData({
+                message: err.alert,
+                time: 5000
+            })
+            return
+        }
+
+        setFailedAlertData({
+            message: 'Something unfortunate happened. Please try again later.',
+            time: 5000
+        })
+    })
 
     endLoader()
 }
@@ -591,6 +665,55 @@ function addSessionOrTopic(item) {
     recentTopics.value = [item, ...recentTopics.value]
 }
 
+async function createCounsellorLink() {
+    setGetting('create link')
+
+    const link = await createLink({
+        type: 'THERAPY_COUNSELLOR',
+        addedbyId: usePage().props.auth.user?.id,
+        addedbyType: 'User',
+        forId: computedTherapy.value?.id,
+        forType: 'Therapy',
+    })
+    
+    clearGetting()
+    if (!link) return
+            
+    counsellorLinks.value.data = [link, ...counsellorLinks.value.data]
+}
+
+async function getCounsellorlinks() {
+    setGetting('links')
+
+    const res = await getlinks({
+        page: counsellorLinks.value.page,
+        type: 'THERAPY_COUNSELLOR'
+    })
+    
+    clearGetting()
+    if (!res) return 
+            
+    if (counsellorLinks.value.page == 1)
+        counsellorLinks.value.data = []
+    
+    counsellorLinks.value.data = [
+        ...counsellorLinks.value.data,
+        ...res.data.data,
+    ]
+
+    updatePage(res, counsellorLinks)
+}
+
+function setGetting(type) {
+    getting.value.type = type
+    getting.value.show = true
+}
+
+function clearGetting() {
+    getting.value.type = ''
+    getting.value.show = false
+}
+
 </script>
 
 <template>
@@ -694,6 +817,38 @@ function addSessionOrTopic(item) {
                     <div v-else class="text-sm text-center text-gray-600 my-2">no recent session</div>
                 </div>
             </div>
+            
+            <div class="max-w-7xl mx-auto sm:px-6 lg:px-8" v-if="$page.props.auth.user?.counsellor">
+                <div class="p-6 overflow-hidden shadow-sm sm:rounded-lg my-8 bg-slate-200">
+                    <div class="text-gray-600 font-semibold tracking-wide text-center mb-4">Discussions</div>
+                    <div v-if="loader.show && loader.type == 'discussions'" class="text-center text-sm w-full my-4 text-green-600 bg-green-200">getting discussions</div>
+                    <div class="flex space-x-3 justify-start items-center p-2 overflow-hidden overflow-x-auto w-full">
+                        <template v-if="discussions.data?.length">
+                            <DiscussionBadge
+                                v-for="(item, idx) in discussions.data"
+                                :key="idx"
+                                :discussion="item"
+                                :show-details="true"
+                                :show-actions="$page.props.auth.user?.id == item.addedby?.userId"
+                                @onUdpate="(data) => {
+                                    discussions.data.splice(idx, 1, data)
+                                }"
+                                @onDelete="(data) => {
+                                    discussions.data.splice(idx, 1)
+                                }"
+                                class="w-[60%] shrink-0 bg-slate-200 rounded"
+                            />
+
+                            <div
+                                title="get more discussions"
+                                @click="() => getDiscussions(computedTherapy)"
+                                v-if="discussions.page"
+                                class="cursor-pointer p-2 text-gray-600 font-bold">...</div>
+                        </template>
+                        <div v-else class="text-sm text-center text-gray-600 my-2">no discussions</div>
+                    </div>
+                </div>
+            </div>
 
             <div class="bg-gray-100 z-[2] top-0 max-w-7xl mx-auto sm:px-6 lg:px-8 my-4 p-2 flex justify-start items-center overflow-x-auto overflow-hidden">
                 <div
@@ -764,6 +919,44 @@ function addSessionOrTopic(item) {
                                     <UserComponent
                                         :user="computedTherapy.user"
                                     />
+                                </div>
+                            </div>
+
+                            <div v-if="computedIsUser && !computedTherapy.counsellor" class="bg-white p-6 shrink-0 mt-4 w-full text-sm text-gray-600">
+                                <div class="text-gray-600 tracking-wide font-semibold">Links</div>
+                                <div class="my-2 text-justify w-full">A link can be given to any counsellor and once they use the link they will be automatically assigned to this therapy.</div>
+                                <div v-if="getting.show" class="text-center text-sm w-full my-4 text-green-600 bg-green-200">{{getting.type == 'create link' ? 'creating link' : 'getting counsellor links'}}</div>
+                                <div 
+                                    class="flex justify-start items-center space-x-3 overflow-hidden overflow-x-auto"
+                                >
+                                    <template v-if="counsellorLinks.data?.length">
+                                        <LinkComponent
+                                            v-for="(link, idx) in counsellorLinks.data"
+                                            :key="link.id"
+                                            :link="link"
+                                            @updated="(lk) => updateLink(lk, idx)"
+                                            @deleted="(lk) => deleteLink(idx)"
+                                            class="w-[90%] shrink-0 bg-white"
+                                        />
+
+                                        <div
+                                            title="get more guardian links"
+                                            @click="getCounsellorlinks"
+                                            v-if="counsellorLinks.page"
+                                            class="cursor-pointer p-2 text-gray-600 font-bold">...</div>
+                                    </template>
+                                    <div v-else class="h-10 flex justify-center items-center w-full">no links for counsellor as at now.</div>
+                                </div>
+
+                                <div class="flex justify-end mt-4">
+                                    <PrimaryButton
+                                        @click="createCounsellorLink"
+                                        class="ms-4" 
+                                        :class="{ 'opacity-25': getting.show && getting.type == 'create link'}" 
+                                        :disabled="getting.show && getting.type == 'create link'"
+                                    >
+                                        get link
+                                    </PrimaryButton>
                                 </div>
                             </div>
                         </div>
@@ -890,6 +1083,7 @@ function addSessionOrTopic(item) {
                         <PrimaryButton @click="clickedReport" class="shrink-0" v-if="$page.props.auth.user">make a report</PrimaryButton>
                         <template v-if="computedTherapy.status !== 'ENDED'">
                             <PrimaryButton @click="clickedCreateSession" class="shrink-0" v-if="computedIsCounsellor && computedTherapy.maxSessions > computedTherapy.sessionsHeld">create session</PrimaryButton>
+                            <PrimaryButton @click="clickedCreateDiscussion" class="shrink-0" v-if="computedIsCounsellor">create discussion</PrimaryButton>
                             <template v-if="!computedIsInSession">
                                 <PrimaryButton @click="clickedEndTherapy" v-if="computedIsParticipant && computedTherapy.status !== 'ENDED' && computedTherapy.sessionsHeld" class="shrink-0">end therapy</PrimaryButton>
                                 <template v-if="computedIsUser">
@@ -1072,6 +1266,18 @@ function addSessionOrTopic(item) {
         @close-modal="closeModal"
         @on-success="(data) => {
             if (data) newSession = data
+        }"
+    />
+        
+    <CreateDiscussionFormModal
+        :show="modalData.show && modalData.type == 'create discussion'"
+        :therapy="computedTherapy"
+        :forType="'Therapy'"
+        :loadedSessions="recentSessions"
+        @close-modal="closeModal"
+        @on-success="(data) => {
+            if (data)
+                discussions.data = [data, ...discussions.data]
         }"
     />
         

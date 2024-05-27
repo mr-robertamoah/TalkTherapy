@@ -1,30 +1,16 @@
 <?php
 
-use App\DTOs\CreateSessionDTO;
-use App\Events\TestEvent;
 use App\Http\Controllers\AboutController;
 use App\Http\Controllers\AdministratorController;
 use App\Http\Controllers\CounsellorController;
 use App\Http\Controllers\HomeController;
+use App\Http\Controllers\LinkController;
 use App\Http\Controllers\PostController;
 use App\Http\Controllers\PreferenceController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\SessionController;
 use App\Http\Controllers\TherapyController;
-use App\Mail\TestMail;
-use App\Models\Counsellor;
-use App\Models\Request;
-use App\Models\Session;
-use App\Models\User;
-use App\Notifications\SessionDueNotification;
-use App\Notifications\TherapyAssistanceRequestAcceptedNotification;
-use App\Notifications\VerifyCounsellorEmailNotification;
-use App\Notifications\VisitorsStatusNotification;
 use App\Services\AppService;
-use App\Services\SessionService;
-use Illuminate\Foundation\Application;
-use Illuminate\Support\Facades\Broadcast;
-use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -51,7 +37,7 @@ use Inertia\Inertia;
 
 Route::get('/testing',function() {
     try {
-        AppService::new()->alertSuperAdminWithStatus();
+        // AppService::new()->alertSuperAdminWithStatus();
         return 'done';
     } catch (Throwable $th) {
         ds($th);
@@ -74,7 +60,10 @@ Route::get('/counsellor/{counsellorId}', [CounsellorController::class, 'show'])-
 Route::get('/posts/{postId}', [PostController::class, 'getPost'])->name('posts.get');
 
 Route::middleware('auth')->group(function () {
-    Route::get('/therapies', [TherapyController::class, 'index'])->name('therapies');
+
+    Route::get('/links/{uuid}', [LinkController::class, 'performAction'])->name('links.get');
+
+    Route::get('/therapies', [TherapyController::class, 'show'])->name('therapies');
 
     Route::get('/administrator', [AdministratorController::class, 'show'])->name('administrator');
 

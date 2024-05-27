@@ -228,12 +228,19 @@ import FormLoader from './FormLoader.vue';
 import PrimaryButton from './PrimaryButton.vue';
 import MessageBadge from './MessageBadge.vue';
 import useModal from '@/Composables/useModal';
+import useMessage from '@/Composables/useMessage';
 import Alert from './Alert.vue';
 import useAlert from '@/Composables/useAlert';
 import FilePreview from './FilePreview.vue';
 import MediaCapture from './MediaCapture.vue';
 
 const { goToLogin } = useAuth()
+const {
+    message, files, deletedFiles, computedHasMessage, replyingMessage, scrollToBottom,
+    showAttachmentIcons, messageFilesInput, changeFile, resetMessage, updateMessage,
+    clickedIcon, mediaCaptureData, closeMediaCapture, removeUploadFile, scrollToMessageId,
+    selectForUpdate, selectAsReply, removeReply
+} = useMessage()
 const { alertData, setFailedAlertData, clearAlertData } = useAlert()
 const { modalData, showModal, closeModal } = useModal()
 
@@ -276,48 +283,18 @@ const props = defineProps({
     }
 })
 
-const showAttachmentIcons = ref(false)
 const loading = ref(false)
 const getting = ref(false)
-const mediaCaptureData = ref({
-    show: false,
-    type: ''
-})
 const pages = ref({
     message: 1,
     session: 1,
     topic: 1,
 })
-const message = ref({
-    files: [],
-    deletedFiles: [],
-    content: '',
-    confidential: false,
-    fromCounsellor: false,
-    counsellorAvatar: '',
-    type: 'NORMAL',
-    status: 'sending',
-    replying: null,
-    topicId: '',
-    forType: '',
-    forId: '',
-    toType: '',
-    toId: '',
-    fromType: '',
-    fromId: '',
-    fromUserId: '',
-    toUserId: '',
-    id: null,
-})
-const messageFilesInput = ref(null)
-const replyingMessage = ref(null)
 const selectedItemType = ref(null)
 const selectedSessionTopic = ref(null)
 const selectedSession = ref(null)
 const selectedTopic = ref(null)
 const selectedTopicSession = ref(null)
-const files = ref([])
-const deletedFiles = ref([])
 const sessions = ref([])
 const chatMessages = ref([])
 const messages = reactive({
@@ -445,9 +422,6 @@ const computedMessagesPage = computed(() => {
 
     return 0
 })
-const computedHasMessage = computed(() => {
-    return message.value.content || files.value?.length || deletedFiles.value?.length
-})
 
 function clickedSwitchToActiveSession() {
     if (!filters.value.sessions) filters.value.sessions = true
@@ -465,24 +439,6 @@ function clickedGetMore() {
     getTopics()
 }
 
-function closeMediaCapture() {
-    mediaCaptureData.value.type = ''
-    mediaCaptureData.value.show = false
-}
-
-function showMediaCapture(type) {
-    mediaCaptureData.value.type = type
-    mediaCaptureData.value.show = true
-}
-
-function removeUploadFile(file, idx) {
-    if (file.id) {
-        deletedFiles.value = [file, ...deletedFiles.value]
-    }
-
-    files.value.splice(idx, 1)
-}
-
 const debouncedSessionsGet = _.debounce(() => {
     getSessions()
 }, 500)
@@ -493,23 +449,6 @@ const debouncedTopicsGet = _.debounce(() => {
 
 function clickedCreateTopic() {
     showModal('topic')
-}
-
-function selectAsReply(data) {
-    message.value.replying = { ...data }
-}
-
-function selectForUpdate(data) {
-    message.value = {...message.value, ...data}
-    message.value.replying = null
-    replyingMessage.value = data.replying
-    message.value.deletedFiles = []
-    files.value = data.files
-    deletedFiles.value = []
-}
-
-function removeReply() {
-    message.value.replying = null
 }
 
 function addToSubItem(item) {
@@ -590,39 +529,6 @@ function clickedFilterItem(item) {
     }
 }
 
-function changeFile(e) {
-    if (e.target.files?.length) {
-        files.value = [...e.target.files, ...(files.value ?? [])]
-        messageFilesInput.value.value = ''
-    }
-
-    showAttachmentIcons.value = false
-}
-
-function resetMessage() {
-    files.value = []
-    deletedFiles.value = []
-    message.value.files = []
-    message.value.deletedFiles = []
-    message.value.id = null
-    message.value.content = ''
-    message.value.confidential = false
-    message.value.type = 'NORMAL'
-    message.value.replying = null
-    message.value.topicId = ''
-    message.value.fromUserId = ''
-    message.value.toUserId = ''
-    message.value.forType = ''
-    message.value.forId = ''
-    message.value.toType = ''
-    message.value.toId = ''
-    message.value.fromType = ''
-    message.value.fromId = ''
-    message.value.status = 'sending'
-    message.value.fromCounsellor = false
-    message.value.counsellorAvatar = ''
-}
-
 function replaceMessage(data, idx) {
     let itemsRef = messages.sessions[selectedSession.value?.id]
     if (computedCurrentFilter.value == 'topic') {
@@ -653,71 +559,6 @@ function replaceFirstMessage(data) {
         itemsRef.data[0] = {...data}
 
     chatMessages.value[chatMessages.value.length - 1] = {...data}
-}
-
-function sendMessage() {
-    if (message.value?.id) {
-        updateMessage()
-        return
-    }
-
-    if (!selectedSession.value?.id) return
-
-    message.value.forType = 'Session'
-    message.value.forId = selectedSession.value.id
-
-    if (replyingMessage.value?.id)
-        message.value.replying = replyingMessage.value
-    
-    if (files.value)
-        message.value.files = [...unref(files)]
-
-    if (selectedSessionTopic.value?.id)
-        message.value.topicId = selectedSessionTopic.value.id
-
-    if (props.isCounsellor) {
-        message.value.toType = 'User'
-        message.value.toId = props.therapy.user.id
-        message.value.toUserId = props.therapy.user.id
-        message.value.fromType = 'Counsellor'
-        message.value.fromId = props.therapy.counsellor.id
-        message.value.fromUserId = props.therapy.counsellor.userId
-        message.value.fromCounsellor = true
-        message.value.counsellorAvatar = props.therapy.counsellor.avatar
-    }
-
-    if (props.isUser) {
-        message.value.fromType = 'User'
-        message.value.fromId = props.therapy.user.id
-        message.value.fromUserId = props.therapy.user.id
-        message.value.toType = 'Counsellor'
-        message.value.toId = props.therapy.counsellor.id
-        message.value.toUserId = props.therapy.counsellor.userId
-    }
-
-    addNewMessage(message.value)
-    
-    scrollToBottom()
-    resetMessage()
-}
-
-function updateMessage() {
-    message.value.status = 'updating'
-    if (replyingMessage.value?.id)
-        message.value.replying = replyingMessage.value
-    else
-        message.value.replying = null
-    
-    if (files.value?.length)
-        message.value.files = [...unref(files)]
-    
-    if (deletedFiles.value?.length)
-        message.value.deletedFiles = [...deletedFiles.value.map(f => f.id)]
-
-    replaceOldMessage(message.value)
-    
-    scrollToBottom()
-    resetMessage()
 }
 
 function onMessageCreated(data) {
@@ -841,25 +682,6 @@ async function getTopicMessages() {
         })
 }
 
-async function scrollToMessageId(id) {
-    if (!id) return
-    
-    await nextTick()
-
-    const div = document.getElementById(`message_${id}`)
-    console.log(id, div);
-
-    if (div) div.scrollIntoView({ behavior: 'smooth', inline: 'nearest', block: 'nearest'})
-}
-
-async function scrollToBottom() {
-    await nextTick()
-
-    const div = document.getElementById(`message_area`)
-
-    if (div) div.scrollTop = div.scrollHeight
-}
-
 async function getSessions() {
     loading.value = true
 
@@ -935,20 +757,6 @@ function setPages(num) {
     pages.value.session = num
     pages.value.session = num
     pages.value.message = num
-}
-
-function clickedIcon(type) {
-    if (type == 'file') {
-        messageFilesInput.value.click()
-    }
-    else if (type == 'microphone') {
-        showMediaCapture('audio')
-    }
-    else if (type == 'camera') {
-        showMediaCapture('image')
-    }
-
-    showAttachmentIcons.value = false
 }
 
 function onUpdateItem(item) {

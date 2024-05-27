@@ -26,6 +26,7 @@ class HomeController extends Controller
             'bestCounsellors' => StarredCounsellorResource::collection($counsellorService->getBestCounsellorsForPreviousMonth()),
             'leadingCounsellors' => StarredCounsellorResource::collection($counsellorService->getLeadingCounsellorsForCurrentMonth()),
             'post' => session()->has('postId') ? new PostResource(Post::find(session('postId'))) : null,
+            'alert' => session()->has('alert') ? session('alert') : null,
         ]);
 
         if ($message) {

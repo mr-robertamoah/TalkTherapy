@@ -3,19 +3,19 @@
 namespace App\Actions\Counsellor;
 
 use App\Actions\Action;
+use App\Actions\Request\CreateRequestAction;
 use App\DTOs\CreateRequestDTO;
 use App\DTOs\VerifyCounsellorDTO;
 use App\Enums\AdministratorTypeEnum;
 use App\Enums\RequestTypeEnum;
 use App\Events\CounsellorVerificationRequestSentEvent;
 use App\Models\User;
-use App\Services\RequestService;
 
 class CreateCounsellorVerificationRequestAction extends Action
 {
     public function execute(VerifyCounsellorDTO $verifyCounsellorDTO)
     {
-        $request = RequestService::new()->createRequest(
+        $request = CreateRequestAction::new()->execute(
             CreateRequestDTO::new()->fromArray([
                 'for' => $verifyCounsellorDTO->counsellor,
                 'from' => $verifyCounsellorDTO->counsellor,

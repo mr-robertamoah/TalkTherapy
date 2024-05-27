@@ -53,6 +53,11 @@ class Request extends Model
         return $query->where('status', RequestStatusEnum::pending->value);
     }
 
+    public function scopeWhereType($query, $type)
+    {
+        return $query->where('type', $type);
+    }
+
     public function scopeWhereFrom($query, $from)
     {
         return $query->where(function ($q) use ($from) {

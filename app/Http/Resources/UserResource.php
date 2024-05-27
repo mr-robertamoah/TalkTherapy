@@ -27,7 +27,7 @@ class UserResource extends JsonResource
             'isUser' => true,
             'country' => $this->country,
             'dob' => $this->dob,
-            'isAdult' => $this->dob?->age >= 18,
+            'isAdult' => $this->age >= 18,
             'settings' => $this->settings,
             'counsellor' => $this->counsellor ? new CounsellorMiniResource($this->counsellor) : null,
             'createdAt' => $this->created_at->diffForHumans(),

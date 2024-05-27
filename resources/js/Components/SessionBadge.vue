@@ -3,7 +3,7 @@
         class="rounded shadow-sm p-2 select-none cursor-pointer"
         :class="[isActive ? 'bg-green-300' : 'bg-white']"
     >
-        <div class="text-xs my-2 w-fit ml-auto mr-2 text-gray-600">{{ toDiffForHumans(session.createdAt) }}</div>
+        <div v-if="session.createdAt" class="text-xs my-2 w-fit ml-auto mr-2 text-gray-600">{{ toDiffForHumans(session.createdAt) }}</div>
         <div class="capitalize text-gray-600 font-bold tracking-wide px-2">
             {{ session.name }}
         </div>
@@ -17,6 +17,7 @@
                 class="ml-2 text-xs underline text-gray-600 cursor-pointer hover:text-blue-600"
             >show actions</div>
             <div 
+                v-if="showDetails"
                 @click="() => showModal('details')"
                 class="ml-2 text-xs underline text-gray-600 cursor-pointer hover:text-blue-600"
             >show details</div>
@@ -39,7 +40,7 @@
         @on-update="(data) => {
             if (data) emits('onUpdate', data)
         }"
-        v-if="session"
+        v-if="session && hasActions"
     />
     <MiniModal
         :show="['actions', 'delete'].includes(modalData.type) && modalData.show"
@@ -106,6 +107,12 @@ const props = defineProps({
     isActive: {
         default: false
     },
+    hasActions: {
+        default: true
+    },
+    showDetails: {
+        default: true
+    },
     listen: {
         default: true
     },
@@ -148,7 +155,7 @@ const computedAbout = computed(() => {
     return props.session?.about?.length > 100 ? props.session?.about?.slice(0, 100) + '...' : props.session?.about
 })
 const computedCanPerformActions = computed(() => {
-    return props.session?.userId == usePage().props.auth.user?.id
+    return props.hasActions && props.session?.userId == usePage().props.auth.user?.id
 })
 
 async function deleteSession() {

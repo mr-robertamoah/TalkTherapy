@@ -55,6 +55,19 @@ class CounsellorController extends Controller
             throw new Exception($message);
         }
     }
+    
+    public function getCounsellors(Request $request)
+    {
+        try {
+            $counsellors = CounsellorService::new()->getCounsellors($request->user(), $request->name);        
+
+            return CounsellorMiniResource::collection($counsellors);
+        } catch (Throwable $th) {
+            $message = $th->getCode() == 500 ? "Something unfortunate happened. Please try again shortly." : $th->getMessage();
+            ds($th);
+            throw new Exception($message);
+        }
+    }
 
     public function sendVerificationEmail(Request $request)
     {
@@ -173,7 +186,7 @@ class CounsellorController extends Controller
         }
     }
     
-    public function getCounsellors(Request $request)
+    public function getRequestCounsellors(Request $request)
     {
         return AssistanceRequestCounsellorResource::collection(
             CounsellorService::new()->getCounsellors($request->user(), $request->name)

@@ -17,6 +17,9 @@ class RespondToRequestAction extends Action
 
         if ($requestResponseDTO->request->type == RequestTypeEnum::therapy->value)
             $request = RespondToTherapyAssistanceRequestAction::new()->execute($requestResponseDTO);
+
+        if ($requestResponseDTO->request->type == RequestTypeEnum::guardianship->value)
+            $request = RespondToGuardianshipRequestAction::new()->execute($requestResponseDTO);
         
         // TODO respond to other requests
         

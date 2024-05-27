@@ -159,7 +159,7 @@ async function getTestimonial() {
 }
 
 async function deleteTestimonial() {
-    if (!testimonial.value?.id)
+    if (!testimonial.value?.id) return
     loading.value = true    
 
     await axios.delete(route(`api.testimonials.delete`, { testimonialId: testimonial.value.id }))
