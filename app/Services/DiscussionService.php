@@ -11,17 +11,26 @@ use App\Actions\Discussion\EnsureCanUpdateDiscussionAction;
 use App\Actions\Discussion\EnsureCanUpdateDiscussionStatusAction;
 use App\Actions\Discussion\EnsureDiscussionDataIsValidAction;
 use App\Actions\Discussion\EnsureDiscussionExistsAction;
+use App\Actions\Discussion\EnsureDoesNotHaveDiscussionRequestAction;
+use App\Actions\Discussion\EnsureNotAlreadyPartOfDiscussionAction;
 use App\Actions\Discussion\UpdateDiscussionAction;
 use App\Actions\EnsureAddedbyIsValidAction;
 use App\Actions\Star\CreateStarAction;
 use App\Actions\Therapy\EnsureIsCounsellorAction;
+use App\Actions\Discussion\CreateDiscussionRequestAction;
+use App\Actions\Discussion\EnsureCanRemoveCounsellorFromDiscussionAction;
+use App\Actions\Discussion\RemoveCounsellorFromDiscussionAction;
+use App\Actions\User\EnsureRequestDataIsValidAction;
+use App\Actions\User\EnsureUserExistsAction;
 use App\DTOs\CreateDiscussionDTO;
+use App\DTOs\CreateRequestDTO;
 use App\DTOs\CreateStarDTO;
 use App\DTOs\GetDiscussionsDTO;
 use App\Enums\DiscussionStatusEnum;
 use App\Enums\PaginationEnum;
 use App\Enums\StarTypeEnum;
 use App\Events\DiscussionUpdatedEvent;
+use App\Http\Resources\CounsellorMiniResource;
 use App\Http\Resources\DiscussionMiniResource;
 use App\Models\Counsellor;
 use App\Models\Discussion;
@@ -32,6 +41,28 @@ use Illuminate\Support\Facades\Notification;
 
 class DiscussionService extends Service
 {
+    public function removeCounsellor(GetDiscussionsDTO $getDiscussionsDTO)
+    {
+        EnsureUserExistsAction::new()->execute($getDiscussionsDTO->user);
+
+        EnsureDiscussionExistsAction::new()->execute($getDiscussionsDTO);
+
+        EnsureCanRemoveCounsellorFromDiscussionAction::new()->execute($getDiscussionsDTO);
+        
+        RemoveCounsellorFromDiscussionAction::new()->execute($getDiscussionsDTO);
+    }
+
+    public function sendCounsellorRequest(CreateRequestDTO $createRequestDTO)
+    {
+        EnsureRequestDataIsValidAction::new()->execute($createRequestDTO);
+        
+        EnsureNotAlreadyPartOfDiscussionAction::new()->execute($createRequestDTO);
+        
+        EnsureDoesNotHaveDiscussionRequestAction::new()->execute($createRequestDTO);
+        
+        return CreateDiscussionRequestAction::new()->execute($createRequestDTO);
+    }
+
     public function createDiscussion(CreateDiscussionDTO $createDiscussionDTO) : Discussion
     {
         EnsureIsCounsellorAction::new()->execute($createDiscussionDTO);
@@ -205,6 +236,6 @@ class DiscussionService extends Service
         if ($getDiscussionsDTO->name)
             $query->whereName($getDiscussionsDTO->name);
 
-        return DiscussionMiniResource::collection($query->paginate(PaginationEnum::pagination->value));
+        return CounsellorMiniResource::collection($query->paginate(PaginationEnum::pagination->value));
     }
 }

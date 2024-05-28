@@ -2,7 +2,7 @@
 import MiniTherapyComponent from '@/Components/MiniTherapyComponent.vue';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { Head, usePage } from '@inertiajs/vue3'
-import { onBeforeMount, ref } from 'vue';
+import { onBeforeMount, provide, ref, watch } from 'vue';
 
 
 const props = defineProps({
@@ -11,6 +11,8 @@ const props = defineProps({
     }
 })
 
+const newTherapy = ref(null)
+const wardTherapies = ref({ data: [], page: 1 })
 const counsellorTherapies = ref({ data: [], page: 1 })
 const therapies = ref({ data: [], page: 1 })
 const getting = ref({
@@ -21,6 +23,17 @@ const getting = ref({
 onBeforeMount(() => {
     loadContent()
 })
+
+watch(() => newTherapy.value, () => {
+    if (newTherapy.value)
+        therapies.value = [newTherapy.value, ...therapies.value]
+})
+
+provide('onCreatedNewTherapy', { newTherapy, updateNewTherapy })
+
+function updateNewTherapy(value) {
+    newTherapy.value = value
+}
 
 async function getCounsellorTherapies() {
     if (!counsellorTherapies.value.page || !usePage().props.auth.user?.counsellor) return
@@ -38,6 +51,31 @@ async function getCounsellorTherapies() {
             ]
 
             updatePage(res, counsellorTherapies)
+        })
+        .catch((err) => {
+            console.log(err)
+        })
+        .finally(() => {
+            clearGetting()
+        })
+}
+
+async function getWardTherapies() {
+    if (!wardTherapies.value.page || !usePage().props.auth.user?.isGuardian) return
+
+    setGetting('ward')
+    await axios.get(`${route('api.therapies.ward')}?page=${wardTherapies.value.page}`)
+        .then((res) => {
+            console.log(res)
+            if (wardTherapies.value.page == 1)
+                wardTherapies.value.data = []
+            
+            wardTherapies.value.data = [
+                ...wardTherapies.value.data,
+                ...res.data.data,
+            ]
+
+            updatePage(res, wardTherapies)
         })
         .catch((err) => {
             console.log(err)
@@ -73,10 +111,12 @@ async function getTherapies() {
 }
 
 function loadContent() {
+    wardTherapies.value.page = 1
     counsellorTherapies.value.page = 1
     therapies.value.page = 1
 
     getCounsellorTherapies()
+    getWardTherapies()
     getTherapies()
 }
 
@@ -112,6 +152,7 @@ function clearGetting() {
                                 v-for="therapy in counsellorTherapies.data"
                                 :key="therapy.id"
                                 :therapy="therapy"
+                                :show-go-to="true"
                                 class="w-[250px] shrink-0"
                             />
 
@@ -123,6 +164,31 @@ function clearGetting() {
                             >...</div>
                         </template>
                         <div v-else class="text-center text-sm w-full my-4 text-gray-600">you have no therapies as a counsellor</div>
+                    </div>
+                </div>
+            </div>
+                    
+            <div class="max-w-7xl mx-auto sm:px-6 lg:px-8" v-if="$page.props.auth.user?.isGuardian">
+                <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
+                    <div class="p-6 text-gray-900">Ward Therapies</div>
+                    <div v-if="getting.show" class="text-center text-sm w-full my-4 text-green-600 bg-green-200">getting user therapies</div>
+                    <div class="m-2 p-2 overflow-hidden overflow-x-auto space-x-5 flex justify-start items-center">
+                        <template v-if="wardTherapies.data?.length">
+                            <MiniTherapyComponent
+                                v-for="therapy in wardTherapies.data"
+                                :key="therapy.id"
+                                :therapy="therapy"
+                                class="w-[250px] shrink-0"
+                            />
+
+                            <div
+                                title="get more therapies"
+                                @click="getWardTherapies"
+                                v-if="wardTherapies.page"
+                                class="cursor-pointer p-2 text-gray-600 font-bold"
+                            >...</div>
+                        </template>
+                        <div v-else class="text-center text-sm w-full my-4 text-gray-600">you have no therapies from your wards</div>
                     </div>
                 </div>
             </div>

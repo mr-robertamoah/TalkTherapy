@@ -7,6 +7,7 @@ use App\Actions\User\AlertGuardianAction;
 use App\DTOs\CreateLinkDTO;
 use App\DTOs\GuardianAlertDTO;
 use App\Enums\RequestStatusEnum;
+use App\Exceptions\LinkException;
 use App\Models\Request;
 use App\Notifications\TherapyAssistanceLinkNotification;
 use App\Notifications\TherapyAssistanceRequestAcceptedGuardianNotification;
@@ -16,6 +17,9 @@ class PerformTherapyCounsellorLinkAction extends Action
 {
     public function execute(CreateLinkDTO $createLinkDTO)
     {
+        if ($createLinkDTO->link->for->counsellor)
+            throw new LinkException("Sorry, link cannot be used because therapy already has a counsellor", 422);
+
         $createLinkDTO->link->for->update([
             'counsellor_id' => $createLinkDTO->user->counsellor->id
         ]);

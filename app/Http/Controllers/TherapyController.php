@@ -48,6 +48,17 @@ class TherapyController extends Controller
         }
     }
 
+    public function getWardTherapies(Request $request)
+    {
+        try {
+            $therapies = TherapyService::new()->getWardTherapies($request->user());        
+
+            return TherapyMiniResource::collection($therapies);
+        } catch (Throwable $th) {
+           $this->returnFailure($request, $th);
+        }
+    }
+
     public function getCounsellorTherapies(Request $request)
     {
         try {

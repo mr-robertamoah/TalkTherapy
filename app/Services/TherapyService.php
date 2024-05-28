@@ -196,12 +196,29 @@ class TherapyService extends Service
         $query = Therapy::query();
         
         $query->where('counsellor_id', $user->counsellor->id);
+
         $query->orWhere(function ($query) use ($user) {
             $query->whereHas('discussions', function ($query) use ($user) {
                 $query->whereHas('counsellors', function ($query) use ($user) {
                     $query->where('counsellor_id', $user->counsellor->id);
                 });
             });
+        });
+
+        $query->orWhere(function ($query) use ($user) {
+            $query->whereHas('discussions', function ($query) use ($user) {
+                $query->whereHas('requests', function ($query) use ($user) {
+                    $query
+                        ->wherePending()
+                        ->whereTo($user->counsellor);
+                });
+            });
+        });
+        
+        $query->orWhereHas('requests', function ($query) use ($user) {
+            $query
+                ->wherePending()
+                ->whereTo($user->counsellor);
         });
 
         $query->latest();
@@ -217,6 +234,23 @@ class TherapyService extends Service
         
         $query->where('addedby_id', $user->id);
         $query->where('addedby_type', User::class);
+
+        $query->latest();
+
+        return $query->paginate(PaginationEnum::preferencesPagination->value);
+    }
+
+    public function getWardTherapies(?User $user)
+    {
+        if (!$user) return [];
+
+        $query = Therapy::query();
+        
+        $query->whereHasMorph('addedby', [User::class], function ($query) use ($user) {
+            $query->whereHas('guardians', function($query) use ($user) {
+                $query->where('guardian_id', $user->id);
+            });
+        });
 
         $query->latest();
 

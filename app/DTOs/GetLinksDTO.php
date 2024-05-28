@@ -13,6 +13,7 @@ use MrRobertAmoah\DTO\BaseDTO;
 class GetLinksDTO extends BaseDTO
 {
     public ?User $user = null;
+    public User|Counsellor|null $addedby = null;
     public User|Counsellor|null $to = null;
     public User|Counsellor|Therapy|GroupTherapy|Discussion|null $for = null;
     public ?string $state = null;

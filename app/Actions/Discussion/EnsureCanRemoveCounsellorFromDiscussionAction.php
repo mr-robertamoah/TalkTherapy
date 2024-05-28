@@ -7,13 +7,10 @@ use App\DTOs\CreateDiscussionDTO;
 use App\DTOs\GetDiscussionsDTO;
 use App\Exceptions\DiscussionException;
 
-class EnsureCanUpdateDiscussionAction extends Action
+class EnsureCanRemoveCounsellorFromDiscussionAction extends Action
 {
     public function execute(CreateDiscussionDTO|GetDiscussionsDTO $createDiscussionDTO)
     {
-        if ($createDiscussionDTO->discussion->isNotUpdateable())
-            throw new DiscussionException("'{$createDiscussionDTO->discussion->name}' discussion cannot be updated because it is either in session or has ended.", 422);
-
         if (
             $createDiscussionDTO->user->isAdmin() ||
             (
@@ -22,6 +19,6 @@ class EnsureCanUpdateDiscussionAction extends Action
             )
         ) return;
 
-        throw new DiscussionException("You are not allowed to update discussion with name: {$createDiscussionDTO->discussion->name}.", 422);
+        throw new DiscussionException("You are not allowed to remove a counsellor from the discussion with name: {$createDiscussionDTO->discussion->name}.", 422);
     }
 }

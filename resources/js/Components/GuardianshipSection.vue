@@ -42,7 +42,7 @@
                 </div>
 
                 <div v-else class="text-sm text-gray-600 mt-4 w-[90%] sm:w-[80%] mx-auto">
-                    You have no wards at this time. If you believe an account holder can be your guardian, click the button below to either send a request to that user or create a guardianship link.
+                    You have no guardians at this time. If you believe an account holder can be your guardian, click the button below to either send a request to that user or create a guardianship link.
                 </div>
             </div>
 

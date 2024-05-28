@@ -24,6 +24,7 @@ const RequestTypes = {
     counsellor: 'COUNSELLOR_VERIFICATION_REQUEST',
     administrator: 'ADMINISTRATION_REQUEST',
     therapy: 'THERAPY_ASSISTANCE_REQUEST',
+    discussion: 'THERAPY_DISCUSSION_REQUEST',
     groupTherapy: 'GROUP_THERAPY_ASSISTANCE_REQUEST',
 }
 const RequestStatuses = {
@@ -43,7 +44,8 @@ watchEffect(() => {
 })
 
 const computedTypeMessage = computed(() => {
-    return { // updated sentences based on status of request
+    return {
+        [RequestTypes.discussion]: computedIsFrom.value ? `You ${props.request.status == RequestStatuses.pending ? 'have ' : ''}sent a request inviting counsellor for a discussion in a ${props.request.for.forType}.` : `You ${props.request.status == RequestStatuses.pending ? 'have ' : ''}received a request to take part in a discussion for a ${props.request.for.forType}.`,
         [RequestTypes.guardianship]: computedIsFrom.value ? `You ${props.request.status == RequestStatuses.pending ? 'have ' : ''}sent a guardianship request.` : `You ${props.request.status == RequestStatuses.pending ? 'have ' : ''}received a guardianship request.`,
         [RequestTypes.counsellor]: computedIsFrom.value ? `You ${props.request.status == RequestStatuses.pending ? 'have ' : ''}sent a counsellor verification request.` : `You ${props.request.status == RequestStatuses.pending ? 'have ' : ''}received a counsellor verification request.`,
         [RequestTypes.administrator]: computedIsFrom.value ? '' : 'You accepted the request.',

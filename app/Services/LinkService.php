@@ -130,9 +130,18 @@ class LinkService extends Service
 
     public function getLinks(GetLinksDTO $getLinksDTO)
     {
+        if (
+            $getLinksDTO->addedby &&
+            !$getLinksDTO->addedby->is($getLinksDTO->user) &&
+            !$getLinksDTO->addedby->is($getLinksDTO->user?->counsellor)
+        ) return [];
+    
         $query = Link::query();
 
-        $query->whereAddedby($getLinksDTO->user);
+        if ($getLinksDTO->addedby)
+            $query->whereAddedby($getLinksDTO->addedby);
+        else if ($getLinksDTO->user)
+                $query->whereAddedby($getLinksDTO->user);
 
         if ($getLinksDTO->for)
             $query->whereFor($getLinksDTO->for);

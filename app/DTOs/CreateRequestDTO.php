@@ -3,6 +3,7 @@
 namespace App\DTOs;
 
 use App\Models\Counsellor;
+use App\Models\Discussion;
 use App\Models\GroupTherapy;
 use App\Models\Therapy;
 use App\Models\User;
@@ -13,7 +14,7 @@ class CreateRequestDTO extends BaseDTO
 {
     public User|Counsellor|null $from = null;
     public User|Counsellor|null $to = null;
-    public User|Counsellor|Therapy|GroupTherapy|null $for = null;
+    public User|Counsellor|Discussion|Therapy|GroupTherapy|null $for = null;
     public ?array $data = [];
     public ?string $type = null;
     

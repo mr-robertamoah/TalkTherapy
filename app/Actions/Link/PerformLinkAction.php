@@ -12,6 +12,9 @@ class PerformLinkAction extends Action
     {
         if ($createLinkDTO->link->type == LinkTypeEnum::guardianship->value)
             return PerformGuardianshipLinkAction::new()->execute($createLinkDTO);
+
+        if ($createLinkDTO->link->type == LinkTypeEnum::discussion->value)
+            return PerformDiscussionRequestLinkAction::new()->execute($createLinkDTO);
         
         if ($createLinkDTO->link->type == LinkTypeEnum::therapyCounsellor->value)
             return PerformTherapyCounsellorLinkAction::new()->execute($createLinkDTO);

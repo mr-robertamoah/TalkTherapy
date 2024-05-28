@@ -210,6 +210,11 @@ class Therapy extends Model
             });
     }
 
+    public function requests()
+    {
+        return $this->morphMany(Request::class, 'for');
+    }
+
     public function hasAssistance()
     {
         return $this->counsellor()->exists();

@@ -3,6 +3,7 @@
 namespace App\Http\Resources;
 
 use App\Enums\RequestTypeEnum;
+use App\Models\Discussion;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -34,6 +35,9 @@ class RequestResource extends JsonResource
 
         if ($this->for_type == User::class)
             return new UserMiniResource($this->for);
+
+        if ($this->for_type == Discussion::class)
+            return new DiscussionMiniResource($this->for);
 
         return new CounsellorMiniResource($this->for);
     }

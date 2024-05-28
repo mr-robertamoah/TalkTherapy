@@ -25,6 +25,7 @@ class UserResource extends JsonResource
             'emailVerifiedAt' => $this->email_verified_at,
             'gender' => $this->gender,
             'isUser' => true,
+            'isGuardian' => !!$this->wards()->count(),
             'country' => $this->country,
             'dob' => $this->dob,
             'isAdult' => $this->age >= 18,

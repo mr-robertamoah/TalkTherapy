@@ -288,10 +288,13 @@ function closeModal() {
 
                         <div class="flex justify-end mt-4">
                             <PrimaryButton
-                                @click="createGuardianLink"
+                                @click="() => {
+                                    selectedUser = null
+                                    createGuardianLink()
+                                }"
                                 class="ms-4" 
-                                :class="{ 'opacity-25': getting.show && getting.type == 'create links'}" 
-                                :disabled="getting.show && getting.type == 'create links'"
+                                :class="{ 'opacity-25': getting.show && getting.type == 'create link'}" 
+                                :disabled="getting.show && getting.type == 'create link'"
                             >
                                 get general link
                             </PrimaryButton>
@@ -323,7 +326,7 @@ function closeModal() {
                                                 @click="() => selectedUser = user"
                                             >
                                                 <div v-if="selectedUser && selectedUser.id == user.id">
-                                                    <div v-if="userStatus">{{ userStatus }}</div>
+                                                    <div v-if="userStatus" class="text-green-600 text-xs text-center">{{ userStatus }}</div>
                                                     <div class="rounded p-1 text-sm text-gray-600 w-fit">
                                                         <div
                                                             @click="createGuardianLink"

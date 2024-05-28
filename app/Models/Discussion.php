@@ -38,9 +38,14 @@ class Discussion extends Model
         return $this->morphMany(Message::class, 'for');
     }
 
-    public function isNotParticipant(User $user)
+    public function requests()
     {
-        return !$this->isParticipant($user);
+        return $this->morphMany(Request::class, 'for');
+    }
+
+    public function isNotParticipant(Counsellor $counsellor)
+    {
+        return !$this->isParticipant($counsellor);
     }
 
     public function counsellors()
@@ -49,9 +54,12 @@ class Discussion extends Model
             ->withTimestamps();
     }
 
-    public function isParticipant(User $user)
+    public function isParticipant(Counsellor $counsellor)
     {
-        return false; // TODO
+        return $this->addedby->is($counsellor) ||
+            $this->counsellors()
+                ->where('counsellor_id', $counsellor->id)
+                ->exists();
     }
 
     public function getOtherUsers(User $user)

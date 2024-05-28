@@ -132,7 +132,7 @@ class LinkController extends Controller
         try {
             DB::beginTransaction();
 
-            $links = LinkService::new()->deleteMultipleLinks(
+            LinkService::new()->deleteMultipleLinks(
                 CreateLinkDTO::new()->fromArray([
                     'user' => $request->user(),
                     'linksData' => $request->linksData,
@@ -140,7 +140,7 @@ class LinkController extends Controller
             );
 
             DB::commit();
-            return response()->json(['links' => LinkResource::collection($links)]);
+            return response()->json(['links' => $request->linksData]);
         } catch (Throwable $th) {
             return $this->returnFailure($request, $th);
         }
@@ -154,6 +154,7 @@ class LinkController extends Controller
                     'user' => $request->user(),
                     'type' => $request->type,
                     'state' => $request->state,
+                    'addedby' => GetModelWithModelNameAndIdAction::new()->execute($request->addedbyType, $request->addedbyId),
                     'to' => GetModelWithModelNameAndIdAction::new()->execute($request->toType, $request->toId),
                     'for' => GetModelWithModelNameAndIdAction::new()->execute($request->forType, $request->forId),
                 ])

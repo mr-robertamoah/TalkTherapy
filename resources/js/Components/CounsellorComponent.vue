@@ -58,6 +58,8 @@ function goToPage() {
                     <div>{{ counsellor.username ? `(${counsellor.username})` : '' }}</div>
                 </div>
             </div>
+            <slot></slot>
+            
             <div class="mt-3 flex justify-end items-center" v-if="hasView">
                 <div
                     @click="() => view = true"

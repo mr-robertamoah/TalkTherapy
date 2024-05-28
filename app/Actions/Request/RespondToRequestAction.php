@@ -21,6 +21,9 @@ class RespondToRequestAction extends Action
         if ($requestResponseDTO->request->type == RequestTypeEnum::guardianship->value)
             $request = RespondToGuardianshipRequestAction::new()->execute($requestResponseDTO);
         
+        if ($requestResponseDTO->request->type == RequestTypeEnum::discussion->value)
+            $request = RespondToDiscussionRequestAction::new()->execute($requestResponseDTO);
+        
         // TODO respond to other requests
         
         return $request->refresh();

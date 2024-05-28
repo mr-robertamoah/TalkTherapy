@@ -10,6 +10,9 @@ const showDetails = ref(false)
 const props = defineProps({
     therapy: {
         default: null,
+    },
+    showGoTo: {
+        default: false,
     }
 })
 
@@ -47,7 +50,7 @@ const computedAnonymity = computed(() => {
     return `${startOfMessage} ${ props.therapy.anonymous ? '' : 'not ' }anonymous`
 })
 const computedCanViewPage = computed(() => {
-    return computedIsParticipant.value || props.therapy.public || usePage().props.auth.user?.isAdmin
+    return props.showGoTo || computedIsParticipant.value || props.therapy.public || usePage().props.auth.user?.isAdmin
 })
 
 </script>

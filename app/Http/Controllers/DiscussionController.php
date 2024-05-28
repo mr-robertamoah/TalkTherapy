@@ -4,8 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Actions\GetModelWithModelNameAndIdAction;
 use App\DTOs\CreateDiscussionDTO;
+use App\DTOs\CreateRequestDTO;
 use App\DTOs\GetDiscussionsDTO;
 use App\Http\Requests\CreateDiscussionRequest;
+use App\Http\Resources\CounsellorResource;
 use App\Http\Resources\DiscussionResource;
 use App\Models\Counsellor;
 use App\Models\Discussion;
@@ -81,6 +83,40 @@ class DiscussionController extends Controller
             return $this->returnSuccess($request, $discussion);
         } catch (Throwable $th) {
             
+            return $this->returnFailure($request, $th);
+        }
+    }
+
+    public function sendCounsellorRequest(Request $request)
+    {
+        try {
+            return DiscussionService::new()->sendCounsellorRequest(
+                CreateRequestDTO::new()->fromArray([
+                    'from' => $request->user()?->counsellor,
+                    'for' => Discussion::find($request->discussionId),
+                    'to' => Counsellor::find($request->counsellorId),
+                ])
+            );
+        } catch (Throwable $th) {
+            return $this->returnFailure($request, $th);
+        }
+    }
+
+    public function removeCounsellor(Request $request)
+    {
+        try {
+            DiscussionService::new()->removeCounsellor(
+                GetDiscussionsDTO::new()->fromArray([
+                    'user' => $request->user(),
+                    'discussion' => Discussion::find($request->discussionId),
+                    'counsellor' => $counsellor = Counsellor::find($request->counsellorId),
+                ])
+            );
+
+            return response()->json([
+                'counsellor' => new CounsellorResource($counsellor)
+            ]);
+        } catch (Throwable $th) {
             return $this->returnFailure($request, $th);
         }
     }

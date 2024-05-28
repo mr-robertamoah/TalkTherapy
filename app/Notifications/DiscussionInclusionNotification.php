@@ -3,6 +3,8 @@
 namespace App\Notifications;
 
 use App\Http\Resources\UserMiniResource;
+use App\Models\Counsellor;
+use App\Models\Discussion;
 use App\Models\User;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -10,14 +12,14 @@ use Illuminate\Notifications\Messages\BroadcastMessage;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
-class GuardianshipEstablishedNotification extends Notification implements ShouldQueue
+class DiscussionInclusionNotification extends Notification implements ShouldQueue
 {
     use Queueable;
 
     /**
      * Create a new notification instance.
      */
-    public function __construct(private User $user)
+    public function __construct(private Counsellor $counsellor, private Discussion $discussion)
     {
         $this->afterCommit();
     }
@@ -29,7 +31,7 @@ class GuardianshipEstablishedNotification extends Notification implements Should
      */
     public function via(object $notifiable): array
     {
-        $via = ['database', 'broadcast'];
+        $via = ['database'];
 
         if ($notifiable->email_verified_at)
             $via[] = 'mail';
@@ -42,13 +44,15 @@ class GuardianshipEstablishedNotification extends Notification implements Should
      */
     public function toMail(object $notifiable): MailMessage
     {
+        [$type, $url] = $this->discussion->getNotificationActionData();
+
         return (new MailMessage)
             ->success()
-            ->subject("Guardianship Established")
-            ->greeting("Hello {$notifiable->name}!")
-            ->line("User with name: '{$this->user->name}' and username: '{$this->user->username}', has accepted your guardianship request and hence is now your guardian on TalkTherapy app.")
-            ->line("Click on the link below to go to your profile page of TalkTherapy, if you are not already on the app.")
-            ->action("Visit Profile", url('profile'))
+            ->subject("Discussion Request")
+            ->greeting("Hello {$notifiable->getName()}!")
+            ->line("Counsellor with name: '{$this->counsellor->getName()}' has accepted your request to take part in the discussion with name: '{$this->discussion->name}' on TalkTherapy app.")
+            ->line("Click on the link below to go the {$type}.")
+            ->action("Visit {$type} Page", $url)
             ->line("Thank you for choosing to 'TalkTherapy'.");
     }
 
@@ -60,19 +64,7 @@ class GuardianshipEstablishedNotification extends Notification implements Should
     public function toArray(object $notifiable): array
     {
         return [
-            'userId' => $this->user->id,
+            'counsellor_id' => $this->counsellor->id,
         ];
-    }
-    
-    public function toBroadcast(object $notifiable): BroadcastMessage
-    {
-        return (new BroadcastMessage([
-            'user' => new UserMiniResource($this->user)
-        ]));
-    }
-
-    public function broadcastType(): string
-    {
-        return 'user.guardianship';
     }
 }

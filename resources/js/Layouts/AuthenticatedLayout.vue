@@ -93,6 +93,9 @@ const showRequestLink = computed(() => {
 const showAdministratorLink = computed(() => {
     return usePage().props.auth.user?.isAdmin && route().current() != 'administrator'
 })
+const showTherapiesLink = computed(() => {
+    return usePage().props.auth.user && route().current() != 'therapies'
+})
 
 function goToTherapy(data) {
     router.get(route(`therapies.get`, { therapyId: data.therapyId}))
@@ -156,11 +159,18 @@ function goToTherapy(data) {
                                         </template>
 
                                         <template #content>
-                                            <DropdownLink v-if="route().current() !== 'profile.show'" :href="route('profile.show')"> User Profile </DropdownLink>
+                                            <DropdownLink 
+                                                v-if="route().current() !== 'profile.show'" 
+                                                :href="route('profile.show')"
+                                            > User Profile </DropdownLink>
                                             <DropdownLink
                                                 v-if="showCounsellorLink"
                                                 :href="route('counsellor.show', $page.props.auth.user?.counsellor.id)"
                                             > Counsellor Profile </DropdownLink>
+                                            <DropdownLink
+                                                v-if="showTherapiesLink"
+                                                :href="route('therapies')"
+                                            > Therapies </DropdownLink>
                                             <div
                                                 v-if="showRequestLink"
                                                 @click="() => {
@@ -262,11 +272,18 @@ function goToTherapy(data) {
                         </div>
 
                         <div class="mt-3 space-y-1">
-                            <ResponsiveNavLink v-if="route().current() !== 'profile.show'" :href="route('profile.show')"> User Profile </ResponsiveNavLink>
+                            <ResponsiveNavLink 
+                                v-if="route().current() !== 'profile.show'" 
+                                :href="route('profile.show')"
+                            > User Profile </ResponsiveNavLink>
                             <ResponsiveNavLink
                                 v-if="showCounsellorLink"
                                 :href="route('counsellor.show', $page.props.auth.user?.counsellor.id)"
                             > Counsellor Profile </ResponsiveNavLink>
+                            <ResponsiveNavLink
+                                v-if="showTherapiesLink"
+                                :href="route('therapies')"
+                            > Therapies </ResponsiveNavLink>
                             <div
                                 v-if="showRequestLink"
                                 @click="() => {

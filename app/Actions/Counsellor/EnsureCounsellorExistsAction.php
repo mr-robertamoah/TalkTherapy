@@ -10,10 +10,13 @@ use App\Exceptions\CounsellorNotFoundException;
 
 class EnsureCounsellorExistsAction extends Action
 {
-    public function execute(UpdateCounsellorDTO|DeleteCounsellorDTO|VerifyCounsellorDTO $dto)
+    public function execute(
+        UpdateCounsellorDTO|DeleteCounsellorDTO|VerifyCounsellorDTO $dto,
+        ?string $errMessage = null
+    )
     {
         if ($dto->counsellor) return;
 
-        throw new CounsellorNotFoundException('No counsellor was found.', 422);
+        throw new CounsellorNotFoundException($errMessage ?: 'No counsellor was found.', 422);
     }
 }
