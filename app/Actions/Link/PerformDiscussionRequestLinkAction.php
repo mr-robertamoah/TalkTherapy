@@ -20,6 +20,13 @@ class PerformDiscussionRequestLinkAction extends Action
             "You do not have a counsellor account hence you are not authorized to use this link. Create a counsellor account first."
         );
 
+        if (
+            $createLinkDTO->link->for
+                ->counsellors()
+                ->where('counsellor_id', $createLinkDTO->user->counsellor->id)
+                ->exists()
+        ) throw new LinkException("You cannot use link because you are already part of this discussion.". 422);
+
         $createLinkDTO->link->for->counsellors()->attach($createLinkDTO->user->counsellor->id);
         $createLinkDTO->link->for->addedby->notify(
             new DiscussionInclusionNotification($createLinkDTO->user->counsellor, $createLinkDTO->link->for)
