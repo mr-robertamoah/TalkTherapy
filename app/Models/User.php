@@ -318,6 +318,14 @@ class User extends Authenticatable implements MustVerifyEmailContract
             ->whereHas('administrator');
     }
 
+    public function scopeWhereWard($query, User $user)
+    {
+        return $query
+            ->whereHas('wards', function ($query) use ($user) {
+                $query->where('ward_id', $user->id);
+            });
+    }
+
     public function sendEmailVerificationNotification()
     {
         $this->notify(new VerifyEmailNotification);

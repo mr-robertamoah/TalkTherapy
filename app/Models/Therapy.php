@@ -273,8 +273,11 @@ class Therapy extends Model
         if ($this->counsellor)
             $users[] = $this->counsellor->user;
 
-        if (!$this->addedby->isAdult() && $this->addedby->guardians()->count())
-            $users = array_merge($users, User::query()->whereWard($this->addedby)->get()->toArray());
+        if (
+            $this->addedby_type == User::class &&
+            !$this->addedby->isAdult() && 
+            $this->addedby->guardians()->count()
+        ) $users = array_merge($users, User::query()->whereWard($this->addedby)->get()->toArray());
 
         return $users;
     }

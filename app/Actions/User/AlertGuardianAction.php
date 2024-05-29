@@ -4,6 +4,7 @@ namespace App\Actions\User;
 
 use App\Actions\Action;
 use App\DTOs\GuardianAlertDTO;
+use App\Models\User;
 use Illuminate\Support\Facades\Notification;
 
 class AlertGuardianAction extends Action
@@ -12,8 +13,10 @@ class AlertGuardianAction extends Action
     {
         if ($guardianAlertDTO->user->isAdult()) return;
         
-        $guardians = $guardianAlertDTO->user->guardians;
-
+        $guardians = User::query()
+            ->whereWard($guardianAlertDTO->user)
+            ->get();
+        ds($guardians);
         if (!$guardians?->count()) return;
 
         Notification::send($guardians, $guardianAlertDTO->notification);

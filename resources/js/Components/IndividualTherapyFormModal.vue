@@ -256,7 +256,7 @@ function closeModal() {
                 >Create individual therapy</div>
                 <div v-if="computedMessage" class="mt-3 text-sm text-gray-600 text-justify">{{ computedMessage }}</div>
                 <div 
-                    v-if="!$page.props.auth.user?.isAdult || !!$page.props.auth.user?.dob"
+                    v-if="(!$page.props.auth.user?.isAdult || !$page.props.auth.user?.dob) && !$page.props.auth.user?.isWard"
                     class="mt-3 text-sm text-gray-600 text-justify"
                 >You need to have at least one guardian before you can create a therapy since you are not an adult or have not set your date of birth.</div>
                 <hr>

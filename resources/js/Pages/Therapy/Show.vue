@@ -26,7 +26,7 @@ onBeforeMount(() => {
 
 watch(() => newTherapy.value, () => {
     if (newTherapy.value)
-        therapies.value = [newTherapy.value, ...therapies.value]
+        therapies.value.data = [newTherapy.value, ...therapies.value.data]
 })
 
 provide('onCreatedNewTherapy', { newTherapy, updateNewTherapy })

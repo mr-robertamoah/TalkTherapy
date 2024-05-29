@@ -26,6 +26,7 @@ class UserResource extends JsonResource
             'gender' => $this->gender,
             'isUser' => true,
             'isGuardian' => !!$this->wards()->count(),
+            'isWard' => !!$this->guardians()->count(),
             'country' => $this->country,
             'dob' => $this->dob,
             'isAdult' => $this->age >= 18,

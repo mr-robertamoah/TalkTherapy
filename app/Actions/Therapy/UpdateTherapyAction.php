@@ -41,10 +41,19 @@ class UpdateTherapyAction extends Action
 
         $this->data['payment_data'] = $createTherapyDTO->therapy->payment_data;
         
-        if ($this->data['paymentType'] == TherapyPaymentTypeEnum::paid->value) {
-            return $this->clearPaymentData();
+        if (
+            array_key_exists('payment_type', $this->data) &&
+            $this->data['payment_type'] == TherapyPaymentTypeEnum::free->value
+        ) {
+            $this->data['payment_data'] = null;
+            return;
         }
 
+        if (is_null($this->data['payment_data'])) {
+            $this->data['payment_data'] = [];
+            $this->clearPaymentData();
+        }
+        
         $this->setValueOnPaymentData('per', $createTherapyDTO);
         $this->setValueOnPaymentData('amount', $createTherapyDTO);
         $this->setValueOnPaymentData('currency', $createTherapyDTO);
@@ -56,8 +65,7 @@ class UpdateTherapyAction extends Action
         $dataKeys = ['per' => '', 'amount' => 0, 'inPersonAmount' => 0, 'currency' => '',];
 
         foreach ($dataKeys as $key => $value) {
-            if (array_key_exists($key, $this->data['payment_data']))
-                $this->data['payment_data'][$key] = $value;
+            $this->data['payment_data'][$key] = $value;
         }
     }
     
