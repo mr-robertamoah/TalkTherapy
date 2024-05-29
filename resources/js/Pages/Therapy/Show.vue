@@ -39,7 +39,7 @@ async function getCounsellorTherapies() {
     if (!counsellorTherapies.value.page || !usePage().props.auth.user?.counsellor) return
 
     setGetting('counsellor')
-    await axios.get(`${route('api.therapies.counsellor')}?page=${counsellorTherapies.value.page}`)
+    await axios.get(route('api.therapies.counsellor', {page: counsellorTherapies.value.page}))
         .then((res) => {
             console.log(res)
             if (counsellorTherapies.value.page == 1)
@@ -64,7 +64,7 @@ async function getWardTherapies() {
     if (!wardTherapies.value.page || !usePage().props.auth.user?.isGuardian) return
 
     setGetting('ward')
-    await axios.get(`${route('api.therapies.ward')}?page=${wardTherapies.value.page}`)
+    await axios.get(route('api.therapies.ward', {page: wardTherapies.value.page}))
         .then((res) => {
             console.log(res)
             if (wardTherapies.value.page == 1)
@@ -89,7 +89,7 @@ async function getTherapies() {
     if (!therapies.value.page) return
 
     setGetting('user')
-    await axios.get(`${route('api.therapies.user')}?page=${therapies.value.page}`)
+    await axios.get(route('api.therapies.user', {page: therapies.value.page}))
         .then((res) => {
             console.log(res)
             if (therapies.value.page == 1)

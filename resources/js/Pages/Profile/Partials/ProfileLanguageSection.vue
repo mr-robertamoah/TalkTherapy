@@ -55,7 +55,7 @@ async function getLanguages() {
     loading.value = true
 
     await axios
-    .get(`languages?name=${languagesSearch.value}&page=${languagesPage.value}`)
+    .get(route('languages.get', {name: languagesSearch.value, page: languagesPage.value}))
     .then((res) => {
         console.log(res)
         if (languagesPage.value > 1) {

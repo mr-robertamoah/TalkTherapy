@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Enums\SessionStatusEnum;
 use App\Events\SessionStartedEvent;
 use App\Models\Alert;
+use App\Models\Counsellor;
 use App\Models\GroupTherapy;
 use App\Models\Report;
 use App\Models\Session;
@@ -111,5 +112,14 @@ class AppService extends Service
             $session->status = SessionStatusEnum::failed->value;
             $session->save();
         });
+    }
+
+    public function getStats()
+    {
+        return ['stats' => [
+            'counsellors' => Counsellor::count(),
+            'users' => User::count(),
+            'therapies' => Therapy::count(),
+        ]];
     }
 }

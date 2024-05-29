@@ -115,7 +115,7 @@ async function getRandomCounsellors() {
     if (!randomCounsellors.value.page) return
 
     setGetting('counsellors')
-    await axios.get(`${route('api.counsellors.random')}?page=${randomCounsellors.value.page}`)
+    await axios.get(route('api.counsellors.random', {page: randomCounsellors.value.page}))
         .then((res) => {
             console.log(res)
             if (randomCounsellors.value.page == 1)
@@ -140,7 +140,7 @@ async function getPosts() {
     if (!posts.value.page) return
 
     setGetting('posts')
-    await axios.get(`${route('api.posts')}?page=${posts.value.page}`)
+    await axios.get(route('api.posts', {page: posts.value.page}))
         .then((res) => {
             console.log(res)
             if (posts.value.page == 1)
@@ -165,7 +165,7 @@ function getRandomTherapies() {
     if (!randomTherapies.value.page) return
 
     setGetting('therapies')
-    axios.get(`${route('api.therapies.random')}?page=${randomTherapies.value.page}`)
+    axios.get(route('api.therapies.random', {page: randomTherapies.value.page}))
         .then((res) => {
             console.log(res)
             if (randomTherapies.value.page == 1)

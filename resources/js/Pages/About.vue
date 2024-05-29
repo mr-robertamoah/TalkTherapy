@@ -2,7 +2,7 @@
 import FeatureComponent from '@/Components/FeatureComponent.vue';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { Head, usePage } from '@inertiajs/vue3';
-import { ref, watch } from 'vue';
+import { onBeforeMount, reactive, ref, watch } from 'vue';
 import WriteableText from '@/Components/WriteableText.vue';
 import StyledA from '@/Components/StyledA.vue';
 import Avatar from '@/Components/Avatar.vue';
@@ -27,8 +27,30 @@ watch(() => user?.id, () => {
         greetings.value += ` ${user.name}`
 })
 
+onBeforeMount(() => {
+    getStats()
+})
+
 const greetings = ref("Hello")
 const robertAvatar = `/storage/others/robertamoah.png`
+const stats = reactive({
+    counsellors: 0,
+    therapies: 0,
+    users: 0,
+})
+
+async function getStats() {
+    await axios.get(route('api.about.stats'))
+        .then((res) => {
+            stats.counsellors = res.data.stats.counsellors
+            stats.users = res.data.stats.users
+            stats.therapies = res.data.stats.therapies
+        })
+        .catch((err) => {
+            console.log(err)
+            
+        })
+}
 
 </script>
 
@@ -204,7 +226,9 @@ const robertAvatar = `/storage/others/robertamoah.png`
                         <div
                             class="text-lg font-bold w-fit bg-gradient-to-br from-blue-800 to-violet-500 bg-clip-text text-transparent capitalize mb-2 mx-auto">current</div>
                         <div class="text-sm text-gray-600 text-justify mb-2">These are the features that are currently available.</div>
-                        <div class="mt-4 space-x-3 flex justify-center items-center overflow-hidden overflow-x-auto p-2">
+                        <div
+                            :class="[features.current.length > 1 ? 'justify-start' : 'justify-center']"
+                            class="mt-4 space-x-3 flex items-center overflow-hidden overflow-x-auto p-2">
                             <FeatureComponent
                                 v-for="(feature, idx) in features.current"
                                 :key="idx"
@@ -219,7 +243,9 @@ const robertAvatar = `/storage/others/robertamoah.png`
                         <div
                             class="text-lg font-bold w-fit bg-gradient-to-br from-blue-800 to-violet-500 bg-clip-text text-transparent capitalize mb-2 mx-auto">next</div>
                         <div class="text-sm text-gray-600 text-justify mb-2">These are the features that are bein worked on.</div>
-                        <div class="mt-4 space-x-3 flex justify-center items-center overflow-hidden overflow-x-auto p-2">
+                        <div 
+                            :class="[features.next.length > 1 ? 'justify-start' : 'justify-center']"
+                            class="mt-4 space-x-3 flex items-center overflow-hidden overflow-x-auto p-2">
                             <FeatureComponent
                                 v-for="(feature, idx) in features.next"
                                 :key="idx"
@@ -234,7 +260,9 @@ const robertAvatar = `/storage/others/robertamoah.png`
                         <div
                             class="text-lg font-bold w-fit bg-gradient-to-br from-blue-800 to-violet-500 bg-clip-text text-transparent capitalize mb-2 mx-auto">future</div>
                         <div class="text-sm text-gray-600 text-justify mb-2">These are the features that are being considered for the future.</div>
-                        <div class="mt-4 space-x-3 flex justify-center items-center overflow-hidden overflow-x-auto p-2">
+                        <div
+                            :class="[features.future.length > 1 ? 'justify-start' : 'justify-center']"
+                            class="mt-4 space-x-3 flex items-center overflow-hidden overflow-x-auto p-2">
                             <FeatureComponent
                                 v-for="(feature, idx) in features.future"
                                 :key="idx"
@@ -242,6 +270,48 @@ const robertAvatar = `/storage/others/robertamoah.png`
                                 :type="'future'"
                                 class="w-[90%] shrink-0"
                             />
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 mt-4">
+                <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg min-h-[50vh] p-4">
+                    <div class="mt-4 ml-2 text-2xl font-bold w-fit bg-gradient-to-br from-blue-800 to-violet-500 bg-clip-text text-transparent uppercase">
+                        Statistics
+                    </div>
+
+                    <div class="mt-10 mb-5 sm:grid sm:grid-cols-2 sm:space-x-3 space-y-3 sm:space-y-0">
+                        <div class="w-full text-pretty text-center">
+                            <div class="text-lg uppercase text-center"><span class="bg-gradient-to-br from-blue-800 to-violet-500 bg-clip-text text-transparent font-bold">Users</span></div>
+                            <div class="w-full flex justify-center items-center">
+                                <div class="w-8 h-1 bg-gray-400 rounded mb-2"></div>
+                            </div>
+                            <div class="text-xl text-gray-600">{{ stats.users }}</div>
+                        </div>
+                    </div>
+
+                    <hr>
+
+                    <div class="mt-10 mb-5 sm:grid sm:grid-cols-2 sm:space-x-3 space-y-3 sm:space-y-0">
+                        <div class="w-full text-pretty text-center">
+                            <div class="text-lg uppercase text-center"><span class="bg-gradient-to-br from-blue-800 to-violet-500 bg-clip-text text-transparent font-bold">Counsellors</span></div>
+                            <div class="w-full flex justify-center items-center">
+                                <div class="w-20 h-1 bg-gray-400 rounded mb-2"></div>
+                            </div>
+                            <div class="text-xl text-gray-600">{{ stats.counsellors }}</div>
+                        </div>
+                    </div>
+
+                    <hr>
+
+                    <div class="mt-10 mb-5 sm:grid sm:grid-cols-2 sm:space-x-3 space-y-3 sm:space-y-0">
+                        <div class="w-full text-pretty text-center">
+                            <div class="text-lg uppercase text-center"><span class="bg-gradient-to-br from-blue-800 to-violet-500 bg-clip-text text-transparent font-bold">Therapies</span></div>
+                            <div class="w-full flex justify-center items-center">
+                                <div class="w-16 h-1 bg-gray-400 rounded mb-2"></div>
+                            </div>
+                            <div class="text-xl text-gray-600">{{ stats.therapies }}</div>
                         </div>
                     </div>
                 </div>

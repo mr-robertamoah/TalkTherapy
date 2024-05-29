@@ -55,7 +55,7 @@ async function getReligions() {
     loading.value = true
 
     await axios
-    .get(`religions?name=${religionsSearch.value}&page=${religionsPage.value}`)
+    .get(route('religions.get', {name: religionsSearch.value, page: religionsPage.value}))
     .then((res) => {
         console.log(res)
         if (religionsPage.value > 1) {

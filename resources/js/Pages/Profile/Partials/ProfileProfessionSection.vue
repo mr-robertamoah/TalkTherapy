@@ -55,7 +55,7 @@ async function getProfessions() {
     loading.value = true
 
     await axios
-    .get(`professions?name=${professionsSearch.value}&page=${professionsPage.value}`)
+    .get(route('professions.get', {name: professionsSearch.value, page: professionsPage.value}))
     .then((res) => {
         console.log(res)
         if (professionsPage.value > 1) {

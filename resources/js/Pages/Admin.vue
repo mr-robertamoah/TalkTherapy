@@ -146,7 +146,7 @@ function showHowTos() {
 async function getTestimonials() {
     loading.value = true
 
-    await axios.get(`${route('api.testimonials')}?page=${computedPage.value}`)
+    await axios.get(route('api.testimonials', {page: computedPage.value}))
         .then((res) => {
             console.log(res)
             if (computedPage.value > 1) {
@@ -174,7 +174,7 @@ async function getVerificationRequests() {
     if (!computedPage.value) return
 
     loading.value = true
-    await axios.get(`${route('admin.verification.requests')}?page=${computedPage.value}`)
+    await axios.get(route('admin.verification.requests', {page: computedPage.value}))
         .then((res) => {
             console.log(res)
             if (computedPage.value > 1) {
@@ -208,7 +208,7 @@ async function getCounsellors() {
     }
 
     loading.value = true
-    await axios.get(`${route('admin.counsellors')}?page=${computedPage.value}&filterType=${filterValue}`)
+    await axios.get(route('admin.counsellors', {page: computedPage.value, [filterType]: filterValue}))
         .then((res) => {
             console.log(res)
             if (computedPage.value > 1) {

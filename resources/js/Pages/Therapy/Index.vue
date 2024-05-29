@@ -446,7 +446,7 @@ async function waitForAlert() {
 
 async function getCounsellors() {
     setLoader('counsellors')
-    await axios.get(`/requests/counsellors?name=${counsellorSearch.value}&page=${page.value}`)
+    await axios.get(route('counsellors.request.get', {name: counsellorSearch.value, page: page.value}))
         .then((res) => {
             console.log(res)
             if (page.value > 1) {

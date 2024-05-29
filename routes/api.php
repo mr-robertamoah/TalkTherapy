@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AboutController;
 use App\Http\Controllers\AdministratorController;
 use App\Http\Controllers\AlertController;
 use App\Http\Controllers\CommentController;
@@ -69,6 +70,8 @@ Route::get('/posts', [PostController::class, 'getPosts'])->name('api.posts');
 Route::get('/likes', [LikeController::class, 'getLikes'])->name('api.likes');
 
 Route::get('/comments', [CommentController::class, 'getComments'])->name('api.comments');
+
+Route::get('/about/stats', [AboutController::class, 'getStats'])->name('api.about.stats');
 
 Route::middleware('auth:sanctum')->group(function () {
     

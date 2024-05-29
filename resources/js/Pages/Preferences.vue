@@ -143,7 +143,7 @@ async function getCases() {
     loader.value.show = true
 
     await axios
-    .get(`therapy-cases?name=${casesSearch.value}&page=${casesPage.value}`)
+    .get(route('cases.get', {name: casesSearch.value, page: casesPage.value}))
     .then((res) => {
         console.log(res)
         if (casesPage.value > 1) {
@@ -173,7 +173,7 @@ async function getLanguages() {
     loader.value.show = true
 
     await axios
-    .get(`languages?name=${languagesSearch.value}&page=${languagesPage.value}`)
+    .get(route('languages.get', {name: languagesSearch.value, page: languagesPage.value}))
     .then((res) => {
         console.log(res)
         if (languagesPage.value > 1) {
@@ -198,7 +198,7 @@ async function getReligions() {
     loader.value.show = true
 
     await axios
-    .get(`religions?name=${religionsSearch.value}&page=${religionsPage.value}`)
+    .get(route('religions.get', {name: religionsSearch.value, page: religionsPage.value}))
     .then((res) => {
         console.log(res)
         if (religionsPage.value > 1) {

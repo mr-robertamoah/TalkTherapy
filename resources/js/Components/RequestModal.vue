@@ -76,7 +76,10 @@ async function getRequests() {
     loading.value = true
 
     await axios
-    .get(`requests?status=${requestStatus.value}&page=${pages.value[requestStatus.value]}`)
+    .get(route('requests.get', {
+        status: requestStatus.value,
+        page: pages.value[requestStatus.value]
+    }))
     .then((res) => {
         console.log(res)
         if (pages.value[requestStatus.value] > 1) {

@@ -53,7 +53,11 @@ async function getComments() {
     loading.value = true
 
     await axios
-    .get(`comments?commentableType=${props.commentableType}&commentableId=${props.commentable.id}&page=${comments.value.page}`)
+    .get(route('api.comments', {
+        commentableType: props.commentableType,
+        commentableId: props.commentable.id,
+        page: comments.value.page
+    }))
     .then((res) => {
         if (comments.value.page == 1)
             comments.value.data = []
