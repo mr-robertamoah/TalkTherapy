@@ -55,7 +55,7 @@ async function getCases() {
     loading.value = true
 
     await axios
-    .get(`therapy-cases?name=${casesSearch.value}&page=${casesPage.value}`)
+    .get(route('cases.get', {name: casesSearch.value, page: casesPage.value}))
     .then((res) => {
         console.log(res)
         if (casesPage.value > 1) {
