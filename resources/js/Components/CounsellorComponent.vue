@@ -51,9 +51,9 @@ function goToPage() {
     >
         <div v-if="counsellor.deleted" class="p-2 text-red-700 text-center text-sm">counsellor account has been deleted</div>
         <template v-else>
-            <div class="flex justify-start items-center mb-3 cursor-pointer space-x-2">
+            <div class="flex justify-start items-center mb-3 cursor-pointer space-x-2 overflow-hidden overflow-x-auto p-2">
                 <Avatar class="shrink-0" :avatar-text="'...'" :size="40" :src="counsellor?.avatar ?? ''"/>
-                <div class="text-gray-600 flex justify-start items-center shrink space-x-2 text-sm sm:text-base">
+                <div class="text-gray-600 flex justify-start items-center shrink-0 space-x-2 text-xs sm:text-sm md:text-base">
                     <div class="capitalize">{{ counsellor.name }}</div>
                     <div>{{ counsellor.username ? `(${counsellor.username})` : '' }}</div>
                 </div>

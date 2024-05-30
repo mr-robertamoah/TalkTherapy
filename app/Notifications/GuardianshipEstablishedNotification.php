@@ -47,7 +47,7 @@ class GuardianshipEstablishedNotification extends Notification implements Should
             ->subject("Guardianship Established")
             ->greeting("Hello {$notifiable->name}!")
             ->line("User with name: '{$this->user->name}' and username: '{$this->user->username}', has accepted your guardianship request and hence is now your guardian on TalkTherapy app.")
-            ->line("Click on the link below to go to your profile page of TalkTherapy, if you are not already on the app.")
+            ->line("Click on the link below to go to your profile page on TalkTherapy, if you are not already on the app.")
             ->action("Visit Profile", url('profile'))
             ->line("Thank you for choosing to 'TalkTherapy'.");
     }
