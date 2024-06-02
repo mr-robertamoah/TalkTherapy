@@ -110,12 +110,14 @@ export default function useAppLink() {
         })
     }
 
-    async function getlinks({ page, type, addedbyId = null, addedbyType = null }) {
+    async function getlinks({ page, type, addedbyId = null, addedbyType = null, forId = null, forType = null }) {
         return await axios.get(route(`api.links`, {
             page,
             type,
             addedbyId,
-            addedbyType
+            addedbyType,
+            forId,
+            forType
         }))
         .then((res) => {
             console.log(res)

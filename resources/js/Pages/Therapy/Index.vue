@@ -132,7 +132,7 @@ watchEffect(() => {
 
     if (!userId || !currentTherapy.id) return
 
-    if (!currentTherapy.counsellor)
+    if (!currentTherapy.counsellor && usePage().props.auth.user?.id == currentTherapy.user.id)
         getCounsellorlinks()
 
     if (usePage().props.auth.user?.counsellor)
@@ -359,6 +359,11 @@ function updatePage(res) {
     else page.value = 0
 }
 
+function updateRefPage(res, data) {
+    if (res.data.links.next) data.value.page += 1
+    else data.value.page = 0
+}
+
 function clickedDelete() {
     showModal('delete')
 }
@@ -487,8 +492,7 @@ async function getDiscussions(therapy) {
             ...res.data.data,
         ]
         
-        if (res.data.links.next) discussions.value.page = discussions.value.page + 1
-        else discussions.value.page = 0
+        updateRefPage(res, discussions)
     })
     .catch((err) => {
         console.log(err)
@@ -683,11 +687,16 @@ async function createCounsellorLink() {
 }
 
 async function getCounsellorlinks() {
+    if (!counsellorLinks.value.page) return
     setGetting('links')
+
+    const therapy = props.therapy?.data ? props.therapy?.data : props.therapy
 
     const res = await getlinks({
         page: counsellorLinks.value.page,
-        type: 'THERAPY_COUNSELLOR'
+        type: 'THERAPY_COUNSELLOR',
+        forId: therapy.id,
+        forType: 'Therapy'
     })
     
     clearGetting()
@@ -701,7 +710,7 @@ async function getCounsellorlinks() {
         ...res.data.data,
     ]
 
-    updatePage(res, counsellorLinks)
+    updateRefPage(res, counsellorLinks)
 }
 
 function setGetting(type) {

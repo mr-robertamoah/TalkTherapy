@@ -121,7 +121,9 @@ async function getGuardianshiplinks() {
 
     const res = await getlinks({
         page: guardianshipLinks.value.page,
-        type: 'GUARDIANSHIP'
+        type: 'GUARDIANSHIP',
+        forType: 'User',
+        forId: usePage().props.auth.user?.id
     })
     
     clearGetting()
