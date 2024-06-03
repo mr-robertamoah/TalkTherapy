@@ -16,26 +16,32 @@ use Illuminate\Support\Facades\Schedule;
 |
 */
 
-Artisan::command('inspire', function () {
-    $this->comment(Inspiring::quote());
-})->purpose('Display an inspiring quote');
-
 Schedule::call(function () {
     AppService::new()->notifyParticipantsOfStartingSessions();
-})->everyThirtyMinutes()->withoutOverlapping();
+})->everyThirtyMinutes()
+    ->name('notifyParticipantsOfStartingSessions')
+    ->withoutOverlapping();
 
 Schedule::call(function () {
     AppService::new()->failUnheldSessions();
-})->everyFourHours()->withoutOverlapping();
+})->everyFourHours()
+    ->name('failUnheldSessions')
+    ->withoutOverlapping();
 
 Schedule::call(function () {
     AppService::new()->broadcastStartedSessions();
-})->everyFiveMinutes()->withoutOverlapping();
+})->everyFiveMinutes()
+    ->name('broadcastStartedSessions')
+    ->withoutOverlapping();
 
 Schedule::call(function () {
     AppService::new()->clearVisitors();
-})->dailyAt('00:01')->withoutOverlapping();
+})->dailyAt('00:01')
+    ->name('clearVisitors')
+    ->withoutOverlapping();
 
 Schedule::call(function () {
     AppService::new()->alertSuperAdminWithStatus();
-})->dailyAt('0:00')->withoutOverlapping();
+})->dailyAt('0:00')
+    ->name('alertSuperAdminWithStatus')
+    ->withoutOverlapping();
