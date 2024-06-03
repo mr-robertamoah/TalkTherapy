@@ -22,20 +22,20 @@ Artisan::command('inspire', function () {
 
 Schedule::call(function () {
     AppService::new()->notifyParticipantsOfStartingSessions();
-})->everyThirtyMinutes();
+})->everyThirtyMinutes()->withoutOverlapping();
 
 Schedule::call(function () {
     AppService::new()->failUnheldSessions();
-})->everyFourHours();
+})->everyFourHours()->withoutOverlapping();
 
 Schedule::call(function () {
     AppService::new()->broadcastStartedSessions();
-})->everyFiveMinutes();
+})->everyFiveMinutes()->withoutOverlapping();
 
 Schedule::call(function () {
     AppService::new()->clearVisitors();
-})->dailyAt('00:01');
+})->dailyAt('00:01')->withoutOverlapping();
 
 Schedule::call(function () {
     AppService::new()->alertSuperAdminWithStatus();
-})->dailyAt('0:00');
+})->dailyAt('0:00')->withoutOverlapping();
