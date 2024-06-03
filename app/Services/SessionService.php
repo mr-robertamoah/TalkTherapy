@@ -70,7 +70,7 @@ class SessionService extends Service
         );
 
         Notification::send(
-            $session->for->getUsers(), 
+            $session->for->getOtherUsers($createSessionDTO->user),
             new SessionCreatedNotification($session)
         );
 
