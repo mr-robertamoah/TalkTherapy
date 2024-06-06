@@ -17,7 +17,7 @@ import useModal from '@/Composables/useModal';
 import TextInput from '@/Components/TextInput.vue';
 import FormLoader from '@/Components/FormLoader.vue';
 import { default as _ } from 'lodash';
-import { differenceInMinutes } from 'date-fns';
+import { differenceInMinutes, parseISO } from 'date-fns';
 import useAlert from '@/Composables/useAlert';
 import Alert from '@/Components/Alert.vue';
 import UpdateIndividualTherapyFormModal from '@/Components/UpdateIndividualTherapyFormModal.vue';
@@ -29,6 +29,7 @@ import TopicBadge from '@/Components/TopicBadge.vue';
 import LinkComponent from '@/Components/LinkComponent.vue';
 import useAppLink from '@/Composables/useAppLink';
 import CreateDiscussionFormModal from '@/Components/CreateDiscussionFormModal.vue';
+import Modal from '@/Components/Modal.vue';
 
 const { modalData, showModal, closeModal } = useModal()
 const { goToLogin } = useAuth()
@@ -227,8 +228,8 @@ function setTimers() {
     let now = new Date()
     let startTime = new Date(activeSession.value.startTime)
     let endTime = new Date(activeSession.value.endTime)
-
-    timer.value.beforeStart = differenceInMinutes(startTime, now)
+    console.log(parseISO(activeSession.value.startTime), parseISO(activeSession.value.startTime))
+    timer.value.beforeStart = differenceInMinutes(parseISO(activeSession.value.startTime), now)
     timer.value.beforeEnd = differenceInMinutes(endTime, now)
 }
 
@@ -389,7 +390,7 @@ function clickedReport() {
 }
 
 function clickedActiveSession() {
-    if (activeSession.value?.status == 'ABANDONED') return
+    showModal('session actions')
 
     selectedActiveSession.value = true
 }
@@ -560,6 +561,8 @@ async function clickedStartSession() {
     await axios.post(route('api.sessions.in_session', activeSession.value.id))
         .then((res) => {
             activeSession.value = res.data.session
+
+            showModal('therapy')
         })
         .catch((err) => {
             console.log(err);
@@ -653,6 +656,9 @@ function deleteSessionOrTopic(item) {
 
 function updateSessionOrTopic(item) {
     if (item.isSession) {
+        if (activeSession.value?.id == item.id)
+            activeSession.value = item
+
         recentSessions.value.splice(recentSessions.value.findIndex((session) => session.id == item.id), 1, item)
         return
     }
@@ -739,7 +745,7 @@ function clearGetting() {
         <div 
             class="w-full sticky top-0 z-10 pt-2"
             :class="{'p-2 bg-white': showAll}"
-            v-if="computedIsParticipant && (activeSession?.status !== 'HELD' && computedTherapy.activeSession?.status !== 'HELD')"
+            v-if="computedIsParticipant && !(['HELD', 'ABONDON'].includes(activeSession?.status)  && !['HELD', 'ABONDON'].includes(computedTherapy.activeSession?.status))"
         >
             <div
                 v-if="activeSession || computedTherapy.activeSession"
@@ -1262,6 +1268,74 @@ function clearGetting() {
             </template>
         </div>
     </MiniModal>
+
+    <MiniModal
+        :show="modalData.show && ['session actions'].includes(modalData.type)"
+        @close="closeModal"
+    >
+        <div class="select-none">
+            
+            <div class="text-gray-600 text-center font-bold tracking-wide">
+                Session Actions
+            </div>
+
+            <hr class="my-2">
+
+            <div class="relative">
+                <div class="space-y-3 flex flex-col justify-center items-center" v-if="activeSession && !sessionActionRunning && activeSession?.status !== 'ABANDONED'">
+                    <PrimaryButton
+                        v-if="(['PENDING', 'IN_SESSION_CONFIRMATION'].includes(activeSession?.status) && userId !== activeSession?.updatedById) && activeSession?.status !== 'IN_SESSION' && timer.beforeEnd > 0"
+                        @click="clickedStartSession" class="shrink-0">start session for you</PrimaryButton>
+                    <PrimaryButton
+                        v-if="activeSession.type == 'ONLINE'"
+                        @click="() => showModal('therapy')" class="shrink-0">show message box</PrimaryButton>
+                    <PrimaryButton
+                        v-if="['PENDING', 'IN_SESSION', 'IN_SESSION_CONFIRMATION'].includes(activeSession?.status) && timer.beforeEnd > 0 && computedIsInSession"
+                        @click="clickedAbandonSession" class="shrink-0">abondon session</PrimaryButton>
+                    <PrimaryButton
+                        v-if="computedIsInSession && timer.beforeEnd < 0 && userId !== activeSession?.updatedById"
+                        @click="clickedEndSession" class="shrink-0">end session for you</PrimaryButton>
+                </div>
+                <div v-else class="text-sm text-gray-600 my-4 text-center">no actions to perform</div>
+            </div>
+        </div>
+    </MiniModal>
+
+    <Modal
+        :show="modalData.show && ['therapy'].includes(modalData.type)"
+        @close="closeModal"
+    >
+        <div class="select-none p-4">
+            
+            <div class="text-gray-600 text-center font-bold tracking-wide capitalize">
+                {{ activeSession ? activeSession.name : 'Session' }}
+            </div>
+
+            <hr class="my-2">
+
+            <div class="relative p-4 h-[80vh] overflow-hidden overflow-y-auto">
+                <TherapyComponent
+                    :show-sessions="false"
+                    :therapy="computedTherapy"
+                    :newSession="newSession"
+                    :activeSession="activeSession"
+                    :deletedSessionOrTopic="currentDeletedSessionOrTopic"
+                    :updatedSessionOrTopic="currentUpdatedSessionOrTopic"
+                    :selectedActiveSession="selectedActiveSession"
+                    :is-participant="computedIsParticipant"
+                    :is-user="computedIsUser"
+                    :is-counsellor="computedIsCounsellor"
+                    @deselect-active-session="() => selectedActiveSession = false"
+                    @update-active-session="(data) => activeSession = data"
+                    @created="addSessionOrTopic"
+                    @updated="updateSessionOrTopic"
+                    @done-updating="() => currentUpdatedSessionOrTopic = null"
+                    @done-deleting="() => currentDeletedSessionOrTopic = null"
+                    @deleted="deleteSessionOrTopic"
+                />
+            </div>
+        </div>
+    </Modal>
         
     <UpdateIndividualTherapyFormModal
         :show="modalData.show && modalData.type == 'update'"

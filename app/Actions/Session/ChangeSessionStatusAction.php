@@ -52,6 +52,7 @@ class ChangeSessionStatusAction extends Action
                 SessionStatusEnum::in_session_confirmation->value,
                 SessionStatusEnum::held_confirmation->value,
                 SessionStatusEnum::pending->value,
+                SessionStatusEnum::abandoned->value,
             ])
         ) return $createSessionDTO->user->counsellor?->is($createSessionDTO->session->addedby)
             ? $createSessionDTO->user->counsellor

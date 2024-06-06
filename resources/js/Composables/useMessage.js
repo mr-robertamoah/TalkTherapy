@@ -1,4 +1,4 @@
-import { ref, computed } from "vue";
+import { ref, computed, nextTick, unref } from "vue";
 
 export default function useMessage() {
     
@@ -132,16 +132,19 @@ export default function useMessage() {
         if (div) div.scrollIntoView({ behavior: 'smooth', inline: 'nearest', block: 'nearest'})
     }
 
-    function sendMessage() {
+    function sendMessage({
+        itemType = 'Session', item = null, topic = null, addNewMessage = null,
+        from = null, to = null
+    }) {
         if (message.value?.id) {
             updateMessage()
             return
         }
     
-        if (!selectedSession?.value?.id) return
+        if (!item?.id) return
     
-        message.value.forType = 'Session'
-        message.value.forId = selectedSession.value.id
+        message.value.forType = itemType
+        message.value.forId = item.id
     
         if (replyingMessage.value?.id)
             message.value.replying = replyingMessage.value
@@ -149,41 +152,35 @@ export default function useMessage() {
         if (files.value)
             message.value.files = [...unref(files)]
     
-        if (selectedSessionTopic.value?.id)
-            message.value.topicId = selectedSessionTopic.value.id
+        if (topic?.id)
+            message.value.topicId = topic.id
     
-        if (props.isCounsellor) {
-            message.value.toType = 'User'
-            message.value.toId = props.therapy.user.id
-            message.value.toUserId = props.therapy.user.id
-            message.value.fromType = 'Counsellor'
-            message.value.fromId = props.therapy.counsellor.id
-            message.value.fromUserId = props.therapy.counsellor.userId
-            message.value.fromCounsellor = true
-            message.value.counsellorAvatar = props.therapy.counsellor.avatar
+        if (from) {
+            message.value.fromType = from.type
+            message.value.fromId = from.id
+            message.value.fromUserId = from.userId
+            message.value.fromCounsellor = from.isCounsellor
+            if (from.avatar)
+                message.value.counsellorAvatar = from.avatar
         }
     
-        if (props.isUser) {
-            message.value.fromType = 'User'
-            message.value.fromId = props.therapy.user.id
-            message.value.fromUserId = props.therapy.user.id
-            message.value.toType = 'Counsellor'
-            message.value.toId = props.therapy.counsellor.id
-            message.value.toUserId = props.therapy.counsellor.userId
+        if (to) {
+            message.value.toType = to.type
+            message.value.toId = to.id
+            message.value.toUserId = to.userId
         }
     
         if (addNewMessage)
             addNewMessage(message.value)
         
-        scrollToBottom()
         resetMessage()
     }
 
     async function scrollToBottom() {
+        console.log('iscalled')
         await nextTick()
     
         const div = document.getElementById(`message_area`)
-    
         if (div) div.scrollTop = div.scrollHeight
     }
 

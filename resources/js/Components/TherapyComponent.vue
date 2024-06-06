@@ -1,6 +1,7 @@
 <template>
     <div
         class="relative w-full"
+        v-if="showSessions"
     >
         <PrimaryButton
             class="my-2"
@@ -21,7 +22,17 @@
         </div>
         <FormLoader class="mx-auto relative" :show="loading" :text="`getting ${computedCurrentFilter}s`"/>
     </div>
-    <div class="my-2 w-full h-1 rounded bg-stone-400"></div>
+    <div v-else class="flex justify-center items-center mb-2">
+        <TherapyFilterItem
+            :item="selectedSession"
+            :therapy="therapy"
+            :type="'session'"
+            :is-active="true"
+            class="w-[60%] shrink-0"
+            @on-message-created="(data) => onMessageCreated(data)"
+        />
+    </div>
+    <div class="my-2 w-full h-1 rounded bg-stone-400"  v-if="showSessions"></div>
     <div v-bind="$attrs" class="min-h-[500px] relative flex flex-col items-center justify-center">
         <div v-if="therapy.status == 'PENDING'"
             class="flex absolute top-0 left-0 w-full h-full bg-gray-500 justify-center items-center text-gray-600 text-sm bg-opacity-35 rounded z-[1]">
@@ -88,17 +99,21 @@
                     >{{ c.name }}</div>
                 </div>
             </div>
-            <div class="h-[350px] p-2 overflow-hidden overflow-y-auto space-y-2 flex items-center flex-col"
+            <div class="h-[350px] relative p-2 overflow-hidden overflow-y-auto space-y-2 flex items-center flex-col"
                 :class="{'justify-end': chatMessages?.length <= 3}"
                 id="message_area"
             >
+                <div v-if="haveMessage" @click="() => haveMessage = false" class="cursor-pointer w-full sticky top-0 flex bg-green-600 text-green-300 rounded p-4 text-center">
+                    <div class="text-xs w-full text-center">you have a new message</div>
+                    <div @click="() => haveMessage = false" class="absolute top-0 right-2 rounded-full bg-white text-green-600 w-6 h-6 flex justify-center items-center">x</div>
+                </div>
                 <div v-if="!getting && !computedMessagesPage && chatMessages.length" class="w-fit mx-auto my-2 text-sm text-gray-600">no more messages</div>
                 <div v-if="!getting && computedMessagesPage > 1" class="w-full">
                     <div @click="getSessionMessages" class="w-fit mx-auto p-4 text-lg text-gray-600 cursor-pointer">...</div>
                 </div>
                 <template v-if="chatMessages.length">
                     <MessageBadge
-                        v-for="(msg, idx) in chatMessages"
+                        v-for="(msg, idx) in chatMessages.toReversed()"
                         :key="idx"
                         :idx="idx"
                         :id="`message_${idx}`"
@@ -146,7 +161,13 @@
                     v-model="message.content"
                 />
                 <div class="flex justify-end space-x-2 items-start">
-                    <PaperplaneIcon v-if="computedHasMessage" @click="sendMessage" class="w-8 cursor-pointer p-1 h-8 rotate-45" />
+                    <PaperplaneIcon 
+                        v-if="computedHasMessage" 
+                        @click="() => sendMessage({
+                            item: selectedSession, topic: selectedSessionTopic,
+                            addNewMessage, to: getMessageTo(), from: getMessageFrom()
+                        })" 
+                        class="w-8 cursor-pointer p-1 h-8 rotate-45" />
                     <PaperclipIcon class="w-8 cursor-pointer p-1 h-8"
                         @click="() => showAttachmentIcons = true"
                     />
@@ -233,15 +254,16 @@ import Alert from './Alert.vue';
 import useAlert from '@/Composables/useAlert';
 import FilePreview from './FilePreview.vue';
 import MediaCapture from './MediaCapture.vue';
+import { usePage } from '@inertiajs/vue3';
 
 const { goToLogin } = useAuth()
 const {
     message, files, deletedFiles, computedHasMessage, replyingMessage, scrollToBottom,
     showAttachmentIcons, messageFilesInput, changeFile, resetMessage, updateMessage,
     clickedIcon, mediaCaptureData, closeMediaCapture, removeUploadFile, scrollToMessageId,
-    selectForUpdate, selectAsReply, removeReply
+    selectForUpdate, selectAsReply, removeReply, sendMessage
 } = useMessage()
-const { alertData, setFailedAlertData, clearAlertData } = useAlert()
+const { alertData, setFailedAlertData, clearAlertData, setSuccessAlertData } = useAlert()
 const { modalData, showModal, closeModal } = useModal()
 
 const emits = defineEmits([
@@ -258,6 +280,9 @@ const props = defineProps({
     },
     updatedSessionOrTopic: {
         default: null
+    },
+    showSessions: {
+        default: true
     },
     deletedSessionOrTopic: {
         default: null
@@ -295,6 +320,7 @@ const selectedSessionTopic = ref(null)
 const selectedSession = ref(null)
 const selectedTopic = ref(null)
 const selectedTopicSession = ref(null)
+const haveMessage = ref(false)
 const sessions = ref([])
 const chatMessages = ref([])
 const messages = reactive({
@@ -311,6 +337,19 @@ const filters = ref({
     topics: false
 })
 
+watchEffect(() => {
+    if (props.showSessions) return
+
+    if (props.activeSession) {
+        selectedSession.value = props.activeSession
+        handleSelectedSessionChange()
+    }
+
+    if (filters.value.topics) return
+
+    filters.value.topics = true
+    getTopics()
+})
 watch(() => filters.value.sessions, () => {
     if (filters.value.sessions && filters.value.topics)
         filters.value.topics = !filters.value.sessions
@@ -366,14 +405,28 @@ watchEffect(() => {
     ) emits('deselectActiveSession')
 })
 watchEffect(() => {
+    if (
+        props.activeSession?.status == 'HELD_CONFIRMATION' && 
+        usePage().props.auth.user.id !== activeSession?.updatedById
+    ) confirmSessionHeld()
+})
+watchEffect(() => {
+    if (
+        props.activeSession?.status == 'ABANDONED' && 
+        usePage().props.auth.user.id !== activeSession?.updatedById
+    ) sessionAbandoned()
+})
+watchEffect(() => {
     if (props.selectedActiveSession) {
         clickedSwitchToActiveSession()
     }
 })
 
 const computedCanSendMessage = computed(() => {
-    return props.isParticipant && computedSelectSessionIsActive.value &&
-        !['FAILED', 'ABANDONED', 'HELD', 'HELD_CONFIRMATION', 'PENDING', 'IN_SESSION_CONFIRMATION'].includes(props.activeSession?.status) &&
+    return props.isParticipant && 
+        computedSelectSessionIsActive.value &&
+        !['FAILED', 'ABANDONED', 'HELD', 'PENDING', 'IN_SESSION_CONFIRMATION'].includes(props.activeSession?.status) &&
+        (props.activeSession?.status == 'HELD_CONFIRMATION' && usePage().props.auth.user.id !== activeSession?.updatedById) &&
         props.activeSession?.type == 'ONLINE'
 })
 const computedSelectSessionIsActive = computed(() => {
@@ -422,6 +475,76 @@ const computedMessagesPage = computed(() => {
 
     return 0
 })
+
+function getMessageTo() {
+    let to = {
+        type: '',
+        id: 0,
+        userId: 0,
+    }
+
+    if (props.isCounsellor) {
+        to.type = 'User'
+        to.id = props.therapy.user.id
+        to.userId = props.therapy.user.id
+    }
+    
+    if (props.isUser) {
+        to.type = 'Counsellor'
+        to.id = props.therapy.counsellor.id
+        to.userId = props.therapy.counsellor.userId
+    }
+
+    return to
+}
+
+function getMessageFrom() {
+    let from = {
+        type: '',
+        id: 0,
+        userId: 0,
+        isCounsellor: false,
+        avatar: null,
+    }
+
+    if (props.isCounsellor) {
+        from.type = 'Counsellor'
+        from.id = props.therapy.counsellor.id
+        from.userId = props.therapy.counsellor.userId
+        from.isCounsellor = true
+        from.avatar = props.therapy.counsellor.avatar
+    }
+
+    if (props.isUser) {
+        from.type = 'User'
+        from.id = props.therapy.user.id
+        from.userId = props.therapy.user.id
+    }
+
+    return from
+}
+
+function sessionAbandoned() {
+    const message = props.isCounsellor
+        ? 'User has abandoned the session. You can no more continue.'
+        : 'Counsellor has abandoned the session. You can no more continue.'
+
+    setSuccessAlertData({
+        message,
+        time: 10000
+    })
+}
+
+function confirmSessionHeld() {
+    const message = props.isCounsellor
+        ? 'User has ended the session on his/her end. You can no more continue. Please end the session on your end.'
+        : 'Counsellor ended the session on his/her end. You can no more continue. Please end the session on your end.'
+
+    setSuccessAlertData({
+        message,
+        time: 10000
+    })
+}
 
 function clickedSwitchToActiveSession() {
     if (!filters.value.sessions) filters.value.sessions = true
@@ -474,7 +597,6 @@ function deselectItem() {
     }
 
     selectedItemType.value = null
-    scrollToBottom()
 }
 
 function handleSelectedSessionChange() {
@@ -529,19 +651,9 @@ function clickedFilterItem(item) {
     }
 }
 
-function replaceMessage(data, idx) {
-    let itemsRef = messages.sessions[selectedSession.value?.id]
-    if (computedCurrentFilter.value == 'topic') {
-        itemsRef = messages.topics[selectedTopicSession.value?.id]
-    }
-
-    itemsRef.data.splice(itemsRef.data.findIndex((d) => d.id == data.id), 1, {...data})
-    chatMessages.value[idx] = {...data}
-}
-
 function replaceOldMessage(data) {
     let itemsRef = messages.sessions[selectedSession.value?.id]
-    if (computedCurrentFilter.value == 'topic') {
+    if (computedCurrentFilter.value == 'topic' && selectedTopicSession.value) {
         itemsRef = messages.topics[selectedTopicSession.value?.id]
     }
 
@@ -551,7 +663,7 @@ function replaceOldMessage(data) {
 
 function replaceFirstMessage(data) {
     let itemsRef = messages.sessions[selectedSession.value?.id]
-    if (computedCurrentFilter.value == 'topic') {
+    if (computedCurrentFilter.value == 'topic' && selectedTopicSession.value) {
         itemsRef = messages.topics[selectedTopicSession.value?.id]
     }
 
@@ -563,13 +675,22 @@ function replaceFirstMessage(data) {
 
 function onMessageCreated(data) {
     addNewMessage(data)
+    alertOfNewMessage()
+}
+
+function alertOfNewMessage() {
+    haveMessage.value = true
+
+    setTimeout(() => {
+        haveMessage.value = false
+    }, 1000)
 }
 
 function addNewMessage(newMessage) {
     let item
     if (!newMessage) return
 
-    if (computedCurrentFilter.value == 'session') {
+    if (computedCurrentFilter.value == 'session' || !props.showSessions) {
 
         messages.sessions[selectedSession.value.id].data = [
             {...newMessage},
@@ -579,12 +700,18 @@ function addNewMessage(newMessage) {
         item = messages.sessions[selectedSession.value.id]
     }
 
-    if (item)
-        chatMessages.value = [
-            ...item.data.toReversed()
+    if (computedCurrentFilter.value == 'topic' && selectedTopic.value) {
+
+        messages.topics[selectedTopic.value.id].data = [
+            {...newMessage},
+            ...messages.topics[selectedTopic.value.id].data,
         ]
-    
-    scrollToBottom()
+
+        item = messages.topics[selectedTopic.value.id]
+    }
+
+    if (item)
+        chatMessages.value.push({...newMessage})
 }
 
 async function getSessionMessages() {
@@ -608,12 +735,12 @@ async function getSessionMessages() {
                 ...res.data.data,
             ]
 
-            chatMessages.value = [...messages.sessions[selectedSession.value?.id].data.toReversed()]
-            
+            chatMessages.value = [...messages.sessions[selectedSession.value?.id].data]
+
             if (messages.sessions[selectedSession.value?.id].page == 1)
-                scrollToBottom()
-            else
-                scrollToMessageId(`message_${res.data.data.length - 1}`)
+                chatMessages.value[0].scroll = true
+            else if (chatMessages.value.length > 10)
+                chatMessages.value[11].scroll = true
 
             updateMessagesPage(res)
         })
@@ -655,12 +782,12 @@ async function getTopicMessages() {
                 ...res.data.data,
             ]
 
-            chatMessages.value = [...messages.topics[selectedTopic.value?.id].data.toReversed()]
+            chatMessages.value = [...messages.topics[selectedTopic.value?.id].data]
             
             if (messages.topics[selectedTopic.value?.id].page == 1)
-                scrollToBottom()
-            else
-                scrollToMessageId(`message_${res.data.data.length - 1}`)
+                chatMessages.value[0].scroll = true
+            else if (chatMessages.value.length > 10)
+                chatMessages.value[11].scroll = true
 
             updateMessagesPage(res)
         })
@@ -739,16 +866,16 @@ function updatePage(res, key) {
 }
 
 function updateMessagesPage(res) {
-    if (res.data.links.next && computedCurrentFilter.value == 'session') {
+    if (res.data.links.next && computedCurrentFilter.value == 'session' && selectedSession.value) {
         messages.sessions[selectedSession.value?.id].page += 1
     }
-    else if (!res.data.links.next && computedCurrentFilter.value == 'session') {
+    else if (!res.data.links.next && computedCurrentFilter.value == 'session' && selectedSession.value) {
         messages.sessions[selectedSession.value?.id].page = 0
     }
-    else if (res.data.links.next && computedCurrentFilter.value == 'topic') {
+    else if (res.data.links.next && computedCurrentFilter.value == 'topic' && selectedTopic.value) {
         messages.topics[selectedTopic.value?.id].page += 1
     }
-    else if (!res.data.links.next && computedCurrentFilter.value == 'topic') {
+    else if (!res.data.links.next && computedCurrentFilter.value == 'topic' && selectedTopic.value) {
         messages.topics[selectedTopic.value?.id].page = 0
     }
 }

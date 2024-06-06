@@ -289,6 +289,57 @@
                         </div>
                     </div>
                 </div>
+                <div class="rounded-lg bg-stone-100 w-full p-2" v-if="computedCanSendMessage && !getting">
+                    <div v-if="message.replying" class="relative">
+                        <MessageBadge
+                            :msg="message.replying"
+                            :allow-actions="false"
+                            :allow-details="false"
+                            :reply="true"
+                        />
+                        <div 
+                            @click="removeReply"
+                            class="-top-2 absolute bg-blue-600 cursor-pointer flex h-5 items-center justify-center p-2 rounded-full text-blue-200 text-xs w-5 z-[1]">
+                            <div>X</div>
+                        </div>
+                    </div>
+                    <div v-if="message.id" class="text-sm text-gray-600 my-2 text-center">updating message</div>
+                    <div class="w-[90%] mx-auto min-h-10 flex justify-center items-start space-x-2">
+                        <TextBox
+                            rows="3"
+                            class="w-full shrink"
+                            v-model="message.content"
+                        />
+                        <div class="flex justify-end space-x-2 items-start">
+                            <PaperplaneIcon
+                                v-if="computedHasMessage"
+                                @click="() => sendMessage({forType: 'Discussion', item: discussion})"
+                                class="w-8 cursor-pointer p-1 h-8 rotate-45" />
+                            <PaperclipIcon class="w-8 cursor-pointer p-1 h-8"
+                                @click="() => showAttachmentIcons = true"
+                            />
+                        </div>
+                    </div>
+                    <div class="w-full max-h-[100px] p-2 flex justify-start overflow-hidden overflow-x-auto items-center space-x-2" v-if="files?.length">
+                        <FilePreview
+                            v-for="(file, idx) in files"
+                            :key="idx"
+                            :file="file"
+                            class="h-[90px] w-[90px]"
+                            @remove-file="() => removeUploadFile(file, idx)"
+                        />
+                    </div>
+                </div>
+                <div
+                    @click.self="() => showAttachmentIcons = false"
+                    :class="[showAttachmentIcons ? 'opacity-100 visible z-[1]' : 'opacity-0 invisible -z-[1]']" 
+                    class="w-full top-0 absolute transition-all duration-100 right-0 h-full bg-gray-600 bg-opacity-30 flex justify-center items-center">
+                    <div class="w-[80%] bg-white min-h-32 rounded flex justify-center items-center space-x-2 flex-wrap">
+                        <CameraIcon title="take a picture" @click="() => clickedIcon('camera')" class="w-8 cursor-pointer p-1 h-8 flex justify-center items-center" />
+                        <MicrophoneIcon title="record your voice note" @click="() => clickedIcon('microphone')" class="w-8 cursor-pointer p-1 h-8" />
+                        <FileIcon title="upload an image or pdf file" @click="() => clickedIcon('file')" class="w-8 cursor-pointer p-1 h-8" />
+                    </div>
+                </div>
             </div>
 
             <input 
@@ -354,7 +405,7 @@ const {
     message, files, deletedFiles, computedHasMessage, replyingMessage, scrollToBottom,
     showAttachmentIcons, messageFilesInput, changeFile, resetMessage, updateMessage,
     clickedIcon, mediaCaptureData, closeMediaCapture, removeUploadFile, scrollToMessageId,
-    selectForUpdate, selectAsReply, removeReply
+    selectForUpdate, selectAsReply, removeReply, sendMessage
 } = useMessage()
 
 const emits = defineEmits(['close'])

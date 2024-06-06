@@ -3,11 +3,14 @@
         class="rounded shadow-sm p-2 select-none cursor-pointer"
         :class="[isActive ? 'bg-green-300' : 'bg-white']"
     >
-        <div v-if="session.createdAt" class="text-xs my-2 w-fit ml-auto mr-2 text-gray-600">{{ toDiffForHumans(session.createdAt) }}</div>
-        <div class="capitalize text-gray-600 font-bold tracking-wide px-2">
+        <div class="flex justify-between items-center">
+            <div class="text-xs rounded bg-gray-500 text-white p-1">{{ session.status }}</div>
+            <div v-if="session.createdAt" class="text-xs my-2 w-fit ml-auto mr-2 text-gray-600">{{ toDiffForHumans(session.createdAt) }}</div>
+        </div>
+        <div class="capitalize text-gray-600 text-sm sm:text-base font-bold tracking-wide px-2">
             {{ session.name }}
         </div>
-        <div class="text-gray-600 text-sm my-2 p-2 px-4 text-center" v-if="computedAbout">
+        <div class="text-gray-600 text-xs sm:text-sm my-2 p-2 px-4 text-center" v-if="computedAbout">
             {{ computedAbout }}
         </div>
         <div class="flex justify-end items-center my-2">
@@ -145,7 +148,6 @@ watchEffect(() => {
                 emits('onMessageCreated', data.message)
             })
             .listen('.session.updated', (data) => {
-                console.log(data, 'session.updated')
                 emits('onUpdate', data.session)
             })
     }

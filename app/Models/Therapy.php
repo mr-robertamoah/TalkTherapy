@@ -36,7 +36,10 @@ class Therapy extends Model
         return Session::query()
             ->whereTherapyId($this->id)
             ->whereInSession()
-            ->whereFiveOrLessMinutesToStart()
+            ->orWhere(function ($query) {
+                $query->whereTherapyId($this->id);
+                $query->whereFiveOrLessMinutesToStart();
+            })
             ->orWhere(function ($query) {
                 $query->whereTherapyId($this->id);
                 $query->whereOnGoing();

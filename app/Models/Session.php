@@ -95,9 +95,9 @@ class Session extends Model
     {
         return $query
             ->whereStatusIn([
-                SessionStatusEnum::pending->value,
                 SessionStatusEnum::in_session->value,
                 SessionStatusEnum::in_session_confirmation->value,
+                SessionStatusEnum::held_confirmation->value,
             ]);
     }
 

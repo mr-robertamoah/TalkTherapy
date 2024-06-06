@@ -1,5 +1,5 @@
 <template>
-    <div class="min-w-[300px]">
+    <div class="min-w-[200px] sm:min-w-[300px]">
         <template v-if="type == 'session'">
             <SessionBadge 
                 :session="item" 

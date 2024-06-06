@@ -18,7 +18,7 @@ class SessionResource extends JsonResource
         return [
             'id' => $this->id,
             'userId' => $this->addedby_type == Counsellor::class ? $this->addedby->user->id : $this->addedby_id,
-            'updatedById' => $this->updatedby_type == Counsellor::class ? $this->updatedby->user->id : $this->updatedby_id,
+            'updatedById' => $this->updatedby_type == Counsellor::class ? $this->updatedby->user_id : $this->updatedby_id,
             'name' => $this->name,
             'about' => $this->about,
             'type' => $this->type,

@@ -7,9 +7,10 @@
             if (!allowActions) return
             clickedActions()
         }"
+        ref="item"
     >
         <div 
-            class="rounded-md w-[80%] xs:w-[70%] md:[60%] p-2 my-2 mx-1 shadow-sm"
+            class="rounded-md w-[90%] sm:w-[70%] p-2 my-2 mx-1 shadow-sm"
             :class="[
                 reply ? 'mx-auto' : (computedLeft ? 'ml-auto' : 'mr-auto'),
                 reply 
@@ -31,7 +32,7 @@
                     />
                 </div>
                 <hr class="my-2 text-blue-800" v-if="msg.replying && !reply">
-                <div v-if="msg.content">{{ msg.content }}</div>
+                <div v-if="msg.content" class="text-sm sm:text-base">{{ msg.content }}</div>
             </div>
             <div v-if="msg.files?.length" class="w-[90%] mx-auto my-2">
                 <div class="flex justify-start items-center overflow-hidden overflow-x-auto p-2 space-x-2">
@@ -84,7 +85,7 @@
             <div class="p-2 pb-4 h-[70vh] overflow-hidden overflow-y-auto w-full">
 
                 <div class="p-2 mt-2 mb-4 flex flex-col justify-center items-start bg-gray-200 mx-auto rounded min-h-[200px] w-[90%]">
-                    <div class="text-sm text-gray-600 mt-1">Message</div>
+                    <div class="text-xs sm:text-sm text-gray-600 mt-1">Message</div>
                     <div>
                         <div v-if="msg.content">{{ msg.content }}</div>
                     </div>
@@ -108,7 +109,7 @@
                 </div>
                 <div class="flex justify-start items-start overflow-hidden overflow-x-auto space-x-3 p-2">
                     <div class="p-2 mt-2 mb-4 bg-gray-200 mx-auto rounded min-h-[200px] w-[90%]">
-                        <div class="text-sm text-gray-600 mt-1">Message replies:</div>
+                        <div class="text-xs sm:text-sm text-gray-600 mt-1">Message replies:</div>
                         <div v-if="msg.replying">
                             <div v-if="msg.replying.content">
                                 {{ msg.replying.content }}
@@ -131,10 +132,10 @@
                                 </div>
                             </div>
                         </div>
-                        <div v-else class="text-sm text-center text-gray-600 font-bold my-6">no message</div>
+                        <div v-else class="text-xs sm:text-sm text-center text-gray-600 font-bold my-6">no message</div>
                     </div>
                     <div class="p-2 mt-2 mb-4 bg-gray-200 mx-auto rounded min-h-[200px] w-[90%]">
-                        <div class="text-sm text-gray-600 mt-1">Replies to message</div>
+                        <div class="text-xs sm:text-sm text-gray-600 mt-1">Replies to message</div>
                         <div class="flex flex-col overflow-hidden overflow-y-auto p-2">
                             <template v-if="replies.data?.length">
                                 <MessageBadge 
@@ -151,8 +152,8 @@
                                     @click="getMessageReplies" 
                                     class="cursor-pointer">...</div>
                             </div>
-                            <div class="w-full text-green-600 text-sm my-2 text-center tracking-wide" v-if="getting">getting replies...</div>
-                            <div class="text-sm text-center text-gray-600 font-bold my-4" v-if="!replies.data.length">no replies</div>
+                            <div class="w-full text-green-600 text-xs sm:text-sm my-2 text-center tracking-wide" v-if="getting">getting replies...</div>
+                            <div class="text-xs sm:text-sm text-center text-gray-600 font-bold my-4" v-if="!replies.data.length">no replies</div>
                         </div>
                     </div>
                 </div>
@@ -215,7 +216,7 @@
             <hr class="my-2">
 
             <div class="relative">
-                <div class="my-4 text-sm text-red-700 text-center w-[90%] mx-auto font-bold tracking-wide">
+                <div class="my-4 text-xs sm:text-sm text-red-700 text-center w-[90%] mx-auto font-bold tracking-wide">
                     Are you sure you want to delete this message?
                 </div>
             </div>
@@ -242,7 +243,7 @@ import useAlert from "@/Composables/useAlert";
 import useAuth from "@/Composables/useAuth"
 import useModal from "@/Composables/useModal"
 import { usePage } from "@inertiajs/vue3";
-import { computed, onBeforeUnmount, ref, watchEffect } from "vue"
+import { computed, onBeforeUnmount, ref, watchEffect, nextTick } from "vue"
 import Modal from "./Modal.vue";
 import Alert from "./Alert.vue";
 import MiniModal from "./MiniModal.vue";
@@ -295,6 +296,7 @@ const showFileModal = ref(false)
 const getting = ref(false)
 const currentFileIdx = ref(0)
 const status = ref('')
+const item = ref(null)
 const id = ref(null)
 const replies = ref({ data: [], page: 1 })
 
@@ -329,6 +331,10 @@ watchEffect(() => {
 watchEffect(() => {
     if (props.msg?.status)
         status.value = props.msg.status
+})
+watchEffect(() => {
+    if (props.msg?.scroll)
+        scrollToItem()
 })
 watchEffect(() => {
     if (props.msg?.id)
@@ -471,6 +477,13 @@ async function clickedDeleteForMe() {
         })
 }
 
+async function scrollToItem() {
+    await nextTick()
+
+    if (item.value && id.value)
+        item.value.scrollIntoView()
+}
+
 async function createMessage() {
     
     loading.value = true
@@ -497,6 +510,7 @@ async function createMessage() {
 
             status.value = 'sent'
             emits('onSuccess', res.data.message, props.idx)
+            scrollToItem()
         })
         .catch((err) => {
             console.log(err)
