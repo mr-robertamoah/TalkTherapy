@@ -305,7 +305,7 @@ class Therapy extends Model
             $users = array_merge($users, User::query()->whereNot('id', $user->id)
                 ->whereWard($this->addedby)->get()->toArray());
 
-        return $users;
+        return collect($users);
     }
 
     public function isCounsellor(Counsellor $counsellor)
