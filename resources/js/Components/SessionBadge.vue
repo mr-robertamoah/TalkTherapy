@@ -3,15 +3,19 @@
         class="rounded shadow-sm p-2 select-none cursor-pointer"
         :class="[isActive ? 'bg-green-300' : 'bg-white']"
     >
-        <div class="flex justify-between items-center">
+        <div class="flex justify-start items-center overflow-hidden overflow-x-auto">
             <div class="text-xs rounded bg-gray-500 text-white p-1">{{ session.status }}</div>
             <div v-if="session.createdAt" class="text-xs my-2 w-fit ml-auto mr-2 text-gray-600">{{ toDiffForHumans(session.createdAt) }}</div>
         </div>
-        <div class="capitalize text-gray-600 text-sm sm:text-base font-bold tracking-wide px-2">
+        <div class="capitalize text-gray-600 text-sm sm:text-base text-center font-bold tracking-wide px-2">
             {{ session.name }}
         </div>
-        <div class="text-gray-600 text-xs sm:text-sm my-2 p-2 px-4 text-center" v-if="computedAbout">
-            {{ computedAbout }}
+        <div class="text-gray-600 text-xs sm:text-sm my-2 p-2 px-4 text-justify" v-if="computedAbout">
+            <span>{{ getShowMoreContent(computedAbout) }}</span>
+            <span
+                @click="toggleShowMore"
+                v-if="computedAbout?.length > 100"
+                class="ml-2 cursor-pointer text-xs my-1 text-blue-600 underline">show {{ showMore ? 'less' : 'more' }}</span>
         </div>
         <div class="flex justify-end items-center my-2">
             <div 
@@ -93,10 +97,12 @@ import DangerButton from './DangerButton.vue';
 import useAlert from '@/Composables/useAlert';
 import useLocalDateTime from '@/Composables/useLocalDateTime';
 import Alert from './Alert.vue';
+import useShowMore from '@/Composables/useShowMore';
 
 const { modalData, closeModal, showModal } = useModal()
 const { toDiffForHumans } = useLocalDateTime()
 const { alertData, setAlertData, setFailedAlertData, clearAlertData } = useAlert()
+const { showMore, toggleShowMore, getShowMoreContent } = useShowMore()
 
 const emits = defineEmits(['onUpdate', 'onDelete', 'onMessageCreated'])
 

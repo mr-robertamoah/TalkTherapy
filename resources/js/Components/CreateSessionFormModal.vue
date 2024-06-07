@@ -175,7 +175,7 @@ async function createSession() {
     if (props.therapy.paymentType == 'FREE' && !sessionForm.paymentType)
         sessionForm.paymentType = 'FREE'
 
-    if (props.therapy.allowInPerson && !sessionForm.type)
+    if (!props.therapy.allowInPerson && !sessionForm.type)
         sessionForm.type = 'ONLINE'
 
     sessionForm.post(route(`sessions.create`, { therapyId: props.therapy.id }), {

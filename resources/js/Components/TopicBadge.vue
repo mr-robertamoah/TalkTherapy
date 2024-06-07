@@ -1,11 +1,15 @@
 <template>
     <div v-bind="$attrs" class="rounded bg-white shadow-sm p-2 select-none cursor-pointer">
         <div class="text-xs my-2 w-fit ml-auto mr-2 text-gray-600">{{ topic.createdAt }}</div>
-        <div class="capitalize text-gray-600 text-sm sm:text-base font-bold tracking-wide px-2">
+        <div class="capitalize text-gray-600 text-sm sm:text-base text-center font-bold tracking-wide px-2">
             {{ topic.name }}
         </div>
-        <div class="text-gray-600 text-sm my-2 p-2 px-4 text-center" v-if="computedDescription">
-            {{ computedDescription }}
+        <div class="text-gray-600 text-sm my-2 p-2 px-4 text-justify" v-if="computedDescription">
+            <span>{{ getShowMoreContent(computedDescription) }}</span>
+            <span
+                @click="toggleShowMore"
+                v-if="computedDescription.length > 100"
+                class="ml-2 cursor-pointer text-xs my-1 text-blue-600 underline">show {{ showMore ? 'less' : 'more' }}</span>
         </div>
         <div class="flex justify-end items-center my-2">
             <div 

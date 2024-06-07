@@ -23,9 +23,9 @@
                 v-if="post?.content" 
                 class="text-sm text-gray-600 text-pretty my-2 w-[90%] mx-auto"
             >
-                <span>{{ computedContent }}</span>
+                <span>{{ getShowMoreContent(post.content) }}</span>
                 <span
-                    @click="() => showMore = !showMore"
+                    @click="toggleShowMore"
                     v-if="post?.content?.length > 100"
                     class="ml-2 cursor-pointer text-xs my-1 text-blue-600 underline">show {{ showMore ? 'less' : 'more' }}</span>
             </div>
@@ -194,6 +194,7 @@
 <script setup>
 import useAlert from '@/Composables/useAlert';
 import useModal from '@/Composables/useModal';
+import useShowMore from '@/Composables/useShowMore';
 import LikeIcon from '@/Icons/LikeIcon.vue';
 import DarkLikeIcon from '@/Icons/DarkLikeIcon.vue';
 import CommentIcon from '@/Icons/CommentIcon.vue';
@@ -215,6 +216,7 @@ import Avatar from './Avatar.vue';
 
 
 const { alertData, clearAlertData, setFailedAlertData } = useAlert()
+const { showMore, toggleShowMore, getShowMoreContent } = useShowMore()
 const { modalData, closeModal, showModal } = useModal()
 
 const emits = defineEmits(['updated', 'deleted', 'created'])
@@ -231,7 +233,6 @@ const props = defineProps({
 const loading = ref(false)
 const copying = ref('')
 const liking = ref(false)
-const showMore = ref(false)
 const failed = ref(false)
 const status = ref('')
 const id = ref(null)
@@ -273,13 +274,6 @@ const computedIsAddedby = computed(() => {
     if (!props.post?.counsellor) return false
 
     return (props.post?.counsellor.userId == user.id) ? true : false
-})
-const computedContent = computed(() => {
-    if (!props.post?.content) return ''
-
-    if (showMore.value) return props.post?.content
-    
-    return props.post?.content?.length > 100 ? props.post?.content.slice(0, 100) + '...' : props.post?.content
 })
 
 function copyLink() {
