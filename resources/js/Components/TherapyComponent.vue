@@ -407,13 +407,13 @@ watchEffect(() => {
 watchEffect(() => {
     if (
         props.activeSession?.status == 'HELD_CONFIRMATION' && 
-        usePage().props.auth.user.id !== activeSession?.updatedById
+        usePage().props.auth.user.id !== props.activeSession?.updatedById
     ) confirmSessionHeld()
 })
 watchEffect(() => {
     if (
         props.activeSession?.status == 'ABANDONED' && 
-        usePage().props.auth.user.id !== activeSession?.updatedById
+        usePage().props.auth.user.id !== props.activeSession?.updatedById
     ) sessionAbandoned()
 })
 watchEffect(() => {
@@ -423,10 +423,15 @@ watchEffect(() => {
 })
 
 const computedCanSendMessage = computed(() => {
+    if (
+        props.isParticipant &&
+        props.activeSession?.status == 'HELD_CONFIRMATION' && 
+        usePage().props.auth.user.id !== props.activeSession?.updatedById
+    ) return true
+
     return props.isParticipant && 
         computedSelectSessionIsActive.value &&
         !['FAILED', 'ABANDONED', 'HELD', 'PENDING', 'IN_SESSION_CONFIRMATION'].includes(props.activeSession?.status) &&
-        (props.activeSession?.status == 'HELD_CONFIRMATION' && usePage().props.auth.user.id !== activeSession?.updatedById) &&
         props.activeSession?.type == 'ONLINE'
 })
 const computedSelectSessionIsActive = computed(() => {

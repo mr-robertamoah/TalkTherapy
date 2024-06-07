@@ -18,30 +18,20 @@ use Illuminate\Support\Facades\Schedule;
 
 Schedule::call(function () {
     AppService::new()->notifyParticipantsOfStartingSessions();
-})->everyThirtyMinutes()
-    ->name('notifyParticipantsOfStartingSessions')
-    ->withoutOverlapping();
+})->everyThirtyMinutes();
 
 Schedule::call(function () {
     AppService::new()->failUnheldSessions();
-})->everyFourHours()
-    ->name('failUnheldSessions')
-    ->withoutOverlapping();
+})->everyFourHours();
 
 Schedule::call(function () {
     AppService::new()->broadcastStartedSessions();
-})->everyFiveMinutes()
-    ->name('broadcastStartedSessions')
-    ->withoutOverlapping();
+})->everyFiveMinutes();
 
 Schedule::call(function () {
     AppService::new()->clearVisitors();
-})->dailyAt('00:01')
-    ->name('clearVisitors')
-    ->withoutOverlapping();
+})->dailyAt('00:01');
 
 Schedule::call(function () {
     AppService::new()->alertSuperAdminWithStatus();
-})->dailyAt('0:00')
-    ->name('alertSuperAdminWithStatus')
-    ->withoutOverlapping();
+})->dailyAt('0:00');
