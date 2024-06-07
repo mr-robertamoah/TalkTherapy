@@ -75,7 +75,7 @@ class Discussion extends Model
             ->get();
 
         if (!$this->addedby->user?->is($user))
-            $users = $users->merge($this->addedby->user);
+            $users = $users->push($this->addedby->user);
 
         return $users;
     }

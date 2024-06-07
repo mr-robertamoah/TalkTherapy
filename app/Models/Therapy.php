@@ -269,18 +269,18 @@ class Therapy extends Model
 
     public function getUsers()
     {
-        $users = [];
+        $users = collect();
         if ($this->addedby_type == User::class)
-            $users[] = $this->addedby;
+            $users->push($this->addedby);
 
         if ($this->counsellor)
-            $users[] = $this->counsellor->user;
+            $users->push($this->counsellor->user);
 
         if (
             $this->addedby_type == User::class &&
             !$this->addedby->isAdult() && 
             $this->addedby->guardians()->count()
-        ) $users = array_merge($users, User::query()->whereWard($this->addedby)->get()->toArray());
+        ) $users->merge(User::query()->whereWard($this->addedby)->get());
 
         return $users;
     }
@@ -294,18 +294,18 @@ class Therapy extends Model
 
     public function getOtherUsers(User $user)
     {
-        $users = [];
+        $users = collect();
         if ($this->addedby_type == User::class && $this->addedby_id !== $user->id)
-            $users[] = $this->addedby;
+            $users->push($this->addedby);
 
         if (!$this->counsellor->user->is($user))
-            $users[] = $this->counsellor->user;
+            $users->push($this->counsellor->user);
 
         if (!$this->addedby->isAdult() && $this->addedby->guardians()->count())
-            $users = array_merge($users, User::query()->whereNot('id', $user->id)
-                ->whereWard($this->addedby)->get()->toArray());
+            $users->merge(User::query()->whereNot('id', $user->id)
+                ->whereWard($this->addedby)->get());
 
-        return collect($users);
+        return $users;
     }
 
     public function isCounsellor(Counsellor $counsellor)
