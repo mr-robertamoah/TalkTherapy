@@ -33,10 +33,10 @@ class CreateSessionRequest extends FormRequest
             'lat' => ['nullable', Rule::requiredIf($this->get('type') == SessionTypeEnum::in_person->value), 'numeric', 'between:-90,90'],
             'lng' => ['nullable', Rule::requiredIf($this->get('type') == SessionTypeEnum::in_person->value), 'numeric', 'between:-180,180'],
             'startTime' => ['required', 'date', Rule::prohibitedIf(
-                !(now()->addMinutes(30)->lessThanOrEqualTo(new Carbon($this->get('startTime')))
+                !(now()->addMinutes(30)->lessThanOrEqualTo((new Carbon($this->get('startTime')))->utc())
             ))],
             'endTime' => ['required', 'date', Rule::prohibitedIf(
-                !((new Carbon($this->get('startTime')))->addMinutes(30)->lessThanOrEqualTo(new Carbon($this->get('endTime'))))
+                !((new Carbon($this->get('startTime')))->utc()->addMinutes(30)->lessThanOrEqualTo(new Carbon($this->get('endTime'))))
             )],
             'cases' => ['nullable', 'array'],
             'topics' => ['nullable', 'array'],
