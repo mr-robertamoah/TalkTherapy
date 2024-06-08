@@ -42,4 +42,9 @@ class PingTherapyEvent implements ShouldBroadcast
             'message' => 'You are through'
         ];
     }
+
+    public function broadcastAs(): string
+    {
+        return 'message.ping';
+    }
 }

@@ -183,6 +183,9 @@ watchEffect(() => {
             if (activeSession.value?.id == data.session.id)
                 activeSession.value = data.session
         })
+        .listen(`.message.ping`, (data) => {
+            console.log(data, 'message.ping');
+        })
 })
 
 onBeforeUnmount(() => {
