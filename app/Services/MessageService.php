@@ -65,7 +65,7 @@ class MessageService extends Service
     {
         if (
             $getDiscussionMessagesDTO->user?->isNotAdmin() &&
-            $getDiscussionMessagesDTO->discussion?->isNotParticipant($getDiscussionMessagesDTO->user)
+            $getDiscussionMessagesDTO->discussion?->isNotParticipant($getDiscussionMessagesDTO->user?->counsellor)
         ) return [];
         
         $query = $getDiscussionMessagesDTO->discussion->messages()

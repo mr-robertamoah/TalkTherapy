@@ -148,6 +148,7 @@ watchEffect(() => {
         Echo
             .private(`sessions.${props.session.id}`)
             .listen('.message.created', (data) => {
+                console.log(data, 'message created');
                 if (data.message?.fromUserId == usePage().props.auth.user?.id)
                     return
 

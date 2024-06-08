@@ -14,6 +14,7 @@ use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Log;
 
 class MessageSentEvent implements ShouldBroadcast
 {
@@ -46,8 +47,13 @@ class MessageSentEvent implements ShouldBroadcast
 
     public function broadcastWith(): array
     {
+        Log::info("message sent", [
+            $this->getMessageBroadcastName($this->message),
+            $data = $this->getMessageBroadcastData($this->message)
+        ]);
+
         return [
-            'message' => $this->getMessageBroadcastData($this->message)
+            'message' => $data
         ];
     }
 }

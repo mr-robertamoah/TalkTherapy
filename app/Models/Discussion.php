@@ -43,7 +43,7 @@ class Discussion extends Model
         return $this->morphMany(Request::class, 'for');
     }
 
-    public function isNotParticipant(Counsellor $counsellor)
+    public function isNotParticipant(?Counsellor $counsellor)
     {
         return !$this->isParticipant($counsellor);
     }
@@ -54,8 +54,9 @@ class Discussion extends Model
             ->withTimestamps();
     }
 
-    public function isParticipant(Counsellor $counsellor)
+    public function isParticipant(?Counsellor $counsellor)
     {
+        if (!$counsellor) return false;
         return $this->addedby->is($counsellor) ||
             $this->counsellors()
                 ->where('counsellor_id', $counsellor->id)

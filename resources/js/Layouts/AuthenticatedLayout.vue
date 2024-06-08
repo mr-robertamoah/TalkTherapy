@@ -62,7 +62,7 @@ watchEffect(() => {
                         }
                     })
                 }
-                
+                console.log(notification, 'notification');
                 if (
                     notification.type == 'session.status'
                 ) {
