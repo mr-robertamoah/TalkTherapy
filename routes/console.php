@@ -1,5 +1,6 @@
 <?php
 
+use App\Events\PingTherapyEvent;
 use App\Services\AppService;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
@@ -19,6 +20,10 @@ use Illuminate\Support\Facades\Schedule;
 Schedule::call(function () {
     AppService::new()->notifyParticipantsOfStartingSessions();
 })->everyThirtyMinutes();
+
+Schedule::call(function () {
+    PingTherapyEvent::dispatch();
+})->everyFiveMinutes();
 
 Schedule::call(function () {
     AppService::new()->failUnheldSessions();

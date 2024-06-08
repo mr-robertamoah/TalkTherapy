@@ -84,7 +84,7 @@ class AppService extends Service
             ->get();
 
         $alerts->each(function ($alert) {
-            $activeSession = $alert->alertable->activeSession;
+            $activeSession = $alert->alertable?->activeSession;
 
             if (!$activeSession) return;
             
