@@ -23,7 +23,7 @@ Schedule::call(function () {
 
 Schedule::call(function () {
     PingTherapyEvent::dispatch();
-})->everyFiveMinutes();
+})->everyMinute();
 
 Schedule::call(function () {
     AppService::new()->failUnheldSessions();
