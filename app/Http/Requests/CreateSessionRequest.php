@@ -7,6 +7,7 @@ use App\Enums\TherapyPaymentTypeEnum;
 use App\Models\Session;
 use Carbon\Carbon;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 
 class CreateSessionRequest extends FormRequest
@@ -30,6 +31,7 @@ class CreateSessionRequest extends FormRequest
         $endTime = Carbon::parse($this->get('endTime'))->setTimezone(config('app.timezone'));
         $now = Carbon::now(config('app.timezone'));
 
+        Log::info('create session request', [$startTime, $endTime, $now, now()]);
         return [
             'name' => ['required', 'string', 'max:255', Rule::prohibitedIf(Session::query()->whereTherapyId($this->get('requestId'))->whereName($this->get('name'))->exists())],
             'about' => ['required', 'string'],

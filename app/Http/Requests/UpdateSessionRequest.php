@@ -6,6 +6,7 @@ use App\Enums\SessionTypeEnum;
 use App\Enums\TherapyPaymentTypeEnum;
 use Carbon\Carbon;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 
 class UpdateSessionRequest extends FormRequest
@@ -29,6 +30,7 @@ class UpdateSessionRequest extends FormRequest
         $endTime = Carbon::parse($this->get('endTime'))->setTimezone(config('app.timezone'));
         $now = Carbon::now(config('app.timezone'));
 
+        Log::info('update session request', [$startTime, $endTime, $now, now()]);
         return [
             'name' => ['nullable', 'string', 'max:255'],
             'about' => ['nullable', 'string'],
