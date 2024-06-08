@@ -37,10 +37,10 @@ class EnsureSessionDataIsValidAction extends Action
         ) 
             throw new SessionException("You cannot create a PAID session for a FREE therapy.", 422);
 
-        $startTime = new Carbon($createSessionDTO->startTime);
-        $endTime = new Carbon($createSessionDTO->endTime);
+        $startTime = Carbon::parse($createSessionDTO->startTime)->setTimezone(config('app.timezone'));
+        $endTime = Carbon::parse($createSessionDTO->endTime)->setTimezone(config('app.timezone'));
         if (
-            $startTime->addMinutes(30)->greaterThan(new Carbon($createSessionDTO->endTime))
+            $startTime->addMinutes(30)->greaterThan($endTime)
         ) 
             throw new SessionException("The end time must be at least 30 minutes from the start time.", 422);
             

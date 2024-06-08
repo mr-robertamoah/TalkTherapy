@@ -23,10 +23,10 @@ class EnsureDiscussionDataIsValidAction extends Action
         if ($therapy->status == TherapyStatusEnum::ended->value) 
             throw new DiscussionException("You cannot a create discussion for a therapy which has ended.", 422);
 
-        $startTime = new Carbon($createDiscussionDTO->startTime);
-        $endTime = new Carbon($createDiscussionDTO->endTime);
+        $startTime = Carbon::parse($createDiscussionDTO->startTime)->setTimezone(config('app.timezone'));
+        $endTime = Carbon::parse($createDiscussionDTO->endTime)->setTimezone(config('app.timezone'));
         if (
-            $startTime->addMinutes(30)->greaterThan(new Carbon($createDiscussionDTO->endTime))
+            $startTime->addMinutes(30)->greaterThan($endTime)
         ) 
             throw new DiscussionException("The end time must be at least 30 minutes from the start time.", 422);
             

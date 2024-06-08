@@ -26,6 +26,10 @@ class CreateSessionRequest extends FormRequest
      */
     public function rules(): array
     {
+        $startTime = Carbon::parse($this->get('startTime'))->setTimezone(config('app.timezone'));
+        $endTime = Carbon::parse($this->get('endTime'))->setTimezone(config('app.timezone'));
+        $now = Carbon::now(config('app.timezone'));
+
         return [
             'name' => ['required', 'string', 'max:255', Rule::prohibitedIf(Session::query()->whereTherapyId($this->get('requestId'))->whereName($this->get('name'))->exists())],
             'about' => ['required', 'string'],
@@ -33,15 +37,23 @@ class CreateSessionRequest extends FormRequest
             'lat' => ['nullable', Rule::requiredIf($this->get('type') == SessionTypeEnum::in_person->value), 'numeric', 'between:-90,90'],
             'lng' => ['nullable', Rule::requiredIf($this->get('type') == SessionTypeEnum::in_person->value), 'numeric', 'between:-180,180'],
             'startTime' => ['required', 'date', Rule::prohibitedIf(
-                !(now()->addMinutes(30)->lessThanOrEqualTo((new Carbon($this->get('startTime')))->utc())
-            ))],
+                !($now->addMinutes(30)->lessThanOrEqualTo($startTime))
+            )],
             'endTime' => ['required', 'date', Rule::prohibitedIf(
-                !((new Carbon($this->get('startTime')))->utc()->addMinutes(30)->lessThanOrEqualTo(new Carbon($this->get('endTime'))))
+                !($startTime->addMinutes(30)->lessThanOrEqualTo($endTime))
             )],
             'cases' => ['nullable', 'array'],
             'topics' => ['nullable', 'array'],
             'paymentType' => ['required', Rule::in(TherapyPaymentTypeEnum::values())],
             'type' => ['required', Rule::in(SessionTypeEnum::values())],
+        ];
+    }
+
+    public function messages()
+    {
+        return [
+            'startTime.prohibited_if' => 'The :attribute has to be at least 30 minutes from now.',
+            'endTime.prohibited_if' => 'The :attribute has to be at least 30 minutes from the start time.',
         ];
     }
 }

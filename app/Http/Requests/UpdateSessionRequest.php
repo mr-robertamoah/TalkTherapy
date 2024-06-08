@@ -25,6 +25,10 @@ class UpdateSessionRequest extends FormRequest
      */
     public function rules(): array
     {
+        $startTime = Carbon::parse($this->get('startTime'))->setTimezone(config('app.timezone'));
+        $endTime = Carbon::parse($this->get('endTime'))->setTimezone(config('app.timezone'));
+        $now = Carbon::now(config('app.timezone'));
+
         return [
             'name' => ['nullable', 'string', 'max:255'],
             'about' => ['nullable', 'string'],
@@ -32,15 +36,23 @@ class UpdateSessionRequest extends FormRequest
             'lat' => ['nullable', Rule::requiredIf($this->get('type') == SessionTypeEnum::in_person->value), 'numeric', 'between:-90,90'],
             'lng' => ['nullable', Rule::requiredIf($this->get('type') == SessionTypeEnum::in_person->value), 'numeric', 'between:-180,180'],
             'startTime' => ['nullable', 'date', Rule::prohibitedIf(
-                !(now()->addMinutes(30)->lessThanOrEqualTo(new Carbon($this->get('startTime')))
-            ))],
+                !($now->addMinutes(30)->lessThanOrEqualTo($startTime))
+            )],
             'endTime' => ['nullable', 'date', Rule::prohibitedIf(
-                !((new Carbon($this->get('startTime')))->addMinutes(30)->lessThanOrEqualTo(new Carbon($this->get('endTime'))))
+                !($startTime->addMinutes(30)->lessThanOrEqualTo($endTime))
             )],
             'cases' => ['nullable', 'array'],
             'topics' => ['nullable', 'array'],
             'paymentType' => ['nullable', Rule::in(TherapyPaymentTypeEnum::values())],
             'type' => ['nullable', Rule::in(SessionTypeEnum::values())],
+        ];
+    }
+
+    public function messages()
+    {
+        return [
+            'startTime.prohibited_if' => 'The :attribute has to be at least 30 minutes from now.',
+            'endTime.prohibited_if' => 'The :attribute has to be at least 30 minutes from the start time.',
         ];
     }
 }
