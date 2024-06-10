@@ -231,17 +231,10 @@ function clickedAssistanceRequest() {
 
 function setTimers() {
     let now = new Date()
-    let startTime = new Date(activeSession.value.startTime)
-    let endTime = new Date(activeSession.value.endTime)
-    console.log(parseISO(activeSession.value.startTime), startTime)
-    timer.value.beforeStart = differenceInMinutes(parseISO(activeSession.value.startTime), now)
-    timer.value.beforeEnd = differenceInMinutes(endTime, now)
-    timer.value.duration = differenceInMinutes(parseISO(activeSession.value.endTime), parseISO(activeSession.value.startTime))
-    checkTime()
-}
-
-function checkTime() {
-    console.log(timer.value)
+    let offset = now.getTimezoneOffset()
+    
+    timer.value.beforeStart = differenceInMinutes(parseISO(activeSession.value.startTime), now) + offset
+    timer.value.beforeEnd = differenceInMinutes(parseISO(activeSession.value.endTime), now) + offset
 }
 
 function clearData() {
