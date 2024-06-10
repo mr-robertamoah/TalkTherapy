@@ -305,7 +305,9 @@ onBeforeUnmount(() => {
 })
 
 watchEffect(() => {
-    if (!props.msg?.id) return
+    const user = usePage().props.auth.user
+
+    if (!props.msg?.id || !user?.id) return
 
     Echo
         .private(`messages.${props.msg?.id}`)

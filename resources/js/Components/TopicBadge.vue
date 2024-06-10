@@ -18,6 +18,7 @@
                 class="ml-2 text-xs underline text-gray-600 cursor-pointer hover:text-blue-600"
             >show actions</div>
             <div 
+                v-if="showDetails"
                 @click="() => showModal('details')"
                 class="ml-2 text-xs underline text-gray-600 cursor-pointer hover:text-blue-600"
             >show details</div>
@@ -105,6 +106,12 @@ const props = defineProps({
     topic: {
         default: null
     },
+    hasActions: {
+        default: true
+    },
+    showDetails: {
+        default: true
+    },
     therapy: {
         default: null
     },
@@ -127,7 +134,7 @@ const computedDescription = computed(() => {
     return props.topic?.description?.length > 100 ? props.topic?.description?.slice(0, 100) + '...' : props.topic?.description
 })
 const computedCanPerformActions = computed(() => {
-    return props.topic?.userId == usePage().props.auth.user?.id
+    return props.hasActions && props.topic?.userId == usePage().props.auth.user?.id
 })
 
 async function deleteSession() {

@@ -95,7 +95,7 @@
                 <div class="mt-2 text-stone-400 font-bold">comments</div>
             </div>
         </div>
-        <div v-if="showShare" class="flex justify-end my-2">
+        <div v-if="showShare" class="flex justify-end mb-2">
             <div class="p-2" @click="() => showModal('share')">
                 <ShareIcon
                     title="share post"

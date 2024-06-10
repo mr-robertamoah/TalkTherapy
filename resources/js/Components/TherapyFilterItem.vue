@@ -6,6 +6,9 @@
                 :therapy="therapy"
                 :loaded-topics="loadedTopics"
                 :is-active="isActive"
+                :has-actions="hasActions"
+                :show-details="showDetails"
+                :listen="listen"
                 :loaded-topics-page="loadedTopicsPage"
                 @on-update="(data) => emits('onUpdate', data)"
                 @on-delete="(data) => emits('onDelete', data)"
@@ -17,6 +20,8 @@
             <TopicBadge 
                 :topic="item" 
                 :therapy="therapy"
+                :has-actions="hasActions"
+                :show-details="showDetails"
                 :loaded-sessions="loadedSessions"
                 :loaded-sessions-page="loadedSessionsPage"
                 @on-update="(data) => emits('onUpdate', data)"
@@ -43,6 +48,15 @@ const props = defineProps({
     },
     isActive: {
         default: false
+    },
+    listen: {
+        default: false
+    },
+    hasActions: {
+        default: true
+    },
+    showDetails: {
+        default: true
     },
     type: {
         default: '',

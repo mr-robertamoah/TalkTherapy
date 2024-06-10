@@ -68,6 +68,7 @@ const loader = ref({
 const timer = ref({
     beforeStart: 0,
     beforeEnd: 0,
+    duration: 0,
 })
 const counsellorSearch = ref('')
 const sessionActionRunning = ref('')
@@ -130,13 +131,14 @@ watchEffect(() => {
 })
 watchEffect(() => {
     let currentTherapy = props.therapy?.data ? props.therapy?.data : props.therapy
+    let user = usePage().props.auth.user
 
-    if (!userId || !currentTherapy.id) return
+    if (!user?.id || !currentTherapy.id) return
 
-    if (!currentTherapy.counsellor && usePage().props.auth.user?.id == currentTherapy.user.id)
+    if (!currentTherapy.counsellor && user?.id == currentTherapy.user.id)
         getCounsellorlinks()
 
-    if (usePage().props.auth.user?.counsellor)
+    if (user?.counsellor)
         getDiscussions(currentTherapy)
 
     Echo
@@ -231,9 +233,15 @@ function setTimers() {
     let now = new Date()
     let startTime = new Date(activeSession.value.startTime)
     let endTime = new Date(activeSession.value.endTime)
-    console.log(parseISO(activeSession.value.startTime), parseISO(activeSession.value.startTime))
+    console.log(parseISO(activeSession.value.startTime), startTime)
     timer.value.beforeStart = differenceInMinutes(parseISO(activeSession.value.startTime), now)
     timer.value.beforeEnd = differenceInMinutes(endTime, now)
+    timer.value.duration = differenceInMinutes(parseISO(activeSession.value.endTime), parseISO(activeSession.value.startTime))
+    checkTime()
+}
+
+function checkTime() {
+    console.log(timer.value)
 }
 
 function clearData() {
@@ -395,7 +403,7 @@ function clickedReport() {
 function clickedActiveSession() {
     showModal('session actions')
 
-    selectedActiveSession.value = true
+    // selectedActiveSession.value = true
 }
 
 async function sendAssistanceRequest() {
@@ -542,7 +550,7 @@ async function clickedAbandonSession() {
     sessionActionRunning.value = 'abandoning session'
     await axios.post(route('api.sessions.abandon', activeSession.value.id))
         .then((res) => {
-            activeSession.value = res.data.session
+            updateSessionOrTopic(res.data.session)
         })
         .catch((err) => {
             console.log(err);
@@ -563,7 +571,7 @@ async function clickedStartSession() {
     sessionActionRunning.value = 'starting session'
     await axios.post(route('api.sessions.in_session', activeSession.value.id))
         .then((res) => {
-            activeSession.value = res.data.session
+            updateSessionOrTopic(res.data.session)
 
             showModal('therapy')
         })
@@ -590,7 +598,7 @@ async function clickedEndSession() {
     sessionActionRunning.value = 'ending session'
     await axios.post(route('api.sessions.end', activeSession.value.id))
         .then((res) => {
-            activeSession.value = res.data.session
+            updateSessionOrTopic(res.data.session)
         })
         .catch((err) => {
             console.log(err);
@@ -802,6 +810,7 @@ function clearGetting() {
                             :key="idx"
                             :session="item" 
                             :therapy="therapy"
+                            :listen="false"
                             :is-active="activeSession?.id == item.id"
                             @on-update="(item) => {
                                 updateSessionOrTopic(item)
@@ -1077,11 +1086,9 @@ function clearGetting() {
                             :activeSession="activeSession"
                             :deletedSessionOrTopic="currentDeletedSessionOrTopic"
                             :updatedSessionOrTopic="currentUpdatedSessionOrTopic"
-                            :selectedActiveSession="selectedActiveSession"
                             :is-participant="computedIsParticipant"
                             :is-user="computedIsUser"
                             :is-counsellor="computedIsCounsellor"
-                            @deselect-active-session="() => selectedActiveSession = false"
                             @update-active-session="(data) => activeSession = data"
                             @created="addSessionOrTopic"
                             @updated="updateSessionOrTopic"
@@ -1322,19 +1329,10 @@ function clearGetting() {
                     :therapy="computedTherapy"
                     :newSession="newSession"
                     :activeSession="activeSession"
-                    :deletedSessionOrTopic="currentDeletedSessionOrTopic"
-                    :updatedSessionOrTopic="currentUpdatedSessionOrTopic"
-                    :selectedActiveSession="selectedActiveSession"
                     :is-participant="computedIsParticipant"
                     :is-user="computedIsUser"
                     :is-counsellor="computedIsCounsellor"
-                    @deselect-active-session="() => selectedActiveSession = false"
-                    @update-active-session="(data) => activeSession = data"
-                    @created="addSessionOrTopic"
-                    @updated="updateSessionOrTopic"
-                    @done-updating="() => currentUpdatedSessionOrTopic = null"
-                    @done-deleting="() => currentDeletedSessionOrTopic = null"
-                    @deleted="deleteSessionOrTopic"
+                    @updated="(data) => updateSessionOrTopic(data)"
                 />
             </div>
         </div>

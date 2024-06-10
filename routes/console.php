@@ -22,10 +22,6 @@ Schedule::call(function () {
 })->everyThirtyMinutes();
 
 Schedule::call(function () {
-    PingTherapyEvent::dispatch();
-})->everyMinute();
-
-Schedule::call(function () {
     AppService::new()->failUnheldSessions();
 })->everyFourHours();
 

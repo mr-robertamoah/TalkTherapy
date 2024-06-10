@@ -1,6 +1,6 @@
 <template>
     <div v-bind="$attrs" 
-        class="rounded shadow-sm p-2 select-none cursor-pointer"
+        class="rounded shadow-sm p-2 select-none cursor-pointer max-w-[500px]"
         :class="[isActive ? 'bg-green-300' : 'bg-white']"
     >
         <div class="flex justify-start items-center overflow-hidden overflow-x-auto space-x-2">
@@ -59,8 +59,17 @@
             <hr class="my-2">
 
             <div class="p-4 flex flex-col items-center justify-center mx-auto w-[90%] md:w-[75%]">
-                <PrimaryButton class="mb-2 text-center" @click="() => showModal('update')">update</PrimaryButton>
-                <PrimaryButton class="mb-2 text-center" @click="() => showModal('delete')">delete</PrimaryButton>
+                <template v-if="['FAILED', 'ABANDONED', 'HELD', 'HELD_CONFIRMATION', 'PENDING'].includes(session?.status)">
+                    <PrimaryButton 
+                        :disabled="session.status !== 'PENDING'"
+                        class="mb-2 text-center" @click="() => showModal('update')">update</PrimaryButton>
+                    <div 
+                        v-if="session.status !== 'PENDING'"
+                        class="text-sm text-center w-full my-2 text-gray-600"
+                    >you cannot only update a pending session</div>
+                    <PrimaryButton class="mb-2 text-center" @click="() => showModal('delete')">delete</PrimaryButton>
+                </template>
+                <div v-else class="text-sm text-center w-full my-2 text-gray-600">you cannot perform actions when in session</div>
             </div>
         </div>
         <div v-if="modalData.type == 'delete'" class="relative">
@@ -142,22 +151,24 @@ onBeforeUnmount(() => {
 })
 
 watchEffect(() => {
-    if (props.session?.id && props.listen) {
-        mainSession.value = {...props.session}
+    const user = usePage().props.auth.user
 
-        Echo
-            .private(`sessions.${props.session.id}`)
-            .listen('.message.created', (data) => {
-                console.log(data, 'message created');
-                if (data.message?.fromUserId == usePage().props.auth.user?.id)
-                    return
+    if (!user || !props.listen || !props.session?.id) return
 
-                emits('onMessageCreated', data.message)
-            })
-            .listen('.session.updated', (data) => {
-                emits('onUpdate', data.session)
-            })
-    }
+    mainSession.value = {...props.session}
+
+    Echo
+        .private(`sessions.${props.session.id}`)
+        .listen('.message.created', (data) => {
+            console.log(data, 'message created');
+            if (data.message?.fromUserId == user?.id)
+                return
+
+            emits('onMessageCreated', data.message)
+        })
+        .listen('.session.updated', (data) => {
+            emits('onUpdate', data.session)
+        })
 })
 
 const computedAbout = computed(() => {

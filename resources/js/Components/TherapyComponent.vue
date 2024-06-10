@@ -26,10 +26,13 @@
         <TherapyFilterItem
             :item="selectedSession"
             :therapy="therapy"
+            :has-actions="false"
+            :listen="true"
             :type="'session'"
             :is-active="true"
             class="w-[60%] shrink-0"
             @on-message-created="(data) => onMessageCreated(data)"
+            @on-update="(data) => emits('updated', data)"
         />
     </div>
     <div class="my-2 w-full h-1 rounded bg-stone-400"  v-if="showSessions"></div>
@@ -60,7 +63,6 @@
                     @dblclick="() => clickedFilterItem(item)"
                     @on-update="(data) => onUpdateItem(data)"
                     @on-delete="(data) => onDeleteItem(data)"
-                    @on-message-created="(data) => onMessageCreated(data)"
                 />
             </template>
             <div v-if="computedFilteredItems.length && computedPages && !loading">
@@ -423,15 +425,20 @@ watchEffect(() => {
 })
 
 const computedCanSendMessage = computed(() => {
+    if (!props.isParticipant) return false
+
     if (
-        props.isParticipant &&
         props.activeSession?.status == 'HELD_CONFIRMATION' && 
         usePage().props.auth.user.id !== props.activeSession?.updatedById
     ) return true
 
-    return props.isParticipant && 
-        computedSelectSessionIsActive.value &&
-        !['FAILED', 'ABANDONED', 'HELD', 'PENDING', 'IN_SESSION_CONFIRMATION'].includes(props.activeSession?.status) &&
+    if (
+        props.activeSession?.status == 'IN_SESSION_CONFIRMATION' && 
+        usePage().props.auth.user.id == props.activeSession?.updatedById
+    ) return true
+
+    return computedSelectSessionIsActive.value &&
+        !['FAILED', 'ABANDONED', 'HELD', 'PENDING'].includes(props.activeSession?.status) &&
         props.activeSession?.type == 'ONLINE'
 })
 const computedSelectSessionIsActive = computed(() => {
