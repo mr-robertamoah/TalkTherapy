@@ -110,7 +110,7 @@ function goToTherapy(data) {
             <nav class="bg-white border-b border-gray-100">
                 <!-- Primary Navigation Menu -->
                 <div class="mx-auto px-4 sm:px-6 lg:px-8">
-                    <div class="flex justify-between h-16">
+                    <div class="flex justify-between h-16 space-x-4">
                         <div class="flex">
                             <!-- Logo -->
                             <div class="shrink-0 flex items-center">
@@ -227,23 +227,20 @@ function goToTherapy(data) {
                                 </button>
                             </div>
                         </template>
-                        <div class="flex justify-end items-center" v-else>
+                        <div class="flex justify-start items-center overflow-hidden overflow-x-auto space-x-2" v-else>
                             <StyledLink
                                 :href="route('login')"
-                                v-if="!route().current('login')" 
-                                class="my-auto mr-2"
+                                v-if="!route().current('login')"
                                 :text="'login'"
                             />
                             <StyledLink
                                 :href="route('register')"
-                                v-if="!route().current('register')" 
-                                class="my-auto mr-2"
+                                v-if="!route().current('register')"
                                 :text="'register'"
                             />
                             <StyledLink
                                 :href="route('about')"
-                                v-if="!route().current('about')" 
-                                class="my-auto mr-2"
+                                v-if="!route().current('about')"
                                 :text="'about'"
                             />
                         </div>

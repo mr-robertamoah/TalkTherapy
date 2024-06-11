@@ -86,6 +86,6 @@ class PostService extends Service
 
         $query->orderByDesc('created_at');
 
-        return $query->paginate(PaginationEnum::preferencesPagination->value);
+        return $query->paginate(2);
     }
 }

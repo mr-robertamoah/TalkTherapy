@@ -340,14 +340,14 @@ function showPost() {
                 </div>
                 <div class="w-full md:w-[70%] md:mr-auto lg:mx-auto lg:w-[50%] shrink-0">
                     <div class="mx-auto sm:px-6 lg:px-8 mt-4">
-                        <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
+                        <div class="bg-white w-full shadow-sm sm:rounded-lg">
                             <div class="p-6 text-gray-900 flex justify-between items-center">
                                 <div>Posts</div>
                                 <PrimaryButton
                                     v-if="computedCanCreatePost"
                                     @click="() => showModal('create post')">create post</PrimaryButton>
                             </div>
-                            <div class="m-2 space-y-4 w-full" v-if="posts.data?.length">
+                            <div class="p-2 space-y-4 w-full" v-if="posts.data?.length">
                                 <PostComponent
                                     v-for="(post, idx) in posts.data"
                                     :key="post.id"
@@ -356,10 +356,18 @@ function showPost() {
                                     @created="(post) => updatePost(post, idx)"
                                     @updated="(post) => updatePost(post, idx)"
                                     @deleted="() => deletePost(idx)"
-                                    class="w-full xs:w-[350px] md:w-[200px] lg:w-[300px] shrink-0 mx-auto mb-8"
+                                    class="w-full xs:w-[300px] md:w-[350px] lg:w-[300px] xl:w-[350px] mx-auto mb-8"
                                 />
                             </div>
                             <div v-else class="text-sm text-gray-600 w-full h-[200px] flex justify-center items-center">no posts yet</div>
+                            <div
+                                v-if="getting.show && getting.type == 'posts'"
+                                class="my-4 p-2 rounded text-center text-sm lg:text-base w-[90%] sm:w-[70%] lg:w-[80%] mx-auto bg-green-300 text-green-600"
+                            >getting posts...</div>
+                            <div
+                                v-if="posts.data?.length && posts.page && getting.type !== 'posts'"
+                                @click="getPosts"
+                                class="text-3xl p-2 mb-4 w-fit mx-auto cursor-pointer" title="get more posts">...</div>
                         </div>
                     </div>
 
