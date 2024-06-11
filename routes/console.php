@@ -23,11 +23,6 @@ Schedule::call(function () {
 })->everyThirtyMinutes();
 
 Schedule::call(function () {
-    Log::info('ping schedule');
-    PingTherapyEvent::dispatch();
-})->everyMinute();
-
-Schedule::call(function () {
     AppService::new()->failUnheldSessions();
 })->everyFourHours();
 

@@ -47,13 +47,8 @@ class MessageSentEvent implements ShouldBroadcast
 
     public function broadcastWith(): array
     {
-        Log::info("message sent", [
-            $this->getMessageBroadcastName($this->message),
-            $data = $this->getMessageBroadcastData($this->message)
-        ]);
-
         return [
-            'message' => $data
+            'message' => $this->getMessageBroadcastData($this->message)
         ];
     }
 }
