@@ -64,7 +64,9 @@ watchEffect(() => {
                 }
                 console.log(notification, 'notification');
                 if (
-                    notification.type == 'session.status'
+                    notification.type == 'session.status' &&
+                    !route().current(therapyRoute, notification.forId) &&
+                    alertData.value.message !== notification.message
                 ) {
                     const key = notification.forType == 'Therapy' ? 'therapyId' : 'groupTherapyId'
                     setSuccessAlertData({
@@ -107,14 +109,14 @@ function goToTherapy(data) {
         <div class="min-h-screen bg-stone-100">
             <nav class="bg-white border-b border-gray-100">
                 <!-- Primary Navigation Menu -->
-                <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="mx-auto px-4 sm:px-6 lg:px-8">
                     <div class="flex justify-between h-16">
                         <div class="flex">
                             <!-- Logo -->
                             <div class="shrink-0 flex items-center">
                                 <Link :href="route('home')">
                                     <ApplicationLogo
-                                        class="block h-10 w-10"
+                                        class="block h-10 w-10 xl:h-12 xl:w-12"
                                     />
                                 </Link>
                             </div>

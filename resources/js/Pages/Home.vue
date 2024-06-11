@@ -243,8 +243,8 @@ function showPost() {
                     class="mr-4"
                 />
             </div>
-            <div class="block space-y-4 md:flex justify-start items-start md:space-y-0 md:space-x-4">
-                <div class="w-full md:w-[50%]">
+            <div class="block space-y-4 lg:flex justify-start items-start lg:space-y-0 lg:space-x-0">
+                <div class="w-full lg:w-[50%]">
                     <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 mt-4">
                         <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
                             <div class="p-6 text-gray-900">Starred Counsellors (previous month)</div>
@@ -338,8 +338,8 @@ function showPost() {
                         </div>
                     </div>
                 </div>
-                <div class="w-full md:w-[50%] shrink-0">
-                    <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 mt-4">
+                <div class="w-full md:w-[70%] md:mr-auto lg:mx-auto lg:w-[50%] shrink-0">
+                    <div class="mx-auto sm:px-6 lg:px-8 mt-4">
                         <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
                             <div class="p-6 text-gray-900 flex justify-between items-center">
                                 <div>Posts</div>
@@ -347,7 +347,7 @@ function showPost() {
                                     v-if="computedCanCreatePost"
                                     @click="() => showModal('create post')">create post</PrimaryButton>
                             </div>
-                            <div class="m-2 p-2 overflow-hidden overflow-y-auto space-y-4" v-if="posts.data?.length">
+                            <div class="m-2 space-y-4 w-full" v-if="posts.data?.length">
                                 <PostComponent
                                     v-for="(post, idx) in posts.data"
                                     :key="post.id"
@@ -356,7 +356,7 @@ function showPost() {
                                     @created="(post) => updatePost(post, idx)"
                                     @updated="(post) => updatePost(post, idx)"
                                     @deleted="() => deletePost(idx)"
-                                    class="w-full xs:w-[350px] md:w-[300px] lg:w-[350px] shrink-0 mx-auto mb-8"
+                                    class="w-full xs:w-[350px] md:w-[200px] lg:w-[300px] shrink-0 mx-auto mb-8"
                                 />
                             </div>
                             <div v-else class="text-sm text-gray-600 w-full h-[200px] flex justify-center items-center">no posts yet</div>

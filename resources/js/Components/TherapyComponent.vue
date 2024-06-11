@@ -700,7 +700,7 @@ function alertOfNewMessage() {
 
 function addNewMessage(newMessage) {
     let item
-    if (!newMessage) return
+    if (!newMessage || messageExists(newMessage)) return
 
     if (computedCurrentFilter.value == 'session' || !props.showSessions) {
 
@@ -724,6 +724,24 @@ function addNewMessage(newMessage) {
 
     if (item)
         chatMessages.value.push({...newMessage})
+}
+
+function messageExists(newMessage) {
+    if (!newMessage?.id) return false
+
+    if (
+        (computedCurrentFilter.value == 'session' || !props.showSessions) &&
+        selectedSession.value &&
+        messages.sessions[selectedSession.value.id].data?.findIndex((message) => message.id == newMessage.id) !== -1
+    ) return true
+
+    if (
+        computedCurrentFilter.value == 'topic' && 
+        selectedTopic.value &&
+        messages.topics[selectedTopic.value.id].data?.findIndex((message) => message.id == newMessage.id) !== -1
+    ) return true
+
+    return false
 }
 
 async function getSessionMessages() {

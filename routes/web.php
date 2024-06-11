@@ -3,6 +3,7 @@
 use App\Http\Controllers\AboutController;
 use App\Http\Controllers\AdministratorController;
 use App\Http\Controllers\CounsellorController;
+use App\Http\Controllers\GroupTherapyController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\LinkController;
 use App\Http\Controllers\PostController;
@@ -51,6 +52,7 @@ Route::get('/about', AboutController::class)
     ->name('about');
 
 Route::get('/therapies/{therapyId}', [TherapyController::class, 'getTherapy'])->name('therapies.get');
+Route::get('/grouptherapies/{groupTherapyId}', [GroupTherapyController::class, 'getGroupTherapy'])->name('grouptherapies.get');
 
 Route::get('/counsellor/{counsellorId}/verify-email/{hash}', [CounsellorController::class, 'verifyEmail'])
     ->middleware(['signed','throttle:6,1'])

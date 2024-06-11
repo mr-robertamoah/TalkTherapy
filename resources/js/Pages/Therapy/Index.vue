@@ -68,7 +68,7 @@ const loader = ref({
 const timer = ref({
     beforeStart: 0,
     beforeEnd: 0,
-    duration: 0,
+    set: false,
 })
 const counsellorSearch = ref('')
 const sessionActionRunning = ref('')
@@ -180,18 +180,22 @@ watchEffect(() => {
         })
         .listen(`.session.started`, (data) => {
             activeSession.value = data.session
+            startTimer()
         })
         .listen(`.session.updated`, (data) => {
             if (activeSession.value?.id == data.session.id)
                 activeSession.value = data.session
         })
-        .listen(`.message.ping`, (data) => {
-            console.log(data, 'message.ping');
+        .listen(`.session.ping`, (data) => {
+            console.log(data);
         })
 })
 
 onBeforeUnmount(() => {
+    timer.value.set = false
+    
     if (interval.value) clearInterval(interval.value)
+
     let currentTherapy = props.therapy?.data ? props.therapy?.data : props.therapy
 
     if (!userId || !currentTherapy.id) return
@@ -235,6 +239,7 @@ function setTimers() {
     
     timer.value.beforeStart = differenceInMinutes(parseISO(activeSession.value.startTime), now) + offset
     timer.value.beforeEnd = differenceInMinutes(parseISO(activeSession.value.endTime), now) + offset
+    timer.value.set = true
 }
 
 function clearData() {
@@ -338,9 +343,12 @@ function resetTimer() {
 }
 
 function startTimer() {
+    if (timer.value.set) return
+
     resetTimer()
 
     setTimers()
+
     interval.value = setInterval(() => {
         timer.value.beforeStart -= 1
         timer.value.beforeEnd -= 1
