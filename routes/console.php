@@ -4,6 +4,7 @@ use App\Events\PingTherapyEvent;
 use App\Services\AppService;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schedule;
 
 /*
@@ -22,6 +23,7 @@ Schedule::call(function () {
 })->everyThirtyMinutes();
 
 Schedule::call(function () {
+    Log::info('ping schedule');
     PingTherapyEvent::dispatch();
 })->everyMinute();
 

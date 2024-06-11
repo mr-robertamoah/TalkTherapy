@@ -234,7 +234,7 @@ async function getStats() {
                                 :key="idx"
                                 :feature="feature"
                                 :type="'available'"
-                                class="w-[90%] shrink-0"
+                                class="w-[90%] shrink-0 max-w-md"
                             />
                         </div>
                     </div>
@@ -251,7 +251,7 @@ async function getStats() {
                                 :key="idx"
                                 :feature="feature"
                                 :type="'next'"
-                                class="w-[90%] shrink-0"
+                                class="w-[90%] shrink-0 max-w-md"
                             />
                         </div>
                     </div>
@@ -268,7 +268,7 @@ async function getStats() {
                                 :key="idx"
                                 :feature="feature"
                                 :type="'future'"
-                                class="w-[90%] shrink-0"
+                                class="w-[90%] shrink-0 max-w-md"
                             />
                         </div>
                     </div>
@@ -281,7 +281,7 @@ async function getStats() {
                         Statistics
                     </div>
 
-                    <div class="mt-10 mb-5 sm:grid sm:grid-cols-2 sm:space-x-3 space-y-3 sm:space-y-0">
+                    <div class="mt-10 mb-5">
                         <div class="w-full text-pretty text-center">
                             <div class="text-lg uppercase text-center"><span class="bg-gradient-to-br from-blue-800 to-violet-500 bg-clip-text text-transparent font-bold">Users</span></div>
                             <div class="w-full flex justify-center items-center">
@@ -293,7 +293,7 @@ async function getStats() {
 
                     <hr>
 
-                    <div class="mt-10 mb-5 sm:grid sm:grid-cols-2 sm:space-x-3 space-y-3 sm:space-y-0">
+                    <div class="mt-10 mb-5">
                         <div class="w-full text-pretty text-center">
                             <div class="text-lg uppercase text-center"><span class="bg-gradient-to-br from-blue-800 to-violet-500 bg-clip-text text-transparent font-bold">Counsellors</span></div>
                             <div class="w-full flex justify-center items-center">
@@ -305,7 +305,7 @@ async function getStats() {
 
                     <hr>
 
-                    <div class="mt-10 mb-5 sm:grid sm:grid-cols-2 sm:space-x-3 space-y-3 sm:space-y-0">
+                    <div class="mt-10 mb-5">
                         <div class="w-full text-pretty text-center">
                             <div class="text-lg uppercase text-center"><span class="bg-gradient-to-br from-blue-800 to-violet-500 bg-clip-text text-transparent font-bold">Therapies</span></div>
                             <div class="w-full flex justify-center items-center">
