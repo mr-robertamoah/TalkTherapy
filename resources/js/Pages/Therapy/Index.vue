@@ -398,6 +398,13 @@ function clickedReport() {
     showModal('report')
 }
 
+function clickedSessionAction(action) {
+    if (action == 'start') return clickedStartSession()
+    if (action == 'end') return clickedEndSession()
+
+    clickedAbandonSession()
+}
+
 function clickedActiveSession() {
     showModal('session actions')
 
@@ -809,7 +816,6 @@ function clearGetting() {
                             :session="item" 
                             :therapy="therapy"
                             :listen="false"
-                            :is-active="activeSession?.id == item.id"
                             @on-update="(item) => {
                                 updateSessionOrTopic(item)
                                 currentUpdatedSessionOrTopic = item
@@ -1333,6 +1339,10 @@ function clearGetting() {
                     :is-participant="computedIsParticipant"
                     :is-user="computedIsUser"
                     :is-counsellor="computedIsCounsellor"
+                    :can-start="timer.beforeEnd > 0"
+                    :can-end="computedIsInSession && timer.beforeEnd < 0"
+                    :can-abandon="timer.beforeEnd > 0 && computedIsInSession"
+                    @session-action="clickedSessionAction"
                     @updated="(data) => updateSessionOrTopic(data)"
                 />
             </div>

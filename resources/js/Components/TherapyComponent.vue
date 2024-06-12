@@ -22,7 +22,7 @@
         </div>
         <FormLoader class="mx-auto relative" :show="loading" :text="`getting ${computedCurrentFilter}s`"/>
     </div>
-    <div v-else class="flex justify-center items-center mb-2">
+    <div v-else class="w-full mb-2">
         <TherapyFilterItem
             :item="selectedSession"
             :therapy="therapy"
@@ -30,10 +30,21 @@
             :listen="true"
             :type="'session'"
             :is-active="true"
-            class="w-[60%] shrink-0"
+            class="w-full sm:w-[60%] shrink-0 mx-auto"
             @on-message-created="(data) => onMessageCreated(data)"
             @on-update="(data) => emits('updated', data)"
         />
+        <div v-if="activeSession" class="flex my-2 p-2 justify-start items-center overflow-hidden overflow-x-auto space-x-2">
+            <PrimaryButton
+                v-if="(['PENDING', 'IN_SESSION_CONFIRMATION'].includes(activeSession?.status) && userId !== activeSession?.updatedById) && activeSession?.status !== 'IN_SESSION' && canStart"
+                @click="() => clickedSessionAction('start')" class="shrink-0">start session for you</PrimaryButton>
+            <PrimaryButton
+                v-if="['PENDING', 'IN_SESSION', 'IN_SESSION_CONFIRMATION'].includes(activeSession?.status) && canAbandon"
+                @click="() => clickedSessionAction('abandon')" class="shrink-0">abondon session</PrimaryButton>
+            <PrimaryButton
+                v-if="canEnd && userId !== activeSession?.updatedById && activeSession?.status !== 'ABANDONED'"
+                @click="() => clickedSessionAction('end')" class="shrink-0">end session for you</PrimaryButton>
+        </div>
     </div>
     <div class="my-2 w-full h-1 rounded bg-stone-400"  v-if="showSessions"></div>
     <div v-bind="$attrs" class="min-h-[500px] relative flex flex-col items-center justify-center">
@@ -46,7 +57,7 @@
             :class="[computedFiltered ? 'opacity-100 translate-y-0' : 'opacity-20 -translate-y-5']"
             v-if="computedFiltered"
         >
-            <PrimaryButton class="shrink-0" @click="clickedCreateTopic">create topic</PrimaryButton>
+            <PrimaryButton class="shrink-0" v-if="isCounsellor" @click="clickedCreateTopic">create topic</PrimaryButton>
             <template v-if="computedFilteredItems.length">
                 <TherapyFilterItem
                     v-for="(item, idx) in computedFilteredItems"
@@ -58,8 +69,7 @@
                     :loaded-sessions-page="pages.session"
                     :loaded-topics="topics"
                     :loaded-topics-page="pages.topic"
-                    :is-active="item.id == activeSession?.id && computedCurrentFilter == 'session'"
-                    class="w-[60%] shrink-0"
+                    class="w-full sm:w-[60%] shrink-0"
                     @dblclick="() => clickedFilterItem(item)"
                     @on-update="(data) => onUpdateItem(data)"
                     @on-delete="(data) => onDeleteItem(data)"
@@ -105,10 +115,6 @@
                 :class="{'justify-end': chatMessages?.length <= 3}"
                 id="message_area"
             >
-                <div v-if="haveMessage" @click="() => haveMessage = false" class="cursor-pointer w-full sticky top-0 flex bg-green-600 text-green-300 rounded p-4 text-center">
-                    <div class="text-xs w-full text-center">you have a new message</div>
-                    <div @click="() => haveMessage = false" class="absolute top-0 right-2 rounded-full bg-white text-green-600 w-6 h-6 flex justify-center items-center">x</div>
-                </div>
                 <div v-if="!getting && !computedMessagesPage && chatMessages.length" class="w-fit mx-auto my-2 text-sm text-gray-600">no more messages</div>
                 <div v-if="!getting && computedMessagesPage > 1" class="w-full">
                     <div @click="getSessionMessages" class="w-fit mx-auto p-4 text-lg text-gray-600 cursor-pointer">...</div>
@@ -135,6 +141,17 @@
                     v-else
                     class="text-gray-600 text-sm font-bold w-full h-[300px] flex justify-center items-center my-auto"
                 >{{computedSelectedItem?.isSession && computedSelectedItem?.type == 'IN_PERSON' ? 'it is an in-person session' : 'no messages'}}</div>
+                
+                <div 
+                    v-if="receivedMessages"
+                    @click="() => {
+                        scrollToBottom()
+                        receivedMessages = 0
+                    }"
+                    class="cursor-pointer w-fit absolute bottom-0 right-1 flex bg-gray-600 text-gray-300 rounded-full p-2 text-center">
+                    <div class="text-base text-center text-white w-4 h-4 flex justify-center items-center">▼</div>
+                    <div class="absolute -top-2 -right-1 text-xs rounded-full bg-gray-300 text-gray-600 w-4 h-4 flex justify-center items-center">{{ receivedMessages }}</div>
+                </div>
             </div>
         </div>
         
@@ -270,7 +287,7 @@ const { modalData, showModal, closeModal } = useModal()
 
 const emits = defineEmits([
     'deselectActiveSession', 'updateActiveSession', 'created', 'updated', 'deleted',
-    'doneUpdating', 'doneDeleting'
+    'doneUpdating', 'doneDeleting', 'sessionAction'
 ])
 
 const props = defineProps({
@@ -292,6 +309,15 @@ const props = defineProps({
     activeSession: {
         default: null
     },
+    canStart: {
+        default: false
+    },
+    canAbandon: {
+        default: false
+    },
+    canEnd: {
+        default: false
+    },
     selectedActiveSession: {
         default: false,
         type: Boolean
@@ -310,6 +336,7 @@ const props = defineProps({
     }
 })
 
+const userId = usePage().props.auth.user?.id
 const loading = ref(false)
 const getting = ref(false)
 const pages = ref({
@@ -322,7 +349,7 @@ const selectedSessionTopic = ref(null)
 const selectedSession = ref(null)
 const selectedTopic = ref(null)
 const selectedTopicSession = ref(null)
-const haveMessage = ref(false)
+const receivedMessages = ref(0)
 const sessions = ref([])
 const chatMessages = ref([])
 const messages = reactive({
@@ -408,6 +435,12 @@ watchEffect(() => {
 })
 watchEffect(() => {
     if (
+        props.activeSession?.status == 'IN_SESSION_CONFIRMATION' && 
+        usePage().props.auth.user.id !== props.activeSession?.updatedById
+    ) confirmInSession()
+})
+watchEffect(() => {
+    if (
         props.activeSession?.status == 'HELD_CONFIRMATION' && 
         usePage().props.auth.user.id !== props.activeSession?.updatedById
     ) confirmSessionHeld()
@@ -488,6 +521,10 @@ const computedMessagesPage = computed(() => {
     return 0
 })
 
+function clickedSessionAction(action) {
+    emits('sessionAction', action)
+}
+
 function getMessageTo() {
     let to = {
         type: '',
@@ -551,6 +588,17 @@ function confirmSessionHeld() {
     const message = props.isCounsellor
         ? 'User has ended the session on his/her end. You can no more continue. Please end the session on your end.'
         : 'Counsellor ended the session on his/her end. You can no more continue. Please end the session on your end.'
+
+    setSuccessAlertData({
+        message,
+        time: 10000
+    })
+}
+
+function confirmInSession() {
+    const message = props.isCounsellor
+        ? 'User has started the session on his/her end. Please start the session on your end.'
+        : 'Counsellor ended the session on his/her end. Please start the session on your end.'
 
     setSuccessAlertData({
         message,
@@ -686,16 +734,17 @@ function replaceFirstMessage(data) {
 }
 
 function onMessageCreated(data) {
+    // data.scroll = true
     addNewMessage(data)
-    // alertOfNewMessage()
+    alertOfNewMessage()
 }
 
 function alertOfNewMessage() {
-    haveMessage.value = true
+    receivedMessages.value += 1
 
     setTimeout(() => {
-        haveMessage.value = false
-    }, 500)
+        receivedMessages.value = 0
+    }, 1000)
 }
 
 function addNewMessage(newMessage) {

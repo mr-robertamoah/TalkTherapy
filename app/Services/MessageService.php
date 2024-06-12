@@ -140,7 +140,7 @@ class MessageService extends Service
         
         $message = CreateMessageAction::new()->execute($createMessageDTO);
 
-        broadcast(new MessageSentEvent($message))->toOthers();
+        broadcast(new MessageSentEvent($message));
 
         return $message;
     }
@@ -155,7 +155,7 @@ class MessageService extends Service
         
         $message = UpdateMessageAction::new()->execute($createMessageDTO);
 
-        broadcast(new MessageUpdatedEvent($message))->toOthers();
+        broadcast(new MessageUpdatedEvent($message));
 
         return $message;
     }
@@ -168,7 +168,7 @@ class MessageService extends Service
         
         $message = DeleteMessageAction::new()->execute($createMessageDTO);
 
-        broadcast(new MessageDeletedEvent($message))->toOthers();
+        broadcast(new MessageDeletedEvent($message));
 
         return $message;
     }
