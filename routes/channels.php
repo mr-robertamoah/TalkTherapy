@@ -1,9 +1,11 @@
 <?php
 
+use App\Models\Counsellor;
 use App\Models\Discussion;
 use App\Models\Message;
 use App\Models\Session;
 use App\Models\Therapy;
+use App\Models\User;
 use Illuminate\Support\Facades\Broadcast;
 
 /*
@@ -30,11 +32,19 @@ Broadcast::channel('sessions.{sessionId}', function ($user, $sessionId) {
 });
 
 Broadcast::channel('therapies.{therapyId}', function ($user, $therapyId) {
-    if (Therapy::find($therapyId)?->isParticipant($user)) {
-        return ['id' => $user->id, 'name' => $user->name];
-    }
+    $therapy = Therapy::find($therapyId);
 
-    return false;
+    if (!$therapy || !$therapy?->isParticipant($user)) return false;
+
+    $isUser = ($therapy->addedby_type == User::class && $therapy->addedby_id == $user->id) ||
+        ($therapy->addedby_type == Counsellor::class && $therapy->addedby->user_id == $user->id);
+
+    $name = $user->name;
+
+    if ($isUser && $therapy->anonymous)
+        $name = 'Client (Anonymous User)';
+
+    return ['id' => $user->id, 'name' => $name];
 });
 
 Broadcast::channel('discussions.{discussionId}', function ($user, $discussionId) {

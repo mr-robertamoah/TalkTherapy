@@ -11,6 +11,7 @@ import useFeatures from '@/Composables/useFeatures';
 import CreateTestimonialModal from '@/Components/CreateTestimonialModal.vue';
 import ContactUsModal from '../Components/ContactUsModal.vue';
 import PrimaryButton from '../Components/PrimaryButton.vue';
+import ApplicationLogo from '@/Components/ApplicationLogo.vue';
 
 const { closeModal, showModal, modalData } = useModal()
 const { features } = useFeatures()
@@ -58,9 +59,14 @@ async function getStats() {
     <Head title="About" />
 
     <AuthenticatedLayout>
+        <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 mt-4 top-2 sticky">
+            <div class="p-2 bg-gradient-to-br from-blue-800 to-violet-500 text-lg md:text-2xl w-full sm:w-[90%] rounded-lg text-center text-white md:w-[70%] mx-auto">
+                talk your way to a better mental state
+            </div>
+        </div>
         <div class="pt-6 pb-12">
-            <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 mt-4">
-                <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg min-h-[80vh] p-4">
+            <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 mt-4 relative">
+                <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg min-h-[80vh] p-4 relative">
                     <div class="mt-32 ml-6 text-5xl font-bold w-fit bg-gradient-to-br from-blue-800 to-violet-500 bg-clip-text text-transparent uppercase">
                         {{ greetings }}
                     </div>
@@ -72,10 +78,15 @@ async function getStats() {
                             class="text-gray-600 text-lg mt-4"
                         />
                     </div>
+                    <div class="bg-gradient-to-br from-blue-800 to-violet-500 w-full h-2 absolute bottom-0 right-0"></div>
                 </div>
             </div>
             
-            <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 mt-4">
+            <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 mt-4 relative">
+                <ApplicationLogo class="w-56 h-56 mx-auto"/>
+            </div>
+            
+            <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 mt-4 bg-white">
                 <div class="overflow-hidden min-h-[20vh] p-4 flex flex-col justify-center items-start mx-auto w-[90%] sm:w-[80%]">
                     <div class="bg-gradient-to-br from-blue-800 to-violet-500 bg-clip-text text-transparent font-bold text-2xl">Mission</div>
 
@@ -89,9 +100,31 @@ async function getStats() {
                         This connection between counsellors and users on this platform creates a relationship that helps individuals to either get out of existing mental health issues or prevent them all together.
                     </p>
                 </div>
+                
+                <div class="overflow-hidden min-h-[20vh] p-4 flex flex-col justify-center items-start mx-auto w-[90%] sm:w-[80%]">
+                    <div class="bg-gradient-to-br from-blue-800 to-violet-500 bg-clip-text text-transparent font-bold text-2xl">Vision</div>
+
+                    <div class="w-fit">
+                        <div class="text-gray-600 text-lg mt-2 font-medium">To build our understanding in</div>
+                        <div class="bg-gradient-to-br from-blue-800 to-violet-500 w-full h-1 rounded"></div>
+                    </div>
+                    <div class="w-fit ml-auto">
+                        <div class="text-gray-600 text-lg mt-2 font-medium">To grow our focus on</div>
+                        <div class="bg-gradient-to-br from-blue-800 to-violet-500 w-full h-1 rounded"></div>
+                    </div>
+
+                    <div class="w-fit relative mx-auto mt-2 p-2">
+                        <div class="text-gray-600 text-lg font-medium">MENTAL HEALTH ISSUES</div>
+                        <div class="absolute bottom-0 right-0 bg-gradient-to-br from-blue-800 to-violet-500 w-full h-1 rounded"></div>
+                        <div class="absolute top-0 right-0 bg-gradient-to-br from-blue-800 to-violet-500 w-full h-1 rounded"></div>
+                    </div>
+                    <div
+                        class="bg-gradient-to-br from-blue-800 mt-4 to-violet-500 bg-clip-text text-transparent font-bold text-base mx-auto"
+                    >to enhance the use of a more social and systematic approach in handling matters regarding a person's mental health</div>
+                </div>
             </div>
 
-            <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 mt-4">
+            <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 mt-4 relative">
                 <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg min-h-[80vh] p-4">
                     <div class="mt-4 ml-2 text-2xl font-bold w-fit bg-gradient-to-br from-blue-800 to-violet-500 bg-clip-text text-transparent uppercase">
                         What we are to you
@@ -228,7 +261,7 @@ async function getStats() {
                         <div class="text-sm text-gray-600 text-justify mb-2">These are the features that are currently available.</div>
                         <div
                             :class="[features.current.length > 1 ? 'justify-start' : 'justify-center']"
-                            class="mt-4 space-x-3 flex items-center overflow-hidden overflow-x-auto p-2">
+                            class="mt-4 space-x-8 flex items-center overflow-hidden overflow-x-auto p-2 pt-6">
                             <FeatureComponent
                                 v-for="(feature, idx) in features.current"
                                 :key="idx"
@@ -245,7 +278,7 @@ async function getStats() {
                         <div class="text-sm text-gray-600 text-justify mb-2">These are the features that are bein worked on.</div>
                         <div 
                             :class="[features.next.length > 1 ? 'justify-start' : 'justify-center']"
-                            class="mt-4 space-x-3 flex items-center overflow-hidden overflow-x-auto p-2">
+                            class="mt-4 space-x-8 flex items-center overflow-hidden overflow-x-auto p-2 pt-6">
                             <FeatureComponent
                                 v-for="(feature, idx) in features.next"
                                 :key="idx"
@@ -262,7 +295,7 @@ async function getStats() {
                         <div class="text-sm text-gray-600 text-justify mb-2">These are the features that are being considered for the future.</div>
                         <div
                             :class="[features.future.length > 1 ? 'justify-start' : 'justify-center']"
-                            class="mt-4 space-x-3 flex items-center overflow-hidden overflow-x-auto p-2">
+                            class="mt-4 space-x-8 flex items-center overflow-hidden overflow-x-auto p-2 pt-6">
                             <FeatureComponent
                                 v-for="(feature, idx) in features.future"
                                 :key="idx"
