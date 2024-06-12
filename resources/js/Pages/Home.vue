@@ -368,6 +368,10 @@ function showPost() {
                                 v-if="posts.data?.length && posts.page && getting.type !== 'posts'"
                                 @click="getPosts"
                                 class="text-3xl p-2 mb-4 w-fit mx-auto cursor-pointer" title="get more posts">...</div>
+                            <div
+                                v-if="posts.data?.length && !posts.page"
+                                @click="getPosts"
+                                class="text-sm w-full my-4 text-center text-gray-60">no more posts</div>
                         </div>
                     </div>
 
