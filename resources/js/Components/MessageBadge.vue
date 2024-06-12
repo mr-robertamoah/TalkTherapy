@@ -482,7 +482,7 @@ async function clickedDeleteForMe() {
 async function scrollToItem() {
     await nextTick()
 
-    if (item.value && id.value)
+    if (item.value)
         item.value.scrollIntoView()
 }
 

@@ -687,7 +687,7 @@ function replaceFirstMessage(data) {
 
 function onMessageCreated(data) {
     addNewMessage(data)
-    alertOfNewMessage()
+    // alertOfNewMessage()
 }
 
 function alertOfNewMessage() {
@@ -695,7 +695,7 @@ function alertOfNewMessage() {
 
     setTimeout(() => {
         haveMessage.value = false
-    }, 1000)
+    }, 500)
 }
 
 function addNewMessage(newMessage) {
