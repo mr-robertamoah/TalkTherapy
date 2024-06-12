@@ -1290,19 +1290,22 @@ function clearGetting() {
             <hr class="my-2">
 
             <div class="relative">
-                <div class="space-y-3 flex flex-col justify-center items-center" v-if="activeSession && !sessionActionRunning">
-                    <PrimaryButton
-                        v-if="(['PENDING', 'IN_SESSION_CONFIRMATION'].includes(activeSession?.status) && userId !== activeSession?.updatedById) && activeSession?.status !== 'IN_SESSION' && timer.beforeEnd > 0"
-                        @click="clickedStartSession" class="shrink-0">start session for you</PrimaryButton>
-                    <PrimaryButton
-                        v-if="activeSession.type == 'ONLINE'"
-                        @click="() => showModal('therapy')" class="shrink-0">show message box</PrimaryButton>
-                    <PrimaryButton
-                        v-if="['PENDING', 'IN_SESSION', 'IN_SESSION_CONFIRMATION'].includes(activeSession?.status) && timer.beforeEnd > 0 && computedIsInSession"
-                        @click="clickedAbandonSession" class="shrink-0">abondon session</PrimaryButton>
-                    <PrimaryButton
-                        v-if="computedIsInSession && timer.beforeEnd < 0 && userId !== activeSession?.updatedById && activeSession?.status !== 'ABANDONED'"
-                        @click="clickedEndSession" class="shrink-0">end session for you</PrimaryButton>
+                <div class="space-y-3 flex flex-col justify-center items-center" v-if="activeSession">
+                    <template v-if="!sessionActionRunning">
+                        <PrimaryButton
+                            v-if="(['PENDING', 'IN_SESSION_CONFIRMATION'].includes(activeSession?.status) && userId !== activeSession?.updatedById) && activeSession?.status !== 'IN_SESSION' && timer.beforeEnd > 0"
+                            @click="clickedStartSession" class="shrink-0">start session for you</PrimaryButton>
+                        <PrimaryButton
+                            v-if="activeSession.type == 'ONLINE'"
+                            @click="() => showModal('therapy')" class="shrink-0">show message box</PrimaryButton>
+                        <PrimaryButton
+                            v-if="['PENDING', 'IN_SESSION', 'IN_SESSION_CONFIRMATION'].includes(activeSession?.status) && timer.beforeEnd > 0 && computedIsInSession"
+                            @click="clickedAbandonSession" class="shrink-0">abondon session</PrimaryButton>
+                        <PrimaryButton
+                            v-if="computedIsInSession && timer.beforeEnd < 0 && userId !== activeSession?.updatedById && activeSession?.status !== 'ABANDONED'"
+                            @click="clickedEndSession" class="shrink-0">end session for you</PrimaryButton>
+                    </template>
+                    <div v-else class="text-sm text-gray-600 my-2 w-full text-center">performing action...</div>
                 </div>
                 <div v-else class="text-sm text-gray-600 my-4 text-center">no actions to perform</div>
             </div>
