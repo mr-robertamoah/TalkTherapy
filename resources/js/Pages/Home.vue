@@ -356,7 +356,7 @@ function showPost() {
                                     @created="(post) => updatePost(post, idx)"
                                     @updated="(post) => updatePost(post, idx)"
                                     @deleted="() => deletePost(idx)"
-                                    class="w-full xs:w-[300px] md:w-[350px] lg:w-[300px] xl:w-[350px] mx-auto mb-8"
+                                    class="w-full max-w-sm sm:max-w-full sm:w-[350px] md:w-96 lg:w-[400px] xl:w-[450px] mx-auto mb-8"
                                 />
                             </div>
                             <div v-else class="text-sm text-gray-600 w-full h-[200px] flex justify-center items-center">no posts yet</div>

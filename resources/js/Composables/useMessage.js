@@ -102,7 +102,7 @@ export default function useMessage() {
         mediaCaptureData.value.show = false
     }
 
-    function updateMessage() {
+    function updateMessage(action = null) {
         message.value.status = 'updating'
         if (replyingMessage.value?.id)
             message.value.replying = replyingMessage.value
@@ -115,10 +115,9 @@ export default function useMessage() {
         if (deletedFiles.value?.length)
             message.value.deletedFiles = [...deletedFiles.value.map(f => f.id)]
     
-        if (replaceOldMessage)
-            replaceOldMessage(message.value)
+        if (action)
+            action(message.value)
         
-        scrollToBottom()
         resetMessage()
     }
 
@@ -134,10 +133,10 @@ export default function useMessage() {
 
     function sendMessage({
         itemType = 'Session', item = null, topic = null, addNewMessage = null,
-        from = null, to = null
+        from = null, to = null, action = null
     }) {
         if (message.value?.id) {
-            updateMessage()
+            updateMessage(action)
             return
         }
     
@@ -176,14 +175,6 @@ export default function useMessage() {
         resetMessage()
     }
 
-    async function scrollToBottom() {
-        console.log('iscalled')
-        await nextTick()
-    
-        const div = document.getElementById(`message_area`)
-        if (div) div.scrollTop = div.scrollHeight
-    }
-
     function selectForUpdate(data) {
         message.value = {...message.value, ...data}
         message.value.replying = null
@@ -207,6 +198,6 @@ export default function useMessage() {
         computedHasMessage, mediaCaptureData, replyingMessage,
         changeFile , clickedIcon, removeUploadFile, scrollToMessageId,
         showMediaCapture, closeMediaCapture, resetMessage, removeReply,
-        sendMessage, scrollToBottom, updateMessage, selectForUpdate, selectAsReply
+        sendMessage, updateMessage, selectForUpdate, selectAsReply
     }
 }

@@ -20,6 +20,8 @@ const props = defineProps({
     
 })
 
+const listening = ref(false)
+
 onBeforeUnmount(() => {
     if (page.props.auth.user?.id)
         Echo.leave(`users.${page.props.auth.user?.id}`)
@@ -44,7 +46,8 @@ watchEffect(() => {
         })
     }
 
-    if (page.props.auth.user?.id) {
+    if (page.props.auth.user?.id && !listening.value) {
+        listening.value = true
         Echo
             .private(`App.Models.User.${page.props.auth.user?.id}`)
             .notification((notification) => {

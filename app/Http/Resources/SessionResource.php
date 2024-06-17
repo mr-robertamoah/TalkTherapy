@@ -15,6 +15,8 @@ class SessionResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
+        $currentTopic = $this->currentTopic;
+        
         return [
             'id' => $this->id,
             'userId' => $this->addedby_type == Counsellor::class ? $this->addedby->user->id : $this->addedby_id,
@@ -26,6 +28,7 @@ class SessionResource extends JsonResource
             'lat' => $this->latitude,
             'status' => $this->status,
             'topics' => TherapyTopicMiniResource::collection($this->topics),
+            'currentTopic' => $currentTopic ? new TherapyTopicMiniResource($currentTopic) : null,
             'cases' => TherapyCaseResource::collection($this->cases),
             'startTime' => $this->start_time,
             'endTime' => $this->end_time,

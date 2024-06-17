@@ -10,5 +10,13 @@ export default function useUtilities() {
         return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase()
     }
 
-    return { toCapitalize }
+    const getReadableStatus = (status) => {
+        if (!status) return ''
+
+        return status.toLowerCase().replaceAll('_', ' ')
+    }
+
+    return {
+        toCapitalize, getReadableStatus
+    }
 }

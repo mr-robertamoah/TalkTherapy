@@ -1,10 +1,10 @@
 <template>
     <div v-bind="$attrs" 
-        class="rounded shadow-sm p-2 select-none cursor-pointer max-w-[500px]"
+        class="rounded shadow-sm p-2 select-none cursor-pointer max-w-sm"
         :class="[isActive ? 'bg-green-300' : 'bg-white']"
     >
         <div class="flex justify-start items-center overflow-hidden overflow-x-auto space-x-2">
-            <div class="text-xs rounded bg-gray-500 text-white p-1">{{ session.status }}</div>
+            <div class="text-xs rounded bg-gray-500 text-white p-1">{{ getReadableStatus(session.status) }}</div>
             <div v-if="session.createdAt" class="text-xs text-nowrap my-2 w-fit ml-auto mr-2 text-gray-600">{{ toDiffForHumans(session.createdAt) }}</div>
         </div>
         <div class="capitalize text-gray-600 text-sm sm:text-base text-center font-bold tracking-wide px-2">
@@ -107,11 +107,13 @@ import useAlert from '@/Composables/useAlert';
 import useLocalDateTime from '@/Composables/useLocalDateTime';
 import Alert from './Alert.vue';
 import useShowMore from '@/Composables/useShowMore';
+import useUtilities from '@/Composables/useUtilities';
 
 const { modalData, closeModal, showModal } = useModal()
 const { toDiffForHumans } = useLocalDateTime()
 const { alertData, setAlertData, setFailedAlertData, clearAlertData } = useAlert()
 const { showMore, toggleShowMore, getShowMoreContent } = useShowMore()
+const { getReadableStatus } = useUtilities()
 
 const emits = defineEmits(['onUpdate', 'onDelete', 'onMessageCreated'])
 

@@ -56,13 +56,16 @@ onBeforeMount(() => {
 })
 
 watchEffect(() => {
-
-    if (!props.therapy.allowInPerson) return
+    if (
+        !props.show ||
+        !props.therapy.allowInPerson || 
+        sessionForm.type !== 'IN_PERSON'
+    ) return
 
     initMap()
     getCurrentLocation()
     
-    if (mapDetails.value.Map && sessionCreationMap.value && props.therapy.allowInPerson && sessionForm.type == 'IN_PERSON')
+    if (mapDetails.value.Map && sessionCreationMap.value)
         createMap(sessionCreationMap.value, currentLocation.value)
 })
 watch(() => markerPosition.value.lat || markerPosition.value.lng, () => {

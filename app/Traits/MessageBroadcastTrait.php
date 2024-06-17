@@ -55,6 +55,7 @@ trait MessageBroadcastTrait
             'status' => $message->status,
             'files' => FileResource::collection($message->files),
             'updatedAt' => $message->updated_at,
+            'createdAt' => $message->created_at,
         ];
     }
 }

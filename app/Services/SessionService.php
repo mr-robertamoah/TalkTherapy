@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Actions\Session\ChangeSessionStatusAction;
 use App\Actions\Session\CreateSessionAction;
 use App\Actions\Session\DeleteSessionAction;
+use App\Actions\Session\EnsureCanChangeSessionTopicAction;
 use App\Actions\Session\EnsureCanCreateSessionAction;
 use App\Actions\Session\EnsureCanDeleteSessionAction;
 use App\Actions\Session\EnsureCanEndSessionAction;
@@ -15,18 +16,21 @@ use App\Actions\Session\EnsureSessionExistsAction;
 use App\Actions\Session\UpdateSessionAction;
 use App\Actions\Star\CreateStarAction;
 use App\Actions\Session\EnsureTherapyExistsAction;
+use App\Actions\Session\SetCurrentTopicOfSessionAction;
+use App\Actions\Session\UnsetCurrentTopicOfSessionAction;
+use App\Actions\TherapyTopic\EnsureTherapyTopicExistsAction;
 use App\DTOs\CreateSessionDTO;
 use App\DTOs\CreateStarDTO;
 use App\DTOs\GetSessionsDTO;
 use App\Enums\PaginationEnum;
 use App\Enums\SessionStatusEnum;
 use App\Enums\StarTypeEnum;
+use App\Events\SessionTopicSetEvent;
+use App\Events\SessionTopicUnsetEvent;
 use App\Events\SessionUpdatedEvent;
 use App\Http\Resources\SessionResource;
-use App\Models\Therapy;
 use App\Notifications\SessionCreatedNotification;
 use App\Notifications\SessionDeletedNotification;
-use App\Notifications\SessionDueNotification;
 use App\Notifications\SessionStatusChangedNotification;
 use App\Notifications\SessionUpdatedNotification;
 use Illuminate\Support\Facades\Notification;
@@ -177,6 +181,36 @@ class SessionService extends Service
             $createSessionDTO->session->for->getOtherUsers($createSessionDTO->user), 
             new SessionDeletedNotification($session)
         );
+
+        return $session;
+    }
+
+    public function setCurrentTopic(CreateSessionDTO $createSessionDTO)
+    {
+        EnsureSessionExistsAction::new()->execute($createSessionDTO);
+
+        EnsureTherapyTopicExistsAction::new()->execute($createSessionDTO);
+
+        EnsureCanChangeSessionTopicAction::new()->execute($createSessionDTO);
+
+        $session = SetCurrentTopicOfSessionAction::new()->execute($createSessionDTO);
+
+        broadcast(new SessionTopicSetEvent($session))->toOthers();
+
+        return $session;
+    }
+
+    public function unsetCurrentTopic(CreateSessionDTO $createSessionDTO)
+    {
+        EnsureSessionExistsAction::new()->execute($createSessionDTO);
+
+        EnsureTherapyTopicExistsAction::new()->execute($createSessionDTO);
+
+        EnsureCanChangeSessionTopicAction::new()->execute($createSessionDTO);
+
+        $session = UnsetCurrentTopicOfSessionAction::new()->execute($createSessionDTO);
+
+        broadcast(new SessionTopicUnsetEvent($session))->toOthers();
 
         return $session;
     }

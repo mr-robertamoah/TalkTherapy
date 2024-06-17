@@ -20,6 +20,8 @@ export default function useMap(zoom = 15) {
     }
     
     async function initMap() {
+        if (mapDetails.value.Map && mapDetails.value.Marker) return
+        
         const loader = new Loader({
             apiKey: import.meta.env.VITE_GOOGLE_API_KEY,
             version: 'weekly'

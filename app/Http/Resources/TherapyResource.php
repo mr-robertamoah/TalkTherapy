@@ -14,14 +14,18 @@ class TherapyResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
-        $activeSession = $this->activeSession;
+        $activeSession = null;
+        $user = $request->user();
         $counsellor = $this->counsellor()->withTrashed()->first();
+
+        if ($user && $this->isParticipant($user))
+            $activeSession = $this->activeSession;
         
         return [
             'id' => $this->id,
             'name' => $this->name,
             'user' => $this->when(
-                    $this->addedby->is($request->user()) || !$this->anonymous, 
+                    $this->addedby->is($user) || !$this->anonymous, 
                     new UserMiniResource($this->addedby), 
                     ['id' => $this->addedby->id, 'fullName' => 'anonymous']
                 ),

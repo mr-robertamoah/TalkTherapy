@@ -1,0 +1,51 @@
+<?php
+
+namespace App\Events;
+
+use App\Http\Resources\TherapyTopicMiniResource;
+use App\Models\Session;
+use Illuminate\Broadcasting\Channel;
+use Illuminate\Broadcasting\InteractsWithSockets;
+use Illuminate\Broadcasting\PresenceChannel;
+use Illuminate\Broadcasting\PrivateChannel;
+use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
+use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
+use Illuminate\Foundation\Events\Dispatchable;
+use Illuminate\Queue\SerializesModels;
+
+class SessionTopicSetEvent implements ShouldBroadcast
+{
+    use Dispatchable, InteractsWithSockets, SerializesModels;
+
+    /**
+     * Create a new event instance.
+     */
+    public function __construct(private Session $session)
+    {
+        
+    }
+
+    /**
+     * Get the channels the event should broadcast on.
+     *
+     * @return array<int, \Illuminate\Broadcasting\Channel>
+     */
+    public function broadcastOn(): array
+    {
+        return [
+            new PresenceChannel($this->session->getForChannelName()),
+        ];
+    }
+
+    public function broadcastAs(): string
+    {
+        return 'session.topic.set';
+    }
+
+    public function broadcastWith(): array
+    {
+        return [
+            'topic' => new TherapyTopicMiniResource($this->session->currentTopic)
+        ];
+    }
+}

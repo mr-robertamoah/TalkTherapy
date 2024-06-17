@@ -1,5 +1,5 @@
 <template>
-    <div v-bind="$attrs" class="rounded bg-white shadow-sm p-2 select-none cursor-pointer">
+    <div v-bind="$attrs" class="rounded bg-white shadow-sm p-2 select-none cursor-pointer max-w-sm">
         <div class="text-xs my-2 w-fit ml-auto mr-2 text-gray-600">{{ topic.createdAt }}</div>
         <div class="capitalize text-gray-600 text-sm sm:text-base text-center font-bold tracking-wide px-2">
             {{ topic.name }}
@@ -96,9 +96,11 @@ import FormLoader from './FormLoader.vue';
 import DangerButton from './DangerButton.vue';
 import useAlert from '@/Composables/useAlert';
 import Alert from './Alert.vue';
+import useShowMore from '@/Composables/useShowMore';
 
 const { modalData, closeModal, showModal } = useModal()
 const { alertData, setAlertData, setFailedAlertData, clearAlertData } = useAlert()
+const { showMore, toggleShowMore, getShowMoreContent } = useShowMore()
 
 const emits = defineEmits(['onUpdate', 'onDelete'])
 

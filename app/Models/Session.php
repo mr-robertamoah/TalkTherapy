@@ -55,6 +55,16 @@ class Session extends Model
             ->withTimestamps();
     }
 
+    public function therapyTopicSessions()
+    {
+        return $this->hasMany(TherapyTopicSession::class, 'session_id');
+    }
+
+    public function getCurrentTopicAttribute()
+    {
+        return $this->therapyTopicSessions()->whereCurrent()->first()?->therapyTopic;
+    }
+
     public function messages()
     {
         return $this->morphMany(Message::class, 'for');

@@ -23,6 +23,11 @@ class TherapyTopic extends Model
             ->withTimestamps();
     }
 
+    public function therapyTopicSessions()
+    {
+        return $this->hasMany(TherapyTopicSession::class);
+    }
+
     public function therapy()
     {
         return $this->belongsTo(Therapy::class);

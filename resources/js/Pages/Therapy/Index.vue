@@ -30,12 +30,14 @@ import LinkComponent from '@/Components/LinkComponent.vue';
 import useAppLink from '@/Composables/useAppLink';
 import CreateDiscussionFormModal from '@/Components/CreateDiscussionFormModal.vue';
 import Modal from '@/Components/Modal.vue';
+import useUtilities from '@/Composables/useUtilities';
 
 const { modalData, showModal, closeModal } = useModal()
 const { goToLogin } = useAuth()
 const { toDiffForHumans } = useLocalDateTimed()
 const { createLink, getlinks } = useAppLink()
 const { alertData, clearAlertData, setAlertData, setSuccessAlertData, setFailedAlertData } = useAlert()
+const { getReadableStatus } = useUtilities()
 
 const props = defineProps({
     therapy: {
@@ -88,6 +90,7 @@ const getting = ref({
 })
 const currentDeletedSessionOrTopic = ref(null)
 const selectedActiveSession = ref(false)
+const listening = ref(false)
 const activeItemId = ref(scrollItems[0].id)
 const recentSessions = ref([])
 const recentTopics = ref([])
@@ -141,6 +144,10 @@ watchEffect(() => {
     if (user?.counsellor)
         getDiscussions(currentTherapy)
 
+    if (listening.value) return
+
+    listening.value = true
+
     Echo
         .join(`therapies.${currentTherapy.id}`)
         .here((users) => {
@@ -185,6 +192,14 @@ watchEffect(() => {
         .listen(`.session.updated`, (data) => {
             if (activeSession.value?.id == data.session.id)
                 activeSession.value = data.session
+        })
+        .listen(`.session.topic.set`, (data) => {
+            if (activeSession.value)
+                activeSession.value.currentTopic = data.topic
+        })
+        .listen(`.session.topic.unset`, (data) => {
+            if (activeSession.value)
+                activeSession.value.currentTopic = null
         })
 })
 
@@ -1324,13 +1339,14 @@ function clearGetting() {
     >
         <div class="select-none p-4">
             
-            <div class="text-gray-600 text-center font-bold tracking-wide capitalize">
-                {{ activeSession ? activeSession.name : 'Session' }}
+            <div class="sticky top-0 text-gray-600 text-center font-bold tracking-wide capitalize flex space-x-1 justify-center items-center">
+                <div>{{ activeSession ? activeSession.name : 'Session' }}</div>
+                <div class="text-gray-600 font-normal lowercase">. {{ getReadableStatus(activeSession?.status) }}</div>
             </div>
 
             <hr class="my-2">
 
-            <div class="relative p-4 h-[80vh] overflow-hidden overflow-y-auto">
+            <div class="relative p-4 pt-0">
                 <TherapyComponent
                     :show-sessions="false"
                     :therapy="computedTherapy"

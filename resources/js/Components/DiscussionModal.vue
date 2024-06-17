@@ -209,11 +209,11 @@
                                 v-if="counsellors.page"
                                 class="cursor-pointer p-2 text-gray-600 font-bold">...</div>
                         </template>
-                        <div v-else class="w-full text-center text-sm text-gray-600">no counsellors searched</div>
+                        <div v-else class="w-full text-center text-sm text-gray-600">no counsellors yet</div>
                     </div>
                 </div>
             </div>
-            <div v-if="view == 'messages'" class="overflow-hidden overflow-y-auto h-[70vh] w-[90%] mx-auto md:w-[70%]">
+            <div v-if="view == 'sessions'" class="overflow-hidden overflow-y-auto h-[70vh] w-[90%] mx-auto md:w-[70%]">
                 <div class="p-4 rounded bg-gray-200 my-4 shadow-sm min-h-[100px]">
                     <div class="w-full text-justify capitalize mt-4 mb-1 text-lg font-medium text-gray-900">Messages</div>
                     
@@ -258,7 +258,6 @@
                         </div>
                         <div class="h-[350px] p-2 overflow-hidden overflow-y-auto space-y-2 flex items-center flex-col"
                             :class="{'justify-end': chatMessages?.length <= 3}"
-                            id="message_area"
                         >
                             <div v-if="!getting.show && !computedMessagesPage && chatMessages.length" class="w-fit mx-auto my-2 text-sm text-gray-600">no more messages</div>
                             <div v-if="!getting.show && computedMessagesPage > 1" class="w-full">
@@ -266,26 +265,53 @@
                             </div>
                             <template v-if="chatMessages.length">
                                 <MessageBadge
-                                    v-for="(msg, idx) in chatMessages"
+                                    v-for="(msg, idx) in chatMessages.toReversed()"
                                     :key="idx"
                                     :idx="idx"
-                                    :id="`message_${idx}`"
                                     :msg="msg"
                                     :item="selectedSession"
-                                    :allow-actions="computedCanSendMessage"
-                                    :show="!computedSubItem?.id || computedSubItem?.id == msg.topicId"
-                                    :current-reply="message.replying?.id && message.replying?.id == msg.id"
-                                    @on-success="(data) => replaceFirstMessage(data)"
-                                    @on-update="(data) => replaceOldMessage(data)"
-                                    @select-as-reply="(data) => selectAsReply(data, idx)"
-                                    @select-for-update="(data) => selectForUpdate(data, idx)"
-                                    :is-participant="!selectedSession"
+                                    :is-participant="false"
                                 />
                             </template>
                             <div
                                 v-else
                                 class="text-gray-600 text-sm font-bold w-full h-[300px] flex justify-center items-center my-auto"
-                            >{{selectedSession?.type == 'IN_PERSON' ? 'it is an in-person session' : 'no messages'}}</div>
+                            >no messages</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div v-if="view == 'chat'" class="overflow-hidden overflow-y-auto h-[70vh] w-[90%] mx-auto md:w-[70%]">
+                <div>
+                    <div class="rounded-lg min-h-[400px] bg-stone-200 h-full w-full shrink mb-2">
+                        <div class="h-[350px] p-2 overflow-hidden overflow-y-auto space-y-2 flex items-center flex-col"
+                            :class="{'justify-end': discussionMessages.data?.length <= 3}"
+                            id="message_area"
+                            ref="messageArea"
+                        >
+                            <div v-if="!getting.show && !discussionMessages.page && discussionMessages.data.length" class="w-fit mx-auto my-2 text-sm text-gray-600">no more messages</div>
+                            <div v-if="!getting.show && discussionMessages.page > 1" class="w-full">
+                                <div @click="getDiscussionMessages" class="w-fit mx-auto p-4 text-lg text-gray-600 cursor-pointer">...</div>
+                            </div>
+                            <template v-if="discussionMessages.length">
+                                <MessageBadge
+                                    v-for="(msg, idx) in discussionMessages.toReversed()"
+                                    :key="idx"
+                                    :idx="idx"
+                                    :msg="msg"
+                                    :item="discussion"
+                                    :allow-actions="computedCanSendMessage"
+                                    :current-reply="message.replying?.id && message.replying?.id == msg.id"
+                                    @on-success="(data) => replaceFirstMessage(data)"
+                                    @on-update="(data) => replaceOldMessage(data)"
+                                    @select-as-reply="(data) => selectAsReply(data, idx)"
+                                    @select-for-update="(data) => selectForUpdate(data, idx)"
+                                />
+                            </template>
+                            <div
+                                v-else
+                                class="text-gray-600 text-sm font-bold w-full h-[300px] flex justify-center items-center my-auto"
+                            >no messages</div>
                         </div>
                     </div>
                 </div>
@@ -313,7 +339,10 @@
                         <div class="flex justify-end space-x-2 items-start">
                             <PaperplaneIcon
                                 v-if="computedHasMessage"
-                                @click="() => sendMessage({forType: 'Discussion', item: discussion})"
+                                @click="() => sendMessage({
+                                    item: discussion, topic: currentTopic,
+                                    addNewMessage, from: computedCounsellorAccount, action: replaceOldMessage
+                                })"
                                 class="w-8 cursor-pointer p-1 h-8 rotate-45" />
                             <PaperclipIcon class="w-8 cursor-pointer p-1 h-8"
                                 @click="() => showAttachmentIcons = true"
@@ -371,7 +400,7 @@
 
 <script setup>
 import useAlert from '@/Composables/useAlert';
-import { ref, watchEffect, watch, computed, reactive } from 'vue';
+import { ref, watchEffect, watch, computed, reactive, onBeforeUnmount } from 'vue';
 import Modal from './Modal.vue';
 import PreferenceItem from './PreferenceItem.vue';
 import useAuth from '@/Composables/useAuth';
@@ -426,20 +455,32 @@ const requestData = ref({
 })
 const discussionCounsellors = ref({ data: [], page: 1 })
 const sessions = ref({ data: [], page: 1 })
-const sessionMessages = ref({ data: [], page: 1 })
+const discussionMessages = ref({ data: [], page: 1 })
 const counsellors = ref({ data: [], page: 1 })
 const counsellorLinks = ref({ data: [], page: 1 })
 const counsellorSearch = ref('')
 const sessionSearch = ref('')
 const selectedSession = ref(null)
+const currentTopic = ref(null)
 const deletedCounsellor = ref(null)
 const selectedCounsellor = ref(null)
+const onlineParticipants = ref([])
 const chatMessages = ref([])
 const counsellorStatus = ref('')
 const messages = reactive({})
 const showOptions = ref(false)
+const listening = ref(false)
 const view = ref('main')
-const options = ref(['main', 'counsellors', 'messages', 'close',])
+const options = ref(['main', 'counsellors', 'sessions', 'chat', 'close',])
+
+onBeforeUnmount(() => {
+    if (listening.value)
+        Echo.leave(`discussion.${props.discussion.id}`)
+})
+
+// add timer
+// add actions
+// add counsellor cards on the chat for online counsellors
 
 watch(() => props.show, () => {
     if (!props.show) return
@@ -459,13 +500,20 @@ watchEffect(() => {
     
     getSessions()
 })
+watchEffect(() => {
+    if (!props.discussion.status !== 'IN_SESSION') {
+        return
+    }
+
+    listenToMessages()
+})
 watch(() => counsellorSearch.value?.length, () => {
     if (counsellorSearch.value?.length)
         debouncedGetCounsellors()
 })
 
 const computedCanSendMessage = computed(() => {
-    if (['FAILED', 'ABANDONED', 'HELD', 'HELD_CONFIRMATION', 'PENDING', 'IN_SESSION_CONFIRMATION'].includes(props.discussion?.status)) return false
+    if (['FAILED', 'ABANDONED', 'HELD', 'PENDING',].includes(props.discussion?.status)) return false
 
     const user = usePage().props.auth.user
 
@@ -476,6 +524,26 @@ const computedCanSendMessage = computed(() => {
     if (discussionCounsellors.value.data.filter((c) => c.userId == user.id).length) return true
 
     return false
+})
+const computedCounsellorAccount = computed(() => {
+    let counsellor = null
+    let idx = -1
+
+    if (props.discussion.addedby.userId == user.id) counsellor = props.discussion.addedby
+    else
+        idx = discussionCounsellors.value.data.findIndex((c) => c.userId == user.id)
+
+    if (idx > -1) discussionCounsellors.value.data[idx]
+
+    if (!counsellor) return null
+
+    return {
+        type: 'Counsellor',
+        id: counsellor.id,
+        userId: counsellor.userId,
+        isCounsellor: true,
+        avatar: counsellor.avatar,
+    }
 })
 const computedIsAddedby = computed(() => {
     const user = usePage().props.auth.user
@@ -522,6 +590,59 @@ const debouncedGetCounsellors = _.debounce(() => {
 
 function clearData() {
     requestData.value.counsellorId = ''
+}
+
+function listenToMessages() {
+    if (listening.value) return
+
+    listening.value = true
+    Echo
+        .join(`discussions.${props.discussion.id}`)
+        .here((counsellors) => {
+            onlineParticipants.value = [...counsellors]
+
+            let others = counsellors.filter((u) => userId !== u.id)
+            if (!others.length) return
+
+            setSuccessAlertData({
+                message: `There are ${others} counsellor${others.length == 1 ? '' : 's'} already online.`,
+                time: 4000
+            })
+        })
+        .joining((counsellor) => {
+            let found = onlineParticipants.value.find((u) => u.id == counsellor.id)
+
+            if (found) return
+
+            onlineParticipants.value.push(counsellor)
+
+            setSuccessAlertData({
+                message: `${counsellor.name} just came online.`,
+                time: 4000
+            })
+        })
+        .leaving((counsellor) => {
+            onlineParticipants.value.splice(
+                onlineParticipants.value.findIndex((u) => u.id == counsellor.id),
+                1,
+                counsellor
+            )
+
+            setSuccessAlertData({
+                message: `${counsellor.name} just went offline.`,
+                time: 4000
+            })
+        })
+        .listen('.message.created', (data) => {
+            console.log(data, 'message created');
+            if (data.message?.fromUserId == userId)
+                return
+
+            onMessageCreated(data.message)
+        })
+        .listen('.session.updated', (data) => {
+            emits('updated', data.session)
+        })
 }
 
 async function getCounsellors() {
@@ -777,30 +898,56 @@ async function createCounsellorLink() {
     counsellorLinks.value.data = [link, ...counsellorLinks.value.data]
 }
 
-async function getMessages() {
-    if (!messages.value.page) return
+async function getDiscussionMessages() {
+    if (getting.value) return
 
-    setGetting('messages')
-    await axios.get(route('api.messages',{
-        page: messages.value.page,
-    }))
-        .then((res) => {
+    getting.value = true
+
+    await axios
+        .get(route('api.discussion.messages.get', {
+            discussionId: props.discussion.id,
+            page: discussionMessages.value?.page
+        }))
+        .then(async (res) => {
             console.log(res)
-            if (messages.value.page == 1)
-                messages.value.data = []
-            
-            messages.value.data = [
-                ...messages.value.data,
+
+            if (discussionMessages.value.page == 1)
+                discussionMessages.value.data = []
+
+            discussionMessages.value.data = [
+                ...discussionMessages.value.data,
                 ...res.data.data,
             ]
 
-            updatePage(res, messages)
+            if (discussionMessages.value.page == 1 && discussionMessages.value.data.length)
+                discussionMessages.value.data[0].scroll = true
+            else if (discussionMessages.value.data.length > 10)
+                discussionMessages.value.data[11].scroll = true
+
+            updateDiscussionMessagesPage(res)
         })
         .catch((err) => {
             console.log(err)
+
+            selectedSession.value = null
+
+            if (err?.response?.message) {
+                setFailedAlertData({
+                    message: err?.response?.message,
+                    time: 5000
+                })
+                return
+            }
+
+            setFailedAlertData({
+                message: `Failed to get messages for the discussion. Please try again shortly.`,
+                time: 5000
+            })
+
+            goToLogin(err)
         })
         .finally(() => {
-            clearGetting()
+            getting.value = false
         })
 }
 
@@ -857,10 +1004,7 @@ async function getDiscussionCounsellors() {
 }
 
 function replaceOldMessage(data) {
-    let itemsRef = messages[selectedSession.value?.id]
-
-    itemsRef.data.splice(itemsRef.data.findIndex((d) => d.id == data.id), 1, {...data})
-    chatMessages.value.splice(chatMessages.value.findIndex((d) => d.id == data.id), 1, {...data})
+    discussionMessages.value.splice(chatMessages.value.findIndex((d) => d.id == data.id), 1, {...data})
 }
 
 function replaceFirstMessage(data) {
@@ -920,29 +1064,36 @@ async function getSessionMessages() {
             ]
 
             chatMessages.value = [...messages[selectedSession.value?.id].data.toReversed()]
-            
-            if (messages[selectedSession.value?.id].page == 1)
-                scrollToBottom()
-            else
-                scrollToMessageId(`message_${res.data.data.length - 1}`)
+
+            if (messages.sessions[selectedSession.value?.id].page == 1 && chatMessages.value.length)
+                chatMessages.value[0].scroll = true
+            else if (chatMessages.value.length > 10)
+                chatMessages.value[11].scroll = true
 
             updateMessagesPage(res)
         })
         .catch((err) => {
             console.log(err)
-            if (err?.response?.status == 429) {
-                selectedSession.value = null
+
+            selectedSession.value = null
+
+            if (err?.response?.message) {
                 setFailedAlertData({
-                    message: 'You have made too many requests within a short period. Try again shortly.',
+                    message: err?.response?.message,
                     time: 5000
                 })
                 return
             }
 
+            setFailedAlertData({
+                message: `Failed to get messages for the session. Please try again shortly.`,
+                time: 5000
+            })
+
             goToLogin(err)
         })
         .finally(() => {
-            getting.value = false
+            clearGetting()
         })
 }
 
@@ -951,6 +1102,13 @@ function updateMessagesPage(res) {
         messages[selectedSession.value?.id].page += 1
     else
         messages[selectedSession.value?.id].page = 0
+}
+
+function updateDiscussionMessagesPage(res) {
+    if (res.data.links.next)
+        discussionMessages.value.page += 1
+    else
+        discussionMessages.value.page = 0
 }
 
 function setGetting(type) {

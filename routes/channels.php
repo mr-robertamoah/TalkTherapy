@@ -48,7 +48,17 @@ Broadcast::channel('therapies.{therapyId}', function ($user, $therapyId) {
 });
 
 Broadcast::channel('discussions.{discussionId}', function ($user, $discussionId) {
-    return Discussion::find($discussionId)?->isParticipant($user);
+    $discussion = Discussion::find($discussionId);
+    $counsellor = $user->counsellor;
+
+    if (!$discussion || $counsellor || !$discussion?->isParticipant($counsellor)) return false;
+
+    return [
+        'id' => $counsellor->id,
+        'userId' => $user->id, 
+        'name' => $counsellor->getName(),
+        'avatar' => $counsellor->avatar,
+    ];
 });
 
 Broadcast::channel('messages.{messageId}', function ($user, $messageId) {

@@ -22,29 +22,16 @@
         </div>
         <FormLoader class="mx-auto relative" :show="loading" :text="`getting ${computedCurrentFilter}s`"/>
     </div>
-    <div v-else class="w-full mb-2">
-        <TherapyFilterItem
-            :item="selectedSession"
-            :therapy="therapy"
-            :has-actions="false"
-            :listen="true"
-            :type="'session'"
-            :is-active="true"
-            class="w-full sm:w-[60%] shrink-0 mx-auto"
-            @on-message-created="(data) => onMessageCreated(data)"
-            @on-update="(data) => emits('updated', data)"
-        />
-        <div v-if="activeSession" class="flex my-2 p-2 justify-start items-center overflow-hidden overflow-x-auto space-x-2">
+    <div v-else-if="computedHasActions" class="flex my-2 p-2 justify-start items-center overflow-hidden overflow-x-auto space-x-2">
             <PrimaryButton
-                v-if="(['PENDING', 'IN_SESSION_CONFIRMATION'].includes(activeSession?.status) && userId !== activeSession?.updatedById) && activeSession?.status !== 'IN_SESSION' && canStart"
+                v-if="computedCanStart"
                 @click="() => clickedSessionAction('start')" class="shrink-0">start session for you</PrimaryButton>
             <PrimaryButton
-                v-if="['PENDING', 'IN_SESSION', 'IN_SESSION_CONFIRMATION'].includes(activeSession?.status) && canAbandon"
+                v-if="computedCanAbandon"
                 @click="() => clickedSessionAction('abandon')" class="shrink-0">abondon session</PrimaryButton>
             <PrimaryButton
-                v-if="canEnd && userId !== activeSession?.updatedById && activeSession?.status !== 'ABANDONED'"
+                v-if="computedCanEnd"
                 @click="() => clickedSessionAction('end')" class="shrink-0">end session for you</PrimaryButton>
-        </div>
     </div>
     <div class="my-2 w-full h-1 rounded bg-stone-400"  v-if="showSessions"></div>
     <div v-bind="$attrs" class="min-h-[500px] relative flex flex-col items-center justify-center">
@@ -69,6 +56,8 @@
                     :loaded-sessions-page="pages.session"
                     :loaded-topics="topics"
                     :loaded-topics-page="pages.topic"
+                    :has-actions="false"
+                    :listen="false"
                     class="w-full sm:w-[60%] shrink-0"
                     @dblclick="() => clickedFilterItem(item)"
                     @on-update="(data) => onUpdateItem(data)"
@@ -96,7 +85,7 @@
                 @click.self="deselectItem"
                 @dblclick="deselectItem"
                 class="text-sm text-gray-600 mb-2 capitalize select-none cursor-pointer w-[90%] mx-auto rounded-b p-2 text-center font-bold tracking-wide bg-white"
-                v-if="computedSelectedItem"
+                v-if="!currentTopic && computedSelectedItem"
             >
                 <div v-if="getting" class="my-1 text-green-600 text-sm lowercase text-center w-full relative">getting messages...</div>
                 <div>{{ computedSelectedItem.name }}</div>
@@ -114,7 +103,9 @@
             <div class="h-[350px] relative p-2 overflow-hidden overflow-y-auto space-y-2 flex items-center flex-col"
                 :class="{'justify-end': chatMessages?.length <= 3}"
                 id="message_area"
+                ref="messageArea"
             >
+                <div v-if="setting.show" class="text-sm p-2 text-green-300 bg-green-600 rounded my-2 w-full text-center sticky top-1">{{setting.type + ' current topic...'}}</div>
                 <div v-if="!getting && !computedMessagesPage && chatMessages.length" class="w-fit mx-auto my-2 text-sm text-gray-600">no more messages</div>
                 <div v-if="!getting && computedMessagesPage > 1" class="w-full">
                     <div @click="getSessionMessages" class="w-fit mx-auto p-4 text-lg text-gray-600 cursor-pointer">...</div>
@@ -127,9 +118,11 @@
                         :id="`message_${idx}`"
                         :msg="msg"
                         :item="selectedSession"
+                        :current-topic="currentTopic"
                         :allow-actions="computedCanSendMessage"
                         :show="!computedSubItem?.id || computedSubItem?.id == msg.topicId"
                         :current-reply="message.replying?.id && message.replying?.id == msg.id"
+                        @unset-topic="clickedUnsetTopic"
                         @on-success="(data) => replaceFirstMessage(data)"
                         @on-update="(data) => replaceOldMessage(data)"
                         @select-as-reply="(data) => selectAsReply(data, idx)"
@@ -148,7 +141,7 @@
                         scrollToBottom()
                         receivedMessages = 0
                     }"
-                    class="cursor-pointer w-fit absolute bottom-0 right-1 flex bg-gray-600 text-gray-300 rounded-full p-2 text-center">
+                    class="cursor-pointer w-fit sticky ml-auto bottom-0 right-1 flex bg-gray-600 text-gray-300 rounded-full p-2 text-center">
                     <div class="text-base text-center text-white w-4 h-4 flex justify-center items-center">▼</div>
                     <div class="absolute -top-2 -right-1 text-xs rounded-full bg-gray-300 text-gray-600 w-4 h-4 flex justify-center items-center">{{ receivedMessages }}</div>
                 </div>
@@ -183,8 +176,8 @@
                     <PaperplaneIcon 
                         v-if="computedHasMessage" 
                         @click="() => sendMessage({
-                            item: selectedSession, topic: selectedSessionTopic,
-                            addNewMessage, to: getMessageTo(), from: getMessageFrom()
+                            item: selectedSession, topic: currentTopic,
+                            addNewMessage, to: getMessageTo(), from: getMessageFrom(), action: replaceOldMessage
                         })" 
                         class="w-8 cursor-pointer p-1 h-8 rotate-45" />
                     <PaperclipIcon class="w-8 cursor-pointer p-1 h-8"
@@ -220,6 +213,33 @@
             @change="changeFile" 
             class="hidden" id="messageFiles" multiple accept="image/*">
 
+        <MiniModal
+            :show="modalData.show && ['topic action'].includes(modalData.type)"
+            @close="closeModal"
+        >
+            <div class="select-none">
+                
+                <div class="text-gray-600 text-center font-bold tracking-wide">
+                    Actions
+                </div>
+
+                <hr class="my-2">
+
+                <div class="relative">
+                    <div class="space-y-3 flex flex-col justify-center items-center">
+                        <PrimaryButton
+                            @click="() => {
+                                closeModal()
+                                viewSessionOrTopicMessages()
+                            }" class="shrink-0">view topic messages</PrimaryButton>
+                        <PrimaryButton
+                            :disabled="setting.show"
+                            @click="setCurrentTopic" class="shrink-0">set as current topic</PrimaryButton>
+                    </div>
+                </div>
+            </div>
+        </MiniModal>
+
         <CreateTopicFormModal
             :show="modalData.show && modalData.type == 'topic'"
             :therapy="therapy"
@@ -252,7 +272,7 @@
 </template>
 
 <script setup>
-import { computed, nextTick, reactive, ref, unref, watch, watchEffect } from 'vue';
+import { computed, nextTick, onBeforeUnmount, reactive, ref, unref, watch, watchEffect } from 'vue';
 import { default as _ } from 'lodash';
 import TextBox from './TextBox.vue';
 import PaperplaneIcon from '@/Icons/PaperplaneIcon.vue';
@@ -274,10 +294,11 @@ import useAlert from '@/Composables/useAlert';
 import FilePreview from './FilePreview.vue';
 import MediaCapture from './MediaCapture.vue';
 import { usePage } from '@inertiajs/vue3';
+import MiniModal from './MiniModal.vue';
 
 const { goToLogin } = useAuth()
 const {
-    message, files, deletedFiles, computedHasMessage, replyingMessage, scrollToBottom,
+    message, files, deletedFiles, computedHasMessage, replyingMessage,
     showAttachmentIcons, messageFilesInput, changeFile, resetMessage, updateMessage,
     clickedIcon, mediaCaptureData, closeMediaCapture, removeUploadFile, scrollToMessageId,
     selectForUpdate, selectAsReply, removeReply, sendMessage
@@ -287,7 +308,7 @@ const { modalData, showModal, closeModal } = useModal()
 
 const emits = defineEmits([
     'deselectActiveSession', 'updateActiveSession', 'created', 'updated', 'deleted',
-    'doneUpdating', 'doneDeleting', 'sessionAction'
+    'doneUpdating', 'doneDeleting', 'sessionAction', 'setTopic'
 ])
 
 const props = defineProps({
@@ -339,12 +360,17 @@ const props = defineProps({
 const userId = usePage().props.auth.user?.id
 const loading = ref(false)
 const getting = ref(false)
+const setting = ref({show: false, type: ''})
+const listening = ref(false)
+const messageArea = ref(null)
 const pages = ref({
     message: 1,
     session: 1,
     topic: 1,
 })
 const selectedItemType = ref(null)
+const currentTopic = ref(null)
+const removingTopic = ref(false)
 const selectedSessionTopic = ref(null)
 const selectedSession = ref(null)
 const selectedTopic = ref(null)
@@ -372,12 +398,23 @@ watchEffect(() => {
     if (props.activeSession) {
         selectedSession.value = props.activeSession
         handleSelectedSessionChange()
+        listenToMessages()
     }
 
     if (filters.value.topics) return
 
     filters.value.topics = true
     getTopics()
+})
+watchEffect(() => {
+    if (props.activeSession?.currentTopic && currentTopic.value?.id !== props.activeSession?.currentTopic?.id) {
+        currentTopic.value = props.activeSession?.currentTopic
+        addCurrentTopicToChat()
+        return
+    }
+
+    if (!props.activeSession?.currentTopic && currentTopic.value?.id && !props.isCounsellor)
+        removeCurrentTopicFromChat()
 })
 watch(() => filters.value.sessions, () => {
     if (filters.value.sessions && filters.value.topics)
@@ -457,6 +494,12 @@ watchEffect(() => {
     }
 })
 
+onBeforeUnmount(() => {
+    if (listening.value && props.activeSession)
+        Echo.leave(`sessions.${props.activeSession.id}`)
+})
+
+
 const computedCanSendMessage = computed(() => {
     if (!props.isParticipant) return false
 
@@ -473,6 +516,29 @@ const computedCanSendMessage = computed(() => {
     return computedSelectSessionIsActive.value &&
         !['FAILED', 'ABANDONED', 'HELD', 'PENDING'].includes(props.activeSession?.status) &&
         props.activeSession?.type == 'ONLINE'
+})
+const computedCanStart = computed(() => {
+    return ['PENDING', 'IN_SESSION_CONFIRMATION'].includes(props.activeSession?.status) && 
+            userId !== props.activeSession?.updatedById && 
+            props.activeSession?.status !== 'IN_SESSION' &&
+            props.canStart
+})
+const computedCanEnd = computed(() => {
+    if (
+        'IN_SESSION_CONFIRMATION' == props.activeSession?.status && 
+        userId == props.activeSession?.updatedById
+    ) return false
+
+    return props.activeSession?.status !== 'ABANDONED' && 
+        props.canEnd
+})
+const computedCanAbandon = computed(() => {
+    return ['PENDING', 'IN_SESSION', 'IN_SESSION_CONFIRMATION']
+            .includes(props.activeSession?.status) && 
+            props.canAbandon
+})
+const computedHasActions = computed(() => {
+    return computedCanStart.value || computedCanEnd.value || computedCanAbandon.value
 })
 const computedSelectSessionIsActive = computed(() => {
     return props.activeSession?.id && selectedSession.value?.id && 
@@ -521,6 +587,34 @@ const computedMessagesPage = computed(() => {
     return 0
 })
 
+function setSetting(type) {
+    setting.value.type = type
+    setting.value.show = true
+}
+
+function clearSetting() {
+    setting.value.type = ''
+    setting.value.show = false
+}
+
+function listenToMessages() {
+    if (listening.value) return
+
+    listening.value = true
+    Echo
+        .private(`sessions.${props.activeSession.id}`)
+        .listen('.message.created', (data) => {
+            console.log(data, 'message created');
+            if (data.message?.fromUserId == userId)
+                return
+
+            onMessageCreated(data.message)
+        })
+        .listen('.session.updated', (data) => {
+            emits('updated', data.session)
+        })
+}
+
 function clickedSessionAction(action) {
     emits('sessionAction', action)
 }
@@ -545,6 +639,12 @@ function getMessageTo() {
     }
 
     return to
+}
+
+async function scrollToBottom() {
+    await nextTick()
+
+    if (messageArea.value) messageArea.value.scrollTop = messageArea.value.scrollHeight
 }
 
 function getMessageFrom() {
@@ -646,6 +746,13 @@ function addToSubItem(item) {
 }
 
 function deselectItem() {
+    if (!props.showSessions && props.activeSession) {
+        selectedSession.value = props.activeSession
+        selectedTopic.value = null
+        handleSelectedSessionChange()
+        return
+    }
+
     if (computedCurrentFilter.value == 'session') {
         selectedSession.value = null
         handleSelectedSessionChange()
@@ -699,16 +806,166 @@ function handleSelectedTopicChange() {
     chatMessages.value = []
 }
 
-function clickedFilterItem(item) {
+function viewSessionOrTopicMessages(item) {
     if (computedCurrentFilter.value == 'session' || props.activeSession?.id !== item?.id) {
         selectedSession.value = item
         handleSelectedSessionChange()
     }
 
     if (computedCurrentFilter.value == 'topic') {
-        selectedTopic.value = item
+        if (item && item.id !== selectedTopic.value?.id)
+            selectedTopic.value = item
         handleSelectedTopicChange()
     }
+}
+
+async function setCurrentTopicOnBackend() {
+    setSetting('setting')
+
+    await axios
+        .post(route('api.session.topic.set', {
+            sessionId: props.activeSession?.id,
+        }), {
+            topicId: currentTopic.value.id
+        })
+        .then(async (res) => {
+            console.log(res)
+            setSuccessAlertData({
+                message: `'${currentTopic.value.name}' has successfully been set as current topic.`,
+                time: 4000
+            })
+
+            addCurrentTopicToChat()
+        })
+        .catch((err) => {
+            console.log(err)
+
+            currentTopic.value = null
+            selectedSession.value = null
+            if (err?.response?.message) {
+                setFailedAlertData({
+                    message: err?.response?.message,
+                    time: 5000
+                })
+                return
+            }
+
+            setFailedAlertData({
+                message: 'Failed to set topic is current topic. Please try again shortly.',
+                time: 5000
+            })
+
+            goToLogin(err)
+        })
+
+    clearSetting()
+}
+
+async function unsetCurrentTopicOnBackend() {
+    if (!currentTopic.value) return
+    setSetting('unsetting')
+
+    await axios
+        .post(route('api.session.topic.unset', {
+            sessionId: props.activeSession?.id,
+        }), {
+            topicId: currentTopic.value.id
+        })
+        .then(async (res) => {
+            console.log(res)
+            setSuccessAlertData({
+                message: `'${currentTopic.value.name}' has successfully been removed as current topic.`,
+                time: 4000
+            })
+
+            removeCurrentTopicFromChat()
+        })
+        .catch((err) => {
+            console.log(err)
+
+            if (err?.response?.message) {
+                setFailedAlertData({
+                    message: err?.response?.message,
+                    time: 5000
+                })
+                return
+            }
+
+            setFailedAlertData({
+                message: 'Failed to remove topic is current. Please try again shortly.',
+                time: 5000
+            })
+
+            goToLogin(err)
+        })
+
+    clearSetting()
+}
+
+function clickedUnsetTopic() {
+    if (!props.isCounsellor) return
+
+    unsetCurrentTopicOnBackend()
+}
+
+function removeCurrentTopicFromChat() {
+    if (!currentTopic.value || removingTopic.value) return
+    currentTopic.value = null
+    removingTopic.value = true
+    const data = {name: 'end of topic', scroll: true, end: true}
+
+    if (messages.sessions[props.activeSession.id]?.data)
+        messages.sessions[props.activeSession.id].data = [
+            data,
+            ...messages.sessions[props.activeSession.id].data,
+        ]
+
+    chatMessages.value = [data, ...chatMessages.value]
+}
+
+function addCurrentTopicToChat() {
+    if (!currentTopic.value || !props.activeSession) return
+
+    if (removingTopic.value) {
+        removingTopic.value = false
+        return
+    }
+
+    if (
+        !messages.sessions[props.activeSession.id]?.page ||
+        messages.sessions[props.activeSession.id]?.page == 1
+    ) return
+
+    console.log(3);
+    const data = {...currentTopic.value, scroll: true}
+
+    if (messages.sessions[props.activeSession.id]?.data)
+        messages.sessions[props.activeSession.id].data = [
+            data,
+            ...messages.sessions[props.activeSession.id].data,
+        ]
+
+    chatMessages.value = [data, ...chatMessages.value]
+}
+
+async function setCurrentTopic() {
+    currentTopic.value = selectedTopic.value
+
+    await nextTick()
+
+    setCurrentTopicOnBackend()
+
+    closeModal()
+}
+
+function clickedFilterItem(item) {
+    if (!props.showSessions && props.isCounsellor && !item.isSession) {
+        selectedTopic.value = item
+        showModal('topic action')
+        return
+    }
+
+    viewSessionOrTopicMessages(item)
 }
 
 function replaceOldMessage(data) {
@@ -744,7 +1001,7 @@ function alertOfNewMessage() {
 
     setTimeout(() => {
         receivedMessages.value = 0
-    }, 1000)
+    }, 10000)
 }
 
 function addNewMessage(newMessage) {
@@ -772,7 +1029,7 @@ function addNewMessage(newMessage) {
     }
 
     if (item)
-        chatMessages.value.push({...newMessage})
+        chatMessages.value.unshift({...newMessage})
 }
 
 function messageExists(newMessage) {
@@ -781,12 +1038,14 @@ function messageExists(newMessage) {
     if (
         (computedCurrentFilter.value == 'session' || !props.showSessions) &&
         selectedSession.value &&
+        messages.sessions[selectedSession.value.id] &&
         messages.sessions[selectedSession.value.id].data?.findIndex((message) => message.id == newMessage.id) !== -1
     ) return true
 
     if (
         computedCurrentFilter.value == 'topic' && 
         selectedTopic.value &&
+        messages.topics[selectedTopic.value.id] &&
         messages.topics[selectedTopic.value.id].data?.findIndex((message) => message.id == newMessage.id) !== -1
     ) return true
 
@@ -816,12 +1075,15 @@ async function getSessionMessages() {
 
             chatMessages.value = [...messages.sessions[selectedSession.value?.id].data]
 
-            if (messages.sessions[selectedSession.value?.id].page == 1)
+            if (messages.sessions[selectedSession.value?.id].page == 1 && chatMessages.value.length)
                 chatMessages.value[0].scroll = true
             else if (chatMessages.value.length > 10)
                 chatMessages.value[11].scroll = true
 
             updateMessagesPage(res)
+            await nextTick()
+            
+            addCurrentTopicToChat()
         })
         .catch((err) => {
             console.log(err)
@@ -863,7 +1125,7 @@ async function getTopicMessages() {
 
             chatMessages.value = [...messages.topics[selectedTopic.value?.id].data]
             
-            if (messages.topics[selectedTopic.value?.id].page == 1)
+            if (messages.topics[selectedTopic.value?.id].page == 1 && chatMessages.value?.length)
                 chatMessages.value[0].scroll = true
             else if (chatMessages.value.length > 10)
                 chatMessages.value[11].scroll = true
@@ -945,7 +1207,10 @@ function updatePage(res, key) {
 }
 
 function updateMessagesPage(res) {
-    if (res.data.links.next && computedCurrentFilter.value == 'session' && selectedSession.value) {
+    if (
+        (!props.showSessions && selectedSession.value && messages.sessions[selectedSession.value?.id].page == 1) ||
+        (res.data.links.next && computedCurrentFilter.value == 'session' && selectedSession.value)
+    ) {
         messages.sessions[selectedSession.value?.id].page += 1
     }
     else if (!res.data.links.next && computedCurrentFilter.value == 'session' && selectedSession.value) {

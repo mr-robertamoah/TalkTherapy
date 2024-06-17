@@ -15,13 +15,13 @@ class DeleteMessageAction extends Action
             $fileService = FileService::new();
             $files = [];
             
-            foreach ($createMessageDTO->post->files as $file) {
+            foreach ($createMessageDTO->message->files as $file) {
                 $files[] = $file->id;
                 
                 $fileService->deleteFile($file);
             }
     
-            $createMessageDTO->post->files()->detach($files);
+            $createMessageDTO->message->files()->detach($files);
             $createMessageDTO->message->delete();
         });
 

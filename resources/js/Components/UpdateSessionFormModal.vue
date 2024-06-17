@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref, unref, watch } from 'vue';
+import { computed, ref, unref, watch, watchEffect } from 'vue';
 import TextInput from '@/Components/TextInput.vue';
 import InputLabel from '@/Components/InputLabel.vue';
 import InputError from '@/Components/InputError.vue';
@@ -44,6 +44,7 @@ const props = defineProps({
 const emits = defineEmits(['close', 'onUpdate'])
 
 const loading = ref(false)
+const sessionUpdatingMap = ref(null)
 const startTime = ref('')
 const endTime = ref('')
 const selectedCases = ref([])
@@ -79,14 +80,19 @@ watch(() => props.show, () => {
     if (!props.show) return
 
     setSessionFormData()
-    if (props.therapy.allowInPerson) {
-        initMap()
-    }
-        
 })
-watch(() => mapDetails.value.Map, () => {
-    if (mapDetails.value.Map)
-        createMap('sessionCreationMap', markerPosition.value)
+watchEffect(() => {
+    if (
+        !props.show ||
+        !props.therapy.allowInPerson || 
+        sessionForm.type !== 'IN_PERSON'
+    ) return
+
+    initMap()
+    getCurrentLocation()
+    
+    if (mapDetails.value.Map && sessionUpdatingMap.value)
+        createMap(sessionUpdatingMap.value, currentLocation.value)
 })
 watch(() => markerPosition.value.lat || markerPosition.value.lng, () => {
     sessionData.value.lat = markerPosition.value.lat ?? ''
@@ -438,7 +444,7 @@ function useCurrentLocation() {
                             <div class="w-full flex flex-col mt-2 mb-4 p-2">
                                 <div>
                                     <div class="text-gray-600 text-sm mb-2 text-center">Location data (We recommend you just pick location on map).</div>
-                                    <div class="w-full h-[200px] bg-blue-200" id="sessionCreationMap"></div>
+                                    <div class="w-full h-[200px] bg-blue-200" ref="sessionUpdatingMap" id="sessionUpdatingMap"></div>
                                     <div class="flex justify-start items-center flex-col">
                                         <TextInput
                                             placeholder="longitude" 

@@ -84,6 +84,8 @@ class MessageService extends Service
     
     public function getTherapyTopicMessages(GetTherapyTopicMessagesDTO $getTherapyTopicMessagesDTO)
     {
+        if (!$getTherapyTopicMessagesDTO->topic) return [];
+        
         $therapy = $getTherapyTopicMessagesDTO->topic->sessions()
             ->where('session_id', $getTherapyTopicMessagesDTO->sessionId)->first()
             ?->for;
@@ -140,7 +142,7 @@ class MessageService extends Service
         
         $message = CreateMessageAction::new()->execute($createMessageDTO);
 
-        broadcast(new MessageSentEvent($message));
+        broadcast(new MessageSentEvent($message))->toOthers();
 
         return $message;
     }
@@ -155,7 +157,7 @@ class MessageService extends Service
         
         $message = UpdateMessageAction::new()->execute($createMessageDTO);
 
-        broadcast(new MessageUpdatedEvent($message));
+        broadcast(new MessageUpdatedEvent($message))->toOthers();
 
         return $message;
     }
@@ -168,7 +170,7 @@ class MessageService extends Service
         
         $message = DeleteMessageAction::new()->execute($createMessageDTO);
 
-        broadcast(new MessageDeletedEvent($message));
+        broadcast(new MessageDeletedEvent($message))->toOthers();
 
         return $message;
     }

@@ -72,6 +72,7 @@ class MessageResource extends JsonResource
             'status' => $this->status,
             'files' => FileResource::collection($this->files),
             'updatedAt' => $this->updated_at,
+            'createdAt' => $this->created_at,
         ];
     }
 }

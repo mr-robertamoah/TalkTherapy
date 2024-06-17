@@ -10,6 +10,7 @@ use App\Http\Resources\SessionResource;
 use App\Models\GroupTherapy;
 use App\Models\Session;
 use App\Models\Therapy;
+use App\Models\TherapyTopic;
 use App\Services\SessionService;
 use Carbon\Carbon;
 use Exception;
@@ -99,6 +100,46 @@ class SessionController extends Controller
                     'user' => $request->user(),
                     'for' => $session?->for,
                     'session' => $session,
+                ])
+            );
+
+            return $this->returnSuccess($request, $session);
+        } catch (Throwable $th) {
+            
+            return $this->returnFailure($request, $th);
+        }
+    }
+
+    public function setCurrentTopic(Request $request)
+    {
+        $session = Session::find($request->sessionId);
+
+        try {
+            $session = SessionService::new()->setCurrentTopic(
+                CreateSessionDTO::new()->fromArray([
+                    'user' => $request->user(),
+                    'session' => $session,
+                    'therapyTopic' => TherapyTopic::find($request->topicId),
+                ])
+            );
+
+            return $this->returnSuccess($request, $session);
+        } catch (Throwable $th) {
+            
+            return $this->returnFailure($request, $th);
+        }
+    }
+
+    public function unsetCurrentTopic(Request $request)
+    {
+        $session = Session::find($request->sessionId);
+
+        try {
+            $session = SessionService::new()->unsetCurrentTopic(
+                CreateSessionDTO::new()->fromArray([
+                    'user' => $request->user(),
+                    'session' => $session,
+                    'therapyTopic' => TherapyTopic::find($request->topicId),
                 ])
             );
 
