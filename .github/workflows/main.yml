@@ -22,9 +22,17 @@ jobs:
       - name: Deploy and build
         env:
           DIR_PATH: /var/www/TalkTherapy
-        run:
+        run: |
           aws ssm send-command \
               --instance-ids "i-0ceef8e041cbec9af" \
               --document-name "AWS-RunShellScript" \
-              --parameters 'commands:["cd $DIR_PATH", "git pull origin main", "sudo chown -R $USER:$USER $DIR_PATH", "npm run build", "php composer install", "php artisan cache:clear", "sudo chown -R www-data:www-data storage", "sudo chown -R www-data:www-data bootstrap/cache", "sudo service nginx restart"]' \
+              --parameters 'commands:[\
+                "cd $DIR_PATH",\
+                "git pull origin main", \
+                "sudo chown -R $USER:$USER .", \
+                "npm run build", "php composer install", \
+                "php artisan cache:clear", \
+                "sudo chown -R www-data:www-data storage", \
+                "sudo chown -R www-data:www-data bootstrap/cache", "sudo service nginx restart" \
+                ]' \
               --comment "Deploying application code"
