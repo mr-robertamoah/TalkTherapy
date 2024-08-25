@@ -20,17 +20,22 @@ jobs:
           aws-secret-access-key: ${{ secrets.SECRET_ACCESS_KEY }}
 
       - name: Deploy and build
+        env:
+          DIR_PATH: /var/www/TalkTherapy
         run:
           aws ssm send-command \
             --instance-ids "i-0ceef8e041cbec9af" \
             --document-name "AWS-RunShellScript" \
             --parameters "commands=[\
-              "sudo cd <DIR_PATH>", \
-              "git pull", \
-              "sudo chmod -R $USER:$USER $DIR_PATH", \
-              "npm run build", "php artisan cache:clear", \
-              "sudo chmod -R www-data:www-data storage", \
-              "sudo chmod -R www-data:www-data bootstrap/cache" \
+              "sudo cd $DIR_PATH", \
+              "git pull origin main", \
+              "sudo chmod -R $USER:$USER .", \
+              "npm run build", \
+              "php composer install", \
+              "php artisan cache:clear", \
+              "sudo chmod -R www-data:www-data storage .", \
+              "sudo chmod -R www-data:www-data bootstrap/cache ." \
+              "sudo service nginx restart" \
               ]" \
             --comment "Deploying application code"
             
