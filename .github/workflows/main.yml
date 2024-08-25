@@ -1,0 +1,39 @@
+name: Deploy to EC2 instance 
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deployment:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4.1.7
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: eu-north-1
+          aws-access-key-id: ${{ secrets.ACCESS_KEY }}
+          aws-secret-access-key: ${{ secrets.SECRET_ACCESS_KEY }}
+
+      - name: Deploy and build
+        run:
+          aws ssm send-command \
+            --instance-ids "i-0ceef8e041cbec9af" \
+            --document-name "AWS-RunShellScript" \
+            --parameters "commands=[\
+              "sudo cd <DIR_PATH>", \
+              "git pull", \
+              "sudo chmod -R $USER:$USER $DIR_PATH", \
+              "npm run build", "php artisan cache:clear", \
+              "sudo chmod -R www-data:www-data storage", \
+              "sudo chmod -R www-data:www-data bootstrap/cache" \
+              ]" \
+            --comment "Deploying application code"
+            
+            
+          
+  
