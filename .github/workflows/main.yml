@@ -26,7 +26,7 @@ jobs:
           aws ssm send-command \
               --instance-ids "i-0ceef8e041cbec9af" \
               --document-name "AWS-RunShellScript" \
-              --parameters 'commands:[\
+              --parameters 'commands=[\
                 "cd $DIR_PATH",\
                 "git pull origin main", \
                 "sudo chown -R $USER:$USER .", \
