@@ -26,19 +26,15 @@ jobs:
           aws ssm send-command \
             --instance-ids "i-0ceef8e041cbec9af" \
             --document-name "AWS-RunShellScript" \
-            --parameters "commands=[\
-              "sudo cd $DIR_PATH", \
-              "git pull origin main", \
-              "sudo chmod -R $USER:$USER .", \
-              "npm run build", \
-              "php composer install", \
-              "php artisan cache:clear", \
-              "sudo chmod -R www-data:www-data storage .", \
-              "sudo chmod -R www-data:www-data bootstrap/cache ." \
-              "sudo service nginx restart" \
-              ]" \
+            --parameters '{"commands":[
+                "cd $DIR_PATH",
+                "git pull origin main",
+                "sudo chown -R $USER:$USER .",
+                "npm run build",
+                "php composer install",
+                "php artisan cache:clear",
+                "sudo chown -R www-data:www-data storage",
+                "sudo chown -R www-data:www-data bootstrap/cache",
+                "sudo service nginx restart"
+              ]}' \
             --comment "Deploying application code"
-            
-            
-          
-  
