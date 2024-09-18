@@ -255,52 +255,16 @@ async function getStats() {
                         Features
                     </div>
 
-                    <div v-if="features.current.length" class="mt-8">
+                    <div v-if="features.length" class="mt-8">
+                        <!-- <div
+                            class="text-lg font-bold w-fit bg-gradient-to-br from-blue-800 to-violet-500 bg-clip-text text-transparent capitalize mb-2 mx-auto">current</div> -->
+                        <!-- <div class="text-sm text-gray-600 text-justify mb-2">These are the features that are currently available.</div> -->
                         <div
-                            class="text-lg font-bold w-fit bg-gradient-to-br from-blue-800 to-violet-500 bg-clip-text text-transparent capitalize mb-2 mx-auto">current</div>
-                        <div class="text-sm text-gray-600 text-justify mb-2">These are the features that are currently available.</div>
-                        <div
-                            :class="[features.current.length > 1 ? 'justify-start' : 'justify-center']"
-                            class="mt-4 space-x-8 flex items-center overflow-hidden overflow-x-auto p-2 pt-6">
+                            class="mt-4 gap-10 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 p-2 pt-6">
                             <FeatureComponent
-                                v-for="(feature, idx) in features.current"
+                                v-for="(feature, idx) in features"
                                 :key="idx"
                                 :feature="feature"
-                                :type="'available'"
-                                class="w-[90%] shrink-0 max-w-md"
-                            />
-                        </div>
-                    </div>
-
-                    <div v-if="features.next.length" class="mt-8">
-                        <div
-                            class="text-lg font-bold w-fit bg-gradient-to-br from-blue-800 to-violet-500 bg-clip-text text-transparent capitalize mb-2 mx-auto">next</div>
-                        <div class="text-sm text-gray-600 text-justify mb-2">These are the features that are bein worked on.</div>
-                        <div 
-                            :class="[features.next.length > 1 ? 'justify-start' : 'justify-center']"
-                            class="mt-4 space-x-8 flex items-center overflow-hidden overflow-x-auto p-2 pt-6">
-                            <FeatureComponent
-                                v-for="(feature, idx) in features.next"
-                                :key="idx"
-                                :feature="feature"
-                                :type="'next'"
-                                class="w-[90%] shrink-0 max-w-md"
-                            />
-                        </div>
-                    </div>
-
-                    <div v-if="features.future.length" class="mt-8">
-                        <div
-                            class="text-lg font-bold w-fit bg-gradient-to-br from-blue-800 to-violet-500 bg-clip-text text-transparent capitalize mb-2 mx-auto">future</div>
-                        <div class="text-sm text-gray-600 text-justify mb-2">These are the features that are being considered for the future.</div>
-                        <div
-                            :class="[features.future.length > 1 ? 'justify-start' : 'justify-center']"
-                            class="mt-4 space-x-8 flex items-center overflow-hidden overflow-x-auto p-2 pt-6">
-                            <FeatureComponent
-                                v-for="(feature, idx) in features.future"
-                                :key="idx"
-                                :feature="feature"
-                                :type="'future'"
                                 class="w-[90%] shrink-0 max-w-md"
                             />
                         </div>
