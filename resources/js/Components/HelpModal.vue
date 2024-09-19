@@ -3,31 +3,42 @@
         :show="show"
         @close="closeModal"
         v-bind="$attrs"
+        classes="bg-transparent shadow-none"
+        maxWidth="md"
     >
         <div class="select-none relative">
 
-            <div class="p-4 w-full mt-2 mb-4">
+            <div class="p-4 w-full mt-2">
                 <div
-                    class="capitalize w-fit mx-auto text-2xl font-bold bg-gradient-to-r from-gray-800 to-gray-500 bg-clip-text text-transparent mb-2"
-                >Help</div>
-                <hr>
+                    class="capitalize w-fit mx-auto text-2xl font-bold text-neutral-800
+                        mb-2 bg-white rounded p-2 shadow-sm"
+                >Guided Tours</div>
             </div>
 
             <FormLoader v-if="loading" class="mx-auto" :show="loading" :text="`getting help`"/>
-            <div class="p-4 relative">
-                <div v-if="howTos.length" class="text-sm text-center text-gray-600 mb-2">double click/tap a how-to to view steps</div>
+            <div class="p-2 pt-0 max-w-96 mx-auto relative">
+                <div v-if="howTos.length" class="text-sm text-center text-gray-800 mb-2">double click/tap a Guided Tour to view steps</div>
                 <div class="overflow-hidden overflow-y-auto h-[65vh] px-4 pb-4">
                     <div v-if="howTos.length" class="space-y-3">
                         <HowToComponent
                             v-for="(howTo, idx) in howTos"
                             :key="idx"
                             :howTo="howTo"
+                            @startTour="startTour"
+                            :useModal="false"
                         />
                     </div>
 
-                    <div v-else class="h-96 flex justify-center items-center text-sm text-gray-600">no help yet</div>
+                    <div v-else class="h-96 flex justify-center items-center text-sm text-gray-600">no guided tours</div>
                 </div>
             </div>
+                    <div
+                        class="w-fit py-1 font-bold absolute top-5 right-0
+                            p-2 px-4 rounded bg-red-600 text-red-200 
+                            shadow-red-300 cursor-pointer"
+                        v-on:click="() => closeModal()"
+                    >x</div>
+
         </div>
     </Modal>
         
@@ -49,12 +60,13 @@ import HowToComponent from './HowToComponent.vue';
 import useAuth from '@/Composables/useAuth';
 import useAlert from '@/Composables/useAlert';
 import { usePage } from '@inertiajs/vue3';
+import GuidedTour from './GuidedTour.vue';
 
 
 const { goToLogin } = useAuth()
 const { alertData, setFailedAlertData, clearAlertData } = useAlert()
 
-const emits = defineEmits(['close'])
+const emits = defineEmits(['close', 'startTour'])
 
 const props = defineProps({
     page: {
@@ -64,16 +76,21 @@ const props = defineProps({
     show: {
         type: Boolean,
         default: false
-    }
+    },
 })
 
 const loading = ref(false)
 const howTos = ref([])
 
 watch(() => props.show, () => {
-    if (props.show)
+    if (props.show && !howTos.value?.length)
         getHowTos()
 })
+
+function startTour(howTo) {
+    emits('startTour', howTo)
+    closeModal()
+}
 
 function closeModal(){
     emits('close')

@@ -269,6 +269,8 @@ async function getStats() {
                             />
                         </div>
                     </div>
+
+                    <div class="w-full text-sm text-gray-600 text-center my-2">no features</div>
                 </div>
             </div>
 

@@ -19,6 +19,7 @@ class HowToStepResource extends JsonResource
             'name' => $this->name,
             'description' => $this->description,
             'position' => $this->position,
+            'elementId' => $this->element_id,
             'file' => new FileResource($this->file),
         ];
     }
