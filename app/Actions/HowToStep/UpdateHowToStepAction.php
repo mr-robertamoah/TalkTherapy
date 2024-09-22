@@ -41,12 +41,14 @@ class UpdateHowToStepAction extends Action
         $this->setValueOnData('name', $createHowToStepDTO);
         $this->setValueOnData('description', $createHowToStepDTO);
         $this->setValueOnData('position', $createHowToStepDTO);
+        $this->setValueOnData('elementId', $createHowToStepDTO, arrayKey: 'element_id');
     }
     
     private function setValueOnData(
         String $dataKey,
         CreateHowToStepDTO $createHowToStepDTO,
-        String|null $objectKey = null
+        String|null $objectKey = null,
+        String|null $arrayKey = null,
     ) {
         $objectKey = $objectKey ?: $dataKey;
 
@@ -54,6 +56,6 @@ class UpdateHowToStepAction extends Action
             !is_null($createHowToStepDTO->$objectKey) &&
             $createHowToStepDTO->$objectKey !== $createHowToStepDTO->howToStep->$dataKey
         )        
-            $this->data[$dataKey] = $createHowToStepDTO->$objectKey;
+            $this->data[$arrayKey ?: $dataKey] = $createHowToStepDTO->$objectKey;
     }
 }

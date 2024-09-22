@@ -28,3 +28,8 @@ function getUrlFor(File $file) {
     
     return asset($path . $file->name);
 }
+
+function getArrayKey(string $key, array  $array) {
+
+    return array_key_exists($key, $array) ?  $array[$key] : null;
+}

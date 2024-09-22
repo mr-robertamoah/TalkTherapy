@@ -34,13 +34,12 @@
   
 <script setup>
     import { computed, createApp } from 'vue';
-    import PrimaryButton from './PrimaryButton.vue';
   
     const props = defineProps({
         position: {
-        type: String,
-        default: 'top', // default position
-        validator: value => ['top', 'bottom', 'left', 'right'].includes(value)
+            type: String,
+            default: 'top',
+            validator: value => ['top', 'bottom', 'left', 'right'].includes(value)
         },
         tour: {
             default: null

@@ -16,6 +16,7 @@ class CreateHowToStepDTO extends BaseDTO
     public ?HowToStep $howToStep = null;
     public ?string $name = null;
     public ?string $description = null;
+    public ?string $elementId = null;
     public ?int $position = null;
     public ?UploadedFile $file = null;
 }

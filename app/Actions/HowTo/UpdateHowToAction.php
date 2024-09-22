@@ -9,6 +9,7 @@ use App\Actions\HowToStep\UpdateHowToStepAction;
 use App\DTOs\CreateHowToDTO;
 use App\DTOs\CreateHowToStepDTO;
 use App\Models\HowToStep;
+use Illuminate\Support\Facades\DB;
 
 class UpdateHowToAction extends Action
 {
@@ -16,6 +17,8 @@ class UpdateHowToAction extends Action
 
     public function execute(CreateHowToDTO $createHowToDTO)
     {
+        DB::beginTransaction();
+
         $this->setData($createHowToDTO);
         
         $createHowToDTO->howTo->update($this->data);
@@ -25,10 +28,11 @@ class UpdateHowToAction extends Action
                 CreateHowToStepDTO::new()->fromArray([
                     'howToStep' => HowToStep::find($howToStepData['id']),
                     'user' => $createHowToDTO->user,
-                    'name' => $howToStepData['name'],
-                    'description' => $howToStepData['description'],
-                    'position' => $howToStepData['position'],
-                    'file' => $howToStepData['file'],
+                    'name' => getArrayKey('name', $howToStepData),
+                    'description' => getArrayKey('description', $howToStepData),
+                    'position' => getArrayKey('position', $howToStepData),
+                    'elementId' => getArrayKey('elementId', $howToStepData),
+                    'file' => getArrayKey('file', $howToStepData),
                 ])
             );
         }
@@ -38,10 +42,11 @@ class UpdateHowToAction extends Action
                 CreateHowToStepDTO::new()->fromArray([
                     'howTo' => $createHowToDTO->howTo,
                     'user' => $createHowToDTO->user,
-                    'name' => $howToStepData['name'],
-                    'description' => $howToStepData['description'],
-                    'position' => $howToStepData['position'],
-                    'file' => $howToStepData['file'],
+                    'name' => getArrayKey('name', $howToStepData),
+                    'description' => getArrayKey('description', $howToStepData),
+                    'position' => getArrayKey('position', $howToStepData),
+                    'elementId' => getArrayKey('elementId', $howToStepData),
+                    'file' => getArrayKey('file', $howToStepData),
                 ])
             );
         }
@@ -53,6 +58,8 @@ class UpdateHowToAction extends Action
                 ])
             );
         }
+
+        DB::commit();
 
         return $createHowToDTO->howTo->refresh();
     }

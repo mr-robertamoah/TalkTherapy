@@ -30,6 +30,8 @@ class EnsureHowToDataIsValidAction extends Action
     {
         return $createHowToDTO->name ||
             $createHowToDTO->page ||
-            ($createHowToDTO->howToSteps && count($createHowToDTO->howToSteps));
+            ($createHowToDTO->howToSteps && count($createHowToDTO->howToSteps)) ||
+            ($createHowToDTO->addedHowToSteps && count($createHowToDTO->addedHowToSteps)) ||
+            ($createHowToDTO->deletedHowToSteps && count($createHowToDTO->deletedHowToSteps));
     }
 }

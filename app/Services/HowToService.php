@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Actions\EnsureIsAdminAction;
 use App\Actions\HowTo\CreateHowToAction;
 use App\Actions\HowTo\DeleteHowToAction;
+use App\Actions\HowTo\EnsureElementIdsAreValidAction;
 use App\Actions\HowTo\EnsureHowToDataIsValidAction;
 use App\Actions\HowTo\EnsureHowToExistsAction;
 use App\Actions\HowTo\EnsurePositionsAreValidAction;
@@ -38,18 +39,22 @@ class HowToService extends Service
 
         EnsurePositionsAreValidAction::new()->execute($createHowToDTO);
 
+        EnsureElementIdsAreValidAction::new()->execute($createHowToDTO);
+
         return CreateHowToAction::new()->execute($createHowToDTO);
     }
 
     public function updateHowTo(CreateHowToDTO $createHowToDTO)
     {
-        EnsureHowToExistsAction::new()->execute($createHowToDTO);
-
         EnsureIsAdminAction::new()->execute($createHowToDTO);
+        
+        EnsureHowToExistsAction::new()->execute($createHowToDTO);
 
         EnsureHowToDataIsValidAction::new()->execute($createHowToDTO, 'update');
 
         EnsurePositionsAreValidAction::new()->execute($createHowToDTO, 'update');
+
+        EnsureElementIdsAreValidAction::new()->execute($createHowToDTO, 'update');
 
         return UpdateHowToAction::new()->execute($createHowToDTO);
     }

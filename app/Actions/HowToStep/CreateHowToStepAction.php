@@ -15,6 +15,7 @@ class CreateHowToStepAction extends Action
             'name' => $createHowToStepDTO->name,
             'description' => $createHowToStepDTO->description,
             'position' => $createHowToStepDTO->position,
+            'element_id' => $createHowToStepDTO->elementId,
             'how_to_id' => $createHowToStepDTO->howTo->id,
         ]);
 
@@ -25,9 +26,13 @@ class CreateHowToStepAction extends Action
                 'path' => 'others'
             ])
         );
-        $file = $fileService->saveFile($createHowToStepDTO->user, $fileData);
 
-        $howToStep->file_id = $file->id;
+        if ($fileData) {
+            $file = $fileService->saveFile($createHowToStepDTO->user, $fileData);
+    
+            $howToStep->file_id = $file->id;
+        }
+        
         $howToStep->save();
 
         return $howToStep;

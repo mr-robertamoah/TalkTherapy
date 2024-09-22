@@ -9,7 +9,7 @@ class HowToStep extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['name', 'description', 'user_id', 'how_to_id', 'position', 'file_id'];
+    protected $fillable = ['name', 'description', 'user_id', 'how_to_id', 'position', 'file_id', 'element_id'];
 
     public function user()
     {
