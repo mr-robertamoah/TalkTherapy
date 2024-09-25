@@ -15,7 +15,10 @@ import useErrorHandler from '@/Composables/useErrorHandler';
 import Checkbox from '@/Components/Checkbox.vue';
 import StyledLink from '@/Components/StyledLink.vue';
 import HelpButton from '@/Components/HelpButton.vue';
+import useGuidedTours from '@/Composables/useGuidedTours';
 
+
+const { PAGES } = useGuidedTours()
 const form = useForm({
     selectedCases: [],
     selectedLanguages: [],
@@ -477,8 +480,9 @@ function removeReligionFromSelected(oldReligion) {
             <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 my-4 flex justify-end">
                 <HelpButton
                     title="get help on Preference Page"
-                    :page="'Preference'"
+                    :page="PAGES.preference"
                     class="mr-4"
+                    :user="$page.props.auth?.user"
                 />
             </div>
             <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
@@ -490,6 +494,7 @@ function removeReligionFromSelected(oldReligion) {
                     </div>
                 </div>
 
+                <div id="preference-anon-id" class="relative"></div>
                 <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg my-8">
                     <div class="p-6 text-gray-900">
                         <div>
@@ -510,6 +515,7 @@ function removeReligionFromSelected(oldReligion) {
                 </div>
 
                 <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg my-8">
+                    <div id="preference-cases-id" class="relative"></div>
                     <div class="p-6 text-gray-900">
                         <div>
                             <div class="w-full text-justify capitalize mt-4 mb-1 text-lg font-medium text-gray-900">cases</div>
@@ -584,6 +590,7 @@ function removeReligionFromSelected(oldReligion) {
                 </div>
                 
                 <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg my-8">
+                    <div id="preference-languages-id" class="relative"></div>
                     <div class="p-6 text-gray-900">
                         <div>
                             <div class="w-full text-justify capitalize mt-4 mb-1 text-lg font-medium text-gray-900">languages</div>
@@ -658,6 +665,7 @@ function removeReligionFromSelected(oldReligion) {
                 </div>
                 
                 <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg my-8">
+                    <div id="preference-religions-id" class="relative"></div>
                     <div class="p-6 text-gray-900">
                         <div>
                             <div class="w-full text-justify capitalize mt-4 mb-1 text-lg font-medium text-gray-900">religions</div>
@@ -731,6 +739,7 @@ function removeReligionFromSelected(oldReligion) {
                     </div>
                 </div>
 
+                <div id="preference-action-id" class="relative"></div>
                 <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg my-8 p-4 flex justify-end">
                     <PrimaryButton
                         class="ms-4" 

@@ -56,7 +56,8 @@ let props = defineProps({
 
 function startTour(howTo) {
     if (!howTo) return
-    howToTour.value = howTo
+        console.log('here');
+        howToTour.value = howTo
     startHowToTour.value = true
 }
 

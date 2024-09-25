@@ -6,6 +6,7 @@ export default function useGuidedTours() {
         home: "Home",
         profile: "Profile",
         therapy: "Therapy",
+        preference: "Preference",
     }
     
     const CONDITION_NAMES = {
@@ -242,6 +243,54 @@ export default function useGuidedTours() {
                     name: 'Actions', 
                     description: 'This section reveals the various actions a user or counsellor can perform such as Creating, Updating or Deleting sessions, etc.',
                     elementId: 'therapy-actions-id',
+                    scroll: true,
+                },
+            ],
+        },
+        {
+            name: "Preference Page Tour",
+            description: "Have a look at what you can do on your user profile page.",
+
+            page: PAGES.preference,
+            howToSteps: [
+                { 
+                    id: 1,
+                    position: 1,
+                    name: 'Anonymity', 
+                    description: 'If you set this to true, your name will be hidden, by default, from the counsellor and any other person, in the case of public therapies.',
+                    elementId: 'preference-anon-id',
+                    scroll: true,
+                },
+                { 
+                    id: 2,
+                    position: 2,
+                    name: 'Cases', 
+                    description: 'You can create a therapy case if it does not exist. The cases helps to categorize therapy types and gives a sense of what you are dealing with. When you select a case, it will help us make better suggestions to you.',
+                    elementId: 'preference-cases-id',
+                    scroll: true,
+                },
+                { 
+                    id: 3,
+                    position: 3,
+                    name: 'Languages', 
+                    description: 'You can create a language if it does not exist. When you select a language, it will help us connect you with counsellors who communicate in those languages.',
+                    elementId: 'preference-languages-id',
+                    scroll: true,
+                },
+                { 
+                    id: 4,
+                    position: 4,
+                    name: 'Religion', 
+                    description: 'You can ignore this part if you are not religious and can accept to have sessions with counsellors who do not necessarily have the same religious orientation. You can create a therapy case if it does not exist. When you select a religion, it will help connect you with counsellors with similar religious orientation.',
+                    elementId: 'preference-religions-id',
+                    scroll: true,
+                },
+                { 
+                    id: 5,
+                    position: 5,
+                    name: 'Actions', 
+                    description: 'Once you make changes to your preferences,  you can save them by clicking on the "SET PREFERENCES" button.',
+                    elementId: 'preference-action-id',
                     scroll: true,
                 },
             ],
