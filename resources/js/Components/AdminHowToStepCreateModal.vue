@@ -58,6 +58,20 @@
                         </div>
                         
                         <div class="mt-4 mx-auto max-w-[400px]">
+                            <InputLabel for="elementId" value="Element ID" />
+
+                            <TextInput
+                                id="elementId"
+                                type="text"
+                                class="mt-1 block w-full"
+                                min="1"
+                                v-model="howToStepData.elementId"
+                            />
+
+                            <InputError class="mt-2" :message="howToStepErrors.elementId" />
+                        </div>
+                        
+                        <div class="mt-4 mx-auto max-w-[400px]">
                             <InputLabel for="file" value="File" />
 
                             <div class="flex justify-end items-center w-full mb-4 mt-2">
@@ -119,19 +133,24 @@ const props = defineProps({
     },
     positions: {
         default: []
-    }
+    },
+    elementIds: {
+        default: []
+    },
 })
 
 const howToStepData = ref({
     name: '',
     description: '',
     position: '',
+    elementId: '',
     file: null,
 })
 const howToStepErrors = ref({
     name: '',
     description: '',
     position: '',
+    elementId: '',
     file: '',
 })
 const fileInput = ref(null)
@@ -166,10 +185,20 @@ async function createHowToStep() {
         return
     }
     
-    if (!howToStepData.value.file) {
-        howToStepErrors.value.file = 'a file is required'
+    if (!howToStepData.value.elementId) {
+        howToStepErrors.value.elementId = 'element id is required.'
         return
     }
+    
+    if (props.elementIds.findIndex((elementId) => elementId == howToStepData.value.elementId) > -1) {
+        howToStepErrors.value.elementId = 'the element id has already been taken.'
+        return
+    }
+    
+    // if (!howToStepData.value.file) {
+    //     howToStepErrors.value.file = 'a file is required'
+    //     return
+    // }
     
     emits('created', {...howToStepData.value})
     closeModal()
@@ -179,6 +208,7 @@ function clearHowToStepData() {
     howToStepData.value.name = ''
     howToStepData.value.page = ''
     howToStepData.value.description = ''
+    howToStepData.value.elementId = ''
     howToStepData.value.file = null
     howToStepData.value.position = 0
 }

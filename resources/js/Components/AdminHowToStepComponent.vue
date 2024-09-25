@@ -27,6 +27,7 @@
         </div>
         <div class="text-center font-bold">{{ howToStep.name }}</div>
         <div v-if="howToStep.description" class="text-gray-600 text-xs my-2">{{ howToStep.description }}</div>
+        <div class="text-sm my-2 text-gray-600">{{ howToStep.elementId }}</div>
         <div>
             <FilePreview
                 v-if="howToStep.file"

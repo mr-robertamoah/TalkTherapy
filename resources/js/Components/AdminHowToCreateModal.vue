@@ -129,6 +129,7 @@
     <AdminHowToStepCreateModal
         :show="modalData.show && modalData.type == 'how-to-step'"
         :positions="howToData.howToSteps.map((h) => h.position)"
+        :elementIds="howToData.howToSteps.map((h) => h.elementId)"
         @created="createdHowToStep"
         @close="closeModal"
     />
@@ -230,42 +231,42 @@ async function createHowTo() {
         howToData.value.page = 'all'
     
     await axios
-    .post(route(`admin.how-tos.create`), {
-        ...howToData.value
-    }, {
-        headers: {'Content-Type': 'multipart/form-data'},
-    })
-    .then((res) => {
-        console.log(res)
-        setSuccessAlertData({
-            message: `'${howToData.value.name}' how-to has successfully been created.`,
-            time: 5000
+        .post(route(`admin.how-tos.create`), {
+            ...howToData.value
+        }, {
+            headers: {'Content-Type': 'multipart/form-data'},
         })
-        emits('created', res.data.howTo)
-        closeHowToModal()
-    })
-    .catch((err) => {
-        console.log(err)
-        if (err.response?.status == 422) {
-            setErrorData(howToErrors, err.response.data.errors, ['name', 'about'])
-            return
-        }
-        if (err.response?.data?.message) {
+        .then((res) => {
+            console.log(res)
+            setSuccessAlertData({
+                message: `'${howToData.value.name}' how-to has successfully been created.`,
+                time: 5000
+            })
+            emits('created', res.data.howTo)
+            closeHowToModal()
+        })
+        .catch((err) => {
+            console.log(err)
+            if (err.response?.status == 422) {
+                setErrorData(howToErrors, err.response.data.errors, ['name', 'about'])
+                return
+            }
+            if (err.response?.data?.message) {
+                setFailedAlertData({
+                    message: err.response.data.message,
+                    time: 4000,
+                })
+                return
+            }
+
             setFailedAlertData({
-                message: err.response.data.message,
+                message: 'Something unfortunate happened. Please try again later.',
                 time: 4000,
             })
-            return
-        }
-
-        setFailedAlertData({
-            message: 'Something unfortunate happened. Please try again later.',
-            time: 4000,
         })
-    })
-    .finally(() => {
-        loading.value = false
-    })
+        .finally(() => {
+            loading.value = false
+        })
 }
  
 function clearHowToData() {

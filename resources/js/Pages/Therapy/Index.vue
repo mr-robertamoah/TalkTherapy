@@ -31,6 +31,8 @@ import useAppLink from '@/Composables/useAppLink';
 import CreateDiscussionFormModal from '@/Components/CreateDiscussionFormModal.vue';
 import Modal from '@/Components/Modal.vue';
 import useUtilities from '@/Composables/useUtilities';
+import HelpButton from '@/Components/HelpButton.vue';
+import useGuidedTours from '@/Composables/useGuidedTours';
 
 const { modalData, showModal, closeModal } = useModal()
 const { goToLogin } = useAuth()
@@ -38,6 +40,7 @@ const { toDiffForHumans } = useLocalDateTimed()
 const { createLink, getlinks } = useAppLink()
 const { alertData, clearAlertData, setAlertData, setSuccessAlertData, setFailedAlertData } = useAlert()
 const { getReadableStatus } = useUtilities()
+const { PAGES } = useGuidedTours()
 
 const props = defineProps({
     therapy: {
@@ -773,6 +776,15 @@ function clearGetting() {
             </div>
         </template>
 
+        <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 mt-4 flex justify-end">
+            <HelpButton
+                title="get help on Home Page"
+                :page="PAGES.therapy"
+                class="mr-4"
+                :user="$page.props.auth?.user"
+            />
+        </div>
+
         <div 
             class="w-full sticky top-0 z-10 pt-2"
             :class="{'p-2 bg-white': showAll}"
@@ -819,8 +831,9 @@ function clearGetting() {
                 class="p-2 bg-green-300 w-[80%] md:w-[70%] lg:w-[60%] mt-2 mx-auto rounded-lg text-green-800 text-center">{{ sessionActionRunning }}</div>
         </div>
 
-        <div class="pt-6 pb-12">
+        <div class="pt-0 pb-12">
             
+            <div id="therapy-sessions-id" class="relative"></div>
             <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
                 <div class="p-6 overflow-hidden shadow-sm sm:rounded-lg my-8 bg-slate-200">
                     <div class="text-gray-600 font-semibold tracking-wide text-center mb-4">Most Recent Sessions</div>
@@ -846,6 +859,7 @@ function clearGetting() {
                 </div>
             </div>
             
+            <div id="therapy-topics-id" class="relative"></div>
             <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
                 <div class="p-6 overflow-hidden shadow-sm sm:rounded-lg my-8 bg-slate-200">
                     <div class="text-gray-600 font-semibold tracking-wide text-center mb-4">Most Recent Topics</div>
@@ -896,6 +910,7 @@ function clearGetting() {
                 </div>
             </div>
 
+            <div id="therapy-info-id" class="relative"></div>
             <div class="bg-gray-100 z-[2] top-0 max-w-7xl mx-auto sm:px-6 lg:px-8 my-4 p-2 flex justify-start items-center overflow-x-auto overflow-hidden">
                 <div
                     v-for="item in scrollItems.filter(item => computedTherapy.paymentType == 'PAID' ? item : item.id !== 'therapy_payment_details')"
@@ -909,6 +924,7 @@ function clearGetting() {
                     {{ item.name }}
                 </div>
             </div>
+
             <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
                 <div class="overflow-hidden shadow-sm sm:rounded-lg my-8 flex flex-col space-y-4 md:space-y-0 md:grid md:grid-cols-2 md:space-x-4">
                     
@@ -1119,6 +1135,7 @@ function clearGetting() {
                 </div>
             </div>
             
+            <div id="therapy-actions-id" class="relative"></div>
             <div class="max-w-7xl mx-auto sm:px-6 lg:px-8" v-if="computedIsParticipant">
                 <div class="p-6 bg-white overflow-hidden shadow-sm sm:rounded-lg my-8">
                     <div class="text-gray-600 font-semibold tracking-wide text-center mb-4">Actions</div>

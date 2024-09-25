@@ -11,7 +11,10 @@ import GuardianshipSection from '@/Components/GuardianshipSection.vue';
 import { ref, computed } from 'vue';
 import { Head, Link } from '@inertiajs/vue3';
 import HelpButton from '@/Components/HelpButton.vue';
+import useGuidedTours from '@/Composables/useGuidedTours';
 
+
+const { PAGES } = useGuidedTours()
 const props = defineProps({
     mustVerifyEmail: {
         type: Boolean,
@@ -49,7 +52,7 @@ function changeStep(value) {
             <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 my-4 flex justify-end">
                 <HelpButton
                     title="get help on your profile page"
-                    :page="'User Profile'"
+                    :page="PAGES.profile"
                     class="mr-4"
                 />
             </div>
@@ -61,6 +64,7 @@ function changeStep(value) {
                     </div>
                 </div>
 
+                <div id="profile-counsellor-id" class="relative"></div>
                 <div class="p-4 sm:p-8 bg-slate-500 shadow sm:rounded-lg">
                     <BecomeCounsellorForm
                         :counsellor-creation-step="currentStep"
@@ -69,18 +73,21 @@ function changeStep(value) {
                     />
                 </div>
                 
+                                <div id="profile-therapies-id" class="relative"></div>
                 <div class="p-4 sm:p-8 bg-white shadow sm:rounded-lg">
                     <TherapiesSection
                         class="max-w-xl"
                     />
                 </div>
                 
+                                <div id="profile-guardianship-id" class="relative"></div>
                 <div class="p-4 sm:p-8 bg-white shadow sm:rounded-lg">
                     <GuardianshipSection
                         class="max-w-xl"
                     />
                 </div>
                 
+                                <div id="profile-testimonial-id" class="relative"></div>
                 <div class="p-4 sm:p-8 bg-white shadow sm:rounded-lg">
                     <TestimonialSection
                         class="max-w-xl"
@@ -90,6 +97,7 @@ function changeStep(value) {
                     />
                 </div>
                 
+                                <div id="profile-info-id" class="relative"></div>
                 <div class="p-4 sm:p-8 bg-white shadow sm:rounded-lg">
                     <UpdateProfileInformationForm
                         class="max-w-xl"
@@ -106,6 +114,7 @@ function changeStep(value) {
                     />
                 </div>
 
+                <div id="profile-pref-id" class="relative"></div>
                 <div class="p-4 sm:p-8 bg-slate-500 shadow sm:rounded-lg">
                     <section class="max-w-xl">
                         <header>
@@ -122,10 +131,12 @@ function changeStep(value) {
                     </section>
                 </div>
 
+                <div id="profile-password-id" class="relative"></div>
                 <div class="p-4 sm:p-8 bg-white shadow sm:rounded-lg">
                     <UpdatePasswordForm class="max-w-xl" />
                 </div>
 
+                <div id="profile-account-id" class="relative"></div>
                 <div class="p-4 sm:p-8 bg-white shadow sm:rounded-lg">
                     <DeleteUserForm class="max-w-xl" />
                 </div>

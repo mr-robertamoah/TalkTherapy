@@ -23,6 +23,10 @@
         tours: {
             type: Object,
             default: null
+        },
+        user: {
+            type: Object,
+            required: null
         }
     })
 
@@ -41,9 +45,7 @@
         
         if (targetElement && currentTour.value) {
             tourAppInstance.value = createApp(Tour, getTourProps());
-
-            targetElement.scrollIntoView({ smooth:  true });
-
+            
             tourAppInstance.value.mount(targetElement);
         }
     }
@@ -53,9 +55,13 @@
             position: 'top',
             tour: currentTour.value,
             tourName: props.tours.name,
-            hasNext: tourIdx.value < props.tours.howToSteps.length,
+            hasNext: tourIdx.value + 1 < props.tours.howToSteps.length,
+            hasPrevious: tourIdx.value > 0,
             nextCallable: () => {
                 mountNext()
+            },
+            previousCallable: () => {
+                mountPrevious()
             },
             cancelCallable: () => {
                 unmountTour()
@@ -74,6 +80,20 @@
             return endTour()
 
         tourIdx.value += 1
+        currentTour.value = props.tours.howToSteps[tourIdx.value]
+        showTour()
+    }
+
+    function mountPrevious() {
+        if (!tourAppInstance.value) return
+
+        tourIdx.value = props.tours.howToSteps.findIndex((value) => value.id == currentTour.value.id)
+        unmountTour()
+
+        if (tourIdx.value - 1 < 0)
+            return endTour()
+
+        tourIdx.value -= 1
         currentTour.value = props.tours.howToSteps[tourIdx.value]
         showTour()
     }

@@ -13,10 +13,12 @@ import useModal from '@/Composables/useModal';
 import useAlert from '@/Composables/useAlert';
 import Alert from '@/Components/Alert.vue';
 import GuidedTour from '@/Components/GuidedTour.vue';
+import useGuidedTours from '@/Composables/useGuidedTours';
 
 
 const { modalData, showModal, closeModal } = useModal()
 const { alertData, clearAlertData, setFailedAlertData } = useAlert()
+const { PAGES } = useGuidedTours()
 
 const props = defineProps({
     recentTherapies: {
@@ -237,17 +239,18 @@ function showPost() {
 
     <AuthenticatedLayout>
         <div class="pt-6 pb-12">
-            <GuidedTour/>
             <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 my-4 flex justify-end">
                 <HelpButton
                     title="get help on Home Page"
-                    :page="'Home'"
+                    :page="PAGES.home"
                     class="mr-4"
+                    :user="$page.props.auth?.user"
                 />
             </div>
-            <div class="block space-y-4 lg:flex justify-start items-start lg:space-y-0 lg:space-x-0">
+            <div 
+                class="block space-y-4 relative lg:flex justify-start items-start lg:space-y-0 lg:space-x-0">
                 <div class="w-full lg:w-[50%]">
-                    <div id="example2-id" class="relative"></div>
+                    <div id="home-counsellors-id" class="relative"></div>
                     <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 mt-4">
                         <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
                             <div class="p-6 text-gray-900">Starred Counsellors (previous month)</div>
@@ -303,6 +306,7 @@ function showPost() {
                         </div>
                     </div>
                     
+                    <div id="home-therapies-id" class="relative"></div>
                     <div class="max-w-7xl mx-auto sm:px-6 lg:px-8" v-if="$page.props.auth.user">
                         <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
                             <div class="p-6 text-gray-900">Your Recent Therapies</div>
@@ -341,8 +345,10 @@ function showPost() {
                         </div>
                     </div>
                 </div>
-                <div class="w-full relative md:w-[70%] md:mr-auto lg:mx-auto lg:w-[50%] shrink-0">
-                                <div id="example-id" class="relative"></div>
+                <div
+                    class="w-full mx-auto relative md:w-[70%] md:mr-auto lg:mx-auto lg:w-[50%] shrink-0"
+                >
+                    <div id="home-posts-id" class="relative"></div>
                     <div class="mx-auto sm:px-6 lg:px-8 mt-4">
                         <div class="bg-white w-full shadow-sm sm:rounded-lg">
                             <div class="p-6 text-gray-900 flex justify-between items-center">

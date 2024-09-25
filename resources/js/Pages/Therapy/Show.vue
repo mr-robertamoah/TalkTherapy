@@ -168,7 +168,7 @@ function clearGetting() {
                 </div>
             </div>
                     
-            <div class="max-w-7xl mx-auto sm:px-6 lg:px-8" v-if="$page.props.auth.user?.isGuardian">
+            <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 mb-6" v-if="$page.props.auth.user?.isGuardian">
                 <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
                     <div class="p-6 text-gray-900">Ward Therapies</div>
                     <div v-if="getting.show" class="text-center text-sm w-full my-4 text-green-600 bg-green-200">getting user therapies</div>

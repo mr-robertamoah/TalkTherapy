@@ -1,7 +1,8 @@
 <template>
     <div
         v-bind="$attrs"
-        @click="() => showModal('ok')"
+        :title="`Start Guilded Tour on ${page} page`"
+        @click="() => clickedHelp()"
         class="w-8 h-8 rounded-full bg-blue-600 text-blue-200 justify-center items-center flex cursor-pointer p-2"
     >?</div>
 
@@ -9,6 +10,7 @@
         :start="startHowToTour"
         :tours="howToTour"
         @endTour="endTour"
+        :user="user"
     />
     <HelpModal
         :show="modalData.show"
@@ -17,6 +19,12 @@
         @startTour="startTour"
     />
 </template>
+
+<script>
+import useGuidedTours from "@/Composables/useGuidedTours";
+
+const { tours, PAGES } = useGuidedTours()
+</script>
 
 <script setup>
 import useModal from "@/Composables/useModal"
@@ -31,13 +39,23 @@ const startHowToTour = ref(false)
 const howToTour = ref(null)
 
 let props = defineProps({
+    useLocalTours: {
+        type: Boolean,
+        default: true
+    },
     page: {
         type: String,
-        required: true
+        required: true,
+        validator: (value) => Object.values(PAGES).includes(value)
+    },
+    user: {
+        type: Object,
+        required: null
     }
 })
 
 function startTour(howTo) {
+    if (!howTo) return
     howToTour.value = howTo
     startHowToTour.value = true
 }
@@ -45,5 +63,14 @@ function startTour(howTo) {
 function endTour() {
     howToTour.value = null
     startHowToTour.value = false
+}
+
+function clickedHelp() {
+    if (props.useLocalTours) {
+        startTour(tours.value.find((tour) => tour.page == props.page ))
+        return
+    }
+
+    showModal('tour')
 }
 </script>

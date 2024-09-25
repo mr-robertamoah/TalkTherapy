@@ -16,7 +16,7 @@ const props = defineProps({
     },
     classes: {
         type: String,
-        default: '',
+        default: 'shadow-xl bg-white',
     },
 });
 
@@ -90,7 +90,7 @@ const maxWidthClass = computed(() => {
                 >
                     <div
                         v-show="show"
-                        class="mb-6 bg-white rounded-lg overflow-hidden shadow-xl transform transition-all sm:w-full sm:mx-auto"
+                        class="mb-6 rounded-lg overflow-hidden transform transition-all sm:w-full sm:mx-auto"
                         :class="maxWidthClass + ' ' + classes"
                     >
                         <slot v-if="show" />

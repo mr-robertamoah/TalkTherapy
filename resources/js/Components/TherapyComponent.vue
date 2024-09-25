@@ -3,6 +3,7 @@
         class="relative w-full"
         v-if="showSessions"
     >
+        <div id="therapy-messages-id" class="relative"></div>
         <PrimaryButton
             class="my-2"
             @click="clickedSwitchToActiveSession"

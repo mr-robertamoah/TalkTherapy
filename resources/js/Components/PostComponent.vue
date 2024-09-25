@@ -305,7 +305,7 @@ async function createPost() {
     let data = {
             ...props.post,
         }
-    
+
     await axios
         .post(route('api.posts.create'), data, {
             headers: {'Content-Type': 'multipart/form-data'},
