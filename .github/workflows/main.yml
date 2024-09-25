@@ -24,5 +24,5 @@ jobs:
           aws ssm send-command \
               --instance-ids "i-0ceef8e041cbec9af" \
               --document-name "AWS-RunShellScript" \
-              --parameters 'commands=["sudo -u ubuntu /bin/bash -c \"cd /var/www/TalkTherapy && git pull origin main && npm run build && composer install && php artisan cache:clear \"",]' \
+              --parameters 'commands=["sudo -u ubuntu /bin/bash -c \"cd /var/www/TalkTherapy && git stash && git pull origin main && mpm install --omit=dev && npm run build && composer install && php artisan cache:clear \"",]' \
               --comment "Deploying TalkTherapy code"
