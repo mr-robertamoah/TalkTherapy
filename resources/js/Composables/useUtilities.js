@@ -1,4 +1,4 @@
-import { parseISO, formatDistance } from "date-fns";
+import { parseISO, formatDistance, format } from "date-fns";
 
 export default function useUtilities() {
 
@@ -16,7 +16,11 @@ export default function useUtilities() {
         return status.toLowerCase().replaceAll('_', ' ')
     }
 
+    const formatDateToStandard = (date) => {
+        return format(date, 'MMM dd, yyyy - HH:mm')
+    }
+
     return {
-        toCapitalize, getReadableStatus
+        toCapitalize, getReadableStatus, formatDateToStandard
     }
 }

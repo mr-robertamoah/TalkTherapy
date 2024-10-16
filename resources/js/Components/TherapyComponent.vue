@@ -300,8 +300,9 @@ import MiniModal from './MiniModal.vue';
 const { goToLogin } = useAuth()
 const {
     message, files, deletedFiles, computedHasMessage, replyingMessage,
-    showAttachmentIcons, messageFilesInput, changeFile, resetMessage, updateMessage,
-    clickedIcon, mediaCaptureData, closeMediaCapture, removeUploadFile, scrollToMessageId,
+    showAttachmentIcons, messageFilesInput, messageArea,changeFile,
+    resetMessage, updateMessage, clickedIcon, mediaCaptureData,
+    closeMediaCapture, removeUploadFile, scrollToMessageId, scrollToBottom,
     selectForUpdate, selectAsReply, removeReply, sendMessage
 } = useMessage()
 const { alertData, setFailedAlertData, clearAlertData, setSuccessAlertData } = useAlert()
@@ -363,7 +364,6 @@ const loading = ref(false)
 const getting = ref(false)
 const setting = ref({show: false, type: ''})
 const listening = ref(false)
-const messageArea = ref(null)
 const pages = ref({
     message: 1,
     session: 1,
@@ -640,12 +640,6 @@ function getMessageTo() {
     }
 
     return to
-}
-
-async function scrollToBottom() {
-    await nextTick()
-
-    if (messageArea.value) messageArea.value.scrollTop = messageArea.value.scrollHeight
 }
 
 function getMessageFrom() {

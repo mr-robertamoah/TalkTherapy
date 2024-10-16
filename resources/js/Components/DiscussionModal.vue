@@ -4,6 +4,11 @@
         @close="closeModal"
     >
         <div class="p-4">
+            <div
+                v-if="showOptions"
+                class="absolute w-full h-full top-0 left-0 bg-slate-600 bg-opacity-30 z-10"
+                @click="() => hideOptions()"
+            ></div>
 
             <div class="w-full mt-2 mb-4">
                 <div
@@ -14,10 +19,10 @@
             <div class="flex justify-end my-2 w-[90%] relative">
                 <OptionIcon
                     @click="() => showOptions = !showOptions"
-                    title="copy"
+                    title="select a section of the discussion"
                     class="cursor-pointer w-5 h-5"/>
 
-                <div v-if="showOptions" class="absolute w-fit p-2 px-4 rounded bg-gray-600 text-gray-600 text-sm">
+                <div v-if="showOptions" class="absolute z-20 w-fit p-2 px-4 rounded bg-gray-600 text-gray-600 text-sm">
                     <div
                         v-for="(opt, idx) in options.filter((o) => {
                             return o !== view
@@ -25,61 +30,62 @@
                         :key="idx"
                         class="bg-white my-2 p-2 w-24 cursor-pointer rounded text-center"
                         @click="() => {
-                            showOptions = false
-                            if (opt == 'close') {
-                                return
-                            }
+                            
                             if (opt == 'counsellors') {
                                 if (counsellors.page == 1) getCounsellors()
                                 if (counsellorLinks.page == 1) getCounsellorLinks()
                             }
 
                             view = opt
+
+                            hideOptions()
                         }"
                     >{{ opt }}</div>
                 </div>
             </div>
-            <div v-if="view == 'main'" class="overflow-hidden overflow-y-auto h-[70vh] w-[90%] mx-auto md:w-[70%]">
-                <div v-if="discussion.description" class="p-4 rounded bg-gray-200 shadow-sm min-h-[100px]">
+            <div v-if="view == 'main'" class="pr-4 py-4 overflow-hidden overflow-y-auto h-[70vh] w-[90%] mx-auto md:w-[70%]">
+                <div class="text-end text-gray-600 text-sm mb-3">created {{ discussion.createdAt }}</div>
+                <div v-if="discussion.description" class="p-4 rounded bg-gray-100 shadow-sm min-h-[100px]">
                     <div class="w-full text-justify capitalize mt-4 mb-1 text-lg font-medium text-gray-900">description</div>
-                    <div class="mt-2 text-sm text-gray-600 text-justify">{{ discussion.description }}</div>
+                    <div class="mt-2 text-sm text-gray-600 text-center px-2">{{ discussion.description }}</div>
                 </div>
 
-                <div class="p-4 rounded bg-gray-200 my-4 shadow-sm min-h-[100px]">
+                <div class="p-4 rounded bg-gray-100 my-4 shadow-sm min-h-[100px]">
                     <div class="w-full text-justify capitalize mt-4 mb-1 text-lg font-medium text-gray-900">sessions</div>
                     
                     <div class="p-2 flex justify-start items-center overflow-hidden overflow-x-auto my-2">
                                 
                         <template v-if="discussion.session">
-                            <PreferenceItem
-                                :item="discussion.session"
-                                :show-actions="false"
+                            <SessionBadge
+                                :show-indicator="false"
+                                :session="discussion.session"
+                                class="w-[60%] shrink-0 shadow-md shadow-slate-300"
+                                :has-actions="false"
                             />
                         </template>
                         <div v-else class="w-full text-center text-sm text-gray-600">no session</div>
                     </div>
                 </div>
 
-                <div class="p-4 rounded bg-gray-200 my-4 shadow-sm min-h-[100px]">
+                <div class="p-4 rounded bg-gray-100 my-4 shadow-sm min-h-[100px]">
                     <div class="w-full text-justify capitalize mt-4 mb-1 text-lg font-medium text-gray-900">dates</div>
-                    <div>
-                        <div class="text-gray-600 text-sm tracking-wide flex justify-center items-center flex-col space-y-3 py-2">
+                    <div class="ml-2 rounded px-4 py-3 w-fit shadow-md shadow-slate-300 bg-white my-3">
+                        <div class="text-gray-600 text-sm tracking-wide flex justify-center items-start flex-col space-y-3 py-2">
                             <div class="">{{ 
                                 discussion.status == 'PENDING' 
-                                    ? 'Is to start on '
+                                    ? 'Starts on '
                                     : (discussion.status == 'FAILED' ? 'Was to start on ' : 'Started on')
-                            }} <span class="text-gray-700 font-bold">{{ (new Date(discussion.startTime)).toGMTString() }}</span></div>
+                            }} <span class="text-gray-700 font-bold">{{ formatDateToStandard(new Date(discussion.startTime)) }}</span></div>
                             <div class="">{{ 
                                 ['PENDING', 'IN_SESSION_CONFIRMATION', 'IN_SESSION'].includes(discussion.status)
-                                    ? 'Is to end on '
+                                    ? 'Ends on '
                                     : (['FAILED', 'ABANDONED'].includes(discussion.status) ? 'Was to end on ' : 'Ended on')
-                            }} <span class="text-gray-700 font-bold">{{ (new Date(discussion.endTime)).toGMTString() }}</span></div>
+                            }} <span class="text-gray-700 font-bold">{{ formatDateToStandard(new Date(discussion.endTime)) }}</span></div>
                         </div>
-                        <div class="text-end text-gray-600 text-sm my-2">created {{ discussion.createdAt }}</div>
                     </div>
                 </div>
             </div>
-            <div v-if="view == 'counsellors'" class="overflow-hidden overflow-y-auto h-[70vh] w-[90%] mx-auto md:w-[70%]">
+            <div v-if="view == 'counsellors'" class="pr-4 py-4 overflow-hidden overflow-y-auto h-[70vh] w-[90%] mx-auto md:w-[70%]">
                 <div class="p-4 rounded bg-gray-200 my-4 shadow-sm min-h-[100px]" v-if="computedIsAddedby">
                     <div class="w-full text-justify capitalize mt-4 mb-1 text-lg font-medium text-gray-900">Counsellor Search</div>
                     
@@ -213,7 +219,7 @@
                     </div>
                 </div>
             </div>
-            <div v-if="view == 'sessions'" class="overflow-hidden overflow-y-auto h-[70vh] w-[90%] mx-auto md:w-[70%]">
+            <div v-if="view == 'sessions'" class="pr-4 py-4 overflow-hidden overflow-y-auto h-[70vh] w-[90%] mx-auto md:w-[70%]">
                 <div class="p-4 rounded bg-gray-200 my-4 shadow-sm min-h-[100px]">
                     <div class="w-full text-justify capitalize mt-4 mb-1 text-lg font-medium text-gray-900">Messages</div>
                     
@@ -246,16 +252,7 @@
                         </div>
                     </div>
                     <div class="rounded-lg min-h-[400px] bg-stone-200 h-full w-full shrink mb-2">
-                        <div 
-                            :title="`double click to deselect.`"
-                            @click.self="deselectItem"
-                            @dblclick="deselectItem"
-                            class="text-sm text-gray-600 mb-2 capitalize select-none cursor-pointer w-[90%] mx-auto rounded-b p-2 text-center font-bold tracking-wide bg-white"
-                            v-if="selectedSession"
-                        >
-                            <div v-if="getting.show" class="my-1 text-green-600 text-sm lowercase text-center w-full relative">getting messages...</div>
-                            <div>{{ selectedSession.name }}</div>
-                        </div>
+                        <div v-if="getting.show" class="my-1 text-green-600 text-sm lowercase text-center w-full relative">getting messages...</div>
                         <div class="h-[350px] p-2 overflow-hidden overflow-y-auto space-y-2 flex items-center flex-col"
                             :class="{'justify-end': chatMessages?.length <= 3}"
                         >
@@ -281,7 +278,7 @@
                     </div>
                 </div>
             </div>
-            <div v-if="view == 'chat'" class="overflow-hidden overflow-y-auto h-[70vh] w-[90%] mx-auto md:w-[70%]">
+            <div v-if="view == 'chat'" class="pr-4 py-4 overflow-hidden overflow-y-auto h-[70vh] w-[90%] mx-auto md:w-[70%]">
                 <div>
                     <div class="rounded-lg min-h-[400px] bg-stone-200 h-full w-full shrink mb-2">
                         <div class="h-[350px] p-2 overflow-hidden overflow-y-auto space-y-2 flex items-center flex-col"
@@ -400,7 +397,7 @@
 
 <script setup>
 import useAlert from '@/Composables/useAlert';
-import { ref, watchEffect, watch, computed, reactive, onBeforeUnmount } from 'vue';
+import { ref, watchEffect, watch, computed, reactive, onBeforeUnmount, nextTick } from 'vue';
 import Modal from './Modal.vue';
 import PreferenceItem from './PreferenceItem.vue';
 import useAuth from '@/Composables/useAuth';
@@ -425,15 +422,18 @@ import PrimaryButton from './PrimaryButton.vue';
 import { unref } from 'vue';
 import SessionBadge from './SessionBadge.vue';
 import StyledLink from './StyledLink.vue';
+import useUtilities from '@/Composables/useUtilities';
 
 
 const { alertData, clearAlertData, setSuccessAlertData, setFailedAlertData } = useAlert()
 const { goToLogin } = useAuth()
 const { createLink, getlinks } = useAppLink()
+const { formatDateToStandard } = useUtilities()
 const {
-    message, files, deletedFiles, computedHasMessage, replyingMessage, scrollToBottom,
-    showAttachmentIcons, messageFilesInput, changeFile, resetMessage, updateMessage,
-    clickedIcon, mediaCaptureData, closeMediaCapture, removeUploadFile, scrollToMessageId,
+    message, files, deletedFiles, computedHasMessage, replyingMessage,
+    scrollToBottom, showAttachmentIcons, messageFilesInput, messageArea,
+    changeFile, resetMessage, updateMessage, clickedIcon, mediaCaptureData,
+    closeMediaCapture, removeUploadFile, scrollToMessageId,
     selectForUpdate, selectAsReply, removeReply, sendMessage
 } = useMessage()
 
@@ -470,17 +470,18 @@ const counsellorStatus = ref('')
 const messages = reactive({})
 const showOptions = ref(false)
 const listening = ref(false)
+const sessionsInitialized = ref(false)
 const view = ref('main')
-const options = ref(['main', 'counsellors', 'sessions', 'chat', 'close',])
+const options = ref(['main', 'counsellors', 'sessions', 'chat',])
 
 onBeforeUnmount(() => {
     if (listening.value)
         Echo.leave(`discussion.${props.discussion.id}`)
 })
 
-// add timer
-// add actions
-// add counsellor cards on the chat for online counsellors
+// TODO: add timer
+// TODO: add actions
+// TODO: add counsellor cards on the chat for online counsellors
 
 watch(() => props.show, () => {
     if (!props.show) return
@@ -491,10 +492,12 @@ watch(() => props.show, () => {
     }
 })
 watchEffect(() => {
+    if (sessionsInitialized.value)
+        return
+
+    sessionsInitialized.value = true
     if (props.discussion?.session?.id) {
-        sessions.value.data = [props.discussion.session]
-        selectedSession.value = props.discussion.session
-        handleSelectedSessionChange()
+        addSession(props.discussion.session)
         return
     }
     
@@ -563,7 +566,16 @@ const computedMessagesPage = computed(() => {
     return 0
 })
 
-function handleSelectedSessionChange() {
+async function handleSelectedSessionChange(item = null) {
+    if (selectedSession.value?.id == item?.id) {
+        selectedSession.value = null
+        await nextTick()
+    }
+    else if (item?.id) {
+        selectedSession.value = item
+        await nextTick()
+    }
+
     if (!selectedSession.value?.id) {
         chatMessages.value = []
         return
@@ -587,6 +599,15 @@ const debouncedGetCounsellors = _.debounce(() => {
     counsellors.value.page = 1
     getCounsellors()
 }, 500)
+
+function addSession(session) {
+    sessions.value.data = [session]
+    
+    if (!selectedSession.value?.id)
+        selectedSession.value = session
+
+    handleSelectedSessionChange()
+}
 
 function clearData() {
     requestData.value.counsellorId = ''
@@ -673,13 +694,6 @@ async function getCounsellors() {
         })
 }
 
-function deselectItem() {
-    selectedSession.value = null
-    handleSelectedSessionChange()
-
-    scrollToBottom()
-}
-
 async function getSessions() {
     setGetting('sessions')
 
@@ -730,6 +744,10 @@ async function getSessions() {
     })
 
     clearGetting()
+}
+
+function hideOptions() {
+    showOptions.value = false
 }
 
 function updatePage(res, data) {
@@ -1068,7 +1086,7 @@ async function getSessionMessages() {
             if (messages.sessions[selectedSession.value?.id].page == 1 && chatMessages.value.length)
                 chatMessages.value[0].scroll = true
             else if (chatMessages.value.length > 10)
-                chatMessages.value[11].scroll = true
+                chatMessages.value[11].scroll = true // TODO verify
 
             updateMessagesPage(res)
         })

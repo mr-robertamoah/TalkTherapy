@@ -3,8 +3,11 @@
         class="rounded shadow-sm p-2 select-none cursor-pointer max-w-sm"
         :class="[isActive ? 'bg-green-300' : 'bg-white']"
     >
-        <div class="flex justify-start items-center overflow-hidden overflow-x-auto space-x-2">
-            <div class="text-xs rounded bg-gray-500 text-white p-1">{{ getReadableStatus(session.status) }}</div>
+        <div 
+            class="flex justify-start items-center overflow-hidden overflow-x-auto space-x-2"
+            :class="{'pb-2': !session.status}"
+        >
+            <div v-if="session.status" class="text-xs rounded bg-gray-500 text-white p-1">{{ getReadableStatus(session.status) }}</div>
             <div v-if="session.createdAt" class="text-xs text-nowrap my-2 w-fit ml-auto mr-2 text-gray-600">{{ toDiffForHumans(session.createdAt) }}</div>
         </div>
         <div class="capitalize text-gray-600 text-sm sm:text-base text-center font-bold tracking-wide px-2">
@@ -126,6 +129,9 @@ const props = defineProps({
     },
     isActive: {
         default: false
+    },
+    showIndicator: {
+        default: true
     },
     hasActions: {
         default: true
