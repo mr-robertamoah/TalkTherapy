@@ -138,7 +138,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/therapies/{therapyId}', [TherapyController::class, 'getTherapy'])->name('api.therapies.get');
     Route::get('/user/therapies', [TherapyController::class, 'getUserTherapies'])->name('api.therapies.user');
     Route::get('/ward/therapies', [TherapyController::class, 'getWardTherapies'])->name('api.therapies.ward');
-    Route::get('/counsellor/therapies', [TherapyController::class, 'getCounsellorTherapies'])->name('api.therapies.counsellor');
+    Route::get('/therapies/counsellor', [TherapyController::class, 'getCounsellorTherapies'])->name('api.therapies.counsellor');
     Route::patch('/therapies/{therapyId}', [TherapyController::class, 'updateTherapy'])->name('api.therapies.update');
     Route::delete('/therapies/{therapyId}', [TherapyController::class, 'deleteTherapy'])->name('api.therapies.delete');
     Route::post('/therapies/{therapyId}', [TherapyController::class, 'endTherapy'])->name('api.therapies.end');
@@ -157,8 +157,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::patch('/topics/{topicId}', [TherapyTopicController::class, 'updateTherapyTopic'])->name('api.topics.update');
     Route::delete('/topics/{topicId}', [TherapyTopicController::class, 'deleteTherapyTopic'])->name('api.topics.delete');
 
-    Route::get('/discussions/{discussionId}/messages', [MessageController::class, 'getDiscussionMessages'])->name('api.discussion.messages.get');
-    Route::post('messages', [MessageController::class, 'createMessage'])->name('api.messages.create');
+    Route::get('/messages/discussions/{discussionId}', [MessageController::class, 'getDiscussionMessages'])->name('api.discussion.messages.get');
+    Route::post('/messages', [MessageController::class, 'createMessage'])->name('api.messages.create');
     Route::post('/messages/{messageId}', [MessageController::class, 'updateMessage'])->name('api.messages.update');
     Route::delete('/messages/{messageId}', [MessageController::class, 'deleteMessage'])->name('api.messages.delete');
     Route::delete('/messages/{messageId}/me', [MessageController::class, 'deleteMessageForMe'])->name('api.messages.delete.me');
