@@ -4,6 +4,10 @@
         class="w-full max-w-[400px] bg-stone-200 p-2 rounded shadow-sm select-none"
         @dblclick="goToPage"
     >
+        <div
+            v-if="tag.length"
+            class="bg-blue-600 text-blue-100 px-2 py-1 text-xs w-fit rounded ml-auto"
+        >{{ tag }}</div>
         <div 
             v-if="counsellor.deleted" 
             class="p-2 text-red-700 text-center text-sm"
@@ -12,6 +16,7 @@
             v-else-if="useMinimal" 
             class="text-gray-600 flex items-center gap-2"
         >
+            <!-- TODO: add section that allows viewing specialisation of counsellor -->
             <div class="capitalize text-sm">{{ counsellor.name }}</div>
             <div class="text-xs">{{ counsellor.username ? `@${counsellor.username}` : '' }}</div>
         </div>
@@ -113,6 +118,10 @@ const props = defineProps({
     hasView: {
         type: Boolean,
         default: true
+    },
+    tag: {
+        type: String,
+        default: ''
     },
     useMinimal: {
         type: Boolean,

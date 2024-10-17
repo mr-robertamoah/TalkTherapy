@@ -43,7 +43,10 @@
                     >{{ opt }}</div>
                 </div>
             </div>
-            <div v-if="view == 'main'" class="pr-4 py-4 overflow-hidden overflow-y-auto h-[70vh] w-[90%] mx-auto md:w-[70%]">
+            <div 
+                v-if="view == 'main'" 
+                class="pr-4 py-4 overflow-hidden overflow-y-auto h-[70vh] w-[90%] mx-auto md:w-[70%]"
+            >
                 <div class="text-end text-gray-600 text-sm mb-3">created {{ discussion.createdAt }}</div>
                 <div v-if="discussion.description" class="p-4 rounded bg-slate-800 shadow-sm min-h-[100px]">
                     <div class="w-full text-justify capitalize mt-4 mb-1 text-lg font-medium text-gray-300">description</div>
@@ -96,7 +99,10 @@
                     </div>
                 </div>
             </div>
-            <div v-if="view == 'counsellors'" class="pr-4 py-4 overflow-hidden overflow-y-auto h-[70vh] w-[90%] mx-auto md:w-[70%]">
+            <div
+                v-if="view == 'counsellors'"
+                class="pr-4 py-4 overflow-hidden overflow-y-auto h-[70vh] w-[90%] mx-auto md:w-[70%]"
+            >
                 <div class="p-4 rounded bg-slate-800 my-4 shadow-sm min-h-[100px]" v-if="computedIsAddedby">
                     <div class="w-full text-justify capitalize mt-4 mb-1 text-lg font-medium text-gray-300">Counsellor Search</div>
                     
@@ -157,7 +163,7 @@
                                 :counsellor="counsellor"
                                 :has-view="false"
                                 :key="counsellor.id"
-                                class="w-[70%] shrink-0"
+                                class="w-[70%] shrink-0 shadow shadow-slate-300"
                                 :use-minimal="true"
                                 @click="() => selectedCounsellor = counsellor"
                             >
@@ -186,12 +192,20 @@
                     </div>
                 </div>
 
-                <div class="p-4 rounded bg-gray-200 my-4 shadow-sm min-h-[100px]">
-                    <div class="w-full text-justify capitalize mt-4 mb-1 text-lg font-medium text-gray-900">Discussion Counsellors</div>
+                <div class="p-4 rounded bg-slate-800 my-4 shadow-sm min-h-[100px]">
+                    <div class="w-full text-justify capitalize mt-4 mb-1 text-lg font-medium text-gray-300">Discussion Counsellors</div>
                     
                     <div v-if="getting.show && getting.type == 'discussion'" class="text-center text-sm w-full my-4 text-green-600 bg-green-200">getting counsellors</div>
-                    <div class="p-2 flex justify-start space-x-3 items-center overflow-hidden overflow-x-auto my-2">
-                                
+                    <div class="p-2 flex flex-col justify-center gap-3 items-center overflow-hidden overflow-x-auto my-2">
+                        <CounsellorComponent
+                            :counsellor="discussion.addedby"
+                            :visit-page="false"
+                            :has-view="false"
+                            tag="admin"
+                            class="w-[70%] shrink-0"
+                        />
+
+                        <hr class="bg-white w-[60%] mx-auto my-2">
                         <template v-if="discussionCounsellors.data?.length">
                             <CounsellorComponent
                                 v-for="counsellor in discussionCounsellors.data"
@@ -205,7 +219,13 @@
                                     deletedCounsellor = counsellor
                                 }"
                             >
-                                <div v-if="$page.props.auth.user?.counsellor.id !== counsellor.id">
+                                <div 
+                                    v-if="
+                                        $page.props.auth.user?.counsellor?.id &&
+                                        counsellor?.id &&
+                                        $page.props.auth.user?.counsellor?.id !== counsellor?.id
+                                    "
+                                >
                                     <div class="flex justify-end">
                                         <StyledLink :text="'visit page'" :href="route('counsellor.show', {counsellorId: counsellor.id})"/>
                                     </div>
@@ -227,12 +247,15 @@
                                 v-if="counsellors.page"
                                 class="cursor-pointer p-2 text-gray-600 font-bold">...</div>
                         </template>
-                        <div v-else class="w-full text-center text-sm text-gray-600">no counsellors yet</div>
+                        <div v-else class="w-full text-center text-sm text-gray-200">no counsellors yet</div>
                     </div>
                 </div>
             </div>
-            <div v-if="view == 'sessions'" class="pr-4 py-4 overflow-hidden overflow-y-auto h-[70vh] w-[90%] mx-auto md:w-[70%]">
-                <div class="p-4 rounded bg-gray-200 my-4 shadow-sm min-h-[100px]">
+            <div 
+                v-if="view == 'sessions'"
+                class="pr-4 py-4 overflow-hidden overflow-y-auto h-[70vh] w-[90%] mx-auto md:w-[70%]"
+            >
+                <div class="p-4 rounded bg-slate-800 my-4 shadow-sm min-h-[100px]">
                     <div class="w-full text-justify capitalize mt-4 mb-1 text-lg font-medium text-gray-900">Messages</div>
                     
                     <div 
