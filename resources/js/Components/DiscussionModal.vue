@@ -140,7 +140,7 @@
                         </div>
                     </div>
                     <div v-if="getting.show && getting.type == 'counsellors'" class="text-center text-sm w-full my-4 text-green-600 bg-green-200">getting counsellors</div>
-                    <div class="text-left text-sm mb-2 text-gray-600">Type name or username of counsellor in order to search. Then click counsellor to reveal options.</div>
+                    <div class="text-left text-sm mb-2 text-gray-300">Type name or username of counsellor in order to search. Then click counsellor to reveal options.</div>
                     <div class="w-full flex justify-center items-center my-4">
                         <TextInput
                             v-model="counsellorSearch"
@@ -149,7 +149,7 @@
                             placeholder="search for counsellor"
                         />
                     </div>
-                    <div class="p-2 flex justify-start space-x-3 items-center overflow-hidden overflow-x-auto my-2">
+                    <div class="p-2 flex justify-center gap-3 items-center overflow-hidden overflow-x-auto my-2">
                                 
                         <template v-if="counsellors.data?.length">
                             <CounsellorComponent
@@ -158,6 +158,7 @@
                                 :has-view="false"
                                 :key="counsellor.id"
                                 class="w-[70%] shrink-0"
+                                :use-minimal="true"
                                 @click="() => selectedCounsellor = counsellor"
                             >
                                 <div v-if="selectedCounsellor && selectedCounsellor.id == counsellor.id">
@@ -181,7 +182,7 @@
                                 v-if="counsellors.page"
                                 class="cursor-pointer p-2 text-gray-600 font-bold">...</div>
                         </template>
-                        <div v-else class="w-full text-center text-sm text-gray-600">no counsellors searched</div>
+                        <div v-else class="w-full text-center text-sm text-gray-600">no counsellors found</div>
                     </div>
                 </div>
 
