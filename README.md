@@ -98,9 +98,6 @@ Welcome to the TalkTherapy application, a Laravel and Vue.js based project desig
 Continuously deployed to AWS EC2 instance by leveraging AWS Systems Manger's Run Command capability which enhances security becauses no SSH port is left open.
 
 ## Portfolio
-<div align="center">
-    <img width="200px" src="public/storage/others/robertamoah.png" alt="Creator of TalkTherapy app" />
-</div>
 
 You can find more about me on my [portfolio](https://www.robertamoah.com).
 

@@ -254,7 +254,7 @@ function showPost() {
                     <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 mt-4">
                         <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
                             <div class="p-6 text-gray-900">Starred Counsellors (previous month)</div>
-                            <div class="m-2 p-2 overflow-hidden overflow-x-auto space-x-4 flex justify-start items-center" v-if="computedBestCounsellors?.length">
+                            <div class="m-2 px-4 pb-6 overflow-hidden overflow-x-auto space-x-4 flex justify-start items-center" v-if="computedBestCounsellors?.length">
                                 <StarredCounsellorComponent
                                     v-for="(counsellor, idx) in computedBestCounsellors"
                                     :key="counsellor.id"
@@ -271,7 +271,7 @@ function showPost() {
                     <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 mt-4">
                         <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
                             <div class="p-6 text-gray-900">Leading Counsellors (current month)</div>
-                            <div class="m-2 p-2 overflow-hidden overflow-x-auto space-x-4 flex justify-start items-center" v-if="computedLeadingCounsellors?.length">
+                            <div class="m-2 px-4 pb-6 overflow-hidden overflow-x-auto space-x-4 flex justify-start items-center" v-if="computedLeadingCounsellors?.length">
                                 <StarredCounsellorComponent
                                     v-for="(counsellor, idx) in computedLeadingCounsellors"
                                     :key="counsellor.id"
@@ -287,7 +287,7 @@ function showPost() {
                     <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 mt-4">
                         <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
                             <div class="p-6 text-gray-900">Counsellors</div>
-                            <div class="m-2 p-2 overflow-hidden overflow-x-auto space-x-4 flex justify-start items-center" v-if="randomCounsellors.data?.length">
+                            <div class="m-2 px-4 pb-6 overflow-hidden overflow-x-auto space-x-4 flex justify-start items-center" v-if="randomCounsellors.data?.length">
                                 <StarredCounsellorComponent
                                     v-for="(counsellor) in randomCounsellors.data"
                                     :key="counsellor.id"
@@ -310,7 +310,7 @@ function showPost() {
                     <div class="max-w-7xl mx-auto sm:px-6 lg:px-8" v-if="$page.props.auth.user">
                         <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
                             <div class="p-6 text-gray-900">Your Recent Therapies</div>
-                            <div class="m-2 p-2 overflow-hidden overflow-x-auto space-x-5 flex justify-start items-center" v-if="recentTherapies?.length">
+                            <div class="m-2 px-4 pb-6 overflow-hidden overflow-x-auto space-x-5 flex justify-start items-center" v-if="recentTherapies?.length">
                                 <MiniTherapyComponent
                                     v-for="therapy in recentTherapies"
                                     :key="therapy.id"
