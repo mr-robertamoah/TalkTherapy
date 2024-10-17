@@ -45,13 +45,13 @@
             </div>
             <div v-if="view == 'main'" class="pr-4 py-4 overflow-hidden overflow-y-auto h-[70vh] w-[90%] mx-auto md:w-[70%]">
                 <div class="text-end text-gray-600 text-sm mb-3">created {{ discussion.createdAt }}</div>
-                <div v-if="discussion.description" class="p-4 rounded bg-gray-100 shadow-sm min-h-[100px]">
-                    <div class="w-full text-justify capitalize mt-4 mb-1 text-lg font-medium text-gray-900">description</div>
-                    <div class="mt-2 text-sm text-gray-600 text-center px-2">{{ discussion.description }}</div>
+                <div v-if="discussion.description" class="p-4 rounded bg-slate-800 shadow-sm min-h-[100px]">
+                    <div class="w-full text-justify capitalize mt-4 mb-1 text-lg font-medium text-gray-300">description</div>
+                    <div class="mt-2 text-sm text-gray-200 text-center px-2">{{ discussion.description }}</div>
                 </div>
 
-                <div class="p-4 rounded bg-gray-100 my-4 shadow-sm min-h-[100px]">
-                    <div class="w-full text-justify capitalize mt-4 mb-1 text-lg font-medium text-gray-900">sessions</div>
+                <div class="p-4 rounded bg-slate-800 my-4 shadow-sm min-h-[100px]">
+                    <div class="w-full text-justify capitalize mt-4 mb-1 text-lg font-medium text-gray-300">sessions</div>
                     
                     <div class="p-2 flex justify-start items-center overflow-hidden overflow-x-auto my-2">
                                 
@@ -67,33 +67,44 @@
                     </div>
                 </div>
 
-                <div class="p-4 rounded bg-gray-100 my-4 shadow-sm min-h-[100px]">
-                    <div class="w-full text-justify capitalize mt-4 mb-1 text-lg font-medium text-gray-900">dates</div>
-                    <div class="ml-2 rounded px-4 py-3 w-fit shadow-md shadow-slate-300 bg-white my-3">
-                        <div class="text-gray-600 text-sm tracking-wide flex justify-center items-start flex-col space-y-3 py-2">
-                            <div class="">{{ 
-                                discussion.status == 'PENDING' 
-                                    ? 'Starts on '
-                                    : (discussion.status == 'FAILED' ? 'Was to start on ' : 'Started on')
-                            }} <span class="text-gray-700 font-bold">{{ formatDateToStandard(new Date(discussion.startTime)) }}</span></div>
-                            <div class="">{{ 
-                                ['PENDING', 'IN_SESSION_CONFIRMATION', 'IN_SESSION'].includes(discussion.status)
-                                    ? 'Ends on '
-                                    : (['FAILED', 'ABANDONED'].includes(discussion.status) ? 'Was to end on ' : 'Ended on')
-                            }} <span class="text-gray-700 font-bold">{{ formatDateToStandard(new Date(discussion.endTime)) }}</span></div>
+                <div class="p-4 rounded bg-slate-800 my-4 shadow-sm min-h-[100px]">
+                    <div class="w-full text-justify capitalize mt-4 mb-1 text-lg font-medium text-gray-300">dates</div>
+                    <div class="ml-2 my-3">
+                        <div 
+                            class=" flex justify-center items-center flex-row gap-3 py-2 flex-wrap"
+                        >
+                            <div class="shrink-0 text-gray-600 text-sm tracking-wide rounded px-4 py-3 w-fit shadow shadow-slate-300 bg-white">
+                                <div>
+                                    {{ 
+                                        discussion.status == 'PENDING' 
+                                            ? 'Starts on '
+                                            : (discussion.status == 'FAILED' ? 'Was to start on ' : 'Started on')
+                                    }} 
+                                </div>
+                                <span class="text-gray-700 font-bold">{{ formatDateToStandard(new Date(discussion.startTime)) }}</span></div>
+                            <div class="shrink-0 text-gray-600 text-sm tracking-wide rounded px-4 py-3 w-fit shadow shadow-slate-300 bg-white">
+                                <div>
+                                    {{ 
+                                        ['PENDING', 'IN_SESSION_CONFIRMATION', 'IN_SESSION'].includes(discussion.status)
+                                            ? 'Ends on '
+                                            : (['FAILED', 'ABANDONED'].includes(discussion.status) ? 'Was to end on ' : 'Ended on')
+                                    }} 
+                                </div>
+                                <span class="text-gray-700 font-bold">{{ formatDateToStandard(new Date(discussion.endTime)) }}</span>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
             <div v-if="view == 'counsellors'" class="pr-4 py-4 overflow-hidden overflow-y-auto h-[70vh] w-[90%] mx-auto md:w-[70%]">
-                <div class="p-4 rounded bg-gray-200 my-4 shadow-sm min-h-[100px]" v-if="computedIsAddedby">
-                    <div class="w-full text-justify capitalize mt-4 mb-1 text-lg font-medium text-gray-900">Counsellor Search</div>
+                <div class="p-4 rounded bg-slate-800 my-4 shadow-sm min-h-[100px]" v-if="computedIsAddedby">
+                    <div class="w-full text-justify capitalize mt-4 mb-1 text-lg font-medium text-gray-300">Counsellor Search</div>
                     
-                    <div class="p-4 bg-gray-200 my-4 text-gray-600 text-sm">
+                    <div class="p-4 my-4 text-gray-200 text-sm">
                         <div>
                             <div>Links</div>
                             <div class="my-2 text-justify w-full">A general link can be given to any counsellor. If you want a link specific to a counsellor, search for a counsellor; click/tap counsellor to reveal options and click get link.</div>
-                            <div class="flex justify-start items-center space-x-3 overflow-hidden overflow-x-auto">
+                            <div class="flex justify-start items-center pb-3 px-2 space-x-3 overflow-hidden overflow-x-auto">
                                 <template v-if="counsellorLinks.data?.length">
                                     <LinkComponent
                                         v-for="(link, idx) in counsellorLinks.data"
@@ -101,7 +112,7 @@
                                         :link="link"
                                         @updated="(lk) => updateLink(lk, idx)"
                                         @deleted="(lk) => deleteLink(idx)"
-                                        class="w-[90%] shrink-0 bg-white"
+                                        class="w-[90%] shrink-0 bg-white shadow shadow-slate-300"
                                     />
 
                                     <div
