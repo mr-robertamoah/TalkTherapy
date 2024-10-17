@@ -4,13 +4,17 @@ namespace App\Http\Controllers;
 
 use App\Actions\GetModelWithModelNameAndIdAction;
 use App\DTOs\CreateMessageDTO;
+use App\DTOs\GetDiscussionMessagesDTO;
 use App\DTOs\GetSessionMessagesDTO;
 use App\DTOs\GetTherapyTopicMessagesDTO;
 use App\Http\Requests\CreateMessageRequest;
 use App\Http\Requests\UpdateMessageRequest;
 use App\Http\Resources\MessageResource;
+use App\Models\Discussion;
+use App\Models\GroupTherapy;
 use App\Models\Message;
 use App\Models\Session;
+use App\Models\Therapy;
 use App\Models\TherapyTopic;
 use App\Services\MessageService;
 use Exception;
@@ -35,8 +39,8 @@ class MessageController extends Controller
                 'session' => Session::find($request->sessionId),
                 'like' => $request->like,
                 'groupBy' => $request->groupBy,
-                'topicId' => TherapyTopic::find($request->topicId),
-                'replyId' => Message::find($request->replyId),
+                'topicId' => $request->topicId,
+                'replyId' => $request->replyId,
             ])
         );
     }
@@ -61,7 +65,14 @@ class MessageController extends Controller
     
     public function getDiscussionMessages(Request $request)
     {
-        //
+        return MessageService::new()->getDiscussionMessages(
+            GetDiscussionMessagesDTO::new()->fromArray([
+                'user' => $request->user(),
+                'discussion' => Discussion::find($request->discussionId),
+                'like' => $request->like,
+                'replyId' => $request->replyId,
+            ])
+        );
     }
     
     public function createMessage(CreateMessageRequest $request)

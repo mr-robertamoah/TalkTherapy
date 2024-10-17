@@ -29,22 +29,12 @@
                         })"
                         :key="idx"
                         class="bg-white my-2 p-2 w-24 cursor-pointer rounded text-center"
-                        @click="() => {
-                            
-                            if (opt == 'counsellors') {
-                                if (counsellors.page == 1) getCounsellors()
-                                if (counsellorLinks.page == 1) getCounsellorLinks()
-                            }
-
-                            view = opt
-
-                            hideOptions()
-                        }"
+                        @click="() => setView(opt)"
                     >{{ opt }}</div>
                 </div>
             </div>
             <div 
-                v-if="view == 'main'" 
+                v-if="view == 'details'" 
                 class="pr-4 py-4 overflow-hidden overflow-y-auto h-[70vh] w-[90%] mx-auto md:w-[70%]"
             >
                 <div class="text-end text-gray-600 text-sm mb-3">created {{ discussion.createdAt }}</div>
@@ -198,6 +188,7 @@
                     <div v-if="getting.show && getting.type == 'discussion'" class="text-center text-sm w-full my-4 text-green-600 bg-green-200">getting counsellors</div>
                     <div class="p-2 flex flex-col justify-center gap-3 items-center overflow-hidden overflow-x-auto my-2">
                         <CounsellorComponent
+                            v-if="discussion.addedby?.isCounsellor"
                             :counsellor="discussion.addedby"
                             :visit-page="false"
                             :has-view="false"
@@ -256,10 +247,10 @@
                 class="pr-4 py-4 overflow-hidden overflow-y-auto h-[70vh] w-[90%] mx-auto md:w-[70%]"
             >
                 <div class="p-4 rounded bg-slate-800 my-4 shadow-sm min-h-[100px]">
-                    <div class="w-full text-justify capitalize mt-4 mb-1 text-lg font-medium text-gray-900">Messages</div>
+                    <div class="w-full text-justify capitalize mt-4 mb-1 text-lg font-medium text-gray-300">Messages</div>
                     
                     <div 
-                        class="rounded-lg bg-stone-100 w-full min-h-[50px] p-2 space-x-3 flex justify-start items-center overflow-hidden overflow-x-auto mb-2 transition duration-200"
+                        class="rounded-lg w-full min-h-[50px] p-2 space-x-3 flex justify-start items-center overflow-hidden overflow-x-auto mb-2 transition duration-200"
                     >
                         <template v-if="sessions.data?.length">
                             <SessionBadge
@@ -325,9 +316,9 @@
                             <div v-if="!getting.show && discussionMessages.page > 1" class="w-full">
                                 <div @click="getDiscussionMessages" class="w-fit mx-auto p-4 text-lg text-gray-600 cursor-pointer">...</div>
                             </div>
-                            <template v-if="discussionMessages.length">
+                            <template v-if="discussionMessages.data.length">
                                 <MessageBadge
-                                    v-for="(msg, idx) in discussionMessages.toReversed()"
+                                    v-for="(msg, idx) in discussionMessages.data.toReversed()"
                                     :key="idx"
                                     :idx="idx"
                                     :msg="msg"
@@ -343,11 +334,11 @@
                             <div
                                 v-else
                                 class="text-gray-600 text-sm font-bold w-full h-[300px] flex justify-center items-center my-auto"
-                            >no messages</div>
+                            >no discussion messages</div>
                         </div>
                     </div>
                 </div>
-                <div class="rounded-lg bg-stone-100 w-full p-2" v-if="computedCanSendMessage && !getting">
+                <div class="rounded-lg bg-stone-100 w-full p-2" v-if="computedCanSendMessage && !getting.show">
                     <div v-if="message.replying" class="relative">
                         <MessageBadge
                             :msg="message.replying"
@@ -361,22 +352,32 @@
                             <div>X</div>
                         </div>
                     </div>
-                    <div v-if="message.id" class="text-sm text-gray-600 my-2 text-center">updating message</div>
-                    <div class="w-[90%] mx-auto min-h-10 flex justify-center items-start space-x-2">
+                    <div
+                        v-if="message.id"
+                        class="flex justify-between items-center"
+                    >
+                        <div
+                            class="text-gray-300 bg-gray-800 rounded-full p-2 cursor-pointer w-4 flex justify-center items-center text-xs h-4"
+                            @click="resetMessage"
+                        >x</div>
+                        <div class="text-xs text-gray-600 my-2 text-center">updating message</div>
+                    </div>
+                    <div class="w-full mx-auto min-h-10 flex justify-center items-center gap-2">
                         <TextBox
-                            rows="3"
+                            rows="1"
                             class="w-full shrink"
                             v-model="message.content"
                         />
-                        <div class="flex justify-end space-x-2 items-start">
+                        <div class="flex justify-end gap-2 items-start">
                             <PaperplaneIcon
+                                title="send message"
                                 v-if="computedHasMessage"
                                 @click="() => sendMessage({
-                                    item: discussion, topic: currentTopic,
+                                    item: discussion, topic: currentTopic, itemType: 'Discussion',
                                     addNewMessage, from: computedCounsellorAccount, action: replaceOldMessage
                                 })"
-                                class="w-8 cursor-pointer p-1 h-8 rotate-45" />
-                            <PaperclipIcon class="w-8 cursor-pointer p-1 h-8"
+                                class="w-8 cursor-pointer p-2 h-8 rotate-45 shrink-0" />
+                            <PaperclipIcon class="w-8 cursor-pointer p-2 h-8 shrink-0"
                                 @click="() => showAttachmentIcons = true"
                             />
                         </div>
@@ -506,8 +507,8 @@ const messages = reactive({})
 const showOptions = ref(false)
 const listening = ref(false)
 const sessionsInitialized = ref(false)
-const view = ref('main')
-const options = ref(['main', 'counsellors', 'sessions', 'chat',])
+const view = ref('details')
+const options = ref(['details', 'counsellors', 'sessions', 'chat',])
 
 onBeforeUnmount(() => {
     if (listening.value)
@@ -567,9 +568,10 @@ const computedCounsellorAccount = computed(() => {
     let counsellor = null
     let idx = -1
 
-    if (props.discussion.addedby.userId == user.id) counsellor = props.discussion.addedby
+    if (props.discussion.addedby.userId == computedUser.value?.id)
+        counsellor = props.discussion.addedby
     else
-        idx = discussionCounsellors.value.data.findIndex((c) => c.userId == user.id)
+        idx = discussionCounsellors.value.data.findIndex((c) => c.userId == computedUser.value?.id)
 
     if (idx > -1) discussionCounsellors.value.data[idx]
 
@@ -583,6 +585,7 @@ const computedCounsellorAccount = computed(() => {
         avatar: counsellor.avatar,
     }
 })
+const computedUser = computed(() => usePage().props.auth.user)
 const computedIsAddedby = computed(() => {
     const user = usePage().props.auth.user
 
@@ -642,6 +645,20 @@ function addSession(session) {
         selectedSession.value = session
 
     handleSelectedSessionChange()
+}
+
+function setView(opt) {
+    if (opt == 'counsellors') {
+        if (counsellors.value.page == 1) getCounsellors()
+        if (counsellorLinks.value.page == 1) getCounsellorLinks()
+    }
+
+    if (opt == 'chat' && !discussionMessages.value.data.length)
+        getDiscussionMessages()
+
+    view.value = opt
+
+    hideOptions()
 }
 
 function clearData() {
@@ -952,9 +969,9 @@ async function createCounsellorLink() {
 }
 
 async function getDiscussionMessages() {
-    if (getting.value) return
+    if (getting.value.show) return
 
-    getting.value = true
+    getting.value.show = true
 
     await axios
         .get(route('api.discussion.messages.get', {
@@ -1000,7 +1017,7 @@ async function getDiscussionMessages() {
             goToLogin(err)
         })
         .finally(() => {
-            getting.value = false
+            getting.value.show = false
         })
 }
 
@@ -1057,7 +1074,12 @@ async function getDiscussionCounsellors() {
 }
 
 function replaceOldMessage(data) {
-    discussionMessages.value.splice(chatMessages.value.findIndex((d) => d.id == data.id), 1, {...data})
+    discussionMessages.value.data
+        .splice(
+            discussionMessages.value.data.findIndex((d) => d.id == data.id), 
+            1, 
+            {...data}
+        )
 }
 
 function replaceFirstMessage(data) {
@@ -1066,7 +1088,7 @@ function replaceFirstMessage(data) {
     if (itemsRef.data.length)
         itemsRef.data[0] = {...data}
 
-    chatMessages.value[chatMessages.value.length - 1] = {...data}
+    discussionMessages.value.data[discussionMessages.value.data.length - 1] = {...data}
 }
 
 function onMessageCreated(data) {
@@ -1074,31 +1096,20 @@ function onMessageCreated(data) {
 }
 
 function addNewMessage(newMessage) {
-    let item
     if (!newMessage) return
 
-    if (computedCurrentFilter.value == 'session') {
-
-        messages[selectedSession.value.id].data = [
-            {...newMessage},
-            ...messages[selectedSession.value.id].data,
-        ]
-
-        item = messages[selectedSession.value.id]
-    }
-
-    if (item)
-        chatMessages.value = [
-            ...item.data.toReversed()
-        ]
+    discussionMessages.value.data = [
+        {...newMessage},
+        ...discussionMessages.value.data,
+    ]
     
     scrollToBottom()
 }
 
 async function getSessionMessages() {
-    if (getting.value || selectedSession.value?.type !== 'ONLINE') return
+    if (getting.value.show || selectedSession.value?.type !== 'ONLINE') return
 
-    getting.value = true
+    getting.value.show = true
 
     await axios
         .get(route('api.session.messages.get', {

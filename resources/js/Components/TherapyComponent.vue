@@ -166,7 +166,16 @@
                     <div>X</div>
                 </div>
             </div>
-            <div v-if="message.id" class="text-sm text-gray-600 my-2 text-center">updating message</div>
+            <div
+                v-if="message.id"
+                class="flex justify-between items-center"
+            >
+                <div
+                    class="text-gray-300 bg-gray-800 rounded-full p-2 cursor-pointer w-4 flex justify-center items-center text-xs h-4"
+                    @click="resetMessage"
+                >x</div>
+                <div class="text-xs text-gray-600 my-2 text-center">updating message</div>
+            </div>
             <div class="w-[90%] mx-auto min-h-10 flex justify-center items-start space-x-2">
                 <TextBox
                     rows="3"

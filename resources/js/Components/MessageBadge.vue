@@ -7,13 +7,7 @@
             '': currentTopic && msg.topicId == currentTopic.id
         }"
         v-bind="$attrs"
-        @dblclick="() => {
-            if (msg.name && !msg.end) return emits('unsetTopic')
-            
-            if (!allowActions) return
-
-            clickedActions()
-        }"
+        @dblclick="replyToMessage"
         ref="item"
     >
         <div 
@@ -28,9 +22,9 @@
             class="rounded-md w-[90%] sm:w-[70%] p-2 my-2 mx-1 shadow-sm"
             :class="[
                 currentTopic && msg.topicId == currentTopic?.id ? (computedLeft ? 'border-l-4 border-gray-600' : 'border-r-4 border-gray-600') : '',
-                reply ? 'mx-auto' : (computedLeft ? 'ml-auto' : 'mr-auto'),
+                reply ? 'mx-auto p-0 text-xs text-center' : (computedLeft ? 'ml-auto' : 'mr-auto'),
                 reply 
-                    ? 'bg-blue-300 border-2 border-blue-700' 
+                    ? '' 
                     : (['deleted for everyone', 'deleted for me'].includes(status) ? 'bg-gray-300' : 'bg-white')
             ]"
         >
@@ -48,7 +42,11 @@
                     />
                 </div>
                 <hr class="my-2 text-blue-800" v-if="msg.replying && !reply">
-                <div v-if="msg.content" class="text-sm sm:text-base">{{ msg.content }}</div>
+                <div
+                    v-if="msg.content"
+                    class=""
+                    :class="[reply ? 'text-xs text-gray-400' : 'text-sm sm:text-base']"
+                >{{ msg.content }}</div>
             </div>
             <div v-if="msg.files?.length" class="w-[90%] mx-auto my-2">
                 <div class="flex justify-start items-center overflow-hidden overflow-x-auto p-2 space-x-2">
@@ -432,6 +430,14 @@ function clickedActions() {
     }
         
     if (props.allowDetails) showModal('message')
+}
+
+function replyToMessage() {
+    if (props.msg.name && !props.msg.end) return emits('unsetTopic')
+    
+    if (!props.allowActions) return
+
+    clickedActions()
 }
 
 async function updateMessage() {

@@ -135,4 +135,17 @@ class Discussion extends Model
         
         return "grouptherapies.{$this->for_id}";
     }
+
+    public function doesNotAcceptMessage()
+    {
+        return !$this->acceptsMessage();
+    }
+
+    public function acceptsMessage()
+    {
+        return in_array($this->status, [
+            DiscussionStatusEnum::in_session->value,
+            DiscussionStatusEnum::in_session_confirmation->value,
+        ]);
+    }
 }
