@@ -18,4 +18,5 @@ class UpdateUserDTO extends BaseDTO
     public String|null $email = null;
     public bool $emailVerified = false;
     public String|null $dob = null;
+    public array $settings = [];
 }
