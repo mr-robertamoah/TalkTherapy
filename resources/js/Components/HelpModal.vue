@@ -130,7 +130,6 @@ async function getHowTos() {
         .catch((err) => {
             console.log(err)
             setFailedAlertData({
-                time: 4000,
                 message: "Something unfortunate happened. Please try again in a short while."
             })
             goToLogin(err)

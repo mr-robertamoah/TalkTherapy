@@ -85,7 +85,6 @@ async function createLanguage() {
         if (err.response?.data?.message) {
             setFailedAlertData({
                 message: err.response.data.message,
-                time: 4000,
             })
             return
         }

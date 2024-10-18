@@ -51,7 +51,6 @@ async function createTestimonial() {
     if (!testimonialData.value.content) {
         setFailedAlertData({
             message: "Content is required for a testimonial.",
-            time: 5000,
         });
         return
     }
@@ -75,7 +74,6 @@ async function createTestimonial() {
             
             setSuccessAlertData({
                 message: 'Your testimonial has been added successfully.',
-                time: 4000
             })
 
             if (res.data.testimonial)
@@ -90,14 +88,12 @@ async function createTestimonial() {
             if (err.response?.data?.message) {
                 setFailedAlertData({
                     message: err.response.data.message,
-                    time: 5000
                 })
                 return
             }
 
             setFailedAlertData({
                 message: 'Something unfortunate happened. Please try again later.',
-                time: 5000
             })
         
         })

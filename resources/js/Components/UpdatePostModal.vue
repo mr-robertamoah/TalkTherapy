@@ -185,7 +185,6 @@ async function updatePost() {
 
         setFailedAlertData({
             message: "You need to add content or at least one file.",
-            time: 5000
         })
         return
     }

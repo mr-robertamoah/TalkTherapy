@@ -41,7 +41,6 @@ watchEffect(() => {
         setAlertData({
             show: true,
             type: 'successs',
-            time: 4000,
             message: page.props.message
         })
     }
@@ -59,7 +58,6 @@ watchEffect(() => {
                     const key = notification.forType == 'Therapy' ? 'therapyId' : 'groupTherapyId'
                     setSuccessAlertData({
                         message: `The session with name: '${notification.session.name}' for ${notification.forType} with name: '${notification.forName}' is about to start in less than 30 minutes time. Visit the therapy page by click this alert.`,
-                        time: 20000,
                         data: {
                             [key]: notification.forId
                         }
@@ -74,7 +72,6 @@ watchEffect(() => {
                     const key = notification.forType == 'Therapy' ? 'therapyId' : 'groupTherapyId'
                     setSuccessAlertData({
                         message: notification.message,
-                        time: 20000,
                         data: {
                             [key]: notification.forId
                         }

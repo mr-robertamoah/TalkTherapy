@@ -163,7 +163,6 @@ async function getTestimonials() {
 
             setFailedAlertData({
                 message: 'Something unfortunate happened. Please try again later.',
-                time: 5000
             })
         })
 
@@ -243,7 +242,6 @@ function respondToVerificationRequest(requestId, response) {
             if (res.data.error) {
                 setAlertData({
                     message: res.data.error,
-                    time: 5000,
                     type: 'failed',
                     show: true
                 })

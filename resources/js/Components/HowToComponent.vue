@@ -18,7 +18,6 @@
 </template>
 
 <script setup>
-import useAlert from "@/Composables/useAlert"
 import useModal from "@/Composables/useModal"
 import HowToModal from "./HowToModal.vue"
 import useLocalDateTimed from "@/Composables/useLocalDateTime"
@@ -27,7 +26,6 @@ import useLocalDateTimed from "@/Composables/useLocalDateTime"
 let emits = defineEmits(['startTour'])
 
 const { toDiffForHumans } = useLocalDateTimed()
-const { alertData, setFailedAlertData, clearAlertData, setSuccessAlertData } = useAlert()
 const { modalData, closeModal, showModal } = useModal()
 
 const props = defineProps({

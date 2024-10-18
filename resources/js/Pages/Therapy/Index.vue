@@ -161,7 +161,6 @@ watchEffect(() => {
 
             setSuccessAlertData({
                 message: `${otherUser.name} is already online.`,
-                time: 4000
             })
         })
         .joining((user) => {
@@ -173,7 +172,6 @@ watchEffect(() => {
 
             setSuccessAlertData({
                 message: `${user.name} just came online.`,
-                time: 4000
             })
         })
         .leaving((user) => {
@@ -185,7 +183,6 @@ watchEffect(() => {
 
             setSuccessAlertData({
                 message: `${user.name} just went offline.`,
-                time: 4000
             })
         })
         .listen(`.session.started`, (data) => {
@@ -296,7 +293,6 @@ async function deleteTherapy() {
                 message: 'Your therapy has been successfully deleted.',
                 type: 'success',
                 show: true,
-                time: 4000
             })
             closeModal()
         }
@@ -335,7 +331,6 @@ async function endTherapy() {
                 message: 'Your therapy has been successfully deleted.',
                 type: 'success',
                 show: true,
-                time: 4000
             })
             closeModal()
         }
@@ -441,7 +436,6 @@ async function sendAssistanceRequest() {
                 message: computedIsUser.value 
                     ? "You have successfully requested for assistance for this therapy." 
                     : "You have successfully sent an assistance request for this therapy.",
-                time: 4000,
             })
 
             closeModal()
@@ -451,7 +445,6 @@ async function sendAssistanceRequest() {
             goToLogin(err)
             setFailedAlertData({
                 message: computedIsUser.value ? "Your request for assistance failed, please try again in a short while." : "Your request to assist has failed, please try again in a short while.",
-                time: 4000,
             })
         })
 
@@ -536,7 +529,6 @@ async function getDiscussions(therapy) {
         if (err.response?.data?.message) {
             setFailedAlertData({
                 message: err.response.data.message,
-                time: 10000
             })
             return
         }
@@ -544,14 +536,12 @@ async function getDiscussions(therapy) {
         if (err.alert) {
             setFailedAlertData({
                 message: err.alert,
-                time: 5000
             })
             return
         }
 
         setFailedAlertData({
             message: 'Something unfortunate happened. Please try again later.',
-            time: 5000
         })
     })
 
@@ -580,7 +570,6 @@ async function clickedAbandonSession() {
             goToLogin(err)
             setFailedAlertData({
                 message: `Something unfortunate happened while ${sessionActionRunning.value}. Try again shortly.`,
-                timer: 4000,
             })
         })
         .finally(() => {
@@ -603,7 +592,6 @@ async function clickedStartSession() {
             goToLogin(err)
             setFailedAlertData({
                 message: `Something unfortunate happened while ${sessionActionRunning.value}. Try again shortly.`,
-                timer: 4000,
             })
         })
         .finally(() => {
@@ -628,7 +616,6 @@ async function clickedEndSession() {
             goToLogin(err)
             setFailedAlertData({
                 message: `Something unfortunate happened while ${sessionActionRunning.value}. Try again shortly.`,
-                timer: 4000,
             })
         })
         .finally(() => {
@@ -654,7 +641,6 @@ async function clickedResponse(response) {
             request.value.status = res.data.request.status
             if (res.data.request?.status !== response.toUpperCase() && response == 'accepted') {
                 setSuccessAlertData({
-                    time: 5000,
                     message: res.data.request.type == RequestTypes.therapy ? 'Your response was successful, but another counsellor may have already accepted to assist.' : ''
                 })
                 return
@@ -664,7 +650,6 @@ async function clickedResponse(response) {
                 counsellor.value = res.data.request.to
 
             setSuccessAlertData({
-                time: 5000,
                 message: 'You have successful responded to the request.'
             })
         })
@@ -672,7 +657,6 @@ async function clickedResponse(response) {
             console.log(err)
 
             setFailedAlertData({
-                time: 5000,
                 message: 'Something unfortunate happened. Please try again shortly.'
             })
         })

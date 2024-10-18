@@ -63,7 +63,6 @@ async function sendGuardianshpRequest() {
     if (!selectedUser.value) {
         setSuccessAlertData({
             message: 'Please select a user before proceeding.',
-            time: 5000
         })
         return
     }
@@ -78,7 +77,6 @@ async function sendGuardianshpRequest() {
             
             setSuccessAlertData({
                 message: 'The guardianship request has been sent successfully.',
-                time: 4000
             })
 
             if (selectedUser.value) selectedUser.value = null
@@ -92,7 +90,6 @@ async function sendGuardianshpRequest() {
             if (err.response?.data?.message) {
                 setFailedAlertData({
                     message: err.response.data.message,
-                    time: 5000
                 })
                 return
             }
@@ -100,14 +97,12 @@ async function sendGuardianshpRequest() {
             if (err.alert) {
                 setFailedAlertData({
                     message: err.alert,
-                    time: 5000
                 })
                 return
             }
 
             setFailedAlertData({
                 message: 'Something unfortunate happened. Please try again later.',
-                time: 5000
             })
         
         })
@@ -190,7 +185,6 @@ async function getUsers() {
             if (err.response?.data?.message) {
                 setFailedAlertData({
                     message: err.response.data.message,
-                    time: 10000
                 })
                 return
             }
@@ -198,14 +192,12 @@ async function getUsers() {
             if (err.alert) {
                 setFailedAlertData({
                     message: err.alert,
-                    time: 5000
                 })
                 return
             }
 
             setFailedAlertData({
                 message: 'Something unfortunate happened. Please try again later.',
-                time: 5000
             })
         
         })

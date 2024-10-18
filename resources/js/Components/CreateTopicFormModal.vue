@@ -49,7 +49,6 @@ async function createTopic() {
     if (!topicData.value.name || !topicData.value.description) {
         setAlertData({
             message: "Name and description are required for a topic.",
-            time: 5000,
             show: true,
             type: 'failed'
         });
@@ -66,7 +65,6 @@ async function createTopic() {
                 message: 'Your topic has been successfully created.',
                 type: 'success',
                 show: true,
-                time: 4000
             })
             emits('onSuccess', res.data.topic)
             closeModal()
@@ -77,7 +75,6 @@ async function createTopic() {
                 setErrorData(topicErrors, err.response.data.errors, ['name', 'description', 'sessions'])
                 setFailedAlertData({
                     message: 'There has been a validation error. Please check your form.',
-                    time: 5000
                 })
                 return
             }
@@ -85,7 +82,6 @@ async function createTopic() {
             if (err.alert) {
                 setFailedAlertData({
                     message: err.alert,
-                    time: 5000
                 })
                 return
             }
@@ -93,14 +89,12 @@ async function createTopic() {
             if (err.response?.data?.message) {
                 setFailedAlertData({
                     message: err.response.data.message,
-                    time: 5000
                 })
                 return
             }
 
             setFailedAlertData({
                 message: 'Something unfortunate happened. Please try again later.',
-                time: 5000
             })
         })
         .finally(() => {

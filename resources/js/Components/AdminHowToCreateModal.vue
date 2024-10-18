@@ -214,7 +214,6 @@ function createdHowToStep(howToStep) {
     if (howToData.value.howToSteps.findIndex((s) => s.position == howToStep.position) > -1) {
         setFailedAlertData({
             message: "You cannot add a step with a position that already exists",
-            time: 4000
         })
         return
     }
@@ -240,7 +239,6 @@ async function createHowTo() {
             console.log(res)
             setSuccessAlertData({
                 message: `'${howToData.value.name}' how-to has successfully been created.`,
-                time: 5000
             })
             emits('created', res.data.howTo)
             closeHowToModal()
@@ -254,14 +252,12 @@ async function createHowTo() {
             if (err.response?.data?.message) {
                 setFailedAlertData({
                     message: err.response.data.message,
-                    time: 4000,
                 })
                 return
             }
 
             setFailedAlertData({
                 message: 'Something unfortunate happened. Please try again later.',
-                time: 4000,
             })
         })
         .finally(() => {

@@ -109,7 +109,6 @@ async function deleteUser() {
         console.log(res)
         setSuccessAlertData({
             message: `'${props.howTo.name}' how-to has successfully been deleted.`,
-            time: 5000
         })
         emits('deleted', res.data.howTo)
         closeModal()
@@ -119,14 +118,12 @@ async function deleteUser() {
         if (err.response?.data?.message) {
             setFailedAlertData({
                 message: err.response.data.message,
-                time: 4000,
             })
             return
         }
 
         setFailedAlertData({
             message: 'Something unfortunate happened. Please try again later.',
-            time: 4000,
         })
     })
     .finally(() => {

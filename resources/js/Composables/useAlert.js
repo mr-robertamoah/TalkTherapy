@@ -2,6 +2,8 @@ import { ref } from "vue";
 
 export default function useAlert() {
     
+    const DEFAULT_TIME = 50000
+
     const AlertType = {
         failed: 'failed',
         success: 'success',
@@ -22,14 +24,14 @@ export default function useAlert() {
         alertData.value.time = 2000
     }
 
-    const setAlertData = ({ show = true, type = 'success', message = '', time = 2000}) => {
+    const setAlertData = ({ show = true, type = 'success', message = '', time = DEFAULT_TIME}) => {
         alertData.value.type = type
         alertData.value.message = message
         alertData.value.time = time
         alertData.value.show = show
     }
 
-    const setSuccessAlertData = ({ message = '', time = 2000, data = {} }) => {
+    const setSuccessAlertData = ({ message = '', time = DEFAULT_TIME, data = {} }) => {
         alertData.value.type = 'success'
         alertData.value.message = message
         alertData.value.time = time
@@ -37,7 +39,7 @@ export default function useAlert() {
         alertData.value.data = data
     }
 
-    const setFailedAlertData = ({ message = '', time = 2000, data = {} }) => {
+    const setFailedAlertData = ({ message = '', time = DEFAULT_TIME, data = {} }) => {
         alertData.value.type = 'failed'
         alertData.value.message = message
         alertData.value.time = time

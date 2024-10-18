@@ -110,7 +110,6 @@ function loadContent() {
 function showAlert() {
     setFailedAlertData({
         message: props.alert,
-        time: 5000
     })
 }
 

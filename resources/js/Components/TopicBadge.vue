@@ -150,7 +150,6 @@ async function deleteSession() {
                 message: 'Your topic has been successfully deleted.',
                 type: 'success',
                 show: true,
-                time: 4000
             })
             emits('onDelete', res.data.topic)
             closeModal()
@@ -160,7 +159,6 @@ async function deleteSession() {
             if (err.response?.data?.message) {
                 setFailedAlertData({
                     message: err.response.data.message,
-                    time: 5000,
                 })
                 return
             }
@@ -168,14 +166,12 @@ async function deleteSession() {
             if (err.alert) {
                 setFailedAlertData({
                     message: err.alert,
-                    time: 5000,
                 })
                 return
             }
 
             setFailedAlertData({
                 message: 'Something unfortunate happened. Please try again later.',
-                time: 4000
             })
         })
         .finally(() => {

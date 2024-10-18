@@ -606,7 +606,6 @@ function listenToMessages() {
 
             setSuccessAlertData({
                 message: `There are ${others} counsellor${others.length == 1 ? '' : 's'} already online.`,
-                time: 4000
             })
         })
         .joining((counsellor) => {
@@ -618,7 +617,6 @@ function listenToMessages() {
 
             setSuccessAlertData({
                 message: `${counsellor.name} just came online.`,
-                time: 4000
             })
         })
         .leaving((counsellor) => {
@@ -630,7 +628,6 @@ function listenToMessages() {
 
             setSuccessAlertData({
                 message: `${counsellor.name} just went offline.`,
-                time: 4000
             })
         })
         .listen('.message.created', (data) => {
@@ -709,7 +706,6 @@ async function getSessions() {
         if (err.response?.data?.message) {
             setFailedAlertData({
                 message: err.response.data.message,
-                time: 10000
             })
             return
         }
@@ -717,14 +713,12 @@ async function getSessions() {
         if (err.alert) {
             setFailedAlertData({
                 message: err.alert,
-                time: 5000
             })
             return
         }
 
         setFailedAlertData({
             message: 'Something unfortunate happened. Please try again later.',
-            time: 5000
         })
     
     })
@@ -774,7 +768,6 @@ async function sendCounsellorRequest() {
     if (!selectedCounsellor.value) {
         setSuccessAlertData({
             message: 'Please select a counsellor before proceeding.',
-            time: 5000
         })
         return
     }
@@ -788,7 +781,6 @@ async function sendCounsellorRequest() {
             
             setSuccessAlertData({
                 message: 'The discussion request has been sent successfully.',
-                time: 4000
             })
 
             if (selectedCounsellor.value) selectedCounsellor.value = null
@@ -800,7 +792,6 @@ async function sendCounsellorRequest() {
             if (err.response?.data?.message) {
                 setFailedAlertData({
                     message: err.response.data.message,
-                    time: 5000
                 })
                 return
             }
@@ -808,14 +799,12 @@ async function sendCounsellorRequest() {
             if (err.alert) {
                 setFailedAlertData({
                     message: err.alert,
-                    time: 5000
                 })
                 return
             }
 
             setFailedAlertData({
                 message: 'Something unfortunate happened. Please try again later.',
-                time: 5000
             })
         
         })
@@ -827,7 +816,6 @@ async function removeCounsellor() {
     if (!deletedCounsellor.value) {
         setSuccessAlertData({
             message: 'Please select a counsellor before proceeding.',
-            time: 5000
         })
         return
     }
@@ -841,7 +829,6 @@ async function removeCounsellor() {
             // TODO listen to discussion events discussion.removecounsellor
             setSuccessAlertData({
                 message: 'The counsellor has been removed from the discussion successfully.',
-                time: 4000
             })
 
             discussionCounsellors.value.data.splice(discussionCounsellors.value.data.findIndex(c => c.id == deletedCounsellor.value.id), 1)
@@ -854,7 +841,6 @@ async function removeCounsellor() {
             if (err.response?.data?.message) {
                 setFailedAlertData({
                     message: err.response.data.message,
-                    time: 5000
                 })
                 return
             }
@@ -862,14 +848,12 @@ async function removeCounsellor() {
             if (err.alert) {
                 setFailedAlertData({
                     message: err.alert,
-                    time: 5000
                 })
                 return
             }
 
             setFailedAlertData({
                 message: 'Something unfortunate happened. Please try again later.',
-                time: 5000
             })
         
         })
@@ -934,14 +918,12 @@ async function getDiscussionMessages() {
             if (err?.response?.message) {
                 setFailedAlertData({
                     message: err?.response?.message,
-                    time: 5000
                 })
                 return
             }
 
             setFailedAlertData({
                 message: `Failed to get messages for the discussion. Please try again shortly.`,
-                time: 5000
             })
 
             goToLogin(err)
@@ -980,7 +962,6 @@ async function getDiscussionCounsellors() {
         if (err.response?.data?.message) {
             setFailedAlertData({
                 message: err.response.data.message,
-                time: 10000
             })
             return
         }
@@ -988,14 +969,12 @@ async function getDiscussionCounsellors() {
         if (err.alert) {
             setFailedAlertData({
                 message: err.alert,
-                time: 5000
             })
             return
         }
 
         setFailedAlertData({
             message: 'Something unfortunate happened. Please try again later.',
-            time: 5000
         })
     
     })
@@ -1080,14 +1059,12 @@ async function getSessionMessages() {
             if (err?.response?.message) {
                 setFailedAlertData({
                     message: err?.response?.message,
-                    time: 5000
                 })
                 return
             }
 
             setFailedAlertData({
                 message: `Failed to get messages for the session. Please try again shortly.`,
-                time: 5000
             })
 
             goToLogin(err)
