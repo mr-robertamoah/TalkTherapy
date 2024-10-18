@@ -146,7 +146,7 @@ function clearGetting() {
                 <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
                     <div class="p-6 text-gray-900">Counsellor Therapies</div>
                     <div v-if="getting.show" class="text-center text-sm w-full my-4 text-green-600 bg-green-200">getting counsellor therapies</div>
-                    <div class="m-2 px-3 pb-4 overflow-hidden overflow-x-auto space-x-5 flex justify-start items-center">
+                    <div class="m-2 px-3 pb-6 overflow-hidden overflow-x-auto space-x-5 flex justify-start items-center">
                         <template v-if="counsellorTherapies.data?.length">
                             <MiniTherapyComponent
                                 v-for="therapy in counsellorTherapies.data"
@@ -172,7 +172,7 @@ function clearGetting() {
                 <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
                     <div class="p-6 text-gray-900">Ward Therapies</div>
                     <div v-if="getting.show" class="text-center text-sm w-full my-4 text-green-600 bg-green-200">getting user therapies</div>
-                    <div class="m-2 px-3 pb-4 overflow-hidden overflow-x-auto space-x-5 flex justify-start items-center">
+                    <div class="m-2 px-3 pb-6 overflow-hidden overflow-x-auto space-x-5 flex justify-start items-center">
                         <template v-if="wardTherapies.data?.length">
                             <MiniTherapyComponent
                                 v-for="therapy in wardTherapies.data"
@@ -197,7 +197,7 @@ function clearGetting() {
                 <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
                     <div class="p-6 text-gray-900">Therapies</div>
                     <div v-if="getting.show" class="text-center text-sm w-full my-4 text-green-600 bg-green-200">getting user therapies</div>
-                    <div class="m-2 px-3 pb-4 overflow-hidden overflow-x-auto space-x-5 flex justify-start items-center">
+                    <div class="m-2 px-3 pb-6 overflow-hidden overflow-x-auto space-x-5 flex justify-start items-center">
                         <template v-if="therapies.data?.length">
                             <MiniTherapyComponent
                                 v-for="therapy in therapies.data"
