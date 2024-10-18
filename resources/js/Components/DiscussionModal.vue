@@ -435,7 +435,6 @@
 import useAlert from '@/Composables/useAlert';
 import { ref, watchEffect, watch, computed, reactive, onBeforeUnmount, nextTick } from 'vue';
 import Modal from './Modal.vue';
-import PreferenceItem from './PreferenceItem.vue';
 import useAuth from '@/Composables/useAuth';
 import OptionIcon from '@/Icons/OptionIcon.vue';
 import Alert from './Alert.vue';

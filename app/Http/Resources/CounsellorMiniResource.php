@@ -18,11 +18,12 @@ class CounsellorMiniResource extends JsonResource
             'id' => $this->id,
             'userId' => $this->user_id,
             'isCounsellor' => true,
-            'deleted' => true,
         ];
 
-        if ($this->deleted_at)
+        if ($this->deleted_at) {
+            $data['deleted'] = true;
             return $data;
+        }
 
         return array_merge($data, [
             'username' => $this->user->username,
