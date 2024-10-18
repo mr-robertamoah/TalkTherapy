@@ -138,7 +138,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/therapies/{therapyId}', [TherapyController::class, 'getTherapy'])->name('api.therapies.get');
     Route::get('/user/therapies', [TherapyController::class, 'getUserTherapies'])->name('api.therapies.user');
     Route::get('/ward/therapies', [TherapyController::class, 'getWardTherapies'])->name('api.therapies.ward');
-    Route::get('/therapies/counsellor', [TherapyController::class, 'getCounsellorTherapies'])->name('api.therapies.counsellor');
+    Route::get('/counsellor/therapies', [TherapyController::class, 'getCounsellorTherapies'])->name('api.therapies.counsellor');
     Route::patch('/therapies/{therapyId}', [TherapyController::class, 'updateTherapy'])->name('api.therapies.update');
     Route::delete('/therapies/{therapyId}', [TherapyController::class, 'deleteTherapy'])->name('api.therapies.delete');
     Route::post('/therapies/{therapyId}', [TherapyController::class, 'endTherapy'])->name('api.therapies.end');
