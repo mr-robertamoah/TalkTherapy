@@ -49,31 +49,22 @@ function changeStep(value) {
         </template>
 
         <div class="py-12">
-            <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 my-4 flex justify-end">
+            <div class="sm:w-[90%] md:w-[75%] lg:w-[60%] mx-auto sm:px-6 lg:px-8 my-4 flex justify-end">
                 <HelpButton
                     title="get help on your profile page"
                     :page="PAGES.profile"
                     class="mr-4"
                 />
             </div>
-            <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 space-y-10">
+            <div class="sm:w-[90%] md:w-[75%] lg:w-[60%] mx-auto sm:px-6 lg:px-8 space-y-10">
                 <div class="p-4 sm:p-8 bg-white shadow sm:rounded-lg">
                     <div class="flex justify-center items-end font-bold text-2xl">
                         <div class="mr-4">Welcome</div>
                         <div class="text-lg sm:text-2xl md:text-3xl border-b border-slate-600 tracking-widest w-fit bg-gradient-to-r from-slate-800 to-slate-600 bg-clip-text text-transparent underline">{{ $page.props.auth.user.username }}</div>
                     </div>
                 </div>
-
-                <div id="profile-counsellor-id" class="relative"></div>
-                <div class="p-4 sm:p-8 bg-slate-500 shadow sm:rounded-lg">
-                    <BecomeCounsellorForm
-                        :counsellor-creation-step="currentStep"
-                        @change-step="changeStep"
-                        class="max-w-xl"
-                    />
-                </div>
                 
-                                <div id="profile-therapies-id" class="relative"></div>
+                <div id="profile-therapies-id" class="relative"></div>
                 <div class="p-4 sm:p-8 bg-white shadow sm:rounded-lg">
                     <TherapiesSection
                         class="max-w-xl"
@@ -134,6 +125,15 @@ function changeStep(value) {
                 <div id="profile-password-id" class="relative"></div>
                 <div class="p-4 sm:p-8 bg-white shadow sm:rounded-lg">
                     <UpdatePasswordForm class="max-w-xl" />
+                </div>
+
+                <div id="profile-counsellor-id" class="relative"></div>
+                <div class="p-4 sm:p-8 bg-slate-500 shadow sm:rounded-lg">
+                    <BecomeCounsellorForm
+                        :counsellor-creation-step="currentStep"
+                        @change-step="changeStep"
+                        class="max-w-xl"
+                    />
                 </div>
 
                 <div id="profile-account-id" class="relative"></div>
