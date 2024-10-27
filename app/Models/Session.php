@@ -37,6 +37,11 @@ class Session extends Model
             : null;
     }
 
+    public function isForTherapy()
+    {
+        return $this->for::class == Therapy::class;
+    }
+
     public function groupTherapy()
     {
         return $this->for::class == GroupTherapy::class

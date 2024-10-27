@@ -7,6 +7,7 @@ use App\Actions\Message\DeleteMessageAction;
 use App\Actions\Message\DeleteMessageForMeAction;
 use App\Actions\Message\EnsureCanDeleteMessageForSelfAction;
 use App\Actions\Message\EnsureCanSendMessageToForAction;
+use App\Actions\Message\EnsureCanSendMessageToRecepientAction;
 use App\Actions\Message\EnsureCanUpdateMessageAction;
 use App\Actions\Message\EnsureIsFromUserAction;
 use App\Actions\Message\EnsureMessageDataIsValidAction;
@@ -135,6 +136,8 @@ class MessageService extends Service
         EnsureIsFromUserAction::new()->execute($createMessageDTO);
 
         EnsureCanSendMessageToForAction::new()->execute($createMessageDTO);
+
+        EnsureCanSendMessageToRecepientAction::new()->execute($createMessageDTO);
 
         EnsureMessageDataIsValidAction::new()->execute($createMessageDTO);
         
