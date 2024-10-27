@@ -3,6 +3,7 @@
 use App\DTOs\CreateMessageDTO;
 use App\Enums\DiscussionStatusEnum;
 use App\Enums\SessionStatusEnum;
+use App\Events\MessageSentEvent;
 use App\Exceptions\MessageException;
 use App\Models\Counsellor;
 use App\Models\Discussion;
@@ -10,6 +11,9 @@ use App\Models\Session;
 use App\Models\Therapy;
 use App\Models\User;
 use App\Services\MessageService;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Storage;
 
 describe("create message tests", function () {
 
@@ -169,4 +173,204 @@ describe("create message tests", function () {
     //         ])
     //     );
     // });
+
+    test(
+        "fail message creation when no recepient is provided for a therapy session's message.", 
+        function () {
+
+        $therapyOwner = User::factory()->create();
+        $counsellorUser = User::factory()->create();
+        $counsellor = Counsellor::factory()->create([
+            'user_id' => $counsellorUser->id,
+        ]);
+        $therapy = Therapy::factory()->create([
+            'addedby_id' => $therapyOwner->id,
+            'addedby_type' => $therapyOwner::class,
+            'counsellor_id' => $counsellor->id,
+        ]);
+        $session = Session::factory()->create([
+            'addedby_id' => $counsellor->id,
+            'addedby_type' => $counsellor::class,
+            'status' => SessionStatusEnum::in_session_confirmation->value,
+            'for_id' => $therapy->id,
+            'for_type' => $therapy::class
+        ]);
+
+        $this->expectException(MessageException::class, "Recepient is required for a therapy session.");
+
+        MessageService::new()->createMessage(
+            CreateMessageDTO::new()->fromArray([
+                'from' => $therapyOwner,
+                'user' => $therapyOwner,
+                'for' => $session
+            ])
+        );
+    });
+
+    test(
+        "fail message creation when recepient to message is not a participant to therapy or discussion.", 
+        function () {
+
+        $otherUser = User::factory()->create();
+        $therapyOwner = User::factory()->create();
+        $counsellorUser = User::factory()->create();
+        $counsellor = Counsellor::factory()->create([
+            'user_id' => $counsellorUser->id,
+        ]);
+        $therapy = Therapy::factory()->create([
+            'addedby_id' => $therapyOwner->id,
+            'addedby_type' => $therapyOwner::class,
+            'counsellor_id' => $counsellor->id,
+        ]);
+        $session = Session::factory()->create([
+            'addedby_id' => $counsellor->id,
+            'addedby_type' => $counsellor::class,
+            'status' => SessionStatusEnum::in_session_confirmation->value,
+            'for_id' => $therapy->id,
+            'for_type' => $therapy::class
+        ]);
+
+        $this->expectException(MessageException::class, "You are sending the message to someone who is not participating in session/discussion.");
+
+        MessageService::new()->createMessage(
+            CreateMessageDTO::new()->fromArray([
+                'from' => $therapyOwner,
+                'user' => $therapyOwner,
+                'for' => $session,
+                'to' => $otherUser
+            ])
+        );
+    });
+
+    test(
+        "fail message creation when no text or files are sent.", 
+        function () {
+
+        $therapyOwner = User::factory()->create();
+        $counsellorUser = User::factory()->create();
+        $counsellor = Counsellor::factory()->create([
+            'user_id' => $counsellorUser->id,
+        ]);
+        $therapy = Therapy::factory()->create([
+            'addedby_id' => $therapyOwner->id,
+            'addedby_type' => $therapyOwner::class,
+            'counsellor_id' => $counsellor->id,
+        ]);
+        $session = Session::factory()->create([
+            'addedby_id' => $counsellor->id,
+            'addedby_type' => $counsellor::class,
+            'status' => SessionStatusEnum::in_session_confirmation->value,
+            'for_id' => $therapy->id,
+            'for_type' => $therapy::class
+        ]);
+
+        $this->expectException(MessageException::class, "There is not sufficient information to create a message. There should be content or files, at least.");
+
+        MessageService::new()->createMessage(
+            CreateMessageDTO::new()->fromArray([
+                'from' => $therapyOwner,
+                'user' => $therapyOwner,
+                'for' => $session,
+                'to' => $counsellor
+            ])
+        );
+    });
+
+    test(
+        "successful message creation with the right from, to, for and content.", 
+        function () {
+
+        $therapyOwner = User::factory()->create();
+        $counsellorUser = User::factory()->create();
+        $counsellor = Counsellor::factory()->create([
+            'user_id' => $counsellorUser->id,
+        ]);
+        $therapy = Therapy::factory()->create([
+            'addedby_id' => $therapyOwner->id,
+            'addedby_type' => $therapyOwner::class,
+            'counsellor_id' => $counsellor->id,
+        ]);
+        $session = Session::factory()->create([
+            'addedby_id' => $counsellor->id,
+            'addedby_type' => $counsellor::class,
+            'status' => SessionStatusEnum::in_session_confirmation->value,
+            'for_id' => $therapy->id,
+            'for_type' => $therapy::class
+        ]);
+
+        $message = MessageService::new()->createMessage(
+            CreateMessageDTO::new()->fromArray([
+                'from' => $therapyOwner,
+                'user' => $therapyOwner,
+                'for' => $session,
+                'to' => $counsellor,
+                'content' => 'message content'
+            ])
+        );
+
+        $this->assertDatabaseHas('messages', [
+            'content' => $message->content,
+            'from_id' => $message->from_id,
+            'from_type' => $message->from_type,
+            'for_id' => $message->for_id,
+            'for_type' => $message->for_type,
+            'to_id' => $message->to_id,
+            'to_type' => $message->to_type,
+        ]);
+    });
+
+    test(
+        "successful message creation with the right from, to, for and files.", 
+        function () {
+
+        Storage::fake('local');
+        Event::fake();
+
+        $therapyOwner = User::factory()->create();
+        $counsellorUser = User::factory()->create();
+        $counsellor = Counsellor::factory()->create([
+            'user_id' => $counsellorUser->id,
+        ]);
+        $therapy = Therapy::factory()->create([
+            'addedby_id' => $therapyOwner->id,
+            'addedby_type' => $therapyOwner::class,
+            'counsellor_id' => $counsellor->id,
+        ]);
+        $session = Session::factory()->create([
+            'addedby_id' => $counsellor->id,
+            'addedby_type' => $counsellor::class,
+            'status' => SessionStatusEnum::in_session_confirmation->value,
+            'for_id' => $therapy->id,
+            'for_type' => $therapy::class
+        ]);
+
+        $files = [
+            UploadedFile::fake()->image('photo1.jpg'),
+            UploadedFile::fake()->image('photo2.jpg')
+        ];
+
+        $message = MessageService::new()->createMessage(
+            CreateMessageDTO::new()->fromArray([
+                'from' => $therapyOwner,
+                'user' => $therapyOwner,
+                'for' => $session,
+                'to' => $counsellor,
+                'files' => $files
+            ])
+        );
+
+        $this->assertDatabaseHas('messages', [
+            'content' => $message->content,
+            'from_id' => $message->from_id,
+            'from_type' => $message->from_type,
+            'for_id' => $message->for_id,
+            'for_type' => $message->for_type,
+            'to_id' => $message->to_id,
+            'to_type' => $message->to_type,
+        ]);
+
+        Event::assertDispatched(MessageSentEvent::class);
+
+        expect($message->files()->count())->toEqual(2);
+    });
 });
