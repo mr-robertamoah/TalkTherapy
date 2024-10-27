@@ -28,8 +28,7 @@ onBeforeUnmount(() => {
 })
 
 watchEffect(() => {
-
-    if (page.props.errorMessage?.length) {
+    if (page.props?.errorMessage?.length) {
         setAlertData({
             show: true,
             type: 'failed',
@@ -37,7 +36,7 @@ watchEffect(() => {
         })
     }
     
-    if (page.props.message?.length) {
+    if (page.props?.message?.length) {
         setAlertData({
             show: true,
             type: 'successs',
@@ -45,7 +44,7 @@ watchEffect(() => {
         })
     }
 
-    if (page.props.auth.user?.id && !listening.value) {
+    if (page.props?.auth?.user?.id && !listening.value) {
         listening.value = true
         Echo
             .private(`App.Models.User.${page.props.auth.user?.id}`)

@@ -21,10 +21,8 @@ use App\Events\MessageDeletedEvent;
 use App\Events\MessageSentEvent;
 use App\Events\MessageUpdatedEvent;
 use App\Http\Resources\MessageResource;
-use App\Http\Resources\SessionMessageResource;
 use App\Models\Message;
 use App\Models\Session;
-use App\Models\User;
 use Illuminate\Support\Facades\DB;
 
 class MessageService extends Service

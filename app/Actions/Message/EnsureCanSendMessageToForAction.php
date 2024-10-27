@@ -29,8 +29,10 @@ class EnsureCanSendMessageToForAction extends Action
 
     public function validateForSession(CreateMessageDTO $createMessageDTO)
     {
+        $session = $createMessageDTO->for;
+
         if (
-            $createMessageDTO->for->for->isParticipant($createMessageDTO->user)
+            $session->isParticipant($createMessageDTO->user)
         ) return;
 
         throw new MessageException("You are not allowed to create a message for this session.", 422);
