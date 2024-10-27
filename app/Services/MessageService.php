@@ -26,8 +26,21 @@ use App\Models\Message;
 use App\Models\Session;
 use Illuminate\Support\Facades\DB;
 
+/**
+ * Class MessageService
+ * 
+ * This service handles messaging between users or counsellors for sessions and discussions.
+ * 
+ * @package App/Services
+ */
 class MessageService extends Service
 {
+    /**
+     * Gets messages for a particular session (public or private)
+     * 
+     * @param \App\DTOs\GetSessionMessagesDTO $getSessionMessagesDTO
+     * @return array|\Illuminate\Http\Resources\Json\AnonymousResourceCollection
+     */
     public function getSessionMessages(GetSessionMessagesDTO $getSessionMessagesDTO)
     {
         if (
@@ -60,6 +73,12 @@ class MessageService extends Service
         ));
     }
     
+    /**
+     * Gets messages for a particular discussion
+     * 
+     * @param \App\DTOs\GetDiscussionMessagesDTO $getDiscussionMessagesDTO
+     * @return array|\Illuminate\Http\Resources\Json\AnonymousResourceCollection
+     */
     public function getDiscussionMessages(GetDiscussionMessagesDTO $getDiscussionMessagesDTO)
     {
         if (
@@ -80,7 +99,13 @@ class MessageService extends Service
             PaginationEnum::preferencesPagination->value
         ));
     }
-    
+
+    /**
+     * Gets messages for a particular therapy topic
+     * 
+     * @param \App\DTOs\GetTherapyTopicMessagesDTO $getTherapyTopicMessagesDTO
+     * @return array|\Illuminate\Http\Resources\Json\AnonymousResourceCollection
+     */
     public function getTherapyTopicMessages(GetTherapyTopicMessagesDTO $getTherapyTopicMessagesDTO)
     {
         if (!$getTherapyTopicMessagesDTO->topic) return [];
@@ -131,6 +156,12 @@ class MessageService extends Service
         ));
     }
 
+    /**
+     * Creates and broadcasts a message
+     * 
+     * @param \App\DTOs\CreateMessageDTO $createMessageDTO
+     * @return \App\Models\Message
+     */
     public function createMessage(CreateMessageDTO $createMessageDTO): Message
     {
         EnsureIsFromUserAction::new()->execute($createMessageDTO);
@@ -148,6 +179,12 @@ class MessageService extends Service
         return $message;
     }
 
+    /**
+     * Updates and broadcasts a message
+     * 
+     * @param \App\DTOs\CreateMessageDTO $createMessageDTO
+     * @return \App\Models\Message
+     */
     public function updateMessage(CreateMessageDTO $createMessageDTO): Message
     {
         EnsureMessageExistsAction::new()->execute($createMessageDTO);
@@ -163,6 +200,12 @@ class MessageService extends Service
         return $message;
     }
 
+    /**
+     * Deletes and broadcasts the deleted message
+     * 
+     * @param \App\DTOs\CreateMessageDTO $createMessageDTO
+     * @return \App\Models\Message
+     */
     public function deleteMessage(CreateMessageDTO $createMessageDTO): Message
     {
         EnsureMessageExistsAction::new()->execute($createMessageDTO);
@@ -176,6 +219,12 @@ class MessageService extends Service
         return $message;
     }
 
+    /**
+     * Deletes a message for a particular user/counsellor alone
+     * 
+     * @param \App\DTOs\CreateMessageDTO $createMessageDTO
+     * @return \App\Models\Message
+     */
     public function deleteMessageForMe(CreateMessageDTO $createMessageDTO): Message
     {
         EnsureMessageExistsAction::new()->execute($createMessageDTO);

@@ -374,3 +374,24 @@ describe("create message tests", function () {
         expect($message->files()->count())->toEqual(2);
     });
 });
+
+describe("update message tests", function () {
+
+    test("", function () {
+
+    });
+});
+
+describe("delete message tests", function () {
+
+    test("", function () {
+
+    });
+});
+
+describe("delete message for me tests", function () {
+
+    test("", function () {
+
+    });
+});
