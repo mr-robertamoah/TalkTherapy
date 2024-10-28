@@ -4,9 +4,12 @@ use App\DTOs\CreateMessageDTO;
 use App\Enums\DiscussionStatusEnum;
 use App\Enums\SessionStatusEnum;
 use App\Events\MessageSentEvent;
+use App\Events\MessageUpdatedEvent;
 use App\Exceptions\MessageException;
 use App\Models\Counsellor;
 use App\Models\Discussion;
+use App\Models\File;
+use App\Models\Message;
 use App\Models\Session;
 use App\Models\Therapy;
 use App\Models\User;
@@ -377,8 +380,185 @@ describe("create message tests", function () {
 
 describe("update message tests", function () {
 
-    test("", function () {
+    test("fails message update when no message is provided", function () {
 
+        $this->expectException(MessageException::class, "The message was not found.");
+
+        MessageService::new()->updateMessage(
+            CreateMessageDTO::new()->fromArray([
+                'message' => null
+            ])
+        );
+    });
+
+    test("fails message update when message was not created by current user's user/counsellor account.", function () {
+
+        $actingUser = User::factory()->create();
+        $fromUser = User::factory()->create();
+        $session = Session::factory()->create();
+        $message = Message::factory()->create([
+            'from_id' => $fromUser->id,
+            'from_type' => $fromUser::class,
+            'for_id' => $session->id,
+            'for_type' => $session::class,
+        ]);
+
+        $this->expectException(MessageException::class, "You are not authorized to update this message.");
+
+        MessageService::new()->updateMessage(
+            CreateMessageDTO::new()->fromArray([
+                'message' => $message,
+                'user' => $actingUser
+            ])
+        );
+    });
+
+    test("fails message update when no content, files or deleted files are provided.", function () {
+
+        $fromUser = User::factory()->create();
+        $session = Session::factory()->create();
+        $message = Message::factory()->create([
+            'from_id' => $fromUser->id,
+            'from_type' => $fromUser::class,
+            'for_id' => $session->id,
+            'for_type' => $session::class,
+        ]);
+
+        $this->expectException(MessageException::class, "There is not sufficient information to create a message. There should be content or files, at least.");
+
+        MessageService::new()->updateMessage(
+            CreateMessageDTO::new()->fromArray([
+                'message' => $message,
+                'user' => $fromUser
+            ])
+        );
+    });
+
+    test("successfully update message with content when creator of original message.", function () {
+
+        Event::fake();
+        
+        $fromUser = User::factory()->create();
+        $session = Session::factory()->create();
+        $message = Message::factory()->create([
+            'from_id' => $fromUser->id,
+            'from_type' => $fromUser::class,
+            'for_id' => $session->id,
+            'for_type' => $session::class,
+        ]);
+
+        $text = 'hello world';
+        $message = MessageService::new()->updateMessage(
+            CreateMessageDTO::new()->fromArray([
+                'message' => $message,
+                'user' => $fromUser,
+                'content' => $text
+            ])
+        );
+
+        Event::assertDispatched(MessageUpdatedEvent::class);
+        expect($text)->toEqual($message->content);
+    });
+
+    test("successfully update message with files when creator of original message.", function () {
+
+        Event::fake();
+        Storage::fake('local');
+        
+        $fromUser = User::factory()->create();
+        $session = Session::factory()->create();
+        $message = Message::factory()->create([
+            'from_id' => $fromUser->id,
+            'from_type' => $fromUser::class,
+            'for_id' => $session->id,
+            'for_type' => $session::class,
+        ]);
+
+        $files = [
+            UploadedFile::fake()->image('photo1.jpg'),
+            UploadedFile::fake()->image('photo2.jpg')
+        ];
+
+        $this->assertDatabaseMissing('files', [
+            'mime' => 'image/jpeg',
+        ]);
+
+        $message = MessageService::new()->updateMessage(
+            CreateMessageDTO::new()->fromArray([
+                'message' => $message,
+                'user' => $fromUser,
+                'files' => $files
+            ])
+        );
+
+        Event::assertDispatched(MessageUpdatedEvent::class);
+
+        $this->assertDatabaseHas('files', [
+            'mime' => 'image/jpeg',
+        ]);
+        expect(count($files))->toEqual($message->files()->count());
+    });
+
+    test("successfully update message with ids of deleted files when creator of original message.", function () {
+
+        Event::fake();
+        Storage::fake('local');
+        
+        $files = [
+            UploadedFile::fake()->image('photo1.jpg'),
+            UploadedFile::fake()->image('photo2.jpg')
+        ];
+
+        $fromUser = User::factory()->create();
+        $counsellorUser = User::factory()->create();
+        $counsellor = Counsellor::factory()->create([
+            'user_id' => $counsellorUser->id,
+        ]);
+        $therapy = Therapy::factory()->create([
+            'addedby_id' => $fromUser->id,
+            'addedby_type' => $fromUser::class,
+            'counsellor_id' => $counsellor->id
+        ]);
+        $session = Session::factory()->create([
+            'for_id' => $therapy->id,
+            'for_type' => $therapy::class,
+        ]);
+        $message = MessageService::new()->createMessage(
+            CreateMessageDTO::new()->fromArray([
+                'user' => $fromUser,
+                'from' => $fromUser,
+                'for' => $session,
+                'to' => $counsellor,
+                'files' => $files,
+            ])
+        );
+        $message = Message::factory()->create([
+            'from_id' => $fromUser->id,
+            'from_type' => $fromUser::class,
+            'for_id' => $session->id,
+            'for_type' => $session::class,
+        ]);
+
+        $this->assertDatabaseHas('files', [
+            'mime' => 'image/jpeg',
+        ]);
+        expect(count($files))->toEqual(File::latest()->count());
+
+        $message = MessageService::new()->updateMessage(
+            CreateMessageDTO::new()->fromArray([
+                'message' => $message,
+                'user' => $fromUser,
+                'deletedFiles' => [File::latest()->first()->id]
+            ])
+        );
+
+        Event::assertDispatched(MessageUpdatedEvent::class);
+
+        $this->assertDatabaseHas('files', [
+            'mime' => 'image/jpeg',
+        ]);
+        expect(1)->toEqual(File::latest()->count());
+        expect(count($files))->not->toEqual(File::latest()->count());
     });
 });
 

@@ -191,7 +191,7 @@ class MessageService extends Service
 
         EnsureCanUpdateMessageAction::new()->execute($createMessageDTO);
 
-        EnsureMessageDataIsValidAction::new()->execute($createMessageDTO);
+        EnsureMessageDataIsValidAction::new()->execute($createMessageDTO, true);
         
         $message = UpdateMessageAction::new()->execute($createMessageDTO);
 
