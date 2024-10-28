@@ -101,6 +101,7 @@ function changeStep(value) {
                 >
                     <VerifyEmailSection
                         :status="status"
+                        :email="$page.props.auth.user?.email"
                         class="max-w-xl"
                     />
                 </div>
