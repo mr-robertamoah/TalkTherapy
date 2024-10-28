@@ -33,6 +33,7 @@ import Modal from '@/Components/Modal.vue';
 import useUtilities from '@/Composables/useUtilities';
 import HelpButton from '@/Components/HelpButton.vue';
 import useGuidedTours from '@/Composables/useGuidedTours';
+import useEnums from '@/Composables/useEnums';
 
 const { modalData, showModal, closeModal } = useModal()
 const { goToLogin } = useAuth()
@@ -41,6 +42,7 @@ const { createLink, getlinks } = useAppLink()
 const { alertData, clearAlertData, setAlertData, setSuccessAlertData, setFailedAlertData } = useAlert()
 const { getReadableStatus } = useUtilities()
 const { PAGES } = useGuidedTours()
+const { SessionStatusEnum } = useEnums()
 
 const props = defineProps({
     therapy: {
@@ -224,8 +226,13 @@ const computedIsCounsellor = computed(() => {
 const computedIsInSession = computed(() => {
     let session = activeSession?.value ?? computedTherapy.value?.activeSession
 
-    return ['IN_SESSION', 'IN_SESSION_CONFIRMATION', 'HELD_CONFIRMATION'].includes(session?.status) ||
-        session?.status == 'PENDING' && timer.value.beforeStart < 5
+    return [
+        SessionStatusEnum.in_session, 
+        SessionStatusEnum.in_session_confirmation,
+        SessionStatusEnum.held_confirmation,
+    ].includes(session?.status) || 
+    session?.status == SessionStatusEnum.pending && 
+    timer.value.beforeStart < 5
 })
 const computedIsParticipant = computed(() => {
     return computedIsUser.value || computedIsCounsellor.value
@@ -772,7 +779,10 @@ function clearGetting() {
         <div 
             class="w-full sticky top-0 z-10 pt-2"
             :class="{'p-2 bg-white': showAll}"
-            v-if="computedIsParticipant && !(['HELD', 'ABONDON'].includes(activeSession?.status)  && !['HELD', 'ABONDON'].includes(computedTherapy.activeSession?.status))"
+            v-if="
+                computedIsParticipant && 
+                !([SessionStatusEnum.held, SessionStatusEnum.abandoned].includes(activeSession?.status) && 
+                ![SessionStatusEnum.held, SessionStatusEnum.abandoned].includes(computedTherapy.activeSession?.status))"
         >
             <div
                 v-if="activeSession || computedTherapy.activeSession"
@@ -786,13 +796,13 @@ function clearGetting() {
             <template v-if="showAll">
                 <div
                     class="p-2 w-[80%] md:w-[70%] lg:w-[60%] mx-auto rounded-lg select-none cursor-pointer"
-                    :class="[activeSession?.status == 'ABANDONED' ? 'bg-red-300' : 'bg-green-300']"
+                    :class="[activeSession?.status == SessionStatusEnum.abandoned ? 'bg-red-300' : 'bg-green-300']"
                     @dblclick="clickedActiveSession"
                     v-if="activeSession"
                 >
                     <div
                         class="flex justify-end items-center text-sm space-x-2 font-bold"
-                        v-if="activeSession?.status !== 'ABANDONED'"
+                        v-if="activeSession?.status !== SessionStatusEnum.abandoned"
                     >
                         <div class="text-blue-600 p-2 rounded bg-blue-200" v-if="timer.beforeStart > 0">{{ timer.beforeStart }} minutes to start</div>
                         <div class="text-green-800 p-2 rounded bg-green-200" v-if="timer.beforeEnd > 0">{{ timer.beforeEnd }} minutes to end</div>
@@ -801,7 +811,7 @@ function clearGetting() {
                     <div v-else class="text-red-600 p-2 rounded bg-red-200 w-fit ml-auto">abandoned</div>
                     <div 
                         class="my-2 mx-auto w-[90%] text-center"
-                        :class="[activeSession?.status == 'ABANDONED' ? 'text-red-800' : 'text-green-800']"
+                        :class="[activeSession?.status == SessionStatusEnum.abandoned ? 'text-red-800' : 'text-green-800']"
                     >{{ activeSession.name }}</div>
                 </div>
                 <div 
@@ -1136,14 +1146,14 @@ function clearGetting() {
                                     <DangerButton @click="clickedDelete" class="shrink-0">delete therapy</DangerButton>
                                 </template>
                             </template>
-                            <template v-if="activeSession && activeSession?.status !== 'ABANDONED'">
+                            <template v-if="activeSession && activeSession?.status !==SessionStatusEnum.abandoned">
                                 <PrimaryButton
                                     :disabled="!!sessionActionRunning"
-                                    v-if="(['PENDING', 'IN_SESSION_CONFIRMATION'].includes(activeSession?.status) && userId !== activeSession?.updatedById) && activeSession?.status !== 'IN_SESSION' && timer.beforeEnd > 0"
+                                    v-if="([SessionStatusEnum.pending, SessionStatusEnum.in_session_confirmation].includes(activeSession?.status) && userId !== activeSession?.updatedById) && activeSession?.status !== SessionStatusEnum.in_session && timer.beforeEnd > 0"
                                     @click="clickedStartSession" class="shrink-0">start session for you</PrimaryButton>
                                 <PrimaryButton
                                     :disabled="!!sessionActionRunning"
-                                    v-if="['PENDING', 'IN_SESSION', 'IN_SESSION_CONFIRMATION'].includes(activeSession?.status) && timer.beforeEnd > 0 && computedIsInSession"
+                                    v-if="[SessionStatusEnum.pending, SessionStatusEnum.in_session, SessionStatusEnum.in_session_confirmation].includes(activeSession?.status) && timer.beforeEnd > 0 && computedIsInSession"
                                     @click="clickedAbandonSession" class="shrink-0">abondon session</PrimaryButton>
                                 <PrimaryButton
                                     :disabled="!!sessionActionRunning"
@@ -1315,16 +1325,16 @@ function clearGetting() {
                 <div class="space-y-3 flex flex-col justify-center items-center" v-if="activeSession">
                     <template v-if="!sessionActionRunning">
                         <PrimaryButton
-                            v-if="(['PENDING', 'IN_SESSION_CONFIRMATION'].includes(activeSession?.status) && userId !== activeSession?.updatedById) && activeSession?.status !== 'IN_SESSION' && timer.beforeEnd > 0"
+                            v-if="([SessionStatusEnum.pending, SessionStatusEnum.in_session_confirmation].includes(activeSession?.status) && userId !== activeSession?.updatedById) && activeSession?.status !== SessionStatusEnum.in_session && timer.beforeEnd > 0"
                             @click="clickedStartSession" class="shrink-0">start session for you</PrimaryButton>
                         <PrimaryButton
                             v-if="activeSession.type == 'ONLINE'"
                             @click="() => showModal('therapy')" class="shrink-0">show message box</PrimaryButton>
                         <PrimaryButton
-                            v-if="['PENDING', 'IN_SESSION', 'IN_SESSION_CONFIRMATION'].includes(activeSession?.status) && timer.beforeEnd > 0 && computedIsInSession"
+                            v-if="[SessionStatusEnum.pending, SessionStatusEnum.in_session, SessionStatusEnum.in_session_confirmation].includes(activeSession?.status) && timer.beforeEnd > 0 && computedIsInSession"
                             @click="clickedAbandonSession" class="shrink-0">abondon session</PrimaryButton>
                         <PrimaryButton
-                            v-if="computedIsInSession && timer.beforeEnd < 0 && userId !== activeSession?.updatedById && activeSession?.status !== 'ABANDONED'"
+                            v-if="computedIsInSession && timer.beforeEnd < 0 && userId !== activeSession?.updatedById && activeSession?.status !== SessionStatusEnum.abandoned"
                             @click="clickedEndSession" class="shrink-0">end session for you</PrimaryButton>
                     </template>
                     <div v-else class="text-sm text-gray-600 my-2 w-full text-center">performing action...</div>
