@@ -5,14 +5,24 @@ defineProps({
     status: {
         type: String,
     },
+    email: {
+        type: String,
+    },
 });
 
 </script>
 
 <template>
     <section>
-        <header>
-            <h2 class="text-lg font-medium text-gray-900">Email Verification</h2>
+        <h2 class="text-lg font-medium text-gray-900">Email Verification</h2>
+
+        <p v-if="!email" class="mt-1 text-sm text-gray-600">
+            You need to provide you email address before you can verify it.
+            Your email has to be verified before you can continue to receive email notifications regarding things like therapies/requests/etc.
+            Most importantly, you cannot create a therapy without a verified email.
+        </p>
+
+        <template v-else>
 
             <p class="mt-1 text-sm text-gray-600">
                 Your email has to be verified before you can continue to receive email notifications regarding things like therapies/requests/etc.
@@ -37,6 +47,6 @@ defineProps({
                 :as="'button'" 
                 :method="'post'" 
                 :href="route('verification.send')" class="mr-2 mt-2 float-right"/>
-        </header>
+        </template>
     </section>
 </template>
