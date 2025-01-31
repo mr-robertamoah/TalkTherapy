@@ -38,6 +38,12 @@ class EnsureCanSendMessageToForAction extends Action
 
     public function validateForDiscussion(CreateMessageDTO $createMessageDTO)
     {
-        // TODO
+        $discussion = $createMessageDTO->for;
+
+        if (
+            $discussion->isParticipant($createMessageDTO->user->counsellor)
+        ) return;
+
+        throw new MessageException("You are not allowed to create a message for this discussion because you are not participating in it.", 422);
     }
 }

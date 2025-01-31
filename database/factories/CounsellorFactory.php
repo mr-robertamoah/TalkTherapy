@@ -17,7 +17,10 @@ class CounsellorFactory extends Factory
     public function definition(): array
     {
         return [
-            //
+            'email' => $this->faker->email,
+            'about' => $this->faker->sentence,
+            'verified_at' => now(),
+            'email_verified_at' => now(),
         ];
     }
 }
