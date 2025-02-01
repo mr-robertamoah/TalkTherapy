@@ -18,6 +18,7 @@ use App\Actions\EnsureAddedbyIsValidAction;
 use App\Actions\Star\CreateStarAction;
 use App\Actions\Therapy\EnsureIsCounsellorAction;
 use App\Actions\Discussion\CreateDiscussionRequestAction;
+use App\Actions\Discussion\EnsureCanFailDiscussionAction;
 use App\Actions\Discussion\EnsureCanRemoveCounsellorFromDiscussionAction;
 use App\Actions\Discussion\RemoveCounsellorFromDiscussionAction;
 use App\Actions\User\EnsureRequestDataIsValidAction;
@@ -165,7 +166,7 @@ class DiscussionService extends Service
     {
         EnsureDiscussionExistsAction::new()->execute($createDiscussionDTO);
 
-        EnsureCanEndDiscussionAction::new()->execute($createDiscussionDTO);
+        EnsureCanFailDiscussionAction::new()->execute($createDiscussionDTO);
 
         $discussion = ChangeDiscussionStatusAction::new()->execute($createDiscussionDTO, DiscussionStatusEnum::failed->value);
 
@@ -221,6 +222,8 @@ class DiscussionService extends Service
 
             $query->whereCounsellor($counsellor);
         });
+
+        $query->orderByDesc('updated_at');
 
         return DiscussionMiniResource::collection($query->paginate(PaginationEnum::pagination->value));
     }

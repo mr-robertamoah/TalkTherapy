@@ -32,14 +32,14 @@ class Session extends Model
 
     public function therapy()
     {
-        return $this->for::class == Therapy::class
+        return $this->for_type == Therapy::class
             ? $this->for
             : null;
     }
 
     public function groupTherapy()
     {
-        return $this->for::class == GroupTherapy::class
+        return $this->for_type == GroupTherapy::class
             ? $this->for
             : null;
     }
@@ -107,8 +107,18 @@ class Session extends Model
             ->whereStatusIn([
                 SessionStatusEnum::in_session->value,
                 SessionStatusEnum::in_session_confirmation->value,
-                SessionStatusEnum::held_confirmation->value,
             ]);
+    }
+
+    public function scopeWhereIsNotUserWhoConfirmedHeld($query, User|Counsellor $model)
+    {
+        return $query
+            ->where(function ($query) use ($model) {
+                $query
+                    ->where('Status', SessionStatusEnum::held_confirmation->value)
+                    ->whereNot('updatedby_id', $model->id)
+                    ->orWhereNot('updatedby_type', $model::class);
+            });
     }
 
     public function isParticipant(User $user)
@@ -119,6 +129,16 @@ class Session extends Model
     public function isNotParticipant(User $user)
     {
         return $this->for?->isNotParticipant($user);
+    }
+
+    public function scopeWhereIsParticipant($query, User $user)
+    {
+        return $query
+            ->where(function ($query) use ($user) {
+                $query->whereHasMorph('for', '*', function($query) use ($user) {
+                    $query->whereIsParticipant($user);
+                });
+            });
     }
 
     public function scopeWhereName($query, $name)
@@ -145,7 +165,7 @@ class Session extends Model
     {
         return $this->type == SessionTypeEnum::online->value &&
             in_array($this->status, [
-                SessionStatusEnum::pending->value,
+                SessionStatusEnum::pending->value, // TODO remove it if it does not make sense
                 SessionStatusEnum::in_session->value,
                 SessionStatusEnum::in_session_confirmation->value,
             ]);

@@ -58,7 +58,7 @@ class DiscussionStatusChangedNotification extends Notification implements Should
     private function getDiscussionText()
     {
         return match ($this->discussion->status) {
-            DiscussionStatusEnum::abandoned->value => "has been abondoned. The counsellor who created the discussion has ended before its end time.",
+            DiscussionStatusEnum::abandoned->value => "has been abandoned. The counsellor who created the discussion has ended before its end time.",
             DiscussionStatusEnum::in_session->value => "has started.",
             DiscussionStatusEnum::held->value => "has ended.",
             DiscussionStatusEnum::failed->value => "has been failed. Meaning it did not take place.",

@@ -16,26 +16,21 @@
                 >{{ discussion.name }}</div>
                 <hr>
             </div>
-            <div class="flex justify-end my-2 w-[90%] relative">
-                <OptionIcon
-                    @click="() => showOptions = !showOptions"
-                    title="select a section of the discussion"
-                    class="cursor-pointer w-5 h-5"/>
-
-                <div v-if="showOptions" class="absolute z-20 w-fit p-2 px-4 rounded bg-gray-600 text-gray-600 text-sm">
-                    <div
-                        v-for="(opt, idx) in options.filter((o) => {
-                            return o !== view
-                        })"
-                        :key="idx"
-                        class="bg-white my-2 p-2 w-24 cursor-pointer rounded text-center"
-                        @click="() => setView(opt)"
-                    >{{ opt }}</div>
+            <div class="w-full grid grid-rows-1 grid-cols-4 items-center p-2 px-4 rounded bg-gray-600 text-gray-600 text-sm">
+                <div
+                    v-for="(opt, idx) in options"
+                    :key="idx"
+                    class="text-white my-2 p-2 w-full cursor-pointer text-center"
+                    @click="() => setView(opt)"
+                >
+                    {{ opt }}
+                    <div :class="{'invisible': opt !== view}" class="h-1 mt-2 w-full bg-white rounded"></div>
                 </div>
             </div>
+            <!-- details section -->
             <div 
                 v-if="view == 'details'" 
-                class="pr-4 py-4 overflow-hidden overflow-y-auto h-[70vh] w-[90%] mx-auto md:w-[70%]"
+                class="pr-4 py-4 overflow-hidden overflow-y-auto h-[70vh] w-full mx-auto"
             >
                 <div class="text-end text-gray-600 text-sm mb-3">created {{ discussion.createdAt }}</div>
                 <div v-if="discussion.description" class="p-4 rounded bg-slate-800 shadow-sm min-h-[100px]">
@@ -89,11 +84,14 @@
                     </div>
                 </div>
             </div>
+            <!-- counsellors section -->
             <div
                 v-if="view == 'counsellors'"
-                class="pr-4 py-4 overflow-hidden overflow-y-auto h-[70vh] w-[90%] mx-auto md:w-[70%]"
+                class="pr-4 py-4 overflow-hidden overflow-y-auto h-[70vh] w-full mx-auto"
             >
-                <div class="p-4 rounded bg-slate-800 my-4 shadow-sm min-h-[100px]" v-if="computedIsAddedby">
+                <div 
+                    class="p-4 rounded bg-slate-800 my-4 shadow-sm min-h-[100px]" 
+                    v-if="computedIsAddedby">
                     <div class="w-full text-justify capitalize mt-4 mb-1 text-lg font-medium text-gray-300">Counsellor Search</div>
                     
                     <div class="p-4 my-4 text-gray-200 text-sm">
@@ -145,7 +143,7 @@
                             placeholder="search for counsellor"
                         />
                     </div>
-                    <div class="p-2 flex justify-center gap-3 items-center overflow-hidden overflow-x-auto my-2">
+                    <div class="p-2 flex justify-start gap-3 items-center overflow-hidden overflow-x-auto my-2">
                                 
                         <template v-if="counsellors.data?.length">
                             <CounsellorComponent
@@ -153,9 +151,12 @@
                                 :counsellor="counsellor"
                                 :has-view="false"
                                 :key="counsellor.id"
-                                class="w-[70%] shrink-0 shadow shadow-slate-300"
+                                class="min-w-[30%] max-w-fit shrink-0 shadow shadow-slate-300"
                                 :use-minimal="true"
-                                @click="() => selectedCounsellor = counsellor"
+                                @click="() => {
+                                    console.log(counsellor)
+                                    selectedCounsellor = counsellor
+                                }"
                             >
                                 <div v-if="selectedCounsellor && selectedCounsellor.id == counsellor.id">
                                     <div v-if="counsellorStatus" class="text-green-600 text-xs text-center">{{ counsellorStatus }}</div>
@@ -242,9 +243,10 @@
                     </div>
                 </div>
             </div>
+            <!-- sessions section -->
             <div 
                 v-if="view == 'sessions'"
-                class="pr-4 py-4 overflow-hidden overflow-y-auto h-[70vh] w-[90%] mx-auto md:w-[70%]"
+                class="pr-4 py-4 overflow-hidden overflow-y-auto h-[70vh] w-full mx-auto"
             >
                 <div class="p-4 rounded bg-slate-800 my-4 shadow-sm min-h-[100px]">
                     <div class="w-full text-justify capitalize mt-4 mb-1 text-lg font-medium text-gray-300">Messages</div>
@@ -304,7 +306,10 @@
                     </div>
                 </div>
             </div>
-            <div v-if="view == 'chat'" class="pr-4 py-4 overflow-hidden overflow-y-auto h-[70vh] w-[90%] mx-auto md:w-[70%]">
+            <!-- chat section -->
+            <div 
+                v-if="view == 'chat'"
+                class="pr-4 py-4 overflow-hidden overflow-y-auto h-[70vh] w-full mx-auto">
                 <div>
                     <div class="rounded-lg min-h-[400px] bg-stone-200 h-full w-full shrink mb-2">
                         <div class="h-[350px] p-2 overflow-hidden overflow-y-auto space-y-2 flex items-center flex-col"
@@ -814,7 +819,9 @@ async function getCounsellorLinks() {
         page: counsellorLinks.value.page,
         type: 'DISCUSSION',
         addedbyId: usePage().props.auth.user?.counsellor?.id,
-        addedbyType: 'Counsellor'
+        addedbyType: 'Counsellor',
+        forType: 'Discussion',
+        forId: props.discussion.id
     })
     
     clearGetting()

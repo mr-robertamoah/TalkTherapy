@@ -7,6 +7,7 @@ use App\Actions\Discussion\EnsureNotAlreadyPartOfDiscussionAction;
 use App\DTOs\CreateRequestDTO;
 use App\DTOs\RequestResponseDTO;
 use App\Enums\RequestStatusEnum;
+use App\Events\DiscussionRequestResponseEvent;
 use App\Notifications\DiscussionInclusionNotification;
 
 class RespondToDiscussionRequestAction extends Action
@@ -14,7 +15,11 @@ class RespondToDiscussionRequestAction extends Action
     public function execute(RequestResponseDTO $requestResponseDTO)
     {
         EnsureNotAlreadyPartOfDiscussionAction::new()->execute(
-            CreateRequestDTO::new()->fromArray(['to' => $requestResponseDTO->request->to])
+            CreateRequestDTO::new()
+                ->fromArray([
+                    'to' => $requestResponseDTO->request->to,
+                    'for' => $requestResponseDTO->request->for,
+                ])
         );
         
         $requestResponseDTO->request->update([
@@ -30,6 +35,8 @@ class RespondToDiscussionRequestAction extends Action
             $request->from->notify(
                 new DiscussionInclusionNotification($request->to, $request->for)
             );
+            // TODO make this broadcast
+            DiscussionRequestResponseEvent::broadcast($request);
         }
         
         return $request;

@@ -81,6 +81,15 @@ watchEffect(() => {
                     })
                 }
             })
+
+        if (page.props.auth.user.counsellor) {
+            Echo
+                .private(`counsellors.${page.props.auth.user.counsellor.id}`)
+                .listen('.request.response', (data) => {
+                    console.log('data', data)
+                })
+
+        }
     }
 })
 

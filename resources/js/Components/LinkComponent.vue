@@ -21,6 +21,7 @@
             <div class="flex gap-2 ml-2">
                 <div
                     class="flex justify-center items-center p-2 rounded bg-gray-800"
+                    v-if="link.to"
                 >
                     to: <span class="ml-2" 
                             :class="{'capitalize': link.to.isCounsellor}"
@@ -34,7 +35,12 @@
                     for: <span class="capitalize ml-2">{{ link.forType }}</span>
                 </div>
             </div>
-            <div class="text-xs text-gray-400 text-center my-2">only this {{ link.to.isCounsellor ? 'counsellor' : 'user' }} can use this link.</div>
+            <div
+                v-if="link.to" 
+                class="text-xs text-gray-400 text-center my-2">Only this {{ link.to.isCounsellor ? 'counsellor' : 'user' }} can use this link.</div>
+            <div
+                v-else
+                class="text-xs text-gray-400 text-center my-2">All counsellors can use this link.</div>
         </div>
         <div class="flex justify-start items-center space-x-2 text-sm text-gray-600 overflow-hidden overflow-x-auto">
             <div class="flex justify-end my-2">

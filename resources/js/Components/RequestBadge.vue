@@ -1,5 +1,5 @@
 <script setup>
-import { usePage } from '@inertiajs/vue3';
+import { usePage, router } from '@inertiajs/vue3';
 import { computed, ref, watchEffect } from 'vue';
 import PrimaryButton from './PrimaryButton.vue';
 import DangerButton from './DangerButton.vue';
@@ -7,6 +7,7 @@ import useAlert from '@/Composables/useAlert';
 import Alert from './Alert.vue';
 import FormLoader from './FormLoader.vue';
 import StyledLink from './StyledLink.vue';
+import useConsts from '@/Composables/useConsts';
 
 
 const { alertData, clearAlertData, setFailedAlertData, setSuccessAlertData } = useAlert()
@@ -19,19 +20,7 @@ const props = defineProps({
 
 const emits = defineEmits(['onData', 'alert'])
 
-const RequestTypes = {
-    guardianship: 'GUARDIANSHIP',
-    counsellor: 'COUNSELLOR_VERIFICATION_REQUEST',
-    administrator: 'ADMINISTRATION_REQUEST',
-    therapy: 'THERAPY_ASSISTANCE_REQUEST',
-    discussion: 'THERAPY_DISCUSSION_REQUEST',
-    groupTherapy: 'GROUP_THERAPY_ASSISTANCE_REQUEST',
-}
-const RequestStatuses = {
-    accepted: 'ACCEPTED',
-    pending: 'PENDING',
-    rejected: 'REJECTED',
-}
+const { RequestStatuses, RequestTypes } = useConsts()
 const userId = usePage().props.auth.user?.id;
 
 const showActions = ref(false)
@@ -69,17 +58,31 @@ const computedStatusClasses = computed(() => {
     }[props.request?.status]
 })
 const computedIsFrom = computed(() => {
+    if (!props.request.from) return
+
     if (props.request.from.isCounsellor)
         return userId == props.request.from.userId 
 
     return userId == props.request.from.id
 })
 const computedIsTo = computed(() => {
+    if (!props.request.from) return
+
     if (props.request.to.isCounsellor)
         return userId == props.request.to.userId 
 
     return userId == props.request.to.id
 })
+
+function visitTherapy() {
+    let therapyId
+    if (RequestTypes.discussion == props.request.type)
+        therapyId = props.request.for.forId
+    else
+        therapyId = props.request.for.id
+
+    router.get(route('therapies.get', {therapyId}))
+}
 
 async function clickedResponse(response) {
     responding.value = true
@@ -120,7 +123,11 @@ async function clickedResponse(response) {
 <template>
     <div v-bind="$attrs" class="bg-stone-300 rounded w-full max-w-[400px] select-none p-2 relative">
         <FormLoader v-if="responding" class="relative" :show="responding" :text="'responding to request'"/>
-        <div class="text-gray-600 text-sm tracking-wide">{{ computedTypeMessage }}</div>
+        <div class="text-gray-600 text-sm tracking-wide">{{ computedTypeMessage }}<span 
+                v-if="[RequestTypes.discussion, RequestTypes.therapy].includes(request.type)"
+                class="ml-2 text-xs text-blue-600 cursor-pointer"
+                @click="visitTherapy"
+            >view therapy</span></div>
         <div class="flex justify-end items-center w-full text-xs my-2">
             <div v-if="computedIsFrom && request.to" class="flex text-gray-600">to: {{ request.to.isCounsellor ? request.to.name : `@${request.to.username}` }}</div>
             <div v-if="computedIsTo && request.from" class="flex text-gray-600">from: {{ request.from.isCounsellor ? request.from.name : `@${request.from.username}` }}</div>

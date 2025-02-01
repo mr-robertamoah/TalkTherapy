@@ -154,9 +154,21 @@ class LinkController extends Controller
                     'user' => $request->user(),
                     'type' => $request->type,
                     'state' => $request->state,
-                    'addedby' => GetModelWithModelNameAndIdAction::new()->execute($request->addedbyType, $request->addedbyId),
-                    'to' => GetModelWithModelNameAndIdAction::new()->execute($request->toType, $request->toId),
-                    'for' => GetModelWithModelNameAndIdAction::new()->execute($request->forType, $request->forId),
+                    'addedby' => GetModelWithModelNameAndIdAction::new()
+                        ->execute(
+                            $request->addedbyType, 
+                            $request->addedbyId
+                        ),
+                    'to' => GetModelWithModelNameAndIdAction::new()
+                        ->execute(
+                            $request->toType, 
+                            $request->toId
+                        ),
+                    'for' => GetModelWithModelNameAndIdAction::new()
+                        ->execute(
+                            $request->forType, 
+                            $request->forId
+                        ),
                 ])
             );
         } catch (Throwable $th) {

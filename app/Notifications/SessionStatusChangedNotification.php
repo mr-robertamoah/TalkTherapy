@@ -79,7 +79,7 @@ class SessionStatusChangedNotification extends Notification implements ShouldQue
     private function getSessionText()
     {
         return match ($this->session->status) {
-            SessionStatusEnum::abandoned->value => "has been abondoned. A counsellor or user has ended the session before its end time.",
+            SessionStatusEnum::abandoned->value => "has been abandoned. A counsellor or user has ended the session before its end time.",
             SessionStatusEnum::in_session->value => "has started.",
             SessionStatusEnum::held->value => "has ended.",
             SessionStatusEnum::failed->value => "has been failed. Meaning it did not take place.",

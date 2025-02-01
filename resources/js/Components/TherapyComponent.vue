@@ -29,7 +29,7 @@
                 @click="() => clickedSessionAction('start')" class="shrink-0">start session for you</PrimaryButton>
             <PrimaryButton
                 v-if="computedCanAbandon"
-                @click="() => clickedSessionAction('abandon')" class="shrink-0">abondon session</PrimaryButton>
+                @click="() => clickedSessionAction('abandon')" class="shrink-0">abandon session</PrimaryButton>
             <PrimaryButton
                 v-if="computedCanEnd"
                 @click="() => clickedSessionAction('end')" class="shrink-0">end session for you</PrimaryButton>

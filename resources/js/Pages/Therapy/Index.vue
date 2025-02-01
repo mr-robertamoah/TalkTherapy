@@ -33,6 +33,7 @@ import Modal from '@/Components/Modal.vue';
 import useUtilities from '@/Composables/useUtilities';
 import HelpButton from '@/Components/HelpButton.vue';
 import useGuidedTours from '@/Composables/useGuidedTours';
+import useConsts from '@/Composables/useConsts';
 
 const { modalData, showModal, closeModal } = useModal()
 const { goToLogin } = useAuth()
@@ -64,6 +65,7 @@ const scrollItems = [
     { id: 'therapy_other_details', name: 'other details' },
     { id: 'therapy_stats', name: 'stats' },
 ]
+const { SessionStatuses } = useConsts()
 
 const userId = usePage().props.auth.user?.id
 const loader = ref({
@@ -83,6 +85,7 @@ const interval = ref(null)
 const mainDiv = ref(null)
 const newSession = ref(null)
 const activeSession = ref(null)
+const activeDiscussion = ref(null)
 const counsellor = ref(null)
 const counsellorLinks = ref({ page: 1, data: []})
 const discussions = ref({ page: 1, data: []})
@@ -121,6 +124,12 @@ watch(() => props.therapy?.activeSession?.id, () => {
         startTimer()
     }
 })
+watch(() => props.therapy?.activeDiscussion?.id, () => {
+    if (props.therapy?.activeDiscussion?.id) {
+        activeDiscussion.value = props.therapy.activeDiscussion
+        startTimer()
+    }
+})
 watchEffect(() => {
     if (props.recentSessions?.data?.length)
         recentSessions.value = [...props.recentSessions.data]
@@ -151,6 +160,10 @@ watchEffect(() => {
 
     listening.value = true
 
+    listenToTherapy(currentTherapy)
+})
+
+function listenToTherapy(currentTherapy) {
     Echo
         .join(`therapies.${currentTherapy.id}`)
         .here((users) => {
@@ -204,7 +217,67 @@ watchEffect(() => {
             if (activeSession.value)
                 activeSession.value.currentTopic = null
         })
-})
+        .listen(`.discussion.started`, (data) => {
+            activeDiscussion.value = data.discussion
+            startTimer()
+        })
+}
+
+function listenToDiscussion() {
+    Echo
+        .join(`therapies.${currentTherapy.id}`)
+        .here((users) => {
+            onlineParticipants.value = [...users]
+
+            let otherUser = users.find((u) => userId !== u.id)
+            if (!otherUser) return
+
+            setSuccessAlertData({
+                message: `${otherUser.name} is already online.`,
+                time: 4000
+            })
+        })
+        .joining((user) => {
+            let found = onlineParticipants.value.find((u) => u.id == user.id)
+
+            if (found) return
+
+            onlineParticipants.value.push(user)
+
+            setSuccessAlertData({
+                message: `${user.name} just came online.`,
+                time: 4000
+            })
+        })
+        .leaving((user) => {
+            onlineParticipants.value.splice(
+                onlineParticipants.value.findIndex((u) => u.id == user.id),
+                1,
+                user
+            )
+
+            setSuccessAlertData({
+                message: `${user.name} just went offline.`,
+                time: 4000
+            })
+        })
+        .listen(`.session.started`, (data) => {
+            activeSession.value = data.session
+            startTimer()
+        })
+        .listen(`.session.updated`, (data) => {
+            if (activeSession.value?.id == data.session.id)
+                activeSession.value = data.session
+        })
+        .listen(`.session.topic.set`, (data) => {
+            if (activeSession.value)
+                activeSession.value.currentTopic = data.topic
+        })
+        .listen(`.session.topic.unset`, (data) => {
+            if (activeSession.value)
+                activeSession.value.currentTopic = null
+        })
+}
 
 onBeforeUnmount(() => {
     timer.value.set = false
@@ -227,8 +300,8 @@ const computedIsCounsellor = computed(() => {
 const computedIsInSession = computed(() => {
     let session = activeSession?.value ?? computedTherapy.value?.activeSession
 
-    return ['IN_SESSION', 'IN_SESSION_CONFIRMATION', 'HELD_CONFIRMATION'].includes(session?.status) ||
-        session?.status == 'PENDING' && timer.value.beforeStart < 5
+    return [SessionStatuses.inSession, SessionStatuses.inSessionConfirmation, SessionStatuses.heldConfirmation].includes(session?.status) ||
+        session?.status == SessionStatuses.pending && timer.value.beforeStart < 5
 })
 const computedIsParticipant = computed(() => {
     return computedIsUser.value || computedIsCounsellor.value
@@ -788,7 +861,7 @@ function clearGetting() {
         <div 
             class="w-full sticky top-0 z-10 pt-2"
             :class="{'p-2 bg-white': showAll}"
-            v-if="computedIsParticipant && !(['HELD', 'ABONDON'].includes(activeSession?.status)  && !['HELD', 'ABONDON'].includes(computedTherapy.activeSession?.status))"
+            v-if="computedIsParticipant && !(['HELD', 'ABANDONED'].includes(activeSession?.status)  && !['HELD', 'ABANDONED'].includes(computedTherapy.activeSession?.status))"
         >
             <div
                 v-if="activeSession || computedTherapy.activeSession"
@@ -954,7 +1027,7 @@ function clearGetting() {
                                     <FormLoader :show="request.responding" :text="'responding'"/>
                                     <div
                                         class="text-center text-sm text-gray-600 w-full"
-                                        v-if="pendingRequest.from.isCounsellor && pendingRequest.from.userId == $page.props.auth.user?.id">you have already sent a request to assist.</div>
+                                        v-if="pendingRequest.from?.isCounsellor && pendingRequest.from?.userId == $page.props.auth.user?.id">you have already sent a request to assist.</div>
                                     
                                     <template v-else>
 
@@ -1143,6 +1216,7 @@ function clearGetting() {
                     <div class="flex space-x-2 justify-start items-center w-full overflow-hidden overflow-x-auto p-2">
                         <PrimaryButton @click="clickedReport" class="shrink-0" v-if="$page.props.auth.user">make a report</PrimaryButton>
                         <template v-if="computedTherapy.status !== 'ENDED'">
+                            <!-- able to end all running sessions when creating a session -->
                             <PrimaryButton @click="clickedCreateSession" class="shrink-0" v-if="computedIsCounsellor && computedTherapy.maxSessions > computedTherapy.sessionsHeld">create session</PrimaryButton>
                             <PrimaryButton @click="clickedCreateDiscussion" class="shrink-0" v-if="computedIsCounsellor">create discussion</PrimaryButton>
                             <template v-if="!computedIsInSession">
@@ -1152,20 +1226,20 @@ function clearGetting() {
                                     <DangerButton @click="clickedDelete" class="shrink-0">delete therapy</DangerButton>
                                 </template>
                             </template>
-                            <template v-if="activeSession && activeSession?.status !== 'ABANDONED'">
+                            <!-- <template v-if="activeSession && activeSession?.status !== 'ABANDONED'">
                                 <PrimaryButton
                                     :disabled="!!sessionActionRunning"
-                                    v-if="(['PENDING', 'IN_SESSION_CONFIRMATION'].includes(activeSession?.status) && userId !== activeSession?.updatedById) && activeSession?.status !== 'IN_SESSION' && timer.beforeEnd > 0"
+                                    v-if="([SessionStatuses.pending, SessionStatuses.inSessionConfirmation].includes(activeSession?.status) && userId !== activeSession?.updatedById) && activeSession?.status !== SessionStatuses.inSession && timer.beforeEnd > 0"
                                     @click="clickedStartSession" class="shrink-0">start session for you</PrimaryButton>
                                 <PrimaryButton
                                     :disabled="!!sessionActionRunning"
-                                    v-if="['PENDING', 'IN_SESSION', 'IN_SESSION_CONFIRMATION'].includes(activeSession?.status) && timer.beforeEnd > 0 && computedIsInSession"
-                                    @click="clickedAbandonSession" class="shrink-0">abondon session</PrimaryButton>
+                                    v-if="[SessionStatuses.pending, SessionStatuses.inSession, SessionStatuses.inSessionConfirmation].includes(activeSession?.status) && timer.beforeEnd > 0 && computedIsInSession"
+                                    @click="clickedAbandonSession" class="shrink-0">abandon session</PrimaryButton>
                                 <PrimaryButton
                                     :disabled="!!sessionActionRunning"
                                     v-if="computedIsInSession && timer.beforeEnd < 0 && userId !== activeSession?.updatedById"
                                     @click="clickedEndSession" class="shrink-0">end session for you</PrimaryButton>
-                            </template>
+                            </template> -->
                         </template>
                     </div>
                 </div>
@@ -1331,17 +1405,29 @@ function clearGetting() {
                 <div class="space-y-3 flex flex-col justify-center items-center" v-if="activeSession">
                     <template v-if="!sessionActionRunning">
                         <PrimaryButton
-                            v-if="(['PENDING', 'IN_SESSION_CONFIRMATION'].includes(activeSession?.status) && userId !== activeSession?.updatedById) && activeSession?.status !== 'IN_SESSION' && timer.beforeEnd > 0"
+                            v-if="([SessionStatuses.pending, SessionStatuses.inSessionConfirmation].includes(activeSession?.status) && userId !== activeSession?.updatedById) && activeSession?.status !== SessionStatuses.inSession && timer.beforeEnd > 0"
                             @click="clickedStartSession" class="shrink-0">start session for you</PrimaryButton>
                         <PrimaryButton
                             v-if="activeSession.type == 'ONLINE'"
                             @click="() => showModal('therapy')" class="shrink-0">show message box</PrimaryButton>
                         <PrimaryButton
-                            v-if="['PENDING', 'IN_SESSION', 'IN_SESSION_CONFIRMATION'].includes(activeSession?.status) && timer.beforeEnd > 0 && computedIsInSession"
-                            @click="clickedAbandonSession" class="shrink-0">abondon session</PrimaryButton>
+                            v-if="[SessionStatuses.pending, SessionStatuses.inSession, SessionStatuses.inSessionConfirmation].includes(activeSession?.status) && timer.beforeEnd > 0 && computedIsInSession"
+                            @click="clickedAbandonSession" class="shrink-0">abandon session</PrimaryButton>
                         <PrimaryButton
-                            v-if="computedIsInSession && timer.beforeEnd < 0 && userId !== activeSession?.updatedById && activeSession?.status !== 'ABANDONED'"
+                            v-if="
+                                (computedIsInSession && timer.beforeEnd < 0 ) && (
+                                    (
+                                        userId !== activeSession?.updatedById && 
+                                        SessionStatuses.heldConfirmation == activeSession?.status
+                                    ) || activeSession?.status == SessionStatuses.inSession
+                                )"
                             @click="clickedEndSession" class="shrink-0">end session for you</PrimaryButton>
+                            <div>{{ (computedIsInSession && timer.beforeEnd < 0 ) && (
+                                    (
+                                        userId !== activeSession?.updatedById && 
+                                        SessionStatuses.heldConfirmation == activeSession?.status
+                                    ) || activeSession?.status == SessionStatuses.inSession
+                                ) ? 'true' : 'false' }}</div>
                     </template>
                     <div v-else class="text-sm text-gray-600 my-2 w-full text-center">performing action...</div>
                 </div>

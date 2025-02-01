@@ -1,8 +1,11 @@
 <template>
     <div
         v-bind="$attrs"
-        class="w-full max-w-[400px] bg-stone-200 p-2 rounded shadow-sm select-none"
-        @dblclick="goToPage"
+        class="w-full max-w-[400px] bg-stone-200 p-2 rounded shadow-sm select-none cursor-pointer"
+        @dblclick="() => {
+            if (useMinimal) return
+            goToPage
+        }"
     >
         <div
             v-if="tag.length"
@@ -14,11 +17,14 @@
         >counsellor account has been deleted</div>
         <div 
             v-else-if="useMinimal" 
-            class="text-gray-600 flex items-center gap-2"
+            class="text-gray-600"
         >
             <!-- TODO: add section that allows viewing specialisation of counsellor -->
-            <div class="capitalize text-sm">{{ counsellor.name }}</div>
-            <div class="text-xs">{{ counsellor.username ? `@${counsellor.username}` : '' }}</div>
+            <div class="flex items-center gap-2 mx-auto">
+                <div class="capitalize text-sm align-middle">{{ counsellor.name }}</div>
+                <div class="text-xs align-middle">{{ counsellor.username ? `@${counsellor.username}` : '' }}</div>
+            </div>
+            <slot></slot>
         </div>
         <div v-else>
             <div class="flex justify-start items-center mb-3 cursor-pointer space-x-2 overflow-hidden overflow-x-auto p-2">

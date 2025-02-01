@@ -114,6 +114,29 @@ class Discussion extends Model
         });
     }
 
+    public function scopeWhereIsParticipant($query, Counsellor $counsellor)
+    {
+        return $query->where(function ($query) use ($counsellor) {
+                $query->whereCounsellor($counsellor);
+            })
+            ->orWhere(function ($query) use ($counsellor) {
+                $query->where('addedby_id', $counsellor->id);
+            });
+    }
+
+    public function scopeWhereInSession($query)
+    {
+        return $query
+            ->whereStatusIn([
+                DiscussionStatusEnum::in_session->value,
+            ]);
+    }
+
+    public function scopeWhereStatusIn($query, $statuses)
+    {
+        return $query->whereIn('status', $statuses);
+    }
+
     public function getNotificationActionData()
     {
         if ($this->for_type == Therapy::class) {
