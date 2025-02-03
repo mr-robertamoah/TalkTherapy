@@ -78,7 +78,7 @@ class GroupTherapy extends Model
             ->whereInSession()
             ->whereFiveOrLessMinutesToStart()
             ->orWhere(function ($query) {
-                $query->whereOnGoing();
+                $query->whereIsOngoing();
             })
             ->first();
     }

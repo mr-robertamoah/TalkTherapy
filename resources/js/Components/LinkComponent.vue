@@ -1,17 +1,46 @@
 <template>
     <div class="rounded p-2" v-bind="$attrs">
         <div
-            class="w-full flex justify-end items-center mr-2 text-xs mb-2"
+            class="w-full flex justify-between items-center mr-2 text-xs mb-2"
         >
+            <div class="text-xs text-gray-400 text-end my-2">{{ link.createdAt }}</div>
+            <div class="flex justify-center items-center gap-2">
+                <div
+                    v-if="status"
+                    class="p-1 rounded w-full ml-auto text-xs text-center"
+                    :class="[!['deleting', 'deactivating'].includes(status) ? 'bg-green-200 text-green-600' : 'bg-red-200 text-red-600']"
+                >{{ status }}</div>
+                <div
+                    class="p-1 rounded w-fit ml-auto text-xs"
+                    :class="{'bg-blue-200 text-blue-600': link.state == 'ACTIVE', 'bg-red-200 text-red-600': link.state == 'IN_ACTIVE'}"
+                >{{ computedState }}</div>
+            </div>
+        </div>
+        <div v-if="displayDetails" class="py-2">
+            <div class="text-gray-600 font-bold mb-1">Details</div>
+            <div class="flex gap-2 ml-2">
+                <div
+                    class="flex justify-center items-center p-2 rounded bg-gray-800"
+                    v-if="link.to"
+                >
+                    to: <span class="ml-2" 
+                            :class="{'capitalize': link.to.isCounsellor}"
+                        >
+                            {{ link.to.isCounsellor ? link.to.name : link.to.username }}
+                        </span>
+                </div>
+                <div
+                    class="flex justify-center items-center p-2 rounded bg-gray-800"
+                >
+                    for: <span class="capitalize ml-2">{{ link.forType }}</span>
+                </div>
+            </div>
             <div
-                v-if="status"
-                class="p-1 rounded w-full ml-auto mr-2 text-xs text-center mb-2"
-                :class="[!['deleting', 'deactivating'].includes(status) ? 'bg-green-200 text-green-600' : 'bg-red-200 text-red-600']"
-            >{{ status }}</div>
+                v-if="link.to" 
+                class="text-xs text-gray-400 text-center my-2">Only this {{ link.to.isCounsellor ? 'counsellor' : 'user' }} can use this link.</div>
             <div
-                class="p-1 rounded w-fit ml-auto mr-2 text-xs mb-2"
-                :class="{'bg-blue-200 text-blue-600': link.state == 'ACTIVE', 'bg-red-200 text-red-600': link.state == 'IN_ACTIVE'}"
-            >{{ computedState }}</div>
+                v-else
+                class="text-xs text-gray-400 text-center my-2">All counsellors can use this link.</div>
         </div>
         <div class="flex justify-start items-center space-x-2 text-sm text-gray-600 overflow-hidden overflow-x-auto">
             <div class="flex justify-end my-2">
@@ -20,16 +49,28 @@
                     title="copy"
                     class="cursor-pointer w-5 h-5 text-green-600"/>
             </div>
-            <div class="flex justify-center items-center p-2 rounded bg-gray-100" v-if="link.to">to: <span class="ml-2" :class="{'capitalize': link.to.isCounsellor}">{{ link.to.isCounsellor ? link.to.name : link.to.username }}</span></div>
-            <div class="underline text-xs text-blue-600 text-nowrap">www.talktherapy.tech/links/{{ link.uuid }}</div>
-            <div class="flex justify-center items-center p-2 rounded bg-gray-100" v-if="link.forType">for: <span class="capitalize">{{ link.forType }}</span></div>
+            <div class="underline text-xs text-blue-600 text-ellipsis">www.talktherapy.tech/links/{{ link.uuid }}</div>
         </div>
-        <div class="text-xs text-gray-400 text-center my-2" v-if="link.to">only this {{ link.to.isCounsellor ? 'counsellor' : 'user' }} can use this link.</div>
-        <div class="text-xs text-gray-400 text-end my-2">{{ link.createdAt }}</div>
-        <div class="flex flex-wrap justify-end space-x-2 items-center">
-            <PrimaryButton :disabled="loading" v-if="link.state == 'IN_ACTIVE'" @click="changeStatus">activate</PrimaryButton>
-            <PrimaryButton :disabled="loading" v-if="link.state == 'ACTIVE'" @click="changeStatus">deactivate</PrimaryButton>
-            <DangerButton :disabled="loading" @click="() => showModal('delete')">delete</DangerButton>
+        <div class="flex flex-wrap justify-end space-x-2 items-center" v-if="!loading">
+            <div 
+                v-if="link.to || link.forType"
+                @click="() => displayDetails= !displayDetails"
+                class="ml-2 text-xs underline text-gray-600 cursor-pointer hover:text-blue-600"
+            >{{ displayDetails ? 'hide' : 'show' }} details</div>
+            <div 
+                v-if="link.state == 'IN_ACTIVE'"
+                @click="changeStatus"
+                class="ml-2 text-xs underline text-gray-600 cursor-pointer hover:text-blue-600"
+            >activate</div>
+            <div 
+                v-if="link.state == 'ACTIVE'"
+                @click="changeStatus"
+                class="ml-2 text-xs underline text-gray-600 cursor-pointer hover:text-red-600"
+            >deactivate</div>
+            <div
+                @click="() => showModal('delete')"
+                class="ml-2 text-xs underline text-gray-600 cursor-pointer hover:text-red-600"
+            >delete</div>
         </div>
     </div>
 
@@ -84,12 +125,21 @@ const props = defineProps({
     }
 })
 
+const displayDetails = ref(false)
 const loading = ref(false)
 const status = ref('')
 
 const computedState = computed(() => {
     return props.link?.state == 'ACTIVE' ? 'active' : 'inactive'
 })
+
+function showDetails() {
+    displayDetails.value = true
+}
+
+function hideDetails() {
+    displayDetails.value = false
+}
 
 async function deleteTheLink() {
     loading.value = true

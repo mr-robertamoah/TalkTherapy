@@ -18,6 +18,8 @@ class CreateRequestAction extends Action
 
         $request->for()->associate($createRequestDTO->for);
 
+        $request->from()->associate($createRequestDTO->from);
+
         $request->save();
 
         return $request->refresh();

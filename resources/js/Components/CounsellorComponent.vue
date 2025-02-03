@@ -1,56 +1,32 @@
-<script setup>
-import { ref } from 'vue';
-import Avatar from './Avatar.vue';
-import CounsellorModal from './CounsellorModal.vue';
-import ActivityBadge from './ActivityBadge.vue';
-import { router } from '@inertiajs/vue3';
-
-const props = defineProps({
-    counsellor: {
-        default: null
-    },
-    hasView: {
-        type: Boolean,
-        default: true
-    },
-    visitPage: {
-        type: Boolean,
-        default: true
-    },
-    online: {
-        type: Boolean,
-        default: false
-    },
-    forRequest: {
-        type: Boolean,
-        default: false
-    }
-})
-
-const emits = defineEmits(['onResponse', 'dblclick'])
-
-const view = ref(false)
-const selectedItem = ref(null)
-
-function clickedResponse(response) {
-    emits('onResponse', response)
-}
-
-function goToPage() {
-    emits('dblclick')
-    if (props.visitPage && props.counsellor)
-        router.get(route('counsellor.show', { counsellorId: props.counsellor.id}))
-}
-</script>
-
 <template>
     <div
         v-bind="$attrs"
-        class="w-full max-w-[400px] bg-stone-200 p-2 rounded shadow-sm select-none"
-        @dblclick="goToPage"
+        class="w-full max-w-[400px] bg-stone-200 p-2 rounded shadow-sm select-none cursor-pointer"
+        @dblclick="() => {
+            if (useMinimal) return
+            goToPage
+        }"
     >
-        <div v-if="counsellor.deleted" class="p-2 text-red-700 text-center text-sm">counsellor account has been deleted</div>
-        <template v-else>
+        <div
+            v-if="tag.length"
+            class="bg-blue-600 text-blue-100 px-2 py-1 text-xs w-fit rounded ml-auto"
+        >{{ tag }}</div>
+        <div 
+            v-if="counsellor.deleted" 
+            class="p-2 text-red-700 text-center text-sm"
+        >counsellor account has been deleted</div>
+        <div 
+            v-else-if="useMinimal" 
+            class="text-gray-600"
+        >
+            <!-- TODO: add section that allows viewing specialisation of counsellor -->
+            <div class="flex items-center gap-2 mx-auto">
+                <div class="capitalize text-sm align-middle">{{ counsellor.name }}</div>
+                <div class="text-xs align-middle">{{ counsellor.username ? `@${counsellor.username}` : '' }}</div>
+            </div>
+            <slot></slot>
+        </div>
+        <div v-else>
             <div class="flex justify-start items-center mb-3 cursor-pointer space-x-2 overflow-hidden overflow-x-auto p-2">
                 <Avatar class="shrink-0" :avatar-text="'...'" :size="40" :src="counsellor?.avatar ?? ''"/>
                 <div class="text-gray-600 flex justify-start items-center shrink-0 space-x-2 text-xs sm:text-sm md:text-base">
@@ -124,7 +100,7 @@ function goToPage() {
                     ></div>
                 </div>
             </div>
-        </template>
+        </div>
     </div>
 
     <CounsellorModal
@@ -133,3 +109,56 @@ function goToPage() {
         :counsellor="counsellor"
     />
 </template>
+
+<script setup>
+import { ref } from 'vue';
+import Avatar from './Avatar.vue';
+import CounsellorModal from './CounsellorModal.vue';
+import ActivityBadge from './ActivityBadge.vue';
+import { router } from '@inertiajs/vue3';
+
+const props = defineProps({
+    counsellor: {
+        default: null
+    },
+    hasView: {
+        type: Boolean,
+        default: true
+    },
+    tag: {
+        type: String,
+        default: ''
+    },
+    useMinimal: {
+        type: Boolean,
+        default: false
+    },
+    visitPage: {
+        type: Boolean,
+        default: true
+    },
+    online: {
+        type: Boolean,
+        default: false
+    },
+    forRequest: {
+        type: Boolean,
+        default: false
+    }
+})
+
+const emits = defineEmits(['onResponse', 'dblclick'])
+
+const view = ref(false)
+const selectedItem = ref(null)
+
+function clickedResponse(response) {
+    emits('onResponse', response)
+}
+
+function goToPage() {
+    emits('dblclick')
+    if (props.visitPage && props.counsellor)
+        router.get(route('counsellor.show', { counsellorId: props.counsellor.id}))
+}
+</script>

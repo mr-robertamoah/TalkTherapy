@@ -14,12 +14,18 @@ class TherapyResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
+        // TODO load up active session and discussion
         $activeSession = null;
+        $activeDiscussion = null;
         $user = $request->user();
         $counsellor = $this->counsellor()->withTrashed()->first();
 
         if ($user && $this->isParticipant($user))
-            $activeSession = $this->activeSession;
+            $activeSession = $this->getActiveSession($user);
+
+        if ($user?->counsellor)
+            $activeDiscussion = $this->getActiveDiscussion($user->counsellor);
+
         
         return [
             'id' => $this->id,
@@ -47,6 +53,7 @@ class TherapyResource extends JsonResource
             'topicsCount' => $this->topicsCount,
             'createdAt' => $this->created_at,
             'activeSession' => $activeSession ? new SessionResource($activeSession) : null,
+            'activeDiscussion' => $activeDiscussion ? new DiscussionResource($activeDiscussion) : null,
         ];
     }
 }

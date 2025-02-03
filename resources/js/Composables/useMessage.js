@@ -24,6 +24,7 @@ export default function useMessage() {
         id: null,
     })
     const files = ref([])
+    const messageArea = ref(null)
     const deletedFiles = ref([])
     const showAttachmentIcons = ref(false)
     const replyingMessage = ref(null)
@@ -193,11 +194,18 @@ export default function useMessage() {
         message.value.replying = { ...data }
     }
 
+    async function scrollToBottom() {
+        await nextTick()
+    
+        if (messageArea.value) messageArea.value.scrollTop = messageArea.value.scrollHeight
+    }
+
     return { 
         message, files, deletedFiles, showAttachmentIcons, messageFilesInput,
-        computedHasMessage, mediaCaptureData, replyingMessage,
+        computedHasMessage, mediaCaptureData, replyingMessage, messageArea,
         changeFile , clickedIcon, removeUploadFile, scrollToMessageId,
         showMediaCapture, closeMediaCapture, resetMessage, removeReply,
-        sendMessage, updateMessage, selectForUpdate, selectAsReply
+        sendMessage, updateMessage, selectForUpdate, selectAsReply,
+        scrollToBottom
     }
 }

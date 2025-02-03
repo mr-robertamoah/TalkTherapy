@@ -3,7 +3,8 @@
 namespace App\Events;
 
 use App\Models\Counsellor;
-use App\Models\Discussion;
+use App\Models\Request;
+use App\Models\Therapy;
 use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PresenceChannel;
@@ -12,14 +13,14 @@ use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
-class DiscussionCounsellorRemovedEvent implements ShouldBroadcast
+class DiscussionRequestResponseEvent implements ShouldBroadcast
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
     /**
      * Create a new event instance.
      */
-    public function __construct(private Discussion $discussion, private Counsellor $counsellor)
+    public function __construct(private Request $request)
     {
         //
     }
@@ -32,19 +33,23 @@ class DiscussionCounsellorRemovedEvent implements ShouldBroadcast
     public function broadcastOn(): array
     {
         return [
-            new PresenceChannel("discussions.{$this->discussion->id}"),
+            new PrivateChannel("counsellors.{$this->request->for->addedby->id}"),
         ];
     }
 
     public function broadcastAs(): string
     {
-        return 'discussion.removecounsellor';
+        return 'discussion.request.response';
     }
 
     public function broadcastWith(): array
     {
         return [
-            'counsellorId' => $this->counsellor->id
+            'forName' => $this->request->for->name,
+            'counsellorName' => $this->request->to->name,
+            'status' => $this->request->status,
+            'forType' => $this->request->for->for_type == Therapy::class ? 'Therapy' : 'GroupTherapy',
+            'forId' => $this->request->for->for_id,
         ];
     }
 }

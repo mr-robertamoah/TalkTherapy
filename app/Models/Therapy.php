@@ -42,7 +42,7 @@ class Therapy extends Model
             })
             ->orWhere(function ($query) {
                 $query->whereTherapyId($this->id);
-                $query->whereOnGoing();
+                $query->whereIsOngoing();
             })
             ->first();
     }
@@ -78,6 +78,29 @@ class Therapy extends Model
             return str_replace('_', ' ', TherapyStatusEnum::in_session->value);
         
         return $this->status;
+    }
+
+    public function getActiveDiscussion(Counsellor $counsellor)
+    {
+        return $this->discussions()
+            ->where(function ($query) use ($counsellor) {
+                $query
+                    ->whereIsParticipant($counsellor)
+                    ->whereIsOngoing();
+            })
+            ->first();
+    }
+
+    public function getActiveSession(User $user)    
+    {
+        return $this->sessions()
+            ->where(function ($query) use ($user) {
+                $query
+                    ->whereIsParticipant($user)
+                    ->whereIsNotUserWhoConfirmedHeld($user)
+                    ->whereIsOngoing();
+            })
+            ->first();
     }
 
     public function addedby()
@@ -128,7 +151,11 @@ class Therapy extends Model
 
     public function isParticipant(User $user)
     {
-        return $this->addedby->is($user) || $this->counsellor?->user->is($user);
+        if ($this->addedby->is($user)) return true;
+
+        if (!$this->counsellor?->user) return false;
+
+        return $this->counsellor->user->is($user);
     }
 
     public function isNotParticipant(User $user)
@@ -290,6 +317,21 @@ class Therapy extends Model
         return $query->whereHas('guardians', function ($query) use ($user) {
             $query->where('ward_id', $user->id);
         });
+    }
+
+    public function scopeWhereIsParticipant($query, $user)
+    {
+        return $query
+            ->where(function ($query) use ($user) {
+                $query
+                    ->where('addedby_type', $user::class)
+                    ->where('addedby_id', $user->id);
+            })
+            ->when($user->counsellor, function ($query) use ($user) {
+                $query->orWhere(function ($query) use ($user) {
+                    $query->where('counsellor_id', $user->counsellor->id);
+                });
+            });
     }
 
     public function getOtherUsers(User $user)

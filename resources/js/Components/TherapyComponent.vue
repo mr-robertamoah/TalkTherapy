@@ -29,7 +29,7 @@
                 @click="() => clickedSessionAction('start')" class="shrink-0">start session for you</PrimaryButton>
             <PrimaryButton
                 v-if="computedCanAbandon"
-                @click="() => clickedSessionAction('abandon')" class="shrink-0">abondon session</PrimaryButton>
+                @click="() => clickedSessionAction('abandon')" class="shrink-0">abandon session</PrimaryButton>
             <PrimaryButton
                 v-if="computedCanEnd"
                 @click="() => clickedSessionAction('end')" class="shrink-0">end session for you</PrimaryButton>
@@ -166,7 +166,16 @@
                     <div>X</div>
                 </div>
             </div>
-            <div v-if="message.id" class="text-sm text-gray-600 my-2 text-center">updating message</div>
+            <div
+                v-if="message.id"
+                class="flex justify-between items-center"
+            >
+                <div
+                    class="text-gray-300 bg-gray-800 rounded-full p-2 cursor-pointer w-4 flex justify-center items-center text-xs h-4"
+                    @click="resetMessage"
+                >x</div>
+                <div class="text-xs text-gray-600 my-2 text-center">updating message</div>
+            </div>
             <div class="w-[90%] mx-auto min-h-10 flex justify-center items-start space-x-2">
                 <TextBox
                     rows="3"
@@ -300,8 +309,9 @@ import MiniModal from './MiniModal.vue';
 const { goToLogin } = useAuth()
 const {
     message, files, deletedFiles, computedHasMessage, replyingMessage,
-    showAttachmentIcons, messageFilesInput, changeFile, resetMessage, updateMessage,
-    clickedIcon, mediaCaptureData, closeMediaCapture, removeUploadFile, scrollToMessageId,
+    showAttachmentIcons, messageFilesInput, messageArea,changeFile,
+    resetMessage, updateMessage, clickedIcon, mediaCaptureData,
+    closeMediaCapture, removeUploadFile, scrollToMessageId, scrollToBottom,
     selectForUpdate, selectAsReply, removeReply, sendMessage
 } = useMessage()
 const { alertData, setFailedAlertData, clearAlertData, setSuccessAlertData } = useAlert()
@@ -363,7 +373,6 @@ const loading = ref(false)
 const getting = ref(false)
 const setting = ref({show: false, type: ''})
 const listening = ref(false)
-const messageArea = ref(null)
 const pages = ref({
     message: 1,
     session: 1,
@@ -640,12 +649,6 @@ function getMessageTo() {
     }
 
     return to
-}
-
-async function scrollToBottom() {
-    await nextTick()
-
-    if (messageArea.value) messageArea.value.scrollTop = messageArea.value.scrollHeight
 }
 
 function getMessageFrom() {

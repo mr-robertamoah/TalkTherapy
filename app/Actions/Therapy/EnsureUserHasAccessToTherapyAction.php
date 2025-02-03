@@ -12,6 +12,7 @@ class EnsureUserHasAccessToTherapyAction extends Action
 
     public function execute(GetTherapyDTO $getTherapyDTO)
     {
+        // dd($getTherapyDTO);
         if (
             $getTherapyDTO->therapy->public ||
             $getTherapyDTO->therapy->isParticipant($getTherapyDTO->user) ||

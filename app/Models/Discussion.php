@@ -114,18 +114,36 @@ class Discussion extends Model
         });
     }
 
+    public function scopeWhereIsParticipant($query, Counsellor $counsellor)
+    {
+        return $query->where(function ($query) use ($counsellor) {
+                $query->whereCounsellor($counsellor);
+            })
+            ->orWhere(function ($query) use ($counsellor) {
+                $query->where('addedby_id', $counsellor->id);
+            });
+    }
+
+    public function scopeWhereInSession($query)
+    {
+        return $query
+            ->whereStatusIn([
+                DiscussionStatusEnum::in_session->value,
+            ]);
+    }
+
+    public function scopeWhereStatusIn($query, $statuses)
+    {
+        return $query->whereIn('status', $statuses);
+    }
+
     public function getNotificationActionData()
     {
         if ($this->for_type == Therapy::class) {
-            $type = 'Therapy';
-            $url = url("therapies/{$this->for->id}");
+            return ['Therapy', url("therapies/{$this->for->id}")];
         }
-        else {
-            $type = 'Group Therapy';
-            $url = url("group_therapies/{$this->for->id}");
-        }
-        
-        return [$type, $url];
+            
+        return ['Group Therapy', url("group_therapies/{$this->for->id}")];
     }
 
     public function getForChannelName()
@@ -134,5 +152,17 @@ class Discussion extends Model
             return "therapies.{$this->for_id}";
         
         return "grouptherapies.{$this->for_id}";
+    }
+
+    public function doesNotAcceptMessage()
+    {
+        return !$this->acceptsMessage();
+    }
+
+    public function acceptsMessage()
+    {
+        return in_array($this->status, [
+            DiscussionStatusEnum::in_session->value,
+        ]);
     }
 }

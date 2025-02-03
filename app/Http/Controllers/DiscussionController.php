@@ -153,6 +153,63 @@ class DiscussionController extends Controller
             return $this->returnFailure($request, $th);
         }
     }
+    
+    public function endDiscussion(Request $request)
+    {
+        $discussion = Discussion::find($request->discussionId);
+
+        try {
+            $discussion = DiscussionService::new()->endDiscussion(
+                CreateDiscussionDTO::new()->fromArray([
+                    'user' => $request->user(),
+                    'discussion' => $discussion,
+                ])
+            );
+
+            return $this->returnSuccess($request, $discussion);
+        } catch (Throwable $th) {
+            
+            return $this->returnFailure($request, $th);
+        }
+    }
+    
+    public function getInDiscussion(Request $request)
+    {
+        $discussion = Discussion::find($request->discussionId);
+
+        try {
+            $discussion = DiscussionService::new()->getInDiscussion(
+                CreateDiscussionDTO::new()->fromArray([
+                    'user' => $request->user(),
+                    'discussion' => $discussion,
+                ])
+            );
+
+            return $this->returnSuccess($request, $discussion);
+        } catch (Throwable $th) {
+            
+            return $this->returnFailure($request, $th);
+        }
+    }
+    
+    public function abandonDiscussion(Request $request)
+    {
+        $discussion = Discussion::find($request->discussionId);
+
+        try {
+            $discussion = DiscussionService::new()->abandonDiscussion(
+                CreateDiscussionDTO::new()->fromArray([
+                    'user' => $request->user(),
+                    'discussion' => $discussion,
+                ])
+            );
+
+            return $this->returnSuccess($request, $discussion);
+        } catch (Throwable $th) {
+
+            return $this->returnFailure($request, $th);
+        }
+    }
 
     private function returnSuccess(Request $request, Discussion $discussion)
     {

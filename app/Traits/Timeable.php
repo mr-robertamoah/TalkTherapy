@@ -25,13 +25,12 @@ trait Timeable
             ->where('end_time', '>=', $date);
     }
 
-    public function scopeWhereOnGoing($query)
+    public function scopeWhereIsOngoing($query)
     {
         return $query
             ->where(function ($query) {
                 $query
-                    ->where('start_time', '<=', now())
-                    ->where('end_time', '>=', now());
+                    ->whereHasStartedAndNotEnded();
             })
             ->orWhere(function ($query) {
                 $query

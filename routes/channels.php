@@ -19,7 +19,7 @@ use Illuminate\Support\Facades\Broadcast;
 |
 */
 
-Broadcast::channel('App.Models.User.{id}', function ($user, $id) {
+Broadcast::channel('users.{id}', function ($user, $id) {
     return (int) $user->id === (int) $id;
 });
 
@@ -33,8 +33,15 @@ Broadcast::channel('sessions.{sessionId}', function ($user, $sessionId) {
 
 Broadcast::channel('therapies.{therapyId}', function ($user, $therapyId) {
     $therapy = Therapy::find($therapyId);
+    if (!$therapy) return false;
 
-    if (!$therapy || !$therapy?->isParticipant($user)) return false;
+    $counsellor = $user->counsellor;
+    $isCounsellorForDiscussion = $counsellor && $therapy->discussions()->whereIsParticipant($counsellor)->exists();
+    
+    if (
+        !$therapy?->isParticipant($user) &&
+        !$isCounsellorForDiscussion
+    ) return false;
 
     $isUser = ($therapy->addedby_type == User::class && $therapy->addedby_id == $user->id) ||
         ($therapy->addedby_type == Counsellor::class && $therapy->addedby->user_id == $user->id);
@@ -51,13 +58,13 @@ Broadcast::channel('discussions.{discussionId}', function ($user, $discussionId)
     $discussion = Discussion::find($discussionId);
     $counsellor = $user->counsellor;
 
-    if (!$discussion || $counsellor || !$discussion?->isParticipant($counsellor)) return false;
+    if (!$discussion || !$counsellor || !$discussion?->isParticipant($counsellor)) return false;
 
     return [
         'id' => $counsellor->id,
         'userId' => $user->id, 
         'name' => $counsellor->getName(),
-        'avatar' => $counsellor->avatar,
+        'url' => $counsellor->avatar?->url,
     ];
 });
 

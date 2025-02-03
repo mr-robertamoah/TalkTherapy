@@ -40,7 +40,8 @@ class MessageResource extends JsonResource
                 'updatedAt' => $this->updated_at,
             ];
 
-        $counsellor = $fromCounsellor ? $this->from->avatar?->url : $this->to?->counsellor?->avatar?->url;
+        $counsellor = $fromCounsellor ? $this->from : $this->to?->counsellor;
+        $counsellorAvatar = $counsellor->avatar?->url;
 
         $toId = !$fromCounsellor ? $this->to?->user?->id : $this->to_id;
 
@@ -56,23 +57,31 @@ class MessageResource extends JsonResource
                 'type' => $this->type,
                 'updatedAt' => $this->updated_at,
             ];
-            
-        return [
+
+        $forType = str_replace('App\Models\\', '', $this->for_type);
+        $data = [
             'id' => $this->id,
             'fromUserId' => $fromId,
             'toUserId' => $toId,
             'fromCounsellor' => $fromCounsellor,
             'replying' => $this->when($this->replying, new MessageMiniResource($this->replying)),
-            'counsellorAvatar' => $counsellor,
+            'counsellorAvatar' => $counsellorAvatar,
             'content' => $this->content,
             'confidential' => $this->confidential,
             'type' => $this->type,
             'topicId' => $this->therapy_topic_id,
-            'forType' => str_replace('App\Models\\', '', $this->for_type),
+            'forType' => $forType,
             'status' => $this->status,
             'files' => FileResource::collection($this->files),
             'updatedAt' => $this->updated_at,
             'createdAt' => $this->created_at,
         ];
+
+        if ($forType == 'Discussion')  
+            return array_merge($data, [
+                'counsellorName' => $counsellor->getName(),
+            ]);
+            
+        return $data;
     }
 }
