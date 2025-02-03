@@ -3,14 +3,12 @@
 namespace App\Notifications;
 
 use App\Models\Discussion;
-use App\Models\Therapy;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
-use Illuminate\Notifications\Messages\BroadcastMessage;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
-class DiscussionCounsellorRemovedNotification extends Notification implements ShouldQueue
+class DiscussionFailedNotification extends Notification implements ShouldQueue
 {
     use Queueable;
 
@@ -19,7 +17,7 @@ class DiscussionCounsellorRemovedNotification extends Notification implements Sh
      */
     public function __construct(private Discussion $discussion)
     {
-        $this->afterCommit();
+        //
     }
 
     /**
@@ -40,11 +38,10 @@ class DiscussionCounsellorRemovedNotification extends Notification implements Sh
         [$type, $url] = $this->discussion->getNotificationActionData();
 
         return (new MailMessage)
-            ->success()
-            ->subject("Discussion Request")
-            ->greeting("Hello {$notifiable->getName()}!")
-            ->line("You have been removed from the discussion with name: '{$this->discussion->name}' on TalkTherapy app.")
-            ->line("You may not have access to the {$type} anymore.")
+            ->error()
+            ->subject("Discussion Failed.")
+            ->line("For some reason the discussion with name: '{$this->discussion->name}' for {$type} with name: {$this->discussion->for->name} failed to happen.")
+            ->action("Visit {$type} Page", $url)
             ->line("Thank you for choosing to 'TalkTherapy'.");
     }
 
@@ -58,18 +55,5 @@ class DiscussionCounsellorRemovedNotification extends Notification implements Sh
         return [
             //
         ];
-    }
-    
-    public function toBroadcast(object $notifiable): BroadcastMessage
-    {
-        return new BroadcastMessage([
-            'forName' => $this->discussion->for->name,
-            'forType' => $this->discussion->for_type == Therapy::class ? 'Therapy' : 'Group Therapy',
-        ]);
-    }
-
-    public function broadcastType(): string
-    {
-        return 'discussion.counsellor.removed';
     }
 }

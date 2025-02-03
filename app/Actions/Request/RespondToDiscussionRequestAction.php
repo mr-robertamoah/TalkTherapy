@@ -35,8 +35,7 @@ class RespondToDiscussionRequestAction extends Action
             $request->from->notify(
                 new DiscussionInclusionNotification($request->to, $request->for)
             );
-            // TODO make this broadcast
-            DiscussionRequestResponseEvent::broadcast($request);
+            broadcast(new DiscussionRequestResponseEvent($request));
         }
         
         return $request;

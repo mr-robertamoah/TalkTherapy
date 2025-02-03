@@ -397,10 +397,16 @@ const computedLeft = computed(() => {
 })
 const computedUppertext = computed(() => {
     if (props.msg?.name) return ''
-    
+
     if (
         (props.msg?.fromCounsellor && props.msg?.fromUserId == userId)
     ) return 'You'
+
+    if (props.msg?.forType == 'Discussion' && props.msg?.fromUserId !== userId)
+        return props.msg?.counsellorName
+
+    if (props.msg?.forType == 'Discussion' && props.msg?.fromUserId == userId)
+        return 'You'
     
     if (
         (props.msg?.fromCounsellor)

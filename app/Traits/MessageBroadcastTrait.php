@@ -36,26 +36,34 @@ trait MessageBroadcastTrait
             ];
 
             
-        $counsellor = $fromCounsellor ? $message->from->avatar?->url : $message->to?->counsellor?->avatar?->url;
+        $counsellor = $fromCounsellor ? $message->from : $message->to?->counsellor;
+        $counsellorAvatar = $counsellor->avatar?->url;
             
         $toId = !$fromCounsellor ? $message->to?->user?->id : $message->to_id;
-            
-        return [
+        $forType = str_replace('App\Models\\', '', $message->for_type);
+        $data = [
             'id' => $message->id,
             'fromUserId' => $fromId,
             'toUserId' => $toId,
             'fromCounsellor' => $fromCounsellor,
             'replying' => $message->replying ? new MessageMiniResource($message->replying) : null,
-            'counsellorAvatar' => $counsellor,
+            'counsellorAvatar' => $counsellorAvatar,
             'content' => $message->content,
             'confidential' => $message->confidential,
             'type' => $message->type,
             'topicId' => $message->therapy_topic_id,
-            'forType' => str_replace('App\Models\\', '', $message->for_type),
+            'forType' => $forType,
             'status' => $message->status,
             'files' => FileResource::collection($message->files),
             'updatedAt' => $message->updated_at,
             'createdAt' => $message->created_at,
         ];
+
+        if ($forType == 'Discussion')  
+            return array_merge($data, [
+                'counsellorName' => $counsellor->getName(),
+            ]);
+
+        return $data;
     }
 }

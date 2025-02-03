@@ -20,15 +20,23 @@ use Illuminate\Support\Facades\Schedule;
 
 Schedule::call(function () {
     AppService::new()->notifyParticipantsOfStartingSessions();
-})->everyThirtyMinutes();
+})->everyFiveMinutes();
 
 Schedule::call(function () {
     AppService::new()->failUnheldSessions();
 })->everyFourHours();
 
 Schedule::call(function () {
-    AppService::new()->broadcastStartedSessions();
-})->everyFiveMinutes();
+    AppService::new()->broadcastStartedSessionsAndDiscussions();
+})->everyMinute();
+
+Schedule::call(function () {
+    AppService::new()->notifyParticipantsOfStartingDiscussions();
+})->everyMinute();
+
+Schedule::call(function () {
+    AppService::new()->failUnheldDiscussions();
+})->everyFourHours();
 
 Schedule::call(function () {
     AppService::new()->clearVisitors();

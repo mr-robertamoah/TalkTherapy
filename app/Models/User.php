@@ -7,6 +7,7 @@ use Carbon\Carbon;
 use Illuminate\Contracts\Auth\MustVerifyEmail as MustVerifyEmailContract;
 
 use Illuminate\Auth\MustVerifyEmail;
+use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
@@ -70,6 +71,11 @@ class User extends Authenticatable implements MustVerifyEmailContract
         return [
             $this->email => $this->name
         ];
+    }
+
+    public function routeNotificationForBroadcast()
+    {
+        return new PrivateChannel("users.{$this->id}");
     }
 
     public function getNameAttribute()

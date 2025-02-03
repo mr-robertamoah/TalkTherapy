@@ -35,8 +35,14 @@ class MessageSentEvent implements ShouldBroadcast
      */
     public function broadcastOn(): array
     {
+        $broadcastName = $this->getMessageBroadcastName($this->message);
+        // ds($broadcastName);
+        $channel = str_contains($broadcastName, 'discussion') ?
+            new PresenceChannel($broadcastName) :
+            new PrivateChannel($broadcastName);
+
         return [
-            new PrivateChannel($this->getMessageBroadcastName($this->message))
+            $channel
         ];
     }
 
@@ -47,8 +53,10 @@ class MessageSentEvent implements ShouldBroadcast
 
     public function broadcastWith(): array
     {
+        $data = $this->getMessageBroadcastData($this->message);
+        // ds($data);
         return [
-            'message' => $this->getMessageBroadcastData($this->message)
+            'message' => $data
         ];
     }
 }

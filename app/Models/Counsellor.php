@@ -7,6 +7,7 @@ use App\Enums\RequestStatusEnum;
 use App\Enums\RequestTypeEnum;
 use App\Enums\TherapyPaymentTypeEnum;
 use App\Traits\Likeable;
+use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphToMany;
@@ -40,6 +41,11 @@ class Counsellor extends Model
         return [
             $this->email => $this->getName()
         ];
+    }
+
+    public function routeNotificationForBroadcast()
+    {
+        return new PrivateChannel("counsellors.{$this->id}");
     }
 
     public function getFreeTherapiesCountAttribute()

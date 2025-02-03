@@ -170,6 +170,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/discussions/{discussionId}/counsellors', [DiscussionController::class, 'getDiscussionCounsellors'])->name('api.discussions.counsellors');
     Route::post('/discussions/{discussionId}/removecounsellor', [DiscussionController::class, 'removeCounsellor'])->name('api.discussions.removecounsellor');
     Route::post('/discussions/{discussionId}/request', [DiscussionController::class, 'sendCounsellorRequest'])->name('api.discussions.request');
+    Route::post('/discussions/{discussionId}/in_session', [DiscussionController::class, 'getInDiscussion'])->name('api.discussions.in_session');
+    Route::post('/discussions/{discussionId}/abandon', [DiscussionController::class, 'abandonDiscussion'])->name('api.discussions.abandon');
+    Route::post('/discussions/{discussionId}/end', [DiscussionController::class, 'endDiscussion'])->name('api.discussions.end');
 
     Route::post('/therapies/{therapyId}/assist', [TherapyController::class, 'sendAssistanceRequest'])->name('therapies.assist');
     Route::post('/therapies', [TherapyController::class, 'createTherapy'])->name('therapies.create');

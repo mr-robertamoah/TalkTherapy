@@ -32,7 +32,7 @@ class TestEvent implements ShouldBroadcastNow
     public function broadcastOn(): array
     {
         return [
-            new PrivateChannel("App.Models.User.{$this->user->id}"),
+            new PrivateChannel("users.{$this->user->id}"),
         ];
     }
 

@@ -140,15 +140,10 @@ class Discussion extends Model
     public function getNotificationActionData()
     {
         if ($this->for_type == Therapy::class) {
-            $type = 'Therapy';
-            $url = url("therapies/{$this->for->id}");
+            return ['Therapy', url("therapies/{$this->for->id}")];
         }
-        else {
-            $type = 'Group Therapy';
-            $url = url("group_therapies/{$this->for->id}");
-        }
-        
-        return [$type, $url];
+            
+        return ['Group Therapy', url("group_therapies/{$this->for->id}")];
     }
 
     public function getForChannelName()
@@ -168,7 +163,6 @@ class Discussion extends Model
     {
         return in_array($this->status, [
             DiscussionStatusEnum::in_session->value,
-            DiscussionStatusEnum::in_session_confirmation->value,
         ]);
     }
 }

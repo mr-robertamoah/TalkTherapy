@@ -17,12 +17,14 @@ class SessionDueNotification extends Notification implements ShouldQueue
 {
     use Queueable;
 
+    private array $notificationActionData = [];
     /**
      * Create a new notification instance.
      */
     public function __construct(public Session $session)
     {
         $this->afterCommit();
+        $this->notificationActionData = $this->session->getNotificationActionData();
     }
 
     /**
@@ -45,16 +47,15 @@ class SessionDueNotification extends Notification implements ShouldQueue
      */
     public function toMail(object $notifiable): MailMessage
     {
-        [$type, $url] = $this->session->getNotificationActionData();
         $name = $notifiable::class == Counsellor::class ? $notifiable->getName() : $notifiable->name;
         
         return (new MailMessage)
             ->success()
             ->subject("'{$this->session->name}' Session")
             ->greeting("Hello {$name}!")
-            ->line("The session with name: '{$this->session->name}' which was created for " . "'{$this->session->for->name}' " . ($this->session->for->isTherapy ? "Therapy" : "Group Therapy") . " is about to start.")
+            ->line("The session with name: '{$this->session->name}' which was created for " . "'{$this->session->for->name}' " . $this->notificationActionData[0] . " is about to start.")
             ->line("This session will be starting in less than 30 minutes. Please do not disappoint. Be on time.")
-            ->action("Visit {$type} Page now", $url)
+            ->action("Visit {$this->notificationActionData[0]} Page now", $this->notificationActionData[1])
             ->line("Thank you for choosing to 'TalkTherapy'.");
     }
 

@@ -32,7 +32,7 @@ class DiscussionCounsellorRemovedEvent implements ShouldBroadcast
     public function broadcastOn(): array
     {
         return [
-            new PresenceChannel($this->discussion->getForChannelName()),
+            new PresenceChannel("discussions.{$this->discussion->id}"),
         ];
     }
 

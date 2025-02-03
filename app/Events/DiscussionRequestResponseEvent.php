@@ -33,22 +33,23 @@ class DiscussionRequestResponseEvent implements ShouldBroadcast
     public function broadcastOn(): array
     {
         return [
-            new PresenceChannel("counsellors.{$this->request->for->addedby->id}"),
+            new PrivateChannel("counsellors.{$this->request->for->addedby->id}"),
         ];
     }
 
     public function broadcastAs(): string
     {
-        return 'request.response';
+        return 'discussion.request.response';
     }
 
     public function broadcastWith(): array
     {
         return [
-            'name' => $this->request->to->name,
+            'forName' => $this->request->for->name,
+            'counsellorName' => $this->request->to->name,
             'status' => $this->request->status,
-            'forType' => $this->request->forType == Therapy::class ? 'Therapy' : 'GroupTherapy',
-            'forId' => $this->request->forId,
+            'forType' => $this->request->for->for_type == Therapy::class ? 'Therapy' : 'GroupTherapy',
+            'forId' => $this->request->for->for_id,
         ];
     }
 }

@@ -21,8 +21,15 @@ export default function useConsts() {
         held: 'HELD',
         heldConfirmation: 'HELD_CONFIRMATION',
     }
+    const DiscussionStatuses = {
+        pending: 'PENDING',
+        inSession: 'IN_SESSION',
+        failed: 'FAILED',
+        abandoned: 'ABANDONED',
+        held: 'HELD',
+    }
 
     return {
-        RequestTypes, RequestStatuses, SessionStatuses
+        RequestTypes, RequestStatuses, SessionStatuses, DiscussionStatuses
     }
 }
