@@ -682,10 +682,7 @@ function sessionAbandoned() {
         ? 'User has abandoned the session. You can no more continue.'
         : 'Counsellor has abandoned the session. You can no more continue.'
 
-    setSuccessAlertData({
-        message,
-        time: 10000
-    })
+    setSuccessAlertData({message})
 }
 
 function confirmSessionHeld() {
@@ -693,10 +690,7 @@ function confirmSessionHeld() {
         ? 'User has ended the session on his/her end. You can no more continue. Please end the session on your end.'
         : 'Counsellor ended the session on his/her end. You can no more continue. Please end the session on your end.'
 
-    setSuccessAlertData({
-        message,
-        time: 10000
-    })
+    setSuccessAlertData({message})
 }
 
 function confirmInSession() {
@@ -704,10 +698,7 @@ function confirmInSession() {
         ? 'User has started the session on his/her end. Please start the session on your end.'
         : 'Counsellor ended the session on his/her end. Please start the session on your end.'
 
-    setSuccessAlertData({
-        message,
-        time: 10000
-    })
+    setSuccessAlertData({message})
 }
 
 function clickedSwitchToActiveSession() {
@@ -836,7 +827,6 @@ async function setCurrentTopicOnBackend() {
             console.log(res)
             setSuccessAlertData({
                 message: `'${currentTopic.value.name}' has successfully been set as current topic.`,
-                time: 4000
             })
 
             addCurrentTopicToChat()
@@ -849,14 +839,12 @@ async function setCurrentTopicOnBackend() {
             if (err?.response?.message) {
                 setFailedAlertData({
                     message: err?.response?.message,
-                    time: 5000
                 })
                 return
             }
 
             setFailedAlertData({
                 message: 'Failed to set topic is current topic. Please try again shortly.',
-                time: 5000
             })
 
             goToLogin(err)
@@ -879,7 +867,6 @@ async function unsetCurrentTopicOnBackend() {
             console.log(res)
             setSuccessAlertData({
                 message: `'${currentTopic.value.name}' has successfully been removed as current topic.`,
-                time: 4000
             })
 
             removeCurrentTopicFromChat()
@@ -890,14 +877,12 @@ async function unsetCurrentTopicOnBackend() {
             if (err?.response?.message) {
                 setFailedAlertData({
                     message: err?.response?.message,
-                    time: 5000
                 })
                 return
             }
 
             setFailedAlertData({
                 message: 'Failed to remove topic is current. Please try again shortly.',
-                time: 5000
             })
 
             goToLogin(err)
@@ -1095,7 +1080,6 @@ async function getSessionMessages() {
                 selectedSession.value = null
                 setFailedAlertData({
                     message: 'You have made too many requests within a short period. Try again shortly.',
-                    time: 5000
                 })
                 return
             }
@@ -1142,7 +1126,6 @@ async function getTopicMessages() {
                 selectedSession.value = null
                 setFailedAlertData({
                     message: 'You have made too many requests within a short period. Try again shortly.',
-                    time: 5000
                 })
                 return
             }

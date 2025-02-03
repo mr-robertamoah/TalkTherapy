@@ -103,7 +103,6 @@ async function createComment() {
 
         setFailedAlertData({
             message: "Commenting failed. Something unfortunate happened. Please try again shortly.",
-            time: 4000
         })
     })
     .finally(() => {

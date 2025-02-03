@@ -72,7 +72,6 @@ async function removeGuardianship() {
             
             setSuccessAlertData({
                 message: 'The guardianship has been successfully removed.',
-                time: 4000
             })
 
             emits('removed', props.data)
@@ -83,7 +82,6 @@ async function removeGuardianship() {
             if (err.response?.data?.message) {
                 setFailedAlertData({
                     message: err.response.data.message,
-                    time: 5000,
                 })
                 return
             }
@@ -91,14 +89,12 @@ async function removeGuardianship() {
             if (err.alert) {
                 setFailedAlertData({
                     message: err.alert,
-                    time: 5000,
                 })
                 return
             }
 
             setFailedAlertData({
                 message: 'Something unfortunate happened. Please try again later.',
-                time: 4000
             })
         })
         .finally(() => {

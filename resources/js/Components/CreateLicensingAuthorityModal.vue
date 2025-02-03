@@ -134,7 +134,6 @@ async function createLicensingAuthory() {
             show: true,
             message: 'Please provide email or phone number of licensing body.',
             type: 'failed',
-            time: 4000
         })
         return
     }
@@ -146,7 +145,6 @@ async function createLicensingAuthory() {
             show: true,
             message: 'Please the name of the licensing authority.',
             type: 'failed',
-            time: 4000
         })
         return
     }
@@ -158,7 +156,6 @@ async function createLicensingAuthory() {
             show: true,
             message: 'Please the type (governmental, international, etc) the licensing authority.',
             type: 'failed',
-            time: 4000
         })
         return
     }
@@ -170,7 +167,6 @@ async function createLicensingAuthory() {
             show: true,
             message: 'Select the type of institution this licensing authority is (governmental, international, etc).',
             type: 'failed',
-            time: 4000
         })
         return
     }
@@ -182,7 +178,6 @@ async function createLicensingAuthory() {
             show: true,
             message: 'Please provide the type licensing authority since you selected OTHER.',
             type: 'failed',
-            time: 4000
         })
         return
     }
@@ -220,7 +215,6 @@ async function createLicensingAuthory() {
         if (err.response?.data?.message) {
             setFailedAlertData({
                 message: err.response.data.message,
-                time: 4000,
             })
             return
         }

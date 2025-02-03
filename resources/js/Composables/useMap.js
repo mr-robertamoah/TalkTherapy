@@ -38,7 +38,6 @@ export default function useMap(zoom = 15) {
                     
                     setFailedAlertData({
                         message: 'Something happened while getting google maps.',
-                        time: 5000,
                     })
                 })
         }
@@ -54,7 +53,6 @@ export default function useMap(zoom = 15) {
                     
                     setFailedAlertData({
                         message: 'Something happened while getting google map markers.',
-                        time: 5000,
                     })
                 })
             }

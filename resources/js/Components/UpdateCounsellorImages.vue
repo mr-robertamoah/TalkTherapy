@@ -214,17 +214,17 @@ function thereIsNoData() {
                     <div class="w-full mx-auto max-w-[700px] bg-gray-200 sm:rounded-lg p-6 pb-20 relative">
                         <div class="w-full text-justify capitalize mt-4 mb-1 text-lg font-medium text-gray-900">Profile Images</div>
                         <div class="relative p-1 text-gray-900 text-center bg-gray-300 w-full h-[200px] sm:h-[250px] md:h-[300px]">
-                            <div class="absolute p-2 top-2 right-2 flex justify-end items-center">
-                                <div
-                                    v-if="counsellor.cover"
-                                    @click="deleteCover"
-                                    class="w-fit p-2 transition duration-75 text-xs sm:text-sm tracking-wide rounded cursor-pointer mr-2"
-                                    :class="[!coverUrl ? 'hover:bg-green-600 hover:text-green-200 bg-green-300 text-green-700' : 'hover:bg-red-600 hover:text-red-200 bg-red-300 text-red-700']"
-                                >{{ !coverUrl ? 'restore' : 'remove' }} image</div>
+                            <div class="absolute p-2 top-2 right-2 flex justify-end items-center gap-2">
                                 <div
                                     @click="() => clickedChangeFile('cover')"
                                     class="w-fit p-2 hover:bg-gray-600 hover:text-gray-200 transition duration-75 bg-gray-300 text-gray-700 text-xs sm:text-sm tracking-wide rounded cursor-pointer"
                                 >{{ computedCoverUrl ? 'change' : 'add' }} cover image</div>
+                                <div
+                                    v-if="counsellor.cover"
+                                    @click="deleteCover"
+                                    class="w-fit p-2 transition duration-75 text-xs sm:text-sm tracking-wide rounded cursor-pointer"
+                                    :class="[!coverUrl ? 'hover:bg-green-600 hover:text-green-200 bg-green-300 text-green-700' : 'hover:bg-red-600 hover:text-red-200 bg-red-300 text-red-700']"
+                                >{{ !coverUrl ? 'restore' : 'remove' }} image</div>
                             </div>
                             <img 
                                 :src="computedCoverUrl ?? ''" 
@@ -238,7 +238,7 @@ function thereIsNoData() {
 
                             <div class="flex items-center z-[1] space-x-2">
                                 <Avatar :size="80" :src="computedAvatarUrl ?? ''" :alt="'counsellor avatar'"/>
-                                <div class="flex justify-center space-y-2 xs:space-y-0 xs:space-x-2 flex-col xs:flex-row">
+                                <div class="flex justify-center z-10 space-y-2 xs:space-y-0 xs:space-x-2 flex-col xs:flex-row">
                                     <div
                                         @click="() => clickedChangeFile('avatar')"
                                         class="w-fit p-2 text-center hover:bg-gray-600 hover:text-gray-200 transition duration-75 bg-gray-300 text-gray-700 text-xs xs:text-sm tracking-wide rounded cursor-pointer z-0 xs:-z-[1]"

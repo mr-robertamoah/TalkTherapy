@@ -324,7 +324,6 @@ async function createPost() {
             if (err.response?.data?.message) {
                 setFailedAlertData({
                     message: err.response.data.message,
-                    time: 4000,
                 })
                 return
             }
@@ -367,14 +366,12 @@ async function clickedDislike() {
             if (err.response?.data?.message) {
                 setFailedAlertData({
                     message: err.response.data.message,
-                    time: 4000,
                 })
                 return
             }
 
             setFailedAlertData({
                 message: "Unliking failed, please try again shortly.",
-                time: 4000,
             })
         })
         .finally(() => {
@@ -410,14 +407,12 @@ async function clickedLike() {
             if (err.response?.data?.message) {
                 setFailedAlertData({
                     message: err.response.data.message,
-                    time: 4000,
                 })
                 return
             }
 
             setFailedAlertData({
                 message: "Liking failed, please try again shortly.",
-                time: 4000,
             })
         })
         .finally(() => {

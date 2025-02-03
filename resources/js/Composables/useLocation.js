@@ -26,7 +26,6 @@ export default function useLocation() {
                     console.log(err)
                     setFailedAlertData({
                         message: 'Something happened while getting location. Try again later or check your browser settings.',
-                        time: 5000,
                     })
                 },
                 {
@@ -38,7 +37,6 @@ export default function useLocation() {
         } else {
             setFailedAlertData({
                 message: 'Your browser does not support getting location.',
-                time: 5000,
             })
         }
     }

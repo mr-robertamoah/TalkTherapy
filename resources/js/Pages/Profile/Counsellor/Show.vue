@@ -87,7 +87,6 @@ watchEffect(
         if (props.errors.message)
             setFailedAlertData({
                 message: props.errors.message,
-                time: 5000
             })
     }
 )
@@ -132,7 +131,6 @@ function alertCounsellor() {
         show: true,
         message,
         type: 'failed',
-        time: 4000
     })
 }
 
@@ -168,7 +166,6 @@ function verifyCounsellor() {
             show: true,
             message: 'Your gender is required. Please have it set in your User Profile.',
             type: 'failed',
-            time: 4000
         })
         return
     }
@@ -181,7 +178,6 @@ function verifyCounsellor() {
             show: true,
             message: 'Your phone number and email must be set in your Counsellor Profile. We may have to contact you during verification.',
             type: 'failed',
-            time: 4000
         })
         return
     }
@@ -193,7 +189,6 @@ function verifyCounsellor() {
             show: true,
             message: 'Your email has to be verified. If you have not yet received an email then request one in your Counsellor Profile.',
             type: 'failed',
-            time: 4000
         })
         return
     }
@@ -206,7 +201,6 @@ function verifyCounsellor() {
             show: true,
             message: 'You are required to provide your National ID number or a file/image of the ID.',
             type: 'failed',
-            time: 4000
         })
         return
     }
@@ -218,7 +212,6 @@ function verifyCounsellor() {
             show: true,
             message: 'You are required to select a Licensing Authority and provide a license associated with them.',
             type: 'failed',
-            time: 4000
         })
         return
     }
@@ -231,7 +224,6 @@ function verifyCounsellor() {
             show: true,
             message: 'You are required to provide a valid ID number or a file/image of the ID//authorization for the Licensing Authority selected.',
             type: 'failed',
-            time: 4000
         })
         return
     }
@@ -243,7 +235,6 @@ function verifyCounsellor() {
                 show: true,
                 message: 'Your verification request has successfully been sent.',
                 type: 'success',
-                time: 4000
             })
         },
         onBefore: () => {

@@ -144,14 +144,12 @@ async function getTestimonial() {
             if (err.response?.data?.message) {
                 setFailedAlertData({
                     message: err.response.data.message,
-                    time: 5000
                 })
                 return
             }
 
             setFailedAlertData({
                 message: 'Something unfortunate happened. Please try again later.',
-                time: 5000
             })
         })
 
@@ -168,7 +166,6 @@ async function deleteTestimonial() {
             
             setSuccessAlertData({
                 message: 'Your testimonial has been successfully deleted.',
-                time: 4000
             })
 
             testimonial.value = null
@@ -179,7 +176,6 @@ async function deleteTestimonial() {
             if (err.response?.data?.message) {
                 setFailedAlertData({
                     message: err.response.data.message,
-                    time: 5000,
                 })
                 return
             }
@@ -187,14 +183,12 @@ async function deleteTestimonial() {
             if (err.alert) {
                 setFailedAlertData({
                     message: err.alert,
-                    time: 5000,
                 })
                 return
             }
 
             setFailedAlertData({
                 message: 'Something unfortunate happened. Please try again later.',
-                time: 4000
             })
         })
         .finally(() => {

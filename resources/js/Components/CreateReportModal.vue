@@ -101,7 +101,6 @@ async function createReport() {
     if (!reportData.value.description) {
         setFailedAlertData({
             message: "Description is required for a report.",
-            time: 5000,
         });
         return
     }
@@ -141,7 +140,6 @@ async function createReport() {
             
             setSuccessAlertData({
                 message: 'Your report has been successfully made.',
-                time: 4000
             })
 
             if (res.data.report)
@@ -156,14 +154,12 @@ async function createReport() {
             if (err.response?.data?.message) {
                 setFailedAlertData({
                     message: err.response.data.message,
-                    time: 5000
                 })
                 return
             }
 
             setFailedAlertData({
                 message: 'Something unfortunate happened. Please try again later.',
-                time: 5000
             })
         
         })
@@ -231,7 +227,6 @@ async function getSessions() {
             if (err.response?.data?.message) {
                 setFailedAlertData({
                     message: err.response.data.message,
-                    time: 4000,
                 })
                 return
             }

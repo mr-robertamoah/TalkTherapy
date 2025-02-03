@@ -118,7 +118,6 @@ async function getGuardians() {
             if (err.response?.data?.message) {
                 setFailedAlertData({
                     message: err.response.data.message,
-                    time: 5000
                 })
                 return
             }
@@ -126,14 +125,12 @@ async function getGuardians() {
             if (err.alert) {
                 setFailedAlertData({
                     message: err.alert,
-                    time: 5000
                 })
                 return
             }
 
             setFailedAlertData({
                 message: 'Something unfortunate happened. Please try again later.',
-                time: 5000
             })
         })
 

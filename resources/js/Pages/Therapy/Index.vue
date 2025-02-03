@@ -581,15 +581,14 @@ async function getDiscussions(therapy) {
       discussions.value.data = [...discussions.value.data, ...res.data.data];
 
       updateRefPage(res, discussions);
-      addActiveDiscussionToDiscussions();
     })
     .catch((err) => {
       console.log(err);
       goToLogin(err);
 
-      if (err.response?.data?.message) {
-        setFailedAlertData({
-          message: err.response.data.message,
+        if (err.response?.data?.message) {
+            setFailedAlertData({
+                message: err.response.data.message,
           time: 10000,
         });
         return;
@@ -612,15 +611,6 @@ async function getDiscussions(therapy) {
   endLoader();
 }
 
-function addActiveDiscussionToDiscussions() {
-  const currentTherapy = props.therapy?.data ? props.therapy.data : props.therapy;
-  const discussion = currentTherapy?.activeDiscussion;
-
-  if (!discussion) return;
-
-  if (discussions.value.data.find((d) => d.id == discussion.id)) return;
-}
-
 function scrollToItem(item) {
   const itemDiv = document.getElementById(item.id);
 
@@ -631,49 +621,46 @@ function scrollToItem(item) {
 }
 
 async function clickedAbandonSession() {
-  if (!activeSession.value?.id) return;
+    if (!activeSession.value?.id) return
 
-  sessionActionRunning.value = "abandoning session";
-  await axios
-    .post(route("api.sessions.abandon", activeSession.value.id))
-    .then((res) => {
-      updateSessionOrTopic(res.data.session);
-    })
-    .catch((err) => {
-      console.log(err);
-      goToLogin(err);
-      setFailedAlertData({
-        message: `Something unfortunate happened while ${sessionActionRunning.value}. Try again shortly.`,
-        timer: 4000,
-      });
-    })
-    .finally(() => {
-      sessionActionRunning.value = "";
-    });
+    sessionActionRunning.value = 'abandoning session'
+    await axios.post(route('api.sessions.abandon', activeSession.value.id))
+        .then((res) => {
+            updateSessionOrTopic(res.data.session)
+        })
+        .catch((err) => {
+            console.log(err);
+            goToLogin(err)
+            setFailedAlertData({
+                message: `Something unfortunate happened while ${sessionActionRunning.value}. Try again shortly.`,
+            })
+        })
+        .finally(() => {
+            sessionActionRunning.value = ''
+        })
 }
 
 async function clickedStartSession() {
-  if (!activeSession.value?.id) return;
+    if (!activeSession.value?.id) return
 
-  sessionActionRunning.value = "starting session";
-  await axios
-    .post(route("api.sessions.in_session", activeSession.value.id))
-    .then((res) => {
-      updateSessionOrTopic(res.data.session);
+    sessionActionRunning.value = 'starting session'
+    await axios.post(route('api.sessions.in_session', activeSession.value.id))
+        .then((res) => {
+            updateSessionOrTopic(res.data.session)
 
-      showModal("therapy");
-    })
-    .catch((err) => {
-      console.log(err);
-      goToLogin(err);
-      setFailedAlertData({
-        message: `Something unfortunate happened while ${sessionActionRunning.value}. Try again shortly.`,
-        timer: 4000,
-      });
-    })
-    .finally(() => {
-      sessionActionRunning.value = "";
-    });
+            showModal('therapy')
+        })
+        .catch((err) => {
+            console.log(err);
+            goToLogin(err)
+            setFailedAlertData({
+                message: `Something unfortunate happened while ${sessionActionRunning.value}. Try again shortly.`,
+                timer: 4000,
+            })
+        })
+        .finally(() => {
+            sessionActionRunning.value = ''
+        })
 }
 
 function reportCreated(report) {
@@ -681,25 +668,24 @@ function reportCreated(report) {
 }
 
 async function clickedEndSession() {
-  if (!activeSession.value?.id) return;
+    if (!activeSession.value?.id) return
 
-  sessionActionRunning.value = "ending session";
-  await axios
-    .post(route("api.sessions.end", activeSession.value.id))
-    .then((res) => {
-      updateSessionOrTopic(res.data.session);
-    })
-    .catch((err) => {
-      console.log(err);
-      goToLogin(err);
-      setFailedAlertData({
-        message: `Something unfortunate happened while ${sessionActionRunning.value}. Try again shortly.`,
-        timer: 4000,
-      });
-    })
-    .finally(() => {
-      sessionActionRunning.value = "";
-    });
+    sessionActionRunning.value = 'ending session'
+    await axios.post(route('api.sessions.end', activeSession.value.id))
+        .then((res) => {
+            updateSessionOrTopic(res.data.session)
+        })
+        .catch((err) => {
+            console.log(err);
+            goToLogin(err)
+            setFailedAlertData({
+                message: `Something unfortunate happened while ${sessionActionRunning.value}. Try again shortly.`,
+                timer: 4000,
+            })
+        })
+        .finally(() => {
+            sessionActionRunning.value = ''
+        })
 }
 
 function clickedShowAll() {

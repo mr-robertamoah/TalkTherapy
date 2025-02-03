@@ -103,7 +103,6 @@ async function createTherapy() {
     if (!therapyData.value.name) {
         setAlertData({
             message: "Name is required for a therapy.",
-            time: 5000,
             show: true,
             type: 'failed'
         });
@@ -116,7 +115,6 @@ async function createTherapy() {
     ) {
         setAlertData({
             message: "Amount, currency and per what? All of these are required since you selected PAID payment type.",
-            time: 5000,
             show: true,
             type: 'failed'
         });
@@ -129,7 +127,6 @@ async function createTherapy() {
     ) {
         setAlertData({
             message: "FREE payment types requires that you set public to true.",
-            time: 5000,
             show: true,
             type: 'failed'
         });
@@ -143,7 +140,6 @@ async function createTherapy() {
     ) {
         setAlertData({
             message: "Since ONCE and PAID have been selected for session and payment types respectively, the per amount should be THERAPY.",
-            time: 5000,
             show: true,
             type: 'failed'
         });
@@ -155,7 +151,6 @@ async function createTherapy() {
         (!therapyData.value.maxSessions || therapyData.value.maxSessions < 2)
     ) {
         setAlertData({
-            time: 5000,
             show: true,
             type: 'failed',
             message: "Since PERIODIC has been selected for the session type, the maximum number of sessions must be at least 2."
@@ -185,7 +180,6 @@ async function createTherapy() {
             message: 'Your therapy has been created successfully. Visit home page if you are already not there.',
             type: 'success',
             show: true,
-            time: 4000
         })
         
         if (updateNewTherapy)

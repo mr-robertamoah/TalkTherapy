@@ -69,7 +69,6 @@ async function createContact() {
     if (!contactData.value.content) {
         setFailedAlertData({
             message: "Content is required, Please tell us something.",
-            time: 5000,
         });
         return
     }
@@ -77,7 +76,6 @@ async function createContact() {
     if (!contactData.value.type) {
         setFailedAlertData({
             message: "Type is required. Select from the select box.",
-            time: 5000,
         });
         return
     }
@@ -92,7 +90,6 @@ async function createContact() {
     if (!user && !contactData.value.name) {
         setFailedAlertData({
             message: "Name is required since you are not a user of the app or have not logged in.",
-            time: 5000,
         });
         return
     }
@@ -100,7 +97,6 @@ async function createContact() {
     if (!user && !contactData.value.email) {
         setFailedAlertData({
             message: "Email is required since you are not a user of the app or have not logged in.",
-            time: 5000,
         });
         return
     }
@@ -116,7 +112,6 @@ async function createContact() {
             
             setSuccessAlertData({
                 message: 'Your message to us has successfully been sent.',
-                time: 4000
             })
 
             if (res.data.contact)
@@ -135,14 +130,12 @@ async function createContact() {
             if (err.response?.data?.message) {
                 setFailedAlertData({
                     message: err.response.data.message,
-                    time: 5000
                 })
                 return
             }
 
             setFailedAlertData({
                 message: 'Something unfortunate happened. Please try again later.',
-                time: 5000
             })
         
         })

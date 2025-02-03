@@ -59,7 +59,6 @@ async function updateTopic() {
     if (!topicData.value.name) {
         setFailedAlertData({
             message: "Name is required for a session.",
-            time: 5000,
         });
         return
     }
@@ -76,7 +75,6 @@ async function updateTopic() {
                 message: 'Your topic has been successfully updated.',
                 type: 'success',
                 show: true,
-                time: 4000
             })
             emits('onUpdate', res.data.topic)
             closeModal()
@@ -89,7 +87,6 @@ async function updateTopic() {
                 ])
                 setFailedAlertData({
                     message: 'There has been a validation error. Please check your form.',
-                    time: 5000,
                 })
                 return
             }
@@ -97,7 +94,6 @@ async function updateTopic() {
             if (err.response?.data?.message) {
                 setFailedAlertData({
                     message: err.response.data.message,
-                    time: 5000,
                 })
                 return
             }
@@ -105,14 +101,12 @@ async function updateTopic() {
             if (err.alert) {
                 setFailedAlertData({
                     message: err.alert,
-                    time: 5000,
                 })
                 return
             }
 
             setFailedAlertData({
                 message: 'Something unfortunate happened. Please try again later.',
-                time: 4000
             })
         })
         .finally(() => {

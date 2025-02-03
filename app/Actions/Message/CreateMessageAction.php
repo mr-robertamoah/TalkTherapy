@@ -6,6 +6,7 @@ use App\Actions\Action;
 use App\DTOs\CreateMessageDTO;
 use App\DTOs\FileUploadDTO;
 use App\Enums\MessageStatusEnum;
+use App\Enums\MessageTypeEnum;
 use App\Models\Message;
 use App\Services\FileService;
 
@@ -18,7 +19,7 @@ class CreateMessageAction extends Action
             'message_id' => $createMessageDTO->reply?->id,
             'therapy_topic_id' => $createMessageDTO->therapyTopic?->id,
             'confidential' => $createMessageDTO->confidential,
-            'type' => $createMessageDTO->type,
+            'type' => $createMessageDTO->type ?? MessageTypeEnum::normal->value,
             'status' => MessageStatusEnum::sent->value,
         ]);
 

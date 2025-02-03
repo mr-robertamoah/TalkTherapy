@@ -145,7 +145,6 @@ async function createSession() {
     if (!sessionForm.name) {
         setAlertData({
             message: "Name is required for a session.",
-            time: 5000,
             show: true,
             type: 'failed'
         });
@@ -156,7 +155,6 @@ async function createSession() {
     if (!isMinutesBefore({ firstTime: startTime.value, minutes: 25 })) {
         setFailedAlertData({
             message: 'Start time must be at least 25 minutes away from current time. Please increase the start time.',
-            time: 5000
         })
         return
     }
@@ -164,7 +162,6 @@ async function createSession() {
     if (!isMinutesBefore({ firstTime: endTime.value, secondTime: startTime.value, minutes: 30})) {
         setFailedAlertData({
             message: 'End time must be at least 30 minutes away from start time. Please increase the end time.',
-            time: 5000
         })
         return
     }
@@ -196,7 +193,6 @@ async function createSession() {
                 const errKeys = Object.keys(err).join(', ')
                 setFailedAlertData({
                     message: `You have errors regarding the following: '${errKeys}'. Please check the form again.`,
-                    time: 10000
                 })
                 return
             }
@@ -204,7 +200,6 @@ async function createSession() {
             if (err.alert) {
                 setFailedAlertData({
                     message: err.alert,
-                    time: 5000
                 })
                 return
             }
@@ -212,14 +207,12 @@ async function createSession() {
             if (err.response?.data?.message) {
                 setFailedAlertData({
                     message: err.response.data.message,
-                    time: 5000
                 })
                 return
             }
 
             setFailedAlertData({
                 message: 'Something unfortunate happened. Please try again later.',
-                time: 5000
             })
         },
         onSuccess: (res) => {
@@ -229,7 +222,6 @@ async function createSession() {
                 message: 'Your session has been successfully created.',
                 type: 'success',
                 show: true,
-                time: 4000
             })
             if (res.props.session)
                 emits('onSuccess', res.props.session)
