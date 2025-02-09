@@ -7,7 +7,7 @@ import useAlert from '@/Composables/useAlert';
 import Alert from './Alert.vue';
 import FormLoader from './FormLoader.vue';
 import StyledLink from './StyledLink.vue';
-import useConsts from '@/Composables/useConsts';
+import useEnums from '@/Composables/useEnums';
 
 
 const { alertData, clearAlertData, setFailedAlertData, setSuccessAlertData } = useAlert()
@@ -20,7 +20,7 @@ const props = defineProps({
 
 const emits = defineEmits(['onData', 'alert'])
 
-const { RequestStatuses, RequestTypes } = useConsts()
+const { RequestStatusEnum, RequestTypeEnum } = useEnums()
 const userId = usePage().props.auth.user?.id;
 
 const showActions = ref(false)
@@ -34,27 +34,27 @@ watchEffect(() => {
 
 const computedTypeMessage = computed(() => {
     return {
-        [RequestTypes.discussion]: computedIsFrom.value ? `You ${props.request.status == RequestStatuses.pending ? 'have ' : ''}sent a request inviting counsellor for a discussion in a ${props.request.for.forType}.` : `You ${props.request.status == RequestStatuses.pending ? 'have ' : ''}received a request to take part in a discussion for a ${props.request.for.forType}.`,
-        [RequestTypes.guardianship]: computedIsFrom.value ? `You ${props.request.status == RequestStatuses.pending ? 'have ' : ''}sent a guardianship request.` : `You ${props.request.status == RequestStatuses.pending ? 'have ' : ''}received a guardianship request.`,
-        [RequestTypes.counsellor]: computedIsFrom.value ? `You ${props.request.status == RequestStatuses.pending ? 'have ' : ''}sent a counsellor verification request.` : `You ${props.request.status == RequestStatuses.pending ? 'have ' : ''}received a counsellor verification request.`,
-        [RequestTypes.administrator]: computedIsFrom.value ? '' : 'You accepted the request.',
-        [RequestTypes.therapy]: computedIsFrom.value ? `You ${props.request.status == RequestStatuses.pending ? 'have ' : ''}sent an assistance request for therapy with name: ${props.request.for.name}.` 
-            : `You ${props.request.status == RequestStatuses.pending ? 'have ' : ''}received an assistance request for therapy with name: ${props.request.for.name}.`,
-        [RequestTypes.groupTherapy]: computedIsFrom.value ? '' : 'You accepted the request.',
+        [RequestTypeEnum.discussion]: computedIsFrom.value ? `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}sent a request inviting counsellor for a discussion in a ${props.request.for.forType}.` : `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}received a request to take part in a discussion for a ${props.request.for.forType}.`,
+        [RequestTypeEnum.guardianship]: computedIsFrom.value ? `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}sent a guardianship request.` : `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}received a guardianship request.`,
+        [RequestTypeEnum.counsellor]: computedIsFrom.value ? `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}sent a counsellor verification request.` : `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}received a counsellor verification request.`,
+        [RequestTypeEnum.administrator]: computedIsFrom.value ? '' : 'You accepted the request.',
+        [RequestTypeEnum.therapy]: computedIsFrom.value ? `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}sent an assistance request for therapy with name: ${props.request.for.name}.` 
+            : `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}received an assistance request for therapy with name: ${props.request.for.name}.`,
+        [RequestTypeEnum.groupTherapy]: computedIsFrom.value ? '' : 'You accepted the request.',
     }[props.request?.type]
 })
 const computedStatus = computed(() => {
     return {
-        [RequestStatuses.accepted]: computedIsFrom.value ? 'Your request has been accepted.' : 'You accepted the request.',
-        [RequestStatuses.rejected]: computedIsFrom.value ? 'Your request has been rejected.' : 'You rejected the request.',
-        [RequestStatuses.pending]: computedIsFrom.value ? 'Your request is pending.' : 'You have not responded to this request.',
+        [RequestStatusEnum.accepted]: computedIsFrom.value ? 'Your request has been accepted.' : 'You accepted the request.',
+        [RequestStatusEnum.rejected]: computedIsFrom.value ? 'Your request has been rejected.' : 'You rejected the request.',
+        [RequestStatusEnum.pending]: computedIsFrom.value ? 'Your request is pending.' : 'You have not responded to this request.',
     }[status.value]
 })
 const computedStatusClasses = computed(() => {
     return {
-        [RequestStatuses.accepted]: 'text-green-800 bg-green-300',
-        [RequestStatuses.rejected]: 'text-red-800 bg-red-300',
-        [RequestStatuses.pending]: 'text-yellow-800 bg-yellow-300',
+        [RequestStatusEnum.accepted]: 'text-green-800 bg-green-300',
+        [RequestStatusEnum.rejected]: 'text-red-800 bg-red-300',
+        [RequestStatusEnum.pending]: 'text-yellow-800 bg-yellow-300',
     }[props.request?.status]
 })
 const computedIsFrom = computed(() => {
@@ -76,7 +76,7 @@ const computedIsTo = computed(() => {
 
 function visitTherapy() {
     let therapyId
-    if (RequestTypes.discussion == props.request.type)
+    if (RequestTypeEnum.discussion == props.request.type)
         therapyId = props.request.for.forId
     else
         therapyId = props.request.for.id
@@ -92,11 +92,11 @@ async function clickedResponse(response) {
 
             emits('onData', res.data.request)
             status.value = res.data.request.status
-            if (res.data.request?.status !== status.value && status.value == RequestStatuses.accepted) {
+            if (res.data.request?.status !== status.value && status.value == RequestStatusEnum.accepted) {
                 emits('alert', {
                     type: 'success',
                     time: 5000,
-                    message: res.data.request.type == RequestTypes.therapy ? 'Your response was successful, but another counsellor may have already accepted to assist.' : ''
+                    message: res.data.request.type == RequestTypeEnum.therapy ? 'Your response was successful, but another counsellor may have already accepted to assist.' : ''
                 })
                 return
             }
@@ -124,7 +124,7 @@ async function clickedResponse(response) {
     <div v-bind="$attrs" class="bg-stone-300 rounded w-full max-w-[400px] select-none p-2 relative">
         <FormLoader v-if="responding" class="relative" :show="responding" :text="'responding to request'"/>
         <div class="text-gray-600 text-sm tracking-wide">{{ computedTypeMessage }}<span 
-                v-if="[RequestTypes.discussion, RequestTypes.therapy].includes(request.type)"
+                v-if="[RequestTypeEnum.discussion, RequestTypeEnum.therapy].includes(request.type)"
                 class="ml-2 text-xs text-blue-600 cursor-pointer"
                 @click="visitTherapy"
             >view therapy</span></div>
@@ -144,8 +144,8 @@ async function clickedResponse(response) {
             
         <template v-if="showActions">
             <div class="flex justify-end items-center space-x-2 p-2 overflow-hidden overflow-x-auto">
-                    <StyledLink class="shrink-0" v-if="request.type == RequestTypes.therapy" :href="route('therapies.get', { therapyId: request.for.id })" :text="'visit therapy page'"/>
-                    <template v-if="request.status == RequestStatuses.pending && computedIsTo">
+                    <StyledLink class="shrink-0" v-if="request.type == RequestTypeEnum.therapy" :href="route('therapies.get', { therapyId: request.for.id })" :text="'visit therapy page'"/>
+                    <template v-if="request.status == RequestStatusEnum.pending && computedIsTo">
                         <PrimaryButton :disabled="responding" @click="() => clickedResponse('accepted')" class="shrink-0">accept</PrimaryButton>
                         <DangerButton :disabled="responding" @click="() => clickedResponse('rejected')" class="shrink-0">reject</DangerButton>
                     </template>

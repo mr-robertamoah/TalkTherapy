@@ -15,12 +15,14 @@ class EnsureUserMeetsTherapyRequirementsAction extends Action
             (
                 !!$user->dob &&
                 !!$user->email_verified_at
-                // TODO $user->isAdult && ($user->isNotAdult && $user->hasGuardian)
             )
         ) return true;
 
         if (!$throwException) return false;
 
-        throw new UserException('User cannot partake in a therapy because user either does not have a verified email or has not set date of birth.', 422);
+        throw new UserException(
+            'User cannot partake in a therapy because of any or a combination of the following: you do not have a verified email, you have not set date of birth.',
+            422
+        );
     }
 }

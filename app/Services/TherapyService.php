@@ -39,7 +39,7 @@ class TherapyService extends Service
     {
         EnsureUserMeetsTherapyRequirementsAction::new()->execute($createTherapyDTO->user);
 
-        EnsureCanCreateTherapyAction::new()->execute($createTherapyDTO);
+        EnsureCanCreateTherapyAction::new()->execute($createTherapyDTO->user);
 
         EnsureTherapyDataIsValidAction::new()->execute($createTherapyDTO);
 
@@ -86,6 +86,8 @@ class TherapyService extends Service
     public function endTherapy(CreateTherapyDTO $createTherapyDTO)
     {
         EnsureTherapyExistsAction::new()->execute($createTherapyDTO);
+
+        EnsureCanUpdateTherapyAction::new()->execute($createTherapyDTO);
 
         EnsureCanEndTherapyAction::new()->execute($createTherapyDTO);
 
@@ -184,7 +186,7 @@ class TherapyService extends Service
             ->when($user?->counsellor, function ($query) use ($user) {
                 $query->wherePublic();
                 $query->where(function ($query) use ($user) {
-                    $query->whereNoCounsellor($user->counsellor);
+                    $query->whereHasNoCounsellor($user->counsellor);
                     $query->orWhereNot('counsellor_id', $user->counsellor->id);
                 });
             })

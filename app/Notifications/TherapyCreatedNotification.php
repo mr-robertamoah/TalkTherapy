@@ -2,6 +2,7 @@
 
 namespace App\Notifications;
 
+use App\Models\GroupTherapy;
 use App\Models\Therapy;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -15,7 +16,7 @@ class TherapyCreatedNotification extends Notification implements ShouldQueue
     /**
      * Create a new notification instance.
      */
-    public function __construct(private Therapy $therapy)
+    public function __construct(private Therapy|GroupTherapy $therapy)
     {
         $this->afterCommit();
     }

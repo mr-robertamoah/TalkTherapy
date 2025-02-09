@@ -15,10 +15,11 @@ import Select from "./Select.vue";
 import ProfileCaseSection from "@/Pages/Profile/Partials/ProfileCaseSection.vue";
 import CounsellorComponent from './CounsellorComponent.vue';
 import { usePage } from '@inertiajs/vue3';
+import useEnums from '@/Composables/useEnums';
 
+const { PaymentTypeEnum, SessionTypeEnum } = useEnums()
 const { setErrorData } = useErrorHandler()
-const { alertData, clearAlertData, setAlertData } = useAlert()
-
+const { alertData, clearAlertData, setFailedAlertData, setSuccessAlertData } = useAlert()
 const props = defineProps({
     show: {
         default: false,
@@ -28,11 +29,8 @@ const props = defineProps({
         default: null,
     }
 })
-
 const emits = defineEmits(['successful', 'closeModal'])
-
 const { updateNewTherapy } = inject('onCreatedNewTherapy', { updateNewTherapy: null })
-
 const loading = ref(false)
 const therapyData = ref({
     'name': '',
@@ -66,16 +64,16 @@ const therapyErrors = ref({
 })
 
 watchEffect(() => {
-    if (therapyData.value.sessionType == 'ONCE' && therapyData.value.paymentType == 'PAID')
+    if (therapyData.value.sessionType == SessionTypeEnum.once && therapyData.value.paymentType == PaymentTypeEnum.paid)
         therapyData.value.per = 'PER_THERAPY'
 
-    if (therapyData.value.sessionType == 'ONCE')
+    if (therapyData.value.sessionType == SessionTypeEnum.once)
         therapyData.value.maxSessions = '1'
 })
 watch(
     () => therapyData.value.paymentType,
     () => {
-        if (therapyData.value.paymentType == 'FREE') {
+        if (therapyData.value.paymentType == PaymentTypeEnum.free) {
             therapyData.value.public = true
             therapyData.value.amount = ''
             therapyData.value.currency = 'GHȻ'
@@ -85,7 +83,7 @@ watch(
 )
 
 const computedShowInPersonAmount = computed(() => {
-    return therapyData.value.allowInPerson && therapyData.value.paymentType == 'PAID' && therapyData.value.per == 'PER_SESSION'
+    return therapyData.value.allowInPerson && therapyData.value.paymentType == PaymentTypeEnum.paid && therapyData.value.per == 'PER_SESSION'
 })
 const computedMessage = computed(() => {
     const user = usePage().props.auth.user
@@ -101,58 +99,53 @@ const computedMessage = computed(() => {
  
 async function createTherapy() {
     if (!therapyData.value.name) {
-        setAlertData({
+        setFailedAlertData({
             message: "Name is required for a therapy.",
-            show: true,
-            type: 'failed'
+            time: 10000,
         });
         return
     }
 
     if (
-        therapyData.value.paymentType == 'PAID' &&
+        therapyData.value.paymentType == PaymentTypeEnum.paid &&
         !(therapyData.value.amount && therapyData.value.currency && therapyData.value.per)
     ) {
-        setAlertData({
+        setFailedAlertData({
             message: "Amount, currency and per what? All of these are required since you selected PAID payment type.",
-            show: true,
-            type: 'failed'
+            time: 10000,
         });
         return
     }
         
     if (
-        therapyData.value.paymentType == 'FREE' &&
+        therapyData.value.paymentType == PaymentTypeEnum.free &&
         !therapyData.value.public
     ) {
-        setAlertData({
+        setFailedAlertData({
             message: "FREE payment types requires that you set public to true.",
-            show: true,
-            type: 'failed'
+            time: 10000,
         });
         return
     }
 
     if (
-        therapyData.value.paymentType == 'PAID' &&
-        therapyData.value.sessionType == 'ONCE' &&
+        therapyData.value.paymentType == PaymentTypeEnum.paid &&
+        therapyData.value.sessionType == SessionTypeEnum.once &&
         therapyData.value.per !== 'PER_THERAPY'
     ) {
-        setAlertData({
+        setFailedAlertData({
             message: "Since ONCE and PAID have been selected for session and payment types respectively, the per amount should be THERAPY.",
-            show: true,
-            type: 'failed'
+            time: 10000,
         });
         return
     }
 
     if (
-        therapyData.value.sessionType == 'PERIODIC' &&
+        therapyData.value.sessionType == SessionTypeEnum.periodic &&
         (!therapyData.value.maxSessions || therapyData.value.maxSessions < 2)
     ) {
-        setAlertData({
-            show: true,
-            type: 'failed',
+        setFailedAlertData({
+            time: 10000,
             message: "Since PERIODIC has been selected for the session type, the maximum number of sessions must be at least 2."
         });
         return
@@ -163,11 +156,11 @@ async function createTherapy() {
     if (props.counsellor)
         therapyData.value.counsellorId = props.counsellor.id
 
-    if (therapyData.value.paymentType == 'PAID' && therapyData.value.per == 'PER_SESSION' && !therapyData.value.inPersonAmount)
+    if (therapyData.value.paymentType == PaymentTypeEnum.paid && therapyData.value.per == 'PER_SESSION' && !therapyData.value.inPersonAmount)
         therapyData.value.inPersonAmount = therapyData.value.amount
 
     await axios
-    .post(route(`therapies.create`), {
+    .post(route(`api.therapies.create`), {
         ...therapyData.value,
         public: therapyData.value.public ? 1 : 0,
         allowInPerson: therapyData.value.allowInPerson ? 1 : 0,
@@ -176,10 +169,9 @@ async function createTherapy() {
     .then((res) => {
         console.log(res)
         
-        setAlertData({
+        setSuccessAlertData({
             message: 'Your therapy has been created successfully. Visit home page if you are already not there.',
-            type: 'success',
-            show: true,
+            time: 10000,
         })
         
         if (updateNewTherapy)
@@ -189,10 +181,9 @@ async function createTherapy() {
     .catch((err) => {
         console.log(err)
         if (err.response?.data?.message) {
-            setAlertData({
+            setFailedAlertData({
                 message: err.response.data.message,
-                type: 'failed',
-                show: true,
+                time: 10000,
             })
             return
         }
@@ -205,10 +196,9 @@ async function createTherapy() {
             return
         }
 
-        setAlertData({
+        setFailedAlertData({
             message: 'Something unfortunate happened. Please try again later.',
-            type: 'failed',
-            show: true,
+            time: 10000,
         })
     })
     .finally(() => {
@@ -268,6 +258,7 @@ function closeModal() {
                                     :counsellor="counsellor"
                                     :has-view="false"
                                     :visit-page="true"
+                                    class="bg-stone-200"
                                 />
                             </div>
                             <hr class="my-4">
@@ -340,8 +331,8 @@ function closeModal() {
                         <div class="p-4 rounded bg-gray-200 shadow-sm">
                             <div class="text-sm text-gray-600 text-start mb-4 font-semibold">This section cannot be updated after the first session.</div>
                             <div class="mx-auto max-w-[400px]">
-                                <label class="flex items-center" :disabled="therapyData.paymentType == 'FREE'">
-                                    <Checkbox :disabled="therapyData.paymentType == 'FREE'" name="remember" v-model:checked="therapyData.public" />
+                                <label class="flex items-center" :disabled="therapyData.paymentType == PaymentTypeEnum.free">
+                                    <Checkbox :disabled="therapyData.paymentType == PaymentTypeEnum.free" name="remember" v-model:checked="therapyData.public" />
                                     <span class="ms-2 text-sm text-gray-600">Share to public.</span>
                                 </label>
 
@@ -357,7 +348,7 @@ function closeModal() {
                                     class="mt-1 block w-full"
                                     v-model="therapyData.sessionType"
                                     autocomplete="sessionType"
-                                    :options="['Once', 'Periodic']"
+                                    :options="[SessionTypeEnum.once, SessionTypeEnum.periodic]"
                                     :default-option="'select sessionType'"
                                     required
                                 />
@@ -366,7 +357,7 @@ function closeModal() {
                                 <InputError class="mt-2" :message="therapyErrors.sessionType" />
                             </div>
 
-                            <div class="mt-4 mx-auto max-w-[400px]" v-if="therapyData.sessionType == 'PERIODIC'">
+                            <div class="mt-4 mx-auto max-w-[400px]" v-if="therapyData.sessionType == SessionTypeEnum.periodic">
                                 <InputLabel for="maxSessions" value="Maximum Sessions" />
 
                                 <TextInput
@@ -387,7 +378,7 @@ function closeModal() {
                                     class="mt-1 block w-full"
                                     v-model="therapyData.paymentType"
                                     autocomplete="paymentType"
-                                    :options="['Free', 'Paid']"
+                                    :options="[PaymentTypeEnum.free, PaymentTypeEnum.paid]"
                                     :default-option="'select payment type'"
                                     required
                                 />
@@ -396,7 +387,7 @@ function closeModal() {
                                 <InputError class="mt-2" :message="therapyErrors.sessionType" />
                             </div>
 
-                            <div class="mt-4 mx-auto max-w-[400px]" v-if="therapyData.paymentType == 'PAID'">
+                            <div class="mt-4 mx-auto max-w-[400px]" v-if="therapyData.paymentType == PaymentTypeEnum.paid">
                                 <div>
                                     <InputLabel for="per" value="Amount Per" />
                                     <Select
@@ -406,7 +397,7 @@ function closeModal() {
                                         autocomplete="per"
                                         :options="[{name: 'Therapy', value: 'PER_THERAPY'}, {name: 'Session', value: 'PER_SESSION'}]"
                                         :default-option="'payment per?'"
-                                        :disabled="therapyData.paymentType == 'PAID' && therapyData.sessionType == 'ONCE'"
+                                        :disabled="therapyData.paymentType == PaymentTypeEnum.paid && therapyData.sessionType == SessionTypeEnum.once"
                                     />
 
                                     <InputLabel class="mt-4" for="amount" value="Amount" />

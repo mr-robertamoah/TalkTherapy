@@ -4,18 +4,22 @@ namespace App\Actions\Therapy;
 
 use App\Actions\Action;
 use App\DTOs\CreateTherapyDTO;
+use App\DTOs\GroupTherapyDTO;
 use App\Enums\TherapyStatusEnum;
 
 class EndTherapyAction extends Action
 {
-    public function execute(CreateTherapyDTO $createTherapyDTO)
+    public function execute(CreateTherapyDTO|GroupTherapyDTO $dto)
     {
-        $createTherapyDTO->therapy->update([
+        $therapy = $dto::class == GroupTherapyDTO::class ? $dto->groupTherapy : $dto->therapy;
+
+        $therapy->update([
             'status' => TherapyStatusEnum::ended->value
         ]);
         
-        $createTherapyDTO->therapy->endSessions();
+        $therapy->endSessions();
+
         // TODO dispatch update event
-        return $createTherapyDTO->therapy->refresh();
+        return $therapy->refresh();
     }
 }

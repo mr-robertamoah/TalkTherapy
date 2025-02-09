@@ -340,6 +340,11 @@ class Counsellor extends Model
         return $this->morphMany(File::class, 'addedby');
     }
 
+    public function addedGroupTherapies()
+    {
+        return $this->morphMany(GroupTherapy::class, 'addedby');
+    }
+
     public function profession()
     {
         return $this->belongsTo(Profession::class);

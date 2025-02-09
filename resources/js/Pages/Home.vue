@@ -24,6 +24,9 @@ const props = defineProps({
     recentTherapies: {
         default: []
     },
+    recentGroupTherapies: {
+        default: []
+    },
     bestCounsellors: {
         default: []
     },
@@ -39,8 +42,10 @@ const props = defineProps({
 })
 
 const newTherapy = ref(null)
+const newGroupTherapy = ref(null)
 const getting = ref({ show: false, type: '' })
 const recentTherapies = ref([])
+const recentGroupTherapies = ref([])
 const posts = ref({ data: [], page: 1 })
 const randomTherapies = ref({ data: [], page: 1 })
 const randomCounsellors = ref({ data: [], page: 1 })
@@ -48,6 +53,10 @@ const randomCounsellors = ref({ data: [], page: 1 })
 watch(() => newTherapy.value, () => {
     if (newTherapy.value)
         recentTherapies.value = [newTherapy.value, ...recentTherapies.value]
+})
+watch(() => newGroupTherapy.value, () => {
+    if (newGroupTherapy.value)
+        recentGroupTherapies.value = [newGroupTherapy.value, ...recentGroupTherapies.value]
 })
 watch(() => usePage().props.auth.user?.id, () => {
     loadContent()
@@ -67,10 +76,17 @@ onBeforeMount(() => {
     if (props.recentTherapies?.data?.length)
         recentTherapies.value = [...props.recentTherapies.data]
 
+    if (props.recentGroupTherapies?.length)
+        recentGroupTherapies.value = [...props.recentGroupTherapies]
+    
+    if (props.recentGroupTherapies?.data?.length)
+        recentGroupTherapies.value = [...props.recentGroupTherapies.data]
+
     loadContent()
 })
 
 provide('onCreatedNewTherapy', { newTherapy, updateNewTherapy })
+provide('onCreatedNewGroupTherapy', { newGroupTherapy, updateNewGroupTherapy })
 
 const computedBestCounsellors = computed(() => {
     return props.bestCounsellors.data?.length ? props.bestCounsellors.data : props.bestCounsellors
@@ -90,6 +106,10 @@ const computedCanCreatePost = computed(() => {
 
 function updateNewTherapy(value) {
     newTherapy.value = value
+}
+
+function updateNewGroupTherapy(value) {
+    newGroupTherapy.value = value
 }
 
 function updatePage(res, items) {
@@ -304,7 +324,7 @@ function showPost() {
                             >...</div>
                         </div>
                     </div>
-                    
+                    <!-- TODO show recent and random group therapies -->
                     <div id="home-therapies-id" class="relative"></div>
                     <div class="max-w-7xl mx-auto sm:px-6 lg:px-8" v-if="$page.props.auth.user">
                         <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">

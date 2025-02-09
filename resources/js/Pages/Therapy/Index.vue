@@ -33,10 +33,11 @@ import Modal from "@/Components/Modal.vue";
 import useUtilities from "@/Composables/useUtilities";
 import HelpButton from "@/Components/HelpButton.vue";
 import useGuidedTours from "@/Composables/useGuidedTours";
-import useConsts from "@/Composables/useConsts";
 import DiscussionModal from "@/Components/DiscussionModal.vue";
+import useEnums from "@/Composables/useEnums";
 
 const { modalData, showModal, closeModal } = useModal();
+const { RequestTypeEnum, SessionStatusEnum, DiscussionStatusEnum } = useEnums()
 const { goToLogin } = useAuth();
 const { toDiffForHumans } = useLocalDateTimed();
 const { createLink, getlinks } = useAppLink();
@@ -72,7 +73,6 @@ const scrollItems = [
   { id: "therapy_other_details", name: "other details" },
   { id: "therapy_stats", name: "stats" },
 ];
-const { SessionStatuses, DiscussionStatuses } = useConsts();
 
 const userId = usePage().props.auth.user?.id;
 const loader = ref({
@@ -259,11 +259,11 @@ const computedIsInSession = computed(() => {
 
   return (
     [
-      SessionStatuses.inSession,
-      SessionStatuses.inSessionConfirmation,
-      SessionStatuses.heldConfirmation,
+      SessionStatusEnum.inSession,
+      SessionStatusEnum.inSessionConfirmation,
+      SessionStatusEnum.heldConfirmation,
     ].includes(session?.status) ||
-    (session?.status == SessionStatuses.pending && timer.value.beforeStart < 5)
+    (session?.status == SessionStatusEnum.pending && timer.value.beforeStart < 5)
   );
 });
 const computedIsParticipant = computed(() => {
@@ -714,7 +714,7 @@ async function clickedResponse(response) {
         setSuccessAlertData({
           time: 5000,
           message:
-            res.data.request.type == RequestTypes.therapy
+            res.data.request.type == RequestTypeEnum.therapy
               ? "Your response was successful, but another counsellor may have already accepted to assist."
               : "",
         });
@@ -863,7 +863,7 @@ function clearGetting() {
       v-if="
         activeSession &&
         computedIsParticipant &&
-        ![SessionStatuses.held, SessionStatuses.abandoned].includes(activeSession?.status)
+        ![SessionStatusEnum.held, SessionStatusEnum.abandoned].includes(activeSession?.status)
       "
     >
       <div
@@ -881,7 +881,7 @@ function clearGetting() {
         <div
           class="p-2 w-[80%] md:w-[70%] lg:w-[60%] mx-auto rounded-lg select-none cursor-pointer"
           :class="[
-            activeSession?.status == SessionStatuses.abandoned
+            activeSession?.status == SessionStatusEnum.abandoned
               ? 'bg-red-300'
               : 'bg-green-300',
           ]"
@@ -890,7 +890,7 @@ function clearGetting() {
         >
           <div
             class="flex justify-end items-center text-sm space-x-2 font-bold"
-            v-if="activeSession?.status !== SessionStatuses.abandoned"
+            v-if="activeSession?.status !== SessionStatusEnum.abandoned"
           >
             <div
               class="text-blue-600 p-2 rounded bg-blue-200"
@@ -914,7 +914,7 @@ function clearGetting() {
           <div
             class="my-2 mx-auto w-[90%] text-center"
             :class="[
-              activeSession?.status == SessionStatuses.abandoned
+              activeSession?.status == SessionStatusEnum.abandoned
                 ? 'text-red-800'
                 : 'text-green-800',
             ]"
@@ -943,7 +943,7 @@ function clearGetting() {
       :class="{ 'p-2 bg-white': showAll }"
       v-if="
         activeDiscussion &&
-        ![DiscussionStatuses.held, DiscussionStatuses.abandoned].includes(
+        ![DiscussionStatusEnum.held, DiscussionStatusEnum.abandoned].includes(
           activeDiscussion?.status
         )
       "
@@ -963,7 +963,7 @@ function clearGetting() {
         <div
           class="p-2 w-[80%] md:w-[70%] lg:w-[60%] mx-auto rounded-lg select-none cursor-pointer"
           :class="[
-            activeDiscussion?.status == DiscussionStatuses.abandoned
+            activeDiscussion?.status == DiscussionStatusEnum.abandoned
               ? 'bg-red-300'
               : 'bg-green-300',
           ]"
@@ -972,7 +972,7 @@ function clearGetting() {
         >
           <div
             class="flex justify-end items-center text-sm space-x-2 font-bold"
-            v-if="activeDiscussion?.status !== DiscussionStatuses.abandoned"
+            v-if="activeDiscussion?.status !== DiscussionStatusEnum.abandoned"
           >
             <div
               class="text-blue-600 p-2 rounded bg-blue-200"
@@ -996,7 +996,7 @@ function clearGetting() {
           <div
             class="my-2 mx-auto w-[90%] text-center"
             :class="[
-              activeDiscussion?.status == SessionStatuses.abandoned
+              activeDiscussion?.status == SessionStatusEnum.abandoned
                 ? 'text-red-800'
                 : 'text-green-800',
             ]"
@@ -1186,6 +1186,7 @@ function clearGetting() {
                     :counsellor="counsellor"
                     :has-view="false"
                     :visit-page="!computedIsCounsellor"
+                    class="bg-stone-200"
                   />
                 </div>
                 <div v-else-if="pendingRequest" class="relative">
@@ -1512,14 +1513,14 @@ function clearGetting() {
                   >
                 </template>
               </template>
-              <!-- <template v-if="activeSession && activeSession?.status !== SessionStatuses.abandoned">
+              <!-- <template v-if="activeSession && activeSession?.status !== SessionStatusEnum.abandoned">
                                 <PrimaryButton
                                     :disabled="!!sessionActionRunning"
-                                    v-if="([SessionStatuses.pending, SessionStatuses.inSessionConfirmation].includes(activeSession?.status) && userId !== activeSession?.updatedById) && activeSession?.status !== SessionStatuses.inSession && timer.beforeEnd > 0"
+                                    v-if="([SessionStatusEnum.pending, SessionStatusEnum.inSessionConfirmation].includes(activeSession?.status) && userId !== activeSession?.updatedById) && activeSession?.status !== SessionStatusEnum.inSession && timer.beforeEnd > 0"
                                     @click="clickedStartSession" class="shrink-0">start session for you</PrimaryButton>
                                 <PrimaryButton
                                     :disabled="!!sessionActionRunning"
-                                    v-if="[SessionStatuses.pending, SessionStatuses.inSession, SessionStatuses.inSessionConfirmation].includes(activeSession?.status) && timer.beforeEnd > 0 && computedIsInSession"
+                                    v-if="[SessionStatusEnum.pending, SessionStatusEnum.inSession, SessionStatusEnum.inSessionConfirmation].includes(activeSession?.status) && timer.beforeEnd > 0 && computedIsInSession"
                                     @click="clickedAbandonSession" class="shrink-0">abandon session</PrimaryButton>
                                 <PrimaryButton
                                     :disabled="!!sessionActionRunning"
@@ -1589,7 +1590,7 @@ function clearGetting() {
                       addToSelected(counsellor);
                     }
                   "
-                  class="shrink-0"
+                  class="shrink-0 bg-stone-200"
                 />
                 <div
                   v-if="page !== 0 && searchedCounsellors.length"
@@ -1619,6 +1620,7 @@ function clearGetting() {
                   :counsellor="counsellor"
                   :key="idx"
                   :has-view="false"
+                  class="bg-stone-200"
                   @click="
                     () => {
                       removeFromSelected(counsellor);
@@ -1721,11 +1723,11 @@ function clearGetting() {
           <template v-if="!sessionActionRunning">
             <PrimaryButton
               v-if="
-                [SessionStatuses.pending, SessionStatuses.inSessionConfirmation].includes(
+                [SessionStatusEnum.pending, SessionStatusEnum.inSessionConfirmation].includes(
                   activeSession?.status
                 ) &&
                 userId !== activeSession?.updatedById &&
-                activeSession?.status !== SessionStatuses.inSession &&
+                activeSession?.status !== SessionStatusEnum.inSession &&
                 timer.beforeEnd > 0
               "
               @click="clickedStartSession"
@@ -1741,9 +1743,9 @@ function clearGetting() {
             <PrimaryButton
               v-if="
                 [
-                  SessionStatuses.pending,
-                  SessionStatuses.inSession,
-                  SessionStatuses.inSessionConfirmation,
+                  SessionStatusEnum.pending,
+                  SessionStatusEnum.inSession,
+                  SessionStatusEnum.inSessionConfirmation,
                 ].includes(activeSession?.status) &&
                 timer.beforeEnd > 0 &&
                 computedIsInSession
@@ -1757,8 +1759,8 @@ function clearGetting() {
                 computedIsInSession &&
                 timer.beforeEnd < 0 &&
                 ((userId !== activeSession?.updatedById &&
-                  SessionStatuses.heldConfirmation == activeSession?.status) ||
-                  activeSession?.status == SessionStatuses.inSession)
+                  SessionStatusEnum.heldConfirmation == activeSession?.status) ||
+                  activeSession?.status == SessionStatusEnum.inSession)
               "
               @click="clickedEndSession"
               class="shrink-0"

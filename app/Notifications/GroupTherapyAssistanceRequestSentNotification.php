@@ -9,7 +9,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
-class TherapyAssistanceRequestSentNotification extends Notification implements ShouldQueue
+class GroupTherapyAssistanceRequestSentNotification extends Notification implements ShouldQueue
 {
     use Queueable;
 
@@ -49,7 +49,7 @@ class TherapyAssistanceRequestSentNotification extends Notification implements S
                 ->greeting("Hello {$name}!")
                 ->when($isCounsellor, function ($mail) use ($type) {
                     $mail
-                        ->line("A user has sent you a request for assistance with {$type} with name: '{$this->request->for->name}'. Check your requests to accept or decline.");
+                        ->line("A user has sent you a request for assistance him/her with {$type} with name: '{$this->request->for->name}'. Check your requests to accept or decline.");
                 })
                 ->when(!$isCounsellor, function ($mail) use ($type, $fromName) {
                     $mail

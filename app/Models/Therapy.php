@@ -2,15 +2,13 @@
 
 namespace App\Models;
 
-use App\Enums\SessionStatusEnum;
-use App\Enums\TherapyStatusEnum;
 use App\Traits\Alertable;
 use App\Traits\Commentable;
 use App\Traits\Likeable;
 use App\Traits\Starreable;
+use App\Traits\TherapyTrait;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\MorphToMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Therapy extends Model
@@ -20,7 +18,8 @@ class Therapy extends Model
     Alertable,
     Likeable,
     Commentable,
-    SoftDeletes;
+    SoftDeletes,
+    TherapyTrait;
 
     protected $fillable = [
         'session_type', 'payment_type', 'background_story', 'allow_in_person', 'name',
@@ -31,122 +30,24 @@ class Therapy extends Model
         'payment_data' => 'array'
     ];
 
-    public function getActiveSessionAttribute()
-    {
-        return Session::query()
-            ->whereTherapyId($this->id)
-            ->whereInSession()
-            ->orWhere(function ($query) {
-                $query->whereTherapyId($this->id);
-                $query->whereFiveOrLessMinutesToStart();
-            })
-            ->orWhere(function ($query) {
-                $query->whereTherapyId($this->id);
-                $query->whereIsOngoing();
-            })
-            ->first();
-    }
-
-    public function getSessionsHeldAttribute()
-    {
-        return $this->sessions()->whereHeld()->count();
-    }
-
     public function getIsTherapyAttribute()
     {
         return true;
     }
 
-    public function getSessionsCreatedAttribute()
+    public function getIsGroupTherapyAttribute()
     {
-        return $this->sessions()->count();
+        return false;
     }
 
-    public function getPaidSessionsAttribute()
+    public function getTherapyTypeAttribute()
     {
-        return $this->sessions()->wherePaid()->count();
-    }
-
-    public function getFreeSessionsAttribute()
-    {
-        return $this->sessions()->whereFree()->count();
-    }
-
-    public function getStatus()
-    {
-        if ($this->status == TherapyStatusEnum::in_session->value)
-            return str_replace('_', ' ', TherapyStatusEnum::in_session->value);
-        
-        return $this->status;
-    }
-
-    public function getActiveDiscussion(Counsellor $counsellor)
-    {
-        return $this->discussions()
-            ->where(function ($query) use ($counsellor) {
-                $query
-                    ->whereIsParticipant($counsellor)
-                    ->whereIsOngoing();
-            })
-            ->first();
-    }
-
-    public function getActiveSession(User $user)    
-    {
-        return $this->sessions()
-            ->where(function ($query) use ($user) {
-                $query
-                    ->whereIsParticipant($user)
-                    ->whereIsNotUserWhoConfirmedHeld($user)
-                    ->whereIsOngoing();
-            })
-            ->first();
-    }
-
-    public function addedby()
-    {
-        return $this->morphTo('addedby');
-    }
-
-    public function therapyTopics()
-    {
-        return $this->morphMany(TherapyTopic::class, 'for');
-    }
-
-    public function messages()
-    {
-        return $this->morphMany(Message::class, 'for');
+        return 'Therapy';
     }
 
     public function counsellor()
     {
         return $this->belongsTo(Counsellor::class);
-    }
-
-    public function sessions()
-    {
-        return $this->morphMany(Session::class, 'for');
-    }
-
-    public function cases(): MorphToMany
-    {
-        return $this
-            ->morphToMany(TherapyCase::class, 'caseable', 'caseables', relatedPivotKey: 'case_id')
-            ->withTimestamps();
-    }
-
-    public function languages(): MorphToMany
-    {
-        return $this
-            ->morphToMany(Language::class, 'languageable', 'languageables')
-            ->withTimestamps();
-    }
-
-    public function religions(): MorphToMany
-    {
-        return $this
-            ->morphToMany(Religion::class, 'religionable', 'religionables')
-            ->withTimestamps();
     }
 
     public function isParticipant(User $user)
@@ -163,27 +64,6 @@ class Therapy extends Model
         return !$this->isParticipant($user);
     }
 
-    public function pendingRequestFor(?Counsellor $counsellor)
-    {
-        if (is_null($counsellor)) return null;
-
-        return Request::query()
-            ->wherePending()
-            ->whereFor($this)
-            ->whereTo($counsellor)
-            ->latest()
-            ->first();
-    }
-
-    public function scopeWhereAddedby($query, Model $model)
-    {
-        return $query->where(function ($query) use ($model) {
-            $query
-                ->where('addedby_type', $model::class)
-                ->where('addedby_id', $model->id);
-        });
-    }
-
     public function scopeWhereCounsellor($query, Counsellor $counsellor)
     {
         return $query->where(function ($query) use ($counsellor) {
@@ -198,7 +78,7 @@ class Therapy extends Model
         });
     }
 
-    public function scopeWhereNoCounsellor($query)
+    public function scopeWhereHasNoCounsellor($query)
     {
         return $query
             ->where(function ($query) {
@@ -224,11 +104,6 @@ class Therapy extends Model
         });
     }
 
-    public function scopeWherePublic($query)
-    {
-        return $query->where('public', true);
-    }
-
     public function scopeWhereParticipant($query, User $user)
     {
         return $query
@@ -240,11 +115,6 @@ class Therapy extends Model
             });
     }
 
-    public function requests()
-    {
-        return $this->morphMany(Request::class, 'for');
-    }
-
     public function hasAssistance()
     {
         return $this->counsellor()->exists();
@@ -253,40 +123,6 @@ class Therapy extends Model
     public function doesNotHaveAssistance()
     {
         return !$this->hasAssistance();
-    }
-
-    public function discussions()
-    {
-        return $this->morphMany(Discussion::class, 'for');
-    }
-
-    public function endSessions()
-    {
-        $this->sessions()
-            ->wherePending()
-            ->update(['status' => SessionStatusEnum::failed->value]);
-
-        $this->sessions()
-            ->wherePastEndTime()
-            ->update(['status' => SessionStatusEnum::held->value]);
-        
-        $this->sessions()
-            ->whereStatusIn([
-                SessionStatusEnum::held_confirmation->value,
-                SessionStatusEnum::in_session->value,
-                SessionStatusEnum::in_session_confirmation->value
-            ])
-            ->update(['status' => SessionStatusEnum::abandoned->value]);
-    }
-
-    public function getTopicsCountAttribute()
-    {
-        return $this->topics()->count();
-    }
-
-    public function topics()
-    {
-        return $this->hasMany(TherapyTopic::class);
     }
 
     public function isUser(User $user)

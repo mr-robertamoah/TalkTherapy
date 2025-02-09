@@ -3,17 +3,17 @@
 namespace App\Actions\Therapy;
 
 use App\Actions\Action;
-use App\DTOs\CreateTherapyDTO;
 use App\Exceptions\CannotCreateTherapyException;
+use App\Models\User;
 
 class EnsureCanCreateTherapyAction extends Action
 {
-    public function execute(CreateTherapyDTO $createTherapyDTO)
+    public function execute(User $user)
     {
         if (
-            $createTherapyDTO->user->isAdmin() ||
-            $createTherapyDTO->user->isAdult() ||
-            $createTherapyDTO->user->guardians()->count()
+            $user->isAdmin() ||
+            $user->isAdult() ||
+            $user->hasGuardian()
             // TODO not banned from creating or suspending from the app
         ) return;
 

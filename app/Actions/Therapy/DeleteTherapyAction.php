@@ -4,19 +4,22 @@ namespace App\Actions\Therapy;
 
 use App\Actions\Action;
 use App\DTOs\CreateTherapyDTO;
+use App\DTOs\GroupTherapyDTO;
 
 class DeleteTherapyAction extends Action
 {
-    public function execute(CreateTherapyDTO $createTherapyDTO)
+    public function execute(CreateTherapyDTO|GroupTherapyDTO $dto)
     {
-        $createTherapyDTO->therapy->endSessions();
+        $therapy = $dto::class == GroupTherapyDTO::class ? $dto->groupTherapy : $dto->therapy;
 
-        $createTherapyDTO->therapy->starreable()->delete();
+        $therapy->endSessions();
 
-        $createTherapyDTO->therapy->delete();
+        $therapy->starreable()->delete();
+
+        $therapy->delete();
 
         // TODO dispatch event to frontend
 
-        return $createTherapyDTO->therapy->refresh();
+        return $therapy->refresh();
     }
 }

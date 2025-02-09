@@ -107,6 +107,13 @@ class User extends Authenticatable implements MustVerifyEmailContract
         return $this->guardians()->where('ward_id', $user->id)->exists();
     }
 
+    public function hasGuardian(): bool
+    {
+        return $this->guardians()
+            ->where('ward_id', $this->id)
+            ->exists();
+    }
+
     public function wards()
     {
         return $this->hasMany(Guardianship::class, 'guardian_id');
@@ -143,6 +150,12 @@ class User extends Authenticatable implements MustVerifyEmailContract
     public function isAdmin()
     {
         return $this->administrator()->exists();
+    }
+
+    public function isGuardianOfAUserFor(GroupTherapy $groupTherapy)
+    {
+        // TODO implement this
+        return true;
     }
 
     public function isNotAdmin()

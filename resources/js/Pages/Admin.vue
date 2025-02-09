@@ -350,6 +350,7 @@ function respondToVerificationRequest(requestId, response) {
                     v-for="counsellor in data.counsellors.show"
                     :key="counsellor.id"
                     :counsellor="counsellor"
+                    class="bg-stone-200"
                 />
             </template>
 

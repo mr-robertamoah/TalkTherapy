@@ -7,6 +7,7 @@ use App\Http\Controllers\CommentController;
 use App\Http\Controllers\ContactController;
 use App\Http\Controllers\CounsellorController;
 use App\Http\Controllers\DiscussionController;
+use App\Http\Controllers\GroupTherapyController;
 use App\Http\Controllers\HowToController;
 use App\Http\Controllers\LanguageController;
 use App\Http\Controllers\LicensingAuthorityController;
@@ -47,6 +48,7 @@ Route::get('/therapies/{therapyId}/topics', [TherapyTopicController::class, 'get
 Route::get('/therapies/{therapyId}/sessions', [SessionController::class, 'getSessions'])->name('api.sessions.get');
 
 Route::get('/therapies/random', [TherapyController::class, 'getRandomTherapies'])->name('api.therapies.random');
+Route::get('/group-therapies/random', [TherapyController::class, 'getRandomGroupTherapies'])->name('api.group.therapies.random');
 Route::get('/counsellors/random', [CounsellorController::class, 'getRandomCounsellors'])->name('api.counsellors.random');
 Route::get('/counsellors', [CounsellorController::class, 'getCounsellors'])->name('api.counsellors');
 
@@ -134,6 +136,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/likes', [LikeController::class, 'like'])->name('api.likes.create');
     Route::post('/likes/delete', [LikeController::class, 'dislike'])->name('api.likes.delete');
     
+    Route::post('/therapies/{therapyId}/assist', [TherapyController::class, 'sendAssistanceRequest'])->name('therapies.assist');
     Route::get('/therapies', [TherapyController::class, 'show'])->name('api.therapies');
     Route::get('/therapies/{therapyId}', [TherapyController::class, 'getTherapy'])->name('api.therapies.get');
     Route::get('/user/therapies', [TherapyController::class, 'getUserTherapies'])->name('api.therapies.user');
@@ -142,6 +145,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::patch('/therapies/{therapyId}', [TherapyController::class, 'updateTherapy'])->name('api.therapies.update');
     Route::delete('/therapies/{therapyId}', [TherapyController::class, 'deleteTherapy'])->name('api.therapies.delete');
     Route::post('/therapies/{therapyId}', [TherapyController::class, 'endTherapy'])->name('api.therapies.end');
+    Route::post('/therapies', [TherapyController::class, 'createTherapy'])->name('api.therapies.create');
     
     Route::post('/therapies/{therapyId}/sessions', [SessionController::class, 'createSession'])->name('api.sessions.create');
     Route::patch('/sessions/{sessionId}', [SessionController::class, 'updateSession'])->name('api.sessions.update');
@@ -174,8 +178,15 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/discussions/{discussionId}/abandon', [DiscussionController::class, 'abandonDiscussion'])->name('api.discussions.abandon');
     Route::post('/discussions/{discussionId}/end', [DiscussionController::class, 'endDiscussion'])->name('api.discussions.end');
 
-    Route::post('/therapies/{therapyId}/assist', [TherapyController::class, 'sendAssistanceRequest'])->name('therapies.assist');
-    Route::post('/therapies', [TherapyController::class, 'createTherapy'])->name('therapies.create');
+    Route::get('/group-therapies/{groupTherapyId}', [GroupTherapyController::class, 'getGroupTherapy'])->name('api.group.therapies.get');
+    Route::get('/counsellor/group-therapies', [GroupTherapyController::class, 'getCounsellorTherapies'])->name('api.group.therapies.counsellor');
+    Route::patch('/group-therapies/{groupTherapyId}', [GroupTherapyController::class, 'updateGroupTherapy'])->name('api.group.therapies.update');
+    Route::delete('/group-therapies/{groupTherapyId}', [GroupTherapyController::class, 'deleteGroupTherapy'])->name('api.group.therapies.delete');
+    Route::post('/group-therapies/{groupTherapyId}', [GroupTherapyController::class, 'endGroupTherapy'])->name('api.group.therapies.end');
+    Route::post('/group-therapies', [GroupTherapyController::class, 'createGroupTherapy'])->name('group.therapies.create');
+    Route::get('/user/group-therapies', [GroupTherapyController::class, 'getUserGroupTherapies'])->name('api.group.therapies.user');
+    Route::get('/ward/group-therapies', [GroupTherapyController::class, 'getWardGroupTherapies'])->name('api.group.therapies.ward');
+    Route::get('/counsellor/group-therapies', [GroupTherapyController::class, 'getCounsellorGroupTherapies'])->name('api.group.therapies.counsellor');
 
     Route::post('/counsellors', [CounsellorController::class, 'createCounsellor'])->name('counsellors.create');
 

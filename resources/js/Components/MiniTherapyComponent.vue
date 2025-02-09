@@ -71,6 +71,7 @@ const computedCanViewPage = computed(() => {
                     v-if="therapy.counsellor"
                     :visit-page="true"
                     :has-view="false"
+                    class="bg-stone-200"
                 />
                 <div v-else class="text-sm text-gray-600 text-center p-4 rounded bg-stone-100">no counsellor yet</div>
             </div>

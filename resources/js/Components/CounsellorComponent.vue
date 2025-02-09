@@ -1,10 +1,11 @@
 <template>
     <div
         v-bind="$attrs"
-        class="w-full max-w-[400px] bg-stone-200 p-2 rounded shadow-sm select-none cursor-pointer"
+        class="w-full max-w-[400px] p-2 rounded shadow-sm select-none cursor-pointer"
         @dblclick="() => {
+            $emit('dblclick')
             if (useMinimal) return
-            goToPage
+            goToPage()
         }"
     >
         <div
@@ -17,7 +18,7 @@
         >counsellor account has been deleted</div>
         <div 
             v-else-if="useMinimal" 
-            class="text-gray-600"
+            :class="[whiteText ? 'text-white' : 'text-gray-600']"
         >
             <!-- TODO: add section that allows viewing specialisation of counsellor -->
             <div class="flex items-center gap-2 mx-auto">
@@ -133,6 +134,10 @@ const props = defineProps({
         type: Boolean,
         default: false
     },
+    whiteText: {
+        type: Boolean,
+        default: false
+    },
     visitPage: {
         type: Boolean,
         default: true
@@ -157,7 +162,6 @@ function clickedResponse(response) {
 }
 
 function goToPage() {
-    emits('dblclick')
     if (props.visitPage && props.counsellor)
         router.get(route('counsellor.show', { counsellorId: props.counsellor.id}))
 }

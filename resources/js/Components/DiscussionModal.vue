@@ -157,7 +157,7 @@
           <PrimaryButton
             :disabled="
               !(
-                DiscussionStatuses.pending == discussion?.status &&
+                DiscussionStatusEnum.pending == discussion?.status &&
                 timer.beforeEnd > 10 &&
                 timer.beforeStart <= 0
               )
@@ -173,7 +173,7 @@
           <PrimaryButton
             :disabled="
               !(
-                [DiscussionStatuses.pending, DiscussionStatuses.inSession].includes(
+                [DiscussionStatusEnum.pending, DiscussionStatusEnum.inSession].includes(
                   discussion?.status
                 ) &&
                 timer.beforeEnd > 0 &&
@@ -294,7 +294,7 @@
                 :counsellor="counsellor"
                 :has-view="false"
                 :key="counsellor.id"
-                class="min-w-[30%] max-w-fit shrink-0 shadow shadow-slate-300"
+                class="min-w-[30%] max-w-fit shrink-0 shadow shadow-slate-300 bg-stone-200"
                 :use-minimal="true"
                 @click="
                   () => {
@@ -362,7 +362,7 @@
               :has-view="false"
               :use-minimal="true"
               tag="admin"
-              class="w-[70%] shrink-0"
+              class="w-[70%] shrink-0 bg-stone-200"
             />
 
             <hr class="bg-white w-[60%] mx-auto my-2" />
@@ -375,7 +375,7 @@
                 :use-minimal="true"
                 :has-view="false"
                 :tag="$page.props.auth?.user?.counsellor?.id == counsellor.id ? 'you' : ''"
-                class="w-[70%] shrink-0"
+                class="w-[70%] shrink-0 bg-stone-200"
                 @click="
                   () => {
                     if (!computedIsAddedby) return;
@@ -719,7 +719,6 @@ import {
 } from "vue";
 import Modal from "./Modal.vue";
 import useAuth from "@/Composables/useAuth";
-import OptionIcon from "@/Icons/OptionIcon.vue";
 import Alert from "./Alert.vue";
 import CounsellorComponent from "./CounsellorComponent.vue";
 import MessageBadge from "./MessageBadge.vue";
@@ -741,8 +740,8 @@ import { unref } from "vue";
 import SessionBadge from "./SessionBadge.vue";
 import StyledLink from "./StyledLink.vue";
 import useUtilities from "@/Composables/useUtilities";
-import useConsts from "@/Composables/useConsts";
 import useLoader from "@/Composables/useLoader";
+import useEnums from "@/Composables/useEnums";
 
 const { loader, showLoader, hideLoader } = useLoader();
 const { alertData, clearAlertData, setSuccessAlertData, setFailedAlertData } = useAlert();
@@ -792,7 +791,7 @@ const props = defineProps({
   },
 });
 
-const { DiscussionStatuses } = useConsts();
+const { DiscussionStatusEnum } = useEnums();
 const getting = ref({ show: false, type: "" });
 const requestData = ref({
   counsellorId: [],
@@ -800,8 +799,8 @@ const requestData = ref({
 const discussionCounsellors = ref({ data: [], page: 1 });
 const sessions = ref({ data: [], page: 1 });
 const discussionMessages = ref({ data: [], page: 1 });
-const counsellors = ref({ data: [], page: 1 });
 const counsellorLinks = ref({ data: [], page: 1 });
+const counsellors = ref({ data: [], page: 1 });
 const counsellorSearch = ref("");
 const sessionSearch = ref("");
 const selectedSession = ref(null);
@@ -849,9 +848,9 @@ watchEffect(() => {
 });
 watchEffect(() => {
   if ([
-        DiscussionStatuses.held,
-        DiscussionStatuses.abandoned,
-        DiscussionStatuses.failed,
+        DiscussionStatusEnum.held,
+        DiscussionStatusEnum.abandoned,
+        DiscussionStatusEnum.failed,
     ].includes(props.discussion.status)) {
     return;
   }
@@ -866,7 +865,7 @@ watch(
 );
 
 const computedCanSendMessage = computed(() => {
-  if (props.discussion?.status !== DiscussionStatuses.inSession)
+  if (props.discussion?.status !== DiscussionStatusEnum.inSession)
     return false;
 
   if (!computedUser.value?.id) return false;
@@ -922,8 +921,8 @@ const computedMessagesPage = computed(() => {
 });
 const computedIsInSession = computed(() => {
   return (
-    DiscussionStatuses.inSession == props.discussion?.status ||
-    (props.discussion?.status == DiscussionStatuses.pending &&
+    DiscussionStatusEnum.inSession == props.discussion?.status ||
+    (props.discussion?.status == DiscussionStatusEnum.pending &&
       props.timer.beforeStart < 5)
   );
 });
@@ -1092,7 +1091,7 @@ async function clickedEndDiscussion() {
     .post(route("api.discussions.end", props.discussion.id))
     .then((res) => {
       console.log(res);
-      emits("changeStatus", DiscussionStatuses.held);
+      emits("changeStatus", DiscussionStatusEnum.held);
     })
     .catch((err) => {
       console.log(err);
@@ -1113,7 +1112,7 @@ async function clickedStartSession() {
     .post(route("api.discussions.in_session", props.discussion.id))
     .then((res) => {
       console.log(res);
-      emits("changeStatus", DiscussionStatuses.inSession);
+      emits("changeStatus", DiscussionStatusEnum.inSession);
     })
     .catch((err) => {
       console.log(err);
@@ -1134,7 +1133,7 @@ async function clickedAbandonSession() {
     .post(route("api.discussions.abandon", props.discussion.id))
     .then((res) => {
       console.log(res);
-      emits("changeStatus", DiscussionStatuses.abandoned);
+      emits("changeStatus", DiscussionStatusEnum.abandoned);
     })
     .catch((err) => {
       console.log(err);

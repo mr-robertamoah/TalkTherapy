@@ -8,16 +8,20 @@ use App\DTOs\CreateSessionDTO;
 use App\DTOs\CreateTherapyDTO;
 use App\DTOs\CreateTherapyTopicDTO;
 use App\DTOs\GetTherapyDTO;
+use App\DTOs\GroupTherapyDTO;
 use App\Exceptions\TherapyNotFoundException;
 
 class EnsureTherapyExistsAction extends Action
 {
     public function execute(
-        GetTherapyDTO|AssistTherapyDTO|CreateTherapyDTO|CreateSessionDTO|CreateTherapyTopicDTO $getTherapyDTO
+        GetTherapyDTO|AssistTherapyDTO|CreateTherapyDTO|CreateSessionDTO|CreateTherapyTopicDTO|GroupTherapyDTO $getTherapyDTO,
+        $type = 'Therapy'
     )
     {
-        if ($getTherapyDTO->therapy) return;
+        $therapy = $type == 'Therapy' ? $getTherapyDTO->therapy : $getTherapyDTO->groupTherapy;
 
-        throw new TherapyNotFoundException("Therapy was not found.", 422);
+        if ($therapy) return;
+
+        throw new TherapyNotFoundException("{$type} was not found.", 422);
     }
 }

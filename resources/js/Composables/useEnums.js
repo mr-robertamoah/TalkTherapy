@@ -1,15 +1,46 @@
 export default function useEnums() {
+    const RequestTypeEnum = {
+        guardianship: 'GUARDIANSHIP',
+        counsellor: 'COUNSELLOR_VERIFICATION_REQUEST',
+        administrator: 'ADMINISTRATION_REQUEST',
+        therapy: 'THERAPY_ASSISTANCE_REQUEST',
+        discussion: 'THERAPY_DISCUSSION_REQUEST',
+        groupTherapy: 'GROUP_THERAPY_ASSISTANCE_REQUEST',
+    }
+    const RequestStatusEnum = {
+        accepted: 'ACCEPTED',
+        pending: 'PENDING',
+        rejected: 'REJECTED',
+    }
     const SessionStatusEnum = {
-        pending: 'PENDING', // scheduled
-        in_session_confirmation: 'IN_SESSION_CONFIRMATION', // when in person and waiting to end
-        in_session: 'IN_SESSION', // when having the session
-        failed: 'FAILED', // when scheduled but not held
-        abandoned: 'ABANDONED', // held but ended before end time
+        pending: 'PENDING',
+        inSessionConfirmation: 'IN_SESSION_CONFIRMATION',
+        inSession: 'IN_SESSION',
+        failed: 'FAILED',
+        abandoned: 'ABANDONED',
         held: 'HELD',
-        held_confirmation: 'HELD_CONFIRMATION',
+        heldConfirmation: 'HELD_CONFIRMATION',
+    }
+    const DiscussionStatusEnum = {
+        pending: 'PENDING',
+        inSession: 'IN_SESSION',
+        failed: 'FAILED',
+        abandoned: 'ABANDONED',
+        held: 'HELD',
+    }
+
+    const PaymentTypeEnum = {
+        free: 'FREE',
+        paid: 'PAID'
+    }
+
+    const SessionTypeEnum = {
+        once: 'ONCE',
+        periodic: 'PERIODIC'
     }
 
     return {
-        SessionStatusEnum
+        SessionStatusEnum, DiscussionStatusEnum, RequestStatusEnum, RequestTypeEnum,
+        PaymentTypeEnum, SessionTypeEnum
     }
 }

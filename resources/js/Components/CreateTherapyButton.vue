@@ -18,8 +18,8 @@ const emits = defineEmits(['successful'])
 
 
 function clickedCreate() {
-    showModal('individual')
-    // showModal('mini') when group therapy is done
+    // showModal('individual')
+    showModal('mini')
 }
 </script>
 

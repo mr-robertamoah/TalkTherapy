@@ -12,7 +12,6 @@ class EnsureUserHasAccessToTherapyAction extends Action
 
     public function execute(GetTherapyDTO $getTherapyDTO)
     {
-        // dd($getTherapyDTO);
         if (
             $getTherapyDTO->therapy->public ||
             $getTherapyDTO->therapy->isParticipant($getTherapyDTO->user) ||
@@ -30,7 +29,14 @@ class EnsureUserHasAccessToTherapyAction extends Action
                 )
             ) ||
             $getTherapyDTO->user->isAdmin() ||
-            $getTherapyDTO->user->isGuardianOf($getTherapyDTO->therapy->addedby)
+            (
+                $getTherapyDTO->therapy->is_therapy &&
+                $getTherapyDTO->user->isGuardianOf($getTherapyDTO->therapy->addedby)
+            ) ||
+            (
+                $getTherapyDTO->therapy->is_group_therapy &&
+                $getTherapyDTO->user->isGuardianOfAUserFor($getTherapyDTO->therapy)
+            )
         ) return;
 
         throw new TherapyAccessDeniedException("You are not allowed to assess therapy with id: {$getTherapyDTO->therapy->id}", 422);
