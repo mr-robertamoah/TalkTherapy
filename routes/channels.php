@@ -2,6 +2,7 @@
 
 use App\Models\Counsellor;
 use App\Models\Discussion;
+use App\Models\GroupTherapy;
 use App\Models\Message;
 use App\Models\Session;
 use App\Models\Therapy;
@@ -49,6 +50,28 @@ Broadcast::channel('therapies.{therapyId}', function ($user, $therapyId) {
     $name = $user->name;
 
     if ($isUser && $therapy->anonymous)
+        $name = 'Client (Anonymous User)';
+
+    return ['id' => $user->id, 'name' => $name];
+});
+
+Broadcast::channel('groupTherapies.{groupTherapyId}', function ($user, $groupTherapyId) {
+    $therapy = GroupTherapy::find($groupTherapyId);
+    if (!$therapy) return false;
+
+    $counsellor = $user->counsellor;
+    $isCounsellorForDiscussion = $counsellor && $therapy->discussions()->whereIsParticipant($counsellor)->exists();
+    
+    if (
+        !$therapy?->isParticipant($user) &&
+        !$isCounsellorForDiscussion
+    ) return false;
+    
+    $name = $user->name;
+
+    $participant = $therapy->users()->where('user_id', $user->id)->first();
+
+    if ($participant->anonymous)
         $name = 'Client (Anonymous User)';
 
     return ['id' => $user->id, 'name' => $name];

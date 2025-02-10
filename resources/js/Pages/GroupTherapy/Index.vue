@@ -302,7 +302,7 @@ function clearData() {
 }
 
 async function deleteTherapy() {
-  therapyForm.delete(route(`group.therapies.delete`, { therapyId: computedTherapy.value.id }), {
+  therapyForm.delete(route(`group.therapies.delete`, { groupTherapyId: computedTherapy.value.id }), {
     onStart: () => {
       setLoader("delete");
     },
@@ -341,7 +341,7 @@ async function deleteTherapy() {
 }
 
 async function endTherapy() {
-  therapyForm.post(route(`therapies.end`, { therapyId: computedTherapy.value.id }), {
+  therapyForm.post(route(`group.therapies.end`, { groupTherapyId: computedTherapy.value.id }), {
     onStart: () => {
       setLoader("delete");
     },
@@ -479,7 +479,7 @@ function clickedActiveSession() {
 async function sendAssistanceRequest() {
   setLoader("assistance");
   await axios
-    .post(route(`therapies.assist`, { therapyId: computedTherapy.value?.id }), {
+    .post(route(`group.therapies.assist`, { groupTherapyId: computedTherapy.value?.id }), {
       counsellorIds: selectedCounsellors.value.map((c) => c.id),
     })
     .then((res) => {
@@ -1486,11 +1486,11 @@ function clearGetting() {
             <PrimaryButton
               @click="clickedReport"
               class="shrink-0"
-              v-if="$page.props.auth.user"
+              v-if="$page.props.auth.user && !computedIsUser"
               >make a report</PrimaryButton
             >
             <template v-if="computedTherapy.status !== 'ENDED'">
-              <!-- able to end all running sessions when creating a session -->
+              <!-- TODO able to end all running sessions when creating a session -->
               <PrimaryButton
                 @click="clickedCreateSession"
                 class="shrink-0"
@@ -1515,14 +1515,14 @@ function clearGetting() {
                     computedTherapy.sessionsHeld
                   "
                   class="shrink-0"
-                  >end therapy</PrimaryButton
+                  >end group therapy</PrimaryButton
                 >
                 <template v-if="computedIsUser">
                   <PrimaryButton @click="clickedUpdate" class="shrink-0"
-                    >update therapy</PrimaryButton
+                    >update group therapy</PrimaryButton
                   >
                   <DangerButton @click="clickedDelete" class="shrink-0"
-                    >delete therapy</DangerButton
+                    >delete group therapy</DangerButton
                   >
                 </template>
               </template>

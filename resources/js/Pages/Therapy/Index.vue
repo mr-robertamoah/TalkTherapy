@@ -1473,7 +1473,7 @@ function clearGetting() {
             <PrimaryButton
               @click="clickedReport"
               class="shrink-0"
-              v-if="$page.props.auth.user"
+              v-if="$page.props.auth.user && !computedIsUser"
               >make a report</PrimaryButton
             >
             <template v-if="computedTherapy.status !== 'ENDED'">
