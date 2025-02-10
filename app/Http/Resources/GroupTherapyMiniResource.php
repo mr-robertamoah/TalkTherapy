@@ -21,11 +21,17 @@ class GroupTherapyMiniResource extends JsonResource
             'public' => $this->public,
             'anonymous' => $this->anonymous,
             'allowAnyone' => $this->allow_anyone,
+            'userId' => $this->when(
+                $this->addedby_type == Counsellor::class, 
+                $this->addedby->user_id,
+                $this->addedby->id
+            ),
             'addedby' => $this->when(
                 $this->addedby_type == Counsellor::class, 
                 new CounsellorMiniResource($this->addedby),
                 new UserMiniResource($this->addedby)
             ),
+            'counsellorsCount' => $this->counsellors()->count(),
             'about' => $this->about,
             'sessionsHeld' => $this->sessionsHeld,
             'createdAt' => $this->created_at->diffForHumans()

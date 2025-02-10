@@ -10,32 +10,34 @@ use App\Models\Request;
 class EnsureUserHasAccessToTherapyAction extends Action
 {
 
-    public function execute(GetTherapyDTO $getTherapyDTO)
+    public function execute(GetTherapyDTO $getTherapyDTO, String $type = 'therapy')
     {
+        $therapy = $getTherapyDTO->$type;
+
         if (
-            $getTherapyDTO->therapy->public ||
-            $getTherapyDTO->therapy->isParticipant($getTherapyDTO->user) ||
+            $therapy->public ||
+            $therapy->isParticipant($getTherapyDTO->user) ||
             (
                 $getTherapyDTO->user->counsellor && 
                 (
                     Request::query()
                         ->wherePending()
                         ->whereTo($getTherapyDTO->user->counsellor)
-                        ->whereHasMorph('for', [Discussion::class], function ($query) use ($getTherapyDTO) {
-                            $query->whereFor($getTherapyDTO->therapy);
+                        ->whereHasMorph('for', [Discussion::class], function ($query) use ($therapy) {
+                            $query->whereFor($therapy);
                         })
                         ->exists() ||
-                    $getTherapyDTO->user->counsellor->hasPendingRequestFor($getTherapyDTO->therapy)
+                    $getTherapyDTO->user->counsellor->hasPendingRequestFor($therapy)
                 )
             ) ||
             $getTherapyDTO->user->isAdmin() ||
             (
-                $getTherapyDTO->therapy->is_therapy &&
-                $getTherapyDTO->user->isGuardianOf($getTherapyDTO->therapy->addedby)
+                $therapy->is_therapy &&
+                $getTherapyDTO->user->isGuardianOf($therapy->addedby)
             ) ||
             (
-                $getTherapyDTO->therapy->is_group_therapy &&
-                $getTherapyDTO->user->isGuardianOfAUserFor($getTherapyDTO->therapy)
+                $therapy->is_group_therapy &&
+                $getTherapyDTO->user->isGuardianOfAUserFor($therapy)
             )
         ) return;
 

@@ -52,7 +52,7 @@ Route::get('/about', AboutController::class)
     ->name('about');
 
 Route::get('/therapies/{therapyId}', [TherapyController::class, 'getTherapy'])->name('therapies.get');
-Route::get('/grouptherapies/{groupTherapyId}', [GroupTherapyController::class, 'getGroupTherapy'])->name('grouptherapies.get');
+Route::get('/group-therapies/{groupTherapyId}', [GroupTherapyController::class, 'getGroupTherapy'])->name('group.therapies.get');
 
 Route::get('/counsellor/{counsellorId}/verify-email/{hash}', [CounsellorController::class, 'verifyEmail'])
     ->middleware(['signed','throttle:6,1'])
@@ -65,8 +65,6 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/links/{uuid}', [LinkController::class, 'performAction'])->name('links.get');
 
-    Route::get('/therapies', [TherapyController::class, 'show'])->name('therapies');
-
     Route::get('/administrator', [AdministratorController::class, 'show'])->name('administrator');
 
     Route::get('/therapies', [TherapyController::class, 'show'])->name('therapies');
@@ -74,9 +72,17 @@ Route::middleware('auth')->group(function () {
     Route::delete('/therapies/{therapyId}', [TherapyController::class, 'deleteTherapy'])->name('therapies.delete');
     Route::post('/therapies/{therapyId}', [TherapyController::class, 'endTherapy'])->name('therapies.end');
 
-    Route::post('/therapies/{therapyId}/sessions', [SessionController::class, 'createSession'])->name('sessions.create');
-    Route::patch('/therapies/{therapyId}/sessions/{sessionId}', [SessionController::class, 'updateSession'])->name('sessions.update');
-    Route::delete('/therapies/{therapyId}/sessions/{sessionId}', [SessionController::class, 'deleteSession'])->name('sessions.delete');
+    Route::post('/therapies/{therapyId}/sessions', [SessionController::class, 'createTherapySession'])->name('sessions.create');
+    Route::patch('/therapies/{therapyId}/sessions/{sessionId}', [SessionController::class, 'updateTherapySession'])->name('sessions.update');
+    Route::delete('/therapies/{therapyId}/sessions/{sessionId}', [SessionController::class, 'deleteTherapySession'])->name('sessions.delete');
+
+    Route::patch('/group-therapies/{groupTherapyId}', [GroupTherapyController::class, 'updateGroupTherapy'])->name('group.therapies.update');
+    Route::delete('/group-therapies/{groupTherapyId}', [GroupTherapyController::class, 'deleteGroupTherapy'])->name('group.therapies.delete');
+    Route::post('/group-therapies/{groupTherapyId}', [GroupTherapyController::class, 'endGroupTherapy'])->name('group.therapies.end');
+
+    Route::post('/group-therapies/{groupTherapyId}/sessions', [SessionController::class, 'createGroupTherapySession'])->name('sessions.create');
+    Route::patch('/group-therapies/{groupTherapyId}/sessions/{sessionId}', [SessionController::class, 'updateGroupTherapySession'])->name('sessions.update');
+    Route::delete('/group-therapies/{groupTherapyId}/sessions/{sessionId}', [SessionController::class, 'deleteGroupTherapySession'])->name('sessions.delete');
     
     Route::post('/sessions/{sessionId}/in_session', [SessionController::class, 'getInSession'])->name('sessions.in_session');
     Route::post('/sessions/{sessionId}/end', [SessionController::class, 'endSession'])->name('sessions.end');

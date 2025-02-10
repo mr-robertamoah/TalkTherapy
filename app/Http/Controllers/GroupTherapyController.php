@@ -188,13 +188,13 @@ class GroupTherapyController extends Controller
             $therapy = GroupTherapyService::new()->getGroupTherapy(
                 GetTherapyDTO::new()->fromArray([
                     'user' => $request->user(),
-                    'therapy' => GroupTherapy::find($request->groupTherapyId),
+                    'groupTherapy' => GroupTherapy::find($request->groupTherapyId),
                 ])
             );
 
             $pendingRequest = $therapy->pendingRequestFor($request->user()?->counsellor);
 
-            return Inertia::render('Therapy/Index', [
+            return Inertia::render('GroupTherapy/Index', [
                 'therapy' => new GroupTherapyResource($therapy),
                 'session' => session('session'),
                 'pendingRequest' => $pendingRequest ? new RequestResource($pendingRequest) : null,

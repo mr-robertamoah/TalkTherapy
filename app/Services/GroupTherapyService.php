@@ -116,10 +116,13 @@ class GroupTherapyService extends Service
             'Group Therapy'
         );
 
-        EnsureUserHasAccessToTherapyAction::new()->execute($getTherapyDTO);
+        EnsureUserHasAccessToTherapyAction::new()->execute(
+            $getTherapyDTO,
+            'groupTherapy'
+        );
 
         // TODO load relationships for efficiency
-        return $getTherapyDTO->therapy;
+        return $getTherapyDTO->groupTherapy;
     }
 
     public function getRandomGroupTherapies(?User $user)

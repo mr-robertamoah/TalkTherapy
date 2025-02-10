@@ -47,17 +47,6 @@ class SessionController extends Controller
             return $this->returnFailure($request, $th);
         }
     }
-    
-    public function getSessions(Request $request)
-    {
-        return SessionService::new()->getSessions(
-            GetSessionsDTO::new()->fromArray([
-                'therapy' => $this->getFor($request),
-                'user' => $request->user(),
-                'name' => $request->name
-            ])
-        );
-    }
 
     public function updateSession(UpdateSessionRequest $request)
     {
@@ -108,6 +97,17 @@ class SessionController extends Controller
             
             return $this->returnFailure($request, $th);
         }
+    }
+    
+    public function getSessions(Request $request)
+    {
+        return SessionService::new()->getSessions(
+            GetSessionsDTO::new()->fromArray([
+                'therapy' => $this->getFor($request),
+                'user' => $request->user(),
+                'name' => $request->name
+            ])
+        );
     }
 
     public function setCurrentTopic(Request $request)

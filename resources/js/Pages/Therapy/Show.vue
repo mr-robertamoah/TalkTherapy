@@ -1,4 +1,5 @@
 <script setup>
+import MiniGroupTherapyComponent from '@/Components/MiniGroupTherapyComponent.vue';
 import MiniTherapyComponent from '@/Components/MiniTherapyComponent.vue';
 import useLoader from '@/Composables/useLoader';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
@@ -276,10 +277,10 @@ function updatePage(res, items, type = 'individual') {
                         <div class="text-gray-900 px-4">Group Therapies</div>
                         <div class="m-2 px-3 pb-6 overflow-hidden overflow-x-auto space-x-5 flex justify-start items-center">
                             <template v-if="counsellorTherapies.group.data?.length">
-                                <MiniTherapyComponent
+                                <MiniGroupTherapyComponent
                                     v-for="therapy in counsellorTherapies.group.data"
                                     :key="therapy.id"
-                                    :therapy="therapy"
+                                    :groupTherapy="therapy"
                                     :show-go-to="true"
                                     class="w-[250px] shrink-0"
                                 />
@@ -333,10 +334,10 @@ function updatePage(res, items, type = 'individual') {
                         <div class="text-gray-900 px-4">Group Therapies</div>
                         <div class="m-2 px-3 pb-6 overflow-hidden overflow-x-auto space-x-5 flex justify-start items-center">
                             <template v-if="wardTherapies.group.data?.length">
-                                <MiniTherapyComponent
+                                <MiniGroupTherapyComponent
                                     v-for="therapy in wardTherapies.group.data"
                                     :key="therapy.id"
-                                    :therapy="therapy"
+                                    :groupTherapy="therapy"
                                     class="w-[250px] shrink-0"
                                 />
 
@@ -389,10 +390,10 @@ function updatePage(res, items, type = 'individual') {
                         <div class="text-gray-900 px-4">Group Therapies</div>
                         <div class="m-2 px-3 pb-6 overflow-hidden overflow-x-auto space-x-5 flex justify-start items-center">
                             <template v-if="therapies.group.data?.length">
-                                <MiniTherapyComponent
+                                <MiniGroupTherapyComponent
                                     v-for="therapy in therapies.group.data"
                                     :key="therapy.id"
-                                    :therapy="therapy"
+                                    :groupTherapy="therapy"
                                     class="w-[250px] shrink-0"
                                 />
 

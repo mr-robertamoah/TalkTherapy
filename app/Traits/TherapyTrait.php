@@ -91,9 +91,9 @@ trait TherapyTrait
         return $this->morphTo('addedby');
     }
 
-    public function therapyTopics()
+    public function topics()
     {
-        return $this->morphMany(TherapyTopic::class, 'for');
+        return $this->morphMany(TherapyTopic::class, 'topicable');
     }
 
     public function messages()
@@ -184,10 +184,5 @@ trait TherapyTrait
     public function getTopicsCountAttribute()
     {
         return $this->topics()->count();
-    }
-
-    public function topics()
-    {
-        return $this->hasMany(TherapyTopic::class);
     }
 }

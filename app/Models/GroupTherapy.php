@@ -126,6 +126,44 @@ class GroupTherapy extends Model
         return $counsellors;
     }
 
+    public function getActiveSession(User $user)    
+    {
+        // TODO
+        return $this->sessions()
+            ->where(function ($query) use ($user) {
+                $query
+                    ->whereIsParticipant($user)
+                    ->whereIsNotUserWhoConfirmedHeld($user)
+                    ->whereIsOngoing();
+            })
+            ->first();
+    }
+
+    public function getActiveDiscussion(Counsellor $counsellor)
+    {
+        // TODO
+        return $this->discussions()
+            ->where(function ($query) use ($counsellor) {
+                $query
+                    ->whereIsParticipant($counsellor)
+                    ->whereIsOngoing();
+            })
+            ->first();
+    }
+
+    public function pendingRequestFor(?Counsellor $counsellor)
+    {
+        // TODO
+        if (is_null($counsellor)) return null;
+
+        return Request::query()
+            ->wherePending()
+            ->whereFor($this)
+            ->whereTo($counsellor)
+            ->latest()
+            ->first();
+    }
+
     public function scopeWhereNotCounsellor($query, Counsellor $counsellor)
     {
         // TODO test this

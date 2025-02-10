@@ -11,5 +11,6 @@ use MrRobertAmoah\DTO\BaseDTO;
 class GetTherapyDTO extends BaseDTO
 {
     public ?User $user = null;
-    public Therapy|GroupTherapy|null $therapy = null;
+    public Therapy|null $therapy = null;
+    public GroupTherapy|null $groupTherapy = null;
 }
