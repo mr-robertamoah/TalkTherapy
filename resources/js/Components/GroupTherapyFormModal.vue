@@ -197,19 +197,7 @@ async function createTherapy() {
         therapyData.value.per !== 'PER_THERAPY'
     ) {
         setFailedAlertData({
-            message: "Since ONCE and PAID have been selected for session and payment types respectively, the per amount should be THERAPY.",
-            time: 10000
-        });
-        return
-    }
-
-    if (
-        therapyData.value.paymentType == PaymentTypeEnum.paid &&
-        therapyData.value.sessionType == SessionTypeEnum.once &&
-        therapyData.value.per !== 'PER_THERAPY'
-    ) {
-        setFailedAlertData({
-            message: "Since ONCE and PAID have been selected for session and payment types respectively, the per amount should be THERAPY.",
+            message: "Since ONCE and PAID have been selected for session and payment types respectively, you must select per THERAPY.",
             time: 10000
         });
         return
@@ -391,7 +379,7 @@ function closeModal() {
                                 <span class="ms-2 text-sm text-gray-600">Allow in person sessions.</span>
                             </label>
 
-                            <div class="mt-2 text-xs text-gray-500">If you check this box, counsellor can schedule in-person sessions with you.</div>
+                            <div class="mt-2 text-xs text-gray-500">If you check this box, counsellors can schedule in-person sessions with you.</div>
                             <InputError class="mt-2" :message="therapyErrors.allowInPerson" />
                         </div>
 
@@ -494,7 +482,7 @@ function closeModal() {
                     <hr class="my-4">
 
                     <div class="p-4 rounded bg-gray-200 shadow-sm">
-                        <div class="text-sm text-gray-600 text-start mb-4 font-semibold">This section cannot be updated after the first session.</div>
+                        <div class="text-sm text-gray-600 text-start mb-4 font-semibold">You cannot update payment after the first session.</div>
                         <div class="mx-auto max-w-[400px]">
                             <label class="flex items-center" :disabled="therapyData.paymentType == PaymentTypeEnum.free">
                                 <Checkbox :disabled="therapyData.paymentType == PaymentTypeEnum.free" name="remember" v-model:checked="therapyData.public" />

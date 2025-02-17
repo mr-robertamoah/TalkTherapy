@@ -114,7 +114,7 @@ class GroupTherapyController extends Controller
             GroupTherapyService::new()->updateGroupTherapy(
                 GroupTherapyDTO::new()->fromArray([
                     'user' => $request->user(),
-                    'therapy' => GroupTherapy::find($request->groupTherapyId),
+                    'groupTherapy' => GroupTherapy::find($request->groupTherapyId),
                     'name' => $request->name,
                     'about' => $request->about,
                     'per' => $request->per,
@@ -152,7 +152,7 @@ class GroupTherapyController extends Controller
             GroupTherapyService::new()->deleteGroupTherapy(
                 GroupTherapyDTO::new()->fromArray([
                     'user' => $request->user(),
-                    'therapy' => GroupTherapy::find($request->groupTherapyId),
+                    'groupTherapy' => GroupTherapy::find($request->groupTherapyId),
                 ])
             );
 

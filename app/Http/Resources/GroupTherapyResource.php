@@ -18,9 +18,6 @@ class GroupTherapyResource extends JsonResource
         $activeSession = null;
         $activeDiscussion = null;
         $user = $request->user();
-        $therapyUser = $this->addedby_type == Counsellor::class ?
-            $this->addedby->user :
-            $this->addedby;
 
         if ($user && $this->isParticipant($user))
             $activeSession = $this->getActiveSession($user);
@@ -31,7 +28,9 @@ class GroupTherapyResource extends JsonResource
         return [
             'id' => $this->id,
             'name' => $this->name,
-            'user' => new UserMiniResource($therapyUser),
+            'addedby' => $this->addedby_type == Counsellor::class ? 
+                new CounsellorMiniResource($this->addedby) : 
+                new UserMiniResource($this->addedby),
             'public' => (bool) $this->public,
             'anonymous' => (bool) $this->anonymous,
             'allowInPerson' => (bool) $this->allow_in_person,

@@ -1411,11 +1411,6 @@ function clearGetting() {
               <div class="text-gray-600 tracking-wide font-semibold">Stats</div>
               <div class="my-4">
                 <ActivityBadge
-                  :name="'maximum allowed sessions'"
-                  :value="computedTherapy.maxSessions"
-                  class="my-2"
-                />
-                <ActivityBadge
                   :name="'total sessions'"
                   :value="computedTherapy.sessionsCreated"
                   class="my-2 ml-6 mt-4"

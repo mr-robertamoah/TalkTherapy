@@ -21,6 +21,7 @@ class UserMiniResource extends JsonResource
             'gender' => $this->gender,
             'country' => $this->country,
             'dob' => $this->dob,
+            'isUser' => true,
         ];
     }
 }

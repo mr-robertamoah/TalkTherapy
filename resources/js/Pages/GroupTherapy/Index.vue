@@ -20,7 +20,6 @@ import { default as _ } from "lodash";
 import { differenceInMinutes, parseISO } from "date-fns";
 import useAlert from "@/Composables/useAlert";
 import Alert from "@/Components/Alert.vue";
-import UpdateIndividualTherapyFormModal from "@/Components/UpdateIndividualTherapyFormModal.vue";
 import CreateSessionFormModal from "@/Components/CreateSessionFormModal.vue";
 import useAuth from "@/Composables/useAuth";
 import useLocalDateTimed from "@/Composables/useLocalDateTime";
@@ -35,6 +34,7 @@ import HelpButton from "@/Components/HelpButton.vue";
 import useGuidedTours from "@/Composables/useGuidedTours";
 import DiscussionModal from "@/Components/DiscussionModal.vue";
 import useEnums from "@/Composables/useEnums";
+import UpdateGroupTherapyFormModal from "@/Components/UpdateGroupTherapyFormModal.vue";
 
 const { modalData, showModal, closeModal } = useModal();
 const { RequestTypeEnum, SessionStatusEnum, DiscussionStatusEnum } = useEnums()
@@ -156,8 +156,10 @@ watchEffect(() => {
 
   if (!user?.id || !currentTherapy.id) return;
 
-  if (user?.id == currentTherapy.user.id)
-    getCounsellorlinks();
+  if (
+    (user?.id == currentTherapy.addedby.id && currentTherapy.addedby.isUser) ||
+    (user?.id == currentTherapy.addedby.userId && currentTherapy.addedby.isCounsellor)
+  ) getCounsellorlinks();
 
   if (user?.counsellor) getDiscussions(currentTherapy);
 
@@ -249,7 +251,8 @@ onBeforeUnmount(() => {
 });
 
 const computedIsUser = computed(() => {
-  return userId == computedTherapy.value.user?.id;
+  return (userId == computedTherapy.value.addedby?.id && computedTherapy.value.addedby?.isUser) ||
+    (userId == computedTherapy.value.addedby?.userId && computedTherapy.value.addedby?.isCounsellor);
 });
 const computedIsCounsellor = computed(() => {
   return !!counsellors.value.find((c) => c.userId == userId);
@@ -1186,7 +1189,7 @@ function clearGetting() {
 
             <div class="w-full shrink-0" id="therapy_participants">
               <div class="bg-white p-6 w-full">
-                <div class="text-gray-600 tracking-wide font-semibold">Counsellor</div>
+                <div class="text-gray-600 tracking-wide font-semibold">Counsellors</div>
                 <div v-if="counsellors.length" class="my-4 flex justify-start p-2 items-center">
                   <CounsellorComponent
                     v-for="(counsellor, idx) in counsellors"
@@ -1241,15 +1244,16 @@ function clearGetting() {
                     }}</PrimaryButton
                   >
                   <div class="mt-2 text-sm text-center p-2 text-gray-600">
-                    no counsellor yet
+                    no counsellors yet
                   </div>
                 </div>
               </div>
 
               <div class="bg-white p-6 shrink-0 mt-4 w-full">
-                <div class="text-gray-600 tracking-wide font-semibold">User</div>
-                <div class="my-4" v-if="computedTherapy.user">
-                  <UserComponent :user="computedTherapy.user" />
+                <div class="text-gray-600 tracking-wide font-semibold">{{ computedTherapy.addedby.isUser ? 'User' : 'Counsellor'}}</div>
+                <div class="my-4">
+                  <UserComponent :user="computedTherapy.addedby" v-if="computedTherapy.addedby.isUser" />
+                  <CounsellorComponent :counsellor="computedTherapy.addedby" v-else />
                 </div>
               </div>
 
@@ -1325,7 +1329,22 @@ function clearGetting() {
                   :name="'Session Type'"
                   :value="computedTherapy.sessionType"
                 />
-                <NameAndValue :name="'Status'" :value="computedTherapy.status" />
+                <NameAndValue 
+                  :name="'Status'" 
+                  :value="computedTherapy.status" 
+                />
+                <NameAndValue 
+                  :name="'Maximum Number of Sessions'" 
+                  :value="computedTherapy.maxSessions" 
+                />
+                <NameAndValue 
+                  :name="'Maximum Number of Users'" 
+                  :value="computedTherapy.maxUsers" 
+                />
+                <NameAndValue 
+                  :name="'Maximum Number of Counsellors'" 
+                  :value="computedTherapy.maxCounsellors" 
+                />
 
                 <hr class="my-4" />
                 <div class="mb-2 mt-4 text-sm font-semibold tracking-wide">Cases</div>
@@ -1356,6 +1375,7 @@ function clearGetting() {
                 Payment per {{ computedTherapy.per }}
               </div>
               <div class="my-4">
+                <!-- TODO show the shares -->
                 <div class="flex justify-start items-center mb-4">
                   <div
                     class="text-sm text-gray-600 p-2 border-b-2 border-stone-600 mr-2 min-w-[130px] text-end"
@@ -1423,11 +1443,6 @@ function clearGetting() {
             <div class="bg-white p-6 shrink-0 w-full" id="therapy_stats">
               <div class="text-gray-600 tracking-wide font-semibold">Stats</div>
               <div class="my-4">
-                <ActivityBadge
-                  :name="'maximum allowed sessions'"
-                  :value="computedTherapy.maxSessions"
-                  class="my-2"
-                />
                 <ActivityBadge
                   :name="'total sessions'"
                   :value="computedTherapy.sessionsCreated"
@@ -1634,8 +1649,10 @@ function clearGetting() {
           </div>
 
           <div v-else>
-            <UserComponent :user="computedTherapy.user" />
+            <UserComponent :user="computedTherapy.addedby" v-if="computedTherapy.addedby.isUser" />
+            <CounsellorComponent :counsellor="computedTherapy.addedby" v-else />
 
+            <!-- TODO request to be counsellor or join and when allow anyone, just join -->
             <div class="w-[90%] mx-auto text-sm text-center text-gray-600">
               You are sending a request to assist
               {{ computedTherapy?.user.fullName }} with this therapy.
@@ -1812,7 +1829,7 @@ function clearGetting() {
     </div>
   </Modal>
 
-  <UpdateIndividualTherapyFormModal
+  <UpdateGroupTherapyFormModal
     :show="modalData.show && modalData.type == 'update'"
     :therapy="computedTherapy"
     @close-modal="closeModal"
