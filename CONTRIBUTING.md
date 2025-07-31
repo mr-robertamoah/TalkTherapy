@@ -30,11 +30,34 @@ TalkTherapy is a Laravel and Vue.js-based platform that connects individuals wit
    cd TalkTherapy
    ```
 
-2. **Docker Setup (Recommended)**
+2. **Environment Configuration**
    ```bash
-   # Copy environment file
-   cp .env.docker .env
+   # Copy and configure environment file
+   cp .env.docker.example .env.docker
+   ```
+   
+   **⚠️ Important**: Edit `.env.docker` to configure the following required settings:
+   
+   - **APP_KEY**: Generate with `php artisan key:generate` or use a Laravel key generator
+   - **MAILGUN_DOMAIN**: Your Mailgun domain (required for email notifications)
+   - **MAILGUN_SECRET**: Your Mailgun API key (required for email functionality)
+   - **MAIL_USERNAME**: Your Mailgun SMTP username
+   - **MAIL_PASSWORD**: Your Mailgun SMTP password
+   - **SUPER_PASSWORD**: Choose a secure super admin password
+   - **VITE_GOOGLE_API_KEY**: Google API key for location services (optional)
+   
+   Example configuration:
+   ```env
+   APP_KEY=base64:YOUR_GENERATED_APP_KEY_HERE
+   MAILGUN_DOMAIN=mg.yourdomain.com
+   MAILGUN_SECRET=your-mailgun-api-key
+   MAIL_USERNAME=postmaster@mg.yourdomain.com
+   MAIL_PASSWORD=your-mailgun-smtp-password
+   SUPER_PASSWORD=your-secure-admin-password
+   ```
 
+3. **Docker Setup (Recommended)**
+   ```bash
    # Start containers
    docker compose up -d
 
@@ -50,6 +73,42 @@ TalkTherapy is a Laravel and Vue.js-based platform that connects individuals wit
    - Frontend: http://localhost:8000
    - Vite Dev Server: http://localhost:5173
    - WebSocket (Reverb): http://localhost:8080
+
+### Alternative Setup (Manual)
+
+If you prefer not to use Docker:
+
+1. **Configure environment**
+   ```bash
+   cp .env.docker.example .env
+   # Edit .env with your local database and mail settings
+   ```
+
+2. **Install dependencies**
+   ```bash
+   composer install
+   npm install
+   ```
+
+3. **Database setup**
+   ```bash
+   php artisan migrate --seed
+   ```
+
+4. **Start services**
+   ```bash
+   # Terminal 1: Laravel development server
+   php artisan serve
+
+   # Terminal 2: Vite development server
+   npm run dev
+
+   # Terminal 3: Queue worker
+   php artisan queue:work
+
+   # Terminal 4: WebSocket server
+   php artisan reverb:start
+   ```
 
 ## 🏗️ Architecture Overview
 
