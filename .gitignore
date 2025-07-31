@@ -20,3 +20,6 @@ yarn-error.log
 /.vscode
 
 package-lock.json
+
+supervisor.sock
+supervisord.log

@@ -1,0 +1,91 @@
+services:
+  php:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+    container_name: talktherapy-php
+    volumes:
+      - .:/var/www/html
+      - ./storage:/var/www/html/storage
+      - ./.env.docker:/var/www/html/.env
+    working_dir: /var/www/html
+    restart: unless-stopped
+    depends_on:
+      - db
+      
+  vite:
+    image: node:18
+    container_name: talktherapy-vite
+    volumes:
+      - .:/app
+    working_dir: /app
+    command: sh -c "rm -rf node_modules package-lock.json && npm install && npm run dev -- --host"
+    ports:
+      - "5173:5173"
+    depends_on:
+      - php
+
+  web:
+    image: nginx:alpine
+    container_name: talktherapy-nginx
+    ports:
+      - "8000:80"
+    volumes:
+      - .:/var/www/html
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf
+      - ./public:/var/www/html/public
+    depends_on:
+      - php
+      - vite
+
+  db:
+    image: mysql:8.0
+    container_name: talktherapy-db
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: talktherapy
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_USER: talktherapy
+      MYSQL_PASSWORD: secret
+      MYSQL_ALLOW_EMPTY_PASSWORD:
+      MYSQL_RANDOM_ROOT_PASSWORD:
+
+    volumes:
+      - talktherapy_db:/var/lib/mysql
+
+  queue:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+    container_name: talktherapy-queue
+    volumes:
+      - .:/var/www/html
+      - ./storage:/var/www/html/storage
+      - ./.env.docker:/var/www/html/.env
+      - ./docker/queue/supervisord.conf:/etc/supervisord.conf
+    command: bash -c "mkdir -p /var/www/html/storage/logs && chmod -R 777 /var/www/html/storage && touch /var/www/html/supervisord.log && chmod 777 /var/www/html/supervisord.log && supervisord -c /etc/supervisord.conf"
+    depends_on:
+      - php
+      - db
+
+  reverb:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+    container_name: talktherapy-reverb
+    volumes:
+      - .:/var/www/html
+      - ./storage:/var/www/html/storage
+      - ./.env.docker:/var/www/html/.env
+      - ./docker/reverb/supervisord.conf:/etc/supervisord.conf
+      - ./docker/reverb/entrypoint.sh:/usr/local/bin/reverb-entrypoint.sh
+    entrypoint: ["/usr/local/bin/reverb-entrypoint.sh"]
+    ports:
+      - "8080:8080"  # Laravel Reverb default port
+    depends_on:
+      - php
+      - db
+    restart: unless-stopped
+
+volumes:
+  talktherapy_db:

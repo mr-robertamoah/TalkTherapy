@@ -1045,7 +1045,7 @@ function listenToMessages() {
 
         const counsellor = discussionCounsellors.value.data.find((c) => c.id == data.counsellorId)
         const isYou = counsellor?.userId == userId
-        const name = counsellor ? `${counsellor.name} has` : 'A counsellor has'
+        let name = counsellor ? `${counsellor.name} has` : 'A counsellor has'
         if (isYou) name = `You have`
 
         setFailedAlertData({
