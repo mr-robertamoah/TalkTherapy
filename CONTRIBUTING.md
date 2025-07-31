@@ -38,17 +38,34 @@ TalkTherapy is a Laravel and Vue.js-based platform that connects individuals wit
    
    **⚠️ Important**: Edit `.env.docker` to configure the following required settings:
    
-   - **APP_KEY**: Generate with `php artisan key:generate` or use a Laravel key generator
+   - **APP_KEY**: Generate using Docker container (see step 3 below)
    - **MAILGUN_DOMAIN**: Your Mailgun domain (required for email notifications)
    - **MAILGUN_SECRET**: Your Mailgun API key (required for email functionality)
    - **MAIL_USERNAME**: Your Mailgun SMTP username
    - **MAIL_PASSWORD**: Your Mailgun SMTP password
    - **SUPER_PASSWORD**: Choose a secure super admin password
    - **VITE_GOOGLE_API_KEY**: Google API key for location services (optional)
+
+3. **Generate Application Key**
+   ```bash
+   # Copy the example file first
+   cp .env.docker.example .env.docker
    
-   Example configuration:
+   # Start the PHP container to generate the key
+   docker compose up -d php
+   
+   # Generate a new application key
+   NEW_KEY=$(docker exec talktherapy-php php artisan key:generate --show)
+   
+   # Update the .env.docker file with the generated key
+   sed -i "s|APP_KEY=base64:YOUR_APP_KEY_HERE|APP_KEY=$NEW_KEY|g" .env.docker
+   
+   # Verify the key was set correctly
+   grep "APP_KEY=" .env.docker
+   ```
+   
+   Then configure the remaining required settings in `.env.docker`:
    ```env
-   APP_KEY=base64:YOUR_GENERATED_APP_KEY_HERE
    MAILGUN_DOMAIN=mg.yourdomain.com
    MAILGUN_SECRET=your-mailgun-api-key
    MAIL_USERNAME=postmaster@mg.yourdomain.com
@@ -56,9 +73,9 @@ TalkTherapy is a Laravel and Vue.js-based platform that connects individuals wit
    SUPER_PASSWORD=your-secure-admin-password
    ```
 
-3. **Docker Setup (Recommended)**
+4. **Complete Docker Setup**
    ```bash
-   # Start containers
+   # Start all containers
    docker compose up -d
 
    # Install dependencies
@@ -69,7 +86,7 @@ TalkTherapy is a Laravel and Vue.js-based platform that connects individuals wit
    docker exec talktherapy-php php artisan migrate --seed
    ```
 
-3. **Access the application**
+5. **Access the application**
    - Frontend: http://localhost:8000
    - Vite Dev Server: http://localhost:5173
    - WebSocket (Reverb): http://localhost:8080
