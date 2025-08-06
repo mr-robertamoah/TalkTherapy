@@ -29,9 +29,12 @@ use App\DTOs\GuardianAlertDTO;
 use App\DTOs\TherapyAssistanceRequestDTO;
 use App\Enums\PaginationEnum;
 use App\Enums\StarTypeEnum;
+use App\Models\GroupTherapy;
 use App\Models\Therapy;
 use App\Models\User;
 use App\Notifications\TherapyCreatedNotification;
+use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Collection;
 
 class TherapyService extends Service
 {
@@ -261,5 +264,61 @@ class TherapyService extends Service
         $query->latest();
 
         return $query->paginate(PaginationEnum::preferencesPagination->value);
+    }
+
+    public function getPublicTherapies(?User $user)
+    {
+        $page = request('page', 1);
+        $perPage = PaginationEnum::preferencesPagination->value;
+        
+        // Get individual therapies
+        $individualTherapies = Therapy::query()
+            ->wherePublic()
+            ->when($user, function ($query) use ($user) {
+                $query->whereNot('addedby_id', $user->id);
+            })
+            ->when($user?->counsellor, function ($query) use ($user) {
+                $query->where(function ($query) use ($user) {
+                    $query->whereHasNoCounsellor($user->counsellor)
+                          ->orWhereNot('counsellor_id', $user->counsellor->id);
+                });
+            })
+            ->get()
+            ->map(function ($therapy) {
+                $therapy->type = 'individual';
+                return $therapy;
+            });
+
+        // Get group therapies
+        $groupTherapies = GroupTherapy::query()
+            ->wherePublic()
+            ->when($user, function ($query) use ($user) {
+                $query->whereNot('addedby_id', $user->id);
+            })
+            ->when($user?->counsellor, function ($query) use ($user) {
+                $query->whereDoesntHave('counsellors', function ($query) use ($user) {
+                    $query->where('counsellor_id', $user->counsellor->id);
+                });
+            })
+            ->get()
+            ->map(function ($therapy) {
+                $therapy->type = 'group';
+                return $therapy;
+            });
+
+        // Combine and shuffle
+        $allTherapies = $individualTherapies->concat($groupTherapies)->shuffle();
+        
+        // Manual pagination
+        $total = $allTherapies->count();
+        $items = $allTherapies->forPage($page, $perPage);
+        
+        return new LengthAwarePaginator(
+            $items,
+            $total,
+            $perPage,
+            $page,
+            ['path' => request()->url(), 'pageName' => 'page']
+        );
     }
 }

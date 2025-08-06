@@ -48,6 +48,7 @@ Route::get('/therapies/{therapyId}/topics', [TherapyTopicController::class, 'get
 Route::get('/therapies/{therapyId}/sessions', [SessionController::class, 'getSessions'])->name('api.sessions.get');
 
 Route::get('/therapies/random', [TherapyController::class, 'getRandomTherapies'])->name('api.therapies.random');
+Route::get('/therapies/public', [TherapyController::class, 'getPublicTherapies'])->name('api.therapies.public');
 Route::get('/group-therapies/random', [TherapyController::class, 'getRandomGroupTherapies'])->name('api.group.therapies.random');
 Route::get('/counsellors/random', [CounsellorController::class, 'getRandomCounsellors'])->name('api.counsellors.random');
 Route::get('/counsellors', [CounsellorController::class, 'getCounsellors'])->name('api.counsellors');

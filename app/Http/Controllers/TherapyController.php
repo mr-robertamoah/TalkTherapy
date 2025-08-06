@@ -37,6 +37,19 @@ class TherapyController extends Controller
         }
     }
 
+    public function getPublicTherapies(Request $request)
+    {
+        try {
+            $therapies = TherapyService::new()->getPublicTherapies($request->user());
+
+            return TherapyMiniResource::collection($therapies);
+        } catch (Throwable $th) {
+            $message = $th->getCode() == 500 ? "Something unfortunate happened. Please try again shortly." : $th->getMessage();
+            ds($th);
+            throw new Exception($message);
+        }
+    }
+
     public function getUserTherapies(Request $request)
     {
         try {
