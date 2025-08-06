@@ -11,6 +11,11 @@ import useAlert from "@/Composables/useAlert";
 import Alert from "@/Components/Alert.vue";
 import RequestModal from "@/Components/RequestModal.vue";
 import CreateTherapyButton from "@/Components/CreateTherapyButton.vue";
+import Footer from "@/Components/Footer.vue";
+import useModal from '@/Composables/useModal';
+import ContactUsModal from '@/Components/ContactUsModal.vue';
+
+const { modalData, showModal, closeModal } = useModal()
 
 const { alertData, clearAlertData, setAlertData, setSuccessAlertData } = useAlert();
 
@@ -166,7 +171,7 @@ function goToTherapy(data) {
 
 <template>
   <div v-bind="$attrs">
-    <div class="min-h-screen bg-stone-100">
+    <div class="min-h-screen bg-stone-100 flex flex-col">
       <nav class="bg-white border-b border-gray-100">
         <!-- Primary Navigation Menu -->
         <div class="mx-auto px-4 sm:px-6 lg:px-8">
@@ -480,9 +485,12 @@ function goToTherapy(data) {
       </header>
 
       <!-- Page Content -->
-      <main>
+      <main class="flex-1">
         <slot />
       </main>
+      
+      <!-- Footer -->
+      <Footer @contact-us="() => showModal('contact')" />
     </div>
   </div>
 
@@ -510,5 +518,10 @@ function goToTherapy(data) {
         showRequest = false;
       }
     "
+  />
+
+  <ContactUsModal
+    :show="modalData.show && modalData.type == 'contact'"
+    @close-modal="closeModal"
   />
 </template>
