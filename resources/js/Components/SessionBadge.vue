@@ -7,18 +7,19 @@
             class="flex justify-start items-center overflow-hidden overflow-x-auto space-x-2"
             :class="{'pb-2': !session.status}"
         >
-            <div v-if="session.status" class="text-xs rounded bg-gray-500 text-white p-1">{{ getReadableStatus(session.status) }}</div>
+            <div v-if="session.status" class="text-xs rounded text-white p-1" :class="getStatusColor(session.status)">{{ getReadableStatus(session.status) }}</div>
             <div v-if="session.createdAt" class="text-xs text-nowrap my-2 w-fit ml-auto mr-2 text-gray-600">{{ toDiffForHumans(session.createdAt) }}</div>
         </div>
         <div class="capitalize text-gray-600 text-sm sm:text-base text-center font-bold tracking-wide px-2">
             {{ session.name }}
         </div>
-        <div class="text-gray-600 text-xs sm:text-sm my-2 p-2 px-4 text-justify" v-if="computedAbout">
-            <span>{{ getShowMoreContent(computedAbout) }}</span>
-            <span
-                @click="toggleShowMore"
-                v-if="computedAbout?.length > 100"
-                class="ml-2 cursor-pointer text-xs my-1 text-blue-600 underline">show {{ showMore ? 'less' : 'more' }}</span>
+        <div class="text-gray-600 text-xs sm:text-sm my-2 p-2 px-4 text-justify" v-if="session.about">
+            <span>{{ showMore ? session.about : (session.about.length > 100 ? session.about.slice(0, 100) + '...' : session.about) }}</span>
+            <button
+                @click.stop="toggleShowMore"
+                v-if="session.about.length > 100"
+                class="ml-2 text-xs bg-blue-100 hover:bg-blue-200 text-blue-700 px-2 py-1 rounded transition-colors duration-200"
+            >{{ showMore ? 'Show Less' : 'Show More' }}</button>
         </div>
         <div class="flex justify-end items-center my-2">
             <div 
@@ -115,7 +116,24 @@ import useUtilities from '@/Composables/useUtilities';
 const { modalData, closeModal, showModal } = useModal()
 const { toDiffForHumans } = useLocalDateTime()
 const { alertData, setAlertData, setFailedAlertData, clearAlertData } = useAlert()
-const { showMore, toggleShowMore, getShowMoreContent } = useShowMore()
+const showMore = ref(false)
+
+function toggleShowMore() {
+    showMore.value = !showMore.value
+}
+
+function getStatusColor(status) {
+    const colors = {
+        'PENDING': 'bg-yellow-500',
+        'IN_SESSION': 'bg-green-500', 
+        'IN_SESSION_CONFIRMATION': 'bg-blue-500',
+        'HELD': 'bg-gray-500',
+        'HELD_CONFIRMATION': 'bg-purple-500',
+        'FAILED': 'bg-red-500',
+        'ABANDONED': 'bg-orange-500'
+    }
+    return colors[status] || 'bg-gray-500'
+}
 const { getReadableStatus } = useUtilities()
 
 const emits = defineEmits(['onUpdate', 'onDelete', 'onMessageCreated'])
@@ -179,9 +197,7 @@ watchEffect(() => {
         })
 })
 
-const computedAbout = computed(() => {
-    return props.session?.about?.length > 100 ? props.session?.about?.slice(0, 100) + '...' : props.session?.about
-})
+
 const computedCanPerformActions = computed(() => {
     return props.hasActions && props.session?.userId == usePage().props.auth.user?.id
 })
