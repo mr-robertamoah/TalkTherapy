@@ -397,9 +397,8 @@ async function getStats() {
             </div>
 
             <!-- Call to Action -->
-            <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 mt-4">
+            <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 mt-12">
                 <div class="overflow-hidden p-4 py-8 text-center">
-                    <div class="bg-gradient-to-br from-blue-800 to-violet-500 bg-clip-text text-transparent font-bold text-2xl mb-4">#TalkTherapy</div>
                     <p class="text-gray-600 text-lg">Your mental wellness journey starts with a single conversation.</p>
                 </div>
             </div>
