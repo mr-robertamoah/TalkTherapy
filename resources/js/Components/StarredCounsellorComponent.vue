@@ -34,7 +34,7 @@ defineProps({
             <div class="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent">
                 <!-- Profile Section -->
                 <div class="absolute bottom-4 left-4 flex items-center space-x-3">
-                    <Avatar :size="60" :src="counsellor?.avatar ?? ''" class="shrink-0 ring-2 ring-white rounded-full" :alt="'...'"/>
+                    <Avatar :size="60" :src="counsellor?.avatar ?? ''" class="shrink-0 ring-2 ring-white" :alt="'...'"/>
                     <div class="text-white">
                         <div class="font-bold text-base capitalize truncate max-w-[120px]">{{ counsellor.name }}</div>
                         <div class="text-xs text-gray-200 opacity-90">Counsellor</div>
