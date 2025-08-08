@@ -18,7 +18,9 @@ class PostResource extends JsonResource
         return [
             'id' => $this->id,
             'fromAdmin' => $this->addedby_type == Counsellor::class ? false : $this->addedby?->isAdmin(),
-            'counsellor' => $this->addedby_type == Counsellor::class ? new CounsellorMiniResource($this->addedby) : null,
+            'counsellor' => $this->addedby_type == Counsellor::class 
+                ? new CounsellorMiniResource($this->addedby) 
+                : ($this->addedby?->counsellor ? new CounsellorMiniResource($this->addedby->counsellor) : null),
             'content' => $this->content,
             'likes' => $this->likes->map(fn($like) => $like->user_id),
             'comments' => $this->comments()->count(),
