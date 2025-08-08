@@ -15,7 +15,7 @@
             </div>
 
             <div v-if="post?.counsellor" class="flex justify-start items-center mb-4 cursor-pointer space-x-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors" @click="() => $inertia.visit(route('counsellor.show', { counsellorId: post.counsellor.id }))">
-                <Avatar class="shrink-0" :avatar-text="'...'" :size="44" :src="post?.counsellor?.avatar ?? ''"/>
+                <Avatar class="shrink-0" :avatar-text="'...'" :size="52" :src="post?.counsellor?.avatar ?? ''"/>
                 <div class="text-gray-700 flex flex-col space-y-1">
                     <div class="capitalize font-semibold text-sm hover:text-blue-600 transition-colors">{{ post?.counsellor.name }}</div>
                     <div class="text-xs text-gray-500">{{ post?.counsellor.username ? `@${post?.counsellor.username}` : '' }}</div>
