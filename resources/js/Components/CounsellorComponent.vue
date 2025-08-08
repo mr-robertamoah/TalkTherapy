@@ -37,10 +37,10 @@
             </div>
             <slot></slot>
             
-            <div class="mt-3 flex justify-end items-center" v-if="hasView">
+            <div class="mt-3 flex justify-end items-center" v-if="hasView && !counsellor.anonymous">
                 <div
                     @click="() => view = true"
-                    class="p-2 bg-blue-700 text-blue-200 cursor-pointer tracking-wide rounded min-w-[80px] text-center hover:bg-blue-400 hover:text-blue-700 transition duration-75">view</div>
+                    class="p-2 bg-gray-700 text-gray-200 cursor-pointer tracking-wide rounded min-w-[80px] text-center hover:bg-gray-600 hover:text-white transition duration-75">view</div>
             </div>
             <div class="" v-if="forRequest">
                 <div class="my-2">

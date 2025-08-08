@@ -50,6 +50,9 @@ Route::get('/',[HomeController::class, 'goHome'])
     ->name('home');
 Route::get('/about', AboutController::class)
     ->name('about');
+Route::get('/public-therapies', function () {
+    return Inertia::render('PublicTherapies');
+})->name('public.therapies');
 
 Route::get('/therapies/{therapyId}', [TherapyController::class, 'getTherapy'])->name('therapies.get');
 Route::get('/group-therapies/{groupTherapyId}', [GroupTherapyController::class, 'getGroupTherapy'])->name('group.therapies.get');

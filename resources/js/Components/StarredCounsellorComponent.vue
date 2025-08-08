@@ -31,7 +31,7 @@ defineProps({
             <div v-else class="text-sm w-full h-full flex justify-center items-center text-gray-600 bg-white rounded-b-lg">no cover image</div>
         </div>
 
-        <StyledLink class="absolute -top-1 right-1 z-[1]" :text="'visit profile'" :href="route('counsellor.show', { counsellorId: counsellor.id })"/>
+        <StyledLink class="absolute -top-1 right-1 z-[1] min-h-[44px] min-w-[44px] flex items-center justify-center px-3 py-2" :text="'visit profile'" :href="route('counsellor.show', { counsellorId: counsellor.id })"/>
         <div class="p-2 absolute top-0 left-0 w-full h-full bg-opacity-40 bg-gray-600">
             <div class="flex justify-start items-center">
                 <Avatar :size="80" :src="counsellor?.avatar ?? ''" class="shrink-0" :alt="'...'"/>

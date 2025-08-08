@@ -12,12 +12,12 @@
         <div class="text-gray-600 font-bold capitalize">Filter By</div>
     
         <div class="mt-4">
-            <label class="flex items-center mb-2">
-                <Checkbox v-model:checked="filters.sessions"></Checkbox>
+            <label class="flex items-center mb-2" :class="{'opacity-50 cursor-not-allowed': computedFiltersDisabled}">
+                <Checkbox v-model:checked="filters.sessions" :disabled="computedFiltersDisabled"></Checkbox>
                 <span class="text-gray-600 ml-2">Sessions</span>
             </label>
-            <label class="flex items-center">
-                <Checkbox v-model:checked="filters.topics"></Checkbox>
+            <label class="flex items-center" :class="{'opacity-50 cursor-not-allowed': computedFiltersDisabled}">
+                <Checkbox v-model:checked="filters.topics" :disabled="computedFiltersDisabled"></Checkbox>
                 <span class="text-gray-600 ml-2">Topics</span>
             </label>
         </div>
@@ -36,9 +36,12 @@
     </div>
     <div class="my-2 w-full h-1 rounded bg-stone-400"  v-if="showSessions"></div>
     <div v-bind="$attrs" class="min-h-[500px] relative flex flex-col items-center justify-center">
-        <div v-if="therapy.status == 'PENDING'"
-            class="flex absolute top-0 left-0 w-full h-full bg-gray-500 justify-center items-center text-gray-600 text-sm bg-opacity-35 rounded z-[1]">
-            therapy is still pending
+        <div v-if="therapy.status == 'PENDING' && !isParticipant"
+            class="flex absolute top-0 left-0 w-full h-full bg-gray-500 justify-center items-center text-white text-sm bg-opacity-75 rounded z-[1]">
+            <div class="bg-white p-4 rounded-lg shadow-lg text-gray-700 text-center">
+                <div class="font-semibold mb-2">Therapy Pending</div>
+                <div class="text-sm">This therapy is awaiting approval or counsellor assignment</div>
+            </div>
         </div>
         <div 
             class="rounded-lg bg-stone-100 w-full min-h-[50px] p-2 space-x-3 flex justify-start items-center overflow-hidden overflow-x-auto mb-2 transition duration-200"
@@ -595,6 +598,9 @@ const computedMessagesPage = computed(() => {
             : 0
 
     return 0
+})
+const computedFiltersDisabled = computed(() => {
+    return props.therapy.status == 'PENDING' && !props.isParticipant
 })
 
 function setSetting(type) {

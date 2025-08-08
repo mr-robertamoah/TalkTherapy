@@ -1,5 +1,5 @@
 <template>
-    <div class="fixed w-full z-10 left-0">
+    <div class="fixed w-full z-10 left-0 bottom-4">
         <div
             v-bind="$attrs"
             class="rounded my-2 transition duration-100 mx-auto text-center w-[80%] py-1 px-2"

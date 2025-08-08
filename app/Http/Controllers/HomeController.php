@@ -8,6 +8,7 @@ use App\Http\Resources\StarredCounsellorResource;
 use App\Http\Resources\TherapyMiniResource;
 use App\Models\Post;
 use App\Services\CounsellorService;
+use App\Services\GroupTherapyService;
 use App\Services\TherapyService;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -23,6 +24,7 @@ class HomeController extends Controller
         $page = Inertia::render('Home', [
             'counsellorCreationStep' => GetCounsellorCreationStepOfUserAction::new()->execute($request->user()),
             'recentTherapies' => TherapyMiniResource::collection(TherapyService::new()->getRecentTherapies($request->user())),
+            'recentGroupTherapies' => TherapyMiniResource::collection(GroupTherapyService::new()->getRecentGroupTherapies($request->user())),
             'bestCounsellors' => StarredCounsellorResource::collection($counsellorService->getBestCounsellorsForPreviousMonth()),
             'leadingCounsellors' => StarredCounsellorResource::collection($counsellorService->getLeadingCounsellorsForCurrentMonth()),
             'post' => session()->has('postId') ? new PostResource(Post::find(session('postId'))) : null,

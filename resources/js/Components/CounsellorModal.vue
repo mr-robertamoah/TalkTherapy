@@ -72,92 +72,83 @@ async function getCounsellorStats() {
         :show="show"
         @close="closeModal"
     >
-        <div
-            class="w-full p-2 select-none"
-        >
-            <div class="flex justify-start items-center mb-3 cursor-pointer">
-                <Avatar :avatar-text="'...'" :size="40" :src="counsellor.avatar ?? ''"/>
-                <div class="text-gray-600 capitalize ml-2">{{ counsellor.name }} ({{ counsellor.username }})</div>
-            </div>
-            <hr class="my-2">
-
-            <div
-                class="w-full p-2 rounded shadow-sm select-none h-[70vh] overflow-hidden overflow-y-auto"
-            >
-                <div class="text-sm rounded mb-4 bg-stone-100 p-2 w-full sm:w-[80%] mx-auto">
-                    <div class="text-gray-600 flex justify-start items-center">
-                        <div>Email:</div>
-                        <div class="font-bold ml-2">{{ counsellor.email }}</div>
+        <div class="w-full p-6 select-none">
+            <!-- Header Section -->
+            <div class="bg-gradient-to-r from-gray-50 to-stone-100 p-6 rounded-xl mb-6">
+                <div class="flex items-center mb-4">
+                    <Avatar :avatar-text="'...'" :size="60" :src="counsellor.avatar ?? ''"/>
+                    <div class="ml-4">
+                        <h2 class="text-2xl font-bold text-gray-800 capitalize">{{ counsellor.name }}</h2>
+                        <p class="text-gray-600">@{{ counsellor.username }}</p>
+                        <div class="flex items-center mt-2">
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                Verified Counsellor
+                            </span>
+                        </div>
                     </div>
-                    <div class="text-gray-600 flex justify-start items-center">
-                        <div>Phone:</div>
-                        <div class="font-bold ml-2">{{ counsellor.phone }}</div>
+                </div>
+            </div>
+
+            <div class="h-[60vh] overflow-hidden overflow-y-auto space-y-6">
+                <!-- Contact Information -->
+                <div class="bg-gradient-to-br from-slate-50 to-slate-100 p-6 rounded-xl">
+                    <div class="flex items-center mb-4">
+                        <div class="w-2 h-6 bg-slate-600 rounded-full mr-3"></div>
+                        <h3 class="text-lg font-semibold text-gray-800">Contact Information</h3>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="bg-white p-4 rounded-lg shadow-sm">
+                            <span class="text-sm font-medium text-gray-500">Email</span>
+                            <p class="text-gray-800 font-medium">{{ counsellor.email }}</p>
+                        </div>
+                        <div class="bg-white p-4 rounded-lg shadow-sm">
+                            <span class="text-sm font-medium text-gray-500">Phone</span>
+                            <p class="text-gray-800 font-medium">{{ counsellor.phone }}</p>
+                        </div>
                     </div>
                 </div>
 
-                
-                <div class="text-sm rounded mb-4 bg-stone-100 p-2 w-full sm:w-[80%] mx-auto relative">
-                    <div class="font-bold text-center text-gray-600 capitalize my-2">stats</div>
-                    <div>
-                        <FormLoader :show="loading" :text="'getting statistics'"/>
+                <!-- Statistics Section -->
+                <div class="bg-gradient-to-br from-gray-50 to-gray-100 p-6 rounded-xl relative">
+                    <div class="flex items-center mb-4">
+                        <div class="w-2 h-6 bg-gray-600 rounded-full mr-3"></div>
+                        <h3 class="text-lg font-semibold text-gray-800">Professional Statistics</h3>
+                    </div>
+                    
+                    <FormLoader :show="loading" :text="'Loading statistics...'"/>
+
+                    <div v-if="data.id && !loading" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="bg-white p-4 rounded-lg shadow-sm">
+                            <span class="text-sm font-medium text-gray-500">Total Therapies</span>
+                            <p class="text-2xl font-bold text-gray-800">{{ data.numberOfTherapies }}</p>
+                        </div>
+                        <div class="bg-white p-4 rounded-lg shadow-sm">
+                            <span class="text-sm font-medium text-gray-500">Group Therapies</span>
+                            <p class="text-2xl font-bold text-gray-800">{{ data.numberOfGroupTherapies }}</p>
+                        </div>
+                        <div class="bg-white p-4 rounded-lg shadow-sm">
+                            <span class="text-sm font-medium text-gray-500">Sessions Held</span>
+                            <p class="text-2xl font-bold text-gray-800">{{ data.numberOfSessionsHeld }}</p>
+                        </div>
+                        <div class="bg-white p-4 rounded-lg shadow-sm">
+                            <span class="text-sm font-medium text-gray-500">Sessions Created</span>
+                            <p class="text-2xl font-bold text-gray-800">{{ data.numberOfSessionsCreated }}</p>
+                        </div>
+                        <div class="bg-white p-4 rounded-lg shadow-sm">
+                            <span class="text-sm font-medium text-gray-500">Online Sessions</span>
+                            <p class="text-2xl font-bold text-gray-800">{{ data.numberOfOnlineSessionsCount }}</p>
+                        </div>
+                        <div class="bg-white p-4 rounded-lg shadow-sm">
+                            <span class="text-sm font-medium text-gray-500">In-Person Sessions</span>
+                            <p class="text-2xl font-bold text-gray-800">{{ data.numberOfInPersonSessionsCount }}</p>
+                        </div>
                     </div>
 
-                    <div v-if="data.id && !loading" class="w-full">
-                        <ActivityBadge
-                            name="number of therapies"
-                            :value="data.numberOfTherapies"
-                            class="mb-4"
-                        />
-                        <ActivityBadge
-                            name="number of group therapies"
-                            :value="data.numberOfGroupTherapies"
-                            class="mb-4 ml-6"
-                        />
-                        <ActivityBadge
-                            name="number of free therapies"
-                            :value="data.numberOfFreeTherapies"
-                            class="mb-4"
-                        />
-                        <ActivityBadge
-                            name="number of paid therapies"
-                            :value="data.numberOfPaidTherapies"
-                            class="mb-4 ml-6"
-                        />
-                        <ActivityBadge
-                            name="number of free group therapies"
-                            :value="data.numberOfFreeGroupTherapies"
-                            class="mb-4"
-                        />
-                        <ActivityBadge
-                            name="number of paid group therapies"
-                            :value="data.numberOfPaidGroupTherapies"
-                            class="mb-4 ml-6"
-                        />
-                        <ActivityBadge
-                            name="number of sessions held"
-                            :value="data.numberOfSessionsHeld"
-                            class="mb-4"
-                        />
-                        <ActivityBadge
-                            name="number of sessions created"
-                            :value="data.numberOfSessionsCreated"
-                            class="mb-4 ml-6"
-                        />
-                        <ActivityBadge
-                            name="number of online sessions held"
-                            :value="data.numberOfOnlineSessionsCount"
-                            class="mb-4"
-                        />
-                        <ActivityBadge
-                            name="number of therapies"
-                            :value="data.numberOfInPersonSessionsCount"
-                            class="mb-4"
-                        />
+                    <div v-if="!data.id && !loading" class="text-center">
+                        <PrimaryButton :disabled="loading" @click="getCounsellorStats">
+                            Load Statistics
+                        </PrimaryButton>
                     </div>
-
-                    <PrimaryButton v-if="!data.id && !loading" :disabled="loading" class="ml-auto my-2" @click="getCounsellorStats">
-                        get stats
-                    </PrimaryButton>
                 </div>
             </div>
 
