@@ -1,6 +1,7 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue'
 import MiniTherapyComponent from '@/Components/MiniTherapyComponent.vue'
+import MiniGroupTherapyComponent from '@/Components/MiniGroupTherapyComponent.vue'
 import { Head } from '@inertiajs/vue3'
 import { onBeforeMount, ref } from 'vue'
 
@@ -67,13 +68,22 @@ async function getTherapies() {
               Discover Available Therapy Sessions
             </div>
             
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
-              <MiniTherapyComponent
-                v-for="therapy in therapies.data"
-                :key="`${therapy.type || 'individual'}-${therapy.id}`"
-                :therapy="therapy"
-                class="w-full"
-              />
+            <div v-if="loading" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
+              <div v-for="i in 6" :key="i" class="w-full h-64 bg-gray-200 rounded-lg animate-pulse"></div>
+            </div>
+            <div v-else class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
+              <template v-for="therapy in therapies.data" :key="`${therapy.type || 'individual'}-${therapy.id}`">
+                <MiniTherapyComponent
+                  v-if="therapy.type === 'individual' || !therapy.type"
+                  :therapy="therapy"
+                  class="w-full"
+                />
+                <MiniGroupTherapyComponent
+                  v-else-if="therapy.type === 'group'"
+                  :group-therapy="therapy"
+                  class="w-full"
+                />
+              </template>
             </div>
 
             <div v-if="!therapies.data.length && !loading" class="text-center text-gray-600 py-12">

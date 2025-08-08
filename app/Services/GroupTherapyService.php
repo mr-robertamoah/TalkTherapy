@@ -239,4 +239,15 @@ class GroupTherapyService extends Service
 
         return $query->paginate(PaginationEnum::preferencesPagination->value);
     }
+
+    public function getRecentGroupTherapies(User|null $user)
+    {
+        if (is_null($user)) return [];
+
+        return GroupTherapy::query()
+            ->whereParticipant($user)
+            ->orderBy('created_at', 'desc')
+            ->limit(3)
+            ->get();
+    }
 }

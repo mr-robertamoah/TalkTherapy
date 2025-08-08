@@ -17,9 +17,11 @@ const props = defineProps({
 })
 
 const computedBackgroundStory = computed(() => {
-    if (showDetails.value && props.therapy.backgroundStory) return props.therapy.backgroundStory
-
-    return props.therapy?.backgroundStory ? props.therapy?.backgroundStory.slice(0, 100) + '...' : ''
+    return props.therapy?.backgroundStory ? 
+        (props.therapy.backgroundStory.length > 120 ? 
+            props.therapy.backgroundStory.slice(0, 120) + '...' : 
+            props.therapy.backgroundStory) : 
+        'No description available'
 })
 const computedIsParticipant = computed(() => {
     const user = usePage().props.auth.user
@@ -56,85 +58,47 @@ const computedCanViewPage = computed(() => {
 </script>
 
 <template>
-    <div class="rounded p-2 max-w-[350px] min-w-[250px] w-full shadow-sm bg-stone-200">
-        <div class="text-center mx-auto font-bold w-fit bg-gradient-to-r from-slate-800 to-gray-600 my-2 bg-clip-text text-transparent capitalize">{{ therapy.name }}</div>
-        
-        <div class="my-2 w-full h-1 rounded bg-stone-400"></div>
-        
-        <div class="py-2 my-2 max-h-[300px] overflow-hidden overflow-y-auto">
-            <div v-if="computedCanViewPage" class="p-2 flex justify-end">
-                <StyledLink :text="'go to therapy'" :href="route('therapies.get', { therapyId: therapy.id})"/>
+    <div class="bg-gradient-to-br from-slate-50 to-zinc-100 rounded-xl p-5 shadow-lg border border-zinc-200 hover:shadow-xl transition-all duration-300 hover:scale-105">
+        <!-- Type Badge -->
+        <div class="flex justify-between items-start mb-4">
+            <div class="bg-blue-600 text-white px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide">
+                Individual Therapy
             </div>
-            <div class="p-2">
-                <CounsellorComponent
-                    :counsellor="therapy.counsellor"
-                    v-if="therapy.counsellor"
-                    :visit-page="true"
-                    :has-view="false"
-                    class="bg-stone-200"
-                />
-                <div v-else class="text-sm text-gray-600 text-center p-4 rounded bg-stone-100">no counsellor yet</div>
-            </div>
-
-            <div class="p-2 mx-2 rounded bg-stone-100 my-4">
-                <div
-                    class="text-sm text-gray-600"
-                >
-                    <div>
-                        <div class="mb-2 font-semibold">Background Story</div>
-                        <div class="text-gray-600 text-justify max-h-[100px] py-2 overflow-hidden overflow-y-auto text-sm">{{ computedBackgroundStory }}</div>
-                    </div>
-
-                    <template
-                        v-if="showDetails"
-                    >
-                        <div class="my-2 font-semibold">Other Information</div>
-                        <div
-                            class="mt-2 flex justify-start items-center" :class="[therapy.public ? 'text-green-700' : 'text-blue-700']">
-                            <div 
-                                class="w-4 h-4 p-1 rounded-full flex justify-center items-center mr-2"
-                                :class="[therapy.public ? 'bg-green-700' : 'bg-blue-700']"
-                            >
-                                <div 
-                                    class="w-full h-full rounded-full"
-                                :class="[therapy.public ? 'bg-green-300' : 'bg-blue-300']"
-                                ></div>
-                            </div>
-                            <div>{{ therapy.public ? 'a ' : 'not a ' }}public therapy</div>
-                        </div>
-
-                        <div
-                            class="mt-2 flex justify-start items-center" :class="[therapy.anonymous ? 'text-green-700' : 'text-blue-700']">
-                            <div 
-                                class="w-4 h-4 p-1 rounded-full flex justify-center items-center mr-2"
-                                :class="[therapy.anonymous ? 'bg-green-700' : 'bg-blue-700']"
-                            >
-                                <div 
-                                    class="w-full h-full rounded-full"
-                                :class="[therapy.anonymous ? 'bg-green-300' : 'bg-blue-300']"
-                                ></div>
-                            </div>
-                            <div>{{ computedAnonymity }}</div>
-                        </div>
-                    </template>
-                </div>
-                <div
-                    @click="() => showDetails = !showDetails"
-                    class="underline text-sm mt-4 mb-2 text-end cursor-pointer text-blue-600"
-                >{{ showDetails ? 'hide' : 'show' }} details</div>
-            </div>
-            <div class="p-2">
-                <ActivityBadge
-                    :name="'sessions held'"
-                    :value="therapy.sessionsHeld"
-                    class="mt-2"
-                />  
+            <div class="flex gap-1">
+                <span v-if="therapy.public" class="bg-green-500 text-white px-2 py-1 rounded-full text-xs font-medium">Public</span>
+                <span v-if="therapy.anonymous" class="bg-purple-500 text-white px-2 py-1 rounded-full text-xs font-medium">Anonymous</span>
             </div>
         </div>
-        <div class="my-2 w-full h-1 rounded bg-stone-400"></div>
 
-        <div class="text-xs text-end">
-            {{ therapy.createdAt }}
+        <!-- Title -->
+        <h3 class="font-bold text-gray-800 text-lg mb-3 break-words line-clamp-2 leading-tight" :title="therapy.name">{{ therapy.name }}</h3>
+
+        <!-- Counsellor -->
+        <div class="flex items-center gap-2 mb-3 text-sm">
+            <div class="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
+                <svg class="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd" />
+                </svg>
+            </div>
+            <span class="font-semibold text-gray-700">{{ therapy.counsellor?.user?.name || 'No counsellor assigned' }}</span>
+        </div>
+
+        <!-- Description -->
+        <p class="text-sm text-gray-600 mb-4 line-clamp-3">{{ computedBackgroundStory }}</p>
+
+        <!-- Stats -->
+        <div class="flex justify-between items-center mb-4 text-xs text-gray-500">
+            <span class="bg-white px-2 py-1 rounded-full">{{ therapy.sessionsHeld || 0 }} sessions</span>
+            <span>{{ therapy.createdAt }}</span>
+        </div>
+
+        <!-- Action -->
+        <div v-if="computedCanViewPage" class="text-center">
+            <StyledLink 
+                :text="'Join Therapy'" 
+                :href="route('therapies.get', { therapyId: therapy.id})" 
+                class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium text-sm transition-colors inline-block"
+            />
         </div>
     </div>
 </template>

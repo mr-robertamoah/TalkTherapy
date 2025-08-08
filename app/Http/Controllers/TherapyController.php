@@ -11,6 +11,7 @@ use App\Http\Requests\UpdateTherapyRequest;
 use App\Http\Resources\RequestResource;
 use App\Http\Resources\SessionResource;
 use App\Http\Resources\TherapyMiniResource;
+use App\Http\Resources\PublicTherapyResource;
 use App\Http\Resources\TherapyResource;
 use App\Http\Resources\TherapyTopicResource;
 use App\Models\Counsellor;
@@ -42,7 +43,7 @@ class TherapyController extends Controller
         try {
             $therapies = TherapyService::new()->getPublicTherapies($request->user());
 
-            return TherapyMiniResource::collection($therapies);
+            return PublicTherapyResource::collection($therapies);
         } catch (Throwable $th) {
             $message = $th->getCode() == 500 ? "Something unfortunate happened. Please try again shortly." : $th->getMessage();
             ds($th);
