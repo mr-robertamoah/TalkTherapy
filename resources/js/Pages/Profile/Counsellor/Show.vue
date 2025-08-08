@@ -281,22 +281,32 @@ function closeModal() {
                     />
                     <div :class="`${computedClasses} p-2 cursor-none rounded font-semibold tracking-wide capitalize`">{{ accountStatuses[counsellorCreationStep - 1].name }}</div>
                 </div>
-                <div class="bg-white overflow-hidden shadow-sm sm:rounded-b-lg">
-                    <div class="p-1 text-gray-900 text-center bg-gray-300 w-full h-[200px] sm:h-[250px] md:h-[300px]">
+                <div class="bg-white overflow-hidden shadow-xl border border-gray-100 sm:rounded-b-xl relative pb-20">
+                    <div class="relative w-full h-[200px] sm:h-[250px] md:h-[300px]">
                         <img 
                             :src="counsellor?.cover ?? ''" 
                             :alt="'counsellor cover'"
                             v-if="counsellor?.cover"
-                            class="w-full h-full object-cover rounded-b-lg"
+                            class="w-full h-full object-cover"
                         >
-                        <div v-else class="text-sm w-full h-full flex justify-center items-center text-gray-600 bg-white rounded-b-lg">no cover image</div>
+                        <div v-else class="text-sm w-full h-full flex justify-center items-center text-gray-500 bg-gradient-to-br from-blue-50 to-indigo-100">No cover image</div>
+                        
+                        <!-- Gradient overlay -->
+                        <div class="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-transparent"></div>
+                        
+                        <!-- Avatar positioned at bottom of cover -->
+                        <div class="absolute -bottom-16 left-4 z-20">
+                            <Avatar :src="counsellor?.avatar ?? ''" :size="120" class="ring-4 ring-white shadow-lg" :alt="'counsellor avatar'"/>
+                        </div>
+                        
+                        <!-- Stars badge positioned at bottom right of cover -->
+                        <div class="absolute -bottom-12 right-4 sm:right-8 z-20">
+                            <StarBadge class="bg-white/95 backdrop-blur-sm rounded-lg p-3 shadow-lg border border-gray-200"
+                                :overall="counsellor?.overallStarsCount"
+                                :month="counsellor?.currentMonthStarsCount" 
+                            />
+                        </div>
                     </div>
-                    <Avatar :src="counsellor?.avatar ?? ''" class="absolute z-10 -bottom-[60px] sm:-bottom-[75px] left-2" :alt="'counsellor avatar'"/>
-                    <StarBadge class="absolute z-10 -bottom-[50px] right-1 sm:right-7"
-                        :overall="counsellor?.overallStarsCount"
-                        :month="counsellor?.currentMonthStarsCount" 
-                    />
-                    <!-- TODO get actual stars -->
                 </div>
             </div>
 
@@ -307,16 +317,17 @@ function closeModal() {
                         @click="() => showModal('update main')"
                     />
                 </div>
-                <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
-                    <div class="p-6 w-fit text-center mx-auto"
-                        :class="{'pt-10': isCounsellor}"
+                <div class="bg-white overflow-hidden shadow-xl border border-gray-100 sm:rounded-xl">
+                    <div class="p-8 text-center"
+                        :class="{'pt-12': isCounsellor}"
                     >
-                        <div class="text-lg sm:text-2xl md:text-3xl border-b-2 pb-2 border-gray-300 tracking-widest w-fit capitalize font-bold bg-gradient-to-r from-slate-800 to-slate-600 bg-clip-text text-transparent">{{ counsellor.name }}</div>
+                        <div class="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900 mb-2">{{ counsellor.name }}</div>
+                        <div class="w-16 h-1 bg-blue-600 mx-auto mb-4"></div>
                         <div
                             v-if="counsellor.profession"
-                            class="text-gray-600 capitalize text-sm tracking-wide mt-2 font-semibold"
+                            class="text-gray-600 capitalize text-lg font-medium"
                         >{{ counsellor.profession.name }}</div>
-                        <div v-else class="text-gray-600 lowercase text-xs mt-2">no profession added</div>
+                        <div v-else class="text-gray-500 text-sm">No profession added</div>
                     </div>
                 </div>
             </div>
@@ -328,26 +339,21 @@ function closeModal() {
                         @click="() => showModal('update main')"
                     />
                 </div>
-                <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
-                    <div class="p-6">
-                        <div class="text-lg font-medium text-gray-900">About</div>
-                        <div
-                            v-if="isCounsellor"
-                            class="mt-1 text-sm text-gray-600"
-                        >This is what you have to say about yourself.</div>
-                        <div
-                            v-else
-                            class="mt-1 text-sm text-gray-600"
-                        >Something about this counsellor.</div>
+                <div class="bg-white overflow-hidden shadow-xl border border-gray-100 sm:rounded-xl">
+                    <div class="p-8">
+                        <div class="text-xl font-bold text-gray-900 mb-2">About</div>
+                        <div class="w-12 h-1 bg-blue-600 mb-4"></div>
+                        <div class="text-sm text-gray-600 mb-6">
+                            {{ isCounsellor ? 'This is what you have to say about yourself.' : 'Something about this counsellor.' }}
+                        </div>
 
-                        <div
-                            v-if="counsellor.about"
-                            class="mt-6 tracking-wide text-sm text-stone-800 font-semibold w-[90%] mx-auto text-center"
-                        >{{ counsellor.about }}</div>
-                        <div
-                            v-else
-                            class="mt-6 text-sm text-gray-600 text-center w-full"
-                        >nothing yet</div>
+                        <div v-if="counsellor.about" class="bg-gray-50 rounded-lg p-6 border-l-4 border-blue-600">
+                            <p class="text-gray-800 leading-relaxed text-center italic">{{ counsellor.about }}</p>
+                        </div>
+                        <div v-else class="text-center py-8 text-gray-500">
+                            <div class="text-4xl mb-2">📝</div>
+                            <div>No information added yet</div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -370,34 +376,44 @@ function closeModal() {
                         @click="() => showModal('update contact')"
                     />
                 </div>
-                <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg relative">
-                    <div class="p-6">
-                        <div class="text-lg font-medium text-gray-900">Contact Information</div>
-                        <div
-                            class="text-gray-600"
-                            v-if="hasContact"
-                        >
-                            <ProfileInformationDisplay
-                                class="my-8"
-                                label="phone number"
-                                v-if="counsellor.phone"
-                                :text="counsellor.phone ?? ''"
-                            />
-                            <ProfileInformationDisplay
-                                class="my-8"
-                                label="email"
-                                v-if="counsellor.email"
-                                :text="counsellor.email ?? ''"
-                                :capitalize="false"
-                            />
+                <div class="bg-white overflow-hidden shadow-xl border border-gray-100 sm:rounded-xl relative">
+                    <div class="p-8">
+                        <div class="text-xl font-bold text-gray-900 mb-2">Contact Information</div>
+                        <div class="w-12 h-1 bg-blue-600 mb-6"></div>
+                        
+                        <div v-if="hasContact" class="space-y-6">
+                            <div v-if="counsellor.phone" class="flex items-center space-x-4 p-4 bg-gray-50 rounded-lg">
+                                <div class="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center">
+                                    <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"></path>
+                                    </svg>
+                                </div>
+                                <div>
+                                    <div class="text-sm text-gray-500 font-medium">Phone Number</div>
+                                    <div class="text-gray-900 font-semibold">{{ counsellor.phone }}</div>
+                                </div>
+                            </div>
+                            
+                            <div v-if="counsellor.email" class="flex items-center space-x-4 p-4 bg-gray-50 rounded-lg">
+                                <div class="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center">
+                                    <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
+                                    </svg>
+                                </div>
+                                <div>
+                                    <div class="text-sm text-gray-500 font-medium">Email Address</div>
+                                    <div class="text-gray-900 font-semibold">{{ counsellor.email }}</div>
+                                </div>
+                            </div>
                         </div>
-                        <div 
-                            v-else
-                            class="mt-1 text-sm text-gray-600"
-                        >No email or phone number has been made available</div>
+                        
+                        <div v-else class="text-center py-8 text-gray-500">
+                            <div class="text-4xl mb-2">📞</div>
+                            <div>No contact information available</div>
+                        </div>
 
-                        <div class="mt-4 flex justify-end" v-if="isCounsellor && !counsellor?.emailVerified">
-                            <PrimaryButton @click="requestEmailVerification">request email verification</PrimaryButton>
+                        <div class="mt-6 flex justify-end" v-if="isCounsellor && !counsellor?.emailVerified">
+                            <PrimaryButton @click="requestEmailVerification" class="bg-blue-600 hover:bg-blue-700">Request Email Verification</PrimaryButton>
                         </div>
                     </div>
                 </div>
@@ -410,72 +426,69 @@ function closeModal() {
                         @click="() => showModal('update preferences')"
                     />
                 </div>
-                <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg relative">
-                    <div class="p-6">
-                        <div class="text-lg font-medium text-gray-900">Preferences</div>
-                        <div class="mt-1 text-sm text-gray-600">
+                <div class="bg-white overflow-hidden shadow-xl border border-gray-100 sm:rounded-xl relative">
+                    <div class="p-8">
+                        <div class="text-xl font-bold text-gray-900 mb-2">Preferences</div>
+                        <div class="w-12 h-1 bg-blue-600 mb-4"></div>
+                        <div class="text-sm text-gray-600 mb-8">
                             {{ 
                                 isCounsellor
-                                    ? 'Get to set preferences with which to match the preferences of potential clients.'
-                                    : 'These are the cases, languages and religions of set by counsellor as his/her preferences. Note that this platform is not religious, hence you can talk to anyone outside of your religion.'
+                                    ? 'Set preferences to match with potential clients.'
+                                    : 'These are the counsellor\'s specializations and preferences.'
                             }}
                         </div>
                         
-                        <div class="mt-6 mb-4">
-                            <div class="capitilize font-medium tracking-wide mb-2">Cases</div>
-                            <div
-                                class="flex overflow-hidden overflow-x-auto justify-start items-center p-2"
-                                v-if="counsellor.cases?.length"
-                            >
-                                <Item
-                                    v-for="item in counsellor.cases"
-                                    :key="item.id"
-                                    :item="item"
-                                    class="mr-3"
-                                />
+                        <div class="space-y-8">
+                            <div>
+                                <div class="flex items-center space-x-2 mb-4">
+                                    <div class="w-6 h-6 bg-green-600 rounded-full flex items-center justify-center">
+                                        <svg class="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                            <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                        </svg>
+                                    </div>
+                                    <h3 class="font-semibold text-gray-900">Cases</h3>
+                                </div>
+                                <div v-if="counsellor.cases?.length" class="flex flex-wrap gap-2">
+                                    <Item v-for="item in counsellor.cases" :key="item.id" :item="item" class="bg-green-50 border-green-200" />
+                                </div>
+                                <div v-else class="text-gray-500 text-sm bg-gray-50 p-4 rounded-lg text-center">
+                                    {{ isCounsellor ? 'You have ' : '' }}No cases set
+                                </div>
                             </div>
-                            <div
-                                v-else
-                                class="mt-1 text-sm text-gray-600 text-center"
-                            >{{ isCounsellor ? 'you have ' : '' }}no cases set</div>
-                        </div>
-                        
-                        <div class="mt-6 mb-4">
-                            <div class="capitilize font-medium tracking-wide mb-2">Languages</div>
-                            <div
-                                class="flex overflow-hidden overflow-x-auto justify-start items-center p-2"
-                                v-if="counsellor.languages?.length"
-                            >
-                                <Item
-                                    v-for="item in counsellor.languages"
-                                    :key="item.id"
-                                    :item="item"
-                                    class="mr-3"
-                                />
+                            
+                            <div>
+                                <div class="flex items-center space-x-2 mb-4">
+                                    <div class="w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center">
+                                        <svg class="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                            <path d="M7 2a1 1 0 011 1v1h3a1 1 0 110 2H9.578a18.87 18.87 0 01-1.724 4.78c.29.354.596.696.914 1.026a1 1 0 11-1.44 1.389c-.188-.196-.373-.396-.554-.6a19.098 19.098 0 01-3.107 3.567 1 1 0 01-1.334-1.49 17.087 17.087 0 003.13-3.733 18.992 18.992 0 01-1.487-2.494 1 1 0 111.79-.89c.234.47.489.928.764 1.372.417-.934.752-1.913.997-2.927H3a1 1 0 110-2h3V3a1 1 0 011-1zm6 6a1 1 0 01.894.553l2.991 5.982a.869.869 0 01.02.037l.99 1.98a1 1 0 11-1.79.895L15.383 16h-4.764l-.723 1.447a1 1 0 11-1.79-.894l.99-1.98.019-.038 2.99-5.982A1 1 0 0113 8zm-1.382 6h2.764L13 12.236 11.618 14z"></path>
+                                        </svg>
+                                    </div>
+                                    <h3 class="font-semibold text-gray-900">Languages</h3>
+                                </div>
+                                <div v-if="counsellor.languages?.length" class="flex flex-wrap gap-2">
+                                    <Item v-for="item in counsellor.languages" :key="item.id" :item="item" class="bg-blue-50 border-blue-200" />
+                                </div>
+                                <div v-else class="text-gray-500 text-sm bg-gray-50 p-4 rounded-lg text-center">
+                                    {{ isCounsellor ? 'You have ' : '' }}No languages set
+                                </div>
                             </div>
-                            <div
-                                v-else
-                                class="mt-1 text-sm text-gray-600 text-center"
-                            >{{ isCounsellor ? 'you have ' : '' }}no languages set</div>
-                        </div>
-                        
-                        <div class="mt-6 mb-4">
-                            <div class="capitilize font-medium tracking-wide mb-2">Religions</div>
-                            <div
-                                class="flex overflow-hidden overflow-x-auto justify-start items-center p-2"
-                                v-if="counsellor.religions?.length"
-                            >
-                                <Item
-                                    v-for="item in counsellor.religions"
-                                    :key="item.id"
-                                    :item="item"
-                                    class="mr-3"
-                                />
+                            
+                            <div>
+                                <div class="flex items-center space-x-2 mb-4">
+                                    <div class="w-6 h-6 bg-purple-600 rounded-full flex items-center justify-center">
+                                        <svg class="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                            <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"></path>
+                                        </svg>
+                                    </div>
+                                    <h3 class="font-semibold text-gray-900">Religions</h3>
+                                </div>
+                                <div v-if="counsellor.religions?.length" class="flex flex-wrap gap-2">
+                                    <Item v-for="item in counsellor.religions" :key="item.id" :item="item" class="bg-purple-50 border-purple-200" />
+                                </div>
+                                <div v-else class="text-gray-500 text-sm bg-gray-50 p-4 rounded-lg text-center">
+                                    {{ isCounsellor ? 'You have ' : '' }}No religions set
+                                </div>
                             </div>
-                            <div
-                                v-else
-                                class="mt-1 text-sm text-gray-600 text-center"
-                            >{{ isCounsellor ? 'you have ' : '' }}no religions set</div>
                         </div>
                     </div>
                 </div>
@@ -511,42 +524,74 @@ function closeModal() {
             </div>
 
             <div class="w-full sm:w-[90%] md:w-[75%] lg:w-[60%] mx-auto sm:px-6 lg:px-8 mt-8">
-                <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
-                    <div class="p-6">
-                        <div class="capitalize text-lg font-medium text-gray-900">Activities</div>
-                        <div class="mt-1 text-sm text-gray-600">
+                <div class="bg-white overflow-hidden shadow-xl border border-gray-100 sm:rounded-xl">
+                    <div class="p-8">
+                        <div class="text-xl font-bold text-gray-900 mb-2">Activities</div>
+                        <div class="w-12 h-1 bg-blue-600 mb-4"></div>
+                        <div class="text-sm text-gray-600 mb-8">
                             {{ 
                                 isCounsellor
-                                    ? 'These are information about what and how you have been doing on this platform.'
-                                    : 'These are information about what and how this counsellor has been doing on this application'
+                                    ? 'Your activity summary on the platform.'
+                                    : 'This counsellor\'s activity summary on the platform.'
                             }}
                         </div>
 
-                        <div class="mt-4 flex flex-col items-start justify-start">
-                            <ActivityBadge
-                                :name="'paid therapies'"
-                                :value="counsellor.paidTherapiesCount"
-                            />
-                            <ActivityBadge
-                                :name="'free therapies'"
-                                :value="counsellor.freeTherapiesCount"
-                                class="mt-4 ml-0 sm:ml-8"
-                            />
-                            <ActivityBadge
-                                :name="'online sessions held'"
-                                :value="counsellor.onlineSessionsHeldCount"
-                                class="mt-4"
-                            />
-                            <ActivityBadge
-                                :name="'in-person sessions held'"
-                                :value="counsellor.inPersonSessionsCount"
-                                class="mt-4 ml-0 sm:ml-8"
-                            />
-                            <ActivityBadge
-                                :name="'group therapies'"
-                                :value="counsellor.groupTherapiesCount"
-                                class="mt-4"
-                            />
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div class="bg-blue-50 p-6 rounded-lg border border-blue-200">
+                                <div class="flex items-center space-x-3">
+                                    <div class="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center">
+                                        <svg class="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                            <path d="M4 4a2 2 0 00-2 2v4a2 2 0 002 2V6h10a2 2 0 00-2-2H4zm2 6a2 2 0 012-2h8a2 2 0 012 2v4a2 2 0 01-2 2H8a2 2 0 01-2-2v-4zm6 4a2 2 0 100-4 2 2 0 000 4z"></path>
+                                        </svg>
+                                    </div>
+                                    <div>
+                                        <div class="text-2xl font-bold text-blue-900">{{ counsellor.paidTherapiesCount || 0 }}</div>
+                                        <div class="text-sm text-blue-700 font-medium">Paid Therapies</div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="bg-green-50 p-6 rounded-lg border border-green-200">
+                                <div class="flex items-center space-x-3">
+                                    <div class="w-10 h-10 bg-green-600 rounded-full flex items-center justify-center">
+                                        <svg class="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                            <path d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zM3 10a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1v-6zM14 9a1 1 0 00-1 1v6a1 1 0 001 1h2a1 1 0 001-1v-6a1 1 0 00-1-1h-2z"></path>
+                                        </svg>
+                                    </div>
+                                    <div>
+                                        <div class="text-2xl font-bold text-green-900">{{ counsellor.freeTherapiesCount || 0 }}</div>
+                                        <div class="text-sm text-green-700 font-medium">Free Therapies</div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="bg-purple-50 p-6 rounded-lg border border-purple-200">
+                                <div class="flex items-center space-x-3">
+                                    <div class="w-10 h-10 bg-purple-600 rounded-full flex items-center justify-center">
+                                        <svg class="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                            <path d="M2 6a2 2 0 012-2h6a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V6zM14.553 7.106A1 1 0 0014 8v4a1 1 0 00.553.894l2 1A1 1 0 0018 13V7a1 1 0 00-1.447-.894l-2 1z"></path>
+                                        </svg>
+                                    </div>
+                                    <div>
+                                        <div class="text-2xl font-bold text-purple-900">{{ counsellor.onlineSessionsHeldCount || 0 }}</div>
+                                        <div class="text-sm text-purple-700 font-medium">Online Sessions</div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="bg-orange-50 p-6 rounded-lg border border-orange-200">
+                                <div class="flex items-center space-x-3">
+                                    <div class="w-10 h-10 bg-orange-600 rounded-full flex items-center justify-center">
+                                        <svg class="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                            <path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3z"></path>
+                                        </svg>
+                                    </div>
+                                    <div>
+                                        <div class="text-2xl font-bold text-orange-900">{{ counsellor.groupTherapiesCount || 0 }}</div>
+                                        <div class="text-sm text-orange-700 font-medium">Group Therapies</div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>

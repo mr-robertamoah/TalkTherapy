@@ -48,7 +48,7 @@ function changeStep(value) {
             <h2 class="font-semibold text-xl text-gray-800 leading-tight">Profile</h2>
         </template>
 
-        <div class="py-12">
+        <div class="py-12 bg-gray-50 min-h-screen">
             <div class="sm:w-[90%] md:w-[75%] lg:w-[60%] mx-auto sm:px-6 lg:px-8 my-4 flex justify-end">
                 <HelpButton
                     title="get help on your profile page"
@@ -56,30 +56,32 @@ function changeStep(value) {
                     class="mr-4"
                 />
             </div>
-            <div class="sm:w-[90%] md:w-[75%] lg:w-[60%] mx-auto sm:px-6 lg:px-8 space-y-10">
-                <div class="p-4 sm:p-8 bg-white shadow sm:rounded-lg">
-                    <div class="flex justify-center items-end font-bold text-2xl">
-                        <div class="mr-4">Welcome</div>
-                        <div class="text-lg sm:text-2xl md:text-3xl border-b border-slate-600 tracking-widest w-fit bg-gradient-to-r from-slate-800 to-slate-600 bg-clip-text text-transparent underline">{{ $page.props.auth.user.username }}</div>
+            
+            <!-- Hero Section -->
+            <div class="sm:w-[90%] md:w-[75%] lg:w-[60%] mx-auto sm:px-6 lg:px-8 mb-10">
+                <div class="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-xl shadow-xl p-8 text-white">
+                    <div class="text-center">
+                        <div class="text-4xl font-bold mb-2">Welcome Back!</div>
+                        <div class="text-xl opacity-90">@{{ $page.props.auth.user.username }}</div>
+                        <div class="w-16 h-1 bg-white/50 mx-auto mt-4"></div>
                     </div>
                 </div>
+            </div>
+            
+            <div class="sm:w-[90%] md:w-[75%] lg:w-[60%] mx-auto sm:px-6 lg:px-8 space-y-8">
                 
                 <div id="profile-therapies-id" class="relative"></div>
-                <div class="p-4 sm:p-8 bg-white shadow sm:rounded-lg">
-                    <TherapiesSection
-                        class="max-w-xl"
-                    />
+                <div class="p-8 bg-white shadow-xl border border-gray-100 rounded-xl">
+                    <TherapiesSection class="max-w-xl" />
                 </div>
                 
-                                <div id="profile-guardianship-id" class="relative"></div>
-                <div class="p-4 sm:p-8 bg-white shadow sm:rounded-lg">
-                    <GuardianshipSection
-                        class="max-w-xl"
-                    />
+                <div id="profile-guardianship-id" class="relative"></div>
+                <div class="p-8 bg-white shadow-xl border border-gray-100 rounded-xl">
+                    <GuardianshipSection class="max-w-xl" />
                 </div>
                 
-                                <div id="profile-testimonial-id" class="relative"></div>
-                <div class="p-4 sm:p-8 bg-white shadow sm:rounded-lg">
+                <div id="profile-testimonial-id" class="relative"></div>
+                <div class="p-8 bg-white shadow-xl border border-gray-100 rounded-xl">
                     <TestimonialSection
                         class="max-w-xl"
                         :addedby="$page.props.auth.user"
@@ -88,15 +90,13 @@ function changeStep(value) {
                     />
                 </div>
                 
-                                <div id="profile-info-id" class="relative"></div>
-                <div class="p-4 sm:p-8 bg-white shadow sm:rounded-lg">
-                    <UpdateProfileInformationForm
-                        class="max-w-xl"
-                    />
+                <div id="profile-info-id" class="relative"></div>
+                <div class="p-8 bg-white shadow-xl border border-gray-100 rounded-xl">
+                    <UpdateProfileInformationForm class="max-w-xl" />
                 </div>
                 
                 <div
-                    class="p-4 sm:p-8 bg-white shadow sm:rounded-lg"
+                    class="p-8 bg-yellow-50 border border-yellow-200 shadow-xl rounded-xl"
                     v-if="mustVerifyEmail && !$page.props.auth.user?.emailVerifiedAt"
                 >
                     <VerifyEmailSection
@@ -107,29 +107,35 @@ function changeStep(value) {
                 </div>
 
                 <div id="profile-pref-id" class="relative"></div>
-                <div class="p-4 sm:p-8 bg-slate-500 shadow sm:rounded-lg">
+                <div class="p-8 bg-gradient-to-r from-purple-600 to-indigo-600 shadow-xl rounded-xl text-white">
                     <section class="max-w-xl">
-                        <header>
-                            <h2 class="text-lg font-medium text-gray-300">Set Preferences</h2>
-
-                            <p class="mt-1 text-sm text-gray-100 text-justify">
-                                There are things you may prefer, regarding the kind counsellors you may want to interact with, and we give you the opportunity to set them.
-                            </p>
-
-                            <Link :href="route('preferences')" class="p-2 float-right my-2 mr-2 px-4 py-2 bg-gray-800 border border-transparent rounded-md font-semibold text-xs text-white uppercase tracking-widest hover:bg-gray-700 focus:bg-gray-700 active:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition ease-in-out duration-150">
-                                preferences
-                            </Link>
-                        </header>
+                        <div class="flex items-center space-x-3 mb-4">
+                            <div class="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center">
+                                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                    <path d="M5 4a1 1 0 00-2 0v7.268a2 2 0 000 3.464V16a1 1 0 102 0v-1.268a2 2 0 000-3.464V4zM11 4a1 1 0 10-2 0v1.268a2 2 0 000 3.464V16a1 1 0 102 0V8.732a2 2 0 000-3.464V4zM16 3a1 1 0 011 1v7.268a2 2 0 010 3.464V16a1 1 0 11-2 0v-1.268a2 2 0 010-3.464V4a1 1 0 011-1z"></path>
+                                </svg>
+                            </div>
+                            <h2 class="text-xl font-bold">Set Preferences</h2>
+                        </div>
+                        <p class="text-white/90 mb-6 leading-relaxed">
+                            Customize your preferences to match with the right counsellors for your needs.
+                        </p>
+                        <Link :href="route('preferences')" class="inline-flex items-center px-6 py-3 bg-white text-purple-600 font-semibold rounded-lg hover:bg-gray-100 transition-colors">
+                            Manage Preferences
+                            <svg class="ml-2 w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+                            </svg>
+                        </Link>
                     </section>
                 </div>
 
                 <div id="profile-password-id" class="relative"></div>
-                <div class="p-4 sm:p-8 bg-white shadow sm:rounded-lg">
+                <div class="p-8 bg-white shadow-xl border border-gray-100 rounded-xl">
                     <UpdatePasswordForm class="max-w-xl" />
                 </div>
 
                 <div id="profile-counsellor-id" class="relative"></div>
-                <div class="p-4 sm:p-8 bg-slate-500 shadow sm:rounded-lg">
+                <div class="p-8 bg-gradient-to-r from-green-600 to-teal-600 shadow-xl rounded-xl text-white">
                     <BecomeCounsellorForm
                         :counsellor-creation-step="currentStep"
                         @change-step="changeStep"
@@ -138,7 +144,7 @@ function changeStep(value) {
                 </div>
 
                 <div id="profile-account-id" class="relative"></div>
-                <div class="p-4 sm:p-8 bg-white shadow sm:rounded-lg">
+                <div class="p-8 bg-white shadow-xl border border-gray-100 rounded-xl">
                     <DeleteUserForm class="max-w-xl" />
                 </div>
             </div>

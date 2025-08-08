@@ -668,7 +668,7 @@ function reportCreated(report) {
 </script>
 
 <template>
-  <Head :title="`${therapyType === 'group' ? 'Group ' : ''}Therapy${computedTherapy ? ` . ${computedTherapy.name}` : ''}`" />
+  <Head :title="`${therapyType === 'group' ? 'Group ' : ''}Therapy${computedTherapy ? ` - ${computedTherapy.name}` : ''}`" />
 
   <BaseTherapyLayout
     :therapy="therapy"
