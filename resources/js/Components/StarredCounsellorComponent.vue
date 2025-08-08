@@ -20,35 +20,50 @@ defineProps({
 </script>
 
 <template>
-    <div class="p-2 rounded shadow-sm bg-stone-100 relative" :class="{'mb-6': showStars}">
-        <div class="p-2 text-gray-900 text-center flex items-center justify-center bg-gray-300 w-full h-[150px]">
+    <div class="rounded-xl shadow-lg bg-white border border-gray-100 relative overflow-hidden hover:shadow-xl transition-all duration-300" :class="{'mb-6': showStars}">
+        <div class="relative w-full h-[150px]">
             <img 
                 :src="counsellor?.cover ?? ''" 
                 :alt="'counsellor cover'"
                 v-if="counsellor?.cover"
-                class="w-full h-full object-cover rounded-b-lg"
+                class="w-full h-full object-cover"
             >
-            <div v-else class="text-sm w-full h-full flex justify-center items-center text-gray-600 bg-white rounded-b-lg">no cover image</div>
-        </div>
-
-        <StyledLink class="absolute -top-1 right-1 z-[1] min-h-[44px] min-w-[44px] flex items-center justify-center px-3 py-2" :text="'visit profile'" :href="route('counsellor.show', { counsellorId: counsellor.id })"/>
-        <div class="p-2 absolute top-0 left-0 w-full h-full bg-opacity-40 bg-gray-600">
-            <div class="flex justify-start items-center">
-                <Avatar :size="80" :src="counsellor?.avatar ?? ''" class="shrink-0" :alt="'...'"/>
-                <div class="mt-2 text-start max-w-[90%] text-ellipsis ml-2 text-white text-sm font-bold capitalize">{{ counsellor.name }}</div>
+            <div v-else class="text-sm w-full h-full flex justify-center items-center text-gray-500 bg-gradient-to-br from-blue-50 to-indigo-100">No cover image</div>
+            
+            <!-- Overlay -->
+            <div class="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent">
+                <!-- Profile Section -->
+                <div class="absolute bottom-4 left-4 flex items-center space-x-3">
+                    <Avatar :size="60" :src="counsellor?.avatar ?? ''" class="shrink-0 ring-2 ring-white rounded-full" :alt="'...'"/>
+                    <div class="text-white">
+                        <div class="font-bold text-base capitalize truncate max-w-[120px]">{{ counsellor.name }}</div>
+                        <div class="text-xs text-gray-200 opacity-90">Counsellor</div>
+                    </div>
+                </div>
+                
+                <!-- Position Badge -->
+                <div v-if="position" class="absolute top-3 left-3 bg-blue-600 text-white w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold">
+                    {{ position }}
+                </div>
+                
+                <!-- Visit Profile Button -->
+                <div class="absolute top-3 right-3">
+                    <StyledLink 
+                        :text="'View'" 
+                        :href="route('counsellor.show', { counsellorId: counsellor.id })"
+                        class="bg-white/20 backdrop-blur-sm text-white px-3 py-1 rounded-full text-xs font-medium hover:bg-white/30 transition-colors"
+                    />
+                </div>
             </div>
-
+        </div>
+        
+        <!-- Stars Section -->
+        <div v-if="showStars" class="p-3 bg-white">
             <StarBadge
                 :overall="counsellor?.overallStars"
                 :month="counsellor?.stars"
-                v-if="showStars"
-                class="mt-2"
+                class="w-full"
             />
-            <div v-if="position" class="bg-stone-200 w-10 h-10 rounded-full p-2 mb-2 absolute bottom-1 right-1">
-                <div class="bg-stone-700 text-sm font-semibold w-full h-full text-stone-200 rounded-full flex justify-center items-center">
-                    <div>{{ position }}</div>
-                </div>
-            </div>
         </div>
     </div>
 </template>

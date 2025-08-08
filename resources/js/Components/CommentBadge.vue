@@ -1,14 +1,23 @@
 <template>
-    <div v-bind="$attrs" class="">
-        <div v-if="loading" class="text-xs text-center text-red-600">deleting...</div>
-        <div class="text-gray-600 font-bold text-xs">@{{ comment.username }}</div>
-        <div class="ml-4 text-sm text-gray-600 bg-stone-200 p-2 rounded">{{ comment.content }}</div>
-        <div class="flex justify-between items-center">
-            <div class="text-xs text-end text-red-600 mb-2 cursor-pointer" v-if="computedCommented" @click="() => showModal('delete')">delete</div>
-            <div 
-                class="text-xs text-gray-400 my-2 text-end"
-                :class="{'w-fit ml-auto': !computedCommented}"
-            >{{ comment.createdAt }}</div>
+    <div v-bind="$attrs" class="bg-white rounded-lg p-4 shadow-sm border border-gray-100">
+        <div v-if="loading" class="text-xs text-center text-red-600 bg-red-50 p-2 rounded mb-2">Deleting...</div>
+        <div class="flex items-start space-x-3">
+            <div class="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white text-xs font-bold">
+                {{ comment.username?.charAt(0)?.toUpperCase() || 'U' }}
+            </div>
+            <div class="flex-1">
+                <div class="flex items-center space-x-2 mb-2">
+                    <span class="font-semibold text-gray-800 text-sm">@{{ comment.username }}</span>
+                    <span class="text-xs text-gray-500">{{ comment.createdAt }}</span>
+                </div>
+                <div class="text-sm text-gray-700 leading-relaxed bg-gray-50 p-3 rounded-lg">{{ comment.content }}</div>
+                <div class="mt-2 flex justify-end" v-if="computedCommented">
+                    <button 
+                        @click="() => showModal('delete')"
+                        class="text-xs text-red-600 hover:text-red-800 font-medium transition-colors"
+                    >Delete</button>
+                </div>
+            </div>
         </div>
     </div>
 

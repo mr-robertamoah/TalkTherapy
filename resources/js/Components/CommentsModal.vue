@@ -122,28 +122,30 @@ function updatePage(res) {
         :show="show"
         @close="closeModal"
     >
-        <div class="p-4">
-            <div class="w-full mt-2 mb-4">
-                <div
-                    class="w-fit mx-auto text-2xl font-bold bg-gradient-to-r from-gray-800 to-gray-500 bg-clip-text text-transparent mb-2"
-                >Comments</div>
-                <hr>
+        <div class="p-6">
+            <div class="w-full mb-6">
+                <div class="text-center">
+                    <h2 class="text-2xl font-bold text-gray-800 mb-2">Comments</h2>
+                    <div class="w-16 h-1 bg-blue-600 mx-auto rounded-full"></div>
+                </div>
             </div>
 
-            <div class="p-2">
-                <div class="h-[50vh] overflow-hidden overflow-y-auto p-2 flex justify-center items-center flex-col">
-                    <div v-if="loading" class="p-2 text-center lowercase my-2 text-green-300 transition duration-100 rounded mx-auto w-[90%] bg-green-700">getting comments...</div>
-                    <div v-if="comments.data?.length" class="h-full w-full flex flex-col space-y-4 items-center">
+            <div class="">
+                <div class="h-[50vh] overflow-hidden overflow-y-auto p-4 bg-gray-50 rounded-lg">
+                    <div v-if="loading" class="p-3 text-center text-blue-600 bg-blue-50 rounded-lg mb-4">Loading comments...</div>
+                    <div v-if="comments.data?.length" class="space-y-4">
                         <CommentBadge
-                            class="mb-2 w-full"
                             v-for="(comment, idx) in comments.data"
                             :key="comment.id"
                             :comment="comment"
                             @deleted="() => deletedComment(idx)"
                         />
                     </div>
-                    <div v-else-if="!loading" class="flex justify-center items-center h-full text-gray-600 text-sm">
-                        <div class="lowercase">no comments for this {{ commentableType }}</div>
+                    <div v-else-if="!loading" class="flex justify-center items-center h-full text-gray-500 text-sm">
+                        <div class="text-center">
+                            <div class="text-4xl mb-2">💬</div>
+                            <div>No comments for this {{ commentableType.toLowerCase() }}</div>
+                        </div>
                     </div>
 
                     <div v-if="comments.data.length && comments.page && !loading" @click="getComments" title="get more comments" class="mt-6 mb-4 p-4 flex justify-center items-center h-full text-gray-600 text-sm cursor-pointer">
@@ -168,7 +170,9 @@ function updatePage(res) {
                         </div>
                     </div>
                 </div>
-                <div v-else class="text-xs text-gray-600 text-center">log in to add a comment</div>
+                <div v-else class="text-xs text-center">
+                    <a :href="route('login')" class="text-blue-600 hover:text-blue-800 font-medium transition-colors">Log in to add a comment</a>
+                </div>
             </div>
         </div>
     </Modal>
