@@ -16,6 +16,9 @@ Validate implementations for TalkTherapy against real behavior, not just passing
   `implementation_plan.md` TT-1.2) or the Therapy/GroupTherapy session state machine
 - Edge cases: anonymous therapies, guardianship/ward relationships, unverified counsellors
 - Regression risk against adjacent features
+- That the feature is actually reachable through the UI with seeded data alone — if verifying it
+  required creating an account or record by hand instead of using what's in
+  `documentation/seeded-data.md`, that's a gap to flag (the seeder should have been updated)
 
 ## Produce
 

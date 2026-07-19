@@ -101,6 +101,14 @@ After completing a **feature** (not a small bug fix, unless asked), write
 out: steps to reproduce, any sample data/accounts needed, URLs, and what a successful result looks
 like. Treat it as a hand-off doc for someone who wasn't in the conversation.
 
+If the feature needs data that doesn't already exist from a normal seed (a new model, a specific
+state, an edge case like an anonymous/unverified/expired record), add it to
+`database/seeders/DatabaseSeeder.php` (or a dedicated seeder it calls) rather than expecting
+manual setup through the UI or `tinker` before the feature can be tried out. Then, in that
+feature's `documentation/features/<feature-slug>.md`, include a "Test data" section naming exactly
+which seeded account(s)/record(s) to use — see `documentation/seeded-data.md` for the full current
+roster of seeded accounts and their credentials, and keep it updated when seed data changes.
+
 ## General rules
 
 - If requirements are unclear, ask questions — do not invent requirements.

@@ -16,8 +16,13 @@ tests, Docker Compose dev environment — see root `CLAUDE.md` for exact command
   `resources/js/Pages` structure for the established pattern before introducing a new one.
 - Write maintainable code; no speculative abstractions for hypothetical future needs.
 - Write tests (Pest) for new backend behavior.
+- If a feature needs data that doesn't already exist in `database/seeders/DatabaseSeeder.php`
+  (a new model, a specific state, an edge case), add it there rather than requiring manual setup
+  through the UI or `tinker` before the feature can be tested.
 - Update documentation where it exists (do not create new docs unless the task calls for it —
-  the top-level CLAUDE.md governs when a `documentation/features/*.md` write-up is expected).
+  the top-level CLAUDE.md governs when a `documentation/features/*.md` write-up is expected, and
+  it must include a "Test data" section naming the exact seeded account(s)/record(s) to use — see
+  `documentation/seeded-data.md`).
 
 ## Before completion, verify
 

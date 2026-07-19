@@ -24,8 +24,14 @@ Branch: `feature/<slug>` off `develop`, PR back into `develop` (see "Branching &
    ↓
 10. `devops-engineer` subagent
     ↓
-11. Write `documentation/features/<feature-slug>.md` — what was built, how to try it out
+11. If the feature needs data that doesn't already exist in `DatabaseSeeder.php`, add it there
+    (or a dedicated seeder it calls) — don't leave manual setup as a prerequisite to trying the
+    feature out
     ↓
-12. Pull Request Summary (Summary / Risks / Testing Performed / Deployment Notes)
+12. Write `documentation/features/<feature-slug>.md` — what was built, how to try it out,
+    including a "Test data" section naming the exact seeded account(s)/record(s) to use (see
+    `documentation/seeded-data.md`)
     ↓
-13. Ready for Human Review — never merge automatically
+13. Pull Request Summary (Summary / Risks / Testing Performed / Deployment Notes)
+    ↓
+14. Ready for Human Review — never merge automatically
