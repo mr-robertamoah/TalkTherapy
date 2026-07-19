@@ -2,6 +2,7 @@
 
 Applies to new user-facing features (see "How much process a task needs" in `CLAUDE.md`). Bug
 fixes and small changes skip this entirely — use `.claude/workflows/bug-fix.md` instead.
+Branch: `feature/<slug>` off `develop`, PR back into `develop` (see "Branching & releases").
 
 1. Read Jira Ticket (via the Atlassian connector)
    ↓

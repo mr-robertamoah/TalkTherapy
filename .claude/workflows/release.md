@@ -1,6 +1,10 @@
 # Release Workflow
 
-1. Confirm all target features/fixes are merged to the release branch
+Covers promoting `develop` → `testing` and `testing` → `main` (see "Branching & releases" in
+`CLAUDE.md`). Each promotion is its own PR and goes through this same checklist.
+
+1. Confirm all target features/fixes are merged to `develop` (for a `develop` → `testing`
+   promotion) or verified in `testing` (for a `testing` → `main` promotion)
    ↓
 2. `qa-engineer` subagent — full regression pass, Pest suite green
    ↓

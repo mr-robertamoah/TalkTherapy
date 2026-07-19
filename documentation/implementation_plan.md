@@ -72,6 +72,9 @@ Fields: **Key** (Epic-Story) · **Type** · **Priority** (Critical/High/Medium/L
 | TT-4.4 | "I need help now" quick-access to crisis hotlines/emergency contacts, visible from any page | Story | Critical | 3 | New | — |
 | TT-4.5 | Two-Factor Authentication | Story | Medium | 5 | Existing (5.4) | — |
 | TT-4.6 | Password policy enforcement + weak-password profile warning | Story | Medium | 3 | Existing (5.5) | — |
+| TT-4.7 | Make Sent-notification counsellor/user type-check explicit instead of implicit recipient-type invariant | Task | Low | — | New (SCRUM-18 follow-up) | — |
+| TT-4.8 | Audit per-user group-therapy anonymity (`group_therapy_user.anonymous`) once it's actually read anywhere | Task | Low | — | New (SCRUM-18 follow-up) | — |
+| TT-4.9 | Add regression tests asserting anonymous-therapy notifications never leak real names | Task | Medium | — | New (SCRUM-18 follow-up) | — |
 
 > TT-4.4 is deliberately **not** the same as the icebox "AI Emergency" item (see TT-9.3). A
 > static hotline/quick-contact button ships in a sprint; an AI-mediated emergency flow is a

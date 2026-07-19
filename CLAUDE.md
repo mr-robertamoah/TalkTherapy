@@ -32,6 +32,22 @@ docker compose exec vite npm run build                    # production frontend 
 Emails sent in the Docker environment are caught by Mailpit, not actually delivered — view them
 at http://localhost:8025.
 
+## Branching & releases
+
+Branch flow: `feature/*` / `bugfix/*` / `hotfix/*` → PR into `develop` → promote `develop` → `testing` →
+promote `testing` → `main`. All four branches (`develop`, `testing`, `main`, plus whatever
+`feature/bugfix/hotfix` branch you're on) already exist on `origin` — never create a competing
+long-lived branch for these roles.
+
+- New work (fixes or features) branches off `develop`, named `feature/<slug>`, `bugfix/<slug>`, or
+  `hotfix/<slug>` depending on which of the three buckets in "How much process a task needs"
+  applies.
+- Every such branch's PR targets `develop`, never `testing` or `main` directly.
+- Promotion from `develop` → `testing` → `main` happens as its own PR (`develop` into `testing`,
+  then `testing` into `main`) once the accumulated changes are ready — this is what `/release`
+  and the `devops-engineer` subagent check readiness for.
+- Never merge your own PRs, at any stage of this chain.
+
 ## How much process a task needs
 
 Not every change deserves the same ceremony. Match the weight to the work:
@@ -53,6 +69,10 @@ Atlassian connector** (`mcp__claude_ai_Atlassian__*` tools), not a project-local
 authenticate once via `mcp__claude_ai_Atlassian__authenticate` when a Jira lookup is needed, and
 prefer that over guessing ticket details. Never invent a ticket's contents; if the connector
 isn't authenticated or a ticket is ambiguous, ask.
+
+The connector has no sprint-management endpoints (no create/start/complete sprint, no move-to-
+sprint) — see "Sprint tracking" in `.claude/agents/project-manager.md` for the manual `sprint-N`
+label + priority substitute used until/unless that capability exists.
 
 ## Subagents
 

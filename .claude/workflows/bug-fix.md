@@ -1,7 +1,8 @@
 # Bug Fix Workflow
 
 Lightweight by design — see "How much process a task needs" in `CLAUDE.md`. No Jira ticket, no
-subagent ceremony required by default.
+subagent ceremony required by default. Branch: `bugfix/<slug>` off `develop`, PR back into
+`develop` (see "Branching & releases").
 
 1. Reproduce the bug
    ↓
