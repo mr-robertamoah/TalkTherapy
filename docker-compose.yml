@@ -4,22 +4,25 @@ services:
       context: .
       dockerfile: docker/php/Dockerfile
     container_name: talktherapy-php
+    env_file:
+      - ./.env.docker
     volumes:
       - .:/var/www/html
       - ./storage:/var/www/html/storage
-      - ./.env.docker:/var/www/html/.env
     working_dir: /var/www/html
     restart: unless-stopped
     depends_on:
       - db
-      
+      - mailpit
+
   vite:
-    image: node:18
+    image: node:20
     container_name: talktherapy-vite
     volumes:
       - .:/app
+      - /app/node_modules
     working_dir: /app
-    command: sh -c "rm -rf node_modules package-lock.json && npm install && npm run dev -- --host"
+    command: sh -c "npm install && npm run dev"
     ports:
       - "5173:5173"
     depends_on:
@@ -37,6 +40,14 @@ services:
     depends_on:
       - php
       - vite
+
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: talktherapy-mailpit
+    restart: unless-stopped
+    ports:
+      - "1025:1025" # SMTP
+      - "8025:8025" # Web UI
 
   db:
     image: mysql:8.0
@@ -58,30 +69,33 @@ services:
       context: .
       dockerfile: docker/php/Dockerfile
     container_name: talktherapy-queue
+    env_file:
+      - ./.env.docker
     volumes:
       - .:/var/www/html
       - ./storage:/var/www/html/storage
-      - ./.env.docker:/var/www/html/.env
       - ./docker/queue/supervisord.conf:/etc/supervisord.conf
     command: bash -c "mkdir -p /var/www/html/storage/logs && chmod -R 777 /var/www/html/storage && touch /var/www/html/supervisord.log && chmod 777 /var/www/html/supervisord.log && supervisord -c /etc/supervisord.conf"
     depends_on:
       - php
       - db
+      - mailpit
 
   reverb:
     build:
       context: .
       dockerfile: docker/php/Dockerfile
     container_name: talktherapy-reverb
+    env_file:
+      - ./.env.docker
     volumes:
       - .:/var/www/html
       - ./storage:/var/www/html/storage
-      - ./.env.docker:/var/www/html/.env
       - ./docker/reverb/supervisord.conf:/etc/supervisord.conf
       - ./docker/reverb/entrypoint.sh:/usr/local/bin/reverb-entrypoint.sh
     entrypoint: ["/usr/local/bin/reverb-entrypoint.sh"]
     ports:
-      - "8080:8080"  # Laravel Reverb default port
+      - "8081:8081"  # remapped from Reverb's default 8080 (conflicts with another local project)
     depends_on:
       - php
       - db

@@ -11,6 +11,21 @@ done
 sleep 10
 echo "Database should be ready now"
 
+# Check if composer deps need update
+if [ ! -f /var/www/html/vendor/autoload.php ]; then
+  echo "Installing Composer dependencies..."
+  composer install --no-interaction --optimize-autoloader
+fi
+
+# Set permissions
+chmod -R 755 /var/www/html/storage 2>/dev/null || true
+chmod -R 755 /var/www/html/bootstrap/cache 2>/dev/null || true
+
+# Generate key if not exists
+if [ -z "$APP_KEY" ]; then
+  php artisan key:generate
+fi
+
 # Run migrations and seed only if not already done
 if [ ! -f /var/www/.seeded ]; then
   echo "Running migrations and seeding..."
