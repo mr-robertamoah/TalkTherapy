@@ -45,7 +45,9 @@ class TherapyAssistanceRequestAcceptedGuardianNotification extends Notification 
             ->success()
             ->subject("Assistance Request Accepted")
             ->greeting("Hello {$notifiable->name}!")
-            ->line("The request of your ward with name: '{$this->therapy->addedby->name}', for assistance for the therapy with name: '{$this->therapy->name}' has been accepted by counsellor with name: '{$this->therapy->cpunsellor->getName()}'.")
+            ->line($this->therapy->anonymous
+                ? "The request of an anonymous ward, for assistance for the therapy with name: '{$this->therapy->name}' has been accepted by counsellor with name: '{$this->therapy->counsellor->getName()}'."
+                : "The request of your ward with name: '{$this->therapy->addedby->name}', for assistance for the therapy with name: '{$this->therapy->name}' has been accepted by counsellor with name: '{$this->therapy->counsellor->getName()}'.")
             ->action("Visit Counsellor Page", url("counsellors/{$this->therapy->counsellor_id}"))
             ->line("You may receive other reminders before the starting time.")
             ->action("Visit Therapy Page", url("therapies/{$this->therapy->id}"))

@@ -1,7 +1,7 @@
 <template>
     <div
         v-bind="$attrs"
-        class="w-full max-w-[400px] p-2 rounded shadow-sm select-none cursor-pointer"
+        class="w-full max-w-[400px] p-4 rounded-xl shadow-lg bg-white border border-gray-100 select-none cursor-pointer hover:shadow-xl transition-all duration-300"
         @dblclick="() => {
             $emit('dblclick')
             if (useMinimal) return
@@ -28,11 +28,11 @@
             <slot></slot>
         </div>
         <div v-else>
-            <div class="flex justify-start items-center mb-3 cursor-pointer space-x-2 overflow-hidden overflow-x-auto p-2">
-                <Avatar class="shrink-0" :avatar-text="'...'" :size="40" :src="counsellor?.avatar ?? ''"/>
-                <div class="text-gray-600 flex justify-start items-center shrink-0 space-x-2 text-xs sm:text-sm md:text-base">
-                    <div class="capitalize">{{ counsellor.name }}</div>
-                    <div>{{ counsellor.username ? `(${counsellor.username})` : '' }}</div>
+            <div class="flex justify-start items-center mb-4 cursor-pointer space-x-3 p-2 rounded-lg hover:bg-gray-50 transition-colors">
+                <Avatar class="shrink-0" :avatar-text="'...'" :size="48" :src="counsellor?.avatar ?? ''"/>
+                <div class="text-gray-700 flex flex-col space-y-1">
+                    <div class="capitalize font-semibold text-base">{{ counsellor.name }}</div>
+                    <div class="text-sm text-gray-500">{{ counsellor.username ? `@${counsellor.username}` : '' }}</div>
                 </div>
             </div>
             <slot></slot>

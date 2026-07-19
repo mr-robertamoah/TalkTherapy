@@ -58,15 +58,15 @@ const computedCanViewPage = computed(() => {
 </script>
 
 <template>
-    <div class="bg-gradient-to-br from-slate-50 to-zinc-100 rounded-xl p-5 shadow-lg border border-zinc-200 hover:shadow-xl transition-all duration-300 hover:scale-105">
+    <div class="bg-gradient-to-br from-slate-50 to-zinc-100 rounded-xl p-5 shadow-lg border border-zinc-200 hover:shadow-xl transition-all duration-300 hover:scale-105 min-w-[300px]">
         <!-- Type Badge -->
         <div class="flex justify-between items-start mb-4">
             <div class="bg-blue-600 text-white px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide">
                 Individual Therapy
             </div>
             <div class="flex gap-1">
-                <span v-if="therapy.public" class="bg-green-500 text-white px-2 py-1 rounded-full text-xs font-medium">Public</span>
-                <span v-if="therapy.anonymous" class="bg-purple-500 text-white px-2 py-1 rounded-full text-xs font-medium">Anonymous</span>
+                <span v-if="therapy.public" class="bg-gray-100 text-gray-700 px-2 py-1 rounded-full text-xs font-medium border">Public</span>
+                <span v-if="therapy.anonymous" class="bg-gray-100 text-gray-700 px-2 py-1 rounded-full text-xs font-medium border">Anonymous</span>
             </div>
         </div>
 

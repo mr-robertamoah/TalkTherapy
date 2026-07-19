@@ -54,7 +54,9 @@ class TherapyAssistanceRequestAcceptedNotification extends Notification implemen
             ->greeting("Hello {$name}!")
             ->when($isCounsellor, function ($mail) {
                 $mail
-                    ->line("Your request to render assistance for the therapy with name: '{$this->request->for->name}' has been accepted by user with name: '{$this->request->to->name}'.")
+                    ->line($this->request->for->anonymous
+                        ? "Your request to render assistance for the therapy with name: '{$this->request->for->name}' has been accepted by an anonymous user."
+                        : "Your request to render assistance for the therapy with name: '{$this->request->for->name}' has been accepted by user with name: '{$this->request->to->name}'.")
                     ->line("Start creating sessions and lets help make user's wellbeing better.");
             })
             ->when(!$isCounsellor, function ($mail) {
@@ -89,7 +91,7 @@ class TherapyAssistanceRequestAcceptedNotification extends Notification implemen
             ],
             'to' => $this->request->to_type == Counsellor::class
                 ? $this->request->to->getName()
-                : $this->request->to->name
+                : ($this->request->for->anonymous ? 'an anonymous user' : $this->request->to->name)
         ]));
     }
 

@@ -22,9 +22,7 @@ const props = defineProps({
 })
 
 const classes = computed(() => {
-    const mainSize =  props.size + (props.size / 4)
-
-    return `w-[${props.size}px] h-[${props.size}px] rounded-full sm:w-[${mainSize}px] sm:h-[${mainSize}px] bg-white`
+    return `w-[${props.size}px] h-[${props.size}px] rounded-full bg-white aspect-square`
 })
 
 const computedPadding = computed(() => {
@@ -37,11 +35,11 @@ const computedPadding = computed(() => {
 
 <template>
     <div :class="`${classes} ${computedPadding}`" >
-        <div class="w-full h-full bg-gray-300 rounded-full flex items-center justify-center" :class="computedPadding">
+        <div class="w-full h-full bg-gray-300 rounded-full flex items-center justify-center overflow-hidden" :class="computedPadding">
             <img 
                 v-if="src.length"
                 :src="src" :alt="alt"
-                class="object-cover rounded-full w-full h-full text-xs"
+                class="object-cover w-full h-full text-xs"
             >
             <div v-else class="w-full h-full flex justify-center items-center text-sm text-gray-600">{{ avatarText }}</div>
         </div>
