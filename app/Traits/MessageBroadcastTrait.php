@@ -37,7 +37,7 @@ trait MessageBroadcastTrait
 
             
         $counsellor = $fromCounsellor ? $message->from : $message->to?->counsellor;
-        $counsellorAvatar = $counsellor->avatar?->url;
+        $counsellorAvatar = $counsellor?->avatar?->url;
             
         $toId = !$fromCounsellor ? $message->to?->user?->id : $message->to_id;
         $forType = str_replace('App\Models\\', '', $message->for_type);

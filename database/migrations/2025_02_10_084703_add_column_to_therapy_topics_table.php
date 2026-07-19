@@ -48,6 +48,20 @@ return new class extends Migration
 
     private function foreignKeyExists(string $table, $foreignKeyName): bool
     {
+        $connection = DB::connection()->getDriverName();
+        
+        if ($connection === 'sqlite') {
+            // SQLite: Check via PRAGMA foreign_key_list
+            $result = DB::select("PRAGMA foreign_key_list($table)");
+            foreach ($result as $fk) {
+                if (($fk->table ?? $fk->to ?? '') === 'therapies' || str_contains($fk->table ?? '', 'therapy')) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        
+        // MySQL/PostgreSQL: Use information_schema
         return DB::select("
             SELECT CONSTRAINT_NAME
             FROM information_schema.KEY_COLUMN_USAGE
