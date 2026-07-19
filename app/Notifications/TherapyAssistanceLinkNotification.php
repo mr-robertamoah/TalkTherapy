@@ -45,7 +45,7 @@ class TherapyAssistanceLinkNotification extends Notification implements ShouldQu
             ->success()
             ->subject("Assistance Request Accepted")
             ->greeting("Hello {$notifiable->name}!")
-            ->line("Your therapy assistance link has been used by counsellor with name: '{$this->therapy->cpunsellor->getName()}'.")
+            ->line("Your therapy assistance link has been used by counsellor with name: '{$this->therapy->counsellor->getName()}'.")
             ->action("Visit Counsellor Page", url("counsellors/{$this->therapy->counsellor_id}"))
             ->line("You may receive other reminders.")
             ->action("Visit Therapy Page", url("therapies/{$this->therapy->id}"))

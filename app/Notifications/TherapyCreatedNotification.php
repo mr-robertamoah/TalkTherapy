@@ -45,7 +45,9 @@ class TherapyCreatedNotification extends Notification implements ShouldQueue
             ->success()
             ->subject("Therapy Created by Ward")
             ->greeting("Hello {$notifiable->name}!")
-            ->line("User with name: '{$this->therapy->addedby->name}' and username: '{$this->therapy->addedby->username}', has created a therapy with name: '{$this->therapy->name}' on TalkTherapy app.")
+            ->line($this->therapy->anonymous
+                ? "An anonymous user has created a therapy with name: '{$this->therapy->name}' on TalkTherapy app."
+                : "User with name: '{$this->therapy->addedby->name}' and username: '{$this->therapy->addedby->username}', has created a therapy with name: '{$this->therapy->name}' on TalkTherapy app.")
             ->line("Click on the link below to go have a look at the therapy page since you are a guardian of the user.")
             ->action("Visit Therapy Page", url("therapies/{$this->therapy->id}"))
             ->line("Thank you for choosing to 'TalkTherapy'.");
