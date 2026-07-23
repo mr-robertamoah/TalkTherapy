@@ -626,9 +626,10 @@ function listenToMessages() {
 
             onMessageCreated(data.message)
         })
-        .listen('.session.updated', (data) => {
-            emits('updated', data.session)
-        })
+    // .session.updated is intentionally not handled here: this component is only ever
+    // rendered inside UnifiedTherapy.vue, which already listens for it on the presence
+    // channel via useTherapyState's listenToTherapy() -- listening again here duplicated
+    // every session-updated reaction (e.g. confirmInSession/confirmSessionHeld firing twice).
 }
 
 function clickedSessionAction(action) {

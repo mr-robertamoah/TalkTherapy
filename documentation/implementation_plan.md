@@ -21,6 +21,7 @@ Fields: **Key** (Epic-Story) · **Type** · **Priority** (Critical/High/Medium/L
 | TT-1.4 | Home page post section not centered on all viewports | Bug | Low | 1 | Existing (3.2) | — |
 | TT-1.5 | Anonymous-therapy PII leaks into outgoing emails | Bug | Critical | 3 | Existing (5.3) | — |
 | TT-1.6 | Rescheduling to an earlier free slot throws a false "prohibition error" | Bug | High | 2 | Existing (4.3) | — |
+| TT-1.10 | Remove dead PrivateChannel broadcast in DiscussionUpdatedEvent | Task | Low | — | New (SCRUM-15 follow-up) | — |
 
 > Note: TT-1.3 is a **different bug** from the infra-level 502 we already fixed this week (that
 > one was nginx caching a stale upstream IP after container recreation — an environment issue,
@@ -42,8 +43,11 @@ Fields: **Key** (Epic-Story) · **Type** · **Priority** (Critical/High/Medium/L
 | TT-2.4 | Admin can cap counsellors per discussion | Story | Low | 2 | Existing (2.4) | — |
 | TT-2.5 | User can propose a session day/time for counsellor accept/modify | Story | High | 5 | Existing (4.1) | — |
 | TT-2.6 | Counsellor calendar view of their sessions | Story | High | 5 | Existing (4.2) | TT-2.5 |
+| TT-2.7 | Fix `groupTherapies` channel-name casing mismatch — group-therapy real-time updates may be silently broken | Bug | High | — | New (SCRUM-15 follow-up) | — |
 
-**Sprint:** 2 (unchanged from original plan)
+**Sprint:** 2 (unchanged from original plan). TT-2.7 should likely be pulled forward given its
+severity — group real-time updates may not work at all right now — but is filed here since it's
+squarely a TT-2 concern.
 
 ---
 
