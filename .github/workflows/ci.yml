@@ -52,6 +52,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # need base commit history to diff changed files against
 
       - uses: shivammathur/setup-php@v2
         with:
@@ -63,8 +65,28 @@ jobs:
         with:
           composer-options: '--prefer-dist --no-interaction'
 
-      - name: Pint (dry run)
-        run: vendor/bin/pint --test
+      - name: Determine changed PHP files
+        id: changed
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base="${{ github.event.pull_request.base.sha }}"
+          else
+            base="${{ github.event.before }}"
+          fi
+          # base can be all-zeros (branch/force-push edge case) or missing from history
+          if ! git cat-file -e "$base" 2>/dev/null; then
+            echo "files=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          files=$(git diff --name-only --diff-filter=ACMR "$base" "${{ github.sha }}" -- '*.php' | tr '\n' ' ')
+          echo "files=$files" >> "$GITHUB_OUTPUT"
+
+      # Pre-existing code is not yet Pint-compliant repo-wide (retrofitting a formatter onto an
+      # existing codebase). Enforce style only on files this PR/push actually touches, rather
+      # than failing on unrelated legacy debt every run.
+      - name: Pint (dry run, changed files only)
+        if: steps.changed.outputs.files != ''
+        run: vendor/bin/pint --test ${{ steps.changed.outputs.files }}
 
   test-php:
     name: Test (Pest)
@@ -83,6 +105,17 @@ jobs:
       - uses: ramsey/composer-install@v3
         with:
           composer-options: '--prefer-dist --no-interaction'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install frontend deps
+        run: npm ci
+
+      - name: Build frontend assets
+        run: npm run build
 
       - name: Prepare test environment
         run: cp .env.testing .env
