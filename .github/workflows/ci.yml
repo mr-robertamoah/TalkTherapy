@@ -1,0 +1,153 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [develop, testing, main]
+  push:
+    branches: [develop, testing, main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    name: Detect changed areas
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            backend:
+              - 'app/**'
+              - 'bootstrap/**'
+              - 'config/**'
+              - 'database/**'
+              - 'routes/**'
+              - 'tests/**'
+              - 'artisan'
+              - 'composer.json'
+              - 'composer.lock'
+              - 'phpunit.xml'
+              - '.github/workflows/ci.yml'
+            frontend:
+              - 'resources/**'
+              - 'package.json'
+              - 'package-lock.json'
+              - 'vite.config.js'
+              - 'tailwind.config.js'
+              - 'postcss.config.js'
+              - '.github/workflows/ci.yml'
+
+  lint-php:
+    name: Lint (Pint)
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # need base commit history to diff changed files against
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: mbstring, bcmath, gd, exif, pcntl, sockets, sqlite3, pdo_sqlite, pdo_mysql
+          coverage: none
+
+      - uses: ramsey/composer-install@v3
+        with:
+          composer-options: '--prefer-dist --no-interaction'
+
+      - name: Determine changed PHP files
+        id: changed
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base="${{ github.event.pull_request.base.sha }}"
+          else
+            base="${{ github.event.before }}"
+          fi
+          # base can be all-zeros (branch/force-push edge case) or missing from history
+          if ! git cat-file -e "$base" 2>/dev/null; then
+            echo "files=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          files=$(git diff --name-only --diff-filter=ACMR "$base" "${{ github.sha }}" -- '*.php' | tr '\n' ' ')
+          echo "files=$files" >> "$GITHUB_OUTPUT"
+
+      # Pre-existing code is not yet Pint-compliant repo-wide (retrofitting a formatter onto an
+      # existing codebase). Enforce style only on files this PR/push actually touches, rather
+      # than failing on unrelated legacy debt every run.
+      - name: Pint (dry run, changed files only)
+        if: steps.changed.outputs.files != ''
+        run: vendor/bin/pint --test ${{ steps.changed.outputs.files }}
+
+  test-php:
+    name: Test (Pest)
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: mbstring, bcmath, gd, exif, pcntl, sockets, sqlite3, pdo_sqlite, pdo_mysql
+          coverage: none
+
+      - uses: ramsey/composer-install@v3
+        with:
+          composer-options: '--prefer-dist --no-interaction'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install frontend deps
+        run: npm ci
+
+      - name: Build frontend assets
+        run: npm run build
+
+      - name: Prepare test environment
+        run: cp .env.testing .env
+
+      - name: Run Pest suite
+        run: php artisan test --parallel
+
+  build-frontend:
+    name: Build frontend (Vite)
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # resources/js/app.js imports Ziggy's compiled JS from vendor/tightenco/ziggy, a Composer
+      # package -- the frontend build genuinely depends on PHP deps being installed too.
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          coverage: none
+
+      - uses: ramsey/composer-install@v3
+        with:
+          composer-options: '--prefer-dist --no-interaction'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Build
+        run: npm run build
