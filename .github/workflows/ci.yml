@@ -131,6 +131,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # resources/js/app.js imports Ziggy's compiled JS from vendor/tightenco/ziggy, a Composer
+      # package -- the frontend build genuinely depends on PHP deps being installed too.
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          coverage: none
+
+      - uses: ramsey/composer-install@v3
+        with:
+          composer-options: '--prefer-dist --no-interaction'
+
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
