@@ -183,3 +183,4 @@ implicitly a billing story; it can't actually be built without a payment gateway
   prevents Sprint 5 from stalling when someone realizes there's no gateway wired up.
 - **Crisis quick-access (TT-4.4)** is deliberately scoped smaller than the icebox "AI Emergency"
   item so it can ship on a normal sprint timeline instead of waiting on an AI integration.
+
