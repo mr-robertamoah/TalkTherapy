@@ -1,0 +1,109 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [develop, testing, main]
+  push:
+    branches: [develop, testing, main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    name: Detect changed areas
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            backend:
+              - 'app/**'
+              - 'bootstrap/**'
+              - 'config/**'
+              - 'database/**'
+              - 'routes/**'
+              - 'tests/**'
+              - 'artisan'
+              - 'composer.json'
+              - 'composer.lock'
+              - 'phpunit.xml'
+              - '.github/workflows/ci.yml'
+            frontend:
+              - 'resources/**'
+              - 'package.json'
+              - 'package-lock.json'
+              - 'vite.config.js'
+              - 'tailwind.config.js'
+              - 'postcss.config.js'
+              - '.github/workflows/ci.yml'
+
+  lint-php:
+    name: Lint (Pint)
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: mbstring, bcmath, gd, exif, pcntl, sockets, sqlite3, pdo_sqlite, pdo_mysql
+          coverage: none
+
+      - uses: ramsey/composer-install@v3
+        with:
+          composer-options: '--prefer-dist --no-interaction'
+
+      - name: Pint (dry run)
+        run: vendor/bin/pint --test
+
+  test-php:
+    name: Test (Pest)
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: mbstring, bcmath, gd, exif, pcntl, sockets, sqlite3, pdo_sqlite, pdo_mysql
+          coverage: none
+
+      - uses: ramsey/composer-install@v3
+        with:
+          composer-options: '--prefer-dist --no-interaction'
+
+      - name: Prepare test environment
+        run: cp .env.testing .env
+
+      - name: Run Pest suite
+        run: php artisan test --parallel
+
+  build-frontend:
+    name: Build frontend (Vite)
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Build
+        run: npm run build
