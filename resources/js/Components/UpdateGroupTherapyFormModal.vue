@@ -16,10 +16,12 @@ import { useForm } from '@inertiajs/vue3';
 import useEnums from '@/Composables/useEnums';
 import CounsellorComponent from './CounsellorComponent.vue';
 import useLoader from '@/Composables/useLoader';
+import useTherapyFormValidation from '@/Composables/useTherapyFormValidation';
 
 const { alertData, clearAlertData, setFailedAlertData, setSuccessAlertData } = useAlert()
 const { PaymentTypeEnum, SessionTypeEnum } = useEnums()
 const { loader, showLoader, hideLoader } = useLoader()
+const { validateTherapyForm } = useTherapyFormValidation()
 const props = defineProps({
     show: {
         default: false,
@@ -114,55 +116,11 @@ const computedShowInPersonAmount = computed(() => {
 })
  
 async function updateTherapy() {
-    if (!therapyForm.name) {
+    const validationError = validateTherapyForm(therapyForm)
+    if (validationError) {
         setFailedAlertData({
-            message: "Name is required for a therapy.",
+            message: validationError,
             time: 10000,
-        });
-        return
-    }
-
-    if (
-        therapyForm.paymentType == PaymentTypeEnum.paid &&
-        !(therapyForm.amount && therapyForm.currency && therapyForm.per)
-    ) {
-        setFailedAlertData({
-            message: "Amount, currency and per what? All of these are required since you selected PAID payment type.",
-            time: 10000,
-        });
-        return
-    }
-        
-    if (
-        therapyForm.paymentType == PaymentTypeEnum.free &&
-        !therapyForm.public
-    ) {
-        setFailedAlertData({
-            message: "FREE payment types requires that you set public to true.",
-            time: 10000,
-        });
-        return
-    }
-
-    if (
-        therapyForm.paymentType == PaymentTypeEnum.paid &&
-        therapyForm.sessionType == SessionTypeEnum.once &&
-        therapyForm.per !== 'PER_THERAPY'
-    ) {
-        setFailedAlertData({
-            message: "Since ONCE and PAID have been selected for session and payment types respectively, you must select per THERAPY.",
-            time: 10000,
-        });
-        return
-    }
-
-    if (
-        therapyForm.sessionType == SessionTypeEnum.periodic &&
-        (!therapyForm.maxSessions || therapyForm.maxSessions < 2)
-    ) {
-        setFailedAlertData({
-            time: 10000,
-            message: "Since PERIODIC has been selected for the session type, the maximum number of sessions must be at least 2."
         });
         return
     }
