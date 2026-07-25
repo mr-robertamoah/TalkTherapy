@@ -14,15 +14,22 @@ class GetRequestResourceAction extends Action
     {
         if (
             in_array(
-                $request->type, 
+                $request->type,
                 [
                     RequestTypeEnum::therapy->value,
                     RequestTypeEnum::guardianship->value,
                     RequestTypeEnum::discussion->value,
+                    RequestTypeEnum::groupTherapy->value,
                 ]
             )
-        ) return new RequestResource($request);
+        ) {
+            return new RequestResource($request);
+        }
 
+        // Only RequestTypeEnum::counsellor is actually created anywhere in the codebase for the
+        // remaining case (administrator is a defined enum value with no creation path today) --
+        // AdminCounsellorVerificationRequestResource assumes `from` is a Counsellor, which only
+        // holds for that type.
         return new AdminCounsellorVerificationRequestResource($request);
     }
 }
