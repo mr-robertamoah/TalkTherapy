@@ -1,6 +1,7 @@
 <?php
 
 namespace App\Actions\Therapy;
+
 use App\Actions\Action;
 use App\DTOs\GetTherapyDTO;
 use App\Exceptions\TherapyAccessDeniedException;
@@ -9,8 +10,7 @@ use App\Models\Request;
 
 class EnsureUserHasAccessToTherapyAction extends Action
 {
-
-    public function execute(GetTherapyDTO $getTherapyDTO, String $type = 'therapy')
+    public function execute(GetTherapyDTO $getTherapyDTO, string $type = 'therapy')
     {
         $therapy = $getTherapyDTO->$type;
 
@@ -18,7 +18,7 @@ class EnsureUserHasAccessToTherapyAction extends Action
             $therapy->public ||
             $therapy->isParticipant($getTherapyDTO->user) ||
             (
-                $getTherapyDTO->user->counsellor && 
+                $getTherapyDTO->user->counsellor &&
                 (
                     Request::query()
                         ->wherePending()
@@ -39,8 +39,10 @@ class EnsureUserHasAccessToTherapyAction extends Action
                 $therapy->is_group_therapy &&
                 $getTherapyDTO->user->isGuardianOfAUserFor($therapy)
             )
-        ) return;
+        ) {
+            return;
+        }
 
-        throw new TherapyAccessDeniedException("You are not allowed to assess therapy with id: {$getTherapyDTO->therapy->id}", 422);
+        throw new TherapyAccessDeniedException("You are not allowed to assess therapy with id: {$therapy->id}", 422);
     }
 }

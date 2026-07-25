@@ -9,26 +9,25 @@ use App\Traits\Starreable;
 use App\Traits\TherapyTrait;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\MorphToMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class GroupTherapy extends Model
 {
-    use HasFactory,
-    Likeable,
-    Commentable,
-    Starreable,
-    TherapyTrait,
-    Alertable,
-    SoftDeletes;
+    use Alertable,
+        Commentable,
+        HasFactory,
+        Likeable,
+        SoftDeletes,
+        Starreable,
+        TherapyTrait;
 
     protected $fillable = [
         'session_type', 'payment_type', 'max_users', 'allow_anyone', 'about', 'name',
-        'public', 'anonymous', 'payment_data', 'status', 'max_sessions'
+        'public', 'anonymous', 'payment_data', 'status', 'max_sessions',
     ];
 
     protected $casts = [
-        'payment_data' => 'array'
+        'payment_data' => 'array',
     ];
 
     public function getIsTherapyAttribute()
@@ -77,91 +76,108 @@ class GroupTherapy extends Model
 
     public function isCounsellor(Counsellor $counsellor)
     {
-        return false; // TODO
+        if ($this->addedby_type === Counsellor::class && $this->addedby?->is($counsellor)) {
+            return true;
+        }
+
+        return $this->counsellors()->whereKey($counsellor->id)->exists();
     }
 
     public function isUser(User $user)
     {
-        return false; // TODO
+        return $this->addedby_type === User::class && $this->addedby?->is($user);
     }
 
     public function isParticipant(User $user)
     {
-        return false; // TODO
+        if ($this->isUser($user)) {
+            return true;
+        }
+
+        return $user->counsellor && $this->isCounsellor($user->counsellor);
+    }
+
+    public function isNotParticipant(User $user)
+    {
+        return ! $this->isParticipant($user);
     }
 
     public function getUsers()
     {
-        $users = [];
-       
-        // TODO
+        $users = collect();
 
-        return $users;
+        if ($this->addedby_type === User::class && $this->addedby) {
+            $users->push($this->addedby);
+        }
+
+        if ($this->addedby_type === Counsellor::class && $this->addedby?->user) {
+            $users->push($this->addedby->user);
+        }
+
+        $this->counsellors->each(function ($counsellor) use ($users) {
+            if ($counsellor->user) {
+                $users->push($counsellor->user);
+            }
+        });
+
+        if (
+            $this->addedby_type === User::class &&
+            $this->addedby &&
+            ! $this->addedby->isAdult() &&
+            $this->addedby->guardians()->count()
+        ) {
+            $users = $users->merge(User::query()->whereWard($this->addedby)->get());
+        }
+
+        return $users->filter();
     }
 
     public function getOtherUsers(User $user)
     {
-        $users = [];
-       
-        // TODO
+        $users = collect();
 
-        return $users;
+        if ($this->addedby_type === User::class && $this->addedby && $this->addedby_id !== $user->id) {
+            $users->push($this->addedby);
+        }
+
+        if ($this->addedby_type === Counsellor::class && $this->addedby?->user && ! $this->addedby->user->is($user)) {
+            $users->push($this->addedby->user);
+        }
+
+        $this->counsellors->each(function ($counsellor) use ($users, $user) {
+            if ($counsellor->user && ! $counsellor->user->is($user)) {
+                $users->push($counsellor->user);
+            }
+        });
+
+        if (
+            $this->addedby_type === User::class &&
+            $this->addedby &&
+            ! $this->addedby->isAdult() &&
+            $this->addedby->guardians()->count()
+        ) {
+            $users = $users->merge(
+                User::query()->whereNot('id', $user->id)->whereWard($this->addedby)->get()
+            );
+        }
+
+        return $users->filter();
     }
 
     public function getCounsellors()
     {
-        $users = [];
-       
-        // TODO
+        $counsellors = collect($this->counsellors);
 
-        return $users;
+        if ($this->addedby_type === Counsellor::class && $this->addedby) {
+            $counsellors->push($this->addedby);
+        }
+
+        return $counsellors->unique('id');
     }
 
     public function getOtherCounsellors(Counsellor $counsellor)
     {
-        $counsellors = [];
-       
-        // TODO
-
-        return $counsellors;
-    }
-
-    public function getActiveSession(User $user)    
-    {
-        // TODO
-        return $this->sessions()
-            ->where(function ($query) use ($user) {
-                $query
-                    ->whereIsParticipant($user)
-                    ->whereIsNotUserWhoConfirmedHeld($user)
-                    ->whereIsOngoing();
-            })
-            ->first();
-    }
-
-    public function getActiveDiscussion(Counsellor $counsellor)
-    {
-        // TODO
-        return $this->discussions()
-            ->where(function ($query) use ($counsellor) {
-                $query
-                    ->whereIsParticipant($counsellor)
-                    ->whereIsOngoing();
-            })
-            ->first();
-    }
-
-    public function pendingRequestFor(?Counsellor $counsellor)
-    {
-        // TODO
-        if (is_null($counsellor)) return null;
-
-        return Request::query()
-            ->wherePending()
-            ->whereFor($this)
-            ->whereTo($counsellor)
-            ->latest()
-            ->first();
+        return $this->getCounsellors()->reject(fn ($other) => $other->is($counsellor));
     }
 
     public function scopeWhereNotCounsellor($query, Counsellor $counsellor)

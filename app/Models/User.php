@@ -4,10 +4,9 @@ namespace App\Models;
 
 use App\Notifications\VerifyEmailNotification;
 use Carbon\Carbon;
-use Illuminate\Contracts\Auth\MustVerifyEmail as MustVerifyEmailContract;
-
 use Illuminate\Auth\MustVerifyEmail;
 use Illuminate\Broadcasting\PrivateChannel;
+use Illuminate\Contracts\Auth\MustVerifyEmail as MustVerifyEmailContract;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
@@ -16,7 +15,7 @@ use Laravel\Sanctum\HasApiTokens;
 
 class User extends Authenticatable implements MustVerifyEmailContract
 {
-    use HasApiTokens, HasFactory, Notifiable, MustVerifyEmail, SoftDeletes;
+    use HasApiTokens, HasFactory, MustVerifyEmail, Notifiable, SoftDeletes;
 
     /**
      * The attributes that are mass assignable.
@@ -61,15 +60,15 @@ class User extends Authenticatable implements MustVerifyEmailContract
 
     public function getAgeAttribute()
     {
-        return !!$this->dob 
-            ? (int) now()->diffInYears(new Carbon($this->dob), true) 
+        return (bool) $this->dob
+            ? (int) now()->diffInYears(new Carbon($this->dob), true)
             : 0;
     }
 
     public function routeNotificationForMail()
     {
         return [
-            $this->email => $this->name
+            $this->email => $this->name,
         ];
     }
 
@@ -154,13 +153,14 @@ class User extends Authenticatable implements MustVerifyEmailContract
 
     public function isGuardianOfAUserFor(GroupTherapy $groupTherapy)
     {
-        // TODO implement this
-        return true;
+        return $groupTherapy->addedby_type === User::class &&
+            $groupTherapy->addedby &&
+            $this->isGuardianOf($groupTherapy->addedby);
     }
 
     public function isNotAdmin()
     {
-        return !$this->isAdmin();
+        return ! $this->isAdmin();
     }
 
     public function addedLinks()
@@ -220,7 +220,7 @@ class User extends Authenticatable implements MustVerifyEmailContract
 
     public function doesNotHaveTestimonial()
     {
-        return !$this->hasTestimonial();
+        return ! $this->hasTestimonial();
     }
 
     public function sentMessages()
@@ -287,12 +287,12 @@ class User extends Authenticatable implements MustVerifyEmailContract
 
     public function isNotVerifiedCounsellor()
     {
-        return !$this->isVerifiedCounsellor();
+        return ! $this->isVerifiedCounsellor();
     }
 
     public function isNotCounsellor()
     {
-        return !$this->isCounsellor();
+        return ! $this->isCounsellor();
     }
 
     public function isVerifiedCounsellor()
