@@ -468,7 +468,7 @@ function showPost() {
                     </div>
                 </div>
                 <div
-                    class="w-full mx-auto relative md:w-[70%] md:mr-auto lg:mx-auto lg:w-[50%] shrink-0"
+                    class="w-full mx-auto relative md:w-[70%] lg:w-[50%] shrink-0"
                 >
                     <div id="home-posts-id" class="relative"></div>
                     <div class="mx-auto sm:px-6 lg:px-8 mt-4">
