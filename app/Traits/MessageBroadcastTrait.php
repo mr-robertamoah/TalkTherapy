@@ -7,14 +7,14 @@ use App\Http\Resources\MessageMiniResource;
 use App\Models\Counsellor;
 use App\Models\Message;
 use App\Models\Session;
-use App\Models\Star;
 
 trait MessageBroadcastTrait
 {
     private function getMessageBroadcastName(Message $message)
     {
-        if ($message->for_type == Session::class)
+        if ($message->for_type == Session::class) {
             return "sessions.{$message->for_id}";
+        }
 
         return "discussions.{$message->for_id}";
     }
@@ -23,9 +23,9 @@ trait MessageBroadcastTrait
     {
         $fromCounsellor = $message->from_type == Counsellor::class;
 
-        $fromId = $fromCounsellor ? $message->from?->user->id : $message->from_id;
+        $fromId = $fromCounsellor ? $message->from?->user?->id : $message->from_id;
 
-        if ($message->deleted_at)
+        if ($message->deleted_at) {
             return [
                 'id' => $message->id,
                 'status' => 'deleted for everyone',
@@ -34,12 +34,12 @@ trait MessageBroadcastTrait
                 'type' => $message->type,
                 'updatedAt' => $message->updated_at,
             ];
+        }
 
-            
         $counsellor = $fromCounsellor ? $message->from : $message->to?->counsellor;
         $counsellorAvatar = $counsellor?->avatar?->url;
-            
-        $toId = !$fromCounsellor ? $message->to?->user?->id : $message->to_id;
+
+        $toId = ! $fromCounsellor ? $message->to?->user?->id : $message->to_id;
         $forType = str_replace('App\Models\\', '', $message->for_type);
         $data = [
             'id' => $message->id,
@@ -59,10 +59,11 @@ trait MessageBroadcastTrait
             'createdAt' => $message->created_at,
         ];
 
-        if ($forType == 'Discussion')  
+        if ($forType == 'Discussion') {
             return array_merge($data, [
-                'counsellorName' => $counsellor->getName(),
+                'counsellorName' => $counsellor?->getName(),
             ]);
+        }
 
         return $data;
     }

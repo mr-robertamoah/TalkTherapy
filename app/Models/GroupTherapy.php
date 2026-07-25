@@ -47,7 +47,9 @@ class GroupTherapy extends Model
 
     public function addedby()
     {
-        return $this->morphTo('addedby');
+        // withTrashed: see Therapy::counsellor() -- addedby (User or Counsellor) may have
+        // since deleted their account.
+        return $this->morphTo('addedby')->withTrashed();
     }
 
     public function sessions()

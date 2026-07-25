@@ -19,7 +19,7 @@ class DiscussionResource extends JsonResource
             'id' => $this->id,
             'name' => $this->name,
             'status' => $this->status,
-            'addedby' => $this->addedby::class == Counsellor::class
+            'addedby' => $this->addedby_type == Counsellor::class
                 ? new CounsellorMiniResource($this->addedby)
                 : new UserMiniResource($this->addedby),
             'description' => $this->description,

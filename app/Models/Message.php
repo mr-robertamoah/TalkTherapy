@@ -10,18 +10,21 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 class Message extends Model
 {
     use HasFactory,
-    SoftDeletes;
+        SoftDeletes;
 
     protected $fillable = ['content', 'type', 'confidential', 'status', 'message_id', 'therapy_topic_id', 'deleted_for'];
 
     public function from()
     {
-        return $this->morphTo();
+        // withTrashed: see Therapy::counsellor() -- the sender (User or Counsellor) may have
+        // since deleted their account.
+        return $this->morphTo()->withTrashed();
     }
 
     public function to()
     {
-        return $this->morphTo();
+        // withTrashed: see from() above.
+        return $this->morphTo()->withTrashed();
     }
 
     public function for()
@@ -53,8 +56,10 @@ class Message extends Model
 
     public function isParty(?User $user)
     {
-        if (!$user) return false;
-        
+        if (! $user) {
+            return false;
+        }
+
         return $this->query()
             ->whereTo($user)
             ->orWhere(function ($query) use ($user) {
@@ -65,14 +70,17 @@ class Message extends Model
 
     public function isNotParty(?User $user)
     {
-        if (!$user) return false;
+        if (! $user) {
+            return false;
+        }
 
-        return !$this->isParty($user);
+        return ! $this->isParty($user);
     }
 
     public function scopeWhereTo($query, User $user)
     {
         $counsellor = $user->counsellor;
+
         return $query->where(function ($query) use ($user, $counsellor) {
             $query->where(function ($query) use ($user) {
                 $query
@@ -93,6 +101,7 @@ class Message extends Model
     public function scopeWhereFrom($query, User $user)
     {
         $counsellor = $user->counsellor;
+
         return $query->where(function ($query) use ($user, $counsellor) {
             $query->where(function ($query) use ($user) {
                 $query
@@ -110,22 +119,26 @@ class Message extends Model
         });
     }
 
-    public function scopeWhereLike($query, String $like)
+    public function scopeWhereLike($query, string $like)
     {
         return $query->where('content', 'LIKE', "%{$like}%");
     }
 
-    public function scopeWhereTherapyTopicId($query, String|int|null $topicId)
+    public function scopeWhereTherapyTopicId($query, string|int|null $topicId)
     {
-        if (!$topicId) return $query;
-        
+        if (! $topicId) {
+            return $query;
+        }
+
         return $query->where('therapy_topic_id', $topicId);
     }
 
-    public function scopeWhereReplyId($query, String|int|null $replyId)
+    public function scopeWhereReplyId($query, string|int|null $replyId)
     {
-        if (!$replyId) return $query;
-        
+        if (! $replyId) {
+            return $query;
+        }
+
         return $query->where('message_id', $replyId);
     }
 }

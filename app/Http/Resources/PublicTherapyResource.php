@@ -3,6 +3,7 @@
 namespace App\Http\Resources;
 
 use App\Models\Counsellor;
+use App\Models\GroupTherapy;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -16,8 +17,8 @@ class PublicTherapyResource extends JsonResource
     public function toArray(Request $request): array
     {
         // Check if this is a GroupTherapy model
-        $isGroupTherapy = $this->resource instanceof \App\Models\GroupTherapy;
-        
+        $isGroupTherapy = $this->resource instanceof GroupTherapy;
+
         $baseData = [
             'id' => $this->id,
             'name' => $this->name,
@@ -32,11 +33,9 @@ class PublicTherapyResource extends JsonResource
             return array_merge($baseData, [
                 'allowAnyone' => $this->allow_anyone,
                 'maxUsers' => $this->max_users,
-                'userId' => $this->when(
-                    $this->addedby_type == Counsellor::class, 
-                    $this->addedby->user_id,
-                    $this->addedby->id
-                ),
+                'userId' => $this->addedby_type == Counsellor::class
+                    ? $this->addedby?->user_id
+                    : $this->addedby?->id,
                 'counsellorsCount' => $this->counsellors()->count(),
                 'about' => $this->about,
             ]);

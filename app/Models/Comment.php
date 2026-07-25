@@ -13,7 +13,9 @@ class Comment extends Model
 
     public function user()
     {
-        return $this->belongsTo(User::class);
+        // withTrashed: see Therapy::counsellor() for why callers need this to resolve rather
+        // than crash -- a comment's author may have since deleted their account.
+        return $this->belongsTo(User::class)->withTrashed();
     }
 
     public function commentable()
