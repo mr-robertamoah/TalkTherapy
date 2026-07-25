@@ -4,6 +4,7 @@ namespace App\Http\Resources;
 
 use App\Enums\RequestTypeEnum;
 use App\Models\Discussion;
+use App\Models\GroupTherapy;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -30,14 +31,21 @@ class RequestResource extends JsonResource
 
     private function getFor()
     {
-        if ($this->type == RequestTypeEnum::therapy->value)
+        if ($this->type == RequestTypeEnum::therapy->value) {
             return new TherapyMiniResource($this->for);
+        }
 
-        if ($this->for_type == User::class)
+        if ($this->for_type == GroupTherapy::class) {
+            return new GroupTherapyMiniResource($this->for);
+        }
+
+        if ($this->for_type == User::class) {
             return new UserMiniResource($this->for);
+        }
 
-        if ($this->for_type == Discussion::class)
+        if ($this->for_type == Discussion::class) {
             return new DiscussionMiniResource($this->for);
+        }
 
         return new CounsellorMiniResource($this->for);
     }
