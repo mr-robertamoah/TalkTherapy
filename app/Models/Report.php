@@ -16,7 +16,9 @@ class Report extends Model
 
     public function addedby()
     {
-        return $this->morphTo();
+        // withTrashed: see Therapy::counsellor() -- the reporter (User or Counsellor) may have
+        // since deleted their account.
+        return $this->morphTo()->withTrashed();
     }
 
     public function reportable()

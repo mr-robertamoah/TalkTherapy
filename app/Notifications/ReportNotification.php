@@ -36,19 +36,19 @@ class ReportNotification extends Notification implements ShouldQueue
      */
     public function toMail(object $notifiable): MailMessage
     {
-        $type = str_replace("App\Models\\", "", $this->report->reportable_type);
+        $type = str_replace("App\Models\\", '', $this->report->reportable_type);
         if ($this->report->addedby_type == Counsellor::class) {
-            $reporterName = $this->report->addedby->getName();
+            $reporterName = $this->report->addedby?->getName() ?? 'a deleted account';
             $reporterType = 'counsellor';
         } else {
-            $reporterName = $this->report->addedby->name;
+            $reporterName = $this->report->addedby?->name ?? 'a deleted account';
             $reporterType = 'user';
         }
 
         return (new MailMessage)
             ->subject('Report Submitted')
             ->greeting("Hello {$notifiable->name}!")
-            ->line("A report has been submitted. Please do have a look at it.")
+            ->line('A report has been submitted. Please do have a look at it.')
             ->line("The report is about a {$type}.")
             ->line("It was submitted by {$reporterType} with name {$reporterName}.")
             ->line('Thank you!');
