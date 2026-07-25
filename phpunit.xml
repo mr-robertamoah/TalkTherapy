@@ -19,13 +19,25 @@
     </source>
     <php>
         <!--
-        force="true" on every entry below: the php/queue/reverb containers now set real OS
-        environment variables via docker-compose's env_file (see docker-compose.yml), and
-        PHPUnit's env element does NOT override an already-set real env var unless forced.
-        Without this, every one of these silently fell back to .env.docker's actual values.
-        DB_CONNECTION in particular meant the test suite was running RefreshDatabase against
-        the real dev MySQL database (wiping seeded data) instead of an isolated in-memory
-        sqlite DB.
+        Both <env> and <server> below, for every entry, are needed. The php/queue/reverb
+        containers set real OS environment variables via docker-compose's env_file (see
+        docker-compose.yml), which land in PHP's $_SERVER superglobal at process start.
+        PHPUnit's <env force="true"> only ever writes putenv()/$_ENV (see
+        PhpHandler::handleEnvVariables in phpunit/phpunit), never $_SERVER. Laravel's env()
+        repository (Illuminate\Support\Env) reads $_SERVER before $_ENV/getenv(), via
+        phpdotenv's default adapter order (ServerConstAdapter, then EnvConstAdapter). So <env>
+        alone can never win against a real container env var: config('database.default') etc.
+        kept resolving to .env.docker's real values regardless of force="true". <server> (which
+        PHPUnit always writes unconditionally to $_SERVER) is what actually overrides it for
+        anything going through Laravel's env()/config(). <env> is kept alongside it for any
+        dependency that reads getenv()/$_ENV directly instead of through Laravel's Env facade.
+        Without this, DB_CONNECTION in particular meant the test suite ran RefreshDatabase
+        against the real dev MySQL database (wiping seeded data) instead of an isolated
+        in-memory sqlite DB.
+
+        Keep the <env> and <server> lists in sync: adding an override to only one half quietly
+        reintroduces this exact bug for that one variable. tests/TestCase.php also asserts the
+        resolved DB connection is sqlite as an independent, mechanism-agnostic safety net.
         -->
         <env name="APP_ENV" value="testing" force="true"/>
         <env name="BCRYPT_ROUNDS" value="4" force="true"/>
@@ -38,5 +50,16 @@
         <env name="QUEUE_CONNECTION" value="sync" force="true"/>
         <env name="SESSION_DRIVER" value="array" force="true"/>
         <env name="TELESCOPE_ENABLED" value="false" force="true"/>
+        <server name="APP_ENV" value="testing"/>
+        <server name="BCRYPT_ROUNDS" value="4"/>
+        <server name="BROADCAST_CONNECTION" value="log"/>
+        <server name="CACHE_STORE" value="array"/>
+        <server name="DB_CONNECTION" value="sqlite"/>
+        <server name="DB_DATABASE" value=":memory:"/>
+        <server name="MAIL_MAILER" value="array"/>
+        <server name="PULSE_ENABLED" value="false"/>
+        <server name="QUEUE_CONNECTION" value="sync"/>
+        <server name="SESSION_DRIVER" value="array"/>
+        <server name="TELESCOPE_ENABLED" value="false"/>
     </php>
 </phpunit>
