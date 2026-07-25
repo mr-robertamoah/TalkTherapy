@@ -2,10 +2,14 @@
 
 namespace Database\Factories;
 
+use App\Enums\TherapyPaymentTypeEnum;
+use App\Enums\TherapySessionTypeEnum;
+use App\Enums\TherapyStatusEnum;
+use App\Models\GroupTherapy;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
- * @extends \Illuminate\Database\Eloquent\Factories\Factory<\App\Models\GroupTherapy>
+ * @extends Factory<GroupTherapy>
  */
 class GroupTherapyFactory extends Factory
 {
@@ -17,7 +21,14 @@ class GroupTherapyFactory extends Factory
     public function definition(): array
     {
         return [
-            //
+            'session_type' => TherapySessionTypeEnum::once->value,
+            'payment_type' => TherapyPaymentTypeEnum::free->value,
+            'status' => TherapyStatusEnum::in_session->value,
+            'name' => $this->faker->name,
+            'about' => $this->faker->sentences(10, true),
+            'public' => true,
+            'anonymous' => true,
+            'allow_anyone' => true,
         ];
     }
 }
