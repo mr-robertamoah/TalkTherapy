@@ -22,6 +22,8 @@ Fields: **Key** (Epic-Story) · **Type** · **Priority** (Critical/High/Medium/L
 | TT-1.5 | Anonymous-therapy PII leaks into outgoing emails | Bug | Critical | 3 | Existing (5.3) | — |
 | TT-1.6 | Rescheduling to an earlier free slot throws a false "prohibition error" | Bug | High | 2 | Existing (4.3) | — |
 | TT-1.10 | Remove dead PrivateChannel broadcast in DiscussionUpdatedEvent | Task | Low | — | New (SCRUM-15 follow-up) | — |
+| TT-1.11 | Local Docker test runs can silently hit the real dev MySQL database instead of an isolated test DB | Bug | High | — | New (SCRUM-16 follow-up, SCRUM-60) | — |
+| TT-1.12 | Several Resources assume a non-deleted related user/counsellor (null-unsafe access pattern) | Task | Low | — | New (SCRUM-16 follow-up, SCRUM-61) | — |
 
 > Note: TT-1.3 is a **different bug** from the infra-level 502 we already fixed this week (that
 > one was nginx caching a stale upstream IP after container recreation — an environment issue,

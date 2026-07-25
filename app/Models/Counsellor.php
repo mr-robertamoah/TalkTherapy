@@ -16,8 +16,8 @@ use Illuminate\Notifications\Notifiable;
 
 class Counsellor extends Model
 {
-    use HasFactory, Notifiable, 
-    Likeable, SoftDeletes;
+    use HasFactory, Likeable,
+        Notifiable, SoftDeletes;
 
     protected $fillable = [
         'name',
@@ -33,13 +33,13 @@ class Counsellor extends Model
     ];
 
     protected $casts = [
-        'email_verified_at' => 'datetime'
+        'email_verified_at' => 'datetime',
     ];
 
     public function routeNotificationForMail()
     {
         return [
-            $this->email => $this->getName()
+            $this->email => $this->getName(),
         ];
     }
 
@@ -141,7 +141,7 @@ class Counsellor extends Model
     public function getName()
     {
         return $this->name
-            ? $this->name 
+            ? $this->name
             : $this->user->name;
     }
 
@@ -233,7 +233,7 @@ class Counsellor extends Model
 
     public function hasNoPendingSessions()
     {
-        return !$this->hasPendingSessions();
+        return ! $this->hasPendingSessions();
     }
 
     public function hasPendingSessions()
@@ -253,7 +253,7 @@ class Counsellor extends Model
 
     public function isVerified()
     {
-        return !!$this->verified_at;
+        return (bool) $this->verified_at;
     }
 
     public function addedPosts()
@@ -278,7 +278,7 @@ class Counsellor extends Model
 
     public function doesNotHaveTestimonial()
     {
-        return !$this->hasTestimonial();
+        return ! $this->hasTestimonial();
     }
 
     public function addedReports()
@@ -311,7 +311,9 @@ class Counsellor extends Model
 
     public function user()
     {
-        return $this->belongsTo(User::class);
+        // withTrashed: a counsellor's user may have deleted their account -- see
+        // Therapy::counsellor() for why callers need this to resolve rather than crash.
+        return $this->belongsTo(User::class)->withTrashed();
     }
 
     public function cases(): MorphToMany
@@ -367,7 +369,7 @@ class Counsellor extends Model
 
     public function hasNotEngagedAUserInTherapy()
     {
-        return !$this->engagesAUserInTherapy();
+        return ! $this->engagesAUserInTherapy();
     }
 
     public function hasHeldATherapySession()
@@ -379,7 +381,7 @@ class Counsellor extends Model
 
     public function hasNotHeldATherapySession()
     {
-        return !$this->hasHeldATherapySession();
+        return ! $this->hasHeldATherapySession();
     }
 
     public function scopeWhereName($query, $name)
@@ -406,9 +408,9 @@ class Counsellor extends Model
     public function scopeWhereNotUser($query, $user)
     {
         return $query->where(function ($query) use ($user) {
-                $query
-                    ->whereNot('user_id', $user->id);
-            });
+            $query
+                ->whereNot('user_id', $user->id);
+        });
     }
 
     public function hasPendingRequestFor(Model $model)
@@ -423,6 +425,6 @@ class Counsellor extends Model
 
     public function doesNotHavePendingRequestFor(Model $model)
     {
-        return !$this->hasPendingRequestFor($model);
+        return ! $this->hasPendingRequestFor($model);
     }
 }
