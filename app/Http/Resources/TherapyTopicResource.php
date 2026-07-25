@@ -17,7 +17,7 @@ class TherapyTopicResource extends JsonResource
         return [
             'id' => $this->id,
             'name' => $this->name,
-            'userId' => $this->counsellor->user->id,
+            'userId' => $this->counsellor?->user?->id,
             'description' => $this->description,
             'sessions' => SessionMiniResource::collection($this->sessions),
             'createdAt' => $this->created_at->diffForHumans(),

@@ -13,21 +13,21 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Therapy extends Model
 {
-    use HasFactory,
-    Starreable,
-    Alertable,
-    Likeable,
-    Commentable,
-    SoftDeletes,
-    TherapyTrait;
+    use Alertable,
+        Commentable,
+        HasFactory,
+        Likeable,
+        SoftDeletes,
+        Starreable,
+        TherapyTrait;
 
     protected $fillable = [
         'session_type', 'payment_type', 'background_story', 'allow_in_person', 'name',
-        'public', 'anonymous', 'payment_data', 'status', 'max_sessions', 'counsellor_id'
+        'public', 'anonymous', 'payment_data', 'status', 'max_sessions', 'counsellor_id',
     ];
 
     protected $casts = [
-        'payment_data' => 'array'
+        'payment_data' => 'array',
     ];
 
     public function getIsTherapyAttribute()
@@ -47,21 +47,28 @@ class Therapy extends Model
 
     public function counsellor()
     {
-        return $this->belongsTo(Counsellor::class);
+        // withTrashed: a therapy's counsellor may have since deleted their account (which
+        // soft-deletes the Counsellor too) -- isParticipant()/notifications/etc. below all
+        // assume this relation resolves rather than crashing on a null counsellor.
+        return $this->belongsTo(Counsellor::class)->withTrashed();
     }
 
     public function isParticipant(User $user)
     {
-        if ($this->addedby->is($user)) return true;
+        if ($this->addedby->is($user)) {
+            return true;
+        }
 
-        if (!$this->counsellor?->user) return false;
+        if (! $this->counsellor?->user) {
+            return false;
+        }
 
         return $this->counsellor->user->is($user);
     }
 
     public function isNotParticipant(User $user)
     {
-        return !$this->isParticipant($user);
+        return ! $this->isParticipant($user);
     }
 
     public function scopeWhereCounsellor($query, Counsellor $counsellor)
@@ -122,7 +129,7 @@ class Therapy extends Model
 
     public function doesNotHaveAssistance()
     {
-        return !$this->hasAssistance();
+        return ! $this->hasAssistance();
     }
 
     public function isUser(User $user)
@@ -133,17 +140,21 @@ class Therapy extends Model
     public function getUsers()
     {
         $users = collect();
-        if ($this->addedby_type == User::class)
+        if ($this->addedby_type == User::class) {
             $users->push($this->addedby);
+        }
 
-        if ($this->counsellor)
+        if ($this->counsellor) {
             $users->push($this->counsellor->user);
+        }
 
         if (
             $this->addedby_type == User::class &&
-            !$this->addedby->isAdult() && 
+            ! $this->addedby->isAdult() &&
             $this->addedby->guardians()->count()
-        ) $users->merge(User::query()->whereWard($this->addedby)->get());
+        ) {
+            $users->merge(User::query()->whereWard($this->addedby)->get());
+        }
 
         return $users;
     }
@@ -173,15 +184,18 @@ class Therapy extends Model
     public function getOtherUsers(User $user)
     {
         $users = collect();
-        if ($this->addedby_type == User::class && $this->addedby_id !== $user->id)
+        if ($this->addedby_type == User::class && $this->addedby_id !== $user->id) {
             $users->push($this->addedby);
+        }
 
-        if (!$this->counsellor->user->is($user))
+        if (! $this->counsellor->user->is($user)) {
             $users->push($this->counsellor->user);
+        }
 
-        if (!$this->addedby->isAdult() && $this->addedby->guardians()->count())
+        if (! $this->addedby->isAdult() && $this->addedby->guardians()->count()) {
             $users->merge(User::query()->whereNot('id', $user->id)
                 ->whereWard($this->addedby)->get());
+        }
 
         return $users;
     }

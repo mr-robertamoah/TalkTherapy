@@ -10,11 +10,11 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 class TherapyTopic extends Model
 {
     use HasFactory,
-    Starreable,
-    SoftDeletes;
+        SoftDeletes,
+        Starreable;
 
     protected $fillable = [
-        'name', 'description', 'counsellor_id', 'therapy_id'
+        'name', 'description', 'counsellor_id', 'therapy_id',
     ];
 
     public function sessions()
@@ -35,7 +35,8 @@ class TherapyTopic extends Model
 
     public function counsellor()
     {
-        return $this->belongsTo(Counsellor::class);
+        // withTrashed: see Therapy::counsellor() -- same reasoning.
+        return $this->belongsTo(Counsellor::class)->withTrashed();
     }
 
     public function messages()
