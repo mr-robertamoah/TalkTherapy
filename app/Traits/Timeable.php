@@ -4,7 +4,6 @@ namespace App\Traits;
 
 use App\Models\Discussion;
 use App\Models\Session;
-use App\Models\Star;
 
 trait Timeable
 {
@@ -60,27 +59,31 @@ trait Timeable
 
     public function scopeWhereIsThirtyMinituesBeforeOrAfter($query, $startDate = null, $endDate = null)
     {
+        // ->copy() below: Carbon instances are mutable, and $startDate/$endDate are often the
+        // same objects the caller reuses in later checks (see EnsureSessionDataIsValidAction /
+        // EnsureDiscussionDataIsValidAction). Mutating them in place here would shift the
+        // caller's notion of the proposed start/end time on every subsequent call.
         return $query
             ->when($startDate, function ($query) use ($startDate) {
                 $query
                     ->where(function ($query) use ($startDate) {
-                        $query->whereDateIsBetweenStartAndEndTimes($startDate->subMinutes(30));
+                        $query->whereDateIsBetweenStartAndEndTimes($startDate->copy()->subMinutes(30));
                     });
             })
             ->when($endDate, function ($query) use ($endDate) {
                 $query
                     ->orWhere(function ($query) use ($endDate) {
-                        $query->whereDateIsBetweenStartAndEndTimes($endDate->addMinutes(30));
+                        $query->whereDateIsBetweenStartAndEndTimes($endDate->copy()->addMinutes(30));
                     });
             });
     }
 
     public function isNotUpdateable()
     {
-        $query = $this::class == Session::class 
+        $query = $this::class == Session::class
             ? Session::query()
             : Discussion::query();
-            
+
         return $query
             ->where('id', $this->id)
             ->where(function ($query) {
@@ -97,7 +100,7 @@ trait Timeable
 
     public function isUpdateable()
     {
-        return !$this->isNotUpdateable();
+        return ! $this->isNotUpdateable();
     }
 
     public function isNotDeleteable()
@@ -114,6 +117,6 @@ trait Timeable
 
     public function isDeleteable()
     {
-        return !$this->isNotDeleteable();
+        return ! $this->isNotDeleteable();
     }
 }

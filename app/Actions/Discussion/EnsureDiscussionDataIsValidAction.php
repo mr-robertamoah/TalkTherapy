@@ -15,21 +15,24 @@ class EnsureDiscussionDataIsValidAction extends Action
 {
     public function execute(CreateDiscussionDTO $createDiscussionDTO)
     {
-        if (is_null($createDiscussionDTO->for)) 
-            throw new DiscussionException("No therapy or group therapy for the discussion was given.", 422);
-        
+        if (is_null($createDiscussionDTO->for)) {
+            throw new DiscussionException('No therapy or group therapy for the discussion was given.', 422);
+        }
+
         $therapy = $createDiscussionDTO->for;
 
-        if ($therapy->status == TherapyStatusEnum::ended->value) 
-            throw new DiscussionException("You cannot a create discussion for a therapy which has ended.", 422);
+        if ($therapy->status == TherapyStatusEnum::ended->value) {
+            throw new DiscussionException('You cannot a create discussion for a therapy which has ended.', 422);
+        }
 
         $startTime = Carbon::parse($createDiscussionDTO->startTime)->setTimezone(config('app.timezone'));
         $endTime = Carbon::parse($createDiscussionDTO->endTime)->setTimezone(config('app.timezone'));
         if (
-            $startTime->addMinutes(30)->greaterThan($endTime)
-        ) 
-            throw new DiscussionException("The end time must be at least 30 minutes from the start time.", 422);
-            
+            $startTime->copy()->addMinutes(30)->greaterThan($endTime)
+        ) {
+            throw new DiscussionException('The end time must be at least 30 minutes from the start time.', 422);
+        }
+
         if (
             Discussion::query()
                 ->when($createDiscussionDTO->discussion, function ($query) use ($createDiscussionDTO) {
@@ -47,8 +50,9 @@ class EnsureDiscussionDataIsValidAction extends Action
                 })
                 ->whereDateIsBetweenStartAndEndTimes($startTime)
                 ->exists()
-        ) 
-            throw new DiscussionException("The start time of a discussion cannot fall within the start and end time of other discussions.", 422);
+        ) {
+            throw new DiscussionException('The start time of a discussion cannot fall within the start and end time of other discussions.', 422);
+        }
 
         if (
             Discussion::query()
@@ -67,26 +71,31 @@ class EnsureDiscussionDataIsValidAction extends Action
                 })
                 ->whereIsThirtyMinituesBeforeOrAfter($startTime, $endTime)
                 ->exists()
-        ) 
-            throw new DiscussionException("The discussion must start at least 30 minutes before or after other discussions of this therapy.", 422);
-            
+        ) {
+            throw new DiscussionException('The discussion must start at least 30 minutes before or after other discussions of this therapy.', 422);
+        }
+
         if (
             $therapy
                 ->sessions()
                 ->whereDateIsBetweenStartAndEndTimes($startTime)
                 ->exists()
-        ) 
-            throw new DiscussionException("The start time of a discussion cannot fall within the start and end time of other sessions.", 422);
+        ) {
+            throw new DiscussionException('The start time of a discussion cannot fall within the start and end time of other sessions.', 422);
+        }
 
         if (
             $therapy
                 ->sessions()
                 ->whereIsThirtyMinituesBeforeOrAfter($startTime, $endTime)
                 ->exists()
-        ) 
-            throw new DiscussionException("The discussion must start at least 30 minutes before or after other sessions of this therapy.", 422);
-        
-        if ($therapy::class == GroupTherapy::class) return; // TODO add some for group therapy
+        ) {
+            throw new DiscussionException('The discussion must start at least 30 minutes before or after other sessions of this therapy.', 422);
+        }
+
+        if ($therapy::class == GroupTherapy::class) {
+            return;
+        } // TODO add some for group therapy
 
         if (
             Session::query()
@@ -96,7 +105,8 @@ class EnsureDiscussionDataIsValidAction extends Action
                 })
                 ->whereIsThirtyMinituesBeforeOrAfter($startTime, $endTime)
                 ->exists()
-        ) 
-            throw new DiscussionException("Counsellor has therapy sessions less than 30 minutes before or after the time for this discussion.", 422);
+        ) {
+            throw new DiscussionException('Counsellor has therapy sessions less than 30 minutes before or after the time for this discussion.', 422);
+        }
     }
 }
