@@ -715,6 +715,7 @@ function reportCreated(report) {
     <template #therapy-component>
       <TherapyComponent
         :therapy="computedTherapy"
+        :therapy-type="therapyType"
         :new-session="newSession"
         :active-session="activeSession"
         :deleted-session-or-topic="currentDeletedSessionOrTopic"

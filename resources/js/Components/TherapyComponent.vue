@@ -329,6 +329,10 @@ const props = defineProps({
     therapy: {
         default: null
     },
+    therapyType: {
+        type: String,
+        default: 'individual'
+    },
     newSession: {
         default: null
     },
@@ -643,12 +647,34 @@ function getMessageTo() {
         userId: 0,
     }
 
+    if (props.therapyType === 'group') {
+        // GroupTherapyResource has no single therapy.user/therapy.counsellor field -- it
+        // returns addedby (User or Counsellor) and a counsellors array instead.
+        if (props.isCounsellor && props.therapy.addedby?.isUser) {
+            to.type = 'User'
+            to.id = props.therapy.addedby.id ?? 0
+            to.userId = props.therapy.addedby.id ?? 0
+        }
+
+        if (props.isUser && props.therapy.counsellors?.length === 1) {
+            // With more than one assigned counsellor there's no single unambiguous recipient
+            // to target, so `to` is left blank. EnsureCanSendMessageToRecepientAction (backend)
+            // skips its participant check when `to` is null rather than crashing -- the message
+            // still sends, just without a specific displayed recipient.
+            to.type = 'Counsellor'
+            to.id = props.therapy.counsellors[0].id ?? 0
+            to.userId = props.therapy.counsellors[0].userId ?? 0
+        }
+
+        return to
+    }
+
     if (props.isCounsellor) {
         to.type = 'User'
         to.id = props.therapy.user.id
         to.userId = props.therapy.user.id
     }
-    
+
     if (props.isUser) {
         to.type = 'Counsellor'
         to.id = props.therapy.counsellor.id
@@ -665,6 +691,28 @@ function getMessageFrom() {
         userId: 0,
         isCounsellor: false,
         avatar: null,
+    }
+
+    if (props.therapyType === 'group') {
+        if (props.isCounsellor) {
+            // Use the viewer's own counsellor identity directly rather than searching
+            // therapy.addedby/counsellors for a match -- avoids any ambiguity about which
+            // assigned counsellor "is" the current viewer.
+            const viewerCounsellor = usePage().props.auth.user?.counsellor
+            from.type = 'Counsellor'
+            from.isCounsellor = true
+            from.id = viewerCounsellor?.id ?? 0
+            from.userId = viewerCounsellor?.userId ?? 0
+            from.avatar = viewerCounsellor?.avatar ?? null
+        }
+
+        if (props.isUser) {
+            from.type = 'User'
+            from.id = props.therapy.addedby?.id ?? 0
+            from.userId = props.therapy.addedby?.id ?? 0
+        }
+
+        return from
     }
 
     if (props.isCounsellor) {
