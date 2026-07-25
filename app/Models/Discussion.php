@@ -12,20 +12,22 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 class Discussion extends Model
 {
     use HasFactory,
-    Timeable,
-    SoftDeletes,
-    Starreable;
+        SoftDeletes,
+        Starreable,
+        Timeable;
 
     protected $fillable = ['name', 'description', 'start_time', 'end_time', 'status', 'session_id'];
 
     public function addedby()
     {
-        return $this->morphTo( 'addedby');
+        // withTrashed: see Therapy::counsellor() -- addedby (User or Counsellor) may have
+        // since deleted their account.
+        return $this->morphTo('addedby')->withTrashed();
     }
 
     public function for()
     {
-        return $this->morphTo( 'for');
+        return $this->morphTo('for');
     }
 
     public function session()
@@ -45,7 +47,7 @@ class Discussion extends Model
 
     public function isNotParticipant(?Counsellor $counsellor)
     {
-        return !$this->isParticipant($counsellor);
+        return ! $this->isParticipant($counsellor);
     }
 
     public function counsellors()
@@ -56,7 +58,10 @@ class Discussion extends Model
 
     public function isParticipant(?Counsellor $counsellor)
     {
-        if (!$counsellor) return false;
+        if (! $counsellor) {
+            return false;
+        }
+
         return $this->addedby->is($counsellor) ||
             $this->counsellors()
                 ->where('counsellor_id', $counsellor->id)
@@ -69,14 +74,15 @@ class Discussion extends Model
             ->whereNot('id', $user->id)
             ->whereHas('counsellor', function ($query) {
                 $query
-                ->whereHas('discussions', function ($query) {
-                    $query->where('discussion_id', $this->id);
-                });
+                    ->whereHas('discussions', function ($query) {
+                        $query->where('discussion_id', $this->id);
+                    });
             })
             ->get();
 
-        if (!$this->addedby->user?->is($user))
+        if (! $this->addedby->user?->is($user)) {
             $users = $users->push($this->addedby->user);
+        }
 
         return $users;
     }
@@ -117,8 +123,8 @@ class Discussion extends Model
     public function scopeWhereIsParticipant($query, Counsellor $counsellor)
     {
         return $query->where(function ($query) use ($counsellor) {
-                $query->whereCounsellor($counsellor);
-            })
+            $query->whereCounsellor($counsellor);
+        })
             ->orWhere(function ($query) use ($counsellor) {
                 $query->where('addedby_id', $counsellor->id);
             });
@@ -142,21 +148,22 @@ class Discussion extends Model
         if ($this->for_type == Therapy::class) {
             return ['Therapy', url("therapies/{$this->for->id}")];
         }
-            
+
         return ['Group Therapy', url("group_therapies/{$this->for->id}")];
     }
 
     public function getForChannelName()
     {
-        if ($this->for_type == Therapy::class)
+        if ($this->for_type == Therapy::class) {
             return "therapies.{$this->for_id}";
-        
+        }
+
         return "grouptherapies.{$this->for_id}";
     }
 
     public function doesNotAcceptMessage()
     {
-        return !$this->acceptsMessage();
+        return ! $this->acceptsMessage();
     }
 
     public function acceptsMessage()

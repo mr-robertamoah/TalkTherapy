@@ -13,7 +13,9 @@ class Testimonial extends Model
 
     public function addedby()
     {
-        return $this->morphTo();
+        // withTrashed: see Therapy::counsellor() -- addedby (User or Counsellor) may have
+        // since deleted their account.
+        return $this->morphTo()->withTrashed();
     }
 
     public function scopeWhereUse($query)

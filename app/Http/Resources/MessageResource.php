@@ -3,7 +3,6 @@
 namespace App\Http\Resources;
 
 use App\Models\Counsellor;
-use App\Models\Session;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -18,9 +17,9 @@ class MessageResource extends JsonResource
     {
         $fromCounsellor = $this->from_type == Counsellor::class;
 
-        $fromId = $fromCounsellor ? $this->from?->user->id : $this->from_id;
+        $fromId = $fromCounsellor ? $this->from?->user?->id : $this->from_id;
 
-        if ($this->deleted_at)
+        if ($this->deleted_at) {
             return [
                 'id' => $this->id,
                 'status' => 'deleted for everyone',
@@ -28,10 +27,11 @@ class MessageResource extends JsonResource
                 'type' => $this->type,
                 'updatedAt' => $this->updated_at,
             ];
+        }
 
         $user = $request->user();
 
-        if ($user && str_contains($this->deleted_for ?: '', $user->id))
+        if ($user && str_contains($this->deleted_for ?: '', $user->id)) {
             return [
                 'id' => $this->id,
                 'fromUserId' => $fromId,
@@ -39,13 +39,14 @@ class MessageResource extends JsonResource
                 'type' => $this->type,
                 'updatedAt' => $this->updated_at,
             ];
+        }
 
         $counsellor = $fromCounsellor ? $this->from : $this->to?->counsellor;
-        $counsellorAvatar = $counsellor->avatar?->url;
+        $counsellorAvatar = $counsellor?->avatar?->url;
 
-        $toId = !$fromCounsellor ? $this->to?->user?->id : $this->to_id;
+        $toId = ! $fromCounsellor ? $this->to?->user?->id : $this->to_id;
 
-        if ($this->confidential && $this->isNotParty($user))
+        if ($this->confidential && $this->isNotParty($user)) {
             return [
                 'id' => $this->id,
                 'fromUserId' => $fromId,
@@ -57,6 +58,7 @@ class MessageResource extends JsonResource
                 'type' => $this->type,
                 'updatedAt' => $this->updated_at,
             ];
+        }
 
         $forType = str_replace('App\Models\\', '', $this->for_type);
         $data = [
@@ -77,11 +79,12 @@ class MessageResource extends JsonResource
             'createdAt' => $this->created_at,
         ];
 
-        if ($forType == 'Discussion')  
+        if ($forType == 'Discussion') {
             return array_merge($data, [
-                'counsellorName' => $counsellor->getName(),
+                'counsellorName' => $counsellor?->getName(),
             ]);
-            
+        }
+
         return $data;
     }
 }

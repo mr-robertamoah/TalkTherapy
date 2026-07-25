@@ -57,9 +57,10 @@ trait TherapyTrait
 
     public function getStatus()
     {
-        if ($this->status == TherapyStatusEnum::in_session->value)
+        if ($this->status == TherapyStatusEnum::in_session->value) {
             return str_replace('_', ' ', TherapyStatusEnum::in_session->value);
-        
+        }
+
         return $this->status;
     }
 
@@ -74,7 +75,7 @@ trait TherapyTrait
             ->first();
     }
 
-    public function getActiveSession(User $user)    
+    public function getActiveSession(User $user)
     {
         return $this->sessions()
             ->where(function ($query) use ($user) {
@@ -88,7 +89,9 @@ trait TherapyTrait
 
     public function addedby()
     {
-        return $this->morphTo('addedby');
+        // withTrashed: see Therapy::counsellor() -- addedby (User or Counsellor) may have
+        // since deleted their account.
+        return $this->morphTo('addedby')->withTrashed();
     }
 
     public function topics()
@@ -100,6 +103,7 @@ trait TherapyTrait
     {
         return $this->morphMany(Message::class, 'for');
     }
+
     public function sessions()
     {
         return $this->morphMany(Session::class, 'for');
@@ -128,7 +132,9 @@ trait TherapyTrait
 
     public function pendingRequestFor(?Counsellor $counsellor)
     {
-        if (is_null($counsellor)) return null;
+        if (is_null($counsellor)) {
+            return null;
+        }
 
         return Request::query()
             ->wherePending()
@@ -171,12 +177,12 @@ trait TherapyTrait
         $this->sessions()
             ->wherePastEndTime()
             ->update(['status' => SessionStatusEnum::held->value]);
-        
+
         $this->sessions()
             ->whereStatusIn([
                 SessionStatusEnum::held_confirmation->value,
                 SessionStatusEnum::in_session->value,
-                SessionStatusEnum::in_session_confirmation->value
+                SessionStatusEnum::in_session_confirmation->value,
             ])
             ->update(['status' => SessionStatusEnum::abandoned->value]);
     }

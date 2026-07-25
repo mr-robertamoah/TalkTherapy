@@ -14,6 +14,10 @@ class UserMiniResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
+        if (is_null($this->resource)) {
+            return ['deleted' => true, 'isUser' => true];
+        }
+
         return [
             'id' => $this->id,
             'fullName' => $this->name,

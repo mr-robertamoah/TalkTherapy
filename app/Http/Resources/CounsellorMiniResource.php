@@ -14,6 +14,10 @@ class CounsellorMiniResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
+        if (is_null($this->resource)) {
+            return ['deleted' => true, 'isCounsellor' => true];
+        }
+
         $data = [
             'id' => $this->id,
             'userId' => $this->user_id,
@@ -22,6 +26,7 @@ class CounsellorMiniResource extends JsonResource
 
         if ($this->deleted_at) {
             $data['deleted'] = true;
+
             return $data;
         }
 
@@ -30,7 +35,7 @@ class CounsellorMiniResource extends JsonResource
             'name' => $this->getName(),
             'verifiedAt' => $this->verified_at,
             'avatar' => $this->avatar?->url,
-            'user' => new UserMiniResource($this->user)
+            'user' => new UserMiniResource($this->user),
         ]);
     }
 }

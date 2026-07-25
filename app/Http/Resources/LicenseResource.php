@@ -14,12 +14,16 @@ class LicenseResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
+        if (is_null($this->resource)) {
+            return [];
+        }
+
         return [
             'id' => $this->id,
             'number' => $this->number,
             'validated' => $this->validated,
             'licensingAuthority' => new LicensingAuthorityResource($this->licensingAuthority),
-            'file' => FileResource::collection($this->files)
+            'file' => FileResource::collection($this->files),
         ];
     }
 }
