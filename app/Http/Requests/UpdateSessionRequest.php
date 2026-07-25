@@ -5,6 +5,7 @@ namespace App\Http\Requests;
 use App\Enums\SessionTypeEnum;
 use App\Enums\TherapyPaymentTypeEnum;
 use Carbon\Carbon;
+use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
@@ -22,7 +23,7 @@ class UpdateSessionRequest extends FormRequest
     /**
      * Get the validation rules that apply to the request.
      *
-     * @return array<string, \Illuminate\Contracts\Validation\ValidationRule|array<mixed>|string>
+     * @return array<string, ValidationRule|array<mixed>|string>
      */
     public function rules(): array
     {
@@ -31,6 +32,7 @@ class UpdateSessionRequest extends FormRequest
         $now = Carbon::now(config('app.timezone'));
 
         Log::info('update session request', [$startTime, $endTime, $now, now()]);
+
         return [
             'name' => ['nullable', 'string', 'max:255'],
             'about' => ['nullable', 'string'],
@@ -38,10 +40,10 @@ class UpdateSessionRequest extends FormRequest
             'lat' => ['nullable', Rule::requiredIf($this->get('type') == SessionTypeEnum::in_person->value), 'numeric', 'between:-90,90'],
             'lng' => ['nullable', Rule::requiredIf($this->get('type') == SessionTypeEnum::in_person->value), 'numeric', 'between:-180,180'],
             'startTime' => ['nullable', 'date', Rule::prohibitedIf(
-                !($now->addMinutes(30)->lessThanOrEqualTo($startTime))
+                ! ($now->copy()->addMinutes(30)->lessThanOrEqualTo($startTime))
             )],
             'endTime' => ['nullable', 'date', Rule::prohibitedIf(
-                !($startTime->addMinutes(30)->lessThanOrEqualTo($endTime))
+                ! ($startTime->copy()->addMinutes(30)->lessThanOrEqualTo($endTime))
             )],
             'cases' => ['nullable', 'array'],
             'topics' => ['nullable', 'array'],
