@@ -103,7 +103,7 @@ class User extends Authenticatable implements MustVerifyEmailContract
 
     public function isGuardianOf(User $user)
     {
-        return $this->guardians()->where('ward_id', $user->id)->exists();
+        return $this->wards()->where('ward_id', $user->id)->exists();
     }
 
     public function hasGuardian(): bool
