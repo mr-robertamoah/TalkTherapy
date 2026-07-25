@@ -14,29 +14,35 @@ class EnsureCanSendMessageToRecepientAction extends Action
     public function execute(CreateMessageDTO $createMessageDTO)
     {
         if (
-            !$createMessageDTO->to && 
+            ! $createMessageDTO->to &&
             $createMessageDTO->for::class == Session::class &&
             $createMessageDTO->for->isForTherapy()
-        ) throw new MessageException("Recepient is required for a therapy session.", 422);
+        ) {
+            throw new MessageException('Recepient is required for a therapy session.', 422);
+        }
 
         if (
             (
                 $createMessageDTO->for::class == Discussion::class &&
+                $createMessageDTO->to &&
                 $createMessageDTO->for->isNotParticipant(
-                    $createMessageDTO->to::class == User::class 
+                    $createMessageDTO->to::class == User::class
                         ? $createMessageDTO->to->counsellor
                         : $createMessageDTO->to
                 )
             ) ||
             (
                 $createMessageDTO->for::class == Session::class &&
+                $createMessageDTO->to &&
                 $createMessageDTO->for->isNotParticipant(
-                    $createMessageDTO->to::class == User::class 
+                    $createMessageDTO->to::class == User::class
                         ? $createMessageDTO->to
                         : $createMessageDTO->to->user
                 )
             )
-            
-        ) throw new MessageException("You are sending the message to someone who is not participating in session/discussion.", 422);
+
+        ) {
+            throw new MessageException('You are sending the message to someone who is not participating in session/discussion.', 422);
+        }
     }
 }

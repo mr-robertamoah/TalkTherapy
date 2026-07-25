@@ -9,6 +9,7 @@ use App\Exceptions\MessageException;
 use App\Models\Counsellor;
 use App\Models\Discussion;
 use App\Models\File;
+use App\Models\GroupTherapy;
 use App\Models\Message;
 use App\Models\Session;
 use App\Models\Therapy;
@@ -277,6 +278,51 @@ describe('create message tests', function () {
                     'to' => $counsellor,
                 ])
             );
+        });
+
+    test(
+        'successful message creation for a group therapy session with no recepient specified',
+        function () {
+
+            // Regression guard for SCRUM-66: EnsureCanSendMessageToRecepientAction used to
+            // unconditionally dereference `to::class` for any Session message, which crashed
+            // with a TypeError when `to` was null -- a real scenario for group therapy sessions
+            // with more than one assigned counsellor, where the frontend deliberately leaves
+            // `to` blank rather than guessing a recipient.
+            $therapyOwner = User::factory()->create();
+            $groupTherapy = GroupTherapy::factory()->create([
+                'addedby_id' => $therapyOwner->id,
+                'addedby_type' => $therapyOwner::class,
+            ]);
+            $counsellorUserOne = User::factory()->create();
+            $counsellorOne = Counsellor::factory()->create(['user_id' => $counsellorUserOne->id]);
+            $counsellorUserTwo = User::factory()->create();
+            $counsellorTwo = Counsellor::factory()->create(['user_id' => $counsellorUserTwo->id]);
+            $groupTherapy->counsellors()->attach([$counsellorOne->id, $counsellorTwo->id], ['state' => 'ACTIVE', 'role' => 'NORMAL']);
+            $session = Session::factory()->create([
+                'addedby_id' => $therapyOwner->id,
+                'addedby_type' => $therapyOwner::class,
+                'status' => SessionStatusEnum::in_session_confirmation->value,
+                'for_id' => $groupTherapy->id,
+                'for_type' => $groupTherapy::class,
+            ]);
+
+            $message = MessageService::new()->createMessage(
+                CreateMessageDTO::new()->fromArray([
+                    'from' => $therapyOwner,
+                    'user' => $therapyOwner,
+                    'for' => $session,
+                    'to' => null,
+                    'content' => 'message content',
+                ])
+            );
+
+            $this->assertDatabaseHas('messages', [
+                'id' => $message->id,
+                'content' => 'message content',
+                'to_id' => null,
+                'to_type' => null,
+            ]);
         });
 
     test(
