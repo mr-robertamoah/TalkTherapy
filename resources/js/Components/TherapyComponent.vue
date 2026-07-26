@@ -214,12 +214,33 @@
         </div>
         <div
             @click.self="() => showAttachmentIcons = false"
-            :class="[showAttachmentIcons ? 'opacity-100 visible z-[1]' : 'opacity-0 invisible -z-[1]']" 
-            class="w-full top-0 absolute transition-all duration-100 right-0 h-full bg-gray-600 bg-opacity-30 flex justify-center items-center">
-            <div class="w-[80%] bg-white min-h-32 rounded flex justify-center items-center space-x-2 flex-wrap">
-                <CameraIcon title="take a picture" @click="() => clickedIcon('camera')" class="w-8 cursor-pointer p-1 h-8 flex justify-center items-center" />
-                <MicrophoneIcon title="record your voice note" @click="() => clickedIcon('microphone')" class="w-8 cursor-pointer p-1 h-8" />
-                <FileIcon title="upload an image or pdf file" @click="() => clickedIcon('file')" class="w-8 cursor-pointer p-1 h-8" />
+            :class="[showAttachmentIcons ? 'opacity-100 visible z-[1]' : 'opacity-0 invisible -z-[1]']"
+            class="w-full top-0 absolute transition-all duration-100 right-0 h-full bg-gray-900/40 backdrop-blur-[2px] flex justify-center items-center">
+            <div class="relative w-[85%] max-w-sm bg-white shadow-2xl rounded-2xl p-6 flex justify-center items-start gap-6">
+                <button
+                    type="button"
+                    title="close"
+                    @click="() => showAttachmentIcons = false"
+                    class="absolute top-2 right-2 w-6 h-6 flex items-center justify-center rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100"
+                >&times;</button>
+                <div class="flex flex-col items-center gap-2 cursor-pointer group" @click="() => clickedIcon('camera')">
+                    <div class="w-12 h-12 rounded-full bg-gray-100 group-hover:bg-gray-200 flex items-center justify-center transition-colors">
+                        <CameraIcon title="take a picture" class="w-6 h-6" />
+                    </div>
+                    <span class="text-xs text-gray-500">Camera</span>
+                </div>
+                <div class="flex flex-col items-center gap-2 cursor-pointer group" @click="() => clickedIcon('microphone')">
+                    <div class="w-12 h-12 rounded-full bg-gray-100 group-hover:bg-gray-200 flex items-center justify-center transition-colors">
+                        <MicrophoneIcon title="record your voice note" class="w-6 h-6" />
+                    </div>
+                    <span class="text-xs text-gray-500">Voice</span>
+                </div>
+                <div class="flex flex-col items-center gap-2 cursor-pointer group" @click="() => clickedIcon('file')">
+                    <div class="w-12 h-12 rounded-full bg-gray-100 group-hover:bg-gray-200 flex items-center justify-center transition-colors">
+                        <FileIcon title="upload an image or pdf file" class="w-6 h-6" />
+                    </div>
+                    <span class="text-xs text-gray-500">File</span>
+                </div>
             </div>
         </div>
 

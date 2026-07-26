@@ -550,8 +550,12 @@ async function clickedDeleteForMe() {
 async function scrollToItem() {
     await nextTick()
 
+    // block/inline: 'nearest' keeps the scroll adjustment confined to the chat's own
+    // scrollable container -- a bare scrollIntoView() defaults to block: 'start', which
+    // scrolls every scrollable ancestor (including the page itself) to align this message
+    // with the top of the viewport.
     if (item.value)
-        item.value.scrollIntoView()
+        item.value.scrollIntoView({ block: 'nearest', inline: 'nearest' })
 }
 
 async function createMessage() {
