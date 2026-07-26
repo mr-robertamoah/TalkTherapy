@@ -112,9 +112,12 @@ test('DiscussionResource and DiscussionMiniResource do not crash when addedby ha
 
 test('GroupTherapyMiniResource and PublicTherapyResource do not crash when addedby has deleted their account', function () {
     $addedbyUser = User::factory()->create();
+    // anonymous: false -- this test is about null-safety around a deleted addedby, not
+    // anonymity masking (see AnonymityMaskingTest for that), so keep the two independent.
     $groupTherapy = GroupTherapy::factory()->create([
         'addedby_type' => User::class,
         'addedby_id' => $addedbyUser->id,
+        'anonymous' => false,
     ]);
     $addedbyUser->delete();
 

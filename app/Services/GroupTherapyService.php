@@ -2,10 +2,10 @@
 
 namespace App\Services;
 
-use App\Actions\Request\SendTherapyAssistanceRequestAction;
-use App\Actions\Star\CreateStarAction;
 use App\Actions\GroupTherapy\CreateGroupTherapyAction;
 use App\Actions\GroupTherapy\UpdateGroupTherapyAction;
+use App\Actions\Request\SendTherapyAssistanceRequestAction;
+use App\Actions\Star\CreateStarAction;
 use App\Actions\Therapy\DeleteTherapyAction;
 use App\Actions\Therapy\EndTherapyAction;
 use App\Actions\Therapy\EnsureCanCreateTherapyAction;
@@ -41,7 +41,7 @@ class GroupTherapyService extends Service
 
         $therapy = CreateGroupTherapyAction::new()->execute($groupTherapyDTO);
 
-        if ($groupTherapyDTO->counsellor)
+        if ($groupTherapyDTO->counsellor) {
             CreateStarAction::new()->execute(
                 CreateStarDTO::fromArray([
                     'starredby' => null,
@@ -50,11 +50,12 @@ class GroupTherapyService extends Service
                     'type' => StarTypeEnum::participation->value,
                 ])
             );
+        }
 
         AlertGuardianAction::new()->execute(
             GuardianAlertDTO::new()->fromArray([
                 'user' => $groupTherapyDTO->user,
-                'notification' => new TherapyCreatedNotification($therapy)
+                'notification' => new TherapyCreatedNotification($therapy),
             ])
         );
 
@@ -89,7 +90,7 @@ class GroupTherapyService extends Service
             $groupTherapyDTO,
             'Group Therapy'
         );
-        
+
         EnsureCanUpdateTherapyAction::new()->execute($groupTherapyDTO);
 
         EnsureCanEndTherapyAction::new()->execute($groupTherapyDTO);
@@ -127,10 +128,13 @@ class GroupTherapyService extends Service
 
     public function getRandomGroupTherapies(?User $user)
     {
-        $query = GroupTherapy::query();
+        // Eager-load users (with the per-member anonymity pivot) once for the whole page --
+        // GroupTherapyMiniResource::isAnonymousFor() would otherwise lazy-load this pivot per
+        // row (SCRUM-71 N+1 finding).
+        $query = GroupTherapy::query()->with('users');
 
         $query->wherePublic();
-        
+
         $query
             ->when($user, function ($query) use ($user) {
                 $query->wherePublic();
@@ -158,10 +162,12 @@ class GroupTherapyService extends Service
 
     public function getCounsellorGroupTherapies(?User $user)
     {
-        if (!$user->counsellor) return [];
+        if (! $user->counsellor) {
+            return [];
+        }
 
-        $query = GroupTherapy::query();
-        
+        $query = GroupTherapy::query()->with('users');
+
         $query->where(function ($query) use ($user) {
             $query->where('addedby_id', $user->counsellor->id)
                 ->where('addedby_type', Counsellor::class);
@@ -188,7 +194,7 @@ class GroupTherapyService extends Service
                 });
             });
         });
-        
+
         $query->orWhereHas('requests', function ($query) use ($user) {
             $query
                 ->wherePending()
@@ -202,10 +208,12 @@ class GroupTherapyService extends Service
 
     public function getUserGroupTherapies(?User $user)
     {
-        if (!$user) return [];
+        if (! $user) {
+            return [];
+        }
 
-        $query = GroupTherapy::query();
-        
+        $query = GroupTherapy::query()->with('users');
+
         $query->where('addedby_id', $user->id);
         $query->where('addedby_type', User::class);
 
@@ -216,20 +224,22 @@ class GroupTherapyService extends Service
 
     public function getWardGroupTherapies(?User $user)
     {
-        if (!$user) return [];
+        if (! $user) {
+            return [];
+        }
 
-        $query = GroupTherapy::query();
-        
+        $query = GroupTherapy::query()->with('users');
+
         // TODO test getting them when ward is participating
         $query->where(function ($query) use ($user) {
             $query->whereHasMorph('addedby', [User::class], function ($query) use ($user) {
-                $query->whereHas('guardians', function($query) use ($user) {
+                $query->whereHas('guardians', function ($query) use ($user) {
                     $query->where('guardian_id', $user->id);
                 });
             });
         })->orWhere(function ($query) use ($user) {
             $query->whereHas('users', function ($query) use ($user) {
-                $query->whereHas('guardians', function($query) use ($user) {
+                $query->whereHas('guardians', function ($query) use ($user) {
                     $query->where('guardian_id', $user->id);
                 });
             });
@@ -240,9 +250,11 @@ class GroupTherapyService extends Service
         return $query->paginate(PaginationEnum::preferencesPagination->value);
     }
 
-    public function getRecentGroupTherapies(User|null $user)
+    public function getRecentGroupTherapies(?User $user)
     {
-        if (is_null($user)) return [];
+        if (is_null($user)) {
+            return [];
+        }
 
         return GroupTherapy::query()
             ->whereParticipant($user)

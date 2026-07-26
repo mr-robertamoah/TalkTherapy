@@ -143,6 +143,11 @@ class Session extends Model
         return $this->for?->isNotParticipant($user);
     }
 
+    public function isAnonymousFor(User $sender): bool
+    {
+        return (bool) $this->for?->isAnonymousFor($sender);
+    }
+
     public function scopeWhereIsParticipant($query, User $user)
     {
         return $query

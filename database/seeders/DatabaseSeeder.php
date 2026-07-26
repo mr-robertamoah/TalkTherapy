@@ -427,6 +427,12 @@ class DatabaseSeeder extends Seeder
         $secondCounsellor = $counsellors->first(fn ($c) => $c->name === 'Dr. Michael Chen');
         throw_if(! $secondCounsellor, new RuntimeException('Chat demo seeder: expected seed counsellor "Dr. Michael Chen" not found — did createDemoUsers() run first?'));
 
+        // For SCRUM-71 (anonymity masking): a member who opted into per-member anonymity even
+        // though the group itself defaults to non-anonymous -- exercises the per-member half of
+        // GroupTherapy::isAnonymousFor()'s OR logic independently of the group-level flag.
+        $anonymousParticipant = $users->firstWhere('username', 'john_davis');
+        throw_if(! $anonymousParticipant, new RuntimeException('Chat demo seeder: expected seed user "john_davis" not found — did createDemoUsers() run first?'));
+
         // Individual therapy with a live "in session" session, for testing the individual
         // therapy chat page in "active session" mode (log in as maria_garcia or
         // sarah_johnson and visit /therapies/{id}/chat).
@@ -471,9 +477,13 @@ class DatabaseSeeder extends Seeder
             'anonymous' => false,
             'background_story' => 'Seeded participant for the chat demo group therapy.',
         ]);
+        $groupTherapy->users()->attach($anonymousParticipant->id, [
+            'anonymous' => true,
+            'background_story' => 'Seeded anonymous participant for exercising SCRUM-71 anonymity masking.',
+        ]);
         $groupTherapy->counsellors()->attach($counsellor->id, ['state' => 'ACTIVE']);
 
-        $counsellor->addedSessions()->create([
+        $groupSession = $counsellor->addedSessions()->create([
             'name' => 'Chat Demo Group Live Session',
             'about' => 'Seeded live session for testing the group therapy chat page.',
             'for_id' => $groupTherapy->id,
@@ -482,6 +492,16 @@ class DatabaseSeeder extends Seeder
             'end_time' => now()->addHour(),
             'type' => 'online',
             'status' => 'in_session',
+        ]);
+
+        // A message from the anonymous participant -- viewed by anyone other than
+        // john_davis, MessageResource should mask its sender (null `fromUserId`); viewed by
+        // john_davis themselves, it should show their own real id.
+        $anonymousParticipant->sentMessages()->create([
+            'content' => 'This message is from an anonymous group member and should show a masked sender to everyone except this member (SCRUM-71 test data).',
+            'for_id' => $groupSession->id,
+            'for_type' => $groupSession::class,
+            'created_at' => now()->subMinutes(5),
         ]);
 
         // Discussion in IN_SESSION status between two known counsellors, with existing

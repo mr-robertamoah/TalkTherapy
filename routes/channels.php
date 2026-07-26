@@ -34,45 +34,58 @@ Broadcast::channel('sessions.{sessionId}', function ($user, $sessionId) {
 
 Broadcast::channel('therapies.{therapyId}', function ($user, $therapyId) {
     $therapy = Therapy::find($therapyId);
-    if (!$therapy) return false;
+    if (! $therapy) {
+        return false;
+    }
 
     $counsellor = $user->counsellor;
     $isCounsellorForDiscussion = $counsellor && $therapy->discussions()->whereIsParticipant($counsellor)->exists();
-    
+
     if (
-        !$therapy?->isParticipant($user) &&
-        !$isCounsellorForDiscussion
-    ) return false;
+        ! $therapy?->isParticipant($user) &&
+        ! $isCounsellorForDiscussion
+    ) {
+        return false;
+    }
 
     $isUser = ($therapy->addedby_type == User::class && $therapy->addedby_id == $user->id) ||
         ($therapy->addedby_type == Counsellor::class && $therapy->addedby->user_id == $user->id);
 
     $name = $user->name;
 
-    if ($isUser && $therapy->anonymous)
+    if ($isUser && $therapy->isAnonymousFor($user)) {
         $name = 'Client (Anonymous User)';
+    }
 
     return ['id' => $user->id, 'name' => $name];
 });
 
 Broadcast::channel('groupTherapies.{groupTherapyId}', function ($user, $groupTherapyId) {
     $therapy = GroupTherapy::find($groupTherapyId);
-    if (!$therapy) return false;
+    if (! $therapy) {
+        return false;
+    }
 
     $counsellor = $user->counsellor;
     $isCounsellorForDiscussion = $counsellor && $therapy->discussions()->whereIsParticipant($counsellor)->exists();
-    
+
     if (
-        !$therapy?->isParticipant($user) &&
-        !$isCounsellorForDiscussion
-    ) return false;
-    
+        ! $therapy?->isParticipant($user) &&
+        ! $isCounsellorForDiscussion
+    ) {
+        return false;
+    }
+
     $name = $user->name;
 
-    $participant = $therapy->users()->where('user_id', $user->id)->first();
+    // Never mask a counsellor's own name -- anonymity only ever applies to a client/User
+    // member. isAnonymousFor() itself implements the OR logic (group-level flag OR this
+    // member's own group_therapy_user pivot flag).
+    $isCounsellorForGroup = $counsellor && $therapy->isCounsellor($counsellor);
 
-    if ($participant->anonymous)
+    if (! $isCounsellorForGroup && $therapy->isAnonymousFor($user)) {
         $name = 'Client (Anonymous User)';
+    }
 
     return ['id' => $user->id, 'name' => $name];
 });
@@ -81,11 +94,13 @@ Broadcast::channel('discussions.{discussionId}', function ($user, $discussionId)
     $discussion = Discussion::find($discussionId);
     $counsellor = $user->counsellor;
 
-    if (!$discussion || !$counsellor || !$discussion?->isParticipant($counsellor)) return false;
+    if (! $discussion || ! $counsellor || ! $discussion?->isParticipant($counsellor)) {
+        return false;
+    }
 
     return [
         'id' => $counsellor->id,
-        'userId' => $user->id, 
+        'userId' => $user->id,
         'name' => $counsellor->getName(),
         'url' => $counsellor->avatar?->url,
     ];

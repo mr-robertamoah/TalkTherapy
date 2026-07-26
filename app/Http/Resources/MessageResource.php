@@ -3,6 +3,7 @@
 namespace App\Http\Resources;
 
 use App\Models\Counsellor;
+use App\Models\Session;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -19,22 +20,40 @@ class MessageResource extends JsonResource
 
         $fromId = $fromCounsellor ? $this->from?->user?->id : $this->from_id;
 
+        $user = $request->user();
+
+        // Anonymity only ever applies to a client/User sender (never a counsellor -- confirmed
+        // Discussion messages can *only* ever come from a counsellor, so `$this->for instanceof
+        // Session` also naturally excludes Discussion without needing an extra type check), is
+        // computed live from the current Therapy/GroupTherapy anonymity flag(s) rather than a
+        // stored snapshot, and never applies when the viewer is the sender themselves (mirrors
+        // TherapyResource's `$this->addedby?->is($user) || ! $this->anonymous` precedent).
+        $fromUser = $fromCounsellor ? null : $this->from;
+        $isAnonymousSender = $fromUser
+            && $this->for instanceof Session
+            && $this->for->isAnonymousFor($fromUser)
+            && ! $fromUser->is($user);
+
+        // fromUserId is never displayed as a name in the frontend -- it only drives equality
+        // checks against the viewer's own id (own-message layout/edit/delete). Nulling it for a
+        // masked message is therefore safe for every viewer except the sender themselves (who
+        // must keep seeing their own real id so they can still edit/delete their own message).
+        $maskedFromId = $isAnonymousSender ? null : $fromId;
+
         if ($this->deleted_at) {
             return [
                 'id' => $this->id,
                 'status' => 'deleted for everyone',
-                'fromUserId' => $fromId,
+                'fromUserId' => $maskedFromId,
                 'type' => $this->type,
                 'updatedAt' => $this->updated_at,
             ];
         }
 
-        $user = $request->user();
-
         if ($user && str_contains($this->deleted_for ?: '', $user->id)) {
             return [
                 'id' => $this->id,
-                'fromUserId' => $fromId,
+                'fromUserId' => $maskedFromId,
                 'status' => 'deleted for me',
                 'type' => $this->type,
                 'updatedAt' => $this->updated_at,
@@ -49,7 +68,7 @@ class MessageResource extends JsonResource
         if ($this->confidential && $this->isNotParty($user)) {
             return [
                 'id' => $this->id,
-                'fromUserId' => $fromId,
+                'fromUserId' => $maskedFromId,
                 'fromCounsellor' => $fromCounsellor,
                 'toUserId' => $toId,
                 'topicId' => $this->therapy_topic_id,
@@ -63,7 +82,7 @@ class MessageResource extends JsonResource
         $forType = str_replace('App\Models\\', '', $this->for_type);
         $data = [
             'id' => $this->id,
-            'fromUserId' => $fromId,
+            'fromUserId' => $maskedFromId,
             'toUserId' => $toId,
             'fromCounsellor' => $fromCounsellor,
             'replying' => $this->when($this->replying, new MessageMiniResource($this->replying)),
