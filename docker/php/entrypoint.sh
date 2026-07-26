@@ -36,5 +36,16 @@ else
   echo "App already seeded. Skipping..."
 fi
 
-# Finally, run php-fpm
-exec php-fpm
+# Re-link public/storage on every boot (--force overwrites safely). config/filesystems.php's
+# 'links' resolve via public_path()/storage_path(), which are absolute to wherever the app is
+# currently running -- if storage:link was ever run outside this container (or the project
+# directory moved), the resulting symlinks point at a host path that doesn't exist in here,
+# silently breaking every uploaded file's public URL (uploads still succeed and save fine,
+# they just 404 when displayed). Re-running this on every boot keeps it self-healing.
+echo "Linking storage..."
+php artisan storage:link --force
+
+# Finally, run whatever command was passed to the container (defaults to the Dockerfile's
+# CMD ["php-fpm"], but must be respected so services like `queue` can override it via
+# docker-compose's `command:` to run supervisord/queue:work instead).
+exec "$@"
