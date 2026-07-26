@@ -22,9 +22,11 @@ use App\Events\MessageDeletedEvent;
 use App\Events\MessageSentEvent;
 use App\Events\MessageUpdatedEvent;
 use App\Http\Resources\MessageResource;
+use App\Models\Discussion;
 use App\Models\GroupTherapy;
 use App\Models\Message;
 use App\Models\Session;
+use App\Models\User;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\DB;
 
@@ -42,12 +44,26 @@ class MessageService extends Service
      */
     public function getSessionMessages(GetSessionMessagesDTO $getSessionMessagesDTO)
     {
-        if (
-            $getSessionMessagesDTO->user?->isNotAdmin() &&
-            ! $getSessionMessagesDTO->session?->for?->public &&
-            $getSessionMessagesDTO->session?->for?->isNotParticipant($getSessionMessagesDTO->user)
-        ) {
+        $user = $getSessionMessagesDTO->user;
+
+        // SCRUM-74: a null $user must deny by default. The previous `$user?->isNotAdmin() && ...`
+        // form short-circuited to null (falsy) whenever $user was null, so this guard clause was
+        // silently skipped entirely for an unauthenticated caller -- it never actually denied
+        // anyone, it just never ran.
+        if (! $user) {
             return [];
+        }
+
+        if ($user->isNotAdmin()) {
+            $therapy = $getSessionMessagesDTO->session?->for;
+
+            // A null $therapy (its parent Therapy/GroupTherapy has been soft-deleted --
+            // Message::for()/Session::for() aren't withTrashed()) must deny by default for a
+            // non-admin, same reasoning as the null-$user fix above: the previous `?->` chain
+            // silently evaluated to falsy and skipped the restriction instead of denying.
+            if (! $therapy || (! $therapy->public && $therapy->isNotParticipant($user))) {
+                return [];
+            }
         }
 
         $query = $getSessionMessagesDTO->session->messages()
@@ -94,9 +110,19 @@ class MessageService extends Service
      */
     public function getDiscussionMessages(GetDiscussionMessagesDTO $getDiscussionMessagesDTO)
     {
+        $user = $getDiscussionMessagesDTO->user;
+
+        // SCRUM-74: same null-user-defaults-to-allow bug pattern as getSessionMessages(), fixed
+        // for consistency/defense-in-depth even though this route already sits behind auth:sanctum.
+        // Also guard a null discussion (bad/nonexistent discussionId) explicitly, rather than
+        // falling through to a crash on ->messages() below.
+        if (! $user || ! $getDiscussionMessagesDTO->discussion) {
+            return [];
+        }
+
         if (
-            $getDiscussionMessagesDTO->user?->isNotAdmin() &&
-            $getDiscussionMessagesDTO->discussion?->isNotParticipant($getDiscussionMessagesDTO->user?->counsellor)
+            $user->isNotAdmin() &&
+            $getDiscussionMessagesDTO->discussion->isNotParticipant($user->counsellor)
         ) {
             return [];
         }
@@ -130,11 +156,14 @@ class MessageService extends Service
             ->where('session_id', $getTherapyTopicMessagesDTO->sessionId)->first()
             ?->for;
 
-        if (
-            $getTherapyTopicMessagesDTO->user?->isNotAdmin() &&
-            ! $therapy?->public &&
-            $therapy?->isNotParticipant($getTherapyTopicMessagesDTO->user)
-        ) {
+        $user = $getTherapyTopicMessagesDTO->user;
+
+        // SCRUM-74: same null-user-defaults-to-allow bug pattern as getSessionMessages().
+        if (! $user) {
+            return [];
+        }
+
+        if ($user->isNotAdmin() && (! $therapy || (! $therapy->public && $therapy->isNotParticipant($user)))) {
             return [];
         }
 
@@ -172,10 +201,40 @@ class MessageService extends Service
         ));
     }
 
-    public function getMessageReplies(?Message $message)
+    public function getMessageReplies(?Message $message, ?User $user)
     {
         if (! $message) {
             return [];
+        }
+
+        // SCRUM-74: this previously had NO authorization check at all -- any caller (including,
+        // before this route moved behind auth:sanctum, an unauthenticated one) could fetch
+        // replies to any message by id. Mirror the same participant checks used by
+        // getSessionMessages()/getDiscussionMessages(), based on whatever the parent message
+        // belongs to.
+        if (! $user) {
+            return [];
+        }
+
+        if ($user->isNotAdmin()) {
+            $for = $message->for;
+
+            if ($for instanceof Session) {
+                $therapy = $for->for;
+
+                if (! $therapy || (! $therapy->public && $therapy->isNotParticipant($user))) {
+                    return [];
+                }
+            } elseif ($for instanceof Discussion) {
+                if ($for->isNotParticipant($user->counsellor)) {
+                    return [];
+                }
+            } else {
+                // $for is null (the message's own Session/Discussion has been soft-deleted --
+                // Message::for() isn't withTrashed()) or an unexpected type -- deny by default
+                // instead of silently falling through to the unguarded query below.
+                return [];
+            }
         }
 
         $query = $message->replies()->withTrashed();

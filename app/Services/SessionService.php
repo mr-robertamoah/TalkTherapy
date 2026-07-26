@@ -13,11 +13,11 @@ use App\Actions\Session\EnsureCanUpdateSessionAction;
 use App\Actions\Session\EnsureCanUpdateSessionStatusAction;
 use App\Actions\Session\EnsureSessionDataIsValidAction;
 use App\Actions\Session\EnsureSessionExistsAction;
-use App\Actions\Session\UpdateSessionAction;
-use App\Actions\Star\CreateStarAction;
 use App\Actions\Session\EnsureTherapyExistsAction;
 use App\Actions\Session\SetCurrentTopicOfSessionAction;
 use App\Actions\Session\UnsetCurrentTopicOfSessionAction;
+use App\Actions\Session\UpdateSessionAction;
+use App\Actions\Star\CreateStarAction;
 use App\Actions\TherapyTopic\EnsureTherapyTopicExistsAction;
 use App\DTOs\CreateSessionDTO;
 use App\DTOs\CreateStarDTO;
@@ -39,16 +39,28 @@ class SessionService extends Service
 {
     public function getSessions(GetSessionsDTO $getSessionsDTO)
     {
-        if (
-            $getSessionsDTO?->user?->isNotAdmin() &&
-            !$getSessionsDTO->therapy->public &&
-            $getSessionsDTO->therapy->isNotParticipant($getSessionsDTO->user)
-        ) return [];
-        
-        $query = $getSessionsDTO->therapy->sessions()->when($getSessionsDTO->name, function($query) use ($getSessionsDTO) {
+        $user = $getSessionsDTO->user;
+        $therapy = $getSessionsDTO->therapy;
+
+        if (! $therapy) {
+            return [];
+        }
+
+        // SCRUM-74: the previous `$user?->isNotAdmin() && ...` form silently skipped this
+        // restriction entirely for an unauthenticated (null $user) request instead of denying
+        // it -- this route is intentionally reachable by guests for PUBLIC therapies (mirroring
+        // this endpoint's existing design), so a null $user must still see public sessions, but
+        // must never fall through to the private/non-participant branch below.
+        $isAdmin = $user?->isNotAdmin() === false;
+
+        if (! $isAdmin && ! $therapy->public && (! $user || $therapy->isNotParticipant($user))) {
+            return [];
+        }
+
+        $query = $therapy->sessions()->when($getSessionsDTO->name, function ($query) use ($getSessionsDTO) {
             $query->whereNameLike($getSessionsDTO->name);
         });
-        
+
         return SessionResource::collection($query->latest()->paginate(
             PaginationEnum::preferencesPagination->value
         ));
@@ -61,7 +73,7 @@ class SessionService extends Service
         EnsureCanCreateSessionAction::new()->execute($createSessionDTO);
 
         EnsureSessionDataIsValidAction::new()->execute($createSessionDTO);
-        
+
         $session = CreateSessionAction::new()->execute($createSessionDTO);
 
         CreateStarAction::new()->execute(
@@ -92,7 +104,7 @@ class SessionService extends Service
         $session = UpdateSessionAction::new()->execute($createSessionDTO);
 
         Notification::send(
-            $session->for->getOtherUsers($createSessionDTO->user), 
+            $session->for->getOtherUsers($createSessionDTO->user),
             new SessionUpdatedNotification($session)
         );
 
@@ -108,9 +120,9 @@ class SessionService extends Service
         $session = ChangeSessionStatusAction::new()->execute($createSessionDTO, SessionStatusEnum::held->value);
 
         broadcast(new SessionUpdatedEvent($session))->toOthers();
-        
+
         Notification::send(
-            $createSessionDTO->session->for->getOtherUsers($createSessionDTO->user), 
+            $createSessionDTO->session->for->getOtherUsers($createSessionDTO->user),
             new SessionStatusChangedNotification($session)
         );
 
@@ -126,9 +138,9 @@ class SessionService extends Service
         $session = ChangeSessionStatusAction::new()->execute($createSessionDTO, SessionStatusEnum::in_session->value);
 
         broadcast(new SessionUpdatedEvent($session))->toOthers();
-        
+
         Notification::send(
-            $createSessionDTO->session->for->getOtherUsers($createSessionDTO->user), 
+            $createSessionDTO->session->for->getOtherUsers($createSessionDTO->user),
             new SessionStatusChangedNotification($session)
         );
 
@@ -144,9 +156,9 @@ class SessionService extends Service
         $session = ChangeSessionStatusAction::new()->execute($createSessionDTO, SessionStatusEnum::abandoned->value);
 
         broadcast(new SessionUpdatedEvent($session))->toOthers();
-        
+
         Notification::send(
-            $createSessionDTO->session->for->getOtherUsers($createSessionDTO->user), 
+            $createSessionDTO->session->for->getOtherUsers($createSessionDTO->user),
             new SessionStatusChangedNotification($session)
         );
 
@@ -162,7 +174,7 @@ class SessionService extends Service
         $session = ChangeSessionStatusAction::new()->execute($createSessionDTO, SessionStatusEnum::failed->value);
 
         Notification::send(
-            $createSessionDTO->session->for->getOtherUsers($createSessionDTO->user), 
+            $createSessionDTO->session->for->getOtherUsers($createSessionDTO->user),
             new SessionStatusChangedNotification($session)
         );
 
@@ -178,7 +190,7 @@ class SessionService extends Service
         $session = DeleteSessionAction::new()->execute($createSessionDTO);
 
         Notification::send(
-            $createSessionDTO->session->for->getOtherUsers($createSessionDTO->user), 
+            $createSessionDTO->session->for->getOtherUsers($createSessionDTO->user),
             new SessionDeletedNotification($session)
         );
 

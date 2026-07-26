@@ -52,10 +52,6 @@ Route::get('/group-therapies/random', [GroupTherapyController::class, 'getRandom
 Route::get('/counsellors/random', [CounsellorController::class, 'getRandomCounsellors'])->name('api.counsellors.random');
 Route::get('/counsellors', [CounsellorController::class, 'getCounsellors'])->name('api.counsellors');
 
-Route::get('/sessions/{sessionId}/messages', [MessageController::class, 'getSessionMessages'])->name('api.session.messages.get');
-Route::get('/topics/{topicId}/messages', [MessageController::class, 'getTopicMessages'])->name('api.topic.messages.get');
-Route::get('/messages/{messageId}/replies', [MessageController::class, 'getMessageReplies'])->name('api.message.replies.get');
-
 Route::get('/testimonials', [TestimonialController::class, 'getTestimonials'])->name('api.testimonials');
 
 Route::post('/contacts', [ContactController::class, 'createContact'])->name('api.contacts.create');
@@ -161,6 +157,13 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::patch('/topics/{topicId}', [TherapyTopicController::class, 'updateTherapyTopic'])->name('api.topics.update');
     Route::delete('/topics/{topicId}', [TherapyTopicController::class, 'deleteTherapyTopic'])->name('api.topics.delete');
 
+    // SCRUM-74: these three were previously registered outside the auth:sanctum group, meaning
+    // a fully unauthenticated request could read a private, non-public session/topic's full
+    // message history (including confidential messages and files) -- moved behind auth here,
+    // matching every other message-reading route in this group.
+    Route::get('/sessions/{sessionId}/messages', [MessageController::class, 'getSessionMessages'])->name('api.session.messages.get');
+    Route::get('/topics/{topicId}/messages', [MessageController::class, 'getTopicMessages'])->name('api.topic.messages.get');
+    Route::get('/messages/{messageId}/replies', [MessageController::class, 'getMessageReplies'])->name('api.message.replies.get');
     Route::get('/messages/discussions/{discussionId}', [MessageController::class, 'getDiscussionMessages'])->name('api.discussion.messages.get');
     Route::post('/messages', [MessageController::class, 'createMessage'])->name('api.messages.create')->middleware('throttle:messages');
     Route::post('/messages/{messageId}', [MessageController::class, 'updateMessage'])->name('api.messages.update')->middleware('throttle:messages');

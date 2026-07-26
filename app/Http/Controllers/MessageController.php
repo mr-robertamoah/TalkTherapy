@@ -24,7 +24,8 @@ class MessageController extends Controller
     public function getMessageReplies(Request $request)
     {
         return MessageService::new()->getMessageReplies(
-            Message::find($request->messageId)
+            Message::find($request->messageId),
+            $request->user()
         );
     }
 
