@@ -76,6 +76,13 @@ exercising the dedicated chat pages (see `documentation/features/scrum-20-live-c
 session, client `maria_garcia` / counsellor `sarah_johnson`), and a `Chat Demo Discussion`
 (`IN_SESSION`, between `sarah_johnson` and `michael_chen`, with existing messages).
 
+`Chat Demo Group Therapy` is also the fixture for anonymity masking (see
+`documentation/features/scrum-71-anonymity-masking.md`): the group itself is **not** anonymous,
+but `john_davis` is attached as a member with a per-member `anonymous = true` pivot row, and has
+an existing message in the group's live session — log in as anyone else in the group
+(`maria_garcia` or `sarah_johnson`) to see that message's sender masked, or as `john_davis` to see
+it show their own real identity.
+
 Query the actual current values anytime rather than trusting numbers to stay the same across
 reseeds:
 

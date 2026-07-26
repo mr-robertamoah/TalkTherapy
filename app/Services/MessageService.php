@@ -22,43 +22,44 @@ use App\Events\MessageDeletedEvent;
 use App\Events\MessageSentEvent;
 use App\Events\MessageUpdatedEvent;
 use App\Http\Resources\MessageResource;
+use App\Models\GroupTherapy;
 use App\Models\Message;
 use App\Models\Session;
+use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\DB;
 
 /**
  * Class MessageService
- * 
+ *
  * This service handles messaging between users or counsellors for sessions and discussions.
- * 
- * @package App/Services
  */
 class MessageService extends Service
 {
     /**
      * Gets messages for a particular session (public or private)
-     * 
-     * @param \App\DTOs\GetSessionMessagesDTO $getSessionMessagesDTO
-     * @return array|\Illuminate\Http\Resources\Json\AnonymousResourceCollection
+     *
+     * @return array|AnonymousResourceCollection
      */
     public function getSessionMessages(GetSessionMessagesDTO $getSessionMessagesDTO)
     {
         if (
             $getSessionMessagesDTO->user?->isNotAdmin() &&
-            !$getSessionMessagesDTO->session?->for?->public &&
+            ! $getSessionMessagesDTO->session?->for?->public &&
             $getSessionMessagesDTO->session?->for?->isNotParticipant($getSessionMessagesDTO->user)
-        ) return [];
-        
+        ) {
+            return [];
+        }
+
         $query = $getSessionMessagesDTO->session->messages()
             ->withTrashed()
-            ->with(['therapyTopic'])
-            ->when($getSessionMessagesDTO->like, function($query) use ($getSessionMessagesDTO) {
+            ->with(['therapyTopic', 'from'])
+            ->when($getSessionMessagesDTO->like, function ($query) use ($getSessionMessagesDTO) {
                 $query->whereLike($getSessionMessagesDTO->like);
             })
-            ->when($getSessionMessagesDTO->topicId, function($query) use ($getSessionMessagesDTO) {
+            ->when($getSessionMessagesDTO->topicId, function ($query) use ($getSessionMessagesDTO) {
                 $query->whereTherapyTopicId($getSessionMessagesDTO->topicId);
             })
-            ->when($getSessionMessagesDTO->replyId, function($query) use ($getSessionMessagesDTO) {
+            ->when($getSessionMessagesDTO->replyId, function ($query) use ($getSessionMessagesDTO) {
                 $query->whereReplyId($getSessionMessagesDTO->replyId);
             })
             ->when($getSessionMessagesDTO->groupBy, function ($query) {
@@ -67,34 +68,48 @@ class MessageService extends Service
                     ->select('messages.*', DB::raw('COALESCE(therapy_topic.name, "No Topic") as topic_name'))
                     ->groupBy('topic_name');
             });
-        
-        return MessageResource::collection($query->latest()->paginate(
+
+        // Every message here is scoped through this single session (session->messages()), so
+        // its `for` (and, for a GroupTherapy, that GroupTherapy's `users` anonymity pivot) is
+        // identical for every row -- resolve it once and share the same instance across all of
+        // them, rather than letting each Message independently re-resolve for/for.for/users.
+        $session = $getSessionMessagesDTO->session;
+        $session->loadMissing('for');
+        if ($session->for instanceof GroupTherapy) {
+            $session->for->loadMissing('users');
+        }
+
+        $messages = $query->latest()->paginate(
             PaginationEnum::preferencesPagination->value
-        ));
+        );
+        $messages->getCollection()->each(fn (Message $message) => $message->setRelation('for', $session));
+
+        return MessageResource::collection($messages);
     }
-    
+
     /**
      * Gets messages for a particular discussion
-     * 
-     * @param \App\DTOs\GetDiscussionMessagesDTO $getDiscussionMessagesDTO
-     * @return array|\Illuminate\Http\Resources\Json\AnonymousResourceCollection
+     *
+     * @return array|AnonymousResourceCollection
      */
     public function getDiscussionMessages(GetDiscussionMessagesDTO $getDiscussionMessagesDTO)
     {
         if (
             $getDiscussionMessagesDTO->user?->isNotAdmin() &&
             $getDiscussionMessagesDTO->discussion?->isNotParticipant($getDiscussionMessagesDTO->user?->counsellor)
-        ) return [];
-        
+        ) {
+            return [];
+        }
+
         $query = $getDiscussionMessagesDTO->discussion->messages()
             ->withTrashed()
-            ->when($getDiscussionMessagesDTO->like, function($query) use ($getDiscussionMessagesDTO) {
+            ->when($getDiscussionMessagesDTO->like, function ($query) use ($getDiscussionMessagesDTO) {
                 $query->whereLike($getDiscussionMessagesDTO->like);
             })
-            ->when($getDiscussionMessagesDTO->replyId, function($query) use ($getDiscussionMessagesDTO) {
+            ->when($getDiscussionMessagesDTO->replyId, function ($query) use ($getDiscussionMessagesDTO) {
                 $query->whereReplyId($getDiscussionMessagesDTO->replyId);
             });
-        
+
         return MessageResource::collection($query->latest()->paginate(
             PaginationEnum::preferencesPagination->value
         ));
@@ -102,34 +117,46 @@ class MessageService extends Service
 
     /**
      * Gets messages for a particular therapy topic
-     * 
-     * @param \App\DTOs\GetTherapyTopicMessagesDTO $getTherapyTopicMessagesDTO
-     * @return array|\Illuminate\Http\Resources\Json\AnonymousResourceCollection
+     *
+     * @return array|AnonymousResourceCollection
      */
     public function getTherapyTopicMessages(GetTherapyTopicMessagesDTO $getTherapyTopicMessagesDTO)
     {
-        if (!$getTherapyTopicMessagesDTO->topic) return [];
-        
+        if (! $getTherapyTopicMessagesDTO->topic) {
+            return [];
+        }
+
         $therapy = $getTherapyTopicMessagesDTO->topic->sessions()
             ->where('session_id', $getTherapyTopicMessagesDTO->sessionId)->first()
             ?->for;
 
         if (
             $getTherapyTopicMessagesDTO->user?->isNotAdmin() &&
-            !$therapy?->public &&
+            ! $therapy?->public &&
             $therapy?->isNotParticipant($getTherapyTopicMessagesDTO->user)
-        ) return [];
-        
+        ) {
+            return [];
+        }
+
         $query = $getTherapyTopicMessagesDTO->topic->messages()
             ->withTrashed()
-            ->with(['for'])
-            ->when($getTherapyTopicMessagesDTO->like, function($query) use ($getTherapyTopicMessagesDTO) {
+            // A topic's messages can span several sessions, so (unlike getSessionMessages())
+            // there's no single shared `for` instance to reuse here -- eager-load the nested
+            // for.for (Session -> Therapy) in one batched query instead of letting each message
+            // resolve it independently. TherapyTopic's topicable relation (TherapyTrait) is
+            // technically polymorphic across Therapy/GroupTherapy, but no current write path
+            // (TherapyTopicController::createTherapyTopic() resolves via Therapy::find()) ever
+            // creates one for a GroupTherapy, so `for.for` is a Therapy in practice today --
+            // if that ever changes, this eager-load also needs GroupTherapy's `users` pivot
+            // (see Session::isAnonymousFor()) to avoid reintroducing this same N+1.
+            ->with(['for.for', 'from'])
+            ->when($getTherapyTopicMessagesDTO->like, function ($query) use ($getTherapyTopicMessagesDTO) {
                 $query->whereLike($getTherapyTopicMessagesDTO->like);
             })
-            ->when($getTherapyTopicMessagesDTO->sessionId, function($query) use ($getTherapyTopicMessagesDTO) {
+            ->when($getTherapyTopicMessagesDTO->sessionId, function ($query) use ($getTherapyTopicMessagesDTO) {
                 $query->whereSessionId($getTherapyTopicMessagesDTO->sessionId);
             })
-            ->when($getTherapyTopicMessagesDTO->replyId, function($query) use ($getTherapyTopicMessagesDTO) {
+            ->when($getTherapyTopicMessagesDTO->replyId, function ($query) use ($getTherapyTopicMessagesDTO) {
                 $query->whereReplyId($getTherapyTopicMessagesDTO->replyId);
             })
             ->when($getTherapyTopicMessagesDTO->groupBy, function ($query) {
@@ -139,18 +166,20 @@ class MessageService extends Service
                     ->select('messages.*', DB::raw('COALESCE(session.name, "No Session") as session_name'))
                     ->groupBy('session_name');
             });
-        
+
         return MessageResource::collection($query->latest()->paginate(
             PaginationEnum::preferencesPagination->value
         ));
     }
-    
+
     public function getMessageReplies(?Message $message)
     {
-        if (!$message) return [];
-        
+        if (! $message) {
+            return [];
+        }
+
         $query = $message->replies()->withTrashed();
-        
+
         return MessageResource::collection($query->latest()->paginate(
             PaginationEnum::preferencesPagination->value
         ));
@@ -158,9 +187,6 @@ class MessageService extends Service
 
     /**
      * Creates and broadcasts a message
-     * 
-     * @param \App\DTOs\CreateMessageDTO $createMessageDTO
-     * @return \App\Models\Message
      */
     public function createMessage(CreateMessageDTO $createMessageDTO): Message
     {
@@ -171,7 +197,7 @@ class MessageService extends Service
         EnsureCanSendMessageToRecepientAction::new()->execute($createMessageDTO);
 
         EnsureMessageDataIsValidAction::new()->execute($createMessageDTO);
-        
+
         $message = CreateMessageAction::new()->execute($createMessageDTO);
 
         broadcast(new MessageSentEvent($message))->toOthers();
@@ -181,9 +207,6 @@ class MessageService extends Service
 
     /**
      * Updates and broadcasts a message
-     * 
-     * @param \App\DTOs\CreateMessageDTO $createMessageDTO
-     * @return \App\Models\Message
      */
     public function updateMessage(CreateMessageDTO $createMessageDTO): Message
     {
@@ -192,7 +215,7 @@ class MessageService extends Service
         EnsureCanUpdateMessageAction::new()->execute($createMessageDTO);
 
         EnsureMessageDataIsValidAction::new()->execute($createMessageDTO, true);
-        
+
         $message = UpdateMessageAction::new()->execute($createMessageDTO);
 
         broadcast(new MessageUpdatedEvent($message))->toOthers();
@@ -202,16 +225,13 @@ class MessageService extends Service
 
     /**
      * Deletes and broadcasts the deleted message
-     * 
-     * @param \App\DTOs\CreateMessageDTO $createMessageDTO
-     * @return \App\Models\Message
      */
     public function deleteMessage(CreateMessageDTO $createMessageDTO): Message
     {
         EnsureMessageExistsAction::new()->execute($createMessageDTO);
 
         EnsureCanUpdateMessageAction::new()->execute($createMessageDTO);
-        
+
         $message = DeleteMessageAction::new()->execute($createMessageDTO);
 
         broadcast(new MessageDeletedEvent($message))->toOthers();
@@ -221,16 +241,13 @@ class MessageService extends Service
 
     /**
      * Deletes a message for a particular user/counsellor alone
-     * 
-     * @param \App\DTOs\CreateMessageDTO $createMessageDTO
-     * @return \App\Models\Message
      */
     public function deleteMessageForMe(CreateMessageDTO $createMessageDTO): Message
     {
         EnsureMessageExistsAction::new()->execute($createMessageDTO);
 
         EnsureCanDeleteMessageForSelfAction::new()->execute($createMessageDTO);
-        
+
         $message = DeleteMessageForMeAction::new()->execute($createMessageDTO);
 
         return $message;

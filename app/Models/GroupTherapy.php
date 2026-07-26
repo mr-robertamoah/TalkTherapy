@@ -104,6 +104,17 @@ class GroupTherapy extends Model
         return ! $this->isParticipant($user);
     }
 
+    // OR logic: masked if either the group itself defaults everyone to anonymous, or this
+    // specific member opted into anonymity via their own group_therapy_user pivot row.
+    public function isAnonymousFor(User $sender): bool
+    {
+        if ($this->anonymous) {
+            return true;
+        }
+
+        return (bool) $this->users->firstWhere('id', $sender->id)?->pivot->anonymous;
+    }
+
     // Mirrors Therapy::scopeWhereIsParticipant() -- without this, Session::scopeWhereIsParticipant()'s
     // whereHasMorph('for', '*', ...) falls back to a bare `where('is_participant', ...)` column
     // lookup for the GroupTherapy branch (since there's no matching local scope), which throws a

@@ -71,6 +71,13 @@ class Therapy extends Model
         return ! $this->isParticipant($user);
     }
 
+    // Individual therapy has a single, therapy-wide anonymity flag -- who the given sender
+    // actually is doesn't change whether it applies, unlike GroupTherapy's per-member pivot.
+    public function isAnonymousFor(User $sender): bool
+    {
+        return (bool) $this->anonymous;
+    }
+
     public function scopeWhereCounsellor($query, Counsellor $counsellor)
     {
         return $query->where(function ($query) use ($counsellor) {
