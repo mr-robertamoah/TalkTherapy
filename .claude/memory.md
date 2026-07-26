@@ -52,15 +52,14 @@ See "Common commands" in `CLAUDE.md`.
 
 ## Known Technical Debt
 
-- `UnifiedTherapy.vue` still has an unresolved frontend piece from TT-1.1/SCRUM-14:
-  `TherapyComponent.vue`'s `getMessageTo()`/`getMessageFrom()` (lines ~639-685) assume a single
-  `therapy.counsellor`/`therapy.user` field that `GroupTherapyResource` never returns (it returns
-  `addedby` + a `counsellors` array instead) — sending a message during an active Group Therapy
-  session still throws a JS exception. The backend access-control half of TT-1.1 (GroupTherapy's
-  `isParticipant`/`isUser`/`isCounsellor` etc. being hardcoded stubs, plus a separate
-  `User::isGuardianOfAUserFor()` stub that made every Group Therapy effectively public) was fixed
-  in SCRUM-14/SCRUM-63. The `UpdateIndividualTherapyFormModal.vue`/`UpdateGroupTherapyFormModal.vue`
-  validation-logic duplication identified in the same scoping pass is also still outstanding.
+- TT-1.1/SCRUM-14's frontend piece is resolved: `TherapyComponent.vue`'s `getMessageTo()`/
+  `getMessageFrom()` now branch on `props.therapyType === 'group'` and read `addedby`/`counsellors`
+  instead of assuming a single `therapy.counsellor`/`therapy.user` field (fixed in SCRUM-66, PR #18).
+  The backend access-control half (GroupTherapy's `isParticipant`/`isUser`/`isCounsellor` stubs,
+  plus `User::isGuardianOfAUserFor()`) was fixed in SCRUM-14/SCRUM-63. The
+  `UpdateIndividualTherapyFormModal.vue`/`UpdateGroupTherapyFormModal.vue` validation-logic
+  duplication identified in the same scoping pass was also resolved (SCRUM-67 — extracted into
+  `resources/js/Composables/useTherapyFormValidation.js`). TT-1.1 has no known outstanding pieces.
 - Two independent `migrate --force && db:seed --force` runs (in `docker/php/entrypoint.sh` and
   `docker/reverb/entrypoint.sh`) share one MySQL volume but track "already seeded" with a
   container-local marker file that doesn't survive container recreation — expect a harmless
