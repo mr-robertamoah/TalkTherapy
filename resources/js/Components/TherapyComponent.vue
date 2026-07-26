@@ -179,6 +179,10 @@
                 >x</div>
                 <div class="text-xs text-gray-600 my-2 text-center">updating message</div>
             </div>
+            <div
+                v-if="therapyType === 'individual' && otherPartyTyping"
+                class="text-xs text-gray-500 italic mb-1"
+            >typing&hellip;</div>
             <div class="w-[90%] mx-auto min-h-10 flex justify-center items-start space-x-2">
                 <TextBox
                     rows="3"
@@ -285,7 +289,7 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onBeforeUnmount, reactive, ref, unref, watch, watchEffect } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, unref, watch, watchEffect } from 'vue';
 import { default as _ } from 'lodash';
 import TextBox from './TextBox.vue';
 import PaperplaneIcon from '@/Icons/PaperplaneIcon.vue';
@@ -308,6 +312,7 @@ import FilePreview from './FilePreview.vue';
 import MediaCapture from './MediaCapture.vue';
 import { usePage } from '@inertiajs/vue3';
 import MiniModal from './MiniModal.vue';
+import useConnectionStatus from '@/Composables/useConnectionStatus';
 
 const { goToLogin } = useAuth()
 const {
@@ -319,6 +324,16 @@ const {
 } = useMessage()
 const { alertData, setFailedAlertData, clearAlertData, setSuccessAlertData } = useAlert()
 const { modalData, showModal, closeModal } = useModal()
+const { bindConnectionStatus, unbindConnectionStatus } = useConnectionStatus({
+    onDisconnected: () => setFailedAlertData({
+        message: 'Connection lost. Trying to reconnect...',
+        time: 6000,
+    }),
+    onReconnected: () => setSuccessAlertData({
+        message: 'Connection restored.',
+        time: 3000,
+    }),
+})
 
 const emits = defineEmits([
     'deselectActiveSession', 'updateActiveSession', 'created', 'updated', 'deleted',
@@ -393,6 +408,8 @@ const selectedSession = ref(null)
 const selectedTopic = ref(null)
 const selectedTopicSession = ref(null)
 const receivedMessages = ref(0)
+const otherPartyTyping = ref(false)
+let typingIdleTimer = null
 const sessions = ref([])
 const chatMessages = ref([])
 const messages = reactive({
@@ -510,10 +527,23 @@ watchEffect(() => {
         clickedSwitchToActiveSession()
     }
 })
+watch(() => message.value.content, (value) => {
+    if (props.therapyType !== 'individual' || !value) return
+
+    emitTypingWhisper()
+})
+
+onMounted(() => {
+    bindConnectionStatus()
+})
 
 onBeforeUnmount(() => {
     if (listening.value && props.activeSession)
         Echo.leave(`sessions.${props.activeSession.id}`)
+
+    clearTypingIdleTimer()
+    emitTypingWhisper.cancel()
+    unbindConnectionStatus()
 })
 
 
@@ -621,7 +651,7 @@ function listenToMessages() {
     if (listening.value) return
 
     listening.value = true
-    Echo
+    const channel = Echo
         .private(`sessions.${props.activeSession.id}`)
         .listen('.message.created', (data) => {
             console.log(data, 'message created');
@@ -629,11 +659,58 @@ function listenToMessages() {
                 return
 
             onMessageCreated(data.message)
+
+            // The other party just sent a message, so they're no longer "typing".
+            if (props.therapyType === 'individual') clearTypingIndicator()
         })
     // .session.updated is intentionally not handled here: this component is only ever
     // rendered inside UnifiedTherapy.vue, which already listens for it on the presence
     // channel via useTherapyState's listenToTherapy() -- listening again here duplicated
     // every session-updated reaction (e.g. confirmInSession/confirmSessionHeld firing twice).
+
+    // Typing indicators are individual-therapy-only (SCRUM-20 M4); group/discussion chat
+    // are out of scope here and tracked separately under SCRUM-68.
+    if (props.therapyType === 'individual') {
+        channel.listenForWhisper('typing', (data) => {
+            // Echo does not exclude the sender's own client from whisper events (unlike
+            // server-broadcast events), so this self-exclusion check is required.
+            if (data?.userId == userId) return
+
+            otherPartyTyping.value = true
+            resetTypingIdleTimer()
+        })
+    }
+}
+
+// Throttled so a whisper is sent roughly once every 2s while the user keeps typing,
+// rather than on every keystroke. Guarded internally (not just at the call site) so it's
+// a no-op for group therapy even if ever invoked outside the individual-only watcher.
+const emitTypingWhisper = _.throttle(() => {
+    if (props.therapyType !== 'individual' || !props.activeSession?.id) return
+
+    Echo.private(`sessions.${props.activeSession.id}`).whisper('typing', { userId })
+}, 2000, { leading: true, trailing: true })
+
+function resetTypingIdleTimer() {
+    clearTypingIdleTimer()
+    // If no further "typing" whisper arrives within 5s, assume the other party stopped
+    // (e.g. closed the tab mid-type) and hide the indicator.
+    typingIdleTimer = setTimeout(() => {
+        otherPartyTyping.value = false
+        typingIdleTimer = null
+    }, 5000)
+}
+
+function clearTypingIdleTimer() {
+    if (!typingIdleTimer) return
+
+    clearTimeout(typingIdleTimer)
+    typingIdleTimer = null
+}
+
+function clearTypingIndicator() {
+    otherPartyTyping.value = false
+    clearTypingIdleTimer()
 }
 
 function clickedSessionAction(action) {
@@ -1018,7 +1095,14 @@ function replaceOldMessage(data) {
         itemsRef = messages.topics[selectedTopicSession.value?.id]
     }
 
-    itemsRef.data.splice(itemsRef.data.findIndex((d) => d.id == data.id), 1, {...data})
+    // itemsRef can be undefined here: selectedTopicSession is a session-shaped cross-filter
+    // chip (see addToSubItem), so `messages.topics[selectedTopicSession.value?.id]` looks up
+    // the topics cache by a session id, which normally has no entry. chatMessages (the actually
+    // rendered list) is still updated unconditionally below, so this only guards the secondary
+    // per-session/topic cache from a null-reference crash.
+    if (itemsRef?.data)
+        itemsRef.data.splice(itemsRef.data.findIndex((d) => d.id == data.id), 1, {...data})
+
     chatMessages.value.splice(chatMessages.value.findIndex((d) => d.id == data.id), 1, {...data})
 }
 
@@ -1028,7 +1112,8 @@ function replaceFirstMessage(data) {
         itemsRef = messages.topics[selectedTopicSession.value?.id]
     }
 
-    if (itemsRef.data.length)
+    // See the comment in replaceOldMessage above -- itemsRef can be undefined in this branch.
+    if (itemsRef?.data?.length)
         itemsRef.data[0] = {...data}
 
     chatMessages.value[chatMessages.value.length - 1] = {...data}

@@ -104,6 +104,31 @@ class GroupTherapy extends Model
         return ! $this->isParticipant($user);
     }
 
+    // Mirrors Therapy::scopeWhereIsParticipant() -- without this, Session::scopeWhereIsParticipant()'s
+    // whereHasMorph('for', '*', ...) falls back to a bare `where('is_participant', ...)` column
+    // lookup for the GroupTherapy branch (since there's no matching local scope), which throws a
+    // SQL error for *every* Session lookup as soon as any GroupTherapy-type session exists at all.
+    public function scopeWhereIsParticipant($query, User $user)
+    {
+        return $query
+            ->where(function ($query) use ($user) {
+                $query
+                    ->where('addedby_type', User::class)
+                    ->where('addedby_id', $user->id);
+            })
+            ->when($user->counsellor, function ($query) use ($user) {
+                $query
+                    ->orWhere(function ($query) use ($user) {
+                        $query
+                            ->where('addedby_type', Counsellor::class)
+                            ->where('addedby_id', $user->counsellor->id);
+                    })
+                    ->orWhereHas('counsellors', function ($query) use ($user) {
+                        $query->where('counsellor_id', $user->counsellor->id);
+                    });
+            });
+    }
+
     public function getUsers()
     {
         $users = collect();

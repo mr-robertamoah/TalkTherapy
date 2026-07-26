@@ -28,6 +28,15 @@ class RouteServiceProvider extends ServiceProvider
             return Limit::perMinute(60)->by($request->user()?->id ?: $request->ip());
         });
 
+        // Scoped narrowly to message create/update/delete routes (SCRUM-20 M5) -- the general
+        // 'api' limiter above is currently disabled entirely (see bootstrap/app.php), so this is
+        // the only throttling active on the API surface right now. 30/minute (one every 2s)
+        // comfortably covers a real back-and-forth conversation's burst of sends/edits/deletes
+        // while still blocking scripted spam.
+        RateLimiter::for('messages', function (Request $request) {
+            return Limit::perMinute(30)->by($request->user()?->id ?: $request->ip());
+        });
+
         $this->routes(function () {
             Route::middleware('api')
                 ->prefix('api')

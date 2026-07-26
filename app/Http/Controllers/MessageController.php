@@ -11,13 +11,10 @@ use App\Http\Requests\CreateMessageRequest;
 use App\Http\Requests\UpdateMessageRequest;
 use App\Http\Resources\MessageResource;
 use App\Models\Discussion;
-use App\Models\GroupTherapy;
 use App\Models\Message;
 use App\Models\Session;
-use App\Models\Therapy;
 use App\Models\TherapyTopic;
 use App\Services\MessageService;
-use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Redirect;
 use Throwable;
@@ -27,7 +24,7 @@ class MessageController extends Controller
     public function getMessageReplies(Request $request)
     {
         return MessageService::new()->getMessageReplies(
-           Message::find($request->messageId)
+            Message::find($request->messageId)
         );
     }
 
@@ -44,7 +41,7 @@ class MessageController extends Controller
             ])
         );
     }
-    
+
     public function getTopicMessages(Request $request)
     {
         try {
@@ -58,11 +55,11 @@ class MessageController extends Controller
                 ])
             );
         } catch (Throwable $th) {
-            
+
             return $this->returnFailure($request, $th);
         }
     }
-    
+
     public function getDiscussionMessages(Request $request)
     {
         return MessageService::new()->getDiscussionMessages(
@@ -74,7 +71,7 @@ class MessageController extends Controller
             ])
         );
     }
-    
+
     public function createMessage(CreateMessageRequest $request)
     {
         try {
@@ -95,15 +92,15 @@ class MessageController extends Controller
 
             return $this->returnSuccess($request, $message);
         } catch (Throwable $th) {
-            
+
             return $this->returnFailure($request, $th);
         }
     }
-    
+
     public function updateMessage(UpdateMessageRequest $request)
     {
         $message = Message::find($request->messageId);
-        
+
         try {
             $message = MessageService::new()->updateMessage(
                 CreateMessageDTO::new()->fromArray([
@@ -122,11 +119,11 @@ class MessageController extends Controller
 
             return $this->returnSuccess($request, $message);
         } catch (Throwable $th) {
-            
+
             return $this->returnFailure($request, $th);
         }
     }
-    
+
     public function deleteMessage(Request $request)
     {
         try {
@@ -139,11 +136,11 @@ class MessageController extends Controller
 
             return $this->returnSuccess($request, $message);
         } catch (Throwable $th) {
-            
+
             return $this->returnFailure($request, $th);
         }
     }
-    
+
     public function deleteMessageForMe(Request $request)
     {
         try {
@@ -156,7 +153,7 @@ class MessageController extends Controller
 
             return $this->returnSuccess($request, $message);
         } catch (Throwable $th) {
-            
+
             return $this->returnFailure($request, $th);
         }
     }
@@ -164,19 +161,26 @@ class MessageController extends Controller
     private function returnSuccess(Request $request, Message $message)
     {
         $message = new MessageResource($message);
-        
-        if ($request->acceptsJson()) return response()->json(['message' => $message]);
-        
+
+        if ($request->acceptsJson()) {
+            return response()->json(['message' => $message]);
+        }
+
         return Redirect::back()->with(['message' => $message]);
     }
 
     private function returnFailure(Request $request, Throwable $th)
     {
-        $message = $th->getCode() == 500 ? "Something unfortunate happened. Please try again shortly." : $th->getMessage();
-        
+        $message = $th->getCode() == 500 ? 'Something unfortunate happened. Please try again shortly.' : $th->getMessage();
+
         ds($th);
 
-        if ($request->acceptsJson()) throw new Exception($message);
-        return Redirect::back()->withErrors(['alert'=> $message]);
+        if ($request->acceptsJson()) {
+            $status = ($th->getCode() >= 400 && $th->getCode() < 600) ? $th->getCode() : 500;
+
+            return response()->json(['message' => $message], $status);
+        }
+
+        return Redirect::back()->withErrors(['alert' => $message]);
     }
 }

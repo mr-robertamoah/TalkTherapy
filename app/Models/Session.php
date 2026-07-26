@@ -117,12 +117,19 @@ class Session extends Model
 
     public function scopeWhereIsNotUserWhoConfirmedHeld($query, User|Counsellor $model)
     {
+        // Excludes a session only when it's HELD_CONFIRMATION *and* the given model is the one
+        // who set it there (waiting on the other party). The previous version's `Status` column
+        // (wrong case) combined with independent `whereNot`/`orWhereNot` clauses meant this
+        // excluded nearly every row: `updatedby_type`/`updatedby_id` are null until a session has
+        // gone through at least one status change, so `updatedby_type != $model::class` evaluated
+        // to SQL NULL (falsy) for any freshly "IN_SESSION" session, hiding it from
+        // Therapy/GroupTherapy::getActiveSession() entirely.
         return $query
-            ->where(function ($query) use ($model) {
+            ->whereNot(function ($query) use ($model) {
                 $query
-                    ->where('Status', SessionStatusEnum::held_confirmation->value)
-                    ->whereNot('updatedby_id', $model->id)
-                    ->orWhereNot('updatedby_type', $model::class);
+                    ->where('status', SessionStatusEnum::held_confirmation->value)
+                    ->where('updatedby_id', $model->id)
+                    ->where('updatedby_type', $model::class);
             });
     }
 
