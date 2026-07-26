@@ -37,33 +37,35 @@ class TherapyAssistanceRequestSentNotification extends Notification implements S
     public function toMail(object $notifiable): MailMessage
     {
         $isCounsellor = false;
-        if ($notifiable::class == Counsellor::class) $isCounsellor = true;
+        if ($notifiable::class == Counsellor::class) {
+            $isCounsellor = true;
+        }
 
         $name = $isCounsellor ? $notifiable->getName() : $notifiable->name;
         $fromName = $isCounsellor ? $this->request->from->name : $this->request->from->getName();
         $type = $this->request->for->isTherapy ? 'therapy' : 'group therapy';
 
         return (new MailMessage)
-                ->success()
-                ->subject("Assistance Request Sent")
-                ->greeting("Hello {$name}!")
-                ->when($isCounsellor, function ($mail) use ($type) {
-                    $mail
-                        ->line("A user has sent you a request for assistance with {$type} with name: '{$this->request->for->name}'. Check your requests to accept or decline.");
-                })
-                ->when(!$isCounsellor, function ($mail) use ($type, $fromName) {
-                    $mail
-                        ->line("A counsellor with name: '{$fromName}' has sent you a request to assist you with {$type} with name: '{$this->request->for->name}'. Check your requests to accept or decline.");
-                })
-                ->when($this->request->for->isTherapy, function ($mail) {
-                    $mail
-                        ->action("Visit Therapy Page", url("therapies/{$this->request->for->id}"));
-                })
-                ->when(!$this->request->for->isTherapy, function ($mail) {
-                    $mail
-                        ->action("Visit Group Therapy Page", url("grouptherapies/{$this->request->for->id}"));
-                })
-                ->line("Thank you for choosing to 'TalkTherapy'.");
+            ->success()
+            ->subject('Assistance Request Sent')
+            ->greeting("Hello {$name}!")
+            ->when($isCounsellor, function ($mail) use ($type) {
+                $mail
+                    ->line("A user has sent you a request for assistance with {$type} with name: '{$this->request->for->name}'. Check your requests to accept or decline.");
+            })
+            ->when(! $isCounsellor, function ($mail) use ($type, $fromName) {
+                $mail
+                    ->line("A counsellor with name: '{$fromName}' has sent you a request to assist you with {$type} with name: '{$this->request->for->name}'. Check your requests to accept or decline.");
+            })
+            ->when($this->request->for->isTherapy, function ($mail) {
+                $mail
+                    ->action('Visit Therapy Page', url("therapies/{$this->request->for->id}"));
+            })
+            ->when(! $this->request->for->isTherapy, function ($mail) {
+                $mail
+                    ->action('Visit Group Therapy Page', url("group-therapies/{$this->request->for->id}"));
+            })
+            ->line("Thank you for choosing to 'TalkTherapy'.");
     }
 
     /**

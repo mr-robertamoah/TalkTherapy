@@ -58,7 +58,7 @@ watchEffect(() => {
         console.log(notification, "notification");
 
         const therapyRoute =
-          notification.forType == "Therapy" ? "therapies.get" : "grouptherapies.get";
+          notification.forType == "Therapy" ? "therapies.get" : "group.therapies.get";
 
         if (
           ["session.due", "discussion.due"].includes(notification.type) &&

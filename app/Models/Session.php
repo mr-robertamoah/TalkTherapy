@@ -15,16 +15,16 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 class Session extends Model
 {
     use HasFactory,
-    Starreable,
-    Timeable,
-    SoftDeletes;
+        SoftDeletes,
+        Starreable,
+        Timeable;
 
     protected $fillable = [
         'name', 'about', 'start_time', 'end_time', 'payment_type',
         'type', 'status', 'longitude', 'latitude', 'landmark', 'therapy_id',
-        'updatedby_type', 'updatedby_id'
+        'updatedby_type', 'updatedby_id',
     ];
-    
+
     protected $casts = [
         'end_time' => 'datetime',
         'start_time' => 'datetime',
@@ -140,7 +140,7 @@ class Session extends Model
     {
         return $query
             ->where(function ($query) use ($user) {
-                $query->whereHasMorph('for', '*', function($query) use ($user) {
+                $query->whereHasMorph('for', '*', function ($query) use ($user) {
                     $query->whereIsParticipant($user);
                 });
             });
@@ -163,7 +163,7 @@ class Session extends Model
 
     public function doesNotAcceptMessage()
     {
-        return !$this->acceptsMessage();
+        return ! $this->acceptsMessage();
     }
 
     public function acceptsMessage()
@@ -248,20 +248,24 @@ class Session extends Model
         if ($this->for_type == Therapy::class) {
             $type = 'Therapy';
             $url = url("therapies/{$this->for->id}");
-        }
-        else {
+        } else {
             $type = 'Group Therapy';
-            $url = url("group_therapies/{$this->for->id}");
+            $url = url("group-therapies/{$this->for->id}");
         }
-        
+
         return [$type, $url];
     }
 
     public function getForChannelName()
     {
-        if ($this->for_type == Therapy::class)
+        if ($this->for_type == Therapy::class) {
             return "therapies.{$this->for_id}";
-        
-        return "grouptherapies.{$this->for_id}";
+        }
+
+        // groupTherapies (camelCase): must match the presence channel registered in
+        // routes/channels.php and joined by useTherapyState.js -- channel names are
+        // case-sensitive on the wire, so a casing mismatch here means broadcasts silently
+        // never reach the channel the frontend actually joined.
+        return "groupTherapies.{$this->for_id}";
     }
 }
