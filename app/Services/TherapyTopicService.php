@@ -2,37 +2,46 @@
 
 namespace App\Services;
 
-use App\Actions\TherapyTopic\DeleteTherapyTopicAction;
-use App\Actions\TherapyTopic\EnsureCanCreateTherapyTopicAction;
-use App\Actions\TherapyTopic\EnsureCanUpdateTherapyTopicAction;
-use App\Actions\TherapyTopic\EnsureTherapyTopicExistsAction;
-use App\Actions\TherapyTopic\UpdateTherapyTopicAction;
 use App\Actions\Star\CreateStarAction;
 use App\Actions\Therapy\EnsureTherapyExistsAction;
 use App\Actions\TherapyTopic\CreateTherapyTopicAction;
+use App\Actions\TherapyTopic\DeleteTherapyTopicAction;
+use App\Actions\TherapyTopic\EnsureCanCreateTherapyTopicAction;
+use App\Actions\TherapyTopic\EnsureCanUpdateTherapyTopicAction;
 use App\Actions\TherapyTopic\EnsureDataIsValidAction;
+use App\Actions\TherapyTopic\EnsureTherapyTopicExistsAction;
+use App\Actions\TherapyTopic\UpdateTherapyTopicAction;
 use App\DTOs\CreateStarDTO;
 use App\DTOs\CreateTherapyTopicDTO;
 use App\DTOs\GetTherapyTopicsDTO;
 use App\Enums\PaginationEnum;
 use App\Enums\StarTypeEnum;
 use App\Http\Resources\TherapyTopicResource;
-use App\Models\Session;
-use App\Models\Therapy;
 use App\Models\User;
 
 class TherapyTopicService extends Service
 {
     public function getTherapyTopics(GetTherapyTopicsDTO $getTherapyTopicsDTO)
     {
-        if (
-            $getTherapyTopicsDTO->user?->isNotAdmin() &&
-            !$getTherapyTopicsDTO->therapy?->public &&
-            $getTherapyTopicsDTO->therapy?->isNotParticipant($getTherapyTopicsDTO->user)
-        ) return [];
-        
-        $query = $getTherapyTopicsDTO->therapy->topics()
-            ->when($getTherapyTopicsDTO->name, function($query) use ($getTherapyTopicsDTO) {
+        $user = $getTherapyTopicsDTO->user;
+        $therapy = $getTherapyTopicsDTO->therapy;
+
+        if (! $therapy) {
+            return [];
+        }
+
+        // SCRUM-74: same null-user-defaults-to-allow bug pattern as SessionService::getSessions()
+        // -- this route is intentionally reachable by guests for PUBLIC therapies, so a null
+        // $user must still see public topics, but must never fall through to the
+        // private/non-participant branch below.
+        $isAdmin = $user?->isNotAdmin() === false;
+
+        if (! $isAdmin && ! $therapy->public && (! $user || $therapy->isNotParticipant($user))) {
+            return [];
+        }
+
+        $query = $therapy->topics()
+            ->when($getTherapyTopicsDTO->name, function ($query) use ($getTherapyTopicsDTO) {
                 $query->whereNameLike($getTherapyTopicsDTO->name);
             });
 
@@ -48,7 +57,7 @@ class TherapyTopicService extends Service
         EnsureCanCreateTherapyTopicAction::new()->execute($createTherapyTopicDTO);
 
         EnsureDataIsValidAction::new()->execute($createTherapyTopicDTO);
-        
+
         $topic = CreateTherapyTopicAction::new()->execute($createTherapyTopicDTO);
 
         CreateStarAction::new()->execute(
@@ -68,7 +77,7 @@ class TherapyTopicService extends Service
         EnsureTherapyTopicExistsAction::new()->execute($createTherapyTopicDTO);
 
         EnsureCanUpdateTherapyTopicAction::new()->execute($createTherapyTopicDTO);
-        
+
         EnsureDataIsValidAction::new()->execute($createTherapyTopicDTO);
 
         return UpdateTherapyTopicAction::new()->execute($createTherapyTopicDTO);
@@ -82,5 +91,4 @@ class TherapyTopicService extends Service
 
         return DeleteTherapyTopicAction::new()->execute($createTherapyTopicDTO);
     }
-
 }

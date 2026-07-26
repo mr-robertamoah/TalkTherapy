@@ -70,10 +70,10 @@ class Message extends Model
 
     public function isNotParty(?User $user)
     {
-        if (! $user) {
-            return false;
-        }
-
+        // No special-case for a null $user here: isParty(null) already correctly returns
+        // false, so this correctly evaluates to true ("not a party") for a guest. The previous
+        // version's own `if (! $user) return false;` incorrectly treated a guest as IS a party,
+        // which meant MessageResource's confidential-message guard never applied to guests.
         return ! $this->isParty($user);
     }
 
