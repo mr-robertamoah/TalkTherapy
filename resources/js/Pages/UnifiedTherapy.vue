@@ -1,11 +1,10 @@
 <script setup>
-import { Head, useForm, usePage } from '@inertiajs/vue3'
+import { Head, router, useForm, usePage } from '@inertiajs/vue3'
 import { computed, onBeforeUnmount, ref, watch, watchEffect } from 'vue'
 import { default as _ } from 'lodash'
 
 import BaseTherapyLayout from '@/Components/BaseTherapyLayout.vue'
 import MiniModal from '@/Components/MiniModal.vue'
-import Modal from '@/Components/Modal.vue'
 import Alert from '@/Components/Alert.vue'
 import FormLoader from '@/Components/FormLoader.vue'
 import PrimaryButton from '@/Components/PrimaryButton.vue'
@@ -13,7 +12,6 @@ import DangerButton from '@/Components/DangerButton.vue'
 import TextInput from '@/Components/TextInput.vue'
 import CounsellorComponent from '@/Components/CounsellorComponent.vue'
 import UserComponent from '@/Components/UserComponent.vue'
-import TherapyComponent from '@/Components/TherapyComponent.vue'
 import CreateReportModal from '@/Components/CreateReportModal.vue'
 import UpdateIndividualTherapyFormModal from '@/Components/UpdateIndividualTherapyFormModal.vue'
 import UpdateGroupTherapyFormModal from '@/Components/UpdateGroupTherapyFormModal.vue'
@@ -26,14 +24,12 @@ import useModal from '@/Composables/useModal'
 import useAlert from '@/Composables/useAlert'
 import useAuth from '@/Composables/useAuth'
 import useAppLink from '@/Composables/useAppLink'
-import useUtilities from '@/Composables/useUtilities'
 import useEnums from '@/Composables/useEnums'
 
 const { modalData, showModal, closeModal } = useModal()
 const { RequestTypeEnum, SessionStatusEnum } = useEnums()
 const { goToLogin } = useAuth()
 const { createLink, getlinks } = useAppLink()
-const { getReadableStatus } = useUtilities()
 const {
   alertData,
   clearAlertData,
@@ -204,6 +200,13 @@ function clickedActiveSession() {
     return
   }
   showModal("have discussion")
+}
+
+function clickedGoToChat() {
+  const routeName = props.therapyType === 'individual' ? 'therapies.chat' : 'group.therapies.chat'
+  const paramName = props.therapyType === 'individual' ? 'therapyId' : 'groupTherapyId'
+
+  router.get(route(routeName, { [paramName]: computedTherapy.value?.id }))
 }
 
 function handleSessionTopicUpdate(item) {
@@ -620,7 +623,6 @@ async function clickedStartSession() {
   await axios.post(route('api.sessions.in_session', activeSession.value.id))
     .then((res) => {
       updateSessionOrTopic(res.data.session)
-      showModal('therapy')
     })
     .catch((err) => {
       console.log(err)
@@ -713,23 +715,9 @@ function reportCreated(report) {
     @clicked-delete="clickedDelete"
   >
     <template #therapy-component>
-      <TherapyComponent
-        :therapy="computedTherapy"
-        :therapy-type="therapyType"
-        :new-session="newSession"
-        :active-session="activeSession"
-        :deleted-session-or-topic="currentDeletedSessionOrTopic"
-        :updated-session-or-topic="currentUpdatedSessionOrTopic"
-        :is-participant="computedIsParticipant"
-        :is-user="computedIsUser"
-        :is-counsellor="computedIsCounsellor"
-        @update-active-session="(data) => (activeSession = data)"
-        @created="addSessionOrTopic"
-        @updated="updateSessionOrTopic"
-        @done-updating="() => (currentUpdatedSessionOrTopic = null)"
-        @done-deleting="() => (currentDeletedSessionOrTopic = null)"
-        @deleted="deleteSessionOrTopic"
-      />
+      <div class="flex justify-center p-4">
+        <PrimaryButton @click="clickedGoToChat">go to chat</PrimaryButton>
+      </div>
     </template>
 
     <template #modals>
@@ -930,7 +918,7 @@ function reportCreated(report) {
                 >
                 <PrimaryButton
                   v-if="activeSession.type == 'ONLINE'"
-                  @click="() => showModal('therapy')"
+                  @click="clickedGoToChat"
                   class="shrink-0"
                   >show message box</PrimaryButton
                 >
@@ -971,42 +959,6 @@ function reportCreated(report) {
           </div>
         </div>
       </MiniModal>
-
-      <!-- Therapy Session Modal -->
-      <Modal
-        :show="modalData.show && ['therapy'].includes(modalData.type)"
-        @close="closeModal"
-      >
-        <div class="select-none p-4">
-          <div
-            class="sticky top-0 text-gray-600 text-center font-bold tracking-wide capitalize flex space-x-1 justify-center items-center"
-          >
-            <div>{{ activeSession ? activeSession.name : "Session" }}</div>
-            <div class="text-gray-600 font-normal lowercase">
-              . {{ getReadableStatus(activeSession?.status) }}
-            </div>
-          </div>
-
-          <hr class="my-2" />
-
-          <div class="relative p-4 pt-0">
-            <TherapyComponent
-              :show-sessions="false"
-              :therapy="computedTherapy"
-              :newSession="newSession"
-              :activeSession="activeSession"
-              :is-participant="computedIsParticipant"
-              :is-user="computedIsUser"
-              :is-counsellor="computedIsCounsellor"
-              :can-start="timer.beforeEnd > 0"
-              :can-end="computedIsInSession && timer.beforeEnd < 0"
-              :can-abandon="timer.beforeEnd > 0 && computedIsInSession"
-              @session-action="clickedSessionAction"
-              @updated="updateSessionOrTopic"
-            />
-          </div>
-        </div>
-      </Modal>
 
       <!-- Update Therapy Modal -->
       <UpdateIndividualTherapyFormModal

@@ -5,13 +5,13 @@ namespace App\Http\Controllers;
 use App\DTOs\AssistTherapyDTO;
 use App\DTOs\CreateTherapyDTO;
 use App\DTOs\GetTherapyDTO;
-use App\Http\Requests\TherapyAssistanceRequest;
 use App\Http\Requests\CreateTherapyRequest;
+use App\Http\Requests\TherapyAssistanceRequest;
 use App\Http\Requests\UpdateTherapyRequest;
+use App\Http\Resources\PublicTherapyResource;
 use App\Http\Resources\RequestResource;
 use App\Http\Resources\SessionResource;
 use App\Http\Resources\TherapyMiniResource;
-use App\Http\Resources\PublicTherapyResource;
 use App\Http\Resources\TherapyResource;
 use App\Http\Resources\TherapyTopicResource;
 use App\Models\Counsellor;
@@ -28,11 +28,11 @@ class TherapyController extends Controller
     public function getRandomTherapies(Request $request)
     {
         try {
-            $therapies = TherapyService::new()->getRandomTherapies($request->user());        
+            $therapies = TherapyService::new()->getRandomTherapies($request->user());
 
             return TherapyMiniResource::collection($therapies);
         } catch (Throwable $th) {
-            $message = $th->getCode() == 500 ? "Something unfortunate happened. Please try again shortly." : $th->getMessage();
+            $message = $th->getCode() == 500 ? 'Something unfortunate happened. Please try again shortly.' : $th->getMessage();
             ds($th);
             throw new Exception($message);
         }
@@ -45,7 +45,7 @@ class TherapyController extends Controller
 
             return PublicTherapyResource::collection($therapies);
         } catch (Throwable $th) {
-            $message = $th->getCode() == 500 ? "Something unfortunate happened. Please try again shortly." : $th->getMessage();
+            $message = $th->getCode() == 500 ? 'Something unfortunate happened. Please try again shortly.' : $th->getMessage();
             ds($th);
             throw new Exception($message);
         }
@@ -54,33 +54,33 @@ class TherapyController extends Controller
     public function getUserTherapies(Request $request)
     {
         try {
-            $therapies = TherapyService::new()->getUserTherapies($request->user());        
+            $therapies = TherapyService::new()->getUserTherapies($request->user());
 
             return TherapyMiniResource::collection($therapies);
         } catch (Throwable $th) {
-           $this->returnFailure($request, $th);
+            $this->returnFailure($request, $th);
         }
     }
 
     public function getWardTherapies(Request $request)
     {
         try {
-            $therapies = TherapyService::new()->getWardTherapies($request->user());        
+            $therapies = TherapyService::new()->getWardTherapies($request->user());
 
             return TherapyMiniResource::collection($therapies);
         } catch (Throwable $th) {
-           $this->returnFailure($request, $th);
+            $this->returnFailure($request, $th);
         }
     }
 
     public function getCounsellorTherapies(Request $request)
     {
         try {
-            $therapies = TherapyService::new()->getCounsellorTherapies($request->user());        
+            $therapies = TherapyService::new()->getCounsellorTherapies($request->user());
 
             return TherapyMiniResource::collection($therapies);
         } catch (Throwable $th) {
-           $this->returnFailure($request, $th);
+            $this->returnFailure($request, $th);
         }
     }
 
@@ -106,17 +106,18 @@ class TherapyController extends Controller
                     'cases' => $request->cases,
                 ])
             );
+
             return response()->json([
                 'status' => true,
-                'therapy' => new TherapyMiniResource($therapy)
+                'therapy' => new TherapyMiniResource($therapy),
             ]);
         } catch (Throwable $th) {
-            $message = $th->getCode() == 500 ? "Something unfortunate happened. Please try again shortly." : $th->getMessage();
+            $message = $th->getCode() == 500 ? 'Something unfortunate happened. Please try again shortly.' : $th->getMessage();
             ds($th);
             throw new Exception($message);
         }
     }
-    
+
     public function updateTherapy(UpdateTherapyRequest $request)
     {
         try {
@@ -142,13 +143,13 @@ class TherapyController extends Controller
 
             return Redirect::back();
         } catch (Throwable $th) {
-            $message = $th->getCode() == 500 ? "Something unfortunate happened. Please try again shortly." : $th->getMessage();
+            $message = $th->getCode() == 500 ? 'Something unfortunate happened. Please try again shortly.' : $th->getMessage();
 
             ds($th);
             throw new Exception($message);
         }
     }
-    
+
     public function deleteTherapy(Request $request)
     {
         try {
@@ -161,12 +162,12 @@ class TherapyController extends Controller
 
             return Redirect::route('home');
         } catch (Throwable $th) {
-            $message = $th->getCode() == 500 ? "Something unfortunate happened. Please try again shortly." : $th->getMessage();
+            $message = $th->getCode() == 500 ? 'Something unfortunate happened. Please try again shortly.' : $th->getMessage();
 
             throw new Exception($message);
         }
     }
-    
+
     public function endTherapy(Request $request)
     {
         try {
@@ -179,7 +180,7 @@ class TherapyController extends Controller
 
             return Redirect::back();
         } catch (Throwable $th) {
-            $message = $th->getCode() == 500 ? "Something unfortunate happened. Please try again shortly." : $th->getMessage();
+            $message = $th->getCode() == 500 ? 'Something unfortunate happened. Please try again shortly.' : $th->getMessage();
 
             throw new Exception($message);
         }
@@ -206,6 +207,27 @@ class TherapyController extends Controller
             ]);
         } catch (Throwable $th) {
             ds($th);
+
+            return Redirect::route('home')->with('message', $th->getMessage());
+        }
+    }
+
+    public function chat(Request $request)
+    {
+        try {
+            $therapy = TherapyService::new()->getTherapy(
+                GetTherapyDTO::new()->fromArray([
+                    'user' => $request->user(),
+                    'therapy' => Therapy::find($request->therapyId),
+                ])
+            );
+
+            return Inertia::render('Therapy/Chat', [
+                'therapy' => new TherapyResource($therapy),
+            ]);
+        } catch (Throwable $th) {
+            ds($th);
+
             return Redirect::route('home')->with('message', $th->getMessage());
         }
     }
@@ -217,15 +239,15 @@ class TherapyController extends Controller
                 AssistTherapyDTO::new()->fromArray([
                     'user' => $request->user(),
                     'counsellors' => Counsellor::findMany($request->counsellorIds),
-                    'therapy' => Therapy::find($request->therapyId)
+                    'therapy' => Therapy::find($request->therapyId),
                 ])
             );
 
             return response()->json([
-                'status' => true
+                'status' => true,
             ]);
         } catch (Throwable $th) {
-            $message = $th->getCode() == 500 ? "Something unfortunate happened. Please try again shortly." : $th->getMessage();
+            $message = $th->getCode() == 500 ? 'Something unfortunate happened. Please try again shortly.' : $th->getMessage();
 
             ds($th);
             throw new Exception($message);
@@ -239,11 +261,14 @@ class TherapyController extends Controller
 
     private function returnFailure(Request $request, Throwable $th)
     {
-        $message = $th->getCode() == 500 ? "Something unfortunate happened. Please try again shortly." : $th->getMessage();
-        
+        $message = $th->getCode() == 500 ? 'Something unfortunate happened. Please try again shortly.' : $th->getMessage();
+
         ds($th);
 
-        if ($request->acceptsJson()) throw new Exception($message);
-        return Redirect::back()->withErrors(['alert'=> $message]);
+        if ($request->acceptsJson()) {
+            throw new Exception($message);
+        }
+
+        return Redirect::back()->withErrors(['alert' => $message]);
     }
 }

@@ -70,6 +70,12 @@ After a fresh seed you'll get roughly:
 - **~20 posts** from counsellors (mental-health articles) plus a few from regular users, with
   likes and comments from other seeded users.
 
+Additionally, three **named, deterministic** records exist on every reseed specifically for
+exercising the dedicated chat pages (see `documentation/features/scrum-20-live-chat.md`): a
+`Chat Demo Individual Therapy` and `Chat Demo Group Therapy` (both `IN_SESSION` with a live
+session, client `maria_garcia` / counsellor `sarah_johnson`), and a `Chat Demo Discussion`
+(`IN_SESSION`, between `sarah_johnson` and `michael_chen`, with existing messages).
+
 Query the actual current values anytime rather than trusting numbers to stay the same across
 reseeds:
 

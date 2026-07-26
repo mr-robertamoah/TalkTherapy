@@ -26,7 +26,6 @@ use App\Http\Controllers\TherapyController;
 use App\Http\Controllers\TherapyTopicController;
 use App\Http\Controllers\UserController;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -77,7 +76,7 @@ Route::get('/comments', [CommentController::class, 'getComments'])->name('api.co
 Route::get('/about/stats', [AboutController::class, 'getStats'])->name('api.about.stats');
 
 Route::middleware('auth:sanctum')->group(function () {
-    
+
     Route::get('/links', [LinkController::class, 'getLinks'])->name('api.links');
     Route::post('/links', [LinkController::class, 'createLink'])->name('api.links.create');
     Route::post('/links/multiple', [LinkController::class, 'createLink'])->name('api.links.createmultiple');
@@ -97,7 +96,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/administrator/users', [AdministratorController::class, 'getUsers'])->name('admin.users');
     Route::post('/administrator/users/{userId}', [AdministratorController::class, 'updateUser'])->name('admin.users.update');
     Route::delete('/administrator/users/{userId}', [AdministratorController::class, 'deleteUser'])->name('admin.users.delete');
-    
+
     Route::post('/administrator/how-tos', [HowToController::class, 'createHowTo'])->name('admin.how-tos.create');
     Route::post('/administrator/how-tos/{howToId}', [HowToController::class, 'updateHowTo'])->name('admin.how-tos.update');
     Route::delete('/administrator/how-tos/{howToId}', [HowToController::class, 'deleteHowTo'])->name('admin.how-tos.delete');
@@ -105,13 +104,13 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/requests/counsellors', [CounsellorController::class, 'getRequestCounsellors'])->name('counsellors.request.get');
 
     Route::post('/alerts', [AlertController::class, 'waitingForAlert'])->name('alert.wait');
-    
+
     Route::get('/licensing_authorities', [LicensingAuthorityController::class, 'getLicensingAuthorities'])->name('licensing_authorities');
     Route::post('/licensing_authorities', [LicensingAuthorityController::class, 'createLicensingAuthority'])->name('licensing_authorities.create');
-    
+
     Route::get('/requests', [RequestController::class, 'getRequests'])->name('requests.get');
     Route::post('/requests/{requestId}', [RequestController::class, 'respond'])->name('requests.respond');
-    
+
     Route::post('/testimonials', [TestimonialController::class, 'createTestimonial'])->name('api.testimonials.create');
     Route::delete('/testimonials/{testimonialId}', [TestimonialController::class, 'deleteTestimonial'])->name('api.testimonials.delete');
     Route::post('/testimonials/{testimonialId}', [TestimonialController::class, 'updateTestimonial'])->name('api.testimonials.update');
@@ -136,7 +135,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::post('/likes', [LikeController::class, 'like'])->name('api.likes.create');
     Route::post('/likes/delete', [LikeController::class, 'dislike'])->name('api.likes.delete');
-    
+
     Route::post('/therapies/{therapyId}/assist', [TherapyController::class, 'sendAssistanceRequest'])->name('therapies.assist');
     Route::get('/therapies', [TherapyController::class, 'show'])->name('api.therapies');
     Route::get('/therapies/{therapyId}', [TherapyController::class, 'getTherapy'])->name('api.therapies.get');
@@ -147,7 +146,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/therapies/{therapyId}', [TherapyController::class, 'deleteTherapy'])->name('api.therapies.delete');
     Route::post('/therapies/{therapyId}', [TherapyController::class, 'endTherapy'])->name('api.therapies.end');
     Route::post('/therapies', [TherapyController::class, 'createTherapy'])->name('api.therapies.create');
-    
+
     Route::post('/therapies/{therapyId}/sessions', [SessionController::class, 'createSession'])->name('api.sessions.create');
     Route::patch('/sessions/{sessionId}', [SessionController::class, 'updateSession'])->name('api.sessions.update');
     Route::delete('/sessions/{sessionId}', [SessionController::class, 'deleteSession'])->name('api.sessions.delete');
@@ -163,10 +162,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/topics/{topicId}', [TherapyTopicController::class, 'deleteTherapyTopic'])->name('api.topics.delete');
 
     Route::get('/messages/discussions/{discussionId}', [MessageController::class, 'getDiscussionMessages'])->name('api.discussion.messages.get');
-    Route::post('/messages', [MessageController::class, 'createMessage'])->name('api.messages.create');
-    Route::post('/messages/{messageId}', [MessageController::class, 'updateMessage'])->name('api.messages.update');
-    Route::delete('/messages/{messageId}', [MessageController::class, 'deleteMessage'])->name('api.messages.delete');
-    Route::delete('/messages/{messageId}/me', [MessageController::class, 'deleteMessageForMe'])->name('api.messages.delete.me');
+    Route::post('/messages', [MessageController::class, 'createMessage'])->name('api.messages.create')->middleware('throttle:messages');
+    Route::post('/messages/{messageId}', [MessageController::class, 'updateMessage'])->name('api.messages.update')->middleware('throttle:messages');
+    Route::delete('/messages/{messageId}', [MessageController::class, 'deleteMessage'])->name('api.messages.delete')->middleware('throttle:messages');
+    Route::delete('/messages/{messageId}/me', [MessageController::class, 'deleteMessageForMe'])->name('api.messages.delete.me')->middleware('throttle:messages');
 
     Route::post('/discussions', [DiscussionController::class, 'createDiscussion'])->name('api.discussions.create');
     Route::post('/discussions/{discussionId}', [DiscussionController::class, 'updateDiscussion'])->name('api.discussions.update');

@@ -51,6 +51,15 @@
         <div class="text-end text-gray-600 text-sm mb-3">
           created {{ discussion.createdAt }}
         </div>
+        <div class="flex justify-center mb-4">
+          <PrimaryButton
+            @click="
+              () => router.get(route('discussions.chat', { discussionId: discussion.id }))
+            "
+          >
+            go to discussion chat
+          </PrimaryButton>
+        </div>
         <div
           v-if="discussion.description"
           class="p-4 rounded bg-slate-800 shadow-sm min-h-[100px]"
@@ -511,178 +520,6 @@
           </div>
         </div>
       </div>
-      <!-- chat section -->
-      <div
-        v-if="view == 'chat'"
-        class="pr-4 py-4 overflow-hidden overflow-y-auto h-[70vh] w-full mx-auto"
-      >
-        <div>
-          <div class="rounded-lg min-h-[400px] bg-stone-200 h-full w-full shrink mb-2">
-            <div
-              class="h-[350px] p-2 overflow-hidden overflow-y-auto space-y-2 flex items-center flex-col"
-              :class="{ 'justify-end': discussionMessages.data?.length <= 3 }"
-              id="message_area"
-              ref="messageArea"
-            >
-              <div
-                v-if="
-                  !getting.show &&
-                  !discussionMessages.page &&
-                  discussionMessages.data.length
-                "
-                class="w-fit mx-auto my-2 text-sm text-gray-600"
-              >
-                no more messages
-              </div>
-              <div v-if="!getting.show && discussionMessages.page > 1" class="w-full">
-                <div
-                  @click="getDiscussionMessages"
-                  class="w-fit mx-auto p-4 text-lg text-gray-600 cursor-pointer"
-                >
-                  ...
-                </div>
-              </div>
-              <template v-if="discussionMessages.data.length">
-                <MessageBadge
-                  v-for="(msg, idx) in discussionMessages.data.toReversed()"
-                  :key="idx"
-                  :idx="idx"
-                  :msg="msg"
-                  :item="discussion"
-                  :allow-actions="computedCanSendMessage"
-                  :current-reply="message.replying?.id && message.replying?.id == msg.id"
-                  @on-success="(data) => replaceFirstMessage(data)"
-                  @on-update="(data) => replaceOldMessage(data)"
-                  @select-as-reply="(data) => selectAsReply(data, idx)"
-                  @select-for-update="(data) => selectForUpdate(data, idx)"
-                />
-              </template>
-              <div
-                v-else
-                class="text-gray-600 text-sm font-bold w-full h-[300px] flex justify-center items-center my-auto"
-              >
-                no discussion messages
-              </div>
-            </div>
-          </div>
-        </div>
-        <div v-if="computedCanSendMessage" class="flex justify-start items-center gap-1 p-1">
-            <div
-                v-for="(data, idx) in onlineParticipants.filter((u) => u.id !== computedUser.id)"
-                :key="idx"
-                :title="data.name"
-                class="bg-black p-1 w-fit rounded-full"
-            >
-                <img v-if="data.url" :src="data.url" :alt="data.name" class="w-4 h-4 rounded-full object-contain">
-                <div v-else class="w-4 h-4 rounded-full bg-gray-300"></div>
-            </div>
-        </div>
-        <div
-          class="rounded-lg bg-stone-100 w-full p-2"
-          v-if="computedCanSendMessage && !getting.show"
-        >
-          <div v-if="message.replying" class="relative">
-            <MessageBadge
-              :msg="message.replying"
-              :allow-actions="false"
-              :allow-details="false"
-              :reply="true"
-            />
-            <div
-              @click="removeReply"
-              class="-top-2 absolute bg-blue-600 cursor-pointer flex h-5 items-center justify-center p-2 rounded-full text-blue-200 text-xs w-5 z-[1]"
-            >
-              <div>X</div>
-            </div>
-          </div>
-          <div v-if="message.id" class="flex justify-between items-center">
-            <div
-              class="text-gray-300 bg-gray-800 rounded-full p-2 cursor-pointer w-4 flex justify-center items-center text-xs h-4"
-              @click="resetMessage"
-            >
-              x
-            </div>
-            <div class="text-xs text-gray-600 my-2 text-center">updating message</div>
-          </div>
-          <div class="w-full mx-auto min-h-10 flex justify-center items-center gap-2">
-            <TextBox rows="1" class="w-full shrink" v-model="message.content" />
-            <div class="flex justify-end gap-2 items-start">
-              <PaperplaneIcon
-                title="send message"
-                v-if="computedHasMessage"
-                @click="
-                  () =>
-                    sendMessage({
-                      item: discussion,
-                      topic: currentTopic,
-                      itemType: 'Discussion',
-                      addNewMessage,
-                      from: computedCounsellorAccount,
-                      action: replaceOldMessage,
-                    })
-                "
-                class="w-8 cursor-pointer p-2 h-8 rotate-45 shrink-0"
-              />
-              <PaperclipIcon
-                class="w-8 cursor-pointer p-2 h-8 shrink-0"
-                @click="() => (showAttachmentIcons = true)"
-              />
-            </div>
-          </div>
-          <div
-            class="w-full max-h-[100px] p-2 flex justify-start overflow-hidden overflow-x-auto items-center space-x-2"
-            v-if="files?.length"
-          >
-            <FilePreview
-              v-for="(file, idx) in files"
-              :key="idx"
-              :file="file"
-              class="h-[90px] w-[90px]"
-              @remove-file="() => removeUploadFile(file, idx)"
-            />
-          </div>
-        </div>
-        <div
-          @click.self="() => (showAttachmentIcons = false)"
-          :class="[
-            showAttachmentIcons
-              ? 'opacity-100 visible z-[1]'
-              : 'opacity-0 invisible -z-[1]',
-          ]"
-          class="w-full top-0 absolute transition-all duration-100 right-0 h-full bg-gray-600 bg-opacity-30 flex justify-center items-center"
-        >
-          <div
-            class="w-[80%] bg-white min-h-32 rounded flex justify-center items-center space-x-2 flex-wrap"
-          >
-            <CameraIcon
-              title="take a picture"
-              @click="() => clickedIcon('camera')"
-              class="w-8 cursor-pointer p-1 h-8 flex justify-center items-center"
-            />
-            <MicrophoneIcon
-              title="record your voice note"
-              @click="() => clickedIcon('microphone')"
-              class="w-8 cursor-pointer p-1 h-8"
-            />
-            <FileIcon
-              title="upload an image or pdf file"
-              @click="() => clickedIcon('file')"
-              class="w-8 cursor-pointer p-1 h-8"
-            />
-          </div>
-        </div>
-      </div>
-
-      <input
-        type="file"
-        name="messageFiles"
-        ref="messageFilesInput"
-        @change="changeFile"
-        class="hidden"
-        id="messageFiles"
-        multiple
-        accept="image/*"
-      />
     </div>
   </Modal>
 
@@ -692,17 +529,6 @@
     :message="alertData.message"
     :time="alertData.time"
     @close="clearAlertData"
-  />
-
-  <MediaCapture
-    :show="mediaCaptureData.show"
-    :type="mediaCaptureData.type"
-    @close="closeMediaCapture"
-    @send-file="
-      (file) => {
-        files = [file, ...files];
-      }
-    "
   />
 </template>
 
@@ -722,16 +548,7 @@ import useAuth from "@/Composables/useAuth";
 import Alert from "./Alert.vue";
 import CounsellorComponent from "./CounsellorComponent.vue";
 import MessageBadge from "./MessageBadge.vue";
-import CameraIcon from "@/Icons/CameraIcon.vue";
-import MicrophoneIcon from "@/Icons/MicrophoneIcon.vue";
-import FileIcon from "@/Icons/FileIcon.vue";
-import PaperplaneIcon from "@/Icons/PaperplaneIcon.vue";
-import PaperclipIcon from "@/Icons/PaperclipIcon.vue";
-import FilePreview from "./FilePreview.vue";
 import { router, usePage } from "@inertiajs/vue3";
-import MediaCapture from "./MediaCapture.vue";
-import useMessage from "@/Composables/useMessage";
-import TextBox from "./TextBox.vue";
 import TextInput from "./TextInput.vue";
 import LinkComponent from "./LinkComponent.vue";
 import useAppLink from "@/Composables/useAppLink";
@@ -748,29 +565,6 @@ const { alertData, clearAlertData, setSuccessAlertData, setFailedAlertData } = u
 const { goToLogin } = useAuth();
 const { createLink, getlinks } = useAppLink();
 const { formatDateToStandard } = useUtilities();
-const {
-  message,
-  files,
-  deletedFiles,
-  computedHasMessage,
-  replyingMessage,
-  scrollToBottom,
-  showAttachmentIcons,
-  messageFilesInput,
-  messageArea,
-  changeFile,
-  resetMessage,
-  updateMessage,
-  clickedIcon,
-  mediaCaptureData,
-  closeMediaCapture,
-  removeUploadFile,
-  scrollToMessageId,
-  selectForUpdate,
-  selectAsReply,
-  removeReply,
-  sendMessage,
-} = useMessage();
 
 const emits = defineEmits(["close", "changeStatus"]);
 
@@ -798,7 +592,6 @@ const requestData = ref({
 });
 const discussionCounsellors = ref({ data: [], page: 1 });
 const sessions = ref({ data: [], page: 1 });
-const discussionMessages = ref({ data: [], page: 1 });
 const counsellorLinks = ref({ data: [], page: 1 });
 const counsellors = ref({ data: [], page: 1 });
 const counsellorSearch = ref("");
@@ -815,11 +608,11 @@ const showOptions = ref(false);
 const listening = ref(false);
 const sessionsInitialized = ref(false);
 const view = ref("details");
-const options = ref(["details", "counsellors", "sessions", "chat"]);
+const options = ref(["details", "counsellors", "sessions"]);
 
 onBeforeUnmount(() => {
   if (listening.value && computedIsInSession.value)
-    Echo.leave(`discussion.${props.discussion.id}`);
+    Echo.leave(`discussions.${props.discussion.id}`);
 });
 
 // TODO: add counsellor cards on the chat for online counsellors
@@ -864,43 +657,6 @@ watch(
   }
 );
 
-const computedCanSendMessage = computed(() => {
-  if (props.discussion?.status !== DiscussionStatusEnum.inSession)
-    return false;
-
-  if (!computedUser.value?.id) return false;
-
-  if (props.discussion.addedby.userId == computedUser.value?.id) return true;
-  
-  if (discussionCounsellors.value.data.filter((c) => c.userId == computedUser.value?.id).length)
-    return true;
-
-  return false;
-});
-const computedCounsellorAccount = computed(() => {
-  let counsellor = null;
-  let idx = -1;
-
-  if (props.discussion.addedby.userId == computedUser.value?.id)
-    counsellor = props.discussion.addedby;
-  else
-    idx = discussionCounsellors.value.data.findIndex(
-      (c) => c.userId == computedUser.value?.id
-    );
-
-  if (idx > -1) counsellor = discussionCounsellors.value.data[idx];
-
-  if (!counsellor) return null;
-
-  return {
-    type: "Counsellor",
-    id: counsellor.id,
-    userId: counsellor.userId,
-    isCounsellor: true,
-    avatar: counsellor.avatar,
-  };
-});
-const computedUser = computed(() => usePage().props.auth.user);
 const computedIsAddedby = computed(() => {
   const user = usePage().props.auth.user;
 
@@ -974,8 +730,6 @@ function setView(opt) {
     if (counsellorLinks.value.page == 1) getCounsellorLinks();
   }
 
-  if (opt == "chat" && !discussionMessages.value.data.length) getDiscussionMessages();
-
   view.value = opt;
 
   hideOptions();
@@ -1029,12 +783,6 @@ function listenToMessages() {
         message: `${counsellor.name} just went offline.`,
         time: 4000,
       });
-    })
-    .listen(".message.created", (data) => {
-      console.log(data, "message created");
-      if (data.message?.fromUserId == userId) return;
-
-      onMessageCreated(data.message);
     })
     .listen(".discussion.removecounsellor", (data) => {
         console.log('removed', data)
@@ -1367,60 +1115,6 @@ async function createCounsellorLink() {
   counsellorLinks.value.data = [link, ...counsellorLinks.value.data];
 }
 
-async function getDiscussionMessages() {
-  if (getting.value.show) return;
-
-  getting.value.show = true;
-
-  await axios
-    .get(
-      route("api.discussion.messages.get", {
-        discussionId: props.discussion.id,
-        page: discussionMessages.value?.page,
-      })
-    )
-    .then(async (res) => {
-      console.log(res);
-
-      if (discussionMessages.value.page == 1) discussionMessages.value.data = [];
-
-      discussionMessages.value.data = [
-        ...discussionMessages.value.data,
-        ...res.data.data,
-      ];
-
-      if (discussionMessages.value.page == 1 && discussionMessages.value.data.length)
-        discussionMessages.value.data[0].scroll = true;
-      else if (discussionMessages.value.data.length > 10)
-        discussionMessages.value.data[11].scroll = true;
-
-      updateDiscussionMessagesPage(res);
-    })
-    .catch((err) => {
-      console.log(err);
-
-      selectedSession.value = null;
-
-      if (err?.response?.message) {
-        setFailedAlertData({
-          message: err?.response?.message,
-          time: 5000,
-        });
-        return;
-      }
-
-      setFailedAlertData({
-        message: `Failed to get messages for the discussion. Please try again shortly.`,
-        time: 5000,
-      });
-
-      goToLogin(err);
-    })
-    .finally(() => {
-      getting.value.show = false;
-    });
-}
-
 async function getDiscussionCounsellors() {
   if (!discussionCounsellors.value.page) return;
 
@@ -1472,33 +1166,6 @@ async function getDiscussionCounsellors() {
     });
 
   clearGetting();
-}
-
-function replaceOldMessage(data) {
-  discussionMessages.value.data.splice(
-    discussionMessages.value.data.findIndex((d) => d.id == data.id),
-    1,
-    { ...data }
-  );
-}
-
-function replaceFirstMessage(data) {
-    discussionMessages.value.data.splice(0, 1, {...data})
-}
-
-function onMessageCreated(data) {
-  addNewMessage(data);
-}
-
-function addNewMessage(newMessage) {
-    if (!newMessage) return;
-
-    discussionMessages.value.data = [
-        { ...newMessage }, 
-        ...discussionMessages.value.data.filter((m) => newMessage.id !== m.id)
-    ];
-
-    scrollToBottom();
 }
 
 async function getSessionMessages() {
@@ -1563,11 +1230,6 @@ async function getSessionMessages() {
 function updateMessagesPage(res) {
   if (res.data.links.next) messages[selectedSession.value?.id].page += 1;
   else messages[selectedSession.value?.id].page = 0;
-}
-
-function updateDiscussionMessagesPage(res) {
-  if (res.data.links.next) discussionMessages.value.page += 1;
-  else discussionMessages.value.page = 0;
 }
 
 function setGetting(type) {

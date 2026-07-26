@@ -3,6 +3,7 @@
 use App\Http\Controllers\AboutController;
 use App\Http\Controllers\AdministratorController;
 use App\Http\Controllers\CounsellorController;
+use App\Http\Controllers\DiscussionController;
 use App\Http\Controllers\GroupTherapyController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\LinkController;
@@ -35,8 +36,7 @@ use Inertia\Inertia;
 //     ]);
 // });
 
-
-Route::get('/testing',function() {
+Route::get('/testing', function () {
     try {
         // AppService::new()->alertSuperAdminWithStatus();
         return 'done';
@@ -45,8 +45,7 @@ Route::get('/testing',function() {
     }
 });
 
-
-Route::get('/',[HomeController::class, 'goHome'])
+Route::get('/', [HomeController::class, 'goHome'])
     ->name('home');
 Route::get('/about', AboutController::class)
     ->name('about');
@@ -58,7 +57,7 @@ Route::get('/therapies/{therapyId}', [TherapyController::class, 'getTherapy'])->
 Route::get('/group-therapies/{groupTherapyId}', [GroupTherapyController::class, 'getGroupTherapy'])->name('group.therapies.get');
 
 Route::get('/counsellor/{counsellorId}/verify-email/{hash}', [CounsellorController::class, 'verifyEmail'])
-    ->middleware(['signed','throttle:6,1'])
+    ->middleware(['signed', 'throttle:6,1'])
     ->name('counsellor.verification.verify');
 Route::get('/counsellor/{counsellorId}', [CounsellorController::class, 'show'])->name('counsellor.show');
 
@@ -68,9 +67,12 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/links/{uuid}', [LinkController::class, 'performAction'])->name('links.get');
 
+    Route::get('/discussions/{discussionId}/chat', [DiscussionController::class, 'showChat'])->name('discussions.chat');
+
     Route::get('/administrator', [AdministratorController::class, 'show'])->name('administrator');
 
     Route::get('/therapies', [TherapyController::class, 'show'])->name('therapies');
+    Route::get('/therapies/{therapyId}/chat', [TherapyController::class, 'chat'])->name('therapies.chat');
     Route::patch('/therapies/{therapyId}', [TherapyController::class, 'updateTherapy'])->name('therapies.update');
     Route::delete('/therapies/{therapyId}', [TherapyController::class, 'deleteTherapy'])->name('therapies.delete');
     Route::post('/therapies/{therapyId}', [TherapyController::class, 'endTherapy'])->name('therapies.end');
@@ -79,6 +81,7 @@ Route::middleware('auth')->group(function () {
     Route::patch('/therapies/{therapyId}/sessions/{sessionId}', [SessionController::class, 'updateSession'])->name('sessions.update');
     Route::delete('/therapies/{therapyId}/sessions/{sessionId}', [SessionController::class, 'deleteSession'])->name('sessions.delete');
 
+    Route::get('/group-therapies/{groupTherapyId}/chat', [GroupTherapyController::class, 'chat'])->name('group.therapies.chat');
     Route::patch('/group-therapies/{groupTherapyId}', [GroupTherapyController::class, 'updateGroupTherapy'])->name('group.therapies.update');
     Route::delete('/group-therapies/{groupTherapyId}', [GroupTherapyController::class, 'deleteGroupTherapy'])->name('group.therapies.delete');
     Route::post('/group-therapies/{groupTherapyId}', [GroupTherapyController::class, 'endGroupTherapy'])->name('group.therapies.end');
@@ -86,7 +89,7 @@ Route::middleware('auth')->group(function () {
     Route::post('/group-therapies/{groupTherapyId}/sessions', [SessionController::class, 'createSession'])->name('sessions.create');
     Route::patch('/group-therapies/{groupTherapyId}/sessions/{sessionId}', [SessionController::class, 'updateSession'])->name('sessions.update');
     Route::delete('/group-therapies/{groupTherapyId}/sessions/{sessionId}', [SessionController::class, 'deleteSession'])->name('sessions.delete');
-    
+
     Route::post('/sessions/{sessionId}/in_session', [SessionController::class, 'getInSession'])->name('sessions.in_session');
     Route::post('/sessions/{sessionId}/end', [SessionController::class, 'endSession'])->name('sessions.end');
     Route::post('/sessions/{sessionId}/fail', [SessionController::class, 'failSession'])->name('sessions.fail');

@@ -277,6 +277,15 @@ const { modalData, showModal, closeModal } = useModal()
 
 const emits = defineEmits(['onSuccess', 'onDelete', 'onUpdate', 'selectAsReply', 'selectForUpdate', 'unsetTopic'])
 
+function handleRateLimitError(err) {
+    if (err.response?.status !== 429) return false
+
+    setFailedAlertData({
+        message: 'You have made too many requests within a short period. Try again shortly.',
+    })
+    return true
+}
+
 const props = defineProps({
     msg: {
         default: null,
@@ -468,6 +477,9 @@ async function updateMessage() {
             console.log(err)
             goToLogin(err)
             status.value = 'failed'
+
+            if (handleRateLimitError(err)) return
+
             setFailedAlertData({
                 message: "Message was not sent. Clicked 'failed' to retry."
             })
@@ -494,6 +506,9 @@ async function deleteMessage() {
             console.log(err)
             goToLogin(err)
             status.value = 'sent'
+
+            if (handleRateLimitError(err)) return
+
             setFailedAlertData({
                 message: "Message was not deleted. Try again in a short while."
             })
@@ -520,6 +535,9 @@ async function clickedDeleteForMe() {
             console.log(err)
             goToLogin(err)
             status.value = 'sent'
+
+            if (handleRateLimitError(err)) return
+
             setFailedAlertData({
                 message: "Message was not deleted for you. Try again in a short while."
             })
@@ -568,7 +586,9 @@ async function createMessage() {
             console.log(err)
             goToLogin(err)
             status.value = 'failed'
-            
+
+            if (handleRateLimitError(err)) return
+
             if (err.response?.data?.message) {
                 setFailedAlertData({
                     message: err.response.data.message,

@@ -7,10 +7,11 @@ namespace Database\Seeders;
 use App\Enums\AdministratorTypeEnum;
 use App\Enums\GenderEnum;
 use App\Enums\LicensingTypeEnum;
-use App\Models\Language;
+use App\Models\Therapy;
 use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
+use RuntimeException;
 
 class DatabaseSeeder extends Seeder
 {
@@ -31,7 +32,7 @@ class DatabaseSeeder extends Seeder
 
         $superAdmin->administrator()->create([
             'verified_at' => now(),
-            'type' => AdministratorTypeEnum::super->value
+            'type' => AdministratorTypeEnum::super->value,
         ]);
 
         // Create basic reference data
@@ -44,16 +45,21 @@ class DatabaseSeeder extends Seeder
         // Create demo users and counsellors
         $users = $this->createDemoUsers();
         $counsellors = $this->createDemoCounsellors($users);
-        
+
         // Create demo therapies with sessions
         $this->createDemoTherapies($users, $counsellors);
-        
+
         // Create demo group therapies
         $this->createDemoGroupTherapies($users, $counsellors);
-        
+
         // Create demo discussions
         $this->createDemoDiscussions($counsellors);
-        
+
+        // Create deterministic "live" therapy/group therapy/discussion records for testing the
+        // dedicated chat pages (SCRUM-20) -- the random data above only *might* produce an
+        // in-session record on any given reseed, so these are named and always present.
+        $this->createChatDemoData($users, $counsellors);
+
         // Create demo posts from counsellors
         $this->createDemoPosts($counsellors, $users);
     }
@@ -136,7 +142,7 @@ class DatabaseSeeder extends Seeder
     private function createDemoUsers()
     {
         $users = collect();
-        
+
         // Create diverse demo users
         $userData = [
             ['firstName' => 'Sarah', 'lastName' => 'Johnson', 'email' => 'sarah.johnson@example.com', 'gender' => GenderEnum::female],
@@ -156,12 +162,12 @@ class DatabaseSeeder extends Seeder
                 'firstName' => $data['firstName'],
                 'lastName' => $data['lastName'],
                 'email' => $data['email'],
-                'username' => strtolower($data['firstName'] . '_' . $data['lastName']),
+                'username' => strtolower($data['firstName'].'_'.$data['lastName']),
                 'password' => Hash::make('password'),
                 'email_verified_at' => now(),
                 'gender' => $data['gender']->value,
             ]);
-            
+
             $users->push($user);
         }
 
@@ -171,10 +177,10 @@ class DatabaseSeeder extends Seeder
     private function createDemoCounsellors($users)
     {
         $counsellors = collect();
-        
+
         // Make some users counsellors
         $counsellorUsers = $users->take(6); // First 6 users become counsellors
-        
+
         $counsellorData = [
             ['name' => 'Dr. Sarah Johnson', 'about' => 'Specialized in anxiety and depression with 10 years of experience. I believe in creating a safe space for healing.'],
             ['name' => 'Dr. Michael Chen', 'about' => 'Trauma specialist focusing on PTSD and childhood trauma. Bilingual therapist with cultural sensitivity.'],
@@ -195,12 +201,12 @@ class DatabaseSeeder extends Seeder
                 'profession_id' => rand(1, 10),
                 'contact_visible' => true,
             ]);
-            
+
             // Attach random cases, languages, and religions
             $counsellor->cases()->attach([1, 2, 3, rand(4, 12)]);
             $counsellor->languages()->attach([1, rand(2, 5)]);
             $counsellor->religions()->attach([rand(1, 4)]);
-            
+
             $counsellors->push($counsellor);
         }
 
@@ -210,14 +216,14 @@ class DatabaseSeeder extends Seeder
     private function createDemoTherapies($users, $counsellors)
     {
         $nonCounsellorUsers = $users->skip(6); // Users who are not counsellors
-        
+
         foreach ($nonCounsellorUsers as $user) {
             // Create 1-2 therapies per user
             $therapyCount = rand(1, 2);
-            
+
             for ($i = 0; $i < $therapyCount; $i++) {
                 $counsellor = $counsellors->random();
-                
+
                 $therapy = $user->addedTherapies()->create([
                     'name' => fake()->sentence(4),
                     'background_story' => fake()->paragraph(3),
@@ -231,13 +237,13 @@ class DatabaseSeeder extends Seeder
                     'payment_data' => [
                         'amount' => rand(50, 200),
                         'currency' => 'USD',
-                        'per' => 'session'
+                        'per' => 'session',
                     ],
                 ]);
-                
+
                 // Attach therapy cases
                 $therapy->cases()->attach([rand(1, 12), rand(1, 12)]);
-                
+
                 // Create therapy topics
                 $topicCount = rand(2, 4);
                 for ($j = 0; $j < $topicCount; $j++) {
@@ -247,7 +253,7 @@ class DatabaseSeeder extends Seeder
                         'counsellor_id' => $counsellor->id,
                     ]);
                 }
-                
+
                 // Create sessions with some being held
                 $this->createTherapySessions($therapy, $counsellor);
             }
@@ -257,16 +263,16 @@ class DatabaseSeeder extends Seeder
     private function createTherapySessions($therapy, $counsellor)
     {
         $sessionCount = rand(2, 5);
-        
+
         for ($i = 0; $i < $sessionCount; $i++) {
             $startTime = fake()->dateTimeBetween('-30 days', '+30 days');
             $endTime = (clone $startTime)->modify('+1 hour');
-            
+
             $statuses = ['pending', 'held', 'in_session', 'abandoned'];
             $status = $statuses[array_rand($statuses)];
-            
+
             $session = $counsellor->addedSessions()->create([
-                'name' => "Session " . ($i + 1) . " - " . fake()->words(3, true),
+                'name' => 'Session '.($i + 1).' - '.fake()->words(3, true),
                 'about' => fake()->paragraph(2),
                 'for_id' => $therapy->id,
                 'for_type' => $therapy::class,
@@ -275,7 +281,7 @@ class DatabaseSeeder extends Seeder
                 'type' => ['online', 'in_person'][rand(0, 1)],
                 'status' => $status,
             ]);
-            
+
             // Create some messages for held sessions
             if ($status === 'held') {
                 $this->createSessionMessages($session, $therapy, $counsellor);
@@ -286,12 +292,12 @@ class DatabaseSeeder extends Seeder
     private function createSessionMessages($session, $therapy, $counsellor)
     {
         $messageCount = rand(5, 15);
-        
+
         for ($i = 0; $i < $messageCount; $i++) {
             $isFromCounsellor = rand(0, 1);
             $from = $isFromCounsellor ? $counsellor : $therapy->addedby;
             $to = $isFromCounsellor ? $therapy->addedby : $counsellor;
-            
+
             $from->sentMessages()->create([
                 'content' => fake()->sentence(rand(5, 15)),
                 'to_id' => $to->id,
@@ -306,11 +312,11 @@ class DatabaseSeeder extends Seeder
     private function createDemoGroupTherapies($users, $counsellors)
     {
         $groupTherapies = [];
-        
+
         // Create 3-5 group therapies
         for ($i = 0; $i < rand(3, 5); $i++) {
             $creator = $users->random();
-            
+
             $groupTherapy = $creator->addedGroupTherapies()->create([
                 'name' => fake()->sentence(4),
                 'about' => fake()->paragraph(3),
@@ -324,33 +330,33 @@ class DatabaseSeeder extends Seeder
                 'payment_data' => [
                     'amount' => rand(30, 100),
                     'currency' => 'USD',
-                    'per' => 'session'
+                    'per' => 'session',
                 ],
             ]);
-            
+
             // Attach cases
             $groupTherapy->cases()->attach([rand(1, 12), rand(1, 12)]);
-            
+
             // Add participants (users)
             $participants = $users->random(rand(3, 8));
             foreach ($participants as $participant) {
                 $groupTherapy->users()->attach($participant->id, [
                     'anonymous' => fake()->boolean(),
-                    'background_story' => fake()->paragraph(2)
+                    'background_story' => fake()->paragraph(2),
                 ]);
             }
-            
+
             // Add counsellors
             $groupCounsellors = $counsellors->random(rand(1, 3));
             foreach ($groupCounsellors as $counsellor) {
                 $groupTherapy->counsellors()->attach($counsellor->id, [
-                    'state' => 'ACTIVE'
+                    'state' => 'ACTIVE',
                 ]);
             }
-            
+
             $groupTherapies[] = $groupTherapy;
         }
-        
+
         return $groupTherapies;
     }
 
@@ -359,15 +365,17 @@ class DatabaseSeeder extends Seeder
         // Create discussions between counsellors
         for ($i = 0; $i < rand(3, 6); $i++) {
             $creator = $counsellors->random();
-            $therapy = \App\Models\Therapy::inRandomOrder()->first();
-            
-            if (!$therapy) continue;
-            
+            $therapy = Therapy::inRandomOrder()->first();
+
+            if (! $therapy) {
+                continue;
+            }
+
             $startTime = fake()->dateTimeBetween('-7 days', '+7 days');
             $endTime = fake()->dateTimeBetween($startTime, '+14 days');
-            
+
             $discussion = $creator->addedDiscussions()->create([
-                'name' => "Discussion: " . fake()->sentence(4),
+                'name' => 'Discussion: '.fake()->sentence(4),
                 'description' => fake()->paragraph(2),
                 'for_id' => $therapy->id,
                 'for_type' => $therapy::class,
@@ -375,13 +383,13 @@ class DatabaseSeeder extends Seeder
                 'end_time' => $endTime,
                 'status' => ['pending', 'in_session', 'held'][rand(0, 2)],
             ]);
-            
+
             // Add participating counsellors
             $participants = $counsellors->except($creator->id)->random(rand(1, 3));
             foreach ($participants as $participant) {
                 $discussion->counsellors()->attach($participant->id);
             }
-            
+
             // Create some discussion messages
             if ($discussion->status === 'held') {
                 $this->createDiscussionMessages($discussion, $counsellors);
@@ -393,12 +401,12 @@ class DatabaseSeeder extends Seeder
     {
         $participants = collect([$discussion->addedby])
             ->merge($discussion->counsellors);
-            
+
         $messageCount = rand(10, 25);
-        
+
         for ($i = 0; $i < $messageCount; $i++) {
             $sender = $participants->random();
-            
+
             $sender->sentMessages()->create([
                 'content' => fake()->sentence(rand(8, 20)),
                 'for_id' => $discussion->id,
@@ -407,7 +415,93 @@ class DatabaseSeeder extends Seeder
             ]);
         }
     }
-    
+
+    private function createChatDemoData($users, $counsellors)
+    {
+        $client = $users->firstWhere('username', 'maria_garcia');
+        throw_if(! $client, new RuntimeException('Chat demo seeder: expected seed user "maria_garcia" not found — did createDemoUsers() run first?'));
+
+        $counsellor = $counsellors->first(fn ($c) => $c->name === 'Dr. Sarah Johnson');
+        throw_if(! $counsellor, new RuntimeException('Chat demo seeder: expected seed counsellor "Dr. Sarah Johnson" not found — did createDemoUsers() run first?'));
+
+        $secondCounsellor = $counsellors->first(fn ($c) => $c->name === 'Dr. Michael Chen');
+        throw_if(! $secondCounsellor, new RuntimeException('Chat demo seeder: expected seed counsellor "Dr. Michael Chen" not found — did createDemoUsers() run first?'));
+
+        // Individual therapy with a live "in session" session, for testing the individual
+        // therapy chat page in "active session" mode (log in as maria_garcia or
+        // sarah_johnson and visit /therapies/{id}/chat).
+        $therapy = $client->addedTherapies()->create([
+            'name' => 'Chat Demo Individual Therapy',
+            'background_story' => 'Seeded therapy with a live session, for testing the therapy chat page.',
+            'counsellor_id' => $counsellor->id,
+            'session_type' => 'Once',
+            'payment_type' => 'FREE',
+            'allow_in_person' => false,
+            'anonymous' => false,
+            'public' => false,
+            'status' => 'in_session',
+        ]);
+
+        $counsellor->addedSessions()->create([
+            'name' => 'Chat Demo Live Session',
+            'about' => 'Seeded live session for testing the therapy chat page.',
+            'for_id' => $therapy->id,
+            'for_type' => $therapy::class,
+            'start_time' => now()->subMinutes(10),
+            'end_time' => now()->addHour(),
+            'type' => 'online',
+            'status' => 'in_session',
+        ]);
+
+        // Group therapy with a live "in session" session, for testing the group therapy chat
+        // page (log in as maria_garcia or sarah_johnson and visit /group-therapies/{id}/chat).
+        $groupTherapy = $client->addedGroupTherapies()->create([
+            'name' => 'Chat Demo Group Therapy',
+            'about' => 'Seeded group therapy with a live session, for testing the group therapy chat page.',
+            'session_type' => 'Once',
+            'payment_type' => 'FREE',
+            'max_users' => 10,
+            'allow_anyone' => true,
+            'anonymous' => false,
+            'public' => true,
+            'status' => 'in_session',
+        ]);
+
+        $groupTherapy->users()->attach($client->id, [
+            'anonymous' => false,
+            'background_story' => 'Seeded participant for the chat demo group therapy.',
+        ]);
+        $groupTherapy->counsellors()->attach($counsellor->id, ['state' => 'ACTIVE']);
+
+        $counsellor->addedSessions()->create([
+            'name' => 'Chat Demo Group Live Session',
+            'about' => 'Seeded live session for testing the group therapy chat page.',
+            'for_id' => $groupTherapy->id,
+            'for_type' => $groupTherapy::class,
+            'start_time' => now()->subMinutes(10),
+            'end_time' => now()->addHour(),
+            'type' => 'online',
+            'status' => 'in_session',
+        ]);
+
+        // Discussion in IN_SESSION status between two known counsellors, with existing
+        // messages, for testing the discussion chat page (log in as sarah_johnson or
+        // michael_chen and visit /discussions/{id}/chat).
+        $discussion = $counsellor->addedDiscussions()->create([
+            'name' => 'Chat Demo Discussion',
+            'description' => 'Seeded discussion in IN_SESSION status for testing the discussion chat page.',
+            'for_id' => $therapy->id,
+            'for_type' => $therapy::class,
+            'start_time' => now()->subMinutes(10),
+            'end_time' => now()->addHour(),
+            'status' => 'in_session',
+        ]);
+
+        $discussion->counsellors()->attach($secondCounsellor->id);
+
+        $this->createDiscussionMessages($discussion, collect([$counsellor, $secondCounsellor]));
+    }
+
     private function createDemoPosts($counsellors, $users)
     {
         $postTopics = [
@@ -425,25 +519,25 @@ class DatabaseSeeder extends Seeder
             'Understanding Your Emotions',
             'Building Self-Esteem and Confidence',
             'Healthy Sleep Habits for Mental Wellness',
-            'The Power of Gratitude Practice'
+            'The Power of Gratitude Practice',
         ];
-        
-        $counsellorUsers = $counsellors->map(fn($counsellor) => $counsellor->user);
-        
+
+        $counsellorUsers = $counsellors->map(fn ($counsellor) => $counsellor->user);
+
         // Create posts from counsellors
         foreach ($counsellors as $counsellor) {
             $numberOfPosts = rand(2, 5);
-            
+
             for ($i = 0; $i < $numberOfPosts; $i++) {
                 $topic = fake()->randomElement($postTopics);
-                
+
                 $post = $counsellor->user->addedPosts()->create([
-                    'content' => "**{$topic}**\n\n" . $this->generatePostContent($topic),
+                    'content' => "**{$topic}**\n\n".$this->generatePostContent($topic),
                     'addedby_type' => $counsellor->user::class,
                     'addedby_id' => $counsellor->user->id,
                     'created_at' => fake()->dateTimeBetween('-3 months', 'now'),
                 ]);
-                
+
                 // Add some likes from regular users
                 $likers = $users->where('id', '!=', $counsellor->user->id)->random(rand(2, 8));
                 foreach ($likers as $liker) {
@@ -451,7 +545,7 @@ class DatabaseSeeder extends Seeder
                         'user_id' => $liker->id,
                     ]);
                 }
-                
+
                 // Add some comments from users
                 $commenters = $users->where('id', '!=', $counsellor->user->id)->random(rand(1, 4));
                 foreach ($commenters as $commenter) {
@@ -463,7 +557,7 @@ class DatabaseSeeder extends Seeder
                 }
             }
         }
-        
+
         // Create a few posts from regular users as well
         $regularUsers = $users->whereNotIn('id', $counsellorUsers->pluck('id'));
         foreach ($regularUsers->random(3) as $user) {
@@ -472,16 +566,16 @@ class DatabaseSeeder extends Seeder
                 'Finding Hope in Dark Times',
                 'What I Wish I Knew About Mental Health',
                 'Support Groups Have Changed My Life',
-                'Celebrating Small Victories'
+                'Celebrating Small Victories',
             ];
-            
+
             $post = $user->addedPosts()->create([
-                'content' => "**" . fake()->randomElement($personalTopics) . "**\n\n" . fake()->paragraphs(rand(2, 4), true),
+                'content' => '**'.fake()->randomElement($personalTopics)."**\n\n".fake()->paragraphs(rand(2, 4), true),
                 'addedby_type' => $user::class,
                 'addedby_id' => $user->id,
                 'created_at' => fake()->dateTimeBetween('-2 months', 'now'),
             ]);
-            
+
             // Add likes and comments from counsellors and other users
             $likers = $users->where('id', '!=', $user->id)->random(rand(3, 6));
             foreach ($likers as $liker) {
@@ -491,25 +585,25 @@ class DatabaseSeeder extends Seeder
             }
         }
     }
-    
+
     private function generatePostContent($topic)
     {
         $contentMap = [
             'Understanding Anxiety' => "Anxiety is a normal human emotion, but when it becomes overwhelming, it can significantly impact our daily lives. Recognizing the signs early is crucial for effective management.\n\nCommon symptoms include persistent worry, restlessness, difficulty concentrating, and physical symptoms like rapid heartbeat or sweating. The good news is that anxiety is highly treatable through various approaches including therapy, mindfulness practices, and lifestyle changes.\n\nSome practical strategies include deep breathing exercises, regular physical activity, maintaining a consistent sleep schedule, and limiting caffeine intake. Remember, seeking professional help is a sign of strength, not weakness.",
-            
+
             'Building Healthy Relationships' => "Healthy relationships are built on mutual respect, trust, and open communication. They require effort from all parties involved and contribute significantly to our overall mental well-being.\n\nKey components include setting clear boundaries, practicing active listening, expressing feelings honestly, and showing appreciation for one another. It's important to remember that healthy relationships aren't perfect – they involve navigating conflicts constructively and growing together.\n\nIf you find yourself in toxic relationship patterns, consider seeking support to develop healthier communication skills and boundary-setting techniques.",
-            
+
             'Coping with Depression' => "Depression affects millions of people and can make even simple daily tasks feel overwhelming. Understanding that depression is a medical condition, not a personal failing, is the first step toward healing.\n\nDaily strategies that can help include maintaining a routine, getting adequate sleep, engaging in physical activity, and staying connected with supportive people. Even small accomplishments should be celebrated.\n\nProfessional treatment, including therapy and sometimes medication, can be incredibly effective. Remember that recovery is possible, and you don't have to face this alone.",
-            
-            'default' => "Mental health is just as important as physical health, yet it's often overlooked or stigmatized. Taking care of our emotional and psychological well-being should be a priority for everyone.\n\nThis means paying attention to our thoughts, feelings, and behaviors, and seeking help when we need it. There's no shame in talking to a therapist, counselor, or trusted friend about what you're going through.\n\nRemember that everyone's mental health journey is unique. What works for one person may not work for another, and that's okay. The important thing is to keep trying and to be patient with yourself as you navigate your path to wellness."
+
+            'default' => "Mental health is just as important as physical health, yet it's often overlooked or stigmatized. Taking care of our emotional and psychological well-being should be a priority for everyone.\n\nThis means paying attention to our thoughts, feelings, and behaviors, and seeking help when we need it. There's no shame in talking to a therapist, counselor, or trusted friend about what you're going through.\n\nRemember that everyone's mental health journey is unique. What works for one person may not work for another, and that's okay. The important thing is to keep trying and to be patient with yourself as you navigate your path to wellness.",
         ];
-        
+
         foreach ($contentMap as $key => $content) {
             if (str_contains($topic, $key)) {
                 return $content;
             }
         }
-        
+
         return $contentMap['default'];
     }
 }
