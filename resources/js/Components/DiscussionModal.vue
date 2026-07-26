@@ -1036,9 +1036,6 @@ function listenToMessages() {
 
       onMessageCreated(data.message);
     })
-    .listen(".session.updated", (data) => {
-      emits("updated", data.session);
-    })
     .listen(".discussion.removecounsellor", (data) => {
         console.log('removed', data)
         if (computedIsAddedby.value) return

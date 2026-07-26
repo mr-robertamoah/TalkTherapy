@@ -149,7 +149,7 @@ class Discussion extends Model
             return ['Therapy', url("therapies/{$this->for->id}")];
         }
 
-        return ['Group Therapy', url("group_therapies/{$this->for->id}")];
+        return ['Group Therapy', url("group-therapies/{$this->for->id}")];
     }
 
     public function getForChannelName()
@@ -158,7 +158,9 @@ class Discussion extends Model
             return "therapies.{$this->for_id}";
         }
 
-        return "grouptherapies.{$this->for_id}";
+        // groupTherapies (camelCase): see Session::getForChannelName() -- must match the
+        // presence channel registered in routes/channels.php and joined by useTherapyState.js.
+        return "groupTherapies.{$this->for_id}";
     }
 
     public function doesNotAcceptMessage()
