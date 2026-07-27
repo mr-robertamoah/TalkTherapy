@@ -44,6 +44,7 @@ const props = defineProps({
   recentSessions: { default: null },
   recentTopics: { default: null },
   pendingRequest: { default: null },
+  pendingMembershipRequest: { default: null },
 })
 
 // Initialize therapy state
@@ -87,6 +88,8 @@ const scrollItems = computed(() => {
 const loader = ref({ show: false, type: "" })
 const sessionActionRunning = ref("")
 const request = ref({ responding: false, status: null })
+const membershipRequest = ref({ responding: false, status: null })
+const joinAnonymous = ref(false)
 const counsellorSearch = ref("")
 const newSession = ref(null)
 const counsellor = ref(null)
@@ -441,6 +444,77 @@ async function clickedResponse(response) {
   request.value.responding = false
 }
 
+// Group therapy membership/join (SCRUM-72)
+function clickedJoinGroup() {
+  joinAnonymous.value = !!computedTherapy.value?.anonymous
+  showModal("join group")
+}
+
+async function joinGroupTherapy() {
+  setLoader("join group")
+
+  await axios
+    .post(route("api.group.therapies.join", { groupTherapyId: computedTherapy.value?.id }), {
+      anonymous: computedTherapy.value?.anonymous ? true : joinAnonymous.value,
+    })
+    .then((res) => {
+      console.log(res)
+
+      const sentAsRequest = res.data.result?.type === RequestTypeEnum.groupTherapyMembership
+
+      setSuccessAlertData({
+        message: sentAsRequest
+          ? "Your request to join this group therapy has been sent and is pending approval."
+          : "You have successfully joined this group therapy.",
+        time: 4000,
+      })
+
+      closeModal()
+      router.reload({ only: ["therapy", "pendingMembershipRequest"] })
+    })
+    .catch((err) => {
+      console.log(err)
+      goToLogin(err)
+      setFailedAlertData({
+        message:
+          err.response?.data?.message ||
+          "Something unfortunate happened while trying to join. Please try again shortly.",
+        time: 5000,
+      })
+    })
+
+  endLoader()
+}
+
+async function clickedMembershipResponse(response) {
+  membershipRequest.value.responding = true
+
+  await axios
+    .post(route("requests.respond", { requestId: props.pendingMembershipRequest.id }), { response })
+    .then((res) => {
+      console.log(res)
+
+      membershipRequest.value.status = res.data.request.status
+
+      setSuccessAlertData({
+        time: 5000,
+        message: "You have successfully responded to the membership request.",
+      })
+
+      router.reload({ only: ["therapy", "pendingMembershipRequest"] })
+    })
+    .catch((err) => {
+      console.log(err)
+
+      setFailedAlertData({
+        time: 5000,
+        message: "Something unfortunate happened. Please try again shortly.",
+      })
+    })
+
+  membershipRequest.value.responding = false
+}
+
 // Utility functions
 function setLoader(type) {
   loader.value.type = type
@@ -697,6 +771,8 @@ function reportCreated(report) {
     :counsellors="counsellors"
     :pending-request="pendingRequest"
     :request="request"
+    :pending-membership-request="pendingMembershipRequest"
+    :membership-request="membershipRequest"
     :counsellor-links="counsellorLinks"
     @clicked-show-all="clickedShowAll"
     @clicked-active-session="clickedActiveSession"
@@ -705,6 +781,8 @@ function reportCreated(report) {
     @get-discussions="getDiscussions"
 
     @clicked-response="clickedResponse"
+    @clicked-join-group="clickedJoinGroup"
+    @clicked-membership-response="clickedMembershipResponse"
     @create-counsellor-link="createCounsellorLink"
     @get-counsellor-links="getCounsellorlinks"
     @clicked-report="clickedReport"
@@ -884,6 +962,58 @@ function reportCreated(report) {
               <DangerButton @click="endTherapy" class="shrink-0">end</DangerButton>
             </div>
           </template>
+        </div>
+      </MiniModal>
+
+      <!-- Join Group Therapy Modal -->
+      <MiniModal
+        v-if="therapyType === 'group'"
+        :show="modalData.show && modalData.type == 'join group'"
+        @close="closeModal"
+      >
+        <div class="select-none">
+          <div class="text-gray-600 text-center font-bold tracking-wide">
+            Join Group Therapy
+          </div>
+
+          <hr class="my-2" />
+
+          <div class="relative">
+            <FormLoader :text="'joining group'" :show="loader.show && loader.type == 'join group'" />
+
+            <div class="my-4 text-sm text-gray-700 text-center w-[90%] mx-auto">
+              You are about to join <strong>{{ computedTherapy.name }}</strong>.
+            </div>
+
+            <div class="flex items-center justify-center space-x-2 my-4">
+              <input
+                id="join-anonymous"
+                type="checkbox"
+                v-model="joinAnonymous"
+                :disabled="computedTherapy.anonymous"
+              />
+              <label for="join-anonymous" class="text-sm text-gray-600">
+                join anonymously
+              </label>
+            </div>
+
+            <div
+              v-if="computedTherapy.anonymous"
+              class="text-xs text-center text-gray-500 w-[90%] mx-auto mb-2"
+            >
+              This group is anonymous — all members are anonymous automatically.
+            </div>
+          </div>
+
+          <div class="flex space-x-2 justify-end items-center w-full p-2">
+            <PrimaryButton @click="closeModal" class="shrink-0">cancel</PrimaryButton>
+            <PrimaryButton
+              @click="joinGroupTherapy"
+              :disabled="loader.show && loader.type == 'join group'"
+              class="shrink-0"
+              >join</PrimaryButton
+            >
+          </div>
         </div>
       </MiniModal>
 

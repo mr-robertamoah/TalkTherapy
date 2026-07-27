@@ -1,0 +1,579 @@
+<?php
+
+use App\Actions\GroupTherapy\JoinGroupTherapyAction;
+use App\Actions\Request\RespondToGroupTherapyMembershipRequestAction;
+use App\DTOs\JoinGroupTherapyDTO;
+use App\DTOs\RequestResponseDTO;
+use App\Enums\RequestStatusEnum;
+use App\Enums\RequestTypeEnum;
+use App\Exceptions\CannotCreateTherapyException;
+use App\Exceptions\CannotJoinGroupTherapyException;
+use App\Http\Resources\RequestResource;
+use App\Models\GroupTherapy;
+use App\Models\Guardianship;
+use App\Models\Request as RequestModel;
+use App\Models\User;
+use App\Notifications\GroupTherapyMembershipRequestAcceptedGuardianNotification;
+use App\Notifications\GroupTherapyMembershipRequestAcceptedNotification;
+use App\Notifications\GroupTherapyMembershipRequestRejectedNotification;
+use App\Notifications\GroupTherapyMembershipRequestSentNotification;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Notification;
+
+function anAdult(array $attributes = []): User
+{
+    return User::factory()->create(array_merge(['dob' => now()->subYears(25)], $attributes));
+}
+
+function aGroupTherapy(User $creator, array $attributes = []): GroupTherapy
+{
+    return GroupTherapy::factory()->create(array_merge([
+        'addedby_type' => User::class,
+        'addedby_id' => $creator->id,
+        'anonymous' => false,
+        'allow_anyone' => true,
+        'max_users' => 5,
+    ], $attributes));
+}
+
+test('immediate join (allow_anyone true) attaches the joiner with the requested anonymity value', function () {
+    $creator = anAdult();
+    $groupTherapy = aGroupTherapy($creator, ['allow_anyone' => true, 'anonymous' => false]);
+    $joiner = anAdult();
+
+    $result = JoinGroupTherapyAction::new()->execute(
+        JoinGroupTherapyDTO::new()->fromArray([
+            'user' => $joiner,
+            'groupTherapy' => $groupTherapy,
+            'anonymous' => true,
+        ])
+    );
+
+    expect($result)->toBeInstanceOf(GroupTherapy::class);
+    expect($groupTherapy->users()->whereKey($joiner->id)->exists())->toBeTrue();
+    expect((bool) $groupTherapy->users()->whereKey($joiner->id)->first()->pivot->anonymous)->toBeTrue();
+    expect($groupTherapy->fresh()->isParticipant($joiner))->toBeTrue();
+});
+
+test('a group-level anonymous flag forces the pivot anonymity to true at join-time regardless of what was requested', function () {
+    $creator = anAdult();
+    $groupTherapy = aGroupTherapy($creator, ['allow_anyone' => true, 'anonymous' => true]);
+    $joiner = anAdult();
+
+    JoinGroupTherapyAction::new()->execute(
+        JoinGroupTherapyDTO::new()->fromArray([
+            'user' => $joiner,
+            'groupTherapy' => $groupTherapy,
+            'anonymous' => false,
+        ])
+    );
+
+    expect((bool) $groupTherapy->users()->whereKey($joiner->id)->first()->pivot->anonymous)->toBeTrue();
+});
+
+test('request-based join (allow_anyone false) creates a pending Request, not a pivot row', function () {
+    Notification::fake();
+
+    $creator = anAdult();
+    $groupTherapy = aGroupTherapy($creator, ['allow_anyone' => false]);
+    $joiner = anAdult();
+
+    $result = JoinGroupTherapyAction::new()->execute(
+        JoinGroupTherapyDTO::new()->fromArray([
+            'user' => $joiner,
+            'groupTherapy' => $groupTherapy,
+            'anonymous' => true,
+        ])
+    );
+
+    expect($result)->toBeInstanceOf(RequestModel::class);
+    expect($result->type)->toBe(RequestTypeEnum::groupTherapyMembership->value);
+    expect($result->status)->toBe(RequestStatusEnum::pending->value);
+    expect($result->from_id)->toBe($joiner->id);
+    expect($result->to_id)->toBe($creator->id);
+    expect($result->data['anonymous'])->toBeTrue();
+    expect($groupTherapy->users()->whereKey($joiner->id)->exists())->toBeFalse();
+
+    Notification::assertSentTo($creator, GroupTherapyMembershipRequestSentNotification::class);
+});
+
+test('accepting a membership request attaches the requester with the anonymity value captured at request-time', function () {
+    Notification::fake();
+
+    $creator = anAdult();
+    $groupTherapy = aGroupTherapy($creator, ['allow_anyone' => false, 'anonymous' => false]);
+    $joiner = anAdult();
+
+    $request = JoinGroupTherapyAction::new()->execute(
+        JoinGroupTherapyDTO::new()->fromArray([
+            'user' => $joiner,
+            'groupTherapy' => $groupTherapy,
+            'anonymous' => true,
+        ])
+    );
+
+    $accepted = RespondToGroupTherapyMembershipRequestAction::new()->execute(
+        RequestResponseDTO::new()->fromArray([
+            'user' => $creator,
+            'response' => 'accepted',
+            'request' => $request,
+        ])
+    );
+
+    expect($accepted->status)->toBe(RequestStatusEnum::accepted->value);
+    expect($groupTherapy->users()->whereKey($joiner->id)->exists())->toBeTrue();
+    expect((bool) $groupTherapy->users()->whereKey($joiner->id)->first()->pivot->anonymous)->toBeTrue();
+    expect($groupTherapy->fresh()->isParticipant($joiner))->toBeTrue();
+
+    Notification::assertSentTo($joiner, GroupTherapyMembershipRequestAcceptedNotification::class);
+});
+
+test('the group-level anonymous flag forces the pivot anonymity to true at accept-time regardless of what was requested', function () {
+    Notification::fake();
+
+    $creator = anAdult();
+    $groupTherapy = aGroupTherapy($creator, ['allow_anyone' => false, 'anonymous' => true]);
+    $joiner = anAdult();
+
+    $request = JoinGroupTherapyAction::new()->execute(
+        JoinGroupTherapyDTO::new()->fromArray([
+            'user' => $joiner,
+            'groupTherapy' => $groupTherapy,
+            'anonymous' => false,
+        ])
+    );
+
+    RespondToGroupTherapyMembershipRequestAction::new()->execute(
+        RequestResponseDTO::new()->fromArray([
+            'user' => $creator,
+            'response' => 'accepted',
+            'request' => $request,
+        ])
+    );
+
+    expect((bool) $groupTherapy->users()->whereKey($joiner->id)->first()->pivot->anonymous)->toBeTrue();
+});
+
+test('rejecting a membership request does not attach the requester', function () {
+    Notification::fake();
+
+    $creator = anAdult();
+    $groupTherapy = aGroupTherapy($creator, ['allow_anyone' => false]);
+    $joiner = anAdult();
+
+    $request = JoinGroupTherapyAction::new()->execute(
+        JoinGroupTherapyDTO::new()->fromArray([
+            'user' => $joiner,
+            'groupTherapy' => $groupTherapy,
+        ])
+    );
+
+    $rejected = RespondToGroupTherapyMembershipRequestAction::new()->execute(
+        RequestResponseDTO::new()->fromArray([
+            'user' => $creator,
+            'response' => 'rejected',
+            'request' => $request,
+        ])
+    );
+
+    expect($rejected->status)->toBe(RequestStatusEnum::rejected->value);
+    expect($groupTherapy->users()->whereKey($joiner->id)->exists())->toBeFalse();
+
+    Notification::assertSentTo($joiner, GroupTherapyMembershipRequestRejectedNotification::class);
+});
+
+test('joining is rejected once the group is at capacity (allow_anyone true)', function () {
+    $creator = anAdult();
+    $groupTherapy = aGroupTherapy($creator, ['allow_anyone' => true, 'max_users' => 1]);
+    $groupTherapy->users()->attach(anAdult()->id, ['anonymous' => false]);
+
+    $joiner = anAdult();
+
+    JoinGroupTherapyAction::new()->execute(
+        JoinGroupTherapyDTO::new()->fromArray([
+            'user' => $joiner,
+            'groupTherapy' => $groupTherapy,
+        ])
+    );
+})->throws(CannotJoinGroupTherapyException::class);
+
+test('joining is rejected once the group is at capacity (allow_anyone false)', function () {
+    $creator = anAdult();
+    $groupTherapy = aGroupTherapy($creator, ['allow_anyone' => false, 'max_users' => 1]);
+    $groupTherapy->users()->attach(anAdult()->id, ['anonymous' => false]);
+
+    $joiner = anAdult();
+
+    JoinGroupTherapyAction::new()->execute(
+        JoinGroupTherapyDTO::new()->fromArray([
+            'user' => $joiner,
+            'groupTherapy' => $groupTherapy,
+        ])
+    );
+})->throws(CannotJoinGroupTherapyException::class);
+
+test('a membership request is rejected at accept-time when the group filled up in the meantime', function () {
+    Notification::fake();
+
+    $creator = anAdult();
+    $groupTherapy = aGroupTherapy($creator, ['allow_anyone' => false, 'max_users' => 1]);
+    $joiner = anAdult();
+
+    $request = JoinGroupTherapyAction::new()->execute(
+        JoinGroupTherapyDTO::new()->fromArray([
+            'user' => $joiner,
+            'groupTherapy' => $groupTherapy,
+        ])
+    );
+
+    // The group fills up (via someone else) between the request being sent and it being
+    // responded to.
+    $groupTherapy->users()->attach(anAdult()->id, ['anonymous' => false]);
+
+    $responded = RespondToGroupTherapyMembershipRequestAction::new()->execute(
+        RequestResponseDTO::new()->fromArray([
+            'user' => $creator,
+            'response' => 'accepted',
+            'request' => $request,
+        ])
+    );
+
+    expect($responded->status)->toBe(RequestStatusEnum::rejected->value);
+    expect($groupTherapy->users()->whereKey($joiner->id)->exists())->toBeFalse();
+
+    Notification::assertSentTo($joiner, GroupTherapyMembershipRequestRejectedNotification::class);
+});
+
+test('joining is rejected when the user already has a pending membership request for the group', function () {
+    Notification::fake();
+
+    $creator = anAdult();
+    $groupTherapy = aGroupTherapy($creator, ['allow_anyone' => false]);
+    $joiner = anAdult();
+
+    JoinGroupTherapyAction::new()->execute(
+        JoinGroupTherapyDTO::new()->fromArray([
+            'user' => $joiner,
+            'groupTherapy' => $groupTherapy,
+        ])
+    );
+
+    JoinGroupTherapyAction::new()->execute(
+        JoinGroupTherapyDTO::new()->fromArray([
+            'user' => $joiner,
+            'groupTherapy' => $groupTherapy,
+        ])
+    );
+})->throws(CannotJoinGroupTherapyException::class);
+
+// Regression test for a real bug found during review: User::hasPendingRequestFor()'s
+// `->whereTo($this)->orWhereFrom($this)` was ungrouped, so `orWhereFrom` became a top-level OR
+// unscoped from `wherePending()`/`whereFor($model)` -- meaning a user with ANY prior request
+// (any status, any target) was incorrectly reported as having a pending request for every OTHER
+// group therapy too, permanently blocking them from joining anything.
+test('a user\'s unrelated, already-accepted request for a different group does not block joining a new group', function () {
+    $creator = anAdult();
+    $otherGroupTherapy = aGroupTherapy($creator, ['allow_anyone' => false]);
+    $joiner = anAdult();
+
+    $oldRequest = JoinGroupTherapyAction::new()->execute(
+        JoinGroupTherapyDTO::new()->fromArray([
+            'user' => $joiner,
+            'groupTherapy' => $otherGroupTherapy,
+        ])
+    );
+    RespondToGroupTherapyMembershipRequestAction::new()->execute(
+        RequestResponseDTO::new()->fromArray([
+            'user' => $creator,
+            'response' => 'accepted',
+            'request' => $oldRequest,
+        ])
+    );
+
+    $newGroupTherapy = aGroupTherapy($creator, ['allow_anyone' => true]);
+
+    $result = JoinGroupTherapyAction::new()->execute(
+        JoinGroupTherapyDTO::new()->fromArray([
+            'user' => $joiner,
+            'groupTherapy' => $newGroupTherapy,
+        ])
+    );
+
+    expect($result)->toBeInstanceOf(GroupTherapy::class);
+    expect($newGroupTherapy->users()->whereKey($joiner->id)->exists())->toBeTrue();
+});
+
+test('joining is rejected when the user is already a participant', function () {
+    $creator = anAdult();
+    $groupTherapy = aGroupTherapy($creator, ['allow_anyone' => true]);
+
+    JoinGroupTherapyAction::new()->execute(
+        JoinGroupTherapyDTO::new()->fromArray([
+            'user' => $creator,
+            'groupTherapy' => $groupTherapy,
+        ])
+    );
+})->throws(CannotJoinGroupTherapyException::class);
+
+test('a minor without a guardian cannot join a group therapy', function () {
+    $creator = anAdult();
+    $groupTherapy = aGroupTherapy($creator, ['allow_anyone' => true]);
+
+    $minor = User::factory()->create(['dob' => now()->subYears(15)]);
+
+    JoinGroupTherapyAction::new()->execute(
+        JoinGroupTherapyDTO::new()->fromArray([
+            'user' => $minor,
+            'groupTherapy' => $groupTherapy,
+        ])
+    );
+})->throws(CannotCreateTherapyException::class);
+
+test('a minor with a guardian can request to join, and accepting it alerts the guardian', function () {
+    Notification::fake();
+
+    $creator = anAdult();
+    $groupTherapy = aGroupTherapy($creator, ['allow_anyone' => false]);
+
+    $minor = User::factory()->create(['dob' => now()->subYears(15)]);
+    $guardian = anAdult();
+    Guardianship::query()->create(['guardian_id' => $guardian->id, 'ward_id' => $minor->id]);
+
+    $request = JoinGroupTherapyAction::new()->execute(
+        JoinGroupTherapyDTO::new()->fromArray([
+            'user' => $minor,
+            'groupTherapy' => $groupTherapy,
+        ])
+    );
+
+    expect($request)->toBeInstanceOf(RequestModel::class);
+
+    RespondToGroupTherapyMembershipRequestAction::new()->execute(
+        RequestResponseDTO::new()->fromArray([
+            'user' => $creator,
+            'response' => 'accepted',
+            'request' => $request,
+        ])
+    );
+
+    expect($groupTherapy->users()->whereKey($minor->id)->exists())->toBeTrue();
+
+    Notification::assertSentTo($guardian, GroupTherapyMembershipRequestAcceptedGuardianNotification::class);
+});
+
+// HTTP-level coverage for the Controller -> Service -> Action -> DTO wiring.
+
+test('POST api.group.therapies.join immediately attaches an adult user when allow_anyone is true', function () {
+    $creator = anAdult();
+    $groupTherapy = aGroupTherapy($creator, ['allow_anyone' => true, 'anonymous' => false]);
+    $joiner = anAdult();
+
+    $response = $this
+        ->actingAs($joiner)
+        ->postJson(route('api.group.therapies.join', ['groupTherapyId' => $groupTherapy->id]), [
+            'anonymous' => false,
+        ]);
+
+    $response->assertOk();
+    expect($groupTherapy->users()->whereKey($joiner->id)->exists())->toBeTrue();
+});
+
+test('POST api.group.therapies.join creates a pending request when allow_anyone is false', function () {
+    Notification::fake();
+
+    $creator = anAdult();
+    $groupTherapy = aGroupTherapy($creator, ['allow_anyone' => false]);
+    $joiner = anAdult();
+
+    $response = $this
+        ->actingAs($joiner)
+        ->postJson(route('api.group.therapies.join', ['groupTherapyId' => $groupTherapy->id]), [
+            'anonymous' => false,
+        ]);
+
+    $response->assertOk();
+    expect($groupTherapy->users()->whereKey($joiner->id)->exists())->toBeFalse();
+    expect(RequestModel::query()->whereType(RequestTypeEnum::groupTherapyMembership->value)->wherePending()->count())->toBe(1);
+});
+
+test('POST requests.respond accepts a pending membership request over HTTP', function () {
+    Notification::fake();
+
+    $creator = anAdult();
+    $groupTherapy = aGroupTherapy($creator, ['allow_anyone' => false]);
+    $joiner = anAdult();
+
+    $request = JoinGroupTherapyAction::new()->execute(
+        JoinGroupTherapyDTO::new()->fromArray([
+            'user' => $joiner,
+            'groupTherapy' => $groupTherapy,
+        ])
+    );
+
+    $response = $this
+        ->actingAs($creator)
+        ->postJson(route('requests.respond', ['requestId' => $request->id]), [
+            'response' => 'accepted',
+        ]);
+
+    $response->assertCreated();
+    expect($groupTherapy->users()->whereKey($joiner->id)->exists())->toBeTrue();
+});
+
+// Regression tests: RequestResource::toArray() previously rendered `from` via an unmasked
+// UserMiniResource() unconditionally, for every request type -- for a group-therapy membership
+// request specifically, this leaked the requester's real identity to the group creator (and
+// anyone else who could see the request) even when the requester chose anonymity or the group
+// itself is anonymous, defeating the exact protection this ticket's feature is meant to provide.
+
+function renderRequestResourceFrom(RequestModel $request, User $viewer): array
+{
+    // toArray() can return a nested JsonResource object (the non-anonymous branch) rather than
+    // a plain array -- json round-tripping forces it to fully resolve, matching what a real
+    // HTTP response would actually serialize.
+    $rendered = (new RequestResource($request))->toArray(
+        Request::create('/')->setUserResolver(fn () => $viewer)
+    );
+
+    return json_decode(json_encode($rendered), true)['from'];
+}
+
+test('RequestResource masks the requester\'s identity when the group-therapy membership request is anonymous', function () {
+    $creator = anAdult();
+    $groupTherapy = aGroupTherapy($creator, ['allow_anyone' => false, 'anonymous' => false]);
+    $joiner = anAdult();
+
+    $request = JoinGroupTherapyAction::new()->execute(
+        JoinGroupTherapyDTO::new()->fromArray([
+            'user' => $joiner,
+            'groupTherapy' => $groupTherapy,
+            'anonymous' => true,
+        ])
+    );
+
+    $from = renderRequestResourceFrom($request, $creator);
+
+    expect($from['fullName'])->toBe('anonymous');
+    expect($from)->not->toHaveKey('username');
+});
+
+test('RequestResource masks the requester\'s identity for any viewer when the group itself is anonymous, even if the requester didn\'t request anonymity', function () {
+    $creator = anAdult();
+    $groupTherapy = aGroupTherapy($creator, ['allow_anyone' => false, 'anonymous' => true]);
+    $joiner = anAdult();
+
+    $request = JoinGroupTherapyAction::new()->execute(
+        JoinGroupTherapyDTO::new()->fromArray([
+            'user' => $joiner,
+            'groupTherapy' => $groupTherapy,
+            'anonymous' => false,
+        ])
+    );
+
+    $from = renderRequestResourceFrom($request, $creator);
+
+    expect($from['fullName'])->toBe('anonymous');
+});
+
+test('RequestResource does not mask the requester\'s own view of their own anonymous request', function () {
+    $creator = anAdult();
+    $groupTherapy = aGroupTherapy($creator, ['allow_anyone' => false]);
+    $joiner = anAdult();
+
+    $request = JoinGroupTherapyAction::new()->execute(
+        JoinGroupTherapyDTO::new()->fromArray([
+            'user' => $joiner,
+            'groupTherapy' => $groupTherapy,
+            'anonymous' => true,
+        ])
+    );
+
+    $from = renderRequestResourceFrom($request, $joiner);
+
+    expect($from['fullName'])->toBe($joiner->name);
+});
+
+test('RequestResource does not mask the requester\'s identity when the request is not anonymous', function () {
+    $creator = anAdult();
+    $groupTherapy = aGroupTherapy($creator, ['allow_anyone' => false, 'anonymous' => false]);
+    $joiner = anAdult();
+
+    $request = JoinGroupTherapyAction::new()->execute(
+        JoinGroupTherapyDTO::new()->fromArray([
+            'user' => $joiner,
+            'groupTherapy' => $groupTherapy,
+            'anonymous' => false,
+        ])
+    );
+
+    $from = renderRequestResourceFrom($request, $creator);
+
+    expect($from['fullName'])->toBe($joiner->name);
+});
+
+// Regression tests: RequestResource::toArray()'s `to` field (the group creator, for a
+// group-therapy membership request) was never masked at all -- when the group itself is
+// anonymous, the creator's real identity leaked via the requester's own pending-request view
+// (GroupTherapyController::getGroupTherapy's pendingMembershipRequest prop), mirroring the same
+// leak already fixed for `from` above, just in the other direction.
+
+function renderRequestResourceTo(RequestModel $request, User $viewer): array
+{
+    $rendered = (new RequestResource($request))->toArray(
+        Request::create('/')->setUserResolver(fn () => $viewer)
+    );
+
+    return json_decode(json_encode($rendered), true)['to'];
+}
+
+test('RequestResource masks the creator\'s identity to the requester when the group is anonymous', function () {
+    $creator = anAdult();
+    $groupTherapy = aGroupTherapy($creator, ['allow_anyone' => false, 'anonymous' => true]);
+    $joiner = anAdult();
+
+    $request = JoinGroupTherapyAction::new()->execute(
+        JoinGroupTherapyDTO::new()->fromArray([
+            'user' => $joiner,
+            'groupTherapy' => $groupTherapy,
+        ])
+    );
+
+    $to = renderRequestResourceTo($request, $joiner);
+
+    expect($to['fullName'])->toBe('anonymous');
+    expect($to)->not->toHaveKey('username');
+});
+
+test('RequestResource does not mask the creator\'s own view of their own group\'s request', function () {
+    $creator = anAdult();
+    $groupTherapy = aGroupTherapy($creator, ['allow_anyone' => false, 'anonymous' => true]);
+    $joiner = anAdult();
+
+    $request = JoinGroupTherapyAction::new()->execute(
+        JoinGroupTherapyDTO::new()->fromArray([
+            'user' => $joiner,
+            'groupTherapy' => $groupTherapy,
+        ])
+    );
+
+    $to = renderRequestResourceTo($request, $creator);
+
+    expect($to['fullName'])->toBe($creator->name);
+});
+
+test('RequestResource does not mask the creator\'s identity when the group is not anonymous', function () {
+    $creator = anAdult();
+    $groupTherapy = aGroupTherapy($creator, ['allow_anyone' => false, 'anonymous' => false]);
+    $joiner = anAdult();
+
+    $request = JoinGroupTherapyAction::new()->execute(
+        JoinGroupTherapyDTO::new()->fromArray([
+            'user' => $joiner,
+            'groupTherapy' => $groupTherapy,
+        ])
+    );
+
+    $to = renderRequestResourceTo($request, $joiner);
+
+    expect($to['fullName'])->toBe($creator->name);
+});

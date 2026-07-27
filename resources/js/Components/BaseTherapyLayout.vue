@@ -64,14 +64,19 @@
           :counsellors="counsellors"
           :pending-request="pendingRequest"
           :request="request"
+          :pending-membership-request="pendingMembershipRequest"
+          :membership-request="membershipRequest"
           :getting="getting"
           :counsellor-links="counsellorLinks"
           :computed-is-user="computedIsUser"
           :computed-is-counsellor="computedIsCounsellor"
+          :computed-is-participant="computedIsParticipant"
           :computed-can-participate="computedCanParticipate"
           @clicked-response="$emit('clicked-response', $event)"
           @create-counsellor-link="$emit('create-counsellor-link')"
           @get-counsellor-links="$emit('get-counsellor-links')"
+          @clicked-join-group="$emit('clicked-join-group')"
+          @clicked-membership-response="$emit('clicked-membership-response', $event)"
         >
           <template #therapy-component>
             <slot name="therapy-component" />
@@ -150,6 +155,8 @@ defineProps({
   counsellors: { default: () => [] },
   pendingRequest: { default: null },
   request: { default: () => ({ responding: false, status: null }) },
+  pendingMembershipRequest: { default: null },
+  membershipRequest: { default: () => ({ responding: false, status: null }) },
   counsellorLinks: { default: () => ({ page: 1, data: [] }) },
 })
 
@@ -162,6 +169,8 @@ defineEmits([
   'handle-discussion-update',
   'handle-discussion-delete',
   'clicked-response',
+  'clicked-join-group',
+  'clicked-membership-response',
   'create-counsellor-link',
   'get-counsellor-links',
   'clicked-report',

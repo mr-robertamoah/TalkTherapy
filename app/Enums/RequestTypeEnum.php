@@ -1,6 +1,7 @@
 <?php
 
 namespace App\Enums;
+
 use App\Traits\EnumTrait;
 
 enum RequestTypeEnum: string
@@ -12,4 +13,7 @@ enum RequestTypeEnum: string
     case discussion = 'THERAPY_DISCUSSION_REQUEST';
     case therapy = 'THERAPY_ASSISTANCE_REQUEST';
     case groupTherapy = 'GROUP_THERAPY_ASSISTANCE_REQUEST';
+    // Distinct from `groupTherapy` above: that one is a counsellor requesting to help run a
+    // group therapy; this one is a user requesting to join it as a member (SCRUM-72).
+    case groupTherapyMembership = 'GROUP_THERAPY_MEMBERSHIP_REQUEST';
 }

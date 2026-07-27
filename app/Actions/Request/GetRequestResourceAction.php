@@ -20,6 +20,7 @@ class GetRequestResourceAction extends Action
                     RequestTypeEnum::guardianship->value,
                     RequestTypeEnum::discussion->value,
                     RequestTypeEnum::groupTherapy->value,
+                    RequestTypeEnum::groupTherapyMembership->value,
                 ]
             )
         ) {

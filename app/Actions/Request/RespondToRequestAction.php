@@ -12,20 +12,28 @@ class RespondToRequestAction extends Action
     {
         $request = $requestResponseDTO->request;
 
-        if ($requestResponseDTO->request->type == RequestTypeEnum::counsellor->value)
+        if ($requestResponseDTO->request->type == RequestTypeEnum::counsellor->value) {
             $request = RespondToCounsellorVerificationRequestAction::new()->execute($requestResponseDTO);
+        }
 
-        if ($requestResponseDTO->request->type == RequestTypeEnum::therapy->value)
+        if ($requestResponseDTO->request->type == RequestTypeEnum::therapy->value) {
             $request = RespondToTherapyAssistanceRequestAction::new()->execute($requestResponseDTO);
+        }
 
-        if ($requestResponseDTO->request->type == RequestTypeEnum::guardianship->value)
+        if ($requestResponseDTO->request->type == RequestTypeEnum::guardianship->value) {
             $request = RespondToGuardianshipRequestAction::new()->execute($requestResponseDTO);
-        
-        if ($requestResponseDTO->request->type == RequestTypeEnum::discussion->value)
+        }
+
+        if ($requestResponseDTO->request->type == RequestTypeEnum::discussion->value) {
             $request = RespondToDiscussionRequestAction::new()->execute($requestResponseDTO);
-        
+        }
+
+        if ($requestResponseDTO->request->type == RequestTypeEnum::groupTherapyMembership->value) {
+            $request = RespondToGroupTherapyMembershipRequestAction::new()->execute($requestResponseDTO);
+        }
+
         // TODO respond to other requests
-        
+
         return $request->refresh();
     }
 }

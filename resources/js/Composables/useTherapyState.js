@@ -48,6 +48,12 @@ export default function useTherapyState(therapy, therapyType = 'individual') {
     })
     
     const computedIsParticipant = computed(() => {
+        // For group therapy, also recognise a plain joined member (attached via the
+        // group_therapy_user pivot, not just the creator/an assigned counsellor) -- mirrors the
+        // GroupTherapy::isParticipant() fix on the backend (SCRUM-69/SCRUM-72).
+        if (therapyType === 'group') {
+            return computedIsUser.value || computedIsCounsellor.value || !!computedTherapy.value.isParticipant
+        }
         return computedIsUser.value || computedIsCounsellor.value
     })
     

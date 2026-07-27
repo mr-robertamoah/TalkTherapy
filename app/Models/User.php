@@ -8,6 +8,7 @@ use Illuminate\Auth\MustVerifyEmail;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Auth\MustVerifyEmail as MustVerifyEmailContract;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -348,5 +349,26 @@ class User extends Authenticatable implements MustVerifyEmailContract
     public function sendEmailVerificationNotification()
     {
         $this->notify(new VerifyEmailNotification);
+    }
+
+    // Mirrors Counsellor::hasPendingRequestFor()/doesNotHavePendingRequestFor(). The to/from
+    // alternation must be grouped -- `->whereTo($this)->orWhereFrom($this)` un-grouped makes
+    // orWhereFrom() a top-level OR, unscoped from `wherePending()`/`whereFor($model)`, so it
+    // would match ANY request the user has ever sent (any status, any target), not just a
+    // pending one for this specific model.
+    public function hasPendingRequestFor(Model $model)
+    {
+        return (bool) Request::query()
+            ->wherePending()
+            ->whereFor($model)
+            ->where(function ($query) {
+                $query->whereTo($this)->orWhereFrom($this);
+            })
+            ->count();
+    }
+
+    public function doesNotHavePendingRequestFor(Model $model)
+    {
+        return ! $this->hasPendingRequestFor($model);
     }
 }

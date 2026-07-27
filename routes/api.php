@@ -187,6 +187,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/group-therapies/{groupTherapyId}', [GroupTherapyController::class, 'deleteGroupTherapy'])->name('api.group.therapies.delete');
     Route::post('/group-therapies/{groupTherapyId}', [GroupTherapyController::class, 'endGroupTherapy'])->name('api.group.therapies.end');
     Route::post('/group-therapies', [GroupTherapyController::class, 'createGroupTherapy'])->name('group.therapies.create');
+    Route::post('/group-therapies/{groupTherapyId}/join', [GroupTherapyController::class, 'joinGroupTherapy'])->name('api.group.therapies.join');
     Route::get('/user/group-therapies', [GroupTherapyController::class, 'getUserGroupTherapies'])->name('api.group.therapies.user');
     Route::get('/ward/group-therapies', [GroupTherapyController::class, 'getWardGroupTherapies'])->name('api.group.therapies.ward');
     Route::get('/counsellor/group-therapies', [GroupTherapyController::class, 'getCounsellorGroupTherapies'])->name('api.group.therapies.counsellor');
