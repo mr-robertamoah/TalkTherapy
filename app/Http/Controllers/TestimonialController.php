@@ -88,7 +88,6 @@ class TestimonialController extends Controller
         }
     }
     
-
     public function getTestimonials(Request $request)
     {
         try {
@@ -120,8 +119,6 @@ class TestimonialController extends Controller
     {
         $message = $th->getCode() == 500 ? "Something unfortunate happened. Please try again shortly." : $th->getMessage();
         
-        ds($th);
-
         if ($request->acceptsJson()) throw new Exception($message);
 
         return Redirect::back()->withErrors(['alert'=> $message]);

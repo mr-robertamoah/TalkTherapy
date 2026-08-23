@@ -8,7 +8,6 @@
         "php": "^8.2",
         "guzzlehttp/guzzle": "^7.2",
         "inertiajs/inertia-laravel": "^2.0",
-        "laradumps/laradumps": "^3.0",
         "laravel/breeze": "^2.3",
         "laravel/framework": "^12.0",
         "laravel/reverb": "^1.0",
@@ -21,6 +20,7 @@
     },
     "require-dev": {
         "fakerphp/faker": "^1.23",
+        "laradumps/laradumps": "^3.0",
         "laravel/pint": "^1.15",
         "laravel/sail": "^1.26",
         "mockery/mockery": "^1.6",

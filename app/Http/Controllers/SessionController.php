@@ -250,8 +250,6 @@ class SessionController extends Controller
     {
         $message = $th->getCode() == 500 ? "Something unfortunate happened. Please try again shortly." : $th->getMessage();
         
-        ds($th);
-
         if ($request->acceptsJson()) throw new Exception($message);
         return Redirect::back()->withErrors(['alert'=> $message]);
     }

@@ -35,7 +35,6 @@ class RequestController extends Controller
             ], 201);
         } catch (Throwable $th) {
             $message = $th->getCode() == 500 ? "Something unfortunate happened. Please try again shortly." : $th->getMessage();
-            ds($th);
             return response()->json([
                 'status' => true,
                 'request' => null,

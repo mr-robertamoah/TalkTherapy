@@ -16,7 +16,7 @@ class AlertGuardianAction extends Action
         $guardians = User::query()
             ->whereWard($guardianAlertDTO->user)
             ->get();
-        ds($guardians);
+
         if (!$guardians?->count()) return;
 
         Notification::send($guardians, $guardianAlertDTO->notification);

@@ -32,8 +32,6 @@ class AlertController extends Controller
         } catch (Throwable $th) {
             $message = $th->getCode() == 500 ? "Something unfortunate happened. Please try again shortly." : $th->getMessage();
             
-            ds($th);
-
             throw new Exception($message);
         }
     }

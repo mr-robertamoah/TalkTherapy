@@ -19,7 +19,6 @@ class CreateReportAction extends Action
         $report->reportable()->associate($createReportDTO->reportable);
         $report->save();
 
-        ds($createReportDTO);
         if (!$createReportDTO->files)
             return $report->refresh();
 

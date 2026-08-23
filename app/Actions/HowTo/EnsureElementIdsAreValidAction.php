@@ -61,7 +61,6 @@ class EnsureElementIdsAreValidAction extends Action
             ->toArray()
         );
 
-        ds($newElementIds, $existingElementIds);
         $mergedPositions = array_merge($newElementIds, $existingElementIds);
 
         if (
