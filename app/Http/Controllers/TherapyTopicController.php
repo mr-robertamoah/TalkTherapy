@@ -7,7 +7,6 @@ use App\DTOs\GetTherapyTopicsDTO;
 use App\Http\Requests\CreateTherapyTopicRequest;
 use App\Http\Requests\UpdateTherapyTopicRequest;
 use App\Http\Resources\TherapyTopicResource;
-use App\Models\Session;
 use App\Models\Therapy;
 use App\Models\TherapyTopic;
 use App\Services\TherapyTopicService;
@@ -33,11 +32,11 @@ class TherapyTopicController extends Controller
 
             return $this->returnSuccess($request, $topic);
         } catch (Throwable $th) {
-            
+
             return $this->returnFailure($request, $th);
         }
     }
-    
+
     public function getTherapyTopics(Request $request)
     {
         try {
@@ -49,7 +48,7 @@ class TherapyTopicController extends Controller
                 ])
             );
         } catch (Throwable $th) {
-            
+
             return $this->returnFailure($request, $th);
         }
     }
@@ -71,15 +70,15 @@ class TherapyTopicController extends Controller
 
             return $this->returnSuccess($request, $topic);
         } catch (Throwable $th) {
-            
+
             return $this->returnFailure($request, $th);
         }
     }
-    
+
     public function deleteTherapyTopic(Request $request)
     {
         $topic = TherapyTopic::find($request->topicId);
-        
+
         try {
             TherapyTopicService::new()->deleteTherapyTopic(
                 CreateTherapyTopicDTO::new()->fromArray([
@@ -91,7 +90,7 @@ class TherapyTopicController extends Controller
 
             return $this->returnSuccess($request, $topic);
         } catch (Throwable $th) {
-            
+
             return $this->returnFailure($request, $th);
         }
     }
@@ -99,19 +98,22 @@ class TherapyTopicController extends Controller
     private function returnSuccess(Request $request, TherapyTopic $topic)
     {
         $topic = new TherapyTopicResource($topic);
-        
-        if ($request->acceptsJson()) return response()->json(['topic' => $topic]);
-        
+
+        if ($request->acceptsJson()) {
+            return response()->json(['topic' => $topic]);
+        }
+
         return Redirect::back()->with(['topic' => $topic]);
     }
 
     private function returnFailure(Request $request, Throwable $th)
     {
-        $message = $th->getCode() == 500 ? "Something unfortunate happened. Please try again shortly." : $th->getMessage();
-        
-        ds($th);
+        $message = $th->getCode() == 500 ? 'Something unfortunate happened. Please try again shortly.' : $th->getMessage();
 
-        if ($request->acceptsJson()) throw new Exception($message);
-        return Redirect::back()->withErrors(['alert'=> $message]);
+        if ($request->acceptsJson()) {
+            throw new Exception($message);
+        }
+
+        return Redirect::back()->withErrors(['alert' => $message]);
     }
 }

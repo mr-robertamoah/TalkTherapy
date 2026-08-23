@@ -25,7 +25,7 @@ class HowToController extends Controller
             ])
         );
     }
-    
+
     public function createHowTo(CreateHowToRequest $request)
     {
         try {
@@ -41,11 +41,11 @@ class HowToController extends Controller
 
             return $this->returnSuccess($request, $howTo);
         } catch (Throwable $th) {
-            
+
             return $this->returnFailure($request, $th);
         }
     }
-    
+
     public function updateHowTo(Request $request)
     {
         try {
@@ -64,11 +64,11 @@ class HowToController extends Controller
 
             return $this->returnSuccess($request, $howTo);
         } catch (Throwable $th) {
-            
+
             return $this->returnFailure($request, $th);
         }
     }
-    
+
     public function deleteHowTo(Request $request)
     {
         try {
@@ -81,7 +81,7 @@ class HowToController extends Controller
 
             return $this->returnSuccess($request, $howTo);
         } catch (Throwable $th) {
-            
+
             return $this->returnFailure($request, $th);
         }
     }
@@ -89,19 +89,22 @@ class HowToController extends Controller
     private function returnSuccess(Request $request, HowTo $howTo)
     {
         $howTo = new HowToResource($howTo);
-        
-        if ($request->acceptsJson()) return response()->json(['howTo' => $howTo]);
-        
+
+        if ($request->acceptsJson()) {
+            return response()->json(['howTo' => $howTo]);
+        }
+
         return Redirect::back()->with(['howTo' => $howTo]);
     }
 
     private function returnFailure(Request $request, Throwable $th)
     {
-        $message = $th->getCode() == 500 ? "Something unfortunate happened. Please try again shortly." : $th->getMessage();
-        
-        ds($th);
+        $message = $th->getCode() == 500 ? 'Something unfortunate happened. Please try again shortly.' : $th->getMessage();
 
-        if ($request->acceptsJson()) throw new Exception($message);
-        return Redirect::back()->withErrors(['alert'=> $message]);
+        if ($request->acceptsJson()) {
+            throw new Exception($message);
+        }
+
+        return Redirect::back()->withErrors(['alert' => $message]);
     }
 }

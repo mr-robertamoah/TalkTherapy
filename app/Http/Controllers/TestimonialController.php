@@ -27,7 +27,7 @@ class TestimonialController extends Controller
 
             return $this->returnSuccess($request, $testimonial);
         } catch (Throwable $th) {
-            
+
             return $this->returnFailure($request, $th);
         }
     }
@@ -46,7 +46,7 @@ class TestimonialController extends Controller
 
             return $this->returnSuccess($request, $testimonial);
         } catch (Throwable $th) {
-            
+
             return $this->returnFailure($request, $th);
         }
     }
@@ -64,7 +64,7 @@ class TestimonialController extends Controller
 
             return $this->returnSuccess($request, $testimonial);
         } catch (Throwable $th) {
-            
+
             return $this->returnFailure($request, $th);
         }
     }
@@ -83,11 +83,10 @@ class TestimonialController extends Controller
 
             return $this->returnSuccess($request, $testimonial);
         } catch (Throwable $th) {
-            
+
             return $this->returnFailure($request, $th);
         }
     }
-    
 
     public function getTestimonials(Request $request)
     {
@@ -102,7 +101,7 @@ class TestimonialController extends Controller
 
             return TestimonialResource::collection($testimonials);
         } catch (Throwable $th) {
-            
+
             return $this->returnFailure($request, $th);
         }
     }
@@ -110,20 +109,22 @@ class TestimonialController extends Controller
     private function returnSuccess(Request $request, Testimonial $testimonial)
     {
         $testimonial = new TestimonialResource($testimonial);
-        
-        if ($request->acceptsJson()) return response()->json(['testimonial' => $testimonial]);
-        
+
+        if ($request->acceptsJson()) {
+            return response()->json(['testimonial' => $testimonial]);
+        }
+
         return Redirect::back()->with(['testimonial' => $testimonial]);
     }
 
     private function returnFailure(Request $request, Throwable $th)
     {
-        $message = $th->getCode() == 500 ? "Something unfortunate happened. Please try again shortly." : $th->getMessage();
-        
-        ds($th);
+        $message = $th->getCode() == 500 ? 'Something unfortunate happened. Please try again shortly.' : $th->getMessage();
 
-        if ($request->acceptsJson()) throw new Exception($message);
+        if ($request->acceptsJson()) {
+            throw new Exception($message);
+        }
 
-        return Redirect::back()->withErrors(['alert'=> $message]);
+        return Redirect::back()->withErrors(['alert' => $message]);
     }
 }

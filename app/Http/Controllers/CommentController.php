@@ -27,7 +27,7 @@ class CommentController extends Controller
 
             return $this->returnSuccess($request, $comment);
         } catch (Throwable $th) {
-            
+
             return $this->returnFailure($request, $th);
         }
     }
@@ -44,7 +44,7 @@ class CommentController extends Controller
 
             return $this->returnSuccess($request, $comment);
         } catch (Throwable $th) {
-            
+
             return $this->returnFailure($request, $th);
         }
     }
@@ -58,7 +58,7 @@ class CommentController extends Controller
                 ])
             );
         } catch (Throwable $th) {
-            
+
             return $this->returnFailure($request, $th);
         }
     }
@@ -66,19 +66,22 @@ class CommentController extends Controller
     private function returnSuccess(Request $request, Comment $comment)
     {
         $comment = new CommentResource($comment);
-        
-        if ($request->acceptsJson()) return response()->json(['comment' => $comment]);
-        
+
+        if ($request->acceptsJson()) {
+            return response()->json(['comment' => $comment]);
+        }
+
         return Redirect::back()->with(['comment' => $comment]);
     }
 
     private function returnFailure(Request $request, Throwable $th)
     {
-        $message = $th->getCode() == 500 ? "Something unfortunate happened. Please try again shortly." : $th->getMessage();
-        
-        ds($th);
+        $message = $th->getCode() == 500 ? 'Something unfortunate happened. Please try again shortly.' : $th->getMessage();
 
-        if ($request->acceptsJson()) throw new Exception($message);
-        return Redirect::back()->withErrors(['alert'=> $message]);
+        if ($request->acceptsJson()) {
+            throw new Exception($message);
+        }
+
+        return Redirect::back()->withErrors(['alert' => $message]);
     }
 }

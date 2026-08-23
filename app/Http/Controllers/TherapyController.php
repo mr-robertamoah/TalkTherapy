@@ -33,7 +33,6 @@ class TherapyController extends Controller
             return TherapyMiniResource::collection($therapies);
         } catch (Throwable $th) {
             $message = $th->getCode() == 500 ? 'Something unfortunate happened. Please try again shortly.' : $th->getMessage();
-            ds($th);
             throw new Exception($message);
         }
     }
@@ -46,7 +45,6 @@ class TherapyController extends Controller
             return PublicTherapyResource::collection($therapies);
         } catch (Throwable $th) {
             $message = $th->getCode() == 500 ? 'Something unfortunate happened. Please try again shortly.' : $th->getMessage();
-            ds($th);
             throw new Exception($message);
         }
     }
@@ -113,7 +111,6 @@ class TherapyController extends Controller
             ]);
         } catch (Throwable $th) {
             $message = $th->getCode() == 500 ? 'Something unfortunate happened. Please try again shortly.' : $th->getMessage();
-            ds($th);
             throw new Exception($message);
         }
     }
@@ -145,7 +142,6 @@ class TherapyController extends Controller
         } catch (Throwable $th) {
             $message = $th->getCode() == 500 ? 'Something unfortunate happened. Please try again shortly.' : $th->getMessage();
 
-            ds($th);
             throw new Exception($message);
         }
     }
@@ -206,7 +202,6 @@ class TherapyController extends Controller
                 'recentTopics' => TherapyTopicResource::collection($therapy->topics()->latest()->take(5)->get()),
             ]);
         } catch (Throwable $th) {
-            ds($th);
 
             return Redirect::route('home')->with('message', $th->getMessage());
         }
@@ -226,7 +221,6 @@ class TherapyController extends Controller
                 'therapy' => new TherapyResource($therapy),
             ]);
         } catch (Throwable $th) {
-            ds($th);
 
             return Redirect::route('home')->with('message', $th->getMessage());
         }
@@ -249,7 +243,6 @@ class TherapyController extends Controller
         } catch (Throwable $th) {
             $message = $th->getCode() == 500 ? 'Something unfortunate happened. Please try again shortly.' : $th->getMessage();
 
-            ds($th);
             throw new Exception($message);
         }
     }
@@ -262,8 +255,6 @@ class TherapyController extends Controller
     private function returnFailure(Request $request, Throwable $th)
     {
         $message = $th->getCode() == 500 ? 'Something unfortunate happened. Please try again shortly.' : $th->getMessage();
-
-        ds($th);
 
         if ($request->acceptsJson()) {
             throw new Exception($message);

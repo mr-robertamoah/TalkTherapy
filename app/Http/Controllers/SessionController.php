@@ -12,7 +12,6 @@ use App\Models\Session;
 use App\Models\Therapy;
 use App\Models\TherapyTopic;
 use App\Services\SessionService;
-use Carbon\Carbon;
 use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Redirect;
@@ -43,7 +42,7 @@ class SessionController extends Controller
 
             return $this->returnSuccess($request, $session);
         } catch (Throwable $th) {
-            
+
             return $this->returnFailure($request, $th);
         }
     }
@@ -74,11 +73,11 @@ class SessionController extends Controller
 
             return $this->returnSuccess($request, $session);
         } catch (Throwable $th) {
-            
+
             return $this->returnFailure($request, $th);
         }
     }
-    
+
     public function deleteSession(Request $request)
     {
         $session = Session::find($request->sessionId);
@@ -94,18 +93,18 @@ class SessionController extends Controller
 
             return $this->returnSuccess($request, $session);
         } catch (Throwable $th) {
-            
+
             return $this->returnFailure($request, $th);
         }
     }
-    
+
     public function getSessions(Request $request)
     {
         return SessionService::new()->getSessions(
             GetSessionsDTO::new()->fromArray([
                 'therapy' => $this->getFor($request),
                 'user' => $request->user(),
-                'name' => $request->name
+                'name' => $request->name,
             ])
         );
     }
@@ -125,7 +124,7 @@ class SessionController extends Controller
 
             return $this->returnSuccess($request, $session);
         } catch (Throwable $th) {
-            
+
             return $this->returnFailure($request, $th);
         }
     }
@@ -145,11 +144,11 @@ class SessionController extends Controller
 
             return $this->returnSuccess($request, $session);
         } catch (Throwable $th) {
-            
+
             return $this->returnFailure($request, $th);
         }
     }
-    
+
     public function failSession(Request $request)
     {
         $session = Session::find($request->sessionId);
@@ -165,11 +164,11 @@ class SessionController extends Controller
 
             return $this->returnSuccess($request, $session);
         } catch (Throwable $th) {
-            
+
             return $this->returnFailure($request, $th);
         }
     }
-    
+
     public function endSession(Request $request)
     {
         $session = Session::find($request->sessionId);
@@ -185,11 +184,11 @@ class SessionController extends Controller
 
             return $this->returnSuccess($request, $session);
         } catch (Throwable $th) {
-            
+
             return $this->returnFailure($request, $th);
         }
     }
-    
+
     public function getInSession(Request $request)
     {
         $session = Session::find($request->sessionId);
@@ -205,11 +204,11 @@ class SessionController extends Controller
 
             return $this->returnSuccess($request, $session);
         } catch (Throwable $th) {
-            
+
             return $this->returnFailure($request, $th);
         }
     }
-    
+
     public function abandonSession(Request $request)
     {
         $session = Session::find($request->sessionId);
@@ -240,19 +239,22 @@ class SessionController extends Controller
     private function returnSuccess(Request $request, Session $session)
     {
         $session = new SessionResource($session);
-        
-        if ($request->acceptsJson()) return response()->json(['session' => $session]);
-        
+
+        if ($request->acceptsJson()) {
+            return response()->json(['session' => $session]);
+        }
+
         return Redirect::back()->with(['session' => $session]);
     }
 
     private function returnFailure(Request $request, Throwable $th)
     {
-        $message = $th->getCode() == 500 ? "Something unfortunate happened. Please try again shortly." : $th->getMessage();
-        
-        ds($th);
+        $message = $th->getCode() == 500 ? 'Something unfortunate happened. Please try again shortly.' : $th->getMessage();
 
-        if ($request->acceptsJson()) throw new Exception($message);
-        return Redirect::back()->withErrors(['alert'=> $message]);
+        if ($request->acceptsJson()) {
+            throw new Exception($message);
+        }
+
+        return Redirect::back()->withErrors(['alert' => $message]);
     }
 }

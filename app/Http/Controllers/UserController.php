@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Actions\GetModelWithModelNameAndIdAction;
 use App\DTOs\CreateRequestDTO;
 use App\DTOs\GetGuardianshipDTO;
 use App\DTOs\GetUsersDTO;
@@ -28,7 +27,7 @@ class UserController extends Controller
                 ])
             );
         } catch (Throwable $th) {
-            
+
             return $this->returnFailure($request, $th);
         }
     }
@@ -59,7 +58,7 @@ class UserController extends Controller
             );
 
             return response()->json([
-                'guardianship' => new GuardianshipResource($guardianship)
+                'guardianship' => new GuardianshipResource($guardianship),
             ]);
         } catch (Throwable $th) {
             return $this->returnFailure($request, $th);
@@ -78,19 +77,22 @@ class UserController extends Controller
     private function returnSuccess(Request $request, User $user)
     {
         $user = new UserMiniResource($user);
-        
-        if ($request->acceptsJson()) return response()->json(['user' => $user]);
-        
+
+        if ($request->acceptsJson()) {
+            return response()->json(['user' => $user]);
+        }
+
         return Redirect::back()->with(['user' => $user]);
     }
 
     private function returnFailure(Request $request, Throwable $th)
     {
-        $message = $th->getCode() == 500 ? "Something unfortunate happened. Please try again shortly." : $th->getMessage();
-        
-        ds($th);
+        $message = $th->getCode() == 500 ? 'Something unfortunate happened. Please try again shortly.' : $th->getMessage();
 
-        if ($request->acceptsJson()) throw new Exception($message);
-        return Redirect::back()->withErrors(['alert'=> $message]);
+        if ($request->acceptsJson()) {
+            throw new Exception($message);
+        }
+
+        return Redirect::back()->withErrors(['alert' => $message]);
     }
 }

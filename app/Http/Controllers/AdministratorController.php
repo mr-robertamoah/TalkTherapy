@@ -2,8 +2,8 @@
 
 namespace App\Http\Controllers;
 
-use App\DTOs\GetModelsForAdminDTO;
 use App\DTOs\GetCounsellorStatsForAdminDTO;
+use App\DTOs\GetModelsForAdminDTO;
 use App\DTOs\GetVerificationRequestsDTO;
 use App\DTOs\UpdateUserDTO;
 use App\Http\Requests\AdminUpdateUserRequest;
@@ -30,7 +30,7 @@ class AdministratorController extends Controller
         }
 
         return Inertia::render('Admin', [
-            'administrator' => new AdministratorResource($user->administrator)
+            'administrator' => new AdministratorResource($user->administrator),
         ]);
     }
 
@@ -68,14 +68,14 @@ class AdministratorController extends Controller
                     'otherNames' => $request->otherNames,
                     'email' => $request->email,
                     'country' => $request->country,
-                    'emailVerified' => !!$request->emailVerified,
+                    'emailVerified' => (bool) $request->emailVerified,
                     'dob' => $request->dob,
                 ])
             );
 
             return $this->returnSuccess($request, $user);
         } catch (Throwable $th) {
-            
+
             return $this->returnFailure($request, $th);
         }
     }
@@ -93,7 +93,7 @@ class AdministratorController extends Controller
 
             return $this->returnSuccess($request, $user);
         } catch (Throwable $th) {
-            
+
             return $this->returnFailure($request, $th);
         }
     }
@@ -122,19 +122,22 @@ class AdministratorController extends Controller
     private function returnSuccess(Request $request, User $user)
     {
         $user = new AdminUserResource($user);
-        
-        if ($request->acceptsJson()) return response()->json(['user' => $user]);
-        
+
+        if ($request->acceptsJson()) {
+            return response()->json(['user' => $user]);
+        }
+
         return Redirect::back()->with(['user' => $user]);
     }
 
     private function returnFailure(Request $request, Throwable $th)
     {
-        $message = $th->getCode() == 500 ? "Something unfortunate happened. Please try again shortly." : $th->getMessage();
-        
-        ds($th);
+        $message = $th->getCode() == 500 ? 'Something unfortunate happened. Please try again shortly.' : $th->getMessage();
 
-        if ($request->acceptsJson()) throw new Exception($message);
-        return Redirect::back()->withErrors(['alert'=> $message]);
+        if ($request->acceptsJson()) {
+            throw new Exception($message);
+        }
+
+        return Redirect::back()->withErrors(['alert' => $message]);
     }
 }

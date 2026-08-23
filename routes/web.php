@@ -41,7 +41,6 @@ Route::get('/testing', function () {
         // AppService::new()->alertSuperAdminWithStatus();
         return 'done';
     } catch (Throwable $th) {
-        ds($th);
     }
 });
 

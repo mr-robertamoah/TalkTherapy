@@ -13,15 +13,15 @@ class CreateReportAction extends Action
     {
         $report = $createReportDTO->addedby->addedReports()->create([
             'description' => $createReportDTO->description,
-            'data' => $createReportDTO->data
+            'data' => $createReportDTO->data,
         ]);
 
         $report->reportable()->associate($createReportDTO->reportable);
         $report->save();
 
-        ds($createReportDTO);
-        if (!$createReportDTO->files)
+        if (! $createReportDTO->files) {
             return $report->refresh();
+        }
 
         $fileService = FileService::new();
         $files = [];
@@ -30,14 +30,14 @@ class CreateReportAction extends Action
             $fileData = $fileService->uploadFile(
                 FileUploadDTO::new()->fromArray([
                     'file' => $uploadedFile,
-                    'path' => 'others'
+                    'path' => 'others',
                 ])
             );
 
             $files[] = $fileService->saveFile($createReportDTO->addedby, $fileData);
         }
 
-        $report->files()->attach(array_map(fn($f) => $f->id, $files));
+        $report->files()->attach(array_map(fn ($f) => $f->id, $files));
 
         return $report->refresh();
     }

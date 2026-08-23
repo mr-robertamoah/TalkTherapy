@@ -174,8 +174,6 @@ class MessageController extends Controller
     {
         $message = $th->getCode() == 500 ? 'Something unfortunate happened. Please try again shortly.' : $th->getMessage();
 
-        ds($th);
-
         if ($request->acceptsJson()) {
             $status = ($th->getCode() >= 400 && $th->getCode() < 600) ? $th->getCode() : 500;
 

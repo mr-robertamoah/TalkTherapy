@@ -33,38 +33,36 @@ class CounsellorController extends Controller
                     'counsellor' => Counsellor::find($request->counsellorId),
                     'request' => $request,
                 ])
-            );        
+            );
 
             return redirect()->route('counsellor.show', ['counsellorId' => $request->counsellorId]);
         } catch (Throwable $th) {
-            $message = $th->getCode() == 500 ? "Something unfortunate happened. Please try again shortly." : $th->getMessage();
-            ds($th);
+            $message = $th->getCode() == 500 ? 'Something unfortunate happened. Please try again shortly.' : $th->getMessage();
+
             return redirect()->route('counsellor.show', ['counsellorId' => $request->counsellorId])->withErrors('message', $message);
         }
     }
-    
+
     public function getRandomCounsellors(Request $request)
     {
         try {
-            $counsellors = CounsellorService::new()->getRandomCounsellors($request->user());        
+            $counsellors = CounsellorService::new()->getRandomCounsellors($request->user());
 
             return StarredCounsellorResource::collection($counsellors);
         } catch (Throwable $th) {
-            $message = $th->getCode() == 500 ? "Something unfortunate happened. Please try again shortly." : $th->getMessage();
-            ds($th);
+            $message = $th->getCode() == 500 ? 'Something unfortunate happened. Please try again shortly.' : $th->getMessage();
             throw new Exception($message);
         }
     }
-    
+
     public function getCounsellors(Request $request)
     {
         try {
-            $counsellors = CounsellorService::new()->getCounsellors($request->user(), $request->name);        
+            $counsellors = CounsellorService::new()->getCounsellors($request->user(), $request->name);
 
             return CounsellorMiniResource::collection($counsellors);
         } catch (Throwable $th) {
-            $message = $th->getCode() == 500 ? "Something unfortunate happened. Please try again shortly." : $th->getMessage();
-            ds($th);
+            $message = $th->getCode() == 500 ? 'Something unfortunate happened. Please try again shortly.' : $th->getMessage();
             throw new Exception($message);
         }
     }
@@ -76,17 +74,17 @@ class CounsellorController extends Controller
                 'counsellor' => Counsellor::find($request->counsellorId),
                 'user' => $request->user(),
             ])
-        );        
+        );
 
         return redirect()->back()->with('message', 'verification email sent.');
     }
-        
+
     public function createCounsellor(Request $request)
     {
         try {
             $request->validate([
-                'name' => ['nullable', 'string', 'max:255', Rule::requiredIf((bool) !$request->user()->name)],
-                'about' => ['nullable', 'string',]
+                'name' => ['nullable', 'string', 'max:255', Rule::requiredIf((bool) ! $request->user()->name)],
+                'about' => ['nullable', 'string'],
             ]);
 
             $counsellor = CounsellorService::new()->createCounsellor(
@@ -96,12 +94,13 @@ class CounsellorController extends Controller
                     'about' => $request->about,
                 ])
             );
+
             return response()->json([
                 'status' => true,
-                'counsellor' => new CounsellorMiniResource($counsellor)
+                'counsellor' => new CounsellorMiniResource($counsellor),
             ]);
         } catch (Throwable $th) {
-            $message = $th->getCode() == 500 ? "Something unfortunate happened. Please try again shortly." : $th->getMessage();
+            $message = $th->getCode() == 500 ? 'Something unfortunate happened. Please try again shortly.' : $th->getMessage();
 
             throw new Exception($message);
         }
@@ -118,7 +117,7 @@ class CounsellorController extends Controller
 
             $data = [
                 'counsellor' => $counsellorResource,
-                'counsellorCreationStep' => GetCounsellorCreationStepOfUserAction::new()->execute($counsellor->user)
+                'counsellorCreationStep' => GetCounsellorCreationStepOfUserAction::new()->execute($counsellor->user),
             ];
 
             if ($counsellor->user->is($request->user())) {
@@ -129,7 +128,9 @@ class CounsellorController extends Controller
 
             $message = session('message');
 
-            if ($message) $page->with('message', $message);
+            if ($message) {
+                $page->with('message', $message);
+            }
 
             return $page;
         } catch (Throwable $th) {
@@ -156,13 +157,13 @@ class CounsellorController extends Controller
                     'selectedReligions' => $request->selectedReligions,
                     'professionId' => $request->professionId,
                     'user' => $request->user(),
-                    'counsellor' => Counsellor::find($request->counsellorId)
+                    'counsellor' => Counsellor::find($request->counsellorId),
                 ])
             );
 
             return Redirect::back();
         } catch (Throwable $th) {
-            $message = $th->getCode() == 500 ? "Something unfortunate happened. Please try again shortly." : $th->getMessage();
+            $message = $th->getCode() == 500 ? 'Something unfortunate happened. Please try again shortly.' : $th->getMessage();
 
             throw new Exception($message);
         }
@@ -174,18 +175,18 @@ class CounsellorController extends Controller
             CounsellorService::new()->deleteCounsellor(
                 DeleteCounsellorDTO::new()->fromArray([
                     'user' => $request->user(),
-                    'counsellor' => Counsellor::find($request->counsellorId)
+                    'counsellor' => Counsellor::find($request->counsellorId),
                 ])
             );
 
             return Redirect::route('profile.show');
         } catch (Throwable $th) {
-            $message = $th->getCode() == 500 ? "Something unfortunate happened. Please try again shortly." : $th->getMessage();
+            $message = $th->getCode() == 500 ? 'Something unfortunate happened. Please try again shortly.' : $th->getMessage();
 
             throw new Exception($message);
         }
     }
-    
+
     public function getRequestCounsellors(Request $request)
     {
         return AssistanceRequestCounsellorResource::collection(
@@ -204,13 +205,13 @@ class CounsellorController extends Controller
                     'nationalIdNumber' => $request->nationalIdNumber,
                     'licensingAuthorityId' => $request->licensingAuthorityId,
                     'user' => $request->user(),
-                    'counsellor' => Counsellor::find($request->counsellorId)
+                    'counsellor' => Counsellor::find($request->counsellorId),
                 ])
             );
 
             return Redirect::back();
         } catch (Throwable $th) {
-            $message = $th->getCode() == 500 ? "Something unfortunate happened. Please try again shortly." : $th->getMessage();
+            $message = $th->getCode() == 500 ? 'Something unfortunate happened. Please try again shortly.' : $th->getMessage();
 
             throw new Exception($message);
         }
