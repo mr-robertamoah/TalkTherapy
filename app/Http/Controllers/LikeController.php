@@ -26,7 +26,7 @@ class LikeController extends Controller
 
             return $this->returnSuccess($request, $like);
         } catch (Throwable $th) {
-            
+
             return $this->returnFailure($request, $th);
         }
     }
@@ -43,7 +43,7 @@ class LikeController extends Controller
 
             return $this->returnSuccess($request, $like);
         } catch (Throwable $th) {
-            
+
             return $this->returnFailure($request, $th);
         }
     }
@@ -57,7 +57,7 @@ class LikeController extends Controller
                 ])
             );
         } catch (Throwable $th) {
-            
+
             return $this->returnFailure($request, $th);
         }
     }
@@ -65,17 +65,22 @@ class LikeController extends Controller
     private function returnSuccess(Request $request, Like $like)
     {
         $like = new LikeResource($like);
-        
-        if ($request->acceptsJson()) return response()->json(['like' => $like]);
-        
+
+        if ($request->acceptsJson()) {
+            return response()->json(['like' => $like]);
+        }
+
         return Redirect::back()->with(['like' => $like]);
     }
 
     private function returnFailure(Request $request, Throwable $th)
     {
-        $message = $th->getCode() == 500 ? "Something unfortunate happened. Please try again shortly." : $th->getMessage();
-        
-        if ($request->acceptsJson()) throw new Exception($message);
-        return Redirect::back()->withErrors(['alert'=> $message]);
+        $message = $th->getCode() == 500 ? 'Something unfortunate happened. Please try again shortly.' : $th->getMessage();
+
+        if ($request->acceptsJson()) {
+            throw new Exception($message);
+        }
+
+        return Redirect::back()->withErrors(['alert' => $message]);
     }
 }

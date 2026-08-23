@@ -25,20 +25,21 @@ class RequestController extends Controller
                 RequestResponseDTO::new()->fromArray([
                     'user' => $request->user(),
                     'response' => $request->response,
-                    'request' => ModelsRequest::find($request->requestId)
+                    'request' => ModelsRequest::find($request->requestId),
                 ])
             );
 
             return response()->json([
                 'status' => true,
-                'request' => $requestResource
+                'request' => $requestResource,
             ], 201);
         } catch (Throwable $th) {
-            $message = $th->getCode() == 500 ? "Something unfortunate happened. Please try again shortly." : $th->getMessage();
+            $message = $th->getCode() == 500 ? 'Something unfortunate happened. Please try again shortly.' : $th->getMessage();
+
             return response()->json([
                 'status' => true,
                 'request' => null,
-                'error' => $message
+                'error' => $message,
             ], 500);
         }
     }

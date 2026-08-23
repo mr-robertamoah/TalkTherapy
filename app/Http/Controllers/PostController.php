@@ -30,7 +30,7 @@ class PostController extends Controller
 
             return $this->returnSuccess($request, $post);
         } catch (Throwable $th) {
-            
+
             return $this->returnFailure($request, $th);
         }
     }
@@ -51,11 +51,11 @@ class PostController extends Controller
 
             return $this->returnSuccess($request, $post);
         } catch (Throwable $th) {
-            
+
             return $this->returnFailure($request, $th);
         }
     }
-    
+
     public function deletePost(Request $request)
     {
         $post = Post::find($request->postId);
@@ -69,7 +69,7 @@ class PostController extends Controller
 
             return $this->returnSuccess($request, $post);
         } catch (Throwable $th) {
-            
+
             return $this->returnFailure($request, $th);
         }
     }
@@ -78,10 +78,10 @@ class PostController extends Controller
     {
         try {
             session()->put('postId', $request->postId);
-            
+
             return Redirect::route('home');
         } catch (Throwable $th) {
-            
+
             return $this->returnFailure($request, $th);
         }
     }
@@ -99,7 +99,7 @@ class PostController extends Controller
 
             return PostResource::collection($posts);
         } catch (Throwable $th) {
-            
+
             return $this->returnFailure($request, $th);
         }
     }
@@ -107,18 +107,22 @@ class PostController extends Controller
     private function returnSuccess(Request $request, Post $post)
     {
         $post = new PostResource($post);
-        
-        if ($request->acceptsJson()) return response()->json(['post' => $post]);
-        
+
+        if ($request->acceptsJson()) {
+            return response()->json(['post' => $post]);
+        }
+
         return Redirect::back()->with(['post' => $post]);
     }
 
     private function returnFailure(Request $request, Throwable $th)
     {
-        $message = $th->getCode() == 500 ? "Something unfortunate happened. Please try again shortly." : $th->getMessage();
-        
-        if ($request->acceptsJson()) throw new Exception($message);
+        $message = $th->getCode() == 500 ? 'Something unfortunate happened. Please try again shortly.' : $th->getMessage();
 
-        return Redirect::back()->withErrors(['alert'=> $message]);
+        if ($request->acceptsJson()) {
+            throw new Exception($message);
+        }
+
+        return Redirect::back()->withErrors(['alert' => $message]);
     }
 }

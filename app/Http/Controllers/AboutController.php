@@ -15,7 +15,7 @@ class AboutController extends Controller
     public function __invoke()
     {
         return Inertia::render('About', [
-            'testimonials' => TestimonialService::new()->getTestimonialsForAboutPage()
+            'testimonials' => TestimonialService::new()->getTestimonialsForAboutPage(),
         ]);
     }
 
@@ -24,17 +24,19 @@ class AboutController extends Controller
         try {
             return AppService::new()->getStats();
         } catch (Throwable $th) {
-            
+
             return $this->returnFailure($request, $th);
         }
     }
 
     private function returnFailure(Request $request, Throwable $th)
     {
-        $message = $th->getCode() == 500 ? "Something unfortunate happened. Please try again shortly." : $th->getMessage();
-        
-        if ($request->acceptsJson()) throw new Exception($message);
+        $message = $th->getCode() == 500 ? 'Something unfortunate happened. Please try again shortly.' : $th->getMessage();
 
-        return Redirect::back()->withErrors(['alert'=> $message]);
+        if ($request->acceptsJson()) {
+            throw new Exception($message);
+        }
+
+        return Redirect::back()->withErrors(['alert' => $message]);
     }
 }

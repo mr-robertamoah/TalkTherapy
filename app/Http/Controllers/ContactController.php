@@ -31,7 +31,7 @@ class ContactController extends Controller
 
             return $this->returnSuccess($request, $contact);
         } catch (Throwable $th) {
-            
+
             return $this->returnFailure($request, $th);
         }
     }
@@ -54,7 +54,7 @@ class ContactController extends Controller
 
             return $this->returnSuccess($request, $contact);
         } catch (Throwable $th) {
-            
+
             return $this->returnFailure($request, $th);
         }
     }
@@ -72,7 +72,7 @@ class ContactController extends Controller
 
             return $this->returnSuccess($request, $contact);
         } catch (Throwable $th) {
-            
+
             return $this->returnFailure($request, $th);
         }
     }
@@ -90,7 +90,7 @@ class ContactController extends Controller
 
             return ContactResource::collection($contacts);
         } catch (Throwable $th) {
-            
+
             return $this->returnFailure($request, $th);
         }
     }
@@ -98,18 +98,22 @@ class ContactController extends Controller
     private function returnSuccess(Request $request, Contact $contact)
     {
         $contact = new ContactResource($contact);
-        
-        if ($request->acceptsJson()) return response()->json(['contact' => $contact]);
-        
+
+        if ($request->acceptsJson()) {
+            return response()->json(['contact' => $contact]);
+        }
+
         return Redirect::back()->with(['contact' => $contact]);
     }
 
     private function returnFailure(Request $request, Throwable $th)
     {
-        $message = $th->getCode() == 500 ? "Something unfortunate happened. Please try again shortly." : $th->getMessage();
-        
-        if ($request->acceptsJson()) throw new Exception($message);
+        $message = $th->getCode() == 500 ? 'Something unfortunate happened. Please try again shortly.' : $th->getMessage();
 
-        return Redirect::back()->withErrors(['alert'=> $message]);
+        if ($request->acceptsJson()) {
+            throw new Exception($message);
+        }
+
+        return Redirect::back()->withErrors(['alert' => $message]);
     }
 }

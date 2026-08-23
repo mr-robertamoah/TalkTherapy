@@ -11,13 +11,17 @@ class AlertGuardianAction extends Action
 {
     public function execute(GuardianAlertDTO $guardianAlertDTO)
     {
-        if ($guardianAlertDTO->user->isAdult()) return;
-        
+        if ($guardianAlertDTO->user->isAdult()) {
+            return;
+        }
+
         $guardians = User::query()
             ->whereWard($guardianAlertDTO->user)
             ->get();
 
-        if (!$guardians?->count()) return;
+        if (! $guardians?->count()) {
+            return;
+        }
 
         Notification::send($guardians, $guardianAlertDTO->notification);
     }

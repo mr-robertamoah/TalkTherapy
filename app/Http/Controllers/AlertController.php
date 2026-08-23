@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use App\Actions\GetModelWithModelNameAndIdAction;
 use App\DTOs\AlertServiceDTO;
 use App\Enums\AlertStatusEnum;
-use App\Models\Alert;
 use App\Services\AlertService;
 use Exception;
 use Illuminate\Http\Request;
@@ -22,16 +21,16 @@ class AlertController extends Controller
                     'status' => AlertStatusEnum::waiting->value,
                     'alertable' => GetModelWithModelNameAndIdAction::new()->execute(
                         $request->alertableType, $request->alertableId
-                    )
+                    ),
                 ])
             );
-            
+
             return response()->json([
-                'status' => true
+                'status' => true,
             ]);
         } catch (Throwable $th) {
-            $message = $th->getCode() == 500 ? "Something unfortunate happened. Please try again shortly." : $th->getMessage();
-            
+            $message = $th->getCode() == 500 ? 'Something unfortunate happened. Please try again shortly.' : $th->getMessage();
+
             throw new Exception($message);
         }
     }

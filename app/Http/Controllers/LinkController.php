@@ -54,7 +54,7 @@ class LinkController extends Controller
             return $this->returnFailure($request, $th);
         }
     }
-    
+
     public function changeLinkStatus(Request $request)
     {
         try {
@@ -90,7 +90,7 @@ class LinkController extends Controller
             return $this->returnFailure($request, $th);
         }
     }
-    
+
     public function deleteLink(Request $request)
     {
         try {
@@ -121,7 +121,9 @@ class LinkController extends Controller
 
             session()->put('alert', $th->getMessage());
 
-            if ($code == 422) return Redirect::route('home');
+            if ($code == 422) {
+                return Redirect::route('home');
+            }
 
             return $this->returnFailure($request, $th);
         }
@@ -140,6 +142,7 @@ class LinkController extends Controller
             );
 
             DB::commit();
+
             return response()->json(['links' => $request->linksData]);
         } catch (Throwable $th) {
             return $this->returnFailure($request, $th);
@@ -156,17 +159,17 @@ class LinkController extends Controller
                     'state' => $request->state,
                     'addedby' => GetModelWithModelNameAndIdAction::new()
                         ->execute(
-                            $request->addedbyType, 
+                            $request->addedbyType,
                             $request->addedbyId
                         ),
                     'to' => GetModelWithModelNameAndIdAction::new()
                         ->execute(
-                            $request->toType, 
+                            $request->toType,
                             $request->toId
                         ),
                     'for' => GetModelWithModelNameAndIdAction::new()
                         ->execute(
-                            $request->forType, 
+                            $request->forType,
                             $request->forId
                         ),
                 ])
@@ -179,17 +182,22 @@ class LinkController extends Controller
     private function returnSuccess(Request $request, Link $link)
     {
         $link = new LinkResource($link);
-        
-        if ($request->acceptsJson()) return response()->json(['link' => $link]);
-        
+
+        if ($request->acceptsJson()) {
+            return response()->json(['link' => $link]);
+        }
+
         return Redirect::back()->with(['link' => $link]);
     }
 
     private function returnFailure(Request $request, Throwable $th)
     {
-        $message = $th->getCode() == 500 ? "Something unfortunate happened. Please try again shortly." : $th->getMessage();
-        
-        if ($request->acceptsJson()) throw new Exception($message);
-        return Redirect::back()->withErrors(['alert'=> $message]);
+        $message = $th->getCode() == 500 ? 'Something unfortunate happened. Please try again shortly.' : $th->getMessage();
+
+        if ($request->acceptsJson()) {
+            throw new Exception($message);
+        }
+
+        return Redirect::back()->withErrors(['alert' => $message]);
     }
 }
