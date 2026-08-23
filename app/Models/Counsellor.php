@@ -413,13 +413,18 @@ class Counsellor extends Model
         });
     }
 
+    // The to/from alternation must be grouped -- `->whereTo($this)->orWhereFrom($this)`
+    // un-grouped makes orWhereFrom() a top-level OR, unscoped from `wherePending()`/
+    // `whereFor($model)`, so it would match ANY request this counsellor has ever sent
+    // (any status, any target), not just a pending one for this specific model.
     public function hasPendingRequestFor(Model $model)
     {
         return (bool) Request::query()
             ->wherePending()
             ->whereFor($model)
-            ->whereTo($this)
-            ->orWhereFrom($this)
+            ->where(function ($query) {
+                $query->whereTo($this)->orWhereFrom($this);
+            })
             ->count();
     }
 
