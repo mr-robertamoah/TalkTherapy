@@ -37,6 +37,10 @@ class GroupTherapyResource extends JsonResource
         return [
             'id' => $this->id,
             'name' => $this->name,
+            // Recognizes pivot-attached members too (SCRUM-69/SCRUM-72), not just the creator
+            // or an assigned counsellor -- lets the frontend hide the "join" action for an
+            // already-joined member.
+            'isParticipant' => $user ? $this->isParticipant($user) : false,
             'addedby' => $this->addedby_type == Counsellor::class
                 ? new CounsellorMiniResource($this->addedby)
                 : $this->when(

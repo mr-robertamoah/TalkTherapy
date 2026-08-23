@@ -148,6 +148,60 @@
             </div>
           </div>
 
+          <!-- Membership Section (group therapy join flow, SCRUM-72) -->
+          <div v-if="therapyType === 'group'" class="bg-white p-6 shrink-0 mt-4 w-full">
+            <div class="text-gray-600 tracking-wide font-semibold">Membership</div>
+
+            <div class="my-4 relative">
+              <!-- The creator, viewing a request someone else sent to join -->
+              <template v-if="computedIsUser && pendingMembershipRequest">
+                <FormLoader :show="membershipRequest.responding" :text="'responding'" />
+
+                <div class="text-center text-sm text-gray-600 w-full">
+                  someone has requested to join this group therapy.
+                </div>
+
+                <div class="flex justify-end items-center p-2 overflow-hidden overflow-x-auto space-x-2">
+                  <PrimaryButton
+                    :disabled="membershipRequest.responding"
+                    @click="$emit('clicked-membership-response', 'accepted')"
+                    class="shrink-0"
+                    >accept</PrimaryButton
+                  >
+                  <DangerButton
+                    :disabled="membershipRequest.responding"
+                    @click="$emit('clicked-membership-response', 'rejected')"
+                    class="shrink-0"
+                    >reject</DangerButton
+                  >
+                </div>
+              </template>
+
+              <!-- Already a member (or the creator, with no pending request to respond to) -->
+              <template v-else-if="computedIsParticipant">
+                <div class="text-sm text-center text-gray-600 w-full">
+                  you are already a member of this group therapy.
+                </div>
+              </template>
+
+              <!-- Own pending join request -->
+              <template v-else-if="pendingMembershipRequest">
+                <FormLoader :show="membershipRequest.responding" :text="'responding'" />
+
+                <div class="text-center text-sm text-gray-600 w-full">
+                  your request to join this group therapy is pending approval.
+                </div>
+              </template>
+
+              <!-- Not a member, nothing pending -->
+              <template v-else>
+                <div class="flex justify-center">
+                  <PrimaryButton @click="$emit('clicked-join-group')">join group</PrimaryButton>
+                </div>
+              </template>
+            </div>
+          </div>
+
           <!-- Links Section (for users without counsellors) -->
           <div
             v-if="shouldShowLinks"
@@ -267,6 +321,8 @@ const props = defineProps({
   counsellors: { default: () => [] },
   pendingRequest: { default: null },
   request: { default: () => ({ responding: false, status: null }) },
+  pendingMembershipRequest: { default: null },
+  membershipRequest: { default: () => ({ responding: false, status: null }) },
   getting: { default: () => ({ show: false, type: '' }) },
   counsellorLinks: { default: () => ({ page: 1, data: [] }) },
   computedIsUser: { type: Boolean, default: false },
@@ -321,6 +377,8 @@ const shouldShowLinks = computed(() => {
 defineEmits([
   'clicked-response',
   'clicked-assistance-request',
+  'clicked-join-group',
+  'clicked-membership-response',
   'create-counsellor-link',
   'get-counsellor-links',
 ])

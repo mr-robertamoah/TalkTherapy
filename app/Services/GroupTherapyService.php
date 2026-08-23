@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Actions\GroupTherapy\CreateGroupTherapyAction;
+use App\Actions\GroupTherapy\JoinGroupTherapyAction;
 use App\Actions\GroupTherapy\UpdateGroupTherapyAction;
 use App\Actions\Request\SendTherapyAssistanceRequestAction;
 use App\Actions\Star\CreateStarAction;
@@ -20,6 +21,7 @@ use App\DTOs\CreateStarDTO;
 use App\DTOs\GetTherapyDTO;
 use App\DTOs\GroupTherapyDTO;
 use App\DTOs\GuardianAlertDTO;
+use App\DTOs\JoinGroupTherapyDTO;
 use App\DTOs\TherapyAssistanceRequestDTO;
 use App\Enums\PaginationEnum;
 use App\Enums\StarTypeEnum;
@@ -124,6 +126,16 @@ class GroupTherapyService extends Service
 
         // TODO load relationships for efficiency
         return $getTherapyDTO->groupTherapy;
+    }
+
+    public function joinGroupTherapy(JoinGroupTherapyDTO $joinGroupTherapyDTO)
+    {
+        EnsureTherapyExistsAction::new()->execute(
+            $joinGroupTherapyDTO,
+            'Group Therapy'
+        );
+
+        return JoinGroupTherapyAction::new()->execute($joinGroupTherapyDTO);
     }
 
     public function getRandomGroupTherapies(?User $user)

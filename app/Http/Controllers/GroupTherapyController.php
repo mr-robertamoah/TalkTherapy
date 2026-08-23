@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\DTOs\GetTherapyDTO;
 use App\DTOs\GroupTherapyDTO;
+use App\DTOs\JoinGroupTherapyDTO;
 use App\Http\Requests\CreateGroupTherapyRequest;
 use App\Http\Requests\UpdateGroupTherapyRequest;
 use App\Http\Resources\GroupTherapyMiniResource;
@@ -193,11 +194,15 @@ class GroupTherapyController extends Controller
             );
 
             $pendingRequest = $therapy->pendingRequestFor($request->user()?->counsellor);
+            $pendingMembershipRequest = $request->user()
+                ? $therapy->pendingMembershipRequestFor($request->user())
+                : null;
 
             return Inertia::render('GroupTherapy/Index', [
                 'therapy' => new GroupTherapyResource($therapy),
                 'session' => session('session'),
                 'pendingRequest' => $pendingRequest ? new RequestResource($pendingRequest) : null,
+                'pendingMembershipRequest' => $pendingMembershipRequest ? new RequestResource($pendingMembershipRequest) : null,
                 'recentSessions' => SessionResource::collection($therapy->sessions()->latest()->take(5)->get()),
                 'recentTopics' => TherapyTopicResource::collection($therapy->topics()->latest()->take(5)->get()),
             ]);
@@ -205,6 +210,28 @@ class GroupTherapyController extends Controller
             ds($th);
 
             return Redirect::route('home')->with('message', $th->getMessage());
+        }
+    }
+
+    public function joinGroupTherapy(Request $request)
+    {
+        try {
+            $result = GroupTherapyService::new()->joinGroupTherapy(
+                JoinGroupTherapyDTO::new()->fromArray([
+                    'user' => $request->user(),
+                    'groupTherapy' => GroupTherapy::find($request->groupTherapyId),
+                    'anonymous' => (bool) $request->anonymous,
+                ])
+            );
+
+            return response()->json([
+                'status' => true,
+                'result' => $result instanceof GroupTherapy
+                    ? new GroupTherapyResource($result)
+                    : new RequestResource($result),
+            ]);
+        } catch (Throwable $th) {
+            $this->returnFailure($request, $th);
         }
     }
 

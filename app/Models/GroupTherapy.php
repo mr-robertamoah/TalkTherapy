@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\RequestTypeEnum;
 use App\Traits\Alertable;
 use App\Traits\Commentable;
 use App\Traits\Likeable;
@@ -96,7 +97,36 @@ class GroupTherapy extends Model
             return true;
         }
 
-        return $user->counsellor && $this->isCounsellor($user->counsellor);
+        if ($user->counsellor && $this->isCounsellor($user->counsellor)) {
+            return true;
+        }
+
+        // A user attached via the group_therapy_user pivot (immediate-join or an accepted
+        // membership request) is a participant too -- SCRUM-69/SCRUM-72.
+        return $this->users()->whereKey($user->id)->exists();
+    }
+
+    // Server-side anti-bypass rule: the group's own anonymous flag always wins over whatever
+    // anonymity value was requested (at join-time or at membership-request-accept-time).
+    public function resolveMembershipAnonymity(bool $requested): bool
+    {
+        return $this->anonymous ? true : $requested;
+    }
+
+    // The latest pending membership request (SCRUM-72) involving this user for this group,
+    // whether they're the one who requested to join (`from`) or the creator deciding on it
+    // (`to`) -- mirrors TherapyTrait::pendingRequestFor()'s single-latest-request UX for the
+    // existing counsellor-assistance flow.
+    public function pendingMembershipRequestFor(User $user)
+    {
+        return $this->requests()
+            ->wherePending()
+            ->whereType(RequestTypeEnum::groupTherapyMembership->value)
+            ->where(function ($query) use ($user) {
+                $query->whereFrom($user)->orWhereTo($user);
+            })
+            ->latest()
+            ->first();
     }
 
     public function isNotParticipant(User $user)
@@ -126,6 +156,11 @@ class GroupTherapy extends Model
                 $query
                     ->where('addedby_type', User::class)
                     ->where('addedby_id', $user->id);
+            })
+            ->orWhere(function ($query) use ($user) {
+                $query->whereHas('users', function ($query) use ($user) {
+                    $query->where('user_id', $user->id);
+                });
             })
             ->when($user->counsellor, function ($query) use ($user) {
                 $query
@@ -158,6 +193,10 @@ class GroupTherapy extends Model
             }
         });
 
+        // Users attached via the group_therapy_user pivot (immediate-join or an accepted
+        // membership request) -- SCRUM-69/SCRUM-72.
+        $users = $users->merge($this->users);
+
         if (
             $this->addedby_type === User::class &&
             $this->addedby &&
@@ -167,7 +206,7 @@ class GroupTherapy extends Model
             $users = $users->merge(User::query()->whereWard($this->addedby)->get());
         }
 
-        return $users->filter();
+        return $users->filter()->unique('id');
     }
 
     public function getOtherUsers(User $user)
@@ -188,6 +227,8 @@ class GroupTherapy extends Model
             }
         });
 
+        $users = $users->merge($this->users->reject(fn ($pivotUser) => $pivotUser->is($user)));
+
         if (
             $this->addedby_type === User::class &&
             $this->addedby &&
@@ -199,7 +240,7 @@ class GroupTherapy extends Model
             );
         }
 
-        return $users->filter();
+        return $users->filter()->unique('id');
     }
 
     public function getCounsellors()

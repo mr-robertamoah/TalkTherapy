@@ -46,6 +46,58 @@ test('an assigned counsellor (not the addedby) is recognised as a participant', 
     expect($groupTherapy->isParticipant($assignedCounsellorUser))->toBeTrue();
 });
 
+test('a user attached via the group_therapy_user pivot is recognised as a participant', function () {
+    $addedbyUser = User::factory()->create();
+    $groupTherapy = GroupTherapy::factory()->create([
+        'addedby_type' => User::class,
+        'addedby_id' => $addedbyUser->id,
+    ]);
+
+    $memberUser = User::factory()->create();
+    $groupTherapy->users()->attach($memberUser->id, ['anonymous' => false]);
+
+    expect($groupTherapy->isParticipant($memberUser))->toBeTrue();
+    expect($groupTherapy->isNotParticipant($memberUser))->toBeFalse();
+    // isUser() must remain unaffected -- a pivot-attached member is not the addedby.
+    expect($groupTherapy->isUser($memberUser))->toBeFalse();
+});
+
+test('scopeWhereIsParticipant matches a group therapy via a pivot-attached member', function () {
+    $addedbyUser = User::factory()->create();
+    $groupTherapy = GroupTherapy::factory()->create([
+        'addedby_type' => User::class,
+        'addedby_id' => $addedbyUser->id,
+    ]);
+
+    $memberUser = User::factory()->create();
+    $groupTherapy->users()->attach($memberUser->id, ['anonymous' => false]);
+
+    $otherGroupTherapy = GroupTherapy::factory()->create([
+        'addedby_type' => User::class,
+        'addedby_id' => User::factory()->create()->id,
+    ]);
+
+    $matches = GroupTherapy::query()->whereIsParticipant($memberUser)->pluck('id');
+
+    expect($matches)->toContain($groupTherapy->id);
+    expect($matches)->not->toContain($otherGroupTherapy->id);
+});
+
+test('getUsers and getOtherUsers include a pivot-attached member', function () {
+    $addedbyUser = User::factory()->create();
+    $groupTherapy = GroupTherapy::factory()->create([
+        'addedby_type' => User::class,
+        'addedby_id' => $addedbyUser->id,
+    ]);
+
+    $memberUser = User::factory()->create();
+    $groupTherapy->users()->attach($memberUser->id, ['anonymous' => false]);
+
+    expect($groupTherapy->getUsers()->pluck('id'))->toContain($memberUser->id);
+    expect($groupTherapy->getOtherUsers($addedbyUser)->pluck('id'))->toContain($memberUser->id);
+    expect($groupTherapy->getOtherUsers($memberUser)->pluck('id'))->not->toContain($memberUser->id);
+});
+
 test('a user with no relation to the group therapy is not a participant', function () {
     $addedbyUser = User::factory()->create();
     $groupTherapy = GroupTherapy::factory()->create([

@@ -6,6 +6,7 @@ export default function useEnums() {
         therapy: 'THERAPY_ASSISTANCE_REQUEST',
         discussion: 'THERAPY_DISCUSSION_REQUEST',
         groupTherapy: 'GROUP_THERAPY_ASSISTANCE_REQUEST',
+        groupTherapyMembership: 'GROUP_THERAPY_MEMBERSHIP_REQUEST',
     }
     const RequestStatusEnum = {
         accepted: 'ACCEPTED',

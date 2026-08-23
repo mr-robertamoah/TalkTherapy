@@ -83,6 +83,12 @@ an existing message in the group's live session — log in as anyone else in the
 (`maria_garcia` or `sarah_johnson`) to see that message's sender masked, or as `john_davis` to see
 it show their own real identity.
 
+A fourth named, deterministic record exists for the group-therapy membership/join flow (see
+`documentation/features/scrum-72-group-therapy-membership.md`): `Membership Request Demo Group
+Therapy`, created by `maria_garcia` with `allow_anyone = false`, with a **PENDING** membership
+request already sent by `amy_taylor`. Log in as `maria_garcia` to see and accept/reject the
+pending request, or as `amy_taylor` to see your own request still pending.
+
 Query the actual current values anytime rather than trusting numbers to stay the same across
 reseeds:
 

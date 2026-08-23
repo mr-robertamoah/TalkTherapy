@@ -7,6 +7,8 @@ namespace Database\Seeders;
 use App\Enums\AdministratorTypeEnum;
 use App\Enums\GenderEnum;
 use App\Enums\LicensingTypeEnum;
+use App\Enums\RequestStatusEnum;
+use App\Enums\RequestTypeEnum;
 use App\Models\Therapy;
 use App\Models\User;
 use Illuminate\Database\Seeder;
@@ -504,6 +506,8 @@ class DatabaseSeeder extends Seeder
             'created_at' => now()->subMinutes(5),
         ]);
 
+        $this->createGroupTherapyMembershipRequestDemoData($users);
+
         // Discussion in IN_SESSION status between two known counsellors, with existing
         // messages, for testing the discussion chat page (log in as sarah_johnson or
         // michael_chen and visit /discussions/{id}/chat).
@@ -520,6 +524,41 @@ class DatabaseSeeder extends Seeder
         $discussion->counsellors()->attach($secondCounsellor->id);
 
         $this->createDiscussionMessages($discussion, collect([$counsellor, $secondCounsellor]));
+    }
+
+    // SCRUM-72: a group therapy with `allow_anyone = false` and a deterministic PENDING
+    // membership join request, so the accept/reject UI is manually verifiable without having to
+    // trigger the join flow through the UI first. Log in as `maria_garcia` (the creator) to see
+    // and respond to the pending request, or as `amy_taylor` (the requester) to see "you have a
+    // pending request to join".
+    private function createGroupTherapyMembershipRequestDemoData($users)
+    {
+        $creator = $users->firstWhere('username', 'maria_garcia');
+        throw_if(! $creator, new RuntimeException('Membership request demo seeder: expected seed user "maria_garcia" not found — did createDemoUsers() run first?'));
+
+        $requester = $users->firstWhere('username', 'amy_taylor');
+        throw_if(! $requester, new RuntimeException('Membership request demo seeder: expected seed user "amy_taylor" not found — did createDemoUsers() run first?'));
+
+        $groupTherapy = $creator->addedGroupTherapies()->create([
+            'name' => 'Membership Request Demo Group Therapy',
+            'about' => 'Seeded group therapy that requires a request to join, for testing the SCRUM-72 membership request accept/reject flow.',
+            'session_type' => 'Periodic',
+            'payment_type' => 'FREE',
+            'max_users' => 10,
+            'allow_anyone' => false,
+            'anonymous' => false,
+            'public' => true,
+            'status' => 'pending',
+        ]);
+
+        $request = $requester->sentRequests()->create([
+            'data' => ['anonymous' => false],
+            'type' => RequestTypeEnum::groupTherapyMembership->value,
+            'status' => RequestStatusEnum::pending->value,
+        ]);
+        $request->to()->associate($creator);
+        $request->for()->associate($groupTherapy);
+        $request->save();
     }
 
     private function createDemoPosts($counsellors, $users)
