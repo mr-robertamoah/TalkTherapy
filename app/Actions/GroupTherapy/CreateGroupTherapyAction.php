@@ -12,7 +12,7 @@ class CreateGroupTherapyAction extends Action
     {
         $addedby = $dto->counsellor ?: $dto->user;
 
-        $therapy = $addedby->addedGroupTherapies()->create([
+        $data = [
             'status' => TherapyStatusEnum::pending->value,
             'public' => $dto->public,
             'payment_type' => $dto->paymentType,
@@ -21,9 +21,6 @@ class CreateGroupTherapyAction extends Action
             'name' => $dto->name,
             'anonymous' => $dto->anonymous,
             'allow_anyone' => $dto->allowAnyone,
-            'max_sessions' => $dto->maxSessions,
-            'max_users' => $dto->maxUsers,
-            'max_counsellors' => $dto->maxCounsellors,
             'about' => $dto->about,
             'payment_data' => [
                 'per' => $dto->per,
@@ -31,9 +28,24 @@ class CreateGroupTherapyAction extends Action
                 'currency' => $dto->currency,
                 'inPersonAmount' => $dto->inPersonAmount ?: '',
                 'shareEqually' => $dto->shareEqually,
-                'sharePercentage' => $dto->shareEqually ? null : $dto->sharePercentage
-            ]
-        ]);
+                'sharePercentage' => $dto->shareEqually ? null : $dto->sharePercentage,
+            ],
+        ];
+
+        // max_sessions/max_users/max_counsellors are NOT NULL columns with their own DB
+        // defaults -- omit them when not provided so the DB default applies, instead of
+        // passing null and crashing with a QueryException (SCRUM-77).
+        foreach ([
+            'max_sessions' => $dto->maxSessions,
+            'max_users' => $dto->maxUsers,
+            'max_counsellors' => $dto->maxCounsellors,
+        ] as $column => $value) {
+            if (! is_null($value)) {
+                $data[$column] = $value;
+            }
+        }
+
+        $therapy = $addedby->addedGroupTherapies()->create($data);
 
         if ($dto->cases && count($dto->cases)) {
             $therapy->cases()->attach($dto->cases);
