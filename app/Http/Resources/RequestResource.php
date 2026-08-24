@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Enums\ConstantsEnum;
 use App\Enums\RequestTypeEnum;
 use App\Models\Discussion;
 use App\Models\GroupTherapy;
@@ -46,7 +47,7 @@ class RequestResource extends JsonResource
             $isAnonymous = $this->for?->anonymous || (bool) ($this->data['anonymous'] ?? false);
 
             if ($isAnonymous && ! $this->from?->is($viewer)) {
-                return ['id' => $this->from?->id, 'fullName' => 'Client (Anonymous User)', 'isUser' => true];
+                return ['id' => $this->from?->id, 'fullName' => ConstantsEnum::anonymousUserLabel->value, 'isUser' => true];
             }
         }
 
@@ -66,7 +67,7 @@ class RequestResource extends JsonResource
         // creator's own view of their own request.
         if ($this->type == RequestTypeEnum::groupTherapyMembership->value) {
             if ($this->for?->anonymous && ! $this->to?->is($viewer)) {
-                return ['id' => $this->to?->id, 'fullName' => 'Client (Anonymous User)', 'isUser' => true];
+                return ['id' => $this->to?->id, 'fullName' => ConstantsEnum::anonymousUserLabel->value, 'isUser' => true];
             }
         }
 

@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Enums\ConstantsEnum;
 use App\Models\Counsellor;
 use App\Models\User;
 use Illuminate\Http\Request;
@@ -46,7 +47,7 @@ class GroupTherapyResource extends JsonResource
                 : $this->when(
                     $addedbyUser?->is($user) || ! $isAnonymous,
                     new UserMiniResource($this->addedby),
-                    ['id' => $this->addedby?->id, 'fullName' => 'Client (Anonymous User)']
+                    ['id' => $this->addedby?->id, 'fullName' => ConstantsEnum::anonymousUserLabel->value]
                 ),
             'public' => (bool) $this->public,
             'anonymous' => (bool) $this->anonymous,

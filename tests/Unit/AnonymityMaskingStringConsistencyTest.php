@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\ConstantsEnum;
 use App\Http\Resources\GroupTherapyMiniResource;
 use App\Http\Resources\GroupTherapyResource;
 use App\Http\Resources\TherapyResource;
@@ -34,7 +35,7 @@ test('TherapyResource masks an anonymous addedby with the channels.php conventio
 
     $array = (new TherapyResource($therapy))->toArray($fakeRequest);
 
-    expect($array['user']['fullName'])->toBe('Client (Anonymous User)');
+    expect($array['user']['fullName'])->toBe(ConstantsEnum::anonymousUserLabel->value);
 });
 
 test('GroupTherapyResource masks an anonymous addedby with the channels.php convention', function () {
@@ -51,7 +52,7 @@ test('GroupTherapyResource masks an anonymous addedby with the channels.php conv
 
     $array = (new GroupTherapyResource($groupTherapy))->toArray($fakeRequest);
 
-    expect($array['addedby']['fullName'])->toBe('Client (Anonymous User)');
+    expect($array['addedby']['fullName'])->toBe(ConstantsEnum::anonymousUserLabel->value);
 });
 
 test('GroupTherapyMiniResource masks an anonymous addedby with the channels.php convention', function () {
@@ -68,5 +69,5 @@ test('GroupTherapyMiniResource masks an anonymous addedby with the channels.php 
 
     $array = (new GroupTherapyMiniResource($groupTherapy))->toArray($fakeRequest);
 
-    expect($array['addedby']['fullName'])->toBe('Client (Anonymous User)');
+    expect($array['addedby']['fullName'])->toBe(ConstantsEnum::anonymousUserLabel->value);
 });

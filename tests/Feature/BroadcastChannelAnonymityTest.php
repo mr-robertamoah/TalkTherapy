@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\ConstantsEnum;
 use App\Models\Counsellor;
 use App\Models\GroupTherapy;
 use App\Models\Therapy;
@@ -37,7 +38,7 @@ test('individual therapy channel masks the client\'s own name when the therapy i
 
     $result = $callback($client, $therapy->id);
 
-    expect($result)->toBe(['id' => $client->id, 'name' => 'Client (Anonymous User)']);
+    expect($result)->toBe(['id' => $client->id, 'name' => ConstantsEnum::anonymousUserLabel->value]);
 });
 
 test('individual therapy channel never masks the counsellor\'s own name', function () {
@@ -76,7 +77,7 @@ test('group therapy channel masks a member whose own pivot is anonymous, even th
 
     $result = $callback($member, $groupTherapy->id);
 
-    expect($result)->toBe(['id' => $member->id, 'name' => 'Client (Anonymous User)']);
+    expect($result)->toBe(['id' => $member->id, 'name' => ConstantsEnum::anonymousUserLabel->value]);
 });
 
 test('group therapy channel masks every member when the group-level flag is anonymous (the OR branch the old bug missed)', function () {
@@ -95,7 +96,7 @@ test('group therapy channel masks every member when the group-level flag is anon
 
     $result = $callback($member, $groupTherapy->id);
 
-    expect($result)->toBe(['id' => $member->id, 'name' => 'Client (Anonymous User)']);
+    expect($result)->toBe(['id' => $member->id, 'name' => ConstantsEnum::anonymousUserLabel->value]);
 });
 
 test('group therapy channel never masks a counsellor\'s own name, even when the group is anonymous', function () {

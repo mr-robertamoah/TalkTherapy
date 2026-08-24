@@ -4,6 +4,7 @@ use App\Actions\GroupTherapy\JoinGroupTherapyAction;
 use App\Actions\Request\RespondToGroupTherapyMembershipRequestAction;
 use App\DTOs\JoinGroupTherapyDTO;
 use App\DTOs\RequestResponseDTO;
+use App\Enums\ConstantsEnum;
 use App\Enums\RequestStatusEnum;
 use App\Enums\RequestTypeEnum;
 use App\Exceptions\CannotCreateTherapyException;
@@ -480,7 +481,7 @@ test('RequestResource masks the requester\'s identity when the group-therapy mem
 
     $from = renderRequestResourceFrom($request, $creator);
 
-    expect($from['fullName'])->toBe('Client (Anonymous User)');
+    expect($from['fullName'])->toBe(ConstantsEnum::anonymousUserLabel->value);
     expect($from)->not->toHaveKey('username');
 });
 
@@ -499,7 +500,7 @@ test('RequestResource masks the requester\'s identity for any viewer when the gr
 
     $from = renderRequestResourceFrom($request, $creator);
 
-    expect($from['fullName'])->toBe('Client (Anonymous User)');
+    expect($from['fullName'])->toBe(ConstantsEnum::anonymousUserLabel->value);
 });
 
 test('RequestResource does not mask the requester\'s own view of their own anonymous request', function () {
@@ -567,7 +568,7 @@ test('RequestResource masks the creator\'s identity to the requester when the gr
 
     $to = renderRequestResourceTo($request, $joiner);
 
-    expect($to['fullName'])->toBe('Client (Anonymous User)');
+    expect($to['fullName'])->toBe(ConstantsEnum::anonymousUserLabel->value);
     expect($to)->not->toHaveKey('username');
 });
 

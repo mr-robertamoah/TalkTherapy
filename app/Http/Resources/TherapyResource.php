@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Enums\ConstantsEnum;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -34,7 +35,7 @@ class TherapyResource extends JsonResource
             'user' => $this->when(
                 $this->addedby?->is($user) || ! $this->anonymous,
                 new UserMiniResource($this->addedby),
-                ['id' => $this->addedby?->id, 'fullName' => 'Client (Anonymous User)']
+                ['id' => $this->addedby?->id, 'fullName' => ConstantsEnum::anonymousUserLabel->value]
             ),
             'public' => (bool) $this->public,
             'anonymous' => (bool) $this->anonymous,
