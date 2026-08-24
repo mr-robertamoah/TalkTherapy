@@ -3,33 +3,37 @@
 namespace App\Services;
 
 use App\Actions\Request\EnsureRequestExistsAction;
+use App\Actions\Request\EnsureRequestResponseIsValidAction;
 use App\Actions\Request\EnsureUserCanRespondToRequestAction;
 use App\Actions\Request\GetRequestResourceAction;
 use App\Actions\Request\RespondToRequestAction;
-use App\DTOs\CreateRequestDTO;
 use App\DTOs\GetVerificationRequestsDTO;
 use App\DTOs\RequestResponseDTO;
 use App\Enums\PaginationEnum;
 use App\Enums\RequestTypeEnum;
 use App\Http\Resources\AdminCounsellorVerificationRequestResource;
 use App\Http\Resources\RequestResource;
-use App\Models\Counsellor;
 use App\Models\Request;
 use App\Models\User;
 
 class RequestService extends Service
 {
-    public function getRequests(String $status = '', User $user) {
+    public function getRequests(string $status, User $user)
+    {
         $query = Request::query();
 
         $query->where(function ($query) use ($status, $user) {
             $query->whereFrom($user);
-            if ($status) $query->where('status',  $status);
+            if ($status) {
+                $query->where('status', $status);
+            }
         });
 
         $query->orWhere(function ($query) use ($status, $user) {
             $query->whereTo($user);
-            if ($status) $query->where('status',  $status);
+            if ($status) {
+                $query->where('status', $status);
+            }
         });
 
         $counsellor = $user->counsellor;
@@ -37,15 +41,21 @@ class RequestService extends Service
 
             $query->orWhere(function ($query) use ($status, $counsellor) {
                 $query->whereFrom($counsellor);
-                if ($status) $query->where('status',  $status);
+                if ($status) {
+                    $query->where('status', $status);
+                }
             });
             $query->orWhere(function ($query) use ($status, $counsellor) {
                 $query->whereTo($counsellor);
-                if ($status) $query->where('status',  $status);
+                if ($status) {
+                    $query->where('status', $status);
+                }
             });
         });
 
-        if ($status) $query->where('status',  $status);
+        if ($status) {
+            $query->where('status', $status);
+        }
 
         return RequestResource::collection($query->latest()->paginate(
             PaginationEnum::preferencesPagination->value
@@ -59,11 +69,12 @@ class RequestService extends Service
         }
 
         $query = Request::query();
-        
-        $query->where('type',  RequestTypeEnum::counsellor->value);
 
-        if ($getVerificationRequestsDTO->filterType == 'validated')
+        $query->where('type', RequestTypeEnum::counsellor->value);
+
+        if ($getVerificationRequestsDTO->filterType == 'validated') {
             $query->where($getVerificationRequestsDTO->filterType, $getVerificationRequestsDTO->filterValue);
+        }
 
         return AdminCounsellorVerificationRequestResource::collection($query->paginate(
             PaginationEnum::preferencesPagination->value
@@ -73,8 +84,12 @@ class RequestService extends Service
     public function respondToRequest(RequestResponseDTO $requestResponseDTO)
     {
         EnsureRequestExistsAction::new()->execute($requestResponseDTO);
-        
+
         EnsureUserCanRespondToRequestAction::new()->execute($requestResponseDTO);
+
+        // Every RespondTo*RequestAction writes strtoupper($response) straight to status --
+        // reject anything that isn't accepted/rejected before any of them run (SCRUM-89).
+        EnsureRequestResponseIsValidAction::new()->execute($requestResponseDTO);
 
         $request = RespondToRequestAction::new()->execute($requestResponseDTO);
 
