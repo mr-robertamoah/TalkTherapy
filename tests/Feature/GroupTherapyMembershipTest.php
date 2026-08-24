@@ -441,7 +441,8 @@ test('POST requests.respond rejects a garbage response value instead of writing 
             'response' => 'MAYBE',
         ]);
 
-    $response->assertStatus(500);
+    // 422, not the pre-SCRUM-90 hardcoded 500 -- BadRequestException carries its own code.
+    $response->assertStatus(422);
     expect($request->fresh()->status)->toBe(RequestStatusEnum::pending->value);
     expect($groupTherapy->users()->whereKey($joiner->id)->exists())->toBeFalse();
 });
@@ -698,4 +699,28 @@ test('the unique-index migration deletes pre-existing duplicate group_therapy_us
     $remaining = DB::table('group_therapy_user')->where('group_therapy_id', $groupTherapy->id)->where('user_id', $member->id)->get();
     expect($remaining)->toHaveCount(1);
     expect($remaining->first()->id)->toBe($olderRowId);
+});
+
+test('POST requests.respond surfaces an unauthorized responder as 422, not a hardcoded 500 (SCRUM-90)', function () {
+    $creator = anAdult();
+    $groupTherapy = aGroupTherapy($creator, ['allow_anyone' => false]);
+    $joiner = anAdult();
+    $unrelatedUser = anAdult();
+
+    $request = JoinGroupTherapyAction::new()->execute(
+        JoinGroupTherapyDTO::new()->fromArray([
+            'user' => $joiner,
+            'groupTherapy' => $groupTherapy,
+        ])
+    );
+
+    $response = $this
+        ->actingAs($unrelatedUser)
+        ->postJson(route('requests.respond', ['requestId' => $request->id]), [
+            'response' => 'accepted',
+        ]);
+
+    $response->assertStatus(422);
+    $response->assertJson(['status' => false]);
+    expect($request->fresh()->status)->toBe(RequestStatusEnum::pending->value);
 });
