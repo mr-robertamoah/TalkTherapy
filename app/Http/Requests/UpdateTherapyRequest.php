@@ -4,6 +4,7 @@ namespace App\Http\Requests;
 
 use App\Enums\TherapyPaymentTypeEnum;
 use App\Enums\TherapySessionTypeEnum;
+use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -20,7 +21,7 @@ class UpdateTherapyRequest extends FormRequest
     /**
      * Get the validation rules that apply to the request.
      *
-     * @return array<string, \Illuminate\Contracts\Validation\ValidationRule|array<mixed>|string>
+     * @return array<string, ValidationRule|array<mixed>|string>
      */
     public function rules(): array
     {
@@ -33,7 +34,7 @@ class UpdateTherapyRequest extends FormRequest
             'cases' => ['nullable', 'array'],
             'sessionType' => ['nullable', Rule::in(TherapySessionTypeEnum::values())],
             'paymentType' => ['nullable', Rule::in(TherapyPaymentTypeEnum::values())],
-            'maxSessions' => ['nullable', 'integer'],
+            'maxSessions' => ['nullable', 'integer', 'min:1'],
             'per' => ['nullable', 'string'],
             'amount' => ['nullable', 'numeric'],
             'inPersonAmount' => ['nullable', 'numeric'],
