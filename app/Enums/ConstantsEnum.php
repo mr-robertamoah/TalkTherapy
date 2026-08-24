@@ -4,9 +4,10 @@ namespace App\Enums;
 
 use App\Traits\EnumTrait;
 
-enum ConstantsEnum : string
+enum ConstantsEnum: string
 {
     use EnumTrait;
 
-    case nationalId = "National Identification Authority";
+    case nationalId = 'National Identification Authority';
+    case anonymousUserLabel = 'Client (Anonymous User)';
 }

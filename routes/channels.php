@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\ConstantsEnum;
 use App\Models\Counsellor;
 use App\Models\Discussion;
 use App\Models\GroupTherapy;
@@ -54,7 +55,7 @@ Broadcast::channel('therapies.{therapyId}', function ($user, $therapyId) {
     $name = $user->name;
 
     if ($isUser && $therapy->isAnonymousFor($user)) {
-        $name = 'Client (Anonymous User)';
+        $name = ConstantsEnum::anonymousUserLabel->value;
     }
 
     return ['id' => $user->id, 'name' => $name];
@@ -84,7 +85,7 @@ Broadcast::channel('groupTherapies.{groupTherapyId}', function ($user, $groupThe
     $isCounsellorForGroup = $counsellor && $therapy->isCounsellor($counsellor);
 
     if (! $isCounsellorForGroup && $therapy->isAnonymousFor($user)) {
-        $name = 'Client (Anonymous User)';
+        $name = ConstantsEnum::anonymousUserLabel->value;
     }
 
     return ['id' => $user->id, 'name' => $name];
