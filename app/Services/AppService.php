@@ -20,7 +20,6 @@ use App\Notifications\DiscussionFailedNotification;
 use App\Notifications\ReportNotification;
 use App\Notifications\SessionDueNotification;
 use App\Notifications\SessionFailedNotification;
-use App\Notifications\SessionStartedNotification;
 use App\Notifications\VisitorsStatusNotification;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Support\Facades\Notification;
@@ -31,7 +30,7 @@ class AppService extends Service
     {
         $superAdmin = User::query()->whereSuperAdmin()->first();
 
-        $superAdmin->notify( new VisitorsStatusNotification());
+        $superAdmin->notify(new VisitorsStatusNotification);
     }
 
     public function alertAdminWithReport(Report $report)
@@ -40,7 +39,7 @@ class AppService extends Service
 
         Notification::send($admins->unique(), new ReportNotification($report));
     }
-    
+
     public function clearVisitors()
     {
         Visitor::query()
@@ -69,7 +68,7 @@ class AppService extends Service
 
         $sessions->each(function ($session) {
             Notification::send(
-                $session->users, 
+                $session->users,
                 new SessionDueNotification($session)
             );
         });
@@ -87,20 +86,19 @@ class AppService extends Service
                 ]);
             }, 'user'])
             ->get();
-        // ds('alerts', $alerts);
 
         $alerts->each(function ($alert) {
             $activeSession = $alert->alertable?->activeSession;
 
-            if ($activeSession)
+            if ($activeSession) {
                 SessionStartedEvent::broadcast($activeSession);
+            }
 
             $activeDiscussion = $alert->alertable?->activeDiscussion;
 
-            if ($activeDiscussion)
+            if ($activeDiscussion) {
                 DiscussionStartedEvent::broadcast($activeDiscussion);
-            // ds('activeDiscussion', $activeDiscussion);
-            // ds('activeSession', $activeSession);
+            }
             $alert->delete();
         });
     }
@@ -110,14 +108,14 @@ class AppService extends Service
         $sessions = Session::query()
             ->whereStatusIn([
                 SessionStatusEnum::pending->value,
-                SessionStatusEnum::in_session_confirmation->value
+                SessionStatusEnum::in_session_confirmation->value,
             ])
             ->wherePastEndTime()
             ->get();
-            
+
         $sessions->each(function ($session) {
             Notification::send(
-                $session->users, 
+                $session->users,
                 new SessionFailedNotification($session)
             );
 
@@ -142,10 +140,9 @@ class AppService extends Service
             }])
             ->get();
 
-        // ds('discussions', $discussions);
         $discussions->each(function ($discussion) {
             Notification::send(
-                $discussion->counsellors, 
+                $discussion->counsellors,
                 new DiscussionDueNotification($discussion)
             );
         });
@@ -160,10 +157,10 @@ class AppService extends Service
             ])
             ->wherePastEndTime()
             ->get();
-            
+
         $discussions->each(function ($discussion) {
             Notification::send(
-                $discussion->counsellors, 
+                $discussion->counsellors,
                 new DiscussionFailedNotification($discussion)
             );
 
