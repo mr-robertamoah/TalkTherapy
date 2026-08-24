@@ -5,6 +5,7 @@ namespace App\Http\Requests;
 use App\Enums\TherapyPaymentTypeEnum;
 use App\Enums\TherapyPerPaymentEnum;
 use App\Enums\TherapySessionTypeEnum;
+use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -21,7 +22,7 @@ class CreateTherapyRequest extends FormRequest
     /**
      * Get the validation rules that apply to the request.
      *
-     * @return array<string, \Illuminate\Contracts\Validation\ValidationRule|array<mixed>|string>
+     * @return array<string, ValidationRule|array<mixed>|string>
      */
     public function rules(): array
     {
@@ -34,7 +35,7 @@ class CreateTherapyRequest extends FormRequest
             'cases' => ['nullable', 'array'],
             'sessionType' => ['required', Rule::in(TherapySessionTypeEnum::values())],
             'paymentType' => ['required', Rule::in(TherapyPaymentTypeEnum::values())],
-            'maxSessions' => ['nullable', Rule::requiredIf($this->get('sessionType') == TherapySessionTypeEnum::periodic->value), 'integer'],
+            'maxSessions' => ['nullable', Rule::requiredIf($this->get('sessionType') == TherapySessionTypeEnum::periodic->value), 'integer', 'min:1'],
             'per' => ['nullable', Rule::requiredIf($this->get('paymentType') == TherapyPaymentTypeEnum::paid->value), 'string'],
             'amount' => ['nullable', Rule::requiredIf($this->get('paymentType') == TherapyPaymentTypeEnum::paid->value), 'numeric'],
             'inPersonAmount' => ['nullable', Rule::requiredIf(
