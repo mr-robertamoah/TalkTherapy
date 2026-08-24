@@ -17,7 +17,10 @@ use App\Notifications\GroupTherapyMembershipRequestAcceptedGuardianNotification;
 use App\Notifications\GroupTherapyMembershipRequestAcceptedNotification;
 use App\Notifications\GroupTherapyMembershipRequestRejectedNotification;
 use App\Notifications\GroupTherapyMembershipRequestSentNotification;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
 
 function anAdult(array $attributes = []): User
@@ -576,4 +579,100 @@ test('RequestResource does not mask the creator\'s identity when the group is no
     $to = renderRequestResourceTo($request, $joiner);
 
     expect($to['fullName'])->toBe($creator->name);
+});
+
+// SCRUM-80: group_therapy_user has no unique constraint on (group_therapy_id, user_id), and
+// neither JoinGroupTherapyAction nor RespondToGroupTherapyMembershipRequestAction locked the
+// group row before checking capacity and attaching -- two concurrent joins/accepts against a
+// near-full group could both pass the count check before either attached, and a
+// double-submitted accept click could attach the same member twice.
+
+test('the DB enforces a unique (group_therapy_id, user_id) pair on group_therapy_user', function () {
+    $creator = anAdult();
+    $groupTherapy = aGroupTherapy($creator);
+    $member = anAdult();
+
+    DB::table('group_therapy_user')->insert([
+        'group_therapy_id' => $groupTherapy->id,
+        'user_id' => $member->id,
+        'anonymous' => false,
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    expect(fn () => DB::table('group_therapy_user')->insert([
+        'group_therapy_id' => $groupTherapy->id,
+        'user_id' => $member->id,
+        'anonymous' => false,
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]))->toThrow(UniqueConstraintViolationException::class);
+});
+
+test('accepting a membership request a second time (a duplicate submission) does not attach the member twice or re-notify', function () {
+    Notification::fake();
+
+    $creator = anAdult();
+    $groupTherapy = aGroupTherapy($creator, ['allow_anyone' => false, 'max_users' => 5]);
+    $joiner = anAdult();
+
+    $request = JoinGroupTherapyAction::new()->execute(
+        JoinGroupTherapyDTO::new()->fromArray([
+            'user' => $joiner,
+            'groupTherapy' => $groupTherapy,
+        ])
+    );
+
+    $accepted = RespondToGroupTherapyMembershipRequestAction::new()->execute(
+        RequestResponseDTO::new()->fromArray(['request' => $request, 'response' => 'accepted'])
+    );
+    expect($accepted->status)->toBe(RequestStatusEnum::accepted->value);
+    expect($groupTherapy->users()->count())->toBe(1);
+
+    // The exact same request, already ACCEPTED, responded to again -- must be a no-op rather
+    // than attempting to attach $joiner a second time (which would violate the unique
+    // constraint) or send a second acceptance notification.
+    $secondResponse = RespondToGroupTherapyMembershipRequestAction::new()->execute(
+        RequestResponseDTO::new()->fromArray(['request' => $accepted->fresh(), 'response' => 'accepted'])
+    );
+
+    expect($secondResponse->status)->toBe(RequestStatusEnum::accepted->value);
+    expect($groupTherapy->users()->count())->toBe(1);
+    Notification::assertSentTimes(GroupTherapyMembershipRequestAcceptedNotification::class, 1);
+});
+
+test('the unique-index migration deletes pre-existing duplicate group_therapy_user rows before adding the constraint', function () {
+    $migrationPath = 'database/migrations/2026_08_24_000000_add_unique_index_to_group_therapy_user_table.php';
+
+    Artisan::call('migrate:rollback', ['--path' => $migrationPath]);
+
+    $creator = anAdult();
+    $groupTherapy = aGroupTherapy($creator);
+    $member = anAdult();
+
+    // Simulates what the pre-SCRUM-80 race could have already produced in a real database --
+    // two rows for the same (group_therapy_id, user_id) pair, the older one being the
+    // legitimate membership.
+    $olderRowId = DB::table('group_therapy_user')->insertGetId([
+        'group_therapy_id' => $groupTherapy->id,
+        'user_id' => $member->id,
+        'anonymous' => false,
+        'created_at' => now()->subDay(),
+        'updated_at' => now()->subDay(),
+    ]);
+    DB::table('group_therapy_user')->insert([
+        'group_therapy_id' => $groupTherapy->id,
+        'user_id' => $member->id,
+        'anonymous' => true,
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    expect(DB::table('group_therapy_user')->where('group_therapy_id', $groupTherapy->id)->where('user_id', $member->id)->count())->toBe(2);
+
+    Artisan::call('migrate', ['--path' => $migrationPath]);
+
+    $remaining = DB::table('group_therapy_user')->where('group_therapy_id', $groupTherapy->id)->where('user_id', $member->id)->get();
+    expect($remaining)->toHaveCount(1);
+    expect($remaining->first()->id)->toBe($olderRowId);
 });
