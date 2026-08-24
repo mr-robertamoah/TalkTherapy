@@ -112,6 +112,44 @@ test('a guardian of the addedby user is granted access to a non-public group the
         ->not->toThrow(TherapyAccessDeniedException::class);
 });
 
+test('a guest (null user) is explicitly denied access to a non-public group therapy, not via an uncaught TypeError', function () {
+    // SCRUM-76: before this fix, a null user reached isParticipant(User $user) (non-nullable
+    // typed) and threw a TypeError instead of the intended TherapyAccessDeniedException --
+    // it happened to still fail closed because the calling controller's generic
+    // catch (Throwable $th) redirected it, but that was accidental, not an explicit guard.
+    $addedbyUser = User::factory()->create();
+    $groupTherapy = GroupTherapy::factory()->create([
+        'addedby_type' => User::class,
+        'addedby_id' => $addedbyUser->id,
+        'public' => false,
+    ]);
+
+    $dto = GetTherapyDTO::new()->fromArray([
+        'user' => null,
+        'groupTherapy' => $groupTherapy,
+    ]);
+
+    expect(fn () => EnsureUserHasAccessToTherapyAction::new()->execute($dto, 'groupTherapy'))
+        ->toThrow(TherapyAccessDeniedException::class);
+});
+
+test('a guest (null user) is granted access to a public group therapy', function () {
+    $addedbyUser = User::factory()->create();
+    $groupTherapy = GroupTherapy::factory()->create([
+        'addedby_type' => User::class,
+        'addedby_id' => $addedbyUser->id,
+        'public' => true,
+    ]);
+
+    $dto = GetTherapyDTO::new()->fromArray([
+        'user' => null,
+        'groupTherapy' => $groupTherapy,
+    ]);
+
+    expect(fn () => EnsureUserHasAccessToTherapyAction::new()->execute($dto, 'groupTherapy'))
+        ->not->toThrow(TherapyAccessDeniedException::class);
+});
+
 test('a guardian of the addedby user is granted access to a non-public individual therapy', function () {
     $wardUser = User::factory()->create();
     $guardianUser = User::factory()->create();
