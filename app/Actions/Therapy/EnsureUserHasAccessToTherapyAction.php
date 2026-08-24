@@ -13,36 +13,48 @@ class EnsureUserHasAccessToTherapyAction extends Action
     public function execute(GetTherapyDTO $getTherapyDTO, string $type = 'therapy')
     {
         $therapy = $getTherapyDTO->$type;
+        $user = $getTherapyDTO->user;
+
+        if ($therapy->public) {
+            return;
+        }
+
+        // A guest (null user) can never satisfy any of the below checks -- isParticipant()
+        // is non-nullable-typed, so without this explicit guard a guest on a non-public
+        // therapy would fail closed only by accident, via an uncaught TypeError the calling
+        // controller's generic catch block happens to redirect (SCRUM-76).
+        if (! $user) {
+            throw new TherapyAccessDeniedException("You are not allowed to access therapy with id: {$therapy->id}", 422);
+        }
 
         if (
-            $therapy->public ||
-            $therapy->isParticipant($getTherapyDTO->user) ||
+            $therapy->isParticipant($user) ||
             (
-                $getTherapyDTO->user->counsellor &&
+                $user->counsellor &&
                 (
                     Request::query()
                         ->wherePending()
-                        ->whereTo($getTherapyDTO->user->counsellor)
+                        ->whereTo($user->counsellor)
                         ->whereHasMorph('for', [Discussion::class], function ($query) use ($therapy) {
                             $query->whereFor($therapy);
                         })
                         ->exists() ||
-                    $getTherapyDTO->user->counsellor->hasPendingRequestFor($therapy)
+                    $user->counsellor->hasPendingRequestFor($therapy)
                 )
             ) ||
-            $getTherapyDTO->user->isAdmin() ||
+            $user->isAdmin() ||
             (
                 $therapy->is_therapy &&
-                $getTherapyDTO->user->isGuardianOf($therapy->addedby)
+                $user->isGuardianOf($therapy->addedby)
             ) ||
             (
                 $therapy->is_group_therapy &&
-                $getTherapyDTO->user->isGuardianOfAUserFor($therapy)
+                $user->isGuardianOfAUserFor($therapy)
             )
         ) {
             return;
         }
 
-        throw new TherapyAccessDeniedException("You are not allowed to assess therapy with id: {$therapy->id}", 422);
+        throw new TherapyAccessDeniedException("You are not allowed to access therapy with id: {$therapy->id}", 422);
     }
 }
