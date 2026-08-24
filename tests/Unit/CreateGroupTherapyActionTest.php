@@ -47,3 +47,15 @@ test('creating a group therapy with an explicit maxSessions still honours the pr
 
     expect($therapy->max_sessions)->toBe(3);
 });
+
+test('creating a group therapy without maxCounsellors falls back to the DB default', function () {
+    $therapy = CreateGroupTherapyAction::new()->execute(aGroupTherapyDTO());
+
+    expect($therapy->max_counsellors)->toBe(5);
+});
+
+test('creating a group therapy with an explicit maxCounsellors persists the provided value (SCRUM-83)', function () {
+    $therapy = CreateGroupTherapyAction::new()->execute(aGroupTherapyDTO(['maxCounsellors' => 3]));
+
+    expect($therapy->max_counsellors)->toBe(3);
+});
