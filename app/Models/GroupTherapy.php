@@ -24,7 +24,7 @@ class GroupTherapy extends Model
 
     protected $fillable = [
         'session_type', 'payment_type', 'max_users', 'allow_anyone', 'about', 'name',
-        'public', 'anonymous', 'payment_data', 'status', 'max_sessions',
+        'public', 'anonymous', 'payment_data', 'status', 'max_sessions', 'max_counsellors',
     ];
 
     protected $casts = [
