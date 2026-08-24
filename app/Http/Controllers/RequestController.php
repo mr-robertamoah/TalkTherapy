@@ -34,13 +34,14 @@ class RequestController extends Controller
                 'request' => $requestResource,
             ], 201);
         } catch (Throwable $th) {
-            $message = $th->getCode() == 500 ? 'Something unfortunate happened. Please try again shortly.' : $th->getMessage();
+            $status = ($th->getCode() >= 400 && $th->getCode() < 600) ? $th->getCode() : 500;
+            $message = $status == 500 ? 'Something unfortunate happened. Please try again shortly.' : $th->getMessage();
 
             return response()->json([
-                'status' => true,
+                'status' => false,
                 'request' => null,
                 'error' => $message,
-            ], 500);
+            ], $status);
         }
     }
 }
