@@ -453,7 +453,7 @@ test('RequestResource masks the requester\'s identity when the group-therapy mem
 
     $from = renderRequestResourceFrom($request, $creator);
 
-    expect($from['fullName'])->toBe('anonymous');
+    expect($from['fullName'])->toBe('Client (Anonymous User)');
     expect($from)->not->toHaveKey('username');
 });
 
@@ -472,7 +472,7 @@ test('RequestResource masks the requester\'s identity for any viewer when the gr
 
     $from = renderRequestResourceFrom($request, $creator);
 
-    expect($from['fullName'])->toBe('anonymous');
+    expect($from['fullName'])->toBe('Client (Anonymous User)');
 });
 
 test('RequestResource does not mask the requester\'s own view of their own anonymous request', function () {
@@ -540,7 +540,7 @@ test('RequestResource masks the creator\'s identity to the requester when the gr
 
     $to = renderRequestResourceTo($request, $joiner);
 
-    expect($to['fullName'])->toBe('anonymous');
+    expect($to['fullName'])->toBe('Client (Anonymous User)');
     expect($to)->not->toHaveKey('username');
 });
 

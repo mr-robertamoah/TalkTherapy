@@ -41,7 +41,7 @@ class GroupTherapyMiniResource extends JsonResource
                 : $this->when(
                     ! $isAnonymous,
                     new UserMiniResource($this->addedby),
-                    ['id' => $this->addedby?->id, 'fullName' => 'anonymous']
+                    ['id' => $this->addedby?->id, 'fullName' => 'Client (Anonymous User)']
                 ),
             'counsellorsCount' => $this->counsellors()->count(),
             'about' => $this->about,
