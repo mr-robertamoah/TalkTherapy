@@ -423,6 +423,29 @@ test('POST requests.respond accepts a pending membership request over HTTP', fun
     expect($groupTherapy->users()->whereKey($joiner->id)->exists())->toBeTrue();
 });
 
+test('POST requests.respond rejects a garbage response value instead of writing it straight to status (SCRUM-89)', function () {
+    $creator = anAdult();
+    $groupTherapy = aGroupTherapy($creator, ['allow_anyone' => false]);
+    $joiner = anAdult();
+
+    $request = JoinGroupTherapyAction::new()->execute(
+        JoinGroupTherapyDTO::new()->fromArray([
+            'user' => $joiner,
+            'groupTherapy' => $groupTherapy,
+        ])
+    );
+
+    $response = $this
+        ->actingAs($creator)
+        ->postJson(route('requests.respond', ['requestId' => $request->id]), [
+            'response' => 'MAYBE',
+        ]);
+
+    $response->assertStatus(500);
+    expect($request->fresh()->status)->toBe(RequestStatusEnum::pending->value);
+    expect($groupTherapy->users()->whereKey($joiner->id)->exists())->toBeFalse();
+});
+
 // Regression tests: RequestResource::toArray() previously rendered `from` via an unmasked
 // UserMiniResource() unconditionally, for every request type -- for a group-therapy membership
 // request specifically, this leaked the requester's real identity to the group creator (and
