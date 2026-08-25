@@ -6,7 +6,6 @@ use App\Actions\GetModelWithModelNameAndIdAction;
 use App\DTOs\AlertServiceDTO;
 use App\Enums\AlertStatusEnum;
 use App\Services\AlertService;
-use Exception;
 use Illuminate\Http\Request;
 use Throwable;
 
@@ -29,9 +28,10 @@ class AlertController extends Controller
                 'status' => true,
             ]);
         } catch (Throwable $th) {
-            $message = $th->getCode() == 500 ? 'Something unfortunate happened. Please try again shortly.' : $th->getMessage();
+            $status = $this->statusFor($th);
+            $message = $this->messageFor($th, $status);
 
-            throw new Exception($message);
+            return response()->json(['message' => $message], $status);
         }
     }
 }

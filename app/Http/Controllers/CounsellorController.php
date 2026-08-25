@@ -16,7 +16,6 @@ use App\Http\Resources\CounsellorResource;
 use App\Http\Resources\StarredCounsellorResource;
 use App\Models\Counsellor;
 use App\Services\CounsellorService;
-use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Redirect;
 use Illuminate\Validation\Rule;
@@ -37,7 +36,8 @@ class CounsellorController extends Controller
 
             return redirect()->route('counsellor.show', ['counsellorId' => $request->counsellorId]);
         } catch (Throwable $th) {
-            $message = $th->getCode() == 500 ? 'Something unfortunate happened. Please try again shortly.' : $th->getMessage();
+            $status = $this->statusFor($th);
+            $message = $this->messageFor($th, $status);
 
             return redirect()->route('counsellor.show', ['counsellorId' => $request->counsellorId])->withErrors('message', $message);
         }
@@ -50,8 +50,10 @@ class CounsellorController extends Controller
 
             return StarredCounsellorResource::collection($counsellors);
         } catch (Throwable $th) {
-            $message = $th->getCode() == 500 ? 'Something unfortunate happened. Please try again shortly.' : $th->getMessage();
-            throw new Exception($message);
+            $status = $this->statusFor($th);
+            $message = $this->messageFor($th, $status);
+
+            return response()->json(['message' => $message], $status);
         }
     }
 
@@ -62,8 +64,10 @@ class CounsellorController extends Controller
 
             return CounsellorMiniResource::collection($counsellors);
         } catch (Throwable $th) {
-            $message = $th->getCode() == 500 ? 'Something unfortunate happened. Please try again shortly.' : $th->getMessage();
-            throw new Exception($message);
+            $status = $this->statusFor($th);
+            $message = $this->messageFor($th, $status);
+
+            return response()->json(['message' => $message], $status);
         }
     }
 
@@ -100,9 +104,10 @@ class CounsellorController extends Controller
                 'counsellor' => new CounsellorMiniResource($counsellor),
             ]);
         } catch (Throwable $th) {
-            $message = $th->getCode() == 500 ? 'Something unfortunate happened. Please try again shortly.' : $th->getMessage();
+            $status = $this->statusFor($th);
+            $message = $this->messageFor($th, $status);
 
-            throw new Exception($message);
+            return response()->json(['message' => $message], $status);
         }
     }
 
@@ -134,7 +139,10 @@ class CounsellorController extends Controller
 
             return $page;
         } catch (Throwable $th) {
-            return Redirect::route('home')->with('message', $th->getMessage());
+            $status = $this->statusFor($th);
+            $message = $this->messageFor($th, $status);
+
+            return Redirect::route('home')->with('message', $message);
         }
     }
 
@@ -163,9 +171,10 @@ class CounsellorController extends Controller
 
             return Redirect::back();
         } catch (Throwable $th) {
-            $message = $th->getCode() == 500 ? 'Something unfortunate happened. Please try again shortly.' : $th->getMessage();
+            $status = $this->statusFor($th);
+            $message = $this->messageFor($th, $status);
 
-            throw new Exception($message);
+            return Redirect::back()->withErrors(['alert' => $message]);
         }
     }
 
@@ -181,9 +190,10 @@ class CounsellorController extends Controller
 
             return Redirect::route('profile.show');
         } catch (Throwable $th) {
-            $message = $th->getCode() == 500 ? 'Something unfortunate happened. Please try again shortly.' : $th->getMessage();
+            $status = $this->statusFor($th);
+            $message = $this->messageFor($th, $status);
 
-            throw new Exception($message);
+            return Redirect::back()->withErrors(['alert' => $message]);
         }
     }
 
@@ -211,9 +221,10 @@ class CounsellorController extends Controller
 
             return Redirect::back();
         } catch (Throwable $th) {
-            $message = $th->getCode() == 500 ? 'Something unfortunate happened. Please try again shortly.' : $th->getMessage();
+            $status = $this->statusFor($th);
+            $message = $this->messageFor($th, $status);
 
-            throw new Exception($message);
+            return Redirect::back()->withErrors(['alert' => $message]);
         }
     }
 }

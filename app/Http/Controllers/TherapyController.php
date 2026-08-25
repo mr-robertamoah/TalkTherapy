@@ -17,7 +17,6 @@ use App\Http\Resources\TherapyTopicResource;
 use App\Models\Counsellor;
 use App\Models\Therapy;
 use App\Services\TherapyService;
-use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Redirect;
 use Inertia\Inertia;
@@ -32,8 +31,10 @@ class TherapyController extends Controller
 
             return TherapyMiniResource::collection($therapies);
         } catch (Throwable $th) {
-            $message = $th->getCode() == 500 ? 'Something unfortunate happened. Please try again shortly.' : $th->getMessage();
-            throw new Exception($message);
+            $status = $this->statusFor($th);
+            $message = $this->messageFor($th, $status);
+
+            return response()->json(['message' => $message], $status);
         }
     }
 
@@ -44,8 +45,10 @@ class TherapyController extends Controller
 
             return PublicTherapyResource::collection($therapies);
         } catch (Throwable $th) {
-            $message = $th->getCode() == 500 ? 'Something unfortunate happened. Please try again shortly.' : $th->getMessage();
-            throw new Exception($message);
+            $status = $this->statusFor($th);
+            $message = $this->messageFor($th, $status);
+
+            return response()->json(['message' => $message], $status);
         }
     }
 
@@ -56,7 +59,7 @@ class TherapyController extends Controller
 
             return TherapyMiniResource::collection($therapies);
         } catch (Throwable $th) {
-            $this->returnFailure($request, $th);
+            return $this->returnFailure($request, $th);
         }
     }
 
@@ -67,7 +70,7 @@ class TherapyController extends Controller
 
             return TherapyMiniResource::collection($therapies);
         } catch (Throwable $th) {
-            $this->returnFailure($request, $th);
+            return $this->returnFailure($request, $th);
         }
     }
 
@@ -78,7 +81,7 @@ class TherapyController extends Controller
 
             return TherapyMiniResource::collection($therapies);
         } catch (Throwable $th) {
-            $this->returnFailure($request, $th);
+            return $this->returnFailure($request, $th);
         }
     }
 
@@ -110,8 +113,10 @@ class TherapyController extends Controller
                 'therapy' => new TherapyMiniResource($therapy),
             ]);
         } catch (Throwable $th) {
-            $message = $th->getCode() == 500 ? 'Something unfortunate happened. Please try again shortly.' : $th->getMessage();
-            throw new Exception($message);
+            $status = $this->statusFor($th);
+            $message = $this->messageFor($th, $status);
+
+            return response()->json(['message' => $message], $status);
         }
     }
 
@@ -140,9 +145,10 @@ class TherapyController extends Controller
 
             return Redirect::back();
         } catch (Throwable $th) {
-            $message = $th->getCode() == 500 ? 'Something unfortunate happened. Please try again shortly.' : $th->getMessage();
+            $status = $this->statusFor($th);
+            $message = $this->messageFor($th, $status);
 
-            throw new Exception($message);
+            return Redirect::back()->withErrors(['alert' => $message]);
         }
     }
 
@@ -158,9 +164,10 @@ class TherapyController extends Controller
 
             return Redirect::route('home');
         } catch (Throwable $th) {
-            $message = $th->getCode() == 500 ? 'Something unfortunate happened. Please try again shortly.' : $th->getMessage();
+            $status = $this->statusFor($th);
+            $message = $this->messageFor($th, $status);
 
-            throw new Exception($message);
+            return Redirect::back()->withErrors(['alert' => $message]);
         }
     }
 
@@ -176,9 +183,10 @@ class TherapyController extends Controller
 
             return Redirect::back();
         } catch (Throwable $th) {
-            $message = $th->getCode() == 500 ? 'Something unfortunate happened. Please try again shortly.' : $th->getMessage();
+            $status = $this->statusFor($th);
+            $message = $this->messageFor($th, $status);
 
-            throw new Exception($message);
+            return Redirect::back()->withErrors(['alert' => $message]);
         }
     }
 
@@ -202,8 +210,10 @@ class TherapyController extends Controller
                 'recentTopics' => TherapyTopicResource::collection($therapy->topics()->latest()->take(5)->get()),
             ]);
         } catch (Throwable $th) {
+            $status = $this->statusFor($th);
+            $message = $this->messageFor($th, $status);
 
-            return Redirect::route('home')->with('message', $th->getMessage());
+            return Redirect::route('home')->with('message', $message);
         }
     }
 
@@ -221,8 +231,10 @@ class TherapyController extends Controller
                 'therapy' => new TherapyResource($therapy),
             ]);
         } catch (Throwable $th) {
+            $status = $this->statusFor($th);
+            $message = $this->messageFor($th, $status);
 
-            return Redirect::route('home')->with('message', $th->getMessage());
+            return Redirect::route('home')->with('message', $message);
         }
     }
 
@@ -241,9 +253,10 @@ class TherapyController extends Controller
                 'status' => true,
             ]);
         } catch (Throwable $th) {
-            $message = $th->getCode() == 500 ? 'Something unfortunate happened. Please try again shortly.' : $th->getMessage();
+            $status = $this->statusFor($th);
+            $message = $this->messageFor($th, $status);
 
-            throw new Exception($message);
+            return response()->json(['message' => $message], $status);
         }
     }
 
@@ -254,10 +267,11 @@ class TherapyController extends Controller
 
     private function returnFailure(Request $request, Throwable $th)
     {
-        $message = $th->getCode() == 500 ? 'Something unfortunate happened. Please try again shortly.' : $th->getMessage();
+        $status = $this->statusFor($th);
+        $message = $this->messageFor($th, $status);
 
         if ($request->acceptsJson()) {
-            throw new Exception($message);
+            return response()->json(['message' => $message], $status);
         }
 
         return Redirect::back()->withErrors(['alert' => $message]);
