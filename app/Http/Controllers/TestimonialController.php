@@ -7,7 +7,6 @@ use App\DTOs\CreateTestimonialDTO;
 use App\Http\Resources\TestimonialResource;
 use App\Models\Testimonial;
 use App\Services\TestimonialService;
-use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Redirect;
 use Throwable;
@@ -119,10 +118,11 @@ class TestimonialController extends Controller
 
     private function returnFailure(Request $request, Throwable $th)
     {
-        $message = $th->getCode() == 500 ? 'Something unfortunate happened. Please try again shortly.' : $th->getMessage();
+        $status = $this->statusFor($th);
+        $message = $this->messageFor($th, $status);
 
         if ($request->acceptsJson()) {
-            throw new Exception($message);
+            return response()->json(['message' => $message], $status);
         }
 
         return Redirect::back()->withErrors(['alert' => $message]);

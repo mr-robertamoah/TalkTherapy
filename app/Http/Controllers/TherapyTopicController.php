@@ -10,7 +10,6 @@ use App\Http\Resources\TherapyTopicResource;
 use App\Models\Therapy;
 use App\Models\TherapyTopic;
 use App\Services\TherapyTopicService;
-use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Redirect;
 use Throwable;
@@ -108,10 +107,11 @@ class TherapyTopicController extends Controller
 
     private function returnFailure(Request $request, Throwable $th)
     {
-        $message = $th->getCode() == 500 ? 'Something unfortunate happened. Please try again shortly.' : $th->getMessage();
+        $status = $this->statusFor($th);
+        $message = $this->messageFor($th, $status);
 
         if ($request->acceptsJson()) {
-            throw new Exception($message);
+            return response()->json(['message' => $message], $status);
         }
 
         return Redirect::back()->withErrors(['alert' => $message]);

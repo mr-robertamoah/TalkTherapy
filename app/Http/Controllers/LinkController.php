@@ -8,7 +8,6 @@ use App\DTOs\GetLinksDTO;
 use App\Http\Resources\LinkResource;
 use App\Models\Link;
 use App\Services\LinkService;
-use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Redirect;
@@ -117,11 +116,12 @@ class LinkController extends Controller
                 ])
             );
         } catch (Throwable $th) {
-            $code = $th->getCode();
+            $status = $this->statusFor($th);
+            $message = $this->messageFor($th, $status);
 
-            session()->put('alert', $th->getMessage());
+            session()->put('alert', $message);
 
-            if ($code == 422) {
+            if ($status == 422) {
                 return Redirect::route('home');
             }
 
@@ -192,10 +192,11 @@ class LinkController extends Controller
 
     private function returnFailure(Request $request, Throwable $th)
     {
-        $message = $th->getCode() == 500 ? 'Something unfortunate happened. Please try again shortly.' : $th->getMessage();
+        $status = $this->statusFor($th);
+        $message = $this->messageFor($th, $status);
 
         if ($request->acceptsJson()) {
-            throw new Exception($message);
+            return response()->json(['message' => $message], $status);
         }
 
         return Redirect::back()->withErrors(['alert' => $message]);
