@@ -172,11 +172,8 @@ class MessageController extends Controller
 
     private function returnFailure(Request $request, Throwable $th)
     {
-        // $status, not the raw getCode(), decides the message -- an exception whose code is
-        // neither a valid HTTP status nor literally 500 (e.g. the common default code 0) would
-        // otherwise leak its raw message while still being reported as a 500 (SCRUM-92).
-        $status = ($th->getCode() >= 400 && $th->getCode() < 600) ? $th->getCode() : 500;
-        $message = $status == 500 ? 'Something unfortunate happened. Please try again shortly.' : $th->getMessage();
+        $status = $this->statusFor($th);
+        $message = $this->messageFor($th, $status);
 
         if ($request->acceptsJson()) {
             return response()->json(['message' => $message], $status);

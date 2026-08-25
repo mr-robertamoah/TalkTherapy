@@ -34,8 +34,8 @@ class RequestController extends Controller
                 'request' => $requestResource,
             ], 201);
         } catch (Throwable $th) {
-            $status = ($th->getCode() >= 400 && $th->getCode() < 600) ? $th->getCode() : 500;
-            $message = $status == 500 ? 'Something unfortunate happened. Please try again shortly.' : $th->getMessage();
+            $status = $this->statusFor($th);
+            $message = $this->messageFor($th, $status);
 
             return response()->json([
                 'status' => false,
