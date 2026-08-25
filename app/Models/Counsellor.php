@@ -84,7 +84,7 @@ class Counsellor extends Model
 
     public function discussions()
     {
-        return $this->belongsToMany(Counsellor::class, 'counsellor_discussion', 'counsellor_id', 'discussion_id')
+        return $this->belongsToMany(Discussion::class, 'counsellor_discussion', 'counsellor_id', 'discussion_id')
             ->withTimestamps();
     }
 
