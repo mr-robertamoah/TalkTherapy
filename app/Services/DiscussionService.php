@@ -6,6 +6,7 @@ use App\Actions\Discussion\ChangeDiscussionStatusAction;
 use App\Actions\Discussion\CreateDiscussionAction;
 use App\Actions\Discussion\CreateDiscussionRequestAction;
 use App\Actions\Discussion\DeleteDiscussionAction;
+use App\Actions\Discussion\EnsureCanCreateDiscussionForAction;
 use App\Actions\Discussion\EnsureCanDeleteDiscussionAction;
 use App\Actions\Discussion\EnsureCanEndDiscussionAction;
 use App\Actions\Discussion\EnsureCanFailDiscussionAction;
@@ -72,6 +73,8 @@ class DiscussionService extends Service
         EnsureIsCounsellorAction::new()->execute($createDiscussionDTO);
 
         EnsureAddedbyIsValidAction::new()->execute($createDiscussionDTO, force: true);
+
+        EnsureCanCreateDiscussionForAction::new()->execute($createDiscussionDTO);
 
         EnsureDiscussionDataIsValidAction::new()->execute($createDiscussionDTO);
 

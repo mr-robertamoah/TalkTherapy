@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\CounsellorGroupTherapyStateEnum;
 use App\Enums\RequestTypeEnum;
 use App\Traits\Alertable;
 use App\Traits\Commentable;
@@ -83,7 +84,10 @@ class GroupTherapy extends Model
             return true;
         }
 
-        return $this->counsellors()->whereKey($counsellor->id)->exists();
+        return $this->counsellors()
+            ->whereKey($counsellor->id)
+            ->wherePivot('state', CounsellorGroupTherapyStateEnum::active->value)
+            ->exists();
     }
 
     public function isUser(User $user)
