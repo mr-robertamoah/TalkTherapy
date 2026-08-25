@@ -68,6 +68,57 @@ test('responding to an already-accepted guardianship request a second time does 
     Notification::assertSentToTimes($ward, GuardianshipEstablishedNotification::class, 1);
 });
 
+test('accepting two separate pending guardianship requests for the same pair only creates one guardianship row and one notification', function () {
+    Notification::fake();
+
+    // The request-row lock alone doesn't stop the SAME ward from ending up with two different
+    // pending requests to the SAME guardian (each locks a different Request row, so they never
+    // serialize against each other) -- accepting both, even sequentially with no concurrency
+    // required, would otherwise try to create the guardianship row twice (SCRUM-99). The
+    // guardianship(guardian_id, ward_id) unique index is the actual guarantee; this proves the
+    // action's own existence check (and, for a genuine race, its UniqueConstraintViolationException
+    // fallback) keeps the second accept from duplicating the row or re-notifying.
+    $ward = User::factory()->create();
+    $guardian = User::factory()->create(['dob' => now()->subYears(30), 'email_verified_at' => now()]);
+
+    $firstRequest = CreateRequestAction::new()->execute(
+        CreateRequestDTO::new()->fromArray([
+            'from' => $ward,
+            'to' => $guardian,
+            'for' => $ward,
+            'type' => RequestTypeEnum::guardianship->value,
+        ])
+    );
+    $secondRequest = CreateRequestAction::new()->execute(
+        CreateRequestDTO::new()->fromArray([
+            'from' => $ward,
+            'to' => $guardian,
+            'for' => $ward,
+            'type' => RequestTypeEnum::guardianship->value,
+        ])
+    );
+
+    RespondToGuardianshipRequestAction::new()->execute(
+        RequestResponseDTO::new()->fromArray([
+            'user' => $guardian,
+            'response' => 'accepted',
+            'request' => $firstRequest,
+        ])
+    );
+
+    $secondResult = RespondToGuardianshipRequestAction::new()->execute(
+        RequestResponseDTO::new()->fromArray([
+            'user' => $guardian,
+            'response' => 'accepted',
+            'request' => $secondRequest,
+        ])
+    );
+
+    expect($secondResult->status)->toBe(RequestStatusEnum::accepted->value);
+    expect(Guardianship::count())->toBe(1);
+    Notification::assertSentToTimes($ward, GuardianshipEstablishedNotification::class, 1);
+});
+
 test('responding to a discussion request already marked accepted does not re-attach the counsellor or re-notify', function () {
     Notification::fake();
 
