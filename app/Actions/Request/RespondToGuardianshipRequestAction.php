@@ -7,8 +7,9 @@ use App\Actions\User\EnsureUserCanBeGuardianAction;
 use App\DTOs\CreateRequestDTO;
 use App\DTOs\RequestResponseDTO;
 use App\Enums\RequestStatusEnum;
-use App\Models\License;
+use App\Models\Request;
 use App\Notifications\GuardianshipEstablishedNotification;
+use Illuminate\Support\Facades\DB;
 
 class RespondToGuardianshipRequestAction extends Action
 {
@@ -16,24 +17,43 @@ class RespondToGuardianshipRequestAction extends Action
     {
         EnsureUserCanBeGuardianAction::new()->execute(
             CreateRequestDTO::new()->fromArray(['to' => $requestResponseDTO->request->to]),
-            "You are trying to respond to a guardianship request but do not qualify to be a guardian because you are not an adult, have not set date or birth, have not set email or have not verified your email."
+            'You are trying to respond to a guardianship request but do not qualify to be a guardian because you are not an adult, have not set date or birth, have not set email or have not verified your email.'
         );
 
-        $requestResponseDTO->request->update([
-            'status' => is_null($requestResponseDTO->response)
-                ? RequestStatusEnum::rejected->value
-                : strtoupper($requestResponseDTO->response)
-        ]);
-        
-        $request = $requestResponseDTO->request->refresh();
+        // Locking the request row and re-checking its status inside the lock closes the same
+        // double-submission race SCRUM-80 fixed for group therapy membership requests: two
+        // concurrent responses to the same request both queue on this lock, so the second one
+        // always observes the first's committed status update and just no-ops instead of
+        // creating a duplicate guardianship row (SCRUM-91). $accepted only reflects whether
+        // *this* call performed the transition, so a no-op call never re-sends the notification.
+        [$request, $accepted] = DB::transaction(function () use ($requestResponseDTO) {
+            $request = Request::query()->lockForUpdate()->findOrFail($requestResponseDTO->request->id);
 
-        if ($request->status == RequestStatusEnum::accepted->value) {
-            $request->from->guardians()->create(['guardian_id' => $request->to->id]);
+            if ($request->status != RequestStatusEnum::pending->value) {
+                return [$request, false];
+            }
+
+            $request->update([
+                'status' => is_null($requestResponseDTO->response)
+                    ? RequestStatusEnum::rejected->value
+                    : strtoupper($requestResponseDTO->response),
+            ]);
+
+            $request = $request->refresh();
+
+            if ($request->status == RequestStatusEnum::accepted->value) {
+                $request->from->guardians()->create(['guardian_id' => $request->to->id]);
+            }
+
+            return [$request, $request->status == RequestStatusEnum::accepted->value];
+        });
+
+        if ($accepted) {
             $request->from->notify(
                 new GuardianshipEstablishedNotification($request->to)
             );
         }
-        
+
         return $request;
     }
 }
