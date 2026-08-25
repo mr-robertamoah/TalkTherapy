@@ -4,23 +4,24 @@ namespace App\Services;
 
 use App\Actions\Discussion\ChangeDiscussionStatusAction;
 use App\Actions\Discussion\CreateDiscussionAction;
+use App\Actions\Discussion\CreateDiscussionRequestAction;
 use App\Actions\Discussion\DeleteDiscussionAction;
 use App\Actions\Discussion\EnsureCanDeleteDiscussionAction;
 use App\Actions\Discussion\EnsureCanEndDiscussionAction;
+use App\Actions\Discussion\EnsureCanFailDiscussionAction;
+use App\Actions\Discussion\EnsureCanRemoveCounsellorFromDiscussionAction;
+use App\Actions\Discussion\EnsureCanSendDiscussionRequestAction;
 use App\Actions\Discussion\EnsureCanUpdateDiscussionAction;
 use App\Actions\Discussion\EnsureCanUpdateDiscussionStatusAction;
 use App\Actions\Discussion\EnsureDiscussionDataIsValidAction;
 use App\Actions\Discussion\EnsureDiscussionExistsAction;
 use App\Actions\Discussion\EnsureDoesNotHaveDiscussionRequestAction;
 use App\Actions\Discussion\EnsureNotAlreadyPartOfDiscussionAction;
+use App\Actions\Discussion\RemoveCounsellorFromDiscussionAction;
 use App\Actions\Discussion\UpdateDiscussionAction;
 use App\Actions\EnsureAddedbyIsValidAction;
 use App\Actions\Star\CreateStarAction;
 use App\Actions\Therapy\EnsureIsCounsellorAction;
-use App\Actions\Discussion\CreateDiscussionRequestAction;
-use App\Actions\Discussion\EnsureCanFailDiscussionAction;
-use App\Actions\Discussion\EnsureCanRemoveCounsellorFromDiscussionAction;
-use App\Actions\Discussion\RemoveCounsellorFromDiscussionAction;
 use App\Actions\User\EnsureRequestDataIsValidAction;
 use App\Actions\User\EnsureUserExistsAction;
 use App\DTOs\CreateDiscussionDTO;
@@ -49,22 +50,24 @@ class DiscussionService extends Service
         EnsureDiscussionExistsAction::new()->execute($getDiscussionsDTO);
 
         EnsureCanRemoveCounsellorFromDiscussionAction::new()->execute($getDiscussionsDTO);
-        
+
         RemoveCounsellorFromDiscussionAction::new()->execute($getDiscussionsDTO);
     }
 
     public function sendCounsellorRequest(CreateRequestDTO $createRequestDTO)
     {
         EnsureRequestDataIsValidAction::new()->execute($createRequestDTO);
-        
+
+        EnsureCanSendDiscussionRequestAction::new()->execute($createRequestDTO);
+
         EnsureNotAlreadyPartOfDiscussionAction::new()->execute($createRequestDTO);
-        
+
         EnsureDoesNotHaveDiscussionRequestAction::new()->execute($createRequestDTO);
-        
+
         return CreateDiscussionRequestAction::new()->execute($createRequestDTO);
     }
 
-    public function createDiscussion(CreateDiscussionDTO $createDiscussionDTO) : Discussion
+    public function createDiscussion(CreateDiscussionDTO $createDiscussionDTO): Discussion
     {
         EnsureIsCounsellorAction::new()->execute($createDiscussionDTO);
 
@@ -85,15 +88,15 @@ class DiscussionService extends Service
 
         return $discussion;
     }
-    
-    public function updateDiscussion(CreateDiscussionDTO $createDiscussionDTO) : Discussion
+
+    public function updateDiscussion(CreateDiscussionDTO $createDiscussionDTO): Discussion
     {
         EnsureIsCounsellorAction::new()->execute($createDiscussionDTO);
 
         EnsureDiscussionExistsAction::new()->execute($createDiscussionDTO);
 
         EnsureCanUpdateDiscussionAction::new()->execute($createDiscussionDTO);
-        
+
         EnsureDiscussionDataIsValidAction::new()->execute($createDiscussionDTO);
 
         UpdateDiscussionAction::new()->execute($createDiscussionDTO);
@@ -101,7 +104,7 @@ class DiscussionService extends Service
         $discussion = $createDiscussionDTO->discussion->refresh();
 
         Notification::send(
-            $discussion->getOtherUsers($createDiscussionDTO->user), 
+            $discussion->getOtherUsers($createDiscussionDTO->user),
             new DiscussionUpdatedNotification($discussion)
         );
 
@@ -117,9 +120,9 @@ class DiscussionService extends Service
         $discussion = ChangeDiscussionStatusAction::new()->execute($createDiscussionDTO, DiscussionStatusEnum::held->value);
 
         broadcast(new DiscussionUpdatedEvent($discussion))->toOthers();
-        
+
         Notification::send(
-            $createDiscussionDTO->discussion->getOtherUsers($createDiscussionDTO->user), 
+            $createDiscussionDTO->discussion->getOtherUsers($createDiscussionDTO->user),
             new DiscussionStatusChangedNotification($discussion)
         );
 
@@ -135,9 +138,9 @@ class DiscussionService extends Service
         $discussion = ChangeDiscussionStatusAction::new()->execute($createDiscussionDTO, DiscussionStatusEnum::in_session->value);
 
         broadcast(new DiscussionUpdatedEvent($discussion))->toOthers();
-        
+
         Notification::send(
-            $createDiscussionDTO->discussion->getOtherUsers($createDiscussionDTO->user), 
+            $createDiscussionDTO->discussion->getOtherUsers($createDiscussionDTO->user),
             new DiscussionStatusChangedNotification($discussion)
         );
 
@@ -153,9 +156,9 @@ class DiscussionService extends Service
         $discussion = ChangeDiscussionStatusAction::new()->execute($createDiscussionDTO, DiscussionStatusEnum::abandoned->value);
 
         broadcast(new DiscussionUpdatedEvent($discussion))->toOthers();
-        
+
         Notification::send(
-            $createDiscussionDTO->discussion->getOtherUsers($createDiscussionDTO->user), 
+            $createDiscussionDTO->discussion->getOtherUsers($createDiscussionDTO->user),
             new DiscussionStatusChangedNotification($discussion)
         );
 
@@ -171,7 +174,7 @@ class DiscussionService extends Service
         $discussion = ChangeDiscussionStatusAction::new()->execute($createDiscussionDTO, DiscussionStatusEnum::failed->value);
 
         Notification::send(
-            $createDiscussionDTO->discussion->getOtherUsers($createDiscussionDTO->user), 
+            $createDiscussionDTO->discussion->getOtherUsers($createDiscussionDTO->user),
             new DiscussionStatusChangedNotification($discussion)
         );
 
@@ -187,7 +190,7 @@ class DiscussionService extends Service
         $discussion = DeleteDiscussionAction::new()->execute($createDiscussionDTO);
 
         Notification::send(
-            $createDiscussionDTO->discussion->getOtherUsers($createDiscussionDTO->user), 
+            $createDiscussionDTO->discussion->getOtherUsers($createDiscussionDTO->user),
             new DiscussionDeletedNotification($discussion)
         );
 
@@ -197,28 +200,34 @@ class DiscussionService extends Service
     public function getDiscussions(GetDiscussionsDTO $getDiscussionsDTO)
     {
         $counsellor = $getDiscussionsDTO->user?->counsellor;
-        if (is_null($counsellor)) return [];
+        if (is_null($counsellor)) {
+            return [];
+        }
 
         $query = Discussion::query();
 
         $query->where(function ($query) use ($counsellor, $getDiscussionsDTO) {
 
-            if ($getDiscussionsDTO->name)
+            if ($getDiscussionsDTO->name) {
                 $query->where('name', 'LIKE', "%{$getDiscussionsDTO->name}%");
-    
-            if ($getDiscussionsDTO->for)
+            }
+
+            if ($getDiscussionsDTO->for) {
                 $query->whereFor($getDiscussionsDTO->for);
-            
+            }
+
             $query->whereAddedby($counsellor);
         });
 
         $query->orWhere(function ($query) use ($counsellor, $getDiscussionsDTO) {
 
-            if ($getDiscussionsDTO->name)
+            if ($getDiscussionsDTO->name) {
                 $query->where('name', 'LIKE', "%{$getDiscussionsDTO->name}%");
-    
-            if ($getDiscussionsDTO->for)
+            }
+
+            if ($getDiscussionsDTO->for) {
                 $query->whereFor($getDiscussionsDTO->for);
+            }
 
             $query->whereCounsellor($counsellor);
         });
@@ -230,14 +239,17 @@ class DiscussionService extends Service
 
     public function getDiscussionCounsellors(GetDiscussionsDTO $getDiscussionsDTO)
     {
-        if (is_null($getDiscussionsDTO->discussion)) return [];
+        if (is_null($getDiscussionsDTO->discussion)) {
+            return [];
+        }
 
         $query = Counsellor::query();
 
         $query->whereDiscussion($getDiscussionsDTO->discussion);
 
-        if ($getDiscussionsDTO->name)
+        if ($getDiscussionsDTO->name) {
             $query->whereName($getDiscussionsDTO->name);
+        }
 
         return CounsellorMiniResource::collection($query->paginate(PaginationEnum::pagination->value));
     }

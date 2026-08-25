@@ -12,6 +12,7 @@ use App\Enums\LicensingTypeEnum;
 use App\Enums\RequestStatusEnum;
 use App\Enums\RequestTypeEnum;
 use App\Enums\TherapyStatusEnum;
+use App\Exceptions\DiscussionException;
 use App\Models\Counsellor;
 use App\Models\Discussion;
 use App\Models\Guardianship;
@@ -19,8 +20,10 @@ use App\Models\License;
 use App\Models\LicensingAuthority;
 use App\Models\Therapy;
 use App\Models\User;
+use App\Notifications\DiscussionInclusionNotification;
 use App\Notifications\GuardianshipEstablishedNotification;
 use App\Notifications\TherapyAssistanceRequestAcceptedNotification;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
 
 // SCRUM-91: extends the "no-op if already non-pending, decided under a lock" guard that
@@ -157,6 +160,70 @@ test('responding to a discussion request already marked accepted does not re-att
     expect($result->status)->toBe(RequestStatusEnum::accepted->value);
     expect($discussion->fresh()->counsellors()->whereKey($counsellor->id)->exists())->toBeFalse();
     Notification::assertNothingSent();
+});
+
+test('accepting a second pending discussion request for an already-attached target throws instead of duplicating the attach or notification', function () {
+    Notification::fake();
+
+    // SCRUM-102 narrowed who may send a discussion-invite request to the discussion's owner and
+    // its existing participants, but didn't eliminate the case entirely: two different
+    // legitimate senders (the owner and a participant, say) can still independently invite the
+    // same target counsellor, creating two separate pending requests for the same (to, for)
+    // pair. Once the first is accepted, EnsureNotAlreadyPartOfDiscussionAction (which runs
+    // before RespondToDiscussionRequestAction's own lock) correctly rejects a sequential
+    // second accept attempt with a clean, existing DiscussionException -- it's the same
+    // pre-check as any other new discussion request, so the responder sees a normal error
+    // rather than the request silently double-attaching or double-notifying. (A genuinely
+    // concurrent second accept -- both pre-checks passing before either transaction commits --
+    // is a narrower, harder-to-reach race that this sequential test cannot exercise; that
+    // residual window is closed at the DB layer by SCRUM-100's unique constraint instead.)
+    $therapyOwner = User::factory()->create();
+    $therapy = Therapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => $therapyOwner->id]);
+    $discussionOwner = Counsellor::factory()->create(['user_id' => User::factory()->create()->id]);
+    $discussion = Discussion::factory()->create([
+        'for_id' => $therapy->id,
+        'for_type' => Therapy::class,
+        'addedby_id' => $discussionOwner->id,
+        'addedby_type' => Counsellor::class,
+    ]);
+    $participant = Counsellor::factory()->create(['user_id' => User::factory()->create()->id]);
+    $discussion->counsellors()->attach($participant->id);
+
+    $target = Counsellor::factory()->create(['user_id' => User::factory()->create()->id]);
+
+    $firstRequest = CreateRequestAction::new()->execute(
+        CreateRequestDTO::new()->fromArray([
+            'from' => $discussionOwner,
+            'to' => $target,
+            'for' => $discussion,
+            'type' => RequestTypeEnum::discussion->value,
+        ])
+    );
+    $secondRequest = CreateRequestAction::new()->execute(
+        CreateRequestDTO::new()->fromArray([
+            'from' => $participant,
+            'to' => $target,
+            'for' => $discussion,
+            'type' => RequestTypeEnum::discussion->value,
+        ])
+    );
+
+    RespondToDiscussionRequestAction::new()->execute(
+        RequestResponseDTO::new()->fromArray([
+            'response' => 'accepted',
+            'request' => $firstRequest,
+        ])
+    );
+
+    expect(fn () => RespondToDiscussionRequestAction::new()->execute(
+        RequestResponseDTO::new()->fromArray([
+            'response' => 'accepted',
+            'request' => $secondRequest,
+        ])
+    ))->toThrow(DiscussionException::class);
+
+    expect(DB::table('counsellor_discussion')->where('counsellor_id', $target->id)->count())->toBe(1);
+    Notification::assertSentTimes(DiscussionInclusionNotification::class, 1);
 });
 
 test('responding to an already-accepted therapy assistance request a second time does not re-notify or re-alert the guardian', function () {
