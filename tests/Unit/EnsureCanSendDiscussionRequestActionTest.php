@@ -23,7 +23,14 @@ function aTherapyOwnedBy(User $owner): Therapy
 // Discussion::addedby is always a Counsellor in practice (the only relation pointing at it is
 // Counsellor::addedDiscussions()), and Discussion::isParticipant() is type-hinted ?Counsellor --
 // a User there would throw a TypeError, not the DiscussionException these tests care about.
-// aCounsellor() is already defined globally in CounsellorHasPendingRequestForTest.php.
+// Defined locally (not reused from a sibling test file's global helper) because `php artisan
+// test --parallel` (this project's CI runner) splits test files across separate worker
+// processes -- a global function from another file isn't guaranteed to be loaded in this one's
+// process.
+function aDiscussionCounsellor(): Counsellor
+{
+    return Counsellor::factory()->create(['user_id' => User::factory()->create()->id]);
+}
 
 function aDiscussionOwnedBy(Counsellor $owner, Therapy $therapy): Discussion
 {
@@ -38,7 +45,7 @@ function aDiscussionOwnedBy(Counsellor $owner, Therapy $therapy): Discussion
 test('the discussion owner can send a counsellor request', function () {
     $therapyOwner = User::factory()->create();
     $therapy = aTherapyOwnedBy($therapyOwner);
-    $discussionOwner = aCounsellor();
+    $discussionOwner = aDiscussionCounsellor();
     $discussion = aDiscussionOwnedBy($discussionOwner, $therapy);
 
     expect(fn () => EnsureCanSendDiscussionRequestAction::new()->execute(
@@ -49,9 +56,9 @@ test('the discussion owner can send a counsellor request', function () {
 test('an existing participant counsellor can send a counsellor request', function () {
     $therapyOwner = User::factory()->create();
     $therapy = aTherapyOwnedBy($therapyOwner);
-    $discussionOwner = aCounsellor();
+    $discussionOwner = aDiscussionCounsellor();
     $discussion = aDiscussionOwnedBy($discussionOwner, $therapy);
-    $participant = aCounsellor();
+    $participant = aDiscussionCounsellor();
     $discussion->counsellors()->attach($participant->id);
 
     expect(fn () => EnsureCanSendDiscussionRequestAction::new()->execute(
@@ -62,9 +69,9 @@ test('an existing participant counsellor can send a counsellor request', functio
 test('a counsellor with no relationship to the discussion cannot send a counsellor request', function () {
     $therapyOwner = User::factory()->create();
     $therapy = aTherapyOwnedBy($therapyOwner);
-    $discussionOwner = aCounsellor();
+    $discussionOwner = aDiscussionCounsellor();
     $discussion = aDiscussionOwnedBy($discussionOwner, $therapy);
-    $outsider = aCounsellor();
+    $outsider = aDiscussionCounsellor();
 
     expect(fn () => EnsureCanSendDiscussionRequestAction::new()->execute(
         CreateRequestDTO::new()->fromArray(['from' => $outsider, 'for' => $discussion])
@@ -78,7 +85,7 @@ test('a non-counsellor `from` is cleanly rejected instead of throwing a TypeErro
     // clean, existing DiscussionException.
     $therapyOwner = User::factory()->create();
     $therapy = aTherapyOwnedBy($therapyOwner);
-    $discussionOwner = aCounsellor();
+    $discussionOwner = aDiscussionCounsellor();
     $discussion = aDiscussionOwnedBy($discussionOwner, $therapy);
     $nonCounsellorUser = User::factory()->create();
 
@@ -92,10 +99,10 @@ test('DiscussionService::sendCounsellorRequest rejects a counsellor with no rela
 
     $therapyOwner = User::factory()->create();
     $therapy = aTherapyOwnedBy($therapyOwner);
-    $discussionOwner = aCounsellor();
+    $discussionOwner = aDiscussionCounsellor();
     $discussion = aDiscussionOwnedBy($discussionOwner, $therapy);
-    $outsider = aCounsellor();
-    $target = aCounsellor();
+    $outsider = aDiscussionCounsellor();
+    $target = aDiscussionCounsellor();
 
     expect(fn () => DiscussionService::new()->sendCounsellorRequest(
         CreateRequestDTO::new()->fromArray(['from' => $outsider, 'for' => $discussion, 'to' => $target])
