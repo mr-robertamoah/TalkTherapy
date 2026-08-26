@@ -43,8 +43,23 @@ class EnsureTherapyDataIsValidAction extends Action
 
         // Mirrors the max_users/max_counsellors sanity ceiling below (SCRUM-84) -- maxSessions
         // had no upper bound at all, for either an individual Therapy or a GroupTherapy.
+        //
+        // The `$therapy && $dto->maxSessions == $therapy->max_sessions` bypass (SCRUM-88) only
+        // applies once $therapy already exists (i.e. on update, never on create): a record
+        // created before this ceiling existed (or before an env var lowered it) could already
+        // be sitting above it, and an edit form that resends the current, unchanged value
+        // alongside an unrelated field change must not get rejected for a value the user never
+        // touched -- mirroring how session_type/payment_type are already only rejected above
+        // when they actually differ from what's stored, not just because they were resent.
+        // `===` (not `==`) to match this method's other "did this field actually change" checks
+        // -- both sides are always a genuine int here (DTOTrait force-casts typed ?int
+        // properties, and these are plain SQL integer columns), so there's no numeric-string
+        // case to loosen for.
         $maxSessions = env('THERAPY_MAX_SESSIONS', 100);
-        if ($dto->maxSessions > $maxSessions) {
+        if (
+            $dto->maxSessions > $maxSessions &&
+            ! ($therapy && $dto->maxSessions === $therapy->max_sessions)
+        ) {
             throw new TherapyCreationDataIsNotValidException("Your sessions cannot be more than {$maxSessions}.", 422);
         }
 
@@ -83,13 +98,21 @@ class EnsureTherapyDataIsValidAction extends Action
             return;
         }
 
+        // See the maxSessions bypass above (SCRUM-88) for why an unchanged, already-over-ceiling
+        // value must not block an unrelated edit.
         $maxCounsellors = env('GROUP_THERAPY_MAX_COUNSELLORS', 10);
-        if ($dto->maxCounsellors > $maxCounsellors) {
+        if (
+            $dto->maxCounsellors > $maxCounsellors &&
+            ! ($therapy && $dto->maxCounsellors === $therapy->max_counsellors)
+        ) {
             throw new TherapyCreationDataIsNotValidException("Your counsellors cannot be more than {$maxCounsellors}.", 422);
         }
 
         $maxUsers = env('GROUP_THERAPY_MAX_USERS', 50);
-        if ($dto->maxUsers > $maxUsers) {
+        if (
+            $dto->maxUsers > $maxUsers &&
+            ! ($therapy && $dto->maxUsers === $therapy->max_users)
+        ) {
             throw new TherapyCreationDataIsNotValidException("Your users cannot be more than {$maxUsers}.", 422);
         }
 
