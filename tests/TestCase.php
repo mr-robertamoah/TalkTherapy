@@ -24,5 +24,17 @@ abstract class TestCase extends BaseTestCase
                 ']. Refusing to run RefreshDatabase against a non-test database.'
             );
         }
+
+        // Same class of mechanism-agnostic safety net as the sqlite check above: a shared,
+        // non-isolated cache store caused real cross-process corruption of rate-limiter counters
+        // under `php artisan test --parallel` (SCRUM-105). If config/cache.php's env-lookup ever
+        // regresses (e.g. reverting to only reading the legacy CACHE_DRIVER), fail loudly here
+        // instead of reintroducing that flake silently.
+        if (config('cache.default') !== 'array') {
+            throw new RuntimeException(
+                'Tests must run against the array cache store, got ['.config('cache.default').
+                ']. Refusing to run tests against a shared, non-isolated cache store.'
+            );
+        }
     }
 }
