@@ -1,0 +1,43 @@
+<?php
+
+namespace App\Models;
+
+use App\Enums\TransactionStatusEnum;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class Transaction extends Model
+{
+    use HasFactory;
+
+    protected $fillable = ['for_type', 'for_id', 'user_id', 'reference', 'amount', 'currency', 'status'];
+
+    protected $casts = [
+        'amount' => 'integer',
+    ];
+
+    public function for()
+    {
+        return $this->morphTo();
+    }
+
+    public function user()
+    {
+        return $this->belongsTo(User::class);
+    }
+
+    public function statusHistories()
+    {
+        return $this->hasMany(TransactionStatusHistory::class);
+    }
+
+    public function isSuccessful(): bool
+    {
+        return $this->status === TransactionStatusEnum::success->value;
+    }
+
+    public function scopeWhereReference($query, string $reference)
+    {
+        return $query->where('reference', $reference);
+    }
+}

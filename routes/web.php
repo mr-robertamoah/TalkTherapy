@@ -12,6 +12,7 @@ use App\Http\Controllers\PreferenceController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\SessionController;
 use App\Http\Controllers\TherapyController;
+use App\Http\Controllers\TransactionController;
 use App\Services\AppService;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -93,6 +94,14 @@ Route::middleware('auth')->group(function () {
     Route::post('/sessions/{sessionId}/end', [SessionController::class, 'endSession'])->name('sessions.end');
     Route::post('/sessions/{sessionId}/fail', [SessionController::class, 'failSession'])->name('sessions.fail');
     Route::post('/sessions/{sessionId}/abandon', [SessionController::class, 'abandonSession'])->name('sessions.abandon');
+
+    // throttle: this calls out to Paystack's own API per request, on top of being a real
+    // money-initiation endpoint -- unlike most routes here, an unthrottled version is a genuine
+    // abuse vector, not just noise.
+    Route::post('/therapies/{therapyId}/transactions', [TransactionController::class, 'initiate'])->name('transactions.initiate.therapy')->middleware('throttle:20,1');
+    Route::post('/group-therapies/{groupTherapyId}/transactions', [TransactionController::class, 'initiate'])->name('transactions.initiate.group_therapy')->middleware('throttle:20,1');
+    Route::post('/sessions/{sessionId}/transactions', [TransactionController::class, 'initiate'])->name('transactions.initiate.session')->middleware('throttle:20,1');
+    Route::get('/transactions/callback', [TransactionController::class, 'callback'])->name('transactions.callback')->middleware('throttle:30,1');
 
     Route::get('/preferences', [PreferenceController::class, 'show'])->name('preferences');
     Route::post('/preferences', [PreferenceController::class, 'set'])->name('preferences.set');
