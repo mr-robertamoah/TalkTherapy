@@ -3,6 +3,7 @@
 use App\DTOs\CreateMessageDTO;
 use App\Enums\DiscussionStatusEnum;
 use App\Enums\SessionStatusEnum;
+use App\Events\MessageDeletedEvent;
 use App\Events\MessageSentEvent;
 use App\Events\MessageUpdatedEvent;
 use App\Exceptions\MessageException;
@@ -610,10 +611,244 @@ describe('update message tests', function () {
 
 describe('delete message tests', function () {
 
-    test('', function () {});
+    test('fails message deletion when no message is provided', function () {
+
+        // expectException()'s second argument is silently ignored by PHPUnit (it only accepts
+        // one) -- expectExceptionMessage() is the real assertion. Pre-existing instances of the
+        // two-argument form elsewhere in this file are tracked separately (SCRUM-107, filed
+        // during this test's own review).
+        $this->expectException(MessageException::class);
+        $this->expectExceptionMessage('The message was not found.');
+
+        MessageService::new()->deleteMessage(
+            CreateMessageDTO::new()->fromArray([
+                'message' => null,
+            ])
+        );
+    });
+
+    test("fails message deletion when message was not created by current user's user/counsellor account.", function () {
+
+        $actingUser = User::factory()->create();
+        $fromUser = User::factory()->create();
+        $session = Session::factory()->create();
+        $message = Message::factory()->create([
+            'from_id' => $fromUser->id,
+            'from_type' => $fromUser::class,
+            'for_id' => $session->id,
+            'for_type' => $session::class,
+        ]);
+
+        $this->expectException(MessageException::class);
+        $this->expectExceptionMessage('You are not authorized to update this message.');
+
+        MessageService::new()->deleteMessage(
+            CreateMessageDTO::new()->fromArray([
+                'message' => $message,
+                'user' => $actingUser,
+            ])
+        );
+    });
+
+    test('successfully deletes a message and its attached files when creator of original message.', function () {
+
+        Event::fake();
+        Storage::fake('local');
+
+        $fromUser = User::factory()->create();
+        $session = Session::factory()->create();
+        $message = Message::factory()->create([
+            'from_id' => $fromUser->id,
+            'from_type' => $fromUser::class,
+            'for_id' => $session->id,
+            'for_type' => $session::class,
+        ]);
+
+        $file = File::factory()->create([
+            'name' => 'photo.jpg',
+            'mime' => 'image/jpeg',
+            'size' => 100,
+            'path' => '',
+            'storage' => 'local',
+            'addedby_type' => $fromUser::class,
+            'addedby_id' => $fromUser->id,
+        ]);
+        $message->files()->attach($file->id);
+        Storage::disk('local')->put($file->name, 'dummy content');
+
+        $deletedMessage = MessageService::new()->deleteMessage(
+            CreateMessageDTO::new()->fromArray([
+                'message' => $message,
+                'user' => $fromUser,
+            ])
+        );
+
+        Event::assertDispatched(
+            MessageDeletedEvent::class,
+            fn ($event) => $event->message->is($message)
+        );
+
+        $this->assertSoftDeleted('messages', ['id' => $message->id]);
+        expect($deletedMessage->trashed())->toBeTrue();
+
+        // The attached file is force-deleted (not soft-deleted -- File has no SoftDeletes) and
+        // detached from the pivot, and its storage object is removed too, not just its DB row.
+        $this->assertDatabaseMissing('files', ['id' => $file->id]);
+        $this->assertDatabaseMissing('fileables', [
+            'file_id' => $file->id,
+            'fileable_id' => $message->id,
+            'fileable_type' => Message::class,
+        ]);
+        Storage::disk('local')->assertMissing($file->name);
+    });
 });
 
 describe('delete message for me tests', function () {
 
-    test('', function () {});
+    test('fails message deletion for self when no message is provided', function () {
+
+        $this->expectException(MessageException::class);
+        $this->expectExceptionMessage('The message was not found.');
+
+        MessageService::new()->deleteMessageForMe(
+            CreateMessageDTO::new()->fromArray([
+                'message' => null,
+            ])
+        );
+    });
+
+    test('fails message deletion for self when the acting user is not a participant of the message.', function () {
+
+        $therapyOwner = User::factory()->create();
+        $therapy = Therapy::factory()->create([
+            'addedby_id' => $therapyOwner->id,
+            'addedby_type' => $therapyOwner::class,
+        ]);
+        $session = Session::factory()->create([
+            'for_id' => $therapy->id,
+            'for_type' => $therapy::class,
+        ]);
+        $message = Message::factory()->create([
+            'from_id' => $therapyOwner->id,
+            'from_type' => $therapyOwner::class,
+            'for_id' => $session->id,
+            'for_type' => $session::class,
+        ]);
+
+        $outsider = User::factory()->create();
+
+        $this->expectException(MessageException::class);
+        $this->expectExceptionMessage('You cannot delete the message for yourself since you are not a participant.');
+
+        MessageService::new()->deleteMessageForMe(
+            CreateMessageDTO::new()->fromArray([
+                'message' => $message,
+                'user' => $outsider,
+            ])
+        );
+    });
+
+    test('successfully records the participant deleting the message for themself, without deleting it for anyone else.', function () {
+
+        $therapyOwner = User::factory()->create();
+        $therapy = Therapy::factory()->create([
+            'addedby_id' => $therapyOwner->id,
+            'addedby_type' => $therapyOwner::class,
+        ]);
+        $session = Session::factory()->create([
+            'for_id' => $therapy->id,
+            'for_type' => $therapy::class,
+        ]);
+        $message = Message::factory()->create([
+            'from_id' => $therapyOwner->id,
+            'from_type' => $therapyOwner::class,
+            'for_id' => $session->id,
+            'for_type' => $session::class,
+        ]);
+
+        $result = MessageService::new()->deleteMessageForMe(
+            CreateMessageDTO::new()->fromArray([
+                'message' => $message,
+                'user' => $therapyOwner,
+            ])
+        );
+
+        expect($result->deleted_for)->toEqual("{$therapyOwner->id}");
+        $this->assertDatabaseHas('messages', [
+            'id' => $message->id,
+            'deleted_for' => "{$therapyOwner->id}",
+        ]);
+        // Deleting a message "for me" only records the acting user's id -- it must not soft- or
+        // hard-delete the underlying row, since other participants can still see it.
+        expect($result->trashed())->toBeFalse();
+        $this->assertDatabaseHas('messages', ['id' => $message->id, 'deleted_at' => null]);
+    });
+
+    test('accumulates each participant who deletes the message for themself, comma-separated.', function () {
+
+        $therapyOwner = User::factory()->create();
+        $counsellorUser = User::factory()->create();
+        $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
+        $therapy = Therapy::factory()->create([
+            'addedby_id' => $therapyOwner->id,
+            'addedby_type' => $therapyOwner::class,
+            'counsellor_id' => $counsellor->id,
+        ]);
+        $session = Session::factory()->create([
+            'for_id' => $therapy->id,
+            'for_type' => $therapy::class,
+        ]);
+        $message = Message::factory()->create([
+            'from_id' => $therapyOwner->id,
+            'from_type' => $therapyOwner::class,
+            'for_id' => $session->id,
+            'for_type' => $session::class,
+        ]);
+
+        MessageService::new()->deleteMessageForMe(
+            CreateMessageDTO::new()->fromArray([
+                'message' => $message,
+                'user' => $therapyOwner,
+            ])
+        );
+
+        $result = MessageService::new()->deleteMessageForMe(
+            CreateMessageDTO::new()->fromArray([
+                'message' => $message->fresh(),
+                'user' => $counsellorUser,
+            ])
+        );
+
+        expect($result->deleted_for)->toEqual("{$therapyOwner->id},{$counsellorUser->id}");
+    });
+
+    test('fails when the acting user attempts to delete the same message for themself a second time.', function () {
+
+        $therapyOwner = User::factory()->create();
+        $therapy = Therapy::factory()->create([
+            'addedby_id' => $therapyOwner->id,
+            'addedby_type' => $therapyOwner::class,
+        ]);
+        $session = Session::factory()->create([
+            'for_id' => $therapy->id,
+            'for_type' => $therapy::class,
+        ]);
+        $message = Message::factory()->create([
+            'from_id' => $therapyOwner->id,
+            'from_type' => $therapyOwner::class,
+            'for_id' => $session->id,
+            'for_type' => $session::class,
+            'deleted_for' => "{$therapyOwner->id}",
+        ]);
+
+        $this->expectException(MessageException::class);
+        $this->expectExceptionMessage('You have already delete the message for yourself.');
+
+        MessageService::new()->deleteMessageForMe(
+            CreateMessageDTO::new()->fromArray([
+                'message' => $message,
+                'user' => $therapyOwner,
+            ])
+        );
+    });
 });
