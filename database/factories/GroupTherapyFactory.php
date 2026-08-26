@@ -29,6 +29,7 @@ class GroupTherapyFactory extends Factory
             'public' => true,
             'anonymous' => true,
             'allow_anyone' => true,
+            'allow_in_person' => true,
         ];
     }
 }

@@ -59,3 +59,17 @@ test('creating a group therapy with an explicit maxCounsellors persists the prov
 
     expect($therapy->max_counsellors)->toBe(3);
 });
+
+test('creating a group therapy persists allowInPerson=true instead of silently dropping it (SCRUM-86)', function () {
+    // Deliberately only testing true=>true here, not false=>false: the allow_in_person
+    // column's own DB default is false, so a false=>false test would pass even if this key
+    // were still being silently dropped by mass-assignment guarding -- it wouldn't discriminate
+    // the bug at all. The false case is meaningfully covered instead by the companion
+    // UpdateGroupTherapyActionAllowInPersonTest, which starts from an explicit false and
+    // transitions to true.
+    $therapy = CreateGroupTherapyAction::new()->execute(aGroupTherapyDTO(['allowInPerson' => true]));
+
+    // allow_in_person isn't cast to bool on the model (GroupTherapyResource does its own (bool)
+    // cast, mirroring TherapyResource), so the raw attribute is the DB's native 1/0.
+    expect((bool) $therapy->allow_in_person)->toBeTrue();
+});
