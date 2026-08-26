@@ -29,7 +29,8 @@ describe('create message tests', function () {
             $actingUser = User::factory()->create();
             $fromUser = User::factory()->create();
 
-            $this->expectException(MessageException::class, 'There is either no sender or you are not the sender of the message.');
+            $this->expectException(MessageException::class);
+            $this->expectExceptionMessage('There is either no sender or you are not the sender of the message.');
 
             MessageService::new()->createMessage(
                 CreateMessageDTO::new()->fromArray([
@@ -45,7 +46,8 @@ describe('create message tests', function () {
 
             $actingUser = User::factory()->create();
 
-            $this->expectException(MessageException::class, 'A message has to be created for a discussion or session.');
+            $this->expectException(MessageException::class);
+            $this->expectExceptionMessage('A message has to be created for a discussion or session.');
 
             MessageService::new()->createMessage(
                 CreateMessageDTO::new()->fromArray([
@@ -72,7 +74,8 @@ describe('create message tests', function () {
                 'for_type' => $therapy::class,
             ]);
 
-            $this->expectException(MessageException::class, 'The message cannot be sent because the session may no more be in session.');
+            $this->expectException(MessageException::class);
+            $this->expectExceptionMessage('The message cannot be sent because the session may no more be in session.');
 
             MessageService::new()->createMessage(
                 CreateMessageDTO::new()->fromArray([
@@ -134,7 +137,8 @@ describe('create message tests', function () {
                 'for_type' => $therapy::class,
             ]);
 
-            $this->expectException(MessageException::class, 'You are not allowed to create a message for this session.');
+            $this->expectException(MessageException::class);
+            $this->expectExceptionMessage('You are not allowed to create a message for this session.');
 
             MessageService::new()->createMessage(
                 CreateMessageDTO::new()->fromArray([
@@ -201,7 +205,8 @@ describe('create message tests', function () {
                 'for_type' => $therapy::class,
             ]);
 
-            $this->expectException(MessageException::class, 'Recepient is required for a therapy session.');
+            $this->expectException(MessageException::class);
+            $this->expectExceptionMessage('Recepient is required for a therapy session.');
 
             MessageService::new()->createMessage(
                 CreateMessageDTO::new()->fromArray([
@@ -235,7 +240,8 @@ describe('create message tests', function () {
                 'for_type' => $therapy::class,
             ]);
 
-            $this->expectException(MessageException::class, 'You are sending the message to someone who is not participating in session/discussion.');
+            $this->expectException(MessageException::class);
+            $this->expectExceptionMessage('You are sending the message to someone who is not participating in session/discussion.');
 
             MessageService::new()->createMessage(
                 CreateMessageDTO::new()->fromArray([
@@ -269,7 +275,8 @@ describe('create message tests', function () {
                 'for_type' => $therapy::class,
             ]);
 
-            $this->expectException(MessageException::class, 'There is not sufficient information to create a message. There should be content or files, at least.');
+            $this->expectException(MessageException::class);
+            $this->expectExceptionMessage('There is not sufficient information to create a message. There should be content or files, at least.');
 
             MessageService::new()->createMessage(
                 CreateMessageDTO::new()->fromArray([
@@ -429,7 +436,8 @@ describe('update message tests', function () {
 
     test('fails message update when no message is provided', function () {
 
-        $this->expectException(MessageException::class, 'The message was not found.');
+        $this->expectException(MessageException::class);
+        $this->expectExceptionMessage('The message was not found.');
 
         MessageService::new()->updateMessage(
             CreateMessageDTO::new()->fromArray([
@@ -450,7 +458,8 @@ describe('update message tests', function () {
             'for_type' => $session::class,
         ]);
 
-        $this->expectException(MessageException::class, 'You are not authorized to update this message.');
+        $this->expectException(MessageException::class);
+        $this->expectExceptionMessage('You are not authorized to update this message.');
 
         MessageService::new()->updateMessage(
             CreateMessageDTO::new()->fromArray([
@@ -471,7 +480,8 @@ describe('update message tests', function () {
             'for_type' => $session::class,
         ]);
 
-        $this->expectException(MessageException::class, 'There is not sufficient information to create a message. There should be content or files, at least.');
+        $this->expectException(MessageException::class);
+        $this->expectExceptionMessage('There is not sufficient information to create a message. There should be content or files, at least.');
 
         MessageService::new()->updateMessage(
             CreateMessageDTO::new()->fromArray([
