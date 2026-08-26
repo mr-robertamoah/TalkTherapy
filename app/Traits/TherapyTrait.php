@@ -13,6 +13,7 @@ use App\Models\Request;
 use App\Models\Session;
 use App\Models\TherapyCase;
 use App\Models\TherapyTopic;
+use App\Models\Transaction;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphToMany;
@@ -107,6 +108,11 @@ trait TherapyTrait
     public function sessions()
     {
         return $this->morphMany(Session::class, 'for');
+    }
+
+    public function transactions()
+    {
+        return $this->morphMany(Transaction::class, 'for');
     }
 
     public function cases(): MorphToMany

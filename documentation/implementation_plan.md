@@ -128,11 +128,22 @@ implicitly a billing story; it can't actually be built without a payment gateway
 
 | Key | Story | Type | Priority | Points | Source | Depends on |
 |---|---|---|---|---|---|---|
-| TT-7.1 | Payment gateway integration (e.g. Paystack/Stripe) for one-off session charges | Story | High | 8 | New | — |
+| TT-7.1 | Transaction/payment model (full audit-trail status history) + Paystack charge initiation & webhook/callback plumbing, test-mode end-to-end for a single simple case. TalkTherapy is sole merchant of record (no per-counsellor subaccounts). | Story | High | 13 | New (SCRUM-110, revised from 8) | — |
 | TT-7.2 | Counsellor sets and displays preferred pricing on profile | Story | Medium | 3 | Existing (8.1) | TT-7.1 |
 | TT-7.3 | Org subscription billing | Story | Medium | 8 | New | TT-6.3, TT-7.1 |
+| TT-7.4 | Retry-on-failure + single-currency validation (replace free-text currency with a supported-list check) + full payment-status UI | Story | High | 8 | New (SCRUM-110) | TT-7.1 |
+| TT-7.5 | Payment-gated access: per-therapy, counsellor-controlled setting (strict gate vs. trust-based), defaulting to trust-based | Story | High | 5-8 | New (SCRUM-110) — decision made, fast-follow after TT-7.1 | TT-7.1 |
+| TT-7.6 | Counsellor payout via Paystack Transfers matching `shareEqually`/`sharePercentage`, incl. bank-account/KYC onboarding. Payout is admin/counsellor-triggered separately, never auto-fired on charge success. | Story | Medium | 13 | New (SCRUM-110) — decision made; own Epic once scheduled, not a TT-7 sub-story | TT-7.1 |
+| TT-7.7 | Refund handling | Task | Medium | 5 | New (SCRUM-110) — now in scope; fast-follow after TT-7.1 | TT-7.1 |
+| TT-7.8 | ~~Anonymity-safe checkout~~ — resolved, no action needed: Paystack's checkout/receipt is only ever shown to the paying user themselves, never to the counsellor or any other party, so the existing anonymity guarantee (which governs what *other people* see) is unaffected. | Task | — | — | New (SCRUM-110) — resolved | — |
+| TT-7.9 | Multi-currency support: forex conversion with an applied markup, clearly disclosed to the user at payment time | Story | Medium | 8-13 (TBD) | New (SCRUM-110) — decision made to support multi-currency with disclosed markup; scoped as its own follow-up ticket, not part of TT-7.1's single-currency M1 | TT-7.1, TT-7.4 |
 
-**Sprint:** 5 (alongside TT-6)
+**Sprint:** 5 (TT-7.1 alongside TT-6). TT-7.4/7.5/7.7 are fast-follows immediately after TT-7.1
+lands, still targeting Sprint 5 if capacity allows. TT-7.6 (payout) and TT-7.9 (multi-currency)
+are larger, separately-scheduled follow-ups — do not fold into Sprint 5's commitment. TT-6
+(Organizations, SCRUM-111) is blocked by TT-7.1 only, per the Jira link — TT-6.1/6.2/6.4 have no
+payments dependency and can proceed in
+parallel; only TT-6.3 needs TT-7.1.
 
 ---
 

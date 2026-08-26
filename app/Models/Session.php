@@ -75,6 +75,11 @@ class Session extends Model
         return $this->morphMany(Message::class, 'for');
     }
 
+    public function transactions()
+    {
+        return $this->morphMany(Transaction::class, 'for');
+    }
+
     public function addedby()
     {
         return $this->morphTo('addedby');

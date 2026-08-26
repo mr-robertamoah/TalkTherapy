@@ -24,6 +24,7 @@ use App\Http\Controllers\TestimonialController;
 use App\Http\Controllers\TherapyCaseController;
 use App\Http\Controllers\TherapyController;
 use App\Http\Controllers\TherapyTopicController;
+use App\Http\Controllers\TransactionController;
 use App\Http\Controllers\UserController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -55,6 +56,12 @@ Route::get('/counsellors', [CounsellorController::class, 'getCounsellors'])->nam
 Route::get('/testimonials', [TestimonialController::class, 'getTestimonials'])->name('api.testimonials');
 
 Route::post('/contacts', [ContactController::class, 'createContact'])->name('api.contacts.create');
+
+// Unauthenticated by design -- Paystack's server calls this directly, not a browser. Trust
+// boundary is the signature check inside TransactionService::handleWebhook(), not auth:sanctum.
+// Throttled generously (not per-user, since there's no auth) purely as abuse protection, not to
+// constrain legitimate Paystack retries.
+Route::post('/paystack/webhook', [TransactionController::class, 'webhook'])->name('api.paystack.webhook')->middleware('throttle:120,1');
 
 Route::get('/therapy-cases', [TherapyCaseController::class, 'getCases'])->name('cases.get');
 Route::get('/languages', [LanguageController::class, 'getLanguages'])->name('languages.get');
