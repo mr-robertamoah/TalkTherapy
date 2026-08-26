@@ -6,13 +6,11 @@ use Illuminate\Support\Facades\Cache;
 // The 'messages' rate limiter is registered in RouteServiceProvider and applied to the
 // message create/update/delete routes via ->middleware('throttle:messages') (SCRUM-20 M5).
 //
-// phpunit.xml sets CACHE_STORE=array to isolate the cache during tests, but config/cache.php's
-// 'default' store still reads the legacy CACHE_DRIVER env var (which all .env* files set to
-// 'file'), so that override is a no-op and tests actually hit the real file cache store -- the
-// same one rate limiter counters are written to outside of tests. Cache::flush() before/after
-// each test here keeps this file's rate-limit counters isolated from other test runs without
-// depending on (or trying to fix) that pre-existing store-selection mismatch, which is unrelated
-// to this ticket.
+// phpunit.xml sets CACHE_STORE=array so tests get a private, in-memory cache per process
+// (config/cache.php's 'default' used to read only the legacy CACHE_DRIVER env var, making that
+// override a no-op and causing cross-worker rate-limiter corruption under `--parallel` --
+// SCRUM-105). Cache::flush() before/after each test here still isolates this file's own
+// rate-limit counters from each other sequentially within the same process.
 beforeEach(fn () => Cache::flush());
 afterEach(fn () => Cache::flush());
 

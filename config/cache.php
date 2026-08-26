@@ -15,7 +15,10 @@ return [
     |
     */
 
-    'default' => env('CACHE_DRIVER', 'file'),
+    // CACHE_STORE is checked first (not just CACHE_DRIVER) so phpunit.xml's CACHE_STORE=array
+    // override actually takes effect during tests -- see tests/Feature/MessageRateLimitTest.php
+    // (SCRUM-105) for the flaky-under-`--parallel` symptom this mismatch caused.
+    'default' => env('CACHE_STORE', env('CACHE_DRIVER', 'file')),
 
     /*
     |--------------------------------------------------------------------------

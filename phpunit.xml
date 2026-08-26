@@ -37,7 +37,10 @@
 
         Keep the <env> and <server> lists in sync: adding an override to only one half quietly
         reintroduces this exact bug for that one variable. tests/TestCase.php also asserts the
-        resolved DB connection is sqlite as an independent, mechanism-agnostic safety net.
+        resolved DB connection is sqlite, and that the resolved cache store is "array" (SCRUM-105:
+        config/cache.php previously only read the legacy CACHE_DRIVER, so this CACHE_STORE
+        override was silently a no-op and parallel workers shared, and corrupted, one real file
+        cache), as independent, mechanism-agnostic safety nets.
         -->
         <env name="APP_ENV" value="testing" force="true"/>
         <env name="BCRYPT_ROUNDS" value="4" force="true"/>
