@@ -1,0 +1,108 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\DTOs\OrganizationDTO;
+use App\Http\Requests\CreateOrganizationRequest;
+use App\Http\Requests\UpdateOrganizationRequest;
+use App\Http\Resources\OrganizationResource;
+use App\Models\Organization;
+use App\Services\OrganizationService;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Redirect;
+use Throwable;
+
+class OrganizationController extends Controller
+{
+    public function store(CreateOrganizationRequest $request)
+    {
+        try {
+            $organization = OrganizationService::new()->createOrganization(
+                OrganizationDTO::new()->fromArray([
+                    'user' => $request->user(),
+                    'name' => $request->name,
+                    'legalName' => $request->legalName,
+                    'registrationNumber' => $request->registrationNumber,
+                    'description' => $request->description,
+                    'email' => $request->email,
+                    'phone' => $request->phone,
+                    'isProvider' => (bool) $request->isProvider,
+                    'isConsumer' => (bool) $request->isConsumer,
+                ])
+            );
+
+            return $this->returnSuccess($request, $organization);
+        } catch (Throwable $th) {
+            return $this->returnFailure($request, $th);
+        }
+    }
+
+    // Reads $request->route('organizationId') rather than the magic ->organizationId property
+    // -- SCRUM-116 flagged the same magic-property route-param bypass pattern in other
+    // controllers; deliberately not repeating it here.
+    public function update(UpdateOrganizationRequest $request)
+    {
+        try {
+            $organization = OrganizationService::new()->updateOrganization(
+                OrganizationDTO::new()->fromArray([
+                    'user' => $request->user(),
+                    'organization' => Organization::find($request->route('organizationId')),
+                    'name' => $request->name,
+                    'legalName' => $request->legalName,
+                    'registrationNumber' => $request->registrationNumber,
+                    'description' => $request->description,
+                    'email' => $request->email,
+                    'phone' => $request->phone,
+                    'isProvider' => $request->has('isProvider') ? (bool) $request->isProvider : null,
+                    'isConsumer' => $request->has('isConsumer') ? (bool) $request->isConsumer : null,
+                ])
+            );
+
+            return $this->returnSuccess($request, $organization);
+        } catch (Throwable $th) {
+            return $this->returnFailure($request, $th);
+        }
+    }
+
+    public function show(Request $request)
+    {
+        try {
+            $organization = OrganizationService::new()->getOrganization(
+                OrganizationDTO::new()->fromArray([
+                    'user' => $request->user(),
+                    'organization' => Organization::find($request->route('organizationId')),
+                ])
+            );
+
+            return response()->json(['organization' => new OrganizationResource($organization)]);
+        } catch (Throwable $th) {
+            $status = $this->statusFor($th);
+            $message = $this->messageFor($th, $status);
+
+            return response()->json(['message' => $message], $status);
+        }
+    }
+
+    private function returnSuccess(Request $request, Organization $organization)
+    {
+        $resource = new OrganizationResource($organization);
+
+        if ($request->acceptsJson()) {
+            return response()->json(['organization' => $resource]);
+        }
+
+        return Redirect::back()->with(['organization' => $resource]);
+    }
+
+    private function returnFailure(Request $request, Throwable $th)
+    {
+        $status = $this->statusFor($th);
+        $message = $this->messageFor($th, $status);
+
+        if ($request->acceptsJson()) {
+            return response()->json(['message' => $message], $status);
+        }
+
+        return Redirect::back()->withErrors(['alert' => $message]);
+    }
+}

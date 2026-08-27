@@ -7,6 +7,7 @@ use App\Http\Controllers\DiscussionController;
 use App\Http\Controllers\GroupTherapyController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\LinkController;
+use App\Http\Controllers\OrganizationController;
 use App\Http\Controllers\PostController;
 use App\Http\Controllers\PreferenceController;
 use App\Http\Controllers\ProfileController;
@@ -102,6 +103,10 @@ Route::middleware('auth')->group(function () {
     Route::post('/group-therapies/{groupTherapyId}/transactions', [TransactionController::class, 'initiate'])->name('transactions.initiate.group_therapy')->middleware('throttle:20,1');
     Route::post('/sessions/{sessionId}/transactions', [TransactionController::class, 'initiate'])->name('transactions.initiate.session')->middleware('throttle:20,1');
     Route::get('/transactions/callback', [TransactionController::class, 'callback'])->name('transactions.callback')->middleware('throttle:30,1');
+
+    Route::post('/organizations', [OrganizationController::class, 'store'])->name('organizations.store');
+    Route::get('/organizations/{organizationId}', [OrganizationController::class, 'show'])->name('organizations.show');
+    Route::patch('/organizations/{organizationId}', [OrganizationController::class, 'update'])->name('organizations.update');
 
     Route::get('/preferences', [PreferenceController::class, 'show'])->name('preferences');
     Route::post('/preferences', [PreferenceController::class, 'set'])->name('preferences.set');
