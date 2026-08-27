@@ -129,6 +129,18 @@ class User extends Authenticatable implements MustVerifyEmailContract
         return $this->hasOne(Administrator::class);
     }
 
+    public function administeredOrganizations()
+    {
+        return $this->belongsToMany(Organization::class, 'organization_admins')
+            ->withPivot(['role'])
+            ->withTimestamps();
+    }
+
+    public function isAdminOf(Organization $organization): bool
+    {
+        return $this->administeredOrganizations()->whereKey($organization->id)->exists();
+    }
+
     public function isSuperAdmin()
     {
         return $this
