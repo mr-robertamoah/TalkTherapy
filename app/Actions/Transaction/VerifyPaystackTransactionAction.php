@@ -51,6 +51,17 @@ class VerifyPaystackTransactionAction extends Action
             return $transaction;
         }
 
+        // A mismatch here throws (SCRUM-117), surfacing as an error to the browser callback
+        // instead of silently marking a partial/wrong-currency payment as a full success.
+        if ($status === TransactionStatusEnum::success->value) {
+            EnsureTransactionAmountAndCurrencyMatchAction::new()->execute(
+                $transaction,
+                isset($response['data']['amount']) ? (int) $response['data']['amount'] : null,
+                $response['data']['currency'] ?? null,
+                TransactionStatusSourceEnum::verify->value
+            );
+        }
+
         return RecordTransactionStatusAction::new()->execute(
             $transaction,
             $status,

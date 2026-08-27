@@ -202,13 +202,15 @@ test('verifying a transaction records success and is idempotent on repeat verifi
         'for_id' => $therapy->id,
         'user_id' => $payer->id,
         'reference' => 'ref_456',
+        'amount' => 15000,
+        'currency' => 'GHS',
         'status' => TransactionStatusEnum::pending->value,
     ]);
 
     Http::fake([
         '*/transaction/verify/*' => Http::response([
             'status' => true,
-            'data' => ['status' => 'success', 'gateway_response' => 'Successful'],
+            'data' => ['status' => 'success', 'amount' => 15000, 'currency' => 'GHS', 'gateway_response' => 'Successful'],
         ], 200),
     ]);
 
@@ -250,6 +252,65 @@ test('a later, differently-statused event cannot regress an already-successful t
     );
 
     expect($result->status)->toBe(TransactionStatusEnum::success->value);
+    expect($transaction->statusHistories()->count())->toBe(0);
+});
+
+// SCRUM-117: signature/API-auth alone don't guarantee a "success" verify response's own
+// amount/currency actually match what was charged.
+
+test('verifying a transaction whose reported amount does not match is rejected, not recorded as success', function () {
+    $therapy = aPaidTherapy();
+    $payer = $therapy->addedby;
+    $transaction = Transaction::factory()->create([
+        'for_type' => Therapy::class,
+        'for_id' => $therapy->id,
+        'user_id' => $payer->id,
+        'reference' => 'ref_amount_mismatch',
+        'amount' => 15000,
+        'currency' => 'GHS',
+        'status' => TransactionStatusEnum::pending->value,
+    ]);
+
+    Http::fake([
+        '*/transaction/verify/*' => Http::response([
+            'status' => true,
+            'data' => ['status' => 'success', 'amount' => 5000, 'currency' => 'GHS', 'gateway_response' => 'Successful'],
+        ], 200),
+    ]);
+
+    expect(fn () => TransactionService::new()->verifyTransaction(
+        TransactionDTO::new()->fromArray(['user' => $payer, 'reference' => 'ref_amount_mismatch'])
+    ))->toThrow(TransactionException::class);
+
+    expect($transaction->fresh()->status)->toBe(TransactionStatusEnum::pending->value);
+    expect($transaction->statusHistories()->count())->toBe(0);
+});
+
+test('verifying a transaction whose reported currency does not match is rejected, not recorded as success', function () {
+    $therapy = aPaidTherapy();
+    $payer = $therapy->addedby;
+    $transaction = Transaction::factory()->create([
+        'for_type' => Therapy::class,
+        'for_id' => $therapy->id,
+        'user_id' => $payer->id,
+        'reference' => 'ref_currency_mismatch',
+        'amount' => 15000,
+        'currency' => 'GHS',
+        'status' => TransactionStatusEnum::pending->value,
+    ]);
+
+    Http::fake([
+        '*/transaction/verify/*' => Http::response([
+            'status' => true,
+            'data' => ['status' => 'success', 'amount' => 15000, 'currency' => 'USD', 'gateway_response' => 'Successful'],
+        ], 200),
+    ]);
+
+    expect(fn () => TransactionService::new()->verifyTransaction(
+        TransactionDTO::new()->fromArray(['user' => $payer, 'reference' => 'ref_currency_mismatch'])
+    ))->toThrow(TransactionException::class);
+
+    expect($transaction->fresh()->status)->toBe(TransactionStatusEnum::pending->value);
     expect($transaction->statusHistories()->count())->toBe(0);
 });
 
