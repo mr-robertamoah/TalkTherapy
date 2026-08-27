@@ -46,9 +46,14 @@ class SessionController extends Controller
         }
     }
 
+    // Every lookup below reads $request->route(...) rather than the magic ->sessionId/etc.
+    // properties: Request::__get() prefers a same-named parsed-body/query key over the route
+    // parameter, so a client could otherwise send e.g. {"sessionId": 42} in the body of a
+    // request to a completely different session's URL and have it silently resolve to the
+    // spoofed id instead (SCRUM-116, same class of bug SCRUM-110 fixed in TransactionController).
     public function updateSession(UpdateSessionRequest $request)
     {
-        $session = Session::find($request->sessionId);
+        $session = Session::find($request->route('sessionId'));
 
         try {
             $session = SessionService::new()->updateSession(
@@ -79,7 +84,7 @@ class SessionController extends Controller
 
     public function deleteSession(Request $request)
     {
-        $session = Session::find($request->sessionId);
+        $session = Session::find($request->route('sessionId'));
 
         try {
             SessionService::new()->deleteSession(
@@ -110,7 +115,7 @@ class SessionController extends Controller
 
     public function setCurrentTopic(Request $request)
     {
-        $session = Session::find($request->sessionId);
+        $session = Session::find($request->route('sessionId'));
 
         try {
             $session = SessionService::new()->setCurrentTopic(
@@ -130,7 +135,7 @@ class SessionController extends Controller
 
     public function unsetCurrentTopic(Request $request)
     {
-        $session = Session::find($request->sessionId);
+        $session = Session::find($request->route('sessionId'));
 
         try {
             $session = SessionService::new()->unsetCurrentTopic(
@@ -150,7 +155,7 @@ class SessionController extends Controller
 
     public function failSession(Request $request)
     {
-        $session = Session::find($request->sessionId);
+        $session = Session::find($request->route('sessionId'));
 
         try {
             $session = SessionService::new()->failSession(
@@ -170,7 +175,7 @@ class SessionController extends Controller
 
     public function endSession(Request $request)
     {
-        $session = Session::find($request->sessionId);
+        $session = Session::find($request->route('sessionId'));
 
         try {
             $session = SessionService::new()->endSession(
@@ -190,7 +195,7 @@ class SessionController extends Controller
 
     public function getInSession(Request $request)
     {
-        $session = Session::find($request->sessionId);
+        $session = Session::find($request->route('sessionId'));
 
         try {
             $session = SessionService::new()->getInSession(
@@ -210,7 +215,7 @@ class SessionController extends Controller
 
     public function abandonSession(Request $request)
     {
-        $session = Session::find($request->sessionId);
+        $session = Session::find($request->route('sessionId'));
 
         try {
             $session = SessionService::new()->abandonSession(
@@ -230,9 +235,9 @@ class SessionController extends Controller
 
     private function getFor(Request $request)
     {
-        return $request->groupTherapyId
-            ? GroupTherapy::find($request->groupTherapyId)
-            : Therapy::find($request->therapyId);
+        return $request->route('groupTherapyId')
+            ? GroupTherapy::find($request->route('groupTherapyId'))
+            : Therapy::find($request->route('therapyId'));
     }
 
     private function returnSuccess(Request $request, Session $session)

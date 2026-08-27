@@ -244,3 +244,22 @@ controllers) with the corrected, verified severity nuance: it's only a *live* bu
 missing the `'boolean'` rule, which needs checking per-site, not assuming either way. Keeping
 the `$request->boolean()` change anyway as harmless, more idiomatic defense-in-depth — just not
 overstating why it mattered in the PR/ticket writeup.
+
+---
+
+## 2026-08-27 — SCRUM-116: regression test flakiness traced to unrelated pre-existing bugs, not fixed here
+
+**Decision**: `tests/Feature/RouteParamSpoofingTest.php`'s session-update test intermittently
+failed with a 422 depending on run — traced to two pre-existing bugs unrelated to SCRUM-116:
+`Timeable::isNotUpdateable()`'s `orWhere` branches aren't scoped by session id (any row globally
+"about to start"/ongoing falsely blocks an unrelated session's update), and
+`EnsureSessionDataIsValidAction::validateTherapy()` runs a system-wide conflict scan rather than
+one scoped to the relevant participant's actual sessions. Both were being tripped at random by
+the test's own unrelated-session fixture, whose `start_time`/`end_time` were left on
+`SessionFactory`'s bogus default (`$this->faker->timezone()`, not a real date). Fixed by pinning
+that fixture's times safely in the past; filed SCRUM-129 for the underlying scoping bugs rather
+than fixing them as part of this ticket.
+
+**Why**: same discipline as SCRUM-127/128 — bugs discovered incidentally while writing regression
+tests for a different, narrowly-scoped fix get filed as follow-ups, not folded into the ticket
+in progress.
