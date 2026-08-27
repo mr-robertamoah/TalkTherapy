@@ -366,3 +366,33 @@ user wants this fired autonomously once work reaches the relevant sections, not 
 time. Scoped to full-ceremony features (not blanket-applied to every bugfix) to avoid ceremony
 creep on small changes, per the same "match the weight to the work" principle as the rest of
 CLAUDE.md's process tiers.
+---
+
+## 2026-08-27 — SCRUM-128: fixed the bug in a second, deeper location the ticket didn't name
+
+**Decision**: the ticket's own diagnosis named only `UpdateSessionRequest::rules()`. Empirically
+reproducing the described symptom (PATCH with only `{"name": "..."}`) after fixing just that file
+showed the same class of bug one layer deeper, in `EnsureSessionDataIsValidAction::validateTherapy()`
+(called unconditionally by `SessionService::updateSession()`, independent of the FormRequest) --
+it re-parsed the same `null` startTime/endTime and threw a 422 with a near-identical message.
+Fixed both: `UpdateSessionRequest` now only parses submitted fields; the Action now falls back to
+the session's existing `start_time`/`end_time` when the DTO's values are null, so the real
+double-booking/30-minutes-apart conflict checks still run against the session's actual schedule
+on a partial update rather than being skipped outright. Also removed an unrelated leftover
+`Log::info('update session request', ...)` debug line found in the same file.
+
+Post-review (security-engineer) surfaced a second gap in the initial fix: `UpdateSessionRequest`
+treated "omitted" via `filled()` (blank string counts as not-provided) while the Action treated it
+via a strict `!== null` check -- so a request sending `"startTime": ""` slipped past the
+FormRequest's guard but still hit `Carbon::parse('')`, which returns "now" just like
+`Carbon::parse(null)`. Fixed by normalizing once, in `UpdateSessionRequest::prepareForValidation()`
+(blank -> null via `$this->merge()`), rather than duplicating a blank-check in every downstream
+consumer -- this also transitively fixes `UpdateSessionAction::setValueOnData()`'s matching
+`is_null()` blind spot, since the controller's `$request->startTime` reads the merged value.
+
+**Why**: this is the same empirical-verification discipline used throughout this sweep -- a
+ticket's stated root cause is a hypothesis, not a guarantee; the fix isn't done until the actual
+reported symptom is confirmed gone by reproducing it, not just until the named file compiles.
+Normalizing at the single request-parsing entry point (rather than adding matching `blank()`
+checks in the Action and in `UpdateSessionAction`) avoids the exact kind of inconsistent-null-
+handling-across-layers that caused this ticket in the first place.
