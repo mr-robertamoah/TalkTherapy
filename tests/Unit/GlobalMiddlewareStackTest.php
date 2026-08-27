@@ -20,4 +20,9 @@ test('the global middleware stack still includes the framework defaults, not jus
         ->toContain(HandleCors::class)
         ->toContain(PreventRequestsDuringMaintenance::class)
         ->toContain(StoreVisitationMiddleware::class);
+
+    // StoreVisitationMiddleware reads $request->ip() -- it must run after TrustProxies has
+    // resolved the real client IP, not before, or it silently records the proxy's IP instead.
+    expect(array_search(TrustProxies::class, $global))
+        ->toBeLessThan(array_search(StoreVisitationMiddleware::class, $global));
 });
