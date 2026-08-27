@@ -224,3 +224,23 @@ side-effect of probing — an enumeration vector this platform's ordinary `User`
 clients) aren't meant to be exposed to, unlike `Counsellor` profiles which are intentionally
 publicly browsable. The inviting admin already knows the id they supplied, so nothing useful is
 lost by not echoing the invitee's profile back.
+
+---
+
+## 2026-08-27 — SCRUM-125: verified a security finding empirically before accepting its severity
+
+**Decision**: security review flagged `(bool) $request->includeGroupTherapies` as a silent-flip
+risk (a string `"false"` casting to PHP `true`). Fixed the cast to `$request->boolean(...)`
+regardless, but before writing it up as a live vulnerability, wrote a feature test to actually
+exercise the claimed exploit path — it failed: Laravel's own `'boolean'` validation rule
+(`vendor/laravel/framework/.../ValidatesAttributes.php:496`) only accepts
+`[true, false, 0, 1, '0', '1']`, and the word `"false"` is rejected at validation (422) before
+the cast ever runs. Every value that rule *does* accept happens to cast correctly via `(bool)`.
+
+**Why**: a subagent's finding describes a plausible-sounding mechanism, but "plausible" isn't
+"verified" — this specific claim didn't hold up against the actual validated behavior. Filed
+SCRUM-126 as a systemic follow-up (the same cast pattern exists in several older, unrelated
+controllers) with the corrected, verified severity nuance: it's only a *live* bug on a field
+missing the `'boolean'` rule, which needs checking per-site, not assuming either way. Keeping
+the `$request->boolean()` change anyway as harmless, more idiomatic defense-in-depth — just not
+overstating why it mattered in the PR/ticket writeup.
