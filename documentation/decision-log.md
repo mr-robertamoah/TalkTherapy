@@ -366,3 +366,25 @@ user wants this fired autonomously once work reaches the relevant sections, not 
 time. Scoped to full-ceremony features (not blanket-applied to every bugfix) to avoid ceremony
 creep on small changes, per the same "match the weight to the work" principle as the rest of
 CLAUDE.md's process tiers.
+
+---
+
+## 2026-08-27 — SCRUM-127: fixed the same crash on group-therapy creation too, not just update
+
+**Decision**: widened `CreateTherapyDTO`'s `public`/`allowInPerson`/`anonymous` and
+`GroupTherapyDTO`'s `public`/`allowInPerson`/`anonymous`/`allowAnyone`/`shareEqually`/
+`counsellorIds` to nullable, per the ticket's ask. While auditing, found the identical crash was
+also reachable on group therapy *creation* (not just the update path the ticket described):
+`CreateGroupTherapyRequest` already allows `counsellorIds` to be omitted (`'nullable'`), and has
+no validation rule for `shareEqually` at all, so both could already reach `fromArray()` as `null`
+on a create request. Fixed both DTOs' properties in one pass rather than filing a separate ticket,
+since it's the exact same root cause and fix shape the ticket already asked to audit for
+("audit both DTOs fully for every non-nullable property... not just the two found so far").
+
+**Why**: the ticket's own text explicitly asked for a full audit, not just the two originally
+-reported properties -- finding and fixing the create-path instance of the same bug in the same
+PR is honoring that ask, not scope creep. `UpdateTherapyAction`/`UpdateGroupTherapyAction` and
+`SendTherapyAssistanceRequestAction` already had correct null-skip/null-guard logic in place for
+every one of these fields -- the bug was purely the DTO property type declarations, confirmed by
+reverting the fix and watching the new regression tests fail with the exact generic-500 message
+described in the ticket, then pass again once restored.
