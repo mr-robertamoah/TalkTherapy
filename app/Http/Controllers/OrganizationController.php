@@ -26,8 +26,8 @@ class OrganizationController extends Controller
                     'description' => $request->description,
                     'email' => $request->email,
                     'phone' => $request->phone,
-                    'isProvider' => (bool) $request->isProvider,
-                    'isConsumer' => (bool) $request->isConsumer,
+                    'isProvider' => $request->boolean('isProvider'),
+                    'isConsumer' => $request->boolean('isConsumer'),
                 ])
             );
 
@@ -53,9 +53,9 @@ class OrganizationController extends Controller
                     'description' => $request->description,
                     'email' => $request->email,
                     'phone' => $request->phone,
-                    'isProvider' => $request->has('isProvider') ? (bool) $request->isProvider : null,
-                    'isConsumer' => $request->has('isConsumer') ? (bool) $request->isConsumer : null,
-                    'selfApplyEnabled' => $request->has('selfApplyEnabled') ? (bool) $request->selfApplyEnabled : null,
+                    'isProvider' => $request->has('isProvider') ? $request->boolean('isProvider') : null,
+                    'isConsumer' => $request->has('isConsumer') ? $request->boolean('isConsumer') : null,
+                    'selfApplyEnabled' => $request->has('selfApplyEnabled') ? $request->boolean('selfApplyEnabled') : null,
                 ])
             );
 

@@ -52,7 +52,7 @@ class ProfileController extends Controller
 
         $request->user()->fill(array_merge(
             $request->validated(),
-            ['dob' => (bool) $request->dob ? $request->dob : null]
+            ['dob' => $request->dob ?: null]
         ));
 
         if ($request->user()->isDirty('email')) {

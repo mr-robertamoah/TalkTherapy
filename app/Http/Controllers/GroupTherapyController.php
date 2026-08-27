@@ -226,7 +226,7 @@ class GroupTherapyController extends Controller
                 JoinGroupTherapyDTO::new()->fromArray([
                     'user' => $request->user(),
                     'groupTherapy' => GroupTherapy::find($request->route('groupTherapyId')),
-                    'anonymous' => (bool) $request->anonymous,
+                    'anonymous' => $request->boolean('anonymous'),
                 ])
             );
 

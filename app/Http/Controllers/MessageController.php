@@ -84,7 +84,7 @@ class MessageController extends Controller
                     'files' => $request->file('files'),
                     'reply' => Message::find($request->replyId),
                     'therapyTopic' => TherapyTopic::find($request->topicId),
-                    'confidential' => (bool) $request->confidential,
+                    'confidential' => $request->boolean('confidential'),
                     'from' => GetModelWithModelNameAndIdAction::new()->execute($request->fromType, $request->fromId),
                     'to' => GetModelWithModelNameAndIdAction::new()->execute($request->toType, $request->toId),
                     'for' => GetModelWithModelNameAndIdAction::new()->execute($request->forType, $request->forId),
@@ -113,7 +113,7 @@ class MessageController extends Controller
                     'reply' => Message::find($request->replyId),
                     'message' => $message,
                     'therapyTopic' => TherapyTopic::find($request->topicId),
-                    'confidential' => (bool) $request->confidential,
+                    'confidential' => $request->boolean('confidential'),
                     'for' => $message?->for,
                 ])
             );
