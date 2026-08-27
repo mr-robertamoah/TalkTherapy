@@ -18,6 +18,7 @@ class EnsureTransactionAmountAndCurrencyMatchAction extends Action
     public function execute(Transaction $transaction, ?int $reportedAmount, ?string $reportedCurrency, string $source): void
     {
         if (
+            $reportedAmount !== null &&
             $reportedAmount === $transaction->amount &&
             $reportedCurrency !== null &&
             strtoupper($reportedCurrency) === strtoupper($transaction->currency)
