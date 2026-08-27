@@ -8,6 +8,7 @@ use App\Http\Controllers\GroupTherapyController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\LinkController;
 use App\Http\Controllers\OrganizationController;
+use App\Http\Controllers\OrganizationCounsellorCompensationController;
 use App\Http\Controllers\OrganizationCounsellorController;
 use App\Http\Controllers\PostController;
 use App\Http\Controllers\PreferenceController;
@@ -113,6 +114,8 @@ Route::middleware('auth')->group(function () {
     // or spam every provider org on the platform with applications (SCRUM-120 security review).
     Route::post('/organizations/{organizationId}/counsellor-invites', [OrganizationCounsellorController::class, 'invite'])->name('organizations.counsellors.invite')->middleware('throttle:30,1');
     Route::post('/organizations/{organizationId}/counsellor-applications', [OrganizationCounsellorController::class, 'apply'])->name('organizations.counsellors.apply')->middleware('throttle:30,1');
+
+    Route::post('/organization-counsellors/{organizationCounsellorId}/compensations', [OrganizationCounsellorCompensationController::class, 'store'])->name('organization_counsellors.compensations.store')->middleware('throttle:30,1');
 
     Route::get('/preferences', [PreferenceController::class, 'show'])->name('preferences');
     Route::post('/preferences', [PreferenceController::class, 'set'])->name('preferences.set');

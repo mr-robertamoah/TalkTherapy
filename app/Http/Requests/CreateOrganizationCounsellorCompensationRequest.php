@@ -1,0 +1,36 @@
+<?php
+
+namespace App\Http\Requests;
+
+use App\Enums\OrganizationCounsellorCompensationBasisEnum;
+use App\Enums\OrganizationCounsellorCompensationTypeEnum;
+use Illuminate\Contracts\Validation\ValidationRule;
+use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
+
+class CreateOrganizationCounsellorCompensationRequest extends FormRequest
+{
+    /**
+     * Determine if the user is authorized to make this request.
+     */
+    public function authorize(): bool
+    {
+        return true;
+    }
+
+    /**
+     * Get the validation rules that apply to the request.
+     *
+     * @return array<string, ValidationRule|array<mixed>|string>
+     */
+    public function rules(): array
+    {
+        return [
+            'type' => ['required', Rule::in(OrganizationCounsellorCompensationTypeEnum::values())],
+            'amount' => ['nullable', Rule::requiredIf($this->get('type') === OrganizationCounsellorCompensationTypeEnum::fixed->value), 'integer', 'min:1'],
+            'currency' => ['nullable', Rule::requiredIf($this->get('type') === OrganizationCounsellorCompensationTypeEnum::fixed->value), 'string', 'size:3'],
+            'percentage' => ['nullable', Rule::requiredIf($this->get('type') === OrganizationCounsellorCompensationTypeEnum::percentage->value), 'integer', 'between:1,100'],
+            'basis' => ['nullable', Rule::requiredIf($this->get('type') === OrganizationCounsellorCompensationTypeEnum::percentage->value), Rule::in(OrganizationCounsellorCompensationBasisEnum::values())],
+        ];
+    }
+}

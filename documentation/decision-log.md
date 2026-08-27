@@ -136,3 +136,34 @@ Documented in `CLAUDE.md`'s new "Autonomous execution" section.
 **Why**: the user found the per-ticket "next one" prompt unnecessary ceremony once a chain's
 direction (e.g. an epic's milestone order) is already established, and wanted a durable,
 reviewable log of judgment calls made along the way rather than only scattered Jira comments.
+
+---
+
+## 2026-08-27 — Process change: local permission allow-list broadened
+
+**Decision**: broadened `.claude/settings.local.json`'s permission allow-list to cover git/Bash
+generally, Write/Edit/Read/Grep/Glob, the Agent tool, and the routine GitHub/Jira MCP calls used
+throughout a ticket's workflow (PR/issue reads and creates, Jira CRUD/comment/transition/link) —
+so neither the main session nor a spawned subagent (`reviewer`, `security-engineer`, etc., which
+share the same tool set) hits a per-call approval prompt for ordinary ticket work.
+
+**Why**: direct user request, twice reiterated after the semi-autonomous policy above still hit
+approval prompts in practice — first for routine GitHub calls, then specifically because
+subagents' own `Bash`/`Read`/`Grep` calls weren't covered by the initial narrower allow-list.
+This is a local, gitignored, personal file — not a project-wide/team-shared policy change.
+Destructive operations (merging PRs, force-push, branch deletion) are deliberately NOT
+allow-listed; those stay refused by the assistant's own hard rules regardless of what this file
+would technically permit — the permission file was never the actual backstop for those.
+
+---
+
+## 2026-08-27 — SCRUM-122: currency validation left as free-text, not ISO-4217-restricted
+
+**Decision**: did not add an ISO 4217 currency allow-list to the new compensation-terms
+endpoint's `currency` field, despite the security-engineer subagent flagging its absence.
+
+**Why**: every other currency field in this codebase (`Therapy`, `GroupTherapy`) is the same
+free-text `string` rule with no allow-list — this exact gap is already tracked as its own
+follow-up (TT-7.4, "real currency validation, replacing free-text"). Adding a bespoke allow-list
+to just this one new field would be an inconsistent one-off rather than the actual fix, which
+belongs in TT-7.4 across all currency fields at once.
