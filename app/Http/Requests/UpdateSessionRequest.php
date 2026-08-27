@@ -20,6 +20,21 @@ class UpdateSessionRequest extends FormRequest
     }
 
     /**
+     * Normalize blank startTime/endTime to null so every downstream consumer of
+     * $request->startTime/endTime (this class's own rules(), and SessionController's direct
+     * property access feeding CreateSessionDTO/EnsureSessionDataIsValidAction) sees either a
+     * real value or null, never a blank string that Carbon::parse() would silently turn into
+     * "now" (SCRUM-128).
+     */
+    protected function prepareForValidation(): void
+    {
+        $this->merge([
+            'startTime' => $this->filled('startTime') ? $this->get('startTime') : null,
+            'endTime' => $this->filled('endTime') ? $this->get('endTime') : null,
+        ]);
+    }
+
+    /**
      * Get the validation rules that apply to the request.
      *
      * @return array<string, ValidationRule|array<mixed>|string>
