@@ -391,3 +391,36 @@ guessing from the ticket's hedge -- confirmed vulnerable and fixed. Declining a 
 follows the same per-controller (not per-method) acceptance criteria SCRUM-130 established, applied
 consistently: extra tests are worth their setup cost only when they cover meaningfully different
 risk, not merely a different route-param name for the identical one-line fix.
+
+---
+
+## 2026-08-27 — SCRUM-133: added the performAction test after all; corrected a false-alarm review finding; severity nuance on two sites
+
+**Decision**: both reviewer and security-engineer pushed back on skipping a second
+`LinkController` test for `performAction`, noting it has no admin bypass and its side effects
+(creating a guardianship, discussion participation, or counsellor affiliation) are more
+consequential than `changeLinkStatus`'s state toggle. Added it. Also corrected a security-engineer
+finding that flagged `UserController::deleteGuardianship`/`ReportController`/`TestimonialController`/
+`DiscussionController`/`CounsellorController` as still-unfixed instances of this bug: verified via
+`git show` that all five are already fixed on `bugfix/scrum-130-route-param-spoofing-more-controllers`
+(PR #70) -- the subagent reviewed this branch, which was cut from `develop` *before* PR #70 merged,
+so those files' pre-fix state on this specific branch is expected, not a new gap. No new ticket
+filed for this; PR #70 already covers it. Also incorporated security-engineer's severity nuance for
+two sites: `RequestController::respond`'s fix is real (a user could act on a *different one of
+their own* addressed items, not an arbitrary other user's -- `EnsureUserCanRespondToRequestAction`
+checks the resolved request's own `to`, so authorization is enforced on whichever record ends up
+in the DTO either way) but narrower than "arbitrary cross-user IDOR"; `PostController::getPost`'s
+fix is correct (its `session('postId')` is read by `HomeController::goHome`) but Posts have no
+access control anywhere in the app regardless, so this specific site is a confused-content bug,
+not a privacy escalation. Filed SCRUM-135 (Low) for two unrelated hygiene items security-engineer
+noticed in passing (apparently-unused `app/Http/Kernel.php`, missing unique constraint on
+`links.uuid`).
+
+**Why**: two independent subagents converging on the same "add this test anyway" conclusion,
+backed by a concrete structural difference (no admin bypass, more consequential side effects), is
+exactly the signal that should override an initial per-controller-is-enough judgment call. The
+"other controllers still vulnerable" finding needed verification, not acceptance at face value --
+same discipline as SCRUM-125's empirical-verification lesson -- and turned out to be explainable
+by branch topology rather than a real gap. Overstating a finding's severity is as much a
+verification failure as understating one; recording the corrected nuance keeps the PR/Jira trail
+accurate for whoever reads it later without re-deriving the same analysis.

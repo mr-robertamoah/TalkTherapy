@@ -95,6 +95,46 @@ test('LinkController::changeLinkStatus applies to the URL\'s link, not a spoofed
     expect($unrelatedLink->fresh()->state)->toBe(LinkStateEnum::active->value);
 });
 
+// LinkController::performAction is keyed by uuid, not linkId, and (unlike changeLinkStatus)
+// EnsureCanUseLinkAction has no admin bypass and its side effects actually create a relationship
+// (guardianship) rather than just toggle a state -- both subagents flagged this as more
+// consequential than changeLinkStatus, so it gets its own test rather than relying on that one.
+test('LinkController::performAction applies to the URL\'s link, not a spoofed uuid in the query', function () {
+    $guardian = User::factory()->create();
+    $ownedWard = User::factory()->create();
+    $unrelatedWard = User::factory()->create();
+
+    Link::unguard();
+    $ownedLink = Link::create([
+        'uuid' => (string) Str::uuid(),
+        'type' => LinkTypeEnum::guardianship->value,
+        'state' => LinkStateEnum::active->value,
+        'addedby_type' => User::class,
+        'addedby_id' => User::factory()->create()->id,
+        'for_type' => User::class,
+        'for_id' => $ownedWard->id,
+    ]);
+    $unrelatedLink = Link::create([
+        'uuid' => (string) Str::uuid(),
+        'type' => LinkTypeEnum::guardianship->value,
+        'state' => LinkStateEnum::active->value,
+        'addedby_type' => User::class,
+        'addedby_id' => User::factory()->create()->id,
+        'for_type' => User::class,
+        'for_id' => $unrelatedWard->id,
+    ]);
+    Link::reguard();
+
+    $this
+        ->actingAs($guardian)
+        ->get("/links/{$ownedLink->uuid}?uuid={$unrelatedLink->uuid}");
+
+    expect($guardian->wards()->where('ward_id', $ownedWard->id)->exists())->toBeTrue();
+    expect($guardian->wards()->where('ward_id', $unrelatedWard->id)->exists())->toBeFalse();
+    expect($ownedLink->fresh()->state)->toBe(LinkStateEnum::inactive->value);
+    expect($unrelatedLink->fresh()->state)->toBe(LinkStateEnum::active->value);
+});
+
 test('PostController::deletePost applies to the URL\'s post, not a spoofed postId in the body', function () {
     $admin = anAdmin();
 
