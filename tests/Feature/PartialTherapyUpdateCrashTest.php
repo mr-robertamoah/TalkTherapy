@@ -6,7 +6,7 @@ use App\Models\GroupTherapy;
 use App\Models\Therapy;
 use App\Models\User;
 
-// Regression tests for SCRUM-116: CreateTherapyDTO/GroupTherapyDTO declared public/allowInPerson/
+// Regression tests for SCRUM-127: CreateTherapyDTO/GroupTherapyDTO declared public/allowInPerson/
 // anonymous/allowAnyone/shareEqually as non-nullable bool (and counsellorIds as a non-nullable
 // array), even though UpdateTherapyRequest/UpdateGroupTherapyRequest mark all of these 'nullable'
 // -- a partial update omitting any of them threw a TypeError at DTO-assignment time, caught by
