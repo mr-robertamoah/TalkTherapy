@@ -167,3 +167,60 @@ free-text `string` rule with no allow-list — this exact gap is already tracked
 follow-up (TT-7.4, "real currency validation, replacing free-text"). Adding a bespoke allow-list
 to just this one new field would be an inconsistent one-off rather than the actual fix, which
 belongs in TT-7.4 across all currency fields at once.
+
+---
+
+## 2026-08-27 — TT-6.3 split into SCRUM-124/125, mirroring the TT-6.2/6.4a/6.4b split
+
+**Decision**: split the originally-planned single 13-point TT-6.3 (consumer-org membership +
+billing config) into two sub-tickets — SCRUM-124 (membership request flows) and SCRUM-125
+(billing-mode config) — before starting implementation.
+
+**Why**: matches the precedent already set on the provider side, where the analogous combined
+scope was split into TT-6.2 (request plumbing) and TT-6.4a/6.4b (affiliation + compensation
+terms) specifically because it was too large and mixed concerns for one reviewable PR. Filing
+the split tickets up front (rather than discovering the need to split mid-implementation, as
+happened with TT-6.4) keeps each PR bounded and independently testable from the start.
+
+---
+
+## 2026-08-27 — SCRUM-124: "self-apply link" read as no separate join-token
+
+**Decision**: the self-apply flow is gated purely by `Organization.self_apply_enabled` — reachable
+by any authenticated user who knows the organization's id — rather than inventing a separate
+secret join-code/token mechanism.
+
+**Why**: the original decision text ("a setting where if enabled, users with the link on their
+profile can apply to join") doesn't clearly call for a secret token, and no invite-token pattern
+exists anywhere else in this codebase to extend. Flagged explicitly on the SCRUM-124 ticket
+itself for the requester to correct if this wasn't the intent — a genuinely ambiguous point, but
+not consequential enough to block on asking before starting implementation.
+
+---
+
+## 2026-08-27 — SCRUM-124: no `self_apply_enabled` re-check at accept time
+
+**Decision**: did not re-validate `self_apply_enabled` when an org admin accepts a pending member
+*application* (the verified/`is_consumer` re-checks were kept, mirroring the counsellor flow).
+
+**Why**: the security-engineer subagent suggested this for consistency, but disabling self-apply
+is a "stop accepting *new* applications" toggle, not a statement that already-pending ones become
+invalid — an admin who paused self-apply (e.g. because they were overwhelmed with volume) should
+still be able to honor an application already in their queue if they choose to. This differs from
+verified/`is_consumer`, which are fundamental eligibility the org itself controls, not a
+submission-throttle.
+
+---
+
+## 2026-08-27 — SCRUM-124: invite endpoint response trimmed to close a PII-enumeration risk
+
+**Decision**: `OrganizationMemberController::invite()`'s success response no longer includes the
+invited user's full `OrganizationRequestResource`/`UserMiniResource` data (name, username,
+gender, country, DOB) — it returns only `{id, type, status}`.
+
+**Why**: security review found any org admin could supply an arbitrary `userId` and get back
+that user's PII synchronously, plus create a persisted pending invite against them as a
+side-effect of probing — an enumeration vector this platform's ordinary `User` records (therapy
+clients) aren't meant to be exposed to, unlike `Counsellor` profiles which are intentionally
+publicly browsable. The inviting admin already knows the id they supplied, so nothing useful is
+lost by not echoing the invitee's profile back.
