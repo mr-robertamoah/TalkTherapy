@@ -23,6 +23,9 @@ class OrganizationCounsellorCompensationResource extends JsonResource
             'percentage' => $this->percentage,
             'basis' => $this->basis,
             'effectiveFrom' => $this->effective_from,
+            // Accountability trail (SCRUM-123) -- who set these terms, not the admin's full
+            // profile, which the counsellor viewing this has no other reason to see.
+            'setBy' => $this->setBy ? ['id' => $this->setBy->id, 'fullName' => $this->setBy->name] : null,
         ];
     }
 }

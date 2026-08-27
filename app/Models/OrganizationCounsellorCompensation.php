@@ -13,6 +13,7 @@ class OrganizationCounsellorCompensation extends Model
 
     protected $fillable = [
         'organization_counsellor_id',
+        'set_by_id',
         'type',
         'amount',
         'currency',
@@ -30,5 +31,10 @@ class OrganizationCounsellorCompensation extends Model
     public function organizationCounsellor()
     {
         return $this->belongsTo(OrganizationCounsellor::class);
+    }
+
+    public function setBy()
+    {
+        return $this->belongsTo(User::class, 'set_by_id');
     }
 }

@@ -16,6 +16,7 @@ class CreateOrganizationCounsellorCompensationAction extends Action
     {
         $compensation = OrganizationCounsellorCompensation::create([
             'organization_counsellor_id' => $dto->organizationCounsellor->id,
+            'set_by_id' => $dto->user->id,
             'type' => $dto->type,
             'amount' => $dto->amount,
             'currency' => $dto->currency,

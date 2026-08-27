@@ -218,3 +218,107 @@ test('setting compensation on an already-active affiliation does not change its 
 
     expect($affiliation->refresh()->status)->toBe(OrganizationCounsellorStatusEnum::active->value);
 });
+
+// SCRUM-123: accountability trail + read path -- an org admin previously could set compensation
+// terms with zero record of who did it, and there was no way for anyone (admin or counsellor) to
+// read the terms back at all.
+
+test('setting compensation records who set it', function () {
+    [$affiliation, , $owner] = pendingAffiliation();
+
+    $compensation = OrganizationCounsellorCompensationService::new()->setCompensation(
+        OrganizationCounsellorCompensationDTO::new()->fromArray([
+            'user' => $owner,
+            'organizationCounsellor' => $affiliation,
+            'type' => OrganizationCounsellorCompensationTypeEnum::free->value,
+        ])
+    );
+
+    expect($compensation->set_by_id)->toBe($owner->id);
+    expect($compensation->setBy->id)->toBe($owner->id);
+});
+
+test('an organization admin can read the full compensation history for an affiliation', function () {
+    [$affiliation, , $owner] = pendingAffiliation();
+
+    OrganizationCounsellorCompensationService::new()->setCompensation(
+        OrganizationCounsellorCompensationDTO::new()->fromArray([
+            'user' => $owner,
+            'organizationCounsellor' => $affiliation,
+            'type' => OrganizationCounsellorCompensationTypeEnum::fixed->value,
+            'amount' => 5000,
+            'currency' => 'GHS',
+        ])
+    );
+    OrganizationCounsellorCompensationService::new()->setCompensation(
+        OrganizationCounsellorCompensationDTO::new()->fromArray([
+            'user' => $owner,
+            'organizationCounsellor' => $affiliation,
+            'type' => OrganizationCounsellorCompensationTypeEnum::fixed->value,
+            'amount' => 7500,
+            'currency' => 'GHS',
+        ])
+    );
+
+    $compensations = OrganizationCounsellorCompensationService::new()->getCompensations(
+        OrganizationCounsellorCompensationDTO::new()->fromArray([
+            'user' => $owner,
+            'organizationCounsellor' => $affiliation,
+        ])
+    );
+
+    expect($compensations)->toHaveCount(2);
+    expect($compensations->first()->amount)->toBe(7500); // most recent first
+});
+
+test('the affiliated counsellor can read their own compensation history', function () {
+    [$affiliation, , $owner, $counsellor] = pendingAffiliation();
+
+    OrganizationCounsellorCompensationService::new()->setCompensation(
+        OrganizationCounsellorCompensationDTO::new()->fromArray([
+            'user' => $owner,
+            'organizationCounsellor' => $affiliation,
+            'type' => OrganizationCounsellorCompensationTypeEnum::free->value,
+        ])
+    );
+
+    $compensations = OrganizationCounsellorCompensationService::new()->getCompensations(
+        OrganizationCounsellorCompensationDTO::new()->fromArray([
+            'user' => $counsellor->user,
+            'organizationCounsellor' => $affiliation,
+        ])
+    );
+
+    expect($compensations)->toHaveCount(1);
+});
+
+test('a user with no relationship to the affiliation cannot read its compensation history', function () {
+    [$affiliation, , $owner] = pendingAffiliation();
+    $outsider = User::factory()->create();
+
+    OrganizationCounsellorCompensationService::new()->setCompensation(
+        OrganizationCounsellorCompensationDTO::new()->fromArray([
+            'user' => $owner,
+            'organizationCounsellor' => $affiliation,
+            'type' => OrganizationCounsellorCompensationTypeEnum::free->value,
+        ])
+    );
+
+    expect(fn () => OrganizationCounsellorCompensationService::new()->getCompensations(
+        OrganizationCounsellorCompensationDTO::new()->fromArray([
+            'user' => $outsider,
+            'organizationCounsellor' => $affiliation,
+        ])
+    ))->toThrow(OrganizationException::class);
+});
+
+test('reading compensation history for a non-existent affiliation returns a clean error, not a crash', function () {
+    $owner = User::factory()->create();
+
+    expect(fn () => OrganizationCounsellorCompensationService::new()->getCompensations(
+        OrganizationCounsellorCompensationDTO::new()->fromArray([
+            'user' => $owner,
+            'organizationCounsellor' => null,
+        ])
+    ))->toThrow(OrganizationException::class);
+});
