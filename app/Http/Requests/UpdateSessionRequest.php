@@ -7,7 +7,6 @@ use App\Enums\TherapyPaymentTypeEnum;
 use Carbon\Carbon;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 
 class UpdateSessionRequest extends FormRequest
@@ -27,11 +26,9 @@ class UpdateSessionRequest extends FormRequest
      */
     public function rules(): array
     {
-        $startTime = Carbon::parse($this->get('startTime'))->setTimezone(config('app.timezone'));
-        $endTime = Carbon::parse($this->get('endTime'))->setTimezone(config('app.timezone'));
+        $startTime = $this->filled('startTime') ? Carbon::parse($this->get('startTime'))->setTimezone(config('app.timezone')) : null;
+        $endTime = $this->filled('endTime') ? Carbon::parse($this->get('endTime'))->setTimezone(config('app.timezone')) : null;
         $now = Carbon::now(config('app.timezone'));
-
-        Log::info('update session request', [$startTime, $endTime, $now, now()]);
 
         return [
             'name' => ['nullable', 'string', 'max:255'],
@@ -40,10 +37,10 @@ class UpdateSessionRequest extends FormRequest
             'lat' => ['nullable', Rule::requiredIf($this->get('type') == SessionTypeEnum::in_person->value), 'numeric', 'between:-90,90'],
             'lng' => ['nullable', Rule::requiredIf($this->get('type') == SessionTypeEnum::in_person->value), 'numeric', 'between:-180,180'],
             'startTime' => ['nullable', 'date', Rule::prohibitedIf(
-                ! ($now->copy()->addMinutes(30)->lessThanOrEqualTo($startTime))
+                $startTime !== null && ! $now->copy()->addMinutes(30)->lessThanOrEqualTo($startTime)
             )],
             'endTime' => ['nullable', 'date', Rule::prohibitedIf(
-                ! ($startTime->copy()->addMinutes(30)->lessThanOrEqualTo($endTime))
+                $endTime !== null && $startTime !== null && ! $startTime->copy()->addMinutes(30)->lessThanOrEqualTo($endTime)
             )],
             'cases' => ['nullable', 'array'],
             'topics' => ['nullable', 'array'],
