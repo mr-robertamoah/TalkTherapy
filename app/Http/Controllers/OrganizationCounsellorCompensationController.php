@@ -7,11 +7,31 @@ use App\Http\Requests\CreateOrganizationCounsellorCompensationRequest;
 use App\Http\Resources\OrganizationCounsellorCompensationResource;
 use App\Models\OrganizationCounsellor;
 use App\Services\OrganizationCounsellorCompensationService;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Redirect;
 use Throwable;
 
 class OrganizationCounsellorCompensationController extends Controller
 {
+    public function index(Request $request)
+    {
+        try {
+            $compensations = OrganizationCounsellorCompensationService::new()->getCompensations(
+                OrganizationCounsellorCompensationDTO::new()->fromArray([
+                    'user' => $request->user(),
+                    'organizationCounsellor' => OrganizationCounsellor::find($request->route('organizationCounsellorId')),
+                ])
+            );
+
+            return OrganizationCounsellorCompensationResource::collection($compensations);
+        } catch (Throwable $th) {
+            $status = $this->statusFor($th);
+            $message = $this->messageFor($th, $status);
+
+            return response()->json(['message' => $message], $status);
+        }
+    }
+
     public function store(CreateOrganizationCounsellorCompensationRequest $request)
     {
         try {

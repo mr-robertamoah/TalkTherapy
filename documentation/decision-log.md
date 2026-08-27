@@ -284,6 +284,25 @@ unconditionally on its stated scope.
 
 ---
 
+## 2026-08-27 — SCRUM-123: implemented read path + accountability trail now; deferred notification/accept-step
+
+**Decision**: built the read path (org admins, per the existing write-side scoping, plus the
+affiliated counsellor themselves, reading their own current/historical terms) and an
+accountability trail (`set_by_id` on `organization_counsellor_compensations`, a plain foreign key
+to `users` since only an org admin can ever set these terms today, not a polymorphic morph).
+Did not implement counsellor notification-on-change or any accept/dispute step; filed SCRUM-131
+as a follow-up specifically for the notification decision.
+
+**Why**: the ticket's own "Process" note explicitly says to confirm with product "before
+implementing the notification/accept-step pieces" specifically, while treating the read path and
+accountability trail as the first-pass ask — the ticket itself draws this line, so no separate
+pause-and-ask was needed here. Notification design (on first activation only vs. every
+renegotiation, email vs. in-app, etc.) is a genuine product decision with real consequence for a
+platform where this affects a counsellor's livelihood, exactly the kind of decision this
+project's autonomous-execution policy pauses on rather than guessing.
+
+---
+
 ## 2026-08-27 — SCRUM-126: checked each site individually rather than blanket-replacing
 
 **Decision**: verified, per-site, whether each `(bool) $request->x` cast sat behind a `'boolean'`
