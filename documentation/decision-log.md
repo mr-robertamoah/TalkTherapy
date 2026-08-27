@@ -366,3 +366,28 @@ user wants this fired autonomously once work reaches the relevant sections, not 
 time. Scoped to full-ceremony features (not blanket-applied to every bugfix) to avoid ceremony
 creep on small changes, per the same "match the weight to the work" principle as the rest of
 CLAUDE.md's process tiers.
+
+---
+
+## 2026-08-27 — SCRUM-133: fixed PostController::getPost's session-stash too; skipped a second Link test
+
+**Decision**: fixed every site SCRUM-133 named across `CommentController`, `ContactController`,
+`HowToController`, `LinkController`, `PostController`, `RequestController`. Also fixed
+`PostController::getPost`, which the ticket flagged as ambiguous ("doesn't look up a Post model
+directly... check whether this one needs the same fix or is otherwise inert") -- it doesn't look
+up a model, but it does `session()->put('postId', $request->postId)`, which would stash a
+client-spoofed id (this is a GET route, so spoofable via query string) for whatever later reads
+`session('postId')` to act on -- same bug, same fix. One test per controller (6 total), except
+`LinkController` gets only one (`changeLinkStatus`) despite also having a second affected method
+(`performAction`, keyed by `uuid` not `linkId`) -- `performAction`'s authorization
+(`EnsureCanUseLinkAction`) has no admin-bypass and dispatches to type-specific side-effecting
+actions, making a second fixture meaningfully more expensive for a fix that's mechanically
+identical to `changeLinkStatus`'s, unlike SCRUM-130's `TherapyTopicController` case where the
+second site carried a distinct, ticket-text-contradicting risk.
+
+**Why**: `getPost`'s session-stash doesn't fit either of SCRUM-116/130's "clearly still vulnerable"
+or "clearly already safe" buckets as written, so it needed its own read of the code rather than
+guessing from the ticket's hedge -- confirmed vulnerable and fixed. Declining a second Link test
+follows the same per-controller (not per-method) acceptance criteria SCRUM-130 established, applied
+consistently: extra tests are worth their setup cost only when they cover meaningfully different
+risk, not merely a different route-param name for the identical one-line fix.

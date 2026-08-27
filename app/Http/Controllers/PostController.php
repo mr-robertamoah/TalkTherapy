@@ -34,6 +34,8 @@ class PostController extends Controller
         }
     }
 
+    // Reads $request->route('postId') rather than the magic ->postId property -- see the
+    // identical fix/rationale in SessionController (SCRUM-116/SCRUM-130/SCRUM-133).
     public function updatePost(Request $request)
     {
         try {
@@ -42,7 +44,7 @@ class PostController extends Controller
                     'user' => $request->user(),
                     'content' => $request->content,
                     'deletedFiles' => $request->deletedFiles,
-                    'post' => Post::find($request->postId),
+                    'post' => Post::find($request->route('postId')),
                     'files' => $request->file('files'),
                     'postable' => GetModelWithModelNameAndIdAction::new()->execute($request->postableType, $request->postableId),
                 ])
@@ -57,7 +59,7 @@ class PostController extends Controller
 
     public function deletePost(Request $request)
     {
-        $post = Post::find($request->postId);
+        $post = Post::find($request->route('postId'));
         try {
             PostService::new()->deletePost(
                 CreatePostDTO::new()->fromArray([
@@ -73,10 +75,12 @@ class PostController extends Controller
         }
     }
 
+    // Route-bound too: session()->put() below would otherwise stash a client-spoofed postId
+    // (from a query string on this GET route) instead of the URL's own record.
     public function getPost(Request $request)
     {
         try {
-            session()->put('postId', $request->postId);
+            session()->put('postId', $request->route('postId'));
 
             return Redirect::route('home');
         } catch (Throwable $th) {
