@@ -62,6 +62,43 @@ Not every change deserves the same ceremony. Match the weight to the work:
 
 If you're not sure which bucket something falls into, ask.
 
+## Autonomous execution
+
+Once a direction is set — a bugfix/chore (no gate needed per above), or a feature/epic that has
+already been through the `/start-feature` plan-and-approval gate — proceed through the rest of
+that work's full workflow (implement → Pint + Pest → `reviewer`/`security-engineer` (and others
+as relevant) → apply fixes → commit → push → PR → Jira comment + transition) without pausing for
+a per-step or per-ticket go-ahead. This includes moving on to the next sub-ticket in an
+already-approved epic's dependency chain (e.g. an epic's M1 → M2 → M3 milestones, or a chain of
+Jira sub-tickets) without waiting to be told to continue.
+
+**Pause and wait for the user only when:**
+- A product/design decision is genuinely ambiguous or consequential enough that guessing wrong
+  is costly (not just "any reasonable person might phrase this differently" — a real fork).
+- A clarifying question is needed because required information is missing or contradictory.
+- The next unit of work isn't determined by the current chain — e.g. the dependency chain just
+  ended, or there are multiple unrelated valid tickets/epics to pick up next and no obvious
+  reason to prefer one.
+- Continuing would require branching off a PR that hasn't been merged yet (never stack a new
+  branch on top of unmerged work just to keep moving) — open the PR, note that the next ticket
+  is blocked on it merging, and wait. Work that's genuinely independent of the unmerged PR can
+  still proceed without waiting.
+
+**Unaffected by this — always still apply, autonomy or not:**
+- A brand-new epic/feature (not yet covered by an approved plan) still goes through the full
+  `/start-feature` sequence and waits for explicit approval before any code is written.
+- Never merge your own PRs.
+- Never skip or silently ignore a failing test, lint error, or a reviewer/security-engineer
+  finding — apply fixes or explicitly flag why one is deferred (with a follow-up ticket).
+- All the other hard rules in "General rules" below (no `Co-Authored-By` trailer, no destructive
+  git ops without confirmation, etc.) are unchanged.
+
+**Decision log**: every non-trivial decision made without asking first — a scope narrowing, a
+design choice where the ticket text was ambiguous, a deviation from what a ticket literally
+says, a resolved architectural question — gets a short entry in `documentation/decision-log.md`,
+in addition to (not instead of) the usual per-ticket Jira comment. The log is the single place to
+see the trail of judgment calls across an epic without digging through every ticket's comments.
+
 ## Jira
 
 This project uses Jira for feature-level work. Jira access is provided through the **claude.ai
