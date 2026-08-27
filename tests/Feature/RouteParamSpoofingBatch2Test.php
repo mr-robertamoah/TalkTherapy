@@ -69,6 +69,33 @@ test('MessageController::deleteMessage applies to the URL\'s message, not a spoo
     expect($unrelatedMessage->fresh()->trashed())->toBeFalse();
 });
 
+// MessageController::getTopicMessages is the one method in this file where topicId IS the route
+// parameter -- every other method's topicId is a legitimate body field. Reviewer flagged this as
+// the most error-prone site in the batch (easiest to get backwards or accidentally revert), so it
+// gets its own test rather than relying on deleteMessage's coverage above.
+test('MessageController::getTopicMessages applies to the URL\'s topic, not a spoofed topicId in the query', function () {
+    $admin = anAdmin();
+
+    $counsellorUser = User::factory()->create();
+    $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
+    $ownedTopic = TherapyTopic::create(['name' => 'Owned Topic', 'counsellor_id' => $counsellor->id]);
+    $unrelatedTopic = TherapyTopic::create(['name' => 'Untouched Topic', 'counsellor_id' => $counsellor->id]);
+
+    Message::unguard();
+    Message::factory()->create(['content' => 'Owned message', 'therapy_topic_id' => $ownedTopic->id]);
+    Message::factory()->create(['content' => 'Untouched message', 'therapy_topic_id' => $unrelatedTopic->id]);
+    Message::reguard();
+
+    $response = $this
+        ->actingAs($admin)
+        ->getJson("/api/topics/{$ownedTopic->id}/messages?topicId={$unrelatedTopic->id}");
+
+    $response->assertOk();
+    $contents = collect($response->json('data'))->pluck('content');
+    expect($contents)->toContain('Owned message');
+    expect($contents)->not->toContain('Untouched message');
+});
+
 test('ReportController::getReport applies to the URL\'s report, not a spoofed reportId in the query', function () {
     $user = User::factory()->create();
     $ownedReport = Report::create(['description' => 'Owned']);
@@ -96,6 +123,42 @@ test('TherapyTopicController::deleteTherapyTopic applies to the URL\'s topic, no
     $response->assertSessionHasNoErrors();
     expect($ownedTopic->fresh()->trashed())->toBeTrue();
     expect($unrelatedTopic->fresh()->trashed())->toBeFalse();
+});
+
+// TherapyTopicController::createTherapyTopic/getTherapyTopics's therapyId fix is the one
+// correction in this batch where SCRUM-130's own ticket text incorrectly assumed the site was
+// already fixed -- gets its own test rather than relying on deleteTherapyTopic's topicId
+// coverage above, which never exercises the therapyId path.
+test('TherapyTopicController::getTherapyTopics applies to the URL\'s therapy, not a spoofed therapyId in the query', function () {
+    $admin = anAdmin();
+    $counsellorUser = User::factory()->create();
+    $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
+    $ownedTherapy = Therapy::factory()->create();
+    $unrelatedTherapy = Therapy::factory()->create();
+
+    TherapyTopic::unguard();
+    TherapyTopic::create([
+        'name' => 'Owned Topic',
+        'counsellor_id' => $counsellor->id,
+        'topicable_id' => $ownedTherapy->id,
+        'topicable_type' => Therapy::class,
+    ]);
+    TherapyTopic::create([
+        'name' => 'Untouched Topic',
+        'counsellor_id' => $counsellor->id,
+        'topicable_id' => $unrelatedTherapy->id,
+        'topicable_type' => Therapy::class,
+    ]);
+    TherapyTopic::reguard();
+
+    $response = $this
+        ->actingAs($admin)
+        ->getJson("/api/therapies/{$ownedTherapy->id}/topics?therapyId={$unrelatedTherapy->id}");
+
+    $response->assertOk();
+    $names = collect($response->json('data'))->pluck('name');
+    expect($names)->toContain('Owned Topic');
+    expect($names)->not->toContain('Untouched Topic');
 });
 
 test('UserController::deleteGuardianship applies to the URL\'s guardianship, not a spoofed guardianshipId in the body', function () {

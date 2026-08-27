@@ -181,13 +181,16 @@ class CounsellorController extends Controller
         }
     }
 
+    // No route currently maps to this method (the frontend's `counsellor.delete` reference is
+    // itself dead -- see decision-log) -- fixed for consistency with the rest of this file and
+    // as defense-in-depth against that route being wired up later without this being revisited.
     public function deleteCounsellor(Request $request)
     {
         try {
             CounsellorService::new()->deleteCounsellor(
                 DeleteCounsellorDTO::new()->fromArray([
                     'user' => $request->user(),
-                    'counsellor' => Counsellor::find($request->counsellorId),
+                    'counsellor' => Counsellor::find($request->route('counsellorId')),
                 ])
             );
 

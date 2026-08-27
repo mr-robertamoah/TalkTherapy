@@ -394,3 +394,27 @@ without verifying, same discipline as SCRUM-125's empirical-verification lesson.
 sweep and fix every newly-found instance inside SCRUM-130 itself would make an already-large PR
 open-ended -- filing SCRUM-133 keeps this PR reviewable while still surfacing the additional risk
 immediately rather than losing track of it.
+
+---
+
+## 2026-08-27 — SCRUM-130: patched the unreachable deleteCounsellor site anyway; found a dead frontend route reference (SCRUM-134)
+
+**Decision**: security-engineer confirmed `CounsellorController::deleteCounsellor` genuinely has
+no registered route (grepped both route files), but flagged it as a landmine: the frontend
+(`resources/js/Pages/Profile/Counsellor/Show.vue`) already references a `counsellor.delete` route
+name that doesn't exist anywhere, meaning the delete-account button is currently non-functional --
+a very plausible future fix (wiring up that route) would silently reintroduce this exact spoofing
+bug if `deleteCounsellor` isn't revisited at the same time. Patched `deleteCounsellor` to use
+`$request->route('counsellorId')` anyway, even though it's currently dead code, as cheap
+insurance. Filed the broken frontend route reference itself as SCRUM-134 (Medium, a separate
+functional bug) rather than fixing it here. Also added two tests reviewer flagged as the
+highest-risk untested lines in the PR: `MessageController::getTopicMessages` (the one method in
+that file where topicId is actually route-bound, unlike every other method) and
+`TherapyTopicController::getTherapyTopics` (the therapyId correction the ticket text got wrong).
+
+**Why**: a "no route, so not exploitable" argument is only true until someone adds the route --
+fixing the pattern now, while already in this file for the exact same bug class, costs nothing
+and removes the dependency on the fix being remembered later. The two added tests target the
+lines both subagents independently called out as most likely to silently regress, rather than
+treating "one test per controller" as fully satisfied by whichever method happened to be chosen
+first.
