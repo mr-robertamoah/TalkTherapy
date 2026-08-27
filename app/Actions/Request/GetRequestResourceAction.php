@@ -37,6 +37,8 @@ class GetRequestResourceAction extends Action
                     RequestTypeEnum::organization->value,
                     RequestTypeEnum::organizationCounsellorInvite->value,
                     RequestTypeEnum::organizationCounsellorApplication->value,
+                    RequestTypeEnum::organizationMemberInvite->value,
+                    RequestTypeEnum::organizationMemberApplication->value,
                 ]
             )
         ) {

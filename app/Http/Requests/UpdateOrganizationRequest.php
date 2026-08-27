@@ -36,6 +36,7 @@ class UpdateOrganizationRequest extends FormRequest
             'phone' => ['sometimes', 'string', 'max:255'],
             'isProvider' => ['sometimes', 'boolean'],
             'isConsumer' => ['sometimes', 'boolean'],
+            'selfApplyEnabled' => ['sometimes', 'boolean'],
         ];
     }
 }

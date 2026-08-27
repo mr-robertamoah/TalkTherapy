@@ -8,10 +8,10 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
-// Covers RequestTypeEnum::organization/organizationCounsellorInvite/organizationCounsellorApplication
-// -- these are the only types where `from`/`to` can be an Organization, which the generic
-// RequestResource's getFrom()/getTo() don't account for (they assume any non-User `from`/`to`
-// is a Counsellor).
+// Covers RequestTypeEnum::organization/organizationCounsellorInvite/organizationCounsellorApplication/
+// organizationMemberInvite/organizationMemberApplication -- these are the only types where
+// `from`/`to` can be an Organization, which the generic RequestResource's getFrom()/getTo()
+// don't account for (they assume any non-User `from`/`to` is a Counsellor).
 class OrganizationRequestResource extends JsonResource
 {
     /**

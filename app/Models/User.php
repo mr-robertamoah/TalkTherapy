@@ -136,6 +136,11 @@ class User extends Authenticatable implements MustVerifyEmailContract
             ->withTimestamps();
     }
 
+    public function organizationMemberships()
+    {
+        return $this->hasMany(OrganizationMember::class);
+    }
+
     public function isAdminOf(Organization $organization): bool
     {
         return $this->administeredOrganizations()->whereKey($organization->id)->exists();
