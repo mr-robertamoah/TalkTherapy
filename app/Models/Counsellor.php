@@ -182,6 +182,11 @@ class Counsellor extends Model
         return $this->morphMany(Request::class, 'for');
     }
 
+    public function organizationCounsellors()
+    {
+        return $this->hasMany(OrganizationCounsellor::class);
+    }
+
     public function hasPendingCounsellorVerificationRequest()
     {
         return $this->sentRequests()
