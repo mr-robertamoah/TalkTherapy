@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use App\Enums\MessageTypeEnum;
+use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -19,7 +20,7 @@ class CreateMessageRequest extends FormRequest
     /**
      * Get the validation rules that apply to the request.
      *
-     * @return array<string, \Illuminate\Contracts\Validation\ValidationRule|array<mixed>|string>
+     * @return array<string, ValidationRule|array<mixed>|string>
      */
     public function rules(): array
     {
@@ -28,7 +29,7 @@ class CreateMessageRequest extends FormRequest
             'type' => ['required', Rule::in(MessageTypeEnum::values())],
             'replyId' => ['nullable', 'exists:messages,id'],
             'topicId' => ['nullable', 'exists:therapy_topics,id'],
-            'confidential' => ['nullable'],
+            'confidential' => ['nullable', 'boolean'],
             'fromId' => ['required', 'integer'],
             'fromType' => ['required', 'string', Rule::in(['Counsellor', 'User'])],
             'toId' => ['nullable', 'integer'],

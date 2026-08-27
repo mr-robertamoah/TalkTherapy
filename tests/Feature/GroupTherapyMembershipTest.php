@@ -382,6 +382,24 @@ test('POST api.group.therapies.join immediately attaches an adult user when allo
     expect($groupTherapy->users()->whereKey($joiner->id)->exists())->toBeTrue();
 });
 
+// SCRUM-126: `joinGroupTherapy` used `(bool) $request->anonymous` on a plain Request with no
+// 'boolean' validation rule at all, so a string "false" silently flipped to PHP true -- a live
+// bug, not just a defense-in-depth cleanup.
+test('POST api.group.therapies.join with a string "false" anonymous value correctly persists it as false', function () {
+    $creator = anAdult();
+    $groupTherapy = aGroupTherapy($creator, ['allow_anyone' => true, 'anonymous' => false]);
+    $joiner = anAdult();
+
+    $response = $this
+        ->actingAs($joiner)
+        ->postJson(route('api.group.therapies.join', ['groupTherapyId' => $groupTherapy->id]), [
+            'anonymous' => 'false',
+        ]);
+
+    $response->assertOk();
+    expect((bool) $groupTherapy->users()->whereKey($joiner->id)->first()->pivot->anonymous)->toBeFalse();
+});
+
 test('POST api.group.therapies.join creates a pending request when allow_anyone is false', function () {
     Notification::fake();
 

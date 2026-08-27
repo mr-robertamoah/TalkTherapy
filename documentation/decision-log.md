@@ -261,3 +261,83 @@ existing checks do ("Transaction not found.", etc.) -- it surfaces as an ordinar
 to the browser rather than a silent success. Only checked when the resolved status is `success`:
 there's nothing money-correctness-sensitive to protect once a charge resolves to `failed`/
 `abandoned`.
+
+---
+
+## 2026-08-27 — SCRUM-116: regression test flakiness traced to unrelated pre-existing bugs, not fixed here
+
+**Decision**: `tests/Feature/RouteParamSpoofingTest.php`'s session-update test intermittently
+failed with a 422 depending on run — traced to two pre-existing bugs unrelated to SCRUM-116:
+`Timeable::isNotUpdateable()`'s `orWhere` branches aren't scoped by session id (any row globally
+"about to start"/ongoing falsely blocks an unrelated session's update), and
+`EnsureSessionDataIsValidAction::validateTherapy()` runs a system-wide conflict scan rather than
+one scoped to the relevant participant's actual sessions. Both were being tripped at random by
+the test's own unrelated-session fixture, whose `start_time`/`end_time` were left on
+`SessionFactory`'s bogus default (`$this->faker->timezone()`, not a real date). Fixed by pinning
+that fixture's times safely in the past; filed SCRUM-129 for the underlying scoping bugs rather
+than fixing them as part of this ticket.
+
+**Why**: same discipline as SCRUM-127/128 — bugs discovered incidentally while writing regression
+tests for a different, narrowly-scoped fix get filed as follow-ups, not folded into the ticket
+in progress.
+
+---
+
+## 2026-08-27 — SCRUM-116: same-pattern IDOR left in other controllers, filed as SCRUM-130 rather than expanded scope
+
+**Decision**: reviewer and security-engineer subagents on PR #64 both independently found the
+identical `$request->xId` magic-property route-param bug still present, unfixed, in
+`DiscussionController`, `MessageController`, `ReportController`, `TherapyTopicController`,
+`UserController::deleteGuardianship`, `CounsellorController`, and
+`AdministratorController::getCounsellorStats` — none of which SCRUM-116 named. Verified
+independently via grep against `routes/web.php`/`routes/api.php` before filing. Filed as SCRUM-130
+(High, given `DiscussionController`/`MessageController` carry private clinical content) rather
+than pulling those controllers into SCRUM-116's PR.
+
+**Why**: SCRUM-116 was explicitly scoped to three named controllers; a security finding that's
+real but outside a bugfix's stated scope gets its own ticket, not silent scope expansion —
+consistent with how SCRUM-127/128/129 were handled. Both subagents approved PR #64 itself
+unconditionally on its stated scope.
+
+---
+
+## 2026-08-27 — SCRUM-123: implemented read path + accountability trail now; deferred notification/accept-step
+
+**Decision**: built the read path (org admins, per the existing write-side scoping, plus the
+affiliated counsellor themselves, reading their own current/historical terms) and an
+accountability trail (`set_by_id` on `organization_counsellor_compensations`, a plain foreign key
+to `users` since only an org admin can ever set these terms today, not a polymorphic morph).
+Did not implement counsellor notification-on-change or any accept/dispute step; filed SCRUM-131
+as a follow-up specifically for the notification decision.
+
+**Why**: the ticket's own "Process" note explicitly says to confirm with product "before
+implementing the notification/accept-step pieces" specifically, while treating the read path and
+accountability trail as the first-pass ask — the ticket itself draws this line, so no separate
+pause-and-ask was needed here. Notification design (on first activation only vs. every
+renegotiation, email vs. in-app, etc.) is a genuine product decision with real consequence for a
+platform where this affects a counsellor's livelihood, exactly the kind of decision this
+project's autonomous-execution policy pauses on rather than guessing.
+
+---
+
+## 2026-08-27 — SCRUM-126: checked each site individually rather than blanket-replacing
+
+**Decision**: verified, per-site, whether each `(bool) $request->x` cast sat behind a `'boolean'`
+validation rule before fixing. `OrganizationController` (isProvider/isConsumer/selfApplyEnabled)
+and `AdministratorController::updateUser` (emailVerified) already had the rule -- switched to
+`$request->boolean()` anyway for consistency/defense-in-depth, not because they were live bugs.
+`MessageController` (confidential, on both create and update) had no `'boolean'` rule at all --
+added it. `TestimonialController::markTestimonial` and `GroupTherapyController::joinGroupTherapy`
+use a plain `Request` with no FormRequest/validation at all -- fixed via `$request->boolean()`
+alone, which normalizes correctly regardless of any validation rule.
+`ProfileController::update`'s `(bool) $request->dob ? $request->dob : null` is a different shape
+(a truthiness check deciding whether to null out a date value, not a boolean-flag parse) --
+simplified to `$request->dob ?: null`, not a security fix.
+
+**Why**: matches SCRUM-125's established discipline -- a plausible-sounding pattern doesn't mean
+every site is actually exploitable; checking each one individually is what determined `confidential`,
+`use`, and `anonymous` (join) were live bugs while the others were already safe. Two more
+magic-property route-param instances were noticed in passing while reading these controllers
+(`AdministratorController::updateUser`'s `$request->userId`, `TestimonialController::markTestimonial`'s
+`$request->testimonialId`) -- out of this ticket's scope, added as a comment to the already-open
+SCRUM-130 rather than filing a duplicate ticket.

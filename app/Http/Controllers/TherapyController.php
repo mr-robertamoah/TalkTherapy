@@ -120,13 +120,15 @@ class TherapyController extends Controller
         }
     }
 
+    // Every lookup below reads $request->route(...) rather than the magic ->therapyId property
+    // -- see the identical fix/rationale in SessionController (SCRUM-116).
     public function updateTherapy(UpdateTherapyRequest $request)
     {
         try {
             TherapyService::new()->updateTherapy(
                 CreateTherapyDTO::new()->fromArray([
                     'user' => $request->user(),
-                    'therapy' => Therapy::find($request->therapyId),
+                    'therapy' => Therapy::find($request->route('therapyId')),
                     'name' => $request->name,
                     'backgroundStory' => $request->backgroundStory,
                     'per' => $request->per,
@@ -158,7 +160,7 @@ class TherapyController extends Controller
             TherapyService::new()->deleteTherapy(
                 CreateTherapyDTO::new()->fromArray([
                     'user' => $request->user(),
-                    'therapy' => Therapy::find($request->therapyId),
+                    'therapy' => Therapy::find($request->route('therapyId')),
                 ])
             );
 
@@ -177,7 +179,7 @@ class TherapyController extends Controller
             TherapyService::new()->endTherapy(
                 CreateTherapyDTO::new()->fromArray([
                     'user' => $request->user(),
-                    'therapy' => Therapy::find($request->therapyId),
+                    'therapy' => Therapy::find($request->route('therapyId')),
                 ])
             );
 
@@ -196,7 +198,7 @@ class TherapyController extends Controller
             $therapy = TherapyService::new()->getTherapy(
                 GetTherapyDTO::new()->fromArray([
                     'user' => $request->user(),
-                    'therapy' => Therapy::find($request->therapyId),
+                    'therapy' => Therapy::find($request->route('therapyId')),
                 ])
             );
 
@@ -223,7 +225,7 @@ class TherapyController extends Controller
             $therapy = TherapyService::new()->getTherapy(
                 GetTherapyDTO::new()->fromArray([
                     'user' => $request->user(),
-                    'therapy' => Therapy::find($request->therapyId),
+                    'therapy' => Therapy::find($request->route('therapyId')),
                 ])
             );
 
@@ -245,7 +247,7 @@ class TherapyController extends Controller
                 AssistTherapyDTO::new()->fromArray([
                     'user' => $request->user(),
                     'counsellors' => Counsellor::findMany($request->counsellorIds),
-                    'therapy' => Therapy::find($request->therapyId),
+                    'therapy' => Therapy::find($request->route('therapyId')),
                 ])
             );
 

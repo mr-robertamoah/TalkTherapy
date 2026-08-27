@@ -110,13 +110,15 @@ class GroupTherapyController extends Controller
         }
     }
 
+    // Every lookup below reads $request->route(...) rather than the magic ->groupTherapyId
+    // property -- see the identical fix/rationale in SessionController (SCRUM-116).
     public function updateGroupTherapy(UpdateGroupTherapyRequest $request)
     {
         try {
             GroupTherapyService::new()->updateGroupTherapy(
                 GroupTherapyDTO::new()->fromArray([
                     'user' => $request->user(),
-                    'groupTherapy' => GroupTherapy::find($request->groupTherapyId),
+                    'groupTherapy' => GroupTherapy::find($request->route('groupTherapyId')),
                     'name' => $request->name,
                     'about' => $request->about,
                     'per' => $request->per,
@@ -154,7 +156,7 @@ class GroupTherapyController extends Controller
             GroupTherapyService::new()->deleteGroupTherapy(
                 GroupTherapyDTO::new()->fromArray([
                     'user' => $request->user(),
-                    'groupTherapy' => GroupTherapy::find($request->groupTherapyId),
+                    'groupTherapy' => GroupTherapy::find($request->route('groupTherapyId')),
                 ])
             );
 
@@ -173,7 +175,7 @@ class GroupTherapyController extends Controller
             GroupTherapyService::new()->endGroupTherapy(
                 GroupTherapyDTO::new()->fromArray([
                     'user' => $request->user(),
-                    'therapy' => GroupTherapy::find($request->groupTherapyId),
+                    'therapy' => GroupTherapy::find($request->route('groupTherapyId')),
                 ])
             );
 
@@ -192,7 +194,7 @@ class GroupTherapyController extends Controller
             $therapy = GroupTherapyService::new()->getGroupTherapy(
                 GetTherapyDTO::new()->fromArray([
                     'user' => $request->user(),
-                    'groupTherapy' => GroupTherapy::find($request->groupTherapyId),
+                    'groupTherapy' => GroupTherapy::find($request->route('groupTherapyId')),
                 ])
             );
 
@@ -223,8 +225,8 @@ class GroupTherapyController extends Controller
             $result = GroupTherapyService::new()->joinGroupTherapy(
                 JoinGroupTherapyDTO::new()->fromArray([
                     'user' => $request->user(),
-                    'groupTherapy' => GroupTherapy::find($request->groupTherapyId),
-                    'anonymous' => (bool) $request->anonymous,
+                    'groupTherapy' => GroupTherapy::find($request->route('groupTherapyId')),
+                    'anonymous' => $request->boolean('anonymous'),
                 ])
             );
 
@@ -245,7 +247,7 @@ class GroupTherapyController extends Controller
             $therapy = GroupTherapyService::new()->getGroupTherapy(
                 GetTherapyDTO::new()->fromArray([
                     'user' => $request->user(),
-                    'groupTherapy' => GroupTherapy::find($request->groupTherapyId),
+                    'groupTherapy' => GroupTherapy::find($request->route('groupTherapyId')),
                 ])
             );
 

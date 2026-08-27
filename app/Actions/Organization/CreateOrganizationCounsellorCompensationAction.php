@@ -16,6 +16,7 @@ class CreateOrganizationCounsellorCompensationAction extends Action
     {
         $compensation = OrganizationCounsellorCompensation::create([
             'organization_counsellor_id' => $dto->organizationCounsellor->id,
+            'set_by_id' => $dto->user->id,
             'type' => $dto->type,
             'amount' => $dto->amount,
             'currency' => $dto->currency,
@@ -28,6 +29,8 @@ class CreateOrganizationCounsellorCompensationAction extends Action
             $dto->organizationCounsellor->activate();
         }
 
-        return $compensation;
+        // Avoids an extra query for the resource's `setBy` field -- we already have the user
+        // who just set this in memory.
+        return $compensation->setRelation('setBy', $dto->user);
     }
 }
