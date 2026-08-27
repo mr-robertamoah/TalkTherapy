@@ -31,4 +31,18 @@ class OrganizationMember extends Model
     {
         return $this->status === OrganizationMemberStatusEnum::active->value;
     }
+
+    public function billingConfigs()
+    {
+        return $this->hasMany(OrganizationMemberBillingConfig::class);
+    }
+
+    // Latest by effective_from, tie-broken by id -- mirrors OrganizationCounsellor::currentCompensation().
+    public function currentBillingConfig(): ?OrganizationMemberBillingConfig
+    {
+        return $this->billingConfigs()
+            ->orderByDesc('effective_from')
+            ->orderByDesc('id')
+            ->first();
+    }
 }
