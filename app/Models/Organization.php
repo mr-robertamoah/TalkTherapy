@@ -37,6 +37,11 @@ class Organization extends Model
             ->withTimestamps();
     }
 
+    public function organizationCounsellors()
+    {
+        return $this->hasMany(OrganizationCounsellor::class);
+    }
+
     public function logo()
     {
         return $this->belongsTo(File::class, 'logo_id');

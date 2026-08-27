@@ -3,6 +3,7 @@
 namespace App\Actions\Request;
 
 use App\Actions\Action;
+use App\Actions\Organization\CreateOrganizationCounsellorAffiliationAction;
 use App\DTOs\RequestResponseDTO;
 use App\Enums\RequestStatusEnum;
 use App\Exceptions\OrganizationException;
@@ -11,10 +12,7 @@ use Illuminate\Support\Facades\DB;
 
 class RespondToOrganizationCounsellorRequestAction extends Action
 {
-    // Shared by both organizationCounsellorInvite and organizationCounsellorApplication --
-    // accepting either is just a status transition here. Turning an accepted request into an
-    // actual organization_counsellors row (once compensation terms are agreed) is TT-6.4a's
-    // job, not this ticket's (SCRUM-120) -- affiliation isn't active until terms exist.
+    // Shared by both organizationCounsellorInvite and organizationCounsellorApplication.
     public function execute(RequestResponseDTO $requestResponseDTO)
     {
         return DB::transaction(function () use ($requestResponseDTO) {
@@ -28,9 +26,10 @@ class RespondToOrganizationCounsellorRequestAction extends Action
                 ? RequestStatusEnum::rejected->value
                 : strtoupper($requestResponseDTO->response);
 
-            // Verified/provider status was only checked at request-creation time -- an org
-            // could have lost either since (e.g. a fraud finding). Rejecting a stale request
-            // is always fine; accepting one for a now-ineligible org is not.
+            // Verified/provider status, and the counsellor's own verification, were only
+            // checked at request-creation time -- either could have changed since (e.g. a
+            // fraud finding, or a counsellor whose license lapsed). Rejecting a stale request
+            // is always fine; accepting one for a now-ineligible org/counsellor is not.
             if ($status === RequestStatusEnum::accepted->value) {
                 $organization = $request->for;
 
@@ -41,7 +40,16 @@ class RespondToOrganizationCounsellorRequestAction extends Action
 
             $request->update(['status' => $status]);
 
-            return $request->refresh();
+            $request = $request->refresh();
+
+            // SCRUM-121: turns the now-accepted request into an actual (pending) affiliation
+            // row -- this also re-verifies the counsellor and throws (rolling back the status
+            // update above) if they're no longer platform-verified.
+            if ($status === RequestStatusEnum::accepted->value) {
+                CreateOrganizationCounsellorAffiliationAction::new()->execute($request);
+            }
+
+            return $request;
         });
     }
 }
