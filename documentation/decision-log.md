@@ -263,3 +263,21 @@ than fixing them as part of this ticket.
 **Why**: same discipline as SCRUM-127/128 — bugs discovered incidentally while writing regression
 tests for a different, narrowly-scoped fix get filed as follow-ups, not folded into the ticket
 in progress.
+
+---
+
+## 2026-08-27 — SCRUM-116: same-pattern IDOR left in other controllers, filed as SCRUM-130 rather than expanded scope
+
+**Decision**: reviewer and security-engineer subagents on PR #64 both independently found the
+identical `$request->xId` magic-property route-param bug still present, unfixed, in
+`DiscussionController`, `MessageController`, `ReportController`, `TherapyTopicController`,
+`UserController::deleteGuardianship`, `CounsellorController`, and
+`AdministratorController::getCounsellorStats` — none of which SCRUM-116 named. Verified
+independently via grep against `routes/web.php`/`routes/api.php` before filing. Filed as SCRUM-130
+(High, given `DiscussionController`/`MessageController` carry private clinical content) rather
+than pulling those controllers into SCRUM-116's PR.
+
+**Why**: SCRUM-116 was explicitly scoped to three named controllers; a security finding that's
+real but outside a bugfix's stated scope gets its own ticket, not silent scope expansion —
+consistent with how SCRUM-127/128/129 were handled. Both subagents approved PR #64 itself
+unconditionally on its stated scope.
