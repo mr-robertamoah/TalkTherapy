@@ -341,3 +341,28 @@ magic-property route-param instances were noticed in passing while reading these
 (`AdministratorController::updateUser`'s `$request->userId`, `TestimonialController::markTestimonial`'s
 `$request->testimonialId`) -- out of this ticket's scope, added as a comment to the already-open
 SCRUM-130 rather than filing a duplicate ticket.
+
+---
+
+## 2026-08-27 — Process change: Playwright MCP wired in for autonomous UI/QA verification
+
+**Decision**: per explicit user request, the Playwright MCP tools (`mcp__playwright__*`) are now
+part of the standard feature-development workflow at two points: a quick main-session smoke-check
+right after implementing a UI change (before handing off to `reviewer`/`security-engineer`), and
+`qa-engineer`'s own fuller acceptance-criteria walkthrough as part of its existing verification
+pass. This is autonomous (no per-use approval needed) for full-ceremony feature work with a
+frontend/UI component; available but not mandatory for bugfixes/chores that happen to touch a
+`.vue` file. Documented in the new `.claude/workflows/playwright-qa.md` (the use-case catalog),
+`.claude/agents/qa-engineer.md` (tool grant + instructions), `.claude/workflows/feature-development.md`
+(the two checkpoints), and `CLAUDE.md` (pointers from the relevant existing sections). Local
+permission allow-list (`.claude/settings.local.json`, gitignored) broadened with
+`mcp__playwright__*` so this doesn't hit per-call approval friction, consistent with the existing
+semi-autonomous-execution permission handling.
+
+**Why**: Pest's HTTP/JSON-assertion layer can't see what actually renders or behaves in a real
+browser — this codebase already has precedent for that gap mattering (the `RequestResource`
+identity-masking bugs were about exactly the kind of thing a backend-only test can't catch). The
+user wants this fired autonomously once work reaches the relevant sections, not asked for each
+time. Scoped to full-ceremony features (not blanket-applied to every bugfix) to avoid ceremony
+creep on small changes, per the same "match the weight to the work" principle as the rest of
+CLAUDE.md's process tiers.
