@@ -24,22 +24,25 @@ use Throwable;
 
 class CounsellorController extends Controller
 {
+    // Every lookup below reads $request->route('counsellorId') rather than the magic
+    // ->counsellorId property -- see the identical fix/rationale in SessionController
+    // (SCRUM-116/SCRUM-130).
     public function verifyEmail(Request $request)
     {
         try {
             CounsellorService::new()->verifyEmail(
                 UpdateCounsellorDTO::new()->fromArray([
-                    'counsellor' => Counsellor::find($request->counsellorId),
+                    'counsellor' => Counsellor::find($request->route('counsellorId')),
                     'request' => $request,
                 ])
             );
 
-            return redirect()->route('counsellor.show', ['counsellorId' => $request->counsellorId]);
+            return redirect()->route('counsellor.show', ['counsellorId' => $request->route('counsellorId')]);
         } catch (Throwable $th) {
             $status = $this->statusFor($th);
             $message = $this->messageFor($th, $status);
 
-            return redirect()->route('counsellor.show', ['counsellorId' => $request->counsellorId])->withErrors('message', $message);
+            return redirect()->route('counsellor.show', ['counsellorId' => $request->route('counsellorId')])->withErrors('message', $message);
         }
     }
 
@@ -75,7 +78,7 @@ class CounsellorController extends Controller
     {
         CounsellorService::new()->sendVerificationEmail(
             UpdateCounsellorDTO::new()->fromArray([
-                'counsellor' => Counsellor::find($request->counsellorId),
+                'counsellor' => Counsellor::find($request->route('counsellorId')),
                 'user' => $request->user(),
             ])
         );
@@ -114,7 +117,7 @@ class CounsellorController extends Controller
     public function show(Request $request)
     {
         try {
-            $counsellor = GetCounsellorAccountForProfileViewAction::new()->execute($request->counsellorId);
+            $counsellor = GetCounsellorAccountForProfileViewAction::new()->execute($request->route('counsellorId'));
 
             $counsellorResource = new CounsellorResource($counsellor);
 
@@ -165,7 +168,7 @@ class CounsellorController extends Controller
                     'selectedReligions' => $request->selectedReligions,
                     'professionId' => $request->professionId,
                     'user' => $request->user(),
-                    'counsellor' => Counsellor::find($request->counsellorId),
+                    'counsellor' => Counsellor::find($request->route('counsellorId')),
                 ])
             );
 
@@ -215,7 +218,7 @@ class CounsellorController extends Controller
                     'nationalIdNumber' => $request->nationalIdNumber,
                     'licensingAuthorityId' => $request->licensingAuthorityId,
                     'user' => $request->user(),
-                    'counsellor' => Counsellor::find($request->counsellorId),
+                    'counsellor' => Counsellor::find($request->route('counsellorId')),
                 ])
             );
 

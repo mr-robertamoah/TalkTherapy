@@ -13,6 +13,8 @@ use Throwable;
 
 class ReportController extends Controller
 {
+    // Every lookup below reads $request->route('reportId') rather than the magic ->reportId
+    // property -- see the identical fix/rationale in SessionController (SCRUM-116/SCRUM-130).
     public function createReport(Request $request)
     {
         try {
@@ -42,7 +44,7 @@ class ReportController extends Controller
                     'user' => $request->user(),
                     'description' => $request->description,
                     'data' => $request->data,
-                    'report' => Report::find($request->reportId),
+                    'report' => Report::find($request->route('reportId')),
                     'files' => $request->file('files'),
                     'reportable' => GetModelWithModelNameAndIdAction::new()->execute($request->reportableType, $request->reportableId),
                 ])
@@ -57,7 +59,7 @@ class ReportController extends Controller
 
     public function deleteReport(Request $request)
     {
-        $report = Report::find($request->reportId);
+        $report = Report::find($request->route('reportId'));
         try {
             ReportService::new()->deleteReport(
                 CreateReportDTO::new()->fromArray([
@@ -75,7 +77,7 @@ class ReportController extends Controller
 
     public function getReport(Request $request)
     {
-        $report = Report::find($request->reportId);
+        $report = Report::find($request->route('reportId'));
         try {
             ReportService::new()->getReport(
                 CreateReportDTO::new()->fromArray([

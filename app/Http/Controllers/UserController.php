@@ -46,13 +46,15 @@ class UserController extends Controller
         }
     }
 
+    // Reads $request->route('guardianshipId') rather than the magic ->guardianshipId property --
+    // see the identical fix/rationale in SessionController (SCRUM-116/SCRUM-130).
     public function deleteGuardianship(Request $request)
     {
         try {
             UserService::new()->deleteGuardianship(
                 GetGuardianshipDTO::new()->fromArray([
                     'user' => $request->user(),
-                    'guardianship' => $guardianship = Guardianship::find($request->guardianshipId),
+                    'guardianship' => $guardianship = Guardianship::find($request->route('guardianshipId')),
                 ])
             );
 

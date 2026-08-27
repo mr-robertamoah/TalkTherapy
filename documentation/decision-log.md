@@ -366,3 +366,31 @@ user wants this fired autonomously once work reaches the relevant sections, not 
 time. Scoped to full-ceremony features (not blanket-applied to every bugfix) to avoid ceremony
 creep on small changes, per the same "match the weight to the work" principle as the rest of
 CLAUDE.md's process tiers.
+
+---
+
+## 2026-08-27 — SCRUM-130: one regression test per controller, not per method; systematic sweep found more instances (SCRUM-133)
+
+**Decision**: fixed every magic-property route-param usage SCRUM-130 named (`DiscussionController`,
+`MessageController`, `ReportController`, `TherapyTopicController`, `UserController::deleteGuardianship`,
+`CounsellorController`, `AdministratorController`), plus two already-noted-in-passing instances from
+SCRUM-126 (`AdministratorController::updateUser`/`deleteUser`'s `userId`, `TestimonialController`'s
+`testimonialId`) and `TherapyTopicController::createTherapyTopic`/`getTherapyTopics`'s `therapyId`,
+which SCRUM-130's own ticket text incorrectly assumed was already fixed (verified it wasn't).
+Added one regression test per *controller* (not per method, despite most controllers having 3-9
+affected methods), using an admin actor wherever the target action has an `isAdmin()` bypass, to
+keep fixture setup tractable. Also ran a systematic sweep -- every route-bound `{param}` across
+`routes/web.php`/`routes/api.php` checked against every controller's magic-property usages at the
+specific-method level -- which found six more affected controllers (`CommentController`,
+`ContactController`, `HowToController`, `LinkController`, `PostController`, `RequestController`).
+Filed as SCRUM-133 (High, given `RequestController::respond` backs org/group-therapy/guardianship/
+counsellor accept-reject flows) rather than expanding this already-large PR further.
+
+**Why**: the acceptance criteria said "a regression test per affected controller," which one
+well-chosen representative test per controller satisfies without needing 20+ near-duplicate tests
+for every method sharing the identical bug shape. `TherapyTopicController`'s therapyId correction
+matters because a source ticket's own claims about "already fixed" sites shouldn't be trusted
+without verifying, same discipline as SCRUM-125's empirical-verification lesson. Continuing to
+sweep and fix every newly-found instance inside SCRUM-130 itself would make an already-large PR
+open-ended -- filing SCRUM-133 keeps this PR reviewable while still surfacing the additional risk
+immediately rather than losing track of it.

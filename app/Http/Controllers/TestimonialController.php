@@ -31,9 +31,12 @@ class TestimonialController extends Controller
         }
     }
 
+    // Every lookup below reads $request->route('testimonialId') rather than the magic
+    // ->testimonialId property -- see the identical fix/rationale in SessionController
+    // (SCRUM-116/SCRUM-130).
     public function updateTestimonial(Request $request)
     {
-        $testimonial = Testimonial::find($request->testimonialId);
+        $testimonial = Testimonial::find($request->route('testimonialId'));
         try {
             $testimonial = TestimonialService::new()->updateTestimonial(
                 CreateTestimonialDTO::new()->fromArray([
@@ -52,7 +55,7 @@ class TestimonialController extends Controller
 
     public function deleteTestimonial(Request $request)
     {
-        $testimonial = Testimonial::find($request->testimonialId);
+        $testimonial = Testimonial::find($request->route('testimonialId'));
         try {
             TestimonialService::new()->deleteTestimonial(
                 CreateTestimonialDTO::new()->fromArray([
@@ -70,7 +73,7 @@ class TestimonialController extends Controller
 
     public function markTestimonial(Request $request)
     {
-        $testimonial = Testimonial::find($request->testimonialId);
+        $testimonial = Testimonial::find($request->route('testimonialId'));
         try {
             TestimonialService::new()->markTestimonial(
                 CreateTestimonialDTO::new()->fromArray([

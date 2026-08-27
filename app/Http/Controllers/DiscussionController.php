@@ -20,9 +20,13 @@ use Throwable;
 
 class DiscussionController extends Controller
 {
+    // Every lookup below reads $request->route('discussionId') rather than the magic
+    // ->discussionId property -- Illuminate\Http\Request::__get() prefers a same-named
+    // parsed-body/query key over the route parameter, so a client could otherwise override which
+    // discussion a request targets by sending a same-named body field (SCRUM-116/SCRUM-130).
     public function showChat(Request $request)
     {
-        $discussion = Discussion::find($request->discussionId);
+        $discussion = Discussion::find($request->route('discussionId'));
 
         abort_unless($discussion, 404);
 
@@ -64,7 +68,7 @@ class DiscussionController extends Controller
 
     public function updateDiscussion(Request $request)
     {
-        $discussion = Discussion::find($request->discussionId);
+        $discussion = Discussion::find($request->route('discussionId'));
 
         try {
             $discussion = DiscussionService::new()->updateDiscussion(
@@ -95,7 +99,7 @@ class DiscussionController extends Controller
             DiscussionService::new()->deleteDiscussion(
                 CreateDiscussionDTO::new()->fromArray([
                     'user' => $request->user(),
-                    'discussion' => $discussion = Discussion::find($request->discussionId),
+                    'discussion' => $discussion = Discussion::find($request->route('discussionId')),
                 ])
             );
 
@@ -112,7 +116,7 @@ class DiscussionController extends Controller
             return DiscussionService::new()->sendCounsellorRequest(
                 CreateRequestDTO::new()->fromArray([
                     'from' => $request->user()?->counsellor,
-                    'for' => Discussion::find($request->discussionId),
+                    'for' => Discussion::find($request->route('discussionId')),
                     'to' => Counsellor::find($request->counsellorId),
                 ])
             );
@@ -127,7 +131,7 @@ class DiscussionController extends Controller
             DiscussionService::new()->removeCounsellor(
                 GetDiscussionsDTO::new()->fromArray([
                     'user' => $request->user(),
-                    'discussion' => Discussion::find($request->discussionId),
+                    'discussion' => Discussion::find($request->route('discussionId')),
                     'counsellor' => $counsellor = Counsellor::find($request->counsellorId),
                 ])
             );
@@ -164,7 +168,7 @@ class DiscussionController extends Controller
                 GetDiscussionsDTO::new()->fromArray([
                     'user' => $request->user(),
                     'name' => $request->name,
-                    'discussion' => Discussion::find($request->discussionId),
+                    'discussion' => Discussion::find($request->route('discussionId')),
                 ])
             );
         } catch (Throwable $th) {
@@ -175,7 +179,7 @@ class DiscussionController extends Controller
 
     public function endDiscussion(Request $request)
     {
-        $discussion = Discussion::find($request->discussionId);
+        $discussion = Discussion::find($request->route('discussionId'));
 
         try {
             $discussion = DiscussionService::new()->endDiscussion(
@@ -194,7 +198,7 @@ class DiscussionController extends Controller
 
     public function getInDiscussion(Request $request)
     {
-        $discussion = Discussion::find($request->discussionId);
+        $discussion = Discussion::find($request->route('discussionId'));
 
         try {
             $discussion = DiscussionService::new()->getInDiscussion(
@@ -213,7 +217,7 @@ class DiscussionController extends Controller
 
     public function abandonDiscussion(Request $request)
     {
-        $discussion = Discussion::find($request->discussionId);
+        $discussion = Discussion::find($request->route('discussionId'));
 
         try {
             $discussion = DiscussionService::new()->abandonDiscussion(
