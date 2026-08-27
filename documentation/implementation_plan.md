@@ -122,22 +122,28 @@ the frontend, split a/b/c so it ships as independently-reviewable PRs.
 | TT-6.2 | ✅ **Implemented** (SCRUM-120, PR #58, merged). Narrowed to the 2 provider-side flows (org→counsellor invite, counsellor→org apply) — the 2 member-side flows moved to TT-6.3 below, since they need `organization_members`, which didn't exist yet. Reuses the existing polymorphic `Request` model. Grows `Request`'s existing per-type dispatch chain (`RespondToRequestAction`/`GetRequestResourceAction`/`EnsureUserCanRespondToRequestAction`) — accepted, tracked debt; a type→handler-map extraction is a worthwhile independent follow-up. | Story | High | 8 | Existing (1.2), revised (SCRUM-111) | TT-6.1 |
 | TT-6.4a | ✅ **Implemented** (SCRUM-121, PR #59, merged). Provider-org counsellor affiliation. "(c) direct non-exclusive contracting" turned out not to be a third creation path — it's the guarantee that already holds for TT-6.2's two request flows. `organization_counsellors` row created (`status = pending`) when either request is accepted; counsellor's own platform-verification re-checked at accept time. Self-dealing (a dual-role org paying itself for its own affiliated counsellors) is explicitly allowed — the platform fee still applies regardless of payer. | Story | Medium | 8 | New split of existing TT-6.4 (SCRUM-111) | TT-6.2 |
 | TT-6.4b | ✅ **Implemented** (SCRUM-122, PR #61, open). Compensation-terms capture + history: fixed / percentage / free, percentage basis (counsellor's own listed rate, or a rate negotiated at affiliation time) — versioned via a dedicated effective-dated `organization_counsellor_compensations` table, not a reuse of `TransactionStatusHistory`. First terms row activates a `pending` affiliation. Split-calculation/payout math itself is TT-7.6 scope, not built here. Follow-up filed (SCRUM-123): counsellor-side visibility/accountability trail for compensation changes — currently the org admin sets terms unilaterally with zero counsellor-side visibility. | Story | Medium | 5 | New split of existing TT-6.4 (SCRUM-111) | TT-6.4a |
-| TT-6.3 | Consumer-org membership (direct invite + optional self-apply-via-profile-link toggle) and billing-mode config: retainer (fixed periodic amount regardless of usage) and pay-per-use (per-session/per-therapy, with a group-therapy include/exclude setting), mixable per member within one org. Excluding group therapies blocks that booking under the org context entirely (member can still book independently, outside the org, paying personally). A member belonging to multiple orgs that share a counsellor must explicitly pick which org an engagement bills through (feeds TT-7.3a). Org-admin dashboard visibility into member activity is scoped to session metadata (dates, frequency, type/category) and invoices only — never clinical notes or the private journal (TT-5.1). Config only here — no live charge execution. | Story | High | 13 (revised from 8) | Existing (1.3), revised (SCRUM-111) | TT-6.1, TT-6.2 |
+| TT-6.3a | ✅ **Implemented** (SCRUM-124, PR #62, merged). Consumer-org membership request flows (org→member invite, member→org self-apply, the latter gated on a new `self_apply_enabled` org flag) — the member-side mirror of TT-6.2, split out the same way once M2 planning started. Membership activates immediately on acceptance (no compensation-style gate). | Story | High | 8 (new estimate, split from original TT-6.3) | New split of existing TT-6.3 (SCRUM-111) | TT-6.1 |
+| TT-6.3b | ✅ **Implemented** (SCRUM-125, PR #63, open). Billing-mode config per member: retainer (fixed periodic amount regardless of usage) or pay-per-use (per-session/per-therapy, reusing `TherapyPerPaymentEnum`), plus a group-therapy include/exclude flag — mixable per member within one org, effective-dated/append-only (mirrors TT-6.4b). Excluding group therapies blocks that booking under the org context entirely (member can still book independently, outside the org, paying personally) — enforcement itself is TT-7.3a's job, not built here. A member belonging to multiple orgs that share a counsellor must explicitly pick which org an engagement bills through (feeds TT-7.3a). Org-admin dashboard visibility into member activity is scoped to session metadata (dates, frequency, type/category) and invoices only — never clinical notes or the private journal (TT-5.1). Config only here — no live charge execution. | Story | High | 8 (new estimate, split from original TT-6.3) | New split of existing TT-6.3 (SCRUM-111) | TT-6.3a |
 | TT-6.5a | Org admin dashboard (profile, invite+approve, compensation terms, billing config) — new dedicated `resources/js/Pages/Organization/` page tree, following `resources/js/Pages/Profile/Counsellor/`'s structure rather than `Admin.vue`'s tab/dispatch-table pattern (already flagged as ad-hoc debt). | Story | Medium | 5 | New (SCRUM-111) | TT-6.1, TT-6.2, TT-6.4a, TT-6.4b |
 | TT-6.5b | Counsellor "my organizations" view + apply-to-provider-org wizard, reusing `BecomeCounsellorForm.vue`/`CounsellorCreationSteps.vue`. | Story | Medium | 5 | New (SCRUM-111) | TT-6.4a |
-| TT-6.5c | Member "your organization" view + self-apply UI, including an explicit org-selection step when contracting a counsellor affiliated with more than one of the member's orgs. | Story | Medium | 3 | New (SCRUM-111) | TT-6.3 |
+| TT-6.5c | Member "your organization" view + self-apply UI, including an explicit org-selection step when contracting a counsellor affiliated with more than one of the member's orgs. | Story | Medium | 3 | New (SCRUM-111) | TT-6.3a |
 
-**M1 status (2026-08-27): complete.** TT-6.1/6.2/6.4a/6.4b (SCRUM-119–122) all implemented;
-119–121 merged, 122 (PR #61) open awaiting review/merge. **M2 (TT-6.3) has no filed Jira
-sub-ticket yet** — the project-manager pass recommended one but it was never created; needs a
-SCRUM-* ticket filed before implementation starts, since M1's dependency chain has now ended and
-this is a genuine "what's next" decision point, not an automatic continuation.
+**M1 status (2026-08-27): complete.** TT-6.1/6.2/6.4a/6.4b (SCRUM-119–122) all merged.
+
+**M2 status (2026-08-27): complete.** TT-6.3 was split into TT-6.3a (SCRUM-124, membership
+request flows) and TT-6.3b (SCRUM-125, billing-mode config) before implementation started,
+mirroring the TT-6.2/6.4a/6.4b split on the provider side. SCRUM-124 merged (PR #62); SCRUM-125
+(PR #63) open awaiting review/merge. **Neither M1 nor M2 has a next automatic continuation** —
+the only remaining backend Organizations work is M3 (TT-7.3a/b, blocked on TT-7.1/SCRUM-110's
+payments backend + TT-7.6/7.7) and M4 (frontend, TT-6.5a/b/c, no Jira sub-tickets filed yet).
+Follow-ups filed along the way: SCRUM-123 (counsellor compensation visibility/accountability),
+SCRUM-126 (systemic `(bool) $request->x` cast pattern).
 
 **Sprint:** 5 — combined with the payments foundation (TT-7.1/7.2). **Dependency correction**
-(previously stated too broadly below TT-7): TT-6.1/6.2/6.4a/6.4b/6.3 — the full org data model and
-config layer — have **no** TT-7.1 dependency; only the live-charge-execution slice (TT-7.3a,
-tracked under TT-7 below) needs both TT-6.3 and TT-7.1. TT-6.1 through TT-6.4b can ship in
-parallel with TT-7.1 rather than waiting on it.
+(previously stated too broadly below TT-7): TT-6.1/6.2/6.4a/6.4b/6.3a/6.3b — the full org data
+model and config layer — have **no** TT-7.1 dependency; only the live-charge-execution slice
+(TT-7.3a, tracked under TT-7 below) needs both TT-6.3b and TT-7.1. All of TT-6.1 through TT-6.3b
+shipped (or are shipping) in parallel with TT-7.1 rather than waiting on it.
 
 ---
 
@@ -148,7 +154,7 @@ parallel with TT-7.1 rather than waiting on it.
 |---|---|---|---|---|---|---|
 | TT-7.1 | Transaction/payment model (full audit-trail status history) + Paystack charge initiation & webhook/callback plumbing, test-mode end-to-end for a single simple case. TalkTherapy is sole merchant of record (no per-counsellor subaccounts). | Story | High | 13 | New (SCRUM-110, revised from 8) | — |
 | TT-7.2 | Counsellor sets and displays preferred pricing on profile | Story | Medium | 3 | Existing (8.1) | TT-7.1 |
-| TT-7.3a | Org-as-payer charge initiation only: `organization_id` is an explicit, validated input at charge time (never inferred from membership alone) — required whenever a member/counsellor pair spans more than one org they share. | Story | Medium | 5 | New split of existing TT-7.3 (SCRUM-111) | TT-6.3, TT-7.1 |
+| TT-7.3a | Org-as-payer charge initiation only: `organization_id` is an explicit, validated input at charge time (never inferred from membership alone) — required whenever a member/counsellor pair spans more than one org they share. | Story | Medium | 5 | New split of existing TT-7.3 (SCRUM-111) | TT-6.3b, TT-7.1 |
 | TT-7.3b | Full org-billing lifecycle: payout to affiliated counsellors per agreed compensation terms (gross amount → platform fee → counsellor/org split), refund handling for org-paid transactions. Needs a platform-fee concept, which doesn't exist yet anywhere in TT-7 — track as a precondition for TT-7.6 independent of orgs. | Story | Medium | 8 | New split of existing TT-7.3 (SCRUM-111) | TT-7.3a, TT-7.6, TT-7.7 |
 | TT-7.4 | Retry-on-failure + single-currency validation (replace free-text currency with a supported-list check) + full payment-status UI | Story | High | 8 | New (SCRUM-110) | TT-7.1 |
 | TT-7.5 | Payment-gated access: per-therapy, counsellor-controlled setting (strict gate vs. trust-based), defaulting to trust-based | Story | High | 5-8 | New (SCRUM-110) — decision made, fast-follow after TT-7.1 | TT-7.1 |
@@ -160,8 +166,8 @@ parallel with TT-7.1 rather than waiting on it.
 **Sprint:** 5 (TT-7.1 alongside TT-6). TT-7.4/7.5/7.7 are fast-follows immediately after TT-7.1
 lands, still targeting Sprint 5 if capacity allows. TT-7.6 (payout) and TT-7.9 (multi-currency)
 are larger, separately-scheduled follow-ups — do not fold into Sprint 5's commitment. TT-6.1
-through TT-6.3 (Organizations, SCRUM-111) have no payments dependency at all and can proceed in
-full parallel with TT-7.1; only TT-7.3a (charge-initiation, above) depends on both TT-6.3 and
+through TT-6.3b (Organizations, SCRUM-111) have no payments dependency at all and can proceed in
+full parallel with TT-7.1; only TT-7.3a (charge-initiation, above) depends on both TT-6.3b and
 TT-7.1, and TT-7.3b additionally depends on TT-7.6/TT-7.7.
 
 ---
