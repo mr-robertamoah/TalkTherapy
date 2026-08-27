@@ -312,6 +312,46 @@ test('a user with no relationship to the affiliation cannot read its compensatio
     ))->toThrow(OrganizationException::class);
 });
 
+test('an admin of a different organization cannot read this affiliation\'s compensation history', function () {
+    [$affiliationA, , $ownerA] = pendingAffiliation();
+    [, , $ownerB] = pendingAffiliation(); // a second, unrelated organization and admin
+
+    OrganizationCounsellorCompensationService::new()->setCompensation(
+        OrganizationCounsellorCompensationDTO::new()->fromArray([
+            'user' => $ownerA,
+            'organizationCounsellor' => $affiliationA,
+            'type' => OrganizationCounsellorCompensationTypeEnum::free->value,
+        ])
+    );
+
+    expect(fn () => OrganizationCounsellorCompensationService::new()->getCompensations(
+        OrganizationCounsellorCompensationDTO::new()->fromArray([
+            'user' => $ownerB,
+            'organizationCounsellor' => $affiliationA,
+        ])
+    ))->toThrow(OrganizationException::class);
+});
+
+test('a counsellor affiliated with a different organization cannot read this affiliation\'s compensation history', function () {
+    [$affiliationA, , $ownerA] = pendingAffiliation();
+    [, , , $otherCounsellor] = pendingAffiliation(); // a different org, different counsellor
+
+    OrganizationCounsellorCompensationService::new()->setCompensation(
+        OrganizationCounsellorCompensationDTO::new()->fromArray([
+            'user' => $ownerA,
+            'organizationCounsellor' => $affiliationA,
+            'type' => OrganizationCounsellorCompensationTypeEnum::free->value,
+        ])
+    );
+
+    expect(fn () => OrganizationCounsellorCompensationService::new()->getCompensations(
+        OrganizationCounsellorCompensationDTO::new()->fromArray([
+            'user' => $otherCounsellor->user,
+            'organizationCounsellor' => $affiliationA,
+        ])
+    ))->toThrow(OrganizationException::class);
+});
+
 test('reading compensation history for a non-existent affiliation returns a clean error, not a crash', function () {
     $owner = User::factory()->create();
 

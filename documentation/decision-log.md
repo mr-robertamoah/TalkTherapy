@@ -284,23 +284,6 @@ unconditionally on its stated scope.
 
 ---
 
-## 2026-08-27 — SCRUM-117: mismatch rejection reuses the existing failed-job alert channel instead of a new one
-
-**Decision**: `EnsureTransactionAmountAndCurrencyMatchAction` throws a `TransactionException` on
-an amount/currency mismatch, in both `ProcessPaystackWebhookJob` (async path) and
-`VerifyPaystackTransactionAction` (synchronous browser-callback path), rather than building a
-dedicated "flag for manual review" mechanism.
-
-**Why**: `AppService::alertAdminsOfFailedJob()` (SCRUM-82) already notifies admins on any queued
-job failure -- letting the webhook job's mismatch throw uncaught means that channel does the
-"manual review" work for free. The verify-callback path throws for the same reason the file's
-existing checks do ("Transaction not found.", etc.) -- it surfaces as an ordinary error response
-to the browser rather than a silent success. Only checked when the resolved status is `success`:
-there's nothing money-correctness-sensitive to protect once a charge resolves to `failed`/
-`abandoned`.
-
----
-
 ## 2026-08-27 — SCRUM-123: implemented read path + accountability trail now; deferred notification/accept-step
 
 **Decision**: built the read path (org admins, per the existing write-side scoping, plus the

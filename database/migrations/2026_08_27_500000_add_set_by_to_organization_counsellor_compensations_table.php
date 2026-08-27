@@ -16,7 +16,8 @@ return new class extends Migration
         // admin (a User, per EnsureUserCanSetOrganizationCounsellorCompensationAction), so a
         // plain foreign key rather than a polymorphic morph.
         Schema::table('organization_counsellor_compensations', function (Blueprint $table) {
-            $table->foreignIdFor(User::class, 'set_by_id')->nullable()->after('organization_counsellor_id');
+            $table->foreignIdFor(User::class, 'set_by_id')->nullable()->after('organization_counsellor_id')
+                ->constrained('users')->nullOnDelete();
         });
     }
 

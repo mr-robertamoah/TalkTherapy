@@ -29,6 +29,8 @@ class CreateOrganizationCounsellorCompensationAction extends Action
             $dto->organizationCounsellor->activate();
         }
 
-        return $compensation;
+        // Avoids an extra query for the resource's `setBy` field -- we already have the user
+        // who just set this in memory.
+        return $compensation->setRelation('setBy', $dto->user);
     }
 }
