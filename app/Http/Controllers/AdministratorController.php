@@ -67,7 +67,7 @@ class AdministratorController extends Controller
                     'otherNames' => $request->otherNames,
                     'email' => $request->email,
                     'country' => $request->country,
-                    'emailVerified' => (bool) $request->emailVerified,
+                    'emailVerified' => $request->boolean('emailVerified'),
                     'dob' => $request->dob,
                 ])
             );

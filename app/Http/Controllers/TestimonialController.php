@@ -76,7 +76,7 @@ class TestimonialController extends Controller
                 CreateTestimonialDTO::new()->fromArray([
                     'user' => $request->user(),
                     'testimonial' => $testimonial,
-                    'use' => (bool) $request->use,
+                    'use' => $request->boolean('use'),
                 ])
             );
 

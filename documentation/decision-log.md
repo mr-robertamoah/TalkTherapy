@@ -281,3 +281,27 @@ than pulling those controllers into SCRUM-116's PR.
 real but outside a bugfix's stated scope gets its own ticket, not silent scope expansion —
 consistent with how SCRUM-127/128/129 were handled. Both subagents approved PR #64 itself
 unconditionally on its stated scope.
+
+---
+
+## 2026-08-27 — SCRUM-126: checked each site individually rather than blanket-replacing
+
+**Decision**: verified, per-site, whether each `(bool) $request->x` cast sat behind a `'boolean'`
+validation rule before fixing. `OrganizationController` (isProvider/isConsumer/selfApplyEnabled)
+and `AdministratorController::updateUser` (emailVerified) already had the rule -- switched to
+`$request->boolean()` anyway for consistency/defense-in-depth, not because they were live bugs.
+`MessageController` (confidential, on both create and update) had no `'boolean'` rule at all --
+added it. `TestimonialController::markTestimonial` and `GroupTherapyController::joinGroupTherapy`
+use a plain `Request` with no FormRequest/validation at all -- fixed via `$request->boolean()`
+alone, which normalizes correctly regardless of any validation rule.
+`ProfileController::update`'s `(bool) $request->dob ? $request->dob : null` is a different shape
+(a truthiness check deciding whether to null out a date value, not a boolean-flag parse) --
+simplified to `$request->dob ?: null`, not a security fix.
+
+**Why**: matches SCRUM-125's established discipline -- a plausible-sounding pattern doesn't mean
+every site is actually exploitable; checking each one individually is what determined `confidential`,
+`use`, and `anonymous` (join) were live bugs while the others were already safe. Two more
+magic-property route-param instances were noticed in passing while reading these controllers
+(`AdministratorController::updateUser`'s `$request->userId`, `TestimonialController::markTestimonial`'s
+`$request->testimonialId`) -- out of this ticket's scope, added as a comment to the already-open
+SCRUM-130 rather than filing a duplicate ticket.
