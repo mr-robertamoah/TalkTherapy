@@ -47,6 +47,11 @@ class Organization extends Model
         return $this->morphMany(Request::class, 'from');
     }
 
+    public function receivedRequests()
+    {
+        return $this->morphMany(Request::class, 'to');
+    }
+
     public function requests()
     {
         return $this->morphMany(Request::class, 'for');

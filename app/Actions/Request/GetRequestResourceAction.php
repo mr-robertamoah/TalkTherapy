@@ -5,6 +5,7 @@ namespace App\Actions\Request;
 use App\Actions\Action;
 use App\Enums\RequestTypeEnum;
 use App\Http\Resources\AdminCounsellorVerificationRequestResource;
+use App\Http\Resources\OrganizationRequestResource;
 use App\Http\Resources\RequestResource;
 use App\Models\Request;
 
@@ -25,6 +26,21 @@ class GetRequestResourceAction extends Action
             )
         ) {
             return new RequestResource($request);
+        }
+
+        // SCRUM-120: these are the only types where `from`/`to` can be an Organization, which
+        // neither RequestResource nor AdminCounsellorVerificationRequestResource account for.
+        if (
+            in_array(
+                $request->type,
+                [
+                    RequestTypeEnum::organization->value,
+                    RequestTypeEnum::organizationCounsellorInvite->value,
+                    RequestTypeEnum::organizationCounsellorApplication->value,
+                ]
+            )
+        ) {
+            return new OrganizationRequestResource($request);
         }
 
         // Only RequestTypeEnum::counsellor is actually created anywhere in the codebase for the

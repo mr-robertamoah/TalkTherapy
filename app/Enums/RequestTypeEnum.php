@@ -17,4 +17,8 @@ enum RequestTypeEnum: string
     // group therapy; this one is a user requesting to join it as a member (SCRUM-72).
     case groupTherapyMembership = 'GROUP_THERAPY_MEMBERSHIP_REQUEST';
     case organization = 'ORGANIZATION_VERIFICATION_REQUEST';
+    // An org admin inviting a counsellor to affiliate (SCRUM-120) -- distinct from
+    // organizationCounsellorApplication below, which is the counsellor-initiated mirror.
+    case organizationCounsellorInvite = 'ORGANIZATION_COUNSELLOR_INVITE_REQUEST';
+    case organizationCounsellorApplication = 'ORGANIZATION_COUNSELLOR_APPLICATION_REQUEST';
 }
