@@ -55,6 +55,7 @@ class OrganizationController extends Controller
                     'phone' => $request->phone,
                     'isProvider' => $request->has('isProvider') ? (bool) $request->isProvider : null,
                     'isConsumer' => $request->has('isConsumer') ? (bool) $request->isConsumer : null,
+                    'selfApplyEnabled' => $request->has('selfApplyEnabled') ? (bool) $request->selfApplyEnabled : null,
                 ])
             );
 

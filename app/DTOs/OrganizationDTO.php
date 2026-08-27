@@ -27,4 +27,6 @@ class OrganizationDTO extends BaseDTO
     public ?bool $isProvider = null;
 
     public ?bool $isConsumer = null;
+
+    public ?bool $selfApplyEnabled = null;
 }

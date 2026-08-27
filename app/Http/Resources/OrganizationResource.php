@@ -24,6 +24,7 @@ class OrganizationResource extends JsonResource
             'phone' => $this->phone,
             'isProvider' => $this->is_provider,
             'isConsumer' => $this->is_consumer,
+            'selfApplyEnabled' => $this->self_apply_enabled,
             'isVerified' => $this->isVerified(),
             'createdAt' => $this->created_at,
         ];

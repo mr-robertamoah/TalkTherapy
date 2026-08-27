@@ -25,6 +25,7 @@ class UpdateOrganizationAction extends Action
             'phone' => $dto->phone,
             'is_provider' => $dto->isProvider,
             'is_consumer' => $dto->isConsumer,
+            'self_apply_enabled' => $dto->selfApplyEnabled,
         ] as $column => $value) {
             if (! is_null($value)) {
                 $organization->{$column} = $value;

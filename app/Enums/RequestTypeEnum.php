@@ -21,4 +21,9 @@ enum RequestTypeEnum: string
     // organizationCounsellorApplication below, which is the counsellor-initiated mirror.
     case organizationCounsellorInvite = 'ORGANIZATION_COUNSELLOR_INVITE_REQUEST';
     case organizationCounsellorApplication = 'ORGANIZATION_COUNSELLOR_APPLICATION_REQUEST';
+    // Consumer-org membership flows (SCRUM-124) -- same invite/apply shape as the
+    // organizationCounsellor* pair above, but for a User joining as a member, not a
+    // Counsellor affiliating.
+    case organizationMemberInvite = 'ORGANIZATION_MEMBER_INVITE_REQUEST';
+    case organizationMemberApplication = 'ORGANIZATION_MEMBER_APPLICATION_REQUEST';
 }

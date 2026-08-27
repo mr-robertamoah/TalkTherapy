@@ -22,11 +22,13 @@ class Organization extends Model
         'logo_id',
         'is_provider',
         'is_consumer',
+        'self_apply_enabled',
     ];
 
     protected $casts = [
         'is_provider' => 'boolean',
         'is_consumer' => 'boolean',
+        'self_apply_enabled' => 'boolean',
         'verified_at' => 'datetime',
     ];
 
@@ -40,6 +42,11 @@ class Organization extends Model
     public function organizationCounsellors()
     {
         return $this->hasMany(OrganizationCounsellor::class);
+    }
+
+    public function members()
+    {
+        return $this->hasMany(OrganizationMember::class);
     }
 
     public function logo()
