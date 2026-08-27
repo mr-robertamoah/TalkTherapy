@@ -39,6 +39,8 @@ test('a correctly signed charge.success webhook marks the transaction successful
         'for_type' => Therapy::class,
         'for_id' => $therapy->id,
         'reference' => 'webhook_ref_1',
+        'amount' => 15000,
+        'currency' => 'GHS',
         'status' => TransactionStatusEnum::pending->value,
     ]);
 
@@ -47,6 +49,7 @@ test('a correctly signed charge.success webhook marks the transaction successful
         'data' => [
             'reference' => 'webhook_ref_1',
             'amount' => 15000,
+            'currency' => 'GHS',
             'gateway_response' => 'Successful',
         ],
     ], $secret);
@@ -98,12 +101,14 @@ test('the same webhook event delivered twice does not create a duplicate status 
         'for_type' => Therapy::class,
         'for_id' => $therapy->id,
         'reference' => 'webhook_ref_3',
+        'amount' => 15000,
+        'currency' => 'GHS',
         'status' => TransactionStatusEnum::pending->value,
     ]);
 
     $payload = [
         'event' => 'charge.success',
-        'data' => ['reference' => 'webhook_ref_3', 'gateway_response' => 'Successful'],
+        'data' => ['reference' => 'webhook_ref_3', 'amount' => 15000, 'currency' => 'GHS', 'gateway_response' => 'Successful'],
     ];
 
     postSignedPaystackWebhook($payload, $secret)->assertOk();
@@ -136,5 +141,75 @@ test('a later charge.failed webhook cannot regress an already-successful transac
     ], $secret)->assertOk();
 
     expect($transaction->fresh()->status)->toBe(TransactionStatusEnum::success->value);
+    expect($transaction->statusHistories()->count())->toBe(0);
+});
+
+// SCRUM-117: signature verification alone doesn't guarantee a legitimately-signed event's
+// reported amount/currency actually match what was charged.
+test('a charge.success webhook whose amount does not match the transaction is rejected, not recorded as success', function () {
+    $secret = 'test_secret';
+    config(['services.paystack.secret_key' => $secret]);
+
+    $therapy = Therapy::factory()->create([
+        'addedby_type' => User::class,
+        'addedby_id' => User::factory(),
+        'payment_type' => TherapyPaymentTypeEnum::paid->value,
+        'payment_data' => ['per' => TherapyPerPaymentEnum::therapy->value, 'amount' => 150, 'currency' => 'GHS'],
+    ]);
+    $transaction = Transaction::factory()->create([
+        'for_type' => Therapy::class,
+        'for_id' => $therapy->id,
+        'reference' => 'webhook_ref_5',
+        'amount' => 15000,
+        'currency' => 'GHS',
+        'status' => TransactionStatusEnum::pending->value,
+    ]);
+
+    $response = postSignedPaystackWebhook([
+        'event' => 'charge.success',
+        'data' => [
+            'reference' => 'webhook_ref_5',
+            'amount' => 5000,
+            'currency' => 'GHS',
+            'gateway_response' => 'Successful',
+        ],
+    ], $secret);
+
+    $response->assertStatus(422);
+    expect($transaction->fresh()->status)->toBe(TransactionStatusEnum::pending->value);
+    expect($transaction->statusHistories()->count())->toBe(0);
+});
+
+test('a charge.success webhook whose currency does not match the transaction is rejected, not recorded as success', function () {
+    $secret = 'test_secret';
+    config(['services.paystack.secret_key' => $secret]);
+
+    $therapy = Therapy::factory()->create([
+        'addedby_type' => User::class,
+        'addedby_id' => User::factory(),
+        'payment_type' => TherapyPaymentTypeEnum::paid->value,
+        'payment_data' => ['per' => TherapyPerPaymentEnum::therapy->value, 'amount' => 150, 'currency' => 'GHS'],
+    ]);
+    $transaction = Transaction::factory()->create([
+        'for_type' => Therapy::class,
+        'for_id' => $therapy->id,
+        'reference' => 'webhook_ref_6',
+        'amount' => 15000,
+        'currency' => 'GHS',
+        'status' => TransactionStatusEnum::pending->value,
+    ]);
+
+    $response = postSignedPaystackWebhook([
+        'event' => 'charge.success',
+        'data' => [
+            'reference' => 'webhook_ref_6',
+            'amount' => 15000,
+            'currency' => 'USD',
+            'gateway_response' => 'Successful',
+        ],
+    ], $secret);
+
+    $response->assertStatus(422);
+    expect($transaction->fresh()->status)->toBe(TransactionStatusEnum::pending->value);
     expect($transaction->statusHistories()->count())->toBe(0);
 });

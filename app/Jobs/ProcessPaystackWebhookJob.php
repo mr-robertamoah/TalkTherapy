@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Actions\Transaction\EnsureTransactionAmountAndCurrencyMatchAction;
 use App\Actions\Transaction\FindTransactionByReferenceAction;
 use App\Actions\Transaction\RecordTransactionStatusAction;
 use App\Enums\TransactionStatusEnum;
@@ -45,6 +46,19 @@ class ProcessPaystackWebhookJob implements ShouldQueue
 
         if (! $transaction) {
             return;
+        }
+
+        // A mismatch here throws, which fails this job -- deliberately: AppService::
+        // alertAdminsOfFailedJob() (SCRUM-82) already notifies admins on any queued-job failure,
+        // so it doubles as the "flag for manual review" path this needs, without building a
+        // second one (SCRUM-117).
+        if ($status === TransactionStatusEnum::success->value) {
+            EnsureTransactionAmountAndCurrencyMatchAction::new()->execute(
+                $transaction,
+                isset($this->payload['data']['amount']) ? (int) $this->payload['data']['amount'] : null,
+                $this->payload['data']['currency'] ?? null,
+                TransactionStatusSourceEnum::webhook->value
+            );
         }
 
         RecordTransactionStatusAction::new()->execute(
