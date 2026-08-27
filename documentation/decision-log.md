@@ -366,3 +366,30 @@ user wants this fired autonomously once work reaches the relevant sections, not 
 time. Scoped to full-ceremony features (not blanket-applied to every bugfix) to avoid ceremony
 creep on small changes, per the same "match the weight to the work" principle as the rest of
 CLAUDE.md's process tiers.
+---
+
+## 2026-08-27 — SCRUM-135: filed SCRUM-136 for a real, unrelated bug surfaced during review
+
+**Decision**: implemented both parts of the ticket as scoped (delete `app/Http/Kernel.php`,
+add a unique constraint migration for `links.uuid`). Added a DB-level regression test for the
+new constraint (`tests/Feature/LinkUuidUniqueConstraintTest.php`) after `reviewer` correctly
+flagged its absence as breaking this codebase's own established convention (the analogous
+SCRUM-80/SCRUM-99 unique-index migrations both ship with one). Verified empirically: removed the
+migration file, confirmed the test fails with the DB not rejecting a duplicate insert, restored
+it, confirmed it passes.
+
+`security-engineer`, while confirming the `Kernel.php` deletion itself is safe, surfaced an
+unrelated, pre-existing bug in `bootstrap/app.php` (not touched by this PR): `$middleware->use([...])`
+*replaces* Laravel's entire global middleware stack rather than appending to it, silently
+disabling `TrustProxies`, `HandleCors`, `PreventRequestsDuringMaintenance`, and several others
+app-wide. Verified directly against the framework source
+(`vendor/laravel/framework/.../Configuration/Middleware.php`) -- confirmed real, not a false
+alarm. Filed as SCRUM-136 (High) rather than fixing inline, since it's unrelated to this PR's
+scope and `bootstrap/app.php` isn't part of this diff.
+
+**Why**: matches this session's standing discipline of verifying subagent findings against the
+actual source before acting on them (same pattern as the SCRUM-133 false-alarm correction), and
+filing rather than silently fixing keeps this PR's diff scoped to what it says it does, per
+CLAUDE.md's "keep commits small and focused" -- a global-middleware fix affecting every request
+in the app deserves its own PR, review, and rollout attention, not to ride along inside an
+unrelated dead-code-removal chore.
