@@ -15,7 +15,7 @@ class CreateRequestDTO extends BaseDTO
 {
     public User|Counsellor|Organization|null $from = null;
 
-    public User|Counsellor|null $to = null;
+    public User|Counsellor|Organization|null $to = null;
 
     public User|Counsellor|Discussion|Therapy|GroupTherapy|Organization|null $for = null;
 

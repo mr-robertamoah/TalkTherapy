@@ -36,6 +36,13 @@ class RespondToRequestAction extends Action
             $request = RespondToOrganizationVerificationRequestAction::new()->execute($requestResponseDTO);
         }
 
+        if (in_array($requestResponseDTO->request->type, [
+            RequestTypeEnum::organizationCounsellorInvite->value,
+            RequestTypeEnum::organizationCounsellorApplication->value,
+        ])) {
+            $request = RespondToOrganizationCounsellorRequestAction::new()->execute($requestResponseDTO);
+        }
+
         // TODO respond to other requests
         // (SCRUM-119/120: this per-type dispatch chain is accepted, tracked debt -- see the
         // architect note on documentation/implementation_plan.md's Epic TT-6. A follow-up to
