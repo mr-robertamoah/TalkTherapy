@@ -128,7 +128,8 @@ sequence:
 - `reviewer` — code review for maintainability, readability, simplicity, duplicated logic.
 - `security-engineer` — auth, authorization, secrets, input validation, dependency risk.
 - `qa-engineer` — validates acceptance criteria, runs the Pest suite, checks edge cases and
-  regressions.
+  regressions, and (for full-ceremony features with a UI component) browser-verifies the golden
+  path via Playwright MCP — see `.claude/workflows/playwright-qa.md`.
 - `devops-engineer` — Docker/Compose changes, migrations, env vars, rollback, monitoring.
 
 ## Feature documentation
@@ -156,5 +157,8 @@ roster of seeded accounts and their credentials, and keep it updated when seed d
   ignore a failing test.
 - Never merge your own PRs.
 - Security is mandatory, not a nice-to-have; performance should not regress.
+- For a UI change, "used the feature in a browser" means driving the actual running app with the
+  Playwright MCP tools, not just reading the code — see `.claude/workflows/playwright-qa.md` for
+  when this is mandatory (full-ceremony features) versus available-on-judgment (bugfixes/chores).
 - When wrapping up a feature (full-ceremony work), produce: Summary, Risks, Testing Performed,
   Deployment Notes — the QA/DevOps subagents' outputs cover most of this already.
