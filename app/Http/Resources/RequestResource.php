@@ -6,6 +6,8 @@ use App\Enums\ConstantsEnum;
 use App\Enums\RequestTypeEnum;
 use App\Models\Discussion;
 use App\Models\GroupTherapy;
+use App\Models\Organization;
+use App\Models\OrganizationCounsellor;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -34,6 +36,14 @@ class RequestResource extends JsonResource
 
     private function getFrom(?User $viewer)
     {
+        // SCRUM-146: from/to being an Organization is only possible for the org-context request
+        // types (OrganizationRequestResource, via GetRequestResourceAction, handles those in
+        // full elsewhere) -- this generic resource just needs to not throw when one of them
+        // reaches the un-dispatched requests-list endpoint (RequestService::getRequests()).
+        if ($this->from_type == Organization::class) {
+            return new OrganizationMiniResource($this->from);
+        }
+
         if ($this->from_type != User::class) {
             return new CounsellorMiniResource($this->from);
         }
@@ -56,6 +66,10 @@ class RequestResource extends JsonResource
 
     private function getTo(?User $viewer)
     {
+        if ($this->to_type == Organization::class) {
+            return new OrganizationMiniResource($this->to);
+        }
+
         if ($this->to_type != User::class) {
             return new CounsellorMiniResource($this->to);
         }
@@ -90,6 +104,18 @@ class RequestResource extends JsonResource
 
         if ($this->for_type == Discussion::class) {
             return new DiscussionMiniResource($this->for);
+        }
+
+        if ($this->for_type == Organization::class) {
+            return new OrganizationMiniResource($this->for);
+        }
+
+        if ($this->for_type == OrganizationCounsellor::class) {
+            return [
+                'id' => $this->for?->id,
+                'organization' => new OrganizationMiniResource($this->for?->organization),
+                'counsellor' => new CounsellorMiniResource($this->for?->counsellor),
+            ];
         }
 
         return new CounsellorMiniResource($this->for);

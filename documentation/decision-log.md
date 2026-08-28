@@ -882,3 +882,158 @@ Playwright/manual-browser step of full-ceremony QA is not a formality: this bug 
    manually via Playwright (real mouse clicks on both "delete" and "cancel" in the SCRUM-134 modal,
    confirmed via DB before/after) since this project has no JS test framework to add automated
    component-level coverage.
+
+---
+
+## 2026-08-28 — SCRUM-131 (TT-6.4c): scope grew from "add a notification" to a full negotiation feature, split into 5 sub-tickets
+
+**Decision**: SCRUM-131 started as "decide and implement counsellor notification for compensation-
+terms changes (and evaluate accept/dispute step)" -- a small follow-up from SCRUM-123. Through the
+full `/start-feature` product-owner -> project-manager -> architect cycle (run twice, since the
+user's answers expanded scope mid-planning), it became: mandatory notification (as asked) +
+accept/reject/**counter-offer** (not just accept/dispute) + a **reminder/expiry mechanism** (in
+scope now, not deferred, per explicit user direction). Given the resulting ~27-28 point size --
+comparable to TT-6.4a/b or TT-6.3a/b before *those* were split -- this project's own established
+splitting pattern was applied again: 5 sub-tickets (SCRUM-146-150), sequenced 1/5 (proposal
+creation) -> 2/5 (accept/reject) -> 3/5 (counter-offer) -> 4/5 (reminder/expiry) -> 5/5
+(admin-facing read API), tracked as **TT-6.4c** in `documentation/implementation_plan.md`.
+
+Key design decisions locked in during planning, all confirmed by `architect`:
+- **Zero schema changes to `organization_counsellor_compensations`** -- that table stays exactly
+  what SCRUM-122 built (append-only, every row already-accepted). All negotiation state (proposed
+  terms, direction, expiry, round count) lives in the generic `requests` table instead (`data`
+  JSON column for terms, new nullable `expires_at`/`round` columns for the rest) -- reusable by
+  any future request type needing expiry, not compensation-specific columns.
+- **"Dispute" = counter-offer, not a new status.** The ticket's own wording chose "dispute" over
+  "reject" deliberately; rather than adding a reason field or an escalation/mediation path, the
+  user's own suggestion (counter-offer) resolves this cleanly -- a counter-offer atomically
+  resolves the current request and creates a new one in the reverse direction. No new
+  `RequestStatusEnum` case needed for either dispute or expiry (expiry reuses `rejected`, since it
+  must behave identically to a manual reject everywhere except user-facing copy, which gets a
+  lightweight non-enum signal instead).
+- **Fairness-critical invariant, called out explicitly and required as its own regression test,
+  not just a design intent**: reject and expiry, at any round, in either direction, must never
+  cascade into pausing or ending the affiliation. A `pending` affiliation whose first-ever
+  proposal isn't yet accepted now stays non-active indefinitely by design (a real, deliberate
+  behavior change from SCRUM-122's instant single-write activation) -- this is the whole point of
+  the feature (real counsellor consent, not just visibility), not an incidental side effect.
+- **Round cap (5) and expiry window (7 days default) are both config-driven**, not hardcoded --
+  explicitly so that if either number turns out wrong in practice, it's a one-line env change, not
+  a code change. The round-cap number itself was flagged by `project-manager` as worth a quick
+  confirm but explicitly **non-blocking** for starting 1/5 or 2/5, which don't touch it at all.
+- **A real, pre-existing gap almost got "fixed" on a false premise.** Earlier planning (during
+  SCRUM-134) concluded `DeleteCounsellorAction` needed an extracted action to resolve pending
+  *received* requests on affiliation end, since it only resolves *sent* ones. Re-examining this
+  during SCRUM-131's second `project-manager` pass surfaced that `EnsureCanDeleteCounsellorAction`
+  already blocks deletion entirely while ANY pending received request exists (for any type) --
+  meaning this specific gap may not exist for a bidirectional request type like compensation
+  changes, since whichever direction a pending negotiation is in, it's caught by either the
+  eligibility gate (if received) or the existing sent-request cleanup (if sent). Flagged to
+  empirically verify before writing any fix, rather than trust the earlier claim -- consistent
+  with this session's standing discipline of never trusting a subagent's claim (including a past
+  one of my own) without reproducing it.
+
+**Why**: this is the second time this session a ticket's scope grew substantially *during* the
+`/start-feature` conversation itself (SCRUM-134's admin-flow/grace-period additions were the
+first) -- in both cases, the response was to re-run the planning chain against the expanded scope
+rather than patch the original plan informally, and to split into sub-tickets once the resulting
+size crossed this project's own established single-PR comfort threshold, rather than force an
+oversized PR through review. The `DeleteCounsellorAction` false-premise catch is also a concrete
+instance of why a completed decision from an earlier ticket (SCRUM-134) should still be
+re-verified rather than assumed permanent, once a later ticket's investigation touches the same
+code path from a different angle.
+
+---
+
+## 2026-08-28 — SCRUM-146 (TT-6.4c, 1/5): removed `setCompensation()` instead of leaving it as a live bypass, deviating from the ticket's literal "tests unmodified" wording
+
+**Decision**: SCRUM-146's acceptance criteria said "all existing SCRUM-122/123 tests continue to
+pass unmodified" -- written during planning, before it was clear that literally satisfying this
+meant leaving `OrganizationCounsellorCompensationService::setCompensation()` (the pre-SCRUM-146
+unilateral, immediately-effective write) fully intact and still callable. Doing that would have
+left a live bypass of this entire feature's purpose: anyone with access to call the service
+directly could skip the negotiation/consent flow altogether and write straight to
+`organization_counsellor_compensations`.
+
+Instead: `setCompensation()` was removed outright. `proposeCompensationChange()` (new) takes over
+its authorization/validation guarding (`EnsureUserCanSetOrganizationCounsellorCompensationAction`,
+`EnsureOrganizationCounsellorCompensationDataIsValidAction`, both reused unchanged) but creates a
+`Request` instead of writing directly. The regression proof the old tests provided over the
+underlying row-creation/activation/versioning mechanics
+(`CreateOrganizationCounsellorCompensationAction`, itself completely unchanged and unaffected --
+it's what SCRUM-147's accept step will call) was preserved by moving to a new, dedicated
+`tests/Unit/CreateOrganizationCounsellorCompensationActionTest.php` that exercises that action
+directly, bypassing the removed service method entirely. `tests/Unit/OrganizationCounsellorCompensationTest.php`
+was rewritten (not left as-is) to test `proposeCompensationChange()`'s new behavior instead, plus a
+new regression test proving `OrganizationCounsellor::currentCompensation()` never returns a pending
+proposal's terms (the actual spirit of AC5, even though the specific test bodies changed).
+
+Also empirically verified beyond the earlier `DeleteCounsellorAction` question this session
+already resolved (see the SCRUM-131 entry above): reproduced the whole propose flow end-to-end
+against the real dev MySQL database (not just the sqlite test suite), including confirming the
+`requests.type` native enum column actually accepts the new
+`ORGANIZATION_COUNSELLOR_COMPENSATION_CHANGE_REQUEST` value after a fresh migration run -- this
+matters because sqlite (used by the test suite) doesn't enforce native enum constraints the way
+MySQL does, so a passing test suite alone wouldn't have caught a missed
+`$table->enum('type', ...)->change()` migration the way the original 2024-05-25 migration for this
+same column required.
+
+**Why**: literal compliance with a planning-time acceptance criterion should give way to the
+criterion's actual intent once implementation reveals a conflict -- here, "prove the underlying
+mechanics still work" was the intent; "leave a dangerous bypass method reachable" was never the
+goal, just an unexamined side effect of how that intent was phrased before the codebase was read
+in enough detail to see the tension. Logging this explicitly rather than silently deviating,
+consistent with this session's standing decision-log practice for any deviation from what a ticket
+literally says.
+
+---
+
+## 2026-08-28 — SCRUM-146 (TT-6.4c, 1/5): PR #84 review findings -- one fixed now, two deferred
+
+**Reviewer** (approved, no blocking issues) and **security-engineer** (no High/Critical; one
+Medium, one Low) both audited PR #84 before merge, per CLAUDE.md's mandatory review gate for
+anything touching compensation/money.
+
+**Fixed now**: security-engineer found that `RequestService::getRequests()` (the generic
+`/requests` list endpoint) renders every hit through `RequestResource`, not
+`GetRequestResourceAction`'s per-type dispatch -- and `RequestResource::getFrom()`/`getTo()`/`getFor()`
+assumed any non-`User` `from`/`to` was a `Counsellor`, with an unmatched `for_type` falling back to
+the same assumption. For the new `organizationCounsellorCompensationChange` type (`from` =
+`Organization`, `for` = `OrganizationCounsellor`), this throws an uncaught `BadMethodCallException`
+(`Organization`/`OrganizationCounsellor` have no `getName()`) -- meaning a counsellor with a
+pending compensation proposal would get a 500 just loading their normal requests list. Both
+reviewers noted this generic-resource gap already existed for the 5 pre-existing org-context types
+(`organization`, `organizationCounsellorInvite/Application`, `organizationMemberInvite/Application`
+-- all `from`/`for` an `Organization` too), but this PR is the first to route a live,
+routinely-triggered money negotiation through it. Rather than patch only the new type, fixed
+`RequestResource` comprehensively: added an `Organization::class` branch to `getFrom()`/`getTo()`/
+`getFor()`, and an `OrganizationCounsellor::class` branch to `getFor()` (rendering organization +
+counsellor mini-resources, not the full negotiation payload -- that's `OrganizationRequestResource`'s
+job for the two dispatch-aware call sites). This also silently fixes the same latent 500 for the 5
+pre-existing types, at no extra cost. Added a regression test exercising `RequestService::getRequests()`
+directly for a pending compensation proposal (`tests/Unit/OrganizationCounsellorCompensationTest.php`).
+Also applied reviewer's minor comment-staleness finding: `EnsureUserCanSetOrganizationCounsellorCompensationAction`'s
+comment claiming "no negotiation workflow yet" was rewritten, since SCRUM-146 is exactly that
+follow-up.
+
+**Deferred, not fixed**: both reviewers independently flagged the same TOCTOU race --
+`EnsureNoPendingOrganizationCounsellorCompensationRequestAction`'s check-then-create has no DB-level
+uniqueness backing it, so two concurrent proposal submissions could both pass the "no pending"
+check before either commits. Both agents confirmed this mirrors the *exact same* existing pattern
+in `EnsureNoPendingOrganizationCounsellorRequestAction`/`EnsureNoPendingOrganizationMemberRequestAction`
+-- consistent with established project risk tolerance, not a regression -- and is not exploitable
+today since a pending `Request` here is inert (no compensation row is written until accept). Not
+worth a schema/locking change scoped to this PR alone; flagged for SCRUM-147 (accept/reject) to
+address (a partial unique index or `lockForUpdate()`) since that ticket is what will need
+"at most one pending request per affiliation" to actually hold under concurrency once accept
+exists. Also left `config('organization.compensation_negotiation_max_rounds')` unused by this PR
+as-is (reviewer's low-severity suggestion to move it to SCRUM-148 where it's consumed) -- both
+tunables were added together deliberately during planning as a single config-driven-tunables
+decision, so splitting them back apart now would just be churn.
+
+**Why**: CLAUDE.md requires never silently ignoring a reviewer/security finding -- apply a fix, or
+explicitly flag why one is deferred with a follow-up. The Medium finding was fixed immediately
+since it's a live, easily-triggered usability break once real proposals exist (starting with this
+PR). The Low finding is a pre-existing, deliberate-risk-tolerance pattern shared by two sibling
+actions already in production, better addressed once, at the ticket that actually depends on the
+invariant holding, than patched in isolation here.

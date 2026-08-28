@@ -39,6 +39,9 @@ class GetRequestResourceAction extends Action
                     RequestTypeEnum::organizationCounsellorApplication->value,
                     RequestTypeEnum::organizationMemberInvite->value,
                     RequestTypeEnum::organizationMemberApplication->value,
+                    // SCRUM-146 (TT-6.4c): `for` is an OrganizationCounsellor affiliation, not an
+                    // Organization directly -- OrganizationRequestResource resolves through it.
+                    RequestTypeEnum::organizationCounsellorCompensationChange->value,
                 ]
             )
         ) {

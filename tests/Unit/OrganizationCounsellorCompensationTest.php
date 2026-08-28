@@ -1,16 +1,33 @@
 <?php
 
+use App\Actions\Organization\CreateOrganizationCounsellorCompensationAction;
 use App\DTOs\OrganizationCounsellorCompensationDTO;
 use App\Enums\OrganizationAdminRoleEnum;
 use App\Enums\OrganizationCounsellorCompensationBasisEnum;
 use App\Enums\OrganizationCounsellorCompensationTypeEnum;
 use App\Enums\OrganizationCounsellorStatusEnum;
+use App\Enums\RequestStatusEnum;
+use App\Enums\RequestTypeEnum;
 use App\Exceptions\OrganizationException;
 use App\Models\Counsellor;
 use App\Models\Organization;
 use App\Models\OrganizationCounsellor;
+use App\Models\Request;
 use App\Models\User;
+use App\Notifications\OrganizationCounsellorCompensationChangeProposedNotification;
 use App\Services\OrganizationCounsellorCompensationService;
+use App\Services\RequestService;
+use Illuminate\Support\Facades\Notification;
+
+// SCRUM-146 (TT-6.4c): OrganizationCounsellorCompensationService::setCompensation() -- an org
+// admin's direct, unilateral, immediately-effective write -- has been removed. Its business-rule
+// guarding (authorization, field-consistency validation) now guards proposeCompensationChange()
+// instead, which creates a pending Request rather than writing to
+// organization_counsellor_compensations directly. The underlying row-creation/activation/
+// versioning mechanics this file used to prove via setCompensation() are now covered directly
+// against CreateOrganizationCounsellorCompensationAction in
+// tests/Unit/CreateOrganizationCounsellorCompensationActionTest.php, since that action is
+// unchanged and is what SCRUM-147's accept step will call.
 
 function pendingAffiliation(): array
 {
@@ -27,10 +44,11 @@ function pendingAffiliation(): array
     return [$affiliation, $organization, $owner, $counsellor];
 }
 
-test('setting fixed compensation on a pending affiliation creates a row and activates it', function () {
-    [$affiliation, , $owner] = pendingAffiliation();
+test('proposing fixed compensation creates a pending request, not a compensation row', function () {
+    Notification::fake();
+    [$affiliation, $organization, $owner, $counsellor] = pendingAffiliation();
 
-    $compensation = OrganizationCounsellorCompensationService::new()->setCompensation(
+    $request = OrganizationCounsellorCompensationService::new()->proposeCompensationChange(
         OrganizationCounsellorCompensationDTO::new()->fromArray([
             'user' => $owner,
             'organizationCounsellor' => $affiliation,
@@ -40,16 +58,28 @@ test('setting fixed compensation on a pending affiliation creates a row and acti
         ])
     );
 
-    expect($compensation->type)->toBe(OrganizationCounsellorCompensationTypeEnum::fixed->value);
-    expect($compensation->amount)->toBe(5000);
-    expect($compensation->currency)->toBe('GHS');
-    expect($affiliation->refresh()->status)->toBe(OrganizationCounsellorStatusEnum::active->value);
+    expect($request)->toBeInstanceOf(Request::class);
+    expect($request->type)->toBe(RequestTypeEnum::organizationCounsellorCompensationChange->value);
+    expect($request->status)->toBe(RequestStatusEnum::pending->value);
+    expect($request->data)->toMatchArray(['type' => 'FIXED', 'amount' => 5000, 'currency' => 'GHS']);
+    expect($request->from_type)->toBe(Organization::class);
+    expect($request->from_id)->toBe($organization->id);
+    expect($request->to_type)->toBe(Counsellor::class);
+    expect($request->to_id)->toBe($counsellor->id);
+    expect($request->for_type)->toBe(OrganizationCounsellor::class);
+    expect($request->for_id)->toBe($affiliation->id);
+    expect($request->round)->toBe(1);
+
+    expect($affiliation->compensations()->count())->toBe(0);
+    expect($affiliation->refresh()->status)->toBe(OrganizationCounsellorStatusEnum::pending->value);
+
+    Notification::assertSentTo($counsellor, OrganizationCounsellorCompensationChangeProposedNotification::class);
 });
 
-test('setting percentage compensation requires and records a basis', function () {
+test('proposing percentage compensation requires and records a basis in the request data', function () {
     [$affiliation, , $owner] = pendingAffiliation();
 
-    $compensation = OrganizationCounsellorCompensationService::new()->setCompensation(
+    $request = OrganizationCounsellorCompensationService::new()->proposeCompensationChange(
         OrganizationCounsellorCompensationDTO::new()->fromArray([
             'user' => $owner,
             'organizationCounsellor' => $affiliation,
@@ -59,15 +89,17 @@ test('setting percentage compensation requires and records a basis', function ()
         ])
     );
 
-    expect($compensation->percentage)->toBe(30);
-    expect($compensation->basis)->toBe(OrganizationCounsellorCompensationBasisEnum::counsellorRate->value);
-    expect($affiliation->refresh()->status)->toBe(OrganizationCounsellorStatusEnum::active->value);
+    expect($request->data)->toMatchArray([
+        'type' => 'PERCENTAGE',
+        'percentage' => 30,
+        'basis' => OrganizationCounsellorCompensationBasisEnum::counsellorRate->value,
+    ]);
 });
 
-test('setting free compensation activates the affiliation with no amount or percentage', function () {
+test('proposing uses the configured default expiry when none is given', function () {
     [$affiliation, , $owner] = pendingAffiliation();
 
-    $compensation = OrganizationCounsellorCompensationService::new()->setCompensation(
+    $request = OrganizationCounsellorCompensationService::new()->proposeCompensationChange(
         OrganizationCounsellorCompensationDTO::new()->fromArray([
             'user' => $owner,
             'organizationCounsellor' => $affiliation,
@@ -75,15 +107,52 @@ test('setting free compensation activates the affiliation with no amount or perc
         ])
     );
 
-    expect($compensation->amount)->toBeNull();
-    expect($compensation->percentage)->toBeNull();
-    expect($affiliation->refresh()->status)->toBe(OrganizationCounsellorStatusEnum::active->value);
+    $expectedDays = config('organization.compensation_negotiation_default_expiry_days');
+    expect($request->expires_at->diffInDays(now(), true))->toBeLessThanOrEqual($expectedDays);
+    expect($request->expires_at->isToday() || $request->expires_at->isFuture())->toBeTrue();
+    expect(now()->addDays($expectedDays)->diffInMinutes($request->expires_at, true))->toBeLessThan(1);
 });
 
-test('renegotiating terms inserts a new row and preserves the old one, unmutated', function () {
+test('proposing with a custom expiryDays overrides the configured default', function () {
     [$affiliation, , $owner] = pendingAffiliation();
 
-    $original = OrganizationCounsellorCompensationService::new()->setCompensation(
+    $request = OrganizationCounsellorCompensationService::new()->proposeCompensationChange(
+        OrganizationCounsellorCompensationDTO::new()->fromArray([
+            'user' => $owner,
+            'organizationCounsellor' => $affiliation,
+            'type' => OrganizationCounsellorCompensationTypeEnum::free->value,
+            'expiryDays' => 14,
+        ])
+    );
+
+    expect(now()->addDays(14)->diffInMinutes($request->expires_at, true))->toBeLessThan(1);
+});
+
+test('an expiryDays override outside 1-30 is rejected', function () {
+    [$affiliation, , $owner] = pendingAffiliation();
+
+    expect(fn () => OrganizationCounsellorCompensationService::new()->proposeCompensationChange(
+        OrganizationCounsellorCompensationDTO::new()->fromArray([
+            'user' => $owner,
+            'organizationCounsellor' => $affiliation,
+            'type' => OrganizationCounsellorCompensationTypeEnum::free->value,
+            'expiryDays' => 31,
+        ])
+    ))->toThrow(OrganizationException::class);
+});
+
+test('proposing while one is already pending for this affiliation is rejected', function () {
+    [$affiliation, , $owner] = pendingAffiliation();
+
+    OrganizationCounsellorCompensationService::new()->proposeCompensationChange(
+        OrganizationCounsellorCompensationDTO::new()->fromArray([
+            'user' => $owner,
+            'organizationCounsellor' => $affiliation,
+            'type' => OrganizationCounsellorCompensationTypeEnum::free->value,
+        ])
+    );
+
+    expect(fn () => OrganizationCounsellorCompensationService::new()->proposeCompensationChange(
         OrganizationCounsellorCompensationDTO::new()->fromArray([
             'user' => $owner,
             'organizationCounsellor' => $affiliation,
@@ -91,29 +160,14 @@ test('renegotiating terms inserts a new row and preserves the old one, unmutated
             'amount' => 5000,
             'currency' => 'GHS',
         ])
-    );
-
-    $renegotiated = OrganizationCounsellorCompensationService::new()->setCompensation(
-        OrganizationCounsellorCompensationDTO::new()->fromArray([
-            'user' => $owner,
-            'organizationCounsellor' => $affiliation,
-            'type' => OrganizationCounsellorCompensationTypeEnum::fixed->value,
-            'amount' => 7500,
-            'currency' => 'GHS',
-        ])
-    );
-
-    expect($affiliation->compensations()->count())->toBe(2);
-    expect($original->refresh()->amount)->toBe(5000);
-    expect($renegotiated->amount)->toBe(7500);
-    expect($affiliation->currentCompensation()->id)->toBe($renegotiated->id);
+    ))->toThrow(OrganizationException::class);
 });
 
-test('a user who does not administer the organization cannot set compensation terms', function () {
+test('a user who does not administer the organization cannot propose compensation terms', function () {
     [$affiliation] = pendingAffiliation();
     $outsider = User::factory()->create();
 
-    expect(fn () => OrganizationCounsellorCompensationService::new()->setCompensation(
+    expect(fn () => OrganizationCounsellorCompensationService::new()->proposeCompensationChange(
         OrganizationCounsellorCompensationDTO::new()->fromArray([
             'user' => $outsider,
             'organizationCounsellor' => $affiliation,
@@ -125,7 +179,7 @@ test('a user who does not administer the organization cannot set compensation te
 test('a fixed compensation without an amount and currency is rejected', function () {
     [$affiliation, , $owner] = pendingAffiliation();
 
-    expect(fn () => OrganizationCounsellorCompensationService::new()->setCompensation(
+    expect(fn () => OrganizationCounsellorCompensationService::new()->proposeCompensationChange(
         OrganizationCounsellorCompensationDTO::new()->fromArray([
             'user' => $owner,
             'organizationCounsellor' => $affiliation,
@@ -137,7 +191,7 @@ test('a fixed compensation without an amount and currency is rejected', function
 test('a percentage compensation without a basis is rejected', function () {
     [$affiliation, , $owner] = pendingAffiliation();
 
-    expect(fn () => OrganizationCounsellorCompensationService::new()->setCompensation(
+    expect(fn () => OrganizationCounsellorCompensationService::new()->proposeCompensationChange(
         OrganizationCounsellorCompensationDTO::new()->fromArray([
             'user' => $owner,
             'organizationCounsellor' => $affiliation,
@@ -150,7 +204,7 @@ test('a percentage compensation without a basis is rejected', function () {
 test('a free compensation carrying a leftover amount is rejected', function () {
     [$affiliation, , $owner] = pendingAffiliation();
 
-    expect(fn () => OrganizationCounsellorCompensationService::new()->setCompensation(
+    expect(fn () => OrganizationCounsellorCompensationService::new()->proposeCompensationChange(
         OrganizationCounsellorCompensationDTO::new()->fromArray([
             'user' => $owner,
             'organizationCounsellor' => $affiliation,
@@ -163,7 +217,7 @@ test('a free compensation carrying a leftover amount is rejected', function () {
 test('a fixed compensation carrying a leftover percentage or basis is rejected', function () {
     [$affiliation, , $owner] = pendingAffiliation();
 
-    expect(fn () => OrganizationCounsellorCompensationService::new()->setCompensation(
+    expect(fn () => OrganizationCounsellorCompensationService::new()->proposeCompensationChange(
         OrganizationCounsellorCompensationDTO::new()->fromArray([
             'user' => $owner,
             'organizationCounsellor' => $affiliation,
@@ -179,7 +233,7 @@ test('a fixed compensation carrying a leftover percentage or basis is rejected',
 test('a percentage compensation carrying a leftover amount or currency is rejected', function () {
     [$affiliation, , $owner] = pendingAffiliation();
 
-    expect(fn () => OrganizationCounsellorCompensationService::new()->setCompensation(
+    expect(fn () => OrganizationCounsellorCompensationService::new()->proposeCompensationChange(
         OrganizationCounsellorCompensationDTO::new()->fromArray([
             'user' => $owner,
             'organizationCounsellor' => $affiliation,
@@ -192,10 +246,10 @@ test('a percentage compensation carrying a leftover amount or currency is reject
     ))->toThrow(OrganizationException::class);
 });
 
-test('setting compensation for a non-existent affiliation returns a clean error, not a crash', function () {
+test('proposing compensation for a non-existent affiliation returns a clean error, not a crash', function () {
     $owner = User::factory()->create();
 
-    expect(fn () => OrganizationCounsellorCompensationService::new()->setCompensation(
+    expect(fn () => OrganizationCounsellorCompensationService::new()->proposeCompensationChange(
         OrganizationCounsellorCompensationDTO::new()->fromArray([
             'user' => $owner,
             'organizationCounsellor' => null,
@@ -204,11 +258,11 @@ test('setting compensation for a non-existent affiliation returns a clean error,
     ))->toThrow(OrganizationException::class);
 });
 
-test('setting compensation on an already-active affiliation does not change its status', function () {
+test('proposing compensation on an already-active affiliation does not change its status or terms', function () {
     [$affiliation, , $owner] = pendingAffiliation();
     $affiliation->activate();
 
-    OrganizationCounsellorCompensationService::new()->setCompensation(
+    OrganizationCounsellorCompensationService::new()->proposeCompensationChange(
         OrganizationCounsellorCompensationDTO::new()->fromArray([
             'user' => $owner,
             'organizationCounsellor' => $affiliation,
@@ -217,31 +271,16 @@ test('setting compensation on an already-active affiliation does not change its 
     );
 
     expect($affiliation->refresh()->status)->toBe(OrganizationCounsellorStatusEnum::active->value);
+    expect($affiliation->currentCompensation())->toBeNull();
 });
 
-// SCRUM-123: accountability trail + read path -- an org admin previously could set compensation
-// terms with zero record of who did it, and there was no way for anyone (admin or counsellor) to
-// read the terms back at all.
+// SCRUM-146 AC5: organization_counsellor_compensations schema and currentCompensation()'s
+// resolution logic must be completely unaffected -- a pending proposal must never surface there.
 
-test('setting compensation records who set it', function () {
+test('currentCompensation never returns a pending proposal\'s terms', function () {
     [$affiliation, , $owner] = pendingAffiliation();
 
-    $compensation = OrganizationCounsellorCompensationService::new()->setCompensation(
-        OrganizationCounsellorCompensationDTO::new()->fromArray([
-            'user' => $owner,
-            'organizationCounsellor' => $affiliation,
-            'type' => OrganizationCounsellorCompensationTypeEnum::free->value,
-        ])
-    );
-
-    expect($compensation->set_by_id)->toBe($owner->id);
-    expect($compensation->setBy->id)->toBe($owner->id);
-});
-
-test('an organization admin can read the full compensation history for an affiliation', function () {
-    [$affiliation, , $owner] = pendingAffiliation();
-
-    OrganizationCounsellorCompensationService::new()->setCompensation(
+    CreateOrganizationCounsellorCompensationAction::new()->execute(
         OrganizationCounsellorCompensationDTO::new()->fromArray([
             'user' => $owner,
             'organizationCounsellor' => $affiliation,
@@ -250,7 +289,37 @@ test('an organization admin can read the full compensation history for an affili
             'currency' => 'GHS',
         ])
     );
-    OrganizationCounsellorCompensationService::new()->setCompensation(
+
+    OrganizationCounsellorCompensationService::new()->proposeCompensationChange(
+        OrganizationCounsellorCompensationDTO::new()->fromArray([
+            'user' => $owner,
+            'organizationCounsellor' => $affiliation,
+            'type' => OrganizationCounsellorCompensationTypeEnum::fixed->value,
+            'amount' => 9999,
+            'currency' => 'GHS',
+        ])
+    );
+
+    expect($affiliation->currentCompensation()->amount)->toBe(5000);
+});
+
+// SCRUM-123: accountability trail + read path -- unaffected by this ticket. Fixture setup now
+// goes through CreateOrganizationCounsellorCompensationAction directly (the accepted-terms path),
+// not the removed setCompensation().
+
+test('an organization admin can read the full compensation history for an affiliation', function () {
+    [$affiliation, , $owner] = pendingAffiliation();
+
+    CreateOrganizationCounsellorCompensationAction::new()->execute(
+        OrganizationCounsellorCompensationDTO::new()->fromArray([
+            'user' => $owner,
+            'organizationCounsellor' => $affiliation,
+            'type' => OrganizationCounsellorCompensationTypeEnum::fixed->value,
+            'amount' => 5000,
+            'currency' => 'GHS',
+        ])
+    );
+    CreateOrganizationCounsellorCompensationAction::new()->execute(
         OrganizationCounsellorCompensationDTO::new()->fromArray([
             'user' => $owner,
             'organizationCounsellor' => $affiliation,
@@ -274,7 +343,7 @@ test('an organization admin can read the full compensation history for an affili
 test('the affiliated counsellor can read their own compensation history', function () {
     [$affiliation, , $owner, $counsellor] = pendingAffiliation();
 
-    OrganizationCounsellorCompensationService::new()->setCompensation(
+    CreateOrganizationCounsellorCompensationAction::new()->execute(
         OrganizationCounsellorCompensationDTO::new()->fromArray([
             'user' => $owner,
             'organizationCounsellor' => $affiliation,
@@ -296,7 +365,7 @@ test('a user with no relationship to the affiliation cannot read its compensatio
     [$affiliation, , $owner] = pendingAffiliation();
     $outsider = User::factory()->create();
 
-    OrganizationCounsellorCompensationService::new()->setCompensation(
+    CreateOrganizationCounsellorCompensationAction::new()->execute(
         OrganizationCounsellorCompensationDTO::new()->fromArray([
             'user' => $owner,
             'organizationCounsellor' => $affiliation,
@@ -316,7 +385,7 @@ test('an admin of a different organization cannot read this affiliation\'s compe
     [$affiliationA, , $ownerA] = pendingAffiliation();
     [, , $ownerB] = pendingAffiliation(); // a second, unrelated organization and admin
 
-    OrganizationCounsellorCompensationService::new()->setCompensation(
+    CreateOrganizationCounsellorCompensationAction::new()->execute(
         OrganizationCounsellorCompensationDTO::new()->fromArray([
             'user' => $ownerA,
             'organizationCounsellor' => $affiliationA,
@@ -336,7 +405,7 @@ test('a counsellor affiliated with a different organization cannot read this aff
     [$affiliationA, , $ownerA] = pendingAffiliation();
     [, , , $otherCounsellor] = pendingAffiliation(); // a different org, different counsellor
 
-    OrganizationCounsellorCompensationService::new()->setCompensation(
+    CreateOrganizationCounsellorCompensationAction::new()->execute(
         OrganizationCounsellorCompensationDTO::new()->fromArray([
             'user' => $ownerA,
             'organizationCounsellor' => $affiliationA,
@@ -350,6 +419,30 @@ test('a counsellor affiliated with a different organization cannot read this aff
             'organizationCounsellor' => $affiliationA,
         ])
     ))->toThrow(OrganizationException::class);
+});
+
+// Review finding (security-engineer, PR #84): RequestService::getRequests() renders every hit
+// through the generic RequestResource (not GetRequestResourceAction's per-type dispatch), which
+// previously assumed any non-User from/to was a Counsellor and any unmatched for_type fell back
+// to CounsellorMiniResource -- both wrong for this type's Organization from_type and
+// OrganizationCounsellor for_type, throwing a BadMethodCallException. Covers the counsellor
+// (`to`) side; the organization admin (`from`) side goes through the same getFrom()/getFor() code.
+test('a counsellor with a pending compensation proposal can load their requests list without error', function () {
+    [$affiliation, , $owner, $counsellor] = pendingAffiliation();
+
+    OrganizationCounsellorCompensationService::new()->proposeCompensationChange(
+        OrganizationCounsellorCompensationDTO::new()->fromArray([
+            'user' => $owner,
+            'organizationCounsellor' => $affiliation,
+            'type' => OrganizationCounsellorCompensationTypeEnum::free->value,
+        ])
+    );
+
+    $resources = RequestService::new()->getRequests('', $counsellor->user);
+
+    expect($resources->collection)->toHaveCount(1);
+    expect($resources->collection->first()->resource->type)
+        ->toBe(RequestTypeEnum::organizationCounsellorCompensationChange->value);
 });
 
 test('reading compensation history for a non-existent affiliation returns a clean error, not a crash', function () {

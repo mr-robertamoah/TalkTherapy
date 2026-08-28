@@ -26,4 +26,9 @@ enum RequestTypeEnum: string
     // Counsellor affiliating.
     case organizationMemberInvite = 'ORGANIZATION_MEMBER_INVITE_REQUEST';
     case organizationMemberApplication = 'ORGANIZATION_MEMBER_APPLICATION_REQUEST';
+    // SCRUM-146 (TT-6.4c): a compensation-terms negotiation for an org-counsellor affiliation.
+    // `for` is the OrganizationCounsellor affiliation itself (not the Organization directly).
+    // `from`/`to` flip direction across rounds -- org proposes = from Organization to Counsellor;
+    // a counter-offer (SCRUM-148) reverses it.
+    case organizationCounsellorCompensationChange = 'ORGANIZATION_COUNSELLOR_COMPENSATION_CHANGE_REQUEST';
 }

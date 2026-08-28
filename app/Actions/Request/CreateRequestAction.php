@@ -11,7 +11,9 @@ class CreateRequestAction extends Action
     {
         $request = $createRequestDTO->from->sentRequests()->create([
             'data' => $createRequestDTO->data,
-            'type' => $createRequestDTO->type
+            'type' => $createRequestDTO->type,
+            'expires_at' => $createRequestDTO->expiresAt,
+            'round' => $createRequestDTO->round,
         ]);
 
         $request->to()->associate($createRequestDTO->to);
