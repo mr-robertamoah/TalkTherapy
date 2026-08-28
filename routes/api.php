@@ -96,6 +96,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/administrator/verification/requests', [AdministratorController::class, 'getVerificationRequests'])->name('admin.verification.requests');
     Route::get('/administrator/counsellors', [AdministratorController::class, 'getCounsellors'])->name('admin.counsellors');
     Route::get('/administrator/counsellors/{counsellorId}/stats', [AdministratorController::class, 'getCounsellorStats'])->name('admin.counsellors.stats');
+    // SCRUM-134: admin-triggered counsellor deletion (e.g. revoking a counsellor found practicing
+    // without a valid license) -- reuses the same CounsellorService::deleteCounsellor()/
+    // EnsureCanDeleteCounsellorAction chain as self-service deletion, which already requires
+    // isSuperAdmin() for the admin branch, mirroring admin.users.delete's super-admin gate below.
+    Route::delete('/administrator/counsellors/{counsellorId}', [AdministratorController::class, 'deleteCounsellor'])->name('admin.counsellors.delete');
     Route::get('/administrator/users', [AdministratorController::class, 'getUsers'])->name('admin.users');
     Route::post('/administrator/users/{userId}', [AdministratorController::class, 'updateUser'])->name('admin.users.update');
     Route::delete('/administrator/users/{userId}', [AdministratorController::class, 'deleteUser'])->name('admin.users.delete');

@@ -229,8 +229,15 @@ async function getCounsellors() {
 
 function clickedGetMore() {
     if (typeof computedCallable.value !== 'function') return
-    
+
     computedCallable.value()
+}
+
+function deletedCounsellor(counsellor) {
+    data.counsellors.show.splice(
+        data.counsellors.show.findIndex((c) => c.id == counsellor.id),
+        1
+    )
 }
 
 function respondToVerificationRequest(requestId, response) {
@@ -350,7 +357,9 @@ function respondToVerificationRequest(requestId, response) {
                     v-for="counsellor in data.counsellors.show"
                     :key="counsellor.id"
                     :counsellor="counsellor"
+                    :can-delete="true"
                     class="bg-stone-200"
+                    @deleted="deletedCounsellor(counsellor)"
                 />
             </template>
 

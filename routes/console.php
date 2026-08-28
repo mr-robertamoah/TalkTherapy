@@ -1,10 +1,6 @@
 <?php
 
-use App\Events\PingTherapyEvent;
 use App\Services\AppService;
-use Illuminate\Foundation\Inspiring;
-use Illuminate\Support\Facades\Artisan;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schedule;
 
 /*
@@ -45,3 +41,7 @@ Schedule::call(function () {
 Schedule::call(function () {
     AppService::new()->alertSuperAdminWithStatus();
 })->dailyAt('0:00');
+
+Schedule::call(function () {
+    AppService::new()->purgeExpiredSoftDeletedCounsellors();
+})->dailyAt('01:00');

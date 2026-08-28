@@ -64,6 +64,11 @@ class DatabaseSeeder extends Seeder
 
         // Create demo posts from counsellors
         $this->createDemoPosts($counsellors, $users);
+
+        // SCRUM-134: dedicated accounts for testing counsellor account deletion -- kept separate
+        // from the 6 main demo counsellors above since those are woven into therapies/group
+        // therapies/discussions/chat demo data used by many other features.
+        $this->createCounsellorDeletionDemoData();
     }
 
     private function createLanguages($user)
@@ -664,5 +669,72 @@ class DatabaseSeeder extends Seeder
         }
 
         return $contentMap['default'];
+    }
+
+    // SCRUM-134: two dedicated counsellor accounts for testing the account-deletion feature --
+    // one with no blocking state (deletion should succeed) and one with an in-session therapy
+    // (deletion should be rejected by EnsureCanDeleteCounsellorAction's eligibility gate).
+    private function createCounsellorDeletionDemoData(): void
+    {
+        $deletableUser = User::factory()->create([
+            'firstName' => 'Deletable',
+            'lastName' => 'Counsellor',
+            'email' => 'deletable.counsellor@example.com',
+            'username' => 'deletable_counsellor',
+            'password' => Hash::make('password'),
+            'email_verified_at' => now(),
+        ]);
+
+        $deletableUser->counsellor()->create([
+            'name' => 'Dr. Deletable Counsellor',
+            'about' => 'Seeded counsellor with no pending sessions, therapies, or affiliations -- account deletion should succeed for this account (SCRUM-134).',
+            'email' => $deletableUser->email,
+            'phone' => fake()->phoneNumber(),
+            'verified_at' => now(),
+            'email_verified_at' => now(),
+            'profession_id' => rand(1, 10),
+            'contact_visible' => true,
+        ]);
+
+        $blockedUser = User::factory()->create([
+            'firstName' => 'Blocked',
+            'lastName' => 'Counsellor',
+            'email' => 'blocked.counsellor@example.com',
+            'username' => 'blocked_counsellor',
+            'password' => Hash::make('password'),
+            'email_verified_at' => now(),
+        ]);
+
+        $blockedCounsellor = $blockedUser->counsellor()->create([
+            'name' => 'Dr. Blocked Counsellor',
+            'about' => 'Seeded counsellor with an in-session therapy -- account deletion should be rejected for this account (SCRUM-134).',
+            'email' => $blockedUser->email,
+            'phone' => fake()->phoneNumber(),
+            'verified_at' => now(),
+            'email_verified_at' => now(),
+            'profession_id' => rand(1, 10),
+            'contact_visible' => true,
+        ]);
+
+        $blockedCounsellorClient = User::factory()->create([
+            'firstName' => 'Blocked',
+            'lastName' => 'CounsellorClient',
+            'email' => 'blocked.counsellor.client@example.com',
+            'username' => 'blocked_counsellor_client',
+            'password' => Hash::make('password'),
+            'email_verified_at' => now(),
+        ]);
+
+        $blockedCounsellorClient->addedTherapies()->create([
+            'name' => 'Counsellor Deletion Demo Therapy',
+            'background_story' => 'Seeded in-session therapy, kept in_session on purpose so Dr. Blocked Counsellor cannot be deleted (SCRUM-134).',
+            'counsellor_id' => $blockedCounsellor->id,
+            'session_type' => 'Once',
+            'payment_type' => 'FREE',
+            'allow_in_person' => false,
+            'anonymous' => false,
+            'public' => false,
+            'status' => 'in_session',
+        ]);
     }
 }

@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\SessionStatusEnum;
+use App\Enums\TherapyStatusEnum;
 use App\Models\Counsellor;
 use App\Models\Session;
 use App\Models\Therapy;
@@ -163,6 +164,10 @@ test('a therapy assigned to a since-deleted counsellor still renders without err
         'addedby_id' => User::factory(),
         'counsellor_id' => $counsellor->id,
         'public' => true,
+        // SCRUM-134: EnsureCanDeleteCounsellorAction now blocks deletion while a linked therapy
+        // is in_session -- this test is about post-deletion rendering, not eligibility, so the
+        // therapy must already be ended for the deletion below to succeed.
+        'status' => TherapyStatusEnum::ended->value,
     ]);
 
     $this->actingAs($counsellorUser)

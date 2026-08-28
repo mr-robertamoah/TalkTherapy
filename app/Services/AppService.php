@@ -85,6 +85,20 @@ class AppService extends Service
             ->delete();
     }
 
+    // SCRUM-134: a Counsellor is only soft-deleted at deletion time (see DeleteCounsellorAction) so
+    // the grace period gives a window to notice and undo an accidental/malicious deletion.
+    // Permanently removed once that window (config('counsellor.deletion_grace_period_days'),
+    // default 60) has passed. Only the Counsellor row itself is force-deleted -- related
+    // historical records (therapies, sessions, licenses, testimonials) are left untouched, same
+    // as they already are for a merely-soft-deleted counsellor.
+    public function purgeExpiredSoftDeletedCounsellors()
+    {
+        Counsellor::onlyTrashed()
+            ->where('deleted_at', '<=', now()->subDays(config('counsellor.deletion_grace_period_days')))
+            ->get()
+            ->each(fn (Counsellor $counsellor) => $counsellor->forceDelete());
+    }
+
     public function notifyParticipantsOfStartingSessions()
     {
         $this->alertSessionParticipants();

@@ -760,3 +760,125 @@ whichever future change adds the first one. Declined the two remaining optional 
 partial-update test mirroring the Therapy-side coverage, and deduping the addedby-owner/counsellor-
 loop double-query above) as genuinely low-value for a verbatim-mirrored code path already covered by
 the Therapy-side tests -- explicitly noted here rather than silently dropped.
+
+---
+
+## 2026-08-28 — SCRUM-134: counsellor account deletion, full /start-feature ceremony
+
+**Decision**: per the user's explicit choice ("Implement the feature properly") this went through
+the full `product-owner` -> `project-manager` -> `architect` gate before any code was written,
+since CLAUDE.md requires that for new feature work regardless of the autonomous-execution policy.
+The user then answered four open questions directly: (1) `current_password` re-confirmation is
+required; (2) the admin-triggered flow should be included in this ticket, not deferred; (3) former
+clients should be notified when a counsellor deletes their account; (4) soft-delete now, hard-delete
+via a scheduled job after a *configurable* grace period, default 60 days.
+
+Several concrete technical decisions were made autonomously while implementing these answers (not
+themselves reopened with the user, since they're implementation details of an already-approved
+direction, not new product forks):
+
+- **Admin path requires `isSuperAdmin()`, not just `isAdmin()`** -- matches
+  `UserService::deleteUserByAdmin()`'s existing precedent for an equally destructive action on
+  another account. `EnsureCanDeleteCounsellorAction`'s pre-existing single admin-or-self condition
+  was tightened accordingly (previously unreachable via HTTP at all, since no admin route existed).
+- **The admin path does not bypass the eligibility gate** -- an admin can trigger deletion, but is
+  still blocked by pending sessions/in-session therapies/active affiliations, same as self-service.
+  A true emergency-override mechanism, if ever needed, would be separate, out-of-scope work.
+- **Config file over `env()` calls** -- `config('counsellor.deletion_grace_period_days')` via a new
+  `config/counsellor.php`, rather than following the existing (but not-best-practice)
+  `env('GROUP_THERAPY_MAX_USERS', 50)`-in-application-code pattern found in
+  `EnsureTherapyDataIsValidAction`. A new config value has no reason to inherit that pattern's
+  config-caching-unsafety; the existing instance was left alone as out of scope.
+- **Hard-delete scope is narrow**: only the `Counsellor` row itself is force-deleted after the grace
+  period. Related historical records (therapies, sessions, licenses, testimonials) are left
+  untouched -- consistent with the non-functional requirement `product-owner` raised ("never
+  hard-delete... licenses or verification documents... legal/dispute history must survive") and
+  with how those records already tolerate a merely-soft-deleted counsellor via `withTrashed()`.
+- **Request gate/cleanup split resolved by `architect`**: the eligibility gate only checks
+  `receivedRequests()` (things awaiting the counsellor's own decision); cleanup only auto-declines
+  `sentRequests()` (things the counsellor initiated that become moot). `groupTherapyMembership`
+  requests are excluded from both -- they always resolve to the underlying `User`, never the
+  `Counsellor` model, so deleting the counsellor doesn't affect them at all.
+- **`counsellor_group_therapy` pivot cleanup**: state-flip to `inactive`, not `detach()` --
+  `architect` confirmed this matches the pivot's own `state`-column design and how
+  `GroupTherapy::isCounsellor()` already reads it, unlike `counsellor_discussion` (no state column,
+  hard-detach is correct there, mirroring the existing `RemoveCounsellorFromDiscussionAction`).
+- **Dedicated seeded test data** (`deletable_counsellor`, `blocked_counsellor`) added rather than
+  reusing the 6 main demo counsellors, since those are woven into therapies/group
+  therapies/discussions/chat demo data used by many other features -- deleting one for this
+  feature's own testing would be destructive to unrelated scenarios.
+- **Playwright browser smoke-check skipped**: port 8000 (this project's `web`/nginx service) was
+  occupied by an unrelated, pre-existing container from a different project on this machine.
+  Deliberately not stopped/touched, since it's infrastructure with no context available about what
+  else depends on it -- noted in the feature doc as follow-up verification still needed before
+  merge, rather than silently skipped.
+
+**Why**: this is the session's first true full-ceremony feature (as opposed to the bugfix sweep
+that preceded it), and the volume of technical sub-decisions above is exactly why CLAUDE.md
+distinguishes "genuinely ambiguous/consequential" product forks (which went back to the user) from
+implementation details of an already-approved direction (which don't need re-litigating one at a
+time) -- re-asking about each of these would have meant seven more round-trips for decisions each
+backed by a clear precedent already in the codebase.
+
+---
+
+## 2026-08-28 — SCRUM-134 post-review: one correctness bug fixed, one severe pre-existing bug found via manual browser QA
+
+**Decision**: `reviewer` requested changes on one real bug; `security-engineer` found nothing above
+Low severity. Both fixed, plus a second, more severe bug found independently while doing the manual
+browser walkthrough this ticket's own feature doc had flagged as still owed.
+
+1. **`DeleteCounsellorAction::getFormerClients()` notified co-counsellors and the deleted
+   counsellor themselves** (`reviewer`, required fix). `GroupTherapy::getUsers()` -- a
+   general-purpose helper used nowhere else -- returns every counsellor attached to a group, not
+   just clients, and (since this counsellor's own pivot row hasn't been flipped to `inactive` yet
+   at the point notifications are gathered) that includes the counsellor being deleted. Fixed by
+   building the group-therapy recipient list from the actual `group_therapy_user` pivot members
+   plus a `User`-type owner only. New regression test with two counsellors on one group therapy,
+   asserting neither the co-counsellor nor the deleted counsellor's own account gets notified.
+   Verified empirically (reverted, confirmed the new test fails, restored).
+
+2. **`Counsellor::hasPendingSessions()` had the same ungrouped `where()->orWhere()` scoping bug
+   already fixed twice elsewhere this sweep** (SCRUM-129's `Timeable` trait, SCRUM-139's
+   `EnsureDiscussionDataIsValidAction`) -- found not by static review but by actually clicking
+   through the self-service delete flow in a browser: `deletable_counsellor` (seeded with zero
+   sessions of their own) was rejected with "You have sessions that need to be completed..." purely
+   because *some other counsellor's* session happened to be upcoming. Only `wherePending()` stayed
+   scoped to `addedSessions()`; the trailing `orWhere()`s broke out to match any session in the
+   whole table. This silently made the entire feature this PR ships non-functional for any
+   counsellor as soon as any session anywhere in the system was upcoming or about to start --
+   effectively always, in a live app. Fixed by grouping all three conditions inside one outer
+   `where()`. New dedicated test file (`CounsellorHasPendingSessionsTest`) since this method had no
+   prior coverage at all; verified empirically the same way as (1).
+
+**Why**: this is the second time this exact `where()->orWhere()` shape has hidden a live bug behind
+what looked like correct, tested code (SCRUM-129 was the first). It reinforces the standing
+practice from this sweep of never trusting a boolean-returning query helper's *name* -- reading
+its actual generated SQL (or, here, just clicking the feature) is what catches this class of bug,
+because unit tests that only ever create one relevant row per test never exercise the "another
+unrelated row exists" case that this ungrouped-OR footgun depends on. Also reinforces why the
+Playwright/manual-browser step of full-ceremony QA is not a formality: this bug was invisible to
+34 passing unit/feature tests and was caught within the first real click-through.
+
+3. **`FormLoader.vue`'s outer `fixed` wrapper intercepted clicks meant for whatever was underneath
+   it, whenever it was supposedly hidden** (`qa-engineer`, found via Playwright). Its inner child
+   collapses via `invisible`/`opacity-0`/`h-0` when `show` is false, but the outer wrapper (`fixed
+   w-full z-10 left-0 bottom-4`) never got a matching visibility/pointer-events class -- it kept
+   occupying real, hit-testable box space at a fixed viewport position regardless of `show`. This
+   is a pre-existing defect shared across roughly 48 usages of this component, not something SCRUM-
+   134 introduced, but it happened to fully block mouse users from clicking either button in this
+   PR's own new delete-confirmation modal -- only the password field's `@keyup.enter` handler let
+   deletion complete at all (confirmed both ways: Playwright's real click timed out with
+   "intercepts pointer events" before the fix, and worked cleanly after).
+
+   **Fixed in place, not deferred to a follow-up ticket**, despite being pre-existing: severity-
+   based triage (the same criterion used all session) puts this in the "actively blocking a golden
+   path right now" bucket, not "one-time cleanup" -- a real end user cannot currently delete their
+   own counsellor account by clicking a button, only by knowing to press Enter after typing their
+   password. Fix: toggle `pointer-events-none`/`pointer-events-auto` on the outer wrapper to match
+   `show`, without touching the inner element's existing opacity/height animation -- purely
+   additive for every other usage (when `show` is true, `pointer-events-auto` is a no-op; when
+   false, it can only ever stop something that was previously an unintended click-block). Verified
+   manually via Playwright (real mouse clicks on both "delete" and "cancel" in the SCRUM-134 modal,
+   confirmed via DB before/after) since this project has no JS test framework to add automated
+   component-level coverage.
