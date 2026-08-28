@@ -152,6 +152,37 @@ test('a session conflicts with a pivot-attached counsellor\'s overlapping sessio
         ->toThrow(SessionException::class, 'Counsellor for this group therapy has sessions that are less than 30 minutes before or after the time for this session.');
 });
 
+// Unlike Therapy (whose addedby is always a User), a GroupTherapy's addedby can itself be a
+// Counsellor -- the one branch here with no validateTherapy() analogue at all. That counsellor is
+// resolved both as $addedbyUser (via addedby->user) and inside getCounsellors() (which pushes
+// addedby when it's a Counsellor), so the addedby-owner check fires first and reports "The user
+// has sessions..." rather than the counsellor-loop's message -- asserting the actual message here
+// pins down that behavior rather than assuming which check "should" win.
+test('a session conflicts with a counsellor-owned group therapy\'s addedby overlapping session elsewhere', function () {
+    $counsellorUser = User::factory()->create();
+    $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
+
+    $groupTherapy = aGroupTherapyWithRoomForSessions([
+        'addedby_type' => Counsellor::class,
+        'addedby_id' => $counsellor->id,
+    ]);
+
+    $otherTherapy = Therapy::factory()->create([
+        'addedby_type' => User::class,
+        'addedby_id' => User::factory(),
+        'counsellor_id' => $counsellor->id,
+    ]);
+    Session::factory()->create([
+        'for_id' => $otherTherapy->id,
+        'for_type' => Therapy::class,
+        'start_time' => Carbon::parse('2025-06-01 10:15:00'),
+        'end_time' => Carbon::parse('2025-06-01 11:15:00'),
+    ]);
+
+    expect(fn () => EnsureSessionDataIsValidAction::new()->execute(aValidGroupTherapySessionDTO($groupTherapy)))
+        ->toThrow(SessionException::class, 'The user has sessions that are less than 30 minutes before or after the time for this session.');
+});
+
 test('a valid session for a healthy group therapy is accepted', function () {
     $groupTherapy = aGroupTherapyWithRoomForSessions();
 
