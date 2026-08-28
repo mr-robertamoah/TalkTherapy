@@ -133,15 +133,24 @@ dedicated seeded accounts (`deletable_counsellor`, `blocked_counsellor`) and the
   non-functional for any counsellor as soon as any session anywhere in the system was upcoming —
   effectively always, in a live app. Fixed by grouping all three conditions in one outer `where()`;
   added a new `CounsellorHasPendingSessionsTest` (this method had no prior coverage at all).
+- **Bug found and fixed (qa-engineer, via Playwright)**: `FormLoader.vue`'s outer `fixed` wrapper
+  never collapsed or disabled pointer events when `show` was false — only its inner child did —
+  so it kept intercepting clicks meant for whatever sat underneath it. Pre-existing, shared across
+  ~48 usages of this component, but it fully blocked mouse users from clicking either button in
+  this PR's own delete-confirmation modal (only the password field's Enter-key handler worked
+  before the fix). Fixed by toggling `pointer-events-none`/`auto` on the outer wrapper to match
+  `show`; verified manually via Playwright that both "delete" and "cancel" are now clickable with
+  a real mouse click (no JS test framework exists in this project for automated component
+  coverage).
 - **Live browser walkthrough completed** (after resolving the port-8000 conflict via a Docker
-  workaround — see below): self-service happy path (`deletable_counsellor`) succeeded end to end,
-  confirmed via DB; self-service blocked path (`blocked_counsellor`, in-session therapy) correctly
-  rejected, confirmed via DB; admin path's delete button and confirmation modal render correctly
-  and are wired to the right endpoint (confirmed visually and via `AdminCounsellorDeleteTest`'s
-  full HTTP-level coverage — a live click-through of the admin path hit transient Docker
-  networking flakiness in the ad-hoc port-workaround environment after multiple container
-  restarts, but caused no incorrect state change, and the endpoint's behavior is independently
-  proven by the passing feature tests).
+  workaround — see below): self-service happy path (`deletable_counsellor`) succeeded end to end
+  via a real mouse click, confirmed via DB; self-service blocked path (`blocked_counsellor`,
+  in-session therapy) correctly rejected, and the modal's "cancel" button confirmed clickable too;
+  admin path's delete button and confirmation modal render correctly and are wired to the right
+  endpoint (confirmed visually and via `AdminCounsellorDeleteTest`'s full HTTP-level coverage — a
+  live click-through of the admin path hit transient Docker networking flakiness in the ad-hoc
+  port-workaround environment after multiple container restarts, but caused no incorrect state
+  change, and the endpoint's behavior is independently proven by the passing feature tests).
 - Port 8000 (this project's `web`/nginx service) was occupied by an unrelated, pre-existing
   container from a different project on this machine, unrelated to and not stopped/touched by
   this work; the app was instead reached via a temporary alternate port (18000) for the manual
@@ -169,6 +178,8 @@ dedicated seeded accounts (`deletable_counsellor`, `blocked_counsellor`) and the
 - `resources/js/Components/CounsellorComponent.vue` — new `canDelete` prop, delete button +
   confirmation modal
 - `resources/js/Pages/Admin.vue` — wires `canDelete` into the admin counsellors listing
+- `resources/js/Components/FormLoader.vue` — fixed the click-interception bug (pre-existing,
+  shared component, ~48 other usages unaffected)
 - `database/seeders/DatabaseSeeder.php` — `deletable_counsellor` / `blocked_counsellor` fixtures
 - `documentation/seeded-data.md` — documents the new fixtures
 - `tests/Unit/EnsureCanDeleteCounsellorActionTest.php`,

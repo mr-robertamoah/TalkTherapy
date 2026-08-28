@@ -859,3 +859,26 @@ because unit tests that only ever create one relevant row per test never exercis
 unrelated row exists" case that this ungrouped-OR footgun depends on. Also reinforces why the
 Playwright/manual-browser step of full-ceremony QA is not a formality: this bug was invisible to
 34 passing unit/feature tests and was caught within the first real click-through.
+
+3. **`FormLoader.vue`'s outer `fixed` wrapper intercepted clicks meant for whatever was underneath
+   it, whenever it was supposedly hidden** (`qa-engineer`, found via Playwright). Its inner child
+   collapses via `invisible`/`opacity-0`/`h-0` when `show` is false, but the outer wrapper (`fixed
+   w-full z-10 left-0 bottom-4`) never got a matching visibility/pointer-events class -- it kept
+   occupying real, hit-testable box space at a fixed viewport position regardless of `show`. This
+   is a pre-existing defect shared across roughly 48 usages of this component, not something SCRUM-
+   134 introduced, but it happened to fully block mouse users from clicking either button in this
+   PR's own new delete-confirmation modal -- only the password field's `@keyup.enter` handler let
+   deletion complete at all (confirmed both ways: Playwright's real click timed out with
+   "intercepts pointer events" before the fix, and worked cleanly after).
+
+   **Fixed in place, not deferred to a follow-up ticket**, despite being pre-existing: severity-
+   based triage (the same criterion used all session) puts this in the "actively blocking a golden
+   path right now" bucket, not "one-time cleanup" -- a real end user cannot currently delete their
+   own counsellor account by clicking a button, only by knowing to press Enter after typing their
+   password. Fix: toggle `pointer-events-none`/`pointer-events-auto` on the outer wrapper to match
+   `show`, without touching the inner element's existing opacity/height animation -- purely
+   additive for every other usage (when `show` is true, `pointer-events-auto` is a no-op; when
+   false, it can only ever stop something that was previously an unintended click-block). Verified
+   manually via Playwright (real mouse clicks on both "delete" and "cancel" in the SCRUM-134 modal,
+   confirmed via DB before/after) since this project has no JS test framework to add automated
+   component-level coverage.
