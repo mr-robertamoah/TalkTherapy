@@ -740,3 +740,23 @@ directly blocks the current ticket's own required functionality" pattern (same r
 129's Timeable fix) -- without this fix, SCRUM-108's own addedby-owner double-booking check would be
 silently non-functional for the most common case (a group therapy created directly by a User rather
 than joined via the pivot).
+
+**Post-review** (`reviewer` + `security-engineer`, both approved with no required changes): added the
+one suggested test both agents flagged as the genuinely new/risky path -- a group therapy whose
+`addedby` is itself a Counsellor (the one branch with no `validateTherapy()` analogue at all). This
+also surfaced and pinned down a real, if minor, behavior quirk: because that counsellor is resolved
+both as `$addedbyUser` (via `addedby->user`) and inside `getCounsellors()` (which pushes `addedby`
+when it's a Counsellor), a conflicting session for them trips the generic addedby-owner check first,
+so the thrown message is "The user has sessions..." rather than the more-specific "Counsellor for
+this group therapy has sessions..." -- not a correctness bug (the session is still correctly
+rejected), just a slightly misleading message in that one scenario. Left as-is rather than
+deduplicating the two checks, per `reviewer`'s own "low priority" framing.
+
+Filed SCRUM-144 for `reviewer`'s two other findings: (a) the `scopeWhereUser`/`scopeWhereParticipant`
+vs `scopeWhereIsParticipant` duplication flagged when the fix was made, and (b) `scopeWhereNotUser()`
+not having been updated alongside `scopeWhereUser()`, so the two are no longer logical complements --
+latent since `scopeWhereNotUser()` on `GroupTherapy` currently has no callers, but a trap for
+whichever future change adds the first one. Declined the two remaining optional suggestions (a
+partial-update test mirroring the Therapy-side coverage, and deduping the addedby-owner/counsellor-
+loop double-query above) as genuinely low-value for a verbatim-mirrored code path already covered by
+the Therapy-side tests -- explicitly noted here rather than silently dropped.
