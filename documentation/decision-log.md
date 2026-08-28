@@ -587,3 +587,26 @@ false-positive case rejects rather than silently corrupting state) with no priva
 impact -- exactly the kind of newly-exposed-but-out-of-scope finding that gets its own ticket
 per the established pattern (SCRUM-127/128/129 themselves, SCRUM-130/131), not silent scope
 expansion into redesigning a validation action's partial-update semantics.
+
+---
+
+## 2026-08-28 — SCRUM-130: fixed a cross-PR CI failure surfaced by merge order
+
+**Decision**: `RouteParamSpoofingBatch2Test.php` (this PR) and `RouteParamSpoofingBatch3Test.php`
+(SCRUM-133) each independently declared a top-level `anAdmin()` Pest helper -- harmless while
+both PRs were separate, unmerged branches, but SCRUM-133 merged into `develop` first while this
+PR was still open, so once GitHub tested this PR's branch merged against the new `develop` tip,
+both files loaded in the same run and PHP fataled on redeclaring a global function. Fixed by
+merging current `develop` into this branch and renaming this file's helper to
+`anAdminForBatch2()` (all 8 call sites updated). Verified via `php artisan test --parallel`
+(the actual CI command) -- 483 passed -- and confirmed no other duplicate top-level helper names
+exist elsewhere in the suite.
+
+**Why**: Pest test files share one global PHP namespace for top-level `function` declarations
+(not scoped to a class), so any two files that each define a same-named helper will collide the
+moment both are loaded together -- independent of which one is "correct" or which came first.
+This is a variant of the existing "Pest --parallel test helpers" rule (never call a global helper
+defined in a different file) worth keeping in mind specifically for this sweep's pattern of
+adding near-identical "BatchN"-style regression test files across sibling PRs: give each file's
+local helpers a unique, file-scoped name up front rather than reusing an obvious name like
+`anAdmin()` that another sibling PR is equally likely to reach for.
