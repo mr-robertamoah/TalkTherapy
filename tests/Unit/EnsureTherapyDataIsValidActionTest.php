@@ -186,6 +186,24 @@ test('a partial update setting only public=false does not bypass the FREE-requir
     ])))->toThrow(TherapyCreationDataIsNotValidException::class, 'FREE payment types requires that you make therapy PUBLIC.');
 });
 
+test('a partial update touching an unrelated field does not bypass the ONCE+PAID-must-be-per-THERAPY check', function () {
+    // Grandfathered/inconsistent state, same pattern as the other bypass tests: PAID + ONCE
+    // but per PER_SESSION, which shouldn't be reachable via this validation going forward but
+    // could already exist. A partial update to an unrelated field must still surface it.
+    $therapy = Therapy::factory()->create([
+        'addedby_type' => User::class,
+        'addedby_id' => User::factory(),
+        'session_type' => TherapySessionTypeEnum::once->value,
+        'payment_type' => TherapyPaymentTypeEnum::paid->value,
+        'payment_data' => ['per' => 'PER_SESSION', 'amount' => 50, 'currency' => 'GHS', 'inPersonAmount' => 60],
+    ]);
+
+    expect(fn () => EnsureTherapyDataIsValidAction::new()->execute(CreateTherapyDTO::new()->fromArray([
+        'therapy' => $therapy,
+        'name' => 'Renamed',
+    ])))->toThrow(TherapyCreationDataIsNotValidException::class, 'Since ONCE and PAID have been selected for session and payment types respectively, the amount should be per THERAPY.');
+});
+
 test('a partial update setting only sessionType=periodic does not false-positive when maxSessions is already valid', function () {
     $therapy = Therapy::factory()->create([
         'addedby_type' => User::class,
@@ -275,4 +293,23 @@ test('a partial group therapy update touching an unrelated field does not bypass
         'groupTherapy' => $groupTherapy,
         'name' => 'Renamed',
     ])))->toThrow(TherapyCreationDataIsNotValidException::class, 'The share to counsellors cannot be more than 100% or below 40%.');
+});
+
+test('a partial group therapy update on a user-owned therapy does not incorrectly fall into the counsellor-owned branch', function () {
+    // Complements the test above: confirms $effectiveIsCounsellorOwned correctly resolves to
+    // false for a User-created group therapy, not just true for a Counsellor-created one --
+    // otherwise this would incorrectly require sharePercentage between 40-100 instead of >=70.
+    $owner = User::factory()->create();
+
+    $groupTherapy = GroupTherapy::factory()->create([
+        'addedby_type' => User::class,
+        'addedby_id' => $owner->id,
+        'payment_type' => TherapyPaymentTypeEnum::paid->value,
+        'payment_data' => ['per' => 'PER_THERAPY', 'amount' => 50, 'currency' => 'GHS', 'inPersonAmount' => 60, 'shareEqually' => false, 'sharePercentage' => 80],
+    ]);
+
+    expect(fn () => EnsureTherapyDataIsValidAction::new()->execute(GroupTherapyDTO::new()->fromArray([
+        'groupTherapy' => $groupTherapy,
+        'name' => 'Renamed',
+    ])))->not->toThrow(TherapyCreationDataIsNotValidException::class);
 });

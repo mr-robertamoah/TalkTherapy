@@ -89,6 +89,9 @@ class EnsureTherapyDataIsValidAction extends Action
             throw new TherapyCreationDataIsNotValidException('Amount, currency and per what? All of these are required since you selected PAID payment type.', 422);
         }
 
+        // Deliberately not gated on $effectivePaymentType (unlike the checks around it) -- both
+        // values are only ever non-null when payment_data actually holds them, so this is a
+        // pure amount-vs-amount comparison regardless of payment type.
         if (
             $effectiveInPersonAmount && $effectiveAmount &&
             $effectiveInPersonAmount < $effectiveAmount

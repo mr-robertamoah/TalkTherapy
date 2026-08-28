@@ -613,6 +613,29 @@ local helpers a unique, file-scoped name up front rather than reusing an obvious
 
 ---
 
+## 2026-08-28 — SCRUM-132: user directed scope expansion; surfaced a High-severity live bug during review
+
+**Decision**: per explicit user direction, generalized the fix from the ticket's two named
+checks to all six checks in `EnsureTherapyDataIsValidAction` with the identical partial-update
+reachability bug (see PR #76 body for the full list). PR #76 merged before `reviewer`'s findings
+came back; addressed the one required change (missing test coverage for the paid+once+per check)
+and both suggestions as a small follow-up, PR #77, since the original branch/PR was already closed.
+
+`security-engineer`'s review of #76 surfaced a separate, High-severity, actively-occurring bug in
+`UpdateTherapyAction`/`UpdateGroupTherapyAction::setValueOnPaymentData()` (pre-existing, not
+introduced by SCRUM-132): any partial update omitting payment fields silently nulls out the
+entire `payment_data` JSON column for a PAID therapy/group-therapy, even though
+`EnsureTherapyDataIsValidAction` correctly validates the (never-persisted) effective state as
+consistent first. Confirmed via direct tinker reproduction against both actions. Filed as
+SCRUM-140 (Highest) and picked up immediately given the live-data-corruption impact, rather than
+just filing and moving to the next ticket.
+
+**Why**: this is a case where a subagent's finding, while outside the current PR's diff, was
+severe and immediately actionable enough (silently corrupts production pricing data on essentially
+any ordinary edit, no adversarial action needed) to warrant fixing right away rather than only
+logging a follow-up ticket for later -- consistent with CLAUDE.md's "never skip or silently ignore
+a finding" rule, weighted by how urgent this particular one is compared to the Low/Medium-severity
+follow-ups filed earlier in this sweep (SCRUM-137/138/139), which were correctly left for later.
 ## 2026-08-28 — SCRUM-129: paused for a genuine product decision, then extended scope on a related unambiguous bug
 
 **Decision**: `isNotUpdateable()`/`isNotDeleteable()`'s scoping bugs were fixed directly (unambiguous
