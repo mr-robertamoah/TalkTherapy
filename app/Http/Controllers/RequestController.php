@@ -18,6 +18,11 @@ class RequestController extends Controller
         );
     }
 
+    // Reads $request->route('requestId') rather than the magic ->requestId property --
+    // Illuminate\Http\Request::__get() prefers a same-named parsed-body/query key over the route
+    // parameter, so a client could otherwise accept/reject an arbitrary other pending request
+    // (org invites/applications, group-therapy membership, guardianship, counsellor affiliation)
+    // instead of the one the URL/UI shows (SCRUM-116/SCRUM-130/SCRUM-133).
     public function respond(Request $request)
     {
         try {
@@ -25,7 +30,7 @@ class RequestController extends Controller
                 RequestResponseDTO::new()->fromArray([
                     'user' => $request->user(),
                     'response' => $request->response,
-                    'request' => ModelsRequest::find($request->requestId),
+                    'request' => ModelsRequest::find($request->route('requestId')),
                 ])
             );
 

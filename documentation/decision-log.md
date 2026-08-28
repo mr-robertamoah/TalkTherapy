@@ -369,6 +369,61 @@ CLAUDE.md's process tiers.
 
 ---
 
+## 2026-08-27 — SCRUM-133: fixed PostController::getPost's session-stash too; skipped a second Link test
+
+**Decision**: fixed every site SCRUM-133 named across `CommentController`, `ContactController`,
+`HowToController`, `LinkController`, `PostController`, `RequestController`. Also fixed
+`PostController::getPost`, which the ticket flagged as ambiguous ("doesn't look up a Post model
+directly... check whether this one needs the same fix or is otherwise inert") -- it doesn't look
+up a model, but it does `session()->put('postId', $request->postId)`, which would stash a
+client-spoofed id (this is a GET route, so spoofable via query string) for whatever later reads
+`session('postId')` to act on -- same bug, same fix. One test per controller (6 total), except
+`LinkController` gets only one (`changeLinkStatus`) despite also having a second affected method
+(`performAction`, keyed by `uuid` not `linkId`) -- `performAction`'s authorization
+(`EnsureCanUseLinkAction`) has no admin-bypass and dispatches to type-specific side-effecting
+actions, making a second fixture meaningfully more expensive for a fix that's mechanically
+identical to `changeLinkStatus`'s, unlike SCRUM-130's `TherapyTopicController` case where the
+second site carried a distinct, ticket-text-contradicting risk.
+
+**Why**: `getPost`'s session-stash doesn't fit either of SCRUM-116/130's "clearly still vulnerable"
+or "clearly already safe" buckets as written, so it needed its own read of the code rather than
+guessing from the ticket's hedge -- confirmed vulnerable and fixed. Declining a second Link test
+follows the same per-controller (not per-method) acceptance criteria SCRUM-130 established, applied
+consistently: extra tests are worth their setup cost only when they cover meaningfully different
+risk, not merely a different route-param name for the identical one-line fix.
+
+---
+
+## 2026-08-27 — SCRUM-133: added the performAction test after all; corrected a false-alarm review finding; severity nuance on two sites
+
+**Decision**: both reviewer and security-engineer pushed back on skipping a second
+`LinkController` test for `performAction`, noting it has no admin bypass and its side effects
+(creating a guardianship, discussion participation, or counsellor affiliation) are more
+consequential than `changeLinkStatus`'s state toggle. Added it. Also corrected a security-engineer
+finding that flagged `UserController::deleteGuardianship`/`ReportController`/`TestimonialController`/
+`DiscussionController`/`CounsellorController` as still-unfixed instances of this bug: verified via
+`git show` that all five are already fixed on `bugfix/scrum-130-route-param-spoofing-more-controllers`
+(PR #70) -- the subagent reviewed this branch, which was cut from `develop` *before* PR #70 merged,
+so those files' pre-fix state on this specific branch is expected, not a new gap. No new ticket
+filed for this; PR #70 already covers it. Also incorporated security-engineer's severity nuance for
+two sites: `RequestController::respond`'s fix is real (a user could act on a *different one of
+their own* addressed items, not an arbitrary other user's -- `EnsureUserCanRespondToRequestAction`
+checks the resolved request's own `to`, so authorization is enforced on whichever record ends up
+in the DTO either way) but narrower than "arbitrary cross-user IDOR"; `PostController::getPost`'s
+fix is correct (its `session('postId')` is read by `HomeController::goHome`) but Posts have no
+access control anywhere in the app regardless, so this specific site is a confused-content bug,
+not a privacy escalation. Filed SCRUM-135 (Low) for two unrelated hygiene items security-engineer
+noticed in passing (apparently-unused `app/Http/Kernel.php`, missing unique constraint on
+`links.uuid`).
+
+**Why**: two independent subagents converging on the same "add this test anyway" conclusion,
+backed by a concrete structural difference (no admin bypass, more consequential side effects), is
+exactly the signal that should override an initial per-controller-is-enough judgment call. The
+"other controllers still vulnerable" finding needed verification, not acceptance at face value --
+same discipline as SCRUM-125's empirical-verification lesson -- and turned out to be explainable
+by branch topology rather than a real gap. Overstating a finding's severity is as much a
+verification failure as understating one; recording the corrected nuance keeps the PR/Jira trail
+accurate for whoever reads it later without re-deriving the same analysis.
 ## 2026-08-27 — SCRUM-127: fixed the same crash on group-therapy creation too, not just update
 
 **Decision**: widened `CreateTherapyDTO`'s `public`/`allowInPerson`/`anonymous` and
