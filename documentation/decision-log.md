@@ -985,3 +985,55 @@ goal, just an unexamined side effect of how that intent was phrased before the c
 in enough detail to see the tension. Logging this explicitly rather than silently deviating,
 consistent with this session's standing decision-log practice for any deviation from what a ticket
 literally says.
+
+---
+
+## 2026-08-28 — SCRUM-146 (TT-6.4c, 1/5): PR #84 review findings -- one fixed now, two deferred
+
+**Reviewer** (approved, no blocking issues) and **security-engineer** (no High/Critical; one
+Medium, one Low) both audited PR #84 before merge, per CLAUDE.md's mandatory review gate for
+anything touching compensation/money.
+
+**Fixed now**: security-engineer found that `RequestService::getRequests()` (the generic
+`/requests` list endpoint) renders every hit through `RequestResource`, not
+`GetRequestResourceAction`'s per-type dispatch -- and `RequestResource::getFrom()`/`getTo()`/`getFor()`
+assumed any non-`User` `from`/`to` was a `Counsellor`, with an unmatched `for_type` falling back to
+the same assumption. For the new `organizationCounsellorCompensationChange` type (`from` =
+`Organization`, `for` = `OrganizationCounsellor`), this throws an uncaught `BadMethodCallException`
+(`Organization`/`OrganizationCounsellor` have no `getName()`) -- meaning a counsellor with a
+pending compensation proposal would get a 500 just loading their normal requests list. Both
+reviewers noted this generic-resource gap already existed for the 5 pre-existing org-context types
+(`organization`, `organizationCounsellorInvite/Application`, `organizationMemberInvite/Application`
+-- all `from`/`for` an `Organization` too), but this PR is the first to route a live,
+routinely-triggered money negotiation through it. Rather than patch only the new type, fixed
+`RequestResource` comprehensively: added an `Organization::class` branch to `getFrom()`/`getTo()`/
+`getFor()`, and an `OrganizationCounsellor::class` branch to `getFor()` (rendering organization +
+counsellor mini-resources, not the full negotiation payload -- that's `OrganizationRequestResource`'s
+job for the two dispatch-aware call sites). This also silently fixes the same latent 500 for the 5
+pre-existing types, at no extra cost. Added a regression test exercising `RequestService::getRequests()`
+directly for a pending compensation proposal (`tests/Unit/OrganizationCounsellorCompensationTest.php`).
+Also applied reviewer's minor comment-staleness finding: `EnsureUserCanSetOrganizationCounsellorCompensationAction`'s
+comment claiming "no negotiation workflow yet" was rewritten, since SCRUM-146 is exactly that
+follow-up.
+
+**Deferred, not fixed**: both reviewers independently flagged the same TOCTOU race --
+`EnsureNoPendingOrganizationCounsellorCompensationRequestAction`'s check-then-create has no DB-level
+uniqueness backing it, so two concurrent proposal submissions could both pass the "no pending"
+check before either commits. Both agents confirmed this mirrors the *exact same* existing pattern
+in `EnsureNoPendingOrganizationCounsellorRequestAction`/`EnsureNoPendingOrganizationMemberRequestAction`
+-- consistent with established project risk tolerance, not a regression -- and is not exploitable
+today since a pending `Request` here is inert (no compensation row is written until accept). Not
+worth a schema/locking change scoped to this PR alone; flagged for SCRUM-147 (accept/reject) to
+address (a partial unique index or `lockForUpdate()`) since that ticket is what will need
+"at most one pending request per affiliation" to actually hold under concurrency once accept
+exists. Also left `config('organization.compensation_negotiation_max_rounds')` unused by this PR
+as-is (reviewer's low-severity suggestion to move it to SCRUM-148 where it's consumed) -- both
+tunables were added together deliberately during planning as a single config-driven-tunables
+decision, so splitting them back apart now would just be churn.
+
+**Why**: CLAUDE.md requires never silently ignoring a reviewer/security finding -- apply a fix, or
+explicitly flag why one is deferred with a follow-up. The Medium finding was fixed immediately
+since it's a live, easily-triggered usability break once real proposals exist (starting with this
+PR). The Low finding is a pre-existing, deliberate-risk-tolerance pattern shared by two sibling
+actions already in production, better addressed once, at the ticket that actually depends on the
+invariant holding, than patched in isolation here.

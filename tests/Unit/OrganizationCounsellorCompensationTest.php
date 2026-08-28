@@ -16,6 +16,7 @@ use App\Models\Request;
 use App\Models\User;
 use App\Notifications\OrganizationCounsellorCompensationChangeProposedNotification;
 use App\Services\OrganizationCounsellorCompensationService;
+use App\Services\RequestService;
 use Illuminate\Support\Facades\Notification;
 
 // SCRUM-146 (TT-6.4c): OrganizationCounsellorCompensationService::setCompensation() -- an org
@@ -418,6 +419,30 @@ test('a counsellor affiliated with a different organization cannot read this aff
             'organizationCounsellor' => $affiliationA,
         ])
     ))->toThrow(OrganizationException::class);
+});
+
+// Review finding (security-engineer, PR #84): RequestService::getRequests() renders every hit
+// through the generic RequestResource (not GetRequestResourceAction's per-type dispatch), which
+// previously assumed any non-User from/to was a Counsellor and any unmatched for_type fell back
+// to CounsellorMiniResource -- both wrong for this type's Organization from_type and
+// OrganizationCounsellor for_type, throwing a BadMethodCallException. Covers the counsellor
+// (`to`) side; the organization admin (`from`) side goes through the same getFrom()/getFor() code.
+test('a counsellor with a pending compensation proposal can load their requests list without error', function () {
+    [$affiliation, , $owner, $counsellor] = pendingAffiliation();
+
+    OrganizationCounsellorCompensationService::new()->proposeCompensationChange(
+        OrganizationCounsellorCompensationDTO::new()->fromArray([
+            'user' => $owner,
+            'organizationCounsellor' => $affiliation,
+            'type' => OrganizationCounsellorCompensationTypeEnum::free->value,
+        ])
+    );
+
+    $resources = RequestService::new()->getRequests('', $counsellor->user);
+
+    expect($resources->collection)->toHaveCount(1);
+    expect($resources->collection->first()->resource->type)
+        ->toBe(RequestTypeEnum::organizationCounsellorCompensationChange->value);
 });
 
 test('reading compensation history for a non-existent affiliation returns a clean error, not a crash', function () {
