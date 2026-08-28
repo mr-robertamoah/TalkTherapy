@@ -32,3 +32,25 @@ test('a partial update touching only an unrelated field leaves an existing PAID 
         'shareEqually' => false, 'sharePercentage' => 70,
     ]);
 });
+
+test('a partial update explicitly changing only sharePercentage leaves the other payment_data fields untouched', function () {
+    $groupTherapy = GroupTherapy::factory()->create([
+        'addedby_type' => User::class,
+        'addedby_id' => User::factory(),
+        'payment_type' => TherapyPaymentTypeEnum::paid->value,
+        'payment_data' => [
+            'per' => 'PER_THERAPY', 'amount' => 50, 'currency' => 'GHS', 'inPersonAmount' => 60,
+            'shareEqually' => false, 'sharePercentage' => 70,
+        ],
+    ]);
+
+    $updated = UpdateGroupTherapyAction::new()->execute(GroupTherapyDTO::new()->fromArray([
+        'groupTherapy' => $groupTherapy,
+        'sharePercentage' => 85,
+    ]));
+
+    expect($updated->payment_data)->toBe([
+        'per' => 'PER_THERAPY', 'amount' => 50, 'currency' => 'GHS', 'inPersonAmount' => 60,
+        'shareEqually' => false, 'sharePercentage' => 85,
+    ]);
+});
