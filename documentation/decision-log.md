@@ -366,3 +366,42 @@ user wants this fired autonomously once work reaches the relevant sections, not 
 time. Scoped to full-ceremony features (not blanket-applied to every bugfix) to avoid ceremony
 creep on small changes, per the same "match the weight to the work" principle as the rest of
 CLAUDE.md's process tiers.
+
+---
+
+## 2026-08-27 — SCRUM-127: fixed the same crash on group-therapy creation too, not just update
+
+**Decision**: widened `CreateTherapyDTO`'s `public`/`allowInPerson`/`anonymous` and
+`GroupTherapyDTO`'s `public`/`allowInPerson`/`anonymous`/`allowAnyone`/`shareEqually`/
+`counsellorIds` to nullable, per the ticket's ask. While auditing, found the identical crash was
+also reachable on group therapy *creation* (not just the update path the ticket described):
+`CreateGroupTherapyRequest` already allows `counsellorIds` to be omitted (`'nullable'`), and has
+no validation rule for `shareEqually` at all, so both could already reach `fromArray()` as `null`
+on a create request. Fixed both DTOs' properties in one pass rather than filing a separate ticket,
+since it's the exact same root cause and fix shape the ticket already asked to audit for
+("audit both DTOs fully for every non-nullable property... not just the two found so far").
+
+**Why**: the ticket's own text explicitly asked for a full audit, not just the two originally
+-reported properties -- finding and fixing the create-path instance of the same bug in the same
+PR is honoring that ask, not scope creep. `UpdateTherapyAction`/`UpdateGroupTherapyAction` and
+`SendTherapyAssistanceRequestAction` already had correct null-skip/null-guard logic in place for
+every one of these fields -- the bug was purely the DTO property type declarations, confirmed by
+reverting the fix and watching the new regression tests fail with the exact generic-500 message
+described in the ticket, then pass again once restored.
+
+---
+
+## 2026-08-27 — SCRUM-127: newly-reachable partial-update validation nuance filed as SCRUM-132, not fixed here
+
+**Decision**: reviewer and security-engineer both independently found that
+`EnsureTherapyDataIsValidAction`'s `payment_type == free` / `public` cross-field check reasons
+only about the current request's DTO values, not the record's persisted state -- previously
+unreachable for any partial update omitting a boolean field (it always crashed with a 500 first),
+now reachable since SCRUM-127 fixed that crash. Filed SCRUM-132 (Low) rather than expanding this
+PR, since it's a pre-existing validation-design gap this PR exposed, not one it introduced.
+
+**Why**: SCRUM-127 was scoped to "stop the crash," verified by both subagents to fail safe (the
+false-positive case rejects rather than silently corrupting state) with no privacy/authorization
+impact -- exactly the kind of newly-exposed-but-out-of-scope finding that gets its own ticket
+per the established pattern (SCRUM-127/128/129 themselves, SCRUM-130/131), not silent scope
+expansion into redesigning a validation action's partial-update semantics.
