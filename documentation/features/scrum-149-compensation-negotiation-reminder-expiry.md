@@ -32,6 +32,14 @@ reminder beforehand.
   request's `data` when auto-resolving it — absent for every manually-resolved request (accept or
   reject). Simple, explicit, and avoids any ambiguity a timestamp-comparison-based signal would
   have introduced.
+- **Post-merge hardening** (PR #87 merged before its security review finished; two High findings
+  fixed in a follow-up PR): both sweeps now lock and re-check `pending` immediately before writing
+  to each row (mirroring SCRUM-147/148's lock-then-recheck pattern), closing a TOCTOU window where
+  a concurrent accept/reject/counter-offer could be clobbered back to `rejected`. And a request
+  whose recipient no longer resolves (a soft-deleted counterparty, or an organization with no
+  admins) now resolves correctly with a logged warning instead of throwing and aborting every
+  other pending negotiation's processing for the rest of that day's sweep. See
+  `documentation/decision-log.md`.
 
 ## How to try it
 
@@ -59,16 +67,19 @@ this ticket lays down.
 
 ## Testing performed
 
-- New: `tests/Unit/OrganizationCounsellorCompensationReminderExpiryTest.php` (8 tests) — reminder
+- New: `tests/Unit/OrganizationCounsellorCompensationReminderExpiryTest.php` (13 tests) — reminder
   fires exactly once for a request within 2 days of expiry (re-running the sweep doesn't
   double-send); no reminder for a too-short window; no reminder while still more than 2 days out;
   expiry auto-rejects with no compensation row/affiliation change and the `resolvedBy` marker set;
   the same fairness guarantee on a renegotiation of an already-active affiliation with existing
   terms; a not-yet-expired request is left alone; an already-resolved request is untouched by
-  either sweep; every admin of an org is notified when it's the current recipient (constructed
-  directly, since this branch predates SCRUM-148's counter-offer action).
-- Full suite (on this branch, based on develop without SCRUM-148 merged yet): 586 passed. Pint
-  clean. Migration verified against the real dev MySQL database.
+  either sweep; every admin of an org is notified when it's the current recipient; running the
+  expiry sweep twice only resolves/notifies once; a request whose recipient no longer exists still
+  resolves without blocking an unaffected second request in the same sweep; a request addressed to
+  an admin-less organization still resolves without crashing; a malformed `expires_at`/`created_at`
+  pair never triggers a reminder; the original proposed terms survive expiry's `data` merge.
+- Full suite (final, with SCRUM-148 merged): 604 passed. Pint clean. Migration verified against
+  the real dev MySQL database.
 
 ## Files changed
 
