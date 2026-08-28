@@ -19,7 +19,10 @@ use App\Models\User;
 // One representative test per controller, using an admin actor wherever the target action has an
 // isAdmin() bypass, to keep fixture setup minimal and focused on proving the URL wins.
 
-function anAdmin(): User
+// Suffixed (not just anAdmin()) because Pest test files share one global PHP namespace --
+// RouteParamSpoofingBatch3Test.php independently declares its own identically-named helper,
+// and PHP fatals on redeclaring a top-level function once both files are loaded together.
+function anAdminForBatch2(): User
 {
     $admin = User::factory()->create();
     Administrator::factory()->create(['user_id' => $admin->id]);
@@ -53,7 +56,7 @@ test('DiscussionController::showChat applies to the URL\'s discussion, not a spo
 });
 
 test('MessageController::deleteMessage applies to the URL\'s message, not a spoofed messageId in the body', function () {
-    $admin = anAdmin();
+    $admin = anAdminForBatch2();
 
     Message::unguard();
     $ownedMessage = Message::factory()->create(['content' => 'Owned', 'from_type' => User::class, 'from_id' => $admin->id]);
@@ -74,7 +77,7 @@ test('MessageController::deleteMessage applies to the URL\'s message, not a spoo
 // the most error-prone site in the batch (easiest to get backwards or accidentally revert), so it
 // gets its own test rather than relying on deleteMessage's coverage above.
 test('MessageController::getTopicMessages applies to the URL\'s topic, not a spoofed topicId in the query', function () {
-    $admin = anAdmin();
+    $admin = anAdminForBatch2();
 
     $counsellorUser = User::factory()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
@@ -110,7 +113,7 @@ test('ReportController::getReport applies to the URL\'s report, not a spoofed re
 });
 
 test('TherapyTopicController::deleteTherapyTopic applies to the URL\'s topic, not a spoofed topicId in the body', function () {
-    $admin = anAdmin();
+    $admin = anAdminForBatch2();
     $counsellorUser = User::factory()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
     $ownedTopic = TherapyTopic::create(['name' => 'Owned', 'counsellor_id' => $counsellor->id]);
@@ -130,7 +133,7 @@ test('TherapyTopicController::deleteTherapyTopic applies to the URL\'s topic, no
 // already fixed -- gets its own test rather than relying on deleteTherapyTopic's topicId
 // coverage above, which never exercises the therapyId path.
 test('TherapyTopicController::getTherapyTopics applies to the URL\'s therapy, not a spoofed therapyId in the query', function () {
-    $admin = anAdmin();
+    $admin = anAdminForBatch2();
     $counsellorUser = User::factory()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
     $ownedTherapy = Therapy::factory()->create();
@@ -162,7 +165,7 @@ test('TherapyTopicController::getTherapyTopics applies to the URL\'s therapy, no
 });
 
 test('UserController::deleteGuardianship applies to the URL\'s guardianship, not a spoofed guardianshipId in the body', function () {
-    $admin = anAdmin();
+    $admin = anAdminForBatch2();
     $ownedGuardianship = Guardianship::create(['guardian_id' => User::factory()->create()->id, 'ward_id' => User::factory()->create()->id]);
     $unrelatedGuardianship = Guardianship::create(['guardian_id' => User::factory()->create()->id, 'ward_id' => User::factory()->create()->id]);
 
@@ -176,7 +179,7 @@ test('UserController::deleteGuardianship applies to the URL\'s guardianship, not
 });
 
 test('CounsellorController::updateCounsellor applies to the URL\'s counsellor, not a spoofed counsellorId in the body', function () {
-    $admin = anAdmin();
+    $admin = anAdminForBatch2();
     $ownedCounsellorUser = User::factory()->create();
     $ownedCounsellor = Counsellor::factory()->create(['user_id' => $ownedCounsellorUser->id, 'about' => 'Original']);
     $unrelatedCounsellorUser = User::factory()->create();
@@ -195,7 +198,7 @@ test('CounsellorController::updateCounsellor applies to the URL\'s counsellor, n
 });
 
 test('AdministratorController::getCounsellorStats applies to the URL\'s counsellor, not a spoofed counsellorId in the query', function () {
-    $admin = anAdmin();
+    $admin = anAdminForBatch2();
     $ownedCounsellor = Counsellor::factory()->create(['user_id' => User::factory()]);
     $unrelatedCounsellor = Counsellor::factory()->create(['user_id' => User::factory()]);
 
@@ -208,7 +211,7 @@ test('AdministratorController::getCounsellorStats applies to the URL\'s counsell
 });
 
 test('TestimonialController::deleteTestimonial applies to the URL\'s testimonial, not a spoofed testimonialId in the body', function () {
-    $admin = anAdmin();
+    $admin = anAdminForBatch2();
     $ownedTestimonial = Testimonial::create(['content' => 'Owned', 'use' => true]);
     $unrelatedTestimonial = Testimonial::create(['content' => 'Untouched', 'use' => true]);
 
