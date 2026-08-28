@@ -9,8 +9,10 @@ use App\Actions\Organization\EnsureUserCanSetOrganizationCounsellorCompensationA
 use App\Actions\Organization\EnsureUserCanViewOrganizationCounsellorCompensationsAction;
 use App\Actions\Organization\ProposeOrganizationCounsellorCompensationChangeAction;
 use App\DTOs\OrganizationCounsellorCompensationDTO;
+use App\Models\OrganizationCounsellor;
 use App\Models\Request;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Facades\DB;
 
 class OrganizationCounsellorCompensationService extends Service
 {
@@ -25,9 +27,18 @@ class OrganizationCounsellorCompensationService extends Service
 
         EnsureOrganizationCounsellorCompensationDataIsValidAction::new()->execute($dto);
 
-        EnsureNoPendingOrganizationCounsellorCompensationRequestAction::new()->execute($dto);
+        // SCRUM-147 review: EnsureNoPendingOrganizationCounsellorCompensationRequestAction's
+        // check-then-create was a TOCTOU race -- two concurrent proposals for the same
+        // affiliation could both pass the "no pending" check before either committed. Locking
+        // the affiliation row for the duration of the check+create serializes proposal creation
+        // per affiliation, so at most one pending request can ever exist for it at a time.
+        return DB::transaction(function () use ($dto) {
+            OrganizationCounsellor::query()->lockForUpdate()->findOrFail($dto->organizationCounsellor->id);
 
-        return ProposeOrganizationCounsellorCompensationChangeAction::new()->execute($dto);
+            EnsureNoPendingOrganizationCounsellorCompensationRequestAction::new()->execute($dto);
+
+            return ProposeOrganizationCounsellorCompensationChangeAction::new()->execute($dto);
+        });
     }
 
     public function getCompensations(OrganizationCounsellorCompensationDTO $dto): Collection
