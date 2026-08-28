@@ -45,3 +45,11 @@ Schedule::call(function () {
 Schedule::call(function () {
     AppService::new()->purgeExpiredSoftDeletedCounsellors();
 })->dailyAt('01:00');
+
+Schedule::call(function () {
+    AppService::new()->sendCompensationRequestExpiryReminders();
+})->dailyAt('02:00');
+
+Schedule::call(function () {
+    AppService::new()->expireStaleCompensationRequests();
+})->dailyAt('02:15');

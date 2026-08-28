@@ -1138,3 +1138,47 @@ here since one finding was a previously-deferred item this exact ticket was assi
 -- silently not doing it would have repeated, not resolved, the SCRUM-146 review's own reasoning.
 All three fixes are narrowly scoped to the actual failure mode found (no schema change, no new
 abstraction, no speculative validation added beyond what was demonstrated to be reachable).
+
+---
+
+## 2026-08-28 — SCRUM-149 (TT-6.4c, 4/5): built independently of the still-unmerged SCRUM-148, plus two implementation-level design calls
+
+**Branching decision**: SCRUM-149's own ticket text states "Does not depend on TT-6.4c (3/5) --
+expiry applies identically regardless of round/counter-offer state," and depends only on 1/5 and
+2/5, both already merged. Confirmed no file-level collision risk either (149 touches
+`AppService`/`routes/console.php`/two new notifications; 148's only new/changed files are its own
+counter-offer action, service method, and its own notification's generalization -- no overlap).
+Per CLAUDE.md's "work that's genuinely independent of the unmerged PR can still proceed without
+waiting" -- branched off fresh `develop` (which has 1/5+2/5 but not yet 3/5) rather than waiting
+for PR #86 to merge.
+
+**Design decision 1**: the ticket flagged needing "a lightweight, non-enum signal" so 5/5 can
+later distinguish a manually-rejected request from an auto-expired one, listing two candidate
+mechanisms and asking to "confirm the exact mechanism with a quick architect check before building
+5/5 against it." Rather than defer this choice, picked the explicit `data['resolvedBy'] = 'expiry'`
+marker (set only by `expireStaleCompensationRequests()`, never by manual accept/reject) over
+comparing the resolution timestamp against `expires_at` -- the latter is fragile (clock skew, or a
+manual reject landing coincidentally close to the boundary), while an explicit marker is
+unambiguous and trivial for 5/5 to read. This is a small, reversible, implementation-level choice
+well within ordinary engineering judgment, not a product/scope decision -- made directly rather
+than pausing the chain for a synchronous architect round-trip.
+
+**Design decision 2**: reminder "exactly once" is enforced with a new `reminder_sent_at` timestamp
+column + `whereNull()` guard, not by narrowing the daily sweep's time window alone. A pure
+day-arithmetic window (e.g. `expires_at BETWEEN now()+2days AND now()+3days`) would double-send if
+the scheduled job ever ran twice in a day, and silently skip a request entirely if the job missed
+a day -- a persistent flag is exactly-once regardless of how reliably the cron actually fires.
+
+**Also duplicated (not extracted)**: `AppService::notifyCompensationRequestRecipient()` -- "if `to`
+is an Organization, notify every admin; otherwise notify `to` directly" -- is a near-copy of
+`CounterOfferOrganizationCounsellorCompensationChangeAction::notifyNewRecipient()` from the
+still-unmerged SCRUM-148. Per this session's own reviewer guidance on SCRUM-146's PR ("a third
+copy would be a good trigger to extract a shared helper"), this is only the second occurrence, so
+duplicated rather than speculatively extracted across two branches that haven't even merged yet in
+either order. Worth consolidating (e.g. into a small shared action) if a third need for this same
+direction-aware-notify logic arises, most plausibly in SCRUM-150.
+
+**Why**: consistent with this session's standing practice of proceeding on genuinely independent
+work rather than serializing everything through a single PR queue, and of making small, reversible
+implementation-level judgment calls directly (logged here) rather than treating every open question
+in a ticket's text as a hard blocker requiring a synchronous check-in.

@@ -10,11 +10,12 @@ class Request extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['data', 'type', 'status', 'expires_at', 'round'];
+    protected $fillable = ['data', 'type', 'status', 'expires_at', 'round', 'reminder_sent_at'];
 
     protected $casts = [
         'data' => 'array',
         'expires_at' => 'datetime',
+        'reminder_sent_at' => 'datetime',
     ];
 
     public function from()

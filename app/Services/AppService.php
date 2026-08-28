@@ -3,6 +3,8 @@
 namespace App\Services;
 
 use App\Enums\DiscussionStatusEnum;
+use App\Enums\RequestStatusEnum;
+use App\Enums\RequestTypeEnum;
 use App\Enums\SessionStatusEnum;
 use App\Events\DiscussionStartedEvent;
 use App\Events\SessionStartedEvent;
@@ -10,13 +12,17 @@ use App\Models\Alert;
 use App\Models\Counsellor;
 use App\Models\Discussion;
 use App\Models\GroupTherapy;
+use App\Models\Organization;
 use App\Models\Report;
+use App\Models\Request;
 use App\Models\Session;
 use App\Models\Therapy;
 use App\Models\User;
 use App\Models\Visitor;
 use App\Notifications\DiscussionDueNotification;
 use App\Notifications\DiscussionFailedNotification;
+use App\Notifications\OrganizationCounsellorCompensationChangeExpiredNotification;
+use App\Notifications\OrganizationCounsellorCompensationChangeExpiryReminderNotification;
 use App\Notifications\QueueJobFailedNotification;
 use App\Notifications\ReportNotification;
 use App\Notifications\SessionDueNotification;
@@ -216,6 +222,79 @@ class AppService extends Service
             $discussion->status = DiscussionStatusEnum::failed->value;
             $discussion->save();
         });
+    }
+
+    // SCRUM-149 (TT-6.4c): sent once, ~2 days before a pending compensation-change request's
+    // expires_at -- reminder_sent_at (not day-arithmetic alone) makes this exactly-once
+    // regardless of how many times or how imprecisely this daily sweep actually runs.
+    public function sendCompensationRequestExpiryReminders()
+    {
+        Request::query()
+            ->whereType(RequestTypeEnum::organizationCounsellorCompensationChange->value)
+            ->wherePending()
+            ->whereNull('reminder_sent_at')
+            ->whereNotNull('expires_at')
+            ->where('expires_at', '>', now())
+            ->where('expires_at', '<=', now()->addDays(2))
+            ->get()
+            ->each(function (Request $request) {
+                // A same-day "2 days before" reminder for an offer whose whole window was under
+                // 3 days adds noise, not value -- the negotiation is already nearly resolved
+                // either way by the time this would fire.
+                if ($request->created_at->diffInDays($request->expires_at) < 3) {
+                    return;
+                }
+
+                $this->notifyCompensationRequestRecipient(
+                    $request,
+                    new OrganizationCounsellorCompensationChangeExpiryReminderNotification($request)
+                );
+
+                $request->update(['reminder_sent_at' => now()]);
+            });
+    }
+
+    // SCRUM-149 (TT-6.4c): silence is never a valid stalling strategy in either direction -- a
+    // pending negotiation past its expires_at auto-resolves to the existing `rejected` status
+    // (not a new enum case; functionally identical to a manual reject everywhere except copy),
+    // never touching the affiliation's status or existing terms (same fairness-critical
+    // guarantee as SCRUM-147's manual reject).
+    public function expireStaleCompensationRequests()
+    {
+        Request::query()
+            ->whereType(RequestTypeEnum::organizationCounsellorCompensationChange->value)
+            ->wherePending()
+            ->whereNotNull('expires_at')
+            ->where('expires_at', '<=', now())
+            ->get()
+            ->each(function (Request $request) {
+                $request->update([
+                    'status' => RequestStatusEnum::rejected->value,
+                    // SCRUM-150 will need to tell a manual reject apart from an expiry in its
+                    // read-only negotiation-state copy, without a new RequestStatusEnum case.
+                    'data' => array_merge($request->data, ['resolvedBy' => 'expiry']),
+                ]);
+
+                $this->notifyCompensationRequestRecipient(
+                    $request,
+                    new OrganizationCounsellorCompensationChangeExpiredNotification($request)
+                );
+            });
+    }
+
+    // Mirrors CounterOfferOrganizationCounsellorCompensationChangeAction's own notify helper
+    // (SCRUM-148, a separate not-yet-merged branch at the time this was written) -- `to`
+    // alternates between a Counsellor and the Organization itself, and Organization isn't
+    // Notifiable, so every one of its admins is notified individually.
+    private function notifyCompensationRequestRecipient(Request $request, $notification): void
+    {
+        if ($request->to instanceof Organization) {
+            Notification::send($request->to->admins, $notification);
+
+            return;
+        }
+
+        $request->to->notify($notification);
     }
 
     public function getStats()
