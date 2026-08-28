@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Discussion;
 use App\Models\Session;
 use App\Models\Therapy;
 use App\Models\User;
@@ -53,4 +54,27 @@ test('an unrelated ongoing session does not make a safely-scheduled session non-
 
     expect($safeSession->isNotDeleteable())->toBeFalse();
     expect($safeSession->isDeleteable())->toBeTrue();
+});
+
+test('an unrelated discussion that is about to start does not make a safely-scheduled discussion non-updateable', function () {
+    // isNotUpdateable() branches explicitly on Session::class vs Discussion::class -- covering
+    // both models, not just Session, since the two branches build genuinely separate queries.
+    $therapy = Therapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => User::factory()]);
+
+    $safeDiscussion = Discussion::factory()->create([
+        'for_type' => Therapy::class,
+        'for_id' => $therapy->id,
+        'start_time' => now()->addDays(3),
+        'end_time' => now()->addDays(3)->addHour(),
+    ]);
+
+    Discussion::factory()->create([
+        'for_type' => Therapy::class,
+        'for_id' => $therapy->id,
+        'start_time' => now()->addMinutes(10),
+        'end_time' => now()->addMinutes(70),
+    ]);
+
+    expect($safeDiscussion->isNotUpdateable())->toBeFalse();
+    expect($safeDiscussion->isUpdateable())->toBeTrue();
 });
