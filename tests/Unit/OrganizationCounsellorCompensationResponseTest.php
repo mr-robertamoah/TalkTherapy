@@ -212,6 +212,33 @@ test('a responded-to compensation request renders through OrganizationRequestRes
     expect($resource['status'])->toBe(RequestStatusEnum::accepted->value);
 });
 
+// Security review (SCRUM-150/PR #89): OrganizationRequestResource's proposedTerms previously
+// spread the raw Request.data payload, which also carries proposedById (an internal User id,
+// used only for set_by_id attribution on accept) -- leaking it to the counsellor via exactly
+// this respondToRequest() accept/reject path, the resource's real, live-traffic call site (not
+// merely a hypothetical one).
+test('accepting a proposal never exposes proposedById via the response resource', function () {
+    [$request, , , $owner, , $counsellorUser] = pendingCompensationProposal();
+
+    $resource = RequestService::new()->respondToRequest(
+        RequestResponseDTO::new()->fromArray([
+            'user' => $counsellorUser,
+            'request' => $request,
+            'response' => 'accepted',
+        ])
+    )->toArray(request());
+
+    expect($request->refresh()->data)->toHaveKey('proposedById');
+    expect($resource['proposedTerms'])->not->toHaveKey('proposedById');
+    expect($resource['proposedTerms'])->toBe([
+        'type' => 'FIXED',
+        'amount' => 5000,
+        'currency' => 'GHS',
+        'percentage' => null,
+        'basis' => null,
+    ]);
+});
+
 // Review finding (reviewer + security-engineer, PR #85): accepting silently attributed the
 // compensation row to a null set_by_id (or crashed with an unrelated PHP error) once the
 // proposing admin's account was gone -- must fail loudly and cleanly instead, without blocking

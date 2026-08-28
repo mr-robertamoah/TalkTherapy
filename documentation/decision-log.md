@@ -1317,10 +1317,20 @@ reviewer-found scenario, plus strengthened an existing test to actually re-call
 internal `User.id`, added by the propose/counter-offer actions purely for `set_by_id` attribution
 on accept -- never meant for display) straight to the other negotiating party. Fixed with an
 explicit field whitelist (`type`/`amount`/`currency`/`percentage`/`basis`) instead of spreading
-`$this->data` wholesale. The identical latent pattern already exists in the pre-existing
-`OrganizationRequestResource` (currently not exploitable there, since that resource is only ever
-returned to the actor who just performed a write, never to the counterparty) -- filed as SCRUM-152
-rather than fixed here, since fixing a second, differently-scoped resource wasn't this PR's job.
+`$this->data` wholesale.
+
+**Correction, made during re-review of this same fix**: this entry originally claimed the
+identical pattern in `OrganizationRequestResource` was "not currently exploitable... only ever
+returned to the actor who just performed a write, never to the counterparty," and deferred it to
+SCRUM-152 on that basis. That claim was wrong -- both `reviewer` and `security-engineer`
+independently traced and empirically confirmed that `OrganizationRequestResource` is *also*
+returned via `RequestService::respondToRequest()`'s accept/reject path, which is answered by
+`$request->to` (the counterparty), not the proposer. An existing test already exercised this exact
+call chain without ever asserting on `proposedTerms`, so the leak passed silently. This was a
+live leak in already-merged code, not a dormant pattern safe to schedule as routine backlog.
+Fixed immediately in the same commit rather than left deferred, applying the identical whitelist,
+with a new regression test exercised through `respondToRequest()` specifically (not just direct
+resource instantiation) so the actual leaking call path is what's under test.
 
 **Fixed (required, not just suggested): duplicated `partyResource()` type-switch.** The new
 resource copied `OrganizationRequestResource::partyResource()`'s Organization/Counsellor/User
@@ -1338,5 +1348,8 @@ existing `->with('setBy')` convention.
 **Why**: the round-ordering bug is a genuine functional defect in the ticket's core deliverable,
 not a style nit -- fixed immediately per CLAUDE.md's "never silently ignore a reviewer finding."
 The `proposedById` leak is a real trust-boundary crossing (an internal identifier reaching the
-other negotiating party for the first time via any read path), fixed narrowly in the new code and
-tracked as a follow-up where fixing now would have been out of this PR's scope.
+other negotiating party), and once shown to be live rather than latent, fixing it immediately
+rather than leaving a known, already-exploitable leak sitting in the backlog was the only
+defensible call -- consistent with this session's standing discipline of re-verifying a claim
+(including one made minutes earlier in this same log) before relying on it, rather than assuming
+a written rationale is correct just because it was already recorded.

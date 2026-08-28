@@ -38,7 +38,22 @@ class OrganizationRequestResource extends JsonResource
             ),
             // SCRUM-146 (TT-6.4c): only meaningful for the compensation-change type -- every
             // other type in this resource has no proposal terms/expiry/round to show.
-            'proposedTerms' => $this->when($this->type === RequestTypeEnum::organizationCounsellorCompensationChange->value, $this->data),
+            // Security review (SCRUM-150/PR #89): explicitly whitelisted, not a raw spread of
+            // `data` -- that column also carries `proposedById` (an internal User id, used only
+            // for set_by_id attribution on accept), which must never reach either negotiating
+            // party. This resource is returned to the counterparty via respondToRequest()'s
+            // accept/reject path, not only to the actor who proposed -- the leak was live, not
+            // merely latent (see documentation/decision-log.md).
+            'proposedTerms' => $this->when(
+                $this->type === RequestTypeEnum::organizationCounsellorCompensationChange->value,
+                fn () => [
+                    'type' => $this->data['type'] ?? null,
+                    'amount' => $this->data['amount'] ?? null,
+                    'currency' => $this->data['currency'] ?? null,
+                    'percentage' => $this->data['percentage'] ?? null,
+                    'basis' => $this->data['basis'] ?? null,
+                ]
+            ),
             'expiresAt' => $this->when(! is_null($this->expires_at), fn () => $this->expires_at?->diffForHumans()),
             'round' => $this->when(! is_null($this->round), $this->round),
             'createdAt' => $this->created_at->diffForHumans(),
