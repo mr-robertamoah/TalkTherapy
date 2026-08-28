@@ -45,6 +45,8 @@ class HowToController extends Controller
         }
     }
 
+    // Reads $request->route('howToId') rather than the magic ->howToId property -- see the
+    // identical fix/rationale in SessionController (SCRUM-116/SCRUM-130/SCRUM-133).
     public function updateHowTo(Request $request)
     {
         try {
@@ -54,7 +56,7 @@ class HowToController extends Controller
                     'name' => $request->name,
                     'description' => $request->description,
                     'page' => $request->page,
-                    'howTo' => HowTo::find($request->howToId),
+                    'howTo' => HowTo::find($request->route('howToId')),
                     'howToSteps' => $request->howToSteps ?? [],
                     'addedHowToSteps' => $request->addedSteps ?? [],
                     'deletedHowToSteps' => $request->deletedSteps ?? [],
@@ -74,7 +76,7 @@ class HowToController extends Controller
             HowToService::new()->deleteHowTo(
                 CreateHowToDTO::new()->fromArray([
                     'user' => $request->user(),
-                    'howTo' => $howTo = HowTo::find($request->howToId),
+                    'howTo' => $howTo = HowTo::find($request->route('howToId')),
                 ])
             );
 

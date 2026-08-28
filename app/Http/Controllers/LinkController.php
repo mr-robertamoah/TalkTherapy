@@ -54,13 +54,15 @@ class LinkController extends Controller
         }
     }
 
+    // Reads $request->route('linkId'/'uuid') rather than the magic ->linkId/->uuid properties --
+    // see the identical fix/rationale in SessionController (SCRUM-116/SCRUM-130/SCRUM-133).
     public function changeLinkStatus(Request $request)
     {
         try {
             $link = LinkService::new()->changeLinkStatus(
                 CreateLinkDTO::new()->fromArray([
                     'user' => $request->user(),
-                    'link' => Link::find($request->linkId),
+                    'link' => Link::find($request->route('linkId')),
                 ])
             );
 
@@ -96,7 +98,7 @@ class LinkController extends Controller
             LinkService::new()->deleteLink(
                 CreateLinkDTO::new()->fromArray([
                     'user' => $request->user(),
-                    'link' => $link = Link::find($request->linkId),
+                    'link' => $link = Link::find($request->route('linkId')),
                 ])
             );
 
@@ -112,7 +114,7 @@ class LinkController extends Controller
             return LinkService::new()->performAction(
                 CreateLinkDTO::new()->fromArray([
                     'user' => $request->user(),
-                    'link' => Link::where('uuid', $request->uuid)->first(),
+                    'link' => Link::where('uuid', $request->route('uuid'))->first(),
                 ])
             );
         } catch (Throwable $th) {

@@ -31,13 +31,15 @@ class CommentController extends Controller
         }
     }
 
+    // Reads $request->route('commentId') rather than the magic ->commentId property -- see the
+    // identical fix/rationale in SessionController (SCRUM-116/SCRUM-130/SCRUM-133).
     public function deleteComment(Request $request)
     {
         try {
             CommentService::new()->deleteComment(
                 CreateCommentDTO::new()->fromArray([
                     'user' => $request->user(),
-                    'comment' => $comment = Comment::find($request->commentId),
+                    'comment' => $comment = Comment::find($request->route('commentId')),
                 ])
             );
 
