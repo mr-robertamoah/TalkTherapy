@@ -2,8 +2,11 @@
 
 namespace App\Providers;
 
+use App\Listeners\FailHealthCheckOnPendingMigrations;
 use App\Services\AppService;
+use Illuminate\Foundation\Events\DiagnosingHealth;
 use Illuminate\Queue\Events\JobFailed;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\ServiceProvider;
 
@@ -28,5 +31,9 @@ class AppServiceProvider extends ServiceProvider
         Queue::failing(function (JobFailed $jobFailed) {
             AppService::new()->alertAdminsOfFailedJob($jobFailed);
         });
+
+        // SCRUM-109: makes the /up health check (configured in bootstrap/app.php) visibly fail
+        // if the deploy pipeline's `migrate --force` step was ever skipped or failed silently.
+        Event::listen(DiagnosingHealth::class, FailHealthCheckOnPendingMigrations::class);
     }
 }
