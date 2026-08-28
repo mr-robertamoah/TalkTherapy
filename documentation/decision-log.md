@@ -1265,3 +1265,57 @@ intentional safeguard -- fixed immediately rather than relying on that accident 
 The Low finding is explicitly, already the scope of a specific upcoming ticket in this same
 5-part sequence, so re-filing it as a new follow-up would just create a duplicate to reconcile
 later.
+
+---
+
+## 2026-08-28 — SCRUM-149 (TT-6.4c, 4/5): post-merge security findings fixed via a follow-up PR
+
+PR #87 was merged before its `reviewer`/`security-engineer` passes finished (a user "merged both"
+instruction landed while they were still running against the already-open PRs). `reviewer`
+approved with no required changes. `security-engineer` found two **High** issues on the
+now-merged code -- both fixed immediately in a new PR (`bugfix/scrum-149-reminder-expiry-race-safety`)
+rather than left outstanding, since merged status doesn't change CLAUDE.md's "never silently drop
+a finding" rule, it only changes the mechanism (a follow-up PR/commit instead of amending the
+original one).
+
+**Fixed: TOCTOU race between the sweep's batch SELECT and its per-row UPDATE.** Unlike
+`RespondToOrganizationCounsellorCompensationRequestAction`/`CounterOfferOrganizationCounsellorCompensationChangeAction`
+(both lock-then-recheck-then-write), `sendCompensationRequestExpiryReminders()`/
+`expireStaleCompensationRequests()` fetched a batch of pending requests, then unconditionally
+`update()`d each one -- a concurrent accept/reject/counter-offer landing in that window could be
+silently clobbered back to `rejected` with a false `resolvedBy: 'expiry'` audit trail, even though
+compensation terms had already been legitimately accepted. Fixed by wrapping each row's actual
+write in `DB::transaction(fn () => Request::query()->lockForUpdate()->findOrFail(...))` followed
+by a fresh `status !== pending` recheck, mirroring the sibling actions exactly. Same acknowledged
+limitation as those siblings: the fix's correctness rests on documented MySQL InnoDB `SELECT ...
+FOR UPDATE` behavior and isn't directly exercisable by an automated test against sqlite -- verified
+instead via an idempotency test (running either sweep twice back to back only resolves/notifies
+once).
+
+**Fixed: an unresolvable recipient (or an admin-less organization) could abort the entire daily
+sweep for every other pending negotiation.** `notifyCompensationRequestRecipient()` called
+`$request->to->notify(...)` with no null guard -- if the counterparty had been soft-deleted while
+a negotiation was still pending (a real, already-supported lifecycle:
+`purgeExpiredSoftDeletedCounsellors()` runs in this exact same file), `to` resolves to `null` and
+the resulting fatal error, uncaught, would abort `Collection::each()` partway through, silently
+starving every other pending affiliation's reminder/expiry that day -- indefinitely, since nothing
+would ever retry it. Fixed two ways: (1) `notifyCompensationRequestRecipient()` now checks for a
+null `to` or an empty admins collection and logs a warning instead of throwing, so a request
+still correctly resolves even when nobody can be notified; (2) each row's processing is now also
+wrapped in its own `try/catch` with `Log::error()`, so even an unanticipated failure mode can
+never take down the rest of the batch. Verified with a test asserting an unaffected second
+request in the same sweep still resolves correctly when the first one's recipient is gone.
+
+**Not separately fixed (already covered by the above)**: the Medium "empty admins" and Low
+"malformed `expires_at`/`created_at`" findings were folded into the same two fixes above (the null
+guard covers admin-less orgs too; an explicit `expires_at <= created_at` check was added alongside
+the existing window-size guard) rather than treated as separate follow-ups, since they're the same
+class of defensive-guard gap. The Info-level "extract a shared notify helper" and "move magic
+numbers to config" suggestions remain deliberately unaddressed -- both were explicitly optional
+polish, not required changes, in `reviewer`'s own verdict.
+
+**Why**: two High findings on code already live in `develop` are not optional to defer just
+because the merge already happened -- the fix mechanism changes (new commit/PR instead of
+amending #87), not the obligation to fix. Both fixes are narrowly scoped to the actual failure
+modes found, matching this session's established lock-then-recheck and per-row-isolation patterns
+already proven out in SCRUM-147/148, rather than introducing new abstractions.
