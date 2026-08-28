@@ -1171,3 +1171,56 @@ parallel, type-specific mechanisms -- a counter-offer is fundamentally "another 
 reverse direction," not a conceptually new capability, so it should look exactly like the
 original proposal wherever the two are actually the same operation from the recipient's point of
 view.
+
+---
+
+## 2026-08-28 — SCRUM-148 (TT-6.4c, 3/5): PR #86 review findings -- one High fixed, one Low deferred to its own already-planned ticket
+
+**Reviewer** approved with no required changes. **security-engineer** found one High and one Low.
+
+**Fixed: missing request-type guard on the counter-offer path.**
+Reusing `EnsureUserCanRespondToRequestAction` for counter-offer authorization (this ticket's own
+"no new authorization action needed" finding, mirroring SCRUM-147) came with a gap that finding
+didn't surface: that action only checks *who* the `to`-party is, never the request's `type`. For
+accept/reject this is safe because `RespondToRequestAction` dispatches strictly by
+`$request->type` via an explicit `if` chain -- an unmatched type is a no-op. But
+`OrganizationCounsellorCompensationController::counterOffer()`'s route
+(`POST /requests/{requestId}/compensation-counter-offer`) has no equivalent per-type dispatch: it
+resolves any `Request` by id and hands it straight to `counterOffer()`. Without a type check, a
+user legitimately `to` on *any* other pending request (a group-therapy invite, a guardianship
+request, an org invite/application, ...) could have it force-rejected and mutated as if it were a
+compensation negotiation. In the current codebase this happened to fail safely -- `for` on every
+other request type isn't an `OrganizationCounsellor`, so `notifyNewRecipient()`'s
+`$organizationCounsellor->organization` access throws, rolling back the whole transaction
+(including the wrongful `status = rejected` write) -- but that's an accident of the current model
+graph, not a designed safeguard, and would silently become a real cross-feature data-integrity bug
+the moment any future change makes that access more defensive or another type ever reuses
+`OrganizationCounsellor` as `for`.
+
+Fixed by checking `$dto->request->type !== RequestTypeEnum::organizationCounsellorCompensationChange->value`
+in `OrganizationCounsellorCompensationService::counterOffer()`, immediately after the existence
+check and before authorization, throwing the exact same `RequestNotFoundException`/message
+`EnsureRequestExistsAction` already uses -- a wrong-type request is indistinguishable from a
+non-existent one to whoever's asking, consistent with this codebase's established anti-enumeration
+pattern (SCRUM-120's "same generic message either way"). Added a regression test constructing an
+unrelated pending request type addressed to the same user and confirming it's rejected and left
+completely untouched.
+
+**Deferred (not a new gap -- this is precisely what the next sub-ticket already exists to do):**
+`expires_at`/`expiryDays` is stored on every round but nothing anywhere (accept, reject, or this
+ticket's counter-offer) actually checks it against `now()`, and no scheduled job auto-expires
+stale pending negotiations. This isn't a SCRUM-148-introduced gap -- SCRUM-149 ("TT-6.4c 4/5:
+Compensation-change reminder + expiry") is specifically the ticket already filed to build exactly
+this enforcement. No new follow-up ticket needed; noting it here only so it isn't mistaken for an
+oversight in this PR.
+
+Also applied reviewer's two minor, non-blocking suggestions: type-hinted
+`notifyNewRecipient()`'s second parameter as `OrganizationCounsellor`, and added a test covering
+`expiryDays` override on the counter-offer path (previously only tested on propose).
+
+**Why**: CLAUDE.md requires never silently dropping a reviewer/security finding. The High finding
+was a genuine authorization/type-integrity gap masked by incidental failure behavior, not an
+intentional safeguard -- fixed immediately rather than relying on that accident to keep holding.
+The Low finding is explicitly, already the scope of a specific upcoming ticket in this same
+5-part sequence, so re-filing it as a new follow-up would just create a duplicate to reconcile
+later.

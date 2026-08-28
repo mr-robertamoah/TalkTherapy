@@ -37,6 +37,13 @@ separate reason-field or mediation-escalation path, per the original product dec
 - The "one pending request per affiliation" invariant (SCRUM-146/147) holds across an arbitrarily
   long counter-offer chain, since the counter-offer action always resolves the current request in
   the same transaction it creates the next one — verified by test, not just by construction.
+- **Guards the request's type before touching it.** `EnsureUserCanRespondToRequestAction` (reused
+  for authorization) only checks the `to`-party, not the request's type — and unlike accept/reject
+  (only reachable via `RespondToRequestAction`'s own per-type dispatch), the counter-offer route
+  takes a bare `requestId` with no equivalent filtering. `counterOffer()` explicitly rejects any
+  request whose type isn't `organizationCounsellorCompensationChange` before doing anything else,
+  so a user legitimately `to` on an unrelated pending request can't have it mutated by this
+  endpoint. Found in PR #86 review; see `documentation/decision-log.md`.
 
 ## How to try it
 
@@ -67,15 +74,17 @@ Reminder/expiry sweep (SCRUM-149), org-admin negotiation-state read API (SCRUM-1
 
 ## Testing performed
 
-- New: `tests/Unit/OrganizationCounsellorCompensationCounterOfferTest.php` (11 tests) — basic
+- New: `tests/Unit/OrganizationCounsellorCompensationCounterOfferTest.php` (13 tests) — basic
   counter-offer creates the reverse-direction request correctly; the one-pending-invariant holds
   across a counter; a multi-round chain (propose → counter → counter) correctly attributes the
   eventual accepted compensation row to whoever proposed the *last* round, not whoever proposed
   first or whoever clicked accept; the round cap (config-driven, tested via a config override, not
   the real default) blocks a further counter but not accept/reject; authorization (outsider,
   proposer-cannot-counter-own-proposal); countering an already-resolved request; invalid terms;
-  a non-existent request; every admin of the org (not just the one who proposed) can be notified.
-- Full suite: 589 passed (up from 578). Pint clean.
+  a non-existent request; every admin of the org (not just the one who proposed) can be notified;
+  counter-offering a pending request of an unrelated type is rejected and leaves it untouched;
+  `expiryDays` override on the counter-offer path.
+- Full suite: 591 passed (up from 578). Pint clean.
 
 ## Files changed
 

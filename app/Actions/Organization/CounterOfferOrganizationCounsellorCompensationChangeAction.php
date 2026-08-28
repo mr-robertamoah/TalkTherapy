@@ -10,6 +10,7 @@ use App\Enums\RequestStatusEnum;
 use App\Enums\RequestTypeEnum;
 use App\Exceptions\OrganizationException;
 use App\Models\Organization;
+use App\Models\OrganizationCounsellor;
 use App\Models\Request;
 use App\Notifications\OrganizationCounsellorCompensationChangeProposedNotification;
 use Illuminate\Support\Facades\DB;
@@ -71,7 +72,7 @@ class CounterOfferOrganizationCounsellorCompensationChangeAction extends Action
     // The new recipient (`to`) alternates between a Counsellor (the org's turn) and the
     // Organization itself (the counsellor's turn) -- Organization isn't Notifiable, so every one
     // of its admins is notified individually instead of a single notify() call.
-    private function notifyNewRecipient(Request $counterOffer, $organizationCounsellor): void
+    private function notifyNewRecipient(Request $counterOffer, OrganizationCounsellor $organizationCounsellor): void
     {
         $notification = new OrganizationCounsellorCompensationChangeProposedNotification(
             $organizationCounsellor->organization,

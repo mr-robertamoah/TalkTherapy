@@ -273,3 +273,46 @@ test('an org admin can counter-offer on the counsellor turn and any admin of the
 
     Notification::assertSentTo($secondAdmin, OrganizationCounsellorCompensationChangeProposedNotification::class);
 });
+
+// Security finding (PR #86): EnsureUserCanRespondToRequestAction only checks the `to`-party, not
+// the request's type -- this endpoint (unlike accept/reject, which is only reached via
+// RespondToRequestAction's own per-type dispatch) is hit directly by requestId with nothing else
+// scoping it to compensation-change requests. Without an explicit type guard, a user legitimately
+// `to` on some unrelated pending request could have it force-rejected and mutated as if it were a
+// compensation negotiation.
+test('counter-offering a pending request of a different type is rejected and leaves it untouched', function () {
+    [, , , , , $counsellorUser] = pendingCompensationNegotiation();
+
+    $unrelatedRequest = Request::factory()->create([
+        'type' => RequestTypeEnum::guardianship->value,
+        'status' => RequestStatusEnum::pending->value,
+        'data' => [],
+        'to_type' => User::class,
+        'to_id' => $counsellorUser->id,
+    ]);
+
+    expect(fn () => OrganizationCounsellorCompensationService::new()->counterOffer(
+        OrganizationCounsellorCompensationDTO::new()->fromArray([
+            'user' => $counsellorUser,
+            'request' => $unrelatedRequest,
+            'type' => OrganizationCounsellorCompensationTypeEnum::free->value,
+        ])
+    ))->toThrow(RequestNotFoundException::class);
+
+    expect($unrelatedRequest->refresh()->status)->toBe(RequestStatusEnum::pending->value);
+});
+
+test('a counter-offer can override the default negotiation expiry', function () {
+    [$request, , , , , $counsellorUser] = pendingCompensationNegotiation();
+
+    $counterOffer = OrganizationCounsellorCompensationService::new()->counterOffer(
+        OrganizationCounsellorCompensationDTO::new()->fromArray([
+            'user' => $counsellorUser,
+            'request' => $request,
+            'type' => OrganizationCounsellorCompensationTypeEnum::free->value,
+            'expiryDays' => 14,
+        ])
+    );
+
+    expect(now()->addDays(14)->diffInMinutes($counterOffer->expires_at, true))->toBeLessThan(1);
+});
