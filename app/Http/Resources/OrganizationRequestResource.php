@@ -3,10 +3,8 @@
 namespace App\Http\Resources;
 
 use App\Enums\RequestTypeEnum;
-use App\Models\Counsellor;
-use App\Models\Organization;
+use App\Http\Resources\Concerns\ResolvesOrganizationOrCounsellorParty;
 use App\Models\OrganizationCounsellor;
-use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -17,6 +15,8 @@ use Illuminate\Http\Resources\Json\JsonResource;
 // a Counsellor).
 class OrganizationRequestResource extends JsonResource
 {
+    use ResolvesOrganizationOrCounsellorParty;
+
     /**
      * Transform the resource into an array.
      *
@@ -43,22 +43,5 @@ class OrganizationRequestResource extends JsonResource
             'round' => $this->when(! is_null($this->round), $this->round),
             'createdAt' => $this->created_at->diffForHumans(),
         ];
-    }
-
-    private function partyResource(?string $type, $model)
-    {
-        if ($type === Organization::class) {
-            return new OrganizationMiniResource($model);
-        }
-
-        if ($type === Counsellor::class) {
-            return new CounsellorMiniResource($model);
-        }
-
-        if ($type === User::class) {
-            return new UserMiniResource($model);
-        }
-
-        return null;
     }
 }

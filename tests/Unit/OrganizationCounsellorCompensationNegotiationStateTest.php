@@ -190,14 +190,115 @@ test('an accepted negotiation is reported as resolved, with a fresh proposal alw
 
     expect($state->status)->toBe(RequestStatusEnum::accepted->value);
 
-    // Nothing pending -- a fresh proposal is always allowed after a resolved negotiation.
-    expect(fn () => OrganizationCounsellorCompensationService::new()->proposeCompensationChange(
+    // Nothing pending -- a fresh proposal is always allowed after a resolved negotiation, and
+    // the state read must reflect it as the new current negotiation, not the accepted one.
+    $newRequest = OrganizationCounsellorCompensationService::new()->proposeCompensationChange(
         OrganizationCounsellorCompensationDTO::new()->fromArray([
             'user' => $owner,
             'organizationCounsellor' => $affiliation,
             'type' => OrganizationCounsellorCompensationTypeEnum::free->value,
         ])
-    ))->not->toThrow(OrganizationException::class);
+    );
+
+    $newState = OrganizationCounsellorCompensationService::new()->getNegotiationState(
+        OrganizationCounsellorCompensationDTO::new()->fromArray([
+            'user' => $owner,
+            'organizationCounsellor' => $affiliation,
+        ])
+    );
+
+    expect($newState->id)->toBe($newRequest->id);
+    expect($newState->status)->toBe(RequestStatusEnum::pending->value);
+});
+
+// Review fix (PR #89): `round` only increases within one negotiation chain -- a chain that
+// reached round 2 via a counter-offer before resolving must not shadow a genuinely newer chain
+// that restarted at round 1. Ordering must be by recency (id), not round.
+test('a new negotiation chain is reported as current even though an earlier resolved chain reached a higher round', function () {
+    [$affiliation, , $owner, , $counsellorUser] = affiliationForNegotiationState();
+
+    $firstChainRound1 = OrganizationCounsellorCompensationService::new()->proposeCompensationChange(
+        OrganizationCounsellorCompensationDTO::new()->fromArray([
+            'user' => $owner,
+            'organizationCounsellor' => $affiliation,
+            'type' => OrganizationCounsellorCompensationTypeEnum::fixed->value,
+            'amount' => 5000,
+            'currency' => 'GHS',
+        ])
+    );
+    $firstChainRound2 = OrganizationCounsellorCompensationService::new()->counterOffer(
+        OrganizationCounsellorCompensationDTO::new()->fromArray([
+            'user' => $counsellorUser,
+            'request' => $firstChainRound1,
+            'type' => OrganizationCounsellorCompensationTypeEnum::fixed->value,
+            'amount' => 7500,
+            'currency' => 'GHS',
+        ])
+    );
+    RequestService::new()->respondToRequest(
+        RequestResponseDTO::new()->fromArray([
+            'user' => $owner,
+            'request' => $firstChainRound2,
+            'response' => 'rejected',
+        ])
+    );
+
+    $secondChainRound1 = OrganizationCounsellorCompensationService::new()->proposeCompensationChange(
+        OrganizationCounsellorCompensationDTO::new()->fromArray([
+            'user' => $owner,
+            'organizationCounsellor' => $affiliation,
+            'type' => OrganizationCounsellorCompensationTypeEnum::free->value,
+        ])
+    );
+
+    $state = OrganizationCounsellorCompensationService::new()->getNegotiationState(
+        OrganizationCounsellorCompensationDTO::new()->fromArray([
+            'user' => $owner,
+            'organizationCounsellor' => $affiliation,
+        ])
+    );
+
+    expect($state->id)->toBe($secondChainRound1->id);
+    expect($state->status)->toBe(RequestStatusEnum::pending->value);
+    expect($state->round)->toBe(1);
+});
+
+// Security review (PR #89): proposedTerms must be an explicit whitelist, never a raw spread of
+// Request.data -- that column also carries proposedById (an internal User id, used only for
+// set_by_id attribution on accept), which must never reach either negotiating party.
+test('proposedTerms never exposes proposedById or any other internal bookkeeping field', function () {
+    [$affiliation, , $owner] = affiliationForNegotiationState();
+
+    OrganizationCounsellorCompensationService::new()->proposeCompensationChange(
+        OrganizationCounsellorCompensationDTO::new()->fromArray([
+            'user' => $owner,
+            'organizationCounsellor' => $affiliation,
+            'type' => OrganizationCounsellorCompensationTypeEnum::fixed->value,
+            'amount' => 5000,
+            'currency' => 'GHS',
+        ])
+    );
+
+    $state = OrganizationCounsellorCompensationService::new()->getNegotiationState(
+        OrganizationCounsellorCompensationDTO::new()->fromArray([
+            'user' => $owner,
+            'organizationCounsellor' => $affiliation,
+        ])
+    );
+
+    // Confirm the underlying row really does carry proposedById (i.e. this test would fail if
+    // the whitelist were ever removed), then confirm the rendered resource never exposes it.
+    expect($state->data)->toHaveKey('proposedById');
+
+    $resource = json_decode(json_encode(new OrganizationCounsellorCompensationNegotiationStateResource($state)), true);
+    expect($resource['proposedTerms'])->not->toHaveKey('proposedById');
+    expect($resource['proposedTerms'])->toBe([
+        'type' => 'FIXED',
+        'amount' => 5000,
+        'currency' => 'GHS',
+        'percentage' => null,
+        'basis' => null,
+    ]);
 });
 
 test('the affiliated counsellor can also view the negotiation state', function () {

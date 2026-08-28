@@ -3,8 +3,7 @@
 namespace App\Http\Resources;
 
 use App\Enums\RequestStatusEnum;
-use App\Models\Counsellor;
-use App\Models\Organization;
+use App\Http\Resources\Concerns\ResolvesOrganizationOrCounsellorParty;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -13,6 +12,8 @@ use Illuminate\Http\Resources\Json\JsonResource;
 // accepted-terms history (SCRUM-123), which this never touches.
 class OrganizationCounsellorCompensationNegotiationStateResource extends JsonResource
 {
+    use ResolvesOrganizationOrCounsellorParty;
+
     /**
      * @return array<string, mixed>
      */
@@ -28,7 +29,16 @@ class OrganizationCounsellorCompensationNegotiationStateResource extends JsonRes
             'round' => $this->round,
             'from' => $this->partyResource($this->from_type, $this->from),
             'to' => $this->partyResource($this->to_type, $this->to),
-            'proposedTerms' => $this->data,
+            // Security review (PR #89): whitelisted, not a raw spread of `data` -- that column
+            // also carries `proposedById` (an internal User id, used only for
+            // set_by_id attribution on accept), which must never reach either negotiating party.
+            'proposedTerms' => [
+                'type' => $this->data['type'] ?? null,
+                'amount' => $this->data['amount'] ?? null,
+                'currency' => $this->data['currency'] ?? null,
+                'percentage' => $this->data['percentage'] ?? null,
+                'basis' => $this->data['basis'] ?? null,
+            ],
         ];
 
         if ($this->status === RequestStatusEnum::pending->value) {
@@ -42,18 +52,5 @@ class OrganizationCounsellorCompensationNegotiationStateResource extends JsonRes
         }
 
         return $data;
-    }
-
-    private function partyResource(?string $type, $model)
-    {
-        if ($type === Organization::class) {
-            return new OrganizationMiniResource($model);
-        }
-
-        if ($type === Counsellor::class) {
-            return new CounsellorMiniResource($model);
-        }
-
-        return null;
     }
 }
