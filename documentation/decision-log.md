@@ -368,6 +368,29 @@ creep on small changes, per the same "match the weight to the work" principle as
 CLAUDE.md's process tiers.
 ---
 
+## 2026-08-27 — SCRUM-136: corrected a stale finding, filed two genuinely-new follow-ups
+
+**Decision**: fixed `bootstrap/app.php`'s `$middleware->use([...])` → `append(...)` as scoped.
+`reviewer` approved and suggested strengthening the new test to assert ordering (TrustProxies
+before StoreVisitationMiddleware), not just presence -- added, since the original assertion
+wouldn't have caught a future `append()` → `prepend()` regression that silently breaks IP
+resolution. `reviewer` also surfaced a genuinely new, unrelated bug (`StoreVisitationMiddleware`'s
+stray semicolon making its `/login` guard a no-op) -- filed as SCRUM-137.
+
+`security-engineer` approved the fix as safe, confirmed the current no-op `TrustProxies::$proxies`
+config is *correct* for this repo's actual topology (nginx uses `fastcgi_pass`, not `proxy_pass`
+-- no HTTP-level proxy hop exists yet, so there's nothing to configure trust for today) rather
+than a gap, and recommended two follow-ups: (1) configure `TrustProxies` once a real reverse
+proxy/LB/CDN is introduced -- filed as SCRUM-138; (2) delete `app/Http/Kernel.php` -- **not
+filed**, because that subagent's review branch was cut from `develop` before SCRUM-135's PR #73
+(which already deletes that exact file) had merged, so it was seeing pre-SCRUM-135 state, not a
+new gap. Corrected in the PR comment rather than filing a duplicate.
+
+**Why**: same discipline as the SCRUM-133 false-alarm correction earlier in this sweep -- a
+subagent's review branch reflects whatever `develop` looked like at the moment it was cut, not
+the current state of all in-flight PRs, so a finding that matches already-completed-but-unmerged
+work is a branch-topology artifact, not a real gap, and should be verified (`git show` /
+checking the other PR's diff) before filing a duplicate ticket.
 ## 2026-08-27 — SCRUM-128: fixed the bug in a second, deeper location the ticket didn't name
 
 **Decision**: the ticket's own diagnosis named only `UpdateSessionRequest::rules()`. Empirically
