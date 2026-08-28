@@ -819,3 +819,43 @@ distinguishes "genuinely ambiguous/consequential" product forks (which went back
 implementation details of an already-approved direction (which don't need re-litigating one at a
 time) -- re-asking about each of these would have meant seven more round-trips for decisions each
 backed by a clear precedent already in the codebase.
+
+---
+
+## 2026-08-28 — SCRUM-134 post-review: one correctness bug fixed, one severe pre-existing bug found via manual browser QA
+
+**Decision**: `reviewer` requested changes on one real bug; `security-engineer` found nothing above
+Low severity. Both fixed, plus a second, more severe bug found independently while doing the manual
+browser walkthrough this ticket's own feature doc had flagged as still owed.
+
+1. **`DeleteCounsellorAction::getFormerClients()` notified co-counsellors and the deleted
+   counsellor themselves** (`reviewer`, required fix). `GroupTherapy::getUsers()` -- a
+   general-purpose helper used nowhere else -- returns every counsellor attached to a group, not
+   just clients, and (since this counsellor's own pivot row hasn't been flipped to `inactive` yet
+   at the point notifications are gathered) that includes the counsellor being deleted. Fixed by
+   building the group-therapy recipient list from the actual `group_therapy_user` pivot members
+   plus a `User`-type owner only. New regression test with two counsellors on one group therapy,
+   asserting neither the co-counsellor nor the deleted counsellor's own account gets notified.
+   Verified empirically (reverted, confirmed the new test fails, restored).
+
+2. **`Counsellor::hasPendingSessions()` had the same ungrouped `where()->orWhere()` scoping bug
+   already fixed twice elsewhere this sweep** (SCRUM-129's `Timeable` trait, SCRUM-139's
+   `EnsureDiscussionDataIsValidAction`) -- found not by static review but by actually clicking
+   through the self-service delete flow in a browser: `deletable_counsellor` (seeded with zero
+   sessions of their own) was rejected with "You have sessions that need to be completed..." purely
+   because *some other counsellor's* session happened to be upcoming. Only `wherePending()` stayed
+   scoped to `addedSessions()`; the trailing `orWhere()`s broke out to match any session in the
+   whole table. This silently made the entire feature this PR ships non-functional for any
+   counsellor as soon as any session anywhere in the system was upcoming or about to start --
+   effectively always, in a live app. Fixed by grouping all three conditions inside one outer
+   `where()`. New dedicated test file (`CounsellorHasPendingSessionsTest`) since this method had no
+   prior coverage at all; verified empirically the same way as (1).
+
+**Why**: this is the second time this exact `where()->orWhere()` shape has hidden a live bug behind
+what looked like correct, tested code (SCRUM-129 was the first). It reinforces the standing
+practice from this sweep of never trusting a boolean-returning query helper's *name* -- reading
+its actual generated SQL (or, here, just clicking the feature) is what catches this class of bug,
+because unit tests that only ever create one relevant row per test never exercise the "another
+unrelated row exists" case that this ungrouped-OR footgun depends on. Also reinforces why the
+Playwright/manual-browser step of full-ceremony QA is not a formality: this bug was invisible to
+34 passing unit/feature tests and was caught within the first real click-through.

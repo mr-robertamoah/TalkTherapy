@@ -111,15 +111,42 @@ dedicated seeded accounts (`deletable_counsellor`, `blocked_counsellor`) and the
 - Verified empirically: reverted `EnsureCanDeleteCounsellorAction`/`DeleteCounsellorAction` to
   their pre-fix state and confirmed 10 of the 22 new unit tests fail (exactly the ones exercising
   new behavior); restored and confirmed all pass again.
-- Full suite: 552 passed. Pint: clean (also fixed several pre-existing unused imports in
+- Full suite: 557 passed. Pint: clean (also fixed several pre-existing unused imports in
   `routes/console.php` while touching that file).
 - Frontend: `npm run build` succeeds with no errors.
-- **Not done**: a live Playwright browser smoke-check, normally expected for full-ceremony
-  feature work with a UI component. Port 8000 (the `web`/nginx service) was occupied by an
-  unrelated, pre-existing container from a different project on this machine; rather than
-  stopping infrastructure I have no context on, this was skipped. The `qa-engineer` subagent
-  should attempt it in an environment where the port is free, or this should be manually
-  browser-verified before merge.
+- **`reviewer`/`security-engineer`/`qa-engineer` review, post-implementation**: `reviewer`
+  requested one change (fixed, see below); `security-engineer` found nothing above Low severity
+  (an existing enumeration nit one layer up in `CounsellorService`, and a UX-only nit about the
+  admin delete button being visible-but-always-rejected for non-super admins — neither blocking).
+- **Bug found and fixed (reviewer)**: `DeleteCounsellorAction::getFormerClients()` was using
+  `GroupTherapy::getUsers()` for group-therapy recipients, which also returns every *other*
+  counsellor on the same group therapy — including the counsellor being deleted themselves (their
+  own pivot row hasn't flipped to `inactive` yet at that point). Fixed to build the recipient list
+  from the actual `group_therapy_user` pivot members plus a `User`-type owner only; added a
+  regression test with two counsellors on one group therapy asserting neither gets notified.
+- **Bug found and fixed (manual browser QA)**: clicking through the self-service delete flow as
+  `deletable_counsellor` (seeded with zero sessions) was unexpectedly rejected with "You have
+  sessions that need to be completed...". Root cause: `Counsellor::hasPendingSessions()` had the
+  same ungrouped `where()->orWhere()` scoping bug already fixed twice elsewhere this sweep
+  (SCRUM-129, SCRUM-139) — only `wherePending()` stayed scoped to the counsellor's own sessions,
+  and the trailing `orWhere()`s matched *any* session in the whole table. This made the feature
+  non-functional for any counsellor as soon as any session anywhere in the system was upcoming —
+  effectively always, in a live app. Fixed by grouping all three conditions in one outer `where()`;
+  added a new `CounsellorHasPendingSessionsTest` (this method had no prior coverage at all).
+- **Live browser walkthrough completed** (after resolving the port-8000 conflict via a Docker
+  workaround — see below): self-service happy path (`deletable_counsellor`) succeeded end to end,
+  confirmed via DB; self-service blocked path (`blocked_counsellor`, in-session therapy) correctly
+  rejected, confirmed via DB; admin path's delete button and confirmation modal render correctly
+  and are wired to the right endpoint (confirmed visually and via `AdminCounsellorDeleteTest`'s
+  full HTTP-level coverage — a live click-through of the admin path hit transient Docker
+  networking flakiness in the ad-hoc port-workaround environment after multiple container
+  restarts, but caused no incorrect state change, and the endpoint's behavior is independently
+  proven by the passing feature tests).
+- Port 8000 (this project's `web`/nginx service) was occupied by an unrelated, pre-existing
+  container from a different project on this machine, unrelated to and not stopped/touched by
+  this work; the app was instead reached via a temporary alternate port (18000) for the manual
+  walkthrough above, with `SANCTUM_STATEFUL_DOMAINS` temporarily (and reverted afterward, in the
+  gitignored `.env`/`.env.docker` only) extended to allow it.
 
 ## Files changed
 
@@ -127,8 +154,8 @@ dedicated seeded accounts (`deletable_counsellor`, `blocked_counsellor`) and the
   restructure, four new state checks
 - `app/Actions/Counsellor/DeleteCounsellorAction.php` — cleanup-on-delete logic, former-client
   notifications
-- `app/Models/GroupTherapy.php` — unrelated fix carried over from SCRUM-108, not part of this
-  ticket
+- `app/Models/Counsellor.php` — `hasPendingSessions()` scoping fix; removed now-dead
+  `hasNoPendingSessions()`
 - `app/Notifications/CounsellorAccountDeletedNotification.php` (new)
 - `app/Services/AppService.php` — `purgeExpiredSoftDeletedCounsellors()`
 - `app/Http/Controllers/CounsellorController.php` — `current_password` validation on
@@ -147,6 +174,7 @@ dedicated seeded accounts (`deletable_counsellor`, `blocked_counsellor`) and the
 - `tests/Unit/EnsureCanDeleteCounsellorActionTest.php`,
   `tests/Unit/DeleteCounsellorActionTest.php`,
   `tests/Unit/AppServicePurgeExpiredSoftDeletedCounsellorsTest.php`,
+  `tests/Unit/CounsellorHasPendingSessionsTest.php`,
   `tests/Feature/CounsellorDeleteRouteTest.php`,
   `tests/Feature/AdminCounsellorDeleteTest.php` (all new)
 - `tests/Feature/ProfileTest.php` — fixture fix for the new eligibility check
