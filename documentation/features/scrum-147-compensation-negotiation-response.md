@@ -26,6 +26,14 @@ counsellor a proposal is addressed to can now accept or reject it.
   `EnsureUserCanRespondToRequestAction` (already run ahead of every request type's dispatch) already
   authorizes exactly the counsellor a proposal is addressed to, and rejects everyone else —
   confirmed empirically rather than assumed; see `documentation/decision-log.md`.
+- **Accept now has two eligibility guards**, both raising a clean `OrganizationException` (request
+  stays `pending`, so it can still be resolved another way): the affiliation must not have `ended`
+  since the proposal was made, and the original proposer's account must still exist (`set_by_id`
+  is never silently written as `NULL`). Reject is unaffected by either guard — a decline must
+  always succeed. Both were review findings on PR #85, fixed before merge.
+- **Proposal creation is now concurrency-safe per affiliation** — `proposeCompensationChange()`
+  locks the affiliation row for the duration of its "no pending request already exists" check,
+  closing a TOCTOU race flagged during SCRUM-146's review and explicitly assigned to this ticket.
 
 ## How to try it
 
@@ -54,13 +62,18 @@ Counter-offer (SCRUM-148), reminder/expiry sweep (SCRUM-149), org-admin negotiat
 
 ## Testing performed
 
-- New: `tests/Unit/OrganizationCounsellorCompensationResponseTest.php` (8 tests) — accept creates
+- New: `tests/Unit/OrganizationCounsellorCompensationResponseTest.php` (12 tests) — accept creates
   the compensation row and activates a pending affiliation; accept on an already-active affiliation
   adds a row without re-activating; reject creates nothing and changes nothing, including on a
   renegotiation of an already-active affiliation with existing terms; an outsider and the
   proposing admin themselves are both rejected; responding twice to an already-resolved request is
-  a no-op; the response renders correctly through `OrganizationRequestResource`.
-- Full suite: 574 passed (up from 566). Pint clean.
+  a no-op; the response renders correctly through `OrganizationRequestResource`; accept/reject
+  behavior when the original proposer no longer exists; accept/reject behavior against an
+  affiliation that has since ended.
+- Full suite: 578 passed (up from 566). Pint clean.
+- The affiliation-row-lock concurrency fix cannot be exercised by an automated test (the suite
+  runs against sqlite `:memory:`, which has no real concurrent-transaction semantics) — correctness
+  rests on documented MySQL InnoDB `SELECT ... FOR UPDATE` behavior instead; see decision-log.md.
 
 ## Files changed
 
@@ -68,6 +81,8 @@ Counter-offer (SCRUM-148), reminder/expiry sweep (SCRUM-149), org-admin negotiat
 - `app/Actions/Request/RespondToRequestAction.php` — dispatch entry for the new type
 - `app/Actions/Organization/ProposeOrganizationCounsellorCompensationChangeAction.php` — records
   `proposedById` in `Request.data`
+- `app/Services/OrganizationCounsellorCompensationService.php` — affiliation-row lock around
+  proposal creation's pending-check
 - `app/Notifications/OrganizationCounsellorCompensationChangeAcceptedNotification.php` (new)
 - `app/Notifications/OrganizationCounsellorCompensationChangeRejectedNotification.php` (new)
 - `tests/Unit/OrganizationCounsellorCompensationResponseTest.php` (new)
