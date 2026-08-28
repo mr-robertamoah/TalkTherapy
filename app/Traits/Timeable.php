@@ -87,13 +87,14 @@ trait Timeable
         return $query
             ->where('id', $this->id)
             ->where(function ($query) {
-                $query->wherePastEndTime();
-            })
-            ->orWhere(function ($query) {
-                $query->whereAboutToStart();
-            })
-            ->orWhere(function ($query) {
-                $query->whereDateIsBetweenStartAndEndTimes(now());
+                $query
+                    ->wherePastEndTime()
+                    ->orWhere(function ($query) {
+                        $query->whereAboutToStart();
+                    })
+                    ->orWhere(function ($query) {
+                        $query->whereDateIsBetweenStartAndEndTimes(now());
+                    });
             })
             ->exists();
     }
@@ -106,11 +107,13 @@ trait Timeable
     public function isNotDeleteable()
     {
         return $this
+            ->where('id', $this->id)
             ->where(function ($query) {
-                $query->whereAboutToStart();
-            })
-            ->orWhere(function ($query) {
-                $query->whereDateIsBetweenStartAndEndTimes(now());
+                $query
+                    ->whereAboutToStart()
+                    ->orWhere(function ($query) {
+                        $query->whereDateIsBetweenStartAndEndTimes(now());
+                    });
             })
             ->exists();
     }
