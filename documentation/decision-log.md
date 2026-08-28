@@ -642,3 +642,24 @@ autonomous-execution policy's carve-out for genuinely ambiguous/consequential pr
 applies exactly here (getting a booking-conflict rule wrong is costly in either direction). Filing
 SCRUM-139 rather than fixing it inline keeps this PR scoped to what it says it does, per the same
 "keep commits small and focused" principle applied throughout this sweep.
+
+---
+
+## 2026-08-28 — SCRUM-140: fixed a live High-severity data-corruption bug found mid-review
+
+**Decision**: implemented the fix as scoped by the ticket (only write payment_data keys the DTO
+explicitly provided). `reviewer` confirmed the simplified condition is strictly equivalent minus
+the buggy null-overwrite branch, and flagged a secondary, previously-dormant `$objectKey`-vs-
+`$dataKey` inconsistency in `UpdateGroupTherapyAction::setValueOnPaymentData()`'s old code that
+the fix also incidentally corrects (harmless today since no call site passes a differing
+`$objectKey`, but worth noting as a real behavior change beyond the stated bug). `security-engineer`
+confirmed the fix closes the gap with no new inconsistency direction, and flagged that rows already
+corrupted by this bug before the fix ships won't self-heal -- filed SCRUM-141 for the production
+audit/backfill task.
+
+**Why**: this is the second time in this sweep (after SCRUM-136/137/138 during the middleware fix)
+that a security-engineer review surfaced something beyond the current PR's diff -- in both cases,
+severity determined the response: High/live-and-worsening issues (this one, and SCRUM-136 itself)
+got fixed immediately in a follow-up PR; Low/deferred-until-a-future-event issues (SCRUM-138, and
+now SCRUM-141) got filed and left for later. Consistent triage criterion: is this actively
+happening/getting worse right now, or is it a one-time cleanup/future-conditional concern.
