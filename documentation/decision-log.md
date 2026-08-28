@@ -1265,3 +1265,30 @@ intentional safeguard -- fixed immediately rather than relying on that accident 
 The Low finding is explicitly, already the scope of a specific upcoming ticket in this same
 5-part sequence, so re-filing it as a new follow-up would just create a duplicate to reconcile
 later.
+
+---
+
+## 2026-08-28 — SCRUM-150 (TT-6.4c, 5/5): "resolved" state covers accepted too, not just rejected/expired
+
+**Decision**: the ticket's scope text enumerated four states -- no active proposal, pending
+(org's turn), pending (counsellor's turn), and "last negotiation rejected or expired." It didn't
+explicitly name a fifth "last negotiation was accepted" case. Rather than treat an accepted
+negotiation as unclassifiable or force it into "no active proposal" (technically true --
+nothing's pending -- but silently discarding useful context), the resource's `state` field covers
+it under the same `'resolved'` bucket as rejected/expired, with `status: 'ACCEPTED'` and no
+`resolvedBy` key (that field is only meaningful for `rejected`). This keeps the discriminator
+values to exactly `none`/`pending`/`resolved` -- three states, not five -- while still exposing
+enough information (`status`) for a consumer to render different copy for each of accepted vs.
+rejected vs. expired within the `resolved` bucket.
+
+**Also**: `getNegotiationState()` was written as a second, wholly separate query method
+alongside `getCompensations()` rather than folding negotiation-state data into that existing
+method's response shape, per the ticket's own explicit AC4 constraint ("the existing SCRUM-123
+accepted-terms history endpoint is unmodified") -- verified with a dedicated test that a pending
+negotiation never appears in `getCompensations()`'s results, not just asserted by code structure.
+
+**Why**: a five-way discriminator (none/pendingOurs/pendingTheirs/rejected/expired) would have
+duplicated information already available via `from`/`to` (direction) and `resolvedBy`
+(reject-vs-expiry) onto the top-level `state` field itself -- redundant surface area for the same
+underlying facts. Three states plus two orthogonal detail fields is simpler and covers every
+case the ticket actually described, including the one it didn't name.

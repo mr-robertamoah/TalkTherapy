@@ -88,4 +88,23 @@ class OrganizationCounsellorCompensationService extends Service
             ->orderByDesc('id')
             ->get();
     }
+
+    // SCRUM-150 (TT-6.4c, 5/5): the current negotiation state for an affiliation -- the latest
+    // organizationCounsellorCompensationChange Request regardless of status, or null if none has
+    // ever existed. A wholly separate, additive read from getCompensations() above (SCRUM-123's
+    // accepted-terms history), which this does not touch -- it only ever reads
+    // organization_counsellor_compensations, never requests.
+    public function getNegotiationState(OrganizationCounsellorCompensationDTO $dto): ?Request
+    {
+        EnsureOrganizationCounsellorExistsAction::new()->execute($dto);
+
+        EnsureUserCanViewOrganizationCounsellorCompensationsAction::new()->execute($dto);
+
+        return Request::query()
+            ->whereType(RequestTypeEnum::organizationCounsellorCompensationChange->value)
+            ->whereFor($dto->organizationCounsellor)
+            ->orderByDesc('round')
+            ->orderByDesc('id')
+            ->first();
+    }
 }

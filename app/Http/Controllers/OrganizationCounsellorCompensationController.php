@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Actions\Request\GetRequestResourceAction;
 use App\DTOs\OrganizationCounsellorCompensationDTO;
 use App\Http\Requests\CreateOrganizationCounsellorCompensationRequest;
+use App\Http\Resources\OrganizationCounsellorCompensationNegotiationStateResource;
 use App\Http\Resources\OrganizationCounsellorCompensationResource;
 use App\Models\OrganizationCounsellor;
 use App\Models\Request as ModelsRequest;
@@ -26,6 +27,28 @@ class OrganizationCounsellorCompensationController extends Controller
             );
 
             return OrganizationCounsellorCompensationResource::collection($compensations);
+        } catch (Throwable $th) {
+            $status = $this->statusFor($th);
+            $message = $this->messageFor($th, $status);
+
+            return response()->json(['message' => $message], $status);
+        }
+    }
+
+    // SCRUM-150 (TT-6.4c): a wholly separate, additive read from index() above -- never touches
+    // organization_counsellor_compensations, only the latest negotiation Request (if any).
+    // index() itself is completely unmodified (SCRUM-123's accepted-terms history stays as-is).
+    public function negotiationState(Request $request)
+    {
+        try {
+            $negotiationState = OrganizationCounsellorCompensationService::new()->getNegotiationState(
+                OrganizationCounsellorCompensationDTO::new()->fromArray([
+                    'user' => $request->user(),
+                    'organizationCounsellor' => OrganizationCounsellor::find($request->route('organizationCounsellorId')),
+                ])
+            );
+
+            return new OrganizationCounsellorCompensationNegotiationStateResource($negotiationState);
         } catch (Throwable $th) {
             $status = $this->statusFor($th);
             $message = $this->messageFor($th, $status);
