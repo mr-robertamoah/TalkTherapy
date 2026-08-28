@@ -99,6 +99,19 @@ foreach (\App\Models\Therapy::with('addedby','counsellor')->get() as \$t) {
 }"
 ```
 
+## Counsellor account deletion (SCRUM-134)
+
+Two dedicated accounts, kept separate from the 6 main demo counsellors above since those are
+woven into therapies/group therapies/discussions/chat demo data used by many other features:
+
+| Username | Password | Purpose |
+|---|---|---|
+| `deletable_counsellor` | `password` | Dr. Deletable Counsellor — no pending sessions, therapies, or affiliations. Log in and visit their counsellor profile page to delete the account; it should succeed. |
+| `blocked_counsellor` | `password` | Dr. Blocked Counsellor — has an in-session therapy (`Counsellor Deletion Demo Therapy`, client: `blocked_counsellor_client`). Deletion should be rejected by `EnsureCanDeleteCounsellorAction`'s eligibility gate. |
+
+Log in as `mr_robertamoah` (the super admin) and visit `/administrator` → counsellors to test
+admin-triggered deletion of either account instead.
+
 ## Testing the registration/verification flow
 
 The 11 seeded accounts above all skip email verification. To test registration or the

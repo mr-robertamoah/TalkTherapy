@@ -63,7 +63,10 @@ const verifyForm = useForm({
     licenseNumber: '',
     licensingAuthorityId: null,
 })
-const deleteForm = useForm({})
+const deleteForm = useForm({
+    password: '',
+})
+const deletePasswordInput = ref(null)
 const emailVerificationForm = useForm({})
 
 const nationalIdFile = ref(null)
@@ -137,14 +140,19 @@ function alertCounsellor() {
 function deleteCounsellor() {
 
     deleteForm.delete(route(`counsellor.delete`, { counsellorId: props.counsellor?.id}), {
+        preserveScroll: true,
         onSuccess: () => {
             closeModal()
+        },
+        onError: () => {
+            deletePasswordInput.value?.focus()
         },
         onBefore: () => {
             loading.value = true
         },
         onFinish: () => {
             loading.value = false
+            deleteForm.reset()
         },
     })
 }
@@ -772,12 +780,26 @@ function closeModal() {
                     Are you sure you want to delete this account?
                 </div>
 
+                <div class="w-full sm:w-3/4 mx-auto">
+                    <InputLabel for="deletePassword" value="Enter your password to confirm" />
+                    <TextInput
+                        id="deletePassword"
+                        ref="deletePasswordInput"
+                        v-model="deleteForm.password"
+                        type="password"
+                        class="mt-1 block w-full"
+                        placeholder="Password"
+                        @keyup.enter="deleteCounsellor"
+                    />
+                    <InputError :message="deleteForm.errors.password" class="mt-2" />
+                </div>
+
                     <div class="flex items-center justify-end mt-4">
 
                         <PrimaryButton @click="() => closeModal()" class="ms-4" :class="{ 'opacity-25': loading }" :disabled="loading">
                             cancel
                         </PrimaryButton>
-                        <form 
+                        <form
                             @submit.prevent="deleteCounsellor"
                         >
 

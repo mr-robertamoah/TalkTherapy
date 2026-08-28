@@ -134,6 +134,9 @@ Route::middleware('auth')->group(function () {
     Route::post('/counsellor/{counsellorId}', [CounsellorController::class, 'updateCounsellor'])->name('counsellor.update');
     Route::post('/counsellor/{counsellorId}/verify', [CounsellorController::class, 'verifyCounsellor'])->name('counsellor.verify');
     Route::post('/counsellor/{counsellorId}/verify-email', [CounsellorController::class, 'sendVerificationEmail'])->name('counsellor.email.verification');
+    // SCRUM-134: was missing entirely -- the frontend's delete button has always called this
+    // route name, it just never existed.
+    Route::delete('/counsellor/{counsellorId}', [CounsellorController::class, 'deleteCounsellor'])->name('counsellor.delete');
 
     Route::get('/profile', [ProfileController::class, 'show'])->name('profile.show');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');

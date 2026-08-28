@@ -2,11 +2,13 @@
 
 namespace App\Http\Controllers;
 
+use App\DTOs\DeleteCounsellorDTO;
 use App\DTOs\GetCounsellorStatsForAdminDTO;
 use App\DTOs\GetModelsForAdminDTO;
 use App\DTOs\GetVerificationRequestsDTO;
 use App\DTOs\UpdateUserDTO;
 use App\Http\Requests\AdminUpdateUserRequest;
+use App\Http\Resources\AdminCounsellorResource;
 use App\Http\Resources\AdministratorResource;
 use App\Http\Resources\AdminUserResource;
 use App\Models\Counsellor;
@@ -100,6 +102,30 @@ class AdministratorController extends Controller
         }
     }
 
+    // SCRUM-134: reuses the same CounsellorService::deleteCounsellor() chain as self-service
+    // deletion -- EnsureCanDeleteCounsellorAction already requires isSuperAdmin() for this branch
+    // and applies the same eligibility checks (no pending sessions/in-session therapy/active
+    // affiliations) as it does to a counsellor deleting their own account; there is no
+    // admin-only bypass of those safety checks.
+    public function deleteCounsellor(Request $request)
+    {
+        $counsellor = Counsellor::find($request->route('counsellorId'));
+
+        try {
+            CounsellorService::new()->deleteCounsellor(
+                DeleteCounsellorDTO::new()->fromArray([
+                    'user' => $request->user(),
+                    'counsellor' => $counsellor,
+                ])
+            );
+
+            return $this->returnSuccessCounsellor($request, $counsellor);
+        } catch (Throwable $th) {
+
+            return $this->returnFailure($request, $th);
+        }
+    }
+
     public function getCounsellorStats(Request $request)
     {
         return CounsellorService::new()->getCounsellorStats(
@@ -130,6 +156,17 @@ class AdministratorController extends Controller
         }
 
         return Redirect::back()->with(['user' => $user]);
+    }
+
+    private function returnSuccessCounsellor(Request $request, Counsellor $counsellor)
+    {
+        $counsellor = new AdminCounsellorResource($counsellor);
+
+        if ($request->acceptsJson()) {
+            return response()->json(['counsellor' => $counsellor]);
+        }
+
+        return Redirect::back()->with(['counsellor' => $counsellor]);
     }
 
     private function returnFailure(Request $request, Throwable $th)

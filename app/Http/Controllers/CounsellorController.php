@@ -181,11 +181,16 @@ class CounsellorController extends Controller
         }
     }
 
-    // No route currently maps to this method (the frontend's `counsellor.delete` reference is
-    // itself dead -- see decision-log) -- fixed for consistency with the rest of this file and
-    // as defense-in-depth against that route being wired up later without this being revisited.
+    // Self-service deletion -- requires re-confirming the current password, mirroring
+    // ProfileController::destroy's equivalent full-account deletion (SCRUM-134). Admin-triggered
+    // deletion is a separate endpoint (AdministratorController::deleteCounsellor) that doesn't
+    // have the counsellor's password to check.
     public function deleteCounsellor(Request $request)
     {
+        $request->validate([
+            'password' => ['required', 'current_password'],
+        ]);
+
         try {
             CounsellorService::new()->deleteCounsellor(
                 DeleteCounsellorDTO::new()->fromArray([

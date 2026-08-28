@@ -37,10 +37,12 @@
             </div>
             <slot></slot>
             
-            <div class="mt-3 flex justify-end items-center" v-if="hasView && !counsellor.anonymous">
+            <div class="mt-3 flex justify-end items-center space-x-2" v-if="(hasView && !counsellor.anonymous) || canDelete">
                 <div
+                    v-if="hasView && !counsellor.anonymous"
                     @click="() => view = true"
                     class="p-2 bg-gray-700 text-gray-200 cursor-pointer tracking-wide rounded min-w-[80px] text-center hover:bg-gray-600 hover:text-white transition duration-75">view</div>
+                <DangerButton v-if="canDelete" @click="() => showModal('delete')">delete</DangerButton>
             </div>
             <div class="" v-if="forRequest">
                 <div class="my-2">
@@ -109,6 +111,42 @@
         @close="() => view = false"
         :counsellor="counsellor"
     />
+
+    <MiniModal
+        v-if="canDelete"
+        :show="modalData.show && modalData.type == 'delete'"
+        @close="closeModal"
+    >
+        <div>
+            <FormLoader :danger="true" class="mx-auto" :show="deleting" :text="'deleting counsellor account'"/>
+            <div class="text-gray-600 text-center font-bold tracking-wide">
+                Delete {{ counsellor.name }}'s Counsellor Account
+            </div>
+
+            <hr class="my-2">
+
+            <div class="my-4 text-sm text-red-700 text-center w-[90%] mx-auto font-bold tracking-wide">
+                Are you sure you want to delete this counsellor account? This is the same eligibility-gated
+                deletion the counsellor themselves would trigger -- it will fail if they have pending sessions,
+                an in-session therapy, an active group therapy or organization affiliation, or pending requests
+                awaiting their decision.
+            </div>
+
+            <div class="flex space-x-2 justify-end items-center w-full p-2">
+                <PrimaryButton @click="() => closeModal()" class="shrink-0">cancel</PrimaryButton>
+                <DangerButton @click="deleteCounsellor" class="shrink-0">delete</DangerButton>
+            </div>
+        </div>
+    </MiniModal>
+
+    <Alert
+        v-if="canDelete"
+        :show="alertData.show"
+        :type="alertData.type"
+        :message="alertData.message"
+        :time="alertData.time"
+        @close="clearAlertData"
+    />
 </template>
 
 <script setup>
@@ -116,6 +154,13 @@ import { ref } from 'vue';
 import Avatar from './Avatar.vue';
 import CounsellorModal from './CounsellorModal.vue';
 import ActivityBadge from './ActivityBadge.vue';
+import DangerButton from './DangerButton.vue';
+import PrimaryButton from './PrimaryButton.vue';
+import FormLoader from './FormLoader.vue';
+import MiniModal from './MiniModal.vue';
+import Alert from './Alert.vue';
+import useAlert from '@/Composables/useAlert';
+import useModal from '@/Composables/useModal';
 import { router } from '@inertiajs/vue3';
 
 const props = defineProps({
@@ -149,16 +194,48 @@ const props = defineProps({
     forRequest: {
         type: Boolean,
         default: false
+    },
+    // SCRUM-134: only the admin counsellors listing (Admin.vue) passes this true -- every other
+    // context this component is used in (public listings, request views, etc.) leaves it off.
+    canDelete: {
+        type: Boolean,
+        default: false
     }
 })
 
-const emits = defineEmits(['onResponse', 'dblclick'])
+const emits = defineEmits(['onResponse', 'dblclick', 'deleted'])
+
+const { alertData, setFailedAlertData, setSuccessAlertData, clearAlertData } = useAlert()
+const { modalData, showModal, closeModal } = useModal()
 
 const view = ref(false)
 const selectedItem = ref(null)
+const deleting = ref(false)
 
 function clickedResponse(response) {
     emits('onResponse', response)
+}
+
+async function deleteCounsellor() {
+    deleting.value = true
+
+    await axios
+        .delete(route('admin.counsellors.delete', { counsellorId: props.counsellor.id }))
+        .then((res) => {
+            setSuccessAlertData({
+                message: `${props.counsellor.name}'s counsellor account has successfully been deleted.`,
+            })
+            emits('deleted', res.data.counsellor)
+            closeModal()
+        })
+        .catch((err) => {
+            setFailedAlertData({
+                message: err.response?.data?.message ?? 'Something unfortunate happened. Please try again later.',
+            })
+        })
+        .finally(() => {
+            deleting.value = false
+        })
 }
 
 function goToPage() {
