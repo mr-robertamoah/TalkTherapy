@@ -30,6 +30,7 @@ use App\Notifications\SessionFailedNotification;
 use App\Notifications\VisitorsStatusNotification;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Queue\Events\JobFailed;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Notification;
 use Throwable;
@@ -227,6 +228,14 @@ class AppService extends Service
     // SCRUM-149 (TT-6.4c): sent once, ~2 days before a pending compensation-change request's
     // expires_at -- reminder_sent_at (not day-arithmetic alone) makes this exactly-once
     // regardless of how many times or how imprecisely this daily sweep actually runs.
+    //
+    // Security review (PR #87, post-merge): each row is re-locked and re-checked for `pending`
+    // immediately before writing, mirroring RespondToOrganizationCounsellorCompensationRequestAction
+    // /CounterOfferOrganizationCounsellorCompensationChangeAction -- without this, a concurrent
+    // accept/reject/counter-offer landing between this method's initial batch SELECT and its
+    // per-row UPDATE could be silently clobbered. Each row is also isolated in its own try/catch
+    // so one bad row (e.g. an unresolvable `to`) can't abort every other pending negotiation's
+    // reminder for the day.
     public function sendCompensationRequestExpiryReminders()
     {
         Request::query()
@@ -238,19 +247,37 @@ class AppService extends Service
             ->where('expires_at', '<=', now()->addDays(2))
             ->get()
             ->each(function (Request $request) {
-                // A same-day "2 days before" reminder for an offer whose whole window was under
-                // 3 days adds noise, not value -- the negotiation is already nearly resolved
-                // either way by the time this would fire.
-                if ($request->created_at->diffInDays($request->expires_at) < 3) {
-                    return;
+                try {
+                    DB::transaction(function () use ($request) {
+                        $locked = Request::query()->lockForUpdate()->findOrFail($request->id);
+
+                        if ($locked->status !== RequestStatusEnum::pending->value || $locked->reminder_sent_at) {
+                            return;
+                        }
+
+                        // A same-day "2 days before" reminder for an offer whose whole window
+                        // was under 3 days adds noise, not value -- and guards against a
+                        // malformed expires_at <= created_at pair ever reaching Carbon's
+                        // absolute-value diffInDays(), which can't distinguish "3 days" from
+                        // "-3 days".
+                        if ($locked->expires_at->lessThanOrEqualTo($locked->created_at)
+                            || $locked->created_at->diffInDays($locked->expires_at) < 3) {
+                            return;
+                        }
+
+                        $this->notifyCompensationRequestRecipient(
+                            $locked,
+                            new OrganizationCounsellorCompensationChangeExpiryReminderNotification($locked)
+                        );
+
+                        $locked->update(['reminder_sent_at' => now()]);
+                    });
+                } catch (Throwable $exception) {
+                    Log::error('Failed to send a compensation-change expiry reminder.', [
+                        'requestId' => $request->id,
+                        'exception' => $exception->getMessage(),
+                    ]);
                 }
-
-                $this->notifyCompensationRequestRecipient(
-                    $request,
-                    new OrganizationCounsellorCompensationChangeExpiryReminderNotification($request)
-                );
-
-                $request->update(['reminder_sent_at' => now()]);
             });
     }
 
@@ -259,6 +286,9 @@ class AppService extends Service
     // (not a new enum case; functionally identical to a manual reject everywhere except copy),
     // never touching the affiliation's status or existing terms (same fairness-critical
     // guarantee as SCRUM-147's manual reject).
+    //
+    // Security review (PR #87, post-merge): same lock-then-recheck-then-write and per-row
+    // isolation as the reminder sweep above, for the same reasons.
     public function expireStaleCompensationRequests()
     {
         Request::query()
@@ -268,28 +298,67 @@ class AppService extends Service
             ->where('expires_at', '<=', now())
             ->get()
             ->each(function (Request $request) {
-                $request->update([
-                    'status' => RequestStatusEnum::rejected->value,
-                    // SCRUM-150 will need to tell a manual reject apart from an expiry in its
-                    // read-only negotiation-state copy, without a new RequestStatusEnum case.
-                    'data' => array_merge($request->data, ['resolvedBy' => 'expiry']),
-                ]);
+                try {
+                    DB::transaction(function () use ($request) {
+                        $locked = Request::query()->lockForUpdate()->findOrFail($request->id);
 
-                $this->notifyCompensationRequestRecipient(
-                    $request,
-                    new OrganizationCounsellorCompensationChangeExpiredNotification($request)
-                );
+                        if ($locked->status !== RequestStatusEnum::pending->value) {
+                            return;
+                        }
+
+                        $locked->update([
+                            'status' => RequestStatusEnum::rejected->value,
+                            // SCRUM-150 will need to tell a manual reject apart from an expiry in
+                            // its read-only negotiation-state copy, without a new
+                            // RequestStatusEnum case.
+                            'data' => array_merge($locked->data, ['resolvedBy' => 'expiry']),
+                        ]);
+
+                        $this->notifyCompensationRequestRecipient(
+                            $locked,
+                            new OrganizationCounsellorCompensationChangeExpiredNotification($locked)
+                        );
+                    });
+                } catch (Throwable $exception) {
+                    Log::error('Failed to auto-expire a compensation-change request.', [
+                        'requestId' => $request->id,
+                        'exception' => $exception->getMessage(),
+                    ]);
+                }
             });
     }
 
     // Mirrors CounterOfferOrganizationCounsellorCompensationChangeAction's own notify helper
-    // (SCRUM-148, a separate not-yet-merged branch at the time this was written) -- `to`
-    // alternates between a Counsellor and the Organization itself, and Organization isn't
-    // Notifiable, so every one of its admins is notified individually.
+    // (SCRUM-148) -- `to` alternates between a Counsellor and the Organization itself, and
+    // Organization isn't Notifiable, so every one of its admins is notified individually.
+    // Security review (PR #87, post-merge): `to` can be null if the counterparty was
+    // soft-deleted while a negotiation was still pending (a real, already-supported lifecycle --
+    // see purgeExpiredSoftDeletedCounsellors() above) -- logged and skipped rather than left to
+    // fatal on a null method call, and an org with no (remaining) admins is logged rather than
+    // silently no-op'd.
     private function notifyCompensationRequestRecipient(Request $request, $notification): void
     {
+        if (is_null($request->to)) {
+            Log::warning('Compensation-change request has no resolvable recipient to notify.', [
+                'requestId' => $request->id,
+            ]);
+
+            return;
+        }
+
         if ($request->to instanceof Organization) {
-            Notification::send($request->to->admins, $notification);
+            $admins = $request->to->admins;
+
+            if ($admins->isEmpty()) {
+                Log::warning('Compensation-change request\'s organization has no admins to notify.', [
+                    'requestId' => $request->id,
+                    'organizationId' => $request->to->id,
+                ]);
+
+                return;
+            }
+
+            Notification::send($admins, $notification);
 
             return;
         }

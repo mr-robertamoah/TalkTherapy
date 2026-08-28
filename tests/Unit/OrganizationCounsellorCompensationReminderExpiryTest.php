@@ -165,3 +165,82 @@ test('every admin of the organization is notified when it is the current recipie
 
     Notification::assertSentTo($organization->admins()->get(), OrganizationCounsellorCompensationChangeExpiredNotification::class);
 });
+
+// Security review (PR #87, post-merge, findings 1/5): both sweeps re-lock and re-check `pending`
+// immediately before writing -- calling either sweep a second time (simulating a row no longer
+// pending by the time its per-row processing runs) must be a true no-op, not a second write.
+test('running the expiry sweep twice back to back only resolves and notifies once', function () {
+    Notification::fake();
+    [$request, , , , $counsellor] = negotiationExpiring(daysUntilExpiry: -1, windowDays: 7);
+
+    AppService::new()->expireStaleCompensationRequests();
+    AppService::new()->expireStaleCompensationRequests();
+
+    expect($request->refresh()->status)->toBe(RequestStatusEnum::rejected->value);
+    Notification::assertSentToTimes($counsellor, OrganizationCounsellorCompensationChangeExpiredNotification::class, 1);
+});
+
+// Security review (PR #87, post-merge, finding 2): a request whose recipient no longer resolves
+// (a soft-deleted Counsellor -- a real, already-supported lifecycle) must not abort the whole
+// sweep. It still resolves correctly; only the notification is skipped (logged, not thrown).
+test('a request whose recipient no longer exists is still resolved, and does not block other requests in the same sweep', function () {
+    Notification::fake();
+    [$requestA, $affiliationA, , , $counsellorA] = negotiationExpiring(daysUntilExpiry: -1, windowDays: 7);
+    [$requestB, , , , $counsellorB] = negotiationExpiring(daysUntilExpiry: -1, windowDays: 7);
+
+    $counsellorA->delete();
+
+    AppService::new()->expireStaleCompensationRequests();
+
+    expect($requestA->refresh()->status)->toBe(RequestStatusEnum::rejected->value);
+    expect($requestA->data['resolvedBy'])->toBe('expiry');
+    expect($affiliationA->refresh()->status)->toBe(OrganizationCounsellorStatusEnum::pending->value);
+
+    expect($requestB->refresh()->status)->toBe(RequestStatusEnum::rejected->value);
+    Notification::assertSentTo($counsellorB, OrganizationCounsellorCompensationChangeExpiredNotification::class);
+});
+
+// Security review (PR #87, post-merge, finding 3): an organization with no (remaining) admins
+// must not crash the sweep -- the request still resolves, the notification is just skipped.
+test('a request addressed to an organization with no admins is still resolved without crashing', function () {
+    Notification::fake();
+    [$request, $affiliation] = negotiationExpiring(daysUntilExpiry: -1, windowDays: 7);
+
+    $adminlessOrg = Organization::factory()->create(['is_provider' => true, 'verified_at' => now()]);
+    $request->to_type = Organization::class;
+    $request->to_id = $adminlessOrg->id;
+    $request->save();
+
+    AppService::new()->expireStaleCompensationRequests();
+
+    expect($request->refresh()->status)->toBe(RequestStatusEnum::rejected->value);
+    expect($affiliation->refresh()->status)->toBe(OrganizationCounsellorStatusEnum::pending->value);
+});
+
+// Security review (PR #87, post-merge, finding 4): a malformed expires_at <= created_at pair
+// (unreachable today via the 1-30 day expiryDays bound, but defended against regardless) must
+// not send a nonsensical reminder or crash on Carbon's absolute-value diffInDays().
+test('a request with a malformed expires_at at or before created_at never gets a reminder', function () {
+    Notification::fake();
+    [$request, , , , $counsellor] = negotiationExpiring(daysUntilExpiry: 1, windowDays: 7);
+    $request->update(['expires_at' => $request->created_at->copy()->subDay()]);
+
+    AppService::new()->sendCompensationRequestExpiryReminders();
+
+    expect($request->refresh()->reminder_sent_at)->toBeNull();
+    Notification::assertNotSentTo($counsellor, OrganizationCounsellorCompensationChangeExpiryReminderNotification::class);
+});
+
+// Security review (PR #87, post-merge, finding 6): the shallow array_merge onto `data` must not
+// drop the original proposed-terms fields -- only add the resolvedBy marker alongside them.
+test('expiry preserves the original proposed terms in data, not just the resolvedBy marker', function () {
+    [$request] = negotiationExpiring(daysUntilExpiry: -1, windowDays: 7);
+
+    AppService::new()->expireStaleCompensationRequests();
+
+    $data = $request->refresh()->data;
+    expect($data['type'])->toBe('FIXED');
+    expect($data['amount'])->toBe(5000);
+    expect($data['currency'])->toBe('GHS');
+    expect($data['resolvedBy'])->toBe('expiry');
+});
