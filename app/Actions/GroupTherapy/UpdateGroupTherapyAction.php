@@ -17,7 +17,7 @@ class UpdateGroupTherapyAction extends Action
         $groupTherapyDTO->groupTherapy->update($this->data);
 
         if (is_array($groupTherapyDTO->cases)) {
-            
+
             $groupTherapyDTO->groupTherapy->cases()->detach();
             $groupTherapyDTO->groupTherapy->cases()->attach($groupTherapyDTO->cases);
         }
@@ -42,12 +42,13 @@ class UpdateGroupTherapyAction extends Action
         $this->setValueOnData('about', $groupTherapyDTO);
 
         $this->data['payment_data'] = $groupTherapyDTO->groupTherapy->payment_data;
-        
+
         if (
             array_key_exists('payment_type', $this->data) &&
             $this->data['payment_type'] == TherapyPaymentTypeEnum::free->value
         ) {
             $this->data['payment_data'] = null;
+
             return;
         }
 
@@ -55,7 +56,7 @@ class UpdateGroupTherapyAction extends Action
             $this->data['payment_data'] = [];
             $this->clearPaymentData();
         }
-        
+
         $this->setValueOnPaymentData('per', $groupTherapyDTO);
         $this->setValueOnPaymentData('amount', $groupTherapyDTO);
         $this->setValueOnPaymentData('currency', $groupTherapyDTO);
@@ -63,44 +64,45 @@ class UpdateGroupTherapyAction extends Action
         $this->setValueOnPaymentData('shareEqually', $groupTherapyDTO);
         $this->setValueOnPaymentData('sharePercentage', $groupTherapyDTO);
     }
-    
+
     private function clearPaymentData()
     {
-        $dataKeys = ['per' => '', 'amount' => 0, 'inPersonAmount' => 0, 'currency' => '',];
+        $dataKeys = ['per' => '', 'amount' => 0, 'inPersonAmount' => 0, 'currency' => ''];
 
         foreach ($dataKeys as $key => $value) {
             $this->data['payment_data'][$key] = $value;
         }
     }
-    
+
+    // SCRUM-140: omitted (null) must mean "leave unchanged", matching setValueOnData()'s
+    // semantics for scalar columns -- the previous array_key_exists(...) && ... !== null branch
+    // wrote null over an already-set persisted value whenever a partial update omitted this
+    // field, silently nulling out the whole payment_data JSON column on any partial edit to a
+    // PAID group therapy.
     private function setValueOnPaymentData(
-        String $dataKey,
+        string $dataKey,
         GroupTherapyDTO $groupTherapyDTO,
-        String|null $objectKey = null
-    ){
+        ?string $objectKey = null
+    ) {
         $objectKey = $objectKey ?: $dataKey;
 
-        if (
-            (
-                array_key_exists($dataKey, $this->data['payment_data']) && 
-                $this->data['payment_data'][$dataKey] !== $groupTherapyDTO->$dataKey
-            ) ||
-            !is_null($groupTherapyDTO->$dataKey)
-        )
+        if (! is_null($groupTherapyDTO->$objectKey)) {
             $this->data['payment_data'][$dataKey] = $groupTherapyDTO->$objectKey;
+        }
     }
-    
+
     private function setValueOnData(
-        String $dataKey,
+        string $dataKey,
         GroupTherapyDTO $groupTherapyDTO,
-        String|null $objectKey = null
+        ?string $objectKey = null
     ) {
         $objectKey = $objectKey ?: $dataKey;
 
         if (
-            !is_null($groupTherapyDTO->$objectKey) &&
+            ! is_null($groupTherapyDTO->$objectKey) &&
             $groupTherapyDTO->$objectKey !== $groupTherapyDTO->groupTherapy->$dataKey
-        )        
+        ) {
             $this->data[$dataKey] = $groupTherapyDTO->$objectKey;
+        }
     }
 }
