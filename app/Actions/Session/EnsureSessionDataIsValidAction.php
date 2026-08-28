@@ -85,7 +85,7 @@ class EnsureSessionDataIsValidAction extends Action
 
             if (
                 Session::query()
-                    ->whereDoesntHave('for', function ($query) use ($createSessionDTO) {
+                    ->whereHas('for', function ($query) use ($createSessionDTO) {
                         $query->whereParticipant($createSessionDTO->for->addedby);
                     })
                     ->when($createSessionDTO->session, function ($query) use ($createSessionDTO) {
@@ -99,7 +99,7 @@ class EnsureSessionDataIsValidAction extends Action
 
             if (
                 Session::query()
-                    ->whereDoesntHave('for', function ($query) use ($createSessionDTO) {
+                    ->whereHas('for', function ($query) use ($createSessionDTO) {
                         $query->whereParticipant($createSessionDTO->for->counsellor->user);
                     })
                     ->when($createSessionDTO->session, function ($query) use ($createSessionDTO) {
