@@ -3,15 +3,17 @@
 namespace App\Notifications;
 
 use App\Enums\OrganizationCounsellorCompensationTypeEnum;
+use App\Models\Counsellor;
 use App\Models\Organization;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
-// SCRUM-146 (TT-6.4c): sent to the recipient (`to`) of a new compensation-change proposal or
-// counter-offer. `$organization` is always the Organization the affiliation belongs to,
-// regardless of which party actually proposed this specific round.
+// SCRUM-146/148 (TT-6.4c): sent to the recipient (`to`) of a new compensation-change proposal or
+// counter-offer -- a Counsellor on the org's turn, or (SCRUM-148) each admin of the Organization
+// on the counsellor's turn. `$organization` is always the Organization the affiliation belongs
+// to, regardless of which party actually proposed this specific round.
 class OrganizationCounsellorCompensationChangeProposedNotification extends Notification implements ShouldQueue
 {
     use Queueable;
@@ -39,12 +41,19 @@ class OrganizationCounsellorCompensationChangeProposedNotification extends Notif
     {
         return (new MailMessage)
             ->subject('New Compensation Terms Proposed')
-            ->greeting("Hello {$notifiable->getName()}!")
-            ->line("{$this->organization->name} has proposed new compensation terms for your affiliation.")
+            ->greeting("Hello {$this->notifiableName($notifiable)}!")
+            ->line("New compensation terms have been proposed for your affiliation with {$this->organization->name}.")
             ->line($this->describeTerms())
             ->line('Your current terms, if any, remain unchanged until you respond.')
             ->action('Go Home', url(''))
             ->line("Thank you for choosing to 'TalkTherapy'.");
+    }
+
+    // SCRUM-148: notifiable is a Counsellor on the org's turn, or a User (an org admin) on the
+    // counsellor's counter-offer turn -- these expose the display name differently.
+    private function notifiableName(object $notifiable): string
+    {
+        return $notifiable instanceof Counsellor ? $notifiable->getName() : $notifiable->name;
     }
 
     /**

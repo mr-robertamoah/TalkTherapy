@@ -7,6 +7,7 @@ use App\DTOs\OrganizationCounsellorCompensationDTO;
 use App\Http\Requests\CreateOrganizationCounsellorCompensationRequest;
 use App\Http\Resources\OrganizationCounsellorCompensationResource;
 use App\Models\OrganizationCounsellor;
+use App\Models\Request as ModelsRequest;
 use App\Services\OrganizationCounsellorCompensationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Redirect;
@@ -54,6 +55,44 @@ class OrganizationCounsellorCompensationController extends Controller
             );
 
             $resource = GetRequestResourceAction::new()->execute($proposal);
+
+            if ($request->acceptsJson()) {
+                return response()->json(['proposal' => $resource]);
+            }
+
+            return Redirect::back()->with(['proposal' => $resource]);
+        } catch (Throwable $th) {
+            $status = $this->statusFor($th);
+            $message = $this->messageFor($th, $status);
+
+            if ($request->acceptsJson()) {
+                return response()->json(['message' => $message], $status);
+            }
+
+            return Redirect::back()->withErrors(['alert' => $message]);
+        }
+    }
+
+    // SCRUM-148 (TT-6.4c): counters a pending proposal with new terms -- keyed on requestId
+    // (the negotiation being responded to), not organizationCounsellorId, since only the current
+    // to-party of that specific request may act on it.
+    public function counterOffer(CreateOrganizationCounsellorCompensationRequest $request)
+    {
+        try {
+            $counterOffer = OrganizationCounsellorCompensationService::new()->counterOffer(
+                OrganizationCounsellorCompensationDTO::new()->fromArray([
+                    'user' => $request->user(),
+                    'request' => ModelsRequest::find($request->route('requestId')),
+                    'type' => $request->type,
+                    'amount' => $request->amount,
+                    'currency' => $request->currency,
+                    'percentage' => $request->percentage,
+                    'basis' => $request->basis,
+                    'expiryDays' => $request->expiryDays,
+                ])
+            );
+
+            $resource = GetRequestResourceAction::new()->execute($counterOffer);
 
             if ($request->acceptsJson()) {
                 return response()->json(['proposal' => $resource]);
