@@ -40,13 +40,16 @@ class EnsureDiscussionDataIsValidAction extends Action
                 })
                 ->where(function ($query) use ($createDiscussionDTO) {
                     $query
-                        ->wherePending()
-                        ->whereAddedby($createDiscussionDTO->addedby);
-                })
-                ->orWhere(function ($query) use ($createDiscussionDTO) {
-                    $query
-                        ->wherePending()
-                        ->whereCounsellor($createDiscussionDTO->addedby);
+                        ->where(function ($query) use ($createDiscussionDTO) {
+                            $query
+                                ->wherePending()
+                                ->whereAddedby($createDiscussionDTO->addedby);
+                        })
+                        ->orWhere(function ($query) use ($createDiscussionDTO) {
+                            $query
+                                ->wherePending()
+                                ->whereCounsellor($createDiscussionDTO->addedby);
+                        });
                 })
                 ->whereDateIsBetweenStartAndEndTimes($startTime)
                 ->exists()
@@ -61,13 +64,16 @@ class EnsureDiscussionDataIsValidAction extends Action
                 })
                 ->where(function ($query) use ($createDiscussionDTO) {
                     $query
-                        ->wherePending()
-                        ->whereAddedby($createDiscussionDTO->addedby);
-                })
-                ->orWhere(function ($query) use ($createDiscussionDTO) {
-                    $query
-                        ->wherePending()
-                        ->whereCounsellor($createDiscussionDTO->addedby);
+                        ->where(function ($query) use ($createDiscussionDTO) {
+                            $query
+                                ->wherePending()
+                                ->whereAddedby($createDiscussionDTO->addedby);
+                        })
+                        ->orWhere(function ($query) use ($createDiscussionDTO) {
+                            $query
+                                ->wherePending()
+                                ->whereCounsellor($createDiscussionDTO->addedby);
+                        });
                 })
                 ->whereIsThirtyMinituesBeforeOrAfter($startTime, $endTime)
                 ->exists()
