@@ -12,12 +12,14 @@ class StoreVisitationMiddleware
     /**
      * Handle an incoming request.
      *
-     * @param  \Closure(\Illuminate\Http\Request): (\Symfony\Component\HttpFoundation\Response)  $next
+     * @param  Closure(Request): (Response)  $next
      */
     public function handle(Request $request, Closure $next): Response
     {
-        if ($request->getPathInfo() !== '/login');
+        if ($request->getPathInfo() !== '/login') {
             StoreVisitationJob::dispatch($request->user(), $request->ip());
+        }
+
         return $next($request);
     }
 }
