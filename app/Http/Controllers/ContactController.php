@@ -35,9 +35,11 @@ class ContactController extends Controller
         }
     }
 
+    // Reads $request->route('contactId') rather than the magic ->contactId property -- see the
+    // identical fix/rationale in SessionController (SCRUM-116/SCRUM-130/SCRUM-133).
     public function updateContact(Request $request)
     {
-        $contact = Contact::find($request->contactId);
+        $contact = Contact::find($request->route('contactId'));
         try {
             $contact = ContactService::new()->updateContact(
                 CreateContactDTO::new()->fromArray([
@@ -60,7 +62,7 @@ class ContactController extends Controller
 
     public function deleteContact(Request $request)
     {
-        $contact = Contact::find($request->contactId);
+        $contact = Contact::find($request->route('contactId'));
         try {
             ContactService::new()->deleteContact(
                 CreateContactDTO::new()->fromArray([
