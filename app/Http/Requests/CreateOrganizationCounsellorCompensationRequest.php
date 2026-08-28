@@ -31,6 +31,8 @@ class CreateOrganizationCounsellorCompensationRequest extends FormRequest
             'currency' => ['nullable', Rule::requiredIf($this->get('type') === OrganizationCounsellorCompensationTypeEnum::fixed->value), 'string', 'size:3'],
             'percentage' => ['nullable', Rule::requiredIf($this->get('type') === OrganizationCounsellorCompensationTypeEnum::percentage->value), 'integer', 'between:1,100'],
             'basis' => ['nullable', Rule::requiredIf($this->get('type') === OrganizationCounsellorCompensationTypeEnum::percentage->value), Rule::in(OrganizationCounsellorCompensationBasisEnum::values())],
+            // SCRUM-146 (TT-6.4c): optional override of the configured default negotiation window.
+            'expiryDays' => ['nullable', 'integer', 'between:1,30'],
         ];
     }
 }

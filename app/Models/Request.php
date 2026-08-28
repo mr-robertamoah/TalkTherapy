@@ -10,9 +10,11 @@ class Request extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['data', 'type', 'status'];
+    protected $fillable = ['data', 'type', 'status', 'expires_at', 'round'];
+
     protected $casts = [
-        'data' => 'array'
+        'data' => 'array',
+        'expires_at' => 'datetime',
     ];
 
     public function from()

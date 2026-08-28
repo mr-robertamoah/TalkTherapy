@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Actions\Request\GetRequestResourceAction;
 use App\DTOs\OrganizationCounsellorCompensationDTO;
 use App\Http\Requests\CreateOrganizationCounsellorCompensationRequest;
 use App\Http\Resources\OrganizationCounsellorCompensationResource;
@@ -32,10 +33,14 @@ class OrganizationCounsellorCompensationController extends Controller
         }
     }
 
+    // SCRUM-146 (TT-6.4c): returns the created pending Request, not a compensation resource --
+    // this admin write is no longer immediately effective. No other frontend or backend consumer
+    // of this endpoint's response exists yet (confirmed via grep; TT-6.5a's admin dashboard isn't
+    // built), so this is a safe response-contract change with no deprecation window needed.
     public function store(CreateOrganizationCounsellorCompensationRequest $request)
     {
         try {
-            $compensation = OrganizationCounsellorCompensationService::new()->setCompensation(
+            $proposal = OrganizationCounsellorCompensationService::new()->proposeCompensationChange(
                 OrganizationCounsellorCompensationDTO::new()->fromArray([
                     'user' => $request->user(),
                     'organizationCounsellor' => OrganizationCounsellor::find($request->route('organizationCounsellorId')),
@@ -44,16 +49,17 @@ class OrganizationCounsellorCompensationController extends Controller
                     'currency' => $request->currency,
                     'percentage' => $request->percentage,
                     'basis' => $request->basis,
+                    'expiryDays' => $request->expiryDays,
                 ])
             );
 
-            $resource = new OrganizationCounsellorCompensationResource($compensation);
+            $resource = GetRequestResourceAction::new()->execute($proposal);
 
             if ($request->acceptsJson()) {
-                return response()->json(['compensation' => $resource]);
+                return response()->json(['proposal' => $resource]);
             }
 
-            return Redirect::back()->with(['compensation' => $resource]);
+            return Redirect::back()->with(['proposal' => $resource]);
         } catch (Throwable $th) {
             $status = $this->statusFor($th);
             $message = $this->messageFor($th, $status);

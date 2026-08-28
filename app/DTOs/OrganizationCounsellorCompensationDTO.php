@@ -21,4 +21,7 @@ class OrganizationCounsellorCompensationDTO extends BaseDTO
     public ?int $percentage = null;
 
     public ?string $basis = null;
+
+    // SCRUM-146 (TT-6.4c): optional override of config('organization.compensation_negotiation_default_expiry_days').
+    public ?int $expiryDays = null;
 }

@@ -6,8 +6,10 @@ use App\Models\Counsellor;
 use App\Models\Discussion;
 use App\Models\GroupTherapy;
 use App\Models\Organization;
+use App\Models\OrganizationCounsellor;
 use App\Models\Therapy;
 use App\Models\User;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use MrRobertAmoah\DTO\BaseDTO;
 
@@ -17,11 +19,17 @@ class CreateRequestDTO extends BaseDTO
 
     public User|Counsellor|Organization|null $to = null;
 
-    public User|Counsellor|Discussion|Therapy|GroupTherapy|Organization|null $for = null;
+    public User|Counsellor|Discussion|Therapy|GroupTherapy|Organization|OrganizationCounsellor|null $for = null;
 
     public ?array $data = [];
 
     public ?string $type = null;
+
+    // SCRUM-146 (TT-6.4c): generic, optional -- unset for every request type that doesn't need
+    // an expiry/round-tracking mechanism.
+    public ?Carbon $expiresAt = null;
+
+    public ?int $round = null;
 
     /**
      * assign data (filled or validated) to the dto properties as an

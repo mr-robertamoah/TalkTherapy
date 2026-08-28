@@ -15,6 +15,13 @@ class EnsureOrganizationCounsellorCompensationDataIsValidAction extends Action
     // `fixed` payload can't also carry a leftover `percentage`/`basis` (reviewer-found gap).
     public function execute(OrganizationCounsellorCompensationDTO $dto): void
     {
+        // SCRUM-146 (TT-6.4c): orthogonal to compensation-type validation below -- an offerer may
+        // override config('organization.compensation_negotiation_default_expiry_days') per-offer,
+        // bounded so a negotiation window can't be set to something silly short or indefinitely long.
+        if (! is_null($dto->expiryDays) && ($dto->expiryDays < 1 || $dto->expiryDays > 30)) {
+            throw new OrganizationException('The expiry period must be between 1 and 30 days.', 422);
+        }
+
         if ($dto->type === OrganizationCounsellorCompensationTypeEnum::fixed->value) {
             if (is_null($dto->amount) || is_null($dto->currency)) {
                 throw new OrganizationException('A fixed compensation amount requires both an amount and a currency.', 422);
