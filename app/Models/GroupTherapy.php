@@ -310,7 +310,12 @@ class GroupTherapy extends Model
     {
         return $query->where(function ($query) use ($user) {
             $query
-                ->whereHas('users', function ($query) use ($user) {
+                ->where(function ($query) use ($user) {
+                    $query
+                        ->where('addedby_type', User::class)
+                        ->where('addedby_id', $user->id);
+                })
+                ->orWhereHas('users', function ($query) use ($user) {
                     $query->where('user_id', $user->id);
                 });
         });
