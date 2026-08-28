@@ -6,7 +6,9 @@ use App\Actions\Action;
 use App\Actions\Organization\CreateOrganizationCounsellorCompensationAction;
 use App\DTOs\OrganizationCounsellorCompensationDTO;
 use App\DTOs\RequestResponseDTO;
+use App\Enums\OrganizationCounsellorStatusEnum;
 use App\Enums\RequestStatusEnum;
+use App\Exceptions\OrganizationException;
 use App\Models\Request;
 use App\Models\User;
 use App\Notifications\OrganizationCounsellorCompensationChangeAcceptedNotification;
@@ -37,14 +39,28 @@ class RespondToOrganizationCounsellorCompensationRequestAction extends Action
 
             // The proposer of the accepted/rejected round, not whoever clicks accept/reject --
             // preserves SCRUM-123's "who set these terms" accountability through a negotiation
-            // that may later flip direction via a counter-offer.
+            // that may later flip direction via a counter-offer. Null-safe below for reject --
+            // a decline must still succeed even if the proposer's account is since gone.
             $proposer = User::find($request->data['proposedById'] ?? null);
 
             if ($status === RequestStatusEnum::accepted->value) {
+                $affiliation = $request->for;
+
+                // Verified/eligible at propose time only -- the affiliation could have ended
+                // since (mirrors RespondToOrganizationCounsellorRequestAction's own re-check of
+                // the organization's eligibility at accept time, for the same reason).
+                if ($affiliation->status === OrganizationCounsellorStatusEnum::ended->value) {
+                    throw new OrganizationException('This affiliation has ended and can no longer accept compensation changes.', 422);
+                }
+
+                if (is_null($proposer)) {
+                    throw new OrganizationException('The original proposer of these terms no longer exists; this proposal can no longer be accepted.', 422);
+                }
+
                 CreateOrganizationCounsellorCompensationAction::new()->execute(
                     OrganizationCounsellorCompensationDTO::new()->fromArray([
                         'user' => $proposer,
-                        'organizationCounsellor' => $request->for,
+                        'organizationCounsellor' => $affiliation,
                         'type' => $request->data['type'] ?? null,
                         'amount' => $request->data['amount'] ?? null,
                         'currency' => $request->data['currency'] ?? null,
@@ -53,7 +69,7 @@ class RespondToOrganizationCounsellorCompensationRequestAction extends Action
                     ])
                 );
 
-                $proposer?->notify(new OrganizationCounsellorCompensationChangeAcceptedNotification($request));
+                $proposer->notify(new OrganizationCounsellorCompensationChangeAcceptedNotification($request));
             }
 
             // Reject is a flat decline -- the affiliation's status and any existing compensation

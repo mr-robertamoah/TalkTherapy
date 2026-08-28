@@ -8,6 +8,7 @@ use App\Enums\OrganizationCounsellorCompensationTypeEnum;
 use App\Enums\OrganizationCounsellorStatusEnum;
 use App\Enums\RequestStatusEnum;
 use App\Exceptions\CannotRespondToRequestException;
+use App\Exceptions\OrganizationException;
 use App\Http\Resources\OrganizationRequestResource;
 use App\Models\Counsellor;
 use App\Models\Organization;
@@ -209,4 +210,76 @@ test('a responded-to compensation request renders through OrganizationRequestRes
 
     expect($resource['organization']['id'])->toBe($organization->id);
     expect($resource['status'])->toBe(RequestStatusEnum::accepted->value);
+});
+
+// Review finding (reviewer + security-engineer, PR #85): accepting silently attributed the
+// compensation row to a null set_by_id (or crashed with an unrelated PHP error) once the
+// proposing admin's account was gone -- must fail loudly and cleanly instead, without blocking
+// a reject on the same request.
+test('accepting a proposal whose original proposer no longer exists is rejected with a clean error', function () {
+    [$request, $affiliation, , $owner, , $counsellorUser] = pendingCompensationProposal();
+    $owner->delete();
+
+    expect(fn () => RequestService::new()->respondToRequest(
+        RequestResponseDTO::new()->fromArray([
+            'user' => $counsellorUser,
+            'request' => $request,
+            'response' => 'accepted',
+        ])
+    ))->toThrow(OrganizationException::class);
+
+    expect($request->refresh()->status)->toBe(RequestStatusEnum::pending->value);
+    expect($affiliation->compensations()->count())->toBe(0);
+});
+
+test('rejecting a proposal whose original proposer no longer exists still succeeds', function () {
+    [$request, , , $owner, , $counsellorUser] = pendingCompensationProposal();
+    $owner->delete();
+
+    $resource = RequestService::new()->respondToRequest(
+        RequestResponseDTO::new()->fromArray([
+            'user' => $counsellorUser,
+            'request' => $request,
+            'response' => 'rejected',
+        ])
+    );
+
+    expect($resource)->toBeInstanceOf(OrganizationRequestResource::class);
+    expect($request->refresh()->status)->toBe(RequestStatusEnum::rejected->value);
+});
+
+// Review finding (reviewer, PR #85): eligibility (organization verified/provider, counsellor
+// verified) is only checked at propose time -- the affiliation itself could have ended by the
+// time the counsellor responds, mirroring RespondToOrganizationCounsellorRequestAction's own
+// re-check of the organization's eligibility at accept time.
+test('accepting a proposal for an affiliation that has since ended is rejected with a clean error', function () {
+    [$request, $affiliation, , , , $counsellorUser] = pendingCompensationProposal();
+    $affiliation->update(['status' => OrganizationCounsellorStatusEnum::ended->value]);
+
+    expect(fn () => RequestService::new()->respondToRequest(
+        RequestResponseDTO::new()->fromArray([
+            'user' => $counsellorUser,
+            'request' => $request,
+            'response' => 'accepted',
+        ])
+    ))->toThrow(OrganizationException::class);
+
+    expect($request->refresh()->status)->toBe(RequestStatusEnum::pending->value);
+    expect($affiliation->compensations()->count())->toBe(0);
+});
+
+test('rejecting a proposal for an affiliation that has since ended still succeeds', function () {
+    [$request, $affiliation, , , , $counsellorUser] = pendingCompensationProposal();
+    $affiliation->update(['status' => OrganizationCounsellorStatusEnum::ended->value]);
+
+    RequestService::new()->respondToRequest(
+        RequestResponseDTO::new()->fromArray([
+            'user' => $counsellorUser,
+            'request' => $request,
+            'response' => 'rejected',
+        ])
+    );
+
+    expect($request->refresh()->status)->toBe(RequestStatusEnum::rejected->value);
+    expect($affiliation->refresh()->status)->toBe(OrganizationCounsellorStatusEnum::ended->value);
 });

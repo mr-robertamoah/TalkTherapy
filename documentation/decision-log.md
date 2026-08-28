@@ -1075,3 +1075,66 @@ plan written before implementation started is still accurate once the dependency
 (1/5) actually exists. Building an unneeded authorization action would have been redundant code
 duplicating a check the pipeline already performs -- a maintainability cost with no security
 benefit.
+
+---
+
+## 2026-08-28 — SCRUM-147 (TT-6.4c, 2/5): PR #85 review findings -- all three fixed
+
+**Reviewer** (Changes Requested) and **security-engineer** (Medium + Low/informational) both
+audited PR #85 before merge.
+
+**Fixed: the concurrency gap SCRUM-146's review explicitly assigned to this ticket.**
+`EnsureNoPendingOrganizationCounsellorCompensationRequestAction`'s check-then-create was flagged
+during SCRUM-146's review as a TOCTOU race deferred specifically to "SCRUM-147 (accept/reject) ...
+since that ticket is what will need 'at most one pending request per affiliation' to actually
+hold under concurrency once accept exists." This PR's first draft didn't touch it -- caught by
+the reviewer re-checking that the deferred item was actually addressed, not just re-reading the
+new code in isolation. Fixed by wrapping `OrganizationCounsellorCompensationService::proposeCompensationChange()`'s
+check-then-create in a `DB::transaction()` that first does
+`OrganizationCounsellor::query()->lockForUpdate()->findOrFail(...)` on the affiliation itself --
+this serializes proposal creation per affiliation (a concurrent second attempt blocks on the row
+lock until the first transaction commits, by which point its "no pending" check correctly sees
+the just-created row). Scoped to only this negotiation's action, not a schema-wide fix, since a
+naive table-wide unique constraint on `(for_type, for_id, type, status=pending)` would have been
+incorrect for other request types that legitimately allow multiple concurrent pending requests
+for the same `for` from different `from` parties (e.g. `groupTherapyMembership`, where many
+different clients can have independent pending requests to join the same group). As both
+reviewers separately noted, this fix's correctness rests on documented InnoDB `SELECT ... FOR
+UPDATE` behavior and cannot be exercised by an automated test, since the suite runs against
+sqlite `:memory:` (`phpunit.xml`), which has no real concurrent-transaction semantics -- a
+pre-existing, shared limitation across every `lockForUpdate()`-based action in this codebase, not
+unique to this fix.
+
+**Fixed: silent degradation when the original proposer's account no longer exists.**
+`RespondToOrganizationCounsellorCompensationRequestAction` read `Request.data['proposedById']`
+via `User::find()` and passed the (possibly null) result straight into
+`CreateOrganizationCounsellorCompensationAction`, which unconditionally reads `$dto->user->id` --
+either silently writing `set_by_id = NULL` or (as security-engineer verified by reproducing it)
+crashing with a generic, uncoded `ErrorException` that maps to an opaque 500, permanently blocking
+that counsellor from ever accepting the proposal. Fixed with an explicit guard: accept now throws
+a clean `OrganizationException` if the proposer can't be resolved, leaving the request `pending`
+(so it can still be rejected, or resolved once the situation is understood) instead of degrading
+invisibly. Reject was deliberately left untouched -- it must succeed even with no resolvable
+proposer, since a decline is not an accountability-sensitive write.
+
+**Fixed (reviewer's suggested improvement, treated as required given the ticket's own
+fairness/accountability framing): no affiliation-eligibility recheck on accept.**
+`RespondToOrganizationCounsellorRequestAction` (SCRUM-121, the sibling this ticket's action
+mirrors) explicitly rechecks the organization's eligibility at accept time, since it can change
+between propose and respond. This ticket's action had no analogous check -- accepting a stale
+proposal against an affiliation that has since moved to `ended` would silently resurrect
+compensation terms for a terminated relationship. Fixed by rejecting (with the same clean
+`OrganizationException` pattern) an accept attempt against an `ended` affiliation; reject remains
+unaffected, matching the "reject must never be blocked" principle applied to the proposer-missing
+case above.
+
+Added 4 new regression tests covering all three fixes (proposer-gone on accept vs. reject,
+ended-affiliation on accept vs. reject) plus verified the existing sequential "second proposal
+rejected" test still passes under the new transaction wrapper. Full suite: 578 passed (up from
+574). Pint clean.
+
+**Why**: CLAUDE.md requires never silently dropping a reviewer/security finding, and doubly so
+here since one finding was a previously-deferred item this exact ticket was assigned to address
+-- silently not doing it would have repeated, not resolved, the SCRUM-146 review's own reasoning.
+All three fixes are narrowly scoped to the actual failure mode found (no schema change, no new
+abstraction, no speculative validation added beyond what was demonstrated to be reachable).
