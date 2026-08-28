@@ -62,8 +62,16 @@ class DeleteCounsellorAction extends Action
         $fromTherapies = $counsellor->therapies()->get()
             ->map(fn ($therapy) => $therapy->addedby_type === User::class ? $therapy->addedby : null);
 
+        // Deliberately NOT GroupTherapy::getUsers() -- that helper also returns every OTHER
+        // counsellor attached to the group (and, since this counsellor's own pivot row hasn't
+        // been flipped to inactive yet at this point, the counsellor being deleted themselves).
+        // Only actual members (the group_therapy_user pivot) and a User-owner count as clients.
         $fromGroupTherapies = $counsellor->groupTherapies()->get()
-            ->flatMap(fn ($groupTherapy) => $groupTherapy->getUsers());
+            ->flatMap(function ($groupTherapy) {
+                $owner = $groupTherapy->addedby_type === User::class ? $groupTherapy->addedby : null;
+
+                return $groupTherapy->users->merge([$owner]);
+            });
 
         return $fromTherapies->merge($fromGroupTherapies)->filter()->unique('id');
     }

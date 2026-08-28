@@ -160,6 +160,37 @@ test('deletion notifies former clients from ended therapies and group therapies'
     Notification::assertSentTo($groupTherapyOwner, CounsellorAccountDeletedNotification::class);
 });
 
+// Regression test: GroupTherapy::getUsers() (a general-purpose helper used nowhere else) also
+// returns every OTHER counsellor attached to the group, and -- since this counsellor's own pivot
+// row hasn't been flipped to inactive yet when notifications are gathered -- the counsellor being
+// deleted themselves. Neither is a "former client" and neither should be notified.
+test('deletion does not notify co-counsellors or the deleted counsellor themselves', function () {
+    Notification::fake();
+
+    $owner = User::factory()->create();
+    $counsellor = Counsellor::factory()->create(['user_id' => $owner->id]);
+
+    $coCounsellorUser = User::factory()->create();
+    $coCounsellor = Counsellor::factory()->create(['user_id' => $coCounsellorUser->id]);
+
+    $groupTherapy = GroupTherapy::factory()->create([
+        'addedby_type' => User::class,
+        'addedby_id' => User::factory(),
+    ]);
+    $groupTherapy->counsellors()->attach([$counsellor->id, $coCounsellor->id], [
+        'state' => CounsellorGroupTherapyStateEnum::active->value,
+        'role' => CounsellorGroupTherapyRoleEnum::normal->value,
+    ]);
+
+    DeleteCounsellorAction::new()->execute(DeleteCounsellorDTO::new()->fromArray([
+        'user' => $owner,
+        'counsellor' => $counsellor,
+    ]));
+
+    Notification::assertNotSentTo($coCounsellorUser, CounsellorAccountDeletedNotification::class);
+    Notification::assertNotSentTo($owner, CounsellorAccountDeletedNotification::class);
+});
+
 test('deletion does not notify a user unrelated to the counsellor', function () {
     Notification::fake();
 

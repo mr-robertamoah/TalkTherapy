@@ -236,22 +236,23 @@ class Counsellor extends Model
         return $this->morphMany(Session::class, 'addedby');
     }
 
-    public function hasNoPendingSessions()
-    {
-        return ! $this->hasPendingSessions();
-    }
-
     public function hasPendingSessions()
     {
+        // SCRUM-134: the three OR'd conditions must be grouped in one outer where() -- otherwise
+        // only wherePending() stays scoped to this counsellor's addedSessions(), and the trailing
+        // orWhere()s break out to match ANY session in the whole table (the same
+        // where()->orWhere() footgun already fixed elsewhere as SCRUM-129/139). Found here because
+        // it silently blocked EnsureCanDeleteCounsellorAction's deletion flow for every counsellor
+        // as soon as any session anywhere was upcoming.
         return $this->addedSessions()
             ->where(function ($query) {
-                $query->wherePending();
-            })
-            ->orWhere(function ($query) {
-                $query->whereStartsInTheFuture();
-            })
-            ->orWhere(function ($query) {
-                $query->whereAboutToStart();
+                $query->wherePending()
+                    ->orWhere(function ($query) {
+                        $query->whereStartsInTheFuture();
+                    })
+                    ->orWhere(function ($query) {
+                        $query->whereAboutToStart();
+                    });
             })
             ->exists();
     }
