@@ -686,3 +686,57 @@ severity determined the response: High/live-and-worsening issues (this one, and 
 got fixed immediately in a follow-up PR; Low/deferred-until-a-future-event issues (SCRUM-138, and
 now SCRUM-141) got filed and left for later. Consistent triage criterion: is this actively
 happening/getting worse right now, or is it a one-time cleanup/future-conditional concern.
+
+---
+
+## 2026-08-28 — SCRUM-109: deploy migrations + health-check backstop (merged)
+
+**Decision**: implemented both halves of the user-chosen "Both" option: `php artisan migrate --force`
+added to the SSM deploy chain in `.github/workflows/main.yml`, plus a `FailHealthCheckOnPendingMigrations`
+listener on Laravel's `DiagnosingHealth` event as a backstop for whenever that step is ever skipped or
+fails silently. `reviewer` approved with one non-blocking style suggestion (prefer `handle(Migrator
+$migrator)` parameter injection over `app(Migrator::class)` in the listener body) -- left as-is since
+the PR was already merged before triaging it, and it's purely idiomatic with no functional effect.
+`devops-engineer` flagged real operational gaps in the broader deploy pipeline (no maintenance-mode
+wrap around the live single-instance deploy, MySQL DDL isn't transactional so a partially-applied
+migration won't self-heal on retry, `aws ssm send-command`'s result is never checked so a failed
+`migrate --force` would show green in GitHub Actions, and the leading `git stash` in the deploy chain
+would silently discard any on-server hand-fix made during incident recovery) -- all pre-existing
+pipeline characteristics, not regressions introduced by this PR, and out of scope for a "run migrations
++ add a health check" ticket. Confirmed no regression of SCRUM-94's exception-disclosure fix: the `/up`
+route's Blade view never echoes the exception message in the HTTP body regardless of `APP_DEBUG`.
+
+**Why**: the devops findings describe a real, pre-existing single-instance-deploy risk profile that
+predates this ticket and would take a separate infra-hardening effort (maintenance mode, SSM
+result-checking, migration idempotency review) to address properly -- not something to bolt onto a
+bugfix PR. Not filing a ticket for these yet since they're a cohesive block of related infra work
+better scoped as one deliberate follow-up conversation with whoever owns infra, rather than several
+disconnected Low-priority tickets; noting them here so the context isn't lost.
+
+---
+
+## 2026-08-28 — SCRUM-108: implemented validateGroupTherapy(), fixed a real bug found along the way
+
+**Decision**: implemented `EnsureSessionDataIsValidAction::validateGroupTherapy()` (previously a
+completely empty stub) mirroring `validateTherapy()`, per the user's explicit choice ("Implement it
+now, mirroring validateTherapy()"). While writing the addedby-owner double-booking check, found that
+`GroupTherapy::scopeWhereUser()` only matched the `group_therapy_user` join-pivot and never the
+`addedby` column -- so a group therapy's own direct creator was invisible to `whereParticipant()`/
+`whereUser()` queries, including the live `GroupTherapyService::getRecentGroupTherapies()` dashboard
+query. Fixed it to also match `addedby_type === User::class && addedby_id === $user->id`, consistent
+with `Therapy::scopeWhereUser()`'s existing pattern, and added a dedicated regression test
+(`GroupTherapyWhereParticipantTest`) separate from the SCRUM-108 test file since it's a distinct bug.
+Verified both fixes empirically (temporarily reverted each independently, confirmed the relevant
+tests fail, restored, confirmed they pass).
+
+Noted but deliberately not touched: `GroupTherapy` already has a separately-defined
+`scopeWhereIsParticipant()` (used by `Session`'s `whereHasMorph` dispatch) that already had the
+correct addedby-is-User logic -- my fix now duplicates that logic under a different, similarly-named
+scope. Flagging as a pre-existing duplication smell for a future cleanup pass, not consolidated here
+to keep this PR scoped to the double-booking bug it needed to fix.
+
+**Why**: this is the session's continuing "fix the underlying bug directly when it's small and
+directly blocks the current ticket's own required functionality" pattern (same reasoning as SCRUM-
+129's Timeable fix) -- without this fix, SCRUM-108's own addedby-owner double-booking check would be
+silently non-functional for the most common case (a group therapy created directly by a User rather
+than joined via the pivot).
