@@ -6,6 +6,7 @@ use App\DTOs\GroupTherapyDTO;
 use App\Enums\TherapyPaymentTypeEnum;
 use App\Enums\TherapySessionTypeEnum;
 use App\Exceptions\TherapyCreationDataIsNotValidException;
+use App\Models\Counsellor;
 use App\Models\GroupTherapy;
 use App\Models\Therapy;
 use App\Models\User;
@@ -148,4 +149,130 @@ test('genuinely increasing an already-over-ceiling maxUsers further is still rej
         'groupTherapy' => $groupTherapy,
         'maxUsers' => $overCeiling + 25,
     ])))->toThrow(TherapyCreationDataIsNotValidException::class);
+});
+
+// SCRUM-132: every cross-field check below reasons about the DTO's current fields only, so a
+// partial update omitting one side of a pair either false-positives (the omitted field's null
+// looks like "not set" when the persisted value already satisfies the invariant) or bypasses the
+// check entirely (the omitted field is what the check's own trigger condition depends on). Each
+// pair below is tested in both directions.
+
+test('a partial update setting only paymentType=free does not false-positive when the therapy is already public', function () {
+    $therapy = Therapy::factory()->create([
+        'addedby_type' => User::class,
+        'addedby_id' => User::factory(),
+        'public' => true,
+        'payment_type' => TherapyPaymentTypeEnum::paid->value,
+        'payment_data' => ['per' => 'PER_THERAPY', 'amount' => 50, 'currency' => 'GHS', 'inPersonAmount' => 60],
+    ]);
+
+    expect(fn () => EnsureTherapyDataIsValidAction::new()->execute(CreateTherapyDTO::new()->fromArray([
+        'therapy' => $therapy,
+        'paymentType' => TherapyPaymentTypeEnum::free->value,
+    ])))->not->toThrow(TherapyCreationDataIsNotValidException::class);
+});
+
+test('a partial update setting only public=false does not bypass the FREE-requires-PUBLIC check when the therapy is already free', function () {
+    $therapy = Therapy::factory()->create([
+        'addedby_type' => User::class,
+        'addedby_id' => User::factory(),
+        'public' => true,
+        'payment_type' => TherapyPaymentTypeEnum::free->value,
+    ]);
+
+    expect(fn () => EnsureTherapyDataIsValidAction::new()->execute(CreateTherapyDTO::new()->fromArray([
+        'therapy' => $therapy,
+        'public' => false,
+    ])))->toThrow(TherapyCreationDataIsNotValidException::class, 'FREE payment types requires that you make therapy PUBLIC.');
+});
+
+test('a partial update setting only sessionType=periodic does not false-positive when maxSessions is already valid', function () {
+    $therapy = Therapy::factory()->create([
+        'addedby_type' => User::class,
+        'addedby_id' => User::factory(),
+        'session_type' => TherapySessionTypeEnum::once->value,
+        'max_sessions' => 5,
+    ]);
+
+    expect(fn () => EnsureTherapyDataIsValidAction::new()->execute(CreateTherapyDTO::new()->fromArray([
+        'therapy' => $therapy,
+        'sessionType' => TherapySessionTypeEnum::periodic->value,
+    ])))->not->toThrow(TherapyCreationDataIsNotValidException::class);
+});
+
+test('a partial update setting only maxSessions=1 does not bypass the PERIODIC-needs-at-least-2 check when the therapy is already periodic', function () {
+    $therapy = Therapy::factory()->create([
+        'addedby_type' => User::class,
+        'addedby_id' => User::factory(),
+        'session_type' => TherapySessionTypeEnum::periodic->value,
+        'max_sessions' => 5,
+    ]);
+
+    expect(fn () => EnsureTherapyDataIsValidAction::new()->execute(CreateTherapyDTO::new()->fromArray([
+        'therapy' => $therapy,
+        'maxSessions' => 1,
+    ])))->toThrow(TherapyCreationDataIsNotValidException::class, 'Since PERIODIC has been selected for the session type, the maximum number of sessions must be at least 2.');
+});
+
+test('a partial update setting only paymentType=paid does not false-positive when amount/currency/per are already set', function () {
+    $therapy = Therapy::factory()->create([
+        'addedby_type' => User::class,
+        'addedby_id' => User::factory(),
+        'payment_type' => TherapyPaymentTypeEnum::free->value,
+        'payment_data' => ['per' => 'PER_THERAPY', 'amount' => 50, 'currency' => 'GHS', 'inPersonAmount' => 60],
+    ]);
+
+    expect(fn () => EnsureTherapyDataIsValidAction::new()->execute(CreateTherapyDTO::new()->fromArray([
+        'therapy' => $therapy,
+        'paymentType' => TherapyPaymentTypeEnum::paid->value,
+    ])))->not->toThrow(TherapyCreationDataIsNotValidException::class);
+});
+
+test('a partial update touching an unrelated field does not bypass the PAID-needs-amount check when the therapy is already paid but incomplete', function () {
+    // Simulates a pre-existing inconsistent record (bypassing this validation entirely, exactly
+    // as the SCRUM-88 ceiling tests above do) -- payment_type is PAID but currency was never set.
+    $therapy = Therapy::factory()->create([
+        'addedby_type' => User::class,
+        'addedby_id' => User::factory(),
+        'payment_type' => TherapyPaymentTypeEnum::paid->value,
+        'payment_data' => ['per' => 'PER_THERAPY', 'amount' => 50, 'currency' => null, 'inPersonAmount' => 60],
+    ]);
+
+    expect(fn () => EnsureTherapyDataIsValidAction::new()->execute(CreateTherapyDTO::new()->fromArray([
+        'therapy' => $therapy,
+        'name' => 'Renamed',
+    ])))->toThrow(TherapyCreationDataIsNotValidException::class, 'Amount, currency and per what? All of these are required since you selected PAID payment type.');
+});
+
+test('a partial update touching an unrelated field does not bypass the in-person-amount-vs-amount check when the therapy is already inconsistent', function () {
+    $therapy = Therapy::factory()->create([
+        'addedby_type' => User::class,
+        'addedby_id' => User::factory(),
+        'payment_type' => TherapyPaymentTypeEnum::paid->value,
+        'payment_data' => ['per' => 'PER_THERAPY', 'amount' => 100, 'currency' => 'GHS', 'inPersonAmount' => 50],
+    ]);
+
+    expect(fn () => EnsureTherapyDataIsValidAction::new()->execute(CreateTherapyDTO::new()->fromArray([
+        'therapy' => $therapy,
+        'name' => 'Renamed',
+    ])))->toThrow(TherapyCreationDataIsNotValidException::class, 'Amount in-person session cannot be less than amount for online session.');
+});
+
+test('a partial group therapy update touching an unrelated field does not bypass the counsellor share-percentage check based on who created it', function () {
+    $counsellorUser = User::factory()->create();
+    $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
+
+    $groupTherapy = GroupTherapy::factory()->create([
+        'addedby_type' => Counsellor::class,
+        'addedby_id' => $counsellor->id,
+        'payment_type' => TherapyPaymentTypeEnum::paid->value,
+        'payment_data' => ['per' => 'PER_THERAPY', 'amount' => 50, 'currency' => 'GHS', 'inPersonAmount' => 60, 'shareEqually' => false, 'sharePercentage' => 20],
+    ]);
+
+    // counsellorIds is never repopulated on GroupTherapyController::updateGroupTherapy the way
+    // $dto->counsellor (create-only) would be -- the fix falls back to addedby_type instead.
+    expect(fn () => EnsureTherapyDataIsValidAction::new()->execute(GroupTherapyDTO::new()->fromArray([
+        'groupTherapy' => $groupTherapy,
+        'name' => 'Renamed',
+    ])))->toThrow(TherapyCreationDataIsNotValidException::class, 'The share to counsellors cannot be more than 100% or below 40%.');
 });
