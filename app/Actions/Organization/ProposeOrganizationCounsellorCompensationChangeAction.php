@@ -33,6 +33,10 @@ class ProposeOrganizationCounsellorCompensationChangeAction extends Action
                     'currency' => $dto->currency,
                     'percentage' => $dto->percentage,
                     'basis' => $dto->basis,
+                    // SCRUM-147: the accept step attributes the resulting compensation row's
+                    // set_by_id to whoever actually proposed these terms, not whoever clicks
+                    // accept -- record it here since `from` is the Organization, not a User.
+                    'proposedById' => $dto->user->id,
                 ],
                 'expiresAt' => now()->addDays($expiryDays),
                 'round' => 1,

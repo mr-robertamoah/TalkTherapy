@@ -1037,3 +1037,41 @@ since it's a live, easily-triggered usability break once real proposals exist (s
 PR). The Low finding is a pre-existing, deliberate-risk-tolerance pattern shared by two sibling
 actions already in production, better addressed once, at the ticket that actually depends on the
 invariant holding, than patched in isolation here.
+
+---
+
+## 2026-08-28 — SCRUM-147 (TT-6.4c, 2/5): the ticket's planned `EnsureUserCanRespondTo...` action turned out unnecessary
+
+**Decision**: SCRUM-147's scope, written during SCRUM-131's planning, called for a new
+`EnsureUserCanRespondToOrganizationCounsellorCompensationRequestAction` gating who may
+accept/reject a proposal. Before writing it, read the existing generic
+`EnsureUserCanRespondToRequestAction` (already invoked by `RequestService::respondToRequest()`
+ahead of every type's dispatch) and traced through its checks against this ticket's actual scope
+(the org-initiated direction only; `to` is always a `Counsellor`): its
+`$respondent->is($requestResponseDTO->user?->counsellor)` check already correctly authorizes
+exactly the counsellor the request is addressed to, and its admin/Organization-administered-by
+branches correctly reject everyone else -- with no touch to (or relaxation of) 1/5's admin-only
+`EnsureUserCanSetOrganizationCounsellorCompensationAction`. Wrote
+`RespondToOrganizationCounsellorCompensationRequestAction` with no bespoke authorization check at
+all (mirroring `RespondToOrganizationCounsellorRequestAction`'s own shape, which also has none),
+and proved it empirically with dedicated tests: an outsider is rejected, the proposing admin
+cannot respond to their own proposal, and the addressed counsellor can. All pass without any new
+authorization code.
+
+Also verified AC5 (the ticket's requested `OrganizationRequestResource` `for`→`Organization`
+fix) was already shipped as part of SCRUM-146 -- no additional change needed, just a regression
+test proving it holds through the full respond pipeline too.
+
+One real gap the ticket's scope missed: `Request.data` (as SCRUM-146 wrote it) never recorded
+*which specific org admin* proposed the terms -- only the `Organization` (`from`). Accept's
+"attribute the compensation row to the original proposer" requirement (AC1) needed that
+`User` id, so `ProposeOrganizationCounsellorCompensationChangeAction` (already merged) was
+extended to also store `proposedById` in `Request.data`.
+
+**Why**: consistent with this session's standing discipline (the `DeleteCounsellorAction` and
+`OrganizationRequestResource` catches earlier this epic) of verifying a planning-time ticket's
+stated need against the actual current codebase before building it, rather than assuming a
+plan written before implementation started is still accurate once the dependency it builds on
+(1/5) actually exists. Building an unneeded authorization action would have been redundant code
+duplicating a check the pipeline already performs -- a maintainability cost with no security
+benefit.
