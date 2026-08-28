@@ -2,13 +2,17 @@
 
 namespace App\Services;
 
+use App\Actions\Organization\CounterOfferOrganizationCounsellorCompensationChangeAction;
 use App\Actions\Organization\EnsureNoPendingOrganizationCounsellorCompensationRequestAction;
 use App\Actions\Organization\EnsureOrganizationCounsellorCompensationDataIsValidAction;
 use App\Actions\Organization\EnsureOrganizationCounsellorExistsAction;
 use App\Actions\Organization\EnsureUserCanSetOrganizationCounsellorCompensationAction;
 use App\Actions\Organization\EnsureUserCanViewOrganizationCounsellorCompensationsAction;
 use App\Actions\Organization\ProposeOrganizationCounsellorCompensationChangeAction;
+use App\Actions\Request\EnsureRequestExistsAction;
+use App\Actions\Request\EnsureUserCanRespondToRequestAction;
 use App\DTOs\OrganizationCounsellorCompensationDTO;
+use App\DTOs\RequestResponseDTO;
 use App\Models\OrganizationCounsellor;
 use App\Models\Request;
 use Illuminate\Database\Eloquent\Collection;
@@ -39,6 +43,23 @@ class OrganizationCounsellorCompensationService extends Service
 
             return ProposeOrganizationCounsellorCompensationChangeAction::new()->execute($dto);
         });
+    }
+
+    // SCRUM-148 (TT-6.4c): the party currently addressed `to` the pending request can counter
+    // rather than just accept/reject -- reuses the same generic to-party authorization as
+    // accept/reject (EnsureUserCanRespondToRequestAction), since counter-offering is just another
+    // way of responding to a pending request, not a distinct capability needing its own gate.
+    public function counterOffer(OrganizationCounsellorCompensationDTO $dto): Request
+    {
+        EnsureRequestExistsAction::new()->execute(RequestResponseDTO::new()->fromArray(['request' => $dto->request]));
+
+        EnsureUserCanRespondToRequestAction::new()->execute(
+            RequestResponseDTO::new()->fromArray(['user' => $dto->user, 'request' => $dto->request])
+        );
+
+        EnsureOrganizationCounsellorCompensationDataIsValidAction::new()->execute($dto);
+
+        return CounterOfferOrganizationCounsellorCompensationChangeAction::new()->execute($dto);
     }
 
     public function getCompensations(OrganizationCounsellorCompensationDTO $dto): Collection

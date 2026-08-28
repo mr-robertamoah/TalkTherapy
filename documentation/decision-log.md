@@ -1138,3 +1138,36 @@ here since one finding was a previously-deferred item this exact ticket was assi
 -- silently not doing it would have repeated, not resolved, the SCRUM-146 review's own reasoning.
 All three fixes are narrowly scoped to the actual failure mode found (no schema change, no new
 abstraction, no speculative validation added beyond what was demonstrated to be reachable).
+
+---
+
+## 2026-08-28 — SCRUM-148 (TT-6.4c, 3/5): counter-offer's reverse direction addresses the whole Organization, not a specific admin
+
+**Decision**: the ticket text didn't specify exactly what a counsellor's counter-offer's `to`
+should resolve to once direction flips. Rather than address it back to the specific admin who
+made the original proposal (`proposedById`), it's addressed to the `Organization` itself --
+mirroring how the org's own turn already works in SCRUM-146 (`from` = `Organization`, never a
+specific admin). This means any admin of the organization can respond to a counter-offer, not
+only whichever admin happened to propose the previous round -- more realistic for an org with
+multiple admins, and it lets `EnsureUserCanRespondToRequestAction`'s existing
+`Organization`-administered-by branch (already in the codebase for other org-context request
+types, unused until now by this feature) authorize the org's turn with zero new authorization
+code, continuing the pattern from SCRUM-147's finding that a bespoke authorization action wasn't
+needed.
+
+Since `Organization` isn't `Notifiable`, a counter-offer addressed to it notifies every admin
+individually (`Notification::send($organization->admins, ...)`) rather than a single party.
+
+**Also**: rather than write a second near-duplicate notification class for the counter-offer
+recipient (the ticket's own AC2 says "same notification shape as 1/5's proposal-created
+notification"), `OrganizationCounsellorCompensationChangeProposedNotification` was generalized in
+place -- its mail copy no longer assumes the organization is always the one proposing, and it now
+resolves a display name correctly for either a `Counsellor` or a `User` (org admin) notifiable.
+Reused directly for both the original propose (SCRUM-146) and every counter-offer round.
+
+**Why**: consistent with this epic's standing preference for reusing existing generic
+infrastructure (`Request`/`RequestTypeEnum`, `EnsureUserCanRespondToRequestAction`) over building
+parallel, type-specific mechanisms -- a counter-offer is fundamentally "another proposal, in the
+reverse direction," not a conceptually new capability, so it should look exactly like the
+original proposal wherever the two are actually the same operation from the recipient's point of
+view.
