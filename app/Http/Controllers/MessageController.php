@@ -21,10 +21,15 @@ use Throwable;
 
 class MessageController extends Controller
 {
+    // Every lookup below reads $request->route('paramName') rather than the magic ->messageId/
+    // ->sessionId/->topicId/->discussionId properties -- see the identical fix/rationale in
+    // SessionController (SCRUM-116/SCRUM-130). Note topicId is legitimately body-only in
+    // createMessage/updateMessage/getSessionMessages (no {topicId} route segment there) but IS
+    // the route parameter in getTopicMessages -- fixed only where it's actually route-bound.
     public function getMessageReplies(Request $request)
     {
         return MessageService::new()->getMessageReplies(
-            Message::find($request->messageId),
+            Message::find($request->route('messageId')),
             $request->user()
         );
     }
@@ -34,7 +39,7 @@ class MessageController extends Controller
         return MessageService::new()->getSessionMessages(
             GetSessionMessagesDTO::new()->fromArray([
                 'user' => $request->user(),
-                'session' => Session::find($request->sessionId),
+                'session' => Session::find($request->route('sessionId')),
                 'like' => $request->like,
                 'groupBy' => $request->groupBy,
                 'topicId' => $request->topicId,
@@ -52,7 +57,7 @@ class MessageController extends Controller
                     'sessionId' => $request->sessionId,
                     'like' => $request->like,
                     'groupBy' => $request->groupBy,
-                    'topic' => TherapyTopic::find($request->topicId),
+                    'topic' => TherapyTopic::find($request->route('topicId')),
                 ])
             );
         } catch (Throwable $th) {
@@ -66,7 +71,7 @@ class MessageController extends Controller
         return MessageService::new()->getDiscussionMessages(
             GetDiscussionMessagesDTO::new()->fromArray([
                 'user' => $request->user(),
-                'discussion' => Discussion::find($request->discussionId),
+                'discussion' => Discussion::find($request->route('discussionId')),
                 'like' => $request->like,
                 'replyId' => $request->replyId,
             ])
@@ -100,7 +105,7 @@ class MessageController extends Controller
 
     public function updateMessage(UpdateMessageRequest $request)
     {
-        $message = Message::find($request->messageId);
+        $message = Message::find($request->route('messageId'));
 
         try {
             $message = MessageService::new()->updateMessage(
@@ -131,7 +136,7 @@ class MessageController extends Controller
             $message = MessageService::new()->deleteMessage(
                 CreateMessageDTO::new()->fromArray([
                     'user' => $request->user(),
-                    'message' => Message::find($request->messageId),
+                    'message' => Message::find($request->route('messageId')),
                 ])
             );
 
@@ -148,7 +153,7 @@ class MessageController extends Controller
             $message = MessageService::new()->deleteMessageForMe(
                 CreateMessageDTO::new()->fromArray([
                     'user' => $request->user(),
-                    'message' => Message::find($request->messageId),
+                    'message' => Message::find($request->route('messageId')),
                 ])
             );
 

@@ -55,13 +55,16 @@ class AdministratorController extends Controller
         );
     }
 
+    // Every lookup below reads $request->route('userId'/'counsellorId') rather than the magic
+    // ->userId/->counsellorId properties -- see the identical fix/rationale in SessionController
+    // (SCRUM-116/SCRUM-130).
     public function updateUser(AdminUpdateUserRequest $request)
     {
         try {
             $user = UserService::new()->updateUserByAdmin(
                 UpdateUserDTO::new()->fromArray([
                     'user' => $request->user(),
-                    'updatedUser' => User::find($request->userId),
+                    'updatedUser' => User::find($request->route('userId')),
                     'firstName' => $request->firstName,
                     'lastName' => $request->lastName,
                     'otherNames' => $request->otherNames,
@@ -81,7 +84,7 @@ class AdministratorController extends Controller
 
     public function deleteUser(AdminUpdateUserRequest $request)
     {
-        $user = User::find($request->userId);
+        $user = User::find($request->route('userId'));
         try {
             UserService::new()->deleteUserByAdmin(
                 UpdateUserDTO::new()->fromArray([
@@ -102,7 +105,7 @@ class AdministratorController extends Controller
         return CounsellorService::new()->getCounsellorStats(
             GetCounsellorStatsForAdminDTO::new()->fromArray([
                 'user' => $request->user(),
-                'counsellor' => Counsellor::find($request->counsellorId),
+                'counsellor' => Counsellor::find($request->route('counsellorId')),
             ])
         );
     }

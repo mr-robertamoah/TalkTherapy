@@ -16,6 +16,11 @@ use Throwable;
 
 class TherapyTopicController extends Controller
 {
+    // Every lookup below reads $request->route('therapyId'/'topicId') rather than the magic
+    // ->therapyId/->topicId properties -- see the identical fix/rationale in SessionController
+    // (SCRUM-116/SCRUM-130). createTherapyTopic/getTherapyTopics were already only reading
+    // therapyId, not a distinct topicId body field, despite SCRUM-130's ticket text assuming
+    // otherwise -- confirmed via CreateTherapyTopicRequest, which has no topicId rule at all.
     public function createTherapyTopic(CreateTherapyTopicRequest $request)
     {
         try {
@@ -25,7 +30,7 @@ class TherapyTopicController extends Controller
                     'name' => $request->name,
                     'description' => $request->description,
                     'sessions' => $request->sessions,
-                    'therapy' => Therapy::find($request->therapyId),
+                    'therapy' => Therapy::find($request->route('therapyId')),
                 ])
             );
 
@@ -41,7 +46,7 @@ class TherapyTopicController extends Controller
         try {
             return TherapyTopicService::new()->getTherapyTopics(
                 GetTherapyTopicsDTO::new()->fromArray([
-                    'therapy' => Therapy::find($request->therapyId),
+                    'therapy' => Therapy::find($request->route('therapyId')),
                     'user' => $request->user(),
                     'name' => $request->name,
                 ])
@@ -54,7 +59,7 @@ class TherapyTopicController extends Controller
 
     public function updateTherapyTopic(UpdateTherapyTopicRequest $request)
     {
-        $topic = TherapyTopic::find($request->topicId);
+        $topic = TherapyTopic::find($request->route('topicId'));
         try {
             $topic = TherapyTopicService::new()->updateTherapyTopic(
                 CreateTherapyTopicDTO::new()->fromArray([
@@ -76,7 +81,7 @@ class TherapyTopicController extends Controller
 
     public function deleteTherapyTopic(Request $request)
     {
-        $topic = TherapyTopic::find($request->topicId);
+        $topic = TherapyTopic::find($request->route('topicId'));
 
         try {
             TherapyTopicService::new()->deleteTherapyTopic(

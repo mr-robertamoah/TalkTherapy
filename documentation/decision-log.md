@@ -447,6 +447,55 @@ handling-across-layers that caused this ticket in the first place.
 
 ---
 
+## 2026-08-27 — SCRUM-130: one regression test per controller, not per method; systematic sweep found more instances (SCRUM-133)
+
+**Decision**: fixed every magic-property route-param usage SCRUM-130 named (`DiscussionController`,
+`MessageController`, `ReportController`, `TherapyTopicController`, `UserController::deleteGuardianship`,
+`CounsellorController`, `AdministratorController`), plus two already-noted-in-passing instances from
+SCRUM-126 (`AdministratorController::updateUser`/`deleteUser`'s `userId`, `TestimonialController`'s
+`testimonialId`) and `TherapyTopicController::createTherapyTopic`/`getTherapyTopics`'s `therapyId`,
+which SCRUM-130's own ticket text incorrectly assumed was already fixed (verified it wasn't).
+Added one regression test per *controller* (not per method, despite most controllers having 3-9
+affected methods), using an admin actor wherever the target action has an `isAdmin()` bypass, to
+keep fixture setup tractable. Also ran a systematic sweep -- every route-bound `{param}` across
+`routes/web.php`/`routes/api.php` checked against every controller's magic-property usages at the
+specific-method level -- which found six more affected controllers (`CommentController`,
+`ContactController`, `HowToController`, `LinkController`, `PostController`, `RequestController`).
+Filed as SCRUM-133 (High, given `RequestController::respond` backs org/group-therapy/guardianship/
+counsellor accept-reject flows) rather than expanding this already-large PR further.
+
+**Why**: the acceptance criteria said "a regression test per affected controller," which one
+well-chosen representative test per controller satisfies without needing 20+ near-duplicate tests
+for every method sharing the identical bug shape. `TherapyTopicController`'s therapyId correction
+matters because a source ticket's own claims about "already fixed" sites shouldn't be trusted
+without verifying, same discipline as SCRUM-125's empirical-verification lesson. Continuing to
+sweep and fix every newly-found instance inside SCRUM-130 itself would make an already-large PR
+open-ended -- filing SCRUM-133 keeps this PR reviewable while still surfacing the additional risk
+immediately rather than losing track of it.
+
+---
+
+## 2026-08-27 — SCRUM-130: patched the unreachable deleteCounsellor site anyway; found a dead frontend route reference (SCRUM-134)
+
+**Decision**: security-engineer confirmed `CounsellorController::deleteCounsellor` genuinely has
+no registered route (grepped both route files), but flagged it as a landmine: the frontend
+(`resources/js/Pages/Profile/Counsellor/Show.vue`) already references a `counsellor.delete` route
+name that doesn't exist anywhere, meaning the delete-account button is currently non-functional --
+a very plausible future fix (wiring up that route) would silently reintroduce this exact spoofing
+bug if `deleteCounsellor` isn't revisited at the same time. Patched `deleteCounsellor` to use
+`$request->route('counsellorId')` anyway, even though it's currently dead code, as cheap
+insurance. Filed the broken frontend route reference itself as SCRUM-134 (Medium, a separate
+functional bug) rather than fixing it here. Also added two tests reviewer flagged as the
+highest-risk untested lines in the PR: `MessageController::getTopicMessages` (the one method in
+that file where topicId is actually route-bound, unlike every other method) and
+`TherapyTopicController::getTherapyTopics` (the therapyId correction the ticket text got wrong).
+
+**Why**: a "no route, so not exploitable" argument is only true until someone adds the route --
+fixing the pattern now, while already in this file for the exact same bug class, costs nothing
+and removes the dependency on the fix being remembered later. The two added tests target the
+lines both subagents independently called out as most likely to silently regress, rather than
+treating "one test per controller" as fully satisfied by whichever method happened to be chosen
+first.
 ## 2026-08-27 — SCRUM-133: fixed PostController::getPost's session-stash too; skipped a second Link test
 
 **Decision**: fixed every site SCRUM-133 named across `CommentController`, `ContactController`,
@@ -538,3 +587,26 @@ false-positive case rejects rather than silently corrupting state) with no priva
 impact -- exactly the kind of newly-exposed-but-out-of-scope finding that gets its own ticket
 per the established pattern (SCRUM-127/128/129 themselves, SCRUM-130/131), not silent scope
 expansion into redesigning a validation action's partial-update semantics.
+
+---
+
+## 2026-08-28 — SCRUM-130: fixed a cross-PR CI failure surfaced by merge order
+
+**Decision**: `RouteParamSpoofingBatch2Test.php` (this PR) and `RouteParamSpoofingBatch3Test.php`
+(SCRUM-133) each independently declared a top-level `anAdmin()` Pest helper -- harmless while
+both PRs were separate, unmerged branches, but SCRUM-133 merged into `develop` first while this
+PR was still open, so once GitHub tested this PR's branch merged against the new `develop` tip,
+both files loaded in the same run and PHP fataled on redeclaring a global function. Fixed by
+merging current `develop` into this branch and renaming this file's helper to
+`anAdminForBatch2()` (all 8 call sites updated). Verified via `php artisan test --parallel`
+(the actual CI command) -- 483 passed -- and confirmed no other duplicate top-level helper names
+exist elsewhere in the suite.
+
+**Why**: Pest test files share one global PHP namespace for top-level `function` declarations
+(not scoped to a class), so any two files that each define a same-named helper will collide the
+moment both are loaded together -- independent of which one is "correct" or which came first.
+This is a variant of the existing "Pest --parallel test helpers" rule (never call a global helper
+defined in a different file) worth keeping in mind specifically for this sweep's pattern of
+adding near-identical "BatchN"-style regression test files across sibling PRs: give each file's
+local helpers a unique, file-scoped name up front rather than reusing an obvious name like
+`anAdmin()` that another sibling PR is equally likely to reach for.
