@@ -391,3 +391,125 @@ subagent's review branch reflects whatever `develop` looked like at the moment i
 the current state of all in-flight PRs, so a finding that matches already-completed-but-unmerged
 work is a branch-topology artifact, not a real gap, and should be verified (`git show` /
 checking the other PR's diff) before filing a duplicate ticket.
+## 2026-08-27 — SCRUM-128: fixed the bug in a second, deeper location the ticket didn't name
+
+**Decision**: the ticket's own diagnosis named only `UpdateSessionRequest::rules()`. Empirically
+reproducing the described symptom (PATCH with only `{"name": "..."}`) after fixing just that file
+showed the same class of bug one layer deeper, in `EnsureSessionDataIsValidAction::validateTherapy()`
+(called unconditionally by `SessionService::updateSession()`, independent of the FormRequest) --
+it re-parsed the same `null` startTime/endTime and threw a 422 with a near-identical message.
+Fixed both: `UpdateSessionRequest` now only parses submitted fields; the Action now falls back to
+the session's existing `start_time`/`end_time` when the DTO's values are null, so the real
+double-booking/30-minutes-apart conflict checks still run against the session's actual schedule
+on a partial update rather than being skipped outright. Also removed an unrelated leftover
+`Log::info('update session request', ...)` debug line found in the same file.
+
+Post-review (security-engineer) surfaced a second gap in the initial fix: `UpdateSessionRequest`
+treated "omitted" via `filled()` (blank string counts as not-provided) while the Action treated it
+via a strict `!== null` check -- so a request sending `"startTime": ""` slipped past the
+FormRequest's guard but still hit `Carbon::parse('')`, which returns "now" just like
+`Carbon::parse(null)`. Fixed by normalizing once, in `UpdateSessionRequest::prepareForValidation()`
+(blank -> null via `$this->merge()`), rather than duplicating a blank-check in every downstream
+consumer -- this also transitively fixes `UpdateSessionAction::setValueOnData()`'s matching
+`is_null()` blind spot, since the controller's `$request->startTime` reads the merged value.
+
+**Why**: this is the same empirical-verification discipline used throughout this sweep -- a
+ticket's stated root cause is a hypothesis, not a guarantee; the fix isn't done until the actual
+reported symptom is confirmed gone by reproducing it, not just until the named file compiles.
+Normalizing at the single request-parsing entry point (rather than adding matching `blank()`
+checks in the Action and in `UpdateSessionAction`) avoids the exact kind of inconsistent-null-
+handling-across-layers that caused this ticket in the first place.
+
+---
+
+## 2026-08-27 — SCRUM-133: fixed PostController::getPost's session-stash too; skipped a second Link test
+
+**Decision**: fixed every site SCRUM-133 named across `CommentController`, `ContactController`,
+`HowToController`, `LinkController`, `PostController`, `RequestController`. Also fixed
+`PostController::getPost`, which the ticket flagged as ambiguous ("doesn't look up a Post model
+directly... check whether this one needs the same fix or is otherwise inert") -- it doesn't look
+up a model, but it does `session()->put('postId', $request->postId)`, which would stash a
+client-spoofed id (this is a GET route, so spoofable via query string) for whatever later reads
+`session('postId')` to act on -- same bug, same fix. One test per controller (6 total), except
+`LinkController` gets only one (`changeLinkStatus`) despite also having a second affected method
+(`performAction`, keyed by `uuid` not `linkId`) -- `performAction`'s authorization
+(`EnsureCanUseLinkAction`) has no admin-bypass and dispatches to type-specific side-effecting
+actions, making a second fixture meaningfully more expensive for a fix that's mechanically
+identical to `changeLinkStatus`'s, unlike SCRUM-130's `TherapyTopicController` case where the
+second site carried a distinct, ticket-text-contradicting risk.
+
+**Why**: `getPost`'s session-stash doesn't fit either of SCRUM-116/130's "clearly still vulnerable"
+or "clearly already safe" buckets as written, so it needed its own read of the code rather than
+guessing from the ticket's hedge -- confirmed vulnerable and fixed. Declining a second Link test
+follows the same per-controller (not per-method) acceptance criteria SCRUM-130 established, applied
+consistently: extra tests are worth their setup cost only when they cover meaningfully different
+risk, not merely a different route-param name for the identical one-line fix.
+
+---
+
+## 2026-08-27 — SCRUM-133: added the performAction test after all; corrected a false-alarm review finding; severity nuance on two sites
+
+**Decision**: both reviewer and security-engineer pushed back on skipping a second
+`LinkController` test for `performAction`, noting it has no admin bypass and its side effects
+(creating a guardianship, discussion participation, or counsellor affiliation) are more
+consequential than `changeLinkStatus`'s state toggle. Added it. Also corrected a security-engineer
+finding that flagged `UserController::deleteGuardianship`/`ReportController`/`TestimonialController`/
+`DiscussionController`/`CounsellorController` as still-unfixed instances of this bug: verified via
+`git show` that all five are already fixed on `bugfix/scrum-130-route-param-spoofing-more-controllers`
+(PR #70) -- the subagent reviewed this branch, which was cut from `develop` *before* PR #70 merged,
+so those files' pre-fix state on this specific branch is expected, not a new gap. No new ticket
+filed for this; PR #70 already covers it. Also incorporated security-engineer's severity nuance for
+two sites: `RequestController::respond`'s fix is real (a user could act on a *different one of
+their own* addressed items, not an arbitrary other user's -- `EnsureUserCanRespondToRequestAction`
+checks the resolved request's own `to`, so authorization is enforced on whichever record ends up
+in the DTO either way) but narrower than "arbitrary cross-user IDOR"; `PostController::getPost`'s
+fix is correct (its `session('postId')` is read by `HomeController::goHome`) but Posts have no
+access control anywhere in the app regardless, so this specific site is a confused-content bug,
+not a privacy escalation. Filed SCRUM-135 (Low) for two unrelated hygiene items security-engineer
+noticed in passing (apparently-unused `app/Http/Kernel.php`, missing unique constraint on
+`links.uuid`).
+
+**Why**: two independent subagents converging on the same "add this test anyway" conclusion,
+backed by a concrete structural difference (no admin bypass, more consequential side effects), is
+exactly the signal that should override an initial per-controller-is-enough judgment call. The
+"other controllers still vulnerable" finding needed verification, not acceptance at face value --
+same discipline as SCRUM-125's empirical-verification lesson -- and turned out to be explainable
+by branch topology rather than a real gap. Overstating a finding's severity is as much a
+verification failure as understating one; recording the corrected nuance keeps the PR/Jira trail
+accurate for whoever reads it later without re-deriving the same analysis.
+## 2026-08-27 — SCRUM-127: fixed the same crash on group-therapy creation too, not just update
+
+**Decision**: widened `CreateTherapyDTO`'s `public`/`allowInPerson`/`anonymous` and
+`GroupTherapyDTO`'s `public`/`allowInPerson`/`anonymous`/`allowAnyone`/`shareEqually`/
+`counsellorIds` to nullable, per the ticket's ask. While auditing, found the identical crash was
+also reachable on group therapy *creation* (not just the update path the ticket described):
+`CreateGroupTherapyRequest` already allows `counsellorIds` to be omitted (`'nullable'`), and has
+no validation rule for `shareEqually` at all, so both could already reach `fromArray()` as `null`
+on a create request. Fixed both DTOs' properties in one pass rather than filing a separate ticket,
+since it's the exact same root cause and fix shape the ticket already asked to audit for
+("audit both DTOs fully for every non-nullable property... not just the two found so far").
+
+**Why**: the ticket's own text explicitly asked for a full audit, not just the two originally
+-reported properties -- finding and fixing the create-path instance of the same bug in the same
+PR is honoring that ask, not scope creep. `UpdateTherapyAction`/`UpdateGroupTherapyAction` and
+`SendTherapyAssistanceRequestAction` already had correct null-skip/null-guard logic in place for
+every one of these fields -- the bug was purely the DTO property type declarations, confirmed by
+reverting the fix and watching the new regression tests fail with the exact generic-500 message
+described in the ticket, then pass again once restored.
+
+---
+
+## 2026-08-27 — SCRUM-127: newly-reachable partial-update validation nuance filed as SCRUM-132, not fixed here
+
+**Decision**: reviewer and security-engineer both independently found that
+`EnsureTherapyDataIsValidAction`'s `payment_type == free` / `public` cross-field check reasons
+only about the current request's DTO values, not the record's persisted state -- previously
+unreachable for any partial update omitting a boolean field (it always crashed with a 500 first),
+now reachable since SCRUM-127 fixed that crash. Filed SCRUM-132 (Low) rather than expanding this
+PR, since it's a pre-existing validation-design gap this PR exposed, not one it introduced.
+
+**Why**: SCRUM-127 was scoped to "stop the crash," verified by both subagents to fail safe (the
+false-positive case rejects rather than silently corrupting state) with no privacy/authorization
+impact -- exactly the kind of newly-exposed-but-out-of-scope finding that gets its own ticket
+per the established pattern (SCRUM-127/128/129 themselves, SCRUM-130/131), not silent scope
+expansion into redesigning a validation action's partial-update semantics.
