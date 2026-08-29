@@ -31,9 +31,12 @@ class EnsureOrganizationCanPayForModelAction extends Action
             return;
         }
 
-        // organizationId was supplied but didn't resolve to a real, verified Organization -- kept
-        // indistinguishable from every other "not eligible" reason below, not a separate 404.
-        if (is_null($dto->organization) || ! $dto->organization->isVerified()) {
+        // organizationId was supplied but didn't resolve to a real, verified, consumer-capable
+        // Organization -- kept indistinguishable from every other "not eligible" reason below, not
+        // a separate 404. is_consumer is re-checked here (not just at membership-creation time via
+        // EnsureOrganizationIsConsumerAction) since an org can have that flag toggled off later
+        // without its existing members being removed.
+        if (is_null($dto->organization) || ! $dto->organization->isVerified() || ! $dto->organization->is_consumer) {
             throw new TransactionException(self::NOT_ELIGIBLE_MESSAGE, 403);
         }
 

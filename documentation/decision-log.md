@@ -1528,11 +1528,15 @@ org must not retroactively rewrite past attribution. (3) Error messaging splits 
 anti-enumeration message for "not eligible via this org" (no shared org / counsellor not covered /
 org unverified — mirrors `EnsureCanPayForModelAction`/`EnsureOrganizationCanReceiveMemberApplicationsAction`'s
 existing convention) versus specific messages for retainer-mode and group-therapy-exclusion
-rejections, since those two only ever disclose the requester's own status back to themselves, not
-information about another party. (4) The new `EnsureOrganizationCanPayForModelAction` slots in as
+rejections, on the theory that those two are only reachable once the requester has already proven
+active membership and full counsellor coverage, so they add no new disclosure beyond confirming the
+requester's own billing configuration -- the counsellor-coverage fact itself can't be probed at
+will, since a counsellor only ever ends up attached to a Therapy/GroupTherapy by actually accepting
+a real assistance/membership request, not via any client-settable input (security-engineer review,
+2026-08-29). (4) The new `EnsureOrganizationCanPayForModelAction` slots in as
 a 4th step in `TransactionService::initiateCharge()`, after the existing `EnsureCanInitiateChargeAction`
 (cheaper/existing checks fail first) and before `InitiatePaystackChargeAction`, with a single
-top-of-method `if (is_null($dto->organization)) return;` guard making the personal-pay path a
+top-of-method `if (is_null($dto->organizationId)) return;` guard making the personal-pay path a
 structural no-op, not just a tested one.
 
 **Multi-counsellor GroupTherapy question** (the one open item product-owner couldn't resolve
@@ -1580,3 +1584,29 @@ single resolved-model field would, would have silently downgraded an invalid/for
 `organizationId` to a personal charge instead of rejecting it, which is both surprising (a user
 who explicitly asked to pay via their org would be charged personally without warning) and
 inconsistent with the architect's own stated anti-enumeration intent for that exact scenario.
+
+**Post-implementation review fixes**: `reviewer` and `security-engineer` both ran against the
+implementation before merge. Two required changes from `reviewer`, applied immediately: (1)
+`EnsureOrganizationCanPayForModelAction`'s generic-message cluster now also re-checks
+`Organization::is_consumer`, not just `isVerified()` — an org can have `is_consumer` toggled off
+after members already exist (`UpdateOrganizationAction` doesn't retroactively remove them), and the
+action's own comment claims to mirror `EnsureOrganizationCanReceiveMemberApplicationsAction`'s
+convention, which does check it. (2) `GroupTherapy::activeCounsellors()` now excludes a
+soft-deleted `addedby` counsellor from the coverage set — without this, a GroupTherapy created by a
+counsellor who has since deleted their account could never be paid for via any organization, since
+a deleted counsellor can never again satisfy an active `organization_counsellors` row, and the
+"every active counsellor must be covered" rule would treat that permanently-uncoverable ghost
+counsellor as blocking every future org-pay attempt on that GroupTherapy. Both fixes came with new
+regression tests. `security-engineer`'s one finding (Low): `organizationId` had no input-shape
+validation before reaching `Organization::find()`, so an array value (`organizationId[]=1`) tripped
+an uncaught `TypeError` on the DTO's typed `?Organization` property, degrading to a generic 500 --
+no information disclosure, but inconsistent with the codebase's explicit-validation convention.
+Fixed with an upfront `is_numeric()` guard in `TransactionController::initiate()` throwing a clean
+422 `TransactionException` instead.
+
+**Why**: both required changes were genuine functional gaps in the ticket's stated design (the
+`is_consumer` check the code's own comment claimed to already follow; the multi-counsellor coverage
+rule the human product owner explicitly chose), not style nits, so fixed immediately per CLAUDE.md.
+The validation gap was a robustness/UX issue, not a security hole (the existing
+`ResolvesExceptionResponse` safety net already prevented any leak), but cheap enough to fix in the
+same pass rather than deferred.

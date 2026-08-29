@@ -185,3 +185,24 @@ test('an authenticated member can initiate a charge via their organization throu
         'organization_id' => $organization->id,
     ]);
 });
+
+test('a malformed organizationId is rejected cleanly, not as an uncaught 500', function () {
+    $owner = User::factory()->create();
+    $therapy = Therapy::factory()->create([
+        'addedby_type' => User::class,
+        'addedby_id' => $owner->id,
+        'session_type' => TherapySessionTypeEnum::once->value,
+        'status' => TherapyStatusEnum::in_session->value,
+        'payment_type' => TherapyPaymentTypeEnum::paid->value,
+        'payment_data' => ['per' => TherapyPerPaymentEnum::therapy->value, 'amount' => 150, 'currency' => 'GHS'],
+    ]);
+
+    $this->actingAs($owner);
+
+    // Organization::find() would otherwise resolve an array input to a Collection instead of a
+    // model, tripping a TypeError deep inside the DTO -- caught upfront instead.
+    $response = $this->postJson("/therapies/{$therapy->id}/transactions", ['organizationId' => [1, 2]]);
+
+    $response->assertStatus(422);
+    $response->assertJson(['message' => 'The organizationId must be a valid number.']);
+});

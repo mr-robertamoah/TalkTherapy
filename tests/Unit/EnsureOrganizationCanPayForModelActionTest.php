@@ -165,6 +165,19 @@ test('an unverified organization is rejected even with an otherwise-eligible mem
     ))->toThrow(TransactionException::class, 'You are not authorized to pay for this via this organization.');
 });
 
+test('an organization that is no longer consumer-capable is rejected even if it was when membership was created', function () {
+    [$organization, $payer, $counsellor] = anEligibleOrgPayerSetup();
+    // Simulates is_consumer being toggled off after membership already exists -- UpdateOrganizationAction
+    // doesn't retroactively remove existing members, so this must be re-checked here, not only at
+    // membership-creation time.
+    $organization->update(['is_consumer' => false]);
+    $therapy = aPaidTherapyForOrgPayer($counsellor, ['addedby_id' => $payer->id]);
+
+    expect(fn () => TransactionService::new()->initiateCharge(
+        TransactionDTO::new()->fromArray(['user' => $payer, 'for' => $therapy, 'organizationId' => $organization->id, 'organization' => $organization])
+    ))->toThrow(TransactionException::class, 'You are not authorized to pay for this via this organization.');
+});
+
 test('a counsellor with only a pending (not active) affiliation to the organization is rejected', function () {
     [$organization, $payer, $counsellor] = anEligibleOrgPayerSetup();
     OrganizationCounsellor::query()->where('organization_id', $organization->id)->where('counsellor_id', $counsellor->id)
@@ -242,6 +255,42 @@ test('an inactive (removed) counsellor on a GroupTherapy does not need organizat
     $groupTherapy->counsellors()->attach($coveredCounsellor->id, ['state' => CounsellorGroupTherapyStateEnum::active->value, 'role' => 'NORMAL']);
     $groupTherapy->counsellors()->attach($removedCounsellor->id, ['state' => CounsellorGroupTherapyStateEnum::inactive->value, 'role' => 'NORMAL']);
 
+    $result = TransactionService::new()->initiateCharge(
+        TransactionDTO::new()->fromArray(['user' => $payer, 'for' => $groupTherapy, 'organizationId' => $organization->id, 'organization' => $organization])
+    );
+
+    expect($result['transaction']->organization_id)->toBe($organization->id);
+});
+
+test('a GroupTherapy created by a still-existing counsellor requires that counsellor to be covered too', function () {
+    [$organization, $payer, $coveredCounsellor] = anEligibleOrgPayerSetup();
+    $creatorCounsellor = Counsellor::factory()->create(['user_id' => User::factory()]);
+
+    $groupTherapy = aPaidGroupTherapyForOrgPayer(['addedby_type' => Counsellor::class, 'addedby_id' => $creatorCounsellor->id]);
+    $groupTherapy->users()->attach($payer->id, ['background_story' => null, 'anonymous' => false]);
+    $groupTherapy->counsellors()->attach($coveredCounsellor->id, ['state' => CounsellorGroupTherapyStateEnum::active->value, 'role' => 'NORMAL']);
+
+    // $creatorCounsellor is the GroupTherapy's addedby -- always "a counsellor of it" regardless
+    // of the pivot -- but has no organization_counsellors affiliation with $organization at all.
+    expect(fn () => TransactionService::new()->initiateCharge(
+        TransactionDTO::new()->fromArray(['user' => $payer, 'for' => $groupTherapy, 'organizationId' => $organization->id, 'organization' => $organization])
+    ))->toThrow(TransactionException::class, 'You are not authorized to pay for this via this organization.');
+});
+
+test('a GroupTherapy created by a since-deleted counsellor does not require that counsellor to be covered', function () {
+    fakesPaystackForOrgPayer('org_pay_group_deleted_addedby_ref');
+
+    [$organization, $payer, $coveredCounsellor] = anEligibleOrgPayerSetup();
+    $deletedCreatorCounsellor = Counsellor::factory()->create(['user_id' => User::factory()]);
+    $deletedCreatorCounsellor->delete();
+
+    $groupTherapy = aPaidGroupTherapyForOrgPayer(['addedby_type' => Counsellor::class, 'addedby_id' => $deletedCreatorCounsellor->id]);
+    $groupTherapy->users()->attach($payer->id, ['background_story' => null, 'anonymous' => false]);
+    $groupTherapy->counsellors()->attach($coveredCounsellor->id, ['state' => CounsellorGroupTherapyStateEnum::active->value, 'role' => 'NORMAL']);
+
+    // Unlike the live-counsellor case above, a soft-deleted addedby is excluded from the coverage
+    // set entirely -- otherwise this GroupTherapy could never be paid for via any organization,
+    // since a deleted counsellor can never again satisfy an active organization_counsellors row.
     $result = TransactionService::new()->initiateCharge(
         TransactionDTO::new()->fromArray(['user' => $payer, 'for' => $groupTherapy, 'organizationId' => $organization->id, 'organization' => $organization])
     );

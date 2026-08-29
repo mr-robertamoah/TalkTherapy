@@ -266,14 +266,18 @@ class GroupTherapy extends Model
 
     // Unlike getCounsellors(), filters the pivot to state=active -- for callers (e.g. org-as-payer
     // eligibility, SCRUM-48) that need "who is currently a live counsellor on this GroupTherapy",
-    // not every counsellor ever attached regardless of pivot state.
+    // not every counsellor ever attached regardless of pivot state. A soft-deleted addedby
+    // counsellor is excluded (unlike getCounsellors()/isCounsellor()'s unconditional include) --
+    // "currently active" cannot be true of an account that no longer exists, and requiring org
+    // coverage for one would permanently block org-as-payer for this GroupTherapy since a deleted
+    // counsellor can never again satisfy an active organization_counsellors row.
     public function activeCounsellors()
     {
         $counsellors = $this->counsellors()
             ->wherePivot('state', CounsellorGroupTherapyStateEnum::active->value)
             ->get();
 
-        if ($this->addedby_type === Counsellor::class && $this->addedby) {
+        if ($this->addedby_type === Counsellor::class && $this->addedby && ! $this->addedby->trashed()) {
             $counsellors->push($this->addedby);
         }
 
