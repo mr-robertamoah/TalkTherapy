@@ -20,6 +20,12 @@ import useEnums from '@/Composables/useEnums';
 const { PaymentTypeEnum, SessionTypeEnum } = useEnums()
 const { setErrorData } = useErrorHandler()
 const { alertData, clearAlertData, setFailedAlertData, setSuccessAlertData } = useAlert()
+// SCRUM-153 (TT-7.2a): sourced from the backend's config('currencies.supported') (shared via
+// Inertia), not hardcoded -- previously defaulted to the Cedi symbol 'GHȻ', a free-text value
+// that would fail the backend's new supported-currency validation unless manually overwritten.
+const supportedCurrencies = usePage().props.supportedCurrencies ?? []
+const defaultCurrency = supportedCurrencies.includes('GHS') ? 'GHS' : (supportedCurrencies[0] ?? '')
+const currencyOptions = computed(() => supportedCurrencies.map(code => ({ name: code, value: code })))
 const props = defineProps({
     show: {
         default: false,
@@ -45,7 +51,7 @@ const therapyData = ref({
     'amount': 0,
     'inPersonAmount': 0,
     'maxSessions': 0,
-    'currency': 'GHȻ',
+    'currency': defaultCurrency,
     'cases': []
 })
 const therapyErrors = ref({
@@ -76,7 +82,7 @@ watch(
         if (therapyData.value.paymentType == PaymentTypeEnum.free) {
             therapyData.value.public = true
             therapyData.value.amount = ''
-            therapyData.value.currency = 'GHȻ'
+            therapyData.value.currency = defaultCurrency
             therapyData.value.per = ''
         }
     }
@@ -216,7 +222,7 @@ function clearData() {
     therapyData.value.allowInPerson = false
     therapyData.value.anonymous = false
     therapyData.value.amount = ''
-    therapyData.value.currency = 'GHȻ'
+    therapyData.value.currency = defaultCurrency
     therapyData.value.per = ''
     therapyData.value.cases = []
 }
@@ -402,11 +408,12 @@ function closeModal() {
 
                                     <InputLabel class="mt-4" for="amount" value="Amount" />
                                     <div class="flex justify-start items-center">
-                                        <TextInput
+                                        <Select
                                             id="currency"
-                                            type="text"
-                                            class="mt-1 block w-[30%] max-w-[100px] text-end"
+                                            class="mt-1 block w-[30%] max-w-[100px]"
                                             v-model="therapyData.currency"
+                                            :options="currencyOptions"
+                                            :default-option="'currency'"
                                             required
                                         />
                                         <TextInput

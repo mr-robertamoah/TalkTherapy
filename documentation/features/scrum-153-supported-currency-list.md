@@ -23,6 +23,24 @@ the currency-validation item previously (and incompletely) tracked under TT-7.4.
   set through some path other than the four request classes above (a legacy row, a direct write).
 - No schema change, no migration — `payment_data` is a JSON column, and existing dev data was
   audited (only `USD`/`GHS` values present) before this landed, so nothing needed backfilling.
+- `config('currencies.supported')` is shared to the frontend as an Inertia prop
+  (`supportedCurrencies`), and all four therapy/group-therapy form modals now populate their
+  `currency` field from it via a `<Select>` dropdown instead of free-text — see "Review fixes"
+  below for why this was necessary, not just a nice-to-have.
+
+## Review fixes (post-initial-implementation)
+
+PR review (both `reviewer` and `security-engineer`) caught that all four form modals defaulted
+`currency` to `'GHȻ'` (the Cedi *symbol*, not the ISO code `'GHS'`) via free-text input — a value
+that fails the new `Rule::in()` validation unless a user manually retyped the field. Fixed by
+sharing the supported list via Inertia and switching to a `<Select>`. A follow-up review pass then
+caught that the two *Update* modals load a therapy's stored currency verbatim, which could predate
+the current supported list (plausible, since `'GHȻ'` was this field's own long-standing hardcoded
+default) — fixed by having those modals' dropdown options reactively include the current form
+value even when it falls outside `supportedCurrencies`, so a legacy value stays visible and
+editable instead of silently desyncing. `config('currencies.supported')` also now normalizes every
+entry to uppercase and filters empty entries at the source. Full history in
+`documentation/decision-log.md`'s 2026-08-29 "PR #90 review fixes" entry.
 
 ## How to try it
 
@@ -54,8 +72,11 @@ profile UI).
   still passes on the nullable update requests; the list is genuinely config-driven (a currency
   that passes/fails flips when the config value itself is changed in the test, not hardcoded).
 - New: a test in `tests/Unit/TransactionServiceTest.php` — a therapy with an unsupported stored
-  currency (bypassing request validation entirely) is still rejected at charge-initiation time.
-- Full suite: 626 passed (up from 620). Pint clean.
+  currency (bypassing request validation entirely) is still rejected at charge-initiation time,
+  and a therapy with a *lowercase* stored currency (e.g. `'ghs'`) is still accepted, pinning the
+  assumption that `config('currencies.supported')` is pre-normalized to uppercase.
+- Full suite: 627 passed (up from 620). Pint clean. Frontend production build (`npm run build`)
+  clean.
 
 ## Files changed
 
@@ -63,5 +84,11 @@ profile UI).
 - `app/Http/Requests/CreateTherapyRequest.php`, `UpdateTherapyRequest.php`,
   `CreateGroupTherapyRequest.php`, `UpdateGroupTherapyRequest.php` — `currency` rule updated
 - `app/Actions/Transaction/EnsureCanInitiateChargeAction.php` — defense-in-depth check added
+- `app/Http/Middleware/HandleInertiaRequests.php`, `HandleInertiaRequestsV2.php` — share
+  `supportedCurrencies` to the frontend
+- `resources/js/Components/IndividualTherapyFormModal.vue`, `UpdateIndividualTherapyFormModal.vue`,
+  `GroupTherapyFormModal.vue`, `UpdateGroupTherapyFormModal.vue` — currency `<Select>` sourced
+  from `supportedCurrencies`, replacing a hardcoded free-text default
+- `.env.example` — documents `SUPPORTED_CURRENCIES`
 - `tests/Unit/SupportedCurrencyValidationTest.php` (new)
-- `tests/Unit/TransactionServiceTest.php` — new regression test
+- `tests/Unit/TransactionServiceTest.php` — new regression tests

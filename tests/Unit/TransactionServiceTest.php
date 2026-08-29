@@ -106,6 +106,25 @@ test('initiating a charge for a therapy with an unsupported stored currency is r
     ))->toThrow(TransactionException::class, 'This currency is not currently supported.');
 });
 
+// Pins the assumption EnsureCanInitiateChargeAction's comment documents: config('currencies.supported')
+// is normalized to uppercase by config/currencies.php, so this action only needs to normalize the
+// stored value it's comparing against. If that config-side normalization were ever removed, this
+// is the test that would catch it -- a lowercase legacy-stored currency must still be accepted.
+test('initiating a charge for a therapy with a lowercase stored currency is still accepted', function () {
+    fakePaystackInitializeResponse('ref_lowercase_currency');
+
+    $therapy = aPaidTherapy(['currency' => 'ghs']);
+
+    $result = TransactionService::new()->initiateCharge(
+        TransactionDTO::new()->fromArray([
+            'user' => $therapy->addedby,
+            'for' => $therapy,
+        ])
+    );
+
+    expect($result['transaction'])->toBeInstanceOf(Transaction::class);
+});
+
 test('initiating a charge for something that has already been successfully paid for is rejected', function () {
     $therapy = aPaidTherapy();
     Transaction::factory()->create([

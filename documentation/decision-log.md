@@ -1449,3 +1449,61 @@ explicit flat-or-per-service decision) or silently absorbing 15 extra points of 
 ticket sized for 3 -- both worse than re-scoping and re-filing sub-tickets transparently, matching
 this project's own established practice (TT-6.3, TT-6.4, TT-7.3 were all split the same way once
 their real scope became clear during planning).
+
+---
+
+## 2026-08-29 — SCRUM-153 (TT-7.2a): PR #90 review fixes -- default-currency bug, normalization, legacy-value handling
+
+**Decision**: PR #90's own reviewer and security-engineer independently found the same
+HIGH/blocking issue: `IndividualTherapyFormModal.vue`, `UpdateIndividualTherapyFormModal.vue`,
+`GroupTherapyFormModal.vue`, and `UpdateGroupTherapyFormModal.vue` all defaulted/reset `currency`
+to `'GHȻ'` (the Cedi *symbol*, not the ISO code `'GHS'`) via a free-text `TextInput` -- a value
+that would fail the PR's own new `Rule::in(config('currencies.supported'))` validation unless a
+user manually retyped the field, breaking paid-therapy creation by default. Fixed by sharing
+`config('currencies.supported')` to the frontend as an Inertia prop (both the dead
+`HandleInertiaRequests.php` and the actually-registered `HandleInertiaRequestsV2.php`, for
+consistency) and replacing the free-text input with a `<Select>` in all four modals, deliberately
+deviating from this codebase's usual `useEnums.js` hardcoded-JS-mirror convention for enums --
+a hardcoded mirror would defeat the user's original "configurable, applied everywhere" requirement
+for currency, since an env change wouldn't reach the frontend without a code change.
+
+Also fixed the same round's Medium/Low findings: `config/currencies.php` now normalizes every
+entry to uppercase at the source (`strtoupper(trim(...))`) so `Rule::in()` and
+`EnsureCanInitiateChargeAction`'s stored-value check compare on the same casing without each
+needing its own normalization step; `env('SUPPORTED_CURRENCIES') ?: 'USD,GHS'` replaces the
+two-arg `env()` form to avoid silently accepting an empty-string override; `array_filter` after
+the trim/uppercase map drops empty entries (a stray comma or whitespace-only segment) so `Rule::in()`
+can never treat `''` as a valid currency; `SUPPORTED_CURRENCIES` is now documented in `.env.example`.
+
+A second review pass on the fix itself (both reviewer and security-engineer, run again given the
+frontend scope) confirmed all three original findings resolved and no new bugs, but the reviewer
+surfaced a real, previously-unasked-about gap: the two Update modals load
+`props.therapy.paymentData['currency']` verbatim into the form, but the new `<Select>` can only
+render options from `supportedCurrencies` -- a therapy whose stored currency predates the current
+supported list (plausible, since `'GHȻ'` was this exact field's own hardcoded default for a long
+time) would silently desync the dropdown from the form value, surfacing later as a confusing
+"currency" validation error on an unrelated field update. Fixed by making each Update modal's
+`currencyOptions` reactively include the form's current `currency` value when it falls outside
+`supportedCurrencies`, so a legacy/out-of-list value stays visibly selected and editable instead
+of disappearing. Also added a regression test (`TransactionServiceTest`) pinning the assumption
+`EnsureCanInitiateChargeAction`'s comment documents -- that it only needs to normalize the stored
+value because `config('currencies.supported')` is already uppercase -- since both reviewers
+independently flagged this as an untested cross-file invariant.
+
+**Deferred, not applied**: reviewer's suggestion to add a dedicated unit test exercising
+`config/currencies.php`'s raw env-parsing behavior (uppercase normalization and the empty-string
+fallback, as opposed to `Rule::in()` against an already-normalized config array) was left for a
+follow-up, since reliably testing `env()`-sourced config in this codebase's test setup needs more
+plumbing than this fix round's scope justified; the `array_filter` correctness fix itself was
+still applied immediately since it was cheap and directly on the touched line. Also deferred:
+reviewer's minor note that `currencyOptions` in the two *Create* modals doesn't need `computed()`
+since `supportedCurrencies` is captured once and never changes there (unlike the Update modals,
+where it's now genuinely reactive against `therapyForm.currency`) -- correct but non-blocking.
+
+**Why**: CLAUDE.md requires applying or explicitly deferring every reviewer/security-engineer
+finding, never silently dropping one. The default-currency bug and its Medium/Low siblings were
+correctness/robustness fixes with no product-decision content, so they were applied without
+asking. The Update-modal legacy-value gap was the reviewer's own explicit "Changes requested"
+blocker on a scenario the review was asked to check, so it was fixed in the same pass rather than
+deferred. The two genuinely low-priority suggestions were deferred with a stated reason rather
+than either silently skipped or force-fit into this round.

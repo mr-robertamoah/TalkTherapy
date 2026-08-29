@@ -47,6 +47,11 @@ class HandleInertiaRequestsV2 extends Middleware
             'auth' => [
                 'user' => $userResource,
             ],
+            // SCRUM-153 (TT-7.2a): shared dynamically (not a hardcoded frontend mirror, unlike
+            // useEnums.js's other enum lists) so config('currencies.supported') stays the single
+            // source of truth -- a currency added/removed via SUPPORTED_CURRENCIES reaches every
+            // currency picker without a frontend code change.
+            'supportedCurrencies' => config('currencies.supported'),
         ];
     }
 }

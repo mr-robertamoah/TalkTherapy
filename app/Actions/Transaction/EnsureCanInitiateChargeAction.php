@@ -31,8 +31,9 @@ class EnsureCanInitiateChargeAction extends Action
         // currency to config('currencies.supported') at Therapy/GroupTherapy creation/update
         // time, but this re-checks the value actually stored on payment_data before it ever
         // reaches Paystack, in case it was set through some other path (a legacy row, a direct
-        // write, a future bypass of the request classes).
-        if (! in_array(strtoupper($payable['currency']), array_map('strtoupper', config('currencies.supported')))) {
+        // write, a future bypass of the request classes). config('currencies.supported') is
+        // already normalized to uppercase, so only the stored value needs normalizing here.
+        if (! in_array(strtoupper($payable['currency']), config('currencies.supported'))) {
             throw new TransactionException('This currency is not currently supported.', 422);
         }
 
