@@ -1813,3 +1813,22 @@ counsellor on both surfaces, the initiate call reaching the real backend and sur
 502 error distinctly (a genuine `TransactionException`, not a mocked/faked response), and manually
 flipping a `Transaction` row to `SUCCESS` in the database to confirm the "Paid" states render
 correctly on both surfaces.
+
+---
+
+## 2026-08-29 — SCRUM-158 (TT-7.4c): counsellor status excludes group therapy; TT-7.4 fully implemented
+
+**Decision**: the new counsellor read-only status branches in `TherapyPaymentDetails.vue` and
+`UnifiedTherapy.vue`'s Session Actions Modal explicitly exclude group therapy
+(`therapyType !== 'group'`), matching TT-7.4b's own scope exclusion, even though the ticket's own
+AC text didn't spell this out explicitly (it inherited "same two surfaces TT-7.4b adds the Pay
+control to", and TT-7.4b's Pay control is already group-excluded). Displaying a
+per-model payment status for a group therapy would be premature and potentially misleading given
+TT-7.4d's still-open group-payment-model question (per-member vs. group-wide) — showing "Awaiting
+payment"/"Paid" for a group therapy today would imply a single, well-defined payer state that
+doesn't actually exist yet for that case.
+
+**Why**: consistent with the same reasoning already logged for TT-7.4b/SCRUM-157 — this is a
+scope-narrowing that follows directly from an already-made decision (TT-7.4d deferred), not a new
+judgment call, so it's recorded briefly rather than re-litigated. With TT-7.4a/b/c all merged, TT-7.4
+(SCRUM-118's payment UI) is now fully implemented for individual therapies and sessions.

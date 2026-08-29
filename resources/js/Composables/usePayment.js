@@ -11,6 +11,17 @@ const STATUS_MESSAGES = {
     PENDING: 'We have not yet confirmed your payment. If you completed checkout, this may update shortly -- otherwise, feel free to try again.',
 }
 
+// Read-only wording for the counsellor-facing status indicator (never terminal-failure-sounding
+// for ABANDONED/PENDING, matching the client-facing banner's wording above).
+const STATUS_LABELS = {
+    SUCCESS: 'Paid',
+    FAILED: 'Payment failed',
+}
+
+function paymentStatusLabel(status) {
+    return STATUS_LABELS[status] ?? 'Awaiting payment'
+}
+
 // Owns the initiate/redirect/status/dismiss logic shared by TherapyPaymentDetails.vue (PER_THERAPY
 // pay action) and UnifiedTherapy.vue's session-actions modal (PER_SESSION pay action), so neither
 // embeds this logic itself and the other reuses it. Group therapy is explicitly unsupported here --
@@ -83,5 +94,6 @@ export default function usePayment(therapy, therapyType = 'individual') {
         canPayForSession,
         payForTherapy,
         payForSession,
+        paymentStatusLabel,
     }
 }
