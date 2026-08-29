@@ -38,6 +38,7 @@ class InitiatePaystackChargeAction extends Action
             'for_type' => $dto->for::class,
             'for_id' => $dto->for->id,
             'user_id' => $dto->user->id,
+            'organization_id' => $dto->organization?->id,
             'reference' => $response['data']['reference'],
             'amount' => $minorUnitsAmount,
             'currency' => $payable['currency'],
