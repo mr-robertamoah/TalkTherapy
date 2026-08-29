@@ -40,7 +40,9 @@ class HandleInertiaRequestsV2 extends Middleware
             ? new UserResource($request->user())
             : null;
 
-        if ($userResource) $userResource->withoutWrapping();
+        if ($userResource) {
+            $userResource->withoutWrapping();
+        }
 
         return [
             ...parent::share($request),
