@@ -1537,3 +1537,103 @@ outright is the conservative default, and the alternative (silently picking last
 no stated rationale to justify over rejecting. Everything else in this ticket was already fully
 specified by the prior architect pass, so no new judgment calls were needed for the core schema or
 authorization design.
+## 2026-08-29 — SCRUM-48 (TT-7.3a): org-as-payer charge initiation, scope finalized
+
+**Decision**: SCRUM-48 was carried in Jira as an 8-point "TT-7.3: Org subscription billing" stub,
+but `documentation/implementation_plan.md` already had it pre-split (during earlier TT-7 planning)
+into TT-7.3a (org-as-payer charge initiation only, 5 points) and TT-7.3b (payout/refund lifecycle,
+deferred — depends on TT-7.6/TT-7.7, neither filed yet). This entry finalizes TT-7.3a's scope
+through a full product-owner → project-manager → architect pass before implementation.
+
+Key design decisions: (1) `organization_id` is an explicit, always-required input when charging
+"via org" — never inferred from a single-org membership, even when a member belongs to only one
+org. (2) Which org financed a charge is recorded on a new `transactions.organization_id` FK
+(nullable, `nullOnDelete` since `Organization` is soft-deletable but a `Transaction` must remain a
+permanent record) — not on `Therapy`/`GroupTherapy`/`Session`, since a `PER_SESSION`-billed therapy
+has many charge events whose org attribution can differ per session, and a member later leaving an
+org must not retroactively rewrite past attribution. (3) Error messaging splits into one generic
+anti-enumeration message for "not eligible via this org" (no shared org / counsellor not covered /
+org unverified — mirrors `EnsureCanPayForModelAction`/`EnsureOrganizationCanReceiveMemberApplicationsAction`'s
+existing convention) versus specific messages for retainer-mode and group-therapy-exclusion
+rejections, on the theory that those two are only reachable once the requester has already proven
+active membership and full counsellor coverage, so they add no new disclosure beyond confirming the
+requester's own billing configuration -- the counsellor-coverage fact itself can't be probed at
+will, since a counsellor only ever ends up attached to a Therapy/GroupTherapy by actually accepting
+a real assistance/membership request, not via any client-settable input (security-engineer review,
+2026-08-29). (4) The new `EnsureOrganizationCanPayForModelAction` slots in as
+a 4th step in `TransactionService::initiateCharge()`, after the existing `EnsureCanInitiateChargeAction`
+(cheaper/existing checks fail first) and before `InitiatePaystackChargeAction`, with a single
+top-of-method `if (is_null($dto->organizationId)) return;` guard making the personal-pay path a
+structural no-op, not just a tested one.
+
+**Multi-counsellor GroupTherapy question** (the one open item product-owner couldn't resolve
+unilaterally): for a `GroupTherapy` with several counsellors, does the shared org need to cover
+*every* currently-active counsellor, or is *any one* sufficient? User decided **every active
+counsellor** — the stricter option, matching product-owner's own non-binding recommendation, to
+avoid a bookkeeping gap where TT-7.3b's future payout logic would have no compensation relationship
+to reference for a counsellor the org never actually covered. Architect confirmed this was a safe
+question to leave open through the design pass: the counsellor-resolution step (new
+`GroupTherapy::activeCounsellors()`, feeding a single set-based `whereIn`/`whereHas`-or-`whereDoesntHave`
+query, mirroring `EnsureThereIsNoPendingRequestForCounsellorsAction`'s existing idiom) makes "every"
+vs. "any one" a one-line query-polarity change, not a structural rewrite either way.
+
+**Also confirmed, not a new coupling**: TT-6.4c's negotiation flow (accept/reject/counter-offer on
+`organization_counsellor_compensations`) does not change what `organization_counsellors.status`
+being `active` means for this ticket — `CreateOrganizationCounsellorCompensationAction` activates
+the affiliation on the *first* compensation row regardless of whether that row came from the
+original unilateral proposal or the result of a later negotiation round, so `isActive()` remains a
+stable, negotiation-history-independent check.
+
+**Why**: this is a brand-new feature slice (org-as-payer is new charge-initiation behavior, not a
+bugfix), so it required the full `/start-feature`-style gate per CLAUDE.md even though its
+dependencies (TT-6.3b, TT-7.1) were already merged and its estimate was already provisionally
+sized during earlier TT-7 planning. The multi-counsellor question was genuinely undecidable by the
+product-owner subagent alone (a real product trade-off between strictness and simplicity, not a
+technical question with one correct answer), so it was surfaced to the user rather than guessed —
+consistent with this session's standing practice of pausing only for genuinely ambiguous product
+decisions, not technical ones the architecture review could settle on its own.
+
+**Implementation-time deviation from the architect's design**: the architect recommended resolving
+`organizationId` from a route parameter only (mirroring `getFor()`'s existing route-param-only
+resolution, which guards against a request body overriding which resource is being charged).
+During implementation this was changed to accept `organizationId` from the request body instead,
+since no route currently carries an `organizationId` segment and adding one would mean doubling
+every charge-initiation route (with/without org) for no real security benefit: `getFor()`'s
+concern is spoofing *what* is being charged, but `organizationId` doesn't identify the charge
+target (that's still `for`, unchanged) — it's an additional payer credential that
+`EnsureOrganizationCanPayForModelAction` independently and fully re-verifies regardless of where
+the value came from. Also added a raw `TransactionDTO::$organizationId` field alongside the
+resolved `$organization`, which the architect's design didn't explicitly call for: this is what
+lets the gate action distinguish "no organizationId supplied" (personal-pay, skip entirely) from
+"an organizationId was supplied but doesn't resolve to a real org" (reject with the same generic
+anti-enumeration message as every other ineligibility reason) — collapsing those two cases, as a
+single resolved-model field would, would have silently downgraded an invalid/foreign
+`organizationId` to a personal charge instead of rejecting it, which is both surprising (a user
+who explicitly asked to pay via their org would be charged personally without warning) and
+inconsistent with the architect's own stated anti-enumeration intent for that exact scenario.
+
+**Post-implementation review fixes**: `reviewer` and `security-engineer` both ran against the
+implementation before merge. Two required changes from `reviewer`, applied immediately: (1)
+`EnsureOrganizationCanPayForModelAction`'s generic-message cluster now also re-checks
+`Organization::is_consumer`, not just `isVerified()` — an org can have `is_consumer` toggled off
+after members already exist (`UpdateOrganizationAction` doesn't retroactively remove them), and the
+action's own comment claims to mirror `EnsureOrganizationCanReceiveMemberApplicationsAction`'s
+convention, which does check it. (2) `GroupTherapy::activeCounsellors()` now excludes a
+soft-deleted `addedby` counsellor from the coverage set — without this, a GroupTherapy created by a
+counsellor who has since deleted their account could never be paid for via any organization, since
+a deleted counsellor can never again satisfy an active `organization_counsellors` row, and the
+"every active counsellor must be covered" rule would treat that permanently-uncoverable ghost
+counsellor as blocking every future org-pay attempt on that GroupTherapy. Both fixes came with new
+regression tests. `security-engineer`'s one finding (Low): `organizationId` had no input-shape
+validation before reaching `Organization::find()`, so an array value (`organizationId[]=1`) tripped
+an uncaught `TypeError` on the DTO's typed `?Organization` property, degrading to a generic 500 --
+no information disclosure, but inconsistent with the codebase's explicit-validation convention.
+Fixed with an upfront `is_numeric()` guard in `TransactionController::initiate()` throwing a clean
+422 `TransactionException` instead.
+
+**Why**: both required changes were genuine functional gaps in the ticket's stated design (the
+`is_consumer` check the code's own comment claimed to already follow; the multi-counsellor coverage
+rule the human product owner explicitly chose), not style nits, so fixed immediately per CLAUDE.md.
+The validation gap was a robustness/UX issue, not a security hole (the existing
+`ResolvesExceptionResponse` safety net already prevented any leak), but cheap enough to fix in the
+same pass rather than deferred.
