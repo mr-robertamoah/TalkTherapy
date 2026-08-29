@@ -207,8 +207,9 @@ class TherapyController extends Controller
             return Inertia::render('Therapy/Index', [
                 'therapy' => new TherapyResource($therapy),
                 'session' => session('session'),
+                'transactionStatus' => session('transactionStatus'),
                 'pendingRequest' => $pendingRequest ? new RequestResource($pendingRequest) : null,
-                'recentSessions' => SessionResource::collection($therapy->sessions()->latest()->take(5)->get()),
+                'recentSessions' => SessionResource::collection($therapy->sessions()->with('latestTransaction')->latest()->take(5)->get()),
                 'recentTopics' => TherapyTopicResource::collection($therapy->topics()->latest()->take(5)->get()),
             ]);
         } catch (Throwable $th) {

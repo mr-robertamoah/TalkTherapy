@@ -1699,3 +1699,73 @@ scope, typing `0`, an accidental click on a destructive action sitting next to t
 button), not style nits, and directly contradicted established conventions this same codebase
 already uses elsewhere for the identical situations — fixed immediately per CLAUDE.md rather than
 deferred.
+
+---
+
+## 2026-08-29 — SCRUM-118: split into TT-7.4a/b/c/d, group-therapy payment model decided
+
+**Decision**: SCRUM-118 ("Payment UI") went through product-owner/project-manager/architect
+review before implementation, mirroring the TT-7.2/TT-6.4 precedent, and was found to hide a
+backend prerequisite plus a genuine product fork. Split into ordered sub-tickets: TT-7.4a
+(SCRUM-156, backend payment-status exposure plumbing — no Resource exposes transaction status
+today, and the `transactionStatus` flash value `TransactionController::callback` sets was never
+read back down), TT-7.4b (SCRUM-157, client Pay/redirect/status UI, individual therapy & session
+only), TT-7.4c (SCRUM-158, counsellor read-only status indicator, parallel with b). TT-7.4d
+(group-therapy Pay UI) is deferred as its own future epic, not scheduled or pointed yet — the
+user decided group-therapy payment should be **per-member**, not one group-wide charge covering
+everyone, which needs a new per-member payment record/schema change beyond what the current
+`Transaction` model (a single `morphMany` per model, blocked from a second charge once any one
+succeeds) supports. The original TT-7.4's "retry-on-failure" clause is carved out as a separate
+small follow-up, since none of SCRUM-118's requirements cover it and it would otherwise silently
+vanish in the renumbering.
+
+Architect review additionally required two amendments to the original ticket text before
+approval: (1) TT-7.4a's `SessionResource` exposure must go through a `latestTransaction`
+(`ofMany`) relation with eager-loading required at every collection call site (e.g.
+`SessionService::getSessions()`), not a naive per-row lazy-load — the latter would silently
+N+1 the paginated session list; (2) TT-7.4b's pay/redirect/status logic must live in a new
+`usePayment()` composable (matching this codebase's existing `useTherapyState`/`useAlert`/
+`useErrorHandler` conventions), not embedded directly in `TherapyPaymentDetails.vue` (a
+currently pure, stateless display component) with `UnifiedTherapy.vue`'s session-actions modal
+reaching into it.
+
+**Why**: the group-therapy payment model is a real, costly-to-guess-wrong fork (a per-member
+data model and a group-wide first-payer model are not incrementally related — building the
+wrong one means throwing away real work), so it was raised to the user rather than assumed, per
+CLAUDE.md's autonomous-execution rules. The two architect-required amendments were both grounded
+in code actually read (confirmed no `latestOfMany`/`scopeSuccessful` accessor exists yet on
+`Transaction`, and confirmed `TherapyPaymentDetails.vue` has no side-effecting logic today), not
+speculative — applying them now avoids a rework cycle once TT-7.4b/c implementation starts.
+
+---
+
+## 2026-08-29 — SCRUM-156 (TT-7.4a): `latestOfMany()` column, and a deferred guest-exposure question
+
+**Decision**: `TherapyTrait::latestTransaction()`/`Session::latestTransaction()` explicitly order
+by `latestOfMany('created_at')` rather than the Eloquent default (`'id'`) — reviewer caught that
+the default coincides with insertion order in this codebase today (every `Transaction` row is
+created once and only ever updated afterwards) but is an implicit assumption, not a guarantee,
+and diverges from this codebase's usual `->latest()` (created_at-based) convention elsewhere.
+Also added a code comment on both relations clarifying that "latest" means latest across *all*
+eligible payers for that model, not scoped to the current viewer — a `GroupTherapy` with
+multiple members each attempting to pay can surface one member's pending/failed attempt to a
+different member (security-engineer finding); this is a read of the existing single-payer-per-
+model backend limitation already tracked as TT-7.4d's blocker, not a new bug, so it's documented
+rather than worked around here.
+
+**Deferred, not fixed**: security-engineer also flagged that `paymentStatus` (like the
+pre-existing `paymentData`/`paymentType`) is now reachable by an unauthenticated guest on a
+`public` therapy/group therapy/session, via `EnsureUserHasAccessToTherapyAction`'s existing
+`public`-bypass and `SessionService::getSessions()`'s existing guest branch (SCRUM-74). Rated
+Low–Medium: it's an incremental extension of an already-accepted exposure pattern (amount/
+currency were already guest-visible; whether a payment succeeded is arguably less sensitive than
+the amount), not a new class of leak, and restricting it would be a product-visibility decision
+outside SCRUM-156's stated scope (status-exposure plumbing only). Recommend a follow-up ticket to
+get an explicit product decision on guest visibility of payment status/data on public
+engagements, rather than silently narrowing scope here.
+
+**Why**: both are genuine findings worth recording, but only the first is a correctness bug
+inside this ticket's own scope (fixed immediately); the second is a pre-existing product
+decision this ticket extends rather than introduces, and CLAUDE.md's autonomous-execution rules
+call for logging a scope question like this rather than either silently fixing it (unscoped
+change) or silently ignoring it.

@@ -45,6 +45,7 @@ class TherapyResource extends JsonResource
             'sessionsHeld' => $this->sessionsHeld,
             'status' => $this->getStatus(),
             'paymentData' => $this->payment_data,
+            'paymentStatus' => $this->latestTransaction?->status,
             'sessionsCreated' => $this->sessionsCreated,
             'paymentType' => $this->payment_type,
             'sessionType' => $this->session_type,
