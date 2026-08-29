@@ -2,9 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\DTOs\GetOrganizationDirectoryDTO;
 use App\DTOs\OrganizationDTO;
 use App\Http\Requests\CreateOrganizationRequest;
 use App\Http\Requests\UpdateOrganizationRequest;
+use App\Http\Resources\OrganizationDirectoryResource;
 use App\Http\Resources\OrganizationResource;
 use App\Models\Organization;
 use App\Services\OrganizationService;
@@ -14,6 +16,28 @@ use Throwable;
 
 class OrganizationController extends Controller
 {
+    // Any authenticated user, not just an org's own admins -- this is how a counsellor/member
+    // discovers an org to apply to (TT-6.6c). Verified-only, curated field set: see
+    // OrganizationDirectoryResource and GetOrganizationDirectoryAction's own comments.
+    public function index(Request $request)
+    {
+        try {
+            $organizations = OrganizationService::new()->getOrganizationDirectory(
+                GetOrganizationDirectoryDTO::new()->fromArray([
+                    'isProvider' => $request->has('isProvider') ? $request->boolean('isProvider') : null,
+                    'isConsumer' => $request->has('isConsumer') ? $request->boolean('isConsumer') : null,
+                ])
+            );
+
+            return OrganizationDirectoryResource::collection($organizations);
+        } catch (Throwable $th) {
+            $status = $this->statusFor($th);
+            $message = $this->messageFor($th, $status);
+
+            return response()->json(['message' => $message], $status);
+        }
+    }
+
     public function store(CreateOrganizationRequest $request)
     {
         try {
