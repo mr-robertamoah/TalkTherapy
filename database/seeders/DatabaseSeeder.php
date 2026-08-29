@@ -69,6 +69,11 @@ class DatabaseSeeder extends Seeder
         // from the 6 main demo counsellors above since those are woven into therapies/group
         // therapies/discussions/chat demo data used by many other features.
         $this->createCounsellorDeletionDemoData();
+
+        // SCRUM-157/158: dedicated PAID therapies (one PER_THERAPY, one PER_SESSION) for testing
+        // the payment UI -- the random demo therapies above only *might* land on PAID, and never
+        // deterministically pair the two payment models with a specific client/counsellor.
+        $this->createPaymentDemoData();
     }
 
     private function createLanguages($user)
@@ -735,6 +740,90 @@ class DatabaseSeeder extends Seeder
             'anonymous' => false,
             'public' => false,
             'status' => 'in_session',
+        ]);
+    }
+
+    private function createPaymentDemoData(): void
+    {
+        $client = User::factory()->create([
+            'firstName' => 'Payment',
+            'lastName' => 'DemoClient',
+            'email' => 'payment.demo.client@example.com',
+            'username' => 'payment_demo_client',
+            'password' => Hash::make('password'),
+            'email_verified_at' => now(),
+        ]);
+
+        $counsellorUser = User::factory()->create([
+            'firstName' => 'Payment',
+            'lastName' => 'DemoCounsellor',
+            'email' => 'payment.demo.counsellor@example.com',
+            'username' => 'payment_demo_counsellor',
+            'password' => Hash::make('password'),
+            'email_verified_at' => now(),
+        ]);
+
+        $counsellor = $counsellorUser->counsellor()->create([
+            'name' => 'Dr. Payment DemoCounsellor',
+            'about' => 'Seeded counsellor for testing the payment UI (SCRUM-157/158).',
+            'email' => $counsellorUser->email,
+            'phone' => fake()->phoneNumber(),
+            'verified_at' => now(),
+            'email_verified_at' => now(),
+            'profession_id' => rand(1, 10),
+            'contact_visible' => true,
+        ]);
+
+        // PER_THERAPY: the whole therapy is charged once, via TherapyPaymentDetails.vue's "pay now".
+        $client->addedTherapies()->create([
+            'name' => 'Payment Demo Therapy (Per Therapy)',
+            'background_story' => 'Seeded PAID, PER_THERAPY therapy for testing the client Pay Now action (SCRUM-157).',
+            'counsellor_id' => $counsellor->id,
+            'session_type' => 'Once',
+            'payment_type' => 'PAID',
+            'allow_in_person' => false,
+            'anonymous' => false,
+            'public' => false,
+            'status' => 'pending',
+            'payment_data' => [
+                'amount' => 150,
+                'currency' => 'USD',
+                'per' => 'PER_THERAPY',
+            ],
+        ]);
+
+        // PER_SESSION: each session is charged individually, via the session-actions modal's
+        // "pay now" once that session is active.
+        $perSessionTherapy = $client->addedTherapies()->create([
+            'name' => 'Payment Demo Therapy (Per Session)',
+            'background_story' => 'Seeded PAID, PER_SESSION therapy for testing the per-session Pay Now action (SCRUM-157).',
+            'counsellor_id' => $counsellor->id,
+            'session_type' => 'Periodic',
+            'payment_type' => 'PAID',
+            'allow_in_person' => false,
+            'anonymous' => false,
+            'public' => false,
+            'status' => 'in_session',
+            'payment_data' => [
+                'amount' => 50,
+                'currency' => 'USD',
+                'per' => 'PER_SESSION',
+            ],
+        ]);
+
+        // Kept within 5 minutes of "now" so it's immediately the therapy's activeSession -- the
+        // Pay Now control in the session-actions modal only appears once a session is active
+        // (mirrors how "start session"/"end session" already work).
+        $counsellor->addedSessions()->create([
+            'name' => 'Payment Demo Session',
+            'about' => 'Seeded PAID session, immediately active so its Pay Now control is reachable without waiting.',
+            'for_id' => $perSessionTherapy->id,
+            'for_type' => $perSessionTherapy::class,
+            'start_time' => now()->addMinutes(2),
+            'end_time' => now()->addMinutes(62),
+            'type' => 'online',
+            'status' => 'pending',
+            'payment_type' => 'PAID',
         ]);
     }
 }

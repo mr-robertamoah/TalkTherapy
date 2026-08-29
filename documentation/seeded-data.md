@@ -112,6 +112,22 @@ woven into therapies/group therapies/discussions/chat demo data used by many oth
 Log in as `mr_robertamoah` (the super admin) and visit `/administrator` → counsellors to test
 admin-triggered deletion of either account instead.
 
+## Payment UI (SCRUM-157/158)
+
+Dedicated accounts and therapies for testing the Pay Now flow, since the random demo therapies
+above only *might* land on `PAID` and never deterministically pair the two payment models
+(`PER_THERAPY`/`PER_SESSION`) with a specific client/counsellor:
+
+| Username | Password | Purpose |
+|---|---|---|
+| `payment_demo_client` | `password` | Owns both payment demo therapies below. |
+| `payment_demo_counsellor` | `password` | Assigned counsellor on both — log in as this account to confirm no Pay control ever renders for a counsellor. |
+
+| Therapy | Payment model | Notes |
+|---|---|---|
+| Payment Demo Therapy (Per Therapy) | `PER_THERAPY`, USD 150 | Pay Now lives on the "payment details" tab. |
+| Payment Demo Therapy (Per Session) | `PER_SESSION`, USD 50 | Has one seeded session ("Payment Demo Session"), always within 5 minutes of its start time so it's immediately the therapy's active session — Pay Now lives in the "Session Actions" modal (double-click the expanded active-session panel to open it). |
+
 ## Testing the registration/verification flow
 
 The 11 seeded accounts above all skip email verification. To test registration or the

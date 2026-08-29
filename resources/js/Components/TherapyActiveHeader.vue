@@ -14,7 +14,7 @@
       class="w-[80%] md:w-[70%] lg:w-[60%] mb-2 mx-auto"
     >
       <div
-        @click="$emit('clicked-show-all')"
+        @click="showAll = !showAll; $emit('clicked-show-all')"
         class="p-2 bg-green-300 w-fit ml-auto rounded-lg text-green-800 text-center cursor-pointer"
       >
         {{ showAll ? "hide session information" : "show session information" }}
@@ -98,7 +98,7 @@
       class="w-[80%] md:w-[70%] lg:w-[60%] mb-2 mx-auto"
     >
       <div
-        @click="$emit('clicked-show-all')"
+        @click="showAll = !showAll; $emit('clicked-show-all')"
         class="p-2 bg-green-300 w-fit ml-auto rounded-lg text-green-800 text-center cursor-pointer"
       >
         {{ showAll ? "hide discussion information" : "show discussion information" }}

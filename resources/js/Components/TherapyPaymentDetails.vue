@@ -49,13 +49,51 @@
           </div>
         </div>
       </template>
+
+      <div v-if="therapy.paymentData.per === 'PER_THERAPY' && therapy.paymentStatus === 'SUCCESS'" class="text-sm text-green-700 font-semibold">
+        Paid
+      </div>
+      <div class="relative" v-else-if="canPay">
+        <FormLoader class="mx-auto" :show="initiating" :text="'starting your payment'" />
+        <PrimaryButton :disabled="initiating" @click="clickedPay">pay now</PrimaryButton>
+      </div>
     </div>
+
+    <Alert
+      :show="alertData.show"
+      :type="alertData.type"
+      :message="alertData.message"
+      :time="alertData.time"
+      @close="clearAlertData"
+    />
   </div>
 </template>
 
 <script setup>
-defineProps({
+import { computed, toRef } from 'vue'
+import FormLoader from '@/Components/FormLoader.vue'
+import PrimaryButton from '@/Components/PrimaryButton.vue'
+import Alert from '@/Components/Alert.vue'
+import useAlert from '@/Composables/useAlert'
+import usePayment from '@/Composables/usePayment'
+
+const props = defineProps({
   therapy: { default: null },
   therapyType: { type: String, default: 'individual' },
+  computedIsParticipant: { type: Boolean, default: false },
+  computedIsCounsellor: { type: Boolean, default: false },
 })
+
+const { alertData, clearAlertData, setFailedAlertData } = useAlert()
+const { initiating, canPayForTherapy, payForTherapy } = usePayment(toRef(props, 'therapy'), props.therapyType)
+
+const canPay = computed(() => canPayForTherapy(props.computedIsParticipant, props.computedIsCounsellor))
+
+async function clickedPay() {
+  try {
+    await payForTherapy()
+  } catch (err) {
+    setFailedAlertData({ message: err.message })
+  }
+}
 </script>

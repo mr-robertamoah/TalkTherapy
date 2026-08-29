@@ -1769,3 +1769,47 @@ inside this ticket's own scope (fixed immediately); the second is a pre-existing
 decision this ticket extends rather than introduces, and CLAUDE.md's autonomous-execution rules
 call for logging a scope question like this rather than either silently fixing it (unscoped
 change) or silently ignoring it.
+
+---
+
+## 2026-08-29 — SCRUM-157 (TT-7.4b): Pay-button placement, and a pre-existing broken toggle fixed
+
+**Decision**: the client's PER_SESSION "Pay Now" control was placed inside the existing "Session
+Actions Modal" in `UnifiedTherapy.vue` (reachable only once a session is the therapy's *active*
+session — imminent/ongoing, same rule already used for "start session"/"end session"/"abandon
+session") rather than inventing a new, always-visible surface. This means a session created with
+a start time far in the future won't show a Pay action until it becomes active, which is a
+looser reading of the ticket's "concrete, reachable Pay action after session creation" AC than
+"immediately after creation" — treated as acceptable since it mirrors how every other per-session
+action in this app already works, and building a second, earlier-reachable surface would be a
+larger UI addition than this ticket's scope implies.
+
+While Playwright-verifying this, the "Session Actions Modal" itself turned out to be completely
+unreachable through the UI for *any* user, regardless of this ticket's changes: the "show session
+information" toggle in `TherapyActiveHeader.vue` only emitted `clicked-show-all` to
+`UnifiedTherapy.vue`'s `clickedShowAll()`, which is an empty no-op stub (`// Implementation for
+showing all session/discussion info`) — so the local `showAll` ref the component's own template
+reads was never actually set, and the double-click target that opens the modal never rendered.
+Fixed by also toggling `showAll` locally on click, keeping the (still no-op) emit for
+compatibility with whatever it was originally meant for.
+
+**Why**: this is a genuine, pre-existing, unrelated bug (confirmed via git blame: introduced as
+dead code in the original page-consolidation commit, not by this ticket), not a regression —
+but it directly blocked this ticket's own AC #7 (Pay action must be reachable), so per CLAUDE.md's
+"never skip or silently ignore" rule it was fixed immediately rather than deferred or worked
+around with a different UI surface. `security-engineer` confirmed the fix only repairs the dead
+toggle and doesn't relax any authorization gate (the outer `v-if="activeSession && isParticipant"`
+guard, and each modal action's own condition, are all unchanged).
+
+**Also deferred (informational, not fixed)**: `security-engineer` separately flagged that
+`DatabaseSeeder::run()` has no environment guard against accidental production seeding, applying
+equally to all ~8 demo accounts in the file (pre-existing, not introduced by this ticket) —
+logged here as a candidate follow-up chore, not fixed in this ticket's scope.
+
+**Full Paystack sandbox checkout could not be Playwright-verified end-to-end**: this dev
+environment has no `PAYSTACK_SECRET_KEY` configured, so the real redirect-out/redirect-back cycle
+can't complete. Verified instead via: the Pay button rendering/gating correctly for client vs.
+counsellor on both surfaces, the initiate call reaching the real backend and surfacing its actual
+502 error distinctly (a genuine `TransactionException`, not a mocked/faked response), and manually
+flipping a `Transaction` row to `SUCCESS` in the database to confirm the "Paid" states render
+correctly on both surfaces.

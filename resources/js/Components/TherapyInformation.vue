@@ -271,9 +271,11 @@
 
           <!-- Payment Details -->
           <div v-if="activeTab === 'therapy_payment_details' && therapy.paymentType == 'PAID'">
-            <TherapyPaymentDetails 
-              :therapy="therapy" 
-              :therapy-type="therapyType" 
+            <TherapyPaymentDetails
+              :therapy="therapy"
+              :therapy-type="therapyType"
+              :computed-is-participant="computedIsParticipant"
+              :computed-is-counsellor="computedIsCounsellor"
             />
           </div>
 
