@@ -1507,3 +1507,57 @@ asking. The Update-modal legacy-value gap was the reviewer's own explicit "Chang
 blocker on a scenario the review was asked to check, so it was fixed in the same pass rather than
 deferred. The two genuinely low-priority suggestions were deferred with a stated reason rather
 than either silently skipped or force-fit into this round.
+
+---
+
+## 2026-08-29 — SCRUM-48 (TT-7.3a): org-as-payer charge initiation, scope finalized
+
+**Decision**: SCRUM-48 was carried in Jira as an 8-point "TT-7.3: Org subscription billing" stub,
+but `documentation/implementation_plan.md` already had it pre-split (during earlier TT-7 planning)
+into TT-7.3a (org-as-payer charge initiation only, 5 points) and TT-7.3b (payout/refund lifecycle,
+deferred — depends on TT-7.6/TT-7.7, neither filed yet). This entry finalizes TT-7.3a's scope
+through a full product-owner → project-manager → architect pass before implementation.
+
+Key design decisions: (1) `organization_id` is an explicit, always-required input when charging
+"via org" — never inferred from a single-org membership, even when a member belongs to only one
+org. (2) Which org financed a charge is recorded on a new `transactions.organization_id` FK
+(nullable, `nullOnDelete` since `Organization` is soft-deletable but a `Transaction` must remain a
+permanent record) — not on `Therapy`/`GroupTherapy`/`Session`, since a `PER_SESSION`-billed therapy
+has many charge events whose org attribution can differ per session, and a member later leaving an
+org must not retroactively rewrite past attribution. (3) Error messaging splits into one generic
+anti-enumeration message for "not eligible via this org" (no shared org / counsellor not covered /
+org unverified — mirrors `EnsureCanPayForModelAction`/`EnsureOrganizationCanReceiveMemberApplicationsAction`'s
+existing convention) versus specific messages for retainer-mode and group-therapy-exclusion
+rejections, since those two only ever disclose the requester's own status back to themselves, not
+information about another party. (4) The new `EnsureOrganizationCanPayForModelAction` slots in as
+a 4th step in `TransactionService::initiateCharge()`, after the existing `EnsureCanInitiateChargeAction`
+(cheaper/existing checks fail first) and before `InitiatePaystackChargeAction`, with a single
+top-of-method `if (is_null($dto->organization)) return;` guard making the personal-pay path a
+structural no-op, not just a tested one.
+
+**Multi-counsellor GroupTherapy question** (the one open item product-owner couldn't resolve
+unilaterally): for a `GroupTherapy` with several counsellors, does the shared org need to cover
+*every* currently-active counsellor, or is *any one* sufficient? User decided **every active
+counsellor** — the stricter option, matching product-owner's own non-binding recommendation, to
+avoid a bookkeeping gap where TT-7.3b's future payout logic would have no compensation relationship
+to reference for a counsellor the org never actually covered. Architect confirmed this was a safe
+question to leave open through the design pass: the counsellor-resolution step (new
+`GroupTherapy::activeCounsellors()`, feeding a single set-based `whereIn`/`whereHas`-or-`whereDoesntHave`
+query, mirroring `EnsureThereIsNoPendingRequestForCounsellorsAction`'s existing idiom) makes "every"
+vs. "any one" a one-line query-polarity change, not a structural rewrite either way.
+
+**Also confirmed, not a new coupling**: TT-6.4c's negotiation flow (accept/reject/counter-offer on
+`organization_counsellor_compensations`) does not change what `organization_counsellors.status`
+being `active` means for this ticket — `CreateOrganizationCounsellorCompensationAction` activates
+the affiliation on the *first* compensation row regardless of whether that row came from the
+original unilateral proposal or the result of a later negotiation round, so `isActive()` remains a
+stable, negotiation-history-independent check.
+
+**Why**: this is a brand-new feature slice (org-as-payer is new charge-initiation behavior, not a
+bugfix), so it required the full `/start-feature`-style gate per CLAUDE.md even though its
+dependencies (TT-6.3b, TT-7.1) were already merged and its estimate was already provisionally
+sized during earlier TT-7 planning. The multi-counsellor question was genuinely undecidable by the
+product-owner subagent alone (a real product trade-off between strictness and simplicity, not a
+technical question with one correct answer), so it was surfaced to the user rather than guessed —
+consistent with this session's standing practice of pausing only for genuinely ambiguous product
+decisions, not technical ones the architecture review could settle on its own.
