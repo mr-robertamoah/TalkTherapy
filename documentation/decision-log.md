@@ -1637,3 +1637,37 @@ rule the human product owner explicitly chose), not style nits, so fixed immedia
 The validation gap was a robustness/UX issue, not a security hole (the existing
 `ResolvesExceptionResponse` safety net already prevented any leak), but cheap enough to fix in the
 same pass rather than deferred.
+
+---
+
+## 2026-08-29 — SCRUM-155 (TT-7.2c): pricing UI, resolving an AC-vs-schema conflict, and a discovered backend gap
+
+**Decision**: Built the counsellor-facing pricing edit form and public display per SCRUM-155's
+scope, following the established `Show.vue` section pattern (edit button → modal, mirroring
+`UpdateCounsellorContact.vue`/`UpdateCounsellorPreferences.vue` exactly). Two judgment calls made
+without asking, both logged here:
+
+1. **AC #1 vs. the merged schema, resolved in favor of the schema.** SCRUM-155's AC #1 describes
+   the flat rate as "amount + currency + `per`", but the schema section of the same ticket family
+   (and the actually-implemented, reviewed, merged `EnsureCounsellorPricingDataIsValidAction`)
+   defines flat mode as `therapy_type`/`session_type`/`per` **all null** — no `per` on a flat row
+   at all. Since SCRUM-154 is already merged and its schema can't be casually changed without a
+   migration + re-review, the UI was built to match what's actually running (flat = amount +
+   currency only), treating the older AC wording as stale planning text rather than a live
+   requirement.
+2. **Backend gap discovered mid-build**: `SetCounsellorPricingAction` always requires at least one
+   pricing entry, so there was no way to represent "no pricing listed" once a counsellor had ever
+   set one — but this ticket's own AC #6 explicitly requires a Playwright-verified "clear pricing"
+   step. Added a small, additive `DELETE /counsellor/{counsellorId}/pricings` endpoint
+   (`ClearCounsellorPricingAction`, `CounsellorPricingService::clearPricing()`), reusing the same
+   `EnsureUserCanSetCounsellorPricingAction` authorization check rather than inventing a new one.
+
+**Why**: (1) is a documentation-accuracy call, not a product decision — the human product owner's
+actual, confirmed decision (full specification, no partial/cascading overrides, recorded in the
+SCRUM-47 entry above) is unambiguous about override rows; the flat-row wording conflict is an
+artifact of AC text not being updated after the schema was finalized during SCRUM-47's planning,
+not a new requirement to litigate. (2) is a scope gap the UI ticket's own acceptance criteria
+surfaced, not an invented feature — AC #6 cannot be satisfied without it, so it was treated as
+part of delivering this ticket rather than a separate backend follow-up ticket, since it's a
+minimal, low-risk addition to an already-reviewed, merged feature (same auth rule, same model,
+no schema change).

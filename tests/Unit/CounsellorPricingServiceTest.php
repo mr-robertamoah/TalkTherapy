@@ -136,6 +136,32 @@ test('a platform admin can set pricing on behalf of a counsellor', function () {
     expect($result)->toHaveCount(1);
 });
 
+// SCRUM-155 (TT-7.2c): clearing pricing entirely -- discovered as a gap while building the UI,
+// since SetCounsellorPricingAction always requires at least one entry.
+test('a counsellor can clear their pricing entirely', function () {
+    $counsellor = aCounsellorForPricing();
+    setPricing($counsellor, [['amount' => 150, 'currency' => 'GHS']]);
+    expect(CounsellorPricing::query()->where('counsellor_id', $counsellor->id)->count())->toBe(1);
+
+    CounsellorPricingService::new()->clearPricing(
+        CounsellorPricingDTO::new()->fromArray(['user' => $counsellor->user, 'counsellor' => $counsellor])
+    );
+
+    expect(CounsellorPricing::query()->where('counsellor_id', $counsellor->id)->count())->toBe(0);
+});
+
+test('a counsellor cannot clear another counsellor\'s pricing', function () {
+    $counsellor = aCounsellorForPricing();
+    $otherCounsellor = aCounsellorForPricing();
+    setPricing($counsellor, [['amount' => 150, 'currency' => 'GHS']]);
+
+    expect(fn () => CounsellorPricingService::new()->clearPricing(
+        CounsellorPricingDTO::new()->fromArray(['user' => $otherCounsellor->user, 'counsellor' => $counsellor])
+    ))->toThrow(CounsellorException::class, 'You are not authorized to set this pricing.');
+
+    expect(CounsellorPricing::query()->where('counsellor_id', $counsellor->id)->count())->toBe(1);
+});
+
 test('setting pricing for a counsellor that does not exist is rejected', function () {
     expect(fn () => CounsellorPricingService::new()->setPricing(
         CounsellorPricingDTO::new()->fromArray([

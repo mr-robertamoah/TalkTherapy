@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Actions\Counsellor\ClearCounsellorPricingAction;
 use App\Actions\Counsellor\EnsureCounsellorExistsAction;
 use App\Actions\Counsellor\EnsureCounsellorPricingDataIsValidAction;
 use App\Actions\Counsellor\EnsureUserCanSetCounsellorPricingAction;
@@ -20,5 +21,14 @@ class CounsellorPricingService extends Service
         EnsureCounsellorPricingDataIsValidAction::new()->execute($dto);
 
         return SetCounsellorPricingAction::new()->execute($dto);
+    }
+
+    public function clearPricing(CounsellorPricingDTO $dto): void
+    {
+        EnsureCounsellorExistsAction::new()->execute($dto);
+
+        EnsureUserCanSetCounsellorPricingAction::new()->execute($dto);
+
+        ClearCounsellorPricingAction::new()->execute($dto);
     }
 }
