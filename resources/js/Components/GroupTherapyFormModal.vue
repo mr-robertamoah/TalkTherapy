@@ -1,5 +1,5 @@
 <script setup>
-import { inject, ref, watch, watchEffect } from 'vue';
+import { computed, inject, ref, watch, watchEffect } from 'vue';
 import TextInput from '@/Components/TextInput.vue';
 import InputLabel from '@/Components/InputLabel.vue';
 import InputError from '@/Components/InputError.vue';
@@ -24,6 +24,12 @@ import useEnums from '@/Composables/useEnums';
 const { setErrorData } = useErrorHandler()
 const { alertData, clearAlertData, setFailedAlertData, setSuccessAlertData } = useAlert()
 const { PaymentTypeEnum, SessionTypeEnum } = useEnums()
+// SCRUM-153 (TT-7.2a): sourced from the backend's config('currencies.supported') (shared via
+// Inertia), not hardcoded -- previously defaulted to the Cedi symbol 'GHȻ', a free-text value
+// that would fail the backend's new supported-currency validation unless manually overwritten.
+const supportedCurrencies = usePage().props.supportedCurrencies ?? []
+const defaultCurrency = supportedCurrencies.includes('GHS') ? 'GHS' : (supportedCurrencies[0] ?? '')
+const currencyOptions = computed(() => supportedCurrencies.map(code => ({ name: code, value: code })))
 const counsellors = ref({ data: [], page: 1, selected: [] });
 const counsellorSearch = ref("");
 const loading = ref(false)
@@ -51,7 +57,7 @@ const therapyData = ref({
     'amount': '',
     'maxSessions': '',
     'counsellorId': '',
-    'currency': 'GHȻ',
+    'currency': defaultCurrency,
     'cases': [],
     'counsellorIds': [],
     'maxUsers': '',
@@ -95,7 +101,7 @@ watch(
         if (therapyData.value.paymentType == PaymentTypeEnum.free) {
             therapyData.value.public = true
             therapyData.value.amount = ''
-            therapyData.value.currency = 'GHȻ'
+            therapyData.value.currency = defaultCurrency
             therapyData.value.per = ''
         }
     }
@@ -293,7 +299,7 @@ function clearData() {
     therapyData.value.shareEqually = false
     therapyData.value.sharePercentage = ''
     therapyData.value.amount = ''
-    therapyData.value.currency = 'GHȻ'
+    therapyData.value.currency = defaultCurrency
     therapyData.value.per = ''
     therapyData.value.cases = []
     therapyData.value.counsellorIds = []
@@ -586,11 +592,12 @@ function closeModal() {
 
                                     <InputLabel class="mt-4" for="amount" value="Amount" />
                                     <div class="flex justify-start items-center">
-                                        <TextInput
-                                            id="name"
-                                            type="text"
-                                            class="mt-1 block w-[30%] max-w-[100px] text-end"
+                                        <Select
+                                            id="currency"
+                                            class="mt-1 block w-[30%] max-w-[100px]"
                                             v-model="therapyData.currency"
+                                            :options="currencyOptions"
+                                            :default-option="'currency'"
                                             required
                                         />
                                         <TextInput

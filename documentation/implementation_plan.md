@@ -151,13 +151,23 @@ shipped (or are shipping) in parallel with TT-7.1 rather than waiting on it.
 ## Epic TT-7: Payments & Billing — *New*
 *Goal: neither counsellor pricing display nor Org subsidized rates mean anything without a real way to move money.*
 
+TT-7.2 (SCRUM-47) went through product-owner review and was found to be significantly
+undersized as a single 3-point stub — no counsellor-pricing concept exists anywhere today,
+pricing is genuinely dual-mode (flat vs. per-service-type), and currency is free-text
+everywhere in the system, not just on the pricing field. Split into TT-7.2a (shared currency
+list + retrofit, prerequisite) → TT-7.2b (pricing data model + API) → TT-7.2c (pricing UI),
+mirroring the TT-6.4a/b/c precedent. This also absorbs the currency-validation slice of TT-7.4
+— see that row's note.
+
 | Key | Story | Type | Priority | Points | Source | Depends on |
 |---|---|---|---|---|---|---|
-| TT-7.1 | Transaction/payment model (full audit-trail status history) + Paystack charge initiation & webhook/callback plumbing, test-mode end-to-end for a single simple case. TalkTherapy is sole merchant of record (no per-counsellor subaccounts). | Story | High | 13 | New (SCRUM-110, revised from 8) | — |
-| TT-7.2 | Counsellor sets and displays preferred pricing on profile | Story | Medium | 3 | Existing (8.1) | TT-7.1 |
+| TT-7.1 | ✅ **Implemented** (SCRUM-110, merged). Transaction/payment model (full audit-trail status history) + Paystack charge initiation & webhook/callback plumbing, test-mode end-to-end for a single simple case. TalkTherapy is sole merchant of record (no per-counsellor subaccounts). | Story | High | 13 | New (SCRUM-110, revised from 8) | — |
+| TT-7.2a | Platform-wide supported-currency list (config-driven allow-list + default) applied everywhere currency is used — retrofits `Therapy`/`GroupTherapy` `payment_data->currency` validation (`CreateTherapyRequest`/`UpdateTherapyRequest`/`CreateGroupTherapyRequest`/`UpdateGroupTherapyRequest`, currently unconstrained `string`) and adds a defense-in-depth check at charge-initiation (`InitiatePaystackChargeAction`/`TransactionService`). Absorbs TT-7.4's "replace free-text currency with a supported-list check" line item — see TT-7.4 note. Needs a one-off audit of existing `payment_data->currency` values before enforcement goes live (no schema change since `payment_data` is JSON, but a legacy free-text value outside the new list must not silently break reads of old rows). | Story | High | 5 | New split of existing TT-7.2/TT-7.4 (SCRUM-47 product-owner review) | TT-7.1 |
+| TT-7.2b | Counsellor pricing data model + backend API: new `counsellor_pricings` table supporting EITHER a single flat/default rate OR distinct per-service-type overrides (individual vs. group, online vs. in-person, per-session vs. per-package — reuses `SessionTypeEnum`/`TherapyPerPaymentEnum`, needs a new enum for individual/group since no existing shared enum covers that distinction) — counsellor's choice, not forced into one mode; needs an architect pass on the scope-column schema before implementation (mirrors the TT-6.4b/c schema-decision precedent). Strictly informational/display-only — explicitly does NOT touch `CreateTherapyRequest`, `GetPayableAmountAction`, or `EnsureCanInitiateChargeAction`; a client still proposes their own amount at booking time. `COUNSELLOR_RATE` (`OrganizationCounsellorCompensationBasisEnum`) stays unresolved/unused — out of scope. | Story | Medium | 8 | New split of existing TT-7.2 (SCRUM-47 product-owner review) | TT-7.2a |
+| TT-7.2c | Counsellor profile pricing UI: edit form (flat-vs-override mode toggle, override rows, currency select scoped to TT-7.2a's supported list) on the counsellor's own profile edit flow, plus public display of the listed rate(s) on `Profile/Counsellor/Show.vue`. Full-ceremony UI work — Playwright-verified golden path required. | Story | Medium | 5 | New split of existing TT-7.2 (SCRUM-47 product-owner review) | TT-7.2b |
 | TT-7.3a | Org-as-payer charge initiation only: `organization_id` is an explicit, validated input at charge time (never inferred from membership alone) — required whenever a member/counsellor pair spans more than one org they share. | Story | Medium | 5 | New split of existing TT-7.3 (SCRUM-111) | TT-6.3b, TT-7.1 |
 | TT-7.3b | Full org-billing lifecycle: payout to affiliated counsellors per agreed compensation terms (gross amount → platform fee → counsellor/org split), refund handling for org-paid transactions. Needs a platform-fee concept, which doesn't exist yet anywhere in TT-7 — track as a precondition for TT-7.6 independent of orgs. | Story | Medium | 8 | New split of existing TT-7.3 (SCRUM-111) | TT-7.3a, TT-7.6, TT-7.7 |
-| TT-7.4 | Retry-on-failure + single-currency validation (replace free-text currency with a supported-list check) + full payment-status UI | Story | High | 8 | New (SCRUM-110) | TT-7.1 |
+| TT-7.4 | Retry-on-failure + full payment-status UI. Currency-validation clause moved out — now covered by TT-7.2a's platform-wide supported-currency list (SCRUM-47 review), which is broader in scope (applies everywhere currency appears, not just at payment time) than what this ticket originally described. | Story | High | 5 (revised from 8) | New (SCRUM-110); currency-validation item reassigned to TT-7.2a (SCRUM-47) | TT-7.1 |
 | TT-7.5 | Payment-gated access: per-therapy, counsellor-controlled setting (strict gate vs. trust-based), defaulting to trust-based | Story | High | 5-8 | New (SCRUM-110) — decision made, fast-follow after TT-7.1 | TT-7.1 |
 | TT-7.6 | Counsellor payout via Paystack Transfers matching `shareEqually`/`sharePercentage`, incl. bank-account/KYC onboarding. Payout is admin/counsellor-triggered separately, never auto-fired on charge success. | Story | Medium | 13 | New (SCRUM-110) — decision made; own Epic once scheduled, not a TT-7 sub-story | TT-7.1 |
 | TT-7.7 | Refund handling | Task | Medium | 5 | New (SCRUM-110) — now in scope; fast-follow after TT-7.1 | TT-7.1 |
@@ -170,6 +180,11 @@ are larger, separately-scheduled follow-ups — do not fold into Sprint 5's comm
 through TT-6.3b (Organizations, SCRUM-111) have no payments dependency at all and can proceed in
 full parallel with TT-7.1; only TT-7.3a (charge-initiation, above) depends on both TT-6.3b and
 TT-7.1, and TT-7.3b additionally depends on TT-7.6/TT-7.7.
+
+TT-7.2 (now split a/b/c, 18 points total vs. the original 3-point estimate) is too large to
+treat as a same-sprint fast-follow alongside TT-7.1 the way TT-7.4/7.5/7.7 are — plan TT-7.2a
+in Sprint 5 (low-risk, currency-list prerequisite, worth landing early) and TT-7.2b/TT-7.2c
+as Sprint 6 carryover, sequenced strictly a → b → c.
 
 ---
 

@@ -12,13 +12,18 @@ import PrimaryButton from "./PrimaryButton.vue";
 import Checkbox from "./Checkbox.vue";
 import Select from "./Select.vue";
 import ProfileCaseSection from "@/Pages/Profile/Partials/ProfileCaseSection.vue";
-import { useForm } from '@inertiajs/vue3';
+import { useForm, usePage } from '@inertiajs/vue3';
 import useEnums from '@/Composables/useEnums';
 import useTherapyFormValidation from '@/Composables/useTherapyFormValidation';
 
 const { alertData, clearAlertData, setFailedAlertData, setSuccessAlertData } = useAlert()
 const { PaymentTypeEnum, SessionTypeEnum } = useEnums()
 const { validateTherapyForm } = useTherapyFormValidation()
+// SCRUM-153 (TT-7.2a): sourced from the backend's config('currencies.supported') (shared via
+// Inertia), not hardcoded -- previously defaulted to the Cedi symbol 'GHȻ', a free-text value
+// that would fail the backend's new supported-currency validation unless manually overwritten.
+const supportedCurrencies = usePage().props.supportedCurrencies ?? []
+const defaultCurrency = supportedCurrencies.includes('GHS') ? 'GHS' : (supportedCurrencies[0] ?? '')
 const props = defineProps({
     show: {
         default: false,
@@ -44,8 +49,19 @@ const therapyForm = useForm({
     'amount': 0,
     'inPersonAmount': 0,
     'maxSessions': 0,
-    'currency': 'GHȻ',
+    'currency': defaultCurrency,
     'cases': []
+})
+// A therapy's stored currency can predate the current supported list (e.g. it was set before
+// SUPPORTED_CURRENCIES was narrowed, or while the field was still free-text) -- keep it selectable
+// in the dropdown instead of silently desyncing the Select from therapyForm.currency, which would
+// otherwise surface as a confusing "currency" validation error on an unrelated field update.
+const currencyOptions = computed(() => {
+    const codes = therapyForm.currency && !supportedCurrencies.includes(therapyForm.currency)
+        ? [therapyForm.currency, ...supportedCurrencies]
+        : supportedCurrencies
+
+    return codes.map(code => ({ name: code, value: code }))
 })
 
 watchEffect(() => {
@@ -61,7 +77,7 @@ watch(
         if (therapyForm.paymentType == PaymentTypeEnum.free) {
             therapyForm.public = true
             therapyForm.amount = ''
-            therapyForm.currency = 'GHȻ'
+            therapyForm.currency = defaultCurrency
             therapyForm.per = ''
         }
     }
@@ -147,7 +163,7 @@ function clearData() {
     therapyForm.allowInPerson = false
     therapyForm.anonymous = false
     therapyForm.amount = ''
-    therapyForm.currency = 'GHȻ'
+    therapyForm.currency = defaultCurrency
     therapyForm.per = ''
     therapyForm.cases = []
 }
@@ -324,11 +340,12 @@ function closeModal() {
 
                                     <InputLabel class="mt-4" for="amount" value="Amount" />
                                     <div class="flex justify-start items-center">
-                                        <TextInput
+                                        <Select
                                             id="currency"
-                                            type="text"
-                                            class="mt-1 block w-[30%] max-w-[100px] text-end"
+                                            class="mt-1 block w-[30%] max-w-[100px]"
                                             v-model="therapyForm.currency"
+                                            :options="currencyOptions"
+                                            :default-option="'currency'"
                                             required
                                         />
                                         <TextInput
