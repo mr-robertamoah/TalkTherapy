@@ -10,6 +10,11 @@ use App\Models\Therapy;
 
 class GetPayableAmountAction extends Action
 {
+    // SCRUM-154 (TT-7.2b): CounsellorPricing (a counsellor's own listed, informational rate) is
+    // strictly display-only and must NEVER be read here or anywhere else in app/Actions/Transaction/
+    // -- the amount actually charged always comes from what the client proposed at booking time
+    // (Therapy/GroupTherapy.payment_data), set via CreateTherapyRequest/CreateGroupTherapyRequest,
+    // never from what a counsellor lists as their preferred rate.
     /**
      * @return array{paymentType: ?string, per: ?string, amount: ?float, currency: ?string}
      */

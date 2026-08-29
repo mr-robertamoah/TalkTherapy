@@ -3,6 +3,7 @@
 use App\Http\Controllers\AboutController;
 use App\Http\Controllers\AdministratorController;
 use App\Http\Controllers\CounsellorController;
+use App\Http\Controllers\CounsellorPricingController;
 use App\Http\Controllers\DiscussionController;
 use App\Http\Controllers\GroupTherapyController;
 use App\Http\Controllers\HomeController;
@@ -134,6 +135,7 @@ Route::middleware('auth')->group(function () {
     // Route::get('/profile', [ProfileController::class, 'show'])->name('profile.show');
 
     Route::post('/counsellor/{counsellorId}', [CounsellorController::class, 'updateCounsellor'])->name('counsellor.update');
+    Route::post('/counsellor/{counsellorId}/pricings', [CounsellorPricingController::class, 'store'])->name('counsellor.pricings.store');
     Route::post('/counsellor/{counsellorId}/verify', [CounsellorController::class, 'verifyCounsellor'])->name('counsellor.verify');
     Route::post('/counsellor/{counsellorId}/verify-email', [CounsellorController::class, 'sendVerificationEmail'])->name('counsellor.email.verification');
     // SCRUM-134: was missing entirely -- the frontend's delete button has always called this

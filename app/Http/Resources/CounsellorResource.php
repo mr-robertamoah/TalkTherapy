@@ -37,6 +37,8 @@ class CounsellorResource extends JsonResource
             'cases' => $this->when($this->cases, TherapyCaseResource::collection($this->cases), []),
             'religions' => $this->when($this->religions, TherapyCaseResource::collection($this->religions), []),
             'languages' => $this->when($this->languages, TherapyCaseResource::collection($this->languages), []),
+            // SCRUM-154 (TT-7.2b): informational only -- never used to compute an actual charge.
+            'pricings' => $this->when($this->pricings, CounsellorPricingResource::collection($this->pricings), []),
             'createdAt' => $this->created_at->diffForHumans(),
             'freeTherapiesCount' => $this->freeTherapiesCount,
             'paidTherapiesCount' => $this->paidTherapiesCount,
@@ -44,7 +46,7 @@ class CounsellorResource extends JsonResource
             'onlineSessionsHeldCount' => $this->onlineSessionsHeldCount,
             'inPersonSessionsCount' => $this->inPersonSessionsCount,
             'hasNationalIdentification' => $this->hasNationalIdentification(),
-            'hasPendingCounsellorVerificationRequest' => $this->hasPendingCounsellorVerificationRequest()
+            'hasPendingCounsellorVerificationRequest' => $this->hasPendingCounsellorVerificationRequest(),
         ];
     }
 }

@@ -187,6 +187,13 @@ class Counsellor extends Model
         return $this->hasMany(OrganizationCounsellor::class);
     }
 
+    // SCRUM-154 (TT-7.2b): informational/display-only preferred pricing -- never read by
+    // app/Actions/Transaction/ (see GetPayableAmountAction's own guardrail comment).
+    public function pricings()
+    {
+        return $this->hasMany(CounsellorPricing::class);
+    }
+
     public function hasPendingCounsellorVerificationRequest()
     {
         return $this->sentRequests()

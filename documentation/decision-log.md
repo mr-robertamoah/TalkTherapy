@@ -1507,3 +1507,33 @@ asking. The Update-modal legacy-value gap was the reviewer's own explicit "Chang
 blocker on a scenario the review was asked to check, so it was fixed in the same pass rather than
 deferred. The two genuinely low-priority suggestions were deferred with a stated reason rather
 than either silently skipped or force-fit into this round.
+
+---
+
+## 2026-08-29 — SCRUM-154 (TT-7.2b): counsellor pricing implemented per architect-settled schema
+
+**Decision**: Implemented the `counsellor_pricings` data model + API exactly per the schema the
+architect settled during SCRUM-47's planning (see this file's 2026-08-29 "SCRUM-47 (TT-7.2)"
+entry) — nullable `therapy_type`/`session_type`/`per` scope columns, full delete-and-reinsert per
+save, no versioning table, `EnsureCounsellorPricingDataIsValidAction`/`EnsureUserCanSetCounsellorPricingAction`
+mirroring `EnsureOrganizationCounsellorCompensationDataIsValidAction`/
+`EnsureUserCanSetOrganizationMemberBillingConfigAction`'s existing style, `GetPayableAmountAction`
+guardrail comment, no link to `COUNSELLOR_RATE`. One implementation-time addition beyond the
+ticket's literal text: `EnsureCounsellorPricingDataIsValidAction` also rejects two override rows
+covering the identical `(therapy_type, session_type, per)` combination — the ticket said each
+override must be "fully specified," which rules out partial rows but doesn't by itself rule out
+two fully-specified rows disagreeing on the price for the same exact scope. Rejecting duplicates
+outright avoids an ambiguous "which one wins" question with no clear answer (insertion order isn't
+a meaningful business rule to build on).
+
+`EnsureCounsellorExistsAction`'s accepted DTO union type was widened to include
+`CounsellorPricingDTO`, reusing the existing shared counsellor-existence check rather than writing
+a near-duplicate one, consistent with how that action already serves
+`UpdateCounsellorDTO`/`DeleteCounsellorDTO`/`VerifyCounsellorDTO`/`OrganizationCounsellorRequestDTO`.
+
+**Why**: the duplicate-scope rejection is a defensive data-integrity rule filling a gap the ticket
+didn't explicitly address, not a product decision requiring sign-off — rejecting an ambiguous input
+outright is the conservative default, and the alternative (silently picking last-inserted-wins) has
+no stated rationale to justify over rejecting. Everything else in this ticket was already fully
+specified by the prior architect pass, so no new judgment calls were needed for the core schema or
+authorization design.
