@@ -1832,3 +1832,43 @@ doesn't actually exist yet for that case.
 scope-narrowing that follows directly from an already-made decision (TT-7.4d deferred), not a new
 judgment call, so it's recorded briefly rather than re-litigated. With TT-7.4a/b/c all merged, TT-7.4
 (SCRUM-118's payment UI) is now fully implemented for individual therapies and sessions.
+
+---
+
+## 2026-08-29 — SCRUM-163 (TT-6.6e): owner-only enforcement built as direct actions; org
+deletion left ungated since it doesn't exist yet; a TOCTOU gap fixed pre-merge
+
+**Decision 1 (already made, recorded here for the trail)**: real behavioral enforcement of the
+existing `organization_admins.role` column — only an owner may remove the org or add/promote/
+demote other admins; any-admin access remains for existing profile/invite actions via the
+existing `EnsureUserIsOrganizationAdminAction`. Implemented as new direct actions (add/remove/
+promote/demote an admin, gated by a new `EnsureUserIsOrganizationOwnerAction`), not the `Request`/
+respond negotiation flow used elsewhere in this domain (compensation changes, invites) — the
+architect's distinction is that those flows exist because a second party's consent is being
+negotiated; an owner managing their own org's admin roster has no such second party.
+
+**Decision 2 — the ticket's AC3 lists "removing the organization" as one of the four owner-gated
+actions, but no organization-deletion capability exists anywhere in this codebase** (confirmed via
+`grep`: `OrganizationController` only has `store`/`update`/`show`; `Organization` uses
+`SoftDeletes` but nothing ever calls `delete()`). Read AC3 as "the gate must apply to org removal
+whenever it's built," not "build org removal now" — the ticket's concrete, itemized deliverable
+(AC2) only lists add/remove/promote/demote-admin, and inventing a deletion feature (with its own
+unspecified business rules — can a verified org with active members/counsellors be deleted? does
+it cascade?) would be scope invention beyond what any AC actually describes.
+
+**Decision 3 (fixed before merge, not deferred)**: `EnsureOrganizationRetainsAnOwnerAction`'s
+owner-count check and the subsequent pivot write were originally two separate, unlocked steps —
+both reviewer and security-engineer independently caught the same real TOCTOU gap: two concurrent
+requests demoting/removing two different owners of a 2-owner org could each read owner-count=2
+before either write commits, both pass the guard, and leave the organization with zero owners.
+Fixed by wrapping the guard+write pair in `DB::transaction()` with
+`Organization::query()->lockForUpdate()->find(...)`, mirroring the identical pattern already
+established in `OrganizationCounsellorRequestService`/`OrganizationMemberRequestService` for
+analogous invariants on the same model.
+
+**Why**: Decision 1/2 are recorded because they're non-trivial judgment calls made without asking
+first (an architectural pattern choice, and a scope boundary a literal reading of the ticket text
+could dispute). Decision 3 is a required fix, not a deferral — CLAUDE.md requires applying a
+reviewer/security-engineer finding, and a real, low-likelihood-but-serious data-integrity risk
+(an org with sensitive client data left permanently ownerless) with a cheap, already-precedented
+fix is exactly the case for applying it rather than filing a follow-up ticket.
