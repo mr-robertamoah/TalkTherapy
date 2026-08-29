@@ -88,4 +88,28 @@ class OrganizationCounsellorCompensationService extends Service
             ->orderByDesc('id')
             ->get();
     }
+
+    // SCRUM-150 (TT-6.4c, 5/5): the current negotiation state for an affiliation -- the latest
+    // organizationCounsellorCompensationChange Request regardless of status, or null if none has
+    // ever existed. A wholly separate, additive read from getCompensations() above (SCRUM-123's
+    // accepted-terms history) -- this only ever reads `requests`, never
+    // organization_counsellor_compensations.
+    public function getNegotiationState(OrganizationCounsellorCompensationDTO $dto): ?Request
+    {
+        EnsureOrganizationCounsellorExistsAction::new()->execute($dto);
+
+        EnsureUserCanViewOrganizationCounsellorCompensationsAction::new()->execute($dto);
+
+        // Review fix (PR #89): `round` only increases within one negotiation chain -- once a
+        // chain resolves, a fresh proposal restarts at round 1, so ordering by round first could
+        // surface an older, already-resolved higher-round chain instead of a genuinely newer
+        // pending one. `id` is a strictly increasing PK regardless of chain/round, so it alone
+        // is the correct "most recent" ordering.
+        return Request::query()
+            ->whereType(RequestTypeEnum::organizationCounsellorCompensationChange->value)
+            ->whereFor($dto->organizationCounsellor)
+            ->with(['from', 'to'])
+            ->orderByDesc('id')
+            ->first();
+    }
 }

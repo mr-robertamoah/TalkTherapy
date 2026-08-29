@@ -1319,3 +1319,91 @@ because the merge already happened -- the fix mechanism changes (new commit/PR i
 amending #87), not the obligation to fix. Both fixes are narrowly scoped to the actual failure
 modes found, matching this session's established lock-then-recheck and per-row-isolation patterns
 already proven out in SCRUM-147/148, rather than introducing new abstractions.
+
+---
+
+## 2026-08-28 — SCRUM-150 (TT-6.4c, 5/5): "resolved" state covers accepted too, not just rejected/expired
+
+**Decision**: the ticket's scope text enumerated four states -- no active proposal, pending
+(org's turn), pending (counsellor's turn), and "last negotiation rejected or expired." It didn't
+explicitly name a fifth "last negotiation was accepted" case. Rather than treat an accepted
+negotiation as unclassifiable or force it into "no active proposal" (technically true --
+nothing's pending -- but silently discarding useful context), the resource's `state` field covers
+it under the same `'resolved'` bucket as rejected/expired, with `status: 'ACCEPTED'` and no
+`resolvedBy` key (that field is only meaningful for `rejected`). This keeps the discriminator
+values to exactly `none`/`pending`/`resolved` -- three states, not five -- while still exposing
+enough information (`status`) for a consumer to render different copy for each of accepted vs.
+rejected vs. expired within the `resolved` bucket.
+
+**Also**: `getNegotiationState()` was written as a second, wholly separate query method
+alongside `getCompensations()` rather than folding negotiation-state data into that existing
+method's response shape, per the ticket's own explicit AC4 constraint ("the existing SCRUM-123
+accepted-terms history endpoint is unmodified") -- verified with a dedicated test that a pending
+negotiation never appears in `getCompensations()`'s results, not just asserted by code structure.
+
+**Why**: a five-way discriminator (none/pendingOurs/pendingTheirs/rejected/expired) would have
+duplicated information already available via `from`/`to` (direction) and `resolvedBy`
+(reject-vs-expiry) onto the top-level `state` field itself -- redundant surface area for the same
+underlying facts. Three states plus two orthogonal detail fields is simpler and covers every
+case the ticket actually described, including the one it didn't name.
+
+---
+
+## 2026-08-28 — SCRUM-150 (TT-6.4c, 5/5): PR #89 review findings -- a real correctness bug, a security fix, and a duplication extraction
+
+`reviewer` requested changes (blocked on a functional bug, verified by reproduction against the
+real app). `security-engineer` found one Medium finding. All fixed before merge.
+
+**Fixed: `getNegotiationState()`'s ordering broke across multiple negotiation chains.** The
+original query ordered `orderByDesc('round')->orderByDesc('id')`. `round` only increases *within
+one chain* -- `ProposeOrganizationCounsellorCompensationChangeAction` always starts a fresh chain
+at `round: 1`, and nothing blocks a new proposal once the prior chain has resolved (only a
+*pending* duplicate is blocked). Reviewer reproduced the bug directly: propose → counter (round 2)
+→ reject (chain 1 ends at round 2) → propose again (chain 2, round 1, pending) -- the query
+returned chain 1's resolved round-2 request instead of chain 2's actual pending round-1 request,
+directly undermining the ticket's entire purpose (reporting the *current* state). Fixed by
+ordering on `id` alone -- a strictly increasing PK regardless of chain/round, so it's the correct
+"most recent" ordering unconditionally. Added a dedicated regression test reproducing the exact
+reviewer-found scenario, plus strengthened an existing test to actually re-call
+`getNegotiationState()` after a fresh proposal rather than only asserting creation didn't throw.
+
+**Fixed: `proposedTerms` spread the raw `Request.data` payload, including `proposedById`** (an
+internal `User.id`, added by the propose/counter-offer actions purely for `set_by_id` attribution
+on accept -- never meant for display) straight to the other negotiating party. Fixed with an
+explicit field whitelist (`type`/`amount`/`currency`/`percentage`/`basis`) instead of spreading
+`$this->data` wholesale.
+
+**Correction, made during re-review of this same fix**: this entry originally claimed the
+identical pattern in `OrganizationRequestResource` was "not currently exploitable... only ever
+returned to the actor who just performed a write, never to the counterparty," and deferred it to
+SCRUM-152 on that basis. That claim was wrong -- both `reviewer` and `security-engineer`
+independently traced and empirically confirmed that `OrganizationRequestResource` is *also*
+returned via `RequestService::respondToRequest()`'s accept/reject path, which is answered by
+`$request->to` (the counterparty), not the proposer. An existing test already exercised this exact
+call chain without ever asserting on `proposedTerms`, so the leak passed silently. This was a
+live leak in already-merged code, not a dormant pattern safe to schedule as routine backlog.
+Fixed immediately in the same commit rather than left deferred, applying the identical whitelist,
+with a new regression test exercised through `respondToRequest()` specifically (not just direct
+resource instantiation) so the actual leaking call path is what's under test.
+
+**Fixed (required, not just suggested): duplicated `partyResource()` type-switch.** The new
+resource copied `OrganizationRequestResource::partyResource()`'s Organization/Counsellor/User
+branching verbatim. Extracted both into a shared `ResolvesOrganizationOrCounsellorParty` trait
+rather than leaving a second copy -- reviewer treated this as a required change, not the
+optional "wait for a third occurrence" judgment call used elsewhere this session, since the
+duplication was introduced within the same PR being reviewed, not accumulated gradually across
+already-merged tickets.
+
+**Also fixed**: an inverted doc-comment on `getNegotiationState()` that claimed it "only ever
+reads organization_counsellor_compensations, never requests" -- backwards; corrected to describe
+what the method actually queries. Eager-loaded `from`/`to` to match `getCompensations()`'s
+existing `->with('setBy')` convention.
+
+**Why**: the round-ordering bug is a genuine functional defect in the ticket's core deliverable,
+not a style nit -- fixed immediately per CLAUDE.md's "never silently ignore a reviewer finding."
+The `proposedById` leak is a real trust-boundary crossing (an internal identifier reaching the
+other negotiating party), and once shown to be live rather than latent, fixing it immediately
+rather than leaving a known, already-exploitable leak sitting in the backlog was the only
+defensible call -- consistent with this session's standing discipline of re-verifying a claim
+(including one made minutes earlier in this same log) before relying on it, rather than assuming
+a written rationale is correct just because it was already recorded.
