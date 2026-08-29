@@ -1671,3 +1671,31 @@ surfaced, not an invented feature — AC #6 cannot be satisfied without it, so i
 part of delivering this ticket rather than a separate backend follow-up ticket, since it's a
 minimal, low-risk addition to an already-reviewed, merged feature (same auth rule, same model,
 no schema change).
+
+**Post-implementation review fixes**: `reviewer` requested 4 changes, all applied. (1) Added a
+Feature-level HTTP test for the new `destroy()` endpoint — the Unit tests only exercised
+`CounsellorPricingService::clearPricing()` directly, mirroring the exact gap
+`tests/Feature/SetCounsellorPricingTest.php` was originally written to close for `store()`. (2)
+Wired `onError` on both `savePricing()`/`clearPricing()` to surface `errors.alert` via
+`setAlertData`, matching this codebase's established convention (`CreateSessionFormModal.vue` and
+others) for Action-thrown exceptions that arrive via `Redirect::back()->withErrors(['alert' =>
+...])` rather than a field-named key — previously, a duplicate-override-scope rejection (or any
+other server-side validation failure) failed completely silently from the user's perspective. (3)
+Fixed `canSave`'s amount check from a bare truthiness test (which is `true` for the strings `"0"`
+and `"-5"`, since any non-empty string is JS-truthy) to an `isValidAmount()` helper matching the
+server's `integer, min:1` rule — the old check let a client submit `0`/negative amounts that the
+server would reject, but with no error ever rendering (the `InputError` was bound to the
+`pricings` key, which a wildcard `pricings.*.amount` validation failure never populates). Verified
+by browser: typing `0` now correctly keeps "save pricing" disabled. (4) Added a `MiniModal`
+"Are you sure...?" confirmation step before "clear pricing" actually fires the delete, matching
+every other destructive action in this codebase (`CommentBadge.vue`, this same `Show.vue`'s own
+"delete account" flow, etc.) — there is deliberately no versioning/history table for pricing data
+(per the SCRUM-154 entry above), so a stray click previously had no undo path at all. Also applied
+the two suggested improvements: a client-side duplicate-override-scope check (belt-and-suspenders
+ahead of the server rejection) and `min="1"` on the amount inputs.
+
+**Why**: all four were genuine, reachable failure modes in ordinary use (a duplicate override
+scope, typing `0`, an accidental click on a destructive action sitting next to the primary save
+button), not style nits, and directly contradicted established conventions this same codebase
+already uses elsewhere for the identical situations — fixed immediately per CLAUDE.md rather than
+deferred.

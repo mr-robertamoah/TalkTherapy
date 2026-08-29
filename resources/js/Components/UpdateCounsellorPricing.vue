@@ -11,6 +11,7 @@ import InputError from "./InputError.vue";
 import PrimaryButton from "./PrimaryButton.vue";
 import DangerButton from "./DangerButton.vue";
 import Modal from "./Modal.vue";
+import MiniModal from "./MiniModal.vue";
 import Select from "./Select.vue";
 
 // SCRUM-155 (TT-7.2c): informational only -- this never touches CreateTherapyRequest or the
@@ -48,6 +49,17 @@ const loading = ref(false)
 const flatAmount = ref('')
 const flatCurrency = ref(defaultCurrency)
 const overrideRows = ref([])
+const confirmingClear = ref(false)
+
+// Matches the server's `integer, min:1` rule (SetCounsellorPricingRequest) -- a bare truthiness
+// check would let "0" or "-5" through client-side (any non-empty string is truthy in JS), only to
+// fail silently server-side since no error currently renders for a wildcard `pricings.*.amount`
+// validation message (reviewer finding).
+function isValidAmount(value) {
+    const number = Number(value)
+
+    return value !== '' && Number.isInteger(number) && number > 0
+}
 
 const pricingForm = useForm({
     pricings: [],
@@ -104,11 +116,22 @@ function removeOverrideRow(index) {
 
 const hasExistingPricing = computed(() => !!props.counsellor?.pricings?.length)
 
+// Belt-and-suspenders on top of EnsureCounsellorPricingDataIsValidAction's own duplicate-scope
+// rejection -- catches the mistake before submit instead of relying solely on the (now-surfaced,
+// see onError below) server error.
+const hasDuplicateScope = computed(() => {
+    const scopes = overrideRows.value.map((row) => `${row.therapyType}|${row.sessionType}|${row.per}`)
+
+    return new Set(scopes).size !== scopes.length
+})
+
 const canSave = computed(() => {
-    if (mode.value === 'flat') return !!flatAmount.value && !!flatCurrency.value
+    if (mode.value === 'flat') return isValidAmount(flatAmount.value) && !!flatCurrency.value
+
+    if (hasDuplicateScope.value) return false
 
     return overrideRows.value.length > 0 && overrideRows.value.every((row) =>
-        row.therapyType && row.sessionType && row.per && row.amount && row.currency
+        row.therapyType && row.sessionType && row.per && isValidAmount(row.amount) && row.currency
     )
 })
 
@@ -123,8 +146,10 @@ function savePricing() {
             show: true,
             type: 'failed',
             message: mode.value === 'flat'
-                ? 'Amount and currency are required.'
-                : 'Each override row requires a therapy type, session type, per, amount, and currency.',
+                ? 'A valid amount (a whole number of at least 1) and currency are required.'
+                : hasDuplicateScope.value
+                    ? 'Two override rows cannot share the same therapy type, session type, and per combination.'
+                    : 'Each override row requires a therapy type, session type, per, and a valid amount (a whole number of at least 1).',
         })
         return
     }
@@ -137,6 +162,15 @@ function savePricing() {
         onSuccess: () => {
             closeThisModal()
         },
+        // Action-thrown rejections (e.g. a duplicate override scope slipping past the client
+        // check above, or any other EnsureCounsellorPricingDataIsValidAction failure) surface via
+        // Redirect::back()->withErrors(['alert' => $message]), not a field-named error -- matches
+        // the onError convention already used throughout this codebase's other form modals.
+        onError: (errors) => {
+            if (errors.alert) {
+                setAlertData({ show: true, type: 'failed', message: errors.alert })
+            }
+        },
         onBefore: () => {
             loading.value = true
         },
@@ -146,10 +180,20 @@ function savePricing() {
     })
 }
 
+function confirmClearPricing() {
+    confirmingClear.value = true
+}
+
 function clearPricing() {
     pricingForm.delete(route('counsellor.pricings.destroy', { counsellorId: props.counsellor?.id }), {
         onSuccess: () => {
+            confirmingClear.value = false
             closeThisModal()
+        },
+        onError: (errors) => {
+            if (errors.alert) {
+                setAlertData({ show: true, type: 'failed', message: errors.alert })
+            }
         },
         onBefore: () => {
             loading.value = true
@@ -212,6 +256,7 @@ function clearPricing() {
                                     <TextInput
                                         id="flatAmount"
                                         type="number"
+                                        min="1"
                                         class="mt-1 block w-full"
                                         v-model="flatAmount"
                                     />
@@ -265,6 +310,7 @@ function clearPricing() {
                                         />
                                         <TextInput
                                             type="number"
+                                            min="1"
                                             class="block w-full"
                                             v-model="row.amount"
                                         />
@@ -285,7 +331,7 @@ function clearPricing() {
                             v-if="hasExistingPricing"
                             :class="{ 'opacity-25': loading }"
                             :disabled="loading"
-                            @click="clearPricing"
+                            @click="confirmClearPricing"
                         >clear pricing</DangerButton>
                         <div v-else></div>
 
@@ -297,6 +343,30 @@ function clearPricing() {
             </div>
         </div>
     </Modal>
+
+    <MiniModal
+        :show="confirmingClear"
+        @close="() => confirmingClear = false"
+    >
+        <div class="text-gray-600 text-center font-bold tracking-wide">
+            Clear Pricing
+        </div>
+
+        <hr class="my-2">
+
+        <div class="my-4 text-sm text-red-700 text-center w-[90%] mx-auto font-bold tracking-wide">
+            Are you sure you want to clear your listed pricing? This cannot be undone.
+        </div>
+
+        <div class="flex items-center justify-end mt-4">
+            <PrimaryButton class="ms-4" :disabled="loading" @click="() => confirmingClear = false">
+                cancel
+            </PrimaryButton>
+            <DangerButton class="ms-4" :class="{ 'opacity-25': loading }" :disabled="loading" @click="clearPricing">
+                clear pricing
+            </DangerButton>
+        </div>
+    </MiniModal>
 
     <Alert
         :show="alertData.show"
