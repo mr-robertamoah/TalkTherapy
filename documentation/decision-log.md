@@ -1561,3 +1561,22 @@ product-owner subagent alone (a real product trade-off between strictness and si
 technical question with one correct answer), so it was surfaced to the user rather than guessed —
 consistent with this session's standing practice of pausing only for genuinely ambiguous product
 decisions, not technical ones the architecture review could settle on its own.
+
+**Implementation-time deviation from the architect's design**: the architect recommended resolving
+`organizationId` from a route parameter only (mirroring `getFor()`'s existing route-param-only
+resolution, which guards against a request body overriding which resource is being charged).
+During implementation this was changed to accept `organizationId` from the request body instead,
+since no route currently carries an `organizationId` segment and adding one would mean doubling
+every charge-initiation route (with/without org) for no real security benefit: `getFor()`'s
+concern is spoofing *what* is being charged, but `organizationId` doesn't identify the charge
+target (that's still `for`, unchanged) — it's an additional payer credential that
+`EnsureOrganizationCanPayForModelAction` independently and fully re-verifies regardless of where
+the value came from. Also added a raw `TransactionDTO::$organizationId` field alongside the
+resolved `$organization`, which the architect's design didn't explicitly call for: this is what
+lets the gate action distinguish "no organizationId supplied" (personal-pay, skip entirely) from
+"an organizationId was supplied but doesn't resolve to a real org" (reject with the same generic
+anti-enumeration message as every other ineligibility reason) — collapsing those two cases, as a
+single resolved-model field would, would have silently downgraded an invalid/foreign
+`organizationId` to a personal charge instead of rejecting it, which is both surprising (a user
+who explicitly asked to pay via their org would be charged personally without warning) and
+inconsistent with the architect's own stated anti-enumeration intent for that exact scenario.

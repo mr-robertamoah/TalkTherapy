@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\DTOs\TransactionDTO;
 use App\Models\GroupTherapy;
+use App\Models\Organization;
 use App\Models\Session;
 use App\Models\Therapy;
 use App\Models\Transaction;
@@ -17,11 +18,22 @@ class TransactionController extends Controller
     public function initiate(Request $request)
     {
         try {
+            // Unlike `for` (resolved from a route param -- see getFor()'s comment on why that
+            // must never come from the body), organizationId doesn't identify *what* is being
+            // charged, only an additional payer credential that EnsureOrganizationCanPayForModelAction
+            // independently and fully re-verifies -- so accepting it from the body carries none of
+            // getFor()'s spoofing risk. Read raw and unresolved here; the DTO keeps both the raw
+            // id and the resolved model so the gate action can tell "not supplied" apart from
+            // "supplied but invalid" (see TransactionDTO's own comment).
+            $organizationId = $request->input('organizationId');
+
             $result = TransactionService::new()->initiateCharge(
                 TransactionDTO::new()->fromArray([
                     'user' => $request->user(),
                     'for' => $this->getFor($request),
                     'callbackUrl' => route('transactions.callback'),
+                    'organizationId' => $organizationId,
+                    'organization' => $organizationId ? Organization::find($organizationId) : null,
                 ])
             );
 

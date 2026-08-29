@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Actions\Transaction\EnsureCanInitiateChargeAction;
 use App\Actions\Transaction\EnsureCanPayForModelAction;
 use App\Actions\Transaction\EnsureForModelExistsAction;
+use App\Actions\Transaction\EnsureOrganizationCanPayForModelAction;
 use App\Actions\Transaction\EnsureWebhookSignatureIsValidAction;
 use App\Actions\Transaction\InitiatePaystackChargeAction;
 use App\Actions\Transaction\VerifyPaystackTransactionAction;
@@ -21,6 +22,8 @@ class TransactionService extends Service
         EnsureCanPayForModelAction::new()->execute($transactionDTO);
 
         EnsureCanInitiateChargeAction::new()->execute($transactionDTO);
+
+        EnsureOrganizationCanPayForModelAction::new()->execute($transactionDTO);
 
         return InitiatePaystackChargeAction::new()->execute($transactionDTO);
     }

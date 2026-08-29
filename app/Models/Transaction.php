@@ -10,7 +10,7 @@ class Transaction extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['for_type', 'for_id', 'user_id', 'reference', 'amount', 'currency', 'status'];
+    protected $fillable = ['for_type', 'for_id', 'user_id', 'organization_id', 'reference', 'amount', 'currency', 'status'];
 
     protected $casts = [
         'amount' => 'integer',
@@ -24,6 +24,12 @@ class Transaction extends Model
     public function user()
     {
         return $this->belongsTo(User::class);
+    }
+
+    // Null when this transaction was paid personally, not through an organization.
+    public function organization()
+    {
+        return $this->belongsTo(Organization::class);
     }
 
     public function statusHistories()

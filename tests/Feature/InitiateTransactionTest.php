@@ -1,9 +1,17 @@
 <?php
 
+use App\Enums\OrganizationCounsellorStatusEnum;
+use App\Enums\OrganizationMemberBillingModeEnum;
+use App\Enums\OrganizationMemberStatusEnum;
 use App\Enums\TherapyPaymentTypeEnum;
 use App\Enums\TherapyPerPaymentEnum;
 use App\Enums\TherapySessionTypeEnum;
 use App\Enums\TherapyStatusEnum;
+use App\Models\Counsellor;
+use App\Models\Organization;
+use App\Models\OrganizationCounsellor;
+use App\Models\OrganizationMember;
+use App\Models\OrganizationMemberBillingConfig;
 use App\Models\Therapy;
 use App\Models\User;
 use Illuminate\Support\Facades\Http;
@@ -121,4 +129,59 @@ test('the resolved payment target comes from the URL route parameter, not a spoo
     $response->assertOk();
     $this->assertDatabaseHas('transactions', ['for_type' => Therapy::class, 'for_id' => $ownedTherapy->id]);
     $this->assertDatabaseMissing('transactions', ['for_type' => Therapy::class, 'for_id' => $unrelatedTherapy->id]);
+});
+
+// SCRUM-48 (TT-7.3a): organizationId is accepted from the request body (unlike therapyId/etc,
+// it doesn't identify the charge target, so it carries none of getFor()'s spoofing risk -- see
+// TransactionController::initiate()'s comment) and is fully re-verified by
+// EnsureOrganizationCanPayForModelAction regardless of where it came from.
+
+test('an authenticated member can initiate a charge via their organization through the real route', function () {
+    Http::fake([
+        '*/transaction/initialize' => Http::response([
+            'status' => true,
+            'data' => ['authorization_url' => 'https://checkout.paystack.com/ref_org_route', 'reference' => 'ref_org_route'],
+        ], 200),
+    ]);
+
+    $organization = Organization::factory()->create(['is_provider' => true, 'is_consumer' => true, 'verified_at' => now()]);
+    $payer = User::factory()->create();
+    $counsellorUser = User::factory()->create();
+    $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
+
+    $member = OrganizationMember::factory()->create([
+        'organization_id' => $organization->id,
+        'user_id' => $payer->id,
+        'status' => OrganizationMemberStatusEnum::active->value,
+    ]);
+    OrganizationMemberBillingConfig::factory()->create([
+        'organization_member_id' => $member->id,
+        'mode' => OrganizationMemberBillingModeEnum::payPerUse->value,
+    ]);
+    OrganizationCounsellor::factory()->create([
+        'organization_id' => $organization->id,
+        'counsellor_id' => $counsellor->id,
+        'status' => OrganizationCounsellorStatusEnum::active->value,
+    ]);
+
+    $therapy = Therapy::factory()->create([
+        'addedby_type' => User::class,
+        'addedby_id' => $payer->id,
+        'counsellor_id' => $counsellor->id,
+        'session_type' => TherapySessionTypeEnum::once->value,
+        'status' => TherapyStatusEnum::in_session->value,
+        'payment_type' => TherapyPaymentTypeEnum::paid->value,
+        'payment_data' => ['per' => TherapyPerPaymentEnum::therapy->value, 'amount' => 150, 'currency' => 'GHS'],
+    ]);
+
+    $this->actingAs($payer);
+
+    $response = $this->postJson("/therapies/{$therapy->id}/transactions", ['organizationId' => $organization->id]);
+
+    $response->assertOk();
+    $this->assertDatabaseHas('transactions', [
+        'for_type' => Therapy::class,
+        'for_id' => $therapy->id,
+        'organization_id' => $organization->id,
+    ]);
 });

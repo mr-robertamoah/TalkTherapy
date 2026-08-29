@@ -264,6 +264,22 @@ class GroupTherapy extends Model
         return $this->getCounsellors()->reject(fn ($other) => $other->is($counsellor));
     }
 
+    // Unlike getCounsellors(), filters the pivot to state=active -- for callers (e.g. org-as-payer
+    // eligibility, SCRUM-48) that need "who is currently a live counsellor on this GroupTherapy",
+    // not every counsellor ever attached regardless of pivot state.
+    public function activeCounsellors()
+    {
+        $counsellors = $this->counsellors()
+            ->wherePivot('state', CounsellorGroupTherapyStateEnum::active->value)
+            ->get();
+
+        if ($this->addedby_type === Counsellor::class && $this->addedby) {
+            $counsellors->push($this->addedby);
+        }
+
+        return $counsellors->unique('id');
+    }
+
     public function scopeWhereNotCounsellor($query, Counsellor $counsellor)
     {
         // TODO test this
