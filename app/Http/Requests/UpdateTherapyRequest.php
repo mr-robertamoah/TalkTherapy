@@ -38,7 +38,7 @@ class UpdateTherapyRequest extends FormRequest
             'per' => ['nullable', 'string'],
             'amount' => ['nullable', 'numeric'],
             'inPersonAmount' => ['nullable', 'numeric'],
-            'currency' => ['nullable', 'string'],
+            'currency' => ['nullable', Rule::in(config('currencies.supported'))],
         ];
     }
 }

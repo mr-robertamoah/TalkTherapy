@@ -1407,3 +1407,45 @@ rather than leaving a known, already-exploitable leak sitting in the backlog was
 defensible call -- consistent with this session's standing discipline of re-verifying a claim
 (including one made minutes earlier in this same log) before relying on it, rather than assuming
 a written rationale is correct just because it was already recorded.
+
+---
+
+## 2026-08-29 — SCRUM-47 (TT-7.2): re-scoped from a 3-point stub to an 18-point, 3-sub-ticket feature
+
+**Decision**: TT-7.2 ("Counsellor sets and displays preferred pricing on profile") was carried in
+`documentation/implementation_plan.md` as a 3-point stub since the original SCRUM-111-era backlog
+review. Product-owner research (grounded in the actual codebase, not the stub's wording) found
+that no counsellor-pricing concept exists anywhere today -- all pricing currently lives on
+`Therapy`/`GroupTherapy.payment_data`, filled in by the client at booking time, not the
+counsellor -- and that `Therapy`/`GroupTherapy.currency` is unconstrained free-text everywhere,
+a gap `documentation/implementation_plan.md`'s TT-7.4 row already flagged but hadn't built.
+
+Four user decisions (informational/display-only pricing with zero coupling to
+`CreateTherapyRequest`/charge logic; flat-OR-per-service-type pricing, counsellor's choice, not
+one forced shape; explicitly no link to `OrganizationCounsellorCompensationBasisEnum::COUNSELLOR_RATE`;
+and a platform-wide, config-driven supported-currency list applied everywhere currency appears,
+not just the new field) turned this from a single field into a real three-part feature. Split into
+TT-7.2a (currency foundation, absorbing TT-7.4's currency-validation item, 5 points) →
+TT-7.2b (pricing data model + API, 8 points) → TT-7.2c (pricing UI, 5 points), mirroring the
+TT-6.4a/b/c sub-ticket-split precedent. TT-7.4's own estimate was revised 8 → 5 points to remove
+the now-relocated currency-validation scope. `documentation/implementation_plan.md` updated
+accordingly (TT-7.1 also given its overdue ✅ marker -- SCRUM-110 is Done in Jira but had no
+marker in the doc).
+
+Architect review additionally settled the TT-7.2b schema before implementation: a single
+`counsellor_pricings` table with nullable `therapy_type`/`session_type`/`per` scope columns
+(all-null = flat rate; all-three-non-null = a fully-specified override row), written via a
+full delete-and-reinsert transaction per save rather than incremental upsert (avoids needing
+DB-level uniqueness tricks for a single-writer, low-contention field), with no versioning/history
+table -- unlike `organization_counsellor_compensations`'s effective-dated design, there is no
+negotiation or accountability trail to reproduce here, since the counsellor unilaterally sets
+their own non-binding, informational number. A new `TherapyTypeEnum` (individual/group) is needed
+since no existing shared enum covers that distinction (it's expressed today only by `Therapy` and
+`GroupTherapy` being separate Eloquent models).
+
+**Why**: literal compliance with a years-old backlog stub's point estimate would have meant either
+building a materially incomplete feature (a single flat-rate field, contradicting the user's
+explicit flat-or-per-service decision) or silently absorbing 15 extra points of scope into a
+ticket sized for 3 -- both worse than re-scoping and re-filing sub-tickets transparently, matching
+this project's own established practice (TT-6.3, TT-6.4, TT-7.3 were all split the same way once
+their real scope became clear during planning).

@@ -27,6 +27,15 @@ class EnsureCanInitiateChargeAction extends Action
             throw new TransactionException('This does not have a valid price set yet.', 422);
         }
 
+        // SCRUM-153 (TT-7.2a): defense-in-depth -- request-level validation already restricts
+        // currency to config('currencies.supported') at Therapy/GroupTherapy creation/update
+        // time, but this re-checks the value actually stored on payment_data before it ever
+        // reaches Paystack, in case it was set through some other path (a legacy row, a direct
+        // write, a future bypass of the request classes).
+        if (! in_array(strtoupper($payable['currency']), array_map('strtoupper', config('currencies.supported')))) {
+            throw new TransactionException('This currency is not currently supported.', 422);
+        }
+
         // A PER_THERAPY setup is charged once, for the Therapy/GroupTherapy itself -- never for
         // one of its individual Sessions, which would double the charge. A PER_SESSION setup is
         // the other way round: each Session is its own charge, the Therapy/GroupTherapy itself

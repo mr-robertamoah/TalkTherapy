@@ -92,6 +92,20 @@ test('initiating a charge for a FREE therapy is rejected', function () {
     ))->toThrow(TransactionException::class, 'There is nothing to pay for here.');
 });
 
+// SCRUM-153 (TT-7.2a): defense-in-depth -- request-level validation already restricts currency,
+// but a therapy whose payment_data was set through some other path (a legacy row, a direct
+// write) with an unsupported currency must still be rejected before reaching Paystack.
+test('initiating a charge for a therapy with an unsupported stored currency is rejected', function () {
+    $therapy = aPaidTherapy(['currency' => 'XYZ']);
+
+    expect(fn () => TransactionService::new()->initiateCharge(
+        TransactionDTO::new()->fromArray([
+            'user' => $therapy->addedby,
+            'for' => $therapy,
+        ])
+    ))->toThrow(TransactionException::class, 'This currency is not currently supported.');
+});
+
 test('initiating a charge for something that has already been successfully paid for is rejected', function () {
     $therapy = aPaidTherapy();
     Transaction::factory()->create([
