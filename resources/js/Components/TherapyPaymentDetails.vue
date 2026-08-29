@@ -57,6 +57,13 @@
         <FormLoader class="mx-auto" :show="initiating" :text="'starting your payment'" />
         <PrimaryButton :disabled="initiating" @click="clickedPay">pay now</PrimaryButton>
       </div>
+      <div
+        v-else-if="therapyType !== 'group' && therapy.paymentData.per === 'PER_THERAPY' && computedIsCounsellor"
+        class="text-sm font-semibold"
+        :class="[therapy.paymentStatus === 'FAILED' ? 'text-red-600' : 'text-gray-600']"
+      >
+        {{ paymentStatusLabel(therapy.paymentStatus) }}
+      </div>
     </div>
 
     <Alert
@@ -85,7 +92,7 @@ const props = defineProps({
 })
 
 const { alertData, clearAlertData, setFailedAlertData } = useAlert()
-const { initiating, canPayForTherapy, payForTherapy } = usePayment(toRef(props, 'therapy'), props.therapyType)
+const { initiating, canPayForTherapy, payForTherapy, paymentStatusLabel } = usePayment(toRef(props, 'therapy'), props.therapyType)
 
 const canPay = computed(() => canPayForTherapy(props.computedIsParticipant, props.computedIsCounsellor))
 

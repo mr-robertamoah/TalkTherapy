@@ -80,6 +80,7 @@ const {
   dismissStatus,
   canPayForSession,
   payForSession,
+  paymentStatusLabel,
 } = usePayment(therapyRef, props.therapyType)
 
 // Tab items configuration (kept for compatibility)
@@ -1076,6 +1077,13 @@ function reportCreated(report) {
                 >
                 <div v-else-if="activeSession?.paymentType == 'PAID' && activeSession?.paymentStatus == 'SUCCESS'" class="text-sm text-green-700 font-semibold">
                   paid
+                </div>
+                <div
+                  v-else-if="therapyType !== 'group' && activeSession?.paymentType == 'PAID' && computedIsCounsellor"
+                  class="text-sm font-semibold"
+                  :class="[activeSession?.paymentStatus === 'FAILED' ? 'text-red-600' : 'text-gray-600']"
+                >
+                  {{ paymentStatusLabel(activeSession?.paymentStatus) }}
                 </div>
                 <PrimaryButton
                   v-if="
