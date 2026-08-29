@@ -13,6 +13,10 @@ RUN apt-get update && apt-get install -y \
 # Install Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
+# The base image has no active php.ini, so memory_limit otherwise falls back to PHP's compiled
+# 128M default -- too low to run the full Pest suite without --parallel.
+COPY docker/php/conf.d/memory-limit.ini /usr/local/etc/php/conf.d/memory-limit.ini
+
 # Set working directory
 WORKDIR /var/www/html
 
