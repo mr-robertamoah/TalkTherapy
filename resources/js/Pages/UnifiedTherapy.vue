@@ -25,6 +25,7 @@ import useAlert from '@/Composables/useAlert'
 import useAuth from '@/Composables/useAuth'
 import useAppLink from '@/Composables/useAppLink'
 import useEnums from '@/Composables/useEnums'
+import usePayment from '@/Composables/usePayment'
 
 const { modalData, showModal, closeModal } = useModal()
 const { RequestTypeEnum, SessionStatusEnum } = useEnums()
@@ -71,6 +72,16 @@ const {
   addSessionOrTopic,
 } = useTherapyState(therapyRef, props.therapyType)
 
+const {
+  initiating: payInitiating,
+  transactionStatus,
+  statusBannerType,
+  statusBannerMessage,
+  dismissStatus,
+  canPayForSession,
+  payForSession,
+} = usePayment(therapyRef, props.therapyType)
+
 // Tab items configuration (kept for compatibility)
 const scrollItems = computed(() => {
   const baseItems = [
@@ -114,6 +125,19 @@ const computedCanParticipate = computed(() => {
 // Watchers
 watch(() => counsellorSearch.value, () => {
   if (counsellorSearch.value) debouncedGetCounsellors()
+})
+
+// One-time payment status banner, on return from Paystack's checkout (transactionStatus is a
+// flash value -- dismissStatus() prevents it resurfacing on a later action within this same visit).
+watchEffect(() => {
+  if (!transactionStatus.value) return
+
+  if (statusBannerType.value === 'success') {
+    setSuccessAlertData({ message: statusBannerMessage.value, time: 8000 })
+  } else {
+    setFailedAlertData({ message: statusBannerMessage.value, time: 8000 })
+  }
+  dismissStatus()
 })
 
 watchEffect(() => {
@@ -732,6 +756,16 @@ async function clickedEndSession() {
     })
 }
 
+async function clickedPaySession() {
+  if (!activeSession.value?.id) return
+
+  try {
+    await payForSession(activeSession.value)
+  } catch (err) {
+    setFailedAlertData({ message: err.message })
+  }
+}
+
 function clickedSessionAction(action) {
   if (action == "start") return clickedStartSession()
   if (action == "end") return clickedEndSession()
@@ -1033,6 +1067,16 @@ function reportCreated(report) {
               v-if="activeSession"
             >
               <template v-if="!sessionActionRunning">
+                <PrimaryButton
+                  v-if="canPayForSession(activeSession, computedIsParticipant, computedIsCounsellor)"
+                  :disabled="payInitiating"
+                  @click="clickedPaySession"
+                  class="shrink-0"
+                  >pay now</PrimaryButton
+                >
+                <div v-else-if="activeSession?.paymentType == 'PAID' && activeSession?.paymentStatus == 'SUCCESS'" class="text-sm text-green-700 font-semibold">
+                  paid
+                </div>
                 <PrimaryButton
                   v-if="
                     [SessionStatusEnum.pending, SessionStatusEnum.inSessionConfirmation].includes(
