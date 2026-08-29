@@ -93,3 +93,32 @@ test('setting new pricing via the real route atomically replaces an existing con
     ]);
     expect(CounsellorPricing::query()->where('counsellor_id', $counsellor->id)->count())->toBe(1);
 });
+
+// SCRUM-155 (TT-7.2c): the Unit suite (tests/Unit/CounsellorPricingServiceTest.php) calls
+// CounsellorPricingService::clearPricing() directly, bypassing the controller/route/FormRequest
+// layer entirely -- these close that gap for the new destroy() endpoint, mirroring why the tests
+// above exist for store() (reviewer finding).
+
+test('a counsellor can clear their pricing via the real route', function () {
+    $counsellor = aCounsellorWithUserForPricingRoute();
+    CounsellorPricing::factory()->create(['counsellor_id' => $counsellor->id, 'amount' => 150, 'currency' => 'GHS']);
+    $this->actingAs($counsellor->user);
+
+    $response = $this->deleteJson("/counsellor/{$counsellor->id}/pricings");
+
+    $response->assertOk();
+    $response->assertJson(['pricings' => []]);
+    $this->assertDatabaseMissing('counsellor_pricings', ['counsellor_id' => $counsellor->id]);
+});
+
+test('a counsellor cannot clear another counsellor\'s pricing via the real route', function () {
+    $counsellor = aCounsellorWithUserForPricingRoute();
+    $otherCounsellor = aCounsellorWithUserForPricingRoute();
+    CounsellorPricing::factory()->create(['counsellor_id' => $counsellor->id, 'amount' => 150, 'currency' => 'GHS']);
+    $this->actingAs($otherCounsellor->user);
+
+    $response = $this->deleteJson("/counsellor/{$counsellor->id}/pricings");
+
+    $response->assertStatus(403);
+    $this->assertDatabaseHas('counsellor_pricings', ['counsellor_id' => $counsellor->id]);
+});

@@ -23,6 +23,7 @@ import ProfileEditButton from '@/Components/ProfileEditButton.vue';
 import UpdateCounsellorContact from '@/Components/UpdateCounsellorContact.vue';
 import UpdateCounsellorInformation from '@/Components/UpdateCounsellorInformation.vue';
 import UpdateCounsellorPreferences from '@/Components/UpdateCounsellorPreferences.vue';
+import UpdateCounsellorPricing from '@/Components/UpdateCounsellorPricing.vue';
 import Item from '@/Components/Item.vue';
 import UpdateCounsellorImages from '@/Components/UpdateCounsellorImages.vue';
 import DangerButton from '@/Components/DangerButton.vue';
@@ -107,6 +108,17 @@ const hasContact = computed(() => {
 
     return false
 })
+// SCRUM-155 (TT-7.2c): a single pricing row with no therapyType is the flat-rate mode
+// (mirrors CounsellorPricing::isFlat() server-side) -- an override row always fully specifies it.
+const isFlatPricing = computed(() => {
+    return props.counsellor.pricings?.length === 1 && !props.counsellor.pricings[0].therapyType
+})
+function formatPricingScope(pricing) {
+    const per = pricing.per === 'PER_THERAPY' ? 'per therapy' : 'per session'
+    const sessionType = pricing.sessionType === 'IN_PERSON' ? 'in person' : 'online'
+
+    return `${pricing.therapyType?.toLowerCase()} · ${sessionType} · ${per}`
+}
 const computedClasses = computed(() => {
     return [
         'bg-gray-300 text-gray-700',
@@ -366,6 +378,45 @@ function closeModal() {
                 </div>
             </div>
                 
+            <div class="w-full sm:w-[90%] md:w-[75%] lg:w-[60%] mx-auto sm:px-6 lg:px-8 mt-8 relative">
+                <div v-if="isCounsellor" class="absolute z-[1] top-0 right-2 sm:right-8 flex justify-end items-center p-2">
+                    <ProfileEditButton
+                        class="mr-2"
+                        @click="() => showModal('update pricing')"
+                    />
+                </div>
+                <div class="bg-white overflow-hidden shadow-xl border border-gray-100 sm:rounded-xl relative">
+                    <div class="p-8">
+                        <div class="text-xl font-bold text-gray-900 mb-2">Pricing</div>
+                        <div class="w-12 h-1 bg-blue-600 mb-4"></div>
+                        <div class="text-sm text-gray-600 mb-6">
+                            {{
+                                isCounsellor
+                                    ? 'Your listed rate(s) -- informational only, not a binding quote. Clients still propose their own amount when booking.'
+                                    : 'Listed rate(s) for this counsellor -- informational only, not a binding quote.'
+                            }}
+                        </div>
+
+                        <div v-if="counsellor.pricings?.length" class="space-y-3">
+                            <div v-if="isFlatPricing" class="bg-gray-50 rounded-lg p-6 text-center">
+                                <div class="text-xs text-gray-500 uppercase tracking-wide mb-1">Starting from</div>
+                                <div class="text-2xl font-bold text-gray-900">{{ counsellor.pricings[0].currency }} {{ counsellor.pricings[0].amount }}</div>
+                            </div>
+                            <div v-else class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div v-for="pricing in counsellor.pricings" :key="pricing.id" class="bg-gray-50 rounded-lg p-4">
+                                    <div class="text-xs text-gray-500 capitalize">{{ formatPricingScope(pricing) }}</div>
+                                    <div class="text-lg font-bold text-gray-900">{{ pricing.currency }} {{ pricing.amount }}</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div v-else class="text-center py-8 text-gray-500">
+                            <div class="text-4xl mb-2">💰</div>
+                            <div>{{ isCounsellor ? 'You have not listed pricing yet.' : 'This counsellor has not listed pricing yet.' }}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <div class="w-full sm:w-[90%] md:w-[75%] lg:w-[60%] mx-auto sm:px-6 lg:px-8 mt-8 relative">
                 <div class="p-4 sm:p-8 bg-white shadow sm:rounded-lg">
                     <TestimonialSection
@@ -855,5 +906,13 @@ function closeModal() {
             closeModal()
         }"
     />
-    
+
+    <UpdateCounsellorPricing
+        :counsellor="counsellor"
+        :show="modalData.show && modalData.type == 'update pricing'"
+        @close-modal="() => {
+            closeModal()
+        }"
+    />
+
 </template>
