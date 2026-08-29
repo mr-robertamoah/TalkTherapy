@@ -10,14 +10,21 @@ class PerformLinkAction extends Action
 {
     public function execute(CreateLinkDTO $createLinkDTO)
     {
-        if ($createLinkDTO->link->type == LinkTypeEnum::guardianship->value)
+        if ($createLinkDTO->link->type == LinkTypeEnum::guardianship->value) {
             return PerformGuardianshipLinkAction::new()->execute($createLinkDTO);
+        }
 
-        if ($createLinkDTO->link->type == LinkTypeEnum::discussion->value)
+        if ($createLinkDTO->link->type == LinkTypeEnum::discussion->value) {
             return PerformDiscussionRequestLinkAction::new()->execute($createLinkDTO);
-        
-        if ($createLinkDTO->link->type == LinkTypeEnum::therapyCounsellor->value)
+        }
+
+        if ($createLinkDTO->link->type == LinkTypeEnum::therapyCounsellor->value) {
             return PerformTherapyCounsellorLinkAction::new()->execute($createLinkDTO);
-        
+        }
+
+        if ($createLinkDTO->link->type == LinkTypeEnum::organizationSelfApply->value) {
+            return PerformOrganizationSelfApplyLinkAction::new()->execute($createLinkDTO);
+        }
+
     }
 }

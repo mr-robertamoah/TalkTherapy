@@ -1832,3 +1832,42 @@ doesn't actually exist yet for that case.
 scope-narrowing that follows directly from an already-made decision (TT-7.4d deferred), not a new
 judgment call, so it's recorded briefly rather than re-litigated. With TT-7.4a/b/c all merged, TT-7.4
 (SCRUM-118's payment UI) is now fully implemented for individual therapies and sessions.
+
+---
+
+## 2026-08-29 — SCRUM-164 (TT-6.7): reused the generic Link infrastructure end-to-end; closed
+two gaps review found in that reuse before merge
+
+**Decision**: implemented the org self-apply link entirely on top of this codebase's existing
+generic `Link` model/flow (already used for guardianship/discussion/therapy-counsellor links) per
+the architect's original TT-6.7 call, rather than building bespoke plumbing — a new
+`LinkTypeEnum` case, a new `PerformOrganizationSelfApplyLinkAction` branch dispatched from the
+existing `PerformLinkAction`, and reusing `OrganizationMemberRequestService::applyAsMember()`
+unchanged for the actual eligibility checks (AC2). No new controller, route, or DTO shape beyond
+widening `CreateLinkDTO`'s (and, after review, `GetLinksDTO`'s) `$for` union to include
+`Organization`.
+
+**Gap found and fixed 1**: the generic `createLink()` flow had no per-type authorization hook at
+all (`EnsureAddedbyIsValidAction` only validates the *addedby* identity, never the *for* target) —
+without a new guard, any authenticated user could have generated a working self-apply link for an
+organization they don't administer. Added `EnsureUserCanCreateOrganizationSelfApplyLinkAction`
+(a no-op for every other link type) into `LinkService::createLink()`. Both reviewer and
+security-engineer then independently caught that the sibling `createMultipleLinks()` method builds
+its own per-item DTO and skipped this same guard entirely — fixed by adding the identical guard
+call inside its loop. (Currently unreachable over HTTP due to a pre-existing, unrelated routing
+mismatch — `POST /api/links/multiple` maps to `createLink`, not `createMultipleLinks` — but fixed
+proactively rather than left as a landmine for whenever that mismatch gets "fixed.")
+
+**Gap found and fixed 2**: security review noted the new guard, run *after* the generic
+`EnsureLinkDataIsValidAction`, produced two different status codes for "organization doesn't
+exist" (422, from the generic for-is-missing check) vs. "organization exists but you don't
+administer it" (403, from the new guard) — a fresh, distinguishable enumeration oracle for
+organization IDs that this ticket introduced. Fixed by reordering the new guard to run *before*
+`EnsureLinkDataIsValidAction`: since the guard's own `! $dto->for instanceof Organization` check
+is true for both a null `for` (nonexistent org) and any non-Organization target, both cases now
+collapse into the same 403.
+
+**Why**: both fixes are cheap, newly-introduced-by-this-ticket gaps with no architectural
+redesign required — squarely the "apply it" case CLAUDE.md describes, not the "defer with a
+follow-up ticket" case (contrast SCRUM-159's Decision 3/SCRUM-170, a pre-existing gap that would
+have needed a larger redesign).
