@@ -16,7 +16,7 @@ class SessionResource extends JsonResource
     public function toArray(Request $request): array
     {
         $currentTopic = $this->currentTopic;
-        
+
         return [
             'id' => $this->id,
             'userId' => $this->addedby_type == Counsellor::class ? $this->addedby->user->id : $this->addedby_id,
@@ -33,6 +33,7 @@ class SessionResource extends JsonResource
             'startTime' => $this->start_time,
             'endTime' => $this->end_time,
             'paymentType' => $this->payment_type,
+            'paymentStatus' => $this->latestTransaction?->status,
             'landmark' => $this->landmark,
             'isSession' => true,
             'createdAt' => $this->created_at,

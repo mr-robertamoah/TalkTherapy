@@ -57,7 +57,7 @@ class SessionService extends Service
             return [];
         }
 
-        $query = $therapy->sessions()->when($getSessionsDTO->name, function ($query) use ($getSessionsDTO) {
+        $query = $therapy->sessions()->with('latestTransaction')->when($getSessionsDTO->name, function ($query) use ($getSessionsDTO) {
             $query->whereNameLike($getSessionsDTO->name);
         });
 

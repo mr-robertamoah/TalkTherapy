@@ -206,9 +206,10 @@ class GroupTherapyController extends Controller
             return Inertia::render('GroupTherapy/Index', [
                 'therapy' => new GroupTherapyResource($therapy),
                 'session' => session('session'),
+                'transactionStatus' => session('transactionStatus'),
                 'pendingRequest' => $pendingRequest ? new RequestResource($pendingRequest) : null,
                 'pendingMembershipRequest' => $pendingMembershipRequest ? new RequestResource($pendingMembershipRequest) : null,
-                'recentSessions' => SessionResource::collection($therapy->sessions()->latest()->take(5)->get()),
+                'recentSessions' => SessionResource::collection($therapy->sessions()->with('latestTransaction')->latest()->take(5)->get()),
                 'recentTopics' => TherapyTopicResource::collection($therapy->topics()->latest()->take(5)->get()),
             ]);
         } catch (Throwable $th) {

@@ -1736,3 +1736,36 @@ CLAUDE.md's autonomous-execution rules. The two architect-required amendments we
 in code actually read (confirmed no `latestOfMany`/`scopeSuccessful` accessor exists yet on
 `Transaction`, and confirmed `TherapyPaymentDetails.vue` has no side-effecting logic today), not
 speculative — applying them now avoids a rework cycle once TT-7.4b/c implementation starts.
+
+---
+
+## 2026-08-29 — SCRUM-156 (TT-7.4a): `latestOfMany()` column, and a deferred guest-exposure question
+
+**Decision**: `TherapyTrait::latestTransaction()`/`Session::latestTransaction()` explicitly order
+by `latestOfMany('created_at')` rather than the Eloquent default (`'id'`) — reviewer caught that
+the default coincides with insertion order in this codebase today (every `Transaction` row is
+created once and only ever updated afterwards) but is an implicit assumption, not a guarantee,
+and diverges from this codebase's usual `->latest()` (created_at-based) convention elsewhere.
+Also added a code comment on both relations clarifying that "latest" means latest across *all*
+eligible payers for that model, not scoped to the current viewer — a `GroupTherapy` with
+multiple members each attempting to pay can surface one member's pending/failed attempt to a
+different member (security-engineer finding); this is a read of the existing single-payer-per-
+model backend limitation already tracked as TT-7.4d's blocker, not a new bug, so it's documented
+rather than worked around here.
+
+**Deferred, not fixed**: security-engineer also flagged that `paymentStatus` (like the
+pre-existing `paymentData`/`paymentType`) is now reachable by an unauthenticated guest on a
+`public` therapy/group therapy/session, via `EnsureUserHasAccessToTherapyAction`'s existing
+`public`-bypass and `SessionService::getSessions()`'s existing guest branch (SCRUM-74). Rated
+Low–Medium: it's an incremental extension of an already-accepted exposure pattern (amount/
+currency were already guest-visible; whether a payment succeeded is arguably less sensitive than
+the amount), not a new class of leak, and restricting it would be a product-visibility decision
+outside SCRUM-156's stated scope (status-exposure plumbing only). Recommend a follow-up ticket to
+get an explicit product decision on guest visibility of payment status/data on public
+engagements, rather than silently narrowing scope here.
+
+**Why**: both are genuine findings worth recording, but only the first is a correctness bug
+inside this ticket's own scope (fixed immediately); the second is a pre-existing product
+decision this ticket extends rather than introduces, and CLAUDE.md's autonomous-execution rules
+call for logging a scope question like this rather than either silently fixing it (unscoped
+change) or silently ignoring it.

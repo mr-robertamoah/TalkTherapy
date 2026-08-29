@@ -80,6 +80,13 @@ class Session extends Model
         return $this->morphMany(Transaction::class, 'for');
     }
 
+    // See TherapyTrait::latestTransaction()'s comment: explicit 'created_at' column (not the
+    // id-based default), and "latest" is across all eligible payers, not the current viewer.
+    public function latestTransaction()
+    {
+        return $this->morphOne(Transaction::class, 'for')->latestOfMany('created_at');
+    }
+
     public function addedby()
     {
         return $this->morphTo('addedby');

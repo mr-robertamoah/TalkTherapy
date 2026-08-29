@@ -115,6 +115,18 @@ trait TherapyTrait
         return $this->morphMany(Transaction::class, 'for');
     }
 
+    // Latest across ALL eligible payers for this model, not scoped to the current viewer -- a
+    // GroupTherapy with multiple members each attempting to pay can surface one member's
+    // pending/failed attempt to a different member. Explicit 'created_at' column: latestOfMany()
+    // defaults to ordering by 'id', which coincides with insertion order today (every Transaction
+    // row is created once via InitiatePaystackChargeAction and only ever updated afterwards) but
+    // is not the same guarantee as this codebase's usual `->latest()` (created_at-based)
+    // convention -- keep it explicit so a future insert path can't silently break "latest".
+    public function latestTransaction()
+    {
+        return $this->morphOne(Transaction::class, 'for')->latestOfMany('created_at');
+    }
+
     public function cases(): MorphToMany
     {
         return $this
