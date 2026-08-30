@@ -133,3 +133,30 @@ test('a guest cannot manage organization admins', function () {
     $this->patchJson("/organizations/{$organization->id}/admins/{$target->id}", ['role' => OrganizationAdminRoleEnum::admin->value])->assertStatus(401);
     $this->deleteJson("/organizations/{$organization->id}/admins/{$target->id}")->assertStatus(401);
 });
+
+// SCRUM-178: a nonexistent organizationId and a real one the caller doesn't own previously
+// returned different statuses (404 vs 403) on these admin-management routes -- the same oracle
+// SCRUM-170 closed on the read-only org endpoints, closed here the same way.
+test('a nonexistent organization and a real one the caller does not own fail identically on the admin-management routes', function () {
+    $organization = Organization::factory()->create(['is_provider' => true, 'verified_at' => now()]);
+    $plainAdmin = User::factory()->create();
+    $organization->admins()->attach($plainAdmin->id, ['role' => OrganizationAdminRoleEnum::admin->value]);
+    $target = User::factory()->create();
+
+    $this->actingAs($plainAdmin);
+
+    $addFake = $this->postJson('/organizations/999999/admins', ['userId' => $target->id]);
+    $addReal = $this->postJson("/organizations/{$organization->id}/admins", ['userId' => $target->id]);
+    expect($addFake->getStatusCode())->toBe($addReal->getStatusCode());
+    expect($addFake->json('message'))->toBe($addReal->json('message'));
+
+    $updateFake = $this->patchJson("/organizations/999999/admins/{$plainAdmin->id}", ['role' => OrganizationAdminRoleEnum::owner->value]);
+    $updateReal = $this->patchJson("/organizations/{$organization->id}/admins/{$plainAdmin->id}", ['role' => OrganizationAdminRoleEnum::owner->value]);
+    expect($updateFake->getStatusCode())->toBe($updateReal->getStatusCode());
+    expect($updateFake->json('message'))->toBe($updateReal->json('message'));
+
+    $removeFake = $this->deleteJson("/organizations/999999/admins/{$plainAdmin->id}");
+    $removeReal = $this->deleteJson("/organizations/{$organization->id}/admins/{$plainAdmin->id}");
+    expect($removeFake->getStatusCode())->toBe($removeReal->getStatusCode());
+    expect($removeFake->json('message'))->toBe($removeReal->json('message'));
+});

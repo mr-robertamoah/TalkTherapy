@@ -19,7 +19,13 @@ class EnsureUserIsOrganizationOwnerAction extends Action
             throw new OrganizationException('You must be signed in to manage an organization.', 401);
         }
 
-        $role = $dto->organization->admins()->whereKey($dto->user->id)->first()?->pivot?->role;
+        // SCRUM-178: folds the null-organization check in here (same pattern as SCRUM-170's fix
+        // to EnsureUserIsOrganizationAdminAction) -- a preceding standalone EnsureOrganizationExistsAction
+        // call threw a distinct 404 before this action's own 403, letting any authenticated user
+        // enumerate real organization ids on these admin-management routes by reading 404 vs 403.
+        $role = is_null($dto->organization)
+            ? null
+            : $dto->organization->admins()->whereKey($dto->user->id)->first()?->pivot?->role;
 
         if ($role !== OrganizationAdminRoleEnum::owner->value) {
             throw new OrganizationException('You must be an owner of this organization to do this.', 403);
