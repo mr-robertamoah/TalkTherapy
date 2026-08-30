@@ -2318,3 +2318,33 @@ CLAUDE.md's explicit seeding convention. Added a second, plain-role admin
 one's own review correctly focused entirely on the thin new frontend layer rather than
 re-litigating already-settled authorization logic — worth noting as the pattern to follow when a
 late-epic ticket's scope turns out to be "just wire up the UI."
+
+---
+
+## 2026-08-30 — SCRUM-173 (TT-6.5d): "organizations I administer" list; closes the last
+navigation gap this audit found, entirely by extending the existing my-organizations page
+
+**Decision**: rather than a fourth near-duplicate "my organizations"-shaped page, added
+"Organizations I Administer" as the first section on the already-shared `MyOrganizations.vue`
+page (from SCRUM-167/168) -- unconditionally fetched (unlike the counsellor-only sections),
+since any user can administer zero or more orgs independent of counsellor/member status. The
+"nav entry point" half of this ticket's own AC1 was already satisfied for free: SCRUM-168 had
+already widened the "My Organizations" nav link to any authenticated user, so no new nav change
+was needed here. Reuses `organizations.mine.administered` (SCRUM-160) and `organizations.dashboard`
+(SCRUM-165) entirely unchanged -- this ticket's backend footprint is a single new controller
+block passing an already-existing, already-tested paginator as a prop.
+
+**Reviewer-caught bug, fixed before commit**: the "open dashboard" link nested a `<PrimaryButton>`
+(renders `<button>`) inside an Inertia `<Link>` (renders `<a>`) -- invalid HTML (interactive
+content inside interactive content), and a first in this codebase; every existing example of a
+button-styled `<Link>` (e.g. `Profile/Show.vue`'s "Manage Preferences") applies the button classes
+directly to the `Link` itself instead. Fixed by removing the nested component and moving
+`PrimaryButton`'s exact classes onto the `Link`, preserving the visual style while producing valid
+markup.
+
+**Why**: recorded because this is the last ticket the original navigation-gap audit
+(2026-08-30) identified, closing out that entire line of work -- the epic's Organizations
+frontend (TT-6.5a/a2/b/c/d) is now complete. The reviewer finding is worth keeping as a concrete
+example of *why* this project prefers styling `<Link>` directly over wrapping button components:
+the wrapped pattern silently produces invalid HTML that a visual/functional test alone won't
+catch (the link still rendered and navigated correctly either way).
