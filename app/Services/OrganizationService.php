@@ -6,6 +6,9 @@ use App\Actions\Organization\CreateOrganizationAction;
 use App\Actions\Organization\EnsureOrganizationDataIsValidAction;
 use App\Actions\Organization\EnsureOrganizationExistsAction;
 use App\Actions\Organization\EnsureUserIsOrganizationAdminAction;
+use App\Actions\Organization\GetMyAdministeredOrganizationsAction;
+use App\Actions\Organization\GetMyOrganizationCounsellorAffiliationsAction;
+use App\Actions\Organization\GetMyOrganizationMembershipsAction;
 use App\Actions\Organization\GetOrganizationCounsellorsAction;
 use App\Actions\Organization\GetOrganizationDirectoryAction;
 use App\Actions\Organization\GetOrganizationMembersAction;
@@ -14,6 +17,7 @@ use App\Actions\Organization\UpdateOrganizationAction;
 use App\DTOs\GetOrganizationDirectoryDTO;
 use App\DTOs\OrganizationDTO;
 use App\Models\Organization;
+use App\Models\User;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 
 class OrganizationService extends Service
@@ -86,5 +90,22 @@ class OrganizationService extends Service
     public function getOrganizationDirectory(GetOrganizationDirectoryDTO $dto): LengthAwarePaginator
     {
         return GetOrganizationDirectoryAction::new()->execute($dto);
+    }
+
+    // "My organizations" (TT-6.6b) -- self-scoped, no cross-user data; no admin-gating action
+    // needed since the query is already scoped to $user's own relations.
+    public function getMyOrganizationCounsellorAffiliations(User $user): LengthAwarePaginator
+    {
+        return GetMyOrganizationCounsellorAffiliationsAction::new()->execute($user);
+    }
+
+    public function getMyOrganizationMemberships(User $user): LengthAwarePaginator
+    {
+        return GetMyOrganizationMembershipsAction::new()->execute($user);
+    }
+
+    public function getMyAdministeredOrganizations(User $user): LengthAwarePaginator
+    {
+        return GetMyAdministeredOrganizationsAction::new()->execute($user);
     }
 }

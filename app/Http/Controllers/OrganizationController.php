@@ -6,6 +6,9 @@ use App\DTOs\GetOrganizationDirectoryDTO;
 use App\DTOs\OrganizationDTO;
 use App\Http\Requests\CreateOrganizationRequest;
 use App\Http\Requests\UpdateOrganizationRequest;
+use App\Http\Resources\MyAdministeredOrganizationResource;
+use App\Http\Resources\MyOrganizationCounsellorAffiliationResource;
+use App\Http\Resources\MyOrganizationMembershipResource;
 use App\Http\Resources\OrganizationCounsellorResource;
 use App\Http\Resources\OrganizationDirectoryResource;
 use App\Http\Resources\OrganizationMemberResource;
@@ -174,6 +177,41 @@ class OrganizationController extends Controller
             );
 
             return RequestResource::collection($requests);
+        } catch (Throwable $th) {
+            return $this->returnFailure($request, $th);
+        }
+    }
+
+    // "My organizations" (TT-6.6b) -- self-scoped to the authenticated user, feeding TT-6.5b/c's
+    // own org-selection UI.
+    public function myCounsellorAffiliations(Request $request)
+    {
+        try {
+            $affiliations = OrganizationService::new()->getMyOrganizationCounsellorAffiliations($request->user());
+
+            return MyOrganizationCounsellorAffiliationResource::collection($affiliations);
+        } catch (Throwable $th) {
+            return $this->returnFailure($request, $th);
+        }
+    }
+
+    public function myMemberships(Request $request)
+    {
+        try {
+            $memberships = OrganizationService::new()->getMyOrganizationMemberships($request->user());
+
+            return MyOrganizationMembershipResource::collection($memberships);
+        } catch (Throwable $th) {
+            return $this->returnFailure($request, $th);
+        }
+    }
+
+    public function myAdministeredOrganizations(Request $request)
+    {
+        try {
+            $organizations = OrganizationService::new()->getMyAdministeredOrganizations($request->user());
+
+            return MyAdministeredOrganizationResource::collection($organizations);
         } catch (Throwable $th) {
             return $this->returnFailure($request, $th);
         }
