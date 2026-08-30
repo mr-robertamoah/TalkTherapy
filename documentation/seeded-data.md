@@ -138,8 +138,9 @@ dashboard, since the random demo data has no organizations at all:
 | `org_demo_admin` | `password` | Owns "Org Demo Wellness Collective" (id 1 in a fresh seed) as its owner-role admin. Log in and visit `/organizations/{id}/dashboard`. |
 | `org_demo_counsellor` | `password` | Dr. Org DemoCounsellor — already ACTIVE-affiliated with the org, with agreed compensation (USD 2000 fixed), PLUS a pending compensation-change negotiation (org proposing USD 2500) awaiting their decision — log in and visit `/organizations/mine/dashboard` to accept/reject/counter-offer it (SCRUM-167). |
 | `org_demo_applicant` | `password` | Dr. Org DemoApplicant — has a pending `ORGANIZATION_COUNSELLOR_APPLICATION_REQUEST` to the org (no affiliation row yet — distinct from the already-affiliated counsellor above, per AC7's "pending Request vs. pending affiliation" distinction). |
-| `org_demo_member` | `password` | Org DemoMember — already ACTIVE member with a retainer billing config. |
+| `org_demo_member` | `password` | Org DemoMember — already ACTIVE member with a retainer billing config. Log in and visit `/organizations/mine/dashboard` to see it under "My Memberships" (SCRUM-168). |
 | `org_demo_member_applicant` | `password` | Org DemoMemberApplicant — has a pending `ORGANIZATION_MEMBER_APPLICATION_REQUEST` to the org (no membership row yet, same distinction as above). |
+| `org_demo_member_invitee` | `password` | Org DemoMemberInvitee — has a pending `ORGANIZATION_MEMBER_INVITE_REQUEST` (org-initiated, no membership row yet) — accept it via the account dropdown's "Requests" menu to exercise SCRUM-168's AC2. |
 
 ## Testing the registration/verification flow
 
