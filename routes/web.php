@@ -8,6 +8,7 @@ use App\Http\Controllers\DiscussionController;
 use App\Http\Controllers\GroupTherapyController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\LinkController;
+use App\Http\Controllers\OrganizationAdminController;
 use App\Http\Controllers\OrganizationController;
 use App\Http\Controllers\OrganizationCounsellorCompensationController;
 use App\Http\Controllers\OrganizationCounsellorController;
@@ -136,6 +137,12 @@ Route::middleware('auth')->group(function () {
     // throttle: same reasoning as the counsellor-invite/apply routes above (SCRUM-124).
     Route::post('/organizations/{organizationId}/member-invites', [OrganizationMemberController::class, 'invite'])->name('organizations.members.invite')->middleware('throttle:30,1');
     Route::post('/organizations/{organizationId}/member-applications', [OrganizationMemberController::class, 'apply'])->name('organizations.members.apply')->middleware('throttle:30,1');
+
+    // Owner-only co-admin management (SCRUM-163). throttle: mutating actions on shared org state,
+    // same modest cap as the other Organization write routes above.
+    Route::post('/organizations/{organizationId}/admins', [OrganizationAdminController::class, 'store'])->name('organizations.admins.store')->middleware('throttle:30,1');
+    Route::patch('/organizations/{organizationId}/admins/{userId}', [OrganizationAdminController::class, 'update'])->name('organizations.admins.update')->middleware('throttle:30,1');
+    Route::delete('/organizations/{organizationId}/admins/{userId}', [OrganizationAdminController::class, 'destroy'])->name('organizations.admins.destroy')->middleware('throttle:30,1');
 
     Route::post('/organization-members/{organizationMemberId}/billing-configs', [OrganizationMemberBillingConfigController::class, 'store'])->name('organization_members.billing_configs.store')->middleware('throttle:30,1');
 
