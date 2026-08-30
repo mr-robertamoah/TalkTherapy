@@ -2036,3 +2036,39 @@ discovery itself mirrors TT-7.4's own planning history (TT-7.4a's backend-plumbi
 found the same way) — treated as a scope correction grounded in code actually read (architect
 verified every claimed gap against `OrganizationController`/`RequestService`/`Organization`
 model), not a guess.
+
+---
+
+## 2026-08-30 — SCRUM-160 (TT-6.6b): last of the M4a backend batch; a reviewer-verified
+non-bug in the administered-organizations ordering
+
+**Decision**: implemented all three "my organizations" endpoints as straightforward self-scoped
+Eloquent relation reads (`Counsellor::organizationCounsellors()`, `User::organizationMemberships()`,
+`User::administeredOrganizations()`) with no new guard/authorization actions — the query is
+already fully scoped to the requesting `$user`'s own relations, so there's no cross-user
+authorization decision to make (security review independently confirmed no cross-user leakage is
+possible, since no route parameter or request field ever influences which user's data is
+queried). The one asymmetry — a missing `Counsellor` account throws a 422
+(`CounsellorNotFoundException`) for the counsellor-affiliations endpoint, while the memberships/
+administered endpoints return an empty list for a user with none — is deliberate: a `User` always
+has memberships/administered-orgs as a valid (possibly empty) set, but "your counsellor
+affiliations" presupposes a `Counsellor` account that may not exist at all, mirroring
+`EnsureCounsellorExistsAction`'s existing precedent for other counsellor-only actions.
+
+**Non-bug, verified empirically**: `GetMyAdministeredOrganizationsAction` explicitly qualifies
+`orderByDesc('organizations.created_at')` rather than an unqualified `latest()`, based on a
+belief that `organizations`/`organization_admins` (both having their own `created_at` via
+`withTimestamps()`) would otherwise throw an ambiguous-column SQL error once the `belongsToMany`
+join compiles. Reviewer tested this directly against the project's real MySQL container and found
+it does NOT currently error — Eloquent aliases the pivot's copy as `pivot_created_at`, so only one
+output column is literally named `created_at`, and MySQL's ORDER BY resolution isn't ambiguous in
+that specific case. The qualification is kept anyway (harmless, and not dependent on that pivot-
+aliasing behavior continuing forever), but the code comment and test description were corrected
+to stop asserting a failure mode that doesn't actually reproduce against the current relation
+shape — a future engineer reading the original wording could have over-generalized it to a
+`belongsToMany` case where it *would* actually matter.
+
+**Why**: recorded because the original (incorrect) rationale could otherwise propagate as a
+"known codebase gotcha" via comment-copying, per the reviewer's own explicit maintainability
+concern — a cheap, no-behavior-change correction applied immediately rather than left as-is.
+With SCRUM-160 merged, all of M4a (TT-6.6a–e) and TT-6.7 are complete.
