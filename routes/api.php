@@ -51,7 +51,10 @@ Route::get('/therapies/random', [TherapyController::class, 'getRandomTherapies']
 Route::get('/therapies/public', [TherapyController::class, 'getPublicTherapies'])->name('api.therapies.public');
 Route::get('/group-therapies/random', [GroupTherapyController::class, 'getRandomGroupTherapies'])->name('api.group.therapies.random');
 Route::get('/counsellors/random', [CounsellorController::class, 'getRandomCounsellors'])->name('api.counsellors.random');
-Route::get('/counsellors', [CounsellorController::class, 'getCounsellors'])->name('api.counsellors');
+// SCRUM-177: the general 'api' RateLimiter is disabled (see RouteServiceProvider/bootstrap/app.php),
+// so this search endpoint had no rate limiting despite gaining more UI call sites (SCRUM-172) --
+// 60/minute matches the existing precedent for a similar read/search route (organizations.index).
+Route::get('/counsellors', [CounsellorController::class, 'getCounsellors'])->name('api.counsellors')->middleware('throttle:60,1');
 
 Route::get('/testimonials', [TestimonialController::class, 'getTestimonials'])->name('api.testimonials');
 
@@ -88,7 +91,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/links/{linkId}/delete', [LinkController::class, 'deleteLink'])->name('api.links.delete');
     Route::post('/links/delete/multiple', [LinkController::class, 'deleteMultipleLinks'])->name('api.links.deletemultiple');
 
-    Route::get('/users', [UserController::class, 'getUsers'])->name('api.users');
+    // SCRUM-177: see the matching comment on api.counsellors above.
+    Route::get('/users', [UserController::class, 'getUsers'])->name('api.users')->middleware('throttle:60,1');
     Route::get('/users/guardianship', [UserController::class, 'getGuardianship'])->name('api.users.guardianship');
     Route::post('/users/{userId}/guardianship', [UserController::class, 'sendGuardianshipRequest'])->name('api.users.guardianshiprequest');
     Route::delete('/guardianship/{guardianshipId}', [UserController::class, 'deleteGuardianship'])->name('api.guardianship.delete');

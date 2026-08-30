@@ -2467,3 +2467,59 @@ surfaced as a real accessibility complaint (or an automated a11y check this proj
 much later. Worth remembering for any future shared Vue component that wraps a native form control:
 forward `id` explicitly rather than relying on default attribute fallthrough once the wrapper isn't
 itself a single native element.
+
+---
+
+## 2026-08-30 — SCRUM-177: SearchSelect.vue hardening (keyboard nav, pagination, throttle) --
+a reviewer-caught concurrency bug in the very fix meant to close a reviewer-flagged gap
+
+**Decision**: closed the three non-blocking items SCRUM-172's own review pass had flagged rather
+than left them to rot: `SearchSelect.vue` gained arrow-key/Enter keyboard selection (`role`/
+`aria-*` attributes, an `activeIndex` cursor) and a "load more" control paginating past each
+endpoint's first page (`api.counsellors` caps at 5, `api.users` at 10); `api.users`/`api.counsellors`
+gained `throttle:60,1`, matching the existing `organizations.index` precedent, since the app's
+general `api` RateLimiter is disabled entirely.
+
+**Reviewer-caught concurrency bug, fixed before commit**: the first version of `loadMore()` had no
+re-entrancy guard -- two rapid clicks before the first request resolved would increment `page`
+twice and fire two overlapping requests, and the existing out-of-order-response `searchToken` guard
+(itself a fix from the prior SCRUM-172 review pass) would then silently discard the *first*
+response once it landed, since by then `searchToken` no longer matched. The result: the page that
+first response represented was never appended and never retried -- results end up as page 1 +
+page 3, permanently missing page 2's rows, with no visible error and no way to recover except
+retyping the search from scratch. Worth remembering as a distinct class of bug from what the
+`searchToken` guard actually solves: that guard protects against out-of-order *resolution*, not
+concurrent *dispatch* -- the two need separate guards even though they look like the same problem
+at first glance. Fixed with a plain `if (searching.value) return` at the top of `loadMore()`,
+which is sufficient because Vue's/JS's single-threaded execution means `searching.value` is already
+`true` (set synchronously before the first `await`) by the time a second, near-simultaneous click's
+handler actually runs.
+
+**Reviewer-required test, added**: `tests/Feature/SearchRateLimitTest.php`, mirroring the existing
+`MessageRateLimitTest.php` pattern for `throttle:messages` -- confirms 60 requests succeed and the
+61st 429s, for both the authenticated (`api.users`, keyed per-user) and public (`api.counsellors`,
+keyed per-IP via `withServerVariables`) cases, plus that each endpoint's limit is isolated (per-user
+for `api.users`, per-IP for `api.counsellors`) rather than shared globally.
+
+**Reviewer-suggested, applied**: a load-more failure no longer collapses the dropdown and discards
+`hasMore` outright (it now only does that for a *fresh* search failure) -- it instead rolls `page`
+back by one so a retry re-fetches the page that failed, and the already-fetched first page's
+results stay visible. Similarly, `activeIndex` (the keyboard-highlighted row) is no longer reset on
+every `results` mutation, only on an actual fresh search/clear -- an append from "load more" no
+longer discards an in-progress keyboard highlight on a still-visible row.
+
+**Reviewer-suggested, deferred (documented, not silently dropped)**: giving the "load more" row its
+own keyboard path (it's currently mouse/click-only, an internal inconsistency in a diff whose whole
+point was closing a keyboard-accessibility gap) and wiring `aria-activedescendant` on the input for
+more complete screen-reader support of the highlight state. Both were explicitly called "polish, not
+a regression" by the reviewer and don't warrant their own tracking ticket at this scale, but are
+worth picking up whenever `SearchSelect.vue` is touched again.
+
+**Why**: recorded mainly for the concurrency-bug lesson -- this is the second time this specific
+component has had a "the fix for one review finding introduces a new bug that only shows up under a
+timing condition manual testing won't naturally hit" (the first was the out-of-order-response race
+in the original SCRUM-172 pass; this is the double-dispatch race in this pass's own pagination fix).
+A pattern worth watching for: whenever a fix introduces a second async operation triggered by a
+UI-repeatable action (a button that can be clicked more than once before the first call resolves),
+ask explicitly "what happens on a second click before the first resolves" as its own question,
+separate from "what happens if responses arrive out of order."
