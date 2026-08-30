@@ -7,6 +7,7 @@ use App\Enums\AdministratorTypeEnum;
 use App\Enums\OrganizationAdminRoleEnum;
 use App\Enums\RequestStatusEnum;
 use App\Enums\RequestTypeEnum;
+use App\Exceptions\BadRequestException;
 use App\Exceptions\CannotRespondToRequestException;
 use App\Exceptions\CounsellorNotFoundException;
 use App\Exceptions\OrganizationException;
@@ -176,6 +177,34 @@ test('an org admin can accept a counsellor application addressed to the organiza
 
     expect($resource)->toBeInstanceOf(OrganizationRequestResource::class);
     expect($applicationRequest->refresh()->status)->toBe(RequestStatusEnum::accepted->value);
+});
+
+// SCRUM-171: pins that the generic pending-status guard applies uniformly to this request type
+// too, not just group-therapy membership requests (where the same guard is also tested).
+test('an org admin cannot respond to a counsellor application that was already accepted', function () {
+    $organization = verifiedProviderOrganization();
+    $owner = organizationOwner($organization);
+    $applicantUser = User::factory()->create();
+    $counsellor = Counsellor::factory()->create(['user_id' => $applicantUser->id]);
+
+    $applicationRequest = OrganizationCounsellorRequestService::new()->applyAsCounsellor(
+        OrganizationCounsellorRequestDTO::new()->fromArray([
+            'user' => $applicantUser,
+            'organization' => $organization,
+            'counsellor' => $counsellor,
+        ])
+    );
+    $applicationRequest->update(['status' => RequestStatusEnum::accepted->value]);
+
+    expect(fn () => RequestService::new()->respondToRequest(
+        RequestResponseDTO::new()->fromArray([
+            'user' => $owner,
+            'request' => $applicationRequest,
+            'response' => 'rejected',
+        ])
+    ))->toThrow(BadRequestException::class);
+
+    expect($applicationRequest->fresh()->status)->toBe(RequestStatusEnum::accepted->value);
 });
 
 test('a user who does not administer the organization cannot respond to a counsellor application', function () {

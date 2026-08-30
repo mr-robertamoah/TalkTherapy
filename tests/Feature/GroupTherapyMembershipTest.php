@@ -488,6 +488,59 @@ test('POST requests.respond rejects a garbage response value instead of writing 
     expect($groupTherapy->users()->whereKey($joiner->id)->exists())->toBeFalse();
 });
 
+// SCRUM-171: an already-decided request's status was never actually at risk (each
+// RespondTo*RequestAction already re-checks it under a lock and no-ops -- SCRUM-80/91), but the
+// generic respond pipeline still reported that no-op as a misleading 201 success rather than
+// telling the caller their response did nothing. This pins the deliberate behavior change: a
+// clean 422 instead.
+test('POST requests.respond rejects a response to an already-accepted request', function () {
+    $creator = anAdult();
+    $groupTherapy = aGroupTherapy($creator, ['allow_anyone' => false]);
+    $joiner = anAdult();
+
+    $request = JoinGroupTherapyAction::new()->execute(
+        JoinGroupTherapyDTO::new()->fromArray([
+            'user' => $joiner,
+            'groupTherapy' => $groupTherapy,
+        ])
+    );
+    $request->update(['status' => RequestStatusEnum::accepted->value]);
+
+    $response = $this
+        ->actingAs($creator)
+        ->postJson(route('requests.respond', ['requestId' => $request->id]), [
+            'response' => 'rejected',
+        ]);
+
+    $response->assertStatus(422);
+    expect($response->json('error'))->toBe('This request is no longer pending and can no longer be responded to.');
+    expect($request->fresh()->status)->toBe(RequestStatusEnum::accepted->value);
+});
+
+test('POST requests.respond rejects a response to an already-rejected request', function () {
+    $creator = anAdult();
+    $groupTherapy = aGroupTherapy($creator, ['allow_anyone' => false]);
+    $joiner = anAdult();
+
+    $request = JoinGroupTherapyAction::new()->execute(
+        JoinGroupTherapyDTO::new()->fromArray([
+            'user' => $joiner,
+            'groupTherapy' => $groupTherapy,
+        ])
+    );
+    $request->update(['status' => RequestStatusEnum::rejected->value]);
+
+    $response = $this
+        ->actingAs($creator)
+        ->postJson(route('requests.respond', ['requestId' => $request->id]), [
+            'response' => 'accepted',
+        ]);
+
+    $response->assertStatus(422);
+    expect($request->fresh()->status)->toBe(RequestStatusEnum::rejected->value);
+    expect($groupTherapy->users()->whereKey($joiner->id)->exists())->toBeFalse();
+});
+
 // Regression tests: RequestResource::toArray() previously rendered `from` via an unmasked
 // UserMiniResource() unconditionally, for every request type -- for a group-therapy membership
 // request specifically, this leaked the requester's real identity to the group creator (and
