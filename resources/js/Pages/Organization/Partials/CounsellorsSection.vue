@@ -3,10 +3,10 @@ import { ref } from 'vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import Modal from '@/Components/Modal.vue';
 import InputLabel from '@/Components/InputLabel.vue';
-import TextInput from '@/Components/TextInput.vue';
 import InputError from '@/Components/InputError.vue';
 import FormLoader from '@/Components/FormLoader.vue';
 import Pagination from '@/Components/Pagination.vue';
+import SearchSelect from '@/Components/SearchSelect.vue';
 
 const props = defineProps({
     organizationId: {
@@ -28,7 +28,7 @@ const meta = ref(props.initialCounsellors.meta)
 const loadingPage = ref(false)
 const showInviteModal = ref(false)
 const inviting = ref(false)
-const counsellorIdInput = ref('')
+const selectedCounsellor = ref(null)
 const inviteError = ref('')
 
 // AC7: an affiliation that exists but is PENDING (compensation not yet finalized) is a
@@ -67,13 +67,13 @@ async function invite() {
     inviting.value = true
 
     await axios.post(route('organizations.counsellors.invite', { organizationId: props.organizationId }), {
-        counsellorId: counsellorIdInput.value,
+        counsellorId: selectedCounsellor.value?.id,
     })
         .then(() => {
             emit('alert', { type: 'success', message: 'Invite sent.' })
             emit('invited')
             showInviteModal.value = false
-            counsellorIdInput.value = ''
+            selectedCounsellor.value = null
         })
         .catch((err) => {
             inviteError.value = err.response?.data?.message ?? 'Could not send the invite.'
@@ -121,18 +121,25 @@ async function invite() {
         </div>
     </div>
 
-    <Modal :show="showInviteModal" @close="() => showInviteModal = false">
+    <Modal :show="showInviteModal" @close="() => { showInviteModal = false; selectedCounsellor = null }">
         <div class="p-6">
             <div class="text-lg font-bold text-gray-900 mb-4">Invite a Counsellor</div>
             <FormLoader :show="inviting" text="sending invite" />
 
             <form @submit.prevent="invite">
-                <InputLabel for="counsellorId" value="Counsellor Id" />
-                <TextInput id="counsellorId" type="text" class="mt-1 block w-full" v-model="counsellorIdInput" />
+                <InputLabel for="counsellor" value="Counsellor" />
+                <SearchSelect
+                    id="counsellor"
+                    v-model="selectedCounsellor"
+                    search-route="api.counsellors"
+                    search-param="name"
+                    placeholder="search for counsellor by name or username"
+                    :disabled="inviting"
+                />
                 <InputError class="mt-2" :message="inviteError" />
 
                 <div class="flex items-center justify-end mt-4">
-                    <PrimaryButton :disabled="inviting || !counsellorIdInput">send invite</PrimaryButton>
+                    <PrimaryButton :disabled="inviting || !selectedCounsellor">send invite</PrimaryButton>
                 </div>
             </form>
         </div>

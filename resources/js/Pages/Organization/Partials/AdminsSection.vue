@@ -6,9 +6,9 @@ import DangerButton from '@/Components/DangerButton.vue';
 import SecondaryButton from '@/Components/SecondaryButton.vue';
 import Modal from '@/Components/Modal.vue';
 import InputLabel from '@/Components/InputLabel.vue';
-import TextInput from '@/Components/TextInput.vue';
 import InputError from '@/Components/InputError.vue';
 import FormLoader from '@/Components/FormLoader.vue';
+import SearchSelect from '@/Components/SearchSelect.vue';
 
 const props = defineProps({
     organizationId: {
@@ -35,7 +35,7 @@ const isOwner = computed(() => admins.value.find((admin) => admin.id === current
 
 const showInviteModal = ref(false)
 const inviting = ref(false)
-const userIdInput = ref('')
+const selectedUser = ref(null)
 const roleInput = ref('ADMIN')
 const inviteError = ref('')
 
@@ -50,14 +50,14 @@ async function invite() {
     inviting.value = true
 
     await axios.post(route('organizations.admins.store', { organizationId: props.organizationId }), {
-        userId: userIdInput.value,
+        userId: selectedUser.value?.id,
         role: roleInput.value,
     })
         .then((res) => {
             applyAdmins(res.data.admins)
             emit('alert', { type: 'success', message: 'Admin added.' })
             showInviteModal.value = false
-            userIdInput.value = ''
+            selectedUser.value = null
             roleInput.value = 'ADMIN'
         })
         .catch((err) => {
@@ -149,14 +149,20 @@ async function remove(admin) {
         </div>
     </div>
 
-    <Modal :show="showInviteModal" @close="() => showInviteModal = false">
+    <Modal :show="showInviteModal" @close="() => { showInviteModal = false; selectedUser = null }">
         <div class="p-6">
             <div class="text-lg font-bold text-gray-900 mb-4">Add an Admin</div>
             <FormLoader :show="inviting" text="adding admin" />
 
             <form @submit.prevent="invite">
-                <InputLabel for="userId" value="User Id" />
-                <TextInput id="userId" type="text" class="mt-1 block w-full" v-model="userIdInput" />
+                <InputLabel for="user" value="User" />
+                <SearchSelect
+                    id="user"
+                    v-model="selectedUser"
+                    search-route="api.users"
+                    placeholder="search for user by name or username"
+                    :disabled="inviting"
+                />
                 <InputError class="mt-2" :message="inviteError" />
 
                 <div class="mt-4">
@@ -168,7 +174,7 @@ async function remove(admin) {
                 </div>
 
                 <div class="flex items-center justify-end mt-4">
-                    <PrimaryButton :disabled="inviting || !userIdInput">add admin</PrimaryButton>
+                    <PrimaryButton :disabled="inviting || !selectedUser">add admin</PrimaryButton>
                 </div>
             </form>
         </div>
