@@ -1892,3 +1892,44 @@ test to flip.
 **Why**: CLAUDE.md permits deferring a finding "with a follow-up ticket" when it isn't introduced
 fresh by the current change and fixing it properly is out of proportion to the ticket at hand —
 this is exactly that case, unlike Decision 2 above which was cheap and newly-introduced.
+## 2026-08-29 — TT-6.5 (Organizations frontend): restructured after discovering real backend gaps, three product decisions made
+
+**Decision**: TT-6.5 (SCRUM-111's frontend work) went through the full `/start-feature`
+product-owner/project-manager/architect gate. What was scoped as a 13-point, frontend-only
+ticket turned out to need real new backend work — no list endpoint for an org's own members or
+affiliated counsellors, no "my organizations" endpoint for a counsellor/member, no organization
+directory (so a counsellor/member had no way to discover an org id to apply to at all), no
+org-scoped request queue for admins, no co-admin management (the `OrganizationAdminRoleEnum`
+owner/admin distinction exists in the data model but is never enforced). Split into **M4a**
+(TT-6.6a–e, new backend enablement, ~23 pts, filed as SCRUM-159–163) which blocks **M4b**
+(TT-6.5a/a2/b/c/c2, restructured frontend, ~22–24 pts, filed as SCRUM-165–169) per-ticket rather
+than milestone-wide, plus **TT-6.7** (shareable self-apply link, filed as SCRUM-164). Total
+~45–52 points, up from the original 13 — the same undersizing pattern already seen in TT-6.3 and
+TT-7.2 on first pass.
+
+Three decisions made by the user during planning:
+1. **Owner-vs-admin roles get real behavioral enforcement now**, not a display-only badge — only
+   an owner may remove the org or add/promote/demote other admins (new
+   `EnsureUserIsOrganizationOwnerAction`, TT-6.6e).
+2. **Organization discovery ships as both a directory (TT-6.6c) and a shareable admin-generated
+   link (TT-6.7), not either/or** — architect confirmed these solve genuinely different problems
+   (curated browse-and-apply vs. a targeted, single-use grant mirroring the existing
+   discussion/guardianship Link pattern), so building both isn't redundant duplication.
+3. **The directory is verified-only** — an unverified organization stays invisible to browse/apply
+   until a platform admin verifies it, matching how counsellor verification already gates
+   visibility elsewhere in the app.
+
+**Deferred, not this restructuring's call**: the "sponsored by [org]" indicator on therapy/
+counsellor cards (SCRUM-111's third flagged open item) — both product-owner and project-manager
+recommended deferring it to a future TT-7.3a-adjacent ticket, since it depends on TT-7.3a (not yet
+built) and an undecided definition of "sponsored" over time. Proceeding with that deferral since
+neither reviewer treated it as blocking, and no objection was raised.
+
+**Why**: the three decisions above are genuine, costly-to-guess-wrong forks (real enforcement vs.
+display-only changes TT-6.6e/TT-6.5a2's actual scope; directory-vs-link changes which backend
+gets built at all; verified-only vs. show-all changes the directory's query and field exposure) —
+raised to the user per CLAUDE.md's autonomous-execution rules rather than assumed. The backend-gap
+discovery itself mirrors TT-7.4's own planning history (TT-7.4a's backend-plumbing prerequisite
+found the same way) — treated as a scope correction grounded in code actually read (architect
+verified every claimed gap against `OrganizationController`/`RequestService`/`Organization`
+model), not a guess.

@@ -109,6 +109,10 @@ Route::middleware('auth')->group(function () {
     Route::post('/sessions/{sessionId}/transactions', [TransactionController::class, 'initiate'])->name('transactions.initiate.session')->middleware('throttle:20,1');
     Route::get('/transactions/callback', [TransactionController::class, 'callback'])->name('transactions.callback')->middleware('throttle:30,1');
 
+    // throttle: read-only and non-money-moving, but this is the first endpoint that lets any
+    // authenticated user enumerate every verified org on the platform -- a higher cap than the
+    // write endpoints below, but still bounded (security review, SCRUM-161).
+    Route::get('/organizations', [OrganizationController::class, 'index'])->name('organizations.index')->middleware('throttle:60,1');
     Route::post('/organizations', [OrganizationController::class, 'store'])->name('organizations.store');
     Route::get('/organizations/{organizationId}', [OrganizationController::class, 'show'])->name('organizations.show');
     Route::patch('/organizations/{organizationId}', [OrganizationController::class, 'update'])->name('organizations.update');
