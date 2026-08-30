@@ -326,11 +326,14 @@ test('applying to a non-existent organization returns a clean error, not a crash
     ))->toThrow(OrganizationException::class);
 });
 
-// SCRUM-120 security review: applying to an unverified org and applying to a non-provider org
-// must return the SAME message -- OrganizationController::show() restricts org details to that
+// SCRUM-120/179: applying to an unverified org, a non-provider org, and a nonexistent org must
+// all return the SAME message -- OrganizationController::show() restricts org details to that
 // org's own admins, so a counsellor-facing endpoint can't let distinguishable errors be used to
-// probe an arbitrary organization's verification/provider status.
-test('applying to an unverified or non-provider organization gives the same generic message either way', function () {
+// probe an arbitrary organization's existence/verification/provider status. The nonexistent-org
+// case (SCRUM-179) previously 404'd via a standalone EnsureOrganizationExistsAction call ahead of
+// this same generic-422 mitigation, reopening a narrower existence-only oracle SCRUM-170/178 had
+// already closed elsewhere.
+test('applying to an unverified, non-provider, or nonexistent organization gives the same generic message', function () {
     $unverified = Organization::factory()->create(['is_provider' => true, 'verified_at' => null]);
     $nonProvider = verifiedProviderOrganization(['is_provider' => false, 'is_consumer' => true]);
 
@@ -338,8 +341,10 @@ test('applying to an unverified or non-provider organization gives the same gene
     $counsellorA = Counsellor::factory()->create(['user_id' => $applicantUserA->id]);
     $applicantUserB = User::factory()->create();
     $counsellorB = Counsellor::factory()->create(['user_id' => $applicantUserB->id]);
+    $applicantUserC = User::factory()->create();
+    $counsellorC = Counsellor::factory()->create(['user_id' => $applicantUserC->id]);
 
-    $messageFor = function (Organization $organization, User $user, Counsellor $counsellor) {
+    $messageFor = function (?Organization $organization, User $user, Counsellor $counsellor) {
         try {
             OrganizationCounsellorRequestService::new()->applyAsCounsellor(
                 OrganizationCounsellorRequestDTO::new()->fromArray([
@@ -357,9 +362,11 @@ test('applying to an unverified or non-provider organization gives the same gene
 
     $unverifiedMessage = $messageFor($unverified, $applicantUserA, $counsellorA);
     $nonProviderMessage = $messageFor($nonProvider, $applicantUserB, $counsellorB);
+    $nonexistentMessage = $messageFor(null, $applicantUserC, $counsellorC);
 
     expect($unverifiedMessage)->not->toBeNull();
     expect($unverifiedMessage)->toBe($nonProviderMessage);
+    expect($unverifiedMessage)->toBe($nonexistentMessage);
 });
 
 test('accepting a counsellor application for an organization that is no longer eligible is rejected', function () {

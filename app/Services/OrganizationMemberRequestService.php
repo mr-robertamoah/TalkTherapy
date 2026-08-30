@@ -5,7 +5,6 @@ namespace App\Services;
 use App\Actions\Organization\ApplyToOrganizationAsMemberAction;
 use App\Actions\Organization\EnsureNoPendingOrganizationMemberRequestAction;
 use App\Actions\Organization\EnsureOrganizationCanReceiveMemberApplicationsAction;
-use App\Actions\Organization\EnsureOrganizationExistsAction;
 use App\Actions\Organization\EnsureOrganizationIsConsumerAction;
 use App\Actions\Organization\EnsureOrganizationIsVerifiedAction;
 use App\Actions\Organization\EnsureUserCanInviteOrganizationMemberAction;
@@ -22,8 +21,7 @@ class OrganizationMemberRequestService extends Service
         // SCRUM-178: no preceding EnsureOrganizationExistsAction here -- that would throw a
         // distinct 404 before EnsureUserCanInviteOrganizationMemberAction's own 403, reopening
         // the existence-enumeration oracle that action's own null-organization check now closes.
-        // applyAsMember() below is deliberately left unchanged -- out of this ticket's scope
-        // (see the Jira description's own lower-priority note).
+        // applyAsMember() below has the same fix, via SCRUM-179.
         EnsureUserExistsAction::new()->execute($dto->member, throwException: true);
 
         EnsureUserCanInviteOrganizationMemberAction::new()->execute($dto);
@@ -43,8 +41,10 @@ class OrganizationMemberRequestService extends Service
 
     public function applyAsMember(OrganizationMemberRequestDTO $dto)
     {
-        EnsureOrganizationExistsAction::new()->execute($dto);
-
+        // SCRUM-179: no preceding EnsureOrganizationExistsAction here -- that would throw a
+        // distinct 404 before EnsureOrganizationCanReceiveMemberApplicationsAction's own
+        // generic 422, reopening the existence-enumeration oracle that action's own
+        // null-organization check now closes (mirrors SCRUM-170/178).
         EnsureOrganizationCanReceiveMemberApplicationsAction::new()->execute($dto->organization);
 
         return DB::transaction(function () use ($dto) {

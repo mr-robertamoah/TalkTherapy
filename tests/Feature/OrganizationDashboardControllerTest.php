@@ -86,8 +86,10 @@ test('a non-admin is redirected home rather than seeing a raw error page', funct
     $response->assertRedirect(route('home'));
 });
 
-// A nonexistent organizationId (404 from EnsureOrganizationExistsAction) is a distinct code
-// path from the "authenticated non-admin" (403) case above, through the same generic catch.
+// A nonexistent organizationId now converges on the same 403 as the "authenticated non-admin"
+// case above (EnsureUserIsOrganizationAdminAction's own null-organization check, SCRUM-170) --
+// either way, this Inertia page always redirects home through the same generic catch, never
+// leaking the distinction the way a JSON API response's status code otherwise would.
 test('a nonexistent organization redirects home rather than a raw error page', function () {
     $user = User::factory()->create();
     $this->actingAs($user);
