@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\OrganizationAdminRoleEnum;
 use App\Enums\OrganizationMemberStatusEnum;
 use App\Enums\RequestStatusEnum;
 use App\Enums\RequestTypeEnum;
@@ -148,4 +149,33 @@ test('a member can accept an organization invite via the generic respond endpoin
         'organization_id' => $organization->id,
         'user_id' => $user->id,
     ]);
+});
+
+// SCRUM-173 (TT-6.5d) AC1/AC3: a user who administers an org sees it here, with their role,
+// reusing the pre-existing organizations.mine.administered endpoint unchanged.
+test('a user sees every organization they administer, with their role', function () {
+    $user = User::factory()->create();
+    $organization = Organization::factory()->create(['is_provider' => true, 'verified_at' => now()]);
+    $organization->admins()->attach($user->id, ['role' => OrganizationAdminRoleEnum::owner->value]);
+
+    $this->actingAs($user);
+
+    $response = $this->get(route('organizations.mine.dashboard'));
+
+    $response->assertOk()->assertInertia(fn ($page) => $page
+        ->has('administeredOrganizations.data', 1)
+        ->where('administeredOrganizations.data.0.role', OrganizationAdminRoleEnum::owner->value)
+    );
+});
+
+// SCRUM-173 AC2: a user who administers nothing sees an empty state, not a broken page.
+test('a user who administers no organization sees an empty administered-organizations list', function () {
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $response = $this->get(route('organizations.mine.dashboard'));
+
+    $response->assertOk()->assertInertia(fn ($page) => $page
+        ->has('administeredOrganizations.data', 0)
+    );
 });

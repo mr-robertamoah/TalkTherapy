@@ -253,10 +253,17 @@ class OrganizationController extends Controller
             $membershipsPaginator = OrganizationService::new()->getMyOrganizationMemberships($user);
             $membershipsPaginator->setPath(route('organizations.mine.memberships'));
 
+            // SCRUM-173: any user can administer an org (independent of counsellor/member
+            // status), so this -- like memberships above -- is always fetched, never gated
+            // behind $counsellor.
+            $administeredPaginator = OrganizationService::new()->getMyAdministeredOrganizations($user);
+            $administeredPaginator->setPath(route('organizations.mine.administered'));
+
             return Inertia::render('Organization/MyOrganizations', [
                 'affiliations' => $affiliations,
                 'requestQueue' => $requestQueue,
                 'memberships' => $this->paginatedResource(MyOrganizationMembershipResource::collection($membershipsPaginator)),
+                'administeredOrganizations' => $this->paginatedResource(MyAdministeredOrganizationResource::collection($administeredPaginator)),
             ]);
         } catch (Throwable $th) {
             $message = $this->messageFor($th, $this->statusFor($th));

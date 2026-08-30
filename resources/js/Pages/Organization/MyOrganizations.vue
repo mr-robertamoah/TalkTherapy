@@ -7,6 +7,7 @@ import MyAffiliationsSection from './Partials/MyAffiliationsSection.vue';
 import MyOrganizationRequestQueueSection from './Partials/MyOrganizationRequestQueueSection.vue';
 import BrowseProviderOrganizationsSection from './Partials/BrowseProviderOrganizationsSection.vue';
 import MyMembershipsSection from './Partials/MyMembershipsSection.vue';
+import MyAdministeredOrganizationsSection from './Partials/MyAdministeredOrganizationsSection.vue';
 
 defineProps({
     // null for a user with no Counsellor account (SCRUM-168) -- the counsellor-only sections
@@ -20,6 +21,12 @@ defineProps({
         default: null,
     },
     memberships: {
+        type: Object,
+        required: true,
+    },
+    // Always present, independent of counsellor/member status (SCRUM-173) -- any user can
+    // administer an org.
+    administeredOrganizations: {
         type: Object,
         required: true,
     },
@@ -45,7 +52,11 @@ function onChildAlert(alert) {
                 <div class="w-16 h-1 bg-blue-600 mb-6"></div>
             </div>
 
-            <div v-if="affiliations" class="w-full sm:w-[90%] md:w-[85%] lg:w-[75%] mx-auto sm:px-6 lg:px-8">
+            <div class="w-full sm:w-[90%] md:w-[85%] lg:w-[75%] mx-auto sm:px-6 lg:px-8">
+                <MyAdministeredOrganizationsSection :initial-administered-organizations="administeredOrganizations" />
+            </div>
+
+            <div v-if="affiliations" class="w-full sm:w-[90%] md:w-[85%] lg:w-[75%] mx-auto sm:px-6 lg:px-8 mt-8">
                 <MyAffiliationsSection ref="affiliationsSection" :initial-affiliations="affiliations" @alert="onChildAlert" />
             </div>
 
