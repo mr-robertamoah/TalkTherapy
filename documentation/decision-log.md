@@ -2269,3 +2269,52 @@ reversible calls. The `RequestBadge.vue` fix is recorded in detail because it's 
 in a row (after SCRUM-167's own self-caught bugs) where my own manual Playwright verification
 found something real that no subagent had reason to look for, since it required actually clicking
 through the specific combination this ticket newly exercises.
+
+---
+
+## 2026-08-30 — SCRUM-166 (TT-6.5a2): co-admin management UI; the last piece of TT-6.5a's
+backend, already fully built and tested, needed only a frontend consumer
+
+**Decision**: this ticket turned out to be almost entirely a frontend exercise. SCRUM-163 (much
+earlier in this epic) had already built and fully tested the entire backend for co-admin
+management — `OrganizationAdminController::store/update/destroy`, `OrganizationAdminService`,
+owner-only enforcement (`EnsureUserIsOrganizationOwnerAction`) and last-owner protection
+(`EnsureOrganizationRetainsAnOwnerAction`) — none of which needed to change. Added a new
+`admins` prop to the existing `OrganizationController::dashboard()` (unpaginated, unlike its
+sibling counsellors/members/requestQueue props — an org's admin roster is expected to stay small)
+and a new `AdminsSection.vue` consuming the three pre-existing mutating endpoints, each of which
+already returns the full refreshed admin list — no new backend surface at all beyond the one-line
+prop addition.
+
+**A real, deliberate judgment call on the promote/demote/remove buttons**: built as actual
+`<SecondaryButton>`/`<DangerButton>` components rather than the text-link-styled `<button
+class="text-blue-600 hover:underline">` pattern used throughout the rest of this dashboard's
+existing sections (`MembersSection.vue`'s "edit billing", `RequestQueueSection.vue`'s
+"counter-offer") — the user had already flagged link-styled action buttons as a TODO item to fix
+project-wide, so new code shouldn't add more of the same debt even though the existing pattern is
+what a naive copy-paste would have produced.
+
+**Reviewer/security findings, all minor**: reviewer's one suggestion (a positional
+`admins.0`/`admins.1` test assertion, fragile since `Organization::admins()` has no `orderBy`)
+was fixed by looking up each admin by id instead, mirroring the existing convention in
+`OrganizationAdminManagementTest.php`. security-engineer's one flagged item — the admin roster
+(name/username/role) is now visible to *every* admin of an org on page load, not just owners,
+which is a real widening vs. pre-ticket behavior where only an owner-gated mutating-endpoint
+response ever returned it — is exactly what AC2 itself specifies ("a plain admin can view the
+current admin list"), so no further confirmation was needed beyond the ticket's own text.
+security-engineer's other finding (`AddOrganizationAdminRequest`'s `exists:users,id` validation
+running before the owner-authorization check, a mild pre-existing user-ID-existence oracle from
+SCRUM-163, now more directly reachable via this new UI) was filed as **SCRUM-176** rather than
+fixed inline, following the same deferral pattern as SCRUM-171/174/175.
+
+**Seed-data gap found by qa-engineer, fixed before commit**: the seeder only had a single
+owner-role admin for the demo org, so exercising promote/demote/remove, last-owner protection, or
+the plain-admin read-only view all required hand-creating accounts via `tinker` — contrary to
+CLAUDE.md's explicit seeding convention. Added a second, plain-role admin
+(`org_demo_plain_admin`) to the existing seed data.
+
+**Why**: recorded because this is the cleanest example yet in this epic of a ticket where the
+*backend* ceremony (full review/test cycle) had already happened on an earlier ticket, and this
+one's own review correctly focused entirely on the thin new frontend layer rather than
+re-litigating already-settled authorization logic — worth noting as the pattern to follow when a
+late-epic ticket's scope turns out to be "just wire up the UI."

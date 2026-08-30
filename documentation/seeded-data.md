@@ -136,6 +136,7 @@ dashboard, since the random demo data has no organizations at all:
 | Username | Password | Purpose |
 |---|---|---|
 | `org_demo_admin` | `password` | Owns "Org Demo Wellness Collective" (id 1 in a fresh seed) as its owner-role admin. Log in and visit `/organizations/{id}/dashboard`. |
+| `org_demo_plain_admin` | `password` | A second, plain (non-owner) admin of the same org — log in as this account to see the read-only admin list (no add/promote/demote/remove controls), or log in as `org_demo_admin` to promote/demote/remove this account and exercise the last-owner-protection error (SCRUM-166). |
 | `org_demo_counsellor` | `password` | Dr. Org DemoCounsellor — already ACTIVE-affiliated with the org, with agreed compensation (USD 2000 fixed), PLUS a pending compensation-change negotiation (org proposing USD 2500) awaiting their decision — log in and visit `/organizations/mine/dashboard` to accept/reject/counter-offer it (SCRUM-167). |
 | `org_demo_applicant` | `password` | Dr. Org DemoApplicant — has a pending `ORGANIZATION_COUNSELLOR_APPLICATION_REQUEST` to the org (no affiliation row yet — distinct from the already-affiliated counsellor above, per AC7's "pending Request vs. pending affiliation" distinction). |
 | `org_demo_member` | `password` | Org DemoMember — already ACTIVE member with a retainer billing config. Log in and visit `/organizations/mine/dashboard` to see it under "My Memberships" (SCRUM-168). |

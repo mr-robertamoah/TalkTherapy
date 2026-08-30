@@ -9,6 +9,7 @@ use App\Http\Requests\UpdateOrganizationRequest;
 use App\Http\Resources\MyAdministeredOrganizationResource;
 use App\Http\Resources\MyOrganizationCounsellorAffiliationResource;
 use App\Http\Resources\MyOrganizationMembershipResource;
+use App\Http\Resources\OrganizationAdminResource;
 use App\Http\Resources\OrganizationCounsellorResource;
 use App\Http\Resources\OrganizationDirectoryResource;
 use App\Http\Resources\OrganizationMemberResource;
@@ -154,11 +155,16 @@ class OrganizationController extends Controller
             $requestQueuePaginator = OrganizationService::new()->getOrganizationRequestQueue($dto);
             $requestQueuePaginator->setPath(route('organizations.requests.index', ['organizationId' => $organization->id]));
 
+            // Not paginated -- an org's admin list is expected to stay small, unlike the
+            // counsellor/member/request lists above (SCRUM-166/TT-6.5a2).
+            $admins = OrganizationAdminResource::collection($organization->admins);
+
             return Inertia::render('Organization/Show', [
                 'organization' => new OrganizationResource($organization),
                 'counsellors' => $counsellors,
                 'members' => $members,
                 'requestQueue' => $this->paginatedResource(RequestResource::collection($requestQueuePaginator)),
+                'admins' => $admins,
             ]);
         } catch (Throwable $th) {
             $message = $this->messageFor($th, $this->statusFor($th));
