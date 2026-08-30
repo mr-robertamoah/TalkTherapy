@@ -1835,6 +1835,36 @@ judgment call, so it's recorded briefly rather than re-litigated. With TT-7.4a/b
 
 ---
 
+## 2026-08-29 — SCRUM-162 (TT-6.6d): fixed a real PII-enumeration oracle the ticket's own
+additive query change reopened in the generic RequestResource
+
+**Decision**: `RequestService::getRequests()` was changed exactly as the ticket specified — one
+additive `orWhere` block matching `to`/`from` against any of the user's `administeredOrganizations()`
+ids, mirroring the existing `$counsellor` block's shape. Security review then found this newly
+surfaces `organizationMemberInvite`/`organizationMemberApplication` request rows to an org admin
+through the endpoint's generic `RequestResource`, whose `getFrom()`/`getTo()` fall through to the
+full `UserMiniResource` (gender/country/dob) for any plain-`User` party. Since inviting a member
+only requires a valid user id (`InviteOrganizationMemberRequest`'s validation is just
+`exists:users,id` — no prior relationship required), this reopened the *exact* PII-enumeration
+oracle SCRUM-124 already closed for `OrganizationMemberController::invite()`'s own response: create
+an org, get it verified, invite arbitrary/sequential user ids, read each target's PII back via
+`GET /api/requests`. Fixed by adding a narrow, type-scoped projection
+(`isOrgMemberFlowUser()`/`narrowUserProjection()` in `RequestResource.php`) that returns only
+`id`/`fullName`/`username` for the User party of these two request types specifically (except a
+user viewing their own request) — every other request type's `from`/`to` rendering is unchanged.
+Two regression tests added: one pinning the narrowed fields, one confirming an admin of one
+organization never sees a different organization's requests (an adjacent invariant the reviewer
+flagged as untested, though verified correct).
+
+**Why**: this is a real, newly-introduced privacy exposure on a mental-health platform with a
+cheap, narrowly-scoped fix available — CLAUDE.md requires applying a security-engineer finding
+like this, not deferring it, when the fix doesn't require redesigning shared architecture (contrast
+with SCRUM-159's Decision 3, a pre-existing gap deferred to SCRUM-170 because fixing it properly
+would have meant redesigning a guard-action pair used by four endpoints). The narrow, type-scoped
+projection (rather than replacing `RequestResource` with `GetRequestResourceAction`'s full per-type
+dispatch here) keeps the fix inside this ticket's explicit additive-only scope guard — it touches
+only the two newly-surfaced request types' `from`/`to` rendering, not the broader resource-dispatch
+refactor the ticket text explicitly said to leave alone.
 ## 2026-08-29 — SCRUM-159 (TT-6.6a): kept currentCompensation()/currentBillingConfig() as
 compatibility wrappers; trimmed member PII; deferred a pre-existing enumeration gap
 
