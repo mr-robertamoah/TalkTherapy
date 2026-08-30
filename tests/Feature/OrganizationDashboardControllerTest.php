@@ -33,7 +33,30 @@ test('an org admin can load the dashboard for a provider-and-consumer organizati
         ->has('counsellors.data', 1)
         ->has('members.data', 1)
         ->has('requestQueue.data', 1)
+        ->has('admins', 1)
     );
+});
+
+// SCRUM-166 (TT-6.5a2): the admin list is unpaginated (plain array), unlike the lists above --
+// pins that both roles surface correctly for the frontend's owner-only action gating.
+test('the dashboard includes every admin with their role', function () {
+    $organization = Organization::factory()->create(['is_provider' => true, 'verified_at' => now()]);
+    $owner = User::factory()->create();
+    $plainAdmin = User::factory()->create();
+    $organization->admins()->attach($owner->id, ['role' => OrganizationAdminRoleEnum::owner->value]);
+    $organization->admins()->attach($plainAdmin->id, ['role' => OrganizationAdminRoleEnum::admin->value]);
+
+    $this->actingAs($owner);
+
+    $response = $this->get(route('organizations.dashboard', ['organizationId' => $organization->id]));
+
+    $response->assertOk()->assertInertia(function ($page) use ($owner, $plainAdmin) {
+        $page->has('admins', 2);
+
+        $admins = collect($page->toArray()['props']['admins']);
+        expect($admins->firstWhere('id', $owner->id)['role'])->toBe(OrganizationAdminRoleEnum::owner->value);
+        expect($admins->firstWhere('id', $plainAdmin->id)['role'])->toBe(OrganizationAdminRoleEnum::admin->value);
+    });
 });
 
 test('the dashboard omits the counsellors section for a consumer-only organization', function () {

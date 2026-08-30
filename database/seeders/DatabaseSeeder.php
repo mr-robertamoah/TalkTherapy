@@ -865,6 +865,19 @@ class DatabaseSeeder extends Seeder
         ]);
         $organization->admins()->attach($admin->id, ['role' => OrganizationAdminRoleEnum::owner->value]);
 
+        // A second, plain-role admin -- without this, exercising promote/demote/remove or the
+        // last-owner-protection error (SCRUM-166) requires hand-creating an account via tinker
+        // first, contrary to this project's seeding convention.
+        $plainAdmin = User::factory()->create([
+            'firstName' => 'Org',
+            'lastName' => 'DemoPlainAdmin',
+            'email' => 'org.demo.plain.admin@example.com',
+            'username' => 'org_demo_plain_admin',
+            'password' => Hash::make('password'),
+            'email_verified_at' => now(),
+        ]);
+        $organization->admins()->attach($plainAdmin->id, ['role' => OrganizationAdminRoleEnum::admin->value]);
+
         // An already-active affiliation, with agreed compensation, so the counsellors table
         // shows a fully-settled row alongside the pending application below.
         $affiliatedCounsellorUser = User::factory()->create([

@@ -9,6 +9,7 @@ import UpdateOrganizationForm from './Partials/UpdateOrganizationForm.vue';
 import CounsellorsSection from './Partials/CounsellorsSection.vue';
 import MembersSection from './Partials/MembersSection.vue';
 import RequestQueueSection from './Partials/RequestQueueSection.vue';
+import AdminsSection from './Partials/AdminsSection.vue';
 
 const props = defineProps({
     organization: {
@@ -25,6 +26,10 @@ const props = defineProps({
     },
     requestQueue: {
         type: Object,
+        required: true,
+    },
+    admins: {
+        type: Array,
         required: true,
     },
 })
@@ -108,6 +113,14 @@ function onChildAlert(alert) {
                     ref="requestQueueSection"
                     :organization-id="organization.id"
                     :initial-requests="requestQueue"
+                    @alert="onChildAlert"
+                />
+            </div>
+
+            <div class="w-full sm:w-[90%] md:w-[85%] lg:w-[75%] mx-auto sm:px-6 lg:px-8 mt-8">
+                <AdminsSection
+                    :organization-id="organization.id"
+                    :initial-admins="admins"
                     @alert="onChildAlert"
                 />
             </div>
