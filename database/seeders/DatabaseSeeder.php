@@ -898,6 +898,31 @@ class DatabaseSeeder extends Seeder
             'effective_from' => now(),
         ]);
 
+        // A pending compensation-CHANGE negotiation on top of the already-settled compensation
+        // above -- an active affiliation can still have a new proposed change in flight (SCRUM-167),
+        // distinct from the settled amount created just above. Exercises this counsellor's own
+        // accept/reject/counter-offer UI on their my-organizations dashboard.
+        $pendingCompensationChange = new Request([
+            'type' => RequestTypeEnum::organizationCounsellorCompensationChange->value,
+            'status' => RequestStatusEnum::pending->value,
+            'round' => 1,
+            'expires_at' => now()->addDays(7),
+            'data' => [
+                'type' => OrganizationCounsellorCompensationTypeEnum::fixed->value,
+                'amount' => 2500,
+                'currency' => 'USD',
+                // Accept resolves accountability for the accepted terms via this id (see
+                // RespondToOrganizationCounsellorCompensationRequestAction) -- omitting it (as an
+                // earlier version of this seed data did) made "accept" fail on this seeded row
+                // with "the original proposer no longer exists" (QA-caught, SCRUM-167).
+                'proposedById' => $admin->id,
+            ],
+        ]);
+        $pendingCompensationChange->from()->associate($organization);
+        $pendingCompensationChange->to()->associate($affiliatedCounsellor);
+        $pendingCompensationChange->for()->associate($affiliation);
+        $pendingCompensationChange->save();
+
         // A second counsellor with a pending APPLICATION request -- distinct from the affiliated
         // row above, per AC7's "pending Request" vs "pending affiliation" distinction.
         $applicantCounsellorUser = User::factory()->create([

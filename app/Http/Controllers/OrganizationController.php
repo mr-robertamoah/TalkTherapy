@@ -12,6 +12,7 @@ use App\Http\Resources\MyOrganizationMembershipResource;
 use App\Http\Resources\OrganizationCounsellorResource;
 use App\Http\Resources\OrganizationDirectoryResource;
 use App\Http\Resources\OrganizationMemberResource;
+use App\Http\Resources\OrganizationRequestResource;
 use App\Http\Resources\OrganizationResource;
 use App\Http\Resources\RequestResource;
 use App\Models\Organization;
@@ -212,6 +213,42 @@ class OrganizationController extends Controller
             $organizations = OrganizationService::new()->getMyAdministeredOrganizations($request->user());
 
             return MyAdministeredOrganizationResource::collection($organizations);
+        } catch (Throwable $th) {
+            return $this->returnFailure($request, $th);
+        }
+    }
+
+    // Counsellor "my organizations" dashboard (SCRUM-167/TT-6.5b) -- the counsellor-facing
+    // counterpart to SCRUM-165's org admin dashboard() above. Same "never a raw error page on a
+    // browser navigation" pattern, including for the no-counsellor-account case.
+    public function myOrganizationsDashboard(Request $request)
+    {
+        try {
+            $user = $request->user();
+
+            $affiliationsPaginator = OrganizationService::new()->getMyOrganizationCounsellorAffiliations($user);
+            $affiliationsPaginator->setPath(route('organizations.mine.counsellor_affiliations'));
+
+            $requestQueuePaginator = OrganizationService::new()->getMyOrganizationRequestQueue($user);
+            $requestQueuePaginator->setPath(route('organizations.mine.requests'));
+
+            return Inertia::render('Organization/MyOrganizations', [
+                'affiliations' => $this->paginatedResource(MyOrganizationCounsellorAffiliationResource::collection($affiliationsPaginator)),
+                'requestQueue' => $this->paginatedResource(OrganizationRequestResource::collection($requestQueuePaginator)),
+            ]);
+        } catch (Throwable $th) {
+            $message = $this->messageFor($th, $this->statusFor($th));
+
+            return Redirect::route('home')->withErrors(['alert' => $message]);
+        }
+    }
+
+    public function myOrganizationRequestQueue(Request $request)
+    {
+        try {
+            $requests = OrganizationService::new()->getMyOrganizationRequestQueue($request->user());
+
+            return OrganizationRequestResource::collection($requests);
         } catch (Throwable $th) {
             return $this->returnFailure($request, $th);
         }

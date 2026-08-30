@@ -23,3 +23,6 @@ yarn-error.log
 supervisor.sock
 supervisord.log
 supervisord.pid
+
+# Playwright MCP scratch output (screenshots/snapshots from browser QA sessions)
+/.playwright-mcp
