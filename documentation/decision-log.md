@@ -2417,3 +2417,53 @@ questioning whether frontend-only validation was ever sufficient. Worth keeping 
 reminder that "the frontend now validates X" is never itself a complete answer to "is X validated"
 -- the backend question has to be asked explicitly, every time, not inferred from the frontend
 fix being correct.
+
+---
+
+## 2026-08-30 — SCRUM-172: search-and-select for org invite/add-admin flows; a new shared
+`SearchSelect.vue` component, and a reviewer-caught `id`-fallthrough regression worth remembering
+
+**Decision**: replaced the raw numeric-id `TextInput`s in `CounsellorsSection.vue` (invite
+counsellor), `MembersSection.vue` (invite member), and `AdminsSection.vue` (add co-admin) with a
+new, reusable `SearchSelect.vue` component -- debounced search, click-to-select, "change" to clear,
+closes on outside click. No backend work was needed: this reuses the two already-live,
+already-tested search endpoints (`api.users`/`api.counsellors`) that `AddGuardianModal.vue`/
+`DiscussionModal.vue`/`GroupTherapyFormModal.vue` already search against, confirmed via the
+2026-08-30 audit that re-scoped this ticket down from its original (assumed-bigger) footprint. The
+existing card-based bespoke search UIs in those three flows were deliberately left untouched
+rather than folded into `SearchSelect` -- they're a different UX (multi-select with manual
+pagination) serving a different need, and forcing them onto this component would have been scope
+creep beyond what the ticket asked for.
+
+**Reviewer-caught regression, fixed before commit**: the first version of `SearchSelect.vue` didn't
+declare an `id` prop, so `<SearchSelect id="user" ...>` at each call site put `id="user"` on the
+component's own wrapper `<div>` (Vue's default attribute fallthrough target) instead of on the
+actual `<input>` nested inside it. The visible symptom was nothing -- the field still worked by
+mouse -- but every `<InputLabel for="user">` pairing silently stopped associating with a focusable
+control, a real accessibility regression invisible to manual click-through testing. Fixed by
+declaring `id` as an explicit prop (removing it from the automatic fallthrough set) and forwarding
+it explicitly onto the inner `TextInput`, then confirmed via `document.querySelector('#user')` in a
+live browser session that the id now resolves to the `<input>` element itself.
+
+**Reviewer-caught gap, fixed before commit**: the search request had no `.catch()`, so a failed or
+401'd request (e.g. an expired Sanctum session mid-session) would silently do nothing visible and
+throw an unhandled promise rejection -- every comparable existing search flow in this codebase
+already has one. Added, along with a request-token guard against a slower, earlier query's response
+landing after a faster, later one's and clobbering it (the 400ms debounce rate-limits when requests
+fire, not the order they resolve in) -- a real, if low-probability, gap worth closing given this
+component is meant to become the org dashboard's shared search-and-select pattern going forward.
+
+**Deferred, not dropped**: the reviewer and security-engineer both flagged non-blocking items
+that didn't need to hold up this ticket -- `SearchSelect` only ever fetches page 1 (both backend
+endpoints paginate, so a common search term can silently truncate with no "more results" signal),
+no keyboard-only selection support (mouse/click only), and the pre-existing, unworsened lack of
+throttle middleware on `api.users`/`api.counsellors`. Filed as SCRUM-177 rather than silently
+dropped, per this project's rule against ignoring review findings without a documented reason.
+
+**Why**: recorded because the `id`-fallthrough bug is a good concrete example of why "I clicked
+through it in the browser and it worked" doesn't catch every regression a code reviewer will --
+label/input association has zero visible effect on a mouse-driven manual test, and would only have
+surfaced as a real accessibility complaint (or an automated a11y check this project doesn't have)
+much later. Worth remembering for any future shared Vue component that wraps a native form control:
+forward `id` explicitly rather than relying on default attribute fallthrough once the wrapper isn't
+itself a single native element.

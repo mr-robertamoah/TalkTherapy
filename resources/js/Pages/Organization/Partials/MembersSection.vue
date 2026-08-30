@@ -3,12 +3,12 @@ import { ref } from 'vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import Modal from '@/Components/Modal.vue';
 import InputLabel from '@/Components/InputLabel.vue';
-import TextInput from '@/Components/TextInput.vue';
 import InputError from '@/Components/InputError.vue';
 import Checkbox from '@/Components/Checkbox.vue';
 import FormLoader from '@/Components/FormLoader.vue';
 import SecondaryButton from '@/Components/SecondaryButton.vue';
 import Pagination from '@/Components/Pagination.vue';
+import SearchSelect from '@/Components/SearchSelect.vue';
 import useErrorHandler from '@/Composables/useErrorHandler';
 
 const props = defineProps({
@@ -33,7 +33,7 @@ const loadingPage = ref(false)
 
 const showInviteModal = ref(false)
 const inviting = ref(false)
-const userIdInput = ref('')
+const selectedUser = ref(null)
 const inviteError = ref('')
 
 const billingConfigMember = ref(null)
@@ -75,13 +75,13 @@ async function invite() {
     inviting.value = true
 
     await axios.post(route('organizations.members.invite', { organizationId: props.organizationId }), {
-        userId: userIdInput.value,
+        userId: selectedUser.value?.id,
     })
         .then(() => {
             emit('alert', { type: 'success', message: 'Invite sent.' })
             emit('invited')
             showInviteModal.value = false
-            userIdInput.value = ''
+            selectedUser.value = null
         })
         .catch((err) => {
             inviteError.value = err.response?.data?.message ?? 'Could not send the invite.'
@@ -166,18 +166,24 @@ async function saveBillingConfig() {
         </div>
     </div>
 
-    <Modal :show="showInviteModal" @close="() => showInviteModal = false">
+    <Modal :show="showInviteModal" @close="() => { showInviteModal = false; selectedUser = null }">
         <div class="p-6">
             <div class="text-lg font-bold text-gray-900 mb-4">Invite a Member</div>
             <FormLoader :show="inviting" text="sending invite" />
 
             <form @submit.prevent="invite">
-                <InputLabel for="userId" value="User Id" />
-                <TextInput id="userId" type="text" class="mt-1 block w-full" v-model="userIdInput" />
+                <InputLabel for="user" value="User" />
+                <SearchSelect
+                    id="user"
+                    v-model="selectedUser"
+                    search-route="api.users"
+                    placeholder="search for user by name or username"
+                    :disabled="inviting"
+                />
                 <InputError class="mt-2" :message="inviteError" />
 
                 <div class="flex items-center justify-end mt-4">
-                    <PrimaryButton :disabled="inviting || !userIdInput">send invite</PrimaryButton>
+                    <PrimaryButton :disabled="inviting || !selectedUser">send invite</PrimaryButton>
                 </div>
             </form>
         </div>
