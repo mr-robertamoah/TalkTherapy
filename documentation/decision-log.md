@@ -1835,6 +1835,63 @@ judgment call, so it's recorded briefly rather than re-litigated. With TT-7.4a/b
 
 ---
 
+## 2026-08-29 — SCRUM-159 (TT-6.6a): kept currentCompensation()/currentBillingConfig() as
+compatibility wrappers; trimmed member PII; deferred a pre-existing enumeration gap
+
+**Decision 1 — `OrganizationCounsellor::currentCompensation()`/`OrganizationMember::currentBillingConfig()`
+converted to `latestOfMany()`-backed relations, but the old method names kept as thin wrappers**
+around new `latestCompensation()`/`latestBillingConfig()` relation methods, rather than renaming
+every call site to property access. ~8 existing test files and one production call site
+(`EnsureOrganizationCanPayForModelAction.php`) all call these as methods expecting a model back;
+renaming them all to satisfy the new eager-loadable-relation requirement would have been a much
+larger, purely mechanical diff for no behavioral gain. The composite tie-break is
+`ofMany(['effective_from' => 'max', 'id' => 'max'])`, matching the existing
+`orderByDesc('effective_from')->orderByDesc('id')` ordering exactly.
+
+**Why**: architect's finding (from the earlier TT-6.5/6.6 restructuring pass) was that these two
+methods would N+1 the first time they're used across a paginated collection — the fix required is
+"make it eager-loadable", not "rename the public API". Reviewer confirmed this is a reasonable,
+low-risk shim, not a duplicate-API smell worth blocking on. Reviewer also flagged (not a blocker)
+that unlike the old always-re-queried form, the relation is now cached per-instance — a comment
+was added on both wrapper methods warning that a write-then-reread on the same instance now needs
+an explicit `refresh()`.
+
+**Decision 2 — `OrganizationMemberResource`'s `user` field is a narrow inline projection
+(`id`/`fullName`/`username`), not the full `UserMiniResource`**, even though `UserMiniResource` is
+the codebase's default "mini" shape for a `User`. Security review caught that reusing it here would
+regress a decision already made and documented four lines above it in the same file
+(`OrganizationMemberController.php`'s `invite()` deliberately excludes gender/country/dob per
+SCRUM-124, since "an ordinary User isn't meant to be publicly/cross-org discoverable"): an org
+admin configuring a member's billing mode has no legitimate need for that member's gender, country,
+or date of birth. Fixed before merge; a regression test
+(`'listing organization members does not leak the member's gender, country, or dob'`) pins the
+narrower shape. Left `OrganizationCounsellorResource`'s nested `counsellor.user` (via
+`CounsellorMiniResource`) unchanged, since counsellor profiles are already treated as more broadly
+discoverable elsewhere in this codebase by deliberate design (same file's own comment) — trimming
+`CounsellorMiniResource` itself would be a much wider, out-of-scope change affecting every other
+consumer of that shared resource.
+
+**Why**: a real, newly-introduced privacy exposure on a mental-health platform is a required fix,
+not something to defer — CLAUDE.md is explicit that a security-engineer finding must be applied or
+explicitly flagged with a follow-up ticket, and this one had a cheap, scoped fix available.
+
+**Decision 3 (deferred, not fixed) — the pre-existing 404-vs-403 organization-existence
+enumeration oracle** (`EnsureOrganizationExistsAction` vs. `EnsureUserIsOrganizationAdminAction`
+return distinguishable statuses for "org doesn't exist" vs. "org exists, caller isn't its admin",
+and the route only requires `auth`, not org-specific standing) was **not** fixed in this ticket.
+It already existed on `OrganizationController::show`/`update` before this ticket; SCRUM-159 extends
+the same weakness to the two new list endpoints rather than introducing it fresh. Filed as
+**SCRUM-170** (Low priority) rather than fixed inline, since fixing it properly means redesigning
+the shared guard-action pair used by four endpoints (two pre-existing, two new), which is a
+larger, more architecturally-invasive change than this ticket's scope, and risks conflating an
+existing-and-accepted-until-now gap with new work. A regression test
+(`'a nonexistent organization and a real one the caller cannot administer return different
+statuses (known gap)'`) pins the current (soon-to-change) behavior so SCRUM-170 has a concrete
+test to flip.
+
+**Why**: CLAUDE.md permits deferring a finding "with a follow-up ticket" when it isn't introduced
+fresh by the current change and fixing it properly is out of proportion to the ticket at hand —
+this is exactly that case, unlike Decision 2 above which was cheap and newly-introduced.
 ## 2026-08-29 — TT-6.5 (Organizations frontend): restructured after discovering real backend gaps, three product decisions made
 
 **Decision**: TT-6.5 (SCRUM-111's frontend work) went through the full `/start-feature`
