@@ -2348,3 +2348,72 @@ frontend (TT-6.5a/a2/b/c/d) is now complete. The reviewer finding is worth keepi
 example of *why* this project prefers styling `<Link>` directly over wrapping button components:
 the wrapped pattern silently produces invalid HTML that a visual/functional test alone won't
 catch (the link still rendered and navigated correctly either way).
+
+---
+
+## 2026-08-30 — Bugfix batch: org dashboard frontend polish (TODO items); a genuine browser
+regex-compilation gotcha, and a user-caught reminder that frontend validation is never sufficient
+alone
+
+**Decision**: closed out several small items from a product TODO note, all scoped to the org
+admin dashboard: currency fields changed from free-text to a `Select` dropdown sourced from
+`config('currencies.supported')` (matching the existing pattern in `UpdateCounsellorPricing.vue`);
+amount/percentage/expiry number inputs got `min`/`max`/`step` matching the backend's own validation
+ranges; remaining link-styled buttons (`edit billing`, `counter-offer`) became real button
+components; "load more" (accumulate-on-scroll) pagination on the three org-admin-dashboard list
+sections (`CounsellorsSection.vue`, `MembersSection.vue`, `RequestQueueSection.vue`) was replaced
+with real numbered pagination via a new shared `Pagination.vue` component, scoped to just this
+dashboard per the user's own explicit clarification when this batch was picked up (not the
+counsellor/member "my organizations" equivalents).
+
+**A genuine, non-obvious browser bug found and fixed while adding phone format validation**:
+naively writing an HTML `pattern` attribute like `[0-9+\-\s()]{7,}` compiled and validated
+correctly when tested via `new RegExp(str, 'u')` in a JS console, but silently validated
+*nothing* when actually used as an `<input pattern>` in a real browser — every value, including
+obviously-invalid ones, passed `checkValidity()`. Root cause: modern Chromium compiles the HTML
+`pattern` attribute using regex `v`-mode (`unicodeSets`), a stricter grammar than `u`-mode where
+an unescaped `-`, `(`, or `)` inside a character class is a *compile error* — and per the HTML
+spec, a pattern that fails to compile is treated as "no constraint" (always valid), with zero
+visible symptom short of manually testing `checkValidity()`. Fixed by escaping every special
+character (`[0-9+\s\(\)\-\.]{7,}`), verified empirically against a live browser rather than
+trusted from spec-reading, since the discrepancy between "compiles fine via `new RegExp(str,
+'u')`" and "silently disables `pattern` validation" is exactly the kind of gap that's easy to miss
+by reasoning alone.
+
+**Reviewer-caught regression from that same fix**: the escaped pattern (before adding `.`) rejected
+dot-separated phone formats (e.g. `270.271.6592`), which Faker's default `phoneNumber()` — used by
+every seeded organization — frequently produces. Since the phone field is pre-filled on modal open
+and native HTML5 constraint validation blocks the *entire form* if any field is invalid, this
+would have silently blocked editing ANY field (not just phone) on an org whose stored phone
+happened to be dot-formatted, with no visible error beyond a browser validation bubble on a field
+the admin never touched. Fixed by adding `.` to the allowed character set (verified via Node's
+`v`-flag regex support, then confirmed against a live seeded org with its phone deliberately set to
+a dot-format).
+
+**User-caught gap this session should have caught itself**: after fixing the frontend phone
+pattern, testing (deliberately, to verify the fix) revealed that "abc" had been saved as a real
+organization's phone number earlier in this session -- while the frontend pattern bug above was
+still unfixed. The user pointed out, correctly, that this exposed a *separate*, more fundamental
+problem: `UpdateOrganizationRequest`/`CreateOrganizationRequest`'s `phone` rule was (and had
+always been) just `['string', 'max:255']` -- zero format validation server-side, meaning ANY
+client that bypasses or lacks JavaScript (a raw API call, a disabled-JS browser, or simply a
+frontend bug like the one above) could always have saved a non-phone value, regardless of whether
+the frontend pattern was correct. Fixed by adding matching `regex:/^[0-9+\s().-]{7,20}$/`
+validation to both request classes -- the frontend pattern is now a UX convenience, with the
+backend as the actual enforcement boundary, per this project's established defense-in-depth
+convention elsewhere (e.g. currency, compensation amounts).
+
+**Other reviewer-required fix**: added test coverage (`tests/Unit/SupportedCurrencyValidationTest.php`)
+for the `CreateOrganizationCounsellorCompensationRequest` currency tightening (`'string','size:3'`
+→ `Rule::in(config('currencies.supported'))`) from earlier in this same batch, which had shipped
+without a test.
+
+**Why**: recorded in detail because this is a genuine "process worked as intended" example within
+a single small bugfix batch -- a real browser gotcha was found and fixed, a reviewer pass caught a
+real regression in that same fix before it shipped, and the user's own manual observation caught a
+more fundamental gap (missing backend validation) that neither the implementation nor the review
+pass had surfaced, since both were focused on the frontend pattern's own correctness rather than
+questioning whether frontend-only validation was ever sufficient. Worth keeping as a concrete
+reminder that "the frontend now validates X" is never itself a complete answer to "is X validated"
+-- the backend question has to be asked explicitly, every time, not inferred from the frontend
+fix being correct.

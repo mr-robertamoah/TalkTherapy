@@ -1,7 +1,9 @@
 <?php
 
+use App\Enums\OrganizationCounsellorCompensationTypeEnum;
 use App\Enums\TherapyPaymentTypeEnum;
 use App\Http\Requests\CreateGroupTherapyRequest;
+use App\Http\Requests\CreateOrganizationCounsellorCompensationRequest;
 use App\Http\Requests\CreateTherapyRequest;
 use App\Http\Requests\UpdateGroupTherapyRequest;
 use App\Http\Requests\UpdateTherapyRequest;
@@ -76,4 +78,23 @@ test('the supported currency list is configurable via env, not hardcoded', funct
     $validator = Validator::make($input, ['currency' => currencyRulesFor(CreateTherapyRequest::class, $input)['currency']]);
 
     expect($validator->fails())->toBeFalse('expected ABC to pass once added to the supported list');
+});
+
+// SCRUM: CreateOrganizationCounsellorCompensationRequest's currency was previously just
+// 'string','size:3' -- now validated against the same config('currencies.supported') list as
+// the therapy request classes above (reviewer-flagged gap in coverage for that tightening).
+test('a currency outside the supported list is rejected on the compensation request', function () {
+    $input = ['type' => OrganizationCounsellorCompensationTypeEnum::fixed->value, 'amount' => 100, 'currency' => 'XYZ'];
+    $validator = Validator::make($input, currencyRulesFor(CreateOrganizationCounsellorCompensationRequest::class, $input));
+
+    expect($validator->fails())->toBeTrue('expected the compensation request to reject an unsupported currency');
+    expect($validator->errors()->has('currency'))->toBeTrue();
+});
+
+test('a currency from the supported list passes on the compensation request', function () {
+    $supported = config('currencies.supported');
+    $input = ['type' => OrganizationCounsellorCompensationTypeEnum::fixed->value, 'amount' => 100, 'currency' => $supported[0]];
+    $validator = Validator::make($input, currencyRulesFor(CreateOrganizationCounsellorCompensationRequest::class, $input));
+
+    expect($validator->fails())->toBeFalse("expected the compensation request to accept {$supported[0]}");
 });

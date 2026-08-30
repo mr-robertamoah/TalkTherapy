@@ -6,6 +6,7 @@ import InputLabel from '@/Components/InputLabel.vue';
 import TextInput from '@/Components/TextInput.vue';
 import InputError from '@/Components/InputError.vue';
 import FormLoader from '@/Components/FormLoader.vue';
+import Pagination from '@/Components/Pagination.vue';
 
 const props = defineProps({
     organizationId: {
@@ -23,8 +24,8 @@ const props = defineProps({
 const emit = defineEmits(['alert', 'invited'])
 
 const counsellors = ref([...props.initialCounsellors.data])
-const nextPageUrl = ref(props.initialCounsellors.links?.next ?? null)
-const loadingMore = ref(false)
+const meta = ref(props.initialCounsellors.meta)
+const loadingPage = ref(false)
 const showInviteModal = ref(false)
 const inviting = ref(false)
 const counsellorIdInput = ref('')
@@ -47,17 +48,17 @@ function compensationSummary(counsellor) {
     return '--'
 }
 
-async function loadMore() {
-    if (!nextPageUrl.value) return
+async function goToPage(url) {
+    if (!url) return
 
-    loadingMore.value = true
-    await axios.get(nextPageUrl.value)
+    loadingPage.value = true
+    await axios.get(url)
         .then((res) => {
-            counsellors.value = [...counsellors.value, ...res.data.data]
-            nextPageUrl.value = res.data.links?.next ?? null
+            counsellors.value = [...res.data.data]
+            meta.value = res.data.meta
         })
         .finally(() => {
-            loadingMore.value = false
+            loadingPage.value = false
         })
 }
 
@@ -114,11 +115,8 @@ async function invite() {
                     </tbody>
                 </table>
 
-                <div v-if="nextPageUrl" class="text-center mt-4">
-                    <button @click="loadMore" :disabled="loadingMore" class="text-sm text-blue-600 hover:underline">
-                        {{ loadingMore ? 'loading...' : 'load more' }}
-                    </button>
-                </div>
+                <div v-if="loadingPage" class="text-center mt-4 text-sm text-gray-500">loading...</div>
+                <Pagination v-else :meta="meta" @navigate="goToPage" />
             </div>
         </div>
     </div>

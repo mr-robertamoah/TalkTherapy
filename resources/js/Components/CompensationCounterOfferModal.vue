@@ -1,12 +1,20 @@
 <script setup>
 import { ref, watch } from 'vue';
+import { usePage } from '@inertiajs/vue3';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import Modal from '@/Components/Modal.vue';
 import InputLabel from '@/Components/InputLabel.vue';
 import TextInput from '@/Components/TextInput.vue';
 import InputError from '@/Components/InputError.vue';
 import FormLoader from '@/Components/FormLoader.vue';
+import Select from '@/Components/Select.vue';
 import useErrorHandler from '@/Composables/useErrorHandler';
+
+// Sourced from config('currencies.supported') (shared via Inertia), not a free-text field --
+// matches this codebase's existing precedent (UpdateCounsellorPricing.vue, GroupTherapyFormModal.vue).
+const supportedCurrencies = usePage().props.supportedCurrencies ?? []
+const defaultCurrency = supportedCurrencies.includes('USD') ? 'USD' : (supportedCurrencies[0] ?? '')
+const currencyOptions = supportedCurrencies.map(code => ({ name: code, value: code }))
 
 // Shared by both sides of a compensation negotiation -- Organization/Partials/RequestQueueSection.vue
 // (an org admin countering a counsellor's proposal) and Organization/Partials/MyOrganizationRequestQueueSection.vue
@@ -26,7 +34,7 @@ const errors = ref({})
 const sending = ref(false)
 
 function defaultForm() {
-    return { type: 'FIXED', amount: '', currency: 'USD', percentage: '', basis: 'COUNSELLOR_RATE', expiryDays: '' }
+    return { type: 'FIXED', amount: '', currency: defaultCurrency, percentage: '', basis: 'COUNSELLOR_RATE', expiryDays: '' }
 }
 
 watch(() => props.request, () => {
@@ -100,12 +108,12 @@ async function send() {
                 <template v-if="form.type === 'FIXED'">
                     <div>
                         <InputLabel for="amount" value="Amount" />
-                        <TextInput id="amount" type="number" class="mt-1 block w-full" v-model="form.amount" />
+                        <TextInput id="amount" type="number" min="1" step="1" class="mt-1 block w-full" v-model="form.amount" />
                         <InputError class="mt-2" :message="errors.amount" />
                     </div>
                     <div>
                         <InputLabel for="currency" value="Currency" />
-                        <TextInput id="currency" type="text" class="mt-1 block w-full" v-model="form.currency" />
+                        <Select id="currency" class="mt-1 block w-full" v-model="form.currency" :options="currencyOptions" />
                         <InputError class="mt-2" :message="errors.currency" />
                     </div>
                 </template>
@@ -113,7 +121,7 @@ async function send() {
                 <template v-if="form.type === 'PERCENTAGE'">
                     <div>
                         <InputLabel for="percentage" value="Percentage" />
-                        <TextInput id="percentage" type="number" class="mt-1 block w-full" v-model="form.percentage" />
+                        <TextInput id="percentage" type="number" min="1" max="100" step="1" class="mt-1 block w-full" v-model="form.percentage" />
                         <InputError class="mt-2" :message="errors.percentage" />
                     </div>
                     <div>
@@ -128,7 +136,7 @@ async function send() {
 
                 <div>
                     <InputLabel for="expiryDays" value="Expiry (days, optional)" />
-                    <TextInput id="expiryDays" type="number" class="mt-1 block w-full" v-model="form.expiryDays" />
+                    <TextInput id="expiryDays" type="number" min="1" max="30" step="1" class="mt-1 block w-full" v-model="form.expiryDays" />
                     <InputError class="mt-2" :message="errors.expiryDays" />
                 </div>
 

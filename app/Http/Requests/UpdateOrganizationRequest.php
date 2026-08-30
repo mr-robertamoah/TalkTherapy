@@ -33,7 +33,11 @@ class UpdateOrganizationRequest extends FormRequest
             'registrationNumber' => ['sometimes', 'string', 'max:255', Rule::unique('organizations', 'registration_number')->ignore($this->route('organizationId'))],
             'description' => ['sometimes', 'string'],
             'email' => ['sometimes', 'email', 'max:255'],
-            'phone' => ['sometimes', 'string', 'max:255'],
+            // Matches the frontend's own pattern (UpdateOrganizationForm.vue) -- client-side
+            // validation is a UX convenience, never a substitute for server-side enforcement
+            // (confirmed the gap directly: without this, a client bypassing/lacking JS could
+            // previously save a phone value like "abc").
+            'phone' => ['sometimes', 'string', 'max:255', 'regex:/^[0-9+\s().-]{7,20}$/'],
             'isProvider' => ['sometimes', 'boolean'],
             'isConsumer' => ['sometimes', 'boolean'],
             'selfApplyEnabled' => ['sometimes', 'boolean'],

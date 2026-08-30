@@ -91,13 +91,21 @@ function submit() {
 
                 <div>
                     <InputLabel for="email" value="Email" />
-                    <TextInput id="email" type="email" class="mt-1 block w-full" v-model="form.email" />
+                    <TextInput id="email" type="email" maxlength="255" class="mt-1 block w-full" v-model="form.email" />
                     <InputError class="mt-2" :message="form.errors.email" />
                 </div>
 
                 <div>
                     <InputLabel for="phone" value="Phone" />
-                    <TextInput id="phone" type="text" class="mt-1 block w-full" v-model="form.phone" />
+                    <TextInput
+                        id="phone"
+                        type="tel"
+                        maxlength="255"
+                        pattern="[0-9+\s\(\)\-\.]{7,}"
+                        title="Use digits, spaces, and + - . ( ) only"
+                        class="mt-1 block w-full"
+                        v-model="form.phone"
+                    />
                     <InputError class="mt-2" :message="form.errors.phone" />
                 </div>
 
