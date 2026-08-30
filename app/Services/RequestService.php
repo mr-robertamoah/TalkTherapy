@@ -13,6 +13,7 @@ use App\Enums\PaginationEnum;
 use App\Enums\RequestTypeEnum;
 use App\Http\Resources\AdminCounsellorVerificationRequestResource;
 use App\Http\Resources\RequestResource;
+use App\Models\Organization;
 use App\Models\Request;
 use App\Models\User;
 
@@ -53,6 +54,32 @@ class RequestService extends Service
             });
         });
 
+        // TT-6.6d (SCRUM-162): org-directed requests (counsellor applications, member
+        // applications, invites) address to/from as the Organization itself, not the admin --
+        // an org admin has no way to list "pending for my org" without this. Additive to the
+        // listing query only, mirroring the $counsellor block above but matching any one of the
+        // admin's organizations rather than a single model instance.
+        $administeredOrganizationIds = $user->administeredOrganizations()->pluck('organizations.id');
+        $query->when($administeredOrganizationIds->isNotEmpty(), function ($query) use ($administeredOrganizationIds, $status) {
+
+            $query->orWhere(function ($query) use ($status, $administeredOrganizationIds) {
+                $query->where('from_type', Organization::class)->whereIn('from_id', $administeredOrganizationIds);
+                if ($status) {
+                    $query->where('status', $status);
+                }
+            });
+            $query->orWhere(function ($query) use ($status, $administeredOrganizationIds) {
+                $query->where('to_type', Organization::class)->whereIn('to_id', $administeredOrganizationIds);
+                if ($status) {
+                    $query->where('status', $status);
+                }
+            });
+        });
+
+        // Not the actual enforcement -- SQL AND-binds-tighter-than-OR precedence means this only
+        // attaches to the last orWhere'd branch above. Each branch already applies its own
+        // internal `if ($status)` filter (required, not redundant); this is just a no-op safety
+        // net, reviewed and confirmed correct during SCRUM-162.
         if ($status) {
             $query->where('status', $status);
         }

@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\OrganizationMemberStatusEnum;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class OrganizationMember extends Model
 {
@@ -37,12 +38,19 @@ class OrganizationMember extends Model
         return $this->hasMany(OrganizationMemberBillingConfig::class);
     }
 
-    // Latest by effective_from, tie-broken by id -- mirrors OrganizationCounsellor::currentCompensation().
+    // Latest by effective_from, tie-broken by id -- mirrors OrganizationCounsellor::latestCompensation().
+    // An eager-loadable relation so a paginated list of members can load this without N+1 (SCRUM-159).
+    public function latestBillingConfig(): HasOne
+    {
+        return $this->hasOne(OrganizationMemberBillingConfig::class)
+            ->ofMany(['effective_from' => 'max', 'id' => 'max']);
+    }
+
+    // Unlike the old orderByDesc()->first() form, this is now a cached relation -- if you write
+    // a new billing config row and then call this again on the same instance, call refresh()
+    // (or unset($this->latestBillingConfig)) first, or you'll get the stale cached value.
     public function currentBillingConfig(): ?OrganizationMemberBillingConfig
     {
-        return $this->billingConfigs()
-            ->orderByDesc('effective_from')
-            ->orderByDesc('id')
-            ->first();
+        return $this->latestBillingConfig;
     }
 }
