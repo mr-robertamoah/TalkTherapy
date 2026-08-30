@@ -91,18 +91,45 @@ test('a user with no admin relationship to the organization cannot list its affi
     $response->assertStatus(403);
 });
 
-// Security review (SCRUM-159, F1): a nonexistent organizationId (404) and an existing org the
-// caller isn't an admin of (403) are currently distinguishable, letting any authenticated user
-// enumerate real organization IDs. Pre-existing gap shared with organizations.show/update
-// (deliberately not fixed by this ticket -- see decision-log), pinned here as a baseline so the
-// follow-up ticket has a concrete regression to change.
-test('a nonexistent organization and a real one the caller cannot administer return different statuses (known gap)', function () {
+// SCRUM-170: a nonexistent organizationId and an existing org the caller isn't an admin of
+// previously returned distinguishable statuses (404 vs 403), letting any authenticated user
+// enumerate real organization IDs platform-wide. Both must now return the same status and
+// message, across every admin-gated organization GET/PATCH endpoint sharing this guard.
+test('a nonexistent organization and a real one the caller cannot administer return the same status', function () {
     $organization = Organization::factory()->create(['is_provider' => true, 'is_consumer' => true, 'verified_at' => now()]);
     $outsider = User::factory()->create();
     $this->actingAs($outsider);
 
-    $this->getJson('/organizations/999999/members')->assertStatus(404);
-    $this->getJson("/organizations/{$organization->id}/members")->assertStatus(403);
+    $endpoints = [
+        ['getJson', '/organizations/999999'],
+        ['getJson', "/organizations/{$organization->id}"],
+        ['getJson', '/organizations/999999/members'],
+        ['getJson', "/organizations/{$organization->id}/members"],
+        ['getJson', '/organizations/999999/counsellors'],
+        ['getJson', "/organizations/{$organization->id}/counsellors"],
+        ['getJson', '/organizations/999999/requests'],
+        ['getJson', "/organizations/{$organization->id}/requests"],
+    ];
+
+    foreach (array_chunk($endpoints, 2) as [$fake, $real]) {
+        $fakeResponse = $this->{$fake[0]}($fake[1]);
+        $realResponse = $this->{$real[0]}($real[1]);
+
+        expect($fakeResponse->getStatusCode())->toBe($realResponse->getStatusCode());
+        expect($fakeResponse->json('message'))->toBe($realResponse->json('message'));
+    }
+});
+
+test('updating a nonexistent organization and a real one the caller cannot administer return the same status', function () {
+    $organization = Organization::factory()->create(['is_provider' => true, 'is_consumer' => true, 'verified_at' => now()]);
+    $outsider = User::factory()->create();
+    $this->actingAs($outsider);
+
+    $fakeResponse = $this->patchJson('/organizations/999999', ['description' => 'x']);
+    $realResponse = $this->patchJson("/organizations/{$organization->id}", ['description' => 'x']);
+
+    expect($fakeResponse->getStatusCode())->toBe($realResponse->getStatusCode());
+    expect($fakeResponse->json('message'))->toBe($realResponse->json('message'));
 });
 
 test('a guest cannot list an organization\'s members or affiliated counsellors', function () {

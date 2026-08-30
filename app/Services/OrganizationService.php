@@ -4,7 +4,6 @@ namespace App\Services;
 
 use App\Actions\Organization\CreateOrganizationAction;
 use App\Actions\Organization\EnsureOrganizationDataIsValidAction;
-use App\Actions\Organization\EnsureOrganizationExistsAction;
 use App\Actions\Organization\EnsureUserIsOrganizationAdminAction;
 use App\Actions\Organization\GetMyAdministeredOrganizationsAction;
 use App\Actions\Organization\GetMyOrganizationCounsellorAffiliationsAction;
@@ -32,8 +31,9 @@ class OrganizationService extends Service
 
     public function updateOrganization(OrganizationDTO $dto): Organization
     {
-        EnsureOrganizationExistsAction::new()->execute($dto);
-
+        // SCRUM-170: no preceding EnsureOrganizationExistsAction here -- that would throw a
+        // distinct 404 before EnsureUserIsOrganizationAdminAction's own 403, reopening the
+        // existence-enumeration oracle that action's own null-organization check now closes.
         EnsureUserIsOrganizationAdminAction::new()->execute($dto);
 
         EnsureOrganizationDataIsValidAction::new()->execute($dto);
@@ -47,8 +47,7 @@ class OrganizationService extends Service
     // writes.
     public function getOrganization(OrganizationDTO $dto): Organization
     {
-        EnsureOrganizationExistsAction::new()->execute($dto);
-
+        // SCRUM-170: see the comment on updateOrganization() above.
         EnsureUserIsOrganizationAdminAction::new()->execute($dto);
 
         return $dto->organization;
@@ -58,8 +57,7 @@ class OrganizationService extends Service
     // aren't in a position to browse everyone else affiliated with the org via this endpoint.
     public function getOrganizationMembers(OrganizationDTO $dto): LengthAwarePaginator
     {
-        EnsureOrganizationExistsAction::new()->execute($dto);
-
+        // SCRUM-170: see the comment on updateOrganization() above.
         EnsureUserIsOrganizationAdminAction::new()->execute($dto);
 
         return GetOrganizationMembersAction::new()->execute($dto);
@@ -67,8 +65,7 @@ class OrganizationService extends Service
 
     public function getOrganizationCounsellors(OrganizationDTO $dto): LengthAwarePaginator
     {
-        EnsureOrganizationExistsAction::new()->execute($dto);
-
+        // SCRUM-170: see the comment on updateOrganization() above.
         EnsureUserIsOrganizationAdminAction::new()->execute($dto);
 
         return GetOrganizationCounsellorsAction::new()->execute($dto);
@@ -78,8 +75,9 @@ class OrganizationService extends Service
     // queue, TT-6.6d) -- admin-only, same guard as the lists above.
     public function getOrganizationRequestQueue(OrganizationDTO $dto): LengthAwarePaginator
     {
-        EnsureOrganizationExistsAction::new()->execute($dto);
-
+        // SCRUM-170: see the comment on updateOrganization() above -- this method shares the
+        // exact same pre-fix pattern as the ticket's 4 named endpoints, even though it wasn't
+        // itself named there.
         EnsureUserIsOrganizationAdminAction::new()->execute($dto);
 
         return GetOrganizationRequestQueueAction::new()->execute($dto);

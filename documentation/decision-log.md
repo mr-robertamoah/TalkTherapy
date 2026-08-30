@@ -2523,3 +2523,65 @@ A pattern worth watching for: whenever a fix introduces a second async operation
 UI-repeatable action (a button that can be clicked more than once before the first call resolves),
 ask explicitly "what happens on a second click before the first resolves" as its own question,
 separate from "what happens if responses arrive out of order."
+
+---
+
+## 2026-08-30 — SCRUM-171: the ticket's own premise didn't match the codebase -- a reviewer catch
+that changed the fix from "close a data-integrity bug" to "make a known no-op honest," with the
+user explicitly choosing to make it a real, app-wide behavior change
+
+**What the ticket claimed**: responding to an already-decided Request (e.g. a second, slower
+responder) would "silently succeed and flip the already-rejected request's status back to
+ACCEPTED" -- a data-integrity bug, reproduced via tinker + a second `requests.respond` call.
+
+**What was actually true**: every one of the 9 `RespondTo*RequestAction` classes dispatched from
+`RespondToRequestAction` already re-checks the target Request's status under a `DB::transaction` +
+`lockForUpdate()`, and silently no-ops (returns the request *unchanged*) if it's no longer
+PENDING -- this was built and deliberately tested as SCRUM-80 (originally just for group-therapy
+membership) and extended to the other four/five action types as SCRUM-91, with
+`tests/Unit/RespondToRequestActionIdempotencyTest.php`'s own header comment stating the intent
+outright: a duplicate/repeated respond call "must not re-run side effects." So the request's
+*status* was never actually at risk -- the ticket's reproduction, taken literally, would not have
+produced the described flip in the current codebase. The real, narrower gap: `RequestController::
+respond()` still reported that silent no-op as a 201 "success," giving the second caller no signal
+that their response did nothing.
+
+**How this was caught**: the reviewer, given the first version of this fix (`EnsureRequestIsStill
+PendingAction`, wired into `RequestService::respondToRequest()` to throw a 422 before any write),
+traced all 9 `RespondTo*RequestAction` classes and found the existing lock-and-no-op guard in each
+one -- concluding the fix's own comments (and the ticket's) were factually wrong about what bug was
+being fixed, and that changing a 201-silent-success into a 422-error for the *entire* shared respond
+pipeline (every request type in the app) was a real, unacknowledged behavior/contract change, not a
+pure bugfix, since `RespondToRequestActionIdempotencyTest.php` explicitly locks in the old contract
+as intentional. This was independently verified (re-read all 9 action files, confirmed the lock +
+no-op pattern in each, read the idempotency test file's own header comment) before acting on it --
+the claim was serious enough (it contradicted both the Jira ticket and my own initial fix's stated
+rationale) to confirm firsthand rather than either blindly trusting or blindly dismissing a
+subagent's finding.
+
+**Decision**: rather than silently pick a side, this was surfaced to the user as a genuine product
+fork -- (a) make the 422 the new, real, app-wide behavior and update the SCRUM-80/91 idempotency
+tests/comments to describe the corrected contract, or (b) drop the fix entirely, since the actual
+data-integrity concern was already closed. The user chose (a): responding to an already-decided
+request should show as an error, everywhere, going forward. Implemented by keeping
+`EnsureRequestIsStillPendingAction` as-is (the 422 behavior), but rewriting every comment that had
+described the old bug inaccurately (in the action itself, in `RequestService::respondToRequest()`,
+and in the new test file) to correctly describe what was actually happening before this ticket: a
+safe-but-silent no-op, not a data-corrupting flip. The existing `RespondToRequestActionIdempotency
+Test.php` suite was deliberately left untouched -- it exercises the 9 actions directly, bypassing
+`RequestService::respondToRequest()` entirely, so it is not in conflict with the new 422 behavior at
+the entry point; it continues to correctly assert that a *direct* action call remains a safe no-op,
+which is still true and still desirable (that's the actual data-integrity guarantee, unaffected by
+this ticket). The new outer check is explicitly documented as a fast, unlocked pre-check layered on
+top of that untouched guarantee, not a replacement for it -- a true, near-simultaneous race can still
+land past it into a per-type action's own no-op, which is a known, narrow, and accepted residual
+(closing it fully would mean moving the check inside each of the 9 actions' own locked blocks,
+tracked as a possible follow-up rather than done here).
+
+**Why**: recorded in detail because this is the most consequential single catch of the session --
+not a code bug, but a ticket whose own stated bug didn't reproduce, caught only because the reviewer
+(and then this agent, independently) read the *actual* call chain instead of trusting the ticket's
+narrative. Worth remembering: a Jira ticket's reproduction steps are a hypothesis about the
+codebase, not a fact about it, especially for a ticket describing a fix to something built in an
+earlier, related ticket (SCRUM-80/91 here) -- always re-verify a "here's the bug" ticket against the
+current code before trusting its diagnosis, not just its acceptance criteria.
