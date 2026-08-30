@@ -115,11 +115,14 @@ test('a user can self-apply to a verified consumer organization with self-apply 
     expect($request->to_id)->toBe($organization->id);
 });
 
-test('self-applying is rejected when self-apply is disabled, with the same message as an ineligible org', function () {
+// SCRUM-179: extended to also cover a nonexistent organization -- it previously 404'd via a
+// standalone EnsureOrganizationExistsAction call ahead of this same generic-422 mitigation,
+// reopening a narrower existence-only oracle SCRUM-170/178 had already closed elsewhere.
+test('self-applying is rejected identically for a disabled self-apply org, an ineligible org, or a nonexistent org', function () {
     $disabledSelfApply = verifiedConsumerOrganization(['self_apply_enabled' => false]);
     $unverified = Organization::factory()->create(['is_provider' => false, 'is_consumer' => true, 'self_apply_enabled' => true, 'verified_at' => null]);
 
-    $messageFor = function (Organization $organization) {
+    $messageFor = function (?Organization $organization) {
         try {
             OrganizationMemberRequestService::new()->applyAsMember(
                 OrganizationMemberRequestDTO::new()->fromArray([
@@ -137,9 +140,11 @@ test('self-applying is rejected when self-apply is disabled, with the same messa
 
     $disabledMessage = $messageFor($disabledSelfApply);
     $unverifiedMessage = $messageFor($unverified);
+    $nonexistentMessage = $messageFor(null);
 
     expect($disabledMessage)->not->toBeNull();
     expect($disabledMessage)->toBe($unverifiedMessage);
+    expect($disabledMessage)->toBe($nonexistentMessage);
 });
 
 test('enabling self-apply through the organization update flow allows a subsequent self-application', function () {
