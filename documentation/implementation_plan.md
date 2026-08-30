@@ -236,6 +236,58 @@ TT-7.2 is fully implemented.
 
 ---
 
+## Epic TT-10: File Attachments & Profile Media — *New*
+*Goal: standardize the underused `fileables` polymorphic pivot (today used untagged by
+License/Post/Report/Message) so Counsellor avatar/cover stop being one-off FK columns, then use
+that standardized mechanism to ship two capabilities that don't exist today: Organization logo
+upload and a plain User profile avatar. Also closes a confirmed zero-test-coverage gap on the one
+upload flow that's fully built and live today (Counsellor avatar/cover).*
+
+Full `/start-feature` planning done for SCRUM-182 (product-owner → project-manager → architect
+review, 2026-08-30). Architect resolved the plan's one hard-blocking design question: a bare
+`morphToMany(...)->wherePivot('tag', ...)` relation returns a `Collection`, not `File|null`, which
+would have silently broken `CounsellorResource`'s `$this->avatar?->url` and
+`OrganizationDirectoryResource`'s `$this->logo?->url`. Fix: a two-method split per slot — a
+`*File()` `MorphToMany` relation (`wherePivotValue('tag', '...')`) plus a `get*Attribute()`
+accessor reading `$this->*File->first()`, so existing resources need zero changes. A composite
+unique index `(fileable_type, fileable_id, tag)` on `fileables` enforces at-most-one-row-per-tag
+at the DB layer without affecting the four existing untagged (`tag IS NULL`) consumers, since SQL
+treats each `NULL` as distinct in a unique index.
+
+**User decisions (2026-08-30, plan approved)**: file validation is in scope and must be enforced
+on *both* frontend and backend (not backend-only, no longer contingent — folded into TT-10.8
+below). Frontend uploads across all three surfaces (counsellor avatar/cover, org logo, user
+avatar) should share one consistent component and feel, not three bespoke implementations —
+`UpdateCounsellorImages.vue`'s existing pattern is extracted into a shared, reusable upload
+component (new TT-10.3) that org logo and user avatar consume, and counsellor avatar/cover is
+refactored onto it too for visual/behavioral consistency (not left as a legacy one-off).
+
+Jira tickets filed as standalone issues (SCRUM-182 is issue type "Feature", same hierarchy level
+as Story/Task — not an Epic — so children are linked via "Relates"/"Blocks" issue links rather
+than the `parent` field).
+
+| Key | Jira | Story | Type | Priority | Points | Source | Depends on |
+|---|---|---|---|---|---|---|---|
+| TT-10.1 | SCRUM-183 | `fileables` gets a nullable `tag` column + composite unique index `(fileable_type, fileable_id, tag)` (architect-approved shape — blocks every other row below) + regression coverage confirming License/Post/Report/Message's existing untagged usage is unaffected | Task | High | 5 | New (SCRUM-182) | — |
+| TT-10.2 | SCRUM-184 | Counsellor avatar/cover migrated onto tagged `fileables` via `avatarFile()`/`coverFile()` relations + `getAvatarAttribute()`/`getCoverAttribute()` accessors (drop `avatar_id`/`cover_id` FK usage in a later, separate migration only after a verified backfill) + `UpdateCounsellorAction` rewritten to `sync()` against the tagged relations instead of writing FK columns directly + first-ever test coverage for the counsellor avatar/cover upload/replace/delete flow | Story | High | 8 | New (SCRUM-182) | TT-10.1 |
+| TT-10.3 | SCRUM-185 | Shared, reusable file-upload frontend component — extracted from `UpdateCounsellorImages.vue`'s existing change/remove/restore-on-cancel pattern (preview, replace, remove, `Avatar.vue`-style empty-state fallback); counsellor avatar/cover UI refactored onto it so all upload surfaces in the app share one consistent look and interaction, not three one-off implementations | Task | High | 3 | New (SCRUM-182) — user-requested consistency pass | — |
+| TT-10.4 | SCRUM-186 | Organization logo upload — backend: endpoint, tagged `logo` fileable (`logoFile()`/`getLogoAttribute()`), reuses `EnsureUserIsOrganizationAdminAction`, `OrganizationResource` exposes `logo` (currently missing entirely) | Story | Medium | 5 | New (SCRUM-182) | TT-10.1 |
+| TT-10.5 | SCRUM-187 | Organization logo upload — frontend: uses TT-10.3's shared upload component, wired into the org dashboard/edit flow | Task | Medium | 3 | New (SCRUM-182) | TT-10.3, TT-10.4 |
+| TT-10.6 | SCRUM-188 | User avatar — backend: new self-service-only upload/delete endpoint off `/profile`, tagged `avatar` fileable on `User`, authorization built from scratch, `UserResource` exposes `avatar` (`UserComponent.vue` already reads `user.avatar`, currently always undefined) | Story | Medium | 5 | New (SCRUM-182) | TT-10.1 |
+| TT-10.7 | SCRUM-189 | User avatar — frontend: uses TT-10.3's shared upload component, wired into `Profile/Show.vue`; `UserComponent.vue` needs zero changes | Task | Medium | 2 | New (SCRUM-182) | TT-10.3, TT-10.6 |
+| TT-10.8 | SCRUM-190 | File-upload validation hardening — size + MIME enforced on **both** the frontend (immediate feedback in TT-10.3's shared component, before an invalid file is even submitted) and the backend (FormRequest rules on all four endpoints) — closes `UpdateCounsellorRequest`'s `// TODO validate size of files`. Confirmed in scope. | Task | Medium | 4 | New (SCRUM-182) | TT-10.2, TT-10.3, TT-10.4, TT-10.6 |
+
+Total: **35 points**.
+
+> `HowToStep::file_id` (a fourth FK-column file attachment) is deliberately scoped OUT of this
+> epic — tracked as its own unscheduled, Low-priority follow-up, not silently migrated or dropped.
+
+**Sprint:** next active sprint — no dependency on TT-1 through TT-9; Organization logo directly
+completes work already shipped for TT-6.5a's dashboard (column/relation existed with no upload
+path), so sequencing it right after that work is cheaper than deferring it.
+
+---
+
 ## Reconciled Sprint Roadmap
 
 | Sprint | Focus | Epics | Why here |
