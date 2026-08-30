@@ -7,8 +7,8 @@ use App\Actions\Organization\EnsureOrganizationDataIsValidAction;
 use App\Actions\Organization\EnsureOrganizationExistsAction;
 use App\Actions\Organization\EnsureUserIsOrganizationAdminAction;
 use App\Actions\Organization\GetOrganizationCounsellorsAction;
-use App\Actions\Organization\GetOrganizationMembersAction;
 use App\Actions\Organization\GetOrganizationDirectoryAction;
+use App\Actions\Organization\GetOrganizationMembersAction;
 use App\Actions\Organization\UpdateOrganizationAction;
 use App\DTOs\GetOrganizationDirectoryDTO;
 use App\DTOs\OrganizationDTO;
@@ -66,6 +66,8 @@ class OrganizationService extends Service
         EnsureUserIsOrganizationAdminAction::new()->execute($dto);
 
         return GetOrganizationCounsellorsAction::new()->execute($dto);
+    }
+
     // The "separate, deliberate product decision" flagged above -- any authenticated user (not
     // just an org's own admins) may browse this, since it's how a counsellor/member discovers an
     // org to apply to in the first place (TT-6.6c, SCRUM-111 planning).
