@@ -50,55 +50,117 @@ const query = ref('')
 const results = ref([])
 const searching = ref(false)
 const open = ref(false)
+const page = ref(1)
+const hasMore = ref(false)
+const activeIndex = ref(-1)
 
 watch(query, () => {
     if (!query.value) {
         results.value = []
         open.value = false
+        hasMore.value = false
+        activeIndex.value = -1
         return
     }
 
     debouncedSearch()
 })
 
-const debouncedSearch = _.debounce(search, 400)
+const debouncedSearch = _.debounce(() => runSearch(true), 400)
 
 // Incrementing token guards against an earlier, slower request's response landing after a
 // later one's and clobbering it -- the debounce only rate-limits when requests are fired, not
 // the order they resolve in (reviewer-caught).
 let searchToken = 0
 
-async function search() {
+// `reset` distinguishes a fresh search (replaces results, back to page 1) from "load more"
+// (appends the next page to what's already shown) -- both endpoints paginate server-side
+// (SCRUM-177), so a common search term can otherwise exceed the first page with no way to
+// reach the rest. `activeIndex` is only reset here on `reset`, not on every `results` change --
+// appending a page shouldn't discard an in-progress keyboard highlight on an already-visible row
+// (reviewer-caught).
+async function runSearch(reset) {
     const token = ++searchToken
+    if (reset) {
+        page.value = 1
+        activeIndex.value = -1
+    }
     searching.value = true
 
-    await axios.get(route(props.searchRoute, { [props.searchParam]: query.value }))
+    await axios.get(route(props.searchRoute, { [props.searchParam]: query.value, page: page.value }))
         .then((res) => {
             if (token !== searchToken) return
-            results.value = res.data.data ?? []
+            results.value = reset ? (res.data.data ?? []) : [...results.value, ...(res.data.data ?? [])]
+            hasMore.value = !!res.data.links?.next
             open.value = true
         })
         .catch(() => {
             if (token !== searchToken) return
-            results.value = []
-            open.value = false
+            if (reset) {
+                results.value = []
+                hasMore.value = false
+                open.value = false
+            } else {
+                // A load-more failure shouldn't hide the already-fetched, still-good first page
+                // (reviewer-caught) -- roll the page back so a retry re-fetches the page that
+                // failed instead of silently skipping it.
+                page.value -= 1
+            }
         })
         .finally(() => {
             if (token === searchToken) searching.value = false
         })
 }
 
+// Guards against two rapid load-more clicks firing overlapping requests -- without this, a
+// second click before the first resolves increments `page` again and (via the searchToken
+// guard above) discards the first response entirely once it lands, silently skipping a page of
+// results with no way to recover it (reviewer-caught, confirmed via trace).
+function loadMore() {
+    if (searching.value) return
+    page.value += 1
+    runSearch(false)
+}
+
 function select(item) {
     selected.value = item
     query.value = ''
     results.value = []
+    hasMore.value = false
     open.value = false
+    activeIndex.value = -1
 }
 
 function clearSelection() {
     selected.value = null
     query.value = ''
     results.value = []
+    hasMore.value = false
+    activeIndex.value = -1
+}
+
+// Arrow-key/Enter selection for keyboard-only use -- result rows are otherwise mouse-only
+// (reviewer-caught). Enter only acts when a row is actively highlighted via the arrow keys,
+// so plain Enter in the search box (no row highlighted yet) still behaves like a normal text
+// field inside the surrounding <form>.
+function onKeydown(event) {
+    if (event.key === 'Escape') {
+        open.value = false
+        return
+    }
+
+    if (!open.value || !results.value.length) return
+
+    if (event.key === 'ArrowDown') {
+        event.preventDefault()
+        activeIndex.value = Math.min(activeIndex.value + 1, results.value.length - 1)
+    } else if (event.key === 'ArrowUp') {
+        event.preventDefault()
+        activeIndex.value = Math.max(activeIndex.value - 1, 0)
+    } else if (event.key === 'Enter' && activeIndex.value >= 0) {
+        event.preventDefault()
+        select(results.value[activeIndex.value])
+    }
 }
 
 // Closes the results dropdown on an outside click -- there's no cancel/submit interaction
@@ -131,20 +193,37 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocumentClick))
                 class="block w-full"
                 :placeholder="placeholder"
                 :disabled="disabled"
+                role="combobox"
+                aria-haspopup="listbox"
+                :aria-expanded="open"
                 @focus="() => { if (results.length) open = true }"
+                @keydown="onKeydown"
             />
 
-            <div v-if="open" class="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-56 overflow-y-auto">
-                <div v-if="searching" class="px-3 py-2 text-sm text-gray-500">searching...</div>
+            <div v-if="open" role="listbox" class="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-56 overflow-y-auto">
+                <div v-if="searching && !results.length" class="px-3 py-2 text-sm text-gray-500">searching...</div>
                 <template v-else-if="results.length">
                     <div
-                        v-for="item in results"
+                        v-for="(item, idx) in results"
                         :key="item.id"
+                        role="option"
+                        :aria-selected="idx === activeIndex"
+                        tabindex="-1"
                         @click="() => select(item)"
-                        class="px-3 py-2 text-sm text-gray-900 hover:bg-indigo-50 cursor-pointer"
+                        @mouseenter="() => activeIndex = idx"
+                        class="px-3 py-2 text-sm text-gray-900 cursor-pointer"
+                        :class="idx === activeIndex ? 'bg-indigo-50' : ''"
                     >
                         {{ getLabel(item) }}
                         <span v-if="getSubLabel(item)" class="text-gray-500">({{ getSubLabel(item) }})</span>
+                    </div>
+                    <div
+                        v-if="hasMore"
+                        @click="loadMore"
+                        class="px-3 py-2 text-sm text-center"
+                        :class="searching ? 'text-gray-400 pointer-events-none' : 'text-indigo-600 hover:bg-indigo-50 cursor-pointer'"
+                    >
+                        {{ searching ? 'loading...' : 'load more' }}
                     </div>
                 </template>
                 <div v-else class="px-3 py-2 text-sm text-gray-500">no results</div>
