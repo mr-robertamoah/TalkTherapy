@@ -3,6 +3,7 @@ import { ref } from 'vue';
 import { usePage } from '@inertiajs/vue3';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import DangerButton from '@/Components/DangerButton.vue';
+import SecondaryButton from '@/Components/SecondaryButton.vue';
 import CompensationCounterOfferModal from '@/Components/CompensationCounterOfferModal.vue';
 import useEnums from '@/Composables/useEnums';
 
@@ -151,9 +152,7 @@ function counterOfferSent() {
                     <div v-if="isActionable(request)" class="flex items-center justify-end space-x-2 mt-3">
                         <PrimaryButton :disabled="respondingId === request.id" @click="() => respond(request, 'accepted')">accept</PrimaryButton>
                         <DangerButton :disabled="respondingId === request.id" @click="() => respond(request, 'rejected')">reject</DangerButton>
-                        <button v-if="isCompensationChange(request)" @click="() => openCounterOffer(request)" class="text-sm text-blue-600 hover:underline">
-                            counter-offer
-                        </button>
+                        <SecondaryButton v-if="isCompensationChange(request)" @click="() => openCounterOffer(request)">counter-offer</SecondaryButton>
                     </div>
                 </div>
 

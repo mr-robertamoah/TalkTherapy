@@ -7,6 +7,8 @@ import TextInput from '@/Components/TextInput.vue';
 import InputError from '@/Components/InputError.vue';
 import Checkbox from '@/Components/Checkbox.vue';
 import FormLoader from '@/Components/FormLoader.vue';
+import SecondaryButton from '@/Components/SecondaryButton.vue';
+import Pagination from '@/Components/Pagination.vue';
 import useErrorHandler from '@/Composables/useErrorHandler';
 
 const props = defineProps({
@@ -26,8 +28,8 @@ const emit = defineEmits(['alert', 'invited'])
 const { setErrorData } = useErrorHandler()
 
 const members = ref([...props.initialMembers.data])
-const nextPageUrl = ref(props.initialMembers.links?.next ?? null)
-const loadingMore = ref(false)
+const meta = ref(props.initialMembers.meta)
+const loadingPage = ref(false)
 
 const showInviteModal = ref(false)
 const inviting = ref(false)
@@ -54,17 +56,17 @@ function billingSummary(member) {
     return `Pay per use (${billingConfig.per === 'PER_THERAPY' ? 'per therapy' : 'per session'})`
 }
 
-async function loadMore() {
-    if (!nextPageUrl.value) return
+async function goToPage(url) {
+    if (!url) return
 
-    loadingMore.value = true
-    await axios.get(nextPageUrl.value)
+    loadingPage.value = true
+    await axios.get(url)
         .then((res) => {
-            members.value = [...members.value, ...res.data.data]
-            nextPageUrl.value = res.data.links?.next ?? null
+            members.value = [...res.data.data]
+            meta.value = res.data.meta
         })
         .finally(() => {
-            loadingMore.value = false
+            loadingPage.value = false
         })
 }
 
@@ -152,17 +154,14 @@ async function saveBillingConfig() {
                             <td class="py-3 pr-4">{{ statusLabel(member) }}</td>
                             <td class="py-3 pr-4">{{ billingSummary(member) }}</td>
                             <td class="py-3 pr-4">
-                                <button @click="() => openBillingConfig(member)" class="text-blue-600 hover:underline text-xs">edit billing</button>
+                                <SecondaryButton @click="() => openBillingConfig(member)" class="text-xs">edit billing</SecondaryButton>
                             </td>
                         </tr>
                     </tbody>
                 </table>
 
-                <div v-if="nextPageUrl" class="text-center mt-4">
-                    <button @click="loadMore" :disabled="loadingMore" class="text-sm text-blue-600 hover:underline">
-                        {{ loadingMore ? 'loading...' : 'load more' }}
-                    </button>
-                </div>
+                <div v-if="loadingPage" class="text-center mt-4 text-sm text-gray-500">loading...</div>
+                <Pagination v-else :meta="meta" @navigate="goToPage" />
             </div>
         </div>
     </div>

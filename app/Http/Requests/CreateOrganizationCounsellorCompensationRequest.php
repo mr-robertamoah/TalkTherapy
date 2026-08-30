@@ -28,7 +28,10 @@ class CreateOrganizationCounsellorCompensationRequest extends FormRequest
         return [
             'type' => ['required', Rule::in(OrganizationCounsellorCompensationTypeEnum::values())],
             'amount' => ['nullable', Rule::requiredIf($this->get('type') === OrganizationCounsellorCompensationTypeEnum::fixed->value), 'integer', 'min:1'],
-            'currency' => ['nullable', Rule::requiredIf($this->get('type') === OrganizationCounsellorCompensationTypeEnum::fixed->value), 'string', 'size:3'],
+            // Matches CreateTherapyRequest's own currency validation -- previously just
+            // 'string','size:3', which let any 3-letter code through regardless of whether the
+            // app actually supports it.
+            'currency' => ['nullable', Rule::requiredIf($this->get('type') === OrganizationCounsellorCompensationTypeEnum::fixed->value), 'string', Rule::in(config('currencies.supported'))],
             'percentage' => ['nullable', Rule::requiredIf($this->get('type') === OrganizationCounsellorCompensationTypeEnum::percentage->value), 'integer', 'between:1,100'],
             'basis' => ['nullable', Rule::requiredIf($this->get('type') === OrganizationCounsellorCompensationTypeEnum::percentage->value), Rule::in(OrganizationCounsellorCompensationBasisEnum::values())],
             // SCRUM-146 (TT-6.4c): optional override of the configured default negotiation window.

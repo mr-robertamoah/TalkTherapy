@@ -2,7 +2,9 @@
 import { ref } from 'vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import DangerButton from '@/Components/DangerButton.vue';
+import SecondaryButton from '@/Components/SecondaryButton.vue';
 import CompensationCounterOfferModal from '@/Components/CompensationCounterOfferModal.vue';
+import Pagination from '@/Components/Pagination.vue';
 import useEnums from '@/Composables/useEnums';
 
 const props = defineProps({
@@ -30,8 +32,8 @@ const TYPE_LABELS = {
 }
 
 const requests = ref([...props.initialRequests.data])
-const nextPageUrl = ref(props.initialRequests.links?.next ?? null)
-const loadingMore = ref(false)
+const meta = ref(props.initialRequests.meta)
+const loadingPage = ref(false)
 const respondingId = ref(null)
 const counterOfferRequest = ref(null)
 
@@ -53,17 +55,17 @@ function isCompensationChange(request) {
     return request.type === RequestTypeEnum.organizationCounsellorCompensationChange
 }
 
-async function loadMore() {
-    if (!nextPageUrl.value) return
+async function goToPage(url) {
+    if (!url) return
 
-    loadingMore.value = true
-    await axios.get(nextPageUrl.value)
+    loadingPage.value = true
+    await axios.get(url)
         .then((res) => {
-            requests.value = [...requests.value, ...res.data.data]
-            nextPageUrl.value = res.data.links?.next ?? null
+            requests.value = [...res.data.data]
+            meta.value = res.data.meta
         })
         .finally(() => {
-            loadingMore.value = false
+            loadingPage.value = false
         })
 }
 
@@ -73,7 +75,7 @@ async function reload() {
     await axios.get(route('organizations.requests.index', { organizationId: props.organizationId }))
         .then((res) => {
             requests.value = [...res.data.data]
-            nextPageUrl.value = res.data.links?.next ?? null
+            meta.value = res.data.meta
         })
 }
 
@@ -135,17 +137,12 @@ function counterOfferSent() {
                     <div v-if="isActionable(request)" class="flex items-center justify-end space-x-2 mt-3">
                         <PrimaryButton :disabled="respondingId === request.id" @click="() => respond(request, 'accepted')">accept</PrimaryButton>
                         <DangerButton :disabled="respondingId === request.id" @click="() => respond(request, 'rejected')">reject</DangerButton>
-                        <button v-if="isCompensationChange(request)" @click="() => openCounterOffer(request)" class="text-sm text-blue-600 hover:underline">
-                            counter-offer
-                        </button>
+                        <SecondaryButton v-if="isCompensationChange(request)" @click="() => openCounterOffer(request)">counter-offer</SecondaryButton>
                     </div>
                 </div>
 
-                <div v-if="nextPageUrl" class="text-center mt-4">
-                    <button @click="loadMore" :disabled="loadingMore" class="text-sm text-blue-600 hover:underline">
-                        {{ loadingMore ? 'loading...' : 'load more' }}
-                    </button>
-                </div>
+                <div v-if="loadingPage" class="text-center mt-4 text-sm text-gray-500">loading...</div>
+                <Pagination v-else :meta="meta" @navigate="goToPage" />
             </div>
         </div>
     </div>

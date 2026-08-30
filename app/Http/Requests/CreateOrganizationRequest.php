@@ -28,7 +28,8 @@ class CreateOrganizationRequest extends FormRequest
             'registrationNumber' => ['required', 'string', 'max:255', 'unique:organizations,registration_number'],
             'description' => ['nullable', 'string'],
             'email' => ['nullable', 'email', 'max:255'],
-            'phone' => ['nullable', 'string', 'max:255'],
+            // Matches UpdateOrganizationRequest's own phone rule -- see that class's comment.
+            'phone' => ['nullable', 'string', 'max:255', 'regex:/^[0-9+\s().-]{7,20}$/'],
             'isProvider' => ['required', 'boolean'],
             'isConsumer' => ['required', 'boolean'],
         ];
