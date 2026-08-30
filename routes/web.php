@@ -118,6 +118,10 @@ Route::middleware('auth')->group(function () {
     Route::get('/organizations/{organizationId}', [OrganizationController::class, 'show'])->name('organizations.show');
     Route::patch('/organizations/{organizationId}', [OrganizationController::class, 'update'])->name('organizations.update');
 
+    // Org admin dashboard page (SCRUM-165/TT-6.5a) -- the browser-navigable Inertia page;
+    // organizations.show above stays the JSON-only API endpoint, unchanged.
+    Route::get('/organizations/{organizationId}/dashboard', [OrganizationController::class, 'dashboard'])->name('organizations.dashboard');
+
     // "My organizations" (SCRUM-160/TT-6.6b) -- self-scoped to the caller, no throttle beyond
     // the default web group (same reasoning as organizations.show). /mine/... rather than a bare
     // {organizationId}-shaped segment, so these three-segment paths can never collide with the
@@ -131,6 +135,7 @@ Route::middleware('auth')->group(function () {
     // money/spam vector like the invite/apply routes below.
     Route::get('/organizations/{organizationId}/members', [OrganizationMemberController::class, 'index'])->name('organizations.members.index');
     Route::get('/organizations/{organizationId}/counsellors', [OrganizationCounsellorController::class, 'index'])->name('organizations.counsellors.index');
+    Route::get('/organizations/{organizationId}/requests', [OrganizationController::class, 'requestQueue'])->name('organizations.requests.index');
 
     // throttle: uncapped, either of these could be used to spam an org's admins with invites,
     // or spam every provider org on the platform with applications (SCRUM-120 security review).

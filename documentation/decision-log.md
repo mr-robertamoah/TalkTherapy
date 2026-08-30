@@ -2072,3 +2072,75 @@ shape — a future engineer reading the original wording could have over-general
 "known codebase gotcha" via comment-copying, per the reviewer's own explicit maintainability
 concern — a cheap, no-behavior-change correction applied immediately rather than left as-is.
 With SCRUM-160 merged, all of M4a (TT-6.6a–e) and TT-6.7 are complete.
+
+---
+
+**Note (2026-08-30)**: this file's entries for SCRUM-159/162/163/164 (all merged into `develop`
+via PRs #99-#102 before this ticket branched) do not appear between this entry and the one below,
+even though they were written and committed on each of those branches. Likely lost during manual
+merge-conflict resolution on one or more of those PRs (the same class of issue caught and fixed
+in `OrganizationService.php` for PR #99's actual code) — flagged for awareness, not reconstructed
+here, since this is a documentation-history gap, not a functional defect.
+
+---
+
+## 2026-08-30 — SCRUM-165 (TT-6.5a): first frontend ticket; a real, substantial QA-caught bug
+batch fixed before merge
+
+**Decision**: built the org admin dashboard as a single `Organization/Show.vue` page (matching
+`Profile/Counsellor/Show.vue`'s actual established shape — one page, edit-via-modal, NOT a
+separate routed Edit page, since `Counsellor/Edit.vue` turned out to be an empty, unused file)
+with three section Partials (Counsellors/Members/RequestQueueSection) driven by props from a new
+`OrganizationController::dashboard()` route, additive to the existing JSON-only `show()` action
+rather than modifying it. A new `GetOrganizationRequestQueueAction` mirrors SCRUM-162's
+`getRequests()` `orWhere` shape but scoped to one organization, since the org-scoped request
+queue itself was out of SCRUM-162's own additive-only scope guard.
+
+**QA found real, substantial bugs on the first pass — not approved, fixed before merge**:
+1. **"Load more" pagination was completely broken** on all three lists: each paginator's
+`links.next` defaulted to the dashboard's own URL (not the dedicated JSON list endpoints), so the
+frontend's plain axios "load more" GET got back a full HTML page instead of JSON and crashed.
+Fixed by explicitly `->setPath(route(...))` on each paginator before wrapping it for the Inertia
+props.
+2. **Compensation counter-offers always failed, and — separately — every toast in all three new
+section components was invisible.** The counter-offer form sent stale/irrelevant fields
+regardless of the selected type, tripping the backend's cross-field validation for every
+configuration; fixed via a payload builder that only includes type-relevant fields. Independently,
+all three section Partials called `useAlert()` locally (a deliberately non-singleton composable)
+but never rendered an `<Alert>` — only the parent `Show.vue` does, bound to its own separate
+instance — so every success/failure toast from inside those three components updated state
+nothing displayed. Fixed by having them `emit('alert', ...)` instead, forwarded by `Show.vue` to
+its one rendered `<Alert>` (mirrors this codebase's existing `RequestBadge.vue` → parent `@alert`
+pattern).
+3. **Editing the org profile didn't visually update the dashboard until a hard reload**, and
+reopening the edit modal kept showing pre-save values. Root cause: `Show.vue` took a one-time
+`ref({...props.organization})` snapshot that never re-tracked Inertia's (correctly) updated props;
+fixed by switching to `computed(() => props.organization)`. `UpdateOrganizationForm.vue` had the
+identical root cause for its own form defaults, fixed via a `watch(() => props.show, ...)` that
+calls `form.defaults()`/`form.reset()` on reopen.
+4. A second QA re-verification pass (after the above were fixed) then caught a follow-on bug
+**introduced by fix #2's own new error-handling code**: Laravel's validation-error shape
+(`{field: [messages]}`) was assigned directly to the `InputError` component's `message` prop
+(expects a plain string), rendering as a literal `["The percentage field must be..."]` array
+string instead of clean text. Fixed by routing through this codebase's existing
+`useErrorHandler()`/`setErrorData()` composable (already used elsewhere for exactly this
+unwrapping) rather than a raw assignment.
+
+**Deferred, not fixed (out of scope for this ticket)**: the same QA pass surfaced that the
+*generic* request-respond pipeline (`RequestService::respondToRequest()`, used by every request
+type in the app — guardianship, group-therapy membership, counsellor verification, org
+invites/applications, discussion invites) never re-checks a `Request`'s `status` is still
+`PENDING` before applying an accept/reject, unlike the dedicated check
+`CounterOfferOrganizationCounsellorCompensationChangeAction` already has for compensation
+negotiations specifically. Filed as **SCRUM-171** rather than fixed inline: it's a pre-existing
+gap in shared, cross-cutting infrastructure this ticket happens to exercise more heavily, not
+something SCRUM-165 introduced, and fixing it properly means touching the shared guard chain used
+by every request type in the app — out of proportion to this ticket's own scope.
+
+**Why**: fixes #1-#4 are all newly-introduced-by-this-ticket bugs with cheap, scoped fixes
+available — CLAUDE.md requires applying these, not deferring them. SCRUM-171 is the opposite case
+(pre-existing, cross-cutting, disproportionate-to-fix-here) — the same distinction already drawn
+for SCRUM-159's Decision 3/SCRUM-170. Recorded in detail here because this is the first ticket in
+the session where a qa-engineer pass genuinely found the feature not-done on its first submission,
+not just style/architecture feedback — worth keeping as a concrete example of why the Playwright
+QA gate matters for full-ceremony UI work, not just a checkbox.
