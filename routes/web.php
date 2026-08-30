@@ -118,17 +118,23 @@ Route::middleware('auth')->group(function () {
     Route::get('/organizations/{organizationId}', [OrganizationController::class, 'show'])->name('organizations.show');
     Route::patch('/organizations/{organizationId}', [OrganizationController::class, 'update'])->name('organizations.update');
 
-    // Org admin dashboard page (SCRUM-165/TT-6.5a) -- the browser-navigable Inertia page;
-    // organizations.show above stays the JSON-only API endpoint, unchanged.
-    Route::get('/organizations/{organizationId}/dashboard', [OrganizationController::class, 'dashboard'])->name('organizations.dashboard');
-
-    // "My organizations" (SCRUM-160/TT-6.6b) -- self-scoped to the caller, no throttle beyond
-    // the default web group (same reasoning as organizations.show). /mine/... rather than a bare
-    // {organizationId}-shaped segment, so these three-segment paths can never collide with the
-    // /organizations/{organizationId}/... routes below.
+    // "My organizations" (SCRUM-160/TT-6.6b, SCRUM-167/TT-6.5b) -- self-scoped to the caller, no
+    // throttle beyond the default web group (same reasoning as organizations.show). /mine/...
+    // rather than a bare {organizationId}-shaped segment, so these paths can never collide with
+    // the /organizations/{organizationId}/... routes below -- MUST stay registered before any of
+    // them, including organizations.dashboard immediately below: a literal "/mine/dashboard"
+    // would otherwise be captured by "/{organizationId}/dashboard" with organizationId="mine"
+    // (caught by MyOrganizationsControllerTest when organizations.mine.dashboard was first added
+    // after organizations.dashboard instead of before it).
     Route::get('/organizations/mine/counsellor-affiliations', [OrganizationController::class, 'myCounsellorAffiliations'])->name('organizations.mine.counsellor_affiliations');
     Route::get('/organizations/mine/memberships', [OrganizationController::class, 'myMemberships'])->name('organizations.mine.memberships');
     Route::get('/organizations/mine/administered', [OrganizationController::class, 'myAdministeredOrganizations'])->name('organizations.mine.administered');
+    Route::get('/organizations/mine/dashboard', [OrganizationController::class, 'myOrganizationsDashboard'])->name('organizations.mine.dashboard');
+    Route::get('/organizations/mine/requests', [OrganizationController::class, 'myOrganizationRequestQueue'])->name('organizations.mine.requests');
+
+    // Org admin dashboard page (SCRUM-165/TT-6.5a) -- the browser-navigable Inertia page;
+    // organizations.show above stays the JSON-only API endpoint, unchanged.
+    Route::get('/organizations/{organizationId}/dashboard', [OrganizationController::class, 'dashboard'])->name('organizations.dashboard');
 
     // Admin-only org-scoped lists (SCRUM-159/TT-6.6a) -- no throttle beyond the default web
     // group, matching organizations.show above: an authenticated-admin-gated GET, not a

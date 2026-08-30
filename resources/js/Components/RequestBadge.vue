@@ -41,6 +41,15 @@ const computedTypeMessage = computed(() => {
         [RequestTypeEnum.therapy]: computedIsFrom.value ? `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}sent an assistance request for therapy with name: ${props.request.for.name}.` 
             : `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}received an assistance request for therapy with name: ${props.request.for.name}.`,
         [RequestTypeEnum.groupTherapy]: computedIsFrom.value ? '' : 'You accepted the request.',
+        // SCRUM-167: these org-context types previously fell through to `undefined` here (blank
+        // text) -- this generic badge is also where a counsellor/user sees them in their own
+        // personal Requests modal, alongside the fuller detail on the dedicated my-organizations
+        // dashboard (which additionally supports counter-offering the compensation-change type).
+        [RequestTypeEnum.organizationCounsellorInvite]: computedIsFrom.value ? `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}invited a counsellor to affiliate with your organization.` : `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}been invited to affiliate as a counsellor with an organization.`,
+        [RequestTypeEnum.organizationCounsellorApplication]: computedIsFrom.value ? `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}applied to affiliate with an organization as a counsellor.` : `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}received an application to affiliate as a counsellor with your organization.`,
+        [RequestTypeEnum.organizationMemberInvite]: computedIsFrom.value ? `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}invited a member to join your organization.` : `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}been invited to join an organization as a member.`,
+        [RequestTypeEnum.organizationMemberApplication]: computedIsFrom.value ? `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}applied to join an organization as a member.` : `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}received an application to join your organization as a member.`,
+        [RequestTypeEnum.organizationCounsellorCompensationChange]: 'A compensation negotiation for an organization affiliation is in progress.',
     }[props.request?.type]
 })
 const computedStatus = computed(() => {

@@ -163,6 +163,14 @@ const showAdministratorLink = computed(() => {
 const showTherapiesLink = computed(() => {
   return usePage().props.auth.user && route().current() != "therapies";
 });
+// SCRUM-167: counsellor-only for now -- the member-facing equivalent (SCRUM-168) will need its
+// own visibility rule, since "my organizations" means something different for a plain user.
+const showMyOrganizationsLink = computed(() => {
+  return (
+    usePage().props.auth.user?.counsellor &&
+    route().current() != "organizations.mine.dashboard"
+  );
+});
 
 function goToTherapy(data) {
   router.get(route(`therapies.get`, { therapyId: data.therapyId }));
@@ -247,6 +255,9 @@ function goToTherapy(data) {
                       </DropdownLink>
                       <DropdownLink v-if="showTherapiesLink" :href="route('therapies')">
                         Therapies
+                      </DropdownLink>
+                      <DropdownLink v-if="showMyOrganizationsLink" :href="route('organizations.mine.dashboard')">
+                        My Organizations
                       </DropdownLink>
                       <div
                         v-if="showRequestLink"
@@ -426,6 +437,9 @@ function goToTherapy(data) {
               </ResponsiveNavLink>
               <ResponsiveNavLink v-if="showTherapiesLink" :href="route('therapies')">
                 Therapies
+              </ResponsiveNavLink>
+              <ResponsiveNavLink v-if="showMyOrganizationsLink" :href="route('organizations.mine.dashboard')">
+                My Organizations
               </ResponsiveNavLink>
               <div
                 v-if="showRequestLink"

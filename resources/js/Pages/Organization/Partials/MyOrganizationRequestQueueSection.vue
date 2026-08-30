@@ -1,15 +1,12 @@
 <script setup>
 import { ref } from 'vue';
+import { usePage } from '@inertiajs/vue3';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import DangerButton from '@/Components/DangerButton.vue';
 import CompensationCounterOfferModal from '@/Components/CompensationCounterOfferModal.vue';
 import useEnums from '@/Composables/useEnums';
 
 const props = defineProps({
-    organizationId: {
-        type: [Number, String],
-        required: true,
-    },
     initialRequests: {
         type: Object,
         required: true,
@@ -17,15 +14,14 @@ const props = defineProps({
 })
 
 // useAlert() is deliberately non-singleton -- calling it locally here would update state
-// nothing renders, since only the parent Show.vue mounts an <Alert>. Emit up instead.
-const emit = defineEmits(['alert'])
+// nothing renders, since only the parent MyOrganizations.vue mounts an <Alert>. Emit up instead.
+const emit = defineEmits(['alert', 'compensation-accepted'])
 const { RequestTypeEnum } = useEnums()
+const currentUserId = usePage().props.auth.user?.id
 
 const TYPE_LABELS = {
-    [RequestTypeEnum.organizationCounsellorInvite]: 'Counsellor invite',
-    [RequestTypeEnum.organizationCounsellorApplication]: 'Counsellor application',
-    [RequestTypeEnum.organizationMemberInvite]: 'Member invite',
-    [RequestTypeEnum.organizationMemberApplication]: 'Member application',
+    [RequestTypeEnum.organizationCounsellorInvite]: 'Invite from an organization',
+    [RequestTypeEnum.organizationCounsellorApplication]: 'Your application',
     [RequestTypeEnum.organizationCounsellorCompensationChange]: 'Compensation negotiation',
 }
 
@@ -43,10 +39,20 @@ function partyLabel(party) {
     return party.fullName ?? party.username
 }
 
-// The org can act on a request exactly when it's currently awaiting THIS org's decision --
-// mirrors EnsureUserCanRespondToRequestAction's own "to" check server-side.
+function proposedTermsSummary(request) {
+    const terms = request.proposedTerms
+    if (!terms) return '--'
+    if (terms.type === 'FREE') return 'Free'
+    if (terms.type === 'FIXED') return `${terms.currency} ${terms.amount}`
+    if (terms.type === 'PERCENTAGE') return `${terms.percentage}% of ${terms.basis === 'COUNSELLOR_RATE' ? "counsellor's rate" : 'negotiated rate'}`
+    return '--'
+}
+
+// The counsellor can act on a request exactly when it's currently awaiting THEIR decision --
+// mirrors EnsureUserCanRespondToRequestAction's own "to" check server-side, and
+// Organization/Partials/RequestQueueSection.vue's equivalent isActionable() for the org-admin side.
 function isActionable(request) {
-    return request.to?.isOrganization && request.to?.id === Number(props.organizationId)
+    return request.to?.isCounsellor && request.to?.userId === currentUserId
 }
 
 function isCompensationChange(request) {
@@ -67,10 +73,10 @@ async function loadMore() {
         })
 }
 
-// Re-fetches the first page from scratch -- used by the parent after a sibling section sends
-// a new invite/application, since this list has no other way to learn about it.
+// Re-fetches the first page from scratch -- used by the parent after the browse-and-apply
+// section sends a new application, since this list has no other way to learn about it.
 async function reload() {
-    await axios.get(route('organizations.requests.index', { organizationId: props.organizationId }))
+    await axios.get(route('organizations.mine.requests'))
         .then((res) => {
             requests.value = [...res.data.data]
             nextPageUrl.value = res.data.links?.next ?? null
@@ -89,11 +95,16 @@ async function respond(request, response) {
         .then(() => {
             emit('alert', { type: 'success', message: `Request ${response}.` })
             removeFromQueue(request.id)
+            // Accepting a compensation-change Request updates the affiliation's current
+            // compensation -- the sibling MyAffiliationsSection has no other way to learn its
+            // "current compensation" cell just went stale (QA-caught, SCRUM-167).
+            if (response === 'accepted' && isCompensationChange(request)) {
+                emit('compensation-accepted')
+            }
         })
         .catch((err) => {
             // requests.respond's failure shape uses an "error" key, not "message" (see
-            // RequestController::respond()) -- unlike compensation_counter_offer below, which
-            // does use "message".
+            // RequestController::respond()).
             emit('alert', { type: 'failed', message: err.response?.data?.error ?? 'Could not respond to the request.' })
         })
     respondingId.value = null
@@ -116,7 +127,7 @@ function counterOfferSent() {
                 <div class="text-xl font-bold text-gray-900">Pending Applications &amp; Invites</div>
                 <div class="w-12 h-1 bg-blue-600 mt-2"></div>
                 <div class="text-sm text-gray-600 mt-2">
-                    Requests awaiting a decision -- distinct from an already-affiliated counsellor/member still awaiting compensation/billing terms above.
+                    Requests awaiting a decision -- distinct from an already-affiliated organization still awaiting compensation terms above.
                 </div>
             </div>
 
@@ -128,6 +139,11 @@ function counterOfferSent() {
                         <div>
                             <div class="text-sm font-semibold text-gray-900">{{ TYPE_LABELS[request.type] ?? request.type }}</div>
                             <div class="text-xs text-gray-500 mt-1">from {{ partyLabel(request.from) }} to {{ partyLabel(request.to) }}</div>
+                            <template v-if="isCompensationChange(request)">
+                                <div class="text-xs text-gray-700 mt-2">Proposed: {{ proposedTermsSummary(request) }}</div>
+                                <div v-if="request.round" class="text-xs text-gray-500">Round {{ request.round }}</div>
+                                <div v-if="request.expiresAt" class="text-xs text-gray-500">Expires {{ request.expiresAt }}</div>
+                            </template>
                         </div>
                         <div v-if="!isActionable(request)" class="text-xs text-gray-500 italic">awaiting their response</div>
                     </div>

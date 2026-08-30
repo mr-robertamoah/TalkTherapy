@@ -2144,3 +2144,73 @@ for SCRUM-159's Decision 3/SCRUM-170. Recorded in detail here because this is th
 the session where a qa-engineer pass genuinely found the feature not-done on its first submission,
 not just style/architecture feedback — worth keeping as a concrete example of why the Playwright
 QA gate matters for full-ceremony UI work, not just a checkbox.
+
+---
+
+## 2026-08-30 — SCRUM-167 (TT-6.5b): counsellor "my organizations" + apply flow; a genuine
+route-ordering bug, a seeded-data bug, and two self-caught process mistakes
+
+**Decision**: built the counsellor-facing counterpart to SCRUM-165's org admin dashboard as a
+new `Organization/MyOrganizations.vue` page (`GET /organizations/mine/dashboard`) with three
+sections — affiliations list, a dedicated request queue, and a browse-and-apply directory —
+mirroring SCRUM-165's page/Partials shape. A new `GetMyOrganizationRequestQueueAction` mirrors
+`GetOrganizationRequestQueueAction`'s query shape but needs an explicit `whereIn('type', [...])`
+filter that the org-scoped version doesn't: `Organization` is exclusively used as a `from`/`to`
+party for org-context request types, but `Counsellor` is also a polymorphic party for unrelated
+types (therapy assistance, discussion invites, verification) — an unfiltered `from/to` match would
+leak those into this org-specific queue. Reused `OrganizationRequestResource` (not the plainer
+`RequestResource` SCRUM-165's queue uses) so proposed compensation terms/round/expiry are visible
+before a counsellor decides — a deliberate improvement over the org-admin queue's blind
+counter-offer form, since AC3 explicitly requires this data to be shown. Extracted the counter-offer
+modal (previously inline in `RequestQueueSection.vue`) into a shared `CompensationCounterOfferModal.vue`
+now used by both sides, rather than duplicating a non-trivial form for a second use site.
+
+**Bug found via reviewer, fixed before QA**: registering `/organizations/mine/dashboard` *after*
+`/organizations/{organizationId}/dashboard` in `routes/web.php` meant Laravel matched the wildcard
+route first, capturing `organizationId="mine"` and producing "organization not found" — caught by
+my own feature test, not by a subagent. Fixed by moving the entire `mine/*` block above
+`organizations.dashboard` (the pre-existing SCRUM-160 routes happened not to collide only because
+none of them shared a literal path segment with `organizations.dashboard`'s `dashboard` suffix).
+
+**Bug found via qa-engineer's Playwright pass**: the seeded pending compensation-change Request I
+added to `org_demo_counsellor`'s demo data had no `data.proposedById`, so accepting it threw "the
+original proposer no longer exists" — `RespondToOrganizationCounsellorCompensationRequestAction`
+resolves this id to attribute the accepted terms. Fixed by setting it to the seeded org admin's
+user id.
+
+**A real gap I found myself, not flagged by any reviewer**: accepting the seeded compensation
+negotiation updated the affiliation's compensation server-side but left the My Organizations
+table showing the old amount until a manual reload — the request-queue section had no way to tell
+its sibling affiliations section a compensation change had just landed. Fixed with a
+`compensation-accepted` event bubbled from `MyOrganizationRequestQueueSection` up to
+`MyOrganizations.vue`, which reloads `MyAffiliationsSection` (same `ref().reload()` pattern as
+SCRUM-165's `@invited` wiring). This exact staleness already exists, unfixed, on the merged
+org-admin side (accepting an application there doesn't refresh `CounsellorsSection`'s row either)
+— left as-is there since it's out of this ticket's scope and not something QA or the reviewers
+flagged on that already-shipped page; worth a small follow-up if it comes up again.
+
+**Two of my own process mistakes, both caught before merge**:
+1. Used `Write` to create `tests/Feature/MyOrganizationsControllerTest.php` for this ticket's
+tests without first reading the file — silently overwriting SCRUM-160's existing tests for
+`organizations.mine.memberships`/`.administered` (guest-401 checks and an N+1 regression guard)
+that lived at the same path. Caught by `security-engineer`'s review, not by me. Fixed by restoring
+the original file via `git checkout HEAD --` and moving this ticket's new tests to a distinctly-named
+`tests/Feature/MyOrganizationsDashboardControllerTest.php` instead.
+2. qa-engineer flagged an intermittent, unreproducible-by-static-review click failure on invite-type
+accept/reject buttons ("Bug 2"), recommending re-verification before sign-off rather than dismissal.
+Investigated directly: built a fresh test scenario via `tinker` and reproduced a real 500 on first
+click — but the actual cause was that my ad-hoc test Request was missing `for()->associate($organization)`
+(only `from`/`to` were set), which `RespondToOrganizationCounsellorRequestAction` dereferences as
+the Organization to re-check eligibility; `for` being null threw a `\Error` that the controller's
+generic `catch (Throwable $th)` swallowed into a silent 500 with no log entry (caught-and-handled
+exceptions aren't auto-logged by Laravel's global handler). Fixing the test data's `for` association
+and retrying reproduced success on the very first click, every time — confirming this was a test-
+artifact (most likely qa-engineer made the same construction mistake when fabricating an invite
+scenario, since none of the properly-seeded data ever exhibited it), not a real defect.
+
+**Why**: recorded in this much detail because two of the five issues resolved during this ticket's
+review cycle were self-inflicted process mistakes rather than product bugs — worth keeping as a
+concrete reminder to always read a file before `Write`ing over it even under time pressure, and
+that an "intermittent, no-console-error" QA finding can still be worth a real repro attempt rather
+than either blind acceptance or a shrug, per qa-engineer's own explicit ask not to dismiss it
+without a definitive answer.

@@ -9,6 +9,7 @@ use App\Actions\Organization\EnsureUserIsOrganizationAdminAction;
 use App\Actions\Organization\GetMyAdministeredOrganizationsAction;
 use App\Actions\Organization\GetMyOrganizationCounsellorAffiliationsAction;
 use App\Actions\Organization\GetMyOrganizationMembershipsAction;
+use App\Actions\Organization\GetMyOrganizationRequestQueueAction;
 use App\Actions\Organization\GetOrganizationCounsellorsAction;
 use App\Actions\Organization\GetOrganizationDirectoryAction;
 use App\Actions\Organization\GetOrganizationMembersAction;
@@ -107,5 +108,12 @@ class OrganizationService extends Service
     public function getMyAdministeredOrganizations(User $user): LengthAwarePaginator
     {
         return GetMyAdministeredOrganizationsAction::new()->execute($user);
+    }
+
+    // Counsellor-facing counterpart to getOrganizationRequestQueue() above (SCRUM-167/TT-6.5b) --
+    // self-scoped, so no admin-gating action needed here either.
+    public function getMyOrganizationRequestQueue(User $user): LengthAwarePaginator
+    {
+        return GetMyOrganizationRequestQueueAction::new()->execute($user);
     }
 }
