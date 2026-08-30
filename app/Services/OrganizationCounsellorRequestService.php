@@ -20,8 +20,11 @@ class OrganizationCounsellorRequestService extends Service
 {
     public function inviteCounsellor(OrganizationCounsellorRequestDTO $dto)
     {
-        EnsureOrganizationExistsAction::new()->execute($dto);
-
+        // SCRUM-178: no preceding EnsureOrganizationExistsAction here -- that would throw a
+        // distinct 404 before EnsureUserCanInviteOrganizationCounsellorAction's own 403,
+        // reopening the existence-enumeration oracle that action's own null-organization check
+        // now closes. applyAsCounsellor() below is deliberately left unchanged -- out of this
+        // ticket's scope (see the Jira description's own lower-priority note).
         EnsureCounsellorExistsAction::new()->execute($dto);
 
         EnsureUserCanInviteOrganizationCounsellorAction::new()->execute($dto);

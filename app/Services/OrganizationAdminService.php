@@ -4,7 +4,6 @@ namespace App\Services;
 
 use App\Actions\Organization\AddOrganizationAdminAction;
 use App\Actions\Organization\EnsureOrganizationAdminTargetExistsAction;
-use App\Actions\Organization\EnsureOrganizationExistsAction;
 use App\Actions\Organization\EnsureOrganizationRetainsAnOwnerAction;
 use App\Actions\Organization\EnsureTargetIsNotAlreadyOrganizationAdminAction;
 use App\Actions\Organization\EnsureTargetIsOrganizationAdminAction;
@@ -21,7 +20,9 @@ class OrganizationAdminService extends Service
 {
     public function addAdmin(OrganizationAdminDTO $dto): Organization
     {
-        EnsureOrganizationExistsAction::new()->execute($dto);
+        // SCRUM-178: no preceding EnsureOrganizationExistsAction here -- that would throw a
+        // distinct 404 before EnsureUserIsOrganizationOwnerAction's own 403, reopening the
+        // existence-enumeration oracle that action's own null-organization check now closes.
         EnsureUserIsOrganizationOwnerAction::new()->execute($dto);
         EnsureOrganizationAdminTargetExistsAction::new()->execute($dto);
         EnsureTargetIsNotAlreadyOrganizationAdminAction::new()->execute($dto);
@@ -31,7 +32,7 @@ class OrganizationAdminService extends Service
 
     public function removeAdmin(OrganizationAdminDTO $dto): Organization
     {
-        EnsureOrganizationExistsAction::new()->execute($dto);
+        // SCRUM-178: see the comment on addAdmin() above.
         EnsureUserIsOrganizationOwnerAction::new()->execute($dto);
         EnsureOrganizationAdminTargetExistsAction::new()->execute($dto);
         EnsureTargetIsOrganizationAdminAction::new()->execute($dto);
@@ -51,7 +52,7 @@ class OrganizationAdminService extends Service
 
     public function updateAdminRole(OrganizationAdminDTO $dto): Organization
     {
-        EnsureOrganizationExistsAction::new()->execute($dto);
+        // SCRUM-178: see the comment on addAdmin() above.
         EnsureUserIsOrganizationOwnerAction::new()->execute($dto);
         EnsureOrganizationAdminTargetExistsAction::new()->execute($dto);
         EnsureTargetIsOrganizationAdminAction::new()->execute($dto);

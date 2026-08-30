@@ -350,6 +350,33 @@ test('inviting a member to a non-existent organization returns a clean error, no
     ))->toThrow(OrganizationException::class);
 });
 
+// SCRUM-178: a nonexistent organization and a real one the caller cannot administer previously
+// threw different exceptions (a distinct 404 vs this action's own 403) -- the same oracle
+// SCRUM-170 closed on the read-only org endpoints, closed here the same way.
+test('inviting a member to a nonexistent organization and a real one the caller cannot administer fail identically', function () {
+    $organization = verifiedConsumerOrganization();
+    $outsider = User::factory()->create();
+    $invitee = User::factory()->create();
+
+    $message = 'You are not authorized to invite members to this organization.';
+
+    expect(fn () => OrganizationMemberRequestService::new()->inviteMember(
+        OrganizationMemberRequestDTO::new()->fromArray([
+            'user' => $outsider,
+            'organization' => null,
+            'member' => $invitee,
+        ])
+    ))->toThrow(OrganizationException::class, $message);
+
+    expect(fn () => OrganizationMemberRequestService::new()->inviteMember(
+        OrganizationMemberRequestDTO::new()->fromArray([
+            'user' => $outsider,
+            'organization' => $organization,
+            'member' => $invitee,
+        ])
+    ))->toThrow(OrganizationException::class, $message);
+});
+
 // Parity with OrganizationCounsellorRequestServiceTest's equivalent case -- the service layer
 // must not depend solely on the FormRequest's `exists:users,id` rule to avoid an ungraceful
 // crash (reviewer-found gap).

@@ -19,8 +19,11 @@ class OrganizationMemberRequestService extends Service
 {
     public function inviteMember(OrganizationMemberRequestDTO $dto)
     {
-        EnsureOrganizationExistsAction::new()->execute($dto);
-
+        // SCRUM-178: no preceding EnsureOrganizationExistsAction here -- that would throw a
+        // distinct 404 before EnsureUserCanInviteOrganizationMemberAction's own 403, reopening
+        // the existence-enumeration oracle that action's own null-organization check now closes.
+        // applyAsMember() below is deliberately left unchanged -- out of this ticket's scope
+        // (see the Jira description's own lower-priority note).
         EnsureUserExistsAction::new()->execute($dto->member, throwException: true);
 
         EnsureUserCanInviteOrganizationMemberAction::new()->execute($dto);
