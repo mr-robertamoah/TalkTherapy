@@ -33,6 +33,38 @@ test('a plain admin cannot add a new admin via the real route', function () {
     expect($organization->isAdministeredBy($newAdmin))->toBeFalse();
 });
 
+// SCRUM-176: previously, a nonexistent userId 422'd at the FormRequest validation layer before
+// the owner-authorization check ever ran, letting a non-owner distinguish a real userId (a
+// service-layer 403) from a fake one (a validation 422) -- a mild existence oracle. Both must now
+// produce the exact same response.
+test('a plain admin gets the same failure response for a real userId and a nonexistent one', function () {
+    $organization = Organization::factory()->create(['is_provider' => true, 'verified_at' => now()]);
+    $plainAdmin = User::factory()->create();
+    $organization->admins()->attach($plainAdmin->id, ['role' => OrganizationAdminRoleEnum::admin->value]);
+    $realTarget = User::factory()->create();
+
+    $this->actingAs($plainAdmin);
+
+    $realResponse = $this->postJson("/organizations/{$organization->id}/admins", ['userId' => $realTarget->id]);
+    $fakeResponse = $this->postJson("/organizations/{$organization->id}/admins", ['userId' => $realTarget->id + 999999]);
+
+    $realResponse->assertStatus(403);
+    $fakeResponse->assertStatus(403);
+    expect($fakeResponse->json('message'))->toBe($realResponse->json('message'));
+    expect($organization->isAdministeredBy($realTarget))->toBeFalse();
+});
+
+test('an owner still gets a distinct not-found error for a genuinely nonexistent userId', function () {
+    $organization = Organization::factory()->create(['is_provider' => true, 'verified_at' => now()]);
+    $owner = User::factory()->create();
+    $organization->admins()->attach($owner->id, ['role' => OrganizationAdminRoleEnum::owner->value]);
+
+    $this->actingAs($owner);
+
+    $this->postJson("/organizations/{$organization->id}/admins", ['userId' => 999999])
+        ->assertStatus(404);
+});
+
 test('an owner can promote a plain admin to owner via the real route', function () {
     $organization = Organization::factory()->create(['is_provider' => true, 'verified_at' => now()]);
     $owner = User::factory()->create();

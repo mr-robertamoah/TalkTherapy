@@ -41,6 +41,10 @@ const computedTypeMessage = computed(() => {
         [RequestTypeEnum.therapy]: computedIsFrom.value ? `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}sent an assistance request for therapy with name: ${props.request.for.name}.` 
             : `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}received an assistance request for therapy with name: ${props.request.for.name}.`,
         [RequestTypeEnum.groupTherapy]: computedIsFrom.value ? '' : 'You accepted the request.',
+        // SCRUM-175: previously missing entirely (fell through to `undefined`, a blank line) --
+        // this is SCRUM-72's join-a-group-therapy request type, distinct from RequestTypeEnum.groupTherapy above.
+        [RequestTypeEnum.groupTherapyMembership]: computedIsFrom.value ? `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}requested to join the group therapy "${props.request.for.name}".`
+            : `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}received a request to join your group therapy "${props.request.for.name}".`,
         // SCRUM-167: these org-context types previously fell through to `undefined` here (blank
         // text) -- this generic badge is also where a counsellor/user sees them in their own
         // personal Requests modal, alongside the fuller detail on the dedicated my-organizations
