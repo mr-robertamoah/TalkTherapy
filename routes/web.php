@@ -109,9 +109,19 @@ Route::middleware('auth')->group(function () {
     Route::post('/sessions/{sessionId}/transactions', [TransactionController::class, 'initiate'])->name('transactions.initiate.session')->middleware('throttle:20,1');
     Route::get('/transactions/callback', [TransactionController::class, 'callback'])->name('transactions.callback')->middleware('throttle:30,1');
 
+    // throttle: read-only and non-money-moving, but this is the first endpoint that lets any
+    // authenticated user enumerate every verified org on the platform -- a higher cap than the
+    // write endpoints below, but still bounded (security review, SCRUM-161).
+    Route::get('/organizations', [OrganizationController::class, 'index'])->name('organizations.index')->middleware('throttle:60,1');
     Route::post('/organizations', [OrganizationController::class, 'store'])->name('organizations.store');
     Route::get('/organizations/{organizationId}', [OrganizationController::class, 'show'])->name('organizations.show');
     Route::patch('/organizations/{organizationId}', [OrganizationController::class, 'update'])->name('organizations.update');
+
+    // Admin-only org-scoped lists (SCRUM-159/TT-6.6a) -- no throttle beyond the default web
+    // group, matching organizations.show above: an authenticated-admin-gated GET, not a
+    // money/spam vector like the invite/apply routes below.
+    Route::get('/organizations/{organizationId}/members', [OrganizationMemberController::class, 'index'])->name('organizations.members.index');
+    Route::get('/organizations/{organizationId}/counsellors', [OrganizationCounsellorController::class, 'index'])->name('organizations.counsellors.index');
 
     // throttle: uncapped, either of these could be used to spam an org's admins with invites,
     // or spam every provider org on the platform with applications (SCRUM-120 security review).
