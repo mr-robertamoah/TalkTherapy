@@ -9,6 +9,7 @@ use App\Actions\Organization\EnsureUserIsOrganizationAdminAction;
 use App\Actions\Organization\GetOrganizationCounsellorsAction;
 use App\Actions\Organization\GetOrganizationDirectoryAction;
 use App\Actions\Organization\GetOrganizationMembersAction;
+use App\Actions\Organization\GetOrganizationRequestQueueAction;
 use App\Actions\Organization\UpdateOrganizationAction;
 use App\DTOs\GetOrganizationDirectoryDTO;
 use App\DTOs\OrganizationDTO;
@@ -66,6 +67,17 @@ class OrganizationService extends Service
         EnsureUserIsOrganizationAdminAction::new()->execute($dto);
 
         return GetOrganizationCounsellorsAction::new()->execute($dto);
+    }
+
+    // Pending applications/invites/negotiations addressed to/from this org (TT-6.5a's request
+    // queue, TT-6.6d) -- admin-only, same guard as the lists above.
+    public function getOrganizationRequestQueue(OrganizationDTO $dto): LengthAwarePaginator
+    {
+        EnsureOrganizationExistsAction::new()->execute($dto);
+
+        EnsureUserIsOrganizationAdminAction::new()->execute($dto);
+
+        return GetOrganizationRequestQueueAction::new()->execute($dto);
     }
 
     // The "separate, deliberate product decision" flagged above -- any authenticated user (not

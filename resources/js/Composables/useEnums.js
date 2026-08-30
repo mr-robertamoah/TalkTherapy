@@ -7,6 +7,12 @@ export default function useEnums() {
         discussion: 'THERAPY_DISCUSSION_REQUEST',
         groupTherapy: 'GROUP_THERAPY_ASSISTANCE_REQUEST',
         groupTherapyMembership: 'GROUP_THERAPY_MEMBERSHIP_REQUEST',
+        organization: 'ORGANIZATION_VERIFICATION_REQUEST',
+        organizationCounsellorInvite: 'ORGANIZATION_COUNSELLOR_INVITE_REQUEST',
+        organizationCounsellorApplication: 'ORGANIZATION_COUNSELLOR_APPLICATION_REQUEST',
+        organizationMemberInvite: 'ORGANIZATION_MEMBER_INVITE_REQUEST',
+        organizationMemberApplication: 'ORGANIZATION_MEMBER_APPLICATION_REQUEST',
+        organizationCounsellorCompensationChange: 'ORGANIZATION_COUNSELLOR_COMPENSATION_CHANGE_REQUEST',
     }
     const RequestStatusEnum = {
         accepted: 'ACCEPTED',

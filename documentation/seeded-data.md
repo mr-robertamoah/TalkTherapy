@@ -128,6 +128,19 @@ above only *might* land on `PAID` and never deterministically pair the two payme
 | Payment Demo Therapy (Per Therapy) | `PER_THERAPY`, USD 150 | Pay Now lives on the "payment details" tab. |
 | Payment Demo Therapy (Per Session) | `PER_SESSION`, USD 50 | Has one seeded session ("Payment Demo Session"), always within 5 minutes of its start time so it's immediately the therapy's active session — Pay Now lives in the "Session Actions" modal (double-click the expanded active-session panel to open it). |
 
+## Organization admin dashboard (SCRUM-165)
+
+A deterministic org (both provider and consumer) exercising every section of the org-admin
+dashboard, since the random demo data has no organizations at all:
+
+| Username | Password | Purpose |
+|---|---|---|
+| `org_demo_admin` | `password` | Owns "Org Demo Wellness Collective" (id 1 in a fresh seed) as its owner-role admin. Log in and visit `/organizations/{id}/dashboard`. |
+| `org_demo_counsellor` | `password` | Dr. Org DemoCounsellor — already ACTIVE-affiliated with the org, with agreed compensation (USD 2000 fixed). |
+| `org_demo_applicant` | `password` | Dr. Org DemoApplicant — has a pending `ORGANIZATION_COUNSELLOR_APPLICATION_REQUEST` to the org (no affiliation row yet — distinct from the already-affiliated counsellor above, per AC7's "pending Request vs. pending affiliation" distinction). |
+| `org_demo_member` | `password` | Org DemoMember — already ACTIVE member with a retainer billing config. |
+| `org_demo_member_applicant` | `password` | Org DemoMemberApplicant — has a pending `ORGANIZATION_MEMBER_APPLICATION_REQUEST` to the org (no membership row yet, same distinction as above). |
+
 ## Testing the registration/verification flow
 
 The 11 seeded accounts above all skip email verification. To test registration or the

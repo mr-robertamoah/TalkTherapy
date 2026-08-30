@@ -7,8 +7,15 @@ namespace Database\Seeders;
 use App\Enums\AdministratorTypeEnum;
 use App\Enums\GenderEnum;
 use App\Enums\LicensingTypeEnum;
+use App\Enums\OrganizationAdminRoleEnum;
+use App\Enums\OrganizationCounsellorCompensationTypeEnum;
+use App\Enums\OrganizationCounsellorStatusEnum;
+use App\Enums\OrganizationMemberBillingModeEnum;
+use App\Enums\OrganizationMemberStatusEnum;
 use App\Enums\RequestStatusEnum;
 use App\Enums\RequestTypeEnum;
+use App\Models\Organization;
+use App\Models\Request;
 use App\Models\Therapy;
 use App\Models\User;
 use Illuminate\Database\Seeder;
@@ -74,6 +81,12 @@ class DatabaseSeeder extends Seeder
         // the payment UI -- the random demo therapies above only *might* land on PAID, and never
         // deterministically pair the two payment models with a specific client/counsellor.
         $this->createPaymentDemoData();
+
+        // SCRUM-165: a deterministic org-admin account + org exercising every section of the
+        // new dashboard (both provider/consumer tables, an already-affiliated pending row, and
+        // a pending request-queue item) -- the random demo data above never deterministically
+        // produces an org admin to log in as.
+        $this->createOrganizationDashboardDemoData();
     }
 
     private function createLanguages($user)
@@ -825,5 +838,135 @@ class DatabaseSeeder extends Seeder
             'status' => 'pending',
             'payment_type' => 'PAID',
         ]);
+    }
+
+    private function createOrganizationDashboardDemoData(): void
+    {
+        $admin = User::factory()->create([
+            'firstName' => 'Org',
+            'lastName' => 'DemoAdmin',
+            'email' => 'org.demo.admin@example.com',
+            'username' => 'org_demo_admin',
+            'password' => Hash::make('password'),
+            'email_verified_at' => now(),
+        ]);
+
+        $organization = Organization::factory()->create([
+            'name' => 'Org Demo Wellness Collective',
+            'legal_name' => 'Org Demo Wellness Collective Ltd',
+            'registration_number' => 'REG-ORGDEMO-001',
+            'description' => 'Seeded organization for testing the admin dashboard (SCRUM-165). Both a provider (affiliates counsellors) and a consumer (sponsors members).',
+            'email' => 'contact@orgdemo.example.com',
+            'phone' => fake()->phoneNumber(),
+            'is_provider' => true,
+            'is_consumer' => true,
+            'self_apply_enabled' => true,
+            'verified_at' => now(),
+        ]);
+        $organization->admins()->attach($admin->id, ['role' => OrganizationAdminRoleEnum::owner->value]);
+
+        // An already-active affiliation, with agreed compensation, so the counsellors table
+        // shows a fully-settled row alongside the pending application below.
+        $affiliatedCounsellorUser = User::factory()->create([
+            'firstName' => 'Org',
+            'lastName' => 'DemoCounsellor',
+            'email' => 'org.demo.counsellor@example.com',
+            'username' => 'org_demo_counsellor',
+            'password' => Hash::make('password'),
+            'email_verified_at' => now(),
+        ]);
+        $affiliatedCounsellor = $affiliatedCounsellorUser->counsellor()->create([
+            'name' => 'Dr. Org DemoCounsellor',
+            'about' => 'Seeded counsellor already affiliated with the demo organization (SCRUM-165).',
+            'email' => $affiliatedCounsellorUser->email,
+            'phone' => fake()->phoneNumber(),
+            'verified_at' => now(),
+            'email_verified_at' => now(),
+            'profession_id' => rand(1, 10),
+            'contact_visible' => true,
+        ]);
+        $affiliation = $organization->organizationCounsellors()->create([
+            'counsellor_id' => $affiliatedCounsellor->id,
+            'status' => OrganizationCounsellorStatusEnum::active->value,
+            'source' => 'INVITED',
+        ]);
+        $affiliation->compensations()->create([
+            'set_by_id' => $admin->id,
+            'type' => OrganizationCounsellorCompensationTypeEnum::fixed->value,
+            'amount' => 2000,
+            'currency' => 'USD',
+            'effective_from' => now(),
+        ]);
+
+        // A second counsellor with a pending APPLICATION request -- distinct from the affiliated
+        // row above, per AC7's "pending Request" vs "pending affiliation" distinction.
+        $applicantCounsellorUser = User::factory()->create([
+            'firstName' => 'Org',
+            'lastName' => 'DemoApplicant',
+            'email' => 'org.demo.applicant@example.com',
+            'username' => 'org_demo_applicant',
+            'password' => Hash::make('password'),
+            'email_verified_at' => now(),
+        ]);
+        $applicantCounsellor = $applicantCounsellorUser->counsellor()->create([
+            'name' => 'Dr. Org DemoApplicant',
+            'about' => 'Seeded counsellor with a pending application to the demo organization (SCRUM-165).',
+            'email' => $applicantCounsellorUser->email,
+            'phone' => fake()->phoneNumber(),
+            'verified_at' => now(),
+            'email_verified_at' => now(),
+            'profession_id' => rand(1, 10),
+            'contact_visible' => true,
+        ]);
+        // from/to/for are morph columns, deliberately excluded from Request::$fillable --
+        // associate() (not create()) is required, mirroring CreateLinkAction's own pattern.
+        $counsellorApplication = new Request([
+            'type' => RequestTypeEnum::organizationCounsellorApplication->value,
+            'status' => RequestStatusEnum::pending->value,
+            'data' => [],
+        ]);
+        $counsellorApplication->from()->associate($applicantCounsellor);
+        $counsellorApplication->to()->associate($organization);
+        $counsellorApplication->for()->associate($organization);
+        $counsellorApplication->save();
+
+        // An active member with billing config set, plus a member with a pending self-apply
+        // application -- same "settled vs. queued" pairing as the counsellor side above.
+        $activeMember = User::factory()->create([
+            'firstName' => 'Org',
+            'lastName' => 'DemoMember',
+            'email' => 'org.demo.member@example.com',
+            'username' => 'org_demo_member',
+            'password' => Hash::make('password'),
+            'email_verified_at' => now(),
+        ]);
+        $membership = $organization->members()->create([
+            'user_id' => $activeMember->id,
+            'status' => OrganizationMemberStatusEnum::active->value,
+            'source' => 'INVITED',
+        ]);
+        $membership->billingConfigs()->create([
+            'mode' => OrganizationMemberBillingModeEnum::retainer->value,
+            'include_group_therapies' => true,
+            'effective_from' => now(),
+        ]);
+
+        $applicantMember = User::factory()->create([
+            'firstName' => 'Org',
+            'lastName' => 'DemoMemberApplicant',
+            'email' => 'org.demo.member.applicant@example.com',
+            'username' => 'org_demo_member_applicant',
+            'password' => Hash::make('password'),
+            'email_verified_at' => now(),
+        ]);
+        $memberApplication = new Request([
+            'type' => RequestTypeEnum::organizationMemberApplication->value,
+            'status' => RequestStatusEnum::pending->value,
+            'data' => [],
+        ]);
+        $memberApplication->from()->associate($applicantMember);
+        $memberApplication->to()->associate($organization);
+        $memberApplication->for()->associate($organization);
+        $memberApplication->save();
     }
 }
