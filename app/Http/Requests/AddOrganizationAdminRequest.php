@@ -25,7 +25,14 @@ class AddOrganizationAdminRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'userId' => ['required', 'integer', 'exists:users,id'],
+            // No 'exists:users,id' here (SCRUM-176): that check would run before, not after,
+            // EnsureUserIsOrganizationOwnerAction in OrganizationAdminService::addAdmin(),
+            // letting a non-owner distinguish a real userId (422→service error) from a fake one
+            // (422 here) -- a mild existence oracle. EnsureOrganizationAdminTargetExistsAction
+            // already re-checks existence in the service chain, but only after the owner check,
+            // so a non-owner gets the same 403 either way; an owner still gets that action's own
+            // 404 for a genuinely missing user.
+            'userId' => ['required', 'integer'],
             'role' => ['sometimes', Rule::in(OrganizationAdminRoleEnum::values())],
         ];
     }
