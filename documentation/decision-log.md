@@ -1871,3 +1871,168 @@ collapse into the same 403.
 redesign required — squarely the "apply it" case CLAUDE.md describes, not the "defer with a
 follow-up ticket" case (contrast SCRUM-159's Decision 3/SCRUM-170, a pre-existing gap that would
 have needed a larger redesign).
+## 2026-08-29 — SCRUM-163 (TT-6.6e): owner-only enforcement built as direct actions; org
+deletion left ungated since it doesn't exist yet; a TOCTOU gap fixed pre-merge
+
+**Decision 1 (already made, recorded here for the trail)**: real behavioral enforcement of the
+existing `organization_admins.role` column — only an owner may remove the org or add/promote/
+demote other admins; any-admin access remains for existing profile/invite actions via the
+existing `EnsureUserIsOrganizationAdminAction`. Implemented as new direct actions (add/remove/
+promote/demote an admin, gated by a new `EnsureUserIsOrganizationOwnerAction`), not the `Request`/
+respond negotiation flow used elsewhere in this domain (compensation changes, invites) — the
+architect's distinction is that those flows exist because a second party's consent is being
+negotiated; an owner managing their own org's admin roster has no such second party.
+
+**Decision 2 — the ticket's AC3 lists "removing the organization" as one of the four owner-gated
+actions, but no organization-deletion capability exists anywhere in this codebase** (confirmed via
+`grep`: `OrganizationController` only has `store`/`update`/`show`; `Organization` uses
+`SoftDeletes` but nothing ever calls `delete()`). Read AC3 as "the gate must apply to org removal
+whenever it's built," not "build org removal now" — the ticket's concrete, itemized deliverable
+(AC2) only lists add/remove/promote/demote-admin, and inventing a deletion feature (with its own
+unspecified business rules — can a verified org with active members/counsellors be deleted? does
+it cascade?) would be scope invention beyond what any AC actually describes.
+
+**Decision 3 (fixed before merge, not deferred)**: `EnsureOrganizationRetainsAnOwnerAction`'s
+owner-count check and the subsequent pivot write were originally two separate, unlocked steps —
+both reviewer and security-engineer independently caught the same real TOCTOU gap: two concurrent
+requests demoting/removing two different owners of a 2-owner org could each read owner-count=2
+before either write commits, both pass the guard, and leave the organization with zero owners.
+Fixed by wrapping the guard+write pair in `DB::transaction()` with
+`Organization::query()->lockForUpdate()->find(...)`, mirroring the identical pattern already
+established in `OrganizationCounsellorRequestService`/`OrganizationMemberRequestService` for
+analogous invariants on the same model.
+
+**Why**: Decision 1/2 are recorded because they're non-trivial judgment calls made without asking
+first (an architectural pattern choice, and a scope boundary a literal reading of the ticket text
+could dispute). Decision 3 is a required fix, not a deferral — CLAUDE.md requires applying a
+reviewer/security-engineer finding, and a real, low-likelihood-but-serious data-integrity risk
+(an org with sensitive client data left permanently ownerless) with a cheap, already-precedented
+fix is exactly the case for applying it rather than filing a follow-up ticket.
+## 2026-08-29 — SCRUM-162 (TT-6.6d): fixed a real PII-enumeration oracle the ticket's own
+additive query change reopened in the generic RequestResource
+
+**Decision**: `RequestService::getRequests()` was changed exactly as the ticket specified — one
+additive `orWhere` block matching `to`/`from` against any of the user's `administeredOrganizations()`
+ids, mirroring the existing `$counsellor` block's shape. Security review then found this newly
+surfaces `organizationMemberInvite`/`organizationMemberApplication` request rows to an org admin
+through the endpoint's generic `RequestResource`, whose `getFrom()`/`getTo()` fall through to the
+full `UserMiniResource` (gender/country/dob) for any plain-`User` party. Since inviting a member
+only requires a valid user id (`InviteOrganizationMemberRequest`'s validation is just
+`exists:users,id` — no prior relationship required), this reopened the *exact* PII-enumeration
+oracle SCRUM-124 already closed for `OrganizationMemberController::invite()`'s own response: create
+an org, get it verified, invite arbitrary/sequential user ids, read each target's PII back via
+`GET /api/requests`. Fixed by adding a narrow, type-scoped projection
+(`isOrgMemberFlowUser()`/`narrowUserProjection()` in `RequestResource.php`) that returns only
+`id`/`fullName`/`username` for the User party of these two request types specifically (except a
+user viewing their own request) — every other request type's `from`/`to` rendering is unchanged.
+Two regression tests added: one pinning the narrowed fields, one confirming an admin of one
+organization never sees a different organization's requests (an adjacent invariant the reviewer
+flagged as untested, though verified correct).
+
+**Why**: this is a real, newly-introduced privacy exposure on a mental-health platform with a
+cheap, narrowly-scoped fix available — CLAUDE.md requires applying a security-engineer finding
+like this, not deferring it, when the fix doesn't require redesigning shared architecture (contrast
+with SCRUM-159's Decision 3, a pre-existing gap deferred to SCRUM-170 because fixing it properly
+would have meant redesigning a guard-action pair used by four endpoints). The narrow, type-scoped
+projection (rather than replacing `RequestResource` with `GetRequestResourceAction`'s full per-type
+dispatch here) keeps the fix inside this ticket's explicit additive-only scope guard — it touches
+only the two newly-surfaced request types' `from`/`to` rendering, not the broader resource-dispatch
+refactor the ticket text explicitly said to leave alone.
+## 2026-08-29 — SCRUM-159 (TT-6.6a): kept currentCompensation()/currentBillingConfig() as
+compatibility wrappers; trimmed member PII; deferred a pre-existing enumeration gap
+
+**Decision 1 — `OrganizationCounsellor::currentCompensation()`/`OrganizationMember::currentBillingConfig()`
+converted to `latestOfMany()`-backed relations, but the old method names kept as thin wrappers**
+around new `latestCompensation()`/`latestBillingConfig()` relation methods, rather than renaming
+every call site to property access. ~8 existing test files and one production call site
+(`EnsureOrganizationCanPayForModelAction.php`) all call these as methods expecting a model back;
+renaming them all to satisfy the new eager-loadable-relation requirement would have been a much
+larger, purely mechanical diff for no behavioral gain. The composite tie-break is
+`ofMany(['effective_from' => 'max', 'id' => 'max'])`, matching the existing
+`orderByDesc('effective_from')->orderByDesc('id')` ordering exactly.
+
+**Why**: architect's finding (from the earlier TT-6.5/6.6 restructuring pass) was that these two
+methods would N+1 the first time they're used across a paginated collection — the fix required is
+"make it eager-loadable", not "rename the public API". Reviewer confirmed this is a reasonable,
+low-risk shim, not a duplicate-API smell worth blocking on. Reviewer also flagged (not a blocker)
+that unlike the old always-re-queried form, the relation is now cached per-instance — a comment
+was added on both wrapper methods warning that a write-then-reread on the same instance now needs
+an explicit `refresh()`.
+
+**Decision 2 — `OrganizationMemberResource`'s `user` field is a narrow inline projection
+(`id`/`fullName`/`username`), not the full `UserMiniResource`**, even though `UserMiniResource` is
+the codebase's default "mini" shape for a `User`. Security review caught that reusing it here would
+regress a decision already made and documented four lines above it in the same file
+(`OrganizationMemberController.php`'s `invite()` deliberately excludes gender/country/dob per
+SCRUM-124, since "an ordinary User isn't meant to be publicly/cross-org discoverable"): an org
+admin configuring a member's billing mode has no legitimate need for that member's gender, country,
+or date of birth. Fixed before merge; a regression test
+(`'listing organization members does not leak the member's gender, country, or dob'`) pins the
+narrower shape. Left `OrganizationCounsellorResource`'s nested `counsellor.user` (via
+`CounsellorMiniResource`) unchanged, since counsellor profiles are already treated as more broadly
+discoverable elsewhere in this codebase by deliberate design (same file's own comment) — trimming
+`CounsellorMiniResource` itself would be a much wider, out-of-scope change affecting every other
+consumer of that shared resource.
+
+**Why**: a real, newly-introduced privacy exposure on a mental-health platform is a required fix,
+not something to defer — CLAUDE.md is explicit that a security-engineer finding must be applied or
+explicitly flagged with a follow-up ticket, and this one had a cheap, scoped fix available.
+
+**Decision 3 (deferred, not fixed) — the pre-existing 404-vs-403 organization-existence
+enumeration oracle** (`EnsureOrganizationExistsAction` vs. `EnsureUserIsOrganizationAdminAction`
+return distinguishable statuses for "org doesn't exist" vs. "org exists, caller isn't its admin",
+and the route only requires `auth`, not org-specific standing) was **not** fixed in this ticket.
+It already existed on `OrganizationController::show`/`update` before this ticket; SCRUM-159 extends
+the same weakness to the two new list endpoints rather than introducing it fresh. Filed as
+**SCRUM-170** (Low priority) rather than fixed inline, since fixing it properly means redesigning
+the shared guard-action pair used by four endpoints (two pre-existing, two new), which is a
+larger, more architecturally-invasive change than this ticket's scope, and risks conflating an
+existing-and-accepted-until-now gap with new work. A regression test
+(`'a nonexistent organization and a real one the caller cannot administer return different
+statuses (known gap)'`) pins the current (soon-to-change) behavior so SCRUM-170 has a concrete
+test to flip.
+
+**Why**: CLAUDE.md permits deferring a finding "with a follow-up ticket" when it isn't introduced
+fresh by the current change and fixing it properly is out of proportion to the ticket at hand —
+this is exactly that case, unlike Decision 2 above which was cheap and newly-introduced.
+## 2026-08-29 — TT-6.5 (Organizations frontend): restructured after discovering real backend gaps, three product decisions made
+
+**Decision**: TT-6.5 (SCRUM-111's frontend work) went through the full `/start-feature`
+product-owner/project-manager/architect gate. What was scoped as a 13-point, frontend-only
+ticket turned out to need real new backend work — no list endpoint for an org's own members or
+affiliated counsellors, no "my organizations" endpoint for a counsellor/member, no organization
+directory (so a counsellor/member had no way to discover an org id to apply to at all), no
+org-scoped request queue for admins, no co-admin management (the `OrganizationAdminRoleEnum`
+owner/admin distinction exists in the data model but is never enforced). Split into **M4a**
+(TT-6.6a–e, new backend enablement, ~23 pts, filed as SCRUM-159–163) which blocks **M4b**
+(TT-6.5a/a2/b/c/c2, restructured frontend, ~22–24 pts, filed as SCRUM-165–169) per-ticket rather
+than milestone-wide, plus **TT-6.7** (shareable self-apply link, filed as SCRUM-164). Total
+~45–52 points, up from the original 13 — the same undersizing pattern already seen in TT-6.3 and
+TT-7.2 on first pass.
+
+Three decisions made by the user during planning:
+1. **Owner-vs-admin roles get real behavioral enforcement now**, not a display-only badge — only
+   an owner may remove the org or add/promote/demote other admins (new
+   `EnsureUserIsOrganizationOwnerAction`, TT-6.6e).
+2. **Organization discovery ships as both a directory (TT-6.6c) and a shareable admin-generated
+   link (TT-6.7), not either/or** — architect confirmed these solve genuinely different problems
+   (curated browse-and-apply vs. a targeted, single-use grant mirroring the existing
+   discussion/guardianship Link pattern), so building both isn't redundant duplication.
+3. **The directory is verified-only** — an unverified organization stays invisible to browse/apply
+   until a platform admin verifies it, matching how counsellor verification already gates
+   visibility elsewhere in the app.
+
+**Deferred, not this restructuring's call**: the "sponsored by [org]" indicator on therapy/
+counsellor cards (SCRUM-111's third flagged open item) — both product-owner and project-manager
+recommended deferring it to a future TT-7.3a-adjacent ticket, since it depends on TT-7.3a (not yet
+built) and an undecided definition of "sponsored" over time. Proceeding with that deferral since
+neither reviewer treated it as blocking, and no objection was raised.
+
+**Why**: the three decisions above are genuine, costly-to-guess-wrong forks (real enforcement vs.
+display-only changes TT-6.6e/TT-6.5a2's actual scope; directory-vs-link changes which backend
+gets built at all; verified-only vs. show-all changes the directory's query and field exposure) —
+raised to the user per CLAUDE.md's autonomous-execution rules rather than assumed. The backend-gap
+discovery itself mirrors TT-7.4's own planning history (TT-7.4a's backend-plumbing prerequisite
+found the same way) — treated as a scope correction grounded in code actually read (architect
+verified every claimed gap against `OrganizationController`/`RequestService`/`Organization`
+model), not a guess.

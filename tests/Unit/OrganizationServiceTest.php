@@ -1,6 +1,7 @@
 <?php
 
 use App\Actions\Request\RespondToRequestAction;
+use App\DTOs\GetOrganizationDirectoryDTO;
 use App\DTOs\OrganizationDTO;
 use App\DTOs\RequestResponseDTO;
 use App\Enums\AdministratorTypeEnum;
@@ -207,4 +208,56 @@ test('a platform super admin accepting the verification request verifies the org
     );
 
     expect($organization->refresh()->isVerified())->toBeTrue();
+});
+
+// TT-6.6c (SCRUM-161): organization directory -- verified-only (2026-08-29 decision), any
+// authenticated user, not just an org's own admins.
+
+test('the directory only returns verified organizations', function () {
+    $verified = Organization::factory()->create(['verified_at' => now()]);
+    Organization::factory()->create(['verified_at' => null]);
+
+    $directory = OrganizationService::new()->getOrganizationDirectory(
+        GetOrganizationDirectoryDTO::new()->fromArray([])
+    );
+
+    expect($directory->total())->toBe(1);
+    expect($directory->items()[0]->is($verified))->toBeTrue();
+});
+
+test('the directory can be filtered to provider organizations only', function () {
+    $provider = Organization::factory()->create(['is_provider' => true, 'is_consumer' => false, 'verified_at' => now()]);
+    Organization::factory()->create(['is_provider' => false, 'is_consumer' => true, 'verified_at' => now()]);
+
+    $directory = OrganizationService::new()->getOrganizationDirectory(
+        GetOrganizationDirectoryDTO::new()->fromArray(['isProvider' => true])
+    );
+
+    expect($directory->total())->toBe(1);
+    expect($directory->items()[0]->is($provider))->toBeTrue();
+});
+
+test('the directory can be filtered to consumer organizations only', function () {
+    Organization::factory()->create(['is_provider' => true, 'is_consumer' => false, 'verified_at' => now()]);
+    $consumer = Organization::factory()->create(['is_provider' => false, 'is_consumer' => true, 'verified_at' => now()]);
+
+    $directory = OrganizationService::new()->getOrganizationDirectory(
+        GetOrganizationDirectoryDTO::new()->fromArray(['isConsumer' => true])
+    );
+
+    expect($directory->total())->toBe(1);
+    expect($directory->items()[0]->is($consumer))->toBeTrue();
+});
+
+test('isProvider and isConsumer filters combine as AND, not OR', function () {
+    $both = Organization::factory()->create(['is_provider' => true, 'is_consumer' => true, 'verified_at' => now()]);
+    Organization::factory()->create(['is_provider' => true, 'is_consumer' => false, 'verified_at' => now()]);
+    Organization::factory()->create(['is_provider' => false, 'is_consumer' => true, 'verified_at' => now()]);
+
+    $directory = OrganizationService::new()->getOrganizationDirectory(
+        GetOrganizationDirectoryDTO::new()->fromArray(['isProvider' => true, 'isConsumer' => true])
+    );
+
+    expect($directory->total())->toBe(1);
+    expect($directory->items()[0]->is($both))->toBeTrue();
 });

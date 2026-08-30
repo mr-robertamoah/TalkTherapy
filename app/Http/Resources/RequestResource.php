@@ -61,6 +61,10 @@ class RequestResource extends JsonResource
             }
         }
 
+        if ($this->isOrgMemberFlowUser($this->from, $viewer)) {
+            return $this->narrowUserProjection($this->from);
+        }
+
         return new UserMiniResource($this->from);
     }
 
@@ -85,7 +89,32 @@ class RequestResource extends JsonResource
             }
         }
 
+        if ($this->isOrgMemberFlowUser($this->to, $viewer)) {
+            return $this->narrowUserProjection($this->to);
+        }
+
         return new UserMiniResource($this->to);
+    }
+
+    // SCRUM-162 security review: TT-6.6d's org-scoped request queue newly surfaces
+    // organizationMemberInvite/organizationMemberApplication rows (whose from/to is an ordinary
+    // User the org admin has no other relationship with) to this generic resource, via
+    // RequestService::getRequests(). The full UserMiniResource (gender/country/dob) would reopen
+    // the exact PII-enumeration oracle SCRUM-124 already closed for
+    // OrganizationMemberController::invite()'s own response -- an org admin could invite/probe
+    // arbitrary user ids and read their PII back here. Narrowed the same way, except for the
+    // user's own view of their own request.
+    private function isOrgMemberFlowUser(?User $user, ?User $viewer): bool
+    {
+        return in_array($this->type, [
+            RequestTypeEnum::organizationMemberInvite->value,
+            RequestTypeEnum::organizationMemberApplication->value,
+        ]) && ! $user?->is($viewer);
+    }
+
+    private function narrowUserProjection(?User $user): array
+    {
+        return ['id' => $user?->id, 'fullName' => $user?->name, 'username' => $user?->username, 'isUser' => true];
     }
 
     private function getFor()
