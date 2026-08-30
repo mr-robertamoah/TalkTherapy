@@ -78,10 +78,22 @@ const computedIsTo = computed(() => {
     if (!props.request.from) return
 
     if (props.request.to.isCounsellor)
-        return userId == props.request.to.userId 
+        return userId == props.request.to.userId
 
     return userId == props.request.to.id
 })
+
+// SCRUM-168: the from/to party can also be an Organization (org invite/application/compensation
+// types) -- falling through to `@${party.username}` for a party with no `username` rendered a
+// literal "@undefined" here before this was ever exercised for a plain member. Mirrors
+// Organization/Partials/RequestQueueSection.vue's own partyLabel() for the org-scoped queues.
+function partyLabel(party) {
+    if (!party) return '--'
+    if (party.deleted) return 'deleted'
+    if (party.isOrganization) return party.name
+    if (party.isCounsellor) return party.name
+    return `@${party.username}`
+}
 
 function visitTherapy() {
     let therapyId
@@ -138,8 +150,8 @@ async function clickedResponse(response) {
                 @click="visitTherapy"
             >view therapy</span></div>
         <div class="flex justify-end items-center w-full text-xs my-2">
-            <div v-if="computedIsFrom && request.to" class="flex text-gray-600">to: {{ request.to.isCounsellor ? request.to.name : `@${request.to.username}` }}</div>
-            <div v-if="computedIsTo && request.from" class="flex text-gray-600">from: {{ request.from.isCounsellor ? request.from.name : `@${request.from.username}` }}</div>
+            <div v-if="computedIsFrom && request.to" class="flex text-gray-600">to: {{ partyLabel(request.to) }}</div>
+            <div v-if="computedIsTo && request.from" class="flex text-gray-600">from: {{ partyLabel(request.from) }}</div>
             <div 
                 @dblclick="() => {
                     if (computedIsTo)

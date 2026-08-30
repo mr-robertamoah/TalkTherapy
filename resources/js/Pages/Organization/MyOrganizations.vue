@@ -6,13 +6,20 @@ import useAlert from '@/Composables/useAlert';
 import MyAffiliationsSection from './Partials/MyAffiliationsSection.vue';
 import MyOrganizationRequestQueueSection from './Partials/MyOrganizationRequestQueueSection.vue';
 import BrowseProviderOrganizationsSection from './Partials/BrowseProviderOrganizationsSection.vue';
+import MyMembershipsSection from './Partials/MyMembershipsSection.vue';
 
 defineProps({
+    // null for a user with no Counsellor account (SCRUM-168) -- the counsellor-only sections
+    // are omitted entirely for them, rather than shown empty.
     affiliations: {
         type: Object,
-        required: true,
+        default: null,
     },
     requestQueue: {
+        type: Object,
+        default: null,
+    },
+    memberships: {
         type: Object,
         required: true,
     },
@@ -38,11 +45,11 @@ function onChildAlert(alert) {
                 <div class="w-16 h-1 bg-blue-600 mb-6"></div>
             </div>
 
-            <div class="w-full sm:w-[90%] md:w-[85%] lg:w-[75%] mx-auto sm:px-6 lg:px-8">
+            <div v-if="affiliations" class="w-full sm:w-[90%] md:w-[85%] lg:w-[75%] mx-auto sm:px-6 lg:px-8">
                 <MyAffiliationsSection ref="affiliationsSection" :initial-affiliations="affiliations" @alert="onChildAlert" />
             </div>
 
-            <div class="w-full sm:w-[90%] md:w-[85%] lg:w-[75%] mx-auto sm:px-6 lg:px-8 mt-8">
+            <div v-if="requestQueue" class="w-full sm:w-[90%] md:w-[85%] lg:w-[75%] mx-auto sm:px-6 lg:px-8 mt-8">
                 <MyOrganizationRequestQueueSection
                     ref="requestQueueSection"
                     :initial-requests="requestQueue"
@@ -51,11 +58,16 @@ function onChildAlert(alert) {
                 />
             </div>
 
-            <div class="w-full sm:w-[90%] md:w-[85%] lg:w-[75%] mx-auto sm:px-6 lg:px-8 mt-8">
+            <!-- Counsellor-only: self-apply for a plain member is a separate ticket (TT-6.5c2) -->
+            <div v-if="affiliations" class="w-full sm:w-[90%] md:w-[85%] lg:w-[75%] mx-auto sm:px-6 lg:px-8 mt-8">
                 <BrowseProviderOrganizationsSection
                     @alert="onChildAlert"
                     @applied="() => $refs.requestQueueSection?.reload()"
                 />
+            </div>
+
+            <div class="w-full sm:w-[90%] md:w-[85%] lg:w-[75%] mx-auto sm:px-6 lg:px-8 mt-8">
+                <MyMembershipsSection :initial-memberships="memberships" @alert="onChildAlert" />
             </div>
         </div>
     </AuthenticatedLayout>

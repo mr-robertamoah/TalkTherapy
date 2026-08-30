@@ -993,5 +993,26 @@ class DatabaseSeeder extends Seeder
         $memberApplication->to()->associate($organization);
         $memberApplication->for()->associate($organization);
         $memberApplication->save();
+
+        // A user with a pending org-INVITE (org-initiated, no membership row yet) -- distinct
+        // from $applicantMember's self-initiated APPLICATION above, and needed to exercise a
+        // member's accept/reject of an invite via the generic Requests inbox (SCRUM-168 AC2).
+        $invitedMember = User::factory()->create([
+            'firstName' => 'Org',
+            'lastName' => 'DemoMemberInvitee',
+            'email' => 'org.demo.member.invitee@example.com',
+            'username' => 'org_demo_member_invitee',
+            'password' => Hash::make('password'),
+            'email_verified_at' => now(),
+        ]);
+        $memberInvite = new Request([
+            'type' => RequestTypeEnum::organizationMemberInvite->value,
+            'status' => RequestStatusEnum::pending->value,
+            'data' => [],
+        ]);
+        $memberInvite->from()->associate($organization);
+        $memberInvite->to()->associate($invitedMember);
+        $memberInvite->for()->associate($organization);
+        $memberInvite->save();
     }
 }

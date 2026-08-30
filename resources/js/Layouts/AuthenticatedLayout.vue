@@ -163,11 +163,11 @@ const showAdministratorLink = computed(() => {
 const showTherapiesLink = computed(() => {
   return usePage().props.auth.user && route().current() != "therapies";
 });
-// SCRUM-167: counsellor-only for now -- the member-facing equivalent (SCRUM-168) will need its
-// own visibility rule, since "my organizations" means something different for a plain user.
+// SCRUM-168: any authenticated user, not just counsellors -- the page itself (SCRUM-167/168)
+// shows counsellor-only sections conditionally and always shows the member-memberships section.
 const showMyOrganizationsLink = computed(() => {
   return (
-    usePage().props.auth.user?.counsellor &&
+    usePage().props.auth.user &&
     route().current() != "organizations.mine.dashboard"
   );
 });

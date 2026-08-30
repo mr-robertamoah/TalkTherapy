@@ -2214,3 +2214,58 @@ concrete reminder to always read a file before `Write`ing over it even under tim
 that an "intermittent, no-console-error" QA finding can still be worth a real repro attempt rather
 than either blind acceptance or a shrug, per qa-engineer's own explicit ask not to dismiss it
 without a definitive answer.
+
+---
+
+## 2026-08-30 — SCRUM-168 (TT-6.5c): member "your organizations" view; unified into the
+existing dashboard rather than a new page, plus a real bug found via my own smoke-testing
+
+**Decision**: rather than building a third near-duplicate page/route for the member-facing view,
+extended the already-built `Organization/MyOrganizations.vue` (SCRUM-167, previously
+counsellor-only) to be reachable by any authenticated user. `OrganizationController::myOrganizationsDashboard()`
+now branches on `$user->counsellor`: present → populate the counsellor-only sections (affiliations,
+request queue, browse-and-apply) exactly as before; absent → those props are simply `null` and the
+page omits those sections, while a new "My Memberships" section (`MyMembershipsSection.vue`,
+consuming the unchanged SCRUM-160 `organizations.mine.memberships` endpoint) is always shown. This
+mirrors SCRUM-165's own is_provider/is_consumer conditional-section pattern on the org-admin
+dashboard, and avoids the app accumulating three separate "my organizations"-shaped pages
+(counsellor, member, and eventually admin via SCRUM-173) with near-identical layouts. AC2 ("accept/
+reject an org's invite via the existing generic request-respond endpoint") needed zero new backend
+or a dedicated queue like SCRUM-167's — a member's invite/application already flows through the
+pre-existing, app-wide personal "Requests" nav-dropdown modal, which every user already has.
+
+**A real, pre-existing bug found via my own Playwright smoke-test, not part of this ticket's
+stated scope**: that generic "Requests" modal (`RequestBadge.vue`, used by every user in the app
+for every request type) rendered a literal "from: @undefined" for any request whose party is an
+Organization — its from/to label logic only handled `isCounsellor` vs. falling through to
+`@${party.username}`, with no `isOrganization` branch. This had apparently never been exercised
+end-to-end before: org-context request types have existed since much earlier in this epic, but
+nothing had shown one to a plain member through this specific generic modal until this ticket's
+own AC2 verification. Fixed with a `partyLabel()` helper mirroring the same-shaped helper already
+used in `RequestQueueSection.vue`/`MyOrganizationRequestQueueSection.vue` — incidentally also fixes
+the same "@undefined" bug for a *deleted* counsellor/user party, per reviewer's independent trace
+of the resource shapes.
+
+**Two reviewer-flagged fixes applied before commit**: `documentation/seeded-data.md` wasn't
+updated for the new `org_demo_member_invitee` seed account (added to exercise AC2) — fixed.
+`MyMembershipsSection.vue`'s `statusLabel()` had a `PENDING` branch copied from the counsellor/
+admin-side pattern, but `OrganizationMemberStatusEnum` only has `ACTIVE`/`ENDED` — a membership is
+active immediately on creation, unlike a counsellor affiliation which can sit pending compensation
+agreement. Since this file was brand new and not yet merged (unlike its already-shipped
+`MembersSection.vue` counterpart, left untouched per reviewer's own scoping), simplified it to the
+two real states rather than propagating a third copy of speculative dead code.
+
+**Deferred, not fixed here**: qa-engineer's Playwright pass separately found that
+`RequestBadge.vue`'s message map also has no entry for `groupTherapyMembership` (SCRUM-72's
+join-a-group-therapy request type), rendering blank for both parties — pre-existing, unrelated to
+this ticket's own changes to that file, filed as **SCRUM-175** rather than fixed inline (same
+deferral pattern as SCRUM-171/SCRUM-174: a real gap in shared infrastructure this ticket happened
+to touch, not something SCRUM-168 introduced).
+
+**Why**: the unify-into-one-page call is recorded because it's a real architectural fork (three
+separate pages was the naive alternative) resolved by precedent (SCRUM-165's own conditional-
+section pattern) rather than by asking, per CLAUDE.md's guidance to proceed on well-precedented,
+reversible calls. The `RequestBadge.vue` fix is recorded in detail because it's the second ticket
+in a row (after SCRUM-167's own self-caught bugs) where my own manual Playwright verification
+found something real that no subagent had reason to look for, since it required actually clicking
+through the specific combination this ticket newly exercises.

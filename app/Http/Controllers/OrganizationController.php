@@ -221,20 +221,36 @@ class OrganizationController extends Controller
     // Counsellor "my organizations" dashboard (SCRUM-167/TT-6.5b) -- the counsellor-facing
     // counterpart to SCRUM-165's org admin dashboard() above. Same "never a raw error page on a
     // browser navigation" pattern, including for the no-counsellor-account case.
+    // Reachable by any authenticated user, not just counsellors (SCRUM-168/TT-6.5c) -- the
+    // counsellor-only sections (affiliations, request queue, browse-and-apply) are simply omitted
+    // for a user with no Counsellor account, rather than redirecting them away from a page whose
+    // very name ("My Organizations") applies to plain members too. Mirrors SCRUM-165's own
+    // is_provider/is_consumer conditional-section pattern on the org-admin dashboard.
     public function myOrganizationsDashboard(Request $request)
     {
         try {
             $user = $request->user();
+            $counsellor = $user->counsellor;
 
-            $affiliationsPaginator = OrganizationService::new()->getMyOrganizationCounsellorAffiliations($user);
-            $affiliationsPaginator->setPath(route('organizations.mine.counsellor_affiliations'));
+            $affiliations = null;
+            $requestQueue = null;
+            if ($counsellor) {
+                $affiliationsPaginator = OrganizationService::new()->getMyOrganizationCounsellorAffiliations($user);
+                $affiliationsPaginator->setPath(route('organizations.mine.counsellor_affiliations'));
+                $affiliations = $this->paginatedResource(MyOrganizationCounsellorAffiliationResource::collection($affiliationsPaginator));
 
-            $requestQueuePaginator = OrganizationService::new()->getMyOrganizationRequestQueue($user);
-            $requestQueuePaginator->setPath(route('organizations.mine.requests'));
+                $requestQueuePaginator = OrganizationService::new()->getMyOrganizationRequestQueue($user);
+                $requestQueuePaginator->setPath(route('organizations.mine.requests'));
+                $requestQueue = $this->paginatedResource(OrganizationRequestResource::collection($requestQueuePaginator));
+            }
+
+            $membershipsPaginator = OrganizationService::new()->getMyOrganizationMemberships($user);
+            $membershipsPaginator->setPath(route('organizations.mine.memberships'));
 
             return Inertia::render('Organization/MyOrganizations', [
-                'affiliations' => $this->paginatedResource(MyOrganizationCounsellorAffiliationResource::collection($affiliationsPaginator)),
-                'requestQueue' => $this->paginatedResource(OrganizationRequestResource::collection($requestQueuePaginator)),
+                'affiliations' => $affiliations,
+                'requestQueue' => $requestQueue,
+                'memberships' => $this->paginatedResource(MyOrganizationMembershipResource::collection($membershipsPaginator)),
             ]);
         } catch (Throwable $th) {
             $message = $this->messageFor($th, $this->statusFor($th));
