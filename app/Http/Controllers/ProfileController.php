@@ -5,10 +5,13 @@ namespace App\Http\Controllers;
 use App\Actions\Counsellor\EnsureCanDeleteCounsellorAction;
 use App\Actions\EnsureNameStaysRetrievableAction;
 use App\Actions\User\GetCounsellorCreationStepOfUserAction;
+use App\Actions\User\UpdateUserAvatarAction;
 use App\DTOs\CheckNameRetrievabilityDTO;
 use App\DTOs\DeleteCounsellorDTO;
+use App\DTOs\UpdateUserAvatarDTO;
 use App\Exceptions\CannotDeleteCounsellorException;
 use App\Http\Requests\ProfileUpdateRequest;
+use App\Http\Requests\UpdateUserAvatarRequest;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -60,6 +63,22 @@ class ProfileController extends Controller
         }
 
         $request->user()->save();
+
+        return Redirect::route('profile.show');
+    }
+
+    /**
+     * Update (or delete) the authenticated user's own avatar.
+     */
+    public function updateAvatar(UpdateUserAvatarRequest $request): RedirectResponse
+    {
+        UpdateUserAvatarAction::new()->execute(
+            UpdateUserAvatarDTO::new()->fromArray([
+                'user' => $request->user(),
+                'avatar' => $request->file('avatar'),
+                'deleteAvatar' => $request->boolean('deleteAvatar'),
+            ])
+        );
 
         return Redirect::route('profile.show');
     }

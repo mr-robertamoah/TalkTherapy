@@ -23,17 +23,18 @@ class UserResource extends JsonResource
             'username' => $this->username,
             'email' => $this->email,
             'emailVerifiedAt' => $this->email_verified_at,
+            'avatar' => $this->avatar?->url,
             'gender' => $this->gender,
             'isUser' => true,
-            'isGuardian' => !!$this->wards()->count(),
-            'isWard' => !!$this->guardians()->count(),
+            'isGuardian' => (bool) $this->wards()->count(),
+            'isWard' => (bool) $this->guardians()->count(),
             'country' => $this->country,
             'dob' => $this->dob,
             'isAdult' => $this->age >= 18,
             'settings' => $this->settings,
             'counsellor' => $this->counsellor ? new CounsellorMiniResource($this->counsellor) : null,
             'createdAt' => $this->created_at->diffForHumans(),
-            'isAdmin' => $this->when($this->isAdmin(), true, false)
+            'isAdmin' => $this->when($this->isAdmin(), true, false),
         ];
     }
 }
