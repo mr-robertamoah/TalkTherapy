@@ -16,7 +16,10 @@ class GetOrganizationDirectoryAction extends Action
     public function execute(GetOrganizationDirectoryDTO $dto): LengthAwarePaginator
     {
         return Organization::query()
-            ->with('logo')
+            // logoFile, not logo -- Organization::logo() was replaced by a tagged fileables
+            // MorphToMany + accessor (SCRUM-182/TT-10.4); this still needs the same eager load
+            // to avoid the endpoint N+1ing per organization (see Counsellor's TT-10.2 for why).
+            ->with('logoFile')
             ->whereNotNull('verified_at')
             ->when(! is_null($dto->isProvider), function ($query) use ($dto) {
                 $query->where('is_provider', $dto->isProvider);

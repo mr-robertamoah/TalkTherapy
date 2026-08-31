@@ -3,8 +3,10 @@
 namespace App\Actions\Organization;
 
 use App\Actions\Action;
+use App\DTOs\FileUploadDTO;
 use App\DTOs\OrganizationDTO;
 use App\Models\Organization;
+use App\Services\FileService;
 
 class UpdateOrganizationAction extends Action
 {
@@ -15,6 +17,8 @@ class UpdateOrganizationAction extends Action
     public function execute(OrganizationDTO $dto): Organization
     {
         $organization = $dto->organization;
+
+        $this->updateLogo($dto);
 
         foreach ([
             'name' => $dto->name,
@@ -35,5 +39,31 @@ class UpdateOrganizationAction extends Action
         $organization->save();
 
         return $organization->refresh();
+    }
+
+    private function updateLogo(OrganizationDTO $dto): void
+    {
+        $fileService = FileService::new();
+
+        if ($dto->logo) {
+            $oldLogo = $dto->organization->logo;
+
+            $fileData = $fileService->uploadFile(FileUploadDTO::new()->fromArray([
+                'disk' => 'public',
+                'path' => 'logos',
+                'file' => $dto->logo,
+            ]));
+
+            $file = $fileService->saveFile($dto->user, $fileData);
+            $dto->organization->logoFile()->sync([$file->id]);
+
+            if ($oldLogo) {
+                $fileService->deleteFile($oldLogo);
+            }
+        } elseif ($dto->deleteLogo && $dto->organization->logo) {
+            $oldLogo = $dto->organization->logo;
+            $dto->organization->logoFile()->sync([]);
+            $fileService->deleteFile($oldLogo);
+        }
     }
 }

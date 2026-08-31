@@ -90,6 +90,8 @@ class OrganizationController extends Controller
                     'isProvider' => $request->has('isProvider') ? $request->boolean('isProvider') : null,
                     'isConsumer' => $request->has('isConsumer') ? $request->boolean('isConsumer') : null,
                     'selfApplyEnabled' => $request->has('selfApplyEnabled') ? $request->boolean('selfApplyEnabled') : null,
+                    'logo' => $request->file('logo'),
+                    'deleteLogo' => $request->boolean('deleteLogo'),
                 ])
             );
 

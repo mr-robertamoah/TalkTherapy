@@ -6,6 +6,7 @@ use App\Enums\RequestStatusEnum;
 use App\Enums\RequestTypeEnum;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\MorphToMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Organization extends Model
@@ -49,9 +50,20 @@ class Organization extends Model
         return $this->hasMany(OrganizationMember::class);
     }
 
-    public function logo()
+    // SCRUM-182/TT-10.4: tagged fileables pivot, same pattern as Counsellor::avatarFile()/
+    // coverFile() (TT-10.2) -- withPivotValue (not the similarly-named, nonexistent
+    // wherePivotValue) is what actually constrains reads AND auto-populates the tag column on
+    // attach()/sync(). logo_id/logoFile() coexist for now; dropping the FK column is deferred.
+    public function logoFile(): MorphToMany
     {
-        return $this->belongsTo(File::class, 'logo_id');
+        return $this->morphToMany(File::class, 'fileable', 'fileables')
+            ->withPivotValue('tag', 'logo')
+            ->withTimestamps();
+    }
+
+    public function getLogoAttribute(): ?File
+    {
+        return $this->logoFile->first();
     }
 
     public function sentRequests()

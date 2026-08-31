@@ -22,6 +22,7 @@ class OrganizationResource extends JsonResource
             'description' => $this->description,
             'email' => $this->email,
             'phone' => $this->phone,
+            'logo' => $this->logo?->url,
             'isProvider' => $this->is_provider,
             'isConsumer' => $this->is_consumer,
             'selfApplyEnabled' => $this->self_apply_enabled,
