@@ -4,6 +4,7 @@ namespace App\DTOs;
 
 use App\Models\Organization;
 use App\Models\User;
+use Illuminate\Http\UploadedFile;
 use MrRobertAmoah\DTO\BaseDTO;
 
 class OrganizationDTO extends BaseDTO
@@ -29,4 +30,8 @@ class OrganizationDTO extends BaseDTO
     public ?bool $isConsumer = null;
 
     public ?bool $selfApplyEnabled = null;
+
+    public ?UploadedFile $logo = null;
+
+    public ?bool $deleteLogo = null;
 }

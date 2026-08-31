@@ -2644,3 +2644,25 @@ means there's no automated substitute.
 before re-litigating the visual design -- the hover-overlay pattern in `ImageUploadField.vue` is now
 the established look; deviating from it for a new upload surface would reintroduce the "three
 bespoke implementations" problem TT-10.3 exists to close.
+
+---
+
+## 2026-08-31 -- SCRUM-186/TT-10.4: repeated the TT-10.2-mandated audit for Organization::logoFile()
+
+Per TT-10.2's decision log entry, did the same bulk-listing eager-load audit for `Organization`
+before considering this ticket done: grepped every `Organization`-related resource for a `logo`/
+`logoUrl` read. Result: only `OrganizationResource` (single-model only, never `::collection()`)
+and `OrganizationDirectoryResource` (fed by `GetOrganizationDirectoryAction`, which already
+eager-loaded the old `logo` belongsTo for its own bulk listing -- just renamed to `logoFile`).
+No other Organization resource reads `logo` at all, so unlike Counsellor's avatar/cover (5 call
+sites needing fixes), this one had exactly one call site, and it was already correct. No N+1
+regression introduced.
+
+Also note (raised independently by both `reviewer` and `security-engineer` on this ticket):
+`feature/scrum-184-counsellor-avatar-cover-fileables` (TT-10.2) and this branch are siblings cut
+from the same TT-10.1 base commit -- TT-10.2 was reviewed but is **not yet merged** at the time
+this ticket was implemented, despite earlier framing in this session describing it as "already
+merged." Correctly not stacked on top of the unmerged branch (per CLAUDE.md), so no functional
+risk, but whoever merges these two PRs should be aware they're landing the same `withPivotValue`-
+on-tagged-`fileables` pattern twice, independently derived rather than one branch building on the
+other -- a tweak to the pattern during TT-10.2's PR review won't automatically appear here.

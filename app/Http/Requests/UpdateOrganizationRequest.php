@@ -41,6 +41,8 @@ class UpdateOrganizationRequest extends FormRequest
             'isProvider' => ['sometimes', 'boolean'],
             'isConsumer' => ['sometimes', 'boolean'],
             'selfApplyEnabled' => ['sometimes', 'boolean'],
+            'logo' => ['nullable', 'file'], // TT-10.8: size/MIME validation, tracked separately
+            'deleteLogo' => ['nullable', 'boolean'],
         ];
     }
 }
