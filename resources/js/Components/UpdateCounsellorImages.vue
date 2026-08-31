@@ -2,14 +2,12 @@
 import useAlert from "@/Composables/useAlert";
 import useModal from "@/Composables/useModal";
 import { useForm } from "@inertiajs/vue3";
-import { ref, watch, watchEffect } from "vue";
+import { computed, ref, watch } from "vue";
 import Alert from "./Alert.vue";
 import FormLoader from "./FormLoader.vue";
 import PrimaryButton from "./PrimaryButton.vue";
 import Modal from "./Modal.vue";
-import { computed } from "vue";
-import InputError from "./InputError.vue";
-import Avatar from "./Avatar.vue";
+import ImageUploadField from "./ImageUploadField.vue";
 
 const { modalData, closeModal } = useModal()
 const { alertData, setAlertData, clearAlertData } = useAlert()
@@ -33,79 +31,25 @@ const props = defineProps({
     },
 })
 
-const data = ref({
-    selectedCases: [],
-    selectedLanguages: [],
-    selectedReligions: [],
-    cases: [],
-    languages: [],
-    religions: [],
-})
 const loading = ref(false)
-const formDataChanged = ref(false)
-const avatarUrl = ref('')
-const coverUrl = ref('')
-const avatar = ref(null)
-const cover = ref(null)
+
+const formDataChanged = computed(() => !!(
+    updateForm.avatar || updateForm.cover || updateForm.deleteAvatar || updateForm.deleteCover
+))
 
 watch(
     () => props.show,
-    () => {
-        modalData.value.show = props.show
-
-        if (props.show) setUpdateData()
-    }
+    () => modalData.value.show = props.show
 )
-watch(
-    () => avatar.value?.files,
-    () => {
-        if (avatar.value?.files) updateForm.avatar = avatar.value.files[0]
-        else updateForm.avatar = null
-
-        updateForm.clearErrors('avatar')
-    }
-)
-watch(
-    () => cover.value,
-    () => {
-        if (cover.value?.files) updateForm.cover = cover.value.files[0]
-        else updateForm.cover = null
-
-        updateForm.clearErrors('cover')
-    }
-)
-watchEffect(() => {
-    formDataChanged.value = false
-    
-    if (updateForm.avatar)
-        return formDataChanged.value = true
-    
-    if (avatarUrl.value !== props.counsellor.avatar)
-        return formDataChanged.value = true
-    
-    if (coverUrl.value !== props.counsellor.cover)
-        return formDataChanged.value = true
-
-    if (updateForm.cover)
-        return formDataChanged.value = true
-})
-
-const computedAvatarUrl = computed(() => {
-    return updateForm.avatar ? URL.createObjectURL(updateForm.avatar) : avatarUrl.value
-})
-const computedCoverUrl = computed(() => {
-    return updateForm.cover ? URL.createObjectURL(updateForm.cover) : coverUrl.value
-})
 
 function closeThisModal() {
     resetUpdateData()
     emits('closeModal')
     closeModal()
 }
- 
-function updateCounsellor() { 
-    
-    if (thereIsNoData()) {
+
+function updateCounsellor() {
+    if (!formDataChanged.value) {
         setAlertData({
             show: true,
             type: 'failed',
@@ -114,7 +58,7 @@ function updateCounsellor() {
         return
     }
 
-    updateForm.post(route(`counsellor.update`, { counsellorId: props.counsellor?.id}), {
+    updateForm.post(route(`counsellor.update`, { counsellorId: props.counsellor?.id }), {
         onSuccess: () => {
             closeThisModal()
         },
@@ -127,69 +71,10 @@ function updateCounsellor() {
     })
 }
 
-function clickedChangeFile(type) {
-    console.log(type);
-    if (type == 'avatar')
-        return avatar.value.click()
-
-    cover.value.click()
-}
-
-function changeAvatar(e) {
-    if (e.target.files?.length)
-        updateForm.avatar = e.target.files[0]
-}
-
-function changeCover(e) {
-    if (e.target.files?.length)
-        updateForm.cover = e.target.files[0]
-}
-
-function deleteAvatar() {
-    if (avatarUrl.value) {
-        avatarUrl.value = ''
-        updateForm.deleteAvatar = true
-        return
-    }
-
-    updateForm.avatar = null
-    avatarUrl.value = props.counsellor.avatar
-}
-
-function deleteCover() {
-    if (coverUrl.value) {
-        coverUrl.value = ''
-        updateForm.deleteCover = true
-        return
-    }
-
-    updateForm.cover = null
-    coverUrl.value = props.counsellor.cover
-}
-
-function setUpdateData() {
-    if (props.counsellor?.avatar)
-        avatarUrl.value = props.counsellor.avatar
-    if (props.counsellor?.cover)
-        coverUrl.value = props.counsellor.cover
-}
-
 function resetUpdateData() {
-    if (avatar.value?.value) avatar.value.value = ''
-    if (cover.value?.value) cover.value.value = ''
-    if (updateForm.avatar) updateForm.avatar = null
-    if (updateForm.cover) updateForm.cover = null
     updateForm.reset(
         'avatar', 'cover', 'deleteAvatar', 'deleteCover'
     )
-}
-
-function thereIsNoData() {
-    if (
-        updateForm.avatar || updateForm.cover || updateForm.deleteAvatar || updateForm.deleteCover
-    ) return false
-
-    return true
 }
 </script>
 
@@ -208,59 +93,42 @@ function thereIsNoData() {
 
             <FormLoader class="top-14 mx-auto" :show="loading" :text="'updating images'"/>
             <div class="max-h-[80vh] overflow-hidden p-2 overflow-y-auto">
-                <form 
+                <form
                     @submit.prevent="updateCounsellor"
                 >
-                    <div class="w-full mx-auto max-w-[700px] bg-gray-200 sm:rounded-lg p-6 pb-20 relative">
-                        <div class="w-full text-justify capitalize mt-4 mb-1 text-lg font-medium text-gray-900">Profile Images</div>
-                        <div class="relative p-1 text-gray-900 text-center bg-gray-300 w-full h-[200px] sm:h-[250px] md:h-[300px]">
-                            <div class="absolute p-2 top-2 right-2 flex justify-end items-center gap-2">
-                                <div
-                                    @click="() => clickedChangeFile('cover')"
-                                    class="w-fit p-2 hover:bg-gray-600 hover:text-gray-200 transition duration-75 bg-gray-300 text-gray-700 text-xs sm:text-sm tracking-wide rounded cursor-pointer"
-                                >{{ computedCoverUrl ? 'change' : 'add' }} cover image</div>
-                                <div
-                                    v-if="counsellor.cover"
-                                    @click="deleteCover"
-                                    class="w-fit p-2 transition duration-75 text-xs sm:text-sm tracking-wide rounded cursor-pointer"
-                                    :class="[!coverUrl ? 'hover:bg-green-600 hover:text-green-200 bg-green-300 text-green-700' : 'hover:bg-red-600 hover:text-red-200 bg-red-300 text-red-700']"
-                                >{{ !coverUrl ? 'restore' : 'remove' }} image</div>
+                    <div class="w-full mx-auto max-w-[700px] bg-gray-200 sm:rounded-lg p-6 space-y-6">
+                        <div>
+                            <div class="w-full text-justify capitalize mb-2 text-lg font-medium text-gray-900">Cover Image</div>
+                            <div class="w-full h-[200px] sm:h-[250px] md:h-[300px]">
+                                <ImageUploadField
+                                    v-model="updateForm.cover"
+                                    v-model:removed="updateForm.deleteCover"
+                                    :existing-url="counsellor?.cover ?? ''"
+                                    shape="rect"
+                                    label="cover image"
+                                    input-id="counsellor-cover"
+                                    empty-text="no cover image"
+                                    :error="updateForm.errors.cover"
+                                />
                             </div>
-                            <img 
-                                :src="computedCoverUrl ?? ''" 
-                                :alt="'counsellor cover'"
-                                v-if="computedCoverUrl"
-                                class="w-full h-full object-cover rounded-b-lg"
-                            >
-                            <div v-else class="text-sm w-full h-full flex justify-center items-center text-gray-600 bg-white rounded-b-lg">no cover image</div>
                         </div>
-                        <div class="absolute z-10 bottom-[42px] sm:bottom-[32px] left-2 block xs:flex items-center">
 
-                            <div class="flex items-center z-[1] space-x-2">
-                                <Avatar :size="80" :src="computedAvatarUrl ?? ''" :alt="'counsellor avatar'"/>
-                                <div class="flex justify-center z-10 space-y-2 xs:space-y-0 xs:space-x-2 flex-col xs:flex-row">
-                                    <div
-                                        @click="() => clickedChangeFile('avatar')"
-                                        class="w-fit p-2 text-center hover:bg-gray-600 hover:text-gray-200 transition duration-75 bg-gray-300 text-gray-700 text-xs xs:text-sm tracking-wide rounded cursor-pointer z-0 xs:-z-[1]"
-                                    >{{ computedAvatarUrl ? 'change' : 'add' }} avatar</div>
-                                    <div
-                                        v-if="counsellor.avatar"
-                                        @click="deleteAvatar"
-                                        class="w-fit p-2 text-center transition duration-75 text-xs xs:text-sm tracking-wide rounded cursor-pointer z-0 xs:-z-[2]"
-                                        :class="[!avatarUrl ? 'hover:bg-green-600 hover:text-green-200 bg-green-300 text-green-700' : 'hover:bg-red-600 hover:text-red-200 bg-red-300 text-red-700']"
-                                    >{{ !avatarUrl ? 'restore' : 'remove' }} avatar</div>
-                                </div>
-                            </div>
-
-                            <div class="shrink rounded bg-white p-2 text-sm" v-if="updateForm.errors.avatar || updateForm.errors.cover">
-                                <InputError class="mt-2" :message="updateForm.errors.avatar" />
-                                <InputError class="mt-2" :message="updateForm.errors.cover" />
-                            </div>
+                        <div>
+                            <div class="w-full text-justify capitalize mb-2 text-lg font-medium text-gray-900">Avatar</div>
+                            <ImageUploadField
+                                v-model="updateForm.avatar"
+                                v-model:removed="updateForm.deleteAvatar"
+                                :existing-url="counsellor?.avatar ?? ''"
+                                shape="circle"
+                                :size="80"
+                                label="avatar"
+                                input-id="counsellor-avatar"
+                                :error="updateForm.errors.avatar"
+                            />
                         </div>
                     </div>
 
                     <div class="w-full flex items-center justify-end mt-4">
-
                         <PrimaryButton class="ms-4" :class="{ 'opacity-25': loading }" :disabled="!formDataChanged || loading">
                             update
                         </PrimaryButton>
@@ -277,7 +145,4 @@ function thereIsNoData() {
         :time="alertData.time"
         @close="clearAlertData"
     />
-    
-    <input ref="avatar" type="file" name="counsellor-avatar" id="counsellor-avatar" class="hidden" accept="image/*" @change="changeAvatar">
-    <input ref="cover" type="file" name="cover" id="cover" class="hidden" accept="image/*" @change="changeCover">
 </template>
