@@ -6,6 +6,7 @@ import Checkbox from '@/Components/Checkbox.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import Modal from '@/Components/Modal.vue';
 import FormLoader from '@/Components/FormLoader.vue';
+import ImageUploadField from '@/Components/ImageUploadField.vue';
 import { useForm } from '@inertiajs/vue3';
 import { watch } from 'vue';
 
@@ -33,6 +34,8 @@ function formDataFrom(organization) {
         email: organization.email,
         phone: organization.phone,
         selfApplyEnabled: organization.selfApplyEnabled,
+        logo: null,
+        deleteLogo: false,
     }
 }
 
@@ -47,7 +50,15 @@ watch(() => props.show, () => {
 })
 
 function submit() {
-    form.patch(route('organizations.update', { organizationId: props.organization.id }), {
+    // PHP/Laravel cannot parse a multipart body on a genuine PATCH request (a longstanding PHP
+    // limitation -- $_FILES is only ever populated for POST), so form.patch() would silently
+    // drop the logo file with no error at all. The fix Inertia's own docs recommend: submit as
+    // POST with a spoofed _method field, which Laravel's method-override middleware reads
+    // *before* handing the request to the controller, so it's still routed and validated as a
+    // real PATCH -- only the file-upload mechanics differ. (Verified against a real browser
+    // request; Pest's $this->patch() test helper doesn't hit this PHP-level quirk at all, which
+    // is why the backend's own tests passed despite this being broken end-to-end.)
+    form.transform((data) => ({ ...data, _method: 'patch' })).post(route('organizations.update', { organizationId: props.organization.id }), {
         preserveScroll: true,
         onSuccess: () => {
             emit('updated')
@@ -65,6 +76,22 @@ function submit() {
             <FormLoader :show="form.processing" text="saving" />
 
             <form @submit.prevent="submit" class="space-y-4">
+                <div>
+                    <InputLabel for="logo" value="Logo" />
+                    <div class="mt-1">
+                        <ImageUploadField
+                            v-model="form.logo"
+                            v-model:removed="form.deleteLogo"
+                            :existing-url="organization?.logo ?? ''"
+                            shape="circle"
+                            :size="100"
+                            label="logo"
+                            input-id="organization-logo"
+                            :error="form.errors.logo"
+                        />
+                    </div>
+                </div>
+
                 <div>
                     <InputLabel for="name" value="Name" />
                     <TextInput id="name" type="text" class="mt-1 block w-full" v-model="form.name" />

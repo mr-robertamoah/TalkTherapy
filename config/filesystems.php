@@ -77,6 +77,14 @@ return [
         public_path('storage/licenses') => storage_path('app/public/licenses'),
         public_path('storage/messages') => storage_path('app/public/messages'),
         public_path('storage/others') => storage_path('app/public/others'),
+        // SCRUM-182/TT-10.5: organization logos (UpdateOrganizationAction's 'logos' upload path)
+        // were 404ing in the browser -- uploads succeeded and saved fine (Pest's $this->patch()
+        // test helper doesn't exercise the public URL at all), but nothing symlinked this new
+        // top-level folder into public/storage, so every logo URL pointed nowhere. This project
+        // links each upload subdirectory individually rather than the Laravel-default single
+        // public/storage -> storage/app/public symlink (see docker/php/entrypoint.sh's
+        // `storage:link --force` on every boot) -- any brand-new upload path needs an entry here.
+        public_path('storage/logos') => storage_path('app/public/logos'),
     ],
 
 ];

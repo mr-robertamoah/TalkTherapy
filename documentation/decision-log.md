@@ -2768,3 +2768,66 @@ non-overlapping requests) only broke because a NEW consumer's context differed f
 assumption was written against -- worth remembering that "it works for the existing callers"
 isn't the same guarantee as "it's safe for the next one," especially for a component explicitly
 designed to be reused across dissimilar surfaces.
+## 2026-08-31 -- SCRUM-187/TT-10.5: three real bugs invisible to Pest, only caught by actually
+using the feature in a browser
+
+Implementing the org logo frontend (wiring the already-reviewed `ImageUploadField`/backend into
+`UpdateOrganizationForm.vue`) surfaced three genuine, previously-shipped bugs, none of which the
+existing (passing) Pest suite could have caught -- each for a different structural reason:
+
+1. **PATCH + multipart file upload silently drops the file.** `UpdateOrganizationForm.vue`
+   submitted via `form.patch(...)`, a real HTTP PATCH. PHP never populates `$_FILES` for a
+   multipart body on a non-POST verb (a `$_FILES`-level PHP limitation, not a Laravel bug) --
+   `$request->file('logo')` just returned null, no exception, no validation error.
+   `tests/Feature/UpdateOrganizationLogoTest.php` (SCRUM-186) passed throughout, because Laravel's
+   `$this->patch(...)` test helper builds the Symfony `Request` with files already populated,
+   bypassing the real wire-level parsing entirely. Fixed with Inertia's documented pattern:
+   `form.transform(data => ({...data, _method: 'patch'})).post(...)` -- routes/authorizes/
+   validates identically (method-override happens before routing), only the transport verb and
+   file-parsing differ.
+2. **A dynamic Tailwind arbitrary-value class is invisible to Tailwind's JIT scanner.**
+   `Avatar.vue` built its sizing via `w-[${props.size}px]` (a runtime-interpolated template
+   string). Tailwind can only generate CSS for class strings its static source scanner can see;
+   a size not already present verbatim somewhere in scanned source (the safelist hack in
+   `AuthenticatedLayout.vue`, six specific pre-approved sizes) silently gets zero CSS, rendering
+   the element at unconstrained native size. Hit with `size={64}` for the new dashboard-header
+   logo. Fixed at the root by switching `Avatar.vue` to an inline `:style` binding, which has no
+   static-scanning requirement -- works for any size, permanently closing this class of bug for
+   every current and future caller. The now-dead safelist div was removed in the same PR
+   (confirmed via grep it was the only consumer).
+3. **A new upload path needs its own storage symlink entry, and nothing enforces that.** This
+   project links each upload subdirectory individually via `config/filesystems.php`'s `links`
+   array (not Laravel's default single symlink) -- `docker/php/entrypoint.sh` re-runs
+   `storage:link --force` off that array on every boot. TT-10.4's backend chose `'path' =>
+   'logos'` but never added a matching `links` entry, so uploads saved correctly but every logo
+   URL 404'd. Fixed by adding the entry, and by adding
+   `tests/Unit/FilesystemLinksCoverageTest.php` -- a Pest test that scans `app/Actions`/
+   `app/Services` for every `'path' => '...'` literal and asserts each has a matching
+   `filesystems.links` entry. Verified this test actually catches the regression (temporarily
+   removed the `logos` entry, confirmed the test fails, restored it).
+
+**Why**: two structurally distinct "invisible to automated tests" categories, worth keeping
+separate in mind rather than lumping together as "need more tests": (1) and (3) are invisible to
+Pest specifically because Laravel's test client / `Storage::fake()` bypass the real PHP
+request-parsing and real symlink layers respectively -- no amount of *better-written* Pest tests
+closes that gap; only real HTTP + real filesystem integration testing (i.e. actually using the
+feature in a browser, which CLAUDE.md already mandates for UI changes) catches them. (3) alone
+happened to also be closeable by a pure-PHP config-reflection test once the pattern was known,
+which is why that one got a permanent regression test and the other two didn't (their tests would
+just re-pass identically on the old, broken code). (2) is invisible because there is no frontend
+test framework in this repo at all (no Vitest/Jest) -- a separate, pre-existing gap, not
+introduced or closed here.
+
+**How to apply**: for TT-10.7 (user avatar frontend, the last ticket reusing these same shared
+components) and any future upload surface: (a) a real Playwright upload-and-verify-the-URL-
+renders pass is required, not optional, exactly as CLAUDE.md's playwright-qa policy already says
+for full-ceremony UI work -- this session is the concrete example of why; (b) any new
+`FileUploadDTO` `path` value will be automatically caught by `FilesystemLinksCoverageTest` if a
+matching `filesystems.links` entry is missing, no manual reminder needed; (c) `Avatar.vue`'s
+sizing is now safe for any `size` value, no safelist coordination needed.
+
+**Follow-up ticket filed**: `security-engineer`'s review of the `filesystems.php` `links` array
+noted, in passing, that the pre-existing `licenses` folder is *also* publicly symlinked (same
+pattern, unrelated to this PR) -- if it holds counsellor verification/license documents, those
+are being served from a public, unauthenticated URL today. Filed as SCRUM-191 to confirm intent,
+since this predates TT-10 entirely and wasn't introduced by it.
