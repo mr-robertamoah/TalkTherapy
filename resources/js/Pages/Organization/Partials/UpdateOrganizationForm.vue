@@ -88,6 +88,7 @@ function submit() {
                             label="logo"
                             input-id="organization-logo"
                             :error="form.errors.logo"
+                            :disabled="form.processing"
                         />
                     </div>
                 </div>
