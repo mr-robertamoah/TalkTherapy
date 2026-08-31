@@ -279,6 +279,14 @@ than the `parent` field).
 
 Total: **35 points**.
 
+> **Known gap, out of TT-10.6's scope (flagged by `reviewer`, 2026-08-31)**: `UserComponent.vue`
+> reads `user.avatar` and is also used inside `AdminUsersComponent.vue`, but TT-10.6 only wired
+> `avatar` into `UserResource` (the shared, single-instance Inertia auth-user prop), not
+> `AdminUserResource` (a separate, bulk `::collection()` resource backing the admin users list) --
+> so admin-listed users simply won't show an avatar (falsy, not a crash) until a follow-up ticket
+> adds it there, repeating the same eager-load audit TT-10.2/TT-10.4 did for their own bulk
+> listings first.
+
 > `HowToStep::file_id` (a fourth FK-column file attachment) is deliberately scoped OUT of this
 > epic — tracked as its own unscheduled, Low-priority follow-up, not silently migrated or dropped.
 

@@ -9,6 +9,7 @@ use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Auth\MustVerifyEmail as MustVerifyEmailContract;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\MorphToMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -90,6 +91,23 @@ class User extends Authenticatable implements MustVerifyEmailContract
     public function likes()
     {
         return $this->hasMany(Like::class);
+    }
+
+    // SCRUM-182/TT-10.6: tagged fileables pivot, same pattern as Counsellor::avatarFile() (TT-10.2)
+    // and Organization::logoFile() (TT-10.4) -- withPivotValue (not the similarly-named,
+    // nonexistent wherePivotValue) constrains reads AND auto-populates the tag column on
+    // attach()/sync(). UserResource is only ever built singly (the shared Inertia auth-user
+    // prop), never via ::collection(), so this carries no N+1 exposure the way Counsellor's did.
+    public function avatarFile(): MorphToMany
+    {
+        return $this->morphToMany(File::class, 'fileable', 'fileables')
+            ->withPivotValue('tag', 'avatar')
+            ->withTimestamps();
+    }
+
+    public function getAvatarAttribute(): ?File
+    {
+        return $this->avatarFile->first();
     }
 
     public function guardians()
