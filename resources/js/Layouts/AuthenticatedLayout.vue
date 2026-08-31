@@ -508,9 +508,6 @@ function goToTherapy(data) {
     </div>
   </div>
 
-  <div
-    class="hidden w-[40px] h-[40px] sm:w-[50px] sm:h-[50px] w-[120px] h-[120px] sm:w-[150px] sm:h-[150px] w-[80px] h-[80px] sm:w-[100px] sm:h-[100px]"
-  ></div>
   <Alert
     :show="alertData.show"
     :type="alertData.type"

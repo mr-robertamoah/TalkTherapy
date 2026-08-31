@@ -3,6 +3,7 @@ import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { Head } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
+import Avatar from '@/Components/Avatar.vue';
 import Alert from '@/Components/Alert.vue';
 import useAlert from '@/Composables/useAlert';
 import UpdateOrganizationForm from './Partials/UpdateOrganizationForm.vue';
@@ -66,7 +67,10 @@ function onChildAlert(alert) {
                         <PrimaryButton @click="() => showEditModal = true">edit profile</PrimaryButton>
                     </div>
                     <div class="p-8">
-                        <div class="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">{{ organization.name }}</div>
+                        <div class="flex items-center gap-4 mb-2">
+                            <Avatar :size="64" :src="organization.logo ?? ''" :avatar-text="'logo'" :alt="`${organization.name} logo`" />
+                            <div class="text-2xl sm:text-3xl font-bold text-gray-900">{{ organization.name }}</div>
+                        </div>
                         <div class="w-16 h-1 bg-blue-600 mb-4"></div>
 
                         <div class="flex flex-wrap gap-2 mb-4">
