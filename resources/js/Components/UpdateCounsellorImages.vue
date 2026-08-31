@@ -109,6 +109,7 @@ function resetUpdateData() {
                                     input-id="counsellor-cover"
                                     empty-text="no cover image"
                                     :error="updateForm.errors.cover"
+                                    :disabled="loading"
                                 />
                             </div>
                         </div>
@@ -124,6 +125,7 @@ function resetUpdateData() {
                                 label="avatar"
                                 input-id="counsellor-avatar"
                                 :error="updateForm.errors.avatar"
+                                :disabled="loading"
                             />
                         </div>
                     </div>

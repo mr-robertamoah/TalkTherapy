@@ -57,6 +57,17 @@ const props = defineProps({
         type: String,
         default: '', // shape === 'rect' only; shape === 'circle' uses Avatar.vue's own fallback text
     },
+    dark: {
+        type: Boolean,
+        default: false, // true when placed on a dark/saturated background (e.g. a gradient hero)
+    },
+    disabled: {
+        type: Boolean,
+        default: false, // true while the consuming form has a submission in flight -- without
+        // this, a fast remove-then-restore (or similar) click sequence can fire a second request
+        // before the first's response updates `existingUrl`/`removed`, silently dropping the
+        // user's later action once the earlier request resolves (caught in TT-10.7's review).
+    },
 })
 
 const emit = defineEmits(['update:modelValue', 'update:removed'])
@@ -87,6 +98,8 @@ const canRemoveOrRestore = computed(() => !!props.existingUrl && !props.modelVal
 const changeLabel = computed(() => previewUrl.value ? `change ${props.label}` : `add ${props.label}`)
 
 function triggerFileInput() {
+    if (props.disabled) return
+
     input.value?.click()
 }
 
@@ -113,6 +126,8 @@ function onFileSelected(e) {
 }
 
 function toggleRemoveOrRestore() {
+    if (props.disabled) return
+
     clientError.value = ''
 
     if (props.modelValue) {
@@ -145,17 +160,18 @@ function toggleRemoveOrRestore() {
                     :alt="label"
                     class="w-full h-full object-cover"
                 >
-                <div v-else class="text-sm w-full h-full flex items-center justify-center text-gray-400">
+                <div v-else class="text-sm w-full h-full flex items-center justify-center" :class="dark ? 'text-white/70' : 'text-gray-400'">
                     {{ emptyText || `no ${label}` }}
                 </div>
             </template>
 
             <button
                 type="button"
+                :disabled="disabled"
                 :title="changeLabel"
                 :aria-label="changeLabel"
                 @click="triggerFileInput"
-                class="camera-overlay absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/60 text-white/0 group-hover:text-white transition-colors duration-150"
+                class="camera-overlay absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/60 text-white/0 group-hover:text-white transition-colors duration-150 disabled:cursor-not-allowed"
                 :class="shape === 'circle' ? 'rounded-full' : 'rounded-lg'"
             >
                 <CameraIcon class="w-6 h-6" />
@@ -164,23 +180,27 @@ function toggleRemoveOrRestore() {
             <button
                 v-if="canRemoveOrRestore || modelValue"
                 type="button"
+                :disabled="disabled"
                 :title="modelValue ? `remove ${label}` : (removed ? `restore ${label}` : `remove ${label}`)"
                 :aria-label="modelValue ? `remove ${label}` : (removed ? `restore ${label}` : `remove ${label}`)"
                 @click="toggleRemoveOrRestore"
-                class="absolute top-1.5 right-1.5 z-10 flex items-center justify-center w-6 h-6 rounded-full text-white text-sm shadow leading-none transition-colors duration-150"
+                class="absolute top-1.5 right-1.5 z-10 flex items-center justify-center w-6 h-6 rounded-full text-white text-sm shadow leading-none transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-50"
                 :class="removed ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'"
             >{{ removed && !modelValue ? '↺' : '×' }}</button>
         </div>
 
         <button
             type="button"
+            :disabled="disabled"
             @click="triggerFileInput"
-            class="mt-2 block text-xs sm:text-sm text-gray-600 hover:text-gray-900 underline underline-offset-2"
+            class="mt-2 block text-xs sm:text-sm underline underline-offset-2 disabled:cursor-not-allowed disabled:no-underline"
+            :class="[dark ? 'text-white/90 hover:text-white' : 'text-gray-600 hover:text-gray-900', disabled ? 'opacity-50' : '']"
         >{{ changeLabel }}</button>
 
         <InputError v-if="displayError" class="mt-1" :message="displayError" />
 
         <input
+            :disabled="disabled"
             ref="input"
             type="file"
             :id="inputId"

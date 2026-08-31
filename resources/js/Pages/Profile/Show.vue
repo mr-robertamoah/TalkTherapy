@@ -1,6 +1,7 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import DeleteUserForm from './Partials/DeleteUserForm.vue';
+import UpdateAvatarForm from './Partials/UpdateAvatarForm.vue';
 import UpdatePasswordForm from './Partials/UpdatePasswordForm.vue';
 import UpdateProfileInformationForm from './Partials/UpdateProfileInformationForm.vue';
 import VerifyEmailSection from './Partials/VerifyEmailSection.vue';
@@ -61,6 +62,7 @@ function changeStep(value) {
             <div class="sm:w-[90%] md:w-[75%] lg:w-[60%] mx-auto sm:px-6 lg:px-8 mb-10">
                 <div class="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-xl shadow-xl p-8 text-white">
                     <div class="text-center">
+                        <UpdateAvatarForm class="mb-4" />
                         <div class="text-4xl font-bold mb-2">Welcome Back!</div>
                         <div class="text-xl opacity-90">@{{ $page.props.auth.user.username }}</div>
                         <div class="w-16 h-1 bg-white/50 mx-auto mt-4"></div>
