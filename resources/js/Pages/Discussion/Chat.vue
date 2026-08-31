@@ -275,7 +275,7 @@ function addNewMessage(newMessage) {
     <div class="max-w-4xl mx-auto sm:px-6 lg:px-8 py-6 relative">
       <div class="rounded-lg min-h-[400px] bg-stone-200 h-full w-full shrink mb-2">
         <div
-          class="h-[60vh] p-2 overflow-hidden overflow-y-auto space-y-2 flex items-center flex-col"
+          class="h-[60vh] relative p-2 overflow-hidden overflow-y-auto space-y-2 flex items-center flex-col"
           :class="{ 'justify-end': discussionMessages.data?.length <= 3 }"
           id="message_area"
           ref="messageArea"
@@ -284,7 +284,7 @@ function addNewMessage(newMessage) {
             v-if="
               !getting.show && !discussionMessages.page && discussionMessages.data.length
             "
-            class="w-fit mx-auto my-2 text-sm text-gray-600"
+            class="absolute top-1 left-1/2 -translate-x-1/2 z-10 text-sm text-gray-600"
           >
             no more messages
           </div>

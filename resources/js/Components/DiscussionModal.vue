@@ -483,12 +483,12 @@
               getting messages...
             </div>
             <div
-              class="h-[350px] p-2 overflow-hidden overflow-y-auto space-y-2 flex items-center flex-col"
+              class="h-[350px] relative p-2 overflow-hidden overflow-y-auto space-y-2 flex items-center flex-col"
               :class="{ 'justify-end': chatMessages?.length <= 3 }"
             >
               <div
                 v-if="!getting.show && !computedMessagesPage && chatMessages.length"
-                class="w-fit mx-auto my-2 text-sm text-gray-600"
+                class="absolute top-1 left-1/2 -translate-x-1/2 z-10 text-sm text-gray-600"
               >
                 no more messages
               </div>

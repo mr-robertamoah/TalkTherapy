@@ -110,7 +110,7 @@
                 ref="messageArea"
             >
                 <div v-if="setting.show" class="text-sm p-2 text-green-300 bg-green-600 rounded my-2 w-full text-center sticky top-1">{{setting.type + ' current topic...'}}</div>
-                <div v-if="!getting && !computedMessagesPage && chatMessages.length" class="w-fit mx-auto my-2 text-sm text-gray-600">no more messages</div>
+                <div v-if="!getting && !computedMessagesPage && chatMessages.length" class="absolute top-1 left-1/2 -translate-x-1/2 z-10 text-sm text-gray-600">no more messages</div>
                 <div v-if="!getting && computedMessagesPage > 1" class="w-full">
                     <div @click="getSessionMessages" class="w-fit mx-auto p-4 text-lg text-gray-600 cursor-pointer">...</div>
                 </div>
