@@ -254,6 +254,13 @@ class DiscussionService extends Service
             $query->whereName($getDiscussionsDTO->name);
         }
 
+        // CounsellorMiniResource reads ->user->username and ->avatar. avatarFile needs an
+        // explicit eager load because, unlike the old FK belongsTo, this MorphToMany always
+        // queries when accessed (see GetOrganizationCounsellorsAction's comment) -- user was
+        // already a pre-existing, unrelated N+1 here, fixed alongside since it's the same
+        // one-line pattern already used in that sibling query.
+        $query->with(['user', 'avatarFile']);
+
         return CounsellorMiniResource::collection($query->paginate(PaginationEnum::pagination->value));
     }
 }

@@ -1,6 +1,7 @@
 <?php
 
 namespace App\Actions\Counsellor;
+
 use App\Actions\Action;
 use App\DTOs\FileUploadDTO;
 use App\DTOs\UpdateCounsellorDTO;
@@ -15,45 +16,57 @@ class UpdateCounsellorAction extends Action
         $fileService = FileService::new();
 
         if ($updateCounsellorDTO->cover) {
+            $oldCover = $updateCounsellorDTO->counsellor->cover;
+
             $fileData = $fileService->uploadFile(FileUploadDTO::new()->fromArray([
                 'disk' => 'public',
                 'path' => 'covers',
-                'file' => $updateCounsellorDTO->cover
+                'file' => $updateCounsellorDTO->cover,
             ]));
 
             $file = $fileService->saveFile($updateCounsellorDTO->user, $fileData);
-            $data['cover_id'] = $file->id;
+            $updateCounsellorDTO->counsellor->coverFile()->sync([$file->id]);
+
+            if ($oldCover) {
+                $fileService->deleteFile($oldCover);
+            }
+        } elseif ($updateCounsellorDTO->deleteCover && $updateCounsellorDTO->counsellor->cover) {
+            $oldCover = $updateCounsellorDTO->counsellor->cover;
+            $updateCounsellorDTO->counsellor->coverFile()->sync([]);
+            $fileService->deleteFile($oldCover);
         }
-        
+
         if ($updateCounsellorDTO->avatar) {
             // TODO resize image
+            $oldAvatar = $updateCounsellorDTO->counsellor->avatar;
+
             $fileData = $fileService->uploadFile(FileUploadDTO::new()->fromArray([
                 'disk' => 'public',
                 'path' => 'avatars',
-                'file' => $updateCounsellorDTO->avatar
+                'file' => $updateCounsellorDTO->avatar,
             ]));
 
             $file = $fileService->saveFile($updateCounsellorDTO->user, $fileData);
-            $data['avatar_id'] = $file->id;
+            $updateCounsellorDTO->counsellor->avatarFile()->sync([$file->id]);
+
+            if ($oldAvatar) {
+                $fileService->deleteFile($oldAvatar);
+            }
+        } elseif ($updateCounsellorDTO->deleteAvatar && $updateCounsellorDTO->counsellor->avatar) {
+            $oldAvatar = $updateCounsellorDTO->counsellor->avatar;
+            $updateCounsellorDTO->counsellor->avatarFile()->sync([]);
+            $fileService->deleteFile($oldAvatar);
         }
 
-        if (
-            ($updateCounsellorDTO->deleteAvatar || $updateCounsellorDTO->avatar) && 
-            $updateCounsellorDTO->counsellor->avatar
-        ) {
-            $fileService->deleteFile($updateCounsellorDTO->counsellor->avatar);
+        if (! is_null($updateCounsellorDTO->contactVisible)) {
+            $data['contact_visible'] = $updateCounsellorDTO->contactVisible;
         }
-
-        if (
-            ($updateCounsellorDTO->deleteCover || $updateCounsellorDTO->cover) && 
-            $updateCounsellorDTO->counsellor->cover
-        ) {
-            $fileService->deleteFile($updateCounsellorDTO->counsellor->cover);
+        if ($updateCounsellorDTO->name) {
+            $data['name'] = $updateCounsellorDTO->name;
         }
-
-        if (!is_null($updateCounsellorDTO->contactVisible)) $data['contact_visible'] = $updateCounsellorDTO->contactVisible;
-        if ($updateCounsellorDTO->name) $data['name'] = $updateCounsellorDTO->name;
-        if ($updateCounsellorDTO->about) $data['about'] = $updateCounsellorDTO->about;
+        if ($updateCounsellorDTO->about) {
+            $data['about'] = $updateCounsellorDTO->about;
+        }
         if ($updateCounsellorDTO->email) {
             $data['email'] = $updateCounsellorDTO->email;
             $data['email_verified_at'] = null;
@@ -61,11 +74,17 @@ class UpdateCounsellorAction extends Action
 
         if (
             $updateCounsellorDTO->email == $updateCounsellorDTO->counsellor->user->email &&
-            !!$updateCounsellorDTO->counsellor->user->email_verified_at
-        ) $data['email_verified_at'] = now()->utc();
+            (bool) $updateCounsellorDTO->counsellor->user->email_verified_at
+        ) {
+            $data['email_verified_at'] = now()->utc();
+        }
 
-        if ($updateCounsellorDTO->phone) $data['phone'] = $updateCounsellorDTO->phone;
-        if ($updateCounsellorDTO->professionId) $data['profession_id'] = $updateCounsellorDTO->professionId;
+        if ($updateCounsellorDTO->phone) {
+            $data['phone'] = $updateCounsellorDTO->phone;
+        }
+        if ($updateCounsellorDTO->professionId) {
+            $data['profession_id'] = $updateCounsellorDTO->professionId;
+        }
 
         if ($updateCounsellorDTO->selectedCases) {
             $updateCounsellorDTO->counsellor->cases()->sync($updateCounsellorDTO->selectedCases);
@@ -83,7 +102,7 @@ class UpdateCounsellorAction extends Action
             // TODO send database and mail notifications for verification
             $updateCounsellorDTO->counsellor->email_verified_at = null;
         }
-        
+
         $updateCounsellorDTO->counsellor->save();
 
         return $updateCounsellorDTO->counsellor->refresh();

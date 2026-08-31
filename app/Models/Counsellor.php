@@ -365,14 +365,36 @@ class Counsellor extends Model
         return $this->belongsTo(Profession::class);
     }
 
-    public function avatar()
+    // SCRUM-182/TT-10.2: migrated off the avatar_id/cover_id FK columns onto the shared, tagged
+    // fileables pivot (see TT-10.1). withPivotValue (rather than a plain wherePivot) also makes
+    // attach()/sync() auto-populate the tag column on write, not just filter reads -- note this is
+    // NOT the same as the similarly-named wherePivotValue(), which doesn't exist on this relation
+    // and is silently absorbed by Eloquent's dynamic-where-clause magic instead of erroring.
+    public function avatarFile(): MorphToMany
     {
-        return $this->belongsTo(File::class, 'avatar_id');
+        return $this->morphToMany(File::class, 'fileable', 'fileables')
+            ->withPivotValue('tag', 'avatar')
+            ->withTimestamps();
     }
 
-    public function cover()
+    public function coverFile(): MorphToMany
     {
-        return $this->belongsTo(File::class, 'cover_id');
+        return $this->morphToMany(File::class, 'fileable', 'fileables')
+            ->withPivotValue('tag', 'cover')
+            ->withTimestamps();
+    }
+
+    // Accessors, not the relation methods themselves, are what CounsellorResource and the rest of
+    // the app read ($counsellor->avatar / ->cover) -- a MorphToMany is always collection-returning,
+    // so this preserves the pre-existing File|null contract without touching any consumer.
+    public function getAvatarAttribute(): ?File
+    {
+        return $this->avatarFile->first();
+    }
+
+    public function getCoverAttribute(): ?File
+    {
+        return $this->coverFile->first();
     }
 
     public function engagesAUserInTherapy()

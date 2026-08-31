@@ -248,11 +248,19 @@ review, 2026-08-30). Architect resolved the plan's one hard-blocking design ques
 `morphToMany(...)->wherePivot('tag', ...)` relation returns a `Collection`, not `File|null`, which
 would have silently broken `CounsellorResource`'s `$this->avatar?->url` and
 `OrganizationDirectoryResource`'s `$this->logo?->url`. Fix: a two-method split per slot — a
-`*File()` `MorphToMany` relation (`wherePivotValue('tag', '...')`) plus a `get*Attribute()`
+`*File()` `MorphToMany` relation (`withPivotValue('tag', '...')`) plus a `get*Attribute()`
 accessor reading `$this->*File->first()`, so existing resources need zero changes. A composite
 unique index `(fileable_type, fileable_id, tag)` on `fileables` enforces at-most-one-row-per-tag
 at the DB layer without affecting the four existing untagged (`tag IS NULL`) consumers, since SQL
 treats each `NULL` as distinct in a unique index.
+
+**Correction (2026-08-31, during TT-10.2 implementation)**: the method above is `withPivotValue()`,
+not `wherePivotValue()` -- the latter doesn't exist on Eloquent's `MorphToMany`/`BelongsToMany` in
+this Laravel version and is silently absorbed by the dynamic-where-clause magic (`where('pivot_value',
+...)`) instead of throwing, so the mistake produces no error, just a `tag` column that's always NULL.
+Caught via TT-10.2's Feature tests actually asserting the DB state, not just a 302/no-errors
+response. `TT-10.1`'s migration and this plan both originally said `wherePivotValue`; every TT-10
+sub-ticket implementing a `*File()` relation should use `withPivotValue()`.
 
 **User decisions (2026-08-30, plan approved)**: file validation is in scope and must be enforced
 on *both* frontend and backend (not backend-only, no longer contingent — folded into TT-10.8

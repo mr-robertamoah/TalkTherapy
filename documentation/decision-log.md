@@ -2666,3 +2666,50 @@ merged." Correctly not stacked on top of the unmerged branch (per CLAUDE.md), so
 risk, but whoever merges these two PRs should be aware they're landing the same `withPivotValue`-
 on-tagged-`fileables` pattern twice, independently derived rather than one branch building on the
 other -- a tweak to the pattern during TT-10.2's PR review won't automatically appear here.
+## 2026-08-31 -- SCRUM-184/TT-10.2: withPivotValue vs wherePivotValue, and a class of N+1 the
+migration itself introduces
+
+**Finding 1**: `withPivotValue('tag', 'avatar')` is the correct Laravel method for a tagged
+`MorphToMany` relation -- it both constrains reads (like `wherePivot`) AND auto-populates that
+column on `attach()`/`sync()` writes. The similarly-named `wherePivotValue()` (used in the first
+draft, and in TT-10.1's plan-doc description of the pattern) does **not exist** on this Laravel
+version's `MorphToMany`/`BelongsToMany` -- calling it doesn't error, it's silently absorbed by
+Eloquent's dynamic-where-clause magic (`wherePivotValue('tag','avatar')` → `where('pivot_value',
+'avatar')`, a nonsense constraint), so the pivot row is created but its `tag` column stays NULL,
+with no exception and no failing validation. Caught only because the new Feature tests asserted
+actual DB state (`assertDatabaseHas(..., ['tag' => 'avatar'])`), not just a redirect/200 response.
+
+**Finding 2**: migrating a nullable-FK `belongsTo` (`avatar_id`, which returns null without
+querying when the FK is null) onto a `MorphToMany` (which always queries the pivot table when
+accessed, since there's no single FK column to check first) silently turns every existing bulk
+listing that serializes counsellors via `CounsellorMiniResource`/`StarredCounsellorResource` into
+an N+1. One occurrence had an existing dedicated test that caught it immediately
+(`OrganizationScopedListsControllerTest`); three more (`CounsellorService::getCounsellors`,
+`getLeadingCounsellorsForCurrentMonth`, `getBestCounsellorsForPreviousMonth`, `getRandomCounsellors`)
+had no such test and were found by inspection; a fifth (`DiscussionService::getDiscussionCounsellors`)
+was found by the `reviewer` subagent doing its own independent search, not by inspection -- it also
+had a second, pre-existing, unrelated N+1 on `counsellor.user` that got fixed alongside since it's
+the same one-line pattern.
+
+**Why**: recorded because both mistakes are the "no error, just silently wrong/slow" kind that
+tests-that-only-check-the-happy-path-response won't catch -- worth remembering for TT-10.4/10.6
+(org logo, user avatar), which will introduce their own `logoFile()`/`avatarFile()` `MorphToMany`
+relations on `Organization`/`User` respectively: (a) use `withPivotValue()`, never
+`wherePivotValue()`; (b) grep for every existing bulk listing that serializes the new model via a
+Mini/collection-style resource reading the new attribute, and add the eager load there -- don't
+assume "it's null today so it's free" holds once the relation changes shape.
+
+**How to apply**: before considering an org-logo/user-avatar sub-ticket done, repeat the same
+audit this ticket did -- grep for `Organization::query()`/`User::query()` (or wherever the
+relevant model is queried in bulk) followed by a `::collection(...)` resource call, and confirm
+the new tagged relation is in that query's eager load.
+
+**Deferred, not forgotten**: `avatar_id`/`cover_id` remain on the `counsellors` table and in
+`Counsellor::$fillable` after this ticket -- nothing reads or writes them anymore, but dropping
+the columns is intentionally left for a later cleanup migration (after a verified backfill, per
+the original TT-10 plan), not an oversight. The `security-engineer`'s suggestion to wrap
+`UpdateCounsellorAction`'s read-old/sync/delete-old sequence in a DB transaction (to fail
+gracefully instead of orphaning a file on a concurrent double-submit) was also deliberately
+deferred -- explicitly flagged as optional/non-blocking, narrow in impact (requires the same
+counsellor double-submitting within the same request window), and not worth the added complexity
+in this ticket; worth revisiting if it's ever seen in practice.
