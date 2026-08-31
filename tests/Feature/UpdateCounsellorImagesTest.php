@@ -112,6 +112,32 @@ test('a counsellor can delete their avatar', function () {
     $this->assertDatabaseMissing('files', ['id' => $avatar->id]);
 });
 
+test('an oversized avatar is rejected', function () {
+    Storage::fake('public');
+    $counsellor = aCounsellorWithUserForImagesRoute();
+    $this->actingAs($counsellor->user);
+
+    $response = $this->post("/counsellor/{$counsellor->id}", [
+        'avatar' => UploadedFile::fake()->image('avatar.jpg')->size(3000),
+    ]);
+
+    $response->assertSessionHasErrors('avatar');
+    expect($counsellor->fresh()->avatar)->toBeNull();
+});
+
+test('a disallowed file type for cover is rejected', function () {
+    Storage::fake('public');
+    $counsellor = aCounsellorWithUserForImagesRoute();
+    $this->actingAs($counsellor->user);
+
+    $response = $this->post("/counsellor/{$counsellor->id}", [
+        'cover' => UploadedFile::fake()->create('cover.pdf', 100, 'application/pdf'),
+    ]);
+
+    $response->assertSessionHasErrors('cover');
+    expect($counsellor->fresh()->cover)->toBeNull();
+});
+
 test('uploading an avatar and a cover in the same request tags each correctly', function () {
     Storage::fake('public');
     $counsellor = aCounsellorWithUserForImagesRoute();
