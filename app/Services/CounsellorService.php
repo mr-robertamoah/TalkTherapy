@@ -16,7 +16,6 @@ use App\Actions\Counsellor\EnsureDataValidityAction;
 use App\Actions\Counsellor\EnsureUrlSignatureIsValidAction;
 use App\Actions\Counsellor\EnsureUserCanBecomeCounsellorAction;
 use App\Actions\Counsellor\EnsureVerificationRequestDataIsValidAction;
-use App\Services\LicenseService;
 use App\Actions\Counsellor\UpdateCounsellorAction;
 use App\Actions\Counsellor\VerifyEmailAction;
 use App\Actions\EnsureNameStaysRetrievableAction;
@@ -24,8 +23,8 @@ use App\DTOs\CheckNameRetrievabilityDTO;
 use App\DTOs\CreateCounsellorDTO;
 use App\DTOs\CreateLicenseDTO;
 use App\DTOs\DeleteCounsellorDTO;
-use App\DTOs\GetModelsForAdminDTO;
 use App\DTOs\GetCounsellorStatsForAdminDTO;
+use App\DTOs\GetModelsForAdminDTO;
 use App\DTOs\UpdateCounsellorDTO;
 use App\DTOs\VerifyCounsellorDTO;
 use App\Enums\ConstantsEnum;
@@ -34,10 +33,8 @@ use App\Http\Resources\AdminCounsellorResource;
 use App\Http\Resources\AdminCounsellorStatsResource;
 use App\Models\Counsellor;
 use App\Models\LicensingAuthority;
-use App\Models\Star;
 use App\Models\User;
 use App\Notifications\VerifyCounsellorEmailNotification;
-use Illuminate\Http\Request;
 
 class CounsellorService extends Service
 {
@@ -56,20 +53,23 @@ class CounsellorService extends Service
 
         EnsureCanUpdateCounsellorAction::new()->execute($updateCounsellorDTO);
 
-        $updateCounsellorDTO->counsellor->notify(new VerifyCounsellorEmailNotification());
+        $updateCounsellorDTO->counsellor->notify(new VerifyCounsellorEmailNotification);
     }
 
-    public function getCounsellors(User $user, String|null $name)
+    public function getCounsellors(User $user, ?string $name)
     {
         $query = Counsellor::query();
 
-        $query->when($name, function($query) use ($name) {
+        $query->when($name, function ($query) use ($name) {
             $query->whereName($name);
         });
-        
+
         $query->whereNotUser($user);
         $query->withCount('stars');
         $query->orderBy('stars_count');
+        // CounsellorMiniResource reads ->avatar; see GetOrganizationCounsellorsAction's comment
+        // for why this MorphToMany needs an explicit eager load, unlike the old FK belongsTo.
+        $query->with('avatarFile');
 
         return $query->paginate(PaginationEnum::pagination->value);
     }
@@ -128,7 +128,7 @@ class CounsellorService extends Service
     public function verifyCounsellor(VerifyCounsellorDTO $verifyCounsellorDTO)
     {
         EnsureCounsellorExistsAction::new()->execute($verifyCounsellorDTO);
-        
+
         EnsureCounsellorDoesNotHavePendingVerificationRequestAction::new()->execute($verifyCounsellorDTO);
 
         EnsureCanUpdateCounsellorAction::new()->execute($verifyCounsellorDTO);
@@ -138,29 +138,29 @@ class CounsellorService extends Service
         EnsureVerificationRequestDataIsValidAction::new()->execute($verifyCounsellorDTO);
 
         $licenseSerivce = LicenseService::new();
-        
+
         $nationalIdLicense = $licenseSerivce->createLicense(
             CreateLicenseDTO::new()->fromArray([
-                'addedby' => $verifyCounsellorDTO->user->isAdmin() 
-                    ? $verifyCounsellorDTO->user 
+                'addedby' => $verifyCounsellorDTO->user->isAdmin()
+                    ? $verifyCounsellorDTO->user
                     : $verifyCounsellorDTO->counsellor,
                 'for' => $verifyCounsellorDTO->counsellor,
                 'file' => $verifyCounsellorDTO->nationalIdFile,
                 'number' => $verifyCounsellorDTO->nationalIdNumber,
                 'licensingAuthority' => LicensingAuthority::query()
-                    ->where('name', ConstantsEnum::nationalId->value)->first()
+                    ->where('name', ConstantsEnum::nationalId->value)->first(),
             ])
         );
-        
+
         $otherLicense = $licenseSerivce->createLicense(
             CreateLicenseDTO::new()->fromArray([
-                'addedby' => $verifyCounsellorDTO->user->isAdmin() 
-                    ? $verifyCounsellorDTO->user 
+                'addedby' => $verifyCounsellorDTO->user->isAdmin()
+                    ? $verifyCounsellorDTO->user
                     : $verifyCounsellorDTO->counsellor,
                 'for' => $verifyCounsellorDTO->counsellor,
                 'file' => $verifyCounsellorDTO->licenseFile,
                 'number' => $verifyCounsellorDTO->licenseNumber,
-                'licensingAuthority' => LicensingAuthority::find($verifyCounsellorDTO->licensingAuthorityId)
+                'licensingAuthority' => LicensingAuthority::find($verifyCounsellorDTO->licensingAuthorityId),
             ])
         );
 
@@ -209,7 +209,9 @@ class CounsellorService extends Service
         $query = User::query();
 
         $query
-            ->with(['stars', 'counsellor'])
+            // StarredCounsellorResource reads ->avatar and ->cover on the counsellor -- both
+            // MorphToMany relations need an explicit eager load (see GetOrganizationCounsellorsAction).
+            ->with(['stars', 'counsellor.avatarFile', 'counsellor.coverFile'])
             ->withCount(['stars' => function ($q) {
                 $q->whereWithinCurrentMonth();
             }])
@@ -217,7 +219,7 @@ class CounsellorService extends Service
 
         $query->orderBy('stars_count', 'desc');
         $query->limit(5);
-        
+
         return $query->get();
     }
 
@@ -226,7 +228,7 @@ class CounsellorService extends Service
         $query = User::query();
 
         $query
-            ->with(['stars', 'counsellor'])
+            ->with(['stars', 'counsellor.avatarFile', 'counsellor.coverFile'])
             ->withCount(['stars' => function ($q) {
                 $q->whereWithinPreviousMonth();
             }])
@@ -234,7 +236,7 @@ class CounsellorService extends Service
 
         $query->orderBy('stars_count', 'desc');
         $query->limit(5);
-        
+
         return $query->get();
     }
 
@@ -247,6 +249,8 @@ class CounsellorService extends Service
         });
 
         $query->inRandomOrder();
+        // StarredCounsellorResource reads ->avatar and ->cover -- see the eager-load comments above.
+        $query->with(['avatarFile', 'coverFile']);
 
         return $query->paginate(PaginationEnum::preferencesPagination->value);
     }

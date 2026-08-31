@@ -14,7 +14,10 @@ class GetOrganizationCounsellorsAction extends Action
     {
         return OrganizationCounsellor::query()
             ->where('organization_id', $dto->organization->id)
-            ->with(['counsellor.user', 'latestCompensation'])
+            // counsellor.avatarFile: CounsellorMiniResource reads $counsellor->avatar, and unlike
+            // the old nullable avatar_id belongsTo (which skipped the query entirely when null),
+            // the tagged fileables MorphToMany always queries unless eager-loaded (SCRUM-182/TT-10.2).
+            ->with(['counsellor.user', 'counsellor.avatarFile', 'latestCompensation'])
             ->latest()
             ->paginate(PaginationEnum::preferencesPagination->value);
     }
