@@ -2,10 +2,11 @@
 
 namespace Database\Factories;
 
+use App\Models\File;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
- * @extends \Illuminate\Database\Eloquent\Factories\Factory<\App\Models\File>
+ * @extends Factory<File>
  */
 class FileFactory extends Factory
 {
@@ -17,7 +18,11 @@ class FileFactory extends Factory
     public function definition(): array
     {
         return [
-            //
+            'name' => $this->faker->uuid.'.jpg',
+            'mime' => 'image/jpeg',
+            'size' => $this->faker->numberBetween(1000, 500000),
+            'path' => 'files',
+            'storage' => 'public',
         ];
     }
 }
