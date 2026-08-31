@@ -2713,3 +2713,58 @@ gracefully instead of orphaning a file on a concurrent double-submit) was also d
 deferred -- explicitly flagged as optional/non-blocking, narrow in impact (requires the same
 counsellor double-submitting within the same request window), and not worth the added complexity
 in this ticket; worth revisiting if it's ever seen in practice.
+
+---
+
+## 2026-08-31 -- SCRUM-189/TT-10.7: auto-submit design choice, and a real race condition it
+introduced
+
+**Decision**: unlike `UpdateOrganizationForm.vue`/`UpdateCounsellorImages.vue` (which bundle
+avatar/logo changes into one combined submit alongside other text fields, needing an explicit
+"save" click), `UpdateAvatarForm.vue` auto-submits as soon as a file is picked or the remove
+badge is clicked. This is deliberate, not an inconsistency: user avatar has its own dedicated,
+decoupled backend endpoint (`POST /profile/avatar`), so there is no "other field" to batch the
+save with -- requiring an explicit save click for a single-control change would be pure friction.
+`reviewer` confirmed this reasoning and confirmed `form.reset('avatar', 'deleteAvatar')` in
+`onSuccess` can't re-trigger the watchers into an infinite loop (they only fire on a truthy
+value, and reset sets both back to falsy).
+
+**Bug caught by `reviewer` (required fix, applied before merge)**: auto-submit-on-watch, with no
+guard against overlapping requests, created a real correctness bug: click remove -> a POST fires
+-> before its response returns (and updates `existingUrl`), click restore -> `removed` flips back
+to `false`, but the watcher only calls `submit()` on a *truthy* value, so no compensating request
+is sent. The in-flight delete completes anyway, silently overriding the user's restore with no
+error shown -- a genuine "undo did nothing" data-loss edge case, not a style nit. Every other
+form using `ImageUploadField` relied on its *own* submit button's `:disabled="form.processing"`
+to prevent this same class of race, but that disable state never reached into the shared
+widget's own camera/remove-restore controls -- so the other two consumers had the identical
+latent gap, just harder to trigger without an auto-submitting parent.
+
+**Fix**: added a `disabled` prop to `ImageUploadField.vue` (default `false`, so the two
+already-shipped consumers -- counsellor avatar/cover, org logo -- are unaffected unless updated
+to pass it) that disables the camera button, remove/restore badge, persistent text-link, and the
+underlying file input, all wired to `form.processing`. Verified the fix closes the actual window,
+not just in theory: checked `document.querySelector('#user-avatar').disabled` immediately after
+clicking remove (before `await`ing anything further) and confirmed it read `true` mid-flight,
+`false` again once the request resolved. Also wired `:disabled="loading"` into
+`UpdateCounsellorImages.vue`'s two existing usages while touching the shared component, since it
+was a one-line fix for the identical latent gap there. `UpdateOrganizationForm.vue` (TT-10.5) is
+a separate, not-yet-merged sibling branch and could not be updated from here without stacking on
+unmerged work -- **flagged as a fast-follow**: once both TT-10.5 and TT-10.7 land, add
+`:disabled="form.processing"` to TT-10.5's `ImageUploadField` usage too, for the same reason.
+
+**Also fixed** (found via the same Playwright pass, same root cause as SCRUM-187/TT-10.5's
+findings): the persistent "add/change {label}" text-link and rect-shape empty-state text were
+nearly illegible against `Profile/Show.vue`'s dark blue-to-indigo gradient hero -- the shared
+component's hardcoded `text-gray-600`/`text-gray-400` assumed every placement has a light
+background, which held for the previous two consumers but not this one. Added a `dark` Boolean
+prop (default `false`) rather than a broader `theme`/`variant` prop -- `reviewer` agreed a boolean
+is the right level of generalization for exactly two contexts today, not worth speculatively
+building out an enum ahead of a third actual placement.
+
+**Why**: recorded because this is the second ticket in a row (after TT-10.5) where a shared
+component's implicit assumption (there, a Tailwind safelist; here, a light background and
+non-overlapping requests) only broke because a NEW consumer's context differed from the ones the
+assumption was written against -- worth remembering that "it works for the existing callers"
+isn't the same guarantee as "it's safe for the next one," especially for a component explicitly
+designed to be reused across dissimilar surfaces.
