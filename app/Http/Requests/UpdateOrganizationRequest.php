@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Support\ImageUploadRules;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -41,7 +42,9 @@ class UpdateOrganizationRequest extends FormRequest
             'isProvider' => ['sometimes', 'boolean'],
             'isConsumer' => ['sometimes', 'boolean'],
             'selfApplyEnabled' => ['sometimes', 'boolean'],
-            'logo' => ['nullable', 'file'], // TT-10.8: size/MIME validation, tracked separately
+            // ImageUploadRules is the actual enforcement -- the matching client-side check in
+            // ImageUploadField.vue/imageUploadLimits.js is a UX convenience only.
+            'logo' => ImageUploadRules::rules(),
             'deleteLogo' => ['nullable', 'boolean'],
         ];
     }

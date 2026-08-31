@@ -94,6 +94,32 @@ test('an org admin can delete the organization logo', function () {
     $this->assertDatabaseMissing('files', ['id' => $logo->id]);
 });
 
+test('an oversized logo is rejected', function () {
+    Storage::fake('public');
+    [$organization, $admin] = anOrganizationWithAdminForLogoRoute();
+    $this->actingAs($admin);
+
+    $response = $this->patch("/organizations/{$organization->id}", [
+        'logo' => UploadedFile::fake()->image('logo.jpg')->size(3000),
+    ]);
+
+    $response->assertSessionHasErrors('logo');
+    expect($organization->fresh()->logo)->toBeNull();
+});
+
+test('a disallowed file type for logo is rejected', function () {
+    Storage::fake('public');
+    [$organization, $admin] = anOrganizationWithAdminForLogoRoute();
+    $this->actingAs($admin);
+
+    $response = $this->patch("/organizations/{$organization->id}", [
+        'logo' => UploadedFile::fake()->create('logo.pdf', 100, 'application/pdf'),
+    ]);
+
+    $response->assertSessionHasErrors('logo');
+    expect($organization->fresh()->logo)->toBeNull();
+});
+
 test('a non-admin cannot upload a logo for an organization they do not administer', function () {
     Storage::fake('public');
     [$organization] = anOrganizationWithAdminForLogoRoute();

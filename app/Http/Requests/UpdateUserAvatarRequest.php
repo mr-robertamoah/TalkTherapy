@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Support\ImageUploadRules;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 
@@ -26,7 +27,9 @@ class UpdateUserAvatarRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'avatar' => ['nullable', 'file'], // TT-10.8: size/MIME validation, tracked separately
+            // ImageUploadRules is the actual enforcement -- the matching client-side check in
+            // ImageUploadField.vue/imageUploadLimits.js is a UX convenience only.
+            'avatar' => ImageUploadRules::rules(),
             'deleteAvatar' => ['nullable', 'boolean'],
         ];
     }

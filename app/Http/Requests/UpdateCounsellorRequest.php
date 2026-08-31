@@ -2,6 +2,8 @@
 
 namespace App\Http\Requests;
 
+use App\Support\ImageUploadRules;
+use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 
 class UpdateCounsellorRequest extends FormRequest
@@ -17,15 +19,17 @@ class UpdateCounsellorRequest extends FormRequest
     /**
      * Get the validation rules that apply to the request.
      *
-     * @return array<string, \Illuminate\Contracts\Validation\ValidationRule|array<mixed>|string>
+     * @return array<string, ValidationRule|array<mixed>|string>
      */
     public function rules(): array
     {
         return [
             'deleteAvatar' => ['nullable', 'boolean'],
             'deleteCover' => ['nullable', 'boolean'],
-            'avatar' => ['nullable', 'file'], // TODO validate size of files
-            'cover' => ['nullable', 'file'],
+            // ImageUploadRules is the actual enforcement -- the matching client-side check in
+            // ImageUploadField.vue/imageUploadLimits.js is a UX convenience only.
+            'avatar' => ImageUploadRules::rules(),
+            'cover' => ImageUploadRules::rules(),
             'name' => ['nullable', 'string', 'max:255'],
             'about' => ['nullable', 'string'],
             'email' => ['nullable', 'email', 'max:255'],

@@ -3,6 +3,7 @@ import { computed, ref, watch } from "vue";
 import Avatar from "./Avatar.vue";
 import CameraIcon from "@/Icons/CameraIcon.vue";
 import InputError from "./InputError.vue";
+import { ALLOWED_MIME_TYPES, MAX_SIZE_KB } from "@/Constants/imageUploadLimits";
 
 // Shared upload control used by every image-upload surface in the app (counsellor
 // avatar/cover, organization logo, user avatar - SCRUM-182/TT-10) so they share one
@@ -61,6 +62,8 @@ const props = defineProps({
 const emit = defineEmits(['update:modelValue', 'update:removed'])
 
 const input = ref(null)
+const clientError = ref('')
+const displayError = computed(() => clientError.value || props.error)
 let objectUrl = null
 
 const previewUrl = computed(() => {
@@ -90,11 +93,28 @@ function triggerFileInput() {
 function onFileSelected(e) {
     if (!e.target.files?.length) return
 
-    emit('update:modelValue', e.target.files[0])
+    const file = e.target.files[0]
+
+    if (!ALLOWED_MIME_TYPES.includes(file.type)) {
+        clientError.value = `${props.label} must be a jpg, png, or webp image.`
+        if (input.value) input.value.value = ''
+        return
+    }
+
+    if (file.size > MAX_SIZE_KB * 1024) {
+        clientError.value = `${props.label} must be smaller than ${MAX_SIZE_KB / 1024}MB.`
+        if (input.value) input.value.value = ''
+        return
+    }
+
+    clientError.value = ''
+    emit('update:modelValue', file)
     emit('update:removed', false)
 }
 
 function toggleRemoveOrRestore() {
+    clientError.value = ''
+
     if (props.modelValue) {
         if (input.value) input.value.value = ''
         emit('update:modelValue', null)
@@ -158,7 +178,7 @@ function toggleRemoveOrRestore() {
             class="mt-2 block text-xs sm:text-sm text-gray-600 hover:text-gray-900 underline underline-offset-2"
         >{{ changeLabel }}</button>
 
-        <InputError v-if="error" class="mt-1" :message="error" />
+        <InputError v-if="displayError" class="mt-1" :message="displayError" />
 
         <input
             ref="input"

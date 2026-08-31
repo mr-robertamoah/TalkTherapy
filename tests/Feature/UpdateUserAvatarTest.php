@@ -100,6 +100,32 @@ test('uploading an avatar only ever affects the acting user, never another user'
     expect($otherUser->fresh()->avatar)->toBeNull();
 });
 
+test('an oversized avatar is rejected', function () {
+    Storage::fake('public');
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $response = $this->post('/profile/avatar', [
+        'avatar' => UploadedFile::fake()->image('avatar.jpg')->size(3000),
+    ]);
+
+    $response->assertSessionHasErrors('avatar');
+    expect($user->fresh()->avatar)->toBeNull();
+});
+
+test('a disallowed file type for avatar is rejected', function () {
+    Storage::fake('public');
+    $user = User::factory()->create();
+    $this->actingAs($user);
+
+    $response = $this->post('/profile/avatar', [
+        'avatar' => UploadedFile::fake()->create('avatar.pdf', 100, 'application/pdf'),
+    ]);
+
+    $response->assertSessionHasErrors('avatar');
+    expect($user->fresh()->avatar)->toBeNull();
+});
+
 test('an unauthenticated request cannot upload an avatar', function () {
     Storage::fake('public');
 

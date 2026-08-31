@@ -2713,3 +2713,52 @@ gracefully instead of orphaning a file on a concurrent double-submit) was also d
 deferred -- explicitly flagged as optional/non-blocking, narrow in impact (requires the same
 counsellor double-submitting within the same request window), and not worth the added complexity
 in this ticket; worth revisiting if it's ever seen in practice.
+
+## 2026-08-31 -- SCRUM-190/TT-10.8: shared validation limits, client-error precedence bug, and a
+throttling gap deliberately deferred
+
+**What shipped**: `App\Support\ImageUploadRules` as the single source of truth for the
+size (2MB) / MIME (jpg, jpeg, png, webp) limits enforced on all three image-upload endpoints
+(counsellor avatar/cover, org logo, user avatar), replacing the old bare `['nullable', 'file']`
+rule that had shipped with zero size/type enforcement since TT-10.2/10.4/10.6. Mirrored on the
+frontend via `resources/js/Constants/imageUploadLimits.js` and a pre-submit check in
+`ImageUploadField.vue::onFileSelected()`, so a bad file is rejected instantly client-side instead
+of round-tripping to the server first -- purely a UX convenience, the `FormRequest` rule is the
+actual enforcement (both `reviewer` and `security-engineer` independently confirmed the two are
+not conflated anywhere, and each of the three `FormRequest`s now carries a comment saying so
+explicitly per `security-engineer`'s suggestion).
+
+**Bug caught by `reviewer`, fixed before commit**: `ImageUploadField.vue`'s `displayError`
+computed originally read `props.error || clientError.value` -- since `props.error` (the server's
+last-submission error) is never cleared on a fresh file pick, a stale server error from an
+earlier submission would mask a *new*, more relevant client-side rejection message. Fixed by
+flipping precedence to `clientError.value || props.error`. Also cleared `clientError` in
+`toggleRemoveOrRestore()` so a lingering rejection message doesn't persist after the user chooses
+to remove/restore an existing image instead of retrying the upload (a `reviewer` "suggested
+improvement", applied since it was a one-line fix for a real, if minor, UX papercut).
+
+**`security-engineer` confirmed, no action needed**: Laravel's `mimes:` rule content-sniffs via
+`finfo`/Symfony's `MimeTypes` (not the client-declared `Content-Type` or filename extension), and
+the file's *stored* name/extension is independently derived from that same sniffed value via
+`UploadedFile::hashName()` -- so a renamed-extension attack (`shell.php.jpg`) fails both at
+validation and at storage time. Deliberately excluding `svg` from `ALLOWED_MIMES` (rather than
+using Laravel's broader `image` rule) was confirmed to close the classic stored-XSS-via-SVG
+vector, not just narrow the format list arbitrarily.
+
+**Test coverage gap, closed before commit**: both `reviewer` and `security-engineer`
+independently flagged the same issue -- the existing Feature tests for all three upload endpoints
+only ever exercised the happy path (`UploadedFile::fake()->image(...)`), so the 815-tests-passing
+baseline provided zero regression protection for the very validation this ticket added (a typo in
+`ImageUploadRules::rules()` or a `FormRequest` not actually wiring it up would have gone
+undetected). Added an oversized-file case and a disallowed-MIME case to each of
+`UpdateCounsellorImagesTest`, `UpdateOrganizationLogoTest`, and `UpdateUserAvatarTest`, plus a
+direct `Unit` test asserting `ImageUploadRules::rules()`'s exact return value. 822 tests passing
+after the additions.
+
+**Deliberately deferred, filed as SCRUM-192**: none of the three upload routes carry a `throttle:`
+middleware (unlike several other mutating routes in `routes/web.php`, e.g. invite/apply/admin
+endpoints at `throttle:30,1`). `security-engineer` assessed this as a real but low-severity,
+availability-only concern (repeated cheap disk I/O from re-uploading a ~2-4MB payload, not
+unbounded storage growth since old files are deleted on replace) and explicitly recommended a
+follow-up ticket rather than blocking this ticket on it, since TT-10.8's scope is validation, not
+rate-limiting. Filed as a standalone Task (SCRUM-192) rather than folded into this ticket.
