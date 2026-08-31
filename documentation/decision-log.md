@@ -2585,3 +2585,62 @@ narrative. Worth remembering: a Jira ticket's reproduction steps are a hypothesi
 codebase, not a fact about it, especially for a ticket describing a fix to something built in an
 earlier, related ticket (SCRUM-80/91 here) -- always re-verify a "here's the bug" ticket against the
 current code before trusting its diagnosis, not just its acceptance criteria.
+
+---
+
+## 2026-08-30 -- SCRUM-182/TT-10: Jira sub-ticket linking via Relates/Blocks, not parent
+
+**Decision**: when filing SCRUM-183 through SCRUM-190 (TT-10.1-10.8) as sub-tickets of SCRUM-182,
+`createJiraIssue`'s `parent` field was rejected ("Please select valid parent issue") because
+SCRUM-182 is issue type "Feature" (`hierarchyLevel: 0`) -- the same hierarchy level as
+Story/Task/Bug, not an Epic (`hierarchyLevel: 1`), so it cannot hold children via the `parent`
+field the way an Epic can. Fell back to `createIssueLink` with "Relates" (each child -> SCRUM-182)
+plus "Blocks" links encoding the actual dependency graph between the 8 sub-tickets (TT-10.1 blocks
+10.2/10.4/10.6, TT-10.3 blocks 10.5/10.7/10.8, etc.).
+
+**Why**: recorded so a future `/start-feature` umbrella-ticket split in this project checks the
+parent issue's type first -- "Feature"-typed umbrella tickets (this project's apparent convention
+for a broad, not-yet-split ticket, distinct from a true Jira Epic) need the Relates/Blocks fallback,
+not the `parent` field, and that fallback should be applied from the start rather than discovered by
+trial and error each time.
+
+**How to apply**: before calling `createJiraIssue` with a `parent`, confirm the parent's
+`issuetype.hierarchyLevel` is actually above the children's (i.e. it's a real Epic) via
+`getJiraIssue`. If it's the same level, plan to link via `createIssueLink` instead.
+
+---
+
+## 2026-08-31 -- SCRUM-185/TT-10.3: bundled a pre-existing z-index bugfix, iterated UI design live
+
+**Decision 1**: while implementing the shared `ImageUploadField` component, browser QA revealed the
+counsellor "update images" edit button (`Show.vue`) was completely unclickable via a real click --
+the cover's gradient overlay div (added later in DOM order, `position: absolute inset-0`, no
+`pointer-events-none`) was intercepting it, because its container was missing the `z-[1]` class that
+an identical sibling button elsewhere in the same file already has. Verified this was pre-existing
+(reverted the refactor and confirmed the button was already broken before this PR) rather than
+something introduced by the refactor. Fixed it in the same PR rather than filing a separate ticket,
+since it's a one-line change directly blocking verification of the very feature being shipped
+(TT-10.3's whole point is to make this modal's UI better -- shipping a nicer UI nobody could
+actually open would be pointless), following the same "bundle a trivial, directly-connected fix"
+precedent as the `EnsureOrganizationExistsAction` dead-code removal during SCRUM-179.
+
+**Decision 2**: the initial implementation (plain text buttons in a row below each image preview)
+was functionally complete and reviewer-approved, but the user found it visually unappealing and
+asked directly whether the counsellor upload button was well-placed. Rather than presenting options
+and waiting, iterated live in the same turn to a hover-reveal overlay pattern (camera icon fades in
+over the image on hover, small remove/restore badge in the corner, persistent text-link below for
+touch/keyboard discoverability) -- closer to the "familiar, appealing" bar a mental-health platform
+should meet, and reused the existing `CameraIcon.vue` icon rather than introducing a new asset.
+
+**Why**: recorded because (a) it's the second time this session a "reviewer approved" checkpoint
+was revisited after direct user feedback on something the review process doesn't evaluate (visual
+appeal, not correctness) -- approval on correctness/security doesn't preclude a later design
+iteration; (b) the z-index bug was caught only because browser QA was actually performed against a
+real click rather than trusting the component's logic in isolation, reinforcing why Playwright
+verification (not just `npm run build`) matters for UI tickets even when "no JS test framework"
+means there's no automated substitute.
+
+**How to apply**: for future TT-10 frontend tickets (org logo, user avatar), consult this decision
+before re-litigating the visual design -- the hover-overlay pattern in `ImageUploadField.vue` is now
+the established look; deviating from it for a new upload surface would reintroduce the "three
+bespoke implementations" problem TT-10.3 exists to close.

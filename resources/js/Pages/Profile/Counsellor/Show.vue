@@ -293,7 +293,7 @@ function closeModal() {
     <AuthenticatedLayout>
         <div class="pt-4 pb-12">
             <div class="w-full sm:w-[90%] md:w-[75%] lg:w-[60%] mx-auto sm:px-6 lg:px-8 relative">
-                <div v-if="isCounsellor" class="absolute top-0 right-2 sm:right-8 flex justify-end items-center p-2">
+                <div v-if="isCounsellor" class="absolute z-[1] top-0 right-2 sm:right-8 flex justify-end items-center p-2">
                     <ProfileEditButton
                         v-if="isCounsellor"
                         class="mr-2"
