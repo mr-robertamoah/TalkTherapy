@@ -29,6 +29,16 @@ class GroupTherapy extends Model
         'allow_in_person',
     ];
 
+    // Memoized (SCRUM-212), same rationale as TherapyTrait::getSessionsHeldAttribute() -- a
+    // shared instance (via morphTo eager loading) re-ran this COUNT query once per sibling Session
+    // rendered through GroupTherapyMiniResource instead of once per distinct GroupTherapy.
+    protected ?int $counsellorsCountCache = null;
+
+    public function getCounsellorsCountAttribute()
+    {
+        return $this->counsellorsCountCache ??= $this->counsellors()->count();
+    }
+
     protected $casts = [
         'payment_data' => 'array',
     ];

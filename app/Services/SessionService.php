@@ -12,14 +12,17 @@ use App\Actions\Session\EnsureCanDeleteSessionAction;
 use App\Actions\Session\EnsureCanEndSessionAction;
 use App\Actions\Session\EnsureCanUpdateSessionAction;
 use App\Actions\Session\EnsureCanUpdateSessionStatusAction;
+use App\Actions\Session\EnsureCanViewCounsellorCalendarAction;
 use App\Actions\Session\EnsureSessionDataIsValidAction;
 use App\Actions\Session\EnsureSessionExistsAction;
 use App\Actions\Session\EnsureTherapyExistsAction;
+use App\Actions\Session\GetCounsellorCalendarSessionsAction;
 use App\Actions\Session\SetCurrentTopicOfSessionAction;
 use App\Actions\Session\UnsetCurrentTopicOfSessionAction;
 use App\Actions\Session\UpdateSessionAction;
 use App\Actions\TherapyTopic\EnsureTherapyTopicExistsAction;
 use App\DTOs\CreateSessionDTO;
+use App\DTOs\GetCounsellorCalendarSessionsDTO;
 use App\DTOs\GetSessionsDTO;
 use App\Enums\PaginationEnum;
 use App\Enums\SessionStatusEnum;
@@ -61,6 +64,18 @@ class SessionService extends Service
         return SessionResource::collection($query->latest()->paginate(
             PaginationEnum::preferencesPagination->value
         ));
+    }
+
+    // Aggregates a counsellor's own sessions across every Therapy/GroupTherapy they're currently
+    // assigned to (SCRUM-212/TT-2.6a) -- distinct from getSessions() above, which is always
+    // scoped to one Therapy/GroupTherapy at a time.
+    public function getCounsellorCalendarSessions(GetCounsellorCalendarSessionsDTO $dto)
+    {
+        EnsureCanViewCounsellorCalendarAction::new()->execute($dto);
+
+        $sessions = GetCounsellorCalendarSessionsAction::new()->execute($dto);
+
+        return SessionResource::collection($sessions);
     }
 
     public function createSession(CreateSessionDTO $createSessionDTO)

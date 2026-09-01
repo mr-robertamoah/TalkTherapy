@@ -3,8 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\DTOs\CreateSessionDTO;
+use App\DTOs\GetCounsellorCalendarSessionsDTO;
 use App\DTOs\GetSessionsDTO;
 use App\Http\Requests\CreateSessionRequest;
+use App\Http\Requests\GetCounsellorCalendarSessionsRequest;
 use App\Http\Requests\UpdateSessionRequest;
 use App\Http\Resources\SessionResource;
 use App\Models\GroupTherapy;
@@ -18,6 +20,26 @@ use Throwable;
 
 class SessionController extends Controller
 {
+    public function getCalendarSessions(GetCounsellorCalendarSessionsRequest $request)
+    {
+        try {
+            $sessions = SessionService::new()->getCounsellorCalendarSessions(
+                GetCounsellorCalendarSessionsDTO::new()->fromArray([
+                    'user' => $request->user(),
+                    'startDate' => $request->startDate,
+                    'endDate' => $request->endDate,
+                ])
+            );
+
+            return response()->json(['sessions' => $sessions]);
+        } catch (Throwable $th) {
+            $status = $this->statusFor($th);
+            $message = $this->messageFor($th, $status);
+
+            return response()->json(['message' => $message], $status);
+        }
+    }
+
     public function createSession(CreateSessionRequest $request)
     {
         try {

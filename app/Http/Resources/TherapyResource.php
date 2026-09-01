@@ -33,7 +33,7 @@ class TherapyResource extends JsonResource
             'id' => $this->id,
             'name' => $this->name,
             'user' => $this->when(
-                $this->addedby?->is($user) || ! $this->anonymous,
+                ! $this->addedByUserIsMaskedFor($user),
                 new UserMiniResource($this->addedby),
                 ['id' => $this->addedby?->id, 'fullName' => ConstantsEnum::anonymousUserLabel->value]
             ),

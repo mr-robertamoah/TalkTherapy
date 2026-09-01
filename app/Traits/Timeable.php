@@ -78,6 +78,18 @@ trait Timeable
             });
     }
 
+    // A row overlaps [$start, $end] if it starts before the range ends AND ends after the range
+    // starts -- catches a session that spans into, out of, or entirely across the requested
+    // window, not just one whose start_time happens to fall inside it (SCRUM-212: a calendar week/
+    // month view needs every session touching that window, including one that started the day
+    // before and runs past midnight into it).
+    public function scopeWhereWithinRange($query, $start, $end)
+    {
+        return $query
+            ->where('start_time', '<=', $end)
+            ->where('end_time', '>=', $start);
+    }
+
     public function isNotUpdateable()
     {
         $query = $this::class == Session::class

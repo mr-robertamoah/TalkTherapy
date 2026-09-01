@@ -37,9 +37,17 @@ trait TherapyTrait
             ->first();
     }
 
+    // Memoized (SCRUM-212): Eloquent's morphTo eager loading shares one model instance across
+    // every sibling that references the same parent row (confirmed: $session1->for === $session2->for
+    // for two sessions on the same Therapy), but this accessor itself isn't cached by Eloquent --
+    // rendering N sessions for the same therapy via TherapyMiniResource re-ran this COUNT query N
+    // times against the identical, already-known-same object. The counsellor calendar aggregate is
+    // the first caller to render many sessions (and therefore many `for` accesses) in one response.
+    protected ?int $sessionsHeldCache = null;
+
     public function getSessionsHeldAttribute()
     {
-        return $this->sessions()->whereHeld()->count();
+        return $this->sessionsHeldCache ??= $this->sessions()->whereHeld()->count();
     }
 
     public function getSessionsCreatedAttribute()
@@ -173,6 +181,20 @@ trait TherapyTrait
             ->whereType(RequestTypeEnum::sessionScheduleProposal->value)
             ->latest()
             ->first();
+    }
+
+    // Extracted from four independent copies of this same ternary (TherapyResource,
+    // GroupTherapyResource, TherapyMiniResource, GroupTherapyMiniResource) -- SCRUM-212: the
+    // counsellor calendar aggregate is the first place needing this outside those four resources,
+    // and a fifth inline copy wasn't warranted. Anonymity only ever applies to a User (client)
+    // addedby, never a Counsellor one, and never masks the addedby's own view of their own record.
+    public function addedByUserIsMaskedFor(?User $viewer): bool
+    {
+        if ($this->addedby_type !== User::class || ! $this->addedby) {
+            return false;
+        }
+
+        return $this->isAnonymousFor($this->addedby) && ! $this->addedby->is($viewer);
     }
 
     public function scopeWhereAddedby($query, Model $model)
