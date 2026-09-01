@@ -6,6 +6,7 @@ const props = defineProps({
   recentSessions: { default: null },
   recentTopics: { default: null },
   pendingRequest: { default: null },
+  pendingSessionScheduleProposal: { default: null },
 });
 </script>
 
@@ -16,5 +17,6 @@ const props = defineProps({
     :recent-sessions="recentSessions"
     :recent-topics="recentTopics"
     :pending-request="pendingRequest"
+    :pending-session-schedule-proposal="pendingSessionScheduleProposal"
   />
 </template>

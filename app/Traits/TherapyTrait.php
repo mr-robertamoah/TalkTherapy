@@ -2,6 +2,7 @@
 
 namespace App\Traits;
 
+use App\Enums\RequestTypeEnum;
 use App\Enums\SessionStatusEnum;
 use App\Enums\TherapyStatusEnum;
 use App\Models\Counsellor;
@@ -158,6 +159,18 @@ trait TherapyTrait
             ->wherePending()
             ->whereFor($this)
             ->whereTo($counsellor)
+            ->latest()
+            ->first();
+    }
+
+    // Unlike pendingRequestFor() above (assistance requests, always `to` a Counsellor), a session
+    // schedule proposal's `to` alternates between the client User and the Counsellor across
+    // counter-offer rounds (SCRUM-207/TT-2.5b) -- so this is scoped by `for`/`type` only, not `to`.
+    public function pendingSessionScheduleProposal()
+    {
+        return $this->requests()
+            ->wherePending()
+            ->whereType(RequestTypeEnum::sessionScheduleProposal->value)
             ->latest()
             ->first();
     }

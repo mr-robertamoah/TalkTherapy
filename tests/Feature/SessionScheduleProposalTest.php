@@ -121,6 +121,126 @@ test('a session schedule cannot be proposed for a therapy with no assigned couns
     $this->assertDatabaseMissing('requests', ['for_id' => $therapy->id, 'for_type' => Therapy::class]);
 });
 
+test('a proposal for a free therapy defaults type/paymentType when omitted', function () {
+    // sessions.type/payment_type are both NOT NULL -- omitting them here must not persist an
+    // empty/invalid value that would later crash accept-time session creation (SCRUM-208).
+    $counsellor = aCounsellorForSessionScheduleProposalRoute();
+    $client = User::factory()->create();
+    $therapy = aTherapyForSessionScheduleProposalRoute($counsellor, $client);
+
+    $this->actingAs($client)
+        ->postJson(route('api.session_schedule_proposals.store', ['therapyId' => $therapy->id]), [
+            'startTime' => now()->addDay()->toDateTimeString(),
+            'endTime' => now()->addDay()->addHour()->toDateTimeString(),
+            'name' => 'Weekly check-in',
+            'about' => 'No type or paymentType supplied.',
+        ])
+        ->assertOk();
+
+    $this->assertDatabaseHas('requests', [
+        'for_id' => $therapy->id,
+        'for_type' => Therapy::class,
+    ]);
+    $proposal = Request::where('for_id', $therapy->id)->where('for_type', Therapy::class)->sole();
+    expect($proposal->data['type'])->toBe('ONLINE');
+    expect($proposal->data['paymentType'])->toBe('FREE');
+});
+
+test('a proposal without a name is rejected', function () {
+    // sessions.name is also NOT NULL, same class of gap as `about` (SCRUM-207) and
+    // type/paymentType above -- found via a regression test that omitted it while exercising the
+    // full propose-then-accept round trip (SCRUM-208).
+    $counsellor = aCounsellorForSessionScheduleProposalRoute();
+    $client = User::factory()->create();
+    $therapy = aTherapyForSessionScheduleProposalRoute($counsellor, $client);
+
+    $this->actingAs($client)
+        ->postJson(route('api.session_schedule_proposals.store', ['therapyId' => $therapy->id]), [
+            'startTime' => now()->addDay()->toDateTimeString(),
+            'endTime' => now()->addDay()->addHour()->toDateTimeString(),
+            'about' => 'Missing a name.',
+        ])
+        ->assertStatus(422)
+        ->assertJsonValidationErrors(['name']);
+});
+
+test('a proposal for a paid therapy requires an explicit paymentType', function () {
+    // Enforced in EnsureSessionScheduleProposalDataIsValidAction (a SessionException, hence
+    // 'message' not Laravel's 'errors' shape), not a FormRequest rule -- security review, SCRUM-208:
+    // a rule keyed on the therapy's own payment_type would run before participancy is checked and
+    // leak whether an arbitrary therapy is PAID via validation-error presence alone.
+    $counsellor = aCounsellorForSessionScheduleProposalRoute();
+    $client = User::factory()->create();
+    $therapy = aTherapyForSessionScheduleProposalRoute($counsellor, $client, ['payment_type' => 'PAID']);
+
+    $response = $this->actingAs($client)
+        ->postJson(route('api.session_schedule_proposals.store', ['therapyId' => $therapy->id]), [
+            'startTime' => now()->addDay()->toDateTimeString(),
+            'endTime' => now()->addDay()->addHour()->toDateTimeString(),
+            'name' => 'Weekly check-in',
+            'about' => 'Missing paymentType for a paid therapy.',
+        ]);
+
+    $response->assertStatus(422);
+    expect($response->json('message'))->toContain('PAID');
+    $this->assertDatabaseMissing('requests', ['for_id' => $therapy->id, 'for_type' => Therapy::class]);
+});
+
+test('a client cannot propose a FREE session for a PAID therapy', function () {
+    // Security review (SCRUM-208): either participant may now propose (unlike a direct session
+    // create, which only trusts a counsellor/admin with paymentType) -- a self-interested client
+    // must not be able to under-report the therapy's own payment type.
+    $counsellor = aCounsellorForSessionScheduleProposalRoute();
+    $client = User::factory()->create();
+    $therapy = aTherapyForSessionScheduleProposalRoute($counsellor, $client, ['payment_type' => 'PAID']);
+
+    $response = $this->actingAs($client)
+        ->postJson(route('api.session_schedule_proposals.store', ['therapyId' => $therapy->id]), array_merge(
+            aValidProposalPayload(),
+            ['paymentType' => 'FREE']
+        ));
+
+    $response->assertStatus(422);
+    $this->assertDatabaseMissing('requests', ['for_id' => $therapy->id, 'for_type' => Therapy::class]);
+});
+
+test('a proposal cannot claim PAID for a FREE therapy', function () {
+    $counsellor = aCounsellorForSessionScheduleProposalRoute();
+    $client = User::factory()->create();
+    $therapy = aTherapyForSessionScheduleProposalRoute($counsellor, $client);
+
+    $response = $this->actingAs($client)
+        ->postJson(route('api.session_schedule_proposals.store', ['therapyId' => $therapy->id]), array_merge(
+            aValidProposalPayload(),
+            ['paymentType' => 'PAID']
+        ));
+
+    $response->assertStatus(422);
+    $this->assertDatabaseMissing('requests', ['for_id' => $therapy->id, 'for_type' => Therapy::class]);
+});
+
+test('a non-participant cannot use the paymentType field to enumerate whether a private therapy is paid', function () {
+    // Regression for the enumeration oracle itself (SCRUM-208 security review): the failure here
+    // must come from the generic participancy check, not a payment-type-specific validation error,
+    // regardless of whether the therapy is actually PAID or FREE.
+    $counsellor = aCounsellorForSessionScheduleProposalRoute();
+    $client = User::factory()->create();
+    $paidTherapy = aTherapyForSessionScheduleProposalRoute($counsellor, $client, ['payment_type' => 'PAID']);
+    $outsider = User::factory()->create();
+
+    $response = $this->actingAs($outsider)
+        ->postJson(route('api.session_schedule_proposals.store', ['therapyId' => $paidTherapy->id]), [
+            'startTime' => now()->addDay()->toDateTimeString(),
+            'endTime' => now()->addDay()->addHour()->toDateTimeString(),
+            'name' => 'Weekly check-in',
+            'about' => 'Probing whether this therapy is paid.',
+        ]);
+
+    $response->assertStatus(422);
+    expect($response->json())->not->toHaveKey('errors');
+    expect($response->json('message'))->toContain('not allowed');
+});
+
 test('a session schedule cannot be proposed for an ended therapy', function () {
     $counsellor = aCounsellorForSessionScheduleProposalRoute();
     $client = User::factory()->create();

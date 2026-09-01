@@ -18,6 +18,8 @@ import UpdateGroupTherapyFormModal from '@/Components/UpdateGroupTherapyFormModa
 import CreateSessionFormModal from '@/Components/CreateSessionFormModal.vue'
 import CreateDiscussionFormModal from '@/Components/CreateDiscussionFormModal.vue'
 import DiscussionModal from '@/Components/DiscussionModal.vue'
+import ProposeSessionScheduleModal from '@/Components/ProposeSessionScheduleModal.vue'
+import SessionScheduleCounterOfferModal from '@/Components/SessionScheduleCounterOfferModal.vue'
 
 import useTherapyState from '@/Composables/useTherapyState'
 import useModal from '@/Composables/useModal'
@@ -46,6 +48,7 @@ const props = defineProps({
   recentTopics: { default: null },
   pendingRequest: { default: null },
   pendingMembershipRequest: { default: null },
+  pendingSessionScheduleProposal: { default: null },
 })
 
 // Initialize therapy state
@@ -101,6 +104,8 @@ const loader = ref({ show: false, type: "" })
 const sessionActionRunning = ref("")
 const request = ref({ responding: false, status: null })
 const membershipRequest = ref({ responding: false, status: null })
+const scheduleProposalRequest = ref({ responding: false })
+const scheduleCounterOfferRequest = ref(null)
 const joinAnonymous = ref(false)
 const counsellorSearch = ref("")
 const newSession = ref(null)
@@ -540,6 +545,67 @@ async function clickedMembershipResponse(response) {
   membershipRequest.value.responding = false
 }
 
+// Session schedule proposal (SCRUM-208/TT-2.5c)
+function clickedProposeSchedule() {
+  showModal("propose schedule")
+}
+
+async function clickedScheduleResponse(response, reason) {
+  scheduleProposalRequest.value.responding = true
+
+  await axios
+    .post(
+      route("requests.respond", { requestId: props.pendingSessionScheduleProposal.id }),
+      reason ? { response, reason } : { response }
+    )
+    .then((res) => {
+      console.log(res)
+
+      setSuccessAlertData({
+        time: 5000,
+        message:
+          response === "accepted"
+            ? "You have accepted the proposed session time."
+            : "You have responded to the proposal.",
+      })
+
+      router.reload({ only: ["therapy", "pendingSessionScheduleProposal", "recentSessions"] })
+    })
+    .catch((err) => {
+      console.log(err)
+
+      // requests.respond's failure shape uses an "error" key, not "message" (RequestController::respond()).
+      setFailedAlertData({
+        time: 5000,
+        message: err.response?.data?.error ?? "Something unfortunate happened. Please try again shortly.",
+      })
+    })
+
+  scheduleProposalRequest.value.responding = false
+}
+
+function clickedScheduleCounterOffer() {
+  scheduleCounterOfferRequest.value = props.pendingSessionScheduleProposal
+}
+
+function scheduleCounterOfferSent() {
+  scheduleCounterOfferRequest.value = null
+  router.reload({ only: ["pendingSessionScheduleProposal"] })
+}
+
+function scheduleProposalSent() {
+  closeModal()
+  router.reload({ only: ["pendingSessionScheduleProposal"] })
+}
+
+function handleScheduleModalAlert(alert) {
+  if (alert.type === "success") {
+    setSuccessAlertData({ message: alert.message, time: 5000 })
+    return
+  }
+  setFailedAlertData({ message: alert.message, time: 5000 })
+}
+
 // Utility functions
 function setLoader(type) {
   loader.value.type = type
@@ -809,6 +875,8 @@ function reportCreated(report) {
     :pending-membership-request="pendingMembershipRequest"
     :membership-request="membershipRequest"
     :counsellor-links="counsellorLinks"
+    :pending-session-schedule-proposal="pendingSessionScheduleProposal"
+    :schedule-proposal-request="scheduleProposalRequest"
     @clicked-show-all="clickedShowAll"
     @clicked-active-session="clickedActiveSession"
     @handle-session-topic-update="handleSessionTopicUpdate"
@@ -826,6 +894,9 @@ function reportCreated(report) {
     @clicked-end-therapy="clickedEndTherapy"
     @clicked-update="clickedUpdate"
     @clicked-delete="clickedDelete"
+    @clicked-propose-schedule="clickedProposeSchedule"
+    @clicked-schedule-response="clickedScheduleResponse"
+    @clicked-schedule-counter-offer="clickedScheduleCounterOffer"
   >
     <template #therapy-component>
       <div class="flex justify-center p-4">
@@ -1192,6 +1263,25 @@ function reportCreated(report) {
         @close="closeModal"
         @changeStatus="(status) => (activeDiscussion.status = status)"
         v-if="activeDiscussion"
+      />
+
+      <!-- Propose Session Time Modal -->
+      <ProposeSessionScheduleModal
+        v-if="therapyType === 'individual'"
+        :show="modalData.show && modalData.type == 'propose schedule'"
+        :therapy="computedTherapy"
+        @close="closeModal"
+        @sent="scheduleProposalSent"
+        @alert="handleScheduleModalAlert"
+      />
+
+      <!-- Counter-Offer Session Time Modal -->
+      <SessionScheduleCounterOfferModal
+        v-if="therapyType === 'individual'"
+        :request="scheduleCounterOfferRequest"
+        @close="() => scheduleCounterOfferRequest = null"
+        @sent="scheduleCounterOfferSent"
+        @alert="handleScheduleModalAlert"
       />
 
       <!-- Alert -->

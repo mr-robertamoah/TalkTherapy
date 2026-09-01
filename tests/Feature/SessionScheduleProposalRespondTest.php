@@ -78,6 +78,39 @@ test('the counsellor accepting a client proposal creates a real session', functi
     Notification::assertSentTo($client, SessionScheduleProposalAcceptedNotification::class);
 });
 
+test('a proposal created without type/paymentType still accepts into a valid session (SCRUM-208 regression)', function () {
+    // sessions.type/payment_type are both NOT NULL native enum columns -- a proposal made through
+    // the real store endpoint without either (as ProposeSessionScheduleModal.vue's UI does for a
+    // FREE, non-in-person therapy, since it doesn't render those selectors at all) must still
+    // default to valid values at propose-time, or accept-time's CreateSessionAction call throws a
+    // QueryException instead of creating the session. Found via live browser verification.
+    $counsellor = aCounsellorForScheduleProposalRespondRoute();
+    $client = User::factory()->create();
+    $therapy = aTherapyForScheduleProposalRespondRoute($counsellor, $client);
+
+    $this->actingAs($client)
+        ->postJson(route('api.session_schedule_proposals.store', ['therapyId' => $therapy->id]), [
+            'startTime' => now()->addDay()->toDateTimeString(),
+            'endTime' => now()->addDay()->addHour()->toDateTimeString(),
+            'name' => 'Weekly check-in',
+            'about' => 'No type or paymentType supplied.',
+        ])
+        ->assertOk();
+
+    $proposal = Request::where('for_id', $therapy->id)->where('for_type', Therapy::class)->sole();
+
+    $this->actingAs($counsellor->user)
+        ->postJson(route('requests.respond', ['requestId' => $proposal->id]), ['response' => 'accepted'])
+        ->assertStatus(201);
+
+    $this->assertDatabaseHas('sessions', [
+        'for_id' => $therapy->id,
+        'for_type' => Therapy::class,
+        'type' => 'ONLINE',
+        'payment_type' => 'FREE',
+    ]);
+});
+
 test('the client accepting a counsellor counter-proposal creates a session with the counsellor as actor, not the client', function () {
     Notification::fake();
     $counsellor = aCounsellorForScheduleProposalRespondRoute();
@@ -244,6 +277,29 @@ test('the counsellor can counter-propose a different time, flipping the directio
         'to_id' => $client->id,
     ]);
     Notification::assertSentTo($client, SessionScheduleProposedNotification::class);
+});
+
+test('a client cannot counter-offer a PAID therapy proposal down to FREE', function () {
+    // Defense-in-depth (security review, SCRUM-208): the same payment-type-must-match-therapy
+    // invariant enforced at propose-time also applies to a counter-offer, since it's the same
+    // client-controlled field on the same underlying negotiation.
+    $counsellor = aCounsellorForScheduleProposalRespondRoute();
+    $client = User::factory()->create();
+    $therapy = aTherapyForScheduleProposalRespondRoute($counsellor, $client, ['payment_type' => 'PAID']);
+    $proposal = aPendingScheduleProposalForRespondRoute($therapy, $counsellor, $client, [
+        'proposedById' => $counsellor->user->id,
+        'paymentType' => 'PAID',
+    ]);
+
+    $response = $this->actingAs($client)
+        ->postJson(route('api.session_schedule_proposals.counter_offer', ['requestId' => $proposal->id]), [
+            'startTime' => now()->addDays(2)->toDateTimeString(),
+            'endTime' => now()->addDays(2)->addHour()->toDateTimeString(),
+            'paymentType' => 'FREE',
+        ]);
+
+    $response->assertStatus(422);
+    $this->assertDatabaseHas('requests', ['id' => $proposal->id, 'status' => RequestStatusEnum::pending->value]);
 });
 
 test('a counter-offer past the round limit is rejected', function () {
