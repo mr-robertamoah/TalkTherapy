@@ -17,6 +17,9 @@ class GetOwnSessionNotesAction extends Action
         return SessionNote::query()
             ->where('session_id', $dto->session->id)
             ->where('counsellor_id', $dto->counsellor->id)
+            // SessionNoteResource::isEditable reads ->session on every note -- eager-load once
+            // here rather than N+1-ing it per row.
+            ->with('session')
             ->latest()
             ->get();
     }

@@ -75,6 +75,11 @@ exercising the dedicated chat pages (see `documentation/features/scrum-20-live-c
 `Chat Demo Individual Therapy` and `Chat Demo Group Therapy` (both `IN_SESSION` with a live
 session, client `maria_garcia` / counsellor `sarah_johnson`), and a `Chat Demo Discussion`
 (`IN_SESSION`, between `sarah_johnson` and `michael_chen`, with existing messages).
+`Chat Demo Group Therapy`'s live session has **two** active counsellors (`sarah_johnson` and
+`michael_chen`) specifically so cross-counsellor session-notes isolation (see
+`documentation/features/scrum-21-session-notes.md`) is browser-verifiable, not just Pest-covered:
+log in as either counsellor on `/group-therapies/{id}/chat` and confirm you never see the other's
+private notes.
 
 `Chat Demo Group Therapy` is also the fixture for anonymity masking (see
 `documentation/features/scrum-71-anonymity-masking.md`): the group itself is **not** anonymous,
