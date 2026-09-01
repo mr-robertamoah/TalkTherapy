@@ -10,12 +10,13 @@ use App\DTOs\CreateTherapyTopicDTO;
 use App\DTOs\GetTherapyDTO;
 use App\DTOs\GroupTherapyDTO;
 use App\DTOs\JoinGroupTherapyDTO;
+use App\DTOs\SessionScheduleProposalDTO;
 use App\Exceptions\TherapyNotFoundException;
 
 class EnsureTherapyExistsAction extends Action
 {
     public function execute(
-        GetTherapyDTO|AssistTherapyDTO|CreateTherapyDTO|CreateSessionDTO|CreateTherapyTopicDTO|GroupTherapyDTO|JoinGroupTherapyDTO $getTherapyDTO,
+        GetTherapyDTO|AssistTherapyDTO|CreateTherapyDTO|CreateSessionDTO|CreateTherapyTopicDTO|GroupTherapyDTO|JoinGroupTherapyDTO|SessionScheduleProposalDTO $getTherapyDTO,
         $type = 'Therapy'
     ) {
         $therapy = $type == 'Therapy' ? $getTherapyDTO->therapy : $getTherapyDTO->groupTherapy;

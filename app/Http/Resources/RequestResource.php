@@ -119,7 +119,9 @@ class RequestResource extends JsonResource
 
     private function getFor()
     {
-        if ($this->type == RequestTypeEnum::therapy->value) {
+        // SCRUM-206 (TT-2.5a): a session-schedule proposal's `for` is also a Therapy directly,
+        // same shape as a `therapy` (assistance) request.
+        if (in_array($this->type, [RequestTypeEnum::therapy->value, RequestTypeEnum::sessionScheduleProposal->value])) {
             return new TherapyMiniResource($this->for);
         }
 
