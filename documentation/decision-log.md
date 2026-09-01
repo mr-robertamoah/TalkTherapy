@@ -3161,3 +3161,46 @@ test for update/delete (security-engineer recommendation, closing a coverage gap
 correct implementation).
 
 ---
+
+## 2026-09-02 — SCRUM-206 (TT-2.5a): review found a dangling-request bug and a PII leak, both fixed
+
+**Decision**: `reviewer` and `security-engineer` independently found the same real bug --
+`EnsureCanProposeSessionScheduleAction` didn't check that the Therapy actually had an assigned
+counsellor before allowing a proposal. Since `Therapy::isParticipant()` returns true for the
+client (`addedby`) regardless of whether a counsellor exists yet, a client could propose on a
+still-unmatched therapy, `ProposeSessionScheduleAction` would then persist a Request with `to =
+null` (no `to`/`to_type` to associate), and `EnsureNoPendingSessionScheduleProposalAction` would
+permanently block any future *legitimate* proposal for that therapy (no reject/cancel or expiry
+sweep exists yet -- both are TT-2.5b's job). Fixed using the existing `Therapy::doesNotHaveAssistance()`
+helper rather than inventing a new check.
+
+`security-engineer` additionally found (a) the "not a participant" rejection message leaked the
+therapy's own name to a non-participant -- any authenticated user can hit this endpoint with any
+sequential `therapyId`, so this is a real, enumerable PII leak for a private/anonymous therapy,
+same class as the SCRUM-124/162 findings already fixed elsewhere in this codebase; fixed by using
+a generic message for that specific branch only (the other branches in the same action only fire
+once participancy is already confirmed, so they safely keep the therapy's name); and (b) the
+`Therapy::lockForUpdate()` call inside the propose transaction discarded its own result and kept
+using the pre-lock, potentially-stale `$dto->therapy` for authorization and `from`/`to`
+resolution -- fixed by reassigning `$dto->therapy` to the freshly-locked row and moving all
+checks (not just the "no pending proposal" one) to run against it, inside the transaction.
+
+`reviewer` also flagged a duplicated `EnsureTherapyExistsAction` (a fourth copy of an action this
+codebase already has one canonical, extensible version of, used by three other services) --
+deleted the new one and extended the canonical `App\Actions\Therapy\EnsureTherapyExistsAction`'s
+DTO union type instead. `type`/`paymentType` validation was tightened to match the sibling
+`CreateSessionRequest`'s enum whitelist (this data is persisted into `requests.data` and is what
+TT-2.5b's accept step will eventually feed into `CreateSessionAction`), `expiryDays` gained the
+same `between:1,30` bound as the compensation-negotiation precedent, and the route gained
+`throttle:30,1` matching sibling mutation routes.
+
+Filed SCRUM-210 for the identical, pre-existing PII-leak pattern in `EnsureCanCreateSessionAction`
+(a different, older ticket's code) rather than fixing it inline.
+
+**Why recorded**: this is the third time this session a security review has found a real,
+previously-unflagged bug during implementation of a new feature that reuses an established
+pattern (after SCRUM-198's `selectedSession`/wrapping bugs and SCRUM-23's REPEATABLE-READ
+staleness) -- worth continuing to budget for a real security pass on every new feature that
+touches authorization or concurrency, not just ones that look novel.
+
+---

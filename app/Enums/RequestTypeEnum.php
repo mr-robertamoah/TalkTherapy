@@ -31,4 +31,10 @@ enum RequestTypeEnum: string
     // `from`/`to` flip direction across rounds -- org proposes = from Organization to Counsellor;
     // a counter-offer (SCRUM-148) reverses it.
     case organizationCounsellorCompensationChange = 'ORGANIZATION_COUNSELLOR_COMPENSATION_CHANGE_REQUEST';
+    // SCRUM-206 (TT-2.5a): a session day/time negotiation for a Therapy. `for` is the Therapy
+    // itself. `from`/`to` alternate between the client User and the assigned Counsellor -- either
+    // party may be the one who proposes (both are participants of the Therapy), with the other
+    // side always the recipient, mirroring organizationCounsellorCompensationChange's from/to
+    // flip on counter-offer (TT-2.5b).
+    case sessionScheduleProposal = 'SESSION_SCHEDULE_PROPOSAL_REQUEST';
 }

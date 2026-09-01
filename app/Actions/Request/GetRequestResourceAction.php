@@ -22,6 +22,9 @@ class GetRequestResourceAction extends Action
                     RequestTypeEnum::discussion->value,
                     RequestTypeEnum::groupTherapy->value,
                     RequestTypeEnum::groupTherapyMembership->value,
+                    // SCRUM-206 (TT-2.5a): `for` is a Therapy, `from`/`to` are User/Counsellor --
+                    // the same shape RequestResource already handles for `therapy` above.
+                    RequestTypeEnum::sessionScheduleProposal->value,
                 ]
             )
         ) {

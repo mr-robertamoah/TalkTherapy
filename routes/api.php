@@ -22,6 +22,7 @@ use App\Http\Controllers\ReportController;
 use App\Http\Controllers\RequestController;
 use App\Http\Controllers\SessionController;
 use App\Http\Controllers\SessionNoteController;
+use App\Http\Controllers\SessionScheduleProposalController;
 use App\Http\Controllers\TestimonialController;
 use App\Http\Controllers\TherapyCaseController;
 use App\Http\Controllers\TherapyController;
@@ -170,6 +171,12 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/sessions/{sessionId}/topics/set', [SessionController::class, 'setCurrentTopic'])->name('api.session.topic.set');
     Route::post('/sessions/{sessionId}/topics/unset', [SessionController::class, 'unsetCurrentTopic'])->name('api.session.topic.unset');
     Route::post('/sessions/{sessionId}/abandon', [SessionController::class, 'abandonSession'])->name('api.sessions.abandon');
+
+    // SCRUM-206/TT-2.5a: a client or counsellor proposing a session day/time for a Therapy --
+    // creates a pending Request only, never a Session directly (that only happens on accept,
+    // TT-2.5b). No web.php duplicate registration -- see SCRUM-200 for why that pattern is
+    // avoided now.
+    Route::post('/therapies/{therapyId}/schedule-proposals', [SessionScheduleProposalController::class, 'store'])->name('api.session_schedule_proposals.store')->middleware('throttle:30,1');
 
     // SCRUM-198/TT-2.2c: fetched/mutated via axios from the counsellor's already-loaded therapy
     // chat page (TherapyComponent.vue), same pattern as api.session.messages.get below -- never
