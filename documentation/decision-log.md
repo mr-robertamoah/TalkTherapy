@@ -3161,3 +3161,44 @@ test for update/delete (security-engineer recommendation, closing a coverage gap
 correct implementation).
 
 ---
+
+## 2026-09-02 — SCRUM-203 (TT-2.3b): message note UI wired into MessageBadge.vue, live-verified
+
+**Decision**: added the inline note affordance (add/view/edit/delete) to `resources/js/Components/MessageBadge.vue`, the single shared rendering point for both `TherapyComponent.vue` (individual/group therapy chat) and `resources/js/Pages/Discussion/Chat.vue` (discussion chat), per the architect's SCRUM-22 planning confirmation that no second component tree exists. Gated behind a new `isCounsellor` prop (passed through from each page's own existing counsellor-detection), and further gated per-message on `!reply` so the compact reply-preview instances of `MessageBadge` never render it.
+
+`MessageResource` gained a `note` field, populated only when the caller (`MessageService::getSessionMessages`/`getDiscussionMessages`) explicitly eager-loads `notes` scoped to the requesting counsellor's own id -- omitted entirely (Laravel's `MissingValue`) for a client viewer, so their message list never even queries `message_notes`.
+
+**Verified live via Playwright** (not just the automated suite): logged in as `sarah_johnson` on the seeded `/therapies/6/chat`, created a real message via tinker, added a note through the actual UI, reloaded the page and confirmed the note persisted (via the eager-load, not just local component state), then edited/deleted it through the UI. A recurring Playwright quirk from this session reappeared: ref-based `browser_click` on the note toggle/save/delete controls didn't register, while a native `element.click()` via `browser_evaluate` did -- consistent with prior notes on this in earlier tickets this session.
+
+**Found and filed, not fixed here**: writing the N+1 regression test for the new `notes` eager-load surfaced a genuine, pre-existing, unrelated N+1 in `MessageResource` on `$this->files`/`$this->replying` (neither eager-loaded by any of the three message-list methods). Filed as SCRUM-205 rather than expanding this ticket, since it predates this change and the notes eager-load itself is correctly batched (confirmed by scoping the regression test's query count specifically to queries touching `message_notes`, not the total query count).
+
+**Why recorded**: the composer's own send-button click didn't register during manual QA either (traced to the same pre-existing, well-documented Playwright ref-click quirk, not a bug in this PR) -- worth remembering that quirk applies to any click in this codebase's chat UI, not just note-affordance controls, so it shouldn't be mistaken for a real regression on a future ticket.
+
+---
+
+## 2026-09-02 — SCRUM-203: reviewer caught a missed third eager-load site; surfaced an unrelated latent bug
+
+**Decision**: `reviewer` found that the notes eager-load had only been added to `getSessionMessages()`
+and `getDiscussionMessages()`, missing the third sibling method, `getTherapyTopicMessages()` --
+all three feed the exact same `MessageBadge.vue` rendering path, so a message's own note would
+have silently disappeared (and been un-editable) whenever a counsellor switched to the
+topic-filtered view. Fixed by adding the identical scoped eager-load to that method too, plus a
+regression test.
+
+Writing that regression test surfaced a second, genuinely pre-existing and unrelated bug:
+`getTherapyTopicMessages()`'s own `sessionId` filter (`$query->whereSessionId(...)`) resolves to
+`where('session_id', ...)`, but `messages` has no such column -- it's a polymorphic
+`for_id`/`for_type` model. Confirmed via grep that `TherapyComponent.vue`'s only caller of this
+endpoint never sends `sessionId`, so this is latent, not a live 500. Filed as SCRUM-209 rather
+than fixing inline (out of scope, and the fix requires a product call on what filtering was
+actually intended). The new regression test works around it by acting as an admin (skipping the
+branch that would otherwise depend on this same broken filter to resolve `$therapy`), documented
+inline so a future reader doesn't mistake the workaround for the thing under test.
+
+**Why recorded**: this is the second time in this epic (after SCRUM-198's `selectedSession`
+binding bug) that testing a UI wiring change surfaced a real inconsistency across sibling code
+paths that only manual/thorough review catches -- worth remembering that any future field added to
+one of these three message-list methods needs to be checked against all three, not just the one
+or two call sites a UI change happens to exercise first.
+
+---

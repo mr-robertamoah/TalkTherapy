@@ -69,6 +69,13 @@ class MessageService extends Service
         $query = $getSessionMessagesDTO->session->messages()
             ->withTrashed()
             ->with(['therapyTopic', 'from'])
+            // Scoped to the requesting counsellor's own id -- never eager-loaded at all for a
+            // client viewer, so their message list never even queries message_notes
+            // (SCRUM-203/TT-2.3b; isolation guarantee mirrors GetOwnMessageNoteAction's own
+            // counsellor_id scope).
+            ->when($user->counsellor, function ($query) use ($user) {
+                $query->with(['notes' => fn ($q) => $q->where('counsellor_id', $user->counsellor->id)]);
+            })
             ->when($getSessionMessagesDTO->like, function ($query) use ($getSessionMessagesDTO) {
                 $query->whereLike($getSessionMessagesDTO->like);
             })
@@ -129,6 +136,9 @@ class MessageService extends Service
 
         $query = $getDiscussionMessagesDTO->discussion->messages()
             ->withTrashed()
+            ->when($user->counsellor, function ($query) use ($user) {
+                $query->with(['notes' => fn ($q) => $q->where('counsellor_id', $user->counsellor->id)]);
+            })
             ->when($getDiscussionMessagesDTO->like, function ($query) use ($getDiscussionMessagesDTO) {
                 $query->whereLike($getDiscussionMessagesDTO->like);
             })
@@ -179,6 +189,9 @@ class MessageService extends Service
             // if that ever changes, this eager-load also needs GroupTherapy's `users` pivot
             // (see Session::isAnonymousFor()) to avoid reintroducing this same N+1.
             ->with(['for.for', 'from'])
+            ->when($user->counsellor, function ($query) use ($user) {
+                $query->with(['notes' => fn ($q) => $q->where('counsellor_id', $user->counsellor->id)]);
+            })
             ->when($getTherapyTopicMessagesDTO->like, function ($query) use ($getTherapyTopicMessagesDTO) {
                 $query->whereLike($getTherapyTopicMessagesDTO->like);
             })

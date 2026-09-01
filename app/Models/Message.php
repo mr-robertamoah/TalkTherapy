@@ -54,6 +54,14 @@ class Message extends Model
             ->withTimestamps();
     }
 
+    // SCRUM-203/TT-2.3b: a counsellor's own private note(s) on this message -- never eager-loaded
+    // for a client viewer (see MessageService's own comment on scoping this to the requesting
+    // counsellor), so a non-counsellor's message list never even queries this table.
+    public function notes()
+    {
+        return $this->hasMany(MessageNote::class);
+    }
+
     public function isParty(?User $user)
     {
         if (! $user) {

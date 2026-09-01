@@ -17,6 +17,7 @@ use App\Models\MessageNote;
 use App\Models\Session;
 use App\Models\Therapy;
 use App\Models\User;
+use Illuminate\Http\Resources\MissingValue;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 
@@ -363,7 +364,15 @@ test('creating, updating, and deleting a message note broadcasts no events at al
     Event::assertNotDispatched(MessageDeletedEvent::class);
 });
 
-test('MessageResource never exposes message notes', function () {
+test('MessageResource never exposes a message note unless the caller explicitly eager-loaded it', function () {
+    // SCRUM-203/TT-2.3b deliberately adds a `note` field to MessageResource, but only ever
+    // populated when the caller (MessageService) explicitly eager-loads `notes` scoped to the
+    // requesting counsellor -- see that ticket's own test coverage
+    // (MessageNoteUiWiringTest.php) for the full isolation guarantee. Here, `toArray()` is
+    // called directly on a model with `notes` NOT loaded, so `note` must resolve to a
+    // MissingValue (Laravel's own "omit this key from the JSON response" marker) -- not actual
+    // note content -- and `notes`/`messageNotes` (the raw relation/plural names) must never be
+    // used as top-level keys regardless.
     $counsellor = aCounsellorForMessageNotesRoute();
     $session = aTherapySessionForMessageNotesRoute($counsellor);
     $message = aMessageForMessageNotesRoute($session);
@@ -371,5 +380,6 @@ test('MessageResource never exposes message notes', function () {
 
     $array = (new MessageResource($message->fresh()))->toArray(request());
 
-    expect($array)->not->toHaveKeys(['notes', 'messageNotes', 'note']);
+    expect($array)->not->toHaveKeys(['notes', 'messageNotes']);
+    expect($array['note'])->toBeInstanceOf(MissingValue::class);
 });

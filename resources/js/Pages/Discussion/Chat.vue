@@ -303,6 +303,7 @@ function addNewMessage(newMessage) {
               :idx="idx"
               :msg="msg"
               :item="discussion"
+              :is-counsellor="true"
               :allow-actions="computedCanSendMessage"
               :current-reply="message.replying?.id && message.replying?.id == msg.id"
               @on-success="(data) => replaceFirstMessage(data)"
