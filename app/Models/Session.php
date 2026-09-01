@@ -20,7 +20,7 @@ class Session extends Model
         Timeable;
 
     protected $fillable = [
-        'name', 'about', 'start_time', 'end_time', 'payment_type',
+        'name', 'about', 'start_time', 'end_time', 'ended_at', 'payment_type',
         'type', 'status', 'longitude', 'latitude', 'landmark', 'therapy_id',
         'updatedby_type', 'updatedby_id',
     ];
@@ -28,6 +28,7 @@ class Session extends Model
     protected $casts = [
         'end_time' => 'datetime',
         'start_time' => 'datetime',
+        'ended_at' => 'datetime',
     ];
 
     public function therapy()
