@@ -5,7 +5,8 @@ import DangerButton from '@/Components/DangerButton.vue';
 import SecondaryButton from '@/Components/SecondaryButton.vue';
 import TextBox from '@/Components/TextBox.vue';
 import FormLoader from '@/Components/FormLoader.vue';
-import { parseISO, format } from 'date-fns';
+import { format } from 'date-fns';
+import useLocalDateTime from '@/Composables/useLocalDateTime';
 
 // SCRUM-208 (TT-2.5c): renders a pending session-schedule proposal's state and the actions
 // available to the current viewer -- a sibling section to the existing assistance-request
@@ -22,13 +23,11 @@ const emit = defineEmits(['clicked-response', 'clicked-counter-offer'])
 
 const rejectReason = ref('')
 
-// Stored server-side via Carbon::toDateTimeString() in UTC (space-separated, no 'T'/offset) --
-// normalize to a proper ISO string before parsing so this always renders in the viewer's local
-// time, regardless of what the browser's Date constructor would otherwise guess.
+const { toLocalDate } = useLocalDateTime()
+
 function toLocalDateTime(dateTime) {
-  if (!dateTime) return ''
-  const iso = dateTime.includes('T') ? dateTime : `${dateTime.replace(' ', 'T')}Z`
-  return format(parseISO(iso), "d MMM yyyy, h:mm a")
+  const date = toLocalDate(dateTime)
+  return date ? format(date, "d MMM yyyy, h:mm a") : ''
 }
 
 function partyIsViewer(party) {

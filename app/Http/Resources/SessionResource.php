@@ -17,6 +17,7 @@ class SessionResource extends JsonResource
     public function toArray(Request $request): array
     {
         $currentTopic = $this->currentTopic;
+        $isIndividualTherapy = $this->for_type === Therapy::class;
 
         return [
             'id' => $this->id,
@@ -43,9 +44,13 @@ class SessionResource extends JsonResource
             // GroupTherapy a session belongs to; every other existing call site already knows its
             // one parent from context and never eager-loads this, so this stays a MissingValue
             // (omitted) for them.
-            'for' => $this->whenLoaded('for', fn () => $this->for_type === Therapy::class
+            'for' => $this->whenLoaded('for', fn () => $isIndividualTherapy
                 ? new TherapyMiniResource($this->for)
                 : new GroupTherapyMiniResource($this->for)),
+            // SCRUM-213/TT-2.6b: neither mini resource above exposes an explicit discriminator,
+            // and the calendar UI needs one to route a click through to the right page
+            // (therapies.get vs group.therapies.get) without inferring it from field presence.
+            'forType' => $this->whenLoaded('for', fn () => $isIndividualTherapy ? 'individual' : 'group'),
         ];
     }
 }

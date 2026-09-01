@@ -261,6 +261,8 @@ test('the calendar response labels individual vs group therapy sessions', functi
 
     expect($individual['for']['id'])->toBe($therapy->id);
     expect($group['for']['id'])->toBe($groupTherapy->id);
+    expect($individual['forType'])->toBe('individual');
+    expect($group['forType'])->toBe('group');
 });
 
 test('the calendar aggregation is not N+1 across a growing number of sessions', function () {
@@ -312,4 +314,21 @@ test('the calendar aggregation is not N+1 across a growing number of sessions', 
     };
 
     expect($queryCountFor(1))->toBe($queryCountFor(4));
+});
+
+test('a counsellor can view the calendar page', function () {
+    $counsellor = aCounsellorForCalendarRoute();
+
+    $this->actingAs($counsellor->user)
+        ->get(route('counsellor.calendar'))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page->component('Counsellor/Calendar'));
+});
+
+test('a non-counsellor is redirected away from the calendar page', function () {
+    $user = User::factory()->create();
+
+    $this->actingAs($user)
+        ->get(route('counsellor.calendar'))
+        ->assertRedirect(route('home'));
 });

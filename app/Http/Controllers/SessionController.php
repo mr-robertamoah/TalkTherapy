@@ -16,10 +16,25 @@ use App\Models\TherapyTopic;
 use App\Services\SessionService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Redirect;
+use Inertia\Inertia;
 use Throwable;
 
 class SessionController extends Controller
 {
+    // SCRUM-213/TT-2.6b: the page itself carries no session data -- the calendar fetches its own
+    // range-scoped data client-side from getCalendarSessions() above, matching this ticket's own
+    // "range-scoped fetching" requirement (never the counsellor's entire session history in one
+    // payload). Counsellor-only, unlike MyOrganizationsDashboard's "any user, optional sections"
+    // pattern -- a calendar has no meaning at all for a non-counsellor.
+    public function calendar(Request $request)
+    {
+        if (! $request->user()->counsellor) {
+            return Redirect::route('home')->withErrors(['alert' => 'You have to be a counsellor to view a session calendar.']);
+        }
+
+        return Inertia::render('Counsellor/Calendar');
+    }
+
     public function getCalendarSessions(GetCounsellorCalendarSessionsRequest $request)
     {
         try {
