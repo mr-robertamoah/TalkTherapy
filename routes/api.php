@@ -14,6 +14,7 @@ use App\Http\Controllers\LicensingAuthorityController;
 use App\Http\Controllers\LikeController;
 use App\Http\Controllers\LinkController;
 use App\Http\Controllers\MessageController;
+use App\Http\Controllers\MessageNoteController;
 use App\Http\Controllers\PostController;
 use App\Http\Controllers\ProfessionController;
 use App\Http\Controllers\ReligionController;
@@ -194,6 +195,17 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/messages/{messageId}', [MessageController::class, 'updateMessage'])->name('api.messages.update')->middleware('throttle:messages');
     Route::delete('/messages/{messageId}', [MessageController::class, 'deleteMessage'])->name('api.messages.delete')->middleware('throttle:messages');
     Route::delete('/messages/{messageId}/me', [MessageController::class, 'deleteMessageForMe'])->name('api.messages.delete.me')->middleware('throttle:messages');
+
+    // SCRUM-202/TT-2.3a: a counsellor's own private note on one specific chat Message -- never
+    // exposed to the client/other participants, see MessageNoteController's own comment on how
+    // counsellor_id is always derived server-side, never accepted as input. Registered only here
+    // (not also in web.php) -- the analogous SessionNote web.php registration turned out to be an
+    // orphaned duplicate never actually used by the frontend (tracked as SCRUM-200); this avoids
+    // repeating that mistake.
+    Route::get('/messages/{messageId}/notes', [MessageNoteController::class, 'index'])->name('api.message.notes.index');
+    Route::post('/messages/{messageId}/notes', [MessageNoteController::class, 'store'])->name('api.message.notes.store')->middleware('throttle:messages');
+    Route::patch('/messages/notes/{noteId}', [MessageNoteController::class, 'update'])->name('api.message.notes.update')->middleware('throttle:messages');
+    Route::delete('/messages/notes/{noteId}', [MessageNoteController::class, 'destroy'])->name('api.message.notes.destroy')->middleware('throttle:messages');
 
     Route::post('/discussions', [DiscussionController::class, 'createDiscussion'])->name('api.discussions.create');
     Route::post('/discussions/{discussionId}', [DiscussionController::class, 'updateDiscussion'])->name('api.discussions.update');
