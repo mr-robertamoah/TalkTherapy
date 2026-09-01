@@ -3097,5 +3097,67 @@ concurrent-transaction regression test isn't feasible in this suite's harness (P
 SQLite `:memory:`, which has neither MySQL's REPEATABLE-READ semantics nor genuinely concurrent
 connections against the same in-memory database) -- noted here explicitly rather than adding a
 test that would give false confidence.
+---
+
+## 2026-09-01 — SCRUM-22 (TT-2.3): message-note editability diverges from the documented reuse plan
+
+**Decision**: message-level notes (`MessageNote`, attached to a single chat `Message`) are
+editable/deletable by their author indefinitely, in every chat context (individual therapy, group
+therapy, and counsellor discussions) -- **not** gated by `GuardsPrivateNoteEditWindow`'s
+live-session-plus-grace-period rule, despite that trait's own docblock (written during SCRUM-197)
+explicitly naming TT-2.3 as its intended second consumer, and `documentation/implementation_plan.md`'s
+TT-2.2b row stating the same intent.
+
+**Why**: this reverses a documented plan, so it was presented to the user as an explicit fork
+(reuse the grace window for Session-owned messages / drop it everywhere) rather than assumed either
+way, per the autonomous-execution policy's carve-out for a genuinely consequential product decision.
+The user chose indefinite editability everywhere. Consequence: `MessageNote`'s authorization actions
+do **not** depend on `GuardsPrivateNoteEditWindow` at all -- author-only check plus participant-of-
+`$message->for` check are sufficient, no `ended_at`/grace-window logic needed. This also sidesteps the
+`Discussion`-has-no-`ended_at` asymmetry the product-owner pass flagged, uniformly, rather than only
+for the `Discussion` branch.
+
+---
+
+## 2026-09-01 — SCRUM-202 (TT-2.3a): `MessageNoteResource` built now, not deferred to SCRUM-203
+
+**Decision**: `app/Http/Resources/MessageNoteResource.php` (id/content/createdAt/updatedAt) was
+created as part of SCRUM-202, even though the sub-ticket split assigned "resource" to SCRUM-203
+("message note resource + UI").
+
+**Why**: `MessageNoteController`'s store/update/destroy/index actions need to return *something* to
+the caller -- `SessionNoteController`'s own precedent (SCRUM-197) already built `SessionNoteResource`
+as part of the CRUD ticket, with only eager-loading + the `isEditable` field + UI landing in the
+follow-up ticket (SCRUM-198/TT-2.2c). This ticket's split description undersized that same detail;
+corrected the same way rather than leaving the CRUD ticket unable to return a usable response.
+SCRUM-203 still owns eager-loading this resource into a message-list response and building the
+`MessageBadge.vue` UI affordance.
+
+**Also**: message-note routes are registered in `routes/api.php` only, not duplicated into
+`routes/web.php` the way SCRUM-197 originally did for session notes -- SCRUM-200 already tracks that
+web.php registration as an orphaned duplicate the frontend never actually calls (the UI uses axios
+against the api.php routes exclusively). Registering only where the feature will actually be used
+avoids repeating that same dead-code pattern here.
+
+---
+
+## 2026-09-02 — SCRUM-202 (TT-2.3a): fixed a soft-delete/unique-index conflict found in security review
+
+**Decision**: `CreateMessageNoteAction` now checks for a trashed `MessageNote` on the same
+`(message_id, counsellor_id)` pair and restores + updates it, instead of always inserting a new
+row.
+
+**Why**: security-engineer found that `message_notes`' unique index on `(message_id,
+counsellor_id)` still counts soft-deleted rows (Eloquent's default query scope excludes them from
+`EnsureCanCreateMessageNoteAction`'s duplicate check, but the DB constraint itself does not
+exclude them from a fresh `INSERT`). A real, likely sequence -- create a note, delete it, add a
+new one -- would pass the app-level duplicate check and then fail with a raw, uncoded
+`QueryException` on the unique constraint, surfacing as a generic 500 rather than the intended
+clean flow. Restoring the trashed row is also the more correct semantics here: at most one note
+has ever existed for a given (message, counsellor) pair, live or trashed, so recreating it is
+really un-deleting it with new content, not creating a logically-second note. Added a regression
+test exercising exactly this create-delete-recreate sequence, plus a co-counsellor IDOR regression
+test for update/delete (security-engineer recommendation, closing a coverage gap on an already-
+correct implementation).
 
 ---
