@@ -96,6 +96,13 @@ class MessageResource extends JsonResource
             'files' => FileResource::collection($this->files),
             'updatedAt' => $this->updated_at,
             'createdAt' => $this->created_at,
+            // Only present when the caller (MessageService) eager-loaded `notes` scoped to the
+            // requesting counsellor's own id -- omitted entirely (not just null) for a client
+            // viewer, since that eager-load never runs for them (SCRUM-203/TT-2.3b).
+            'note' => $this->when(
+                $this->relationLoaded('notes'),
+                fn () => $this->notes->first() ? new MessageNoteResource($this->notes->first()) : null
+            ),
         ];
 
         if ($forType == 'Discussion') {

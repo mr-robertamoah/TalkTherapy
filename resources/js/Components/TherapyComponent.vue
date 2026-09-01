@@ -123,6 +123,7 @@
                         :msg="msg"
                         :item="selectedSession"
                         :current-topic="currentTopic"
+                        :is-counsellor="isCounsellor"
                         :allow-actions="computedCanSendMessage"
                         :show="!computedSubItem?.id || computedSubItem?.id == msg.topicId"
                         :current-reply="message.replying?.id && message.replying?.id == msg.id"
