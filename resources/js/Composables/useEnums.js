@@ -13,6 +13,7 @@ export default function useEnums() {
         organizationMemberInvite: 'ORGANIZATION_MEMBER_INVITE_REQUEST',
         organizationMemberApplication: 'ORGANIZATION_MEMBER_APPLICATION_REQUEST',
         organizationCounsellorCompensationChange: 'ORGANIZATION_COUNSELLOR_COMPENSATION_CHANGE_REQUEST',
+        sessionScheduleProposal: 'SESSION_SCHEDULE_PROPOSAL_REQUEST',
     }
     const RequestStatusEnum = {
         accepted: 'ACCEPTED',

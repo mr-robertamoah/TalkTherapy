@@ -32,6 +32,17 @@
       @clicked-active-session="$emit('clicked-active-session')"
     />
 
+    <!-- Pending Session Schedule Proposal (SCRUM-208/TT-2.5c, individual therapy only) -->
+    <SessionScheduleProposalSection
+      v-if="therapyType === 'individual'"
+      :proposal="pendingSessionScheduleProposal"
+      :user-id="userId"
+      :computed-is-participant="computedIsParticipant"
+      :responding="scheduleProposalRequest.responding"
+      @clicked-response="(response, reason) => $emit('clicked-schedule-response', response, reason)"
+      @clicked-counter-offer="$emit('clicked-schedule-counter-offer')"
+    />
+
     <div class="pt-0 pb-12">
       <!-- Recent Sessions -->
       <TherapyRecentSections
@@ -93,12 +104,15 @@
         :computed-is-counsellor="computedIsCounsellor"
         :computed-is-participant="computedIsParticipant"
         :computed-is-in-session="computedIsInSession"
+        :active-session="activeSession"
+        :pending-session-schedule-proposal="pendingSessionScheduleProposal"
         @clicked-report="$emit('clicked-report')"
         @clicked-create-session="$emit('clicked-create-session')"
         @clicked-create-discussion="$emit('clicked-create-discussion')"
         @clicked-end-therapy="$emit('clicked-end-therapy')"
         @clicked-update="$emit('clicked-update')"
         @clicked-delete="$emit('clicked-delete')"
+        @clicked-propose-schedule="$emit('clicked-propose-schedule')"
       />
     </div>
 
@@ -115,6 +129,7 @@ import TherapyRecentSections from '@/Components/TherapyRecentSections.vue'
 import TherapyDiscussions from '@/Components/TherapyDiscussions.vue'
 import TherapyInformation from '@/Components/TherapyInformation.vue'
 import TherapyActions from '@/Components/TherapyActions.vue'
+import SessionScheduleProposalSection from '@/Components/SessionScheduleProposalSection.vue'
 import useLocalDateTimed from '@/Composables/useLocalDateTime'
 import useGuidedTours from '@/Composables/useGuidedTours'
 
@@ -158,6 +173,8 @@ defineProps({
   pendingMembershipRequest: { default: null },
   membershipRequest: { default: () => ({ responding: false, status: null }) },
   counsellorLinks: { default: () => ({ page: 1, data: [] }) },
+  pendingSessionScheduleProposal: { default: null },
+  scheduleProposalRequest: { default: () => ({ responding: false }) },
 })
 
 defineEmits([
@@ -179,5 +196,8 @@ defineEmits([
   'clicked-end-therapy',
   'clicked-update',
   'clicked-delete',
+  'clicked-propose-schedule',
+  'clicked-schedule-response',
+  'clicked-schedule-counter-offer',
 ])
 </script>

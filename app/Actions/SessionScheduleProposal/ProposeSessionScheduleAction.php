@@ -7,6 +7,8 @@ use App\Actions\Request\CreateRequestAction;
 use App\DTOs\CreateRequestDTO;
 use App\DTOs\SessionScheduleProposalDTO;
 use App\Enums\RequestTypeEnum;
+use App\Enums\SessionTypeEnum;
+use App\Enums\TherapyPaymentTypeEnum;
 use App\Models\Request;
 use App\Notifications\SessionScheduleProposedNotification;
 use Carbon\Carbon;
@@ -35,8 +37,15 @@ class ProposeSessionScheduleAction extends Action
                     'endTime' => (new Carbon($dto->endTime))->utc()->toDateTimeString(),
                     'name' => $dto->name,
                     'about' => $dto->about,
-                    'type' => $dto->type,
-                    'paymentType' => $dto->paymentType,
+                    // sessions.type/payment_type are both NOT NULL -- default the same way
+                    // CreateSessionFormModal.vue does for a direct session create (ONLINE unless
+                    // in-person was actually chosen; FREE for a FREE therapy) so a proposal that
+                    // never touches these fields still carries valid values through to accept-time
+                    // CreateSessionAction. A PAID therapy has no such default -- CreateSessionScheduleProposalRequest
+                    // requires paymentType explicitly in that case, so $dto->paymentType is never
+                    // empty here for a paid therapy.
+                    'type' => $dto->type ?: SessionTypeEnum::online->value,
+                    'paymentType' => $dto->paymentType ?: TherapyPaymentTypeEnum::free->value,
                     'proposedById' => $dto->user->id,
                 ],
                 'expiresAt' => now()->addDays($expiryDays),

@@ -3301,3 +3301,105 @@ test runner cannot be trusted alone for anything touching native DB enum columns
 constraints not exercised by existing fixtures, or true transaction-isolation semantics.
 
 ---
+
+## 2026-09-01/02 — SCRUM-208 (TT-2.5c): proposal resource + UI, two more retroactive NOT NULL fixes
+
+**Decision**: exposed a session-schedule proposal's negotiation state through a new whitelisted
+`RequestResource::proposal` field (mirroring `OrganizationRequestResource`'s `proposedTerms`
+precedent exactly -- explicit field list, never a raw `data` spread, `proposedById`/`sessionId`
+excluded), plus top-level `round`/`expiresAt`. Added `Therapy::pendingSessionScheduleProposal()`
+(scoped by `for`/`type` only, unlike `pendingRequestFor()`'s `to`-a-Counsellor assumption, since
+this request's `to` alternates across counter-offer rounds) and threaded it through
+`TherapyController::getTherapy` as a new Inertia prop, exactly matching the existing
+`pendingRequest` pattern. Built the UI as a new `SessionScheduleProposalSection.vue` (a sibling to
+the existing assistance-request banner, not folded into `TherapyInformation.vue`, per architect
+review -- the round/stale/counter-offer state here is meaningfully richer), a `ProposeSessionScheduleModal.vue`,
+and a `SessionScheduleCounterOfferModal.vue` mirroring `CompensationCounterOfferModal.vue`'s
+established shape. The "propose a session time" CTA in `TherapyActions.vue` is gated on
+`computedIsParticipant` (not counsellor-only, per `EnsureCanProposeSessionScheduleAction`), no
+active session, and no already-pending proposal.
+
+**Two more retroactive NOT NULL fixes, both found via live Playwright browser verification (not
+Pest) of the full propose-then-accept round trip** -- the third and fourth such gaps in this
+epic's session-schedule-proposal flow (after the `requests.type` enum and `sessions.about` fixes
+in SCRUM-207), all following the identical pattern: the propose flow (SCRUM-206) never called
+`CreateSessionAction` itself, so a NOT NULL column `CreateSessionRequest` normally guarantees went
+unnoticed until an actual accept tried to insert a `Session` row:
+1. `sessions.type`/`sessions.payment_type` are both NOT NULL native enum columns with no DB
+   default. `CreateSessionScheduleProposalRequest` left both `nullable`, and
+   `ProposeSessionScheduleModal.vue` correctly doesn't render their selectors when the therapy
+   doesn't allow in-person / isn't paid (mirroring `CreateSessionFormModal.vue`'s own conditional
+   rendering) -- but unlike that direct-create modal, nothing defaulted the omitted values before
+   they reached the DB at accept-time, and a plain `??` fallback in `AcceptSessionScheduleProposalAction`
+   doesn't catch an empty string. Fixed server-side (the authoritative fix, not reliant on any one
+   frontend): `ProposeSessionScheduleAction` now defaults `type` to `ONLINE` and `paymentType` to
+   `FREE` when omitted (via `?:`, which does catch empty string), and `CreateSessionScheduleProposalRequest`
+   now conditionally requires `paymentType` when the therapy is PAID (no sensible default exists
+   there -- silently defaulting to FREE would bypass billing). `CounterOfferSessionScheduleProposalAction`'s
+   equivalent fallback was hardened from `??` to `?:` for the same reason. `ProposeSessionScheduleModal.vue`
+   was also updated to always send a resolved value, for consistency with the direct-create modal.
+2. `sessions.name` is also NOT NULL with no default, exactly like `about`'s already-fixed gap, but
+   `CreateSessionScheduleProposalRequest` still had it `nullable` (`CreateSessionRequest` requires
+   it, no default, since a session's name has no sensible fallback and participates in a
+   same-therapy uniqueness check). Found by a regression test written for finding #1 above that
+   happened to omit `name` too. Fixed by making it `required`, matching `about`.
+
+**Why recorded**: this is now the fourth and fifth time in this epic that Pest's SQLite suite
+missed a real NOT NULL bug that only live/thorough testing caught -- worth restating the pattern
+explicitly for whoever builds the next feature that defers a real side effect (here, session
+creation) to a later step: enumerate every NOT NULL column on the eventual target table against
+every field the earlier step actually collects, don't assume "it validated at propose-time" means
+"it's safe at accept-time" just because no test happened to omit the same field twice.
+
+---
+
+## 2026-09-02 — SCRUM-208: two High security findings from the pre-PR review, fixed before merge
+
+**Finding 1 -- enumeration oracle via a DB-dependent FormRequest rule (High)**: the first version
+of `CreateSessionScheduleProposalRequest`'s `paymentType` rule used
+`Rule::requiredIf(fn () => optional(Therapy::find($this->route('therapyId')))->payment_type === ...)`
+to require it only for a PAID therapy. Laravel resolves `FormRequest` validation *before* the
+controller body runs, so this closure executed -- and could leak, via the presence/absence of a
+"paymentType is required" validation error -- whether an arbitrary `therapyId` (including a
+private/anonymous therapy the caller has no relationship to) is PAID, for ANY authenticated user,
+before `EnsureCanProposeSessionScheduleAction`'s participancy check ever got a chance to run. This
+is the exact PII/business-data-enumeration class already fixed twice before for this same request
+family (SCRUM-124/162/206), reintroduced via a new code path (FormRequest validation ordering)
+those earlier fixes didn't anticipate. Fixed by reverting the rule to a plain, therapy-independent
+`nullable`/`Rule::in(...)`, and moving the actual required-for-PAID enforcement into
+`EnsureSessionScheduleProposalDataIsValidAction`, which runs strictly after
+`EnsureCanProposeSessionScheduleAction` inside the service/transaction -- so by the time payment
+type is checked, participancy is already confirmed and there's no privileged data to leak.
+
+**Finding 2 -- a client could under-report a PAID therapy's session as FREE (High)**: TT-2.5's own
+design change is what created this risk -- `EnsureCanProposeSessionScheduleAction` lets *either*
+participant propose, unlike the pre-existing direct-create flow
+(`EnsureCanCreateSessionAction`/`CreateSessionRequest`), which only ever trusted a counsellor or
+admin with the `paymentType` field. Once an ordinary client (who has a direct financial incentive
+to under-report) can set this field too, nothing previously stopped them proposing `paymentType:
+FREE` for a PAID therapy, and `AcceptSessionScheduleProposalAction` forces the session's actor to
+the counsellor regardless of who clicks accept -- so a single accept click (without the counsellor
+separately re-verifying every negotiated field) would create a real, incorrectly-priced `Session`.
+Fixed in the same `EnsureSessionScheduleProposalDataIsValidAction` check added for Finding 1: any
+client-supplied `paymentType` must equal the therapy's own `payment_type` exactly (covers both
+directions -- FREE-for-PAID and the pre-existing PAID-for-FREE case), enforced identically for
+both the initial propose and every counter-offer round (a countering party could otherwise
+reintroduce the same bypass one round later).
+
+**Why recorded**: both were caught by the `security-engineer` review dispatched before this PR,
+not by the extensive manual Playwright QA done earlier in this ticket (which exercised only
+happy-path FREE-therapy flows) -- worth remembering that a capability change ("who is trusted with
+this field") can silently invalidate an assumption a shared validation path was built on, even
+when the new code around it is otherwise a faithful copy of an existing, already-reviewed pattern.
+Also worth noting explicitly: Finding 3 from that same review (a `public` FREE therapy's pending
+proposal, including its free-text `name`/`about`, is visible to unauthenticated visitors of the
+therapy page) was assessed as **not a new gap introduced by this ticket** -- it's the same
+existing exposure `pendingRequest`/`recentSessions`/`recentTopics` already have on that page for
+any `public` therapy, and this ticket's new prop was deliberately made to match that established
+pattern rather than invent a narrower one. Left as-is rather than unilaterally restricting only
+the new field; flagged in the SCRUM-208 Jira comment for explicit product sign-off on whether
+"public therapy" is intended to mean "negotiation content is public too," since that's a product
+question about the `public` flag's existing semantics, not something scoped to this ticket to
+decide alone.
+
+---

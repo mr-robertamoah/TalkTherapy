@@ -30,6 +30,27 @@ class RequestResource extends JsonResource
             'to' => $this->getTo($viewer),
             'status' => $this->status,
             'type' => $this->type,
+            // SCRUM-208 (TT-2.5c): only meaningful for a session-schedule proposal -- every other
+            // type in this resource has no proposal terms/round/stale-state to show.
+            // Explicitly whitelisted, not a raw spread of `data` -- mirrors
+            // OrganizationRequestResource's identical `proposedTerms` precedent (SCRUM-150/PR #89):
+            // that column also carries `proposedById`/`sessionId` (internal ids used only for
+            // server-side attribution), which must never reach either negotiating party.
+            'proposal' => $this->when(
+                $this->type === RequestTypeEnum::sessionScheduleProposal->value,
+                fn () => [
+                    'startTime' => $this->data['startTime'] ?? null,
+                    'endTime' => $this->data['endTime'] ?? null,
+                    'name' => $this->data['name'] ?? null,
+                    'about' => $this->data['about'] ?? null,
+                    'type' => $this->data['type'] ?? null,
+                    'paymentType' => $this->data['paymentType'] ?? null,
+                    'staleReason' => $this->data['staleReason'] ?? null,
+                    'reason' => $this->data['reason'] ?? null,
+                ]
+            ),
+            'round' => $this->when(! is_null($this->round), $this->round),
+            'expiresAt' => $this->when(! is_null($this->expires_at), fn () => $this->expires_at?->diffForHumans()),
             'createdAt' => $this->created_at->diffForHumans(),
         ];
     }

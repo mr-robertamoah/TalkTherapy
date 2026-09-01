@@ -26,7 +26,20 @@
             "
             >create session</PrimaryButton
           >
-          
+
+          <PrimaryButton
+            @click="$emit('clicked-propose-schedule')"
+            class="shrink-0"
+            v-if="
+              therapyType === 'individual' &&
+              computedIsParticipant &&
+              !activeSession &&
+              !pendingSessionScheduleProposal &&
+              therapy.maxSessions > therapy.sessionsHeld
+            "
+            >propose session time</PrimaryButton
+          >
+
           <PrimaryButton
             @click="$emit('clicked-create-discussion')"
             class="shrink-0"
@@ -72,6 +85,8 @@ defineProps({
   computedIsCounsellor: { type: Boolean, default: false },
   computedIsParticipant: { type: Boolean, default: false },
   computedIsInSession: { type: Boolean, default: false },
+  activeSession: { default: null },
+  pendingSessionScheduleProposal: { default: null },
 })
 
 defineEmits([
@@ -81,5 +96,6 @@ defineEmits([
   'clicked-end-therapy',
   'clicked-update',
   'clicked-delete',
+  'clicked-propose-schedule',
 ])
 </script>

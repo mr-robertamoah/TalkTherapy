@@ -54,8 +54,12 @@ class CounterOfferSessionScheduleProposalAction extends Action
                         'endTime' => (new Carbon($dto->endTime))->utc()->toDateTimeString(),
                         'name' => $dto->name ?? $current->data['name'] ?? null,
                         'about' => $dto->about ?? $current->data['about'] ?? null,
-                        'type' => $dto->type ?? $current->data['type'] ?? null,
-                        'paymentType' => $dto->paymentType ?? $current->data['paymentType'] ?? null,
+                        // ?: not ?? -- an empty string must fall back the same as a missing/null
+                        // value, not persist as-is (the propose-time bug this mirrors: sessions.type/
+                        // payment_type are NOT NULL, and ProposeSessionScheduleAction guarantees
+                        // $current->data already holds a valid, non-empty value for both).
+                        'type' => $dto->type ?: $current->data['type'] ?? null,
+                        'paymentType' => $dto->paymentType ?: $current->data['paymentType'] ?? null,
                         'proposedById' => $dto->user->id,
                     ],
                     'expiresAt' => now()->addDays($expiryDays),
