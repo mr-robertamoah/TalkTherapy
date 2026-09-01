@@ -2890,3 +2890,42 @@ and their template wiring). Merging `develop` into this branch produced one real
 `clientError.value = ''` reset -- resolved by keeping both, guard first: a disabled field
 shouldn't clear a client error it can't currently produce, but the reset is still needed for the
 non-disabled path.
+
+---
+
+## 2026-09-01 -- SCRUM-196/TT-2.2a: cascadeOnDelete would have let a scheduled job silently
+destroy clinical audit records
+
+**What happened**: initial `session_notes` migration used `constrained()->cascadeOnDelete()` on
+both `session_id` and `counsellor_id`. `security-engineer` review caught that this was a live,
+scheduled data-loss path, not a theoretical one: `AppService::purgeExpiredSoftDeletedCounsellors()`
+(run on a schedule per `routes/console.php`) force-deletes a `Counsellor` row 60 days after
+account deletion, and that method's own comment states the deliberate house convention --
+"related historical records... are left untouched." `cascadeOnDelete()` would have silently,
+permanently destroyed every session note that counsellor ever authored the very next time that
+job ran, directly defeating the whole reason this ticket chose soft-deletes in the first place
+(an auditable clinical record). `session_id`'s cascade carried the same latent risk, just with no
+current code path force-deleting a `Session` to trigger it today.
+
+**Fix**: switched both FKs to `nullable()->constrained()->nullOnDelete()`, mirroring the exact
+precedent already set by `2026_08_29_600000_add_organization_id_to_transactions_table.php`
+(`transactions.organization_id`, chosen for the identical reason: a soft-deletable parent whose
+force-deletion must not destroy a historical record that references it). Added `withTrashed()` to
+`SessionNote::session()`/`counsellor()` (mirroring `Message::from()`/`to()`) so a note's author/
+session still resolves correctly while merely soft-deleted, and two regression tests
+(`SessionNoteModelTest`) that actually force-delete a counsellor/session and assert the note
+survives with a nulled reference rather than trusting the migration's intent alone.
+
+**Why recorded**: this is the second time in this project's history (after `transactions.
+organization_id`) that `cascadeOnDelete()` was the wrong default for a soft-deletable parent with
+a scheduled force-delete job behind it -- worth remembering as a standing rule for TT-2.2b/c and
+any future FK to `Counsellor`/`Organization`/any other soft-deletable model with a purge job:
+default to `nullOnDelete()` (nullable column) unless there's a specific reason the child record's
+existence is meaningless without its parent, not `cascadeOnDelete()` by habit.
+
+**Also flagged, deferred to TT-2.2b (not fixed here, correctly out of this ticket's scope)**:
+`SessionNote::$fillable` includes `counsellor_id`, which is fine at the model layer with no
+controller yet, but TT-2.2b's controller/action must derive it server-side from the authenticated
+counsellor and never accept it from client input -- otherwise a counsellor could author a note
+attributed to a different counsellor. Left a comment on the model pointing at this for whoever
+picks up TT-2.2b.

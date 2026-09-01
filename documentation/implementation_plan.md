@@ -40,7 +40,9 @@ Fields: **Key** (Epic-Story) · **Type** · **Priority** (Critical/High/Medium/L
 | Key | Story | Type | Priority | Points | Source | Depends on |
 |---|---|---|---|---|---|---|
 | TT-2.1 | Live chat: sending, receiving, typing indicators, no errors | Story | Critical | 8 | Existing (2.1) | TT-1.2 |
-| TT-2.2 | Counsellor can add real-time notes to a running session | Story | Medium | 5 | Existing (2.5) | TT-2.1 |
+| TT-2.2a | `session_notes` data model — direct `session_id` FK (mirrors `Discussion::session()`'s existing precedent, not polymorphic), `counsellor_id` (author), `content`, soft delete. Deliberately not reusing `Message` (its confidentiality is an opt-in per-message toggle, and was found during review to leak in full over Reverb broadcast regardless — tracked separately as SCRUM-195). | Story | Medium | 2 | New split of existing TT-2.2 (SCRUM-21 `/start-feature` review) | TT-2.1 |
+| TT-2.2b | Session note authorization (`Ensure*Action` convention, no admin bypass — confirmed 2026-09-01 this platform's clinical notes are never admin-readable, unlike every other session/therapy action) + CRUD actions/controller/routes. Cross-counsellor isolation on a shared `GroupTherapy` session is the core test target. Post-session editing uses a configurable grace window (`config('session-notes.edit_grace_minutes')`), not instant lock. Extracts the "author-only + live-window" logic into a shared concern for TT-2.3 to reuse later. | Story | Medium | 6 | New split of existing TT-2.2 (SCRUM-21 `/start-feature` review) | TT-2.2a |
+| TT-2.2c | `SessionNoteResource` (kept structurally separate from `SessionResource`) + counsellor-facing notes panel, fetch-on-load (no Reverb broadcast — explicit negative-path test coverage required). | Story | Medium | 5 | New split of existing TT-2.2 (SCRUM-21 `/start-feature` review) | TT-2.2b |
 | TT-2.3 | Counsellor can annotate a specific chat message with a timestamped note | Story | Medium | 5 | Existing (2.3) | TT-2.1 |
 | TT-2.4 | Admin can cap counsellors per discussion | Story | Low | 2 | Existing (2.4) | — |
 | TT-2.5 | User can propose a session day/time for counsellor accept/modify | Story | High | 5 | Existing (4.1) | — |
@@ -50,6 +52,13 @@ Fields: **Key** (Epic-Story) · **Type** · **Priority** (Critical/High/Medium/L
 **Sprint:** 2 (unchanged from original plan). TT-2.7 should likely be pulled forward given its
 severity — group real-time updates may not work at all right now — but is filed here since it's
 squarely a TT-2 concern.
+
+**TT-2.2 status (2026-09-01)**: went through `/start-feature` (product-owner/project-manager/
+architect) and was found significantly undersized at its original 5 points — same pattern already
+seen on TT-6.3/TT-7.2. Split into TT-2.2a (SCRUM-196) → TT-2.2b (SCRUM-197) → TT-2.2c (SCRUM-198),
+filed as Jira subtasks of SCRUM-21, ~13 points total. Architect review also surfaced a genuine
+pre-existing, unrelated bug — `Message.confidential` is honored on page load but not on Reverb
+broadcast — filed separately as SCRUM-195, not folded into this ticket's scope.
 
 ---
 
