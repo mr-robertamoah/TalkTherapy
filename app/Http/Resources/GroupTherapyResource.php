@@ -4,7 +4,6 @@ namespace App\Http\Resources;
 
 use App\Enums\ConstantsEnum;
 use App\Models\Counsellor;
-use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -29,11 +28,7 @@ class GroupTherapyResource extends JsonResource
             $activeDiscussion = $this->getActiveDiscussion($user->counsellor);
         }
 
-        // Anonymity only ever applies to a User (client) addedby, never a Counsellor one, and
-        // never masks the owner's own view of their own record (mirrors TherapyResource's
-        // `$this->addedby?->is($user) || ! $this->anonymous` precedent).
-        $addedbyUser = $this->addedby_type == User::class ? $this->addedby : null;
-        $isAnonymous = $addedbyUser && $this->isAnonymousFor($addedbyUser);
+        $isAnonymous = $this->addedByUserIsMaskedFor($user);
 
         return [
             'id' => $this->id,
@@ -45,7 +40,7 @@ class GroupTherapyResource extends JsonResource
             'addedby' => $this->addedby_type == Counsellor::class
                 ? new CounsellorMiniResource($this->addedby)
                 : $this->when(
-                    $addedbyUser?->is($user) || ! $isAnonymous,
+                    ! $isAnonymous,
                     new UserMiniResource($this->addedby),
                     ['id' => $this->addedby?->id, 'fullName' => ConstantsEnum::anonymousUserLabel->value]
                 ),

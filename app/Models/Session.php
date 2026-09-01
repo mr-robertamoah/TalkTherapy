@@ -66,8 +66,16 @@ class Session extends Model
         return $this->hasMany(TherapyTopicSession::class, 'session_id');
     }
 
+    // SCRUM-212: uses an already-eager-loaded `therapyTopicSessions` relation when present (the
+    // counsellor calendar aggregate renders many sessions in one response and eager-loads this to
+    // avoid two queries per session) -- falls back to the original live query otherwise, so every
+    // existing single-session call site is unaffected.
     public function getCurrentTopicAttribute()
     {
+        if ($this->relationLoaded('therapyTopicSessions')) {
+            return $this->therapyTopicSessions->firstWhere('current', true)?->therapyTopic;
+        }
+
         return $this->therapyTopicSessions()->whereCurrent()->first()?->therapyTopic;
     }
 

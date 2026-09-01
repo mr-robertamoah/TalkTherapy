@@ -175,6 +175,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/sessions/{sessionId}/topics/unset', [SessionController::class, 'unsetCurrentTopic'])->name('api.session.topic.unset');
     Route::post('/sessions/{sessionId}/abandon', [SessionController::class, 'abandonSession'])->name('api.sessions.abandon');
 
+    // SCRUM-212/TT-2.6a: a counsellor's own sessions aggregated across every Therapy/GroupTherapy
+    // they're currently assigned to, date-range bounded for a calendar week/month view.
+    Route::get('/counsellor/calendar/sessions', [SessionController::class, 'getCalendarSessions'])->name('api.sessions.calendar');
+
     // SCRUM-206/TT-2.5a: a client or counsellor proposing a session day/time for a Therapy --
     // creates a pending Request only, never a Session directly (that only happens on accept,
     // TT-2.5b). No web.php duplicate registration -- see SCRUM-200 for why that pattern is

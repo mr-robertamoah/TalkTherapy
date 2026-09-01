@@ -3,6 +3,7 @@
 namespace App\Http\Resources;
 
 use App\Models\Counsellor;
+use App\Models\Therapy;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -37,6 +38,14 @@ class SessionResource extends JsonResource
             'landmark' => $this->landmark,
             'isSession' => true,
             'createdAt' => $this->created_at,
+            // SCRUM-212: only present when the caller eager-loaded `for` -- the counsellor
+            // calendar aggregate is the first consumer that needs to know which Therapy/
+            // GroupTherapy a session belongs to; every other existing call site already knows its
+            // one parent from context and never eager-loads this, so this stays a MissingValue
+            // (omitted) for them.
+            'for' => $this->whenLoaded('for', fn () => $this->for_type === Therapy::class
+                ? new TherapyMiniResource($this->for)
+                : new GroupTherapyMiniResource($this->for)),
         ];
     }
 }

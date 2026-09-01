@@ -4,7 +4,6 @@ namespace App\Http\Resources;
 
 use App\Models\Counsellor;
 use App\Models\GroupTherapy;
-use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -20,13 +19,7 @@ class PublicTherapyResource extends JsonResource
         // Check if this is a GroupTherapy model
         $isGroupTherapy = $this->resource instanceof GroupTherapy;
         $user = $request->user();
-
-        // Anonymity only ever applies to a User (client) addedby, never a Counsellor one, and
-        // never masks the owner's own view of their own record.
-        $addedbyUser = $this->addedby_type == User::class ? $this->addedby : null;
-        $isAnonymous = $addedbyUser
-            && $this->isAnonymousFor($addedbyUser)
-            && ! $addedbyUser->is($user);
+        $isAnonymous = $this->addedByUserIsMaskedFor($user);
 
         $baseData = [
             'id' => $this->id,
@@ -47,7 +40,7 @@ class PublicTherapyResource extends JsonResource
                     : ($this->addedby_type == Counsellor::class
                         ? $this->addedby?->user_id
                         : $this->addedby?->id),
-                'counsellorsCount' => $this->counsellors()->count(),
+                'counsellorsCount' => $this->counsellorsCount,
                 'about' => $this->about,
             ]);
         }

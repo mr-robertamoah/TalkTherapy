@@ -3404,6 +3404,78 @@ decide alone.
 
 ---
 
+## 2026-09-02 — SCRUM-212 (TT-2.6a): counsellor calendar session aggregation
+
+**Decision**: implemented `GetCounsellorCalendarSessionsAction` (new, under `app/Actions/Session/`)
+unioning `Session` rows across a counsellor's `Therapy` set (single `counsellor_id`) and
+`GroupTherapy` set (`counsellors()` pivot with `state = active`, **plus** a `Counsellor` `addedby`
+-- mirrors `GroupTherapy::isCounsellor()`'s full definition exactly, not just the pivot half of
+it), date-range bounded via a new `Timeable::scopeWhereWithinRange()` overlap check (catches a
+session spanning into/out of the window, not just one whose start falls inside it). Wired through
+a new `SessionService::getCounsellorCalendarSessions()` method (not an overload of the existing
+single-therapy `getSessions()`) and a dedicated `EnsureCanViewCounsellorCalendarAction` with no
+admin bypass (self-scoped only, per acceptance criteria).
+
+**Anonymity-masking extraction** (architect-directed, part of this ticket's own scope): the
+addedby-anonymity ternary duplicated across `TherapyResource`, `GroupTherapyResource`,
+`TherapyMiniResource`, `GroupTherapyMiniResource` is now one shared `TherapyTrait::addedByUserIsMaskedFor()`
+method, consumed by all four (behavior-preserving -- confirmed via the existing `AnonymityMaskingTest`/
+`BroadcastChannelAnonymityTest`/`GroupTherapyMembershipTest` suites, all still green). `SessionResource`
+gained an optional `for` field (`whenLoaded`, omitted for every existing single-parent caller) so
+the calendar's per-event therapy/group name reuses `TherapyMiniResource`/`GroupTherapyMiniResource`
+directly rather than a fifth masking copy -- this also means the counsellor's own view of an
+anonymous therapy's calendar entry is correctly masked the same way the therapy page itself
+already is (no new masking logic needed, confirmed by a dedicated test).
+
+**A real Eloquent gotcha found while building the group-therapy union**: `wherePivot()` does not
+work inside a `whereHas()` closure -- it isn't aware of the pivot join in that context and silently
+produces an invalid `pivot = state` clause (caught immediately by a real-MySQL tinker reproduction,
+not by Pest's SQLite run, which would likely have surfaced it as a different, more confusing
+error). Fixed by referencing the actual pivot table/column (`counsellor_group_therapy.state`)
+directly inside the closure instead.
+
+**N+1, found by this ticket's own regression test, not by manual review**: `SessionResource` had
+never before been rendered in bulk (every other caller shows one session, or one therapy's own
+paginated list) -- `topics`/`cases`/`therapyTopicSessions` (backing the `currentTopic` accessor)/
+`addedby` were never eager-loaded anywhere, silently fine at the small scale those callers render
+at. Fixed via eager-loading in the new Action, plus a small, safe, backward-compatible tweak to
+`Session::getCurrentTopicAttribute()` to use an already-loaded `therapyTopicSessions` relation when
+present. Separately, `TherapyTrait::getSessionsHeldAttribute()`/`GroupTherapy`'s (new)
+`counsellorsCount` accessor were re-running their own COUNT query on every access even though
+Eloquent's morphTo eager loading shares one model instance across every sibling session
+referencing the same parent (confirmed via tinker: `$session1->for === $session2->for`) --
+memoized both on the shared instance, fixing the *systemic* version of this bug (any future caller
+rendering the same parent multiple times in one request benefits), not just this endpoint's case.
+
+**Why recorded**: the `wherePivot`-in-`whereHas` gotcha is worth remembering codebase-wide anytime
+a new BelongsToMany-with-pivot-state query is written via `whereHas`, not just here. The
+accessor-memoization fix is a rare case in this session where a *shared* fix (touching model code
+used everywhere) was the right call rather than filing a narrow follow-up, specifically because
+Eloquent's own object-sharing behavior meant the fix was small, safe, and universally beneficial
+rather than a targeted patch for one new endpoint.
+
+---
+
+## 2026-09-02 — SCRUM-212: review findings applied before merge
+
+Both `reviewer` and `security-engineer` approved the diff with no blocking findings. Applied their
+non-blocking suggestions before opening the PR:
+- Completed the anonymity-masking extraction properly: `PublicTherapyResource.php` had a fifth
+  independent copy of the same ternary (missed when scoping the original four), now using
+  `TherapyTrait::addedByUserIsMaskedFor()` too, plus its own inline `counsellorsCount` query
+  replaced with `GroupTherapy::getCounsellorsCountAttribute()`.
+- Restored a null-safe guard on `addedby` in `addedByUserIsMaskedFor()` (defense-in-depth against
+  a future hard-delete path on `User` -- not reachable today, per the security review, since only
+  `Counsellor` is ever force-deleted in this codebase, but cheap to keep).
+- Added a max date-range bound (93 days) to `GetCounsellorCalendarSessionsRequest` so the endpoint
+  can't be asked to union/eager-load an unbounded number of sessions in one request. Learned along
+  the way that Laravel's `before_or_equal:field +N days` syntax does **not** work the way it reads
+  -- `getDateTimestamp()` tries `strtotime()` on the whole literal string first, fails, then tries
+  to resolve it as a field name (also fails), so the comparison silently degrades to "always
+  invalid" rather than throwing or ignoring the modifier. Implemented via a manual `withValidator()`
+  check instead.
+- Added a second anonymity-masking test exercising the GroupTherapy leg specifically (the existing
+  one only covered the Therapy leg, rendered through a different mini resource).
 ## 2026-09-02 — TT-2.6 (SCRUM-25): split into TT-2.6a/b after `/start-feature` review
 
 **Decision**: TT-2.6 ("Counsellor calendar view of their sessions") was originally a single
