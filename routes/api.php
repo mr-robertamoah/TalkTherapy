@@ -124,7 +124,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/licensing_authorities', [LicensingAuthorityController::class, 'createLicensingAuthority'])->name('licensing_authorities.create');
 
     Route::get('/requests', [RequestController::class, 'getRequests'])->name('requests.get');
-    Route::post('/requests/{requestId}', [RequestController::class, 'respond'])->name('requests.respond');
+    // Throttled (security review, SCRUM-207): every accept/reject now also runs a lockForUpdate()
+    // transaction (session-schedule-proposal accept/reject reuse this same generic endpoint), so
+    // this needed the same rate limit already applied to the newer schedule-proposal routes below.
+    Route::post('/requests/{requestId}', [RequestController::class, 'respond'])->name('requests.respond')->middleware('throttle:30,1');
 
     Route::post('/testimonials', [TestimonialController::class, 'createTestimonial'])->name('api.testimonials.create');
     Route::delete('/testimonials/{testimonialId}', [TestimonialController::class, 'deleteTestimonial'])->name('api.testimonials.delete');
@@ -177,6 +180,10 @@ Route::middleware('auth:sanctum')->group(function () {
     // TT-2.5b). No web.php duplicate registration -- see SCRUM-200 for why that pattern is
     // avoided now.
     Route::post('/therapies/{therapyId}/schedule-proposals', [SessionScheduleProposalController::class, 'store'])->name('api.session_schedule_proposals.store')->middleware('throttle:30,1');
+    // SCRUM-207/TT-2.5b: accept/reject reuse the existing generic requests.respond endpoint
+    // (RespondToRequestAction's per-type dispatch already covers this type) -- only
+    // counter-offer needs its own endpoint, mirroring requests.compensation_counter_offer.
+    Route::post('/requests/{requestId}/schedule-counter-offer', [SessionScheduleProposalController::class, 'counterOffer'])->name('api.session_schedule_proposals.counter_offer')->middleware('throttle:30,1');
 
     // SCRUM-198/TT-2.2c: fetched/mutated via axios from the counsellor's already-loaded therapy
     // chat page (TherapyComponent.vue), same pattern as api.session.messages.get below -- never

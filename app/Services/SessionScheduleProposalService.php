@@ -2,12 +2,18 @@
 
 namespace App\Services;
 
+use App\Actions\Request\EnsureRequestExistsAction;
+use App\Actions\Request\EnsureUserCanRespondToRequestAction;
+use App\Actions\SessionScheduleProposal\CounterOfferSessionScheduleProposalAction;
 use App\Actions\SessionScheduleProposal\EnsureCanProposeSessionScheduleAction;
 use App\Actions\SessionScheduleProposal\EnsureNoPendingSessionScheduleProposalAction;
 use App\Actions\SessionScheduleProposal\EnsureSessionScheduleProposalDataIsValidAction;
 use App\Actions\SessionScheduleProposal\ProposeSessionScheduleAction;
 use App\Actions\Therapy\EnsureTherapyExistsAction;
+use App\DTOs\RequestResponseDTO;
 use App\DTOs\SessionScheduleProposalDTO;
+use App\Enums\RequestTypeEnum;
+use App\Exceptions\RequestNotFoundException;
 use App\Models\Request;
 use App\Models\Therapy;
 use Illuminate\Support\Facades\DB;
@@ -45,5 +51,28 @@ class SessionScheduleProposalService extends Service
 
             return ProposeSessionScheduleAction::new()->execute($dto);
         });
+    }
+
+    // Mirrors OrganizationCounsellorCompensationService::counterOffer() exactly: the type-check
+    // guard exists because this endpoint is reached directly by requestId (not via
+    // RespondToRequestAction's own per-type dispatch), so EnsureUserCanRespondToRequestAction's
+    // type-agnostic `to`-party check alone isn't enough -- without it, a user legitimately `to`
+    // on some unrelated pending request could have it force-rejected as if it were a schedule
+    // negotiation (same class of gap the compensation flow's own PR #86 security review found).
+    public function counterOffer(SessionScheduleProposalDTO $dto): Request
+    {
+        EnsureRequestExistsAction::new()->execute(RequestResponseDTO::new()->fromArray(['request' => $dto->request]));
+
+        if ($dto->request->type !== RequestTypeEnum::sessionScheduleProposal->value) {
+            throw new RequestNotFoundException('Request was not found.', 422);
+        }
+
+        EnsureUserCanRespondToRequestAction::new()->execute(
+            RequestResponseDTO::new()->fromArray(['user' => $dto->user, 'request' => $dto->request])
+        );
+
+        EnsureSessionScheduleProposalDataIsValidAction::new()->execute($dto);
+
+        return CounterOfferSessionScheduleProposalAction::new()->execute($dto);
     }
 }

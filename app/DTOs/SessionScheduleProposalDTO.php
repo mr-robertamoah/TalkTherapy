@@ -24,6 +24,12 @@ class SessionScheduleProposalDTO extends BaseDTO
 
     public ?string $name = null;
 
+    // Required by CreateSessionAction (sessions.about is NOT NULL) -- missed in TT-2.5a's
+    // original propose flow (that gap was invisible until an accept actually tried to create a
+    // real Session, since TT-2.5a never itself calls CreateSessionAction). Fixed retroactively
+    // here in TT-2.5b.
+    public ?string $about = null;
+
     public ?string $type = null;
 
     public ?string $paymentType = null;

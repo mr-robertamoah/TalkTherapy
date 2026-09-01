@@ -8,14 +8,11 @@ use App\DTOs\CreateRequestDTO;
 use App\DTOs\SessionScheduleProposalDTO;
 use App\Enums\RequestTypeEnum;
 use App\Models\Request;
+use App\Notifications\SessionScheduleProposedNotification;
 use Carbon\Carbon;
 
 class ProposeSessionScheduleAction extends Action
 {
-    // No notification is sent here -- deliberately deferred to TT-2.5b (SCRUM-207), which owns
-    // "notifications on every new proposal/counter to the current recipient" per that ticket's
-    // scope, so propose/counter/accept/reject all notify the same way rather than this action
-    // building its own one-off.
     public function execute(SessionScheduleProposalDTO $dto): Request
     {
         // `from`/`to` always resolve to one User (the client) and one Counsellor (the assigned
@@ -27,7 +24,7 @@ class ProposeSessionScheduleAction extends Action
 
         $expiryDays = $dto->expiryDays ?? config('session_schedule_proposal.default_expiry_days');
 
-        return CreateRequestAction::new()->execute(
+        $request = CreateRequestAction::new()->execute(
             CreateRequestDTO::new()->fromArray([
                 'for' => $dto->therapy,
                 'from' => $clientIsActing ? $dto->user : $dto->therapy->counsellor,
@@ -37,6 +34,7 @@ class ProposeSessionScheduleAction extends Action
                     'startTime' => (new Carbon($dto->startTime))->utc()->toDateTimeString(),
                     'endTime' => (new Carbon($dto->endTime))->utc()->toDateTimeString(),
                     'name' => $dto->name,
+                    'about' => $dto->about,
                     'type' => $dto->type,
                     'paymentType' => $dto->paymentType,
                     'proposedById' => $dto->user->id,
@@ -45,5 +43,9 @@ class ProposeSessionScheduleAction extends Action
                 'round' => 1,
             ])
         );
+
+        $request->to->notify(new SessionScheduleProposedNotification($request));
+
+        return $request;
     }
 }

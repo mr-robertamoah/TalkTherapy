@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Actions\Request\EnsureRequestExistsAction;
 use App\Actions\Request\EnsureRequestIsStillPendingAction;
 use App\Actions\Request\EnsureRequestResponseIsValidAction;
+use App\Actions\Request\EnsureRequestResponseReasonIsValidAction;
 use App\Actions\Request\EnsureUserCanRespondToRequestAction;
 use App\Actions\Request\GetRequestResourceAction;
 use App\Actions\Request\RespondToRequestAction;
@@ -118,6 +119,8 @@ class RequestService extends Service
         // Every RespondTo*RequestAction writes strtoupper($response) straight to status --
         // reject anything that isn't accepted/rejected before any of them run (SCRUM-89).
         EnsureRequestResponseIsValidAction::new()->execute($requestResponseDTO);
+
+        EnsureRequestResponseReasonIsValidAction::new()->execute($requestResponseDTO);
 
         // SCRUM-171: an already-decided request's own RespondTo*RequestAction already no-ops
         // safely (SCRUM-80/91) rather than corrupting its status, but previously did so behind a

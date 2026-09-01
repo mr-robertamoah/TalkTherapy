@@ -3242,3 +3242,62 @@ one of these three message-list methods needs to be checked against all three, n
 or two call sites a UI change happens to exercise first.
 
 ---
+
+## 2026-09-03 — SCRUM-207 (TT-2.5b): "Option C" stale-handling implementation
+
+**Decision**: implemented the user's explicit "Option C" design for accept-time staleness:
+`AcceptSessionScheduleProposalAction` re-runs the real `EnsureCanCreateSessionAction`/
+`EnsureSessionDataIsValidAction` checks (the same ones `CreateSessionAction` uses) against
+*current* data inside a `lockForUpdate()` transaction on both the `Request` and `Therapy` rows.
+If a check fails (or the therapy no longer has an assigned counsellor), the request is **not**
+auto-rejected and **not** surfaced as a raw error -- it stays `pending` with `data.staleReason`
+set, leaving reject / counter-offer / reject-with-a-reason all still available as the counsellor's
+three explicit choices, matching the user's own wording verbatim. Per architect review, the
+session's actor (`CreateSessionDTO->user`) is always forced to `$therapy->counsellor->user`
+regardless of who clicks accept, since `CreateSessionAction` only ever resolves a counsellor or
+admin as actor, never a plain client `User`.
+
+**Two retroactive bug fixes to already-merged SCRUM-206 code**, both found by exercising the
+accept flow against the real MySQL dev database via `tinker` rather than Pest's SQLite test run
+(neither would have been caught by the existing SCRUM-206 test suite, since it never exercised
+actual `Session` creation):
+1. `requests.type` is a native MySQL enum column; the migration widening it for
+   `RequestTypeEnum::sessionScheduleProposal` (added in SCRUM-206) was missed. Added
+   `2026_09_03_100000_add_session_schedule_proposal_to_requests_type_enum.php` and migrated the
+   dev DB. This is the same class of gap the `RequestTypeEnum` convention explicitly warns about
+   (two prior precedents already existed) -- worth flagging since it slipped through review once
+   already.
+2. `sessions.about` is `NOT NULL`, but `SessionScheduleProposalDTO`/
+   `CreateSessionScheduleProposalRequest` never collected it, since SCRUM-206's own scope never
+   calls `CreateSessionAction`. Added `about` end-to-end (DTO, form request, both controller
+   actions, propose/counter-offer/accept actions) and backfilled the SCRUM-206 test fixtures.
+
+**Other fixes made within this ticket's own diff, not deferred**: the new `counterOffer()`
+endpoint was reusing `CreateSessionScheduleProposalRequest`, which makes `about` (and `name`/
+`type`/`paymentType`) required -- but `CounterOfferSessionScheduleProposalAction` already falls
+back to the current proposal's data for all of them, since a counter-offer is only meant to
+require a new time. Split out `CounterOfferSessionScheduleProposalRequest` with those fields
+nullable, since this inconsistency was introduced by this ticket's own controller method, not
+inherited pre-existing code.
+
+**Found and filed, not fixed here**: writing the "now-stale" accept test surfaced a real gap in
+`EnsureSessionDataIsValidAction`'s double-booking check (also used by normal `CreateSessionAction`,
+not just this proposal flow) -- it only checks whether the *new* range's start/end (±30min) falls
+inside an *existing* session's window, never the reverse, so a new session that fully contains a
+shorter existing one goes undetected. Filed as SCRUM-211 rather than fixing inline, since it's
+pre-existing shared validation logic outside this ticket's scope; the test itself was adjusted to
+use a conflict shape the current check does catch (overlapping start time) so it still exercises
+the staleness path Option C depends on.
+
+Also added a generic `reason` field to `RequestResponseDTO` (shared across all `RespondTo*`
+actions) to support the "reject with a reason" choice -- every other `RespondTo*RequestAction`
+ignores it silently since none of them read it, so this is additive, not a behavior change for
+other request types.
+
+**Why recorded**: this is the third ticket in this epic (after SCRUM-23's REPEATABLE-READ bug and
+SCRUM-206's dangling-request bug) where a real, previously-invisible production bug only surfaced
+via direct testing against the real MySQL dev database -- worth remembering that Pest's SQLite
+test runner cannot be trusted alone for anything touching native DB enum columns, NOT NULL
+constraints not exercised by existing fixtures, or true transaction-isolation semantics.
+
+---
