@@ -49,9 +49,14 @@ Fields: **Key** (Epic-Story) · **Type** · **Priority** (Critical/High/Medium/L
 | TT-2.6 | Counsellor calendar view of their sessions | Story | High | 5 | Existing (4.2) | TT-2.5 |
 | TT-2.7 | Fix `groupTherapies` channel-name casing mismatch — group-therapy real-time updates may be silently broken | Bug | High | — | New (SCRUM-15 follow-up) | — |
 
-**Sprint:** 2 (unchanged from original plan). TT-2.7 should likely be pulled forward given its
-severity — group real-time updates may not work at all right now — but is filed here since it's
-squarely a TT-2 concern.
+**Sprint:** 2 (unchanged from original plan).
+
+**TT-2.5 status (2026-09-02)**: Done — split into TT-2.5a/b/c (SCRUM-206/207/208), all merged.
+See `documentation/features/scrum-24-session-schedule-proposal.md`.
+
+**TT-2.7 status (2026-09-02)**: this row and the "should likely be pulled forward" note above were
+stale — SCRUM-58 was already fixed and merged (PR #20) and marked Done on 2026-08-29, before this
+row was last touched. No further action needed.
 
 **TT-2.2 status (2026-09-01)**: went through `/start-feature` (product-owner/project-manager/
 architect) and was found significantly undersized at its original 5 points — same pattern already
