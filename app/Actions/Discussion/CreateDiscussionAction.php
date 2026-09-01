@@ -19,6 +19,7 @@ class CreateDiscussionAction extends Action
             'start_time' => (new Carbon($createDiscussionDTO->startTime))->utc(),
             'end_time' => (new Carbon($createDiscussionDTO->endTime))->utc(),
             'session_id' => $createDiscussionDTO->session?->id,
+            'max_counsellors' => $createDiscussionDTO->maxCounsellors,
         ]);
 
         $discussion->for()->associate($createDiscussionDTO->for);

@@ -19,6 +19,20 @@ class EnsureDiscussionDataIsValidAction extends Action
             throw new DiscussionException('No therapy or group therapy for the discussion was given.', 422);
         }
 
+        if (! is_null($createDiscussionDTO->maxCounsellors)) {
+            // Upper ceiling mirrors the identical GroupTherapy.max_counsellors precedent
+            // (EnsureTherapyDataIsValidAction) -- a separate, independently-configurable env var
+            // since these are different features (payout-sharing cap vs. discussion-membership
+            // cap) despite the coincidentally identical field name. Without this, a value near
+            // the `unsignedInteger` column's ~4.29 billion ceiling would surface as an uncaught
+            // QueryException (500) instead of a clean 422 (security review, SCRUM-23).
+            $maxCounsellorsCeiling = env('DISCUSSION_MAX_COUNSELLORS_CEILING', 50);
+
+            if ($createDiscussionDTO->maxCounsellors < 1 || $createDiscussionDTO->maxCounsellors > $maxCounsellorsCeiling) {
+                throw new DiscussionException("The maximum number of counsellors must be between 1 and {$maxCounsellorsCeiling}.", 422);
+            }
+        }
+
         $therapy = $createDiscussionDTO->for;
 
         if ($therapy->status == TherapyStatusEnum::ended->value) {

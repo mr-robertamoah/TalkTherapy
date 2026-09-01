@@ -17,7 +17,7 @@ class UpdateDiscussionAction extends Action
         $createDiscussionDTO->discussion->update($this->data);
 
         if ($createDiscussionDTO->for) {
-            
+
             $createDiscussionDTO->discussion->for()->disassociate();
             $createDiscussionDTO->discussion->for()->associate($createDiscussionDTO->for);
         }
@@ -31,34 +31,39 @@ class UpdateDiscussionAction extends Action
         $this->setValueOnData('description', $createDiscussionDTO);
         $this->setValueOnData('start_time', $createDiscussionDTO, 'startTime');
         $this->setValueOnData('end_time', $createDiscussionDTO, 'endTime');
+        $this->setValueOnData('max_counsellors', $createDiscussionDTO, 'maxCounsellors');
 
         if (
-            $createDiscussionDTO->deletedSession && 
+            $createDiscussionDTO->deletedSession &&
             $createDiscussionDTO->discussion->session->id == $createDiscussionDTO->deletedSession->id
-        )
+        ) {
             $this->data['session_id'] = null;
+        }
 
         if (
-            $createDiscussionDTO->session && 
+            $createDiscussionDTO->session &&
             $createDiscussionDTO->discussion->session->id !== $createDiscussionDTO->session->id
-        )
+        ) {
             $this->data['session_id'] = $createDiscussionDTO->session->id;
-        
+        }
+
     }
-    
+
     private function setValueOnData(
-        String $dataKey,
+        string $dataKey,
         CreateDiscussionDTO $createDiscussionDTO,
-        String|null $objectKey = null
+        ?string $objectKey = null
     ) {
         $objectKey = $objectKey ?: $dataKey;
 
         if (
-            !is_null($createDiscussionDTO->$objectKey) &&
+            ! is_null($createDiscussionDTO->$objectKey) &&
             $createDiscussionDTO->$objectKey !== $createDiscussionDTO->discussion->$dataKey
         ) {
-            if (in_array($dataKey, ['start_time', 'end_time'])) return $this->data[$dataKey] = (new Carbon($createDiscussionDTO->$objectKey))->utc();
-            
+            if (in_array($dataKey, ['start_time', 'end_time'])) {
+                return $this->data[$dataKey] = (new Carbon($createDiscussionDTO->$objectKey))->utc();
+            }
+
             $this->data[$dataKey] = $createDiscussionDTO->$objectKey;
         }
     }

@@ -3036,3 +3036,66 @@ picked" case -- `selectedSession` (a separate ref, kept live by an existing `wat
 one that actually reflects "the session currently being viewed," and is what `SessionNotesPanel`
 binds to. Caught the same way: the panel silently never rendered at all until this was fixed,
 which no unit/feature test could have caught since it's a frontend-only reactive-binding mistake.
+
+## 2026-09-02 — SCRUM-23 (TT-2.4): cap-setter is the discussion's own creator, race condition fixed inline
+
+**Decision**: `Discussion.max_counsellors` can be set/changed only through the existing
+`EnsureCanUpdateDiscussionAction` gate (the discussion's own `addedby`, or a platform admin as
+that action's existing bypass already allows) -- no new `isAdmin()`-only restriction was added.
+Also, per architect review, fixed a flagged race condition inline rather than deferring it: both
+counsellor-attach call sites (`RespondToDiscussionRequestAction`, `PerformDiscussionRequestLinkAction`)
+now additionally lock the `Discussion` row itself (`lockForUpdate()`) inside their existing
+transactions, in addition to the Request/Link row each already locked for its own prior race fix
+(SCRUM-91/SCRUM-101).
+
+**Why**: the ticket's "Admin can cap..." wording was ambiguous between a platform Administrator
+and a discussion's own creator/owner. Presented to the user as an explicit fork; the user chose
+the creator/existing-update-gate reading (matches how every other discussion field is already
+gated). The race condition -- two concurrent accepts on the same discussion each locking a
+*different* row (their own Request or Link) and both passing a stale pre-attach count check --
+was flagged by architect as reintroducing the exact class of bug SCRUM-91/101 already fixed for a
+different pair of rows; since the transaction/lock scaffolding already existed in both files,
+adding one more `lockForUpdate()` call was small enough to just do now rather than file as a
+follow-up.
+
+---
+
+## 2026-09-02 — SCRUM-23: security review found the race-condition fix was actually ineffective
+
+**Decision**: fixed a real, empirically-verified gap in the earlier `lockForUpdate()` fix for
+`RespondToDiscussionRequestAction`. That fix locked the `Discussion` row before the capacity
+count, but a redundant `$request->refresh()` a few lines earlier was a plain (non-locking) SELECT
+-- the first one in that transaction -- which, under MySQL InnoDB's default REPEATABLE-READ
+isolation, pins the transaction's consistent-read snapshot for every *later* plain read in the
+same transaction, including the capacity count. Locking the Discussion row still correctly forced
+two concurrent accepts to serialize, but the second transaction's capacity count then read its own
+stale, pre-first-commit snapshot anyway, silently defeating the cap. `security-engineer`
+reproduced this against a real MySQL connection (not just reasoned about it) before reporting it.
+
+Fixed by (1) removing the redundant `refresh()` (an already-`update()`d model doesn't need a
+re-fetch) and (2) making the capacity count and both "already attached" exists() checks
+(`RespondToDiscussionRequestAction`, `PerformDiscussionRequestLinkAction`) into `lockForUpdate()`
+reads themselves, so they're correct independent of whatever else happens earlier in either
+transaction, rather than relying on a fragile statement-ordering coincidence.
+
+**Also fixed**: added an upper ceiling (`env('DISCUSSION_MAX_COUNSELLORS_CEILING', 50)`,
+independent of the coincidentally-same-named `GroupTherapy.max_counsellors` feature/ceiling) so an
+out-of-range value gets a clean 422 instead of an uncaught `QueryException`/500 on the
+`unsignedInteger` column, plus the matching `CreateDiscussionRequest` validation rule.
+
+**Filed, not fixed here**: `DiscussionService::getDiscussionCounsellors()` has no participant/
+admin check at all (pre-existing, unrelated to this diff) -- any authenticated user can read any
+discussion's counsellor roster/count. Filed as SCRUM-204 rather than expanding this PR, since it's
+a pre-existing gap this ticket didn't introduce and doesn't itself expose `max_counsellors`.
+
+**Why recorded**: this is the clearest example so far of a subagent's finding needing empirical
+verification to be trusted (per the session's established SCRUM-125 discipline) -- but also the
+inverse lesson: a subagent claiming a fix *doesn't* work, backed by an actual reproduction against
+the real database engine (not just plausible-sounding reasoning), is exactly the kind of finding
+that must be taken at face value and fixed immediately, not dismissed as theoretical. A true
+concurrent-transaction regression test isn't feasible in this suite's harness (Pest runs against
+SQLite `:memory:`, which has neither MySQL's REPEATABLE-READ semantics nor genuinely concurrent
+connections against the same in-memory database) -- noted here explicitly rather than adding a
+test that would give false confidence.
+
+---

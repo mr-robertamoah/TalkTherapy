@@ -16,7 +16,7 @@ class Discussion extends Model
         Starreable,
         Timeable;
 
-    protected $fillable = ['name', 'description', 'start_time', 'end_time', 'status', 'session_id'];
+    protected $fillable = ['name', 'description', 'start_time', 'end_time', 'status', 'session_id', 'max_counsellors'];
 
     public function addedby()
     {
