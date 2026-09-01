@@ -3403,3 +3403,42 @@ question about the `public` flag's existing semantics, not something scoped to t
 decide alone.
 
 ---
+
+## 2026-09-02 — TT-2.6 (SCRUM-25): split into TT-2.6a/b after `/start-feature` review
+
+**Decision**: TT-2.6 ("Counsellor calendar view of their sessions") was originally a single
+5-point ticket. `product-owner`/`project-manager`/`architect` review found it undersized for the
+same reason as TT-2.2/TT-6.3/TT-7.2 -- no cross-therapy/group-therapy session aggregation query
+exists today, and it's a genuinely separable concern from whatever calendar UI ships. Split into
+TT-2.6a (SCRUM-212, backend aggregation, 8 points, no dependency -- TT-2.5 is done) → TT-2.6b
+(SCRUM-213, frontend calendar UI, 8 points, depends on 2.6a), 16 points total.
+
+**Calendar UI: build, not buy**. `package.json` has zero calendar/scheduling dependency, and this
+codebase has deliberately avoided heavy UI kits throughout (its only comparable dependencies,
+`vue-select`/`@popperjs/core`, are small and single-purpose). `date-fns`/`date-fns-tz` are already
+dependencies and sufficient for all the date math a week/month grid needs. TT-2.6b's scope is
+explicitly drill-through-only (no drag-and-drop rescheduling, no inline editing, no recurring
+views) -- exactly the case where a library's added bundle/maintenance/theming cost isn't justified.
+Revisit only if a future ticket adds recurring series, drag-and-drop, or true multi-timezone
+editing to the calendar.
+
+**Anonymity-masking extraction folded into TT-2.6a**: architect review found the addedby-anonymity
+masking ternary (`$addedbyUser?->is($user) || ! $isAnonymous`, built on `Therapy`/
+`GroupTherapy::isAnonymousFor()`) already independently re-implemented in four places
+(`TherapyResource`, `GroupTherapyResource`, `TherapyMiniResource`, `GroupTherapyMiniResource`).
+Since TT-2.6a's calendar payload needs the same masking for its per-event therapy/group name (the
+first cross-therapy aggregate surface in the app), a fifth inline copy would only grow the
+duplication -- TT-2.6a extracts a single shared helper instead, consumed by the calendar payload
+and, ideally, backfilled into the four existing call sites.
+
+**Confirmed with the user rather than assumed**: a `GroupTherapy` with multiple active counsellors
+means each independently sees that group's sessions on their own calendar -- there is no "primary
+counsellor" concept in the data model, and inventing one wasn't warranted just for this ticket.
+
+**Why recorded**: fourth ticket in this backlog (after TT-2.2, TT-6.3, TT-7.2) to be undersized at
+the single-ticket-estimate stage and require a `/start-feature`-time split rather than a mid-
+implementation discovery -- worth noting that "New (4.x)" or "Existing" backlog-conversion rows
+with terse one-line descriptions are the ones consistently hitting this, not tickets that already
+went through a prior planning pass.
+
+---
