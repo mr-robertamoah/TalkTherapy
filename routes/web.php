@@ -67,6 +67,10 @@ Route::get('/group-therapies/{groupTherapyId}', [GroupTherapyController::class, 
 Route::get('/counsellor/{counsellorId}/verify-email/{hash}', [CounsellorController::class, 'verifyEmail'])
     ->middleware(['signed', 'throttle:6,1'])
     ->name('counsellor.verification.verify');
+// SCRUM-213/TT-2.6b: a counsellor's own cross-therapy session calendar -- must be registered
+// before the /counsellor/{counsellorId} route below, or "calendar" gets swallowed as a
+// counsellorId route parameter instead (Laravel matches routes in registration order).
+Route::middleware('auth')->get('/counsellor/calendar', [SessionController::class, 'calendar'])->name('counsellor.calendar');
 Route::get('/counsellor/{counsellorId}', [CounsellorController::class, 'show'])->name('counsellor.show');
 
 Route::get('/posts/{postId}', [PostController::class, 'getPost'])->name('posts.get');

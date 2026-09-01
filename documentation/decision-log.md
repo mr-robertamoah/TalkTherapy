@@ -3514,3 +3514,82 @@ with terse one-line descriptions are the ones consistently hitting this, not tic
 went through a prior planning pass.
 
 ---
+
+## 2026-09-02 — SCRUM-213 (TT-2.6b): counsellor calendar UI
+
+**Decision**: implemented a custom-built (no calendar library, per the architect's earlier
+build-vs-buy call) week/month calendar at a new `/counsellor/calendar` page --
+`Pages/Counsellor/Calendar.vue` composing `CalendarWeekView.vue`/`CalendarMonthView.vue`/
+`CalendarEvent.vue`, backed by a new `useCalendar.js` composable wrapping `date-fns` (no other
+component in this codebase did week/month bucketing before this). Fetches its own range-scoped
+data client-side from TT-2.6a's endpoint on every range change -- never the counsellor's entire
+session history in one payload, per the ticket's own requirement. Drill-through only: clicking an
+event navigates to the underlying `Therapy`/`GroupTherapy` page; no session-mutation action exists
+on the calendar itself.
+
+**A real routing bug found via live browser testing, not by reading the code**: the new
+`/counsellor/calendar` route silently 302-redirected to home even for an actual counsellor,
+because the pre-existing `/counsellor/{counsellorId}` route (registered earlier in `routes/web.php`,
+outside the auth group) matched first and treated `"calendar"` as a `counsellorId` route parameter
+-- Laravel resolves competing route patterns in registration order, not specificity. Fixed by
+registering the new route immediately before the colliding one, with a comment explaining why the
+order matters here specifically.
+
+**A real UX bug found via live browser testing**: the initial month view didn't pad to full weeks
+(`startOfMonth`/`endOfMonth` only), so the grid's weekday-column headers didn't actually correspond
+to the day-of-week of the cells beneath them for any month not starting on a Sunday -- looked
+broken, not just visually rough. Fixed by padding `monthRange()` to `startOfWeek(startOfMonth(...))`
+.. `endOfWeek(endOfMonth(...))`, matching how every real calendar UI grids a month.
+
+**A `Select.vue` gotcha avoided rather than hit**: that shared component unconditionally
+uppercases its bound `v-model` value (built for this codebase's backend enum values, e.g.
+'ONLINE'/'PAID') -- noticed before wiring it up for this page's client-side-only lowercase filter
+state (`'individual'`/`'group'`/`'upcoming'`/`'past'`), which would have silently broken every
+filter comparison. Used plain native `<select>` elements instead, which was the actually-correct
+tool for genuinely local UI state rather than a backend-enum-backed field.
+
+**Why recorded**: the two real bugs above were both browser-verification catches, not code-review
+catches -- worth restating (again) that "reads correctly" and "renders correctly" are different
+claims for anything involving route registration order or date-grid math, neither of which a
+type-checker or a Pest request test would have caught (Pest's route dispatch works the same way
+in both the buggy and fixed state; the bug was in *how a human reads the resulting grid*, not in
+any assertable response shape).
+
+---
+
+## 2026-09-02 — SCRUM-213: reviewer findings applied before merge
+
+`reviewer` requested changes; `security-engineer` approved with no blocking findings (two minor,
+non-blocking style suggestions, not applied -- route-group placement and a `console.log`
+verbosity note, both explicitly called out as optional).
+
+**Real correctness bug (required change)**: `useCalendar.js`'s `toApiDate()` used `date-fns`'
+`format()`, which reads a `Date` object's *local* wall-clock getters -- not the UTC conversion the
+backend expects (`Session.start_time`/`end_time` are stored and queried in UTC throughout this
+app). For any counsellor whose browser timezone isn't UTC, the requested week/month range would
+have been silently shifted by their local UTC offset, dropping or mis-bucketing sessions near a
+day/week boundary -- exactly the kind of bug that a dev/CI environment running in UTC (as this
+one does) can't surface, which is why it wasn't caught by the live Playwright verification done
+earlier in this ticket. Fixed by switching to `.toISOString()`, matching the identical
+local-Date-to-backend-datetime precedent already established by `ProposeSessionScheduleModal.vue`/
+`SessionScheduleCounterOfferModal.vue`.
+
+**Deduplication (required change)**: the UTC-string-normalization one-liner (`dateTime.includes('T')
+? dateTime : ...`) was independently copied in both `useCalendar.js` and
+`SessionScheduleProposalSection.vue`. Extracted into the existing shared `useLocalDateTime.js`
+composable (new `toLocalDate` export) and had both call sites use it instead.
+
+**Suggested improvements also applied**: deduplicated a repeated `for_type === Therapy::class`
+comparison in `SessionResource::toArray()` into one local variable; removed a defensive
+`res.data.sessions.data ?? res.data.sessions` fallback in `Calendar.vue` that guarded against a
+paginated-response shape this particular endpoint never actually returns (confirmed via the
+existing passing tests asserting `sessions.0.id` directly).
+
+**Why recorded**: the local-vs-UTC bug is the third distinct "looks right in this UTC dev
+environment, would be wrong for a real user elsewhere" class of issue found in this session
+(alongside the two live-browser-verification catches earlier in this same ticket) -- worth noting
+that neither Pest nor a UTC-timezone dev container can ever catch this specific class of bug;
+only an explicit code-review comparison against this codebase's own established
+local-Date-to-UTC-string precedent caught it here.
+
+---

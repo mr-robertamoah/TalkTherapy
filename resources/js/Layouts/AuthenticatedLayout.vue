@@ -171,6 +171,14 @@ const showMyOrganizationsLink = computed(() => {
     route().current() != "organizations.mine.dashboard"
   );
 });
+// SCRUM-213/TT-2.6b: counsellor-only, unlike My Organizations above -- a calendar has no meaning
+// at all for a non-counsellor, so this is gated the same way showCounsellorLink is.
+const showCalendarLink = computed(() => {
+  return (
+    usePage().props.auth.user?.counsellor &&
+    route().current() != "counsellor.calendar"
+  );
+});
 
 function goToTherapy(data) {
   router.get(route(`therapies.get`, { therapyId: data.therapyId }));
@@ -258,6 +266,9 @@ function goToTherapy(data) {
                       </DropdownLink>
                       <DropdownLink v-if="showMyOrganizationsLink" :href="route('organizations.mine.dashboard')">
                         My Organizations
+                      </DropdownLink>
+                      <DropdownLink v-if="showCalendarLink" :href="route('counsellor.calendar')">
+                        My Calendar
                       </DropdownLink>
                       <div
                         v-if="showRequestLink"
@@ -440,6 +451,9 @@ function goToTherapy(data) {
               </ResponsiveNavLink>
               <ResponsiveNavLink v-if="showMyOrganizationsLink" :href="route('organizations.mine.dashboard')">
                 My Organizations
+              </ResponsiveNavLink>
+              <ResponsiveNavLink v-if="showCalendarLink" :href="route('counsellor.calendar')">
+                My Calendar
               </ResponsiveNavLink>
               <div
                 v-if="showRequestLink"
