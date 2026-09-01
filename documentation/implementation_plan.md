@@ -158,7 +158,12 @@ the frontend, split a/b/c so it ships as independently-reviewable PRs.
 | TT-6.5a2 | Org co-admin management UI (invite/remove/promote screen), split out of TT-6.5a since it depends on TT-6.6e's real owner-vs-admin enforcement. | Story | Low | 3 | New split of existing TT-6.5 (SCRUM-111 product-owner/architect review); filed as SCRUM-166 | TT-6.6e, TT-6.5a |
 | TT-6.5b | Counsellor "my organizations" view + apply-to-provider-org flow. Corrected wizard reference: reuses `BecomeCounsellorButton.vue` (modal) + `CounsellorCreationSteps.vue` (progress indicator) — `BecomeCounsellorForm.vue` doesn't exist in this codebase. | Story | Medium | 5 | New split of existing TT-6.5 (SCRUM-111 product-owner/architect review); filed as SCRUM-167 | TT-6.6b, TT-6.6c, TT-6.4a |
 | TT-6.5c | Member "your organization" view — read-only: list memberships, org profile, billing-mode display. Narrowed from the original scope; the booking-time "which org pays" selection step is relocated to TT-7.3a's (not yet filed) frontend counterpart, since it's a charge-time concern, not a "view my memberships" one. | Story | Medium | 3 | New split of existing TT-6.5 (SCRUM-111 product-owner/architect review); filed as SCRUM-168 | TT-6.6b, TT-6.3a |
-| TT-6.5c2 | Member self-apply UI (browse directory + apply, or follow a shareable org link) — split out of TT-6.5c since its dependency (TT-6.6c and TT-6.7, both being built) wasn't resolved until the 2026-08-29 decision round. | Story | Low | 3–5 | New split of existing TT-6.5 (SCRUM-111 product-owner/architect review); filed as SCRUM-169 | TT-6.6c, TT-6.7 |
+| TT-6.5c2 | ✅ **Implemented** (SCRUM-169, PR #139, merged). Member self-apply UI (browse directory + apply, or follow a shareable org link) — split out of TT-6.5c since its dependency (TT-6.6c and TT-6.7, both being built) wasn't resolved until the 2026-08-29 decision round. Playwright-verified golden path for both the directory-apply and follow-a-link flows. Found while testing: org admins have no UI to actually generate a TT-6.7 self-apply link (backend fully supports it, tested, just no "generate" button anywhere) — filed as SCRUM-214, not fixed here. | Story | Low | 3–5 | New split of existing TT-6.5 (SCRUM-111 product-owner/architect review); filed as SCRUM-169 | TT-6.6c, TT-6.7 |
+
+**Epic status (2026-09-01): TT-6 fully implemented.** All rows above (TT-6.1 through TT-6.5c2)
+are merged; epic SCRUM-10 transitioned to Done. One known gap tracked separately (SCRUM-214,
+org-admin self-apply link generation UI) — doesn't block epic closure since the backend it's
+missing a button for was itself never part of any TT-6 row's acceptance criteria.
 
 **M1 status (2026-08-27): complete.** TT-6.1/6.2/6.4a/6.4b (SCRUM-119–122) all merged.
 
