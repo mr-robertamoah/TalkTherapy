@@ -212,6 +212,10 @@
                 />
             </div>
         </div>
+        <SessionNotesPanel
+            v-if="isCounsellor && selectedSession?.id"
+            :session="selectedSession"
+        />
         <div
             @click.self="() => showAttachmentIcons = false"
             :class="[showAttachmentIcons ? 'opacity-100 visible z-[1]' : 'opacity-0 invisible -z-[1]']"
@@ -334,6 +338,7 @@ import MediaCapture from './MediaCapture.vue';
 import { usePage } from '@inertiajs/vue3';
 import MiniModal from './MiniModal.vue';
 import useConnectionStatus from '@/Composables/useConnectionStatus';
+import SessionNotesPanel from './SessionNotesPanel.vue';
 
 const { goToLogin } = useAuth()
 const {

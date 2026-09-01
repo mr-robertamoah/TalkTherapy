@@ -30,7 +30,15 @@ class SessionNoteController extends Controller
                 ])
             );
 
-            return SessionNoteResource::collection($notes);
+            // Explicitly wrapped, matching store/update/destroy's own ['note' => ...] shape --
+            // returning a resource collection directly leaves the response shape dependent on
+            // JsonResource's global, mutable $wrap static (other code, e.g. the Inertia
+            // middleware, calls withoutWrapping() and that state is process-wide), which is
+            // silently different between a real request and a shared-process Pest run. Caught
+            // via live browser testing: the frontend read a wrapped `{data: [...]}` shape here
+            // while Pest's shared test process had wrapping disabled by an unrelated earlier
+            // test, so the same code looked correct in tests and was broken in the browser.
+            return response()->json(['notes' => SessionNoteResource::collection($notes)]);
         } catch (Throwable $th) {
             return $this->returnFailure($request, $th);
         }

@@ -1,6 +1,14 @@
 <?php
 
 use App\Enums\SessionStatusEnum;
+use App\Events\MessageDeletedEvent;
+use App\Events\MessageSentEvent;
+use App\Events\MessageUpdatedEvent;
+use App\Events\SessionStartedEvent;
+use App\Events\SessionTopicSetEvent;
+use App\Events\SessionTopicUnsetEvent;
+use App\Events\SessionUpdatedEvent;
+use App\Http\Resources\SessionResource;
 use App\Models\Counsellor;
 use App\Models\GroupTherapy;
 use App\Models\Session;
@@ -8,6 +16,7 @@ use App\Models\SessionNote;
 use App\Models\Therapy;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 
 // SCRUM-197/TT-2.2b: authorization + CRUD for a counsellor's private session notes. AC7 (cross-
 // counsellor isolation on a shared GroupTherapy session) is the single most important test case
@@ -82,7 +91,7 @@ test('a counsellor can list only their own notes for a session', function () {
         ->get(route('session.notes.index', ['sessionId' => $session->id]));
 
     $response->assertOk();
-    expect($response->json())->toHaveCount(2);
+    expect($response->json('notes'))->toHaveCount(2);
 });
 
 test('a counsellor cannot see another counsellor notes on a shared group therapy session', function () {
@@ -100,7 +109,7 @@ test('a counsellor cannot see another counsellor notes on a shared group therapy
         ->get(route('session.notes.index', ['sessionId' => $session->id]));
 
     $listResponse->assertOk();
-    expect($listResponse->json())->toHaveCount(0);
+    expect($listResponse->json('notes'))->toHaveCount(0);
 
     $updateResponse = $this
         ->actingAs($counsellorB->user)
@@ -269,7 +278,7 @@ test('a note remains listable by its author indefinitely, even once no longer ed
         ->get(route('session.notes.index', ['sessionId' => $session->id]));
 
     $response->assertOk();
-    expect($response->json())->toHaveCount(1);
+    expect($response->json('notes'))->toHaveCount(1);
 });
 
 test('an unauthenticated request cannot reach any session note endpoint', function () {
@@ -288,4 +297,87 @@ test('an unauthenticated request cannot reach any session note endpoint', functi
 
     $this->delete(route('session.notes.destroy', ['noteId' => $note->id]))
         ->assertRedirect(route('login'));
+});
+
+// SCRUM-198/TT-2.2c: negative-path coverage -- a session note must never be broadcast over any
+// Reverb channel, nor exposed via SessionResource. Both are absence assertions, easy to violate
+// silently, so they're asserted explicitly rather than trusted by omission.
+
+test('creating, updating, and deleting a session note broadcasts no events at all', function () {
+    Event::fake();
+
+    $counsellor = aCounsellorForSessionNotesRoute();
+    $session = aSessionForSessionNotesRoute($counsellor);
+
+    $this->actingAs($counsellor->user)
+        ->post(route('session.notes.store', ['sessionId' => $session->id]), ['content' => 'private observation']);
+
+    $note = SessionNote::first();
+
+    $this->actingAs($counsellor->user)
+        ->patch(route('session.notes.update', ['noteId' => $note->id]), ['content' => 'updated observation']);
+
+    $this->actingAs($counsellor->user)
+        ->delete(route('session.notes.destroy', ['noteId' => $note->id]));
+
+    Event::assertNotDispatched(SessionUpdatedEvent::class);
+    Event::assertNotDispatched(SessionStartedEvent::class);
+    Event::assertNotDispatched(SessionTopicSetEvent::class);
+    Event::assertNotDispatched(SessionTopicUnsetEvent::class);
+    Event::assertNotDispatched(MessageSentEvent::class);
+    Event::assertNotDispatched(MessageUpdatedEvent::class);
+    Event::assertNotDispatched(MessageDeletedEvent::class);
+});
+
+test('SessionResource never exposes session notes or the ended_at column', function () {
+    $counsellor = aCounsellorForSessionNotesRoute();
+    $session = aSessionForSessionNotesRoute($counsellor, ['status' => SessionStatusEnum::held->value]);
+    DB::table('sessions')->where('id', $session->id)->update(['ended_at' => now()]);
+    SessionNote::factory()->create(['session_id' => $session->id, 'counsellor_id' => $counsellor->id]);
+
+    $array = (new SessionResource($session->fresh()))->toArray(request());
+
+    expect($array)->not->toHaveKeys(['notes', 'sessionNotes', 'endedAt', 'ended_at']);
+});
+
+// SCRUM-198/TT-2.2c: the Vue UI calls these same endpoints via axios against their api.php
+// registration (auth:sanctum, matching how this component already fetches session messages),
+// not the web.php ones the tests above exercise -- both point at the identical
+// SessionNoteController/Service/Action chain, so this is a wiring smoke test, not a re-run of
+// the full authorization suite above.
+
+test('a listed note reports isEditable matching the actual edit-window state', function () {
+    $counsellor = aCounsellorForSessionNotesRoute();
+    $liveSession = aSessionForSessionNotesRoute($counsellor);
+    SessionNote::factory()->create(['session_id' => $liveSession->id, 'counsellor_id' => $counsellor->id]);
+
+    $endedSession = aSessionForSessionNotesRoute($counsellor, ['status' => SessionStatusEnum::held->value]);
+    DB::table('sessions')->where('id', $endedSession->id)->update([
+        'ended_at' => now()->subMinutes(config('session-notes.edit_grace_minutes') + 5),
+    ]);
+    SessionNote::factory()->create(['session_id' => $endedSession->id, 'counsellor_id' => $counsellor->id]);
+
+    $liveResponse = $this->actingAs($counsellor->user)
+        ->get(route('session.notes.index', ['sessionId' => $liveSession->id]));
+    expect($liveResponse->json('notes')[0]['isEditable'])->toBeTrue();
+
+    $endedResponse = $this->actingAs($counsellor->user)
+        ->get(route('session.notes.index', ['sessionId' => $endedSession->id]));
+    expect($endedResponse->json('notes')[0]['isEditable'])->toBeFalse();
+});
+
+test('the api.php session notes routes are wired to the same authorized create/list flow', function () {
+    $counsellor = aCounsellorForSessionNotesRoute();
+    $session = aSessionForSessionNotesRoute($counsellor);
+
+    $this->actingAs($counsellor->user)
+        ->post(route('api.session.notes.store', ['sessionId' => $session->id]), ['content' => 'via api route'])
+        ->assertOk()
+        ->assertJsonPath('note.content', 'via api route');
+
+    $response = $this->actingAs($counsellor->user)
+        ->get(route('api.session.notes.index', ['sessionId' => $session->id]));
+
+    $response->assertOk();
+    expect($response->json('notes'))->toHaveCount(1);
 });

@@ -507,6 +507,11 @@ class DatabaseSeeder extends Seeder
             'background_story' => 'Seeded anonymous participant for exercising SCRUM-71 anonymity masking.',
         ]);
         $groupTherapy->counsellors()->attach($counsellor->id, ['state' => 'ACTIVE']);
+        // SCRUM-198: a second active counsellor on the same live group session, so
+        // cross-counsellor session-notes isolation (SCRUM-197 AC7) is browser-verifiable via
+        // /group-therapies/{id}/chat, not just Pest -- log in as sarah_johnson or michael_chen
+        // and confirm neither ever sees the other's private notes on this session.
+        $groupTherapy->counsellors()->attach($secondCounsellor->id, ['state' => 'ACTIVE']);
 
         $groupSession = $counsellor->addedSessions()->create([
             'name' => 'Chat Demo Group Live Session',

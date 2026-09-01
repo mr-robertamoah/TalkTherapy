@@ -2983,3 +2983,56 @@ this log without an entry existing yet (`reviewer` caught this)**:
   reference in `SessionNoteService`'s docblock (`SCRUM-182`, the unrelated file-uploads epic, was
   copy-pasted instead of `SCRUM-21`), and a `max:5000` length rule added to both
   `CreateSessionNoteRequest`/`UpdateSessionNoteRequest` (`content` had no length bound at all).
+
+---
+
+## 2026-09-01 -- SCRUM-198/TT-2.2c: a resource collection's wire shape depends on process history,
+not just its own code -- and the fastest way to catch that is to actually load the page
+
+**What happened**: `SessionNoteController::index()` originally returned
+`SessionNoteResource::collection($notes)` directly. Every `SessionNoteTest.php` list-endpoint
+assertion (`$response->json()`, expecting a bare array) passed the entire time this was true.
+Manually driving the real feature in a browser (creating/editing/deleting a note as
+`sarah_johnson` on a live seeded session) surfaced a phantom note row with "Invalid Date" and
+"locked" -- the actual HTTP response was `{"data": [...]}`, not a bare array, and my Vue code's
+`notes.value = res.data` had assigned the whole `{data: [...]}` object to `notes.value`, which
+Vue's `v-for` then iterated as a plain object (one "item" per own-enumerable property -- here,
+exactly one: the `data` key itself, itself an array, producing one nonsense row with every field
+undefined).
+
+**Root cause**: `Illuminate\Http\Resources\Json\JsonResource::$wrap` is a process-wide *mutable
+static*, not fixed at `'data'`. `HandleInertiaRequestsV2` calls `$userResource->withoutWrapping()`
+on every Inertia page load in this app, which -- because subclasses don't redeclare `$wrap`, so
+every `JsonResource` subclass shares the same underlying storage -- disables wrapping for
+*every* resource for the rest of that PHP process's lifetime. Pest runs an entire test file (often
+many files, under `--parallel`) inside one shared PHP process per worker, so once any earlier test
+in that process rendered an Inertia page, wrapping stayed disabled for every later test in the
+same process, including ones that never touch Inertia at all. A real browser request to this
+JSON-only `api.php` endpoint (no Inertia middleware in its pipeline) never had wrapping disabled,
+so it defaulted to wrapped -- the two environments silently disagreed, and the test suite had no
+way to catch it because it was internally consistent with itself.
+
+**Fix**: `index()` now explicitly returns `response()->json(['notes' => SessionNoteResource::
+collection($notes)])`, matching `store`/`update`/`destroy`'s existing `['note' => ...]` shape.
+Confirmed via reading Laravel's own resource internals (not just re-testing) that nesting a
+`ResourceCollection` inside a plain array and passing it through `response()->json()` invokes
+`jsonSerialize()` -> `resolve()` directly, which never consults `$wrap` at all -- so this fix is
+immune to the same class of bug, not just a different flavor of it. All list-assertions in
+`SessionNoteTest.php` updated from `$response->json()` to `$response->json('notes')` and re-verified
+passing in isolation (a fresh process, not benefiting from any other test's side effects).
+
+**Why recorded**: a controller method that "returns a resource/collection directly" is idiomatic,
+commonly-recommended Laravel style, and was completely correct as *written* -- the bug lived
+entirely in an ambient, cross-cutting static someone else's code toggles, not in this method's own
+logic, which is exactly the kind of thing a code review reading this file in isolation cannot
+catch. Standing rule for this codebase going forward: any *new* JSON-only endpoint (not already
+proven by an existing analogous controller) should explicitly wrap its top-level response key
+rather than relying on `JsonResource`'s default wrapping behavior, precisely because that default
+is not actually a per-request constant here.
+
+**Second, smaller discovery**: `TherapyComponent.vue`'s `computedSelectedItem` (used nearby for
+the topic-filter browsing UI) is `null` in the ordinary "already in an active session, no topic
+picked" case -- `selectedSession` (a separate ref, kept live by an existing `watchEffect`) is the
+one that actually reflects "the session currently being viewed," and is what `SessionNotesPanel`
+binds to. Caught the same way: the panel silently never rendered at all until this was fixed,
+which no unit/feature test could have caught since it's a frontend-only reactive-binding mistake.

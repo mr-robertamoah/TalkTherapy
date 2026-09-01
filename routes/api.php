@@ -20,6 +20,7 @@ use App\Http\Controllers\ReligionController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\RequestController;
 use App\Http\Controllers\SessionController;
+use App\Http\Controllers\SessionNoteController;
 use App\Http\Controllers\TestimonialController;
 use App\Http\Controllers\TherapyCaseController;
 use App\Http\Controllers\TherapyController;
@@ -168,6 +169,14 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/sessions/{sessionId}/topics/set', [SessionController::class, 'setCurrentTopic'])->name('api.session.topic.set');
     Route::post('/sessions/{sessionId}/topics/unset', [SessionController::class, 'unsetCurrentTopic'])->name('api.session.topic.unset');
     Route::post('/sessions/{sessionId}/abandon', [SessionController::class, 'abandonSession'])->name('api.sessions.abandon');
+
+    // SCRUM-198/TT-2.2c: fetched/mutated via axios from the counsellor's already-loaded therapy
+    // chat page (TherapyComponent.vue), same pattern as api.session.messages.get below -- never
+    // broadcast, never reaches the client/participant side of the therapy.
+    Route::get('/sessions/{sessionId}/notes', [SessionNoteController::class, 'index'])->name('api.session.notes.index');
+    Route::post('/sessions/{sessionId}/notes', [SessionNoteController::class, 'store'])->name('api.session.notes.store');
+    Route::patch('/sessions/notes/{noteId}', [SessionNoteController::class, 'update'])->name('api.session.notes.update');
+    Route::delete('/sessions/notes/{noteId}', [SessionNoteController::class, 'destroy'])->name('api.session.notes.destroy');
 
     Route::post('/therapies/{therapyId}/topics', [TherapyTopicController::class, 'createTherapyTopic'])->name('api.topics.create');
     Route::patch('/topics/{topicId}', [TherapyTopicController::class, 'updateTherapyTopic'])->name('api.topics.update');
