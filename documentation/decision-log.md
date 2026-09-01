@@ -2929,3 +2929,57 @@ controller yet, but TT-2.2b's controller/action must derive it server-side from 
 counsellor and never accept it from client input -- otherwise a counsellor could author a note
 attributed to a different counsellor. Left a comment on the model pointing at this for whoever
 picks up TT-2.2b.
+
+---
+
+## 2026-09-01 -- SCRUM-197/TT-2.2b: a grace window derived from a freely-rewritable column isn't
+a grace window
+
+**What happened**: `GuardsPrivateNoteEditWindow::sessionAcceptsNoteEdits()` originally derived
+"how long since this session ended" from `Session::updated_at`. Both `reviewer` and
+`security-engineer`, independently, caught the same hole: `updated_at` gets re-touched by
+`/sessions/{id}/in_session`, `/end`, `/fail`, and `/abandon` -- none of which are idempotent
+against an already-terminal session (`EnsureCanUpdateSessionStatusAction` only checks
+`isParticipant()`; `EnsureCanEndSessionAction` only checks `now() > end_time`; neither checks the
+session isn't already in that state). Concretely: a counsellor (or, via `/in_session`, even the
+client on a `Therapy`) could replay any of these endpoints on an already-ended session to either
+reset the grace-window clock indefinitely or flip status back to something
+`Session::scopeWhereInSession` treats as "live," reopening a note's editability at will --
+defeating the one guarantee TT-2.2b exists to provide ("a permanent, immutable part of the
+clinical record" once the grace window elapses).
+
+**Fix**: added `sessions.ended_at` (migration
+`2026_09_01_200000_add_ended_at_to_sessions_table.php`), set exactly once by
+`ChangeSessionStatusAction` the first time a session's *final* resolved status is `HELD`/
+`FAILED`/`ABANDONED` (not the `HELD_CONFIRMATION` intermediate), and never touched again on any
+later call regardless of how many times a status endpoint gets replayed.
+`GuardsPrivateNoteEditWindow::sessionAcceptsNoteEdits()` now checks `ended_at` FIRST, and once
+it's set, that value takes **permanent priority** over the session's current live-looking status
+-- deliberately, so replaying `/in_session` to flip status back to `in_session_confirmation`
+can't resurrect an already-locked note. Added a regression test
+(`replaying a session status-transition endpoint does not reset or extend the note edit grace
+window`) that calls the real `/sessions/{id}/abandon` endpoint twice with a backdated `ended_at`
+in between and asserts the second call doesn't move it.
+
+**Why recorded**: this is the second time in this epic (after TT-2.2a's `cascadeOnDelete`
+finding) that a security-relevant guarantee was built on a column another, unrelated part of the
+app is already free to mutate for its own reasons. Worth remembering as a standing check for any
+future "N minutes/days since X happened" access-control window: confirm the timestamp it's
+anchored to is written exactly once for that purpose, not reused from a general-purpose
+`created_at`/`updated_at` that something else already touches routinely.
+
+**Other decisions from this ticket's review, recorded here since two code comments referenced
+this log without an entry existing yet (`reviewer` caught this)**:
+- No `isAdmin()` bypass anywhere in `App\Actions\SessionNote\Ensure*Action` -- a deliberate,
+  explicit divergence from every other `Ensure*Action` in this codebase (all of which give admins
+  an unconditional bypass), confirmed with the user during `/start-feature` planning (2026-09-01):
+  session notes are clinical content, not operational state, and a platform admin has no read
+  access to their content.
+- `SessionNoteResource` was pulled forward from its originally-planned home in TT-2.2c, since
+  `SessionNoteController` needed *some* response shape to be testable at the HTTP level at all.
+  Kept deliberately minimal (id/content/createdAt/updatedAt) and structurally separate from
+  `SessionResource`, matching the "never leaks to the client" invariant established in TT-2.2a.
+- Also fixed in this pass (both `reviewer` findings, not security-relevant): a wrong ticket
+  reference in `SessionNoteService`'s docblock (`SCRUM-182`, the unrelated file-uploads epic, was
+  copy-pasted instead of `SCRUM-21`), and a `max:5000` length rule added to both
+  `CreateSessionNoteRequest`/`UpdateSessionNoteRequest` (`content` had no length bound at all).

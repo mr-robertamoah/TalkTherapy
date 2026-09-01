@@ -14,38 +14,63 @@ class ChangeSessionStatusAction extends Action
 
         if (
             $status == SessionStatusEnum::in_session->value &&
-            !in_array($createSessionDTO->session->status, [
+            ! in_array($createSessionDTO->session->status, [
                 SessionStatusEnum::in_session->value,
                 SessionStatusEnum::in_session_confirmation->value,
             ])
-        ) $status = SessionStatusEnum::in_session_confirmation->value;
+        ) {
+            $status = SessionStatusEnum::in_session_confirmation->value;
+        }
 
         if (
             $status == SessionStatusEnum::held->value &&
-            !in_array($createSessionDTO->session->status, [
+            ! in_array($createSessionDTO->session->status, [
                 SessionStatusEnum::held->value,
                 SessionStatusEnum::held_confirmation->value,
             ])
-        ) $status = SessionStatusEnum::held_confirmation->value;
+        ) {
+            $status = SessionStatusEnum::held_confirmation->value;
+        }
 
         $updatedby = $this->getUpdatedByBasedOnStatus($createSessionDTO, $status);
 
+        // SCRUM-197: set once, on the first time this session actually reaches a terminal
+        // status, and never touched again afterwards -- even if status later gets replayed or
+        // flipped back (e.g. a repeat call to /end, or /in_session reopening an already-ended
+        // session). SessionNote's edit-grace-window relies on ended_at being a durable "this
+        // session ended at exactly this moment" marker, unlike updated_at, which every one of
+        // these status-change calls freely re-touches regardless of whether anything changed.
+        $endedAt = $createSessionDTO->session->ended_at;
+        if (
+            ! $endedAt &&
+            in_array($status, [
+                SessionStatusEnum::held->value,
+                SessionStatusEnum::failed->value,
+                SessionStatusEnum::abandoned->value,
+            ])
+        ) {
+            $endedAt = now();
+        }
+
         $createSessionDTO->session->update([
-            'status' => $status
+            'status' => $status,
+            'ended_at' => $endedAt,
         ]);
 
-        if ($createSessionDTO->session->updatedby) $createSessionDTO->session->updatedby()->dissociate();
-        
+        if ($createSessionDTO->session->updatedby) {
+            $createSessionDTO->session->updatedby()->dissociate();
+        }
+
         if ($updatedby) {
             $createSessionDTO->session->updatedby()->associate($updatedby);
         }
-        
+
         $createSessionDTO->session->save();
-            
+
         return $createSessionDTO->session->refresh();
     }
 
-    private function getUpdatedByBasedOnStatus(CreateSessionDTO $createSessionDTO, String $status)
+    private function getUpdatedByBasedOnStatus(CreateSessionDTO $createSessionDTO, string $status)
     {
         if (
             in_array($status, [
@@ -54,9 +79,11 @@ class ChangeSessionStatusAction extends Action
                 SessionStatusEnum::pending->value,
                 SessionStatusEnum::abandoned->value,
             ])
-        ) return $createSessionDTO->user->counsellor?->is($createSessionDTO->session->addedby)
-            ? $createSessionDTO->user->counsellor
-            : $createSessionDTO->user;
+        ) {
+            return $createSessionDTO->user->counsellor?->is($createSessionDTO->session->addedby)
+                ? $createSessionDTO->user->counsellor
+                : $createSessionDTO->user;
+        }
 
         return null;
     }

@@ -18,6 +18,7 @@ use App\Http\Controllers\PostController;
 use App\Http\Controllers\PreferenceController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\SessionController;
+use App\Http\Controllers\SessionNoteController;
 use App\Http\Controllers\TherapyController;
 use App\Http\Controllers\TransactionController;
 use App\Services\AppService;
@@ -101,6 +102,14 @@ Route::middleware('auth')->group(function () {
     Route::post('/sessions/{sessionId}/end', [SessionController::class, 'endSession'])->name('sessions.end');
     Route::post('/sessions/{sessionId}/fail', [SessionController::class, 'failSession'])->name('sessions.fail');
     Route::post('/sessions/{sessionId}/abandon', [SessionController::class, 'abandonSession'])->name('sessions.abandon');
+
+    // SCRUM-197/TT-2.2b: a counsellor's own private notes on a session -- never exposed to the
+    // client/participant side, see SessionNoteController's own comment on how counsellor_id is
+    // always derived server-side, never accepted as input.
+    Route::get('/sessions/{sessionId}/notes', [SessionNoteController::class, 'index'])->name('session.notes.index');
+    Route::post('/sessions/{sessionId}/notes', [SessionNoteController::class, 'store'])->name('session.notes.store');
+    Route::patch('/sessions/notes/{noteId}', [SessionNoteController::class, 'update'])->name('session.notes.update');
+    Route::delete('/sessions/notes/{noteId}', [SessionNoteController::class, 'destroy'])->name('session.notes.destroy');
 
     // throttle: this calls out to Paystack's own API per request, on top of being a real
     // money-initiation endpoint -- unlike most routes here, an unthrottled version is a genuine
