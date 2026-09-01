@@ -40,6 +40,7 @@ function aValidProposalPayload(): array
         'startTime' => now()->addDay()->toDateTimeString(),
         'endTime' => now()->addDay()->addHour()->toDateTimeString(),
         'name' => 'Weekly check-in',
+        'about' => 'Following up on last week.',
         'type' => 'ONLINE',
         'paymentType' => 'FREE',
     ];

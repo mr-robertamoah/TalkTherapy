@@ -30,6 +30,7 @@ class RequestController extends Controller
                 RequestResponseDTO::new()->fromArray([
                     'user' => $request->user(),
                     'response' => $request->response,
+                    'reason' => $request->reason,
                     'request' => ModelsRequest::find($request->route('requestId')),
                 ])
             );

@@ -54,6 +54,10 @@ class RespondToRequestAction extends Action
             $request = RespondToOrganizationCounsellorCompensationRequestAction::new()->execute($requestResponseDTO);
         }
 
+        if ($requestResponseDTO->request->type == RequestTypeEnum::sessionScheduleProposal->value) {
+            $request = RespondToSessionScheduleProposalAction::new()->execute($requestResponseDTO);
+        }
+
         // TODO respond to other requests
         // (SCRUM-119/120: this per-type dispatch chain is accepted, tracked debt -- see the
         // architect note on documentation/implementation_plan.md's Epic TT-6. A follow-up to

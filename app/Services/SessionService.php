@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Actions\Session\AfterSessionCreatedAction;
 use App\Actions\Session\ChangeSessionStatusAction;
 use App\Actions\Session\CreateSessionAction;
 use App\Actions\Session\DeleteSessionAction;
@@ -17,19 +18,15 @@ use App\Actions\Session\EnsureTherapyExistsAction;
 use App\Actions\Session\SetCurrentTopicOfSessionAction;
 use App\Actions\Session\UnsetCurrentTopicOfSessionAction;
 use App\Actions\Session\UpdateSessionAction;
-use App\Actions\Star\CreateStarAction;
 use App\Actions\TherapyTopic\EnsureTherapyTopicExistsAction;
 use App\DTOs\CreateSessionDTO;
-use App\DTOs\CreateStarDTO;
 use App\DTOs\GetSessionsDTO;
 use App\Enums\PaginationEnum;
 use App\Enums\SessionStatusEnum;
-use App\Enums\StarTypeEnum;
 use App\Events\SessionTopicSetEvent;
 use App\Events\SessionTopicUnsetEvent;
 use App\Events\SessionUpdatedEvent;
 use App\Http\Resources\SessionResource;
-use App\Notifications\SessionCreatedNotification;
 use App\Notifications\SessionDeletedNotification;
 use App\Notifications\SessionStatusChangedNotification;
 use App\Notifications\SessionUpdatedNotification;
@@ -76,19 +73,7 @@ class SessionService extends Service
 
         $session = CreateSessionAction::new()->execute($createSessionDTO);
 
-        CreateStarAction::new()->execute(
-            CreateStarDTO::fromArray([
-                'starredby' => null,
-                'starred' => $createSessionDTO->user,
-                'starreable' => $session,
-                'type' => StarTypeEnum::participation->value,
-            ])
-        );
-
-        Notification::send(
-            $session->for->getOtherUsers($createSessionDTO->user),
-            new SessionCreatedNotification($session)
-        );
+        AfterSessionCreatedAction::new()->execute($session, $createSessionDTO->user);
 
         return $session;
     }

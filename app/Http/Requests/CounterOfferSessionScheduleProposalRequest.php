@@ -8,7 +8,7 @@ use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
-class CreateSessionScheduleProposalRequest extends FormRequest
+class CounterOfferSessionScheduleProposalRequest extends FormRequest
 {
     /**
      * Determine if the user is authorized to make this request.
@@ -28,13 +28,12 @@ class CreateSessionScheduleProposalRequest extends FormRequest
         return [
             'startTime' => ['required', 'date'],
             'endTime' => ['required', 'date'],
+            // Unlike a fresh proposal, a counter-offer only has to change the time -- everything
+            // else falls back to the proposal it's superseding (CounterOfferSessionScheduleProposalAction),
+            // so these stay optional here rather than reusing CreateSessionScheduleProposalRequest's
+            // required 'about'.
             'name' => ['nullable', 'string', 'max:255'],
-            // sessions.about is NOT NULL -- required here so accept-time session creation
-            // (TT-2.5b) never fails on a missing column, matching CreateSessionRequest's own rule.
-            'about' => ['required', 'string'],
-            // Matches CreateSessionRequest's identical fields -- this data is persisted verbatim
-            // into requests.data and is what TT-2.5b's accept step will eventually feed straight
-            // into CreateSessionAction, so it must be valid now, not just well-typed.
+            'about' => ['nullable', 'string'],
             'type' => ['nullable', Rule::in(SessionTypeEnum::values())],
             'paymentType' => ['nullable', Rule::in(TherapyPaymentTypeEnum::values())],
             'expiryDays' => ['nullable', 'integer', 'between:1,30'],
