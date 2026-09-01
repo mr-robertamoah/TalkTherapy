@@ -3593,3 +3593,39 @@ only an explicit code-review comparison against this codebase's own established
 local-Date-to-UTC-string precedent caught it here.
 
 ---
+
+## 2026-09-01 — TT-1 (SCRUM-5) and TT-2 (SCRUM-6) epics closed; TT-6/TT-7 picked as next area
+
+**Decision**: with TT-1's last remaining item (SCRUM-59) merged, transitioned epic TT-1 to Done.
+TT-2 was already fully closed in the prior session. Rather than autonomously guessing which of
+the many independent, unstarted-or-partial epics (TT-3/4/5/6/7/8/9) to pick up next, asked the
+user directly -- a genuine fork per CLAUDE.md's autonomy rules, since no dependency chain
+determined the next unit of work. User chose to finish the already-substantially-built TT-6
+(Organizations) and TT-7 (Payments) epics over starting a brand-new one.
+
+**Why**: TT-6/TT-7 turned out to have only one actual remaining ticketed item (SCRUM-169/
+TT-6.5c2) once checked against live Jira state -- everything else under TT-6 (TT-6.6a-e, TT-6.7,
+TT-6.5a/a2/b/c) was already Done, and TT-7's remaining line items (TT-7.5/7.6/7.7/7.9) have no
+Jira tickets yet and would need their own `/start-feature` pass rather than being pickable
+directly. `documentation/implementation_plan.md`'s own row-level ✅ markers are stale/incomplete
+for TT-6's later rows -- Jira, not the plan doc, is the authoritative source for what's actually
+done.
+
+---
+
+## 2026-09-01 — SCRUM-169 (TT-6.5c2): cross-ticket link-generation gap found, not absorbed here
+
+**Decision**: while implementing SCRUM-169 (member self-apply directory browse + apply UI),
+found that TT-6.7 (SCRUM-164, Done) explicitly deferred "generate a self-apply link" UI to
+TT-6.5a (SCRUM-165, Done) -- but SCRUM-165's own scope/acceptance criteria never actually
+included it, and a full-repo grep confirms zero frontend code references
+`organizationSelfApply`/self-apply links anywhere. Filed a new follow-up ticket (SCRUM-214)
+for the missing org-admin "generate link" UI rather than building it inside SCRUM-169.
+
+**Why**: SCRUM-169's own scope and acceptance criteria are member-facing only (browse the
+directory, apply, follow an existing link) -- they say nothing about admins generating links.
+Absorbing an unrelated ticket's dropped scope into a different, unrelated, already-small ticket
+would be unrequested scope creep; a dedicated follow-up keeps the gap visible and separately
+prioritizable instead of silently folding it in.
+
+---

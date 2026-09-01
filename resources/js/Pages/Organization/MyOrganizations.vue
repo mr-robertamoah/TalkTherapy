@@ -6,6 +6,7 @@ import useAlert from '@/Composables/useAlert';
 import MyAffiliationsSection from './Partials/MyAffiliationsSection.vue';
 import MyOrganizationRequestQueueSection from './Partials/MyOrganizationRequestQueueSection.vue';
 import BrowseProviderOrganizationsSection from './Partials/BrowseProviderOrganizationsSection.vue';
+import BrowseConsumerOrganizationsSection from './Partials/BrowseConsumerOrganizationsSection.vue';
 import MyMembershipsSection from './Partials/MyMembershipsSection.vue';
 import MyAdministeredOrganizationsSection from './Partials/MyAdministeredOrganizationsSection.vue';
 
@@ -69,7 +70,6 @@ function onChildAlert(alert) {
                 />
             </div>
 
-            <!-- Counsellor-only: self-apply for a plain member is a separate ticket (TT-6.5c2) -->
             <div v-if="affiliations" class="w-full sm:w-[90%] md:w-[85%] lg:w-[75%] mx-auto sm:px-6 lg:px-8 mt-8">
                 <BrowseProviderOrganizationsSection
                     @alert="onChildAlert"
@@ -79,6 +79,12 @@ function onChildAlert(alert) {
 
             <div class="w-full sm:w-[90%] md:w-[85%] lg:w-[75%] mx-auto sm:px-6 lg:px-8 mt-8">
                 <MyMembershipsSection :initial-memberships="memberships" @alert="onChildAlert" />
+            </div>
+
+            <!-- Always shown (SCRUM-169/TT-6.5c2): any user can self-apply as a plain member,
+                 independent of having a Counsellor account, unlike the provider-side section above. -->
+            <div class="w-full sm:w-[90%] md:w-[85%] lg:w-[75%] mx-auto sm:px-6 lg:px-8 mt-8">
+                <BrowseConsumerOrganizationsSection @alert="onChildAlert" />
             </div>
         </div>
     </AuthenticatedLayout>
