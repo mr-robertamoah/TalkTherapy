@@ -4,10 +4,14 @@ namespace App\Actions\Link;
 
 use App\Actions\Action;
 use App\Actions\Counsellor\EnsureCounsellorExistsAction;
+use App\Actions\Discussion\EnsureDiscussionCanAcceptCounsellorAction;
 use App\DTOs\CreateLinkDTO;
+use App\DTOs\GetDiscussionsDTO;
 use App\DTOs\UpdateCounsellorDTO;
 use App\Enums\LinkStateEnum;
+use App\Exceptions\DiscussionException;
 use App\Exceptions\LinkException;
+use App\Models\Discussion;
 use App\Models\Link;
 use App\Models\Therapy;
 use App\Notifications\DiscussionInclusionNotification;
@@ -38,13 +42,32 @@ class PerformDiscussionRequestLinkAction extends Action
                 throw new LinkException('This link is no longer active.', 422);
             }
 
+            // Locking the Discussion row here (in addition to the Link row already locked above)
+            // is what makes two different counsellors racing this same link -- or a second link
+            // for the same discussion -- serialize against each other for the capacity check
+            // below, not just against duplicate use of this one link. See
+            // EnsureDiscussionCanAcceptCounsellorAction's comment (SCRUM-23/TT-2.4).
+            $discussion = Discussion::query()->lockForUpdate()->findOrFail($createLinkDTO->link->for->id);
+
+            // lockForUpdate() here too, defensively -- see EnsureDiscussionCanAcceptCounsellorAction's
+            // comment on why a plain read isn't safe against REPEATABLE-READ snapshot staleness
+            // regardless of statement ordering (security review, SCRUM-23).
             if (
-                $createLinkDTO->link->for
+                $discussion
                     ->counsellors()
+                    ->lockForUpdate()
                     ->where('counsellor_id', $createLinkDTO->user->counsellor->id)
                     ->exists()
             ) {
                 throw new LinkException('You cannot use link because you are already part of this discussion.', 422);
+            }
+
+            try {
+                EnsureDiscussionCanAcceptCounsellorAction::new()->execute(
+                    GetDiscussionsDTO::new()->fromArray(['discussion' => $discussion])
+                );
+            } catch (DiscussionException $exception) {
+                throw new LinkException($exception->getMessage(), 422);
             }
 
             // The existence check above is a courtesy for the common (sequential) case -- the
@@ -54,7 +77,7 @@ class PerformDiscussionRequestLinkAction extends Action
             // UniqueConstraintViolationException instead of the same graceful "already part of this
             // discussion" error the sequential case gets.
             try {
-                $createLinkDTO->link->for->counsellors()->attach($createLinkDTO->user->counsellor->id);
+                $discussion->counsellors()->attach($createLinkDTO->user->counsellor->id);
             } catch (UniqueConstraintViolationException) {
                 throw new LinkException('You cannot use link because you are already part of this discussion.', 422);
             }
