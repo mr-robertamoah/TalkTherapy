@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use App\Enums\TherapyPaymentTypeEnum;
+use App\Enums\TherapyPerPaymentEnum;
 use App\Enums\TherapySessionTypeEnum;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
@@ -35,7 +36,7 @@ class UpdateTherapyRequest extends FormRequest
             'sessionType' => ['nullable', Rule::in(TherapySessionTypeEnum::values())],
             'paymentType' => ['nullable', Rule::in(TherapyPaymentTypeEnum::values())],
             'maxSessions' => ['nullable', 'integer', 'min:1'],
-            'per' => ['nullable', 'string'],
+            'per' => ['nullable', Rule::in(TherapyPerPaymentEnum::values())],
             'amount' => ['nullable', 'numeric'],
             'inPersonAmount' => ['nullable', 'numeric'],
             'currency' => ['nullable', Rule::in(config('currencies.supported'))],

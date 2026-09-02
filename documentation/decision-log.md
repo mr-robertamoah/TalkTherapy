@@ -3671,3 +3671,36 @@ identified wart while the context is fresh, rather than letting a fifth divergen
 this user allowed to see this" logic risk accumulating before the follow-up ever gets picked up.
 
 ---
+
+## 2026-09-02 — SCRUM-219 (TT-7.5a 3/5): closed a HIGH-severity self-disable gap before merge
+
+**Decision**: while implementing page-load enforcement of the strict payment gate,
+security-engineer found that the therapy's own `addedby` (the paying client) could call the
+existing `updateTherapy` endpoint to flip `strictPaymentGate` back to `false` (or switch `per` to
+`PER_SESSION`) at will, completely defeating the gate this ticket exists to enforce --
+`EnsureCanUpdateTherapyAction` lets the client update any field with no restriction. Added a new
+`EnsureCanSetStrictPaymentGateAction`: only an admin or the therapy's *assigned* counsellor may
+change `strictPaymentGate` once the therapy already exists; the creating client still sets its
+initial value at CREATE time, since this app has no counsellor assigned to a therapy until one
+accepts an invite/application afterward (there's no one else to set it at that point). Also
+tightened `per`'s validation to `Rule::in(TherapyPerPaymentEnum::values())` on both Create/Update
+requests (was a bare `'string'` rule) and fixed a sibling inconsistency `reviewer` found:
+`TherapyController::chat()` shares `EnsureUserHasAccessToTherapyAction` with `getTherapy()` but
+wasn't handling `PaymentRequiredException` the same way -- both now share one
+`redirectForPaymentRequired()` helper.
+
+**Deliberately NOT fixed here, deferred to SCRUM-220** (flagged in that ticket's own comments):
+a client can still switch an existing `PER_THERAPY` strict-gated therapy's `per` to `PER_SESSION`
+to escape this ticket's gate entirely, since PER_SESSION gating doesn't exist until SCRUM-220
+ships. A second follow-up-verification security pass confirmed this is a pre-existing scope
+boundary (not a new hole this fix introduces) and is now explicitly documented and test-covered
+rather than silently present.
+
+**Why**: this is the first ticket where the strict payment gate actually denies real access, so a
+security-engineer pass was run before committing per CLAUDE.md's mandatory-security-for-payment-
+and-mental-health-platform rule, not just at PR time -- catching this kind of self-disable bypass
+before merge is exactly the point of that gate, especially given `payment_access_grants` rows are
+permanent by design (SCRUM-215 decision #3): a bug here wouldn't just be wrong once, it would let
+a client bypass payment indefinitely with no self-correcting mechanism.
+
+---

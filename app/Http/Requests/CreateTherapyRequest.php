@@ -36,7 +36,7 @@ class CreateTherapyRequest extends FormRequest
             'sessionType' => ['required', Rule::in(TherapySessionTypeEnum::values())],
             'paymentType' => ['required', Rule::in(TherapyPaymentTypeEnum::values())],
             'maxSessions' => ['nullable', Rule::requiredIf($this->get('sessionType') == TherapySessionTypeEnum::periodic->value), 'integer', 'min:1'],
-            'per' => ['nullable', Rule::requiredIf($this->get('paymentType') == TherapyPaymentTypeEnum::paid->value), 'string'],
+            'per' => ['nullable', Rule::requiredIf($this->get('paymentType') == TherapyPaymentTypeEnum::paid->value), Rule::in(TherapyPerPaymentEnum::values())],
             'amount' => ['nullable', Rule::requiredIf($this->get('paymentType') == TherapyPaymentTypeEnum::paid->value), 'numeric'],
             'inPersonAmount' => ['nullable', Rule::requiredIf(
                 $this->get('paymentType') == TherapyPaymentTypeEnum::paid->value &&
