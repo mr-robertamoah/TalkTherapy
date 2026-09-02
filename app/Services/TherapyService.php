@@ -9,6 +9,7 @@ use App\Actions\Therapy\DeleteTherapyAction;
 use App\Actions\Therapy\EndTherapyAction;
 use App\Actions\Therapy\EnsureCanCreateTherapyAction;
 use App\Actions\Therapy\EnsureCanEndTherapyAction;
+use App\Actions\Therapy\EnsureCanSetStrictPaymentGateAction;
 use App\Actions\Therapy\EnsureCanUpdateTherapyAction;
 use App\Actions\Therapy\EnsureIsCounsellorAction;
 use App\Actions\Therapy\EnsureIsNotACounsellorAction;
@@ -34,7 +35,6 @@ use App\Models\Therapy;
 use App\Models\User;
 use App\Notifications\TherapyCreatedNotification;
 use Illuminate\Pagination\LengthAwarePaginator;
-use Illuminate\Support\Collection;
 
 class TherapyService extends Service
 {
@@ -60,7 +60,7 @@ class TherapyService extends Service
         AlertGuardianAction::new()->execute(
             GuardianAlertDTO::new()->fromArray([
                 'user' => $createTherapyDTO->user,
-                'notification' => new TherapyCreatedNotification($therapy)
+                'notification' => new TherapyCreatedNotification($therapy),
             ])
         );
 
@@ -80,6 +80,8 @@ class TherapyService extends Service
         EnsureTherapyExistsAction::new()->execute($createTherapyDTO);
 
         EnsureCanUpdateTherapyAction::new()->execute($createTherapyDTO);
+
+        EnsureCanSetStrictPaymentGateAction::new()->execute($createTherapyDTO);
 
         EnsureTherapyDataIsValidAction::new()->execute($createTherapyDTO);
 
@@ -121,15 +123,17 @@ class TherapyService extends Service
         $query = Therapy::query();
 
         $query->whereParticipant($user);
-        
+
         $query->orderByDesc('created_at');
 
         return $query->paginate(PaginationEnum::homePagination->value);
     }
 
-    public function getRecentTherapies(User|null $user)
+    public function getRecentTherapies(?User $user)
     {
-        if (is_null($user)) return [];
+        if (is_null($user)) {
+            return [];
+        }
 
         return Therapy::query()
             ->whereParticipant($user)
@@ -145,12 +149,12 @@ class TherapyService extends Service
         EnsureTherapyHasNoAssistanceAction::new()->execute($assistTherapyDTO);
 
         if ($assistTherapyDTO->therapy->isUser($assistTherapyDTO->user)) {
-            
+
             EnsureIsNotACounsellorAction::new()->execute($assistTherapyDTO);
 
             EnsureThereIsNoPendingRequestForCounsellorsAction::new()->execute($assistTherapyDTO);
 
-            foreach ($assistTherapyDTO->counsellors as $counsellor)
+            foreach ($assistTherapyDTO->counsellors as $counsellor) {
                 SendTherapyAssistanceRequestAction::new()->execute(
                     TherapyAssistanceRequestDTO::new()->fromArray([
                         'from' => $assistTherapyDTO->user,
@@ -158,6 +162,7 @@ class TherapyService extends Service
                         'for' => $assistTherapyDTO->therapy,
                     ])
                 );
+            }
 
             return;
         }
@@ -165,7 +170,7 @@ class TherapyService extends Service
         EnsureIsCounsellorAction::new()->execute($assistTherapyDTO);
 
         EnsureThereIsNoPendingRequestForCounsellorAction::new()->execute($assistTherapyDTO);
-        
+
         SendTherapyAssistanceRequestAction::new()->execute(
             TherapyAssistanceRequestDTO::new()->fromArray([
                 'from' => $assistTherapyDTO->user->counsellor,
@@ -180,7 +185,7 @@ class TherapyService extends Service
         $query = Therapy::query();
 
         $query->wherePublic();
-        
+
         $query
             ->when($user, function ($query) use ($user) {
                 $query->wherePublic();
@@ -200,10 +205,12 @@ class TherapyService extends Service
 
     public function getCounsellorTherapies(?User $user)
     {
-        if (!$user->counsellor) return [];
+        if (! $user->counsellor) {
+            return [];
+        }
 
         $query = Therapy::query();
-        
+
         $query->where('counsellor_id', $user->counsellor->id);
 
         $query->orWhere(function ($query) use ($user) {
@@ -223,7 +230,7 @@ class TherapyService extends Service
                 });
             });
         });
-        
+
         $query->orWhereHas('requests', function ($query) use ($user) {
             $query
                 ->wherePending()
@@ -237,10 +244,12 @@ class TherapyService extends Service
 
     public function getUserTherapies(?User $user)
     {
-        if (!$user) return [];
+        if (! $user) {
+            return [];
+        }
 
         $query = Therapy::query();
-        
+
         $query->where('addedby_id', $user->id);
         $query->where('addedby_type', User::class);
 
@@ -251,12 +260,14 @@ class TherapyService extends Service
 
     public function getWardTherapies(?User $user)
     {
-        if (!$user) return [];
+        if (! $user) {
+            return [];
+        }
 
         $query = Therapy::query();
-        
+
         $query->whereHasMorph('addedby', [User::class], function ($query) use ($user) {
-            $query->whereHas('guardians', function($query) use ($user) {
+            $query->whereHas('guardians', function ($query) use ($user) {
                 $query->where('guardian_id', $user->id);
             });
         });
@@ -270,7 +281,7 @@ class TherapyService extends Service
     {
         $page = request('page', 1);
         $perPage = PaginationEnum::preferencesPagination->value;
-        
+
         // Get individual therapies
         $individualTherapies = Therapy::query()
             ->wherePublic()
@@ -280,12 +291,13 @@ class TherapyService extends Service
             ->when($user?->counsellor, function ($query) use ($user) {
                 $query->where(function ($query) use ($user) {
                     $query->whereHasNoCounsellor($user->counsellor)
-                          ->orWhereNot('counsellor_id', $user->counsellor->id);
+                        ->orWhereNot('counsellor_id', $user->counsellor->id);
                 });
             })
             ->get()
             ->map(function ($therapy) {
                 $therapy->type = 'individual';
+
                 return $therapy;
             });
 
@@ -303,16 +315,17 @@ class TherapyService extends Service
             ->get()
             ->map(function ($therapy) {
                 $therapy->type = 'group';
+
                 return $therapy;
             });
 
         // Combine and shuffle
         $allTherapies = $individualTherapies->concat($groupTherapies)->shuffle();
-        
+
         // Manual pagination
         $total = $allTherapies->count();
         $items = $allTherapies->forPage($page, $perPage);
-        
+
         return new LengthAwarePaginator(
             $items,
             $total,

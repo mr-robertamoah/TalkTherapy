@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\DTOs\AssistTherapyDTO;
 use App\DTOs\CreateTherapyDTO;
 use App\DTOs\GetTherapyDTO;
+use App\Exceptions\PaymentRequiredException;
 use App\Http\Requests\CreateTherapyRequest;
 use App\Http\Requests\TherapyAssistanceRequest;
 use App\Http\Requests\UpdateTherapyRequest;
@@ -216,6 +217,8 @@ class TherapyController extends Controller
                 'recentSessions' => SessionResource::collection($therapy->sessions()->with('latestTransaction')->latest()->take(5)->get()),
                 'recentTopics' => TherapyTopicResource::collection($therapy->topics()->latest()->take(5)->get()),
             ]);
+        } catch (PaymentRequiredException $th) {
+            return $this->redirectForPaymentRequired($th, $request);
         } catch (Throwable $th) {
             $status = $this->statusFor($th);
             $message = $this->messageFor($th, $status);
@@ -237,12 +240,30 @@ class TherapyController extends Controller
             return Inertia::render('Therapy/Chat', [
                 'therapy' => new TherapyResource($therapy),
             ]);
+        } catch (PaymentRequiredException $th) {
+            // SCRUM-219/TT-7.5a: chat() is reached through the same EnsureUserHasAccessToTherapyAction
+            // as getTherapy() above, so it can throw this exact exception too -- keep both entry
+            // points consistent rather than letting this one fall through to the generic message.
+            return $this->redirectForPaymentRequired($th, $request);
         } catch (Throwable $th) {
             $status = $this->statusFor($th);
             $message = $this->messageFor($th, $status);
 
             return Redirect::route('home')->with('message', $message);
         }
+    }
+
+    // SCRUM-219/TT-7.5a: distinct from the generic access-denied catch in both callers above --
+    // flags a recoverable "pay to continue" state (not a hard access denial) via a distinguishable
+    // flash key, rather than a plain message a blocked client has no way to act on. The actual
+    // "resume payment from here" UI is SCRUM-221's job; this only keeps the information needed
+    // for it flowing through, matching TT-7.4a's transactionStatus flash-prop precedent.
+    private function redirectForPaymentRequired(PaymentRequiredException $th, Request $request)
+    {
+        return Redirect::route('home')
+            ->with('message', $th->getMessage())
+            ->with('paymentRequired', true)
+            ->with('paymentRequiredTherapyId', $request->route('therapyId'));
     }
 
     public function sendAssistanceRequest(TherapyAssistanceRequest $request)
