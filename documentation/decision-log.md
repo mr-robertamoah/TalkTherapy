@@ -3629,3 +3629,34 @@ would be unrequested scope creep; a dedicated follow-up keeps the gap visible an
 prioritizable instead of silently folding it in.
 
 ---
+
+## 2026-09-02 — SCRUM-215 (TT-7.5): payment-gated access, planning decisions
+
+**Decision**: after product-owner review surfaced genuinely safety-critical open questions (what
+exactly gets blocked, whether a later refund can retroactively revoke access, GroupTherapy
+scope), asked the user directly rather than guessing on a mental-health platform's payment gate.
+Four decisions came back: (1) gate whichever model actually carries the payment obligation
+(Therapy or Session, following the existing `payment_data->per` PER_THERAPY/PER_SESSION split),
+not a blanket whole-therapy block; (2) the gate is evaluated ONCE at first access and never
+re-evaluated -- a later refund never retroactively locks an admitted client out; (3) GroupTherapy
+gating is wanted eventually but is explicitly blocked on TT-7.4d (per-member group payment,
+currently unscoped) landing first; (4) public/non-participant visibility stays untouched.
+
+Project-manager then split the buildable-now portion into TT-7.5a (SCRUM-217–221, 5 sub-tickets,
+~26 points provisional) and filed TT-7.5b (SCRUM-216) as a separate, unscheduled sibling ticket
+blocked on TT-7.4d. Architect recommended: store the new flag as `payment_data->strictPaymentGate`
+(not a new `therapies` column, matching the `per`/`amount`/`currency` convention); a new, narrow
+`payment_access_grants` table for the "granted once" state (deliberately NOT derived from
+`Transaction.status` at read time, since TT-7.7's future refund handling will start mutating that
+field); a new `PaymentRequiredException` for controller/page-load call sites only, with
+`MessageService`'s 4 duplicated authorization call sites getting a plain boolean check instead
+(matching their existing idiom, not forcing a new one on them).
+
+**Why**: this is a payment-and-access feature on a mental-health platform -- guessing wrong on
+"can a refund cut someone off mid-relationship" would be a real harm event, not just a UX misstep,
+so it was treated as a genuine "pause and ask" fork per CLAUDE.md rather than a judgment call to
+make silently. The architect's `payment_access_grants` table recommendation exists specifically
+to prevent a *future* ticket (TT-7.7 refunds) from silently breaking *this* ticket's core safety
+invariant -- a cross-ticket coupling risk worth designing around now rather than discovering later.
+
+---
