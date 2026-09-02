@@ -18,6 +18,7 @@ import useAlert from '@/Composables/useAlert';
 import Alert from '@/Components/Alert.vue';
 import GuidedTour from '@/Components/GuidedTour.vue';
 import useGuidedTours from '@/Composables/useGuidedTours';
+import PaymentRequiredBanner from '@/Components/PaymentRequiredBanner.vue';
 
 
 const { modalData, showModal, closeModal } = useModal()
@@ -42,6 +43,17 @@ const props = defineProps({
     },
     alert: {
         default: null
+    },
+    paymentRequired: {
+        type: Boolean,
+        default: false,
+    },
+    paymentRequiredTherapyId: {
+        default: null,
+    },
+    paymentRequiredMessage: {
+        type: String,
+        default: '',
     },
 })
 
@@ -295,6 +307,12 @@ function showPost() {
     <Head title="Home" />
 
     <AuthenticatedLayout>
+        <PaymentRequiredBanner
+            v-if="paymentRequired"
+            :message="paymentRequiredMessage"
+            :therapy-id="paymentRequiredTherapyId"
+        />
+
         <div class="pt-6 pb-12">
             <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 my-4 flex justify-end">
                 <HelpButton

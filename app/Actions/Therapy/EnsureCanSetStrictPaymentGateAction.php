@@ -25,10 +25,15 @@ class EnsureCanSetStrictPaymentGateAction extends Action
             return;
         }
 
-        if ($dto->strictPaymentGate === $dto->therapy->strictPaymentGate) {
-            return;
-        }
-
+        // Deliberately NO "value is already unchanged" short-circuit here (security review,
+        // SCRUM-221): an earlier version returned early whenever the submitted value matched the
+        // therapy's current one, before checking identity at all -- which let ANY authenticated
+        // caller "set" an arbitrary therapy's gate to its current value and succeed, both an
+        // unauthorized write (UpdateTherapyAction still runs, rewriting payment_data) and a
+        // boolean oracle (success vs. 422 reveals the current value of a therapy the caller has
+        // no relationship to). Authorization must be checked whenever this field is explicitly
+        // provided, whether or not the value is actually changing -- an already-authorized
+        // admin/counsellor resubmitting the unchanged value still passes below regardless.
         if (
             $dto->user->isAdmin() ||
             ($dto->user->counsellor && $dto->therapy->counsellor_id && $dto->therapy->isCounsellor($dto->user->counsellor))
