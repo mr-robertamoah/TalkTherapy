@@ -3659,4 +3659,15 @@ make silently. The architect's `payment_access_grants` table recommendation exis
 to prevent a *future* ticket (TT-7.7 refunds) from silently breaking *this* ticket's core safety
 invariant -- a cross-ticket coupling risk worth designing around now rather than discovering later.
 
+**Follow-up decision (2026-09-02)**: SCRUM-220 will NOT consolidate `MessageService`'s 4
+pre-existing, independently-duplicated authorization checks onto the new shared payment-gate
+check -- it only adds the new payment condition alongside them. Consolidating that pre-existing
+duplication is tracked as separate follow-up debt (mirrors the SCRUM-211/SCRUM-214 pattern),
+filed once SCRUM-220 is actually implemented and the exact shape of the shared check is known.
+
+**Why**: unlike the earlier safety-critical questions in this same ticket, this one is a scoping
+judgment call, not an ethics/safety fork -- keeping SCRUM-220 focused on its stated job (add
+payment gating) avoids scope creep, matching this project's established preference for small,
+reviewable PRs over bundling unrelated refactors into feature work.
+
 ---
