@@ -52,7 +52,8 @@ const therapyData = ref({
     'inPersonAmount': 0,
     'maxSessions': 0,
     'currency': defaultCurrency,
-    'cases': []
+    'cases': [],
+    'strictPaymentGate': false
 })
 const therapyErrors = ref({
     'name': '',
@@ -66,7 +67,8 @@ const therapyErrors = ref({
     'amount': '',
     'currency': '',
     'maxSessions': '',
-    'cases': ''
+    'cases': '',
+    'strictPaymentGate': ''
 })
 
 watchEffect(() => {
@@ -84,6 +86,7 @@ watch(
             therapyData.value.amount = ''
             therapyData.value.currency = defaultCurrency
             therapyData.value.per = ''
+            therapyData.value.strictPaymentGate = false
         }
     }
 )
@@ -197,7 +200,7 @@ async function createTherapy() {
         if (err.response?.status == 422 && err.response?.data?.errors) {
             setErrorData(therapyErrors, err.response.data.errors, [
                 'name', 'backgroundStory', 'anonymous', 'allowInPerson', 'public', 'sessionType',
-                'paymentType', 'per', 'amount', 'currency', 'maxSessions'
+                'paymentType', 'per', 'amount', 'currency', 'maxSessions', 'strictPaymentGate'
             ])
             return
         }
@@ -225,6 +228,7 @@ function clearData() {
     therapyData.value.currency = defaultCurrency
     therapyData.value.per = ''
     therapyData.value.cases = []
+    therapyData.value.strictPaymentGate = false
 }
 
 function closeModal() {
@@ -441,6 +445,18 @@ function closeModal() {
                                 <div class="mt-2 text-xs text-gray-500">Payment will automatically be PER THERAPY when session type is ONCE.</div>
                                 <div class="mt-2 text-xs text-gray-500" v-if="computedShowInPersonAmount">We recommend that in-person therapies amount should be at least twice that of your online session amount.</div>
                                 <InputError class="mt-2" :message="therapyErrors.amount" />
+                            </div>
+
+                            <!-- SCRUM-221/TT-7.5a: initial value only -- once a counsellor is
+                                 assigned, only they (or an admin) can change this (EnsureCanSetStrictPaymentGateAction). -->
+                            <div class="mt-4 mx-auto max-w-[400px]" v-if="therapyData.paymentType == PaymentTypeEnum.paid">
+                                <label class="flex items-center">
+                                    <Checkbox name="strictPaymentGate" v-model:checked="therapyData.strictPaymentGate" />
+                                    <span class="ms-2 text-sm text-gray-600">Require payment before you can access this therapy.</span>
+                                </label>
+
+                                <div class="mt-2 text-xs text-gray-500">Once a counsellor is assigned, only they can change this setting.</div>
+                                <InputError class="mt-2" :message="therapyErrors.strictPaymentGate" />
                             </div>
                         </div>
                     </div>

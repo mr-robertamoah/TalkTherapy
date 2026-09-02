@@ -18,6 +18,10 @@ class HomeController extends Controller
     public function goHome(Request $request)
     {
         $message = session('message');
+        // SCRUM-221/TT-7.5a: a payment-required redirect (TherapyController::redirectForPaymentRequired)
+        // gets its own dedicated, non-alarming banner (built below from this same $message) instead
+        // of the generic red "failed" toast every other exception's flashed message triggers.
+        $paymentRequired = session()->has('paymentRequired');
 
         $counsellorService = CounsellorService::new();
 
@@ -29,9 +33,12 @@ class HomeController extends Controller
             'leadingCounsellors' => StarredCounsellorResource::collection($counsellorService->getLeadingCounsellorsForCurrentMonth()),
             'post' => session()->has('postId') ? new PostResource(Post::find(session('postId'))) : null,
             'alert' => session()->has('alert') ? session('alert') : null,
+            'paymentRequired' => $paymentRequired,
+            'paymentRequiredTherapyId' => session('paymentRequiredTherapyId'),
+            'paymentRequiredMessage' => $paymentRequired ? $message : null,
         ]);
 
-        if ($message) {
+        if ($message && ! $paymentRequired) {
             $page->with('errorMessage', $message);
         }
 

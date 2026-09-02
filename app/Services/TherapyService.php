@@ -88,6 +88,34 @@ class TherapyService extends Service
         return UpdateTherapyAction::new()->execute($createTherapyDTO);
     }
 
+    // SCRUM-221/TT-7.5a: a separate, narrow entry point for the strict-payment-gate toggle,
+    // deliberately NOT going through EnsureCanUpdateTherapyAction/updateTherapy() above.
+    // EnsureCanUpdateTherapyAction only recognizes the therapy's addedby (creator) or a counsellor
+    // who happens to BE the addedby (the "a counsellor created this therapy" case) -- it has no
+    // branch for the normal flow of "a counsellor got ASSIGNED via counsellor_id after a client
+    // created the therapy", so the assigned counsellor can never reach updateTherapy() at all for
+    // an ordinary client-created therapy (found via live Playwright testing, not a unit test,
+    // since EnsureCanSetStrictPaymentGateAction's own tests only ever exercised it in isolation).
+    // EnsureCanSetStrictPaymentGateAction is already a complete, self-contained authorization
+    // check (admin or the assigned counsellor) for this one field, so it doesn't need
+    // EnsureCanUpdateTherapyAction's blessing too -- and deliberately shouldn't get it, since
+    // broadening EnsureCanUpdateTherapyAction itself to recognize the assigned counsellor would
+    // hand them write access to every other therapy field (name, background story, pricing, ...),
+    // a materially larger authorization change this ticket has no reason to make.
+    //
+    // Also deliberately skips EnsureTherapyDataIsValidAction (unlike updateTherapy() above), so
+    // -- unlike every other therapy field -- this setting stays toggleable after the therapy has
+    // ended. Accepted as a low-risk gap (an ended therapy has no further sessions/access left to
+    // gate) rather than adding a narrow one-line status check for a single field's sake.
+    public function updateStrictPaymentGate(CreateTherapyDTO $createTherapyDTO)
+    {
+        EnsureTherapyExistsAction::new()->execute($createTherapyDTO);
+
+        EnsureCanSetStrictPaymentGateAction::new()->execute($createTherapyDTO);
+
+        return UpdateTherapyAction::new()->execute($createTherapyDTO);
+    }
+
     public function endTherapy(CreateTherapyDTO $createTherapyDTO)
     {
         EnsureTherapyExistsAction::new()->execute($createTherapyDTO);

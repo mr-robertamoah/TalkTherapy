@@ -75,7 +75,34 @@ test('an admin can change strictPaymentGate', function () {
         ->not->toThrow(TherapyException::class);
 });
 
-test('a no-op update (resending the same value) is allowed even by the client', function () {
+test('the assigned counsellor resending the already-current value is still allowed (they are authorized regardless)', function () {
+    $client = User::factory()->create();
+    $counsellorUser = User::factory()->create();
+    $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
+    $therapy = Therapy::factory()->create([
+        'addedby_type' => User::class,
+        'addedby_id' => $client->id,
+        'counsellor_id' => $counsellor->id,
+        'payment_type' => 'PAID',
+        'payment_data' => ['strictPaymentGate' => true],
+    ]);
+
+    $dto = CreateTherapyDTO::new()->fromArray([
+        'user' => $counsellorUser,
+        'therapy' => $therapy,
+        'strictPaymentGate' => true,
+    ]);
+
+    expect(fn () => EnsureCanSetStrictPaymentGateAction::new()->execute($dto))
+        ->not->toThrow(TherapyException::class);
+});
+
+test('an unrelated user cannot "set" strictPaymentGate to its current, unchanged value either', function () {
+    // Regression test (security-engineer finding): an earlier version returned early whenever
+    // the submitted value matched the therapy's current one, BEFORE checking identity at all --
+    // letting any authenticated caller "set" an arbitrary therapy's gate to its current value
+    // and succeed. This is a boolean oracle (success vs. exception reveals the current value of
+    // a therapy the caller has no relationship to) and must be blocked regardless of value.
     $client = User::factory()->create();
     $therapy = Therapy::factory()->create([
         'addedby_type' => User::class,
@@ -83,15 +110,16 @@ test('a no-op update (resending the same value) is allowed even by the client', 
         'payment_type' => 'PAID',
         'payment_data' => ['strictPaymentGate' => true],
     ]);
+    $unrelatedUser = User::factory()->create();
 
     $dto = CreateTherapyDTO::new()->fromArray([
-        'user' => $client,
+        'user' => $unrelatedUser,
         'therapy' => $therapy,
-        'strictPaymentGate' => true,
+        'strictPaymentGate' => true, // the therapy's current, unchanged value
     ]);
 
     expect(fn () => EnsureCanSetStrictPaymentGateAction::new()->execute($dto))
-        ->not->toThrow(TherapyException::class);
+        ->toThrow(TherapyException::class);
 });
 
 test('an update that does not mention strictPaymentGate at all is allowed for the client', function () {

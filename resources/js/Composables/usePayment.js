@@ -95,5 +95,10 @@ export default function usePayment(therapy, therapyType = 'individual') {
         payForTherapy,
         payForSession,
         paymentStatusLabel,
+        // SCRUM-221/TT-7.5a: exported directly (not just via payForTherapy/payForSession) for
+        // PaymentRequiredBanner.vue -- it only ever has a bare therapy id (never the full
+        // resource this composable's other callers pass in), so it calls this the same way
+        // payForTherapy()/payForSession() do internally, rather than reimplementing it.
+        initiate,
     }
 }

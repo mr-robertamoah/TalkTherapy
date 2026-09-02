@@ -86,6 +86,14 @@ Route::middleware('auth')->group(function () {
     Route::get('/therapies', [TherapyController::class, 'show'])->name('therapies');
     Route::get('/therapies/{therapyId}/chat', [TherapyController::class, 'chat'])->name('therapies.chat');
     Route::patch('/therapies/{therapyId}', [TherapyController::class, 'updateTherapy'])->name('therapies.update');
+    // SCRUM-221/TT-7.5a: separate from therapies.update above -- the assigned counsellor can
+    // never reach that route (EnsureCanUpdateTherapyAction has no branch for a counsellor merely
+    // assigned via counsellor_id), and this narrower one deliberately doesn't need it to, since
+    // EnsureCanSetStrictPaymentGateAction is a complete, self-contained authorization check.
+    // Throttled (unlike its sibling above, which has none) simply because it's new and this
+    // codebase's convention leans toward throttling newly-added write endpoints by default,
+    // not because of any specific abuse concern the sibling route lacks.
+    Route::patch('/therapies/{therapyId}/strict-payment-gate', [TherapyController::class, 'updateStrictPaymentGate'])->name('therapies.strict_payment_gate.update')->middleware('throttle:30,1');
     Route::delete('/therapies/{therapyId}', [TherapyController::class, 'deleteTherapy'])->name('therapies.delete');
     Route::post('/therapies/{therapyId}', [TherapyController::class, 'endTherapy'])->name('therapies.end');
 

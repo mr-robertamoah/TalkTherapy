@@ -157,6 +157,32 @@ class TherapyController extends Controller
         }
     }
 
+    // SCRUM-221/TT-7.5a: see the route comment -- deliberately separate from updateTherapy()
+    // above so the assigned counsellor (who cannot pass EnsureCanUpdateTherapyAction for an
+    // ordinarily client-created therapy) can still reach EnsureCanSetStrictPaymentGateAction's
+    // own, self-contained authorization check.
+    public function updateStrictPaymentGate(Request $request)
+    {
+        $request->validate(['strictPaymentGate' => ['required', 'boolean']]);
+
+        try {
+            TherapyService::new()->updateStrictPaymentGate(
+                CreateTherapyDTO::new()->fromArray([
+                    'user' => $request->user(),
+                    'therapy' => Therapy::find($request->route('therapyId')),
+                    'strictPaymentGate' => $request->boolean('strictPaymentGate'),
+                ])
+            );
+
+            return Redirect::back();
+        } catch (Throwable $th) {
+            $status = $this->statusFor($th);
+            $message = $this->messageFor($th, $status);
+
+            return Redirect::back()->withErrors(['alert' => $message]);
+        }
+    }
+
     public function deleteTherapy(Request $request)
     {
         try {
