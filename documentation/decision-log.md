@@ -3733,3 +3733,43 @@ all, leaving open the exact "still reachable" hole this ticket exists to close. 
 PER_THERAPY unconditionally, before even considering whether a session was passed.
 
 ---
+
+## 2026-09-02 — SCRUM-222 (TT-7.4-retry): scope decided, mechanism already worked
+
+**Decision**: TT-7.4's original "retry-on-failure" clause was carved out during SCRUM-118's split
+(2026-08-29) as its own small follow-up, tracked but unscoped. Before filing SCRUM-222, I verified
+the underlying retry *mechanism* already works today: `EnsureCanInitiateChargeAction` only blocks
+a further charge once a SUCCESS transaction exists (a FAILED/ABANDONED one does not block retry),
+and `usePayment.js`'s `canPayForTherapy`/`canPayForSession` already gate purely on
+`paymentStatus !== 'SUCCESS'`, so the pay button already reappears after a failed attempt with
+`STATUS_MESSAGES.FAILED` already reading "Your payment failed. Please try again."
+
+So the real open question was not "can a client retry" but "does the UI communicate that a retry
+is happening" — the pay button looked identical (same "pay now" label) on a first attempt and a
+retry. product-owner review surfaced this as a genuine product fork rather than guessing: (a)
+distinct retry wording/styling (frontend-only), (b) persistent failure visibility across reloads
+(frontend-only, reads existing `latestTransaction` data), (c) a full attempt-history list (needs
+new backend — no transaction-history endpoint exists today), or (d) close as already-satisfied
+with no new UI. User chose **(a)**: distinct "try payment again" wording/styling, keyed off the
+already-persistent `paymentStatus` field (not the one-shot `transactionStatus` flash), so it
+survives a reload without building (b)'s full persistent-banner feature or (c)'s new backend
+surface.
+
+Architect recommended centralizing the FAILED/ABANDONED check as a shared `isRetryStatus()` helper
+in `usePayment.js` (mirroring the existing `paymentStatusLabel()` pattern) rather than inlining an
+OR-check independently in both `TherapyPaymentDetails.vue` and `UnifiedTherapy.vue` — both already
+destructure from this composable for identical status-to-copy logic, so this was the minimal-diff
+option, not the heavier one. project-manager confirmed this as a single, correctly-small 2-point
+ticket needing no split, unlike the TT-6.3/TT-7.2/TT-2.6/TT-2.2 undersizing pattern.
+
+**Why**: the "what should this ticket actually deliver" question was a genuine product trade-off
+(scope ranged from a one-line copy change to a new backend feature) that couldn't be resolved by
+guessing a default without risking either under-delivering (leaving real user-facing ambiguity
+during a stressful moment — payment failure — for a mental-health platform's users) or
+over-delivering (building unwanted backend surface for a ticket explicitly sized small). Verified
+end-to-end via live Playwright QA (seeded FAILED transactions on both the PER_THERAPY and
+PER_SESSION demo therapies, confirmed both button/label/styling changes, cleaned up test data
+afterward) since no JS/Vue test framework exists in this codebase to write automated coverage
+instead. `reviewer` and `security-engineer` both approved with no required changes.
+
+---
