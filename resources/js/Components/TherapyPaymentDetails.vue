@@ -55,7 +55,12 @@
       </div>
       <div class="relative" v-else-if="canPay">
         <FormLoader class="mx-auto" :show="initiating" :text="'starting your payment'" />
-        <PrimaryButton :disabled="initiating" @click="clickedPay">pay now</PrimaryButton>
+        <PrimaryButton
+          :disabled="initiating"
+          @click="clickedPay"
+          :class="isRetryStatus(therapy.paymentStatus) ? 'bg-amber-600 hover:bg-amber-700' : ''"
+          >{{ isRetryStatus(therapy.paymentStatus) ? 'try payment again' : 'pay now' }}</PrimaryButton
+        >
       </div>
       <div
         v-else-if="therapyType !== 'group' && therapy.paymentData.per === 'PER_THERAPY' && computedIsCounsellor"
@@ -111,7 +116,7 @@ const props = defineProps({
 })
 
 const { alertData, clearAlertData, setFailedAlertData, setSuccessAlertData } = useAlert()
-const { initiating, canPayForTherapy, payForTherapy, paymentStatusLabel } = usePayment(toRef(props, 'therapy'), props.therapyType)
+const { initiating, canPayForTherapy, payForTherapy, paymentStatusLabel, isRetryStatus } = usePayment(toRef(props, 'therapy'), props.therapyType)
 
 const canPay = computed(() => canPayForTherapy(props.computedIsParticipant, props.computedIsCounsellor))
 

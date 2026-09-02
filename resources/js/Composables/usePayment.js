@@ -22,6 +22,15 @@ function paymentStatusLabel(status) {
     return STATUS_LABELS[status] ?? 'Awaiting payment'
 }
 
+// SCRUM-222/TT-7.4-retry: FAILED and ABANDONED are both non-terminal (STATUS_MESSAGES above
+// already treats them as recoverable) -- a client whose last attempt landed in either status
+// should see distinct "try payment again" copy on the pay button, not the same generic "pay now"
+// wording shown before any attempt at all. Shared here (like paymentStatusLabel above) since both
+// TherapyPaymentDetails.vue and UnifiedTherapy.vue's session-actions modal need the identical check.
+function isRetryStatus(status) {
+    return status === 'FAILED' || status === 'ABANDONED'
+}
+
 // Owns the initiate/redirect/status/dismiss logic shared by TherapyPaymentDetails.vue (PER_THERAPY
 // pay action) and UnifiedTherapy.vue's session-actions modal (PER_SESSION pay action), so neither
 // embeds this logic itself and the other reuses it. Group therapy is explicitly unsupported here --
@@ -95,6 +104,7 @@ export default function usePayment(therapy, therapyType = 'individual') {
         payForTherapy,
         payForSession,
         paymentStatusLabel,
+        isRetryStatus,
         // SCRUM-221/TT-7.5a: exported directly (not just via payForTherapy/payForSession) for
         // PaymentRequiredBanner.vue -- it only ever has a bare therapy id (never the full
         // resource this composable's other callers pass in), so it calls this the same way
