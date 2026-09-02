@@ -3847,3 +3847,78 @@ anticipated by product-owner's first pass, and needed a clarifying round (the us
 "add it to scope with blockers implemented first," was itself ambiguous between a narrow
 notification-only blocker and the full TT-7.3b/TT-7.6 chain — resolved by presenting both
 interpretations side by side rather than guessing which one "blockers" meant).
+
+---
+
+## 2026-09-02 — SCRUM-224 (TT-7.6): counsellor payout scoped, split into 5 sub-tickets (47 points)
+
+**Decision**: TT-7.6 ("Counsellor payout via Paystack Transfers") was promoted from "own epic,
+unscheduled" to the active next unit of work as a direct consequence of the SCRUM-223 decision
+above (TT-7.6 → TT-7.3b → TT-7.7). Went through the full product-owner → project-manager →
+architect `/start-feature` sequence and, like every other TT-7 sub-story reviewed this session
+(the 8th in a row), was found significantly undersized at its 13-point provisional estimate —
+final split: TT-7.6a-e, 47 points total (see `documentation/implementation_plan.md`'s TT-7 table).
+
+**Product-owner surfaced four genuine forks**, all resolved by the user:
+
+1. **Platform fee**: not a fixed percentage. The user explicitly rejected both preset options
+   (a specific hardcoded %) and instead specified: "this should be a setting platform super admin
+   should be able to set with a fallback being a configurable env variable." This is genuinely new
+   infrastructure — no settings mechanism exists anywhere in this codebase today (`SettingsEnum`
+   was an empty stub). Disclosed to the counsellor as an itemized gross/fee/net breakdown,
+   matching TT-6.4c's existing compensation-transparency precedent.
+2. **Payout methods**: both bank account AND Ghanaian mobile money as Paystack Transfer Recipient
+   destinations, not bank-only — product-owner flagged that Ghana (this platform's primary
+   market, per `config/currencies.php`'s USD/GHS default) has strong mobile-money payout
+   preference, and bank-only would materially reduce counsellor usability.
+3. **Minimum payout threshold**: GHS 50 / USD 10 (fixed values), chosen over a higher GHS 100 /
+   USD 20 option — small enough to not make counsellors wait too long for small earnings, large
+   enough to comfortably clear Paystack's own per-transfer fee.
+4. **KYC depth**: Paystack's own account-name-match check at recipient creation, plus the
+   counsellor's EXISTING platform verification (`Counsellor::isVerified()`) — no new
+   identity-verification subsystem (no document upload, no BVN linkage). User confirmed
+   product-owner's own recommendation here rather than requesting something more rigorous.
+
+**Scope boundary (settled by product-owner, not re-litigated)**: TT-7.6 covers ONLY
+personally-financed transactions (`transactions.organization_id IS NULL`). Org-financed payout
+splitting is explicitly excluded and deferred to TT-7.3b, layered on top of TT-7.6's payout rails
+once both exist — avoids the mistake of paying a counsellor 100% of an org-financed transaction's
+share when `shareEqually`/`sharePercentage` only governs same-therapy multi-counsellor splits, not
+org-vs-counsellor splits.
+
+**Two project-manager judgment calls, both architect-endorsed, made without a further round of
+user questions** (assessed as reasonable, low-risk, reversible defaults rather than genuine
+forks):
+- The GHS 50 / USD 10 threshold reuses the SAME settings mechanism built for the platform fee
+  (decision #1), rather than being hardcoded separately — near-zero marginal cost once that
+  mechanism exists for one setting.
+- Admin-triggered payout does NOT bypass the minimum threshold — avoids two divergent enforcement
+  paths for the same money-movement operation. A future explicit override, if ever needed, should
+  be its own separately-ticketed, separately-audited exception, not a quiet default here.
+
+**Architect design decisions** (five points, all decisive, no further forks): (1) new generic
+`platform_settings` key-value table (`SettingsEnum` confirmed as the intended key namespace, now
+gains `platformFeePercentage`/`minimumPayoutAmount` cases), read via `SettingsService::get()` with
+env-backed config fallback — not a dedicated payout-only settings mechanism, since decision #3
+above explicitly requires reuse; (2) `counsellor_earnings` uses typed snapshot columns (mirroring
+`organization_counsellor_compensations`'s established convention for this exact kind of
+snapshotted business fact), not a JSON blob, since TT-7.3b needs to query/aggregate these later;
+(3) idempotency combines `lockForUpdate()` + claim-by-status-flip (mirrors `RespondToRequestAction`'s
+existing lock-then-mutate idiom) with a unique `reference` column (mirrors `transactions.reference`)
+as a second layer — flagged as the highest-risk piece of the whole ticket by both prior reviews;
+(4) payout webhooks (`transfer.success`/`transfer.failed`/`transfer.reversed`) extend the EXISTING
+`ProcessPaystackWebhookJob`'s `match($event)` rather than a second controller/route — Paystack
+only supports one webhook URL per integration, so a second route buys no isolation; (5) the exact
+Paystack Transfer Recipient API shape for `nuban` vs. `mobile_money` types is flagged as a genuine
+engineering spike (no existing `PaystackClient` precedent beyond `/transaction/initialize`/
+`/verify`) — the first task inside TT-7.6a, not assumed ahead of time.
+
+**Why**: all four product-owner forks were genuine business/product trade-offs (a hardcoded fee
+percentage would need a deploy to change; bank-only payout would exclude a real chunk of this
+platform's Ghana-based counsellors) where guessing wrong would be either expensive to reverse or
+simply wrong for the target market — consistent with this session's standing practice of
+surfacing genuine forks rather than defaulting to the smaller option. The two project-manager
+judgment calls and five architect decisions were kept in-flow without a further AskUserQuestion
+round because they were reasonable, low-risk, and cheaply reversible engineering defaults, not
+consequential product forks — asking about every such call would have been excessive-questions
+overreach for decisions an engineering review can responsibly make on its own.
