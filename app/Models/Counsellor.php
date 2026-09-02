@@ -269,6 +269,14 @@ class Counsellor extends Model
         return (bool) $this->verified_at;
     }
 
+    // TT-7.6a/SCRUM-225: null until the counsellor onboards a payout destination
+    // (CreateCounsellorPayoutDestinationAction) -- deliberately not eager-loaded everywhere,
+    // since this is only ever relevant to the counsellor's own payout flow, not general display.
+    public function payoutAccount()
+    {
+        return $this->hasOne(CounsellorPayoutAccount::class);
+    }
+
     public function addedPosts()
     {
         return $this->morphMany(Post::class, 'addedby');
