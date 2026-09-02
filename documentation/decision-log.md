@@ -3773,3 +3773,77 @@ afterward) since no JS/Vue test framework exists in this codebase to write autom
 instead. `reviewer` and `security-engineer` both approved with no required changes.
 
 ---
+
+## 2026-09-02 — SCRUM-223 (TT-7.7): refund handling scoped, TT-7.6/TT-7.3b resequenced ahead of it
+
+**Decision**: SCRUM-223 ("TT-7.7: Refund handling") went through product-owner review and, like
+every other TT-7 sub-story reviewed so far this session (TT-6.3, TT-7.2, TT-2.2, TT-2.6, TT-7.5a),
+was found significantly undersized at its original 5-point estimate. Product-owner surfaced three
+genuine product forks rather than guessing:
+
+1. **Refund initiation**: admin-direct-action (smaller) vs. client-request/admin-approval
+   workflow (larger, new state machine). **User chose the workflow** — a client requests a
+   refund with a reason, an admin reviews and approves/rejects, matching TT-6.4c's negotiation-
+   flow shape rather than a single admin action.
+2. **Refund execution**: internal record-keeping only (smaller, lower risk) vs. a real Paystack
+   refund API call with webhook confirmation (larger, real money movement). **User chose the
+   real API call** — a record-keeping-only refund would leave the app claiming "REFUNDED" while
+   no money had actually moved, judged worse for trust on a platform where clients may already
+   carry cost anxiety about care than not building the feature yet.
+3. **Org-paid transaction eligibility** (surfaced during project-manager review, not the initial
+   product-owner pass): should a transaction with `transactions.organization_id` set (TT-7.3a)
+   be refund-eligible under this ticket, given TT-7.3b (org billing reconciliation — notifying
+   the org admin, adjusting compensation) hasn't shipped? Refunding one today would give the org
+   zero visibility. Two sub-options were offered: block org-paid refunds until TT-7.3b ships
+   (smaller), or allow now with the gap documented as debt (simpler check, but a real org could
+   lose money silently). **User rejected both** and asked for a third path: keep org-paid
+   transactions in TT-7.7's scope, but require TT-7.3b's reconciliation piece to actually exist
+   FIRST, i.e. resequence the roadmap so TT-7.7's implementation is blocked on TT-7.3b rather than
+   deferring org-paid handling to an unscoped future ticket. When asked to clarify how much of
+   TT-7.3b's scope that implied — a narrow "notify org admin" step (~2-3pts) vs. the *full*
+   payout/compensation-adjustment reconciliation TT-7.3b already covers (8pts, which itself
+   depends on TT-7.6 payout, 13pts, since there's nothing to reconcile against without a payout
+   system) — **the user chose the full path**: TT-7.6 → TT-7.3b → TT-7.7, in that order.
+
+**Net effect**: TT-7.3b's dependency direction reverses. It previously depended on TT-7.7
+(`documentation/implementation_plan.md` line 218's old "Depends on: TT-7.3a, TT-7.6, TT-7.7").
+Now TT-7.7 depends on TT-7.3b, which depends on TT-7.6. TT-7.6 (counsellor payout via Paystack
+Transfers, previously "own Epic once scheduled, not a TT-7 sub-story," 13 points provisional) is
+promoted to the active next unit of work as a direct consequence — it needs its own
+`/start-feature` pass (Jira ticket, product-owner/project-manager/architect review) before either
+TT-7.3b or TT-7.7 can start. This is a genuinely large scope escalation from what began as a
+5-point fast-follow ticket: TT-7.6 (13pts, provisional) → TT-7.3b (8pts) → TT-7.7a-e (34pts) is
+55+ points of prerequisite-and-feature work now queued ahead of what was originally framed as a
+quick refund fast-follow.
+
+**Sub-ticket split** (TT-7.7a → b → c → d → e, sequential, 34 points total — see
+`documentation/implementation_plan.md`'s TT-7 table for full per-ticket scope): architect
+recommended (1) a separate `refunds` table for the audit trail rather than overloading
+`TransactionStatusEnum` with a `refunded` case, since `status` already means "did the charge
+succeed" for existing consumers (webhook amount/currency verification, `isSuccessful()`) and
+refunds are naturally 1:many per transaction (partial-refund-friendly), not 1:1; (2) the
+client-request/admin-approval ask-and-approve step reuses the existing polymorphic `Request`
+model (new `RequestTypeEnum::refund` case, mirroring the `organizationCounsellorCompensationChange`
+precedent) for consistency, but the actual Paystack API call is deliberately isolated in its own
+queued job fired only after `RespondToRequestAction` flips the request to accepted — never called
+inline from within that shared dispatcher, which is already on record (SCRUM-119/120) as growing
+debt from its linear per-type `if`-chain, and whose only tested idempotency guarantee (safe no-op
+on double-respond, `RespondToRequestActionIdempotencyTest`) was built for simple internal-state
+flips, not for "did we already call a third-party payment API for this."
+
+**Hard, non-negotiable constraint carried through every sub-ticket**: refund handling must never
+read from, write to, or otherwise reference `payment_access_grants` (TT-7.5a's permanent,
+non-revocable first-access-grant table, see this file's 2026-09-02 SCRUM-215 entries) — a
+client's platform access must stay completely unaffected by a refund's outcome. TT-7.7d (the
+sub-ticket that actually calls Paystack) carries an explicit regression test proving this.
+
+**Why**: all three forks were genuine product/architecture trade-offs where guessing wrong would
+have been expensive to reverse (a workflow bolted onto a direct-action design later means a new
+state machine, not a patch; a real API call retrofitted onto record-keeping-only means re-touching
+every place that assumed "REFUNDED" already meant money moved) — consistent with this session's
+standing practice of surfacing genuine forks to the user rather than defaulting to the smaller
+option. The org-paid question in particular was raised by project-manager mid-review, not
+anticipated by product-owner's first pass, and needed a clarifying round (the user's first answer,
+"add it to scope with blockers implemented first," was itself ambiguous between a narrow
+notification-only blocker and the full TT-7.3b/TT-7.6 chain — resolved by presenting both
+interpretations side by side rather than guessing which one "blockers" meant).
