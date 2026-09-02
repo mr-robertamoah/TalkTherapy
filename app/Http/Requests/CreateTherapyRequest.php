@@ -44,6 +44,7 @@ class CreateTherapyRequest extends FormRequest
                 $this->get('allowInPerson')
             ), 'numeric'],
             'currency' => ['nullable', Rule::requiredIf($this->get('paymentType') == TherapyPaymentTypeEnum::paid->value), Rule::in(config('currencies.supported'))],
+            'strictPaymentGate' => ['nullable', 'boolean'],
         ];
     }
 }
