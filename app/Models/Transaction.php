@@ -37,6 +37,13 @@ class Transaction extends Model
         return $this->hasMany(TransactionStatusHistory::class);
     }
 
+    // TT-7.6b/SCRUM-226: never populated for an org-financed transaction (organization_id set) --
+    // that split is TT-7.3b's job, layered on top of this payout mechanism once it exists.
+    public function earnings()
+    {
+        return $this->hasMany(CounsellorEarning::class);
+    }
+
     public function isSuccessful(): bool
     {
         return $this->status === TransactionStatusEnum::success->value;

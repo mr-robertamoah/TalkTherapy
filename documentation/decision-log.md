@@ -3827,3 +3827,244 @@ kind of premature abstraction this project's rules caution against -- logging th
 own ticket instead ensures they aren't silently lost.
 
 ---
+## 2026-09-03 — SCRUM-226 (TT-7.6b): earnings ledger + platform settings mechanism
+
+**Decision**: implemented TT-7.6b per the product-owner/project-manager/architect plan from
+SCRUM-224's review (see that entry). Two implementation-time judgment calls, made without a
+further round of user questions since neither is a product fork -- both are technical
+interpretations of already-approved scope, logged here per CLAUDE.md rather than escalated:
+
+1. **GroupTherapy `sharePercentage` semantics**: this codebase has never actually computed a
+   payout from `payment_data->shareEqually`/`sharePercentage` before (grep confirmed: only ever
+   validated in `EnsureTherapyDataIsValidAction` and displayed in `TherapyPaymentDetails.vue`,
+   never used in a calculation) -- so this ticket had to define that behavior for the first time,
+   not just "reuse the existing logic" as the plan text implied. Read `GroupTherapyFormModal.vue`'s
+   actual field labels ("How do you want earnings shared?" / "What percentage will you give to
+   the participating counsellors?") as the closest thing to a spec: `sharePercentage` is the % of
+   the WHOLE transaction allocated to the counsellor pool collectively (not one named
+   counsellor's own cut), and — since nothing in this codebase's schema or UI has ever modeled a
+   per-counsellor split within that pool — that pool is divided EQUALLY among all currently-active
+   counsellors, whether `shareEqually` is true (100% pool) or a specific `sharePercentage` is set
+   (that %, as the pool). A leftover minor-unit remainder from an uneven equal split is assigned
+   to the first counsellor rather than dropped.
+2. Everything else (settings mechanism shape, ledger schema, idempotency, webhook placement) followed
+   the architect's explicit, decisive recommendations from SCRUM-224's review verbatim -- no
+   further judgment calls needed there.
+
+**Review findings and fixes** (both `reviewer` and `security-engineer` ran twice -- once on the
+initial implementation, once to verify fixes):
+- **Reviewer, required**: `GenerateCounsellorEarningsAction` was called from inside
+  `RecordTransactionStatusAction` AFTER that action's status update and status-history insert had
+  already committed independently -- a failure in earnings generation (DB hiccup, unexpected
+  state) would leave a transaction permanently stuck as `success` with no `CounsellorEarning` row
+  and no retriable path back to it (the terminal-status guard means a later identical webhook
+  replay just short-circuits). Fixed by wrapping the status update, status-history insert, AND
+  the earnings-generation call in one outer `DB::transaction()`, so a throw anywhere rolls
+  everything back, keeping the transaction in a genuinely retriable non-terminal state. Verified
+  (via the re-review pass) that `GenerateCounsellorEarningsAction`'s own inner
+  `DB::transaction()`+`lockForUpdate()` correctly runs as a savepoint of the outer transaction
+  rather than conflicting with it.
+- **Reviewer, required**: the arithmetic was only unit-tested by calling
+  `GenerateCounsellorEarningsAction` directly -- nothing proved `RecordTransactionStatusAction`'s
+  real callers (the Paystack webhook, the verify-callback fallback) actually reach it. Fixed by
+  adding an end-to-end test in `tests/Feature/PaystackWebhookTest.php` that posts a real signed
+  `charge.success` webhook through the HTTP boundary and asserts a `CounsellorEarning` row exists
+  afterward.
+- **Reviewer, suggested, applied**: the fee calculation multiplied a `float` percentage directly
+  against a money amount (`floor($grossAmount * $feePercentage / 100)`) -- safe for whole-number
+  percentages (the only value ever set today) but a latent drift risk once a fractional fee (e.g.
+  12.5%) is set via the new admin-configurable mechanism. Fixed by converting the percentage to
+  integer basis points once, up front, then doing pure integer division
+  (`intdiv($grossAmount * $feeBasisPoints, 10000)`), keeping the whole file in the same
+  integer/minor-unit space its GroupTherapy-split math already used.
+- **Reviewer, suggested, applied then corrected further**: added a comment to
+  `SettingsService::get()` documenting that an empty-string setting value is treated as unset --
+  but the re-review pass caught that the actual code (`$value ?? $default`) didn't match that
+  comment (`??` only substitutes on `null`, not `''`). Rather than just fixing the comment to
+  match the (wrong) behavior, changed the code itself to match the originally-intended contract
+  (`$value === null || $value === '' ? $default : $value`), since the wrong behavior was a real,
+  if narrow, money-correctness gap: an empty string ever persisted for `platformFeePercentage`
+  (e.g. a future admin-UI bug submitting a blank field) would have silently computed a 0% fee via
+  `(float) ''`, rather than falling back to the intended default. Added a regression test.
+- **Security-engineer, required**: `poolPercentage` (the GroupTherapy counsellor-pool %) was
+  derived from `payment_data` and used directly in money arithmetic with no defensive bound of
+  its own -- it relied entirely on `EnsureTherapyDataIsValidAction` (a different file, the only
+  current writer of `payment_data`) for the 40–100/70–100 invariant. Fixed with an explicit
+  `max(0, min(100, $poolPercentage))` clamp in the action itself, plus a regression test
+  simulating a bypass (`sharePercentage = 150` written directly, as a future admin tool or
+  migration might).
+- **Security-engineer, flagged, explicitly deferred (not fixed here)**: `transactions.organization_id`
+  uses `nullOnDelete()` against a soft-deletable `Organization` — if an `Organization` were ever
+  *force*-deleted while it had an in-flight, not-yet-successful transaction, that transaction's
+  `organization_id` would be nulled out before `GenerateCounsellorEarningsAction`'s
+  `organization_id !== null` check runs, misclassifying an org-financed payment as personal and
+  paying it out as counsellor earnings instead of reserving it for TT-7.3b's org-split. Confirmed
+  by security-engineer as currently unreachable (no `forceDelete()` call on `Organization` exists
+  anywhere in the codebase today) and correctly out of this ticket's scope — logged here as a
+  design constraint TT-7.3b must account for before it starts relying on `organization_id`'s
+  permanence, per the security-engineer's explicit recommendation, rather than pre-emptively
+  building a guard against a scenario that doesn't exist yet.
+- **Security-engineer, flagged, explicitly deferred (not fixed here)**: `getPlatformFeePercentage()`
+  has no equivalent clamp to the `poolPercentage` fix above — an out-of-range value stored via
+  `UpdateSettingAction` would flow unclamped into the same fee arithmetic. Not fixed here because
+  `UpdateSettingAction` has no controller/route yet (TT-7.6e builds that) and is therefore not
+  reachable by anything other than a direct Service call in a test today. Logged as a requirement
+  for TT-7.6e: add validation (in `SettingDTO`/`UpdateSettingAction`) or a defensive clamp in
+  `SettingsService::getPlatformFeePercentage()` bounding it to 0–100 when that write path is
+  actually exposed.
+
+**Why**: both the GroupTherapy-split interpretation and the review fixes were genuinely
+consequential correctness questions for a feature whose entire purpose is handling real money
+(even though this particular sub-ticket makes no external API calls yet) — logged rather than
+silently absorbed so the next engineer (starting with TT-7.6c, which builds directly on this
+ledger) has the full reasoning, not just the resulting code.
+
+---
+## 2026-09-02 — SCRUM-223 (TT-7.7): refund handling scoped, TT-7.6/TT-7.3b resequenced ahead of it
+
+**Decision**: SCRUM-223 ("TT-7.7: Refund handling") went through product-owner review and, like
+every other TT-7 sub-story reviewed so far this session (TT-6.3, TT-7.2, TT-2.2, TT-2.6, TT-7.5a),
+was found significantly undersized at its original 5-point estimate. Product-owner surfaced three
+genuine product forks rather than guessing:
+
+1. **Refund initiation**: admin-direct-action (smaller) vs. client-request/admin-approval
+   workflow (larger, new state machine). **User chose the workflow** — a client requests a
+   refund with a reason, an admin reviews and approves/rejects, matching TT-6.4c's negotiation-
+   flow shape rather than a single admin action.
+2. **Refund execution**: internal record-keeping only (smaller, lower risk) vs. a real Paystack
+   refund API call with webhook confirmation (larger, real money movement). **User chose the
+   real API call** — a record-keeping-only refund would leave the app claiming "REFUNDED" while
+   no money had actually moved, judged worse for trust on a platform where clients may already
+   carry cost anxiety about care than not building the feature yet.
+3. **Org-paid transaction eligibility** (surfaced during project-manager review, not the initial
+   product-owner pass): should a transaction with `transactions.organization_id` set (TT-7.3a)
+   be refund-eligible under this ticket, given TT-7.3b (org billing reconciliation — notifying
+   the org admin, adjusting compensation) hasn't shipped? Refunding one today would give the org
+   zero visibility. Two sub-options were offered: block org-paid refunds until TT-7.3b ships
+   (smaller), or allow now with the gap documented as debt (simpler check, but a real org could
+   lose money silently). **User rejected both** and asked for a third path: keep org-paid
+   transactions in TT-7.7's scope, but require TT-7.3b's reconciliation piece to actually exist
+   FIRST, i.e. resequence the roadmap so TT-7.7's implementation is blocked on TT-7.3b rather than
+   deferring org-paid handling to an unscoped future ticket. When asked to clarify how much of
+   TT-7.3b's scope that implied — a narrow "notify org admin" step (~2-3pts) vs. the *full*
+   payout/compensation-adjustment reconciliation TT-7.3b already covers (8pts, which itself
+   depends on TT-7.6 payout, 13pts, since there's nothing to reconcile against without a payout
+   system) — **the user chose the full path**: TT-7.6 → TT-7.3b → TT-7.7, in that order.
+
+**Net effect**: TT-7.3b's dependency direction reverses. It previously depended on TT-7.7
+(`documentation/implementation_plan.md` line 218's old "Depends on: TT-7.3a, TT-7.6, TT-7.7").
+Now TT-7.7 depends on TT-7.3b, which depends on TT-7.6. TT-7.6 (counsellor payout via Paystack
+Transfers, previously "own Epic once scheduled, not a TT-7 sub-story," 13 points provisional) is
+promoted to the active next unit of work as a direct consequence — it needs its own
+`/start-feature` pass (Jira ticket, product-owner/project-manager/architect review) before either
+TT-7.3b or TT-7.7 can start. This is a genuinely large scope escalation from what began as a
+5-point fast-follow ticket: TT-7.6 (13pts, provisional) → TT-7.3b (8pts) → TT-7.7a-e (34pts) is
+55+ points of prerequisite-and-feature work now queued ahead of what was originally framed as a
+quick refund fast-follow.
+
+**Sub-ticket split** (TT-7.7a → b → c → d → e, sequential, 34 points total — see
+`documentation/implementation_plan.md`'s TT-7 table for full per-ticket scope): architect
+recommended (1) a separate `refunds` table for the audit trail rather than overloading
+`TransactionStatusEnum` with a `refunded` case, since `status` already means "did the charge
+succeed" for existing consumers (webhook amount/currency verification, `isSuccessful()`) and
+refunds are naturally 1:many per transaction (partial-refund-friendly), not 1:1; (2) the
+client-request/admin-approval ask-and-approve step reuses the existing polymorphic `Request`
+model (new `RequestTypeEnum::refund` case, mirroring the `organizationCounsellorCompensationChange`
+precedent) for consistency, but the actual Paystack API call is deliberately isolated in its own
+queued job fired only after `RespondToRequestAction` flips the request to accepted — never called
+inline from within that shared dispatcher, which is already on record (SCRUM-119/120) as growing
+debt from its linear per-type `if`-chain, and whose only tested idempotency guarantee (safe no-op
+on double-respond, `RespondToRequestActionIdempotencyTest`) was built for simple internal-state
+flips, not for "did we already call a third-party payment API for this."
+
+**Hard, non-negotiable constraint carried through every sub-ticket**: refund handling must never
+read from, write to, or otherwise reference `payment_access_grants` (TT-7.5a's permanent,
+non-revocable first-access-grant table, see this file's 2026-09-02 SCRUM-215 entries) — a
+client's platform access must stay completely unaffected by a refund's outcome. TT-7.7d (the
+sub-ticket that actually calls Paystack) carries an explicit regression test proving this.
+
+**Why**: all three forks were genuine product/architecture trade-offs where guessing wrong would
+have been expensive to reverse (a workflow bolted onto a direct-action design later means a new
+state machine, not a patch; a real API call retrofitted onto record-keeping-only means re-touching
+every place that assumed "REFUNDED" already meant money moved) — consistent with this session's
+standing practice of surfacing genuine forks to the user rather than defaulting to the smaller
+option. The org-paid question in particular was raised by project-manager mid-review, not
+anticipated by product-owner's first pass, and needed a clarifying round (the user's first answer,
+"add it to scope with blockers implemented first," was itself ambiguous between a narrow
+notification-only blocker and the full TT-7.3b/TT-7.6 chain — resolved by presenting both
+interpretations side by side rather than guessing which one "blockers" meant).
+
+---
+
+## 2026-09-02 — SCRUM-224 (TT-7.6): counsellor payout scoped, split into 5 sub-tickets (47 points)
+
+**Decision**: TT-7.6 ("Counsellor payout via Paystack Transfers") was promoted from "own epic,
+unscheduled" to the active next unit of work as a direct consequence of the SCRUM-223 decision
+above (TT-7.6 → TT-7.3b → TT-7.7). Went through the full product-owner → project-manager →
+architect `/start-feature` sequence and, like every other TT-7 sub-story reviewed this session
+(the 8th in a row), was found significantly undersized at its 13-point provisional estimate —
+final split: TT-7.6a-e, 47 points total (see `documentation/implementation_plan.md`'s TT-7 table).
+
+**Product-owner surfaced four genuine forks**, all resolved by the user:
+
+1. **Platform fee**: not a fixed percentage. The user explicitly rejected both preset options
+   (a specific hardcoded %) and instead specified: "this should be a setting platform super admin
+   should be able to set with a fallback being a configurable env variable." This is genuinely new
+   infrastructure — no settings mechanism exists anywhere in this codebase today (`SettingsEnum`
+   was an empty stub). Disclosed to the counsellor as an itemized gross/fee/net breakdown,
+   matching TT-6.4c's existing compensation-transparency precedent.
+2. **Payout methods**: both bank account AND Ghanaian mobile money as Paystack Transfer Recipient
+   destinations, not bank-only — product-owner flagged that Ghana (this platform's primary
+   market, per `config/currencies.php`'s USD/GHS default) has strong mobile-money payout
+   preference, and bank-only would materially reduce counsellor usability.
+3. **Minimum payout threshold**: GHS 50 / USD 10 (fixed values), chosen over a higher GHS 100 /
+   USD 20 option — small enough to not make counsellors wait too long for small earnings, large
+   enough to comfortably clear Paystack's own per-transfer fee.
+4. **KYC depth**: Paystack's own account-name-match check at recipient creation, plus the
+   counsellor's EXISTING platform verification (`Counsellor::isVerified()`) — no new
+   identity-verification subsystem (no document upload, no BVN linkage). User confirmed
+   product-owner's own recommendation here rather than requesting something more rigorous.
+
+**Scope boundary (settled by product-owner, not re-litigated)**: TT-7.6 covers ONLY
+personally-financed transactions (`transactions.organization_id IS NULL`). Org-financed payout
+splitting is explicitly excluded and deferred to TT-7.3b, layered on top of TT-7.6's payout rails
+once both exist — avoids the mistake of paying a counsellor 100% of an org-financed transaction's
+share when `shareEqually`/`sharePercentage` only governs same-therapy multi-counsellor splits, not
+org-vs-counsellor splits.
+
+**Two project-manager judgment calls, both architect-endorsed, made without a further round of
+user questions** (assessed as reasonable, low-risk, reversible defaults rather than genuine
+forks):
+- The GHS 50 / USD 10 threshold reuses the SAME settings mechanism built for the platform fee
+  (decision #1), rather than being hardcoded separately — near-zero marginal cost once that
+  mechanism exists for one setting.
+- Admin-triggered payout does NOT bypass the minimum threshold — avoids two divergent enforcement
+  paths for the same money-movement operation. A future explicit override, if ever needed, should
+  be its own separately-ticketed, separately-audited exception, not a quiet default here.
+
+**Architect design decisions** (five points, all decisive, no further forks): (1) new generic
+`platform_settings` key-value table (`SettingsEnum` confirmed as the intended key namespace, now
+gains `platformFeePercentage`/`minimumPayoutAmount` cases), read via `SettingsService::get()` with
+env-backed config fallback — not a dedicated payout-only settings mechanism, since decision #3
+above explicitly requires reuse; (2) `counsellor_earnings` uses typed snapshot columns (mirroring
+`organization_counsellor_compensations`'s established convention for this exact kind of
+snapshotted business fact), not a JSON blob, since TT-7.3b needs to query/aggregate these later;
+(3) idempotency combines `lockForUpdate()` + claim-by-status-flip (mirrors `RespondToRequestAction`'s
+existing lock-then-mutate idiom) with a unique `reference` column (mirrors `transactions.reference`)
+as a second layer — flagged as the highest-risk piece of the whole ticket by both prior reviews;
+(4) payout webhooks (`transfer.success`/`transfer.failed`/`transfer.reversed`) extend the EXISTING
+`ProcessPaystackWebhookJob`'s `match($event)` rather than a second controller/route — Paystack
+only supports one webhook URL per integration, so a second route buys no isolation; (5) the exact
+Paystack Transfer Recipient API shape for `nuban` vs. `mobile_money` types is flagged as a genuine
+engineering spike (no existing `PaystackClient` precedent beyond `/transaction/initialize`/
+`/verify`) — the first task inside TT-7.6a, not assumed ahead of time.
+
+**Why**: all four product-owner forks were genuine business/product trade-offs (a hardcoded fee
+percentage would need a deploy to change; bank-only payout would exclude a real chunk of this
+platform's Ghana-based counsellors) where guessing wrong would be either expensive to reverse or
+simply wrong for the target market — consistent with this session's standing practice of
+surfacing genuine forks rather than defaulting to the smaller option. The two project-manager
+judgment calls and five architect decisions were kept in-flow without a further AskUserQuestion
+round because they were reasonable, low-risk, and cheaply reversible engineering defaults, not
+consequential product forks — asking about every such call would have been excessive-questions
+overreach for decisions an engineering review can responsibly make on its own.
