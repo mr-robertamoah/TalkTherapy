@@ -5,6 +5,7 @@ use App\Enums\TherapyPerPaymentEnum;
 use App\Enums\TherapySessionTypeEnum;
 use App\Enums\TherapyStatusEnum;
 use App\Enums\TransactionStatusEnum;
+use App\Models\Counsellor;
 use App\Models\Therapy;
 use App\Models\Transaction;
 use App\Models\User;
@@ -57,6 +58,47 @@ test('a correctly signed charge.success webhook marks the transaction successful
     $response->assertOk();
     expect($transaction->fresh()->status)->toBe(TransactionStatusEnum::success->value);
     expect($transaction->statusHistories()->count())->toBe(1);
+});
+
+// TT-7.6b/SCRUM-226 (reviewer finding): unit-testing GenerateCounsellorEarningsAction in
+// isolation proves the arithmetic, but not that RecordTransactionStatusAction's real callers
+// actually reach it -- this exercises the genuine end-to-end path a live Paystack webhook uses.
+test('a correctly signed charge.success webhook also generates a counsellor earning', function () {
+    $secret = 'test_secret';
+    config(['services.paystack.secret_key' => $secret]);
+
+    $counsellor = Counsellor::factory()->create(['user_id' => User::factory()]);
+    $therapy = Therapy::factory()->create([
+        'addedby_type' => User::class,
+        'addedby_id' => User::factory(),
+        'counsellor_id' => $counsellor->id,
+        'session_type' => TherapySessionTypeEnum::once->value,
+        'status' => TherapyStatusEnum::in_session->value,
+        'payment_type' => TherapyPaymentTypeEnum::paid->value,
+        'payment_data' => ['per' => TherapyPerPaymentEnum::therapy->value, 'amount' => 150, 'currency' => 'GHS'],
+    ]);
+    $transaction = Transaction::factory()->create([
+        'for_type' => Therapy::class,
+        'for_id' => $therapy->id,
+        'reference' => 'webhook_ref_earnings_1',
+        'amount' => 15000,
+        'currency' => 'GHS',
+        'status' => TransactionStatusEnum::pending->value,
+    ]);
+
+    postSignedPaystackWebhook([
+        'event' => 'charge.success',
+        'data' => [
+            'reference' => 'webhook_ref_earnings_1',
+            'amount' => 15000,
+            'currency' => 'GHS',
+            'gateway_response' => 'Successful',
+        ],
+    ], $secret)->assertOk();
+
+    expect($transaction->fresh()->status)->toBe(TransactionStatusEnum::success->value);
+    $this->assertDatabaseCount('counsellor_earnings', 1);
+    expect($transaction->earnings()->first()->counsellor_id)->toBe($counsellor->id);
 });
 
 test('a webhook with an invalid signature is rejected and never changes the transaction', function () {
