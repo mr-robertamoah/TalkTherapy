@@ -3773,3 +3773,97 @@ afterward) since no JS/Vue test framework exists in this codebase to write autom
 instead. `reviewer` and `security-engineer` both approved with no required changes.
 
 ---
+
+## 2026-09-03 — SCRUM-226 (TT-7.6b): earnings ledger + platform settings mechanism
+
+**Decision**: implemented TT-7.6b per the product-owner/project-manager/architect plan from
+SCRUM-224's review (see that entry). Two implementation-time judgment calls, made without a
+further round of user questions since neither is a product fork -- both are technical
+interpretations of already-approved scope, logged here per CLAUDE.md rather than escalated:
+
+1. **GroupTherapy `sharePercentage` semantics**: this codebase has never actually computed a
+   payout from `payment_data->shareEqually`/`sharePercentage` before (grep confirmed: only ever
+   validated in `EnsureTherapyDataIsValidAction` and displayed in `TherapyPaymentDetails.vue`,
+   never used in a calculation) -- so this ticket had to define that behavior for the first time,
+   not just "reuse the existing logic" as the plan text implied. Read `GroupTherapyFormModal.vue`'s
+   actual field labels ("How do you want earnings shared?" / "What percentage will you give to
+   the participating counsellors?") as the closest thing to a spec: `sharePercentage` is the % of
+   the WHOLE transaction allocated to the counsellor pool collectively (not one named
+   counsellor's own cut), and — since nothing in this codebase's schema or UI has ever modeled a
+   per-counsellor split within that pool — that pool is divided EQUALLY among all currently-active
+   counsellors, whether `shareEqually` is true (100% pool) or a specific `sharePercentage` is set
+   (that %, as the pool). A leftover minor-unit remainder from an uneven equal split is assigned
+   to the first counsellor rather than dropped.
+2. Everything else (settings mechanism shape, ledger schema, idempotency, webhook placement) followed
+   the architect's explicit, decisive recommendations from SCRUM-224's review verbatim -- no
+   further judgment calls needed there.
+
+**Review findings and fixes** (both `reviewer` and `security-engineer` ran twice -- once on the
+initial implementation, once to verify fixes):
+- **Reviewer, required**: `GenerateCounsellorEarningsAction` was called from inside
+  `RecordTransactionStatusAction` AFTER that action's status update and status-history insert had
+  already committed independently -- a failure in earnings generation (DB hiccup, unexpected
+  state) would leave a transaction permanently stuck as `success` with no `CounsellorEarning` row
+  and no retriable path back to it (the terminal-status guard means a later identical webhook
+  replay just short-circuits). Fixed by wrapping the status update, status-history insert, AND
+  the earnings-generation call in one outer `DB::transaction()`, so a throw anywhere rolls
+  everything back, keeping the transaction in a genuinely retriable non-terminal state. Verified
+  (via the re-review pass) that `GenerateCounsellorEarningsAction`'s own inner
+  `DB::transaction()`+`lockForUpdate()` correctly runs as a savepoint of the outer transaction
+  rather than conflicting with it.
+- **Reviewer, required**: the arithmetic was only unit-tested by calling
+  `GenerateCounsellorEarningsAction` directly -- nothing proved `RecordTransactionStatusAction`'s
+  real callers (the Paystack webhook, the verify-callback fallback) actually reach it. Fixed by
+  adding an end-to-end test in `tests/Feature/PaystackWebhookTest.php` that posts a real signed
+  `charge.success` webhook through the HTTP boundary and asserts a `CounsellorEarning` row exists
+  afterward.
+- **Reviewer, suggested, applied**: the fee calculation multiplied a `float` percentage directly
+  against a money amount (`floor($grossAmount * $feePercentage / 100)`) -- safe for whole-number
+  percentages (the only value ever set today) but a latent drift risk once a fractional fee (e.g.
+  12.5%) is set via the new admin-configurable mechanism. Fixed by converting the percentage to
+  integer basis points once, up front, then doing pure integer division
+  (`intdiv($grossAmount * $feeBasisPoints, 10000)`), keeping the whole file in the same
+  integer/minor-unit space its GroupTherapy-split math already used.
+- **Reviewer, suggested, applied then corrected further**: added a comment to
+  `SettingsService::get()` documenting that an empty-string setting value is treated as unset --
+  but the re-review pass caught that the actual code (`$value ?? $default`) didn't match that
+  comment (`??` only substitutes on `null`, not `''`). Rather than just fixing the comment to
+  match the (wrong) behavior, changed the code itself to match the originally-intended contract
+  (`$value === null || $value === '' ? $default : $value`), since the wrong behavior was a real,
+  if narrow, money-correctness gap: an empty string ever persisted for `platformFeePercentage`
+  (e.g. a future admin-UI bug submitting a blank field) would have silently computed a 0% fee via
+  `(float) ''`, rather than falling back to the intended default. Added a regression test.
+- **Security-engineer, required**: `poolPercentage` (the GroupTherapy counsellor-pool %) was
+  derived from `payment_data` and used directly in money arithmetic with no defensive bound of
+  its own -- it relied entirely on `EnsureTherapyDataIsValidAction` (a different file, the only
+  current writer of `payment_data`) for the 40–100/70–100 invariant. Fixed with an explicit
+  `max(0, min(100, $poolPercentage))` clamp in the action itself, plus a regression test
+  simulating a bypass (`sharePercentage = 150` written directly, as a future admin tool or
+  migration might).
+- **Security-engineer, flagged, explicitly deferred (not fixed here)**: `transactions.organization_id`
+  uses `nullOnDelete()` against a soft-deletable `Organization` — if an `Organization` were ever
+  *force*-deleted while it had an in-flight, not-yet-successful transaction, that transaction's
+  `organization_id` would be nulled out before `GenerateCounsellorEarningsAction`'s
+  `organization_id !== null` check runs, misclassifying an org-financed payment as personal and
+  paying it out as counsellor earnings instead of reserving it for TT-7.3b's org-split. Confirmed
+  by security-engineer as currently unreachable (no `forceDelete()` call on `Organization` exists
+  anywhere in the codebase today) and correctly out of this ticket's scope — logged here as a
+  design constraint TT-7.3b must account for before it starts relying on `organization_id`'s
+  permanence, per the security-engineer's explicit recommendation, rather than pre-emptively
+  building a guard against a scenario that doesn't exist yet.
+- **Security-engineer, flagged, explicitly deferred (not fixed here)**: `getPlatformFeePercentage()`
+  has no equivalent clamp to the `poolPercentage` fix above — an out-of-range value stored via
+  `UpdateSettingAction` would flow unclamped into the same fee arithmetic. Not fixed here because
+  `UpdateSettingAction` has no controller/route yet (TT-7.6e builds that) and is therefore not
+  reachable by anything other than a direct Service call in a test today. Logged as a requirement
+  for TT-7.6e: add validation (in `SettingDTO`/`UpdateSettingAction`) or a defensive clamp in
+  `SettingsService::getPlatformFeePercentage()` bounding it to 0–100 when that write path is
+  actually exposed.
+
+**Why**: both the GroupTherapy-split interpretation and the review fixes were genuinely
+consequential correctness questions for a feature whose entire purpose is handling real money
+(even though this particular sub-ticket makes no external API calls yet) — logged rather than
+silently absorbed so the next engineer (starting with TT-7.6c, which builds directly on this
+ledger) has the full reasoning, not just the resulting code.
+
+---

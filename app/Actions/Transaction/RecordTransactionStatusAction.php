@@ -5,6 +5,7 @@ namespace App\Actions\Transaction;
 use App\Actions\Action;
 use App\Enums\TransactionStatusEnum;
 use App\Models\Transaction;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class RecordTransactionStatusAction extends Action
@@ -40,14 +41,36 @@ class RecordTransactionStatusAction extends Action
             return $transaction;
         }
 
-        $transaction->update(['status' => $status]);
+        // TT-7.6b/SCRUM-226 (reviewer finding): the status update and earnings generation below
+        // must commit together or not at all. Without this wrapping, a failure inside
+        // GenerateCounsellorEarningsAction after the status update had already committed would
+        // leave the transaction permanently stuck as `success` with no CounsellorEarning row and
+        // no path back through this action to retry -- the terminal-status guard above means a
+        // later, identically-successful webhook/verify-callback replay would just short-circuit
+        // on the first `if` and never reach the earnings call again. Rolling the status update
+        // back too (by throwing out of this DB::transaction()) keeps the transaction in a
+        // genuinely retriable non-terminal state instead.
+        return DB::transaction(function () use ($transaction, $status, $source, $message) {
+            $transaction->update(['status' => $status]);
 
-        $transaction->statusHistories()->create([
-            'status' => $status,
-            'source' => $source,
-            'message' => $message,
-        ]);
+            $transaction->statusHistories()->create([
+                'status' => $status,
+                'source' => $source,
+                'message' => $message,
+            ]);
 
-        return $transaction->refresh();
+            $transaction = $transaction->refresh();
+
+            // This is the ONE place a transaction actually transitions to SUCCESS (the
+            // terminal-status guard above means that can only ever happen once), so it's the
+            // right place to generate the counsellor's earnings for it -- not a separate
+            // listener a future change could forget to wire up on one of this action's two
+            // callers (the webhook job and the verify-callback fallback).
+            if ($status === TransactionStatusEnum::success->value) {
+                GenerateCounsellorEarningsAction::new()->execute($transaction);
+            }
+
+            return $transaction;
+        });
     }
 }
