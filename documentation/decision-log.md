@@ -3773,3 +3773,57 @@ afterward) since no JS/Vue test framework exists in this codebase to write autom
 instead. `reviewer` and `security-engineer` both approved with no required changes.
 
 ---
+
+## 2026-09-03 — SCRUM-225 (TT-7.6a): payout-destination onboarding via Paystack Transfer Recipients
+
+**Decision**: implemented TT-7.6a per the product-owner/project-manager/architect plan from
+SCRUM-224's review (see that entry). This is this codebase's first Paystack API surface beyond
+`/transaction/initialize`/`/transaction/verify` -- added `PaystackClient::resolveAccountNumber()`
+(GET `/bank/resolve`) and `createTransferRecipient()` (POST `/transferrecipient`), following the
+existing thin-wrapper convention exactly. New `counsellor_payout_accounts` table (one row per
+counsellor, unique constraint -- changing a destination replaces the row in place rather than
+accumulating history, unlike the earnings ledger, since no later ticket needs to query past
+destinations) stores only a Paystack `recipient_code` + a masked account number; the raw account
+number is sent to Paystack transiently and never persisted. Onboarding gated on
+`Counsellor::isVerified()` (existing platform verification) -- no new identity-verification
+subsystem, per the user's decision during SCRUM-224 review. A destination-change email fires only
+when replacing an EXISTING destination, never on first-time setup.
+
+**A real bug found and fixed during my own implementation** (not by review, though review verified
+the fix): the "is this a first-time onboarding or a replacement" check originally read
+`$counsellor->payoutAccount` (the Eloquent relation) -- but a null-result relation is cached on
+the model instance, so a caller reusing the same in-memory `$counsellor` object across two
+separate onboarding calls (exactly what a "does replacing send a notification" test needs to
+exercise) would see a stale "no existing destination" even on a genuine replacement, silently
+skipping the security-relevant account-takeover notification. Fixed by replacing it with a direct
+`CounsellorPayoutAccount::query()->where('counsellor_id', $counsellor->id)->exists()` check.
+`reviewer`'s re-review confirmed this was the only instance of the trap in the diff.
+
+**Security-engineer findings, both addressed**:
+- **Fixed (defense in depth)**: `CreateCounsellorPayoutDestinationAction` had no independent
+  authorization check of its own -- its safety depended entirely on `PayoutService::onboardDestination()`
+  (the only current caller) remembering to run `EnsureCanOnboardPayoutDestinationAction` first.
+  Not exploitable today (no controller/route exists yet to reach this action any other way), but
+  fixed immediately anyway by having the action re-run the same ensure-check internally, so it
+  stays safe even if a future ticket ever calls it directly by mistake.
+- **Deferred to TT-7.6d (the controller ticket), logged as a Jira comment on that ticket, not
+  fixed here**: (1) the future controller must build `PayoutDestinationDTO->user` strictly from
+  the authenticated user, never request input, and call only `PayoutService::onboardDestination()`;
+  (2) no request validation exists yet on `accountNumber`/`bankCode`/`currency`/`type` -- TT-7.6d
+  needs a `FormRequest`; (3) `PayoutException`'s constructor status-code argument is currently
+  inert (nothing maps `getCode()` to an HTTP response) -- TT-7.6d needs to wire this the way
+  `TransactionException` already is via `ResolvesExceptionResponse`. All three are explicitly
+  scoped to the not-yet-built HTTP layer and confirmed by security-engineer as not exploitable in
+  this ticket's actual diff.
+
+**Why**: the relation-caching bug was a genuine correctness gap for a security-relevant
+notification (an account-takeover mitigation that would have silently failed to fire on exactly
+the scenario it exists for), so fixed immediately rather than deferred. The authorization
+defense-in-depth fix was cheap and closes a real (if currently unreachable) gap the same way the
+TT-7.7a/TT-7.6b review passes already established a pattern for in this epic. The three
+controller-layer findings were correctly deferred rather than built speculatively now, since
+building validation/HTTP-status-mapping for a route that doesn't exist yet would be exactly the
+kind of premature abstraction this project's rules caution against -- logging them on TT-7.6d's
+own ticket instead ensures they aren't silently lost.
+
+---
