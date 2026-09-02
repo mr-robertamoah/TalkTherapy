@@ -25,7 +25,9 @@ class CreateTherapyAction extends Action
                 'amount' => $createTherapyDTO->amount,
                 'currency' => $createTherapyDTO->currency,
                 'inPersonAmount' => $createTherapyDTO->inPersonAmount ?: '',
-            ]
+                // SCRUM-217/TT-7.5a: defaults to trust-based (false) when not provided.
+                'strictPaymentGate' => (bool) ($createTherapyDTO->strictPaymentGate ?? false),
+            ],
         ]);
 
         if ($createTherapyDTO->cases && count($createTherapyDTO->cases)) {

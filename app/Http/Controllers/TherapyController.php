@@ -105,6 +105,7 @@ class TherapyController extends Controller
                     'paymentType' => $request->paymentType,
                     'maxSessions' => $request->maxSessions,
                     'cases' => $request->cases,
+                    'strictPaymentGate' => $request->strictPaymentGate,
                 ])
             );
 
@@ -142,6 +143,7 @@ class TherapyController extends Controller
                     'paymentType' => $request->paymentType,
                     'maxSessions' => $request->maxSessions,
                     'cases' => $request->cases,
+                    'strictPaymentGate' => $request->strictPaymentGate,
                 ])
             );
 

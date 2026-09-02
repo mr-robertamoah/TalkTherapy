@@ -58,11 +58,22 @@ class UpdateTherapyAction extends Action
         $this->setValueOnPaymentData('amount', $createTherapyDTO);
         $this->setValueOnPaymentData('currency', $createTherapyDTO);
         $this->setValueOnPaymentData('inPersonAmount', $createTherapyDTO);
+        $this->setValueOnPaymentData('strictPaymentGate', $createTherapyDTO);
+
+        // setValueOnPaymentData() writes the DTO's raw value verbatim (needed for numeric/string
+        // fields like amount/currency above) -- force-cast to a real bool here for symmetry with
+        // Therapy::getStrictPaymentGateAttribute()'s read-side cast.
+        if (array_key_exists('strictPaymentGate', $this->data['payment_data'])) {
+            $this->data['payment_data']['strictPaymentGate'] = (bool) $this->data['payment_data']['strictPaymentGate'];
+        }
     }
 
     private function clearPaymentData()
     {
-        $dataKeys = ['per' => '', 'amount' => 0, 'inPersonAmount' => 0, 'currency' => ''];
+        // SCRUM-217/TT-7.5a: strictPaymentGate defaults to false (trust-based) here too, so a
+        // therapy whose payment_data was previously null (e.g. switched from FREE back to PAID)
+        // starts trust-based rather than with the key simply absent.
+        $dataKeys = ['per' => '', 'amount' => 0, 'inPersonAmount' => 0, 'currency' => '', 'strictPaymentGate' => false];
 
         foreach ($dataKeys as $key => $value) {
             $this->data['payment_data'][$key] = $value;

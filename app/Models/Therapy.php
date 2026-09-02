@@ -45,6 +45,14 @@ class Therapy extends Model
         return 'Therapy';
     }
 
+    // SCRUM-217/TT-7.5a: defaults to false (trust-based) for any therapy predating this feature,
+    // or whose payment_data is currently null (e.g. a FREE therapy). Deliberately not on
+    // TherapyTrait/GroupTherapy -- GroupTherapy gating is TT-7.5b, blocked on TT-7.4d.
+    public function getStrictPaymentGateAttribute()
+    {
+        return (bool) data_get($this->payment_data, 'strictPaymentGate', false);
+    }
+
     public function counsellor()
     {
         // withTrashed: a therapy's counsellor may have since deleted their account (which

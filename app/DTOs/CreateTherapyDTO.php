@@ -45,4 +45,9 @@ class CreateTherapyDTO extends BaseDTO
     public ?string $paymentType = null;
 
     public ?int $maxSessions = null;
+
+    // SCRUM-217/TT-7.5a: strict payment gate vs. trust-based access, defaulting to trust-based
+    // (false) at creation. Null on update means "leave unchanged", matching every other
+    // payment_data field's semantics (UpdateTherapyAction::setValueOnPaymentData()).
+    public ?bool $strictPaymentGate = null;
 }
