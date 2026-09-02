@@ -12,6 +12,7 @@ use App\Actions\Message\EnsureCanUpdateMessageAction;
 use App\Actions\Message\EnsureIsFromUserAction;
 use App\Actions\Message\EnsureMessageDataIsValidAction;
 use App\Actions\Message\EnsureMessageExistsAction;
+use App\Actions\Message\EnsureUserCanAccessTherapyContentAction;
 use App\Actions\Message\UpdateMessageAction;
 use App\DTOs\CreateMessageDTO;
 use App\DTOs\GetDiscussionMessagesDTO;
@@ -54,16 +55,17 @@ class MessageService extends Service
             return [];
         }
 
-        if ($user->isNotAdmin()) {
-            $therapy = $getSessionMessagesDTO->session?->for;
-
-            // A null $therapy (its parent Therapy/GroupTherapy has been soft-deleted --
-            // Message::for()/Session::for() aren't withTrashed()) must deny by default for a
-            // non-admin, same reasoning as the null-$user fix above: the previous `?->` chain
-            // silently evaluated to falsy and skipped the restriction instead of denying.
-            if (! $therapy || (! $therapy->public && $therapy->isNotParticipant($user))) {
-                return [];
-            }
+        // SCRUM-220/TT-7.5a: also enforces the strict payment gate for the therapy's own client
+        // (PER_SESSION-payable, scoped to this specific session; PER_THERAPY-payable, scoped to
+        // the parent therapy) -- consolidated here from what used to be a bare participant check,
+        // since a strict-gated therapy's chat would otherwise stay reachable through this
+        // endpoint even when the main page correctly blocks it (EnsureUserHasAccessToTherapyAction).
+        if (! EnsureUserCanAccessTherapyContentAction::new()->execute(
+            $getSessionMessagesDTO->session?->for,
+            $user,
+            $getSessionMessagesDTO->session
+        )) {
+            return [];
         }
 
         $query = $getSessionMessagesDTO->session->messages()
@@ -162,9 +164,9 @@ class MessageService extends Service
             return [];
         }
 
-        $therapy = $getTherapyTopicMessagesDTO->topic->sessions()
-            ->where('session_id', $getTherapyTopicMessagesDTO->sessionId)->first()
-            ?->for;
+        $session = $getTherapyTopicMessagesDTO->topic->sessions()
+            ->where('session_id', $getTherapyTopicMessagesDTO->sessionId)->first();
+        $therapy = $session?->for;
 
         $user = $getTherapyTopicMessagesDTO->user;
 
@@ -173,7 +175,9 @@ class MessageService extends Service
             return [];
         }
 
-        if ($user->isNotAdmin() && (! $therapy || (! $therapy->public && $therapy->isNotParticipant($user)))) {
+        // SCRUM-220/TT-7.5a: see getSessionMessages()'s identical comment -- same shared check,
+        // same reason.
+        if (! EnsureUserCanAccessTherapyContentAction::new()->execute($therapy, $user, $session)) {
             return [];
         }
 
@@ -229,13 +233,18 @@ class MessageService extends Service
             return [];
         }
 
+        // This outer isNotAdmin() stays (rather than letting EnsureUserCanAccessTherapyContentAction
+        // own the admin bypass alone, as the other two consolidated call sites do) because the
+        // Discussion branch below doesn't route through that action at all and still needs its
+        // own admin exemption -- the Session branch's own internal isAdmin() check is therefore
+        // redundant here specifically, not dead code at the other two call sites.
         if ($user->isNotAdmin()) {
             $for = $message->for;
 
             if ($for instanceof Session) {
-                $therapy = $for->for;
-
-                if (! $therapy || (! $therapy->public && $therapy->isNotParticipant($user))) {
+                // SCRUM-220/TT-7.5a: see getSessionMessages()'s identical comment -- same shared
+                // check, same reason.
+                if (! EnsureUserCanAccessTherapyContentAction::new()->execute($for->for, $user, $for)) {
                     return [];
                 }
             } elseif ($for instanceof Discussion) {

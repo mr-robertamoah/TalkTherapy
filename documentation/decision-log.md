@@ -3704,3 +3704,32 @@ permanent by design (SCRUM-215 decision #3): a bug here wouldn't just be wrong o
 a client bypass payment indefinitely with no self-correcting mechanism.
 
 ---
+
+## 2026-09-02 — SCRUM-220 (TT-7.5a 4/5): consolidated 3 of 4 flagged MessageService checks, not 4
+
+**Decision**: this ticket's own text (and the 2026-09-02 "consolidate MessageService now" decision
+above) named all 4 of `MessageService`'s independently-duplicated authorization checks
+(`getSessionMessages`, `getDiscussionMessages`, `getTherapyTopicMessages`, `getMessageReplies`) as
+in scope for consolidation onto one shared check. The actual implementation consolidates only 3 --
+`getDiscussionMessages()` is deliberately left untouched.
+
+**Why**: `Discussion::isParticipant(?Counsellor $counsellor)` always returns `false` for a null
+`Counsellor`, and `getDiscussionMessages()` passes `$user->counsellor` (never `$user` itself) --
+so a plain client (the only party the payment gate ever applies to) can never be a Discussion
+participant at all, regardless of payment status. There is no client-payment-gating scenario to
+consolidate there; forcing it onto the same shared check would be an artificial unification of
+two genuinely different authorization shapes (`isParticipant(User)` vs `isParticipant(?Counsellor)`)
+for a case that can never actually exercise the new logic. Verified via a `security-engineer`
+pass specifically re-checking this exclusion for safety (not just convenience) before merge --
+confirmed no path (including a user who holds both a `User` and `Counsellor` identity) lets a
+paying client reach Discussion content, since the check only ever evaluates their `Counsellor`
+side there.
+
+Also fixed, found via my own test suite before either review pass: the first implementation of
+the new shared `EnsureStrictPaymentGateSatisfiedAction` only checked the PER_THERAPY case when NO
+session was passed in -- meaning `MessageService::getSessionMessages()` (which always has a
+session in context) never actually gated a PER_THERAPY-payable strict-gated therapy's chat at
+all, leaving open the exact "still reachable" hole this ticket exists to close. Fixed by checking
+PER_THERAPY unconditionally, before even considering whether a session was passed.
+
+---
