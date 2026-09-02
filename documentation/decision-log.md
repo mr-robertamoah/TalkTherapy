@@ -3659,4 +3659,15 @@ make silently. The architect's `payment_access_grants` table recommendation exis
 to prevent a *future* ticket (TT-7.7 refunds) from silently breaking *this* ticket's core safety
 invariant -- a cross-ticket coupling risk worth designing around now rather than discovering later.
 
+**Follow-up decision (2026-09-02, user-confirmed)**: SCRUM-220 WILL consolidate `MessageService`'s
+4 pre-existing, independently-duplicated authorization checks (`getSessionMessages`,
+`getDiscussionMessages`, `getTherapyTopicMessages`, `getMessageReplies`) onto the one new shared
+gate-satisfaction check, rather than bolting the payment condition on next to 4 separate copies.
+
+**Why**: since all 4 methods need to be touched anyway to add the new payment-gate condition,
+fixing the pre-existing duplication in the same pass is cheaper than doing it as a separate
+follow-up later (avoids re-touching the same 4 call sites twice) and removes a real, already-
+identified wart while the context is fresh, rather than letting a fifth divergent copy of "is
+this user allowed to see this" logic risk accumulating before the follow-up ever gets picked up.
+
 ---
