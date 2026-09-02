@@ -84,6 +84,7 @@ const {
   canPayForSession,
   payForSession,
   paymentStatusLabel,
+  isRetryStatus,
 } = usePayment(therapyRef, props.therapyType)
 
 // Tab items configuration (kept for compatibility)
@@ -1144,7 +1145,8 @@ function reportCreated(report) {
                   :disabled="payInitiating"
                   @click="clickedPaySession"
                   class="shrink-0"
-                  >pay now</PrimaryButton
+                  :class="isRetryStatus(activeSession?.paymentStatus) ? 'bg-amber-600 hover:bg-amber-700' : ''"
+                  >{{ isRetryStatus(activeSession?.paymentStatus) ? 'try payment again' : 'pay now' }}</PrimaryButton
                 >
                 <div v-else-if="activeSession?.paymentType == 'PAID' && activeSession?.paymentStatus == 'SUCCESS'" class="text-sm text-green-700 font-semibold">
                   paid
