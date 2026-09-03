@@ -9,7 +9,7 @@ import FormLoader from '@/Components/FormLoader.vue';
 import VerificationRequest from '@/Components/VerificationRequest.vue';
 import useAlert from '@/Composables/useAlert';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
-import { Head } from '@inertiajs/vue3';
+import { Head, Link } from '@inertiajs/vue3';
 import { ref, computed, reactive, watch } from 'vue';
 import { default as _ } from 'lodash';
 
@@ -284,6 +284,13 @@ function respondToVerificationRequest(requestId, response) {
                 :class="[currentLink == link ? 'bg-gray-700 text-gray-200 hover:bg-gray-600 border-0' : 'hover:border-gray-700 hover:rounded-none']"
                 class="text-sm text-nowrap uppercase tracking-wider cursor-pointer rounded p-2 transition duration-75 mr-2 border-b-2 border-transparent"
             >{{ link }}</div>
+
+            <!-- TT-7.6e/SCRUM-229: a real page navigation, not another dispatch-table tab (see
+                 Payouts.vue's own top comment for why) -->
+            <Link
+                :href="route('administrator.payouts')"
+                class="text-sm text-nowrap uppercase tracking-wider cursor-pointer rounded p-2 transition duration-75 mr-2 border-b-2 border-transparent hover:border-gray-700 hover:rounded-none"
+            >payouts</Link>
         </div>
 
         <div v-if="currentLink">

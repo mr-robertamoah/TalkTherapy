@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AboutController;
 use App\Http\Controllers\AdministratorController;
+use App\Http\Controllers\AdminPayoutController;
 use App\Http\Controllers\CounsellorController;
 use App\Http\Controllers\CounsellorPricingController;
 use App\Http\Controllers\DiscussionController;
@@ -83,6 +84,13 @@ Route::middleware('auth')->group(function () {
     Route::get('/discussions/{discussionId}/chat', [DiscussionController::class, 'showChat'])->name('discussions.chat');
 
     Route::get('/administrator', [AdministratorController::class, 'show'])->name('administrator');
+    // TT-7.6e/SCRUM-229: admin-facing payout page -- platform-fee/minimum-payout settings form,
+    // admin-on-behalf-of trigger UI, payout audit table. Settings updates return Redirect::back()
+    // (Inertia's native response shape), so they live here rather than routes/api.php, matching
+    // payout.trigger/payout.destination.store's own precedent (SCRUM-228).
+    Route::get('/administrator/payouts', [AdminPayoutController::class, 'index'])->name('administrator.payouts');
+    Route::post('/administrator/settings/platform-fee', [AdminPayoutController::class, 'updatePlatformFee'])->name('admin.settings.platform-fee.update')->middleware('throttle:10,1');
+    Route::post('/administrator/settings/minimum-payout', [AdminPayoutController::class, 'updateMinimumPayoutAmounts'])->name('admin.settings.minimum-payout.update')->middleware('throttle:10,1');
 
     Route::get('/therapies', [TherapyController::class, 'show'])->name('therapies');
     Route::get('/therapies/{therapyId}/chat', [TherapyController::class, 'chat'])->name('therapies.chat');
