@@ -4255,3 +4255,245 @@ Everything else in the review (ID-enumeration on the counsellor-overview endpoin
 `failureMessage`/`initiatedBy` are safe to expose, whether the settings super-admin gate is
 genuinely server-enforced, route grouping/throttling) was investigated and confirmed already
 correctly handled by existing, previously-reviewed code — no further changes needed.
+
+---
+
+## 2026-09-03 — SCRUM-230 (TT-7.3b): scope correction — org-side billing/collection never existed
+
+**Decision**: TT-7.3b (filed as "full org-billing lifecycle: payout reconciliation + refund
+handling for org-paid transactions") was expanded, before implementation started, to also include
+building real organization-side billing/collection — not just splitting money that has already
+been collected.
+
+**Why**: during the `/start-feature` product-owner pass, the user asked a clarifying question
+("if the org is paying, can they just pay what is due... or do they have a remainder?") that
+exposed a foundational gap the ticket's original framing had silently assumed away. Investigating
+the actual charge code (`EnsureOrganizationCanPayForModelAction`, `InitiatePaystackChargeAction`)
+confirmed: **no mechanism anywhere in this codebase ever charges or bills an organization.**
+- A pay-per-use org member's own card is charged the full amount via Paystack; `organization_id`
+  is only recorded on the transaction for tracking/attribution — the org pays nothing.
+- A retainer-mode org member's charge attempt is explicitly *rejected*
+  ("your organization covers this on a retainer basis -- no per-transaction payment is needed
+  here") — but nothing anywhere actually charges the org a retainer fee. A retainer-covered
+  session today results in zero payment to anyone: not the platform, not the counsellor.
+
+TT-6.3b's `retainer`/`pay-per-use` billing-mode concept was clearly intended to support the user's
+mental model (the org is billed; the member doesn't personally front money) — but TT-7.3a only
+ever built the *attribution* layer (which org sponsors this), never the *collection* layer. This
+was not caught during TT-7.3a's own review because TT-7.3a's stated scope was explicitly
+"charge-initiation only," with the payout/collection lifecycle already deferred to "a not-yet-filed
+ticket" — which turned out to be this one, and the deferred scope was larger than its later
+one-line description ("payout to affiliated counsellors... refund handling") captured.
+
+**User's explicit decision**: TT-7.3b should "capture the whole implementation" — real org-side
+collection (retainer subscription billing and/or pay-per-use reimbursement) is now in scope,
+alongside the payout-split and refund-reconciliation pieces originally described. The user also
+confirmed, via the product-owner pass's open questions: the org's per-transaction split should
+derive directly from existing `organization_counsellor_compensations` terms (TT-6.4b); a read-only
+org-admin reconciliation view is in scope for this ticket (not deferred); and some form of
+client-facing disclosure that an org arrangement affects their session should exist (exact
+wording/form left to product-owner). The org-payout-money-movement question (does the org ever
+receive a real Paystack Transfer, vs. a pure ledger entry) was superseded by this scope correction
+rather than directly answered — it needs re-examination once the org-collection design exists,
+since "does the org get transferred money" may no longer be the right framing once real
+org-billing/collection is built (the org would now be a source of funds, not just a recipient of
+leftover margin).
+
+**How to apply**: SCRUM-230's Jira description and title were updated to reflect this corrected
+scope before the product-owner/project-manager/architect review continues. Given TT-7.6 (a
+comparable-scale payout epic) needed a 5-way split under review, expect this ticket to split
+similarly — real org billing/collection is substantial new payment-collection infrastructure on
+its own, not an incremental extension of TT-7.6's (payout, not collection) Paystack Transfer code.
+
+---
+
+## 2026-09-03 — SCRUM-230 (TT-7.3b): org-billing design forks resolved with the user
+
+Following the scope-correction entry above, a second product-owner pass (working from the
+corrected scope) surfaced two live bugs and six genuine product/financial-risk trade-offs. The
+user resolved all of them directly, in order:
+
+**Two live bugs confirmed, both to be fixed as part of this ticket** (found by tracing
+`GenerateCounsellorEarningsAction`, `EnsureOrganizationCanPayForModelAction`, and
+`EnsureStrictPaymentGateSatisfiedAction`, not assumed):
+1. A pay-per-use org-paid transaction already charges the member's card in full today, but
+   `GenerateCounsellorEarningsAction` explicitly no-ops whenever `transaction->organization_id`
+   is set — so an affiliated counsellor earns **$0** for every org-affiliated session served so
+   far, indefinitely, with no pending/queued state to later reconcile. This is live, not a future
+   gap.
+2. A retainer-covered session never produces a `Transaction` row at all (the charge attempt is
+   rejected outright by `EnsureOrganizationCanPayForModelAction` before
+   `InitiatePaystackChargeAction` ever runs). `EnsureStrictPaymentGateSatisfiedAction` only grants
+   access off a successful `Transaction` or an existing `PaymentAccessGrant` — neither can ever
+   exist for retainer content. A counsellor enabling `strictPaymentGate` (TT-7.5a) on a therapy
+   covered by a retainer-mode org member permanently locks that client out, with no path to ever
+   clear it.
+
+**Decision 1 — pay-per-use collection**: the org pays directly at charge time, via a real org
+payment instrument on file. This is new infrastructure (`Organization` has zero payment-method
+concept today) — the user chose this over the lower-risk alternative (member keeps paying, org
+reimburses after) explicitly, understanding the larger scope it implies.
+
+**Decision 2 — org charge amount** (resolves the earlier "does the org get a payout Transfer"
+question by making it moot): once the org pays directly, the org is charged the *actual cost* —
+platform fee + the counsellor's compensation-driven share (per `organization_counsellor_compensations`,
+TT-6.4b) — never the client's normal listed session price. There is never a "leftover" needing a
+destination. This also resolves FREE-type compensation cleanly and non-arbitrarily: since a FREE
+arrangement means the counsellor's per-transaction share is $0, the org is simply charged the
+platform fee alone for that session — no special-case rule needed, it falls straight out of the
+general "charge actual cost" design. The user explicitly preferred this over keeping the org
+charged the client's listed price (which would have reintroduced an unexplained leftover and not
+handled FREE cleanly).
+
+**Decision 3 — retainer billing model**: aggregated post-paid invoicing (not a prepaid pool) — the
+org is billed periodically (e.g. monthly) for the sum of what's actually owed for sessions that
+occurred that period, using the identical compensation-terms math as pay-per-use. Settled by
+auto-charging the *same* saved org payment instrument from Decision 1, rather than a separate
+manual-settlement mechanism — the user chose reuse over building two parallel org-billing
+mechanisms.
+
+**Decision 4 — retainer payout timing (a real risk trade-off, deliberately surfaced, not
+defaulted)**: the counsellor's payout for a retainer-covered session waits for the org's invoice
+to actually be settled — the platform does **not** front/advance the money ahead of collection.
+This is the more platform-protective of the two options (the alternative, prompt payout with the
+platform chasing a slow/defaulting org afterward, was offered and declined). Explicit trade-off
+accepted: a counsellor's income timing for retainer-covered work now depends on that specific
+org's payment promptness, not just on the counsellor's own activity — worth surfacing to
+counsellors in the eventual UI copy so this isn't a silent surprise.
+
+**Decision 5 — platform fee on retainer**: applies identically to retainer-covered sessions as to
+pay-per-use ones, same rate — no special-cased fee treatment by billing mode.
+
+**Decision 6 — client-facing disclosure**: a modest, non-financial line shown wherever the client
+would otherwise see a Pay control (e.g. "This session is covered under [Organization]'s plan —
+no payment needed from you.") — never fee amounts, compensation percentages, or payout figures.
+This is a genuinely new UI convention for this codebase (no prior precedent shows a client any
+financial-split information), scoped deliberately narrow to avoid it becoming one.
+
+**Also settled** (carried from the first product-owner pass, unchanged): a read-only org-admin
+reconciliation view (financed sessions, splits, payout/invoice status) is in scope for this ticket,
+not deferred to a future frontend ticket; the refund-reconciliation mechanism remains a callable
+hook for TT-7.7 (not yet built) to invoke later, independently testable via direct action
+invocation with no live UI trigger yet.
+
+**Why**: every one of these was a genuine product/financial-risk trade-off with no single
+technically-correct answer (who bears counsellor-payout risk vs. platform credit risk; how much
+new payment-collection infrastructure to build; how a compensation type most people would assume
+is purely about affiliation pay actually interacts with a specific session's billing) — consistent
+with this session's standing practice of surfacing this class of question rather than guessing.
+SCRUM-230's Jira description was updated to capture all six resolved decisions plus the two
+must-fix bugs before project-manager/architect review continues.
+
+---
+
+## 2026-09-03 — SCRUM-230 (TT-7.3b): project-manager split, final two forks resolved
+
+Project-manager proposed an 11-sub-ticket, 71-point breakdown (comparable to TT-7.6's 47/5, larger
+because it adds a brand-new recurring-charge mechanism on top of a payout-split layer, not just an
+extension of TT-7.6's existing Transfer code) and flagged two remaining genuine product forks the
+resolved decisions hadn't covered. Both resolved directly with the user:
+
+**Decision 7 — client access timing for retainer-covered sessions**: access is granted
+immediately per session, regardless of that period's invoice-settlement status — no per-session
+payment friction, matching the whole point of "retainer, regardless of usage," and directly fixing
+the permanent-lockout bug. **Refinement requested by the user, not in the original proposed
+options**: there must still be a way to suspend/block *further* access for an org's members if
+that org becomes delinquent on settling a retainer invoice — an org-level standing/suspension
+concept, not a per-session gate. This means the fix isn't "no gate at all," it's "the gate moves
+from per-session to per-org-standing." Exact suspension trigger (grace period vs. immediate on a
+failed auto-charge) is left as an implementation-time/architect-level detail, but the mechanism
+itself is required scope for this ticket, not optional or deferred.
+
+**Decision 8 — historical backfill**: not needed. Nothing is in production yet — dev/test data is
+cleared and reseeded rather than backfilled. The originally-proposed backfill sub-ticket (`TT-7.3b-h`,
+3 points) is dropped from the breakdown entirely.
+
+**Why**: both were genuine product/operational trade-offs (who bears the cost of a delinquent org
+— the platform indefinitely, or the org's own members via eventual suspension; whether pre-launch
+test data warrants real backfill machinery) with no single correct technical answer, consistent
+with this session's standing practice. The access-timing refinement in particular is a good
+example of the user substantively improving on the offered options rather than picking one
+as-is — the final design (immediate per-session access, org-level suspension for sustained
+non-payment) is better than either originally-presented option alone.
+
+**How to apply**: SCRUM-230's Jira description was updated to fold in decisions 7 and 8, alongside
+the earlier six, and to note the org-suspension mechanism as required (not optional) scope for
+whichever sub-ticket ends up owning retainer billing/access. The backfill sub-ticket is removed
+from the sub-ticket breakdown project-manager proposed; total drops from 71 to ~68 points across
+~10 sub-tickets.
+
+---
+
+## 2026-09-03 — SCRUM-230 (TT-7.3b): architect pass and final scope, ready for implementation
+
+Architect reviewed project-manager's 10-ticket breakdown against the actual codebase and made
+several concrete corrections, then the user resolved the two remaining genuine product forks the
+architect surfaced. This closes out the full product-owner → project-manager → architect review —
+SCRUM-230 is now ready for sub-ticket filing and implementation.
+
+**Architect's technical resolutions** (not product forks, decided outright):
+- `Transaction.amount` needs no schema change (already means "amount actually collected," which
+  stays true for an org row) — but `GenerateCounsellorEarningsAction`'s org branch needs its own
+  gross/fee/net formula, since an org row's `amount` is already fee+share combined (Decision 2),
+  not a gross to subtract a fee from again. New regression invariant:
+  `earning.net_amount + earning.fee_amount == transaction.amount` for every row, org and personal.
+- Retainer cardinality: **one `Transaction` per settled invoice period** (new `organization_invoices`
+  + `organization_invoice_lines` tables), `Transaction::for()` polymorphically pointed at
+  `OrganizationInvoice` — not a synthetic per-session `Transaction`, since there was never a
+  per-session charge event at the gateway to reconcile against. Fed by a new hook in
+  `App\Actions\Session\ChangeSessionStatusAction`'s transition to `held` — a previously-nonexistent
+  Session→billing coupling that ticket `e` must design explicitly, not improvise.
+  `CounsellorPayout`'s existing "many pending rows claimed into one batch" pattern (TT-7.6c) is the
+  closer analogy than `TransactionStatusHistory`'s per-state-change-is-a-row philosophy.
+- Org payment instrument needs only **one** new `PaystackClient` method (`chargeAuthorization()`)
+  — Paystack's reusable `authorization_code` is already returned by a successful `verifyTransaction`
+  call today and simply discarded (`VerifyPaystackTransactionAction`); no separate "save/tokenize"
+  call is needed, just capturing what's already there. Storage mirrors TT-7.6a's masked-display-only
+  convention (never raw card data).
+- Org suspension is a `billing_suspended_at` (+ reason) column on `Organization`, mirroring
+  `verified_at`'s existing single-current-state-flag precedent — not a new table, since this is
+  current-state, not append-only negotiated history. Enforced at
+  `EnsureUserHasAccessToTherapyAction`'s existing strict-gate call site as a retainer-specific
+  bypass-plus-suspension-check, **not** a patch to `EnsureOrganizationCanPayForModelAction` (whose
+  rejection of retainer per-transaction charge attempts remains correct — a retainer member
+  genuinely shouldn't be initiating a per-transaction Paystack charge; the fix belongs one level up,
+  at the access-gate call site, not the charge-eligibility check).
+- Two shared actions extracted as new small pre-work (ticket `b0`): resolving which org currently
+  covers a given counsellor/member/therapy (currently duplicated logic in
+  `EnsureOrganizationCanPayForModelAction`), and computing a counsellor's compensation-driven share
+  for a session (FIXED / PERCENTAGE-counsellorRate / PERCENTAGE-negotiatedRate / FREE) — consumed by
+  the charge primitive (`b`), the earnings-split logic (`d`), and later the reconciliation view
+  (`j`). Avoids a third/fourth reimplementation of this math within the same epic.
+- Dependency-graph corrections to project-manager's draft: `d` depends on `b0` (needs the shared
+  compensation-share action for correct numbers), not fully independent as first proposed; `f`
+  splits into `f1` (the bug fix — immediate retainer access, ship now, no dependency) and `f2`
+  (suspension enforcement — depends on `e`'s invoice lifecycle existing, since there's nothing to be
+  delinquent on before invoices exist); `g` sequences after `d`, not before.
+
+**Decision 11 — suspended org fallback**: a suspended org's members are blocked entirely from
+retainer-covered content until the org settles — no personal-pay fallback is offered. Chosen over
+letting members pay personally as a fallback, specifically because a personal-pay fallback would
+reopen the "does this member now unexpectedly need a payment method" question Decision 1 deliberately
+closed off, and would blur who's actually responsible for the org's unpaid bill (the org, not the
+member).
+
+**Decision 12 — negotiated-rate compensation basis**: add a new field to
+`organization_counsellor_compensations` to actually capture the negotiated per-session rate when
+`basis: negotiatedRate` is chosen. This was previously a dead-end option — validated as a valid
+enum value but with nowhere in the schema to store the actual negotiated number, meaning "70% of a
+negotiated rate" resolved to "70% of nothing." Chosen over dropping the option, since an org
+plausibly wants a custom per-session rate different from the counsellor's own public listed price
+(the likely original reason the option was added), and removing it would silently shrink what
+compensation arrangements orgs can express.
+
+**Why**: the architect's technical resolutions were genuinely settleable by design-quality
+judgment (naming, schema shape, reuse-vs-duplicate) rather than product trade-offs, so decided
+outright per this session's standing practice of not asking the user technical questions the
+review passes can resolve on their own. The two remaining forks (suspended-org fallback,
+negotiated-rate) were real product decisions with no single correct technical answer, so surfaced
+rather than guessed.
+
+**Final sub-ticket breakdown** (~74 points across 12 tickets: `a`, `b0`, `b`, `c`, `d`, `e`, `f1`,
+`f2`, `g`, `i`, `j`, `k`) is recorded in full, with points and dependencies, on SCRUM-230's own
+Jira description — not duplicated here to avoid drift between the two. `a`/`b0`/`f1`/`k` have no
+blocking dependencies and can start immediately once sub-tickets are filed.
