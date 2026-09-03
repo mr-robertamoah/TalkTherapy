@@ -19,6 +19,7 @@ use App\Actions\Counsellor\EnsureVerificationRequestDataIsValidAction;
 use App\Actions\Counsellor\UpdateCounsellorAction;
 use App\Actions\Counsellor\VerifyEmailAction;
 use App\Actions\EnsureNameStaysRetrievableAction;
+use App\Actions\Payout\GetCounsellorPayoutOverviewAction;
 use App\DTOs\CheckNameRetrievabilityDTO;
 use App\DTOs\CreateCounsellorDTO;
 use App\DTOs\CreateLicenseDTO;
@@ -74,13 +75,17 @@ class CounsellorService extends Service
         return $query->paginate(PaginationEnum::pagination->value);
     }
 
-    public function getCounsellorData(): array
+    public function getCounsellorData(Counsellor $counsellor): array
     {
         $data = [
             'loadedCases' => TherapyCaseService::new()->getCases(),
             'loadedLanguages' => LanguageService::new()->getLanguages(),
             'loadedReligions' => ReligionService::new()->getReligions(),
             'loadedProfessions' => ProfessionService::new()->getProfessions(),
+            // TT-7.6d/SCRUM-228: only ever merged into the page's props for the counsellor's own
+            // profile view (see CounsellorController::show()'s own gate) -- private financial
+            // data, never exposed on another viewer's request for this same page.
+            'payoutOverview' => GetCounsellorPayoutOverviewAction::new()->execute($counsellor),
         ];
 
         return $data;

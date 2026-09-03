@@ -133,6 +133,17 @@ above only *might* land on `PAID` and never deterministically pair the two payme
 | Payment Demo Therapy (Per Therapy) | `PER_THERAPY`, USD 150 | Pay Now lives on the "payment details" tab. |
 | Payment Demo Therapy (Per Session) | `PER_SESSION`, USD 50 | Has one seeded session ("Payment Demo Session"), always within 5 minutes of its start time so it's immediately the therapy's active session — Pay Now lives in the "Session Actions" modal (double-click the expanded active-session panel to open it). |
 
+## Counsellor payout (SCRUM-228)
+
+A dedicated counsellor with pending earnings but no payout destination yet, for testing the
+onboarding-then-withdraw golden path on the counsellor profile's "Payouts" section, since none of
+the demo data above deterministically produces a `CounsellorEarning` row to withdraw:
+
+| Username | Password | Purpose |
+|---|---|---|
+| `payout_demo_client` | `password` | Owns the two seeded therapies whose transactions back the earnings below. |
+| `payout_demo_counsellor` | `password` | Dr. Payout DemoCounsellor — has two pending `CounsellorEarning` rows in GHS (net GHS 81.00 + GHS 54.00 = GHS 135.00 total), above the seeded GHS minimum payout threshold, but no `CounsellorPayoutAccount` yet. Log in and visit their own counsellor profile (`/counsellor/{id}`) to see the Payouts section, onboard a bank/mobile-money destination, and (once a real `PAYSTACK_SECRET_KEY` is configured in `.env.docker` — see `documentation/features/scrum-110-paystack-payments.md`) trigger a withdrawal. |
+
 ## Organization admin dashboard (SCRUM-165)
 
 A deterministic org (both provider and consumer) exercising every section of the org-admin

@@ -24,6 +24,7 @@ import UpdateCounsellorContact from '@/Components/UpdateCounsellorContact.vue';
 import UpdateCounsellorInformation from '@/Components/UpdateCounsellorInformation.vue';
 import UpdateCounsellorPreferences from '@/Components/UpdateCounsellorPreferences.vue';
 import UpdateCounsellorPricing from '@/Components/UpdateCounsellorPricing.vue';
+import UpdateCounsellorPayoutDestination from '@/Components/UpdateCounsellorPayoutDestination.vue';
 import Item from '@/Components/Item.vue';
 import UpdateCounsellorImages from '@/Components/UpdateCounsellorImages.vue';
 import DangerButton from '@/Components/DangerButton.vue';
@@ -35,7 +36,7 @@ import CreateTherapyButton from '@/Components/CreateTherapyButton.vue';
 import TestimonialSection from '@/Components/TestimonialSection.vue';
 
 const { modalData, showModal } = useModal()
-const { alertData, clearAlertData, setAlertData, setFailedAlertData } = useAlert()
+const { alertData, clearAlertData, setAlertData, setFailedAlertData, setSuccessAlertData } = useAlert()
 
 const props = defineProps({
     counsellor: {},
@@ -53,6 +54,9 @@ const props = defineProps({
     },
     loadedProfessions: {
         default: []
+    },
+    payoutOverview: {
+        default: null
     },
     errors: null
 })
@@ -119,6 +123,65 @@ function formatPricingScope(pricing) {
 
     return `${pricing.therapyType?.toLowerCase()} · ${sessionType} · ${per}`
 }
+
+// TT-7.6d/SCRUM-228: payoutOverview's money fields are minor units (pesewas/cents), unlike
+// pricing/paymentData amounts which are already major units at the source (see
+// CounsellorEarningResource's own comment for why these two conventions genuinely differ here).
+function formatMoney(minorUnitsAmount, currency) {
+    if (minorUnitsAmount == null || !currency) return '--'
+
+    return `${currency} ${(minorUnitsAmount / 100).toFixed(2)}`
+}
+
+const hasPayoutDestination = computed(() => !!props.payoutOverview?.payoutAccount)
+const latestPayout = computed(() => props.payoutOverview?.payoutHistory?.[0] ?? null)
+// Reuses usePayment's isRetryStatus amber-styling *convention* (TT-7.4-retry/SCRUM-222), not
+// its implementation -- CounsellorPayoutStatusEnum has no ABANDONED-equivalent state, so a bare
+// FAILED check is this domain's correct equivalent, not an accidental duplication of that helper.
+const isRetryablePayout = computed(() => latestPayout.value?.status === 'FAILED')
+const belowMinimumPayout = computed(() => {
+    const { availableAmount, minimumPayoutAmount } = props.payoutOverview ?? {}
+
+    return minimumPayoutAmount != null && (availableAmount ?? 0) < minimumPayoutAmount
+})
+const canTriggerPayout = computed(() => {
+    return hasPayoutDestination.value
+        && (props.payoutOverview?.availableAmount ?? 0) > 0
+        && !belowMinimumPayout.value
+        && !['PENDING', 'PROCESSING'].includes(latestPayout.value?.status)
+})
+const payoutDisabledReason = computed(() => {
+    if (!hasPayoutDestination.value) return 'Set up a payout destination first.'
+    if (['PENDING', 'PROCESSING'].includes(latestPayout.value?.status)) return 'A payout is already in progress.'
+    if (belowMinimumPayout.value) {
+        return `You need at least ${formatMoney(props.payoutOverview.minimumPayoutAmount, props.payoutOverview.currency)} available to withdraw.`
+    }
+    if (!(props.payoutOverview?.availableAmount ?? 0) > 0) return 'No earnings are available to withdraw yet.'
+
+    return ''
+})
+
+const payoutForm = useForm({})
+const triggeringPayout = ref(false)
+
+function triggerPayout() {
+    triggeringPayout.value = true
+
+    payoutForm.post(route('payout.trigger'), {
+        onSuccess: () => {
+            setSuccessAlertData({ message: 'Payout requested -- see it below under Payout History.' })
+        },
+        onError: (errors) => {
+            if (errors.alert) {
+                setAlertData({ show: true, type: 'failed', message: errors.alert })
+            }
+        },
+        onFinish: () => {
+            triggeringPayout.value = false
+        },
+    })
+}
+
 const computedClasses = computed(() => {
     return [
         'bg-gray-300 text-gray-700',
@@ -677,6 +740,85 @@ function closeModal() {
             </div>
 
             <div class="w-full sm:w-[90%] md:w-[75%] lg:w-[60%] mx-auto sm:px-6 lg:px-8 mt-8" v-if="isCounsellor">
+                <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
+                    <div class="p-6 text-gray-900">
+                        <div class="flex justify-between items-center">
+                            <div class="capitalize text-lg font-medium text-gray-900">Payouts</div>
+                            <ProfileEditButton @click="() => showModal('update payout destination')" />
+                        </div>
+                        <div class="mt-1 text-sm text-gray-600">
+                            Your earnings and where they're withdrawn to. Private to you.
+                        </div>
+
+                        <div class="mt-4">
+                            <div class="text-sm font-semibold text-gray-700 mb-1">Payout Destination</div>
+                            <div v-if="hasPayoutDestination" class="text-sm text-gray-600">
+                                {{ payoutOverview.payoutAccount.type === 'MOBILE_MONEY' ? 'Mobile Money' : 'Bank Account' }}
+                                · {{ payoutOverview.payoutAccount.maskedAccountNumber }}
+                                <span v-if="payoutOverview.payoutAccount.bankName"> · {{ payoutOverview.payoutAccount.bankName }}</span>
+                                ({{ payoutOverview.payoutAccount.currency }})
+                            </div>
+                            <div v-else class="text-sm text-amber-700">
+                                No payout destination set up yet.
+                            </div>
+                        </div>
+
+                        <div class="mt-4">
+                            <div class="text-sm font-semibold text-gray-700 mb-1">Available Balance</div>
+                            <div class="text-lg font-semibold text-gray-900">
+                                {{ formatMoney(payoutOverview?.availableAmount, payoutOverview?.currency) }}
+                            </div>
+
+                            <div v-if="payoutOverview?.pendingEarnings?.length" class="mt-2 bg-gray-100 rounded p-3">
+                                <div
+                                    v-for="earning in payoutOverview.pendingEarnings"
+                                    :key="earning.id"
+                                    class="flex justify-between text-xs text-gray-600 py-1 border-b border-gray-200 last:border-b-0"
+                                >
+                                    <span>gross {{ formatMoney(earning.grossAmount, earning.currency) }} − fee {{ formatMoney(earning.feeAmount, earning.currency) }}</span>
+                                    <span class="font-medium">= {{ formatMoney(earning.netAmount, earning.currency) }}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="flex justify-between items-center mt-6">
+                            <div class="text-xs text-gray-500 max-w-[60%]" v-if="!canTriggerPayout">{{ payoutDisabledReason }}</div>
+                            <div v-else></div>
+
+                            <div class="relative">
+                                <FormLoader class="mx-auto" :show="triggeringPayout" :text="'requesting payout'" />
+                                <PrimaryButton
+                                    :disabled="!canTriggerPayout || triggeringPayout"
+                                    :class="[isRetryablePayout ? 'bg-amber-600 hover:bg-amber-700' : '', { 'opacity-25': !canTriggerPayout || triggeringPayout }]"
+                                    @click="triggerPayout"
+                                >{{ isRetryablePayout ? 'try payout again' : 'withdraw' }}</PrimaryButton>
+                            </div>
+                        </div>
+
+                        <div class="mt-6" v-if="payoutOverview?.payoutHistory?.length">
+                            <div class="text-sm font-semibold text-gray-700 mb-1">Payout History</div>
+                            <div
+                                v-for="payout in payoutOverview.payoutHistory"
+                                :key="payout.id"
+                                class="flex justify-between text-xs text-gray-600 py-1 border-b border-gray-200 last:border-b-0"
+                            >
+                                <span>{{ new Date(payout.createdAt).toLocaleDateString() }}</span>
+                                <span>{{ formatMoney(payout.amount, payout.currency) }}</span>
+                                <span
+                                    class="font-medium"
+                                    :class="{
+                                        'text-green-700': payout.status === 'SUCCEEDED',
+                                        'text-red-700': payout.status === 'FAILED',
+                                        'text-gray-600': !['SUCCEEDED', 'FAILED'].includes(payout.status),
+                                    }"
+                                >{{ payout.status.toLowerCase() }}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="w-full sm:w-[90%] md:w-[75%] lg:w-[60%] mx-auto sm:px-6 lg:px-8 mt-8" v-if="isCounsellor">
                 <div class="bg-red-300 overflow-hidden shadow-sm sm:rounded-lg">
                     <div class="p-6 text-gray-900">
                         <div class="capitalize text-lg font-medium text-gray-900">Delete</div>
@@ -910,6 +1052,14 @@ function closeModal() {
     <UpdateCounsellorPricing
         :counsellor="counsellor"
         :show="modalData.show && modalData.type == 'update pricing'"
+        @close-modal="() => {
+            closeModal()
+        }"
+    />
+
+    <UpdateCounsellorPayoutDestination
+        :payout-account="payoutOverview?.payoutAccount"
+        :show="modalData.show && modalData.type == 'update payout destination'"
         @close-modal="() => {
             closeModal()
         }"

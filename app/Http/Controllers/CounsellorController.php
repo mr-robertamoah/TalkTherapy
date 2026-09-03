@@ -129,7 +129,7 @@ class CounsellorController extends Controller
             ];
 
             if ($counsellor->user->is($request->user())) {
-                $data = array_merge($data, CounsellorService::new()->getCounsellorData());
+                $data = array_merge($data, CounsellorService::new()->getCounsellorData($counsellor));
             }
 
             $page = Inertia::render('Profile/Counsellor/Show', $data);

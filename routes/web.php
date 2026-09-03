@@ -14,6 +14,7 @@ use App\Http\Controllers\OrganizationCounsellorCompensationController;
 use App\Http\Controllers\OrganizationCounsellorController;
 use App\Http\Controllers\OrganizationMemberBillingConfigController;
 use App\Http\Controllers\OrganizationMemberController;
+use App\Http\Controllers\PayoutController;
 use App\Http\Controllers\PostController;
 use App\Http\Controllers\PreferenceController;
 use App\Http\Controllers\ProfileController;
@@ -194,6 +195,15 @@ Route::middleware('auth')->group(function () {
     Route::post('/counsellor/{counsellorId}', [CounsellorController::class, 'updateCounsellor'])->name('counsellor.update');
     Route::post('/counsellor/{counsellorId}/pricings', [CounsellorPricingController::class, 'store'])->name('counsellor.pricings.store')->middleware('throttle:30,1');
     Route::delete('/counsellor/{counsellorId}/pricings', [CounsellorPricingController::class, 'destroy'])->name('counsellor.pricings.destroy')->middleware('throttle:30,1');
+    // TT-7.6d/SCRUM-228: deliberately no {counsellorId} route param -- self-service only, always
+    // the authenticated user's own counsellor/payout (security requirement carried from TT-7.6a's
+    // review). TT-7.6e's admin-on-behalf-of trigger reuses this same route via counsellorId in
+    // the request body instead, which GetPayoutTargetCounsellorAction only honors for an admin.
+    Route::post('/payout-destination', [PayoutController::class, 'onboardDestination'])->name('payout.destination.store')->middleware('throttle:30,1');
+    // A tighter ceiling than the form-submission rate above -- this one actually moves money
+    // (security-engineer finding; TriggerCounsellorPayoutAction's own locked transaction already
+    // prevents a double-spend, this is just a lower ceiling on attempts).
+    Route::post('/payout/trigger', [PayoutController::class, 'triggerPayout'])->name('payout.trigger')->middleware('throttle:6,1');
     Route::post('/counsellor/{counsellorId}/verify', [CounsellorController::class, 'verifyCounsellor'])->name('counsellor.verify');
     Route::post('/counsellor/{counsellorId}/verify-email', [CounsellorController::class, 'sendVerificationEmail'])->name('counsellor.email.verification');
     // SCRUM-134: was missing entirely -- the frontend's delete button has always called this

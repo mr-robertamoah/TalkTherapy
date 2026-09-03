@@ -277,6 +277,17 @@ class Counsellor extends Model
         return $this->hasOne(CounsellorPayoutAccount::class);
     }
 
+    // TT-7.6d/SCRUM-228: read side for the counsellor's own payout screen.
+    public function earnings()
+    {
+        return $this->hasMany(CounsellorEarning::class);
+    }
+
+    public function payouts()
+    {
+        return $this->hasMany(CounsellorPayout::class);
+    }
+
     public function addedPosts()
     {
         return $this->morphMany(Post::class, 'addedby');
