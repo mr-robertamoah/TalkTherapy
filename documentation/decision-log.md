@@ -4194,3 +4194,64 @@ Both the `payoutOverview` prop-leak concern and the `triggerPayout()` `counsello
 raised in the review brief were investigated and confirmed already correctly handled by existing,
 previously-reviewed code (`CounsellorController::show()`'s server-side gate;
 `GetPayoutTargetCounsellorAction`'s `isAdmin()` check) — no code change needed for either.
+
+---
+
+## 2026-09-03 — SCRUM-229 (TT-7.6e): admin payout frontend architecture and review findings
+
+**Decision**: built the admin-facing payout UI as a new, dedicated `resources/js/Pages/Admin/Payouts.vue`
+page (reachable via a small `<Link>` nav item added to `Admin.vue`), rather than another tab in
+`Admin.vue`'s existing dispatch-table pattern.
+
+**Why**: `documentation/implementation_plan.md` already flags that dispatch-table pattern as
+ad-hoc debt, and the Organization admin dashboard (TT-6.5a) already set the precedent of a fresh,
+dedicated page tree instead of extending it further. The ticket's own text ("admin-facing
+frontend") didn't specify a location, so this was a judgment call, not a literal requirement — but
+consistent with the most recent precedent rather than the older pattern.
+
+**Decision**: the Platform Settings section covers both `platformFeePercentage` AND
+`minimumPayoutAmount` (one form each), even though the ticket's scope line read narrowly as
+"Platform-fee-setting form."
+
+**Why**: `SettingsService`/`UpdateSettingAction` is explicitly one generic mechanism shared by both
+settings (TT-7.6b's own design), and `UpdateSettingAction` had no caller at all before this ticket
+— building a settings screen that could only ever set the fee, leaving the minimum-payout
+threshold permanently locked to its env-config default in production, would have left half of an
+already-built mechanism unreachable for no stated reason. Read "platform_settings mechanism" in
+the ticket's own phrasing as covering both keys the mechanism holds, not just one.
+
+**reviewer**: approved with no required changes — confirmed each new piece (the DTO, the two
+FormRequests, `AdminCounsellorPayoutResource`, the two new `PayoutService` methods, the controller,
+routes, and the Vue page) faithfully matches an existing, already-shipped convention rather than
+inventing a new one. Suggested optional polish (disabling the settings forms client-side for a
+non-super admin, a clarifying comment on `reloadPayoutHistory()` always returning to page 1) not
+applied — low-value relative to the ticket's actual scope.
+
+**security-engineer**: found one real Medium-severity gap and confirmed everything else safe.
+1. **Fixed** — `UpdateMinimumPayoutAmountsRequest`'s `size:N` check didn't require N *distinct*
+   currencies: a same-size payload repeating one currency (e.g. two GHS rows, no USD) would pass
+   validation while silently dropping USD's stored threshold back to its env-config default, since
+   `SettingsEnum::minimumPayoutAmount` is one JSON blob per key and `mapWithKeys` silently
+   collapses duplicate keys. Fixed by adding a `distinct` rule to `amounts.*.currency` — combined
+   with the existing `size:N` (N = the exact number of supported currencies) and `Rule::in`
+   (membership only), N required-distinct values from a set of exactly N valid values can only be
+   that exact set. Added a regression test for the duplicate-currency-same-size case.
+2. **Fixed** — `PayoutService::getPayoutsForAdmin()` used `CounsellorService::geCounsellorsForAdmin()`'s
+   silent-`[]`-for-non-admin convention, while its own sibling method in the same class
+   (`getPayoutOverviewForAdmin()`) throws a real exception for the same failure. The audit listing
+   is more sensitive than the profile-field listing that convention was designed for (counsellor
+   names, amounts, currencies, references, and failure reasons across every counsellor) — not
+   currently exploitable, but a silent-empty-array pattern fails invisibly under a future refactor
+   (nothing to catch or alert on if the guard is ever weakened or moved). Switched to
+   `EnsureIsAdminAction` for a real thrown exception, matching its sibling; updated
+   `AdminPayoutController::payouts()` with a try/catch to translate it to a JSON error response,
+   and rewrote the now-invalid "non-admin gets an empty list" test to assert a 422 instead.
+3. **Fixed** — added the missing non-super-admin rejection test for
+   `admin.settings.minimum-payout.update` (the platform-fee endpoint already had one; both share
+   the identical `EnsureIsSuperAdminAction` path inside `UpdateSettingAction`, but only one had
+   test coverage).
+
+Everything else in the review (ID-enumeration on the counsellor-overview endpoint, whether
+`failureMessage`/`initiatedBy` are safe to expose, whether the settings super-admin gate is
+genuinely server-enforced, route grouping/throttling) was investigated and confirmed already
+correctly handled by existing, previously-reviewed code — no further changes needed.

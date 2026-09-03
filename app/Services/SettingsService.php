@@ -44,4 +44,22 @@ class SettingsService extends Service
     {
         return UpdateSettingAction::new()->execute($dto);
     }
+
+    // TT-7.6e/SCRUM-229: prefill data for the admin platform-settings form -- minimum payout
+    // amounts are converted back to major units here (the reverse of updateMinimumPayoutAmounts()'s
+    // *100 on save) since an admin edits/reads them the same way a counsellor edits pricing, not
+    // in raw pesewas/cents.
+    public function getSettingsForAdmin(): array
+    {
+        return [
+            'platformFeePercentage' => $this->getPlatformFeePercentage(),
+            'minimumPayoutAmounts' => collect(config('currencies.supported'))
+                ->map(fn (string $currency) => [
+                    'currency' => $currency,
+                    'amount' => $this->getMinimumPayoutAmount($currency) / 100,
+                ])
+                ->values()
+                ->all(),
+        ];
+    }
 }

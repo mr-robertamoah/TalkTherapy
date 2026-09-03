@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AboutController;
 use App\Http\Controllers\AdministratorController;
+use App\Http\Controllers\AdminPayoutController;
 use App\Http\Controllers\AlertController;
 use App\Http\Controllers\CommentController;
 use App\Http\Controllers\ContactController;
@@ -111,6 +112,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/administrator/users', [AdministratorController::class, 'getUsers'])->name('admin.users');
     Route::post('/administrator/users/{userId}', [AdministratorController::class, 'updateUser'])->name('admin.users.update');
     Route::delete('/administrator/users/{userId}', [AdministratorController::class, 'deleteUser'])->name('admin.users.delete');
+
+    // TT-7.6e/SCRUM-229: mirrors admin.counsellors's own convention -- a non-admin caller gets a
+    // silently-empty result (getPayoutsForAdmin's own guard), not an exception.
+    Route::get('/administrator/payouts', [AdminPayoutController::class, 'payouts'])->name('admin.payouts');
+    Route::get('/administrator/payouts/counsellors/{counsellorId}/overview', [AdminPayoutController::class, 'counsellorOverview'])->name('admin.payouts.counsellor-overview');
 
     Route::post('/administrator/how-tos', [HowToController::class, 'createHowTo'])->name('admin.how-tos.create');
     Route::post('/administrator/how-tos/{howToId}', [HowToController::class, 'updateHowTo'])->name('admin.how-tos.update');

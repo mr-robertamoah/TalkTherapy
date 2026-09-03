@@ -105,3 +105,30 @@ test('a platform setting records which super admin last updated it', function ()
 
     expect($setting->updated_by_id)->toBe($superAdmin->id);
 });
+
+// TT-7.6e/SCRUM-229: getSettingsForAdmin() prefills the admin platform-settings form -- minimum
+// payout amounts are converted back to major units for display/editing, the reverse of the *100
+// conversion AdminPayoutController applies on save.
+test('getSettingsForAdmin converts minimum payout amounts back to major units for display', function () {
+    config(['currencies.supported' => ['GHS', 'USD']]);
+    $superAdmin = User::factory()->has(Administrator::factory())->create();
+
+    SettingsService::new()->update(SettingDTO::new()->fromArray([
+        'user' => $superAdmin,
+        'key' => SettingsEnum::minimumPayoutAmount,
+        'value' => json_encode(['GHS' => 6000, 'USD' => 1200]),
+    ]));
+    SettingsService::new()->update(SettingDTO::new()->fromArray([
+        'user' => $superAdmin,
+        'key' => SettingsEnum::platformFeePercentage,
+        'value' => '12',
+    ]));
+
+    $settings = SettingsService::new()->getSettingsForAdmin();
+
+    expect($settings['platformFeePercentage'])->toBe(12.0);
+    expect($settings['minimumPayoutAmounts'])->toBe([
+        ['currency' => 'GHS', 'amount' => 60],
+        ['currency' => 'USD', 'amount' => 12],
+    ]);
+});
