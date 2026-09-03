@@ -26,6 +26,10 @@ class OrganizationCounsellorCompensationDTO extends BaseDTO
 
     public ?string $basis = null;
 
+    // TT-7.3b-b0/SCRUM-232: required (and only meaningful) when basis is NEGOTIATED_RATE --
+    // percentage compensation's "percentage of what" other than the counsellor's own listed rate.
+    public ?int $negotiatedRateAmount = null;
+
     // SCRUM-146 (TT-6.4c): optional override of config('organization.compensation_negotiation_default_expiry_days').
     public ?int $expiryDays = null;
 }

@@ -66,6 +66,7 @@ class RespondToOrganizationCounsellorCompensationRequestAction extends Action
                         'currency' => $request->data['currency'] ?? null,
                         'percentage' => $request->data['percentage'] ?? null,
                         'basis' => $request->data['basis'] ?? null,
+                        'negotiatedRateAmount' => $request->data['negotiatedRateAmount'] ?? null,
                     ])
                 );
 

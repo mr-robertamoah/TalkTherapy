@@ -34,6 +34,16 @@ class CreateOrganizationCounsellorCompensationRequest extends FormRequest
             'currency' => ['nullable', Rule::requiredIf($this->get('type') === OrganizationCounsellorCompensationTypeEnum::fixed->value), 'string', Rule::in(config('currencies.supported'))],
             'percentage' => ['nullable', Rule::requiredIf($this->get('type') === OrganizationCounsellorCompensationTypeEnum::percentage->value), 'integer', 'between:1,100'],
             'basis' => ['nullable', Rule::requiredIf($this->get('type') === OrganizationCounsellorCompensationTypeEnum::percentage->value), Rule::in(OrganizationCounsellorCompensationBasisEnum::values())],
+            // TT-7.3b-b0/SCRUM-232: only meaningful (and required) for basis=NEGOTIATED_RATE --
+            // "percentage of what" other than the counsellor's own listed rate. Unlike `amount`
+            // above (returned as-is, never multiplied), this value feeds directly into
+            // ComputeCounsellorCompensationShareAction's percentage math -- capped well below
+            // PHP_INT_MAX / 10000 (the largest basis-points multiplier) so a legitimate-looking
+            // value can never silently overflow that multiplication into float territory
+            // (security-engineer finding; ComputeCounsellorCompensationShareAction itself also
+            // guards against this defensively, but rejecting an absurd value here is cheaper and
+            // gives a clearer error).
+            'negotiatedRateAmount' => ['nullable', Rule::requiredIf($this->get('basis') === OrganizationCounsellorCompensationBasisEnum::negotiatedRate->value), 'integer', 'min:1', 'max:999999999999'],
             // SCRUM-146 (TT-6.4c): optional override of the configured default negotiation window.
             'expiryDays' => ['nullable', 'integer', 'between:1,30'],
         ];

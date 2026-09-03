@@ -3,6 +3,7 @@
 use App\DTOs\OrganizationCounsellorCompensationDTO;
 use App\DTOs\RequestResponseDTO;
 use App\Enums\OrganizationAdminRoleEnum;
+use App\Enums\OrganizationCounsellorCompensationBasisEnum;
 use App\Enums\OrganizationCounsellorCompensationTypeEnum;
 use App\Enums\RequestStatusEnum;
 use App\Enums\RequestTypeEnum;
@@ -77,6 +78,36 @@ test('the counsellor can counter-offer a pending proposal with different terms',
     expect($counterOffer->data['proposedById'])->toBe($counsellorUser->id);
 
     Notification::assertSentTo($owner, OrganizationCounsellorCompensationChangeProposedNotification::class);
+});
+
+// TT-7.3b-b0/SCRUM-232: the negotiated-rate field is code-identical wiring to every other field
+// in this action, but a counter-offer round is its own independent code path from a direct
+// propose-then-accept -- worth its own explicit coverage rather than assuming it's covered.
+test('negotiatedRateAmount survives a counter-offer round and persists on eventual acceptance', function () {
+    [$request, $affiliation, , $owner, $counsellor, $counsellorUser] = pendingCompensationNegotiation();
+
+    $counterOffer = OrganizationCounsellorCompensationService::new()->counterOffer(
+        OrganizationCounsellorCompensationDTO::new()->fromArray([
+            'user' => $counsellorUser,
+            'request' => $request,
+            'type' => OrganizationCounsellorCompensationTypeEnum::percentage->value,
+            'percentage' => 70,
+            'basis' => OrganizationCounsellorCompensationBasisEnum::negotiatedRate->value,
+            'negotiatedRateAmount' => 25000,
+        ])
+    );
+
+    expect($counterOffer->data['negotiatedRateAmount'])->toBe(25000);
+
+    RequestService::new()->respondToRequest(
+        RequestResponseDTO::new()->fromArray([
+            'user' => $owner,
+            'request' => $counterOffer,
+            'response' => 'accepted',
+        ])
+    );
+
+    expect($affiliation->currentCompensation()->negotiated_rate_amount)->toBe(25000);
 });
 
 test('at no point does more than one pending request exist for the affiliation across a counter-offer', function () {

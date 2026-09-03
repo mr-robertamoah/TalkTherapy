@@ -2,6 +2,7 @@
 
 use App\Actions\Organization\CreateOrganizationCounsellorCompensationAction;
 use App\DTOs\OrganizationCounsellorCompensationDTO;
+use App\DTOs\RequestResponseDTO;
 use App\Enums\OrganizationAdminRoleEnum;
 use App\Enums\OrganizationCounsellorCompensationBasisEnum;
 use App\Enums\OrganizationCounsellorCompensationTypeEnum;
@@ -244,6 +245,103 @@ test('a percentage compensation carrying a leftover amount or currency is reject
             'currency' => 'GHS',
         ])
     ))->toThrow(OrganizationException::class);
+});
+
+// TT-7.3b-b0/SCRUM-232: NEGOTIATED_RATE basis previously had nowhere to store the actual
+// negotiated number -- these pin down the new field's wiring through the full propose->accept
+// negotiation flow, not just the raw model column.
+
+test('proposing a negotiated-rate percentage compensation requires the rate amount', function () {
+    [$affiliation, , $owner] = pendingAffiliation();
+
+    expect(fn () => OrganizationCounsellorCompensationService::new()->proposeCompensationChange(
+        OrganizationCounsellorCompensationDTO::new()->fromArray([
+            'user' => $owner,
+            'organizationCounsellor' => $affiliation,
+            'type' => OrganizationCounsellorCompensationTypeEnum::percentage->value,
+            'percentage' => 70,
+            'basis' => OrganizationCounsellorCompensationBasisEnum::negotiatedRate->value,
+        ])
+    ))->toThrow(OrganizationException::class);
+});
+
+test('a counsellor-rate-basis percentage compensation cannot carry a negotiated rate amount', function () {
+    [$affiliation, , $owner] = pendingAffiliation();
+
+    expect(fn () => OrganizationCounsellorCompensationService::new()->proposeCompensationChange(
+        OrganizationCounsellorCompensationDTO::new()->fromArray([
+            'user' => $owner,
+            'organizationCounsellor' => $affiliation,
+            'type' => OrganizationCounsellorCompensationTypeEnum::percentage->value,
+            'percentage' => 70,
+            'basis' => OrganizationCounsellorCompensationBasisEnum::counsellorRate->value,
+            'negotiatedRateAmount' => 25000,
+        ])
+    ))->toThrow(OrganizationException::class);
+});
+
+test('a fixed compensation cannot carry a negotiated rate amount', function () {
+    [$affiliation, , $owner] = pendingAffiliation();
+
+    expect(fn () => OrganizationCounsellorCompensationService::new()->proposeCompensationChange(
+        OrganizationCounsellorCompensationDTO::new()->fromArray([
+            'user' => $owner,
+            'organizationCounsellor' => $affiliation,
+            'type' => OrganizationCounsellorCompensationTypeEnum::fixed->value,
+            'amount' => 5000,
+            'currency' => 'GHS',
+            'negotiatedRateAmount' => 25000,
+        ])
+    ))->toThrow(OrganizationException::class);
+});
+
+test('proposing a valid negotiated-rate percentage compensation records the rate amount in the request data', function () {
+    [$affiliation, , $owner] = pendingAffiliation();
+
+    $request = OrganizationCounsellorCompensationService::new()->proposeCompensationChange(
+        OrganizationCounsellorCompensationDTO::new()->fromArray([
+            'user' => $owner,
+            'organizationCounsellor' => $affiliation,
+            'type' => OrganizationCounsellorCompensationTypeEnum::percentage->value,
+            'percentage' => 70,
+            'basis' => OrganizationCounsellorCompensationBasisEnum::negotiatedRate->value,
+            'negotiatedRateAmount' => 25000,
+        ])
+    );
+
+    expect($request->data)->toMatchArray([
+        'type' => 'PERCENTAGE',
+        'percentage' => 70,
+        'basis' => OrganizationCounsellorCompensationBasisEnum::negotiatedRate->value,
+        'negotiatedRateAmount' => 25000,
+    ]);
+});
+
+test('accepting a negotiated-rate proposal persists the rate amount on the compensation row', function () {
+    [$affiliation, , $owner, $counsellor] = pendingAffiliation();
+
+    $request = OrganizationCounsellorCompensationService::new()->proposeCompensationChange(
+        OrganizationCounsellorCompensationDTO::new()->fromArray([
+            'user' => $owner,
+            'organizationCounsellor' => $affiliation,
+            'type' => OrganizationCounsellorCompensationTypeEnum::percentage->value,
+            'percentage' => 70,
+            'basis' => OrganizationCounsellorCompensationBasisEnum::negotiatedRate->value,
+            'negotiatedRateAmount' => 25000,
+        ])
+    );
+
+    RequestService::new()->respondToRequest(
+        RequestResponseDTO::new()->fromArray([
+            'user' => $counsellor->user,
+            'request' => $request,
+            'response' => 'accepted',
+        ])
+    );
+
+    $compensation = $affiliation->currentCompensation();
+    expect($compensation->basis)->toBe(OrganizationCounsellorCompensationBasisEnum::negotiatedRate->value);
+    expect($compensation->negotiated_rate_amount)->toBe(25000);
 });
 
 test('proposing compensation for a non-existent affiliation returns a clean error, not a crash', function () {
