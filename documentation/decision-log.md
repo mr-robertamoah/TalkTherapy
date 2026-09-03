@@ -4145,3 +4145,52 @@ and this session's standing practice on every other TT-7 payment-adjacent ticket
 and `security-engineer` ran twice (initial pass, then a verification pass against the fixes) before
 this was considered done, matching the rigor already applied to TT-7.5a's SCRUM-219/221 security
 fixes and TT-7.6b's transaction-wrapping fix.
+
+---
+
+## 2026-09-03 — SCRUM-228 (TT-7.6d): counsellor payout frontend money-formatting convention
+
+**Decision**: the new "Payouts" section on `Profile/Counsellor/Show.vue` divides
+`CounsellorEarning`/`CounsellorPayout` money fields by 100 for display (`formatMoney()`), since
+they're genuinely minor units (pesewas/cents) inherited from `Transaction.amount`.
+
+**Why**: this was verified, not assumed. A doc-comment written during implementation initially
+claimed this "matches the convention already used for therapy/session payment amounts" — checking
+the actual frontend (`TherapyPaymentDetails.vue`, `UpdateCounsellorPricing.vue`) showed no `/100`
+conversion exists anywhere else, because `CounsellorPricing`/`paymentData` amounts are already
+major units *at the source* (the counsellor enters "50" meaning GHS 50; only `InitiatePaystackChargeAction`
+converts to minor units, at the point of calling Paystack, and that's what gets persisted to
+`Transaction.amount`). `CounsellorEarning`/`CounsellorPayout` derive from that already-converted
+`Transaction.amount`, so they're genuinely minor units end-to-end — unlike pricing amounts, not
+dividing by 100 here would display a counsellor's real balance as ~100x too large. The misleading
+comment was corrected in `CounsellorEarningResource.php` before merging.
+
+**How to apply**: any future frontend work touching `CounsellorEarning`/`CounsellorPayout`/
+`Transaction.amount` directly needs the `/100` conversion; anything reading `CounsellorPricing`/
+`Therapy.payment_data.amount` does not.
+
+---
+
+## 2026-09-03 — SCRUM-228 (TT-7.6d): review findings applied before merge
+
+**reviewer** (required change): flagged missing `documentation/features/<slug>.md` and a stale
+`documentation/seeded-data.md` for the two new seeded accounts (`payout_demo_client`/
+`payout_demo_counsellor`) added by `DatabaseSeeder::createPayoutDemoData()` — both added
+(`documentation/features/scrum-228-counsellor-payout-frontend-tt-7-6d.md`, a new "Counsellor
+payout (SCRUM-228)" section in `seeded-data.md`) before merging, per CLAUDE.md's feature-doc and
+seeded-data requirements.
+
+**security-engineer** (no High/Critical findings; two Low hardening suggestions, both applied):
+1. `PayoutDestinationRequest`'s `accountNumber`/`bankCode` had no charset constraint beyond
+   `string|max:N` — added `regex:/^[A-Za-z0-9]+$/` to both as cheap local rejection of malformed
+   input, ahead of the real validation that already happens against Paystack's bank-resolve API.
+2. `payout.trigger`'s `throttle:30,1` was the same ceiling as the non-money-moving
+   `payout.destination.store` route — tightened to `throttle:6,1` specifically for the endpoint
+   that actually moves money (the existing locked-transaction idempotency in
+   `TriggerCounsellorPayoutAction` already prevents a double-spend regardless; this is a lower
+   ceiling on attempts, not a correctness fix).
+
+Both the `payoutOverview` prop-leak concern and the `triggerPayout()` `counsellorId`-bypass concern
+raised in the review brief were investigated and confirmed already correctly handled by existing,
+previously-reviewed code (`CounsellorController::show()`'s server-side gate;
+`GetPayoutTargetCounsellorAction`'s `isAdmin()` check) — no code change needed for either.

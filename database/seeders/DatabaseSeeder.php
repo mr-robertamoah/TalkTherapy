@@ -5,6 +5,7 @@ namespace Database\Seeders;
 // use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 
 use App\Enums\AdministratorTypeEnum;
+use App\Enums\CounsellorEarningStatusEnum;
 use App\Enums\GenderEnum;
 use App\Enums\LicensingTypeEnum;
 use App\Enums\OrganizationAdminRoleEnum;
@@ -14,9 +15,12 @@ use App\Enums\OrganizationMemberBillingModeEnum;
 use App\Enums\OrganizationMemberStatusEnum;
 use App\Enums\RequestStatusEnum;
 use App\Enums\RequestTypeEnum;
+use App\Enums\TransactionStatusEnum;
+use App\Models\CounsellorEarning;
 use App\Models\Organization;
 use App\Models\Request;
 use App\Models\Therapy;
+use App\Models\Transaction;
 use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
@@ -87,6 +91,12 @@ class DatabaseSeeder extends Seeder
         // a pending request-queue item) -- the random demo data above never deterministically
         // produces an org admin to log in as.
         $this->createOrganizationDashboardDemoData();
+
+        // TT-7.6d/SCRUM-228: a deterministic counsellor with pending earnings but no payout
+        // destination yet, for testing the onboarding-then-withdraw golden path on the counsellor
+        // profile's new Payouts section -- nothing above deterministically produces a
+        // CounsellorEarning row to withdraw.
+        $this->createPayoutDemoData();
     }
 
     private function createLanguages($user)
@@ -843,6 +853,88 @@ class DatabaseSeeder extends Seeder
             'status' => 'pending',
             'payment_type' => 'PAID',
         ]);
+    }
+
+    private function createPayoutDemoData(): void
+    {
+        $client = User::factory()->create([
+            'firstName' => 'Payout',
+            'lastName' => 'DemoClient',
+            'email' => 'payout.demo.client@example.com',
+            'username' => 'payout_demo_client',
+            'password' => Hash::make('password'),
+            'email_verified_at' => now(),
+        ]);
+
+        $counsellorUser = User::factory()->create([
+            'firstName' => 'Payout',
+            'lastName' => 'DemoCounsellor',
+            'email' => 'payout.demo.counsellor@example.com',
+            'username' => 'payout_demo_counsellor',
+            'password' => Hash::make('password'),
+            'email_verified_at' => now(),
+        ]);
+
+        $counsellor = $counsellorUser->counsellor()->create([
+            'name' => 'Dr. Payout DemoCounsellor',
+            'about' => 'Seeded counsellor with pending earnings for testing payout onboarding + withdrawal (SCRUM-228).',
+            'email' => $counsellorUser->email,
+            'phone' => fake()->phoneNumber(),
+            'verified_at' => now(),
+            'email_verified_at' => now(),
+            'profession_id' => rand(1, 10),
+            'contact_visible' => true,
+        ]);
+
+        // Two separate PAID therapies/transactions, each backing one earning -- counsellor_earnings
+        // has a unique (transaction_id, counsellor_id) constraint, one earning per transaction.
+        $earningAmounts = [
+            ['gross' => 9000, 'fee' => 900, 'net' => 8100],
+            ['gross' => 6000, 'fee' => 600, 'net' => 5400],
+        ];
+
+        foreach ($earningAmounts as $index => $amounts) {
+            $therapy = $client->addedTherapies()->create([
+                'name' => 'Payout Demo Therapy '.($index + 1),
+                'background_story' => 'Seeded PAID therapy whose transaction backs a demo counsellor earning (SCRUM-228).',
+                'counsellor_id' => $counsellor->id,
+                'session_type' => 'Once',
+                'payment_type' => 'PAID',
+                'allow_in_person' => false,
+                'anonymous' => false,
+                'public' => false,
+                'status' => 'in_session',
+                'payment_data' => [
+                    'amount' => 100,
+                    'currency' => 'GHS',
+                    'per' => 'PER_THERAPY',
+                ],
+            ]);
+
+            $transaction = Transaction::query()->create([
+                'for_type' => $therapy::class,
+                'for_id' => $therapy->id,
+                'user_id' => $client->id,
+                'reference' => 'payout_demo_'.fake()->unique()->uuid(),
+                'amount' => $amounts['gross'],
+                'currency' => 'GHS',
+                'status' => TransactionStatusEnum::success->value,
+            ]);
+
+            // Both pending, in GHS -- their combined net amount clears the seeded GHS minimum
+            // payout threshold (config('settings.minimum_payout_amount.GHS')) as soon as the
+            // counsellor onboards a GHS payout destination, so the withdraw button is reachable
+            // without any extra setup.
+            CounsellorEarning::query()->create([
+                'transaction_id' => $transaction->id,
+                'counsellor_id' => $counsellor->id,
+                'gross_amount' => $amounts['gross'],
+                'fee_amount' => $amounts['fee'],
+                'net_amount' => $amounts['net'],
+                'currency' => 'GHS',
+                'status' => CounsellorEarningStatusEnum::pending->value,
+            ]);
+        }
     }
 
     private function createOrganizationDashboardDemoData(): void
