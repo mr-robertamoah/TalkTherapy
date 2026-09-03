@@ -4497,3 +4497,26 @@ rather than guessed.
 `f2`, `g`, `i`, `j`, `k`) is recorded in full, with points and dependencies, on SCRUM-230's own
 Jira description — not duplicated here to avoid drift between the two. `a`/`b0`/`f1`/`k` have no
 blocking dependencies and can start immediately once sub-tickets are filed.
+
+---
+
+## 2026-09-03 — SCRUM-242 (TT-7.3b-k): org-retainer-coverage disclosure must respect anonymity masking
+
+**Decision**: `TherapyResource`'s new `orgRetainerCoverage` field (naming the org covering a
+retainer-covered client, per Decision 6 above) must return `null` whenever the therapy's own
+`addedByUserIsMaskedFor($viewer)` check is true — the exact same masking the resource's existing
+`user` field already applies for an anonymous therapy.
+
+**Why**: an anonymous therapy hides the client's identity from every non-owning viewer, including
+(for a `public` therapy) an unauthenticated guest. The org a client belongs to is exactly the kind
+of fact that can re-identify them — smaller organizations especially. A first implementation pass
+computed this field unconditionally from `addedby`, which the security-engineer subagent's review
+caught before merge: a guest on a public+anonymous, retainer-covered therapy could see the client's
+employer/org name directly. No product ambiguity here (this is the same anonymity guarantee the
+codebase already commits to elsewhere) — fixed outright rather than asked, with regression tests
+covering an anonymous therapy viewed by the assigned counsellor and a public+anonymous one viewed
+by a guest.
+
+**How to apply**: any future field added to `TherapyResource` (or `GroupTherapyResource`) that
+derives from `addedby` must be checked against `addedByUserIsMaskedFor()` before exposing it to a
+non-owning viewer — the masking is per-field, not automatic, so each new field needs its own check.
