@@ -4,6 +4,7 @@ namespace App\Actions\Organization;
 
 use App\Actions\Action;
 use App\DTOs\OrganizationCounsellorCompensationDTO;
+use App\Enums\OrganizationCounsellorCompensationBasisEnum;
 use App\Enums\OrganizationCounsellorCompensationTypeEnum;
 use App\Exceptions\OrganizationException;
 
@@ -27,8 +28,8 @@ class EnsureOrganizationCounsellorCompensationDataIsValidAction extends Action
                 throw new OrganizationException('A fixed compensation amount requires both an amount and a currency.', 422);
             }
 
-            if (! is_null($dto->percentage) || ! is_null($dto->basis)) {
-                throw new OrganizationException('A fixed compensation cannot carry a percentage or basis.', 422);
+            if (! is_null($dto->percentage) || ! is_null($dto->basis) || ! is_null($dto->negotiatedRateAmount)) {
+                throw new OrganizationException('A fixed compensation cannot carry a percentage, basis, or negotiated rate amount.', 422);
             }
 
             return;
@@ -43,12 +44,23 @@ class EnsureOrganizationCounsellorCompensationDataIsValidAction extends Action
                 throw new OrganizationException('A percentage compensation cannot carry an amount or currency.', 422);
             }
 
+            // TT-7.3b-b0/SCRUM-232: negotiatedRateAmount is required for exactly one basis
+            // (NEGOTIATED_RATE) and forbidden for every other basis/type -- symmetric with every
+            // other field's requires-exactly-its-own-shape rule above.
+            if ($dto->basis === OrganizationCounsellorCompensationBasisEnum::negotiatedRate->value) {
+                if (is_null($dto->negotiatedRateAmount)) {
+                    throw new OrganizationException('A percentage compensation based on a negotiated rate requires that rate amount.', 422);
+                }
+            } elseif (! is_null($dto->negotiatedRateAmount)) {
+                throw new OrganizationException('negotiatedRateAmount is only valid when basis is a negotiated rate.', 422);
+            }
+
             return;
         }
 
         if ($dto->type === OrganizationCounsellorCompensationTypeEnum::free->value) {
-            if (! is_null($dto->amount) || ! is_null($dto->currency) || ! is_null($dto->percentage) || ! is_null($dto->basis)) {
-                throw new OrganizationException('Free compensation cannot carry an amount, currency, percentage, or basis.', 422);
+            if (! is_null($dto->amount) || ! is_null($dto->currency) || ! is_null($dto->percentage) || ! is_null($dto->basis) || ! is_null($dto->negotiatedRateAmount)) {
+                throw new OrganizationException('Free compensation cannot carry an amount, currency, percentage, basis, or negotiated rate amount.', 422);
             }
 
             return;

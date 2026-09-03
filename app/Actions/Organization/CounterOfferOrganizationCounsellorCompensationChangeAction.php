@@ -56,6 +56,7 @@ class CounterOfferOrganizationCounsellorCompensationChangeAction extends Action
                         'currency' => $dto->currency,
                         'percentage' => $dto->percentage,
                         'basis' => $dto->basis,
+                        'negotiatedRateAmount' => $dto->negotiatedRateAmount,
                         'proposedById' => $dto->user->id,
                     ],
                     'expiresAt' => now()->addDays($expiryDays),

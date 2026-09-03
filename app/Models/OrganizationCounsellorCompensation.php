@@ -19,12 +19,14 @@ class OrganizationCounsellorCompensation extends Model
         'currency',
         'percentage',
         'basis',
+        'negotiated_rate_amount',
         'effective_from',
     ];
 
     protected $casts = [
         'amount' => 'integer',
         'percentage' => 'integer',
+        'negotiated_rate_amount' => 'integer',
         'effective_from' => 'datetime',
     ];
 

@@ -73,6 +73,7 @@ class OrganizationCounsellorCompensationController extends Controller
                     'currency' => $request->currency,
                     'percentage' => $request->percentage,
                     'basis' => $request->basis,
+                    'negotiatedRateAmount' => $request->negotiatedRateAmount,
                     'expiryDays' => $request->expiryDays,
                 ])
             );
@@ -111,6 +112,7 @@ class OrganizationCounsellorCompensationController extends Controller
                     'currency' => $request->currency,
                     'percentage' => $request->percentage,
                     'basis' => $request->basis,
+                    'negotiatedRateAmount' => $request->negotiatedRateAmount,
                     'expiryDays' => $request->expiryDays,
                 ])
             );

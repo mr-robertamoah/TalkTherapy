@@ -22,6 +22,7 @@ class CreateOrganizationCounsellorCompensationAction extends Action
             'currency' => $dto->currency,
             'percentage' => $dto->percentage,
             'basis' => $dto->basis,
+            'negotiated_rate_amount' => $dto->negotiatedRateAmount,
             'effective_from' => now(),
         ]);
 
