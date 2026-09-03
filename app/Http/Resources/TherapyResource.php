@@ -2,7 +2,10 @@
 
 namespace App\Http\Resources;
 
+use App\Actions\Organization\GetRetainerCoveringOrganizationAction;
 use App\Enums\ConstantsEnum;
+use App\Enums\TherapyPaymentTypeEnum;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -57,6 +60,38 @@ class TherapyResource extends JsonResource
             'createdAt' => $this->created_at,
             'activeSession' => $activeSession ? new SessionResource($activeSession) : null,
             'activeDiscussion' => $activeDiscussion ? new DiscussionResource($activeDiscussion) : null,
+            'orgRetainerCoverage' => $this->orgRetainerCoverage($user),
         ];
+    }
+
+    // TT-7.3b-k/SCRUM-242: a non-financial disclosure for the paying client (never scoped to the
+    // currently viewing user beyond the anonymity check below -- the fact that itself isn't
+    // sensitive, so it's fine to also surface it to the counsellor). Only the org's name is
+    // exposed, never fee/compensation/payout figures, matching this ticket's deliberately narrow
+    // client-facing-disclosure scope. Applies to Therapy only, not GroupTherapy -- retainer
+    // coverage checks a therapy's single counsellor, and GroupTherapy org billing is out of scope
+    // here the same way TT-7.5a's strict-gate feature excluded it.
+    private function orgRetainerCoverage(?User $user): ?array
+    {
+        if (! $this->addedby instanceof User) {
+            return null;
+        }
+
+        // Same anonymity guarantee as the 'user' field above (security-engineer finding,
+        // SCRUM-242 review): naming the covering org to a non-participant on a public+anonymous
+        // therapy would re-identify the addedby, narrowing down who they are.
+        if ($this->addedByUserIsMaskedFor($user)) {
+            return null;
+        }
+
+        // Skip the query entirely for a therapy the frontend could never show a Pay control for
+        // in the first place -- avoids a join-heavy lookup on every FREE-therapy page load.
+        if ($this->payment_type !== TherapyPaymentTypeEnum::paid->value) {
+            return null;
+        }
+
+        $organization = GetRetainerCoveringOrganizationAction::new()->execute($this->resource, $this->addedby);
+
+        return $organization ? ['organizationName' => $organization->name] : null;
     }
 }

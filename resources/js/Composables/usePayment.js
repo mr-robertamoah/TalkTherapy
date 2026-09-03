@@ -54,11 +54,19 @@ export default function usePayment(therapy, therapyType = 'individual') {
         statusDismissed.value = true
     }
 
+    // SCRUM-242/TT-7.3b-k: a retainer-covered engagement (TT-7.3b-f1) never needs a client
+    // payment -- orgRetainerCoverage (TherapyResource) is truthy for exactly that case, at the
+    // therapy level, regardless of which session is in context.
+    function isOrgRetainerCovered() {
+        return !!computedTherapy.value?.orgRetainerCoverage
+    }
+
     function canPayForTherapy(isParticipant, isCounsellor) {
         return therapyType !== 'group' &&
             computedTherapy.value?.paymentType === 'PAID' &&
             computedTherapy.value?.paymentData?.per === 'PER_THERAPY' &&
             computedTherapy.value?.paymentStatus !== 'SUCCESS' &&
+            !isOrgRetainerCovered() &&
             isParticipant && !isCounsellor
     }
 
@@ -67,6 +75,7 @@ export default function usePayment(therapy, therapyType = 'individual') {
             computedTherapy.value?.paymentData?.per === 'PER_SESSION' &&
             session?.paymentType === 'PAID' &&
             session?.paymentStatus !== 'SUCCESS' &&
+            !isOrgRetainerCovered() &&
             isParticipant && !isCounsellor
     }
 
@@ -101,6 +110,7 @@ export default function usePayment(therapy, therapyType = 'individual') {
         dismissStatus,
         canPayForTherapy,
         canPayForSession,
+        isOrgRetainerCovered,
         payForTherapy,
         payForSession,
         paymentStatusLabel,

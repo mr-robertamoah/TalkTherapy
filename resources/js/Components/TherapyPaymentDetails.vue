@@ -50,7 +50,10 @@
         </div>
       </template>
 
-      <div v-if="therapy.paymentData.per === 'PER_THERAPY' && therapy.paymentStatus === 'SUCCESS'" class="text-sm text-green-700 font-semibold">
+      <div v-if="therapy.paymentData.per === 'PER_THERAPY' && therapy.orgRetainerCoverage" class="text-sm text-gray-600">
+        This therapy is covered under {{ therapy.orgRetainerCoverage.organizationName }}'s plan with TalkTherapy -- no payment needed from you.
+      </div>
+      <div v-else-if="therapy.paymentData.per === 'PER_THERAPY' && therapy.paymentStatus === 'SUCCESS'" class="text-sm text-green-700 font-semibold">
         Paid
       </div>
       <div class="relative" v-else-if="canPay">
