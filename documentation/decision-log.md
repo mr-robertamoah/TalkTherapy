@@ -4068,3 +4068,80 @@ judgment calls and five architect decisions were kept in-flow without a further 
 round because they were reasonable, low-risk, and cheaply reversible engineering defaults, not
 consequential product forks — asking about every such call would have been excessive-questions
 overreach for decisions an engineering review can responsibly make on its own.
+
+---
+
+## 2026-09-03 — SCRUM-227 (TT-7.6c): payout execution, three real bugs found and fixed across two review rounds
+
+**Decision**: implemented TT-7.6c per SCRUM-224's plan -- the highest-risk sub-ticket in the
+counsellor-payout epic, since real money leaves the platform as a direct consequence of it
+succeeding. Built `TriggerCounsellorPayoutAction` (lock-then-claim idempotency, mirroring
+`RespondToRequestAction`'s established idiom per architect recommendation), `RecordCounsellorPayoutStatusAction`
+(mirrors `RecordTransactionStatusAction`'s terminal-status-guard shape exactly), `ProcessCounsellorPayoutJob`
+(the actual Paystack Transfer call), and extended the existing `ProcessPaystackWebhookJob` with
+`transfer.success`/`transfer.failed`/`transfer.reversed` handling.
+
+**A bug I found and fixed myself, before either review pass**: my first draft dispatched
+`ProcessCounsellorPayoutJob` from INSIDE `TriggerCounsellorPayoutAction`'s `DB::transaction()`
+closure. I had assumed (without checking) that Laravel defers a job dispatched inside a
+transaction until it commits -- checking `config/queue.php` showed `after_commit` is `false` on
+every connection here, so a queue worker could have picked up the job before the row it depends
+on was actually committed. Fixed by moving the dispatch to after the transaction closure returns.
+
+**Reviewer + security-engineer, first pass, both required**:
+1. `PayoutFailedNotification::toMail()` called `$notifiable->getName()` unconditionally, but this
+   notification is sent to both a `Counsellor` (has a real `getName()` method) and 2 random admin
+   `User`s (only has a `->name` accessor, no `getName()` at all) -- would have fatal-errored
+   rendering the admin copy in production, silently defeating the "notify someone when money
+   movement fails" safety net this ticket exists to provide. Invisible to the original test suite
+   because `Notification::fake()` never actually calls `toMail()`. Fixed with
+   `method_exists($notifiable, 'getName') ? $notifiable->getName() : $notifiable->name`, plus new
+   tests that render `toMail()` directly (not via the fake) for both notifiable types.
+2. `RecordCounsellorPayoutStatusAction::notifyOfFailure()` was dispatched from inside its own
+   `DB::transaction()` -- the identical `after_commit: false` risk already fixed once in this same
+   diff, just not applied everywhere it appeared. Fixed by moving it to after the transaction
+   returns, mirroring `TriggerCounsellorPayoutAction`'s pattern.
+
+**Reviewer, first pass, a genuine money-duplication risk requiring a real fix, not just a style
+note**: `ProcessCounsellorPayoutJob`'s catch block treated ANY non-2xx Paystack response --
+including a transient 5xx -- as a definite transfer failure, releasing the claimed earnings for a
+fresh `TriggerCounsellorPayoutAction` attempt, which mints a NEW `CounsellorPayout` with a NEW
+`reference`. A 5xx doesn't tell you whether Paystack actually processed the transfer despite the
+error -- treating it as "definitely failed" and letting a second, differently-referenced attempt
+proceed risks a genuine double-payment if the original transfer had in fact gone through. Fixed by
+checking `$exception->response->serverError()`: a 5xx now re-throws (failing the QUEUED JOB itself
+so its own retry re-attempts the SAME payout/reference, which Paystack's reference-based dedup
+would recognize as a duplicate rather than a fresh transfer), while only a genuine 4xx (Paystack
+rejecting the request outright) records a definite failure. A `ConnectionException` (Paystack
+unreachable entirely) was independently verified by both review passes to already propagate
+uncaught the same way, since it's a sibling class to `RequestException`, not a subclass this
+catch block would swallow.
+
+**Security-engineer, second pass, found a residual gap in the 5xx fix above**: fixing the 5xx case
+to retry the SAME job/reference closes the naive double-payment path, but didn't itself prevent a
+retried job from re-sending that same reference to Paystack if the payout had ALREADY reached a
+terminal status in the meantime (e.g. a genuine `transfer.success` webhook landed between the
+original 5xx and the retry). Paystack would reject that reused reference with its own "duplicate
+reference" 4xx -- which this job's catch block would then treat as a genuine failure, releasing
+earnings that had actually already been successfully paid out, and the real `transfer.success`
+webhook arriving afterward would be silently ignored by `RecordCounsellorPayoutStatusAction`'s own
+terminal-status guard. Fixed with a second, cheaper guard: `ProcessCounsellorPayoutJob::handle()`
+now checks whether the payout is already terminal BEFORE ever calling Paystack again, making a
+stale/redundant retry a no-op instead of re-hitting Paystack with a reused reference.
+
+**Explicitly deferred, not fixed here** (security-engineer's own "longer-term, follow-up ticket,
+not blocking" framing): rather than trusting a bare 4xx as "definite failure," a more robust
+design would verify a transfer's actual status via Paystack's fetch-transfer-by-reference endpoint
+before releasing earnings on any ambiguous response -- removing the dependency on webhook-vs-retry
+timing entirely. Not built here since the terminal-status pre-check above already closes the
+practical risk for this ticket's scope; logged here as a candidate for a future payout-reliability
+follow-up if this class of edge case ever proves not narrow enough in practice.
+
+**Why**: this ticket is explicitly the point where the counsellor-payout epic's real money
+movement actually happens for the first time, so every one of these findings -- even the ones
+requiring a specific unlikely interleaving to trigger -- was treated as worth fixing immediately
+rather than deferred, consistent with the "security is mandatory, not a nice-to-have" project rule
+and this session's standing practice on every other TT-7 payment-adjacent ticket. Both `reviewer`
+and `security-engineer` ran twice (initial pass, then a verification pass against the fixes) before
+this was considered done, matching the rigor already applied to TT-7.5a's SCRUM-219/221 security
+fixes and TT-7.6b's transaction-wrapping fix.

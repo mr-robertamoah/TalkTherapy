@@ -11,8 +11,8 @@ class CounsellorEarning extends Model
     use HasFactory;
 
     protected $fillable = [
-        'transaction_id', 'counsellor_id', 'gross_amount', 'fee_amount', 'net_amount',
-        'currency', 'share_basis', 'share_percentage', 'status',
+        'transaction_id', 'counsellor_id', 'counsellor_payout_id', 'gross_amount', 'fee_amount',
+        'net_amount', 'currency', 'share_basis', 'share_percentage', 'status',
     ];
 
     protected $casts = [
@@ -34,6 +34,14 @@ class CounsellorEarning extends Model
     public function statusHistories()
     {
         return $this->hasMany(CounsellorEarningStatusHistory::class);
+    }
+
+    // TT-7.6c/SCRUM-227: which payout batch last claimed this row -- null until a payout is
+    // triggered, reassigned (not cleared) if a failed payout returns this row to `pending` and a
+    // later payout re-claims it.
+    public function payout()
+    {
+        return $this->belongsTo(CounsellorPayout::class, 'counsellor_payout_id');
     }
 
     public function isPending(): bool

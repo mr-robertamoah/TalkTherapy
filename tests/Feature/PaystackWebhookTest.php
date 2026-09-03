@@ -1,11 +1,15 @@
 <?php
 
+use App\Enums\CounsellorEarningStatusEnum;
+use App\Enums\CounsellorPayoutStatusEnum;
 use App\Enums\TherapyPaymentTypeEnum;
 use App\Enums\TherapyPerPaymentEnum;
 use App\Enums\TherapySessionTypeEnum;
 use App\Enums\TherapyStatusEnum;
 use App\Enums\TransactionStatusEnum;
 use App\Models\Counsellor;
+use App\Models\CounsellorEarning;
+use App\Models\CounsellorPayout;
 use App\Models\Therapy;
 use App\Models\Transaction;
 use App\Models\User;
@@ -254,4 +258,58 @@ test('a charge.success webhook whose currency does not match the transaction is 
     $response->assertStatus(422);
     expect($transaction->fresh()->status)->toBe(TransactionStatusEnum::pending->value);
     expect($transaction->statusHistories()->count())->toBe(0);
+});
+
+// TT-7.6c/SCRUM-227: extends this same job/webhook route with transfer events (architect
+// decision, SCRUM-224 review) -- exercised at the real HTTP boundary for the identical reason
+// the charge.* tests above are.
+
+test('a correctly signed transfer.success webhook marks the payout succeeded and its earnings paid_out', function () {
+    $secret = 'test_secret';
+    config(['services.paystack.secret_key' => $secret]);
+
+    $counsellor = Counsellor::factory()->create(['user_id' => User::factory()]);
+    $payout = CounsellorPayout::factory()->create(['counsellor_id' => $counsellor->id, 'reference' => 'payout_webhook_ref_1']);
+    $therapy = Therapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => User::factory()]);
+    $transaction = Transaction::factory()->create(['for_type' => Therapy::class, 'for_id' => $therapy->id]);
+    $earning = CounsellorEarning::factory()->create([
+        'transaction_id' => $transaction->id,
+        'counsellor_id' => $counsellor->id,
+        'counsellor_payout_id' => $payout->id,
+        'status' => CounsellorEarningStatusEnum::processing->value,
+    ]);
+
+    $response = postSignedPaystackWebhook([
+        'event' => 'transfer.success',
+        'data' => ['reference' => 'payout_webhook_ref_1'],
+    ], $secret);
+
+    $response->assertOk();
+    expect($payout->fresh()->status)->toBe(CounsellorPayoutStatusEnum::succeeded->value);
+    expect($earning->fresh()->status)->toBe(CounsellorEarningStatusEnum::paidOut->value);
+});
+
+test('a correctly signed transfer.failed webhook marks the payout failed and returns earnings to pending', function () {
+    $secret = 'test_secret';
+    config(['services.paystack.secret_key' => $secret]);
+
+    $counsellor = Counsellor::factory()->create(['user_id' => User::factory()]);
+    $payout = CounsellorPayout::factory()->create(['counsellor_id' => $counsellor->id, 'reference' => 'payout_webhook_ref_2']);
+    $therapy = Therapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => User::factory()]);
+    $transaction = Transaction::factory()->create(['for_type' => Therapy::class, 'for_id' => $therapy->id]);
+    $earning = CounsellorEarning::factory()->create([
+        'transaction_id' => $transaction->id,
+        'counsellor_id' => $counsellor->id,
+        'counsellor_payout_id' => $payout->id,
+        'status' => CounsellorEarningStatusEnum::processing->value,
+    ]);
+
+    $response = postSignedPaystackWebhook([
+        'event' => 'transfer.failed',
+        'data' => ['reference' => 'payout_webhook_ref_2', 'failure_reason' => 'Invalid account details'],
+    ], $secret);
+
+    $response->assertOk();
+    expect($payout->fresh()->status)->toBe(CounsellorPayoutStatusEnum::failed->value);
+    expect($earning->fresh()->status)->toBe(CounsellorEarningStatusEnum::pending->value);
 });

@@ -52,6 +52,17 @@ class PaystackClient extends Service
             ->json();
     }
 
+    // TT-7.6c/SCRUM-227: the actual money-movement call -- always dispatched from a queued job
+    // (ProcessCounsellorPayoutJob), never inline in a request/response cycle, mirroring TT-7.7d's
+    // isolation-from-dispatcher precedent for the identical class of external, money-moving call.
+    public function initiateTransfer(array $data): array
+    {
+        return $this->request()
+            ->post('/transfer', $data)
+            ->throw()
+            ->json();
+    }
+
     private function request(): PendingRequest
     {
         return Http::baseUrl(config('services.paystack.base_url'))
