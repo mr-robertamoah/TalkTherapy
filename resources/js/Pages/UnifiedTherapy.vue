@@ -82,6 +82,7 @@ const {
   statusBannerMessage,
   dismissStatus,
   canPayForSession,
+  isOrgRetainerCovered,
   payForSession,
   paymentStatusLabel,
   isRetryStatus,
@@ -1140,8 +1141,14 @@ function reportCreated(report) {
               v-if="activeSession"
             >
               <template v-if="!sessionActionRunning">
+                <div
+                  v-if="therapyType !== 'group' && computedTherapy?.paymentData?.per === 'PER_SESSION' && activeSession?.paymentType == 'PAID' && isOrgRetainerCovered()"
+                  class="text-sm text-gray-600 text-center"
+                >
+                  This session is covered under {{ computedTherapy.orgRetainerCoverage.organizationName }}'s plan with TalkTherapy -- no payment needed from you.
+                </div>
                 <PrimaryButton
-                  v-if="canPayForSession(activeSession, computedIsParticipant, computedIsCounsellor)"
+                  v-else-if="canPayForSession(activeSession, computedIsParticipant, computedIsCounsellor)"
                   :disabled="payInitiating"
                   @click="clickedPaySession"
                   class="shrink-0"

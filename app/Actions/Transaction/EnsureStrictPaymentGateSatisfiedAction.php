@@ -3,15 +3,12 @@
 namespace App\Actions\Transaction;
 
 use App\Actions\Action;
+use App\Actions\Organization\GetRetainerCoveringOrganizationAction;
 use App\DTOs\GrantPaymentAccessDTO;
-use App\Enums\OrganizationCounsellorStatusEnum;
-use App\Enums\OrganizationMemberBillingModeEnum;
-use App\Enums\OrganizationMemberStatusEnum;
 use App\Enums\TherapyPaymentTypeEnum;
 use App\Enums\TherapyPerPaymentEnum;
 use App\Enums\TransactionStatusEnum;
 use App\Exceptions\PaymentRequiredException;
-use App\Models\OrganizationMember;
 use App\Models\PaymentAccessGrant;
 use App\Models\Session;
 use App\Models\Therapy;
@@ -107,26 +104,6 @@ class EnsureStrictPaymentGateSatisfiedAction extends Action
     // top of this same check once it exists.
     private function isRetainerCoveredByAnOrg(Therapy $therapy, User $user): bool
     {
-        if (! $therapy->counsellor) {
-            return false;
-        }
-
-        return OrganizationMember::query()
-            ->with('latestBillingConfig')
-            ->where('user_id', $user->id)
-            ->where('status', OrganizationMemberStatusEnum::active->value)
-            ->whereHas('organization', function ($query) {
-                // Mirrors EnsureOrganizationCanPayForModelAction's own eligibility checks -- an
-                // unverified or non-consumer org must not grant a free access bypass any more
-                // than it could initiate a real charge.
-                $query->where('is_consumer', true)->whereNotNull('verified_at');
-            })
-            ->whereHas('organization.organizationCounsellors', function ($query) use ($therapy) {
-                $query
-                    ->where('counsellor_id', $therapy->counsellor->id)
-                    ->where('status', OrganizationCounsellorStatusEnum::active->value);
-            })
-            ->get()
-            ->contains(fn (OrganizationMember $member) => $member->currentBillingConfig()?->mode === OrganizationMemberBillingModeEnum::retainer->value);
+        return GetRetainerCoveringOrganizationAction::new()->execute($therapy, $user) !== null;
     }
 }

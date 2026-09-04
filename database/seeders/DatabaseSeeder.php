@@ -1086,6 +1086,62 @@ class DatabaseSeeder extends Seeder
             'effective_from' => now(),
         ]);
 
+        // SCRUM-242 (TT-7.3b-k): a PAID therapy between the retainer-covered member above and
+        // the org's own affiliated counsellor -- exercises the client-facing org-billing
+        // disclosure ("no payment needed from you") in place of a Pay control, on both the
+        // PER_THERAPY surface (TherapyPaymentDetails.vue) and the PER_SESSION one
+        // (UnifiedTherapy.vue's session-actions modal), mirroring createPaymentDemoData()'s
+        // pairing above.
+        $activeMember->addedTherapies()->create([
+            'name' => 'Org Retainer Demo Therapy (Per Therapy)',
+            'background_story' => 'Seeded PAID, PER_THERAPY therapy covered by the demo org\'s retainer billing -- no client payment ever due (SCRUM-242).',
+            'counsellor_id' => $affiliatedCounsellor->id,
+            'session_type' => 'Once',
+            'payment_type' => 'PAID',
+            'allow_in_person' => false,
+            'anonymous' => false,
+            'public' => false,
+            'status' => 'pending',
+            'payment_data' => [
+                'amount' => 150,
+                'currency' => 'USD',
+                'per' => 'PER_THERAPY',
+            ],
+        ]);
+
+        $orgRetainerPerSessionTherapy = $activeMember->addedTherapies()->create([
+            'name' => 'Org Retainer Demo Therapy (Per Session)',
+            'background_story' => 'Seeded PAID, PER_SESSION therapy covered by the demo org\'s retainer billing -- no client payment ever due (SCRUM-242).',
+            'counsellor_id' => $affiliatedCounsellor->id,
+            'session_type' => 'Periodic',
+            'payment_type' => 'PAID',
+            'allow_in_person' => false,
+            'anonymous' => false,
+            'public' => false,
+            'status' => 'in_session',
+            'payment_data' => [
+                'amount' => 50,
+                'currency' => 'USD',
+                'per' => 'PER_SESSION',
+            ],
+        ]);
+
+        $affiliatedCounsellor->addedSessions()->create([
+            'name' => 'Org Retainer Demo Session',
+            // Started a minute ago (not "starts in 5 minutes", unlike createPaymentDemoData()'s
+            // sibling) -- getActiveSession() (used by TherapyResource's 'activeSession', which the
+            // session-actions modal reads) requires start_time <= now(), so this is immediately
+            // active with no window to wait out.
+            'about' => 'Seeded PAID session, immediately active so the disclosure in the session-actions modal is reachable without waiting.',
+            'for_id' => $orgRetainerPerSessionTherapy->id,
+            'for_type' => $orgRetainerPerSessionTherapy::class,
+            'start_time' => now()->subMinute(),
+            'end_time' => now()->addHour(),
+            'type' => 'online',
+            'status' => 'pending',
+            'payment_type' => 'PAID',
+        ]);
+
         $applicantMember = User::factory()->create([
             'firstName' => 'Org',
             'lastName' => 'DemoMemberApplicant',
