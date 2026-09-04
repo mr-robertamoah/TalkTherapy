@@ -9,7 +9,6 @@ use App\Enums\OrganizationMemberBillingModeEnum;
 use App\Exceptions\TransactionException;
 use App\Models\Counsellor;
 use App\Models\GroupTherapy;
-use App\Models\Session;
 use App\Models\Therapy;
 
 class EnsureOrganizationCanPayForModelAction extends Action
@@ -48,7 +47,7 @@ class EnsureOrganizationCanPayForModelAction extends Action
             throw new TransactionException(self::NOT_ELIGIBLE_MESSAGE, 403);
         }
 
-        $for = $dto->for instanceof Session ? $dto->for->for : $dto->for;
+        $for = ResolveTransactionSubjectAction::new()->execute($dto->for);
 
         $counsellors = $for instanceof Therapy
             ? collect([$for->counsellor])->filter()

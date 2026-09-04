@@ -4631,3 +4631,76 @@ test, both previously unexercised.
 `CreateGroupTherapyRequest`'s `amount`/`inPersonAmount` validation is just `numeric`, no upper bound
 — this ticket makes that same unbounded value the input to a second chained money computation. Worth
 a small follow-up validation-hardening ticket, not blocking this one.
+
+---
+
+## 2026-09-04 — SCRUM-234 (TT-7.3b-c): pay-per-use org collection wiring, real behavior change to already-shipped TT-7.3a
+
+**Decision**: `TransactionService::initiateCharge()` now routes a pay-per-use org-financed charge
+for an individual Therapy/Session through `ChargeOrganizationForModelAction` (TT-7.3b-b — the
+org's own saved instrument, at actual cost) instead of `InitiatePaystackChargeAction` (the
+member's own card, at the client's listed price) — the collection-side fix for the "org-paid
+counsellors earn $0" bug (the other half is TT-7.3b-d). The entire existing ensure-chain
+(`EnsureForModelExistsAction` → `EnsureCanPayForModelAction` → `EnsureCanInitiateChargeAction` →
+`EnsureOrganizationCanPayForModelAction`) runs unchanged first — by the time the new branch is
+reached, `$dto->organization` is either null (personal-pay) or already fully validated as
+pay-per-use-eligible, so no new eligibility logic was needed at the branch point itself. This also
+means `EnsureCanInitiateChargeAction`'s existing duplicate-charge guard (`$dto->for->transactions()
+->where('status','success')->exists()`) already covers this ticket's own duplicate-charge
+protection for free — it wasn't a new gap TT-7.3b-c needed to close, contrary to what SCRUM-233's
+review flagged as a *future* caller's responsibility; it turned out to already exist in the shared
+chain this caller reuses wholesale.
+
+**Real, deliberate behavior change to already-shipped functionality** (not a regression, but
+consequential enough to log explicitly): before this ticket, an org-financed individual-Therapy
+pay-per-use charge with NO payment instrument on file and/or NO compensation terms set for the
+counsellor would still *succeed* — charging the member's card, tagging `organization_id` as pure
+attribution, per TT-7.3a's original "charge-initiation only" design. After this ticket, the exact
+same scenario now *fails outright* (`ChargeOrganizationForModelAction`'s own hard preconditions).
+This is the intended, designed consequence of Decision 1 (org pays directly via a real saved
+instrument, not the member fronting money) — TT-7.3a's old attribution-only behavior for
+individual-Therapy pay-per-use is being replaced, not extended, exactly as SCRUM-234's own ticket
+text says ("instead of... as happens today"). Two existing SCRUM-48/TT-7.3a tests needed updating
+to reflect this (their fixtures didn't set up an instrument/compensation because neither concept
+existed yet when they were written) — not weakened, just brought current with what "success" now
+means.
+
+**Scope boundary carried forward from TT-7.3b-b, not re-litigated**: GroupTherapy is the one
+deliberate exception — `ChargeOrganizationForModelAction` doesn't support it yet (TT-7.3b-b's own
+scope boundary), so an org-paid GroupTherapy still falls through to the OLD member's-card path,
+completely unchanged, still needing neither a payment instrument nor compensation terms to
+succeed. All of TT-7.3a's original GroupTherapy org-pay tests pass unmodified, confirming this.
+
+**Why**: this was a technical wiring decision implementing already-approved product decisions
+(Decision 1's "org pays directly" design, TT-7.3b-b's own GroupTherapy exclusion), not a new
+product fork — resolved by tracing the actual test suite's existing behavior (not assumption) to
+find the precise boundary of what would and wouldn't break, then updating exactly the two tests
+whose fixtures predated the new preconditions.
+
+**Security-engineer finding, fixed (High)**: this ticket is what makes `ChargeOrganizationForModelAction`
+reachable from a live, already-shipped production route for the first time — and unlike the
+checkout-redirect flow (a link only; real money moves on a further, separate hosted-page action),
+this action moves real money synchronously, in-request. Without a lock, two near-simultaneous
+requests (a double-click, a client retry-on-timeout) could both pass the caller's own
+duplicate-charge check before either committed a `Transaction`, charging the org's card twice for
+one engagement. The SCRUM-234 entry above had incorrectly assumed `EnsureCanInitiateChargeAction`'s
+existing check was sufficient on its own — it's necessary but not sufficient without a lock closing
+the concurrency window. Fixed: `ChargeOrganizationForModelAction` now acquires a
+`Cache::lock('charge-organization-for:{for_type}:{for_id}', 30)` before charging, re-checks the
+same duplicate-charge condition inside the lock (the caller's own check ran before the lock was
+acquired), and releases it in a `finally` block regardless of outcome.
+
+**Security-engineer findings, deferred (not blocking)**: (1) **Medium** — `ChargeOrganizationForModelAction`
+calls Paystack (real money movement) BEFORE creating the local `Transaction` row; if the DB write
+fails after Paystack succeeds, the org is charged with no local record to reconcile against. This
+predates this ticket (SCRUM-233) but is now reachable from production for the first time. Needs a
+proper fix (e.g. a pre-created `pending` row with a client-supplied idempotent reference passed to
+`chargeAuthorization` itself, updated after) — tracked as a follow-up ticket, not built here to
+avoid scope creep into a redesign of the charge sequence itself. (2) **Low** — `ChargeOrganizationForModelAction`'s
+two precondition messages ("no payment instrument on file", "no active compensation terms") are
+specific rather than generic, unlike `EnsureOrganizationCanPayForModelAction`'s deliberately-generic
+anti-enumeration message. Evaluated and NOT changed: those messages are shown only to an already-
+validated member of the SAME org asking about their OWN org's billing setup (not a cross-tenant
+enumeration vector the way `EnsureOrganizationCanPayForModelAction`'s checks are), and are
+genuinely actionable ("tell your admin to set up X") rather than merely diagnostic — kept as-is
+rather than applying the anti-enumeration convention somewhere it doesn't actually apply.

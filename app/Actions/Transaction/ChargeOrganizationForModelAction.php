@@ -10,10 +10,12 @@ use App\Enums\TransactionStatusEnum;
 use App\Enums\TransactionStatusSourceEnum;
 use App\Exceptions\TransactionException;
 use App\Models\GroupTherapy;
-use App\Models\Session;
+use App\Models\OrganizationCounsellor;
+use App\Models\OrganizationPaymentInstrument;
 use App\Models\Transaction;
 use App\Services\Paystack\PaystackClient;
 use Illuminate\Http\Client\RequestException;
+use Illuminate\Support\Facades\Cache;
 
 // TT-7.3b-b/SCRUM-233: charges an organization the actual cost of a SINGLE Therapy/Session
 // engagement with ONE counsellor -- computing the cost, charging the saved instrument, and
@@ -59,7 +61,7 @@ class ChargeOrganizationForModelAction extends Action
         // not merely happen to fall through to the generic "no counsellor" exception below because
         // GroupTherapy currently has no singular counsellor() accessor for $therapy?->counsellor
         // to resolve.
-        $therapy = $dto->for instanceof Session ? $dto->for->for : $dto->for;
+        $therapy = ResolveTransactionSubjectAction::new()->execute($dto->for);
 
         if ($dto->for instanceof GroupTherapy || $therapy instanceof GroupTherapy) {
             throw new TransactionException('Organization billing is not yet supported for group therapies.', 422);
@@ -81,6 +83,37 @@ class ChargeOrganizationForModelAction extends Action
 
         if (! $instrument) {
             throw new TransactionException('This organization has no payment instrument on file.', 422);
+        }
+
+        // Security-engineer finding: unlike the checkout-redirect flow (a link only -- real money
+        // moves on a further, separate action on Paystack's own hosted page), this action moves
+        // real money synchronously, in-request. Without a lock, two near-simultaneous calls for
+        // the SAME engagement (a double-click, a client retry-on-timeout) could both pass the
+        // caller's own duplicate-charge check before either commits a Transaction, charging the
+        // org's card twice. Keyed on the exact subject being charged, held for the full
+        // charge-and-record sequence below, and re-checked (not just locked) since the caller's
+        // own check ran before this lock was acquired.
+        $lock = Cache::lock('charge-organization-for:'.$dto->for::class.':'.$dto->for->id, 30);
+
+        if (! $lock->get()) {
+            throw new TransactionException('This is already being charged. Please wait a moment before trying again.', 429);
+        }
+
+        try {
+            return $this->chargeAndRecord($dto, $affiliation, $instrument);
+        } finally {
+            $lock->release();
+        }
+    }
+
+    private function chargeAndRecord(TransactionDTO $dto, OrganizationCounsellor $affiliation, OrganizationPaymentInstrument $instrument): Transaction
+    {
+        if (
+            $dto->for->transactions()
+                ->where('status', TransactionStatusEnum::success->value)
+                ->exists()
+        ) {
+            throw new TransactionException('This has already been paid for.', 422);
         }
 
         $payable = GetPayableAmountAction::new()->execute($dto->for);
