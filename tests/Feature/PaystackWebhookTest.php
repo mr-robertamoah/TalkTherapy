@@ -2,6 +2,8 @@
 
 use App\Enums\CounsellorEarningStatusEnum;
 use App\Enums\CounsellorPayoutStatusEnum;
+use App\Enums\OrganizationCounsellorCompensationTypeEnum;
+use App\Enums\OrganizationCounsellorStatusEnum;
 use App\Enums\TherapyPaymentTypeEnum;
 use App\Enums\TherapyPerPaymentEnum;
 use App\Enums\TherapySessionTypeEnum;
@@ -11,6 +13,8 @@ use App\Models\Counsellor;
 use App\Models\CounsellorEarning;
 use App\Models\CounsellorPayout;
 use App\Models\Organization;
+use App\Models\OrganizationCounsellor;
+use App\Models\OrganizationCounsellorCompensation;
 use App\Models\Therapy;
 use App\Models\Transaction;
 use App\Models\User;
@@ -104,6 +108,63 @@ test('a correctly signed charge.success webhook also generates a counsellor earn
     expect($transaction->fresh()->status)->toBe(TransactionStatusEnum::success->value);
     $this->assertDatabaseCount('counsellor_earnings', 1);
     expect($transaction->earnings()->first()->counsellor_id)->toBe($counsellor->id);
+});
+
+// TT-7.3b-d/SCRUM-235: proves the real webhook path reaches the fixed org-financed branch too --
+// not just the unit-tested action in isolation (mirrors the personal-pay earnings test above).
+test('a correctly signed charge.success webhook for an org-financed transaction also generates a counsellor earning', function () {
+    $secret = 'test_secret';
+    config(['services.paystack.secret_key' => $secret, 'settings.platform_fee_percentage' => 10]);
+
+    $counsellor = Counsellor::factory()->create(['user_id' => User::factory()]);
+    $organization = Organization::factory()->create();
+    $affiliation = OrganizationCounsellor::factory()->create([
+        'organization_id' => $organization->id,
+        'counsellor_id' => $counsellor->id,
+        'status' => OrganizationCounsellorStatusEnum::active->value,
+    ]);
+    OrganizationCounsellorCompensation::factory()->create([
+        'organization_counsellor_id' => $affiliation->id,
+        'type' => OrganizationCounsellorCompensationTypeEnum::fixed->value,
+        'amount' => 5000,
+        'currency' => 'GHS',
+    ]);
+    $therapy = Therapy::factory()->create([
+        'addedby_type' => User::class,
+        'addedby_id' => User::factory(),
+        'counsellor_id' => $counsellor->id,
+        'session_type' => TherapySessionTypeEnum::once->value,
+        'status' => TherapyStatusEnum::in_session->value,
+        'payment_type' => TherapyPaymentTypeEnum::paid->value,
+        'payment_data' => ['per' => TherapyPerPaymentEnum::therapy->value, 'amount' => 100, 'currency' => 'GHS'],
+    ]);
+    // Share = 5000 fixed. Fee = 10% of the GHS 100 (10000 minor units) listed rate = 1000.
+    $transaction = Transaction::factory()->create([
+        'for_type' => Therapy::class,
+        'for_id' => $therapy->id,
+        'organization_id' => $organization->id,
+        'reference' => 'webhook_ref_org_earnings_1',
+        'amount' => 6000,
+        'currency' => 'GHS',
+        'status' => TransactionStatusEnum::pending->value,
+    ]);
+
+    postSignedPaystackWebhook([
+        'event' => 'charge.success',
+        'data' => [
+            'reference' => 'webhook_ref_org_earnings_1',
+            'amount' => 6000,
+            'currency' => 'GHS',
+            'gateway_response' => 'Successful',
+        ],
+    ], $secret)->assertOk();
+
+    expect($transaction->fresh()->status)->toBe(TransactionStatusEnum::success->value);
+    $this->assertDatabaseCount('counsellor_earnings', 1);
+    $earning = $transaction->earnings()->first();
+    expect($earning->counsellor_id)->toBe($counsellor->id);
+    expect($earning->net_amount)->toBe(5000);
+    expect($earning->fee_amount)->toBe(1000);
 });
 
 // TT-7.3b-a/SCRUM-231: proves RecordTransactionStatusAction's real webhook caller actually reaches

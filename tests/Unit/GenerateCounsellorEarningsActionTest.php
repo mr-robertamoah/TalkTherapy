@@ -4,16 +4,22 @@ use App\Actions\Transaction\GenerateCounsellorEarningsAction;
 use App\Enums\CounsellorEarningShareBasisEnum;
 use App\Enums\CounsellorEarningStatusEnum;
 use App\Enums\CounsellorGroupTherapyStateEnum;
+use App\Enums\OrganizationCounsellorCompensationBasisEnum;
+use App\Enums\OrganizationCounsellorCompensationTypeEnum;
+use App\Enums\OrganizationCounsellorStatusEnum;
 use App\Enums\TherapyPaymentTypeEnum;
 use App\Enums\TransactionStatusEnum;
 use App\Models\Counsellor;
 use App\Models\GroupTherapy;
 use App\Models\Organization;
+use App\Models\OrganizationCounsellor;
+use App\Models\OrganizationCounsellorCompensation;
 use App\Models\PaymentAccessGrant;
 use App\Models\Session;
 use App\Models\Therapy;
 use App\Models\Transaction;
 use App\Models\User;
+use Illuminate\Support\Facades\Log;
 
 // TT-7.6b/SCRUM-226: one CounsellorEarning row per counsellor entitled to a share of a
 // successful, personally-financed Transaction. Confirmed with product-owner/architect that this
@@ -106,17 +112,283 @@ test('a PER_SESSION transaction resolves through the session to its parent thera
     expect($transaction->earnings()->first()->counsellor_id)->toBe($counsellor->id);
 });
 
-test('an org-financed transaction generates no earnings at all', function () {
+// TT-7.3b-d/SCRUM-235: fully fixes the live bug -- an org-financed individual-Therapy transaction
+// used to be a blanket no-op regardless of setup; it now generates a real earning whenever the
+// counsellor has active compensation terms with the financing org, re-deriving the split from the
+// SAME shared compensation primitives TT-7.3b-b used at charge time.
+function anOrgFinancedCompensation(Counsellor $counsellor, array $overrides = []): array
+{
+    $organization = Organization::factory()->create();
+    $affiliation = OrganizationCounsellor::factory()->create([
+        'organization_id' => $organization->id,
+        'counsellor_id' => $counsellor->id,
+        'status' => OrganizationCounsellorStatusEnum::active->value,
+    ]);
+    OrganizationCounsellorCompensation::factory()->create(array_merge([
+        'organization_counsellor_id' => $affiliation->id,
+    ], $overrides));
+
+    return [$organization, $affiliation];
+}
+
+test('a FIXED-compensation org-financed transaction generates a real earning matching the invariant', function () {
+    config(['settings.platform_fee_percentage' => 10]);
+    $counsellor = Counsellor::factory()->create(['user_id' => User::factory()]);
+    [$organization] = anOrgFinancedCompensation($counsellor, [
+        'type' => OrganizationCounsellorCompensationTypeEnum::fixed->value,
+        'amount' => 5000,
+        'currency' => 'GHS',
+    ]);
+    $therapy = Therapy::factory()->create([
+        'addedby_type' => User::class,
+        'addedby_id' => User::factory(),
+        'counsellor_id' => $counsellor->id,
+        'payment_type' => TherapyPaymentTypeEnum::paid->value,
+        'payment_data' => ['per' => 'PER_THERAPY', 'amount' => 100, 'currency' => 'GHS'],
+    ]);
+    // Share = 5000 fixed. Fee = 10% of the GHS 100 (10000 minor units) listed rate = 1000.
+    // Transaction.amount (what TT-7.3b-b actually charged) = 6000.
+    $transaction = aPersonalTransaction([
+        'for_type' => Therapy::class,
+        'for_id' => $therapy->id,
+        'organization_id' => $organization->id,
+        'amount' => 6000,
+    ]);
+
+    GenerateCounsellorEarningsAction::new()->execute($transaction);
+
+    $this->assertDatabaseCount('counsellor_earnings', 1);
+    $earning = $transaction->earnings()->first();
+    expect($earning->counsellor_id)->toBe($counsellor->id);
+    expect($earning->net_amount)->toBe(5000);
+    expect($earning->fee_amount)->toBe(1000);
+    expect($earning->gross_amount)->toBe(6000);
+    // The ticket's own explicit regression invariant.
+    expect($earning->net_amount + $earning->fee_amount)->toBe($transaction->amount);
+});
+
+test('a FREE-compensation org-financed transaction still generates an earning -- net 0, fee is the whole amount', function () {
+    $counsellor = Counsellor::factory()->create(['user_id' => User::factory()]);
+    [$organization] = anOrgFinancedCompensation($counsellor, [
+        'type' => OrganizationCounsellorCompensationTypeEnum::free->value,
+    ]);
+    $therapy = Therapy::factory()->create([
+        'addedby_type' => User::class,
+        'addedby_id' => User::factory(),
+        'counsellor_id' => $counsellor->id,
+        'payment_type' => TherapyPaymentTypeEnum::paid->value,
+        'payment_data' => ['per' => 'PER_THERAPY', 'amount' => 100, 'currency' => 'GHS'],
+    ]);
+    $transaction = aPersonalTransaction([
+        'for_type' => Therapy::class,
+        'for_id' => $therapy->id,
+        'organization_id' => $organization->id,
+        'amount' => 1000,
+    ]);
+
+    GenerateCounsellorEarningsAction::new()->execute($transaction);
+
+    $earning = $transaction->earnings()->first();
+    expect($earning->net_amount)->toBe(0);
+    expect($earning->fee_amount)->toBe(1000);
+    expect($earning->net_amount + $earning->fee_amount)->toBe($transaction->amount);
+});
+
+test('a PERCENTAGE counsellorRate org-financed transaction generates a real earning matching the invariant', function () {
+    config(['settings.platform_fee_percentage' => 10]);
+    $counsellor = Counsellor::factory()->create(['user_id' => User::factory()]);
+    [$organization] = anOrgFinancedCompensation($counsellor, [
+        'type' => OrganizationCounsellorCompensationTypeEnum::percentage->value,
+        'basis' => OrganizationCounsellorCompensationBasisEnum::counsellorRate->value,
+        'percentage' => 70,
+    ]);
+    $therapy = Therapy::factory()->create([
+        'addedby_type' => User::class,
+        'addedby_id' => User::factory(),
+        'counsellor_id' => $counsellor->id,
+        'payment_type' => TherapyPaymentTypeEnum::paid->value,
+        'payment_data' => ['per' => 'PER_THERAPY', 'amount' => 100, 'currency' => 'GHS'],
+    ]);
+    // Share = 70% of the GHS 100 (10000 minor units) listed rate = 7000. Fee = 10% of 10000 = 1000.
+    $transaction = aPersonalTransaction([
+        'for_type' => Therapy::class,
+        'for_id' => $therapy->id,
+        'organization_id' => $organization->id,
+        'amount' => 8000,
+    ]);
+
+    GenerateCounsellorEarningsAction::new()->execute($transaction);
+
+    $earning = $transaction->earnings()->first();
+    expect($earning->net_amount)->toBe(7000);
+    expect($earning->fee_amount)->toBe(1000);
+    expect($earning->net_amount + $earning->fee_amount)->toBe($transaction->amount);
+});
+
+test('a PERCENTAGE negotiatedRate org-financed transaction generates a real earning matching the invariant', function () {
+    config(['settings.platform_fee_percentage' => 10]);
+    $counsellor = Counsellor::factory()->create(['user_id' => User::factory()]);
+    [$organization] = anOrgFinancedCompensation($counsellor, [
+        'type' => OrganizationCounsellorCompensationTypeEnum::percentage->value,
+        'basis' => OrganizationCounsellorCompensationBasisEnum::negotiatedRate->value,
+        'percentage' => 50,
+        'negotiated_rate_amount' => 30000,
+    ]);
+    $therapy = Therapy::factory()->create([
+        'addedby_type' => User::class,
+        'addedby_id' => User::factory(),
+        'counsellor_id' => $counsellor->id,
+        'payment_type' => TherapyPaymentTypeEnum::paid->value,
+        'payment_data' => ['per' => 'PER_THERAPY', 'amount' => 100, 'currency' => 'GHS'],
+    ]);
+    // Share = 50% of the NEGOTIATED 30000 = 15000 (never the listed rate). Fee = 10% of the
+    // LISTED GHS 100 (10000 minor units) = 1000.
+    $transaction = aPersonalTransaction([
+        'for_type' => Therapy::class,
+        'for_id' => $therapy->id,
+        'organization_id' => $organization->id,
+        'amount' => 16000,
+    ]);
+
+    GenerateCounsellorEarningsAction::new()->execute($transaction);
+
+    $earning = $transaction->earnings()->first();
+    expect($earning->net_amount)->toBe(15000);
+    expect($earning->fee_amount)->toBe(1000);
+    expect($earning->net_amount + $earning->fee_amount)->toBe($transaction->amount);
+});
+
+// Security-engineer finding: ComputeCounsellorCompensationShareAction throws for a
+// COUNSELLOR_RATE-basis compensation with no listed amount resolvable -- this must degrade to a
+// safe no-op + warning log, not propagate and roll back RecordTransactionStatusAction's whole
+// DB::transaction() (which would permanently strand an already-successfully-charged transaction
+// as pending, since a webhook replay would just hit the identical exception again).
+test('a COUNSELLOR_RATE org-financed transaction with no resolvable listed amount generates no earnings, without throwing', function () {
+    $counsellor = Counsellor::factory()->create(['user_id' => User::factory()]);
+    [$organization] = anOrgFinancedCompensation($counsellor, [
+        'type' => OrganizationCounsellorCompensationTypeEnum::percentage->value,
+        'basis' => OrganizationCounsellorCompensationBasisEnum::counsellorRate->value,
+        'percentage' => 70,
+    ]);
+    $therapy = Therapy::factory()->create([
+        'addedby_type' => User::class,
+        'addedby_id' => User::factory(),
+        'counsellor_id' => $counsellor->id,
+        'payment_type' => TherapyPaymentTypeEnum::paid->value,
+        'payment_data' => null,
+    ]);
+    $transaction = aPersonalTransaction([
+        'for_type' => Therapy::class,
+        'for_id' => $therapy->id,
+        'organization_id' => $organization->id,
+    ]);
+
+    expect(fn () => GenerateCounsellorEarningsAction::new()->execute($transaction))
+        ->not->toThrow(InvalidArgumentException::class);
+
+    $this->assertDatabaseCount('counsellor_earnings', 0);
+});
+
+// Security-engineer finding: a compensation/settings drift between TT-7.3b-b's charge time and
+// this earnings-generation call silently reclassifies the difference as platform fee revenue --
+// surfaced as a warning (not corrected, since there's no persisted charge-time split to correct
+// against) so it's visible for manual reconciliation rather than silent.
+test('a compensation change since the original charge is flagged with a warning log', function () {
+    Log::spy();
+    config(['settings.platform_fee_percentage' => 10]);
+    $counsellor = Counsellor::factory()->create(['user_id' => User::factory()]);
+    [$organization] = anOrgFinancedCompensation($counsellor, [
+        'type' => OrganizationCounsellorCompensationTypeEnum::fixed->value,
+        'amount' => 5000,
+        'currency' => 'GHS',
+    ]);
+    $therapy = Therapy::factory()->create([
+        'addedby_type' => User::class,
+        'addedby_id' => User::factory(),
+        'counsellor_id' => $counsellor->id,
+        'payment_type' => TherapyPaymentTypeEnum::paid->value,
+        'payment_data' => ['per' => 'PER_THERAPY', 'amount' => 100, 'currency' => 'GHS'],
+    ]);
+    // Transaction.amount reflects what was ACTUALLY charged at charge time: share 5000 + fee 1000
+    // = 6000. But the compensation amount has since changed to 7000 (e.g. renegotiated) by the
+    // time this generation call runs -- net_amount recomputed now (7000) plus the true fee for
+    // today's listed rate (1000) would be 8000, which doesn't match the 6000 actually collected.
+    OrganizationCounsellorCompensation::query()->where('organization_counsellor_id', $organization->organizationCounsellors()->first()->id)
+        ->update(['amount' => 7000]);
+    $transaction = aPersonalTransaction([
+        'for_type' => Therapy::class,
+        'for_id' => $therapy->id,
+        'organization_id' => $organization->id,
+        'amount' => 6000,
+    ]);
+
+    GenerateCounsellorEarningsAction::new()->execute($transaction);
+
+    Log::shouldHaveReceived('warning')
+        ->withArgs(fn ($message) => str_contains($message, 'does not match the amount implied by the original charge'))
+        ->once();
+});
+
+test('an org-financed transaction with no active compensation terms generates no earnings, without throwing', function () {
     $counsellor = Counsellor::factory()->create(['user_id' => User::factory()]);
     $therapy = Therapy::factory()->create([
         'addedby_type' => User::class,
         'addedby_id' => User::factory(),
         'counsellor_id' => $counsellor->id,
     ]);
+    // An org affiliation with no compensation row set at all -- the counsellor's coverage exists,
+    // but there are no terms to compute a share from.
     $organization = Organization::factory()->create();
+    OrganizationCounsellor::factory()->create([
+        'organization_id' => $organization->id,
+        'counsellor_id' => $counsellor->id,
+        'status' => OrganizationCounsellorStatusEnum::active->value,
+    ]);
     $transaction = aPersonalTransaction([
         'for_type' => Therapy::class,
         'for_id' => $therapy->id,
+        'organization_id' => $organization->id,
+    ]);
+
+    GenerateCounsellorEarningsAction::new()->execute($transaction);
+
+    $this->assertDatabaseCount('counsellor_earnings', 0);
+});
+
+test('an org-financed transaction for a therapy with no assigned counsellor generates no earnings, without throwing', function () {
+    $organization = Organization::factory()->create();
+    $therapy = Therapy::factory()->create([
+        'addedby_type' => User::class,
+        'addedby_id' => User::factory(),
+        'counsellor_id' => null,
+    ]);
+    $transaction = aPersonalTransaction([
+        'for_type' => Therapy::class,
+        'for_id' => $therapy->id,
+        'organization_id' => $organization->id,
+    ]);
+
+    GenerateCounsellorEarningsAction::new()->execute($transaction);
+
+    $this->assertDatabaseCount('counsellor_earnings', 0);
+});
+
+// Carried forward from TT-7.3b-b/-c's own scope boundary -- GroupTherapy org billing was never
+// built, so this transaction's amount is the client's listed price (charged to their own card,
+// organization_id set as pure attribution), not a fee+share figure this formula could split.
+test('an org-financed GroupTherapy transaction still generates no earnings at all', function () {
+    $organization = Organization::factory()->create();
+    $groupTherapy = GroupTherapy::factory()->create([
+        'addedby_type' => User::class,
+        'addedby_id' => User::factory(),
+        'payment_type' => TherapyPaymentTypeEnum::paid->value,
+        'payment_data' => ['per' => 'PER_THERAPY', 'amount' => 100, 'currency' => 'GHS', 'shareEqually' => true],
+    ]);
+    $counsellor = Counsellor::factory()->create(['user_id' => User::factory()]);
+    $groupTherapy->counsellors()->attach($counsellor->id, ['state' => CounsellorGroupTherapyStateEnum::active->value, 'role' => 'NORMAL']);
+    $transaction = aPersonalTransaction([
+        'for_type' => GroupTherapy::class,
+        'for_id' => $groupTherapy->id,
         'organization_id' => $organization->id,
     ]);
 

@@ -12,6 +12,7 @@ use App\Enums\TherapyStatusEnum;
 use App\Enums\TransactionStatusEnum;
 use App\Exceptions\TransactionException;
 use App\Models\Counsellor;
+use App\Models\CounsellorEarning;
 use App\Models\GroupTherapy;
 use App\Models\Organization;
 use App\Models\OrganizationCounsellor;
@@ -412,7 +413,12 @@ test('a mismatched reported amount on an otherwise-successful charge throws rath
     ]));
 })->throws(TransactionException::class);
 
-test('does not generate a counsellor earning -- that split is TT-7.3b-d\'s job', function () {
+// TT-7.3b-d/SCRUM-235: RecordTransactionStatusAction (called internally on success) now DOES
+// generate a real counsellor earning for an org-financed transaction -- updated from this file's
+// earlier "does not generate... that split is TT-7.3b-d's job" placeholder now that 'd' has
+// shipped that split, proving TT-7.3b-b's own charge primitive and TT-7.3b-d's earnings logic
+// agree on the same net/fee figures end to end.
+test('generates a counsellor earning matching the charged amount once TT-7.3b-d exists', function () {
     [$organization, , $therapy, $member] = anOrgWithCounsellorAndInstrument([
         'type' => OrganizationCounsellorCompensationTypeEnum::fixed->value,
         'amount' => 5000,
@@ -421,7 +427,7 @@ test('does not generate a counsellor earning -- that split is TT-7.3b-d\'s job',
     config(['settings.platform_fee_percentage' => 10]);
     Http::fake(['*/transaction/charge_authorization' => Http::response([
         'status' => true,
-        'data' => ['reference' => 'ref_no_earning', 'status' => 'success', 'amount' => 6000, 'currency' => 'GHS', 'gateway_response' => 'Approved'],
+        'data' => ['reference' => 'ref_with_earning', 'status' => 'success', 'amount' => 6000, 'currency' => 'GHS', 'gateway_response' => 'Approved'],
     ], 200)]);
 
     ChargeOrganizationForModelAction::new()->execute(TransactionDTO::new()->fromArray([
@@ -430,7 +436,10 @@ test('does not generate a counsellor earning -- that split is TT-7.3b-d\'s job',
         'organization' => $organization,
     ]));
 
-    $this->assertDatabaseCount('counsellor_earnings', 0);
+    $this->assertDatabaseCount('counsellor_earnings', 1);
+    $earning = CounsellorEarning::first();
+    expect($earning->net_amount)->toBe(5000);
+    expect($earning->fee_amount)->toBe(1000);
 });
 
 // Security-engineer finding: real money moves synchronously here (unlike the checkout-redirect

@@ -4704,3 +4704,85 @@ validated member of the SAME org asking about their OWN org's billing setup (not
 enumeration vector the way `EnsureOrganizationCanPayForModelAction`'s checks are), and are
 genuinely actionable ("tell your admin to set up X") rather than merely diagnostic — kept as-is
 rather than applying the anti-enumeration convention somewhere it doesn't actually apply.
+
+---
+
+## 2026-09-04 — SCRUM-235 (TT-7.3b-d): org-financed earnings split, closing the "$0 earnings" bug
+
+**Decision**: `GenerateCounsellorEarningsAction`'s blanket no-op for any `organization_id`-set
+transaction is now removed for the individual-Therapy/Session case (GroupTherapy remains a no-op —
+see below) — this fully closes the live bug (org-paid counsellors earning $0 indefinitely) this
+whole epic exists to fix. A new `generateForOrgFinancedIndividual()` branch re-derives ONLY the
+counsellor's compensation-driven share (`net_amount`) via the SAME shared primitives TT-7.3b-b
+uses at charge time (`GetActiveOrganizationCounsellorAction`, `ComputeCounsellorCompensationShareAction`),
+then takes `fee_amount` as the REMAINDER of `transaction->amount` — not an independently
+recomputed figure. This is a deliberate design choice, not an oversight: computing fee_amount as
+the remainder mechanically guarantees the ticket's own regression invariant
+(`earning.net_amount + earning.fee_amount == transaction.amount`) holds by construction, even if
+`platform_fee_percentage` or the counsellor's compensation terms were to drift between charge-time
+(TT-7.3b-b) and this (near-immediate, same-request) earnings-generation call — recomputing the fee
+independently here could otherwise silently break the invariant under exactly that drift.
+
+**Refactor alongside the fix**: `createEarning()` (the one place a `CounsellorEarning` row is
+actually persisted) now takes `feeAmount`/`netAmount` as explicit parameters instead of computing
+fee internally from a gross amount — each caller (personal-pay individual, personal-pay group, and
+the new org-financed individual) now computes its OWN fee/net pair using whichever formula applies
+to it, but all three funnel through the identical persistence path. This was worth doing now (not
+deferred) because it structurally encodes the invariant at the one shared write point, rather than
+trusting three independent call sites to each get it right.
+
+**Scope boundary carried forward from TT-7.3b-b/-c, not re-litigated**: an org-financed
+GroupTherapy transaction remains a no-op earnings-wise. GroupTherapy org billing was never built
+(TT-7.3b-b's own exclusion) — that transaction's `amount` is still the client's own listed price,
+charged to their personal card with `organization_id` set as pure attribution (TT-7.3a's original,
+unchanged behavior for GroupTherapy), not a fee+share figure this new formula has any meaning for.
+
+**Existing test updated, not just left passing for the wrong reason**: `GenerateCounsellorEarningsActionTest`'s
+old "an org-financed transaction generates no earnings at all" test predated any org-compensation
+concept and would have kept passing after this fix only by accident (its fixture had no
+`OrganizationCounsellorCompensation` row, so the new code path's own "no active compensation
+terms" guard — not the old blanket no-op — is what actually produced the zero-earnings result).
+Replaced with tests that exercise the real fix (FIXED and FREE compensation types, each asserting
+the regression invariant explicitly) plus a correctly-scoped edge-case test for the no-compensation
+case. `ChargeOrganizationForModelActionTest`'s own "does not generate a counsellor earning -- that
+split is TT-7.3b-d's job" placeholder test was similarly updated now that this ticket exists,
+proving TT-7.3b-b's charge primitive and this ticket's earnings logic agree on the same net/fee
+figures end to end (not just each unit-tested in isolation).
+
+**Why**: this was a technical implementation of an already-approved product decision (Decision 2's
+"actual cost = fee + compensation share" design) and an architect-endorsed technical resolution
+(the `net_amount + fee_amount == transaction.amount` invariant, decided during SCRUM-230's
+architect review) — no new product fork, so implemented directly rather than re-asking. The
+fee-as-remainder (not fee-as-independent-recomputation) choice was a genuine technical judgment
+call made here, resolved by tracing which approach actually guarantees the ticket's own stated
+invariant under a realistic (if rare) drift scenario.
+
+**Security-engineer findings, both fixed (Medium)**: (1) `ComputeCounsellorCompensationShareAction`
+can throw (e.g. a COUNSELLOR_RATE-basis compensation with no resolvable listed amount at
+generation time) -- uncaught, this would propagate out of `RecordTransactionStatusAction`'s
+`DB::transaction()`, rolling back the transaction's own status update and permanently stranding an
+already-successfully-charged transaction as pending (a webhook replay would just hit the identical
+exception again). Fixed with a try/catch mirroring this method's other two guard clauses (log a
+warning, return, never throw). (2) The "fee as remainder" design means a genuine compensation or
+`platform_fee_percentage` change in the (expected-to-be-narrow, but not impossible given webhook
+delivery delays) window between TT-7.3b-b's charge and this earnings-generation call would silently
+reclassify the difference as platform fee revenue, with no trace anywhere that a drift occurred --
+a real money-integrity gap for a counsellor's actual payout, not just an invariant-satisfying
+number. Fixed by comparing the recomputed share against what the SAME fee formula would
+independently yield off today's listed rate, and logging a warning (not correcting -- there is no
+persisted charge-time split to correct against) whenever they disagree, so a drift is visible for
+manual reconciliation rather than silent. Both fixes are covered by new tests (an exception-safety
+test proving no propagation, and a warning-log assertion for the drift case) plus the previously
+missing PERCENTAGE/counsellorRate and PERCENTAGE/negotiatedRate compensation-basis coverage for
+the org-financed branch specifically (mirroring `ChargeOrganizationForModelActionTest`'s own
+coverage of those bases, which this file had not yet duplicated).
+
+**Not fixed, evaluated as disproportionate to the risk**: the security-engineer's more thorough
+option for the drift gap above -- persisting the exact charge-time compensation share (or a
+reference to the specific `OrganizationCounsellorCompensation` row/version used) on the
+`Transaction` so this action reuses that exact figure instead of ever recomputing -- would require
+a schema change spanning both this ticket and the already-merged TT-7.3b-b. Given the drift window
+is genuinely narrow (this action runs from the same near-immediate `RecordTransactionStatusAction`
+choke point regardless of webhook-vs-verify-callback path) and the warning-log fix above gives
+ops/finance real visibility into the rare case it does occur, the lighter-weight fix was chosen —
+revisit if the warning ever actually fires in production.
