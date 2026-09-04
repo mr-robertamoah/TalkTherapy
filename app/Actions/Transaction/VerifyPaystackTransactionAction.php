@@ -66,7 +66,8 @@ class VerifyPaystackTransactionAction extends Action
             $transaction,
             $status,
             TransactionStatusSourceEnum::verify->value,
-            $response['data']['gateway_response'] ?? null
+            $response['data']['gateway_response'] ?? null,
+            $response['data'] ?? null
         );
     }
 }

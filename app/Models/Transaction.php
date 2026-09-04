@@ -16,6 +16,14 @@ class Transaction extends Model
         'amount' => 'integer',
     ];
 
+    // TT-7.3b-a/SCRUM-231 (security-engineer finding): `for` (this relation) and `organization()`
+    // below are two deliberately distinct, non-overlapping "organization" concepts on this same
+    // model -- `for` being an Organization means this transaction's SUBJECT is the org itself
+    // (e.g. a payment-instrument-registration charge, InitiateOrganizationPaymentInstrumentRegistrationAction);
+    // `organization_id`/`organization()` means an org FINANCED a Therapy/Session/GroupTherapy
+    // payment on a member's behalf (TT-7.3a) -- `for` is never an Organization AND
+    // `organization_id` set on the same row. A query filtering by one will silently miss the
+    // other; don't conflate them.
     public function for()
     {
         return $this->morphTo();

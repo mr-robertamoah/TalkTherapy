@@ -40,6 +40,16 @@ class SettingsService extends Service
         return (int) ($configured[strtoupper($currency)] ?? config("settings.minimum_payout_amount.{$currency}", 0));
     }
 
+    // Minor units (pesewas/cents), same convention as getMinimumPayoutAmount() -- TT-7.3b-a/
+    // SCRUM-231: the nominal charge that captures a reusable Paystack authorization when
+    // registering an organization's payment instrument.
+    public function getOrganizationPaymentInstrumentVerificationAmount(string $currency): int
+    {
+        $configured = json_decode($this->get(SettingsEnum::organizationPaymentInstrumentVerificationAmount) ?? '', true) ?: [];
+
+        return (int) ($configured[strtoupper($currency)] ?? config("settings.organization_payment_instrument_verification_amount.{$currency}", 0));
+    }
+
     public function update(SettingDTO $dto): PlatformSetting
     {
         return UpdateSettingAction::new()->execute($dto);

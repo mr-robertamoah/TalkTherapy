@@ -3,6 +3,7 @@
 namespace App\Actions\Transaction;
 
 use App\Actions\Action;
+use App\Actions\Organization\CaptureOrganizationPaymentInstrumentAction;
 use App\Enums\TransactionStatusEnum;
 use App\Models\Transaction;
 use Illuminate\Support\Facades\DB;
@@ -17,8 +18,11 @@ class RecordTransactionStatusAction extends Action
 
     // The single choke point both the webhook and the verify-callback fallback call into, so
     // idempotency lives once: Paystack retries webhook delivery, and the verify-callback can
-    // race the webhook for the same reference.
-    public function execute(Transaction $transaction, string $status, string $source, ?string $message = null): Transaction
+    // race the webhook for the same reference. $gatewayData, when given, is Paystack's own
+    // 'data' object from that same response/payload -- TT-7.3b-a/SCRUM-231 needs its
+    // 'authorization' object to capture an organization's payment instrument, but this action
+    // stays domain-agnostic (a no-op for every other caller, which simply omits it).
+    public function execute(Transaction $transaction, string $status, string $source, ?string $message = null, ?array $gatewayData = null): Transaction
     {
         if ($transaction->status === $status) {
             return $transaction;
@@ -50,7 +54,7 @@ class RecordTransactionStatusAction extends Action
         // on the first `if` and never reach the earnings call again. Rolling the status update
         // back too (by throwing out of this DB::transaction()) keeps the transaction in a
         // genuinely retriable non-terminal state instead.
-        return DB::transaction(function () use ($transaction, $status, $source, $message) {
+        return DB::transaction(function () use ($transaction, $status, $source, $message, $gatewayData) {
             $transaction->update(['status' => $status]);
 
             $transaction->statusHistories()->create([
@@ -68,6 +72,7 @@ class RecordTransactionStatusAction extends Action
             // callers (the webhook job and the verify-callback fallback).
             if ($status === TransactionStatusEnum::success->value) {
                 GenerateCounsellorEarningsAction::new()->execute($transaction);
+                CaptureOrganizationPaymentInstrumentAction::new()->execute($transaction, $gatewayData['authorization'] ?? []);
             }
 
             return $transaction;

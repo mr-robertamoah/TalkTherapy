@@ -134,6 +134,15 @@ class TransactionController extends Controller
             ? $transaction->for->for
             : $transaction->for;
 
+        // TT-7.3b-a/SCRUM-231 (security-engineer finding): an org-payment-instrument-registration
+        // charge's subject is the Organization itself, not a Therapy/Session/GroupTherapy -- without
+        // this branch, $for->id (the organization's id) would be sent to therapies.get as though
+        // it were a therapyId. No route reaches this case yet (TT-7.3b-i's controller will), but
+        // this shared callback choke point must not silently mishandle it once one does.
+        if ($for instanceof Organization) {
+            return route('organizations.dashboard', ['organizationId' => $for->id]);
+        }
+
         return $for instanceof GroupTherapy
             ? route('group.therapies.get', ['groupTherapyId' => $for->id])
             : route('therapies.get', ['therapyId' => $for->id]);

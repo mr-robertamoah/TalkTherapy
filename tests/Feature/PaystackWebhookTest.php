@@ -10,6 +10,7 @@ use App\Enums\TransactionStatusEnum;
 use App\Models\Counsellor;
 use App\Models\CounsellorEarning;
 use App\Models\CounsellorPayout;
+use App\Models\Organization;
 use App\Models\Therapy;
 use App\Models\Transaction;
 use App\Models\User;
@@ -103,6 +104,54 @@ test('a correctly signed charge.success webhook also generates a counsellor earn
     expect($transaction->fresh()->status)->toBe(TransactionStatusEnum::success->value);
     $this->assertDatabaseCount('counsellor_earnings', 1);
     expect($transaction->earnings()->first()->counsellor_id)->toBe($counsellor->id);
+});
+
+// TT-7.3b-a/SCRUM-231: proves RecordTransactionStatusAction's real webhook caller actually reaches
+// CaptureOrganizationPaymentInstrumentAction too -- not just the unit-tested action in isolation
+// (mirrors the earnings test above's own reasoning).
+test('a correctly signed charge.success webhook for an org-registration transaction captures a payment instrument', function () {
+    $secret = 'test_secret';
+    config(['services.paystack.secret_key' => $secret]);
+
+    $organization = Organization::factory()->create();
+    $transaction = Transaction::factory()->create([
+        'for_type' => Organization::class,
+        'for_id' => $organization->id,
+        'reference' => 'webhook_ref_org_instrument_1',
+        'amount' => 100,
+        'currency' => 'GHS',
+        'status' => TransactionStatusEnum::pending->value,
+    ]);
+
+    postSignedPaystackWebhook([
+        'event' => 'charge.success',
+        'data' => [
+            'reference' => 'webhook_ref_org_instrument_1',
+            'amount' => 100,
+            'currency' => 'GHS',
+            'gateway_response' => 'Successful',
+            'authorization' => [
+                'authorization_code' => 'AUTH_webhook_1',
+                'last4' => '4242',
+                'card_type' => 'visa',
+                'bank' => 'Test Bank',
+                'exp_month' => '12',
+                'exp_year' => '2030',
+                'reusable' => true,
+            ],
+        ],
+    ], $secret)->assertOk();
+
+    expect($transaction->fresh()->status)->toBe(TransactionStatusEnum::success->value);
+    $this->assertDatabaseHas('organization_payment_instruments', [
+        'organization_id' => $organization->id,
+        'authorization_code' => 'AUTH_webhook_1',
+        'pending_credit_amount' => 100,
+    ]);
+    // Reviewer finding: prove GenerateCounsellorEarningsAction's org guard actually holds through
+    // this same real webhook path, not just in isolation -- a verification charge must never
+    // generate a bogus counsellor earning.
+    $this->assertDatabaseCount('counsellor_earnings', 0);
 });
 
 test('a webhook with an invalid signature is rejected and never changes the transaction', function () {
