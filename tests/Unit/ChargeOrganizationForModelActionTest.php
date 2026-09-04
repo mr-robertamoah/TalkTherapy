@@ -21,6 +21,7 @@ use App\Models\Session;
 use App\Models\Therapy;
 use App\Models\Transaction;
 use App\Models\User;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 
 // TT-7.3b-b/SCRUM-233: the ONE shared mechanism TT-7.3b-c/-e will both call into. This test file
@@ -431,3 +432,47 @@ test('does not generate a counsellor earning -- that split is TT-7.3b-d\'s job',
 
     $this->assertDatabaseCount('counsellor_earnings', 0);
 });
+
+// Security-engineer finding: real money moves synchronously here (unlike the checkout-redirect
+// flow), so a lock keyed on the exact subject being charged must close the window where two
+// near-simultaneous calls could both pass a caller's own duplicate-charge check and charge the
+// org's card twice for one engagement.
+test('a second concurrent charge attempt for the same engagement is rejected while the first is in flight', function () {
+    [$organization, , $therapy, $member] = anOrgWithCounsellorAndInstrument([
+        'type' => OrganizationCounsellorCompensationTypeEnum::fixed->value,
+        'amount' => 5000,
+        'currency' => 'GHS',
+    ]);
+
+    $lock = Cache::lock('charge-organization-for:'.Therapy::class.':'.$therapy->id, 30);
+    expect($lock->get())->toBeTrue();
+
+    try {
+        ChargeOrganizationForModelAction::new()->execute(TransactionDTO::new()->fromArray([
+            'user' => $member,
+            'for' => $therapy,
+            'organization' => $organization,
+        ]));
+    } finally {
+        $lock->release();
+    }
+})->throws(TransactionException::class, 'This is already being charged. Please wait a moment before trying again.');
+
+test('a duplicate-charge check inside the lock rejects an engagement already successfully paid for', function () {
+    [$organization, , $therapy, $member] = anOrgWithCounsellorAndInstrument([
+        'type' => OrganizationCounsellorCompensationTypeEnum::fixed->value,
+        'amount' => 5000,
+        'currency' => 'GHS',
+    ]);
+    Transaction::factory()->create([
+        'for_type' => Therapy::class,
+        'for_id' => $therapy->id,
+        'status' => TransactionStatusEnum::success->value,
+    ]);
+
+    ChargeOrganizationForModelAction::new()->execute(TransactionDTO::new()->fromArray([
+        'user' => $member,
+        'for' => $therapy,
+        'organization' => $organization,
+    ]));
+})->throws(TransactionException::class, 'This has already been paid for.');

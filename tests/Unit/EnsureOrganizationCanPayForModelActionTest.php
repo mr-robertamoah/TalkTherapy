@@ -2,6 +2,7 @@
 
 use App\DTOs\TransactionDTO;
 use App\Enums\CounsellorGroupTherapyStateEnum;
+use App\Enums\OrganizationCounsellorCompensationTypeEnum;
 use App\Enums\OrganizationCounsellorStatusEnum;
 use App\Enums\OrganizationMemberBillingModeEnum;
 use App\Enums\OrganizationMemberStatusEnum;
@@ -14,8 +15,10 @@ use App\Models\Counsellor;
 use App\Models\GroupTherapy;
 use App\Models\Organization;
 use App\Models\OrganizationCounsellor;
+use App\Models\OrganizationCounsellorCompensation;
 use App\Models\OrganizationMember;
 use App\Models\OrganizationMemberBillingConfig;
+use App\Models\OrganizationPaymentInstrument;
 use App\Models\Therapy;
 use App\Models\Transaction;
 use App\Models\User;
@@ -110,10 +113,27 @@ test('personal-pay (no organizationId) is completely unaffected by the org-as-pa
     expect($result['transaction']->organization_id)->toBeNull();
 });
 
+// TT-7.3b-c/SCRUM-234: a valid individual-Therapy org charge now goes through
+// ChargeOrganizationForModelAction (the org's own saved instrument, at actual cost) -- so this
+// fixture also needs compensation terms and a payment instrument, and the fake targets
+// charge_authorization instead of initialize.
 test('a valid org-as-payer charge succeeds and records which organization financed it', function () {
-    fakesPaystackForOrgPayer('org_pay_success_ref');
+    // FREE compensation -- share = 0, so the whole charge is the platform fee: 10% (config
+    // default) of the therapy's GHS 150 (15000 minor units) listed rate = 1500.
+    Http::fake(['*/transaction/charge_authorization' => Http::response([
+        'status' => true,
+        'data' => ['reference' => 'org_pay_success_ref', 'status' => 'success', 'amount' => 1500, 'currency' => 'GHS', 'gateway_response' => 'Approved'],
+    ], 200)]);
 
     [$organization, $payer, $counsellor] = anEligibleOrgPayerSetup();
+    OrganizationPaymentInstrument::factory()->create(['organization_id' => $organization->id]);
+    OrganizationCounsellorCompensation::factory()->create([
+        'organization_counsellor_id' => OrganizationCounsellor::query()
+            ->where('organization_id', $organization->id)
+            ->where('counsellor_id', $counsellor->id)
+            ->first()->id,
+        'type' => OrganizationCounsellorCompensationTypeEnum::free->value,
+    ]);
     $therapy = aPaidTherapyForOrgPayer($counsellor, ['addedby_id' => $payer->id]);
 
     $result = TransactionService::new()->initiateCharge(
@@ -122,6 +142,53 @@ test('a valid org-as-payer charge succeeds and records which organization financ
 
     expect($result['transaction'])->toBeInstanceOf(Transaction::class);
     expect($result['transaction']->organization_id)->toBe($organization->id);
+    expect($result['authorizationUrl'])->toBeNull();
+});
+
+test('a valid org-as-payer charge with no payment instrument on file is rejected, not silently charged personally', function () {
+    [$organization, $payer, $counsellor] = anEligibleOrgPayerSetup();
+    OrganizationCounsellorCompensation::factory()->create([
+        'organization_counsellor_id' => OrganizationCounsellor::query()
+            ->where('organization_id', $organization->id)
+            ->where('counsellor_id', $counsellor->id)
+            ->first()->id,
+        'type' => OrganizationCounsellorCompensationTypeEnum::free->value,
+    ]);
+    $therapy = aPaidTherapyForOrgPayer($counsellor, ['addedby_id' => $payer->id]);
+
+    expect(fn () => TransactionService::new()->initiateCharge(
+        TransactionDTO::new()->fromArray(['user' => $payer, 'for' => $therapy, 'organizationId' => $organization->id, 'organization' => $organization])
+    ))->toThrow(TransactionException::class, 'This organization has no payment instrument on file.');
+
+    $this->assertDatabaseMissing('transactions', ['for_type' => Therapy::class, 'for_id' => $therapy->id]);
+});
+
+test('a valid org-as-payer charge with no compensation terms set is rejected, not silently charged personally', function () {
+    [$organization, $payer, $counsellor] = anEligibleOrgPayerSetup();
+    OrganizationPaymentInstrument::factory()->create(['organization_id' => $organization->id]);
+    $therapy = aPaidTherapyForOrgPayer($counsellor, ['addedby_id' => $payer->id]);
+
+    expect(fn () => TransactionService::new()->initiateCharge(
+        TransactionDTO::new()->fromArray(['user' => $payer, 'for' => $therapy, 'organizationId' => $organization->id, 'organization' => $organization])
+    ))->toThrow(TransactionException::class, 'This counsellor has no active compensation terms with this organization.');
+});
+
+// GroupTherapy is the one deliberate exception (TT-7.3b-b's own scope boundary) -- an org-paid
+// GroupTherapy must keep using the OLD member's-card path, completely unaffected by this ticket,
+// so it needs neither a payment instrument nor compensation terms to succeed.
+test('an org-paid GroupTherapy still charges the member directly, needing no payment instrument or compensation terms', function () {
+    fakesPaystackForOrgPayer('org_pay_group_unaffected_ref');
+
+    [$organization, $payer, $counsellor] = anEligibleOrgPayerSetup();
+    $groupTherapy = aPaidGroupTherapyForOrgPayer(['addedby_id' => $payer->id]);
+    $groupTherapy->counsellors()->attach($counsellor->id, ['state' => CounsellorGroupTherapyStateEnum::active->value, 'role' => 'NORMAL']);
+
+    $result = TransactionService::new()->initiateCharge(
+        TransactionDTO::new()->fromArray(['user' => $payer, 'for' => $groupTherapy, 'organizationId' => $organization->id, 'organization' => $organization])
+    );
+
+    expect($result['transaction']->organization_id)->toBe($organization->id);
+    expect($result['authorizationUrl'])->not->toBeNull();
 });
 
 test('an organizationId that does not resolve to a real organization is rejected, not silently charged personally', function () {

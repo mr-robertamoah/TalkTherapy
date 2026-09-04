@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\OrganizationCounsellorCompensationTypeEnum;
 use App\Enums\OrganizationCounsellorStatusEnum;
 use App\Enums\OrganizationMemberBillingModeEnum;
 use App\Enums\OrganizationMemberStatusEnum;
@@ -10,8 +11,10 @@ use App\Enums\TherapyStatusEnum;
 use App\Models\Counsellor;
 use App\Models\Organization;
 use App\Models\OrganizationCounsellor;
+use App\Models\OrganizationCounsellorCompensation;
 use App\Models\OrganizationMember;
 use App\Models\OrganizationMemberBillingConfig;
+use App\Models\OrganizationPaymentInstrument;
 use App\Models\Therapy;
 use App\Models\User;
 use Illuminate\Support\Facades\Http;
@@ -136,15 +139,21 @@ test('the resolved payment target comes from the URL route parameter, not a spoo
 // TransactionController::initiate()'s comment) and is fully re-verified by
 // EnsureOrganizationCanPayForModelAction regardless of where it came from.
 
+// TT-7.3b-c/SCRUM-234: this now charges the ORG's own saved payment instrument at actual cost
+// (via ChargeOrganizationForModelAction), not the member's card at the therapy's listed price --
+// faking charge_authorization (not initialize) and asserting the computed amount, not GHS 150,
+// proves the real route reaches the new primitive, not just the old one.
 test('an authenticated member can initiate a charge via their organization through the real route', function () {
+    config(['settings.platform_fee_percentage' => 10]);
     Http::fake([
-        '*/transaction/initialize' => Http::response([
+        '*/transaction/charge_authorization' => Http::response([
             'status' => true,
-            'data' => ['authorization_url' => 'https://checkout.paystack.com/ref_org_route', 'reference' => 'ref_org_route'],
+            'data' => ['reference' => 'ref_org_route', 'status' => 'success', 'amount' => 6000, 'currency' => 'GHS', 'gateway_response' => 'Approved'],
         ], 200),
     ]);
 
     $organization = Organization::factory()->create(['is_provider' => true, 'is_consumer' => true, 'verified_at' => now()]);
+    OrganizationPaymentInstrument::factory()->create(['organization_id' => $organization->id]);
     $payer = User::factory()->create();
     $counsellorUser = User::factory()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
@@ -158,10 +167,18 @@ test('an authenticated member can initiate a charge via their organization throu
         'organization_member_id' => $member->id,
         'mode' => OrganizationMemberBillingModeEnum::payPerUse->value,
     ]);
-    OrganizationCounsellor::factory()->create([
+    $affiliation = OrganizationCounsellor::factory()->create([
         'organization_id' => $organization->id,
         'counsellor_id' => $counsellor->id,
         'status' => OrganizationCounsellorStatusEnum::active->value,
+    ]);
+    // Fixed GHS 50 (5000 minor units) share + 10% fee on the GHS 100 (10000 minor units) listed
+    // rate below = 6000, matching the faked charge_authorization response's own amount.
+    OrganizationCounsellorCompensation::factory()->create([
+        'organization_counsellor_id' => $affiliation->id,
+        'type' => OrganizationCounsellorCompensationTypeEnum::fixed->value,
+        'amount' => 5000,
+        'currency' => 'GHS',
     ]);
 
     $therapy = Therapy::factory()->create([
@@ -171,7 +188,7 @@ test('an authenticated member can initiate a charge via their organization throu
         'session_type' => TherapySessionTypeEnum::once->value,
         'status' => TherapyStatusEnum::in_session->value,
         'payment_type' => TherapyPaymentTypeEnum::paid->value,
-        'payment_data' => ['per' => TherapyPerPaymentEnum::therapy->value, 'amount' => 150, 'currency' => 'GHS'],
+        'payment_data' => ['per' => TherapyPerPaymentEnum::therapy->value, 'amount' => 100, 'currency' => 'GHS'],
     ]);
 
     $this->actingAs($payer);
@@ -179,10 +196,12 @@ test('an authenticated member can initiate a charge via their organization throu
     $response = $this->postJson("/therapies/{$therapy->id}/transactions", ['organizationId' => $organization->id]);
 
     $response->assertOk();
+    $response->assertJsonPath('authorizationUrl', null);
     $this->assertDatabaseHas('transactions', [
         'for_type' => Therapy::class,
         'for_id' => $therapy->id,
         'organization_id' => $organization->id,
+        'amount' => 6000,
     ]);
 });
 
