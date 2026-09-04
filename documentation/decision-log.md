@@ -4786,3 +4786,93 @@ is genuinely narrow (this action runs from the same near-immediate `RecordTransa
 choke point regardless of webhook-vs-verify-callback path) and the warning-log fix above gives
 ops/finance real visibility into the rare case it does occur, the lighter-weight fix was chosen —
 revisit if the warning ever actually fires in production.
+
+## 2026-09-04 — SCRUM-236 (TT-7.3b-e): retainer settlement/invoicing design
+
+**Decision**: this ticket's own text explicitly called for the new Session-to-billing coupling to
+be "explicitly designed, not improvised" — a full architect design pass was run before any code was
+written (unlike the smaller sub-tickets in this epic, which went straight to implement-then-verify).
+All 7 of the drafted design points were confirmed with corrections, none were product forks (see
+each new file's own header comment for the full reasoning); the headline points:
+
+1. A line's `net_amount`/`fee_amount` are computed AND PERSISTED at session-`held` time (a new
+   `RecordOrganizationInvoiceLineForSessionAction`, hooked into `ChangeSessionStatusAction`), not
+   recomputed lazily at settlement — the gap here (weeks) is categorically different from
+   `GenerateCounsellorEarningsAction`'s own same-request drift window (TT-7.3b-d), so locking the
+   amount in at the billable event is correct, not just convenient.
+2. `organization_invoices` is keyed `(organization_id, currency, period_start)`, not just
+   `(organization_id, period_start)` — different counsellors covered by the same org can list rates
+   in different currencies, and summing mixed currencies into one `amount` would be a real bug.
+3. `SettleOrganizationInvoiceAction`/`ProcessOrganizationInvoiceSettlementJob` is a NEW action/job
+   pair, not built on top of `ChargeOrganizationForModelAction` (TT-7.3b-b) — that action's cost
+   computation assumes a single counsellor/listed amount, which has no meaning for a whole settled
+   period. Only the charge-and-record TAIL shape is mirrored (Transaction creation, a new
+   `TransactionStatusSourceEnum::orgSettlement` case, `RecordTransactionStatusAction` hookup), and
+   the periodic sweep dispatches ONE queued job per invoice (mirrors
+   `TriggerCounsellorPayoutAction`/`ProcessCounsellorPayoutJob`'s own split) so one org's
+   slow/erroring settlement can't block or crash every other org's invoice in the same run.
+4. A third `GenerateCounsellorEarningsAction` branch fans out one `CounsellorEarning` per invoice
+   line, using each line's ALREADY-COMPUTED `net_amount`/`fee_amount` directly. `gross_amount` for
+   this branch is the LINE's own total (`fee_amount + net_amount`), never `transaction->amount`
+   (the sum across every line/every counsellor for the whole period) — passing the latter would
+   have been a serious, easy-to-miss bug. The existing `unique(['transaction_id', 'counsellor_id'])`
+   constraint on `counsellor_earnings` (from TT-7.6b) would have rejected this branch the moment one
+   counsellor had two retainer sessions settled in the same invoice — dropped via a new migration
+   and replaced with a nullable-unique `organization_invoice_line_id` column as this branch's own,
+   correctly-scoped idempotency key. Verified the dropped constraint doesn't weaken protection for
+   the other two branches: every write to `counsellor_earnings` already goes exclusively through
+   this one action, which re-`lockForUpdate()`s the `Transaction` row and checks `earnings()->exists()`
+   before either of those branches ever runs.
+5. `RecordOrganizationInvoiceLineForSessionAction` must NEVER throw (a session reaching `held` is a
+   clinical fact that must always be recorded regardless of billing hygiene, unlike
+   `ChargeOrganizationForModelAction`, invoked by someone actively trying to pay who CAN be told
+   what's missing) and is called AFTER the session's own status save, not wrapped in any shared
+   transaction — billing accrual degrades to a logged warning on failure, never blocks or undoes
+   the clinical status transition.
+
+**My own decision, made independently and since verified by security review**: the aggregated
+settlement `Transaction` has no single "member" to use as `user_id` (that column is NOT NULLABLE).
+Resolved by querying the organization's owner-role admin, falling back to any admin if no owner
+somehow exists — there is no acting user in a periodic sweep, unlike every other Transaction-writing
+action in this codebase, so this is a new pattern rather than a directly reused one.
+Security-engineer review confirmed this is tenant-safe (`$organization->admins()` is scoped to that
+specific org instance — no cross-org misattribution possible).
+
+**Review findings, two real fixes applied (both money-correctness gaps in `SettleOrganizationInvoiceAction`)**:
+(1) nothing was stopping a caller from claiming a STILL-ACCRUING invoice mid-period (today only the
+periodic sweep calls this action, but a future admin manual-settle action, TT-7.3b-j, could call it
+directly) — since `RecordOrganizationInvoiceLineForSessionAction`'s own invoice lookup doesn't
+filter by status, a line held after such a premature claim would silently attach to an invoice whose
+`amount` was already fixed, generating a real `CounsellorEarning` for money never actually charged.
+Fixed by requiring `period_end` to have fully passed (mirrors the sweep's own `< today` boundary
+exactly) before an invoice can be claimed — this makes the race structurally impossible, since once
+a period has closed, no future `held` session can ever compute that same `period_start` again. (2)
+no check that the organization's saved payment instrument's currency actually matches the invoice
+being settled (an org with retainer counsellors listed in more than one currency could have its
+instrument registered in a different currency than a given invoice) — fixed with an explicit guard,
+matching this method's other precondition checks, rather than relying on Paystack to reject it.
+
+**A "critical" finding from BOTH the reviewer and security-engineer subagents, independently
+verified and rejected as a false positive**: both flagged `RecordOrganizationInvoiceLineForSessionAction`'s
+use of `firstOrCreate()` (instead of `createOrFirst()`, this codebase's documented convention for
+exactly this kind of race — see `GrantPaymentAccessAction`) as non-atomic and capable of silently
+losing billing accrual under a genuine concurrent race. Verified directly against this app's
+installed Laravel version (12) by reading `Illuminate\Database\Eloquent\Builder::firstOrCreate()`'s
+actual source and reproducing the exact race with a raw pre-inserted competing row in a real test:
+`firstOrCreate()` already delegates to `createOrFirst()` on a miss, which already catches the
+unique-constraint violation and recovers — confirmed to NOT throw, both for `Model::query()` and
+for a relation-scoped call (`$invoice->lines()->firstOrCreate(...)`). The two are behaviorally
+identical for this exact race in this Laravel version; the `GrantPaymentAccessAction` comment this
+finding was pattern-matched against is likely stale (written before this Laravel-version fix
+landed, never revisited). Switched to `createOrFirst()` anyway — purely to make the race-safety
+explicit to a future reader and match the established convention, not because anything was broken
+— but this was NOT treated as a real bug fix, since it wasn't one.
+
+**Deferred, not fixed here**: a `TransactionStatusEnum::abandoned` settlement outcome leaves its
+`OrganizationInvoice` stuck in `pending` forever (the periodic sweep only re-claims `open`
+invoices, and `UpdateOrganizationInvoiceStatusAction` has no mapping for `abandoned`). This mirrors
+a PRE-EXISTING gap (`RecordTransactionStatusAction::TERMINAL_STATUSES` already excludes `abandoned`
+for every transaction type, not just settlement), so it is not a regression introduced by this
+ticket — filed as SCRUM-244 rather than blocking this one, per the same "never silently ignore a
+finding, but don't block on an unrelated pre-existing gap" precedent as SCRUM-243 (TT-7.3b-c's own
+deferred charge-then-record ordering finding).

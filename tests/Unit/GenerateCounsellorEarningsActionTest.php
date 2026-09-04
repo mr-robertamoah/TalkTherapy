@@ -10,10 +10,13 @@ use App\Enums\OrganizationCounsellorStatusEnum;
 use App\Enums\TherapyPaymentTypeEnum;
 use App\Enums\TransactionStatusEnum;
 use App\Models\Counsellor;
+use App\Models\CounsellorEarning;
 use App\Models\GroupTherapy;
 use App\Models\Organization;
 use App\Models\OrganizationCounsellor;
 use App\Models\OrganizationCounsellorCompensation;
+use App\Models\OrganizationInvoice;
+use App\Models\OrganizationInvoiceLine;
 use App\Models\PaymentAccessGrant;
 use App\Models\Session;
 use App\Models\Therapy;
@@ -560,6 +563,144 @@ test('an out-of-range sharePercentage bypassing normal validation is clamped, no
 
     // Clamped to 100%, never allowed to exceed the actual transaction amount.
     expect($transaction->earnings()->first()->gross_amount)->toBe(10000);
+});
+
+// TT-7.3b-e/SCRUM-236: a settled retainer invoice fans out into ONE earning per line, using each
+// line's already-computed net_amount/fee_amount directly -- no recomputation.
+
+test('a settled invoice with one line generates one earning whose gross is the LINE total, never the transaction amount', function () {
+    $counsellor = Counsellor::factory()->create(['user_id' => User::factory()]);
+    $invoice = OrganizationInvoice::factory()->create(['amount' => 999999]);
+    $line = OrganizationInvoiceLine::factory()->create([
+        'organization_invoice_id' => $invoice->id,
+        'counsellor_id' => $counsellor->id,
+        'net_amount' => 4500,
+        'fee_amount' => 500,
+    ]);
+    $transaction = Transaction::factory()->create([
+        'status' => TransactionStatusEnum::success->value,
+        'for_type' => OrganizationInvoice::class,
+        'for_id' => $invoice->id,
+        'amount' => 999999,
+    ]);
+
+    GenerateCounsellorEarningsAction::new()->execute($transaction);
+
+    $this->assertDatabaseCount('counsellor_earnings', 1);
+    $earning = CounsellorEarning::first();
+    expect($earning->organization_invoice_line_id)->toBe($line->id);
+    expect($earning->counsellor_id)->toBe($counsellor->id);
+    expect($earning->net_amount)->toBe(4500);
+    expect($earning->fee_amount)->toBe(500);
+    // Architect finding (blocking): gross_amount is THIS LINE's own total (5000), never
+    // $transaction->amount (999999 -- the sum across every line/counsellor in the whole period).
+    expect($earning->gross_amount)->toBe(5000);
+});
+
+test('a settled invoice with two lines for the SAME counsellor generates two separate earnings', function () {
+    // Architect/security finding: the existing unique(['transaction_id', 'counsellor_id'])
+    // constraint would otherwise reject the second line's earning outright -- this branch's own
+    // organization_invoice_line_id idempotency key is what makes this possible.
+    $counsellor = Counsellor::factory()->create(['user_id' => User::factory()]);
+    $invoice = OrganizationInvoice::factory()->create();
+    $lineOne = OrganizationInvoiceLine::factory()->create([
+        'organization_invoice_id' => $invoice->id,
+        'counsellor_id' => $counsellor->id,
+        'net_amount' => 1000,
+        'fee_amount' => 100,
+    ]);
+    $lineTwo = OrganizationInvoiceLine::factory()->create([
+        'organization_invoice_id' => $invoice->id,
+        'counsellor_id' => $counsellor->id,
+        'net_amount' => 2000,
+        'fee_amount' => 200,
+    ]);
+    $transaction = Transaction::factory()->create([
+        'status' => TransactionStatusEnum::success->value,
+        'for_type' => OrganizationInvoice::class,
+        'for_id' => $invoice->id,
+        'amount' => 3300,
+    ]);
+
+    GenerateCounsellorEarningsAction::new()->execute($transaction);
+
+    $this->assertDatabaseCount('counsellor_earnings', 2);
+    expect(CounsellorEarning::where('organization_invoice_line_id', $lineOne->id)->first()->net_amount)->toBe(1000);
+    expect(CounsellorEarning::where('organization_invoice_line_id', $lineTwo->id)->first()->net_amount)->toBe(2000);
+});
+
+test('a settled invoice with lines for two different counsellors generates one earning per counsellor', function () {
+    $counsellorA = Counsellor::factory()->create(['user_id' => User::factory()]);
+    $counsellorB = Counsellor::factory()->create(['user_id' => User::factory()]);
+    $invoice = OrganizationInvoice::factory()->create();
+    OrganizationInvoiceLine::factory()->create([
+        'organization_invoice_id' => $invoice->id,
+        'counsellor_id' => $counsellorA->id,
+        'net_amount' => 1000,
+        'fee_amount' => 100,
+    ]);
+    OrganizationInvoiceLine::factory()->create([
+        'organization_invoice_id' => $invoice->id,
+        'counsellor_id' => $counsellorB->id,
+        'net_amount' => 2000,
+        'fee_amount' => 200,
+    ]);
+    $transaction = Transaction::factory()->create([
+        'status' => TransactionStatusEnum::success->value,
+        'for_type' => OrganizationInvoice::class,
+        'for_id' => $invoice->id,
+        'amount' => 3300,
+    ]);
+
+    GenerateCounsellorEarningsAction::new()->execute($transaction);
+
+    $this->assertDatabaseCount('counsellor_earnings', 2);
+    expect(CounsellorEarning::pluck('counsellor_id')->sort()->values()->all())
+        ->toBe(collect([$counsellorA->id, $counsellorB->id])->sort()->values()->all());
+});
+
+test('calling execute twice for a settled invoice does not create duplicate per-line earnings', function () {
+    $counsellor = Counsellor::factory()->create(['user_id' => User::factory()]);
+    $invoice = OrganizationInvoice::factory()->create();
+    OrganizationInvoiceLine::factory()->create([
+        'organization_invoice_id' => $invoice->id,
+        'counsellor_id' => $counsellor->id,
+    ]);
+    $transaction = Transaction::factory()->create([
+        'status' => TransactionStatusEnum::success->value,
+        'for_type' => OrganizationInvoice::class,
+        'for_id' => $invoice->id,
+    ]);
+
+    GenerateCounsellorEarningsAction::new()->execute($transaction);
+    GenerateCounsellorEarningsAction::new()->execute($transaction);
+
+    $this->assertDatabaseCount('counsellor_earnings', 1);
+});
+
+// Mirrors Therapy::counsellor()'s own withTrashed() precedent: the settlement gap between a
+// session occurring and month-end settlement can be weeks, long enough for the counsellor to
+// have since deleted their account -- an already-earned line must still generate its earning.
+test('a settled invoice line whose counsellor has since been soft-deleted still generates its earning', function () {
+    $counsellor = Counsellor::factory()->create(['user_id' => User::factory()]);
+    $invoice = OrganizationInvoice::factory()->create();
+    OrganizationInvoiceLine::factory()->create([
+        'organization_invoice_id' => $invoice->id,
+        'counsellor_id' => $counsellor->id,
+        'net_amount' => 1000,
+        'fee_amount' => 100,
+    ]);
+    $counsellor->delete();
+    $transaction = Transaction::factory()->create([
+        'status' => TransactionStatusEnum::success->value,
+        'for_type' => OrganizationInvoice::class,
+        'for_id' => $invoice->id,
+    ]);
+
+    GenerateCounsellorEarningsAction::new()->execute($transaction);
+
+    $this->assertDatabaseCount('counsellor_earnings', 1);
+    expect(CounsellorEarning::first()->counsellor_id)->toBe($counsellor->id);
 });
 
 test('generating counsellor earnings never touches an existing payment_access_grants row', function () {

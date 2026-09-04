@@ -53,3 +53,7 @@ Schedule::call(function () {
 Schedule::call(function () {
     AppService::new()->expireStaleCompensationRequests();
 })->dailyAt('02:15');
+
+Schedule::call(function () {
+    AppService::new()->settleDueOrganizationInvoices();
+})->dailyAt('03:00');

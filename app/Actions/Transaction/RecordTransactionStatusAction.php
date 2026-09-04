@@ -4,6 +4,7 @@ namespace App\Actions\Transaction;
 
 use App\Actions\Action;
 use App\Actions\Organization\CaptureOrganizationPaymentInstrumentAction;
+use App\Actions\Organization\UpdateOrganizationInvoiceStatusAction;
 use App\Enums\TransactionStatusEnum;
 use App\Models\Transaction;
 use Illuminate\Support\Facades\DB;
@@ -74,6 +75,12 @@ class RecordTransactionStatusAction extends Action
                 GenerateCounsellorEarningsAction::new()->execute($transaction);
                 CaptureOrganizationPaymentInstrumentAction::new()->execute($transaction, $gatewayData['authorization'] ?? []);
             }
+
+            // TT-7.3b-e/SCRUM-236: unlike the two hooks above, this fires for EVERY terminal
+            // status (success AND failed) -- a failed settlement charge must flip its invoice to
+            // `failed` too, not just a successful one to `settled`. A no-op for every other
+            // transaction subject (Therapy/Session/GroupTherapy/Organization).
+            UpdateOrganizationInvoiceStatusAction::new()->execute($transaction, $status);
 
             return $transaction;
         });

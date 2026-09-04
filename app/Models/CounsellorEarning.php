@@ -11,8 +11,9 @@ class CounsellorEarning extends Model
     use HasFactory;
 
     protected $fillable = [
-        'transaction_id', 'counsellor_id', 'counsellor_payout_id', 'gross_amount', 'fee_amount',
-        'net_amount', 'currency', 'share_basis', 'share_percentage', 'status',
+        'transaction_id', 'counsellor_id', 'organization_invoice_line_id', 'counsellor_payout_id',
+        'gross_amount', 'fee_amount', 'net_amount', 'currency', 'share_basis', 'share_percentage',
+        'status',
     ];
 
     protected $casts = [
@@ -29,6 +30,14 @@ class CounsellorEarning extends Model
     public function counsellor()
     {
         return $this->belongsTo(Counsellor::class);
+    }
+
+    // TT-7.3b-e/SCRUM-236: set only for an earning generated from a settled retainer invoice --
+    // this row's own idempotency key for that branch (see GenerateCounsellorEarningsAction's
+    // generateForSettledInvoice()), null for the other two generation branches.
+    public function organizationInvoiceLine()
+    {
+        return $this->belongsTo(OrganizationInvoiceLine::class);
     }
 
     public function statusHistories()
