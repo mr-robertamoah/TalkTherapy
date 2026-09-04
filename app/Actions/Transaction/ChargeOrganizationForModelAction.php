@@ -116,12 +116,11 @@ class ChargeOrganizationForModelAction extends Action
             throw new TransactionException('This has already been paid for.', 422);
         }
 
-        $payable = GetPayableAmountAction::new()->execute($dto->for);
-        $currency = $payable['currency'];
+        $currency = GetPayableAmountAction::new()->execute($dto->for)['currency'];
         // Minor units -- the counsellor's own listed rate for this specific engagement, used both
         // as ComputeCounsellorCompensationShareAction's COUNSELLOR_RATE basis AND as the platform
         // fee's own basis below (never the org-compensation share itself -- see the fee comment).
-        $counsellorListedAmount = isset($payable['amount']) ? (int) round($payable['amount'] * 100) : null;
+        $counsellorListedAmount = ResolveCounsellorListedAmountAction::new()->execute($dto->for);
 
         $counsellorShare = ComputeCounsellorCompensationShareAction::new()->execute($affiliation->latestCompensation, $counsellorListedAmount);
 

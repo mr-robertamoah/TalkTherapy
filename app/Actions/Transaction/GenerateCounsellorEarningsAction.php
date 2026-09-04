@@ -3,17 +3,19 @@
 namespace App\Actions\Transaction;
 
 use App\Actions\Action;
+use App\Actions\Organization\ComputeCounsellorCompensationShareAction;
+use App\Actions\Organization\GetActiveOrganizationCounsellorAction;
 use App\Enums\CounsellorEarningShareBasisEnum;
 use App\Enums\CounsellorEarningStatusEnum;
 use App\Enums\CounsellorEarningStatusSourceEnum;
 use App\Models\Counsellor;
 use App\Models\GroupTherapy;
 use App\Models\Organization;
-use App\Models\Session;
 use App\Models\Therapy;
 use App\Models\Transaction;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use InvalidArgumentException;
 
 // TT-7.6b/SCRUM-226: called from RecordTransactionStatusAction, the existing single choke point
 // for a transaction actually becoming SUCCESS -- so this only ever runs once per transaction in
@@ -23,23 +25,14 @@ use Illuminate\Support\Facades\Log;
 // ticket's job to fully close (that race, if real, predates and is outside TT-7.6b's scope).
 class GenerateCounsellorEarningsAction extends Action
 {
-    // Deliberately a no-op for an org-financed transaction (organization_id set) -- splitting
-    // that between the org and its affiliated counsellors is TT-7.3b's job, layered on top of
-    // this payout mechanism once it exists. Paying a counsellor 100% of an org-financed
-    // transaction's share here, because shareEqually/sharePercentage only govern same-therapy
-    // multi-counsellor splits and say nothing about org-vs-counsellor splits, would be wrong.
+    // TT-7.3b-a/SCRUM-231 (security-engineer finding): an org-payment-instrument-registration
+    // charge's subject IS an Organization (a different concept from organization_id below, which
+    // means "an org financed this Therapy/Session/GroupTherapy payment") -- this was already an
+    // accidental no-op (neither instanceof check below ever matched), but an explicit guard makes
+    // that intentional rather than incidental, so a future change to the $for-resolution logic
+    // below can't silently start generating bogus earnings off one.
     public function execute(Transaction $transaction): void
     {
-        if ($transaction->organization_id !== null) {
-            return;
-        }
-
-        // TT-7.3b-a/SCRUM-231 (security-engineer finding): an org-payment-instrument-registration
-        // charge's subject IS an Organization (a different concept from organization_id above,
-        // which means "an org financed this Therapy/Session/GroupTherapy payment") -- this was
-        // already an accidental no-op (neither instanceof check below ever matched), but an
-        // explicit guard makes that intentional rather than incidental, so a future change to the
-        // $for-resolution logic below can't silently start generating bogus earnings off one.
         if ($transaction->for instanceof Organization) {
             return;
         }
@@ -51,15 +44,34 @@ class GenerateCounsellorEarningsAction extends Action
                 return;
             }
 
-            $for = $transaction->for instanceof Session ? $transaction->for->for : $transaction->for;
+            $for = ResolveTransactionSubjectAction::new()->execute($transaction->for);
 
             if ($for instanceof Therapy) {
-                $this->generateForIndividual($transaction, $for);
+                // TT-7.3b-d/SCRUM-235: this used to be a blanket no-op for every org-financed
+                // transaction ($transaction->organization_id !== null) -- fully fixed now for the
+                // individual-Therapy/Session case (the live bug this ticket exists to close).
+                if ($transaction->organization_id !== null) {
+                    $this->generateForOrgFinancedIndividual($transaction, $for);
+                } else {
+                    $this->generateForIndividual($transaction, $for);
+                }
 
                 return;
             }
 
             if ($for instanceof GroupTherapy) {
+                // Deliberately still a no-op for an org-financed GroupTherapy -- carried forward
+                // from TT-7.3b-b/-c's own scope boundary (GroupTherapy org billing was never
+                // built: this transaction's `amount` is the client's own listed price, charged to
+                // their personal card with organization_id set as pure attribution, not the
+                // fee+share figure TT-7.3b-b computes for an individual engagement -- the formula
+                // below does not apply to it). Paying a counsellor 100% of it here, because
+                // shareEqually/sharePercentage only govern same-therapy multi-counsellor splits
+                // and say nothing about org-vs-counsellor splits, would still be wrong.
+                if ($transaction->organization_id !== null) {
+                    return;
+                }
+
                 $this->generateForGroup($transaction, $for);
             }
         });
@@ -76,7 +88,98 @@ class GenerateCounsellorEarningsAction extends Action
             return;
         }
 
-        $this->createEarning($transaction, $therapy->counsellor, $transaction->amount);
+        $feeAmount = ComputePlatformFeeAction::new()->execute($transaction->amount);
+
+        $this->createEarning($transaction, $therapy->counsellor, $transaction->amount, $feeAmount, $transaction->amount - $feeAmount);
+    }
+
+    // TT-7.3b-d/SCRUM-235: the collection side (TT-7.3b-b/-c) already computed and charged the
+    // org `transaction->amount` = the counsellor's compensation-driven share + the platform fee
+    // (Decision 2, SCRUM-230 review) -- never a gross client price to deduct a fee FROM the way
+    // the personal-pay formula above does. This re-derives ONLY the counsellor's share (net_amount)
+    // via the same shared compensation primitives TT-7.3b-b itself uses, then takes fee_amount as
+    // the REMAINDER of transaction->amount, not an independently recomputed figure -- this is what
+    // mechanically guarantees this ticket's own regression invariant
+    // (earning.net_amount + earning.fee_amount == transaction.amount) holds by construction, even
+    // if platform_fee_percentage or the counsellor's compensation terms were to drift between
+    // charge-time and this (near-immediate, same-request) earnings-generation call.
+    private function generateForOrgFinancedIndividual(Transaction $transaction, Therapy $therapy): void
+    {
+        if (! $therapy->counsellor) {
+            Log::warning('Cannot generate an org-financed counsellor earning -- therapy has no assigned counsellor.', [
+                'transaction_id' => $transaction->id,
+                'therapy_id' => $therapy->id,
+            ]);
+
+            return;
+        }
+
+        $affiliation = GetActiveOrganizationCounsellorAction::new()->execute($therapy->counsellor, $transaction->organization);
+
+        if (! $affiliation || ! $affiliation->latestCompensation) {
+            Log::warning('Cannot generate an org-financed counsellor earning -- no active compensation terms with this organization.', [
+                'transaction_id' => $transaction->id,
+                'therapy_id' => $therapy->id,
+                'organization_id' => $transaction->organization_id,
+            ]);
+
+            return;
+        }
+
+        $counsellorListedAmount = ResolveCounsellorListedAmountAction::new()->execute($transaction->for);
+
+        // Security-engineer finding: ComputeCounsellorCompensationShareAction throws for a
+        // COUNSELLOR_RATE-basis compensation with no listed amount available -- unlike this
+        // method's other two guard clauses, that's not this method's own precondition to
+        // pre-check (the basis is a property of $affiliation->latestCompensation this method
+        // doesn't otherwise inspect), so it's caught here instead of propagating. Uncaught, it
+        // would roll back RecordTransactionStatusAction's whole DB::transaction() (including the
+        // status update itself, by that action's own design) via the outer webhook/verify-callback
+        // caller, permanently stranding an already-successfully-charged transaction as pending --
+        // Paystack retrying the identical webhook would just hit the same exception again.
+        try {
+            $netAmount = ComputeCounsellorCompensationShareAction::new()->execute($affiliation->latestCompensation, $counsellorListedAmount);
+        } catch (InvalidArgumentException $exception) {
+            Log::warning('Cannot generate an org-financed counsellor earning -- unable to compute the compensation-driven share.', [
+                'transaction_id' => $transaction->id,
+                'therapy_id' => $therapy->id,
+                'organization_id' => $transaction->organization_id,
+                'exception' => $exception->getMessage(),
+            ]);
+
+            return;
+        }
+
+        // Security-engineer finding: this remainder-based fee_amount mechanically satisfies the
+        // regression invariant against whatever transaction->amount actually is, but says nothing
+        // about whether $netAmount still matches what was ACTUALLY charged for at TT-7.3b-b's
+        // charge time -- compensation terms (or platform_fee_percentage) could in principle change
+        // in the window between that charge and this near-immediate earnings-generation call. A
+        // drift silently reclassifies the difference as platform fee revenue with no other trace,
+        // so it's surfaced here as a warning (not corrected -- there is no persisted charge-time
+        // split to correct AGAINST) purely for finance/ops visibility, comparing against what the
+        // SAME fee computation would independently yield off today's listed amount.
+        $expectedFeeAmount = $counsellorListedAmount !== null ? ComputePlatformFeeAction::new()->execute($counsellorListedAmount) : null;
+
+        if ($expectedFeeAmount !== null && $transaction->amount - $netAmount !== $expectedFeeAmount) {
+            Log::warning('Org-financed counsellor earning: recomputed compensation share does not match the amount implied by the original charge -- compensation terms or the platform fee may have changed since. Flagging for manual reconciliation.', [
+                'transaction_id' => $transaction->id,
+                'therapy_id' => $therapy->id,
+                'organization_id' => $transaction->organization_id,
+                'recomputed_net_amount' => $netAmount,
+                'expected_fee_amount' => $expectedFeeAmount,
+                'transaction_amount' => $transaction->amount,
+            ]);
+        }
+
+        // Defensive clamp, not expected in practice (see the method-level comment on the
+        // drift assumption): a negative fee_amount would mean the counsellor's recomputed share
+        // now exceeds what the org was actually charged -- never silently pay out more than the
+        // transaction actually collected.
+        $netAmount = max(0, min($netAmount, $transaction->amount));
+        $feeAmount = $transaction->amount - $netAmount;
+
+        $this->createEarning($transaction, $therapy->counsellor, $transaction->amount, $feeAmount, $netAmount);
     }
 
     private function generateForGroup(Transaction $transaction, GroupTherapy $groupTherapy): void
@@ -123,11 +226,14 @@ class GenerateCounsellorEarningsAction extends Action
 
         foreach ($counsellors as $index => $counsellor) {
             $gross = $baseShare + ($index === 0 ? $remainder : 0);
+            $feeAmount = ComputePlatformFeeAction::new()->execute($gross);
 
             $this->createEarning(
                 $transaction,
                 $counsellor,
                 $gross,
+                $feeAmount,
+                $gross - $feeAmount,
                 $shareBasis,
                 $shareEqually ? null : $poolPercentage
             );
@@ -138,19 +244,16 @@ class GenerateCounsellorEarningsAction extends Action
         Transaction $transaction,
         Counsellor $counsellor,
         int $grossAmount,
+        int $feeAmount,
+        int $netAmount,
         ?string $shareBasis = null,
         ?int $sharePercentage = null
     ): void {
-        // TT-7.3b-b/SCRUM-233: extracted to ComputePlatformFeeAction -- the ONE place this
-        // basis-points multiplication happens, shared with ChargeOrganizationForModelAction
-        // (reviewer finding: this was previously duplicated verbatim between the two).
-        $feeAmount = ComputePlatformFeeAction::new()->execute($grossAmount);
-
         $earning = $transaction->earnings()->create([
             'counsellor_id' => $counsellor->id,
             'gross_amount' => $grossAmount,
             'fee_amount' => $feeAmount,
-            'net_amount' => $grossAmount - $feeAmount,
+            'net_amount' => $netAmount,
             'currency' => $transaction->currency,
             'share_basis' => $shareBasis,
             'share_percentage' => $sharePercentage,
