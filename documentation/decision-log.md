@@ -4565,3 +4565,69 @@ TT-7.6a→TT-7.6d precedent for controller-layer findings on a not-yet-built HTT
 replacing an org's payment instrument in place currently sends no admin-facing notification,
 unlike `CreateCounsellorPayoutDestinationAction`'s `PayoutDestinationChangedNotification` — worth
 adding once TT-7.3b-i's controller/UI exists to actually reach this flow.
+
+---
+
+## 2026-09-04 — SCRUM-233 (TT-7.3b-b): shared org-charge primitive, architect review
+
+**Decision**: `ChargeOrganizationForModelAction` computes an organization's actual cost for a
+single Therapy/Session engagement as platform-fee + counsellor's compensation-driven share, then
+charges the org's saved payment instrument (TT-7.3b-a) and records a `Transaction`. The
+consequential design question — what does the platform fee percentage apply to — was resolved by
+inference, then verified with an architect pass before merge, since it's real money math every
+later ticket in this epic builds on: **the fee is a percentage of the counsellor's own LISTED
+rate** (`GetPayableAmountAction`'s existing resolution, the same one the personal-pay flow already
+uses), never the org-compensation share itself. This is the only reading consistent with Decision
+2's own FREE-compensation example ("the org is simply charged the platform fee alone" — a fee
+computed on a $0 share would be $0, contradicting that) and, per the architect, is also the direct
+generalization of how the personal-pay flow already computes its fee (a percentage of "the value
+of the session," which happens to equal the gross amount only because a client pays the listed
+price directly — org billing breaks that equivalence, but the fee's basis doesn't move).
+
+**Architect findings applied before merge**: (1) added a `PERCENTAGE-negotiatedRate` test case —
+the one compensation branch where "fee-on-listed-rate, not fee-on-negotiated-rate" is least
+self-evident, previously unexercised through this action. (2) Narrowed this action's own header
+comment, which overclaimed being "the ONE shared mechanism" for both TT-7.3b-c AND TT-7.3b-e:
+TT-7.3b-e's `for` will be a whole settled invoice period (via a not-yet-built `OrganizationInvoice`
+model, per this epic's earlier architect decision), potentially spanning several sessions and
+counsellors — this action's single-counsellor/single-listed-amount cost resolution has no defined
+behavior for that shape. TT-7.3b-e must decide, when it starts, whether to extend this action with
+an invoice-aware branch or call the lower-level compensation primitives directly per line item and
+reuse only this action's charge-and-record tail. Not decided now, since `e`'s exact needs could
+still shift before it's built.
+
+**Explicit scope boundary, not a gap**: this action has NO duplicate-charge protection of its own
+— `RecordTransactionStatusAction`'s terminal-status guard only protects a `Transaction` row that
+already exists from regressing status, not from a second, independent call creating a second
+successful charge against the org's card. TT-7.3b-c and TT-7.3b-e must each build their own
+"already charged for this engagement/period" guard before calling into this primitive, mirroring
+`EnsureCanInitiateChargeAction`'s role in the personal-pay flow — logged here so it isn't
+discovered as a surprise gap when those tickets start.
+
+**Why**: the fee-basis question was decided by inference plus an explicit architect verification
+pass rather than asked as a further user question, since it was a technical interpretation of an
+already-answered product decision (Decision 2), not a new product fork — consistent with this
+session's standing practice of resolving that class of question via review rather than guessing
+silently or re-asking settled ground.
+
+**Reviewer finding, fixed**: the fee's basis-points-conversion-and-multiply logic was duplicated
+verbatim between this action and `GenerateCounsellorEarningsAction` (the two callers pass different
+base amounts — a compensation-share-deducted-from-gross for personal-pay, a listed-rate-added-on-top
+for org-financed — but the arithmetic itself was byte-for-byte identical). Extracted to
+`ComputePlatformFeeAction`, now the ONE place this multiplication happens for both callers.
+
+**Security-engineer findings, fixed**: (1) the extracted `ComputePlatformFeeAction` now carries the
+same overflow guard `ComputeCounsellorCompensationShareAction` already has on its own basis-points
+multiplication — closed as a side effect of the reviewer's extraction, not a separate change.
+(2) The "callers own eligibility" boundary was under-specified — expanded this action's own header
+comment to itemize the FULL checklist TT-7.3b-c/-e must each build (payment_type=paid, per-alignment,
+supported currency, the member's actual org-membership/billing-mode relationship, mirroring
+`EnsureOrganizationCanPayForModelAction`'s own checks — not just duplicate-charge protection).
+(3) Added a cross-org-affiliation test (a counsellor affiliated only with a DIFFERENT org must never
+be treated as covering the org actually being billed) and a Session-under-GroupTherapy rejection
+test, both previously unexercised.
+
+**Noted, not fixed here** (pre-existing gap, not introduced by this ticket): `CreateTherapyRequest`/
+`CreateGroupTherapyRequest`'s `amount`/`inPersonAmount` validation is just `numeric`, no upper bound
+— this ticket makes that same unbounded value the input to a second chained money computation. Worth
+a small follow-up validation-hardening ticket, not blocking this one.

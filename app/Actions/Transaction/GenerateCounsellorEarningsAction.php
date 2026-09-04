@@ -12,7 +12,6 @@ use App\Models\Organization;
 use App\Models\Session;
 use App\Models\Therapy;
 use App\Models\Transaction;
-use App\Services\SettingsService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -142,14 +141,10 @@ class GenerateCounsellorEarningsAction extends Action
         ?string $shareBasis = null,
         ?int $sharePercentage = null
     ): void {
-        // Basis points (percentage * 100), not the raw float percentage, are what actually
-        // multiply the money -- SettingsService allows an admin to set a fractional fee (e.g.
-        // 12.5%), and floating-point arithmetic directly on a currency amount can drift by a
-        // minor unit (reviewer finding). Converting the percentage to an integer once, up front,
-        // keeps every subsequent operation in the same integer/minor-unit space as the rest of
-        // this file's money math.
-        $feeBasisPoints = (int) round(SettingsService::new()->getPlatformFeePercentage() * 100);
-        $feeAmount = intdiv($grossAmount * $feeBasisPoints, 10000);
+        // TT-7.3b-b/SCRUM-233: extracted to ComputePlatformFeeAction -- the ONE place this
+        // basis-points multiplication happens, shared with ChargeOrganizationForModelAction
+        // (reviewer finding: this was previously duplicated verbatim between the two).
+        $feeAmount = ComputePlatformFeeAction::new()->execute($grossAmount);
 
         $earning = $transaction->earnings()->create([
             'counsellor_id' => $counsellor->id,
