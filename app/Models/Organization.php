@@ -50,6 +50,13 @@ class Organization extends Model
         return $this->hasMany(OrganizationMember::class);
     }
 
+    // TT-7.3b-a/SCRUM-231: at most one row (unique FK) -- what a future pay-per-use/retainer
+    // charge (TT-7.3b-c/-e) charges against via PaystackClient::chargeAuthorization().
+    public function paymentInstrument()
+    {
+        return $this->hasOne(OrganizationPaymentInstrument::class);
+    }
+
     // SCRUM-182/TT-10.4: tagged fileables pivot, same pattern as Counsellor::avatarFile()/
     // coverFile() (TT-10.2) -- withPivotValue (not the similarly-named, nonexistent
     // wherePivotValue) is what actually constrains reads AND auto-populates the tag column on

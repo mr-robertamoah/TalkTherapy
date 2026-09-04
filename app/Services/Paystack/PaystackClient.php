@@ -63,6 +63,20 @@ class PaystackClient extends Service
             ->json();
     }
 
+    // TT-7.3b-a/SCRUM-231: charges a previously-captured, reusable authorization_code on demand --
+    // what a future pay-per-use/retainer charge (TT-7.3b-c/-e) actually calls to bill an
+    // organization's saved payment instrument, with no checkout redirect involved (unlike
+    // initializeTransaction()). Response shape mirrors verifyTransaction()'s exactly (same
+    // data.status/data.authorization fields), confirmed via Paystack's own API docs during this
+    // ticket's spike.
+    public function chargeAuthorization(array $data): array
+    {
+        return $this->request()
+            ->post('/transaction/charge_authorization', $data)
+            ->throw()
+            ->json();
+    }
+
     private function request(): PendingRequest
     {
         return Http::baseUrl(config('services.paystack.base_url'))

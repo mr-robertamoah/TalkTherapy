@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Actions\Organization\CreateOrganizationAction;
+use App\Actions\Organization\EnsureCanRegisterOrganizationPaymentInstrumentAction;
 use App\Actions\Organization\EnsureOrganizationDataIsValidAction;
 use App\Actions\Organization\EnsureUserIsOrganizationAdminAction;
 use App\Actions\Organization\GetMyAdministeredOrganizationsAction;
@@ -13,9 +14,11 @@ use App\Actions\Organization\GetOrganizationCounsellorsAction;
 use App\Actions\Organization\GetOrganizationDirectoryAction;
 use App\Actions\Organization\GetOrganizationMembersAction;
 use App\Actions\Organization\GetOrganizationRequestQueueAction;
+use App\Actions\Organization\InitiateOrganizationPaymentInstrumentRegistrationAction;
 use App\Actions\Organization\UpdateOrganizationAction;
 use App\DTOs\GetOrganizationDirectoryDTO;
 use App\DTOs\OrganizationDTO;
+use App\DTOs\OrganizationPaymentInstrumentDTO;
 use App\Models\Organization;
 use App\Models\User;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -27,6 +30,17 @@ class OrganizationService extends Service
         EnsureOrganizationDataIsValidAction::new()->execute($dto);
 
         return CreateOrganizationAction::new()->execute($dto);
+    }
+
+    // TT-7.3b-a/SCRUM-231: mirrors PayoutService::onboardDestination()'s shape exactly -- the
+    // ensure-check is called both here AND (defense in depth) inside the action itself, so a
+    // future caller of the action directly (e.g. a queued job) stays safe even without going
+    // through this service first.
+    public function registerPaymentInstrument(OrganizationPaymentInstrumentDTO $dto): array
+    {
+        EnsureCanRegisterOrganizationPaymentInstrumentAction::new()->execute($dto);
+
+        return InitiateOrganizationPaymentInstrumentRegistrationAction::new()->execute($dto);
     }
 
     public function updateOrganization(OrganizationDTO $dto): Organization

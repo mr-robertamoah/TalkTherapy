@@ -12,4 +12,11 @@ return [
         'GHS' => (int) env('MINIMUM_PAYOUT_AMOUNT_GHS', 5000),
         'USD' => (int) env('MINIMUM_PAYOUT_AMOUNT_USD', 1000),
     ],
+
+    // TT-7.3b-a (SCRUM-231): the nominal charge run through an org's card to capture a reusable
+    // Paystack authorization when registering a payment instrument.
+    'organization_payment_instrument_verification_amount' => [
+        'GHS' => (int) env('ORG_PAYMENT_INSTRUMENT_VERIFICATION_AMOUNT_GHS', 100),
+        'USD' => (int) env('ORG_PAYMENT_INSTRUMENT_VERIFICATION_AMOUNT_USD', 100),
+    ],
 ];

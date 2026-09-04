@@ -8,6 +8,7 @@ use App\Enums\CounsellorEarningStatusEnum;
 use App\Enums\CounsellorEarningStatusSourceEnum;
 use App\Models\Counsellor;
 use App\Models\GroupTherapy;
+use App\Models\Organization;
 use App\Models\Session;
 use App\Models\Therapy;
 use App\Models\Transaction;
@@ -31,6 +32,16 @@ class GenerateCounsellorEarningsAction extends Action
     public function execute(Transaction $transaction): void
     {
         if ($transaction->organization_id !== null) {
+            return;
+        }
+
+        // TT-7.3b-a/SCRUM-231 (security-engineer finding): an org-payment-instrument-registration
+        // charge's subject IS an Organization (a different concept from organization_id above,
+        // which means "an org financed this Therapy/Session/GroupTherapy payment") -- this was
+        // already an accidental no-op (neither instanceof check below ever matched), but an
+        // explicit guard makes that intentional rather than incidental, so a future change to the
+        // $for-resolution logic below can't silently start generating bogus earnings off one.
+        if ($transaction->for instanceof Organization) {
             return;
         }
 

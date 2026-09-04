@@ -106,6 +106,30 @@ test('a platform setting records which super admin last updated it', function ()
     expect($setting->updated_by_id)->toBe($superAdmin->id);
 });
 
+// TT-7.3b-a/SCRUM-231: the nominal charge that captures a reusable Paystack authorization when
+// registering an organization's payment instrument -- same per-currency JSON-map shape as
+// getMinimumPayoutAmount(), for the same reason (reuse the one generic settings mechanism).
+
+test('getOrganizationPaymentInstrumentVerificationAmount falls back to the per-currency config default when unset', function () {
+    expect(SettingsService::new()->getOrganizationPaymentInstrumentVerificationAmount('GHS'))
+        ->toBe(config('settings.organization_payment_instrument_verification_amount.GHS'));
+    expect(SettingsService::new()->getOrganizationPaymentInstrumentVerificationAmount('USD'))
+        ->toBe(config('settings.organization_payment_instrument_verification_amount.USD'));
+});
+
+test('a super admin can set the organization payment-instrument verification amount as a per-currency JSON map', function () {
+    $superAdmin = User::factory()->has(Administrator::factory())->create();
+
+    SettingsService::new()->update(SettingDTO::new()->fromArray([
+        'user' => $superAdmin,
+        'key' => SettingsEnum::organizationPaymentInstrumentVerificationAmount,
+        'value' => json_encode(['GHS' => 200, 'USD' => 150]),
+    ]));
+
+    expect(SettingsService::new()->getOrganizationPaymentInstrumentVerificationAmount('GHS'))->toBe(200);
+    expect(SettingsService::new()->getOrganizationPaymentInstrumentVerificationAmount('USD'))->toBe(150);
+});
+
 // TT-7.6e/SCRUM-229: getSettingsForAdmin() prefills the admin platform-settings form -- minimum
 // payout amounts are converted back to major units for display/editing, the reverse of the *100
 // conversion AdminPayoutController applies on save.

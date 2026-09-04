@@ -4520,3 +4520,48 @@ by a guest.
 **How to apply**: any future field added to `TherapyResource` (or `GroupTherapyResource`) that
 derives from `addedby` must be checked against `addedByUserIsMaskedFor()` before exposing it to a
 non-owning viewer — the masking is per-field, not automatic, so each new field needs its own check.
+
+---
+
+## 2026-09-04 — SCRUM-231 (TT-7.3b-a): org payment-instrument verification-charge design
+
+**Decision**: Paystack has no "just verify this card" API call — capturing a reusable card
+authorization for an organization requires actually running one real charge through it. The user
+was asked, and chose: a small, nominal, configurable verification charge (reusing TT-7.6b's
+settings mechanism, e.g. GHS 1 / USD 1) is collected, tracked as `pending_credit_amount` on the
+new `organization_payment_instruments` row, to be credited toward the org's first real invoice
+once TT-7.3b-e's invoicing exists — never silently kept, never refunded outright (the other two
+options offered: immediate Paystack refund, which would have pulled part of TT-7.7's
+refund-mechanism scope forward into this ticket; or no special handling at all, leaving the org
+out a small amount indefinitely).
+
+**Why**: this is a genuine product/financial-UX decision (does a real, if tiny, charge appear on
+the org's card, and if so what happens to it) with no single correct engineering answer — the
+"credit toward first invoice" choice was explicitly offered as the recommended option and chosen
+by the user, consistent with this epic's practice of surfacing real financial trade-offs rather
+than guessing.
+
+**Follow-up bug found and fixed during implementation** (reviewer finding, not part of the
+original design): the first draft of `CaptureOrganizationPaymentInstrumentAction` overwrote
+`pending_credit_amount` on every re-registration (e.g. a declined/expired card being replaced)
+instead of accumulating it — silently losing track of a still-outstanding prior credit, directly
+contradicting this ticket's own "never silently kept" design. Fixed to accumulate when the
+currency matches across registrations, and to log (not silently drop) the rare case of a currency
+change across registrations, since summing raw minor units across two different currencies would
+itself be wrong.
+
+**Two security-engineer findings fixed immediately** (both technical, not product, so resolved
+without a further user round): (1) `TransactionController::redirectUrlFor()` — the one shared
+choke point every checkout flow's callback lands on — didn't handle an `Organization`-subject
+transaction, and would have sent the browser to `/therapies/{organizationId}` once TT-7.3b-i's
+controller starts reusing the existing `transactions.callback` route; added an explicit branch
+redirecting to `organizations.dashboard` instead. (2) The same physical card being verified for a
+second, different organization would have hit the `authorization_code` unique constraint as an
+uncaught `QueryException`, rolling back the transaction's own successful status recording along
+with it; fixed with an explicit pre-check that degrades to a safe no-op + warning log instead.
+
+**Deferred to TT-7.3b-i (SCRUM-240), logged as a Jira comment there, not fixed here** (mirrors the
+TT-7.6a→TT-7.6d precedent for controller-layer findings on a not-yet-built HTTP/UI layer):
+replacing an org's payment instrument in place currently sends no admin-facing notification,
+unlike `CreateCounsellorPayoutDestinationAction`'s `PayoutDestinationChangedNotification` — worth
+adding once TT-7.3b-i's controller/UI exists to actually reach this flow.

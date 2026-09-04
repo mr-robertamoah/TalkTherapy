@@ -85,7 +85,8 @@ class ProcessPaystackWebhookJob implements ShouldQueue
             $transaction,
             $status,
             TransactionStatusSourceEnum::webhook->value,
-            $this->payload['data']['gateway_response'] ?? null
+            $this->payload['data']['gateway_response'] ?? null,
+            $this->payload['data'] ?? null
         );
     }
 

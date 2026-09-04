@@ -15,4 +15,11 @@ enum SettingsEnum: string
     // JSON-encoded {currency => minor-unit amount} map -- a counsellor's available balance in a
     // given currency must reach this before a payout can be triggered (by them or an admin).
     case minimumPayoutAmount = 'MINIMUM_PAYOUT_AMOUNT';
+
+    // JSON-encoded {currency => minor-unit amount} map -- TT-7.3b-a/SCRUM-231: the small, nominal
+    // charge run through an org's card to capture a reusable Paystack authorization (there's no
+    // "just verify this card" call). Owed back to the org as a credit against its first real
+    // invoice (OrganizationPaymentInstrument.pending_credit_amount) once TT-7.3b-e's invoicing
+    // exists, never silently kept.
+    case organizationPaymentInstrumentVerificationAmount = 'ORGANIZATION_PAYMENT_INSTRUMENT_VERIFICATION_AMOUNT';
 }
