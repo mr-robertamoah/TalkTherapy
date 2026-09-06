@@ -1,6 +1,6 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
-import { Head } from '@inertiajs/vue3';
+import { Head, Link } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import Avatar from '@/Components/Avatar.vue';
@@ -101,6 +101,19 @@ function onChildAlert(alert) {
                     @alert="onChildAlert"
                     @invited="() => $refs.requestQueueSection?.reload()"
                 />
+            </div>
+
+            <!-- TT-7.3b-j/SCRUM-241: reconciliation only has meaning for a consumer org (one that
+                 can finance its members' engagements) -- mirrors the same isConsumer conditional
+                 already governing the Members section immediately below. -->
+            <div v-if="organization.isConsumer" class="w-full sm:w-[90%] md:w-[85%] lg:w-[75%] mx-auto sm:px-6 lg:px-8 mt-8 flex justify-end">
+                <Link
+                    :href="route('organizations.reconciliation', { organizationId: organization.id })"
+                    class="text-sm font-semibold text-blue-600 hover:underline"
+                >
+                    billing reconciliation
+                    <span v-if="organization.isBillingSuspended" class="ml-1 text-xs font-semibold px-2 py-1 rounded-full bg-red-100 text-red-700">suspended</span>
+                </Link>
             </div>
 
             <div v-if="organization.isConsumer" class="w-full sm:w-[90%] md:w-[85%] lg:w-[75%] mx-auto sm:px-6 lg:px-8 mt-8">

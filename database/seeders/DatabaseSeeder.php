@@ -6,24 +6,29 @@ namespace Database\Seeders;
 
 use App\Enums\AdministratorTypeEnum;
 use App\Enums\CounsellorEarningStatusEnum;
+use App\Enums\CounsellorPayoutStatusEnum;
 use App\Enums\GenderEnum;
 use App\Enums\LicensingTypeEnum;
 use App\Enums\OrganizationAdminRoleEnum;
 use App\Enums\OrganizationCounsellorCompensationTypeEnum;
 use App\Enums\OrganizationCounsellorStatusEnum;
+use App\Enums\OrganizationInvoiceStatusEnum;
 use App\Enums\OrganizationMemberBillingModeEnum;
 use App\Enums\OrganizationMemberStatusEnum;
 use App\Enums\RequestStatusEnum;
 use App\Enums\RequestTypeEnum;
 use App\Enums\TransactionStatusEnum;
 use App\Models\CounsellorEarning;
+use App\Models\CounsellorPayout;
 use App\Models\Organization;
+use App\Models\OrganizationInvoice;
 use App\Models\Request;
 use App\Models\Therapy;
 use App\Models\Transaction;
 use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 use RuntimeException;
 
 class DatabaseSeeder extends Seeder
@@ -1126,7 +1131,7 @@ class DatabaseSeeder extends Seeder
             ],
         ]);
 
-        $affiliatedCounsellor->addedSessions()->create([
+        $orgRetainerDemoSession = $affiliatedCounsellor->addedSessions()->create([
             'name' => 'Org Retainer Demo Session',
             // Started a minute ago (not "starts in 5 minutes", unlike createPaymentDemoData()'s
             // sibling) -- getActiveSession() (used by TherapyResource's 'activeSession', which the
@@ -1140,6 +1145,145 @@ class DatabaseSeeder extends Seeder
             'type' => 'online',
             'status' => 'pending',
             'payment_type' => 'PAID',
+        ]);
+
+        // SCRUM-241 (TT-7.3b-j): demo data for the org-admin reconciliation view, which had
+        // nothing to show until now -- every session/therapy above stays at `pending`/`in_session`
+        // (no real settlement pipeline ever ran against them), so these rows are hand-seeded at
+        // their FINAL state directly, matching this seeder's own established convention elsewhere
+        // (e.g. the already-settled compensation above) rather than simulating the full charge/
+        // settlement pipeline end to end.
+
+        // -- Pay-per-use financed session: a second, PAY_PER_USE member (distinct from the
+        // retainer member above) with a real Transaction + CounsellorEarning + a SUCCEEDED payout,
+        // so the "Financed Sessions (Pay-Per-Use)" table has a fully-resolved row to show.
+        $payPerUseMember = User::factory()->create([
+            'firstName' => 'Org',
+            'lastName' => 'DemoPayPerUseMember',
+            'email' => 'org.demo.payperuse.member@example.com',
+            'username' => 'org_demo_payperuse_member',
+            'password' => Hash::make('password'),
+            'email_verified_at' => now(),
+        ]);
+        $payPerUseMembership = $organization->members()->create([
+            'user_id' => $payPerUseMember->id,
+            'status' => OrganizationMemberStatusEnum::active->value,
+            'source' => 'INVITED',
+        ]);
+        $payPerUseMembership->billingConfigs()->create([
+            'mode' => OrganizationMemberBillingModeEnum::payPerUse->value,
+            'per' => 'PER_THERAPY',
+            'include_group_therapies' => true,
+            'effective_from' => now(),
+        ]);
+        $payPerUseTherapy = $payPerUseMember->addedTherapies()->create([
+            'name' => 'Org Pay-Per-Use Demo Therapy',
+            'background_story' => 'Seeded PAID, pay-per-use therapy financed directly by the demo org\'s payment instrument (SCRUM-241).',
+            'counsellor_id' => $affiliatedCounsellor->id,
+            'session_type' => 'Once',
+            'payment_type' => 'PAID',
+            'allow_in_person' => false,
+            'anonymous' => false,
+            'public' => false,
+            'status' => 'in_session',
+            'payment_data' => [
+                'amount' => 100,
+                'currency' => 'USD',
+                'per' => 'PER_THERAPY',
+            ],
+        ]);
+        $payPerUseTransaction = Transaction::query()->create([
+            'for_type' => $payPerUseTherapy::class,
+            'for_id' => $payPerUseTherapy->id,
+            'user_id' => $payPerUseMember->id,
+            'organization_id' => $organization->id,
+            'reference' => 'org_demo_charge_'.Str::uuid(),
+            'amount' => 8000,
+            'currency' => 'USD',
+            'status' => TransactionStatusEnum::success->value,
+        ]);
+        $payPerUsePayout = CounsellorPayout::query()->create([
+            'counsellor_id' => $affiliatedCounsellor->id,
+            'initiated_by_id' => $admin->id,
+            'reference' => 'org_demo_payout_'.Str::uuid(),
+            'amount' => 7000,
+            'currency' => 'USD',
+            'status' => CounsellorPayoutStatusEnum::succeeded->value,
+        ]);
+        CounsellorEarning::query()->create([
+            'transaction_id' => $payPerUseTransaction->id,
+            'counsellor_id' => $affiliatedCounsellor->id,
+            'counsellor_payout_id' => $payPerUsePayout->id,
+            'gross_amount' => 8000,
+            'net_amount' => 7000,
+            'fee_amount' => 1000,
+            'currency' => 'USD',
+            'status' => CounsellorEarningStatusEnum::paidOut->value,
+        ]);
+
+        // -- Retainer invoices: one already-settled (last period), one still open/accruing
+        // (current period) -- demonstrates both halves of the ticket's own "current-period accrued
+        // balance AND invoice/settlement status" requirement.
+        $settledInvoice = OrganizationInvoice::query()->create([
+            'organization_id' => $organization->id,
+            'currency' => 'USD',
+            'period_start' => now()->subMonthNoOverflow()->startOfMonth()->toDateString(),
+            'period_end' => now()->subMonthNoOverflow()->endOfMonth()->toDateString(),
+            'status' => OrganizationInvoiceStatusEnum::settled->value,
+            'amount' => 4500,
+        ]);
+        $settledInvoiceLine = $settledInvoice->lines()->create([
+            'session_id' => $orgRetainerDemoSession->id,
+            'counsellor_id' => $affiliatedCounsellor->id,
+            'net_amount' => 4000,
+            'fee_amount' => 500,
+            'currency' => 'USD',
+        ]);
+        $settlementTransaction = Transaction::query()->create([
+            'for_type' => OrganizationInvoice::class,
+            'for_id' => $settledInvoice->id,
+            'user_id' => $admin->id,
+            'organization_id' => $organization->id,
+            'reference' => 'org_demo_settlement_'.Str::uuid(),
+            'amount' => 4500,
+            'currency' => 'USD',
+            'status' => TransactionStatusEnum::success->value,
+        ]);
+        CounsellorEarning::query()->create([
+            'transaction_id' => $settlementTransaction->id,
+            'counsellor_id' => $affiliatedCounsellor->id,
+            'organization_invoice_line_id' => $settledInvoiceLine->id,
+            'gross_amount' => 4500,
+            'net_amount' => 4000,
+            'fee_amount' => 500,
+            'currency' => 'USD',
+            'status' => CounsellorEarningStatusEnum::pending->value,
+        ]);
+
+        $openInvoiceSession = $affiliatedCounsellor->addedSessions()->create([
+            'name' => 'Org Retainer Demo Session (Current Period)',
+            'about' => 'A second retainer-covered session, already held, accruing against the CURRENT (still-open) invoice period.',
+            'for_id' => $orgRetainerPerSessionTherapy->id,
+            'for_type' => $orgRetainerPerSessionTherapy::class,
+            'start_time' => now()->subDay(),
+            'end_time' => now()->subDay()->addHour(),
+            'type' => 'online',
+            'status' => 'held',
+            'payment_type' => 'PAID',
+        ]);
+        $openInvoice = OrganizationInvoice::query()->create([
+            'organization_id' => $organization->id,
+            'currency' => 'USD',
+            'period_start' => now()->startOfMonth()->toDateString(),
+            'period_end' => now()->endOfMonth()->toDateString(),
+            'status' => OrganizationInvoiceStatusEnum::open->value,
+        ]);
+        $openInvoice->lines()->create([
+            'session_id' => $openInvoiceSession->id,
+            'counsellor_id' => $affiliatedCounsellor->id,
+            'net_amount' => 3500,
+            'fee_amount' => 400,
+            'currency' => 'USD',
         ]);
 
         $applicantMember = User::factory()->create([

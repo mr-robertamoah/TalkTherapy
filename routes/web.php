@@ -15,6 +15,7 @@ use App\Http\Controllers\OrganizationCounsellorCompensationController;
 use App\Http\Controllers\OrganizationCounsellorController;
 use App\Http\Controllers\OrganizationMemberBillingConfigController;
 use App\Http\Controllers\OrganizationMemberController;
+use App\Http\Controllers\OrganizationReconciliationController;
 use App\Http\Controllers\PayoutController;
 use App\Http\Controllers\PostController;
 use App\Http\Controllers\PreferenceController;
@@ -172,6 +173,18 @@ Route::middleware('auth')->group(function () {
     Route::get('/organizations/{organizationId}/members', [OrganizationMemberController::class, 'index'])->name('organizations.members.index');
     Route::get('/organizations/{organizationId}/counsellors', [OrganizationCounsellorController::class, 'index'])->name('organizations.counsellors.index');
     Route::get('/organizations/{organizationId}/requests', [OrganizationController::class, 'requestQueue'])->name('organizations.requests.index');
+
+    // Org-admin reconciliation view (SCRUM-241/TT-7.3b-j) -- admin-gated like the 3 routes above,
+    // but throttled (security-engineer finding): unlike a membership/counsellor roster, this
+    // surfaces real transaction amounts, counsellor compensation splits, and payout status --
+    // matching organizations.index's own more conservative precedent for exactly this reasoning
+    // ("the first endpoint that lets any authenticated user enumerate/see something sensitive"),
+    // not the plain-roster routes' unthrottled default. reconciliation is the browser-navigable
+    // Inertia page, .transactions/.invoices are the dedicated JSON list endpoints its own
+    // pagination continues against (mirrors organizations.dashboard's own page-plus-JSON split).
+    Route::get('/organizations/{organizationId}/reconciliation', [OrganizationReconciliationController::class, 'index'])->name('organizations.reconciliation')->middleware('throttle:60,1');
+    Route::get('/organizations/{organizationId}/reconciliation/transactions', [OrganizationReconciliationController::class, 'transactions'])->name('organizations.reconciliation.transactions')->middleware('throttle:60,1');
+    Route::get('/organizations/{organizationId}/reconciliation/invoices', [OrganizationReconciliationController::class, 'invoices'])->name('organizations.reconciliation.invoices')->middleware('throttle:60,1');
 
     // throttle: uncapped, either of these could be used to spam an org's admins with invites,
     // or spam every provider org on the platform with applications (SCRUM-120 security review).

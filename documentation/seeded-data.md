@@ -158,6 +158,13 @@ dashboard, since the random demo data has no organizations at all:
 | `org_demo_member` | `password` | Org DemoMember — already ACTIVE member with a retainer billing config. Log in and visit `/organizations/mine/dashboard` to see it under "My Memberships" (SCRUM-168). Also owns two PAID therapies with `org_demo_counsellor` ("Org Retainer Demo Therapy (Per Therapy/Per Session)", with an immediately-active session on the latter) exercising the client-facing org-billing disclosure that replaces the Pay control (SCRUM-242) — visit `/therapies/{id}`'s "payment details" tab, or the per-session therapy's session-actions modal. |
 | `org_demo_member_applicant` | `password` | Org DemoMemberApplicant — has a pending `ORGANIZATION_MEMBER_APPLICATION_REQUEST` to the org (no membership row yet, same distinction as above). |
 | `org_demo_member_invitee` | `password` | Org DemoMemberInvitee — has a pending `ORGANIZATION_MEMBER_INVITE_REQUEST` (org-initiated, no membership row yet) — accept it via the account dropdown's "Requests" menu to exercise SCRUM-168's AC2. |
+| `org_demo_payperuse_member` | `password` | Org DemoPayPerUseMember — active member on PAY_PER_USE billing, with one fully-resolved financed Therapy (Transaction success, `CounsellorEarning` paid out) — log in as `org_demo_admin` and visit `/organizations/1/reconciliation` (SCRUM-241) to see this row in the "Financed Sessions" table. |
+
+Also for SCRUM-241 (org-admin reconciliation view): the demo org has a settled retainer invoice
+(last calendar month, one line against the existing "Org Retainer Demo Session") and an open,
+still-accruing one (current calendar month, a second held session seeded specifically for it) —
+visit `/organizations/1/reconciliation` as `org_demo_admin` to see both, and expand either row to
+see its lines.
 
 ## Testing the registration/verification flow
 
