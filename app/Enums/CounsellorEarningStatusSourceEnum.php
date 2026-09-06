@@ -12,4 +12,7 @@ enum CounsellorEarningStatusSourceEnum: string
     use EnumTrait;
 
     case generation = 'GENERATION';
+    // TT-7.3b-g/SCRUM-239: ReconcileOrgFinancedRefundAction's own source, distinguishing a
+    // refund-driven reversal from the payout-side cases TT-7.6c's own comment above anticipates.
+    case refundReconciliation = 'REFUND_RECONCILIATION';
 }
