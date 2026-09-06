@@ -55,6 +55,22 @@ class SettingsService extends Service
         return UpdateSettingAction::new()->execute($dto);
     }
 
+    // TT-7.3b-i/SCRUM-240: lets the org-admin payment-instrument onboarding UI preview the nominal
+    // verification charge per currency before the admin picks one, mirroring getSettingsForAdmin()'s
+    // own per-currency-list shape. Minor units here (unlike getSettingsForAdmin()'s major-units
+    // payout amounts) since this page's other money fields are already minor-units, formatted
+    // client-side the same way Organization/Reconciliation.vue's formatMoney() does.
+    public function getOrganizationPaymentInstrumentVerificationAmounts(): array
+    {
+        return collect(config('currencies.supported'))
+            ->map(fn (string $currency) => [
+                'currency' => $currency,
+                'amount' => $this->getOrganizationPaymentInstrumentVerificationAmount($currency),
+            ])
+            ->values()
+            ->all();
+    }
+
     // TT-7.6e/SCRUM-229: prefill data for the admin platform-settings form -- minimum payout
     // amounts are converted back to major units here (the reverse of updateMinimumPayoutAmounts()'s
     // *100 on save) since an admin edits/reads them the same way a counsellor edits pricing, not

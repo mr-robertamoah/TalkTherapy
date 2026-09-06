@@ -5098,3 +5098,45 @@ edge case of a stale in-memory `Transaction` racing a hard-delete's FK-cascade n
 none of which got a dedicated `documentation/features/*.md` — only the two UI-facing sub-tickets,
 -j and -k, did). Callable-only per the ticket's own scope; TT-7.7d (not yet built) is its only
 future caller.
+
+## 2026-09-06 — SCRUM-240 (TT-7.3b-i): org payment-instrument onboarding UI
+
+**Decision**: TT-7.3b-a's backend (`organization_payment_instruments`,
+`InitiateOrganizationPaymentInstrumentRegistrationAction`, `EnsureCanRegisterOrganizationPaymentInstrumentAction`)
+had no controller/route/UI of its own — that was explicitly deferred to this ticket. New
+`OrganizationPaymentInstrumentController` mirrors `OrganizationReconciliationController`'s own
+page-controller shape for `index()` (admin-gated via `OrganizationService::getOrganization()`,
+redirect home on failure), but `initiate()` mirrors `TransactionController::initiate()`'s
+"return `{transaction, authorizationUrl}` JSON, let the frontend redirect via
+`window.location.href`" shape instead of `PayoutController::onboardDestination()`'s synchronous
+redirect-back one — this flow genuinely needs Paystack's hosted checkout redirect (no free "just
+verify this card" call), unlike the bank/momo destination flow's plain REST resolve+create calls.
+No new authorization action was written; both actions delegate entirely to the already-reviewed
+TT-7.3b-a Actions via `OrganizationService`.
+
+**`TransactionController::redirectUrlFor()` updated**: the Organization-subject branch (added
+speculatively in TT-7.3b-a, since no route reached it yet) now points at this ticket's own new
+page instead of `organizations.dashboard` — the admin came from there to start the checkout, and
+it's what re-renders the just-captured instrument. Updated the one existing test
+(`TransactionCallbackRedirectTest`) that pinned the old target.
+
+**`pendingCreditAmount` surfaced read-only despite being a dead field today**: a grep confirmed
+`SettingsEnum`'s own comment ("credited toward the org's first invoice once TT-7.3b-e exists") was
+never actually wired up — TT-7.3b-e's invoicing never reads/consumes this column, even though
+that ticket is done. Not a bug introduced or fixed by this ticket; flagged in both the Resource's
+own code comment and by both reviewer/security-engineer subagents independently. Surfaced anyway
+(read-only) since it's honest, meaningful context for the admin ("we owe you this"), not because
+anything currently acts on it. **Follow-up candidate**: wire `pending_credit_amount` into a future
+invoice-settlement ticket, or explicitly retire the field if that's decided against instead.
+
+**Reviewer suggestion, deferred rather than actioned now**: `PaymentInstrument.vue`'s status-banner
+and initiate/redirect logic structurally duplicates `usePayment.js` a third time (after
+`TherapyPaymentDetails.vue`/`UnifiedTherapy.vue`'s own shared use of it) — but this page's POST
+needs a `currency` body param and no `therapy` ref, which `usePayment()`'s current shape doesn't
+support without a change to the composable itself. Deferred to a follow-up ticket to generalize
+`usePayment.js` (e.g. an optional payload param on `initiate()`) rather than reshaping a shared
+composable mid-ticket for a single new caller.
+
+**Required review fix applied**: added `SettingsServiceTest` coverage for the new
+`getOrganizationPaymentInstrumentVerificationAmounts()` method (reviewer finding — its sibling
+`getSettingsForAdmin()` has equivalent coverage, this one didn't).

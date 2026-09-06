@@ -103,10 +103,16 @@ function onChildAlert(alert) {
                 />
             </div>
 
-            <!-- TT-7.3b-j/SCRUM-241: reconciliation only has meaning for a consumer org (one that
-                 can finance its members' engagements) -- mirrors the same isConsumer conditional
-                 already governing the Members section immediately below. -->
-            <div v-if="organization.isConsumer" class="w-full sm:w-[90%] md:w-[85%] lg:w-[75%] mx-auto sm:px-6 lg:px-8 mt-8 flex justify-end">
+            <!-- TT-7.3b-j/SCRUM-241 & TT-7.3b-i/SCRUM-240: both only have meaning for a consumer
+                 org (one that can finance its members' engagements) -- mirrors the same isConsumer
+                 conditional already governing the Members section immediately below. -->
+            <div v-if="organization.isConsumer" class="w-full sm:w-[90%] md:w-[85%] lg:w-[75%] mx-auto sm:px-6 lg:px-8 mt-8 flex justify-end gap-4">
+                <Link
+                    :href="route('organizations.payment_instrument', { organizationId: organization.id })"
+                    class="text-sm font-semibold text-blue-600 hover:underline"
+                >
+                    payment method
+                </Link>
                 <Link
                     :href="route('organizations.reconciliation', { organizationId: organization.id })"
                     class="text-sm font-semibold text-blue-600 hover:underline"

@@ -8,10 +8,10 @@ use Illuminate\Support\Facades\Http;
 // TT-7.3b-a/SCRUM-231 (security-engineer finding): TransactionController::redirectUrlFor() is a
 // shared choke point every checkout flow's callback_url points back to -- an org-payment-
 // instrument-registration transaction (subject is an Organization, not a Therapy/Session/
-// GroupTherapy) must not be mishandled here even though no route creates one yet (TT-7.3b-i's
-// controller will).
+// GroupTherapy) must not be mishandled here. TT-7.3b-i's own payment-instrument page is now the
+// redirect target (not the dashboard) -- it's what re-renders the just-captured instrument.
 
-test('the transaction callback redirects an organization-subject transaction to the org dashboard, not a therapy page', function () {
+test('the transaction callback redirects an organization-subject transaction to the payment-instrument page, not a therapy page', function () {
     Http::fake(['*/transaction/verify/*' => Http::response([
         'status' => true,
         'data' => ['status' => 'success', 'amount' => 100, 'currency' => 'GHS', 'gateway_response' => 'Successful'],
@@ -30,5 +30,5 @@ test('the transaction callback redirects an organization-subject transaction to 
 
     $response = $this->actingAs($admin)->get(route('transactions.callback', ['reference' => 'org_callback_ref_1']));
 
-    $response->assertRedirect(route('organizations.dashboard', ['organizationId' => $organization->id]));
+    $response->assertRedirect(route('organizations.payment_instrument', ['organizationId' => $organization->id]));
 });
