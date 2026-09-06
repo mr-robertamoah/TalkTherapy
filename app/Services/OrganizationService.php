@@ -12,8 +12,10 @@ use App\Actions\Organization\GetMyOrganizationMembershipsAction;
 use App\Actions\Organization\GetMyOrganizationRequestQueueAction;
 use App\Actions\Organization\GetOrganizationCounsellorsAction;
 use App\Actions\Organization\GetOrganizationDirectoryAction;
+use App\Actions\Organization\GetOrganizationFinancedTransactionsAction;
 use App\Actions\Organization\GetOrganizationMembersAction;
 use App\Actions\Organization\GetOrganizationRequestQueueAction;
+use App\Actions\Organization\GetOrganizationRetainerInvoicesAction;
 use App\Actions\Organization\InitiateOrganizationPaymentInstrumentRegistrationAction;
 use App\Actions\Organization\UpdateOrganizationAction;
 use App\DTOs\GetOrganizationDirectoryDTO;
@@ -95,6 +97,24 @@ class OrganizationService extends Service
         EnsureUserIsOrganizationAdminAction::new()->execute($dto);
 
         return GetOrganizationRequestQueueAction::new()->execute($dto);
+    }
+
+    // TT-7.3b-j/SCRUM-241: org-admin reconciliation view -- same admin-only, org-scoped-list
+    // shape as the two methods above (TT-6.6a), split into a pay-per-use half (this method) and a
+    // retainer half (below), never merged into one query since they read from different tables
+    // with different lifecycles.
+    public function getOrganizationFinancedTransactions(OrganizationDTO $dto): LengthAwarePaginator
+    {
+        EnsureUserIsOrganizationAdminAction::new()->execute($dto);
+
+        return GetOrganizationFinancedTransactionsAction::new()->execute($dto);
+    }
+
+    public function getOrganizationRetainerInvoices(OrganizationDTO $dto): LengthAwarePaginator
+    {
+        EnsureUserIsOrganizationAdminAction::new()->execute($dto);
+
+        return GetOrganizationRetainerInvoicesAction::new()->execute($dto);
     }
 
     // The "separate, deliberate product decision" flagged above -- any authenticated user (not

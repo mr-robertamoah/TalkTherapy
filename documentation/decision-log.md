@@ -4944,3 +4944,80 @@ pattern, tenant isolation verified). Three additional findings surfaced, all eva
    tracked informally alongside SCRUM-245 rather than filed as its own ticket, given the severity
    and the fact that it requires an org-setup scenario (overlapping retainer coverage) this
    codebase has no other support for creating today.
+
+## 2026-09-06 — SCRUM-241 (TT-7.3b-j): org-admin reconciliation view
+
+**Decision**: the ticket's own scope explicitly names 4 existing precedents to mirror rather than
+invent a new UI pattern (TT-6.6a's org-scoped-list shape, TT-6.3b's session-metadata-only
+visibility scoping, TT-6.4c's compensation-transparency formatting, TT-7.6e's admin-payout-table
+structure). A research pass across all 4 (`GetOrganizationMembersAction`/`OrganizationMemberResource`,
+`SessionResource`'s own metadata-only field set, `CounsellorsSection.vue`'s `compensationSummary()`,
+`AdminPayoutController`/`Admin/Payouts.vue`) confirmed each still exists and is still shaped the
+way the ticket assumes, before writing any new code — this ticket's own design was therefore mostly
+dictated by precedent, not a fresh judgment call.
+
+**Two sections, never merged into one query**: "Financed Sessions (Pay-Per-Use)" (one row per
+`Transaction` where `organization_id` is set and the subject is a Therapy/Session/GroupTherapy) and
+"Retainer Invoices" (one row per `OrganizationInvoice`, expandable to its lines). These read from
+genuinely different tables with different lifecycles (a pay-per-use charge happens once per
+engagement; a retainer invoice accrues over a whole period) — collapsing them into one table would
+have required an artificial, forced-common shape neither one actually has. A settlement
+`Transaction` (`for_type = OrganizationInvoice`) is explicitly excluded from the pay-per-use list
+via a `where('for_type', '!=', OrganizationInvoice::class)` clause -- it's covered by the Retainer
+Invoices section instead, never double-counted across both.
+
+**`OrganizationResource` gained `isBillingSuspended`/`billingSuspendedAt`/`billingSuspensionReason`
+directly, not a separate resource**: this claim was initially written as "used in exactly one place
+… both call sites admin-gated," which the reviewer correctly flagged as false -- it's actually
+constructed in 4 places (`OrganizationController::show()`/`dashboard()`/`update()`, all admin-gated,
+plus `store()`, which is genuinely NOT gated). Corrected: `store()` is still safe because it only
+ever describes the org the caller JUST created (which starts unsuspended, no reason set, and can
+never be a different, pre-existing org's row) -- so no cross-org leak exists today, but the
+original justification was wrong and has been fixed both here and in the resource's own comment
+rather than left standing.
+
+**Security-engineer findings, both applied**: (1) `subjectName`/`sessionName` (client-authored
+free text, e.g. a Therapy's own `name` field, typed in the same form step as `background_story`)
+were being shown verbatim to org billing admins -- a genuinely new category of viewer with no other
+route to therapy/session content, unlike the counsellor/client/full-access-admin viewers
+`TherapyResource`/`SessionResource` already serve `name` to. This is the same privacy category
+`TherapyResource::orgRetainerCoverage()`'s own masking (SCRUM-242) exists to prevent, just in the
+opposite direction (there: org name leaking to therapy viewers; here: therapy content leaking to
+an org). Fixed by replacing both with opaque, id-based labels ("Therapy #42", "Session #17") that
+carry zero client-authored content -- the counsellor's own name is left untouched, since that's
+professional/public information, not a client-anonymity concern. (2) The 3 new routes had no
+throttle, unlike `organizations.index`'s own more conservative precedent for exactly this class of
+concern (real financial data, not just a membership roster) -- added `throttle:60,1` to all 3.
+
+**Reviewer finding, applied**: a real (if minor, admin-only, 10-per-page) N+1 in
+`GetOrganizationFinancedTransactionsAction` -- `ResolveTransactionSubjectAction`'s own Session ->
+parent-Therapy resolution, plus that Therapy's `->counsellor`, were both lazy-loaded per row.
+Fixed with `Collection::loadMorph()` in two passes (never a nested `morphWith()` dot-path, which
+would risk calling `->counsellor` on a GroupTherapy row that has no such singular relation) --
+each pass only ever eager-loads a relation that actually exists on that specific resolved type.
+
+**GroupTherapy financed transactions show no counsellor name**: not an oversight -- GroupTherapy
+org billing was never built (TT-7.3b-b/-c's own scope boundary, carried forward through every
+sub-ticket in this epic that's touched `Transaction.organization_id` since). There is no
+single-counsellor share to show for one, so the resource returns `null` rather than picking an
+arbitrary "first counsellor" from the group.
+
+**Environment finding, not a code issue**: this repo's Docker Vite dev server (`npm run dev`)
+could not run in this session -- `EMFILE: too many open files` from the HOST's own
+`fs.inotify.max_user_instances` limit (128, confirmed exhausted by unrelated desktop
+processes -- VS Code extensions, GNOME session services -- via `/proc/*/fd` inspection, not by
+anything in this project or its containers). Worked around by running a one-off
+`docker compose run --rm --no-deps vite npm install && npm run build` (a production build, which
+doesn't need persistent file watchers) and serving the app through the existing `nginx`/`web`
+container instead of the dev server -- Playwright QA against `http://localhost:8000` then worked
+normally. Not fixed (would mean changing the HOST's kernel sysctl settings, entirely outside this
+project), just documented here so a future session hitting the identical `EMFILE` doesn't waste
+time assuming it's a project bug.
+
+**Found during QA, not fixed, filed as SCRUM-247**: the (pre-existing, unrelated) org-admin
+*dashboard* page intermittently 502s with nginx's "upstream sent too big header" -- confirmed via
+`docker/nginx/default.conf` having no `fastcgi_buffer_size`/`fastcgi_buffers` directives at all, so
+nginx falls back to a small compile-time default for FastCGI response headers. Reproduced
+independent of any change in this ticket's diff (the new reconciliation page, sharing the same
+nginx/php-fpm stack, loaded repeatedly in the same session with no issue) -- an nginx config gap,
+not something to fix inside this ticket's own scope.
