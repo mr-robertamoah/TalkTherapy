@@ -9,8 +9,10 @@ use App\Enums\CounsellorEarningShareBasisEnum;
 use App\Enums\CounsellorEarningStatusEnum;
 use App\Enums\CounsellorEarningStatusSourceEnum;
 use App\Models\Counsellor;
+use App\Models\CounsellorEarning;
 use App\Models\GroupTherapy;
 use App\Models\Organization;
+use App\Models\OrganizationInvoice;
 use App\Models\Therapy;
 use App\Models\Transaction;
 use Illuminate\Support\Facades\DB;
@@ -40,7 +42,25 @@ class GenerateCounsellorEarningsAction extends Action
         DB::transaction(function () use ($transaction) {
             $transaction = Transaction::query()->whereKey($transaction->id)->lockForUpdate()->first();
 
-            if (! $transaction || $transaction->earnings()->exists()) {
+            if (! $transaction) {
+                return;
+            }
+
+            // TT-7.3b-e/SCRUM-236: checked BEFORE ResolveTransactionSubjectAction below, whose own
+            // parameter type (Therapy|GroupTherapy|Session|null) has no OrganizationInvoice case --
+            // passing one through would be a hard TypeError, not a graceful fallthrough. This
+            // branch also skips the generic `$transaction->earnings()->exists()` idempotency guard
+            // every other branch relies on: ONE settlement transaction fans out into MANY earnings
+            // (one per line, potentially several per counsellor), so "any earning already exists
+            // for this transaction" would wrongly block every later line -- generateForSettledInvoice
+            // has its own, per-line idempotency guard instead (organization_invoice_line_id).
+            if ($transaction->for instanceof OrganizationInvoice) {
+                $this->generateForSettledInvoice($transaction, $transaction->for);
+
+                return;
+            }
+
+            if ($transaction->earnings()->exists()) {
                 return;
             }
 
@@ -240,6 +260,45 @@ class GenerateCounsellorEarningsAction extends Action
         }
     }
 
+    // TT-7.3b-e/SCRUM-236: iterates every line of a settled retainer invoice, creating ONE
+    // CounsellorEarning per line using that line's ALREADY-COMPUTED net_amount/fee_amount
+    // directly -- no recomputation, unlike generateForOrgFinancedIndividual above, because these
+    // figures were locked in at session-held time (RecordOrganizationInvoiceLineForSessionAction),
+    // so the drift concern that method's own comment describes structurally cannot occur here.
+    private function generateForSettledInvoice(Transaction $transaction, OrganizationInvoice $invoice): void
+    {
+        foreach ($invoice->lines as $line) {
+            if (! $line->counsellor) {
+                Log::warning('Cannot generate a retainer counsellor earning -- invoice line has no assigned counsellor.', [
+                    'transaction_id' => $transaction->id,
+                    'organization_invoice_line_id' => $line->id,
+                ]);
+
+                continue;
+            }
+
+            // Per-line idempotency guard, not the transaction-level earnings()->exists() check
+            // every other branch uses (skipped above) -- ONE settlement transaction fans out into
+            // MANY lines, so "at least one earning already exists for this transaction" would
+            // wrongly block every other line from ever being generated.
+            if (CounsellorEarning::query()->where('organization_invoice_line_id', $line->id)->exists()) {
+                continue;
+            }
+
+            // Architect finding (blocking): gross_amount here is THIS LINE's own total, never
+            // $transaction->amount -- that column is the SUM across every line/every counsellor
+            // for the whole settled period, not any one counsellor's gross.
+            $this->createEarning(
+                $transaction,
+                $line->counsellor,
+                $line->fee_amount + $line->net_amount,
+                $line->fee_amount,
+                $line->net_amount,
+                organizationInvoiceLineId: $line->id
+            );
+        }
+    }
+
     private function createEarning(
         Transaction $transaction,
         Counsellor $counsellor,
@@ -247,10 +306,12 @@ class GenerateCounsellorEarningsAction extends Action
         int $feeAmount,
         int $netAmount,
         ?string $shareBasis = null,
-        ?int $sharePercentage = null
+        ?int $sharePercentage = null,
+        ?int $organizationInvoiceLineId = null
     ): void {
         $earning = $transaction->earnings()->create([
             'counsellor_id' => $counsellor->id,
+            'organization_invoice_line_id' => $organizationInvoiceLineId,
             'gross_amount' => $grossAmount,
             'fee_amount' => $feeAmount,
             'net_amount' => $netAmount,

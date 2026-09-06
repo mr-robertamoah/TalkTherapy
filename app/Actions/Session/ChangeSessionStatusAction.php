@@ -3,6 +3,7 @@
 namespace App\Actions\Session;
 
 use App\Actions\Action;
+use App\Actions\Organization\RecordOrganizationInvoiceLineForSessionAction;
 use App\DTOs\CreateSessionDTO;
 use App\Enums\SessionStatusEnum;
 
@@ -67,7 +68,20 @@ class ChangeSessionStatusAction extends Action
 
         $createSessionDTO->session->save();
 
-        return $createSessionDTO->session->refresh();
+        $session = $createSessionDTO->session->refresh();
+
+        // TT-7.3b-e/SCRUM-236: checked against the FINAL, rewritten $status (not the raw
+        // parameter this method received) -- a caller requesting `held` may have been rewritten
+        // above to `held_confirmation`, which is not yet the actual clinical event. Deliberately
+        // called AFTER the session update has already been saved, not wrapped in any transaction
+        // of its own either: billing accrual is a side effect that must degrade to a logged
+        // warning on failure, never block or undo the session's own status transition, which is
+        // the primary clinical fact being recorded here.
+        if ($status === SessionStatusEnum::held->value) {
+            RecordOrganizationInvoiceLineForSessionAction::new()->execute($session);
+        }
+
+        return $session;
     }
 
     private function getUpdatedByBasedOnStatus(CreateSessionDTO $createSessionDTO, string $status)
