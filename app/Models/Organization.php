@@ -31,6 +31,7 @@ class Organization extends Model
         'is_consumer' => 'boolean',
         'self_apply_enabled' => 'boolean',
         'verified_at' => 'datetime',
+        'billing_suspended_at' => 'datetime',
     ];
 
     public function admins()
@@ -115,5 +116,28 @@ class Organization extends Model
             ->where('type', RequestTypeEnum::organization->value)
             ->where('status', RequestStatusEnum::pending->value)
             ->exists();
+    }
+
+    // TT-7.3b-f2/SCRUM-238: mirrors verify()/isVerified()'s own single-current-state-flag
+    // precedent -- an org-level billing standing, not a per-session gate. Single writer:
+    // UpdateOrganizationInvoiceStatusAction, on a retainer invoice settlement failure. There is
+    // deliberately no corresponding "resume" method in this ticket's scope (no dunning/auto-retry
+    // exists yet -- SCRUM-236's own decision log entry -- so lifting a suspension is a manual,
+    // out-of-band action for now).
+    public function isBillingSuspended(): bool
+    {
+        return (bool) $this->billing_suspended_at;
+    }
+
+    public function isNotBillingSuspended(): bool
+    {
+        return ! $this->isBillingSuspended();
+    }
+
+    public function suspendBilling(?string $reason = null): void
+    {
+        $this->billing_suspended_at = now()->utc();
+        $this->billing_suspension_reason = $reason;
+        $this->save();
     }
 }

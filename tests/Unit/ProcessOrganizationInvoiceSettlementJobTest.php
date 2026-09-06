@@ -50,9 +50,11 @@ test('a synchronous success response records the transaction success and settles
 
     expect($transaction->fresh()->status)->toBe(TransactionStatusEnum::success->value);
     expect($invoice->fresh()->status)->toBe(OrganizationInvoiceStatusEnum::settled->value);
+    // TT-7.3b-f2/SCRUM-238: a successful settlement must never suspend the org's billing.
+    expect($invoice->organization->fresh()->isBillingSuspended())->toBeFalse();
 });
 
-test('a declined charge records the transaction and invoice as failed', function () {
+test('a declined charge records the transaction and invoice as failed, and suspends the organization\'s billing', function () {
     [$transaction, $invoice] = aPendingSettlementTransaction();
     Http::fake(['*/transaction/charge_authorization' => Http::response([
         'status' => true,
@@ -63,9 +65,10 @@ test('a declined charge records the transaction and invoice as failed', function
 
     expect($transaction->fresh()->status)->toBe(TransactionStatusEnum::failed->value);
     expect($invoice->fresh()->status)->toBe(OrganizationInvoiceStatusEnum::failed->value);
+    expect($invoice->organization->fresh()->isBillingSuspended())->toBeTrue();
 });
 
-test('a 4xx from Paystack records a definite failure', function () {
+test('a 4xx from Paystack records a definite failure and suspends the organization\'s billing', function () {
     [$transaction, $invoice] = aPendingSettlementTransaction();
     Http::fake(['*/transaction/charge_authorization' => Http::response(['status' => false, 'message' => 'Declined'], 400)]);
 
@@ -73,6 +76,7 @@ test('a 4xx from Paystack records a definite failure', function () {
 
     expect($transaction->fresh()->status)->toBe(TransactionStatusEnum::failed->value);
     expect($invoice->fresh()->status)->toBe(OrganizationInvoiceStatusEnum::failed->value);
+    expect($invoice->organization->fresh()->isBillingSuspended())->toBeTrue();
 });
 
 // Mirrors ProcessCounsellorPayoutJob's identical reasoning: a 5xx means we genuinely don't know

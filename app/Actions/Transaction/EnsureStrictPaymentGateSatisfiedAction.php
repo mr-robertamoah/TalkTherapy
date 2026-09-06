@@ -8,7 +8,9 @@ use App\DTOs\GrantPaymentAccessDTO;
 use App\Enums\TherapyPaymentTypeEnum;
 use App\Enums\TherapyPerPaymentEnum;
 use App\Enums\TransactionStatusEnum;
+use App\Exceptions\OrganizationBillingSuspendedException;
 use App\Exceptions\PaymentRequiredException;
+use App\Models\Organization;
 use App\Models\PaymentAccessGrant;
 use App\Models\Session;
 use App\Models\Therapy;
@@ -40,7 +42,21 @@ class EnsureStrictPaymentGateSatisfiedAction extends Action
         // it. Access is immediate and unconditional here, matching "retainer, regardless of
         // usage" -- this is deliberately NOT a patch to EnsureOrganizationCanPayForModelAction,
         // whose rejection of that charge attempt stays correct.
-        if ($this->isRetainerCoveredByAnOrg($therapy, $user)) {
+        $coveringOrganization = $this->getRetainerCoveringOrganization($therapy, $user);
+
+        if ($coveringOrganization) {
+            // TT-7.3b-f2/SCRUM-238: layered on top of the unconditional bypass above, not a
+            // replacement for it -- a suspended org's member must be BLOCKED here, never fall
+            // through to the checks below, since a retainer-covered engagement has no personal
+            // Transaction to satisfy them with (explicit product decision: no personal-pay
+            // fallback -- responsibility stays with the org, not the member).
+            if ($coveringOrganization->isBillingSuspended()) {
+                throw new OrganizationBillingSuspendedException(
+                    'Access is currently suspended because your organization has an overdue retainer invoice. Please contact your organization administrator.',
+                    403
+                );
+            }
+
             return;
         }
 
@@ -96,14 +112,13 @@ class EnsureStrictPaymentGateSatisfiedAction extends Action
         throw new PaymentRequiredException('Payment is required to access this content.', 402);
     }
 
-    // True when $user has an active membership in an org that (a) is billing them on a RETAINER
-    // basis and (b) actively covers $therapy's counsellor -- i.e. this specific engagement is
-    // meant to be settled through that org's periodic invoicing (TT-7.3b-e), never a per-
-    // transaction charge, so it must never be blocked on one existing. Deliberately does not
-    // check org billing-suspension standing -- that enforcement is TT-7.3b-f2's job, layered on
-    // top of this same check once it exists.
-    private function isRetainerCoveredByAnOrg(Therapy $therapy, User $user): bool
+    // Resolves the org covering $user's membership on a RETAINER basis for $therapy's
+    // counsellor, when one exists -- i.e. this specific engagement is meant to be settled
+    // through that org's periodic invoicing (TT-7.3b-e), never a per-transaction charge, so it
+    // must never be blocked on one existing. Returns the Organization (not just a bool) so the
+    // caller can also check its billing-suspension standing (TT-7.3b-f2).
+    private function getRetainerCoveringOrganization(Therapy $therapy, User $user): ?Organization
     {
-        return GetRetainerCoveringOrganizationAction::new()->execute($therapy, $user) !== null;
+        return GetRetainerCoveringOrganizationAction::new()->execute($therapy, $user);
     }
 }

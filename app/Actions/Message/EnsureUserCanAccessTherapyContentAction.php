@@ -4,6 +4,7 @@ namespace App\Actions\Message;
 
 use App\Actions\Action;
 use App\Actions\Transaction\EnsureStrictPaymentGateSatisfiedAction;
+use App\Exceptions\OrganizationBillingSuspendedException;
 use App\Exceptions\PaymentRequiredException;
 use App\Models\GroupTherapy;
 use App\Models\Session;
@@ -44,7 +45,7 @@ class EnsureUserCanAccessTherapyContentAction extends Action
         if ($therapy instanceof Therapy && $therapy->addedby->is($user)) {
             try {
                 EnsureStrictPaymentGateSatisfiedAction::new()->execute($therapy, $user, $session);
-            } catch (PaymentRequiredException) {
+            } catch (PaymentRequiredException|OrganizationBillingSuspendedException) {
                 return false;
             }
         }
