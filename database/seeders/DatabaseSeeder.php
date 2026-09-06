@@ -22,6 +22,7 @@ use App\Models\CounsellorEarning;
 use App\Models\CounsellorPayout;
 use App\Models\Organization;
 use App\Models\OrganizationInvoice;
+use App\Models\OrganizationPaymentInstrument;
 use App\Models\Request;
 use App\Models\Therapy;
 use App\Models\Transaction;
@@ -966,6 +967,22 @@ class DatabaseSeeder extends Seeder
             'verified_at' => now(),
         ]);
         $organization->admins()->attach($admin->id, ['role' => OrganizationAdminRoleEnum::owner->value]);
+
+        // TT-7.3b-i/SCRUM-240: a real registration requires a live Paystack checkout round trip
+        // (no PAYSTACK_SECRET_KEY configured in this dev environment), so the "already has a
+        // payment method on file" state of the new payment-instrument page can't otherwise be
+        // reached here -- seeded directly instead, same convention as this method's other
+        // already-settled demo rows.
+        OrganizationPaymentInstrument::factory()->create([
+            'organization_id' => $organization->id,
+            'masked_card_number' => '**** 4242',
+            'card_type' => 'visa',
+            'bank' => 'Test Bank',
+            'exp_month' => '12',
+            'exp_year' => '2030',
+            'currency' => 'GHS',
+            'pending_credit_amount' => 100,
+        ]);
 
         // A second, plain-role admin -- without this, exercising promote/demote/remove or the
         // last-owner-protection error (SCRUM-166) requires hand-creating an account via tinker

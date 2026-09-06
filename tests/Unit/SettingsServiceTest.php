@@ -156,3 +156,23 @@ test('getSettingsForAdmin converts minimum payout amounts back to major units fo
         ['currency' => 'USD', 'amount' => 12],
     ]);
 });
+
+// TT-7.3b-i/SCRUM-240: getOrganizationPaymentInstrumentVerificationAmounts() lets the org-admin
+// payment-instrument page preview the nominal verification charge per currency -- unlike
+// getSettingsForAdmin()'s minimum payout amounts, this stays in minor units (that page's other
+// money fields already are), so there is no *100/divide-by-100 conversion to pin here.
+test('getOrganizationPaymentInstrumentVerificationAmounts reflects a super-admin override, in minor units', function () {
+    config(['currencies.supported' => ['GHS', 'USD']]);
+    $superAdmin = User::factory()->has(Administrator::factory())->create();
+
+    SettingsService::new()->update(SettingDTO::new()->fromArray([
+        'user' => $superAdmin,
+        'key' => SettingsEnum::organizationPaymentInstrumentVerificationAmount,
+        'value' => json_encode(['GHS' => 200, 'USD' => 150]),
+    ]));
+
+    expect(SettingsService::new()->getOrganizationPaymentInstrumentVerificationAmounts())->toBe([
+        ['currency' => 'GHS', 'amount' => 200],
+        ['currency' => 'USD', 'amount' => 150],
+    ]);
+});

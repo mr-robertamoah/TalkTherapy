@@ -15,6 +15,7 @@ use App\Http\Controllers\OrganizationCounsellorCompensationController;
 use App\Http\Controllers\OrganizationCounsellorController;
 use App\Http\Controllers\OrganizationMemberBillingConfigController;
 use App\Http\Controllers\OrganizationMemberController;
+use App\Http\Controllers\OrganizationPaymentInstrumentController;
 use App\Http\Controllers\OrganizationReconciliationController;
 use App\Http\Controllers\PayoutController;
 use App\Http\Controllers\PostController;
@@ -185,6 +186,14 @@ Route::middleware('auth')->group(function () {
     Route::get('/organizations/{organizationId}/reconciliation', [OrganizationReconciliationController::class, 'index'])->name('organizations.reconciliation')->middleware('throttle:60,1');
     Route::get('/organizations/{organizationId}/reconciliation/transactions', [OrganizationReconciliationController::class, 'transactions'])->name('organizations.reconciliation.transactions')->middleware('throttle:60,1');
     Route::get('/organizations/{organizationId}/reconciliation/invoices', [OrganizationReconciliationController::class, 'invoices'])->name('organizations.reconciliation.invoices')->middleware('throttle:60,1');
+
+    // Org-admin payment-instrument onboarding UI (SCRUM-240/TT-7.3b-i) -- index is the
+    // browser-navigable Inertia page (admin-gated, throttled like reconciliation above since it
+    // discloses masked card details); initiate starts the real Paystack checkout redirect that
+    // captures a reusable card authorization, throttled at the same rate as the other
+    // real-money-movement transactions.initiate.* routes above, not reconciliation's read-only rate.
+    Route::get('/organizations/{organizationId}/payment-instrument', [OrganizationPaymentInstrumentController::class, 'index'])->name('organizations.payment_instrument')->middleware('throttle:60,1');
+    Route::post('/organizations/{organizationId}/payment-instrument', [OrganizationPaymentInstrumentController::class, 'initiate'])->name('organizations.payment_instrument.initiate')->middleware('throttle:20,1');
 
     // throttle: uncapped, either of these could be used to spam an org's admins with invites,
     // or spam every provider org on the platform with applications (SCRUM-120 security review).
