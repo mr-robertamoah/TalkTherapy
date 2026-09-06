@@ -2,8 +2,14 @@
 
 use App\DTOs\GetSessionMessagesDTO;
 use App\DTOs\GetTherapyTopicMessagesDTO;
+use App\Enums\OrganizationCounsellorStatusEnum;
+use App\Enums\OrganizationMemberBillingModeEnum;
 use App\Models\Counsellor;
 use App\Models\Message;
+use App\Models\Organization;
+use App\Models\OrganizationCounsellor;
+use App\Models\OrganizationMember;
+use App\Models\OrganizationMemberBillingConfig;
 use App\Models\PaymentAccessGrant;
 use App\Models\Session;
 use App\Models\Therapy;
@@ -151,6 +157,38 @@ test('getSessionMessages allows a PER_THERAPY-gated therapy\'s chat once a thera
     ]));
 
     expect($result)->not->toBe([]);
+});
+
+// TT-7.3b-f2/SCRUM-238: proves real-caller wiring, not just EnsureStrictPaymentGateSatisfiedAction's
+// own contract in isolation -- OrganizationBillingSuspendedException must be caught here and
+// treated identically to any other access-denial (an empty result), not left to propagate as an
+// uncaught 500.
+test('getSessionMessages denies access when the retainer-covering organization is billing-suspended', function () {
+    $client = User::factory()->create();
+    $counsellorUser = User::factory()->create();
+    $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
+    $therapy = perTherapyStrictGatedTherapy(['addedby_id' => $client->id, 'counsellor_id' => $counsellor->id]);
+    $session = Session::factory()->create(['for_id' => $therapy->id, 'for_type' => Therapy::class]);
+
+    $organization = Organization::factory()->create(['is_consumer' => true, 'verified_at' => now()]);
+    OrganizationCounsellor::factory()->create([
+        'organization_id' => $organization->id,
+        'counsellor_id' => $counsellor->id,
+        'status' => OrganizationCounsellorStatusEnum::active->value,
+    ]);
+    $member = OrganizationMember::factory()->create(['organization_id' => $organization->id, 'user_id' => $client->id]);
+    OrganizationMemberBillingConfig::factory()->create([
+        'organization_member_id' => $member->id,
+        'mode' => OrganizationMemberBillingModeEnum::retainer->value,
+    ]);
+    $organization->suspendBilling('Retainer invoice settlement failed.');
+
+    $result = MessageService::new()->getSessionMessages(GetSessionMessagesDTO::new()->fromArray([
+        'user' => $client,
+        'session' => $session,
+    ]));
+
+    expect($result)->toBe([]);
 });
 
 test('getSessionMessages is unaffected for the counsellor of a strict-gated therapy', function () {

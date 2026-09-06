@@ -3,6 +3,7 @@
 use App\Actions\Transaction\EnsureStrictPaymentGateSatisfiedAction;
 use App\Enums\OrganizationCounsellorStatusEnum;
 use App\Enums\OrganizationMemberBillingModeEnum;
+use App\Exceptions\OrganizationBillingSuspendedException;
 use App\Exceptions\PaymentRequiredException;
 use App\Models\Counsellor;
 use App\Models\Organization;
@@ -157,6 +158,86 @@ test('an unverified organization does not grant the retainer bypass', function (
 
     expect(fn () => EnsureStrictPaymentGateSatisfiedAction::new()->execute($therapy, $user))
         ->toThrow(PaymentRequiredException::class);
+});
+
+// TT-7.3b-f2/SCRUM-238: layered on top of the retainer bypass above -- a suspended org's member
+// must be BLOCKED entirely, never fall through to the personal-pay checks below (no personal-pay
+// fallback is offered; the org, not the member, must resolve the suspension).
+
+function anActiveRetainerMembershipCoveringWithOrg(Counsellor $counsellor, User $user): array
+{
+    $organization = Organization::factory()->create(['is_consumer' => true, 'verified_at' => now()]);
+
+    OrganizationCounsellor::factory()->create([
+        'organization_id' => $organization->id,
+        'counsellor_id' => $counsellor->id,
+        'status' => OrganizationCounsellorStatusEnum::active->value,
+    ]);
+
+    $member = OrganizationMember::factory()->create([
+        'organization_id' => $organization->id,
+        'user_id' => $user->id,
+    ]);
+
+    OrganizationMemberBillingConfig::factory()->create([
+        'organization_member_id' => $member->id,
+        'mode' => OrganizationMemberBillingModeEnum::retainer->value,
+    ]);
+
+    return [$member, $organization];
+}
+
+test('a retainer-covered client whose organization is billing-suspended is blocked, not bypassed', function () {
+    $user = User::factory()->create();
+    $counsellor = Counsellor::factory()->create(['user_id' => User::factory()]);
+    $therapy = gateTherapy('PER_THERAPY');
+    $therapy->update(['counsellor_id' => $counsellor->id]);
+    [, $organization] = anActiveRetainerMembershipCoveringWithOrg($counsellor, $user);
+    $organization->suspendBilling('Retainer invoice settlement failed.');
+
+    expect(fn () => EnsureStrictPaymentGateSatisfiedAction::new()->execute($therapy, $user))
+        ->toThrow(OrganizationBillingSuspendedException::class);
+
+    // Never falls through to the personal-pay path -- no grant, no PaymentRequiredException
+    // either (a different exception type, so a caller that only catches PaymentRequiredException
+    // must not accidentally treat this as "pay to continue").
+    $this->assertDatabaseCount('payment_access_grants', 0);
+});
+
+test('a retainer-covered client whose organization is NOT suspended is unaffected', function () {
+    $user = User::factory()->create();
+    $counsellor = Counsellor::factory()->create(['user_id' => User::factory()]);
+    $therapy = gateTherapy('PER_THERAPY');
+    $therapy->update(['counsellor_id' => $counsellor->id]);
+    anActiveRetainerMembershipCoveringWithOrg($counsellor, $user);
+
+    expect(fn () => EnsureStrictPaymentGateSatisfiedAction::new()->execute($therapy, $user))
+        ->not->toThrow(OrganizationBillingSuspendedException::class);
+});
+
+// Reviewer finding: suspension is read directly off the resolved covering Organization instance
+// (a plain column read, no shared/static state), so this pins down there is genuinely no
+// cross-org leakage -- suspending org A must never affect org B's own, otherwise-identical
+// retainer coverage.
+test('suspending one organization does not affect a different organization\'s own retainer-covered member', function () {
+    $counsellorA = Counsellor::factory()->create(['user_id' => User::factory()]);
+    $userA = User::factory()->create();
+    $therapyA = gateTherapy('PER_THERAPY');
+    $therapyA->update(['counsellor_id' => $counsellorA->id]);
+    [, $organizationA] = anActiveRetainerMembershipCoveringWithOrg($counsellorA, $userA);
+    $organizationA->suspendBilling('Retainer invoice settlement failed.');
+
+    $counsellorB = Counsellor::factory()->create(['user_id' => User::factory()]);
+    $userB = User::factory()->create();
+    $therapyB = gateTherapy('PER_THERAPY');
+    $therapyB->update(['counsellor_id' => $counsellorB->id]);
+    anActiveRetainerMembershipCoveringWithOrg($counsellorB, $userB);
+
+    expect(fn () => EnsureStrictPaymentGateSatisfiedAction::new()->execute($therapyA, $userA))
+        ->toThrow(OrganizationBillingSuspendedException::class);
+
+    expect(fn () => EnsureStrictPaymentGateSatisfiedAction::new()->execute($therapyB, $userB))
+        ->not->toThrow(OrganizationBillingSuspendedException::class);
 });
 
 test('a retainer membership covering a different counsellor does not grant the bypass', function () {

@@ -4876,3 +4876,71 @@ for every transaction type, not just settlement), so it is not a regression intr
 ticket — filed as SCRUM-244 rather than blocking this one, per the same "never silently ignore a
 finding, but don't block on an unrelated pre-existing gap" precedent as SCRUM-243 (TT-7.3b-c's own
 deferred charge-then-record ordering finding).
+
+## 2026-09-06 — SCRUM-238 (TT-7.3b-f2): org-suspension enforcement
+
+**Decision**: `Organization::suspendBilling()` (mirrors `verify()`'s existing single-current-state-
+flag precedent) is written from exactly ONE place, per the ticket's own scope: `UpdateOrganizationInvoiceStatusAction`
+(SCRUM-236's own existing hook), on a retainer invoice settlement reaching `failed`. Suspension is
+IMMEDIATE, not after a grace period — SCRUM-236's own design already has no retry/dunning logic
+at all for a failed invoice (it stays `failed` permanently, no automatic re-attempt), so a grace
+period would imply a reconsideration path that doesn't exist; immediate suspension is the only
+choice consistent with that.
+
+**A new exception type, not a reuse of `PaymentRequiredException`**: the enforcement lives at the
+exact call site the ticket specifies (`EnsureStrictPaymentGateSatisfiedAction`'s retainer bypass,
+TT-7.3b-f1's own explicit "not yet checked here" comment). The obvious-looking option — reuse
+`PaymentRequiredException`, already thrown by this same method for the ordinary strict-gate case —
+was rejected after checking its actual caller: `TherapyController` catches `PaymentRequiredException`
+specifically to set a `paymentRequired` flash flag that routes the client toward a personal "Pay
+Now" flow (SCRUM-219/221). That would be actively wrong here: a retainer-covered engagement never
+has a personal payment path to resume (no Transaction is ever created for it), and the whole point
+of this ticket's "no personal-pay fallback" requirement is that the MEMBER cannot resolve this by
+paying — only the org can. A new `OrganizationBillingSuspendedException` (mirrors
+`TherapyAccessDeniedException`'s role, just for a different reason) keeps this distinguishable. Its
+only other caller-side change: `EnsureUserCanAccessTherapyContentAction`'s existing
+`catch (PaymentRequiredException)` had to be widened to also catch the new type — otherwise it
+would have propagated uncaught out of `MessageService`'s methods as an unhandled 500, since that
+action's own boolean-return contract has no other path to surface it.
+
+**Deferred, not built here (flagged, not silently skipped)**: there is no mechanism anywhere to
+LIFT a suspension once set — no admin action, no auto-resume on a later successful settlement of a
+different invoice. The ticket's own text ("Single writer: the invoice-settlement-failure path")
+reads as an intentional MVP scoping, not an oversight, but leaving an org with genuinely no path
+back to unsuspended standing is a real gap worth surfacing rather than silently accepting — filed
+as SCRUM-245 (a manual admin action, likely paired with or adjacent to TT-7.3b-j's reconciliation
+view) rather than inventing that UI/authorization surface here, which the ticket never asked for.
+
+**Not fixed / evaluated as out of scope**: whether a suspended org's OTHER (non-retainer,
+pay-per-use) members should also be blocked was considered and left alone — the ticket's own scope
+explicitly ties enforcement to "the SAME call site as TT-7.3b-f1," which only ever fires for a
+retainer-covered engagement; a pay-per-use member's own transaction-based gate is unaffected by
+this ticket, matching the ticket's literal scope rather than expanding it.
+
+**Review findings, both real, neither a regression from this ticket**: reviewer + security-engineer
+subagents both approved the diff (no bypass, no uncaught-exception regression, no unsafe write
+pattern, tenant isolation verified). Three additional findings surfaced, all evaluated:
+1. (Medium, pre-existing) `EnsureCanSendMessageToForAction` (message CREATION) has never gone
+   through `EnsureStrictPaymentGateSatisfiedAction`/`EnsureUserCanAccessTherapyContentAction` at
+   all -- confirmed via `git log` to predate this whole epic (a SCRUM-219/220 gap: only message
+   *reading* was ever gated). Consequence: a client blocked from reading messages in a
+   suspended/strict-gated session can still create new ones there -- "blocked" isn't a full block
+   today. Filed as SCRUM-246 (not this ticket's scope to fix; this ticket only touches the
+   existing gate's retainer-bypass branch, not the message-send path that never called it).
+2. (Low, this ticket's own literal scope, not a gap) Suspension enforcement only ever fires inside
+   `EnsureStrictPaymentGateSatisfiedAction`'s STRICT-gate branch -- a retainer-covered engagement
+   on a non-strict ("trust-based") therapy is unaffected by its org's suspension, since the whole
+   method returns before ever resolving the covering org. This is the direct, literal consequence
+   of the ticket's own "enforced at the SAME call site as TT-7.3b-f1" instruction (f1 itself is
+   nested inside that same strict-gate branch) -- not deviated from, since expanding enforcement to
+   apply regardless of the strict/trust-based setting would have been scope expansion beyond what
+   was asked. Documented here rather than silently accepted, in case product later decides
+   suspension should be a harder, gate-setting-independent block.
+3. (Low, pre-existing, unrelated to this ticket) `GetRetainerCoveringOrganizationAction` (SCRUM-237)
+   resolves ONE covering org via `->first()` when a user could in principle hold overlapping active
+   retainer memberships across two orgs covering the same counsellor -- a suspended second org
+   covering the same engagement would never be consulted in that (narrow, likely-never-occurring)
+   scenario. Pre-existing in that action's own query, not touched or introduced by this ticket --
+   tracked informally alongside SCRUM-245 rather than filed as its own ticket, given the severity
+   and the fact that it requires an org-setup scenario (overlapping retainer coverage) this
+   codebase has no other support for creating today.

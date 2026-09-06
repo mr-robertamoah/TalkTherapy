@@ -2,12 +2,19 @@
 
 use App\Actions\Therapy\EnsureUserHasAccessToTherapyAction;
 use App\DTOs\GetTherapyDTO;
+use App\Enums\OrganizationCounsellorStatusEnum;
+use App\Enums\OrganizationMemberBillingModeEnum;
 use App\Enums\RequestStatusEnum;
 use App\Enums\RequestTypeEnum;
+use App\Exceptions\OrganizationBillingSuspendedException;
 use App\Exceptions\PaymentRequiredException;
 use App\Models\Administrator;
 use App\Models\Counsellor;
 use App\Models\Guardianship;
+use App\Models\Organization;
+use App\Models\OrganizationCounsellor;
+use App\Models\OrganizationMember;
+use App\Models\OrganizationMemberBillingConfig;
 use App\Models\PaymentAccessGrant;
 use App\Models\Request;
 use App\Models\Therapy;
@@ -82,6 +89,35 @@ test('a client with an existing grant keeps access even after the underlying tra
 
     expect(fn () => EnsureUserHasAccessToTherapyAction::new()->execute($dto))
         ->not->toThrow(PaymentRequiredException::class);
+});
+
+// TT-7.3b-f2/SCRUM-238: proves the page-load call site lets the new exception propagate rather
+// than swallowing it or misclassifying it as a PaymentRequiredException (the two must stay
+// distinguishable -- a controller catch for one must not accidentally catch the other, since
+// PaymentRequiredException drives the client toward a Pay Now flow this case has no use for).
+test('a retainer-covered client whose organization is billing-suspended is denied with OrganizationBillingSuspendedException, not PaymentRequiredException', function () {
+    $client = User::factory()->create();
+    $counsellorUser = User::factory()->create();
+    $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
+    $therapy = strictGatedPaidTherapy(['addedby_id' => $client->id, 'counsellor_id' => $counsellor->id]);
+
+    $organization = Organization::factory()->create(['is_consumer' => true, 'verified_at' => now()]);
+    OrganizationCounsellor::factory()->create([
+        'organization_id' => $organization->id,
+        'counsellor_id' => $counsellor->id,
+        'status' => OrganizationCounsellorStatusEnum::active->value,
+    ]);
+    $member = OrganizationMember::factory()->create(['organization_id' => $organization->id, 'user_id' => $client->id]);
+    OrganizationMemberBillingConfig::factory()->create([
+        'organization_member_id' => $member->id,
+        'mode' => OrganizationMemberBillingModeEnum::retainer->value,
+    ]);
+    $organization->suspendBilling('Retainer invoice settlement failed.');
+
+    $dto = GetTherapyDTO::new()->fromArray(['user' => $client, 'therapy' => $therapy]);
+
+    expect(fn () => EnsureUserHasAccessToTherapyAction::new()->execute($dto))
+        ->toThrow(OrganizationBillingSuspendedException::class);
 });
 
 test('the counsellor of a strict-gated therapy is never subject to the payment gate', function () {
