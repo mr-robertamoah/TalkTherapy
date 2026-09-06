@@ -18,4 +18,12 @@ enum CounsellorEarningStatusEnum: string
     // fails/reverses, but the row's own `status` immediately moves back to `pending` afterward
     // (TT-7.6c) -- money never silently disappears from a counsellor's available balance.
     case failed = 'FAILED';
+    // TT-7.3b-g/SCRUM-239: terminal -- an org-financed transaction's own refund reconciliation
+    // (ReconcileOrgFinancedRefundAction) moves a still-`pending` earning here, explicitly
+    // excluding it from future payout eligibility. Deliberately never applied to a `processing`
+    // or already-`paidOut` earning -- both are already claimed by a CounsellorPayout whose own
+    // later resolution (RecordCounsellorPayoutStatusAction) does a blanket, status-agnostic
+    // update that would silently clobber a reversal, so those are flagged for manual
+    // reconciliation instead, not auto-mutated.
+    case reversed = 'REVERSED';
 }

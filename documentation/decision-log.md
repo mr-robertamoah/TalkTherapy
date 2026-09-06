@@ -5021,3 +5021,80 @@ nginx falls back to a small compile-time default for FastCGI response headers. R
 independent of any change in this ticket's diff (the new reconciliation page, sharing the same
 nginx/php-fpm stack, loaded repeatedly in the same session with no issue) -- an nginx config gap,
 not something to fix inside this ticket's own scope.
+
+## 2026-09-06 — SCRUM-239 (TT-7.3b-g): org-paid refund reconciliation hook
+
+**Decision**: `ReconcileOrgFinancedRefundAction` is deliberately generic across BOTH org-billing
+modes -- a pay-per-use transaction has exactly one `CounsellorEarning`; a retainer SETTLEMENT
+transaction (`for` an `OrganizationInvoice`) has one per line. The action never special-cases
+either: it just reverses every earning still tied to the given `Transaction` that hasn't already
+been paid out. This wasn't a product fork -- both cases reduce to the identical operation once
+`Transaction->earnings` is the shared query surface, so building two code paths would have been
+pure duplication.
+
+**Resolving a genuine ticket-text ambiguity**: the ticket's own scope says this hook "adjusts the
+org's recorded ledger/invoice line and the counsellor's `CounsellorEarning` row" as if two distinct
+things need mutating. Resolved by treating `CounsellorEarning` as the ACTUAL financial ledger entry
+-- the org's own `OrganizationInvoiceLine`, once a retainer period has settled, is an immutable
+historical record of what was actually invoiced and charged (mirroring TT-7.7a's own architect
+decision to keep refund tracking in a separate, not-yet-built `refunds` table rather than mutating
+existing records — see that ticket's row in `documentation/implementation_plan.md`). Mutating a
+settled invoice line after the fact would corrupt that history for no real benefit; reversing the
+earning is the correct and sufficient adjustment. Not asked about explicitly since it's a technical
+implementation-detail resolution, not a product-behavior fork — reasoned from an existing,
+adjacent architect decision already on record.
+
+**New `CounsellorEarningStatusEnum::reversed` case, not a reuse of `failed`**: `failed` already
+means something specific and different (a Paystack transfer failed/reversed, the row immediately
+returns to `pending` for a fresh payout attempt -- TT-7.6c). Reusing it for a refund-driven
+reversal would have made a `failed` row ambiguous between "retry me" and "this money is gone,
+don't retry" -- a real correctness risk for a future payout-trigger query. `reversed` is
+terminal and distinct. Native MySQL enum columns on both `counsellor_earnings.status` and
+`counsellor_earning_status_histories.status` required a migration re-applying the full value list
+on each (mirrors `2026_09_03_100000_add_session_schedule_proposal_to_requests_type_enum.php`'s own
+precedent) -- caught before merge, not after, since this session has hit the identical
+"invisible under SQLite, breaks on real MySQL" gap before in this epic.
+
+**Never touches an already-`PAID_OUT` earning**: money that's already left the platform can't be
+un-sent by flipping a status column. Flagged via the notification (`needsManualReview` flag) for
+manual reconciliation instead of silently reversing it, which would have understated what was
+actually paid with no corresponding clawback -- a real money-integrity risk, not just a style
+choice.
+
+**Post-review fix: `PROCESSING` earnings are also never auto-reversed** (originally the action
+reversed both `pending` and `processing`; both the `reviewer` and `security-engineer` subagents
+independently flagged this as unsafe, HIGH severity). Confirmed by reading
+`RecordCounsellorPayoutStatusAction` and `CounsellorPayout` directly: `PROCESSING` means a specific
+`CounsellorPayout` has already claimed the earning, and that payout's own later resolution does a
+blanket, status-agnostic `$payout->earnings()->update([...])` with no `where('status', ...)` guard
+-- it would silently clobber a `reversed` status back to `paidOut` (money sent anyway, no trace the
+reversal was overwritten) or `pending` (the reconciliation undone entirely). Fixed by treating
+`processing` identically to `paidOut`: flagged via `needsManualReview`, never auto-mutated. The
+underlying gap -- `RecordCounsellorPayoutStatusAction`'s blanket update not being status-aware --
+is a real, more general issue outside this ticket's scope (it lives in already-merged TT-7.6c/
+SCRUM-227 code); worked around here rather than fixed at the source, and is a good candidate for
+its own follow-up ticket if a future ticket hits the same class of gap again.
+
+**Post-review fix: locking added.** `DB::transaction()` + `CounsellorEarning::query()->...
+->lockForUpdate()->get()` was added around the read-then-update loop (both subagents, MEDIUM),
+mirroring `TriggerCounsellorPayoutAction`'s own idiom -- without it, two concurrent/replayed
+invocations for the same `Transaction` could both read a `pending` earning before either commits,
+double-reversing it (duplicate status-history row, duplicate notification). The admin notification
+is now dispatched only after this transaction commits, matching
+`RecordCounsellorPayoutStatusAction`'s own identical "queued side-effect fires after commit"
+reasoning.
+
+**Post-review fix: soft-deleted financing organization.** `Organization` uses `SoftDeletes`, and
+`Transaction::organization()` is a plain `belongsTo`, which Eloquent's default query excludes
+trashed rows from -- both subagents flagged that a refund reconciled after the financing org was
+deactivated would otherwise crash on a null dereference. Fixed with `->withTrashed()` (mirrors
+`OrganizationInvoiceLine::counsellor()`'s own identical precedent from earlier in this epic); a
+soft-deleted org still resolves and reconciliation proceeds completely normally (its admin accounts
+still exist and still need to know), with a defensive null-guard kept for the separate, narrower
+edge case of a stale in-memory `Transaction` racing a hard-delete's FK-cascade nulling of
+`organization_id`.
+
+**Backend-only, no feature doc**: matches this epic's own established precedent (TT-7.3b-a/-b0/-b/-c/-d/-e/-f2,
+none of which got a dedicated `documentation/features/*.md` — only the two UI-facing sub-tickets,
+-j and -k, did). Callable-only per the ticket's own scope; TT-7.7d (not yet built) is its only
+future caller.
