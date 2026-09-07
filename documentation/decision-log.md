@@ -5179,3 +5179,19 @@ authorization check of its own, relying solely on the controller's inline admin 
 finding) -- fixed to independently call `EnsureCanManageOrganizationBillingSuspensionAction`,
 matching the two write actions' own defense-in-depth pattern and `PayoutService::getPayoutsForAdmin()`'s
 identical existing precedent.
+## 2026-09-06 — SCRUM-246: TT-7.3b follow-up cleanup (message creation bypassing the strict-payment gate)
+
+`EnsureCanSendMessageToForAction::validateForSession()`
+now also calls `EnsureUserCanAccessTherapyContentAction` (the same shared check
+`getSessionMessages`/`getTherapyTopicMessages`/`getMessageReplies` already use) after its existing
+`isParticipant()` check, closing the gap where a client blocked from *reading* a strict-gated (or
+org-suspended) session's messages could still *create* new ones there. `Discussion`-parented
+messages deliberately untouched — mirrors that action's own existing comment: a Discussion's
+participants are Counsellors, never the paying client, so there's no client-payment-gating
+scenario on that branch. Security-engineer review confirmed no false-positive blocking of
+legitimate senders (counsellor, group-therapy participants, non-suspended clients) and no
+remaining bypass path, but flagged one adjacent, out-of-scope gap as a candidate follow-up:
+`EnsureCanUpdateMessageAction` never re-checks this same gate, so a client whose access has since
+lapsed can still edit the content of a message they created while still gated — pre-existing
+behavior, not introduced here, not filed as its own ticket yet since it may be an intentional
+product choice (editing your own already-sent message vs. needing a live grant).
