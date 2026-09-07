@@ -7,6 +7,9 @@ use App\Enums\OrganizationInvoiceStatusEnum;
 use App\Enums\TransactionStatusEnum;
 use App\Models\OrganizationInvoice;
 use App\Models\Transaction;
+use App\Models\User;
+use App\Notifications\OrganizationBillingSuspensionMayBeResolvedNotification;
+use Illuminate\Support\Facades\Notification;
 
 // TT-7.3b-e/SCRUM-236: called from RecordTransactionStatusAction for EVERY terminal status a
 // settlement transaction can reach (unlike GenerateCounsellorEarningsAction/
@@ -53,6 +56,16 @@ class UpdateOrganizationInvoiceStatusAction extends Action
             $transaction->for->organization->suspendBilling(
                 "Retainer invoice settlement failed for the period starting {$transaction->for->period_start->toDateString()}."
             );
+        }
+
+        // TT-7.3b-followup/SCRUM-245: still does NOT auto-lift the suspension (single writer for
+        // that stays LiftOrganizationBillingSuspensionAction, admin-triggered only) -- just tells
+        // staff a settlement they may care about just happened, since RetryOrganizationInvoiceSettlementAction
+        // is otherwise the only way a `failed` invoice ever reaches `settled` at all.
+        if ($invoiceStatus === OrganizationInvoiceStatusEnum::settled->value && $transaction->for->organization->isBillingSuspended()) {
+            $admins = User::query()->whereAdmin()->inRandomOrder()->limit(2)->get();
+
+            Notification::send($admins->unique(), new OrganizationBillingSuspensionMayBeResolvedNotification($transaction->for));
         }
     }
 }

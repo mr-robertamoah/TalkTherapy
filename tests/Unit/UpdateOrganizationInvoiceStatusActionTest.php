@@ -3,11 +3,14 @@
 use App\Actions\Organization\UpdateOrganizationInvoiceStatusAction;
 use App\Enums\OrganizationInvoiceStatusEnum;
 use App\Enums\TransactionStatusEnum;
+use App\Models\Administrator;
 use App\Models\Organization;
 use App\Models\OrganizationInvoice;
 use App\Models\Therapy;
 use App\Models\Transaction;
 use App\Models\User;
+use App\Notifications\OrganizationBillingSuspensionMayBeResolvedNotification;
+use Illuminate\Support\Facades\Notification;
 
 // TT-7.3b-e/SCRUM-236 + TT-7.3b-f2/SCRUM-238: direct unit coverage of this action's own contract,
 // independent of RecordTransactionStatusAction's own wiring (see ProcessOrganizationInvoiceSettlementJobTest
@@ -67,6 +70,36 @@ test('a pending or abandoned status is a no-op -- neither settles/fails the invo
 
     expect($invoice->fresh()->status)->toBe(OrganizationInvoiceStatusEnum::pending->value);
     expect($organization->fresh()->isBillingSuspended())->toBeFalse();
+});
+
+// TT-7.3b-followup/SCRUM-245: a settlement succeeding while the org is ALREADY suspended (the
+// only way that happens today is via RetryOrganizationInvoiceSettlementAction, since a fresh
+// `open` invoice's own org is never suspended by definition -- suspension only exists once a
+// PRIOR invoice already failed) notifies staff, but never auto-lifts the suspension itself.
+test('a success status notifies 2 random admins when the organization is currently billing-suspended', function () {
+    Notification::fake();
+    [$transaction, $invoice, $organization] = anOrganizationInvoiceTransaction();
+    $organization->suspendBilling('Retainer invoice settlement failed for an earlier period.');
+    User::factory()->count(3)->has(Administrator::factory())->create();
+
+    UpdateOrganizationInvoiceStatusAction::new()->execute($transaction, TransactionStatusEnum::success->value);
+
+    expect($invoice->fresh()->status)->toBe(OrganizationInvoiceStatusEnum::settled->value);
+    // Still suspended -- this action is not the one that ever lifts it.
+    expect($organization->fresh()->isBillingSuspended())->toBeTrue();
+    // Exactly 2 of the 3 admins, per whereAdmin()->inRandomOrder()->limit(2) -- which 2 is
+    // non-deterministic by design, so only the count (not identity) is pinned here.
+    Notification::assertSentTimes(OrganizationBillingSuspensionMayBeResolvedNotification::class, 2);
+});
+
+test('a success status sends no notification when the organization is not billing-suspended', function () {
+    Notification::fake();
+    [$transaction] = anOrganizationInvoiceTransaction();
+    User::factory()->has(Administrator::factory())->create();
+
+    UpdateOrganizationInvoiceStatusAction::new()->execute($transaction, TransactionStatusEnum::success->value);
+
+    Notification::assertNothingSent();
 });
 
 test('a transaction whose subject is not an OrganizationInvoice is untouched', function () {

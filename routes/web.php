@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AboutController;
 use App\Http\Controllers\AdministratorController;
+use App\Http\Controllers\AdminOrganizationBillingController;
 use App\Http\Controllers\AdminPayoutController;
 use App\Http\Controllers\CounsellorController;
 use App\Http\Controllers\CounsellorPricingController;
@@ -93,6 +94,13 @@ Route::middleware('auth')->group(function () {
     Route::get('/administrator/payouts', [AdminPayoutController::class, 'index'])->name('administrator.payouts');
     Route::post('/administrator/settings/platform-fee', [AdminPayoutController::class, 'updatePlatformFee'])->name('admin.settings.platform-fee.update')->middleware('throttle:10,1');
     Route::post('/administrator/settings/minimum-payout', [AdminPayoutController::class, 'updateMinimumPayoutAmounts'])->name('admin.settings.minimum-payout.update')->middleware('throttle:10,1');
+
+    // TT-7.3b-followup/SCRUM-245: the manual "resolve this" surface SCRUM-238 left unbuilt --
+    // platform-admin only (mirrors administrator.payouts' own convention exactly). Write routes
+    // throttled to match admin.settings.*'s real-effect rate, not the read-only page's default.
+    Route::get('/administrator/organization-billing', [AdminOrganizationBillingController::class, 'index'])->name('administrator.organization_billing');
+    Route::post('/administrator/organization-invoices/{organizationInvoiceId}/retry-settlement', [AdminOrganizationBillingController::class, 'retrySettlement'])->name('admin.organization_invoices.retry_settlement')->middleware('throttle:10,1');
+    Route::post('/administrator/organizations/{organizationId}/lift-billing-suspension', [AdminOrganizationBillingController::class, 'liftSuspension'])->name('admin.organizations.lift_billing_suspension')->middleware('throttle:10,1');
 
     Route::get('/therapies', [TherapyController::class, 'show'])->name('therapies');
     Route::get('/therapies/{therapyId}/chat', [TherapyController::class, 'chat'])->name('therapies.chat');

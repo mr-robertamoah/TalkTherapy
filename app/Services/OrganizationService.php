@@ -6,6 +6,7 @@ use App\Actions\Organization\CreateOrganizationAction;
 use App\Actions\Organization\EnsureCanRegisterOrganizationPaymentInstrumentAction;
 use App\Actions\Organization\EnsureOrganizationDataIsValidAction;
 use App\Actions\Organization\EnsureUserIsOrganizationAdminAction;
+use App\Actions\Organization\GetBillingSuspendedOrganizationsForAdminAction;
 use App\Actions\Organization\GetMyAdministeredOrganizationsAction;
 use App\Actions\Organization\GetMyOrganizationCounsellorAffiliationsAction;
 use App\Actions\Organization\GetMyOrganizationMembershipsAction;
@@ -17,11 +18,15 @@ use App\Actions\Organization\GetOrganizationMembersAction;
 use App\Actions\Organization\GetOrganizationRequestQueueAction;
 use App\Actions\Organization\GetOrganizationRetainerInvoicesAction;
 use App\Actions\Organization\InitiateOrganizationPaymentInstrumentRegistrationAction;
+use App\Actions\Organization\LiftOrganizationBillingSuspensionAction;
+use App\Actions\Organization\RetryOrganizationInvoiceSettlementAction;
 use App\Actions\Organization\UpdateOrganizationAction;
 use App\DTOs\GetOrganizationDirectoryDTO;
 use App\DTOs\OrganizationDTO;
 use App\DTOs\OrganizationPaymentInstrumentDTO;
 use App\Models\Organization;
+use App\Models\OrganizationInvoice;
+use App\Models\Transaction;
 use App\Models\User;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 
@@ -147,5 +152,25 @@ class OrganizationService extends Service
     public function getMyOrganizationRequestQueue(User $user): LengthAwarePaginator
     {
         return GetMyOrganizationRequestQueueAction::new()->execute($user);
+    }
+
+    // TT-7.3b-followup/SCRUM-245: platform-admin surface, deliberately NOT gated via
+    // EnsureUserIsOrganizationAdminAction (that's for THIS org's own admins, not staff) -- the
+    // read-side check lives inline in the controller (matching AdminPayoutController's own
+    // convention), the two write actions below each re-check via
+    // EnsureCanManageOrganizationBillingSuspensionAction independently.
+    public function getBillingSuspendedOrganizationsForAdmin(?User $user): LengthAwarePaginator
+    {
+        return GetBillingSuspendedOrganizationsForAdminAction::new()->execute($user);
+    }
+
+    public function retryOrganizationInvoiceSettlement(?User $user, ?OrganizationInvoice $invoice): ?Transaction
+    {
+        return RetryOrganizationInvoiceSettlementAction::new()->execute($user, $invoice);
+    }
+
+    public function liftOrganizationBillingSuspension(?User $user, ?Organization $organization): Organization
+    {
+        return LiftOrganizationBillingSuspensionAction::new()->execute($user, $organization);
     }
 }
