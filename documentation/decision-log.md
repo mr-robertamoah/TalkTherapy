@@ -5157,3 +5157,30 @@ remaining bypass path, but flagged one adjacent, out-of-scope gap as a candidate
 lapsed can still edit the content of a message they created while still gated — pre-existing
 behavior, not introduced here, not filed as its own ticket yet since it may be an intentional
 product choice (editing your own already-sent message vs. needing a live grant).
+
+## 2026-09-07 — SCRUM-243: charge-then-record ordering hardened
+
+`ChargeOrganizationForModelAction::chargeAndRecord()` now generates a `Transaction` reference
+locally and creates the row (as `pending`) BEFORE calling `PaystackClient::chargeAuthorization()`,
+passing that same reference explicitly — mirrors `SettleOrganizationInvoiceAction`/
+`ProcessOrganizationInvoiceSettlementJob`'s own already-proven identical pattern, confirming
+Paystack's endpoint does accept a caller-supplied reference (unconfirmed at SCRUM-231's own spike
+time). Previously, a failure creating the row AFTER a successful charge would have silently moved
+real money with no local record to reconcile against; now a failure there fails closed instead
+(the charge is never attempted). On a `RequestException` from the Paystack call itself, the
+already-created row is deliberately left `pending`, not marked `failed` — a webhook still arrives
+for every charge regardless of how it started, and marking it `failed` prematurely would let
+`RecordTransactionStatusAction`'s own terminal-status guard permanently block that later, genuine
+webhook from ever recording a real success.
+
+Security-engineer review surfaced a genuinely stronger side effect than the ticket text itself
+described: because a local row now exists bearing the exact reference sent to Paystack, a webhook
+for a charge whose synchronous HTTP response was lost (not just one that returned an unrecognized
+status) can now actually be found and resolved — previously such a webhook found nothing at all
+and silently no-opped, permanently.
+
+**Deferred, not fixed here** (security-engineer review, real but out of this bugfix's scope):
+no scheduled reconciliation job exists to verify a stale-`pending` org-charge Transaction against
+Paystack's own verify-transaction endpoint if its webhook is ever missed entirely — this synchronous
+action has no queue-retry infrastructure the way `ProcessOrganizationInvoiceSettlementJob` does.
+Filed as SCRUM-248.

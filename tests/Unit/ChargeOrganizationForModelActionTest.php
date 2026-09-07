@@ -331,6 +331,63 @@ test('a failed Paystack charge_authorization call is surfaced as a clean Transac
     ]));
 })->throws(TransactionException::class);
 
+// SCRUM-243: the whole point of the fix -- a Transaction row now exists (as `pending`) even when
+// the Paystack call itself fails, since it's created BEFORE that call, not after. Previously, a
+// failure here left no record at all; now the row survives to be resolved by a later webhook, or
+// investigated manually if one never arrives.
+test('a Transaction row exists as pending even when the Paystack call itself fails, closing the ordering gap', function () {
+    [$organization, , $therapy, $member] = anOrgWithCounsellorAndInstrument([
+        'type' => OrganizationCounsellorCompensationTypeEnum::fixed->value,
+        'amount' => 5000,
+        'currency' => 'GHS',
+    ]);
+    config(['settings.platform_fee_percentage' => 10]);
+    Http::fake(['*/transaction/charge_authorization' => Http::response(['status' => false], 502)]);
+
+    try {
+        ChargeOrganizationForModelAction::new()->execute(TransactionDTO::new()->fromArray([
+            'user' => $member,
+            'for' => $therapy,
+            'organization' => $organization,
+        ]));
+    } catch (TransactionException) {
+        //
+    }
+
+    $transaction = Transaction::query()->where('for_type', Therapy::class)->where('for_id', $therapy->id)->first();
+    expect($transaction)->not->toBeNull();
+    expect($transaction->status)->toBe(TransactionStatusEnum::pending->value);
+    expect($transaction->amount)->toBe(6000);
+    expect($transaction->organization_id)->toBe($organization->id);
+});
+
+// SCRUM-243: confirms the reference passed to Paystack is the same one persisted locally (a
+// caller-generated reference, not one taken from Paystack's own response) -- required for
+// Paystack's own idempotency-on-reference guarantee to actually apply to this local row.
+test('the reference sent to Paystack matches the one persisted on the Transaction row', function () {
+    [$organization, , $therapy, $member] = anOrgWithCounsellorAndInstrument([
+        'type' => OrganizationCounsellorCompensationTypeEnum::fixed->value,
+        'amount' => 5000,
+        'currency' => 'GHS',
+    ]);
+    config(['settings.platform_fee_percentage' => 10]);
+    Http::fake(['*/transaction/charge_authorization' => Http::response([
+        'status' => true,
+        'data' => ['reference' => 'paystack_generated_ref_should_be_ignored', 'status' => 'success', 'amount' => 6000, 'currency' => 'GHS', 'gateway_response' => 'Approved'],
+    ], 200)]);
+
+    $transaction = ChargeOrganizationForModelAction::new()->execute(TransactionDTO::new()->fromArray([
+        'user' => $member,
+        'for' => $therapy,
+        'organization' => $organization,
+    ]));
+
+    expect($transaction->reference)->not->toBe('paystack_generated_ref_should_be_ignored');
+    Http::assertSent(function ($request) use ($transaction) {
+        return $request['reference'] === $transaction->reference;
+    });
+});
+
 test('a declined charge records the transaction as failed, not success', function () {
     [$organization, , $therapy, $member] = anOrgWithCounsellorAndInstrument([
         'type' => OrganizationCounsellorCompensationTypeEnum::fixed->value,
