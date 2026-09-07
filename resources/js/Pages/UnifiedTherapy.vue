@@ -8,8 +8,12 @@ import MiniModal from '@/Components/MiniModal.vue'
 import Alert from '@/Components/Alert.vue'
 import FormLoader from '@/Components/FormLoader.vue'
 import PrimaryButton from '@/Components/PrimaryButton.vue'
+import SecondaryButton from '@/Components/SecondaryButton.vue'
 import DangerButton from '@/Components/DangerButton.vue'
 import TextInput from '@/Components/TextInput.vue'
+import TextBox from '@/Components/TextBox.vue'
+import InputLabel from '@/Components/InputLabel.vue'
+import InputError from '@/Components/InputError.vue'
 import CounsellorComponent from '@/Components/CounsellorComponent.vue'
 import UserComponent from '@/Components/UserComponent.vue'
 import CreateReportModal from '@/Components/CreateReportModal.vue'
@@ -77,13 +81,16 @@ const {
 
 const {
   initiating: payInitiating,
+  requestingRefund,
   transactionStatus,
   statusBannerType,
   statusBannerMessage,
   dismissStatus,
   canPayForSession,
+  canRequestRefund,
   isOrgRetainerCovered,
   payForSession,
+  requestRefund,
   paymentStatusLabel,
   isRetryStatus,
 } = usePayment(therapyRef, props.therapyType)
@@ -835,6 +842,36 @@ async function clickedPaySession() {
   }
 }
 
+// TT-7.7b/SCRUM-250: mirrors TherapyPaymentDetails.vue's own PER_THERAPY refund-request block.
+const showSessionRefundForm = ref(false)
+const sessionRefundReason = ref('')
+const sessionRefundReasonError = ref('')
+
+function cancelSessionRefundRequest() {
+  showSessionRefundForm.value = false
+  sessionRefundReason.value = ''
+  sessionRefundReasonError.value = ''
+}
+
+async function clickedRequestSessionRefund() {
+  sessionRefundReasonError.value = ''
+
+  if (sessionRefundReason.value.trim().length < 10) {
+    sessionRefundReasonError.value = 'Please provide at least 10 characters explaining why you are requesting a refund.'
+    return
+  }
+
+  try {
+    await requestRefund(activeSession.value.transactionId, sessionRefundReason.value)
+    showSessionRefundForm.value = false
+    sessionRefundReason.value = ''
+    setSuccessAlertData({ message: 'Your refund request has been submitted for review.', time: 6000 })
+    router.reload({ only: ['therapy'], preserveScroll: true })
+  } catch (err) {
+    setFailedAlertData({ message: err.message })
+  }
+}
+
 function clickedSessionAction(action) {
   if (action == "start") return clickedStartSession()
   if (action == "end") return clickedEndSession()
@@ -1164,6 +1201,31 @@ function reportCreated(report) {
                   :class="[activeSession?.paymentStatus === 'FAILED' ? 'text-red-600' : 'text-gray-600']"
                 >
                   {{ paymentStatusLabel(activeSession?.paymentStatus) }}
+                </div>
+                <!-- TT-7.7b/SCRUM-250: deliberately OUTSIDE the payment-status v-if/else-if chain
+                     above (a sibling, not spliced into it) -- a client can be both "paid" and
+                     (independently) mid-refund-request, and this must never affect whether the
+                     counsellor's own status label above renders. -->
+                <div v-if="therapyType !== 'group' && (canRequestRefund(activeSession, computedIsParticipant, computedIsCounsellor) || activeSession?.refundRequestStatus)" class="w-full max-w-xs">
+                  <div v-if="activeSession?.refundRequestStatus === 'PENDING'" class="text-sm text-amber-700 font-semibold text-center">
+                    Refund requested -- pending admin review.
+                  </div>
+                  <template v-else>
+                    <div v-if="activeSession?.refundRequestStatus === 'REJECTED'" class="text-sm text-gray-500 mb-2 text-center">
+                      Your previous refund request was declined. You may request again below.
+                    </div>
+                    <PrimaryButton v-if="!showSessionRefundForm" @click="showSessionRefundForm = true" class="bg-gray-600 hover:bg-gray-700 mx-auto block">request a refund</PrimaryButton>
+                    <div v-else class="relative">
+                      <FormLoader class="mx-auto" :show="requestingRefund" :text="'submitting your refund request'" />
+                      <InputLabel for="session_refund_reason" value="Why are you requesting a refund?" />
+                      <TextBox id="session_refund_reason" v-model="sessionRefundReason" class="mt-1 block w-full" rows="3" />
+                      <InputError :message="sessionRefundReasonError" class="mt-1" />
+                      <div class="mt-2 flex gap-2 justify-center">
+                        <PrimaryButton :disabled="requestingRefund" @click="clickedRequestSessionRefund">submit</PrimaryButton>
+                        <SecondaryButton :disabled="requestingRefund" @click="cancelSessionRefundRequest">cancel</SecondaryButton>
+                      </div>
+                    </div>
+                  </template>
                 </div>
                 <PrimaryButton
                   v-if="

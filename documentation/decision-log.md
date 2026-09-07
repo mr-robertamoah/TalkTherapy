@@ -5291,3 +5291,47 @@ reversible, and directly implied by that prior review, not new forks):
 Both fixes have dedicated regression tests in `tests/Unit/RespondToRefundRequestActionTest.php`.
 No FK/read/write relationship to `payment_access_grants` anywhere in this diff — verified by the
 security-engineer's own grep, plus an explicit regression test in both new test files.
+
+---
+
+## 2026-09-07 — SCRUM-250 (TT-7.7b): client refund request implemented
+
+**Decision**: Implemented per the plan already approved in the 2026-09-02 SCRUM-223 entry. Client
+asks for a refund on their own transaction (`RequestRefundAction`), reusing TT-7.7a's
+`EnsureTransactionIsRefundEligibleAction`; creates a `refund`-type `Request` with `to = null`
+(any admin may respond); notifies 2 random platform admins (mirrors the established
+`whereAdmin()->inRandomOrder()->limit(2)` convention). UI added to both `TherapyPaymentDetails.vue`
+(PER_THERAPY) and `UnifiedTherapy.vue`'s session-actions modal (PER_SESSION), sharing
+`usePayment.js`'s new `canRequestRefund()`/`requestRefund()`.
+
+**Security-engineer review surfaced one High finding, fixed before merge**: `TherapyResource`/
+`SessionResource`'s new `transactionId`/`refundRequestStatus` fields were initially derived from
+the existing `latestTransaction` relation, which is documented as "latest across ALL eligible
+payers, not scoped to the current viewer." For a GroupTherapy session with several members, this
+would have leaked one member's transaction id and refund/dispute status to every other
+co-participant — a real cross-user information leak in a mental-health product, where "a fellow
+group member is disputing a payment" is itself sensitive. Fixed by scoping both fields to a
+`viewerTransaction` (the requesting user's OWN transaction for that Therapy/Session), which also
+resolves a secondary Low finding (whether the assigned counsellor should see a client's refund
+status) as a side effect — a counsellor is never the payer, so the scoped query correctly returns
+null for them too. The query is guarded to only run for a PAID engagement (mirrors
+`orgRetainerCoverage()`'s own early-return), verified against `CounsellorCalendarSessionsTest`'s
+existing N+1 regression test (a first implementation regressed it by running the guard check
+*after* the query instead of before — caught immediately by that test, fixed by moving the
+`payment_type` gate to guard the query itself, not just its result).
+
+**Two Low findings also fixed**: (1) `RequestRefundAction` previously returned a distinguishable
+422 for "transaction doesn't exist" vs. 403 for "exists but isn't yours" — a minor
+transaction-id-enumeration oracle, closed by returning the same 403 for both. (2) A follow-up
+ticket (SCRUM-254) was filed rather than fixed inline for a pre-existing, codebase-wide pattern
+(free-text `reason` fields interpolated unescaped into `MailMessage::line()`, vulnerable to
+Markdown injection) — out of scope for a single-ticket fix since it affects multiple existing
+notifications beyond this one, but flagged as higher-stakes now that `RefundRequestedNotification`
+is the first such field reaching platform admins rather than another regular user.
+
+**Reviewer suggestions applied**: unified `TherapyPaymentDetails.vue`'s inline refund-eligibility
+condition to call the same shared `canRequestRefund()` helper `UnifiedTherapy.vue` already used
+(closing a drift risk between the two sibling UI blocks), and added the `therapyType !== 'group'`
+guard to the PER_SESSION refund block for consistency with its sibling conditions in the same
+`v-if`/`v-else-if` chain (currently unreachable since group payments aren't built yet, but would
+otherwise silently start showing a refund control the moment they are).

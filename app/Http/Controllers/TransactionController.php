@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\DTOs\TransactionDTO;
 use App\Exceptions\TransactionException;
+use App\Http\Requests\RequestRefundRequest;
 use App\Models\GroupTherapy;
 use App\Models\Organization;
 use App\Models\Session;
@@ -97,6 +98,29 @@ class TransactionController extends Controller
             );
 
             return response()->json(['message' => 'ok']);
+        } catch (Throwable $th) {
+            $status = $this->statusFor($th);
+            $message = $this->messageFor($th, $status);
+
+            return response()->json(['message' => $message], $status);
+        }
+    }
+
+    // TT-7.7b/SCRUM-250: mirrors initiate()'s own JSON try/catch shape -- the frontend's
+    // usePayment.js composable calls this via axios, the same way it calls transactions.initiate.*.
+    public function requestRefund(RequestRefundRequest $request, int $transactionId)
+    {
+        try {
+            $refundRequest = TransactionService::new()->requestRefund(
+                $request->user(),
+                Transaction::find($transactionId),
+                $request->validated('reason')
+            );
+
+            return response()->json([
+                'message' => 'Your refund request has been submitted for review.',
+                'refundRequestStatus' => $refundRequest->status,
+            ]);
         } catch (Throwable $th) {
             $status = $this->statusFor($th);
             $message = $this->messageFor($th, $status);

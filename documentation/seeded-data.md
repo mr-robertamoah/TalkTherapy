@@ -133,6 +133,22 @@ above only *might* land on `PAID` and never deterministically pair the two payme
 | Payment Demo Therapy (Per Therapy) | `PER_THERAPY`, USD 150 | Pay Now lives on the "payment details" tab. |
 | Payment Demo Therapy (Per Session) | `PER_SESSION`, USD 50 | Has one seeded session ("Payment Demo Session"), always within 5 minutes of its start time so it's immediately the therapy's active session — Pay Now lives in the "Session Actions" modal (double-click the expanded active-session panel to open it). |
 
+## Refund request UI (SCRUM-250)
+
+Dedicated accounts and already-**SUCCESS**-paid therapies for testing the client refund-request
+control (the payment demo data above is deliberately left unpaid, to test the Pay Now flow
+itself):
+
+| Username | Password | Purpose |
+|---|---|---|
+| `refund_demo_client` | `password` | Owns both refund demo therapies below. |
+| `refund_demo_counsellor` | `password` | Assigned counsellor on both — log in as this account to confirm no "request a refund" control ever renders for a counsellor. |
+
+| Therapy | Payment model | Notes |
+|---|---|---|
+| Refund Demo Therapy (Per Therapy) | `PER_THERAPY`, USD 120, transaction already `SUCCESS` | "request a refund" lives on the "payment details" tab, right below the "Paid" label. |
+| Refund Demo Therapy (Per Session) | `PER_SESSION`, USD 40, transaction already `SUCCESS` | Has one seeded session ("Refund Demo Session"), always within 5 minutes of its start time so it's immediately the therapy's active session — "request a refund" lives in the "Session Actions" modal. |
+
 ## Counsellor payout (SCRUM-228)
 
 A dedicated counsellor with pending earnings but no payout destination yet, for testing the

@@ -2,9 +2,11 @@
 
 namespace App\Models;
 
+use App\Enums\RequestTypeEnum;
 use App\Enums\TransactionStatusEnum;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\MorphOne;
 
 class Transaction extends Model
 {
@@ -57,6 +59,18 @@ class Transaction extends Model
     public function refunds()
     {
         return $this->hasMany(Refund::class);
+    }
+
+    // TT-7.7b/SCRUM-250: lets TherapyResource/SessionResource eager-load "is there a refund
+    // request (any status) for this transaction" without a bespoke N+1-prone lookup per row --
+    // mirrors Organization::latestFailedInvoice()'s own ofMany-with-constraint shape. `Request` is
+    // polymorphic against `for`, so this is the reverse of Request::for()'s own morphTo().
+    public function latestRefundRequest(): MorphOne
+    {
+        return $this->morphOne(Request::class, 'for')
+            ->ofMany(['created_at' => 'max'], function ($query) {
+                $query->where('type', RequestTypeEnum::refund->value);
+            });
     }
 
     public function isSuccessful(): bool

@@ -9,12 +9,15 @@ use App\Actions\Transaction\EnsureForModelExistsAction;
 use App\Actions\Transaction\EnsureOrganizationCanPayForModelAction;
 use App\Actions\Transaction\EnsureWebhookSignatureIsValidAction;
 use App\Actions\Transaction\InitiatePaystackChargeAction;
+use App\Actions\Transaction\RequestRefundAction;
 use App\Actions\Transaction\ResolveTransactionSubjectAction;
 use App\Actions\Transaction\VerifyPaystackTransactionAction;
 use App\DTOs\TransactionDTO;
 use App\Jobs\ProcessPaystackWebhookJob;
 use App\Models\GroupTherapy;
+use App\Models\Request;
 use App\Models\Transaction;
+use App\Models\User;
 
 class TransactionService extends Service
 {
@@ -63,5 +66,11 @@ class TransactionService extends Service
     public function verifyTransaction(TransactionDTO $transactionDTO): Transaction
     {
         return VerifyPaystackTransactionAction::new()->execute($transactionDTO);
+    }
+
+    // TT-7.7b/SCRUM-250
+    public function requestRefund(?User $user, ?Transaction $transaction, ?string $reason): Request
+    {
+        return RequestRefundAction::new()->execute($user, $transaction, $reason);
     }
 }
