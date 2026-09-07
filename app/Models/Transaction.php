@@ -52,6 +52,13 @@ class Transaction extends Model
         return $this->hasMany(CounsellorEarning::class);
     }
 
+    // TT-7.7a/SCRUM-249: 1:many -- naturally partial-refund-friendly for later, even though this
+    // epic is full-refund-only for now.
+    public function refunds()
+    {
+        return $this->hasMany(Refund::class);
+    }
+
     public function isSuccessful(): bool
     {
         return $this->status === TransactionStatusEnum::success->value;

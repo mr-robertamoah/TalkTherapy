@@ -8,6 +8,7 @@ use App\Models\GroupTherapy;
 use App\Models\Organization;
 use App\Models\OrganizationCounsellor;
 use App\Models\Therapy;
+use App\Models\Transaction;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -19,7 +20,9 @@ class CreateRequestDTO extends BaseDTO
 
     public User|Counsellor|Organization|null $to = null;
 
-    public User|Counsellor|Discussion|Therapy|GroupTherapy|Organization|OrganizationCounsellor|null $for = null;
+    // TT-7.7a/SCRUM-249: Transaction added for RequestTypeEnum::refund's own `for` -- the
+    // transaction being refunded.
+    public User|Counsellor|Discussion|Therapy|GroupTherapy|Organization|OrganizationCounsellor|Transaction|null $for = null;
 
     public ?array $data = [];
 

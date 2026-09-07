@@ -14,8 +14,13 @@ class EnsureUserCanRespondToRequestAction extends Action
         $respondent = $requestResponseDTO->request->to;
         if (
             $requestResponseDTO->user->isAdmin() ||
-            $respondent->is($requestResponseDTO->user) ||
-            $respondent->is($requestResponseDTO->user?->counsellor) ||
+            // TT-7.7a/SCRUM-249 (security-engineer finding): `to` is null for a refund request
+            // (RequestTypeEnum::refund's own deliberate design -- any admin may respond, matched
+            // above) -- guarded here too so a NON-admin caller against a null-`to` request throws
+            // the intended exception below instead of an uncaught "call to a member function on
+            // null" error.
+            ($respondent && $respondent->is($requestResponseDTO->user)) ||
+            ($respondent && $respondent->is($requestResponseDTO->user?->counsellor)) ||
             // SCRUM-120: an organizationCounsellorApplication request is addressed `to` the
             // Organization itself (it has no single admin), not a specific User/Counsellor --
             // any of that org's admins may respond on its behalf.
