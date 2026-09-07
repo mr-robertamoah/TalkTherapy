@@ -22,6 +22,7 @@ use App\Models\CounsellorEarning;
 use App\Models\CounsellorPayout;
 use App\Models\Organization;
 use App\Models\OrganizationInvoice;
+use App\Models\OrganizationInvoiceLine;
 use App\Models\OrganizationPaymentInstrument;
 use App\Models\Request;
 use App\Models\Therapy;
@@ -97,6 +98,12 @@ class DatabaseSeeder extends Seeder
         // a pending request-queue item) -- the random demo data above never deterministically
         // produces an org admin to log in as.
         $this->createOrganizationDashboardDemoData();
+
+        // TT-7.3b-followup/SCRUM-245: a deterministic billing-suspended org with a failed invoice
+        // (payment instrument on file, so a retry can actually succeed) -- nothing above ever
+        // produces a suspended org, so /administrator/organization-billing would otherwise always
+        // show "no organizations are currently billing-suspended."
+        $this->createBillingSuspendedOrganizationDemoData();
 
         // TT-7.6d/SCRUM-228: a deterministic counsellor with pending earnings but no payout
         // destination yet, for testing the onboarding-then-withdraw golden path on the counsellor
@@ -1341,5 +1348,42 @@ class DatabaseSeeder extends Seeder
         $memberInvite->to()->associate($invitedMember);
         $memberInvite->for()->associate($organization);
         $memberInvite->save();
+    }
+
+    // TT-7.3b-followup/SCRUM-245: log in as the super admin (mr_robertamoah) and visit
+    // /administrator/organization-billing to see this row -- "retry settlement" (payment
+    // instrument is on file, so a retry via Http::fake()-free real Paystack call will only
+    // actually succeed with a live sandbox key; without one it fails the same graceful way
+    // TT-7.3b-i's own registration flow does) and "lift suspension" are both directly usable here.
+    private function createBillingSuspendedOrganizationDemoData(): void
+    {
+        $organization = Organization::factory()->create([
+            'name' => 'Suspended Demo Collective',
+            'is_consumer' => true,
+            'verified_at' => now(),
+        ]);
+        $admin = User::factory()->create([
+            'firstName' => 'Suspended',
+            'lastName' => 'DemoAdmin',
+            'email' => 'suspended.demo.admin@example.com',
+            'username' => 'suspended_demo_admin',
+            'password' => Hash::make('password'),
+            'email_verified_at' => now(),
+        ]);
+        $organization->admins()->attach($admin->id, ['role' => OrganizationAdminRoleEnum::owner->value]);
+        OrganizationPaymentInstrument::factory()->create(['organization_id' => $organization->id]);
+
+        $invoice = OrganizationInvoice::factory()->create([
+            'organization_id' => $organization->id,
+            'status' => OrganizationInvoiceStatusEnum::failed->value,
+        ]);
+        OrganizationInvoiceLine::factory()->create([
+            'organization_invoice_id' => $invoice->id,
+            'net_amount' => 4500,
+            'fee_amount' => 500,
+            'currency' => $invoice->currency,
+        ]);
+
+        $organization->suspendBilling("Retainer invoice settlement failed for the period starting {$invoice->period_start->toDateString()}.");
     }
 }

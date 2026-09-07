@@ -166,6 +166,12 @@ still-accruing one (current calendar month, a second held session seeded specifi
 visit `/organizations/1/reconciliation` as `org_demo_admin` to see both, and expand either row to
 see its lines.
 
+For SCRUM-245 (manual billing-suspension lift + failed-invoice retry): a separate "Suspended Demo
+Collective" org (`suspended_demo_admin` / `password` owns it) is seeded currently billing-suspended
+with a failed retainer invoice and a payment instrument on file — log in as the super admin
+(`mr_robertamoah`) and visit `/administrator/organization-billing` to retry its settlement or lift
+the suspension.
+
 ## Testing the registration/verification flow
 
 The 11 seeded accounts above all skip email verification. To test registration or the

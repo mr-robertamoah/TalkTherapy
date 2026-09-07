@@ -48,4 +48,12 @@ class OrganizationInvoice extends Model
     {
         return $this->status === OrganizationInvoiceStatusEnum::open->value;
     }
+
+    // TT-7.3b-followup/SCRUM-245: lets RetryOrganizationInvoiceSettlementAction distinguish "an
+    // admin-triggered retry of a failed invoice" from any other non-open status (settled/pending),
+    // mirroring isOpen()'s own single-status-check shape.
+    public function isFailed(): bool
+    {
+        return $this->status === OrganizationInvoiceStatusEnum::failed->value;
+    }
 }
