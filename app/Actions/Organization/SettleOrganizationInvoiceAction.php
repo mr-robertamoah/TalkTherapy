@@ -27,6 +27,13 @@ use Illuminate\Support\Str;
 // meaning for a whole settled period potentially covering many counsellors -- this action only
 // mirrors its charge-and-record TAIL shape (Transaction creation, status history, a
 // TransactionStatusSourceEnum case of its own).
+//
+// TT-7.3b-followup/SCRUM-245: also claims a `failed` invoice, not just `open` -- the only caller
+// that ever reaches this action with a `failed` invoice is RetryOrganizationInvoiceSettlementAction
+// (admin-triggered only); the periodic sweep's own query (`AppService::settleDueOrganizationInvoices()`)
+// filters to `status = OPEN` before this action is ever called, so a `failed` invoice can never be
+// picked up automatically -- this relaxed guard only ever fires from that one deliberate, manual
+// entry point.
 class SettleOrganizationInvoiceAction extends Action
 {
     public function execute(OrganizationInvoice $invoice): ?Transaction
@@ -34,7 +41,7 @@ class SettleOrganizationInvoiceAction extends Action
         $transaction = DB::transaction(function () use ($invoice) {
             $locked = OrganizationInvoice::query()->whereKey($invoice->id)->lockForUpdate()->first();
 
-            if (! $locked || ! $locked->isOpen()) {
+            if (! $locked || ! ($locked->isOpen() || $locked->isFailed())) {
                 return null;
             }
 

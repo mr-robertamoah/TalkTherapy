@@ -14,6 +14,7 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Log;
 
 // TT-7.3b-e/SCRUM-236: the real Paystack chargeAuthorization() call for a claimed retainer
 // invoice settlement, dispatched only after SettleOrganizationInvoiceAction's own DB transaction
@@ -80,10 +81,27 @@ class ProcessOrganizationInvoiceSettlementJob implements ShouldQueue
             return;
         }
 
-        $status = match ($response['data']['status'] ?? null) {
+        $paystackStatus = $response['data']['status'] ?? null;
+
+        // SCRUM-244: 'abandoned' left this invoice's own settlement Transaction non-terminal
+        // forever -- UpdateOrganizationInvoiceStatusAction's own match() only maps success/failed,
+        // so the invoice stayed `pending` permanently (the periodic sweep only re-claims `open`
+        // ones), the org was never billed, and its counsellors never got paid for that period,
+        // silently. There is no human present on this server-to-server charge to ever complete
+        // whatever interactive step Paystack was waiting on, so this is treated as a real failure
+        // -- reusing UpdateOrganizationInvoiceStatusAction's EXISTING failed-handling path (invoice
+        // -> failed, org -> suspended) rather than adding a third branch there. Logged distinctly
+        // so it stays distinguishable from a genuine Paystack decline.
+        if ($paystackStatus === 'abandoned') {
+            Log::warning('A retainer invoice settlement charge was abandoned by Paystack -- treated as a failure since no human is present to complete an interactive step on a server-to-server charge.', [
+                'transaction_id' => $transaction->id,
+                'reference' => $transaction->reference,
+            ]);
+        }
+
+        $status = match ($paystackStatus) {
             'success' => TransactionStatusEnum::success->value,
-            'failed' => TransactionStatusEnum::failed->value,
-            'abandoned' => TransactionStatusEnum::abandoned->value,
+            'failed', 'abandoned' => TransactionStatusEnum::failed->value,
             default => null,
         };
 

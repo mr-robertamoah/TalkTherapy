@@ -68,6 +68,22 @@ test('a non-open invoice past its period is never re-claimed regardless of perio
     Bus::assertNotDispatched(ProcessOrganizationInvoiceSettlementJob::class);
 });
 
+// TT-7.3b-followup/SCRUM-245: SettleOrganizationInvoiceAction's own claim guard was relaxed to
+// also accept a `failed` invoice (for RetryOrganizationInvoiceSettlementAction's admin-only entry
+// point) -- pins that this sweep's own query still can never reach one automatically, which is
+// the exact safety property that relaxation depends on.
+test('a failed invoice past its period is never automatically re-claimed by the sweep', function () {
+    $invoice = anOrganizationInvoiceDue([
+        'status' => OrganizationInvoiceStatusEnum::failed->value,
+        'period_end' => now()->subDay()->toDateString(),
+    ]);
+
+    AppService::new()->settleDueOrganizationInvoices();
+
+    expect($invoice->fresh()->status)->toBe(OrganizationInvoiceStatusEnum::failed->value);
+    Bus::assertNotDispatched(ProcessOrganizationInvoiceSettlementJob::class);
+});
+
 // One org's inability to settle (missing payment instrument, in this case) must never block the
 // sweep from reaching every other due invoice in the same run -- the whole reason for this
 // sweep's own per-item try/catch, mirroring the two existing compensation-request sweeps in

@@ -5141,6 +5141,44 @@ composable mid-ticket for a single new caller.
 `getOrganizationPaymentInstrumentVerificationAmounts()` method (reviewer finding — its sibling
 `getSettingsForAdmin()` has equivalent coverage, this one didn't).
 
+## 2026-09-07 — SCRUM-245: manual billing-suspension lift + failed-invoice retry
+
+**Scope-narrowing decision, made with the user**: the ticket's own text left "who lifts a
+suspension" open, and the user's own answer went further than a plain lift action ("admin should
+get a notification when the pending payments are settled... or when pending payments are made,
+suspension checks are done and lifted automatically"). Investigated first: confirmed (via a
+dedicated research pass) that "a failed invoice becoming settled" was not a reachable event
+anywhere in the codebase at all -- the periodic sweep's own query filters to `status = OPEN`,
+`SettleOrganizationInvoiceAction` hard-guarded against anything but `open`, and no retry/dunning
+mechanism of any kind existed. Building full automatic detection-and-lift would mean designing a
+whole dunning policy (how many retries, when to give up, whether a settled invoice implies the
+*whole* org standing is fixed) -- a materially bigger, separate product decision than this
+"Task"-sized ticket's own scope. Landed on: (1) a platform-admin-only manual lift
+(`LiftOrganizationBillingSuspensionAction`, mirrors `Organization::verify()`'s own "trust decision
+made by staff, not self-service" precedent -- letting an org unsuspend itself would give the
+enforcement mechanism no teeth), (2) a platform-admin-only manual retry of a `failed` invoice's
+settlement (`RetryOrganizationInvoiceSettlementAction`, reusing `SettleOrganizationInvoiceAction`'s
+own claim/lock/charge logic rather than duplicating it, since that action's own comment already
+anticipated a future manual caller), and (3) a notification to 2 random platform admins
+(mirrors `RecordCounsellorPayoutStatusAction`'s own `whereAdmin()->inRandomOrder()->limit(2)`
+convention) when a retry succeeds while the org is still suspended -- directly answering "admin
+gets a notification when the pending payments are settled." Deliberately NOT auto-lifting on that
+notification: a settled invoice alone doesn't prove the org's broader payment standing is fixed,
+and auto-lifting without a human decision would blunt the whole point of suspending in the first
+place. Full automatic retry-then-lift is a real, larger follow-up candidate if this manual
+workflow proves too slow in practice -- not filed as its own ticket yet since it's speculative
+until the manual path has been used.
+
+**New admin surface**: no `Admin/Organizations`-anything existed before this ticket. Added a
+dedicated `Admin/OrganizationBilling.vue` page (mirrors `Admin/Payouts.vue`'s own "a dedicated
+page, not another `Admin.vue` dispatch-table tab" precedent) rather than folding it into the
+already-large `Admin.vue` monolith.
+
+**Required review fix applied**: `GetBillingSuspendedOrganizationsForAdminAction` had no
+authorization check of its own, relying solely on the controller's inline admin check (reviewer
+finding) -- fixed to independently call `EnsureCanManageOrganizationBillingSuspensionAction`,
+matching the two write actions' own defense-in-depth pattern and `PayoutService::getPayoutsForAdmin()`'s
+identical existing precedent.
 ## 2026-09-06 — SCRUM-246: TT-7.3b follow-up cleanup (message creation bypassing the strict-payment gate)
 
 `EnsureCanSendMessageToForAction::validateForSession()`
@@ -5157,6 +5195,30 @@ remaining bypass path, but flagged one adjacent, out-of-scope gap as a candidate
 lapsed can still edit the content of a message they created while still gated — pre-existing
 behavior, not introduced here, not filed as its own ticket yet since it may be an intentional
 product choice (editing your own already-sent message vs. needing a live grant).
+
+## 2026-09-07 — SCRUM-244: abandoned as a terminal outcome for server-to-server charges
+
+`ChargeOrganizationForModelAction` (pay-per-use org charges) and `ProcessOrganizationInvoiceSettlementJob`
+(retainer settlement) both remap Paystack's `abandoned` charge status to `failed` (logged
+distinctly) rather than leaving it as `TransactionStatusEnum::abandoned`, which
+`RecordTransactionStatusAction`'s own `TERMINAL_STATUSES` never included — the transaction (and,
+for settlement, its `OrganizationInvoice`) was getting stuck non-terminal forever, since nothing
+ever re-resolves it. Deliberately reuses `UpdateOrganizationInvoiceStatusAction`'s EXISTING
+`failed`-handling branch (invoice → failed, org → suspended) rather than adding a third `abandoned`
+branch there. `VerifyPaystackTransactionAction` (the checkout-redirect flow for individual/personal
+payments) is deliberately untouched — a real customer at a hosted checkout page can still retry via
+a fresh link, unlike these two server-to-server flows where no human is ever present to complete
+whatever interactive step (e.g. an OTP challenge) Paystack was waiting on.
+
+**Accepted assumption, worth recording** (security-engineer review): a Paystack `abandoned`
+response on one of these two server-to-server charges is treated as permanently terminal — if
+Paystack ever actually completed such a charge asynchronously after reporting `abandoned`
+synchronously (not obviously possible per Paystack's docs, but not proven impossible either), the
+transaction would stay `failed` forever with no automatic reconciliation. Mitigated by the distinct
+log line and by the real `gateway_response`/status-history trail staying available for manual
+finance reconciliation if that scenario is ever actually observed — not treated as a blocker, since
+building a reconciliation sweep for a scenario with no confirmed real-world occurrence would be
+speculative engineering.
 
 ## 2026-09-07 — SCRUM-243: charge-then-record ordering hardened
 

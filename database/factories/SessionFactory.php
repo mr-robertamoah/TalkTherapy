@@ -5,11 +5,12 @@ namespace Database\Factories;
 use App\Enums\SessionStatusEnum;
 use App\Enums\SessionTypeEnum;
 use App\Enums\TherapyPaymentTypeEnum;
+use App\Models\Session;
 use App\Models\Therapy;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
- * @extends \Illuminate\Database\Eloquent\Factories\Factory<\App\Models\Session>
+ * @extends Factory<Session>
  */
 class SessionFactory extends Factory
 {
@@ -28,9 +29,9 @@ class SessionFactory extends Factory
             'payment_type' => TherapyPaymentTypeEnum::free->value,
             'type' => SessionTypeEnum::online->value,
             'status' => SessionStatusEnum::in_session_confirmation->value,
-            'longitude' => "",
-            'latitude' => "",
-            'landmark' => "",
+            'longitude' => null,
+            'latitude' => null,
+            'landmark' => null,
             'for_id' => 1,
             'for_type' => Therapy::class,
         ];

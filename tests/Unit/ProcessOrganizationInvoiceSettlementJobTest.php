@@ -68,6 +68,25 @@ test('a declined charge records the transaction and invoice as failed, and suspe
     expect($invoice->organization->fresh()->isBillingSuspended())->toBeTrue();
 });
 
+// SCRUM-244: without this, an abandoned settlement charge left its invoice stuck in `pending`
+// forever (the periodic sweep only re-claims `open` invoices), the org was never billed, and its
+// counsellors never got paid for that period -- silently, with no failure ever surfaced. There is
+// no human present on this server-to-server charge to ever complete whatever interactive step
+// Paystack was waiting on, so this reuses the existing failed-handling path instead.
+test('an abandoned charge is treated as a real failure, not left stuck in pending forever', function () {
+    [$transaction, $invoice] = aPendingSettlementTransaction();
+    Http::fake(['*/transaction/charge_authorization' => Http::response([
+        'status' => true,
+        'data' => ['reference' => $transaction->reference, 'status' => 'abandoned', 'gateway_response' => 'Abandoned'],
+    ], 200)]);
+
+    ProcessOrganizationInvoiceSettlementJob::dispatchSync($transaction->id);
+
+    expect($transaction->fresh()->status)->toBe(TransactionStatusEnum::failed->value);
+    expect($invoice->fresh()->status)->toBe(OrganizationInvoiceStatusEnum::failed->value);
+    expect($invoice->organization->fresh()->isBillingSuspended())->toBeTrue();
+});
+
 test('a 4xx from Paystack records a definite failure and suspends the organization\'s billing', function () {
     [$transaction, $invoice] = aPendingSettlementTransaction();
     Http::fake(['*/transaction/charge_authorization' => Http::response(['status' => false, 'message' => 'Declined'], 400)]);

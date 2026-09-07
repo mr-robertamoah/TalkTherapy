@@ -2,10 +2,12 @@
 
 namespace App\Models;
 
+use App\Enums\OrganizationInvoiceStatusEnum;
 use App\Enums\RequestStatusEnum;
 use App\Enums\RequestTypeEnum;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\MorphToMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
@@ -56,6 +58,29 @@ class Organization extends Model
     public function paymentInstrument()
     {
         return $this->hasOne(OrganizationPaymentInstrument::class);
+    }
+
+    // TT-7.3b-e/SCRUM-236: the inverse of OrganizationInvoice::organization() -- not previously
+    // needed since GetOrganizationRetainerInvoicesAction queries OrganizationInvoice directly, but
+    // SCRUM-245's admin billing-suspension view needs each suspended org's own latest failed
+    // invoice, hence latestFailedInvoice() below.
+    public function invoices()
+    {
+        return $this->hasMany(OrganizationInvoice::class);
+    }
+
+    // TT-7.3b-followup/SCRUM-245: lets the admin billing-suspension list eager-load "what actually
+    // needs retrying" per org in one query rather than an N+1 per-row lookup -- same ofMany()
+    // mechanism as OrganizationMember::latestBillingConfig()/OrganizationCounsellor::latestCompensation(),
+    // extended with ofMany()'s own documented constraint-closure form (`ofMany($column, $closure)`)
+    // since this one also needs a `status` filter, not just "latest" -- those two don't use it
+    // because neither needed a filter beyond the aggregate itself.
+    public function latestFailedInvoice(): HasOne
+    {
+        return $this->hasOne(OrganizationInvoice::class)
+            ->ofMany(['created_at' => 'max'], function ($query) {
+                $query->where('status', OrganizationInvoiceStatusEnum::failed->value);
+            });
     }
 
     // SCRUM-182/TT-10.4: tagged fileables pivot, same pattern as Counsellor::avatarFile()/
@@ -119,11 +144,9 @@ class Organization extends Model
     }
 
     // TT-7.3b-f2/SCRUM-238: mirrors verify()/isVerified()'s own single-current-state-flag
-    // precedent -- an org-level billing standing, not a per-session gate. Single writer:
-    // UpdateOrganizationInvoiceStatusAction, on a retainer invoice settlement failure. There is
-    // deliberately no corresponding "resume" method in this ticket's scope (no dunning/auto-retry
-    // exists yet -- SCRUM-236's own decision log entry -- so lifting a suspension is a manual,
-    // out-of-band action for now).
+    // precedent -- an org-level billing standing, not a per-session gate. Writers:
+    // UpdateOrganizationInvoiceStatusAction (suspends, on a retainer invoice settlement failure)
+    // and LiftOrganizationBillingSuspensionAction/SCRUM-245 (resumes, admin-triggered below).
     public function isBillingSuspended(): bool
     {
         return (bool) $this->billing_suspended_at;
@@ -138,6 +161,17 @@ class Organization extends Model
     {
         $this->billing_suspended_at = now()->utc();
         $this->billing_suspension_reason = $reason;
+        $this->save();
+    }
+
+    // TT-7.3b-followup/SCRUM-245: the "undo" half SCRUM-238 deliberately left unbuilt (no
+    // dunning/auto-retry existed yet at the time) -- platform-admin-only (mirrors verify()'s own
+    // "a trust decision made by staff, not self-service" precedent), invoked once ops has
+    // confirmed the org's payment method is fixed and/or its outstanding invoice settled.
+    public function resumeBilling(): void
+    {
+        $this->billing_suspended_at = null;
+        $this->billing_suspension_reason = null;
         $this->save();
     }
 }
