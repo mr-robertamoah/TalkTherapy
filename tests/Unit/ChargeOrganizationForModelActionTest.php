@@ -351,7 +351,11 @@ test('a declined charge records the transaction as failed, not success', functio
     expect($transaction->status)->toBe(TransactionStatusEnum::failed->value);
 });
 
-test('an abandoned charge records the transaction as abandoned', function () {
+// SCRUM-244: 'abandoned' means Paystack is waiting on a further interactive step (an OTP
+// challenge, say) -- meaningful for the checkout-redirect flow, where a human can still complete
+// it via a fresh link, but this is a server-to-server charge with no human present at all.
+// Treated as a real failure, not left non-terminal forever.
+test('an abandoned charge is treated as a real failure, not left non-terminal forever', function () {
     [$organization, , $therapy, $member] = anOrgWithCounsellorAndInstrument([
         'type' => OrganizationCounsellorCompensationTypeEnum::fixed->value,
         'amount' => 5000,
@@ -368,7 +372,7 @@ test('an abandoned charge records the transaction as abandoned', function () {
         'organization' => $organization,
     ]));
 
-    expect($transaction->status)->toBe(TransactionStatusEnum::abandoned->value);
+    expect($transaction->status)->toBe(TransactionStatusEnum::failed->value);
 });
 
 // Paystack's real API returns several non-terminal statuses too (e.g. "processing", "queued") --

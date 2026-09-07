@@ -5157,3 +5157,27 @@ remaining bypass path, but flagged one adjacent, out-of-scope gap as a candidate
 lapsed can still edit the content of a message they created while still gated — pre-existing
 behavior, not introduced here, not filed as its own ticket yet since it may be an intentional
 product choice (editing your own already-sent message vs. needing a live grant).
+
+## 2026-09-07 — SCRUM-244: abandoned as a terminal outcome for server-to-server charges
+
+`ChargeOrganizationForModelAction` (pay-per-use org charges) and `ProcessOrganizationInvoiceSettlementJob`
+(retainer settlement) both remap Paystack's `abandoned` charge status to `failed` (logged
+distinctly) rather than leaving it as `TransactionStatusEnum::abandoned`, which
+`RecordTransactionStatusAction`'s own `TERMINAL_STATUSES` never included — the transaction (and,
+for settlement, its `OrganizationInvoice`) was getting stuck non-terminal forever, since nothing
+ever re-resolves it. Deliberately reuses `UpdateOrganizationInvoiceStatusAction`'s EXISTING
+`failed`-handling branch (invoice → failed, org → suspended) rather than adding a third `abandoned`
+branch there. `VerifyPaystackTransactionAction` (the checkout-redirect flow for individual/personal
+payments) is deliberately untouched — a real customer at a hosted checkout page can still retry via
+a fresh link, unlike these two server-to-server flows where no human is ever present to complete
+whatever interactive step (e.g. an OTP challenge) Paystack was waiting on.
+
+**Accepted assumption, worth recording** (security-engineer review): a Paystack `abandoned`
+response on one of these two server-to-server charges is treated as permanently terminal — if
+Paystack ever actually completed such a charge asynchronously after reporting `abandoned`
+synchronously (not obviously possible per Paystack's docs, but not proven impossible either), the
+transaction would stay `failed` forever with no automatic reconciliation. Mitigated by the distinct
+log line and by the real `gateway_response`/status-history trail staying available for manual
+finance reconciliation if that scenario is ever actually observed — not treated as a blocker, since
+building a reconciliation sweep for a scenario with no confirmed real-world occurrence would be
+speculative engineering.
