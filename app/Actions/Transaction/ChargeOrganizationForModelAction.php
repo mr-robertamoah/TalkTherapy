@@ -17,6 +17,7 @@ use App\Services\Paystack\PaystackClient;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 // TT-7.3b-b/SCRUM-233: charges an organization the actual cost of a SINGLE Therapy/Session
 // engagement with ONE counsellor -- computing the cost, charging the saved instrument, and
@@ -136,23 +137,22 @@ class ChargeOrganizationForModelAction extends Action
 
         $minorUnitsAmount = $counsellorShare + $feeAmount;
 
-        try {
-            $response = PaystackClient::new()->chargeAuthorization([
-                'authorization_code' => $instrument->authorization_code,
-                'email' => $dto->user->email,
-                'amount' => $minorUnitsAmount,
-                'currency' => $currency,
-            ]);
-        } catch (RequestException $exception) {
-            throw new TransactionException('Unable to charge the organization right now. Please try again shortly.', 502);
-        }
+        // SCRUM-243: the Transaction row is created BEFORE the real charge, not after -- a
+        // caller-generated reference (mirrors SettleOrganizationInvoiceAction/
+        // ProcessOrganizationInvoiceSettlementJob's own identical, already-proven precedent: it
+        // already passes its own locally-generated reference to this same chargeAuthorization()
+        // endpoint) means a failure creating this row now fails CLOSED -- no charge is ever
+        // attempted -- instead of the previous ordering, where a failure creating the row AFTER a
+        // successful Paystack charge (a DB outage, a constraint violation) would have silently
+        // moved real money with no local record left to reconcile against.
+        $reference = 'org_charge_'.Str::uuid();
 
         $transaction = Transaction::query()->create([
             'for_type' => $dto->for::class,
             'for_id' => $dto->for->id,
             'user_id' => $dto->user->id,
             'organization_id' => $dto->organization->id,
-            'reference' => $response['data']['reference'],
+            'reference' => $reference,
             'amount' => $minorUnitsAmount,
             'currency' => $currency,
             'status' => TransactionStatusEnum::pending->value,
@@ -163,6 +163,25 @@ class ChargeOrganizationForModelAction extends Action
             'source' => TransactionStatusSourceEnum::orgCharge->value,
             'message' => 'Organization charge initiated.',
         ]);
+
+        try {
+            $response = PaystackClient::new()->chargeAuthorization([
+                'authorization_code' => $instrument->authorization_code,
+                'email' => $dto->user->email,
+                'amount' => $minorUnitsAmount,
+                'currency' => $currency,
+                'reference' => $reference,
+            ]);
+        } catch (RequestException $exception) {
+            // Left pending, not marked failed -- a webhook still arrives for every charge
+            // regardless of how it started (this action's own comment below), so an ambiguous
+            // HTTP-level failure here (was the charge actually received before the connection
+            // dropped?) can still resolve correctly once it does, mirroring this same method's
+            // existing handling of an unrecognized Paystack response status a few lines down.
+            // Marking this failed outright here risks RecordTransactionStatusAction's own
+            // terminal-status guard permanently blocking a later, genuine success webhook.
+            throw new TransactionException('Unable to charge the organization right now. Please try again shortly.', 502);
+        }
 
         // Unlike the checkout-redirect flow, chargeAuthorization() already returns a definitive
         // status in this same response -- a webhook may still arrive afterward too (Paystack fires
