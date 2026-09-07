@@ -5246,3 +5246,48 @@ no scheduled reconciliation job exists to verify a stale-`pending` org-charge Tr
 Paystack's own verify-transaction endpoint if its webhook is ever missed entirely — this synchronous
 action has no queue-retry infrastructure the way `ProcessOrganizationInvoiceSettlementJob` does.
 Filed as SCRUM-248.
+
+---
+
+## 2026-09-07 — SCRUM-249 (TT-7.7a): refund data model & eligibility implemented
+
+**Decision**: Implemented per the plan already approved in the 2026-09-02 SCRUM-223 entry above.
+Two schema/design choices made without a further round of user questions (both low-risk,
+reversible, and directly implied by that prior review, not new forks):
+
+1. The `refunds` table is split into `refunds` (one row per refund attempt, 1:many per
+   transaction) plus a new child `refund_status_histories` table, mirroring
+   `transactions`/`transaction_status_histories` field-for-field rather than folding status-change
+   history into `refunds` itself. This matches the "per-state-change-is-a-row" convention the
+   2026-09-02 entry attributed to `TransactionStatusHistory`, and gives TT-7.7d a place to record
+   its own pending → processing → success/failed lifecycle (including the later
+   refund.processed/refund.failed webhook) without mutating a settled row.
+2. `refunds.reference` is generated (`'refund_'.Str::uuid()`) and persisted at Refund-row creation
+   time — i.e. when an admin approves the request (`RespondToRefundRequestAction`), well before
+   TT-7.7d's queued job will ever call Paystack's refund endpoint. This directly reuses the
+   SCRUM-243 lesson (a caller-generated reference persisted before an external call fails closed
+   instead of risking a successful-but-unrecorded charge/refund) even though no Paystack call
+   exists yet in this ticket.
+
+**Security-engineer review surfaced two real findings, both fixed before merge**:
+- **Medium** — a TOCTOU race: `EnsureTransactionIsRefundEligibleAction`'s own reads are plain,
+  non-locking queries, so two different pending refund `Request`s for the same transaction being
+  approved concurrently (nothing yet prevents two such requests from existing — TT-7.7b's
+  one-active-request-per-transaction guard, not built yet, is what will) could both pass eligibility
+  before either commits, risking a double refund once TT-7.7d wires up the real Paystack call. This
+  is the same bug class already hit once before in this codebase (a lock on one row isn't enough
+  if the invariant-checking query itself is a plain read). Fixed by having
+  `RespondToRefundRequestAction` take `lockForUpdate()` on the `Transaction` row itself (not just
+  the `Request` row) before re-running the eligibility check, serializing concurrent accepts for
+  the same transaction.
+- **Low** — `RequestTypeEnum::refund` deliberately leaves `to` null (any admin may respond, per
+  `EnsureUserCanRespondToRequestAction`'s existing `isAdmin()` short-circuit) — but that action
+  dereferenced `$respondent->is(...)` unconditionally, so a non-admin caller against a null-`to`
+  request threw an uncaught `Error` instead of the intended `CannotRespondToRequestException`.
+  Fixed with a null-guard; refund is the first exercised case of `to === null` actually reaching
+  this check (`RequestTypeEnum::administrator`, the only other null-`to` case, has no live
+  creation path anywhere in the codebase).
+
+Both fixes have dedicated regression tests in `tests/Unit/RespondToRefundRequestActionTest.php`.
+No FK/read/write relationship to `payment_access_grants` anywhere in this diff — verified by the
+security-engineer's own grep, plus an explicit regression test in both new test files.

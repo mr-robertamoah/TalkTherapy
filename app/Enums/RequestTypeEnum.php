@@ -37,4 +37,10 @@ enum RequestTypeEnum: string
     // side always the recipient, mirroring organizationCounsellorCompensationChange's from/to
     // flip on counter-offer (TT-2.5b).
     case sessionScheduleProposal = 'SESSION_SCHEDULE_PROPOSAL_REQUEST';
+    // TT-7.7a/SCRUM-249: a client asking to be refunded for a Transaction. `for` is the
+    // Transaction itself. `from` is the client User who asked; `to` is deliberately left null --
+    // any platform admin may respond (EnsureUserCanRespondToRequestAction's own isAdmin() branch
+    // already grants this without needing a specific `to` target, mirroring `administrator`'s own
+    // never-populated `to` above). `data` carries the client's stated `reason`.
+    case refund = 'REFUND_REQUEST';
 }
