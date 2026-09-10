@@ -149,6 +149,9 @@ Route::middleware('auth')->group(function () {
     Route::post('/group-therapies/{groupTherapyId}/transactions', [TransactionController::class, 'initiate'])->name('transactions.initiate.group_therapy')->middleware('throttle:20,1');
     Route::post('/sessions/{sessionId}/transactions', [TransactionController::class, 'initiate'])->name('transactions.initiate.session')->middleware('throttle:20,1');
     Route::get('/transactions/callback', [TransactionController::class, 'callback'])->name('transactions.callback')->middleware('throttle:30,1');
+    // TT-7.7b/SCRUM-250: throttled like the initiate.* routes above -- not itself a money-moving
+    // call, but still a client-initiated write against a specific transaction.
+    Route::post('/transactions/{transactionId}/refund-request', [TransactionController::class, 'requestRefund'])->name('transactions.refund_request.store')->middleware('throttle:20,1');
 
     // throttle: read-only and non-money-moving, but this is the first endpoint that lets any
     // authenticated user enumerate every verified org on the platform -- a higher cap than the

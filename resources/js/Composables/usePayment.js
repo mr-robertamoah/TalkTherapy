@@ -38,6 +38,7 @@ function isRetryStatus(status) {
 export default function usePayment(therapy, therapyType = 'individual') {
     const initiating = ref(false)
     const statusDismissed = ref(false)
+    const requestingRefund = ref(false)
 
     const computedTherapy = computed(() => therapy.value?.data ? therapy.value.data : therapy.value)
 
@@ -102,17 +103,47 @@ export default function usePayment(therapy, therapyType = 'individual') {
         return initiate('transactions.initiate.session', session.id)
     }
 
+    // TT-7.7b/SCRUM-250: `entity` is whatever exposes `paymentStatus`/`transactionId`/
+    // `refundRequestStatus` -- the Therapy resource itself for PER_THERAPY, or a Session resource
+    // for PER_SESSION -- mirrors canPayForTherapy/canPayForSession's own split by taking the
+    // already-resolved object rather than re-deriving PER_THERAPY/PER_SESSION here.
+    function canRequestRefund(entity, isParticipant, isCounsellor) {
+        return isParticipant && !isCounsellor &&
+            entity?.paymentStatus === 'SUCCESS' &&
+            !entity?.refundRequestStatus &&
+            !!entity?.transactionId
+    }
+
+    async function requestRefund(transactionId, reason) {
+        requestingRefund.value = true
+
+        try {
+            const { data } = await axios.post(route('transactions.refund_request.store', transactionId), { reason })
+            return data
+        } catch (err) {
+            throw new Error(
+                err.response?.data?.message ||
+                'Something unfortunate happened while submitting your refund request. Please try again later.'
+            )
+        } finally {
+            requestingRefund.value = false
+        }
+    }
+
     return {
         initiating,
+        requestingRefund,
         transactionStatus,
         statusBannerType,
         statusBannerMessage,
         dismissStatus,
         canPayForTherapy,
         canPayForSession,
+        canRequestRefund,
         isOrgRetainerCovered,
         payForTherapy,
         payForSession,
+        requestRefund,
         paymentStatusLabel,
         isRetryStatus,
         // SCRUM-221/TT-7.5a: exported directly (not just via payForTherapy/payForSession) for

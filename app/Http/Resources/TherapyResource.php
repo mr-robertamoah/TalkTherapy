@@ -32,6 +32,16 @@ class TherapyResource extends JsonResource
             $activeDiscussion = $this->getActiveDiscussion($user->counsellor);
         }
 
+        // TT-7.7b/SCRUM-250 (security-engineer finding, HIGH -- SessionResource's own identical
+        // fix): `latestTransaction` is "latest across ALL eligible payers", not scoped to the
+        // current viewer. Scoped here to the viewer's own transaction so a co-participant (or the
+        // assigned counsellor, never the payer) can never see another client's transactionId or
+        // refund/dispute status. Only queried for a PAID, PER_THERAPY engagement -- guarded BEFORE
+        // running the query, mirroring orgRetainerCoverage()'s own early-return.
+        $viewerTransaction = $user && $this->payment_type === TherapyPaymentTypeEnum::paid->value && ($this->payment_data['per'] ?? null) === 'PER_THERAPY'
+            ? $this->transactions()->where('user_id', $user->id)->latest('created_at')->first()
+            : null;
+
         return [
             'id' => $this->id,
             'name' => $this->name,
@@ -49,6 +59,9 @@ class TherapyResource extends JsonResource
             'status' => $this->getStatus(),
             'paymentData' => $this->payment_data,
             'paymentStatus' => $this->latestTransaction?->status,
+            // TT-7.7b/SCRUM-250
+            'transactionId' => $viewerTransaction?->id,
+            'refundRequestStatus' => $viewerTransaction?->latestRefundRequest?->status,
             'sessionsCreated' => $this->sessionsCreated,
             'paymentType' => $this->payment_type,
             'sessionType' => $this->session_type,

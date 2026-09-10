@@ -18,6 +18,20 @@ class SessionResource extends JsonResource
     {
         $currentTopic = $this->currentTopic;
         $isIndividualTherapy = $this->for_type === Therapy::class;
+        // TT-7.7b/SCRUM-250 (security-engineer finding, HIGH): `latestTransaction` is "latest
+        // across ALL eligible payers, not scoped to the current viewer" (see its own comment on
+        // Session/TherapyTrait) -- for a GroupTherapy session with several members, exposing ITS
+        // transactionId/refundRequestStatus unconditionally would leak a co-participant's own
+        // transaction identity and refund/dispute status to every other member. Scoped here to
+        // the transaction actually belonging to the viewer (also correctly resolves to null for
+        // the assigned counsellor, who is never the payer).
+        //
+        // Only queried for a PAID session -- guarded BEFORE running the query, not just before
+        // reading its result, so the common FREE case (e.g. the counsellor calendar's own N+1
+        // regression test) never pays for it at all.
+        $viewerTransaction = $this->payment_type === 'PAID' && $request->user()
+            ? $this->transactions()->where('user_id', $request->user()->id)->latest('created_at')->first()
+            : null;
 
         return [
             'id' => $this->id,
@@ -36,6 +50,9 @@ class SessionResource extends JsonResource
             'endTime' => $this->end_time,
             'paymentType' => $this->payment_type,
             'paymentStatus' => $this->latestTransaction?->status,
+            // TT-7.7b/SCRUM-250
+            'transactionId' => $viewerTransaction?->id,
+            'refundRequestStatus' => $viewerTransaction?->latestRefundRequest?->status,
             'landmark' => $this->landmark,
             'isSession' => true,
             'createdAt' => $this->created_at,

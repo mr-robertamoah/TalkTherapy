@@ -110,6 +110,12 @@ class DatabaseSeeder extends Seeder
         // profile's new Payouts section -- nothing above deterministically produces a
         // CounsellorEarning row to withdraw.
         $this->createPayoutDemoData();
+
+        // TT-7.7b/SCRUM-250: dedicated already-PAID (SUCCESS) therapies (one PER_THERAPY, one
+        // PER_SESSION) for testing the refund-request UI -- nothing above deterministically
+        // produces an already-successfully-paid engagement to request a refund for (the payment
+        // demo data above is deliberately left unpaid, to test the Pay Now flow itself).
+        $this->createRefundDemoData();
     }
 
     private function createLanguages($user)
@@ -865,6 +871,110 @@ class DatabaseSeeder extends Seeder
             'type' => 'online',
             'status' => 'pending',
             'payment_type' => 'PAID',
+        ]);
+    }
+
+    private function createRefundDemoData(): void
+    {
+        $client = User::factory()->create([
+            'firstName' => 'Refund',
+            'lastName' => 'DemoClient',
+            'email' => 'refund.demo.client@example.com',
+            'username' => 'refund_demo_client',
+            'password' => Hash::make('password'),
+            'email_verified_at' => now(),
+        ]);
+
+        $counsellorUser = User::factory()->create([
+            'firstName' => 'Refund',
+            'lastName' => 'DemoCounsellor',
+            'email' => 'refund.demo.counsellor@example.com',
+            'username' => 'refund_demo_counsellor',
+            'password' => Hash::make('password'),
+            'email_verified_at' => now(),
+        ]);
+
+        $counsellor = $counsellorUser->counsellor()->create([
+            'name' => 'Dr. Refund DemoCounsellor',
+            'about' => 'Seeded counsellor for testing the refund-request UI (SCRUM-250).',
+            'email' => $counsellorUser->email,
+            'phone' => fake()->phoneNumber(),
+            'verified_at' => now(),
+            'email_verified_at' => now(),
+            'profession_id' => rand(1, 10),
+            'contact_visible' => true,
+        ]);
+
+        // PER_THERAPY: already SUCCESS -- TherapyPaymentDetails.vue's "request a refund" control
+        // is reachable immediately, without needing a real Paystack checkout first.
+        $perTherapyTherapy = $client->addedTherapies()->create([
+            'name' => 'Refund Demo Therapy (Per Therapy)',
+            'background_story' => 'Seeded PAID, PER_THERAPY therapy with a SUCCESS transaction, for testing the client refund-request action (SCRUM-250).',
+            'counsellor_id' => $counsellor->id,
+            'session_type' => 'Once',
+            'payment_type' => 'PAID',
+            'allow_in_person' => false,
+            'anonymous' => false,
+            'public' => false,
+            'status' => 'in_session',
+            'payment_data' => [
+                'amount' => 120,
+                'currency' => 'USD',
+                'per' => 'PER_THERAPY',
+            ],
+        ]);
+
+        Transaction::query()->create([
+            'for_type' => $perTherapyTherapy::class,
+            'for_id' => $perTherapyTherapy->id,
+            'user_id' => $client->id,
+            'reference' => 'refund_demo_'.fake()->unique()->uuid(),
+            'amount' => 12000,
+            'currency' => 'USD',
+            'status' => TransactionStatusEnum::success->value,
+        ]);
+
+        // PER_SESSION: an already-SUCCESS, immediately-active session -- the session-actions
+        // modal's own "request a refund" control is reachable the same way.
+        $perSessionTherapy = $client->addedTherapies()->create([
+            'name' => 'Refund Demo Therapy (Per Session)',
+            'background_story' => 'Seeded PAID, PER_SESSION therapy with a SUCCESS session transaction, for testing the client refund-request action (SCRUM-250).',
+            'counsellor_id' => $counsellor->id,
+            'session_type' => 'Periodic',
+            'payment_type' => 'PAID',
+            'allow_in_person' => false,
+            'anonymous' => false,
+            'public' => false,
+            'status' => 'in_session',
+            'payment_data' => [
+                'amount' => 40,
+                'currency' => 'USD',
+                'per' => 'PER_SESSION',
+            ],
+        ]);
+
+        // Kept within 5 minutes of "now", mirroring createPaymentDemoData()'s own identical
+        // precedent, so it's immediately the therapy's activeSession.
+        $session = $counsellor->addedSessions()->create([
+            'name' => 'Refund Demo Session',
+            'about' => 'Seeded PAID, already-SUCCESS session, immediately active so its refund-request control is reachable without waiting.',
+            'for_id' => $perSessionTherapy->id,
+            'for_type' => $perSessionTherapy::class,
+            'start_time' => now()->addMinutes(2),
+            'end_time' => now()->addMinutes(62),
+            'type' => 'online',
+            'status' => 'pending',
+            'payment_type' => 'PAID',
+        ]);
+
+        Transaction::query()->create([
+            'for_type' => $session::class,
+            'for_id' => $session->id,
+            'user_id' => $client->id,
+            'reference' => 'refund_demo_'.fake()->unique()->uuid(),
+            'amount' => 4000,
+            'currency' => 'USD',
+            'status' => TransactionStatusEnum::success->value,
         ]);
     }
 
