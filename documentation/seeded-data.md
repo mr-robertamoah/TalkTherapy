@@ -151,6 +151,23 @@ itself):
 | Refund Demo Therapy (Pending Admin Review) | `PER_THERAPY`, USD 80, transaction already `SUCCESS` | Already has a `PENDING` refund request on it (SCRUM-251) — visit `/administrator/refund-requests` as the super admin to see and act on it immediately, with no manual "ask" step needed first. |
 | Refund Demo Therapy (Refunded) | `PER_THERAPY`, USD 100, transaction already `SUCCESS` | Already has a `SUCCESS` `Refund` row on it (SCRUM-253) — the "payment details" tab shows "Refunded" (not "Paid") for both `refund_demo_client` and `refund_demo_counsellor`, and no "request a refund" control renders for either. |
 
+## Group therapy per-member payment (SCRUM-259, TT-7.4d)
+
+Dedicated accounts and PAID group therapies for testing per-member payment/refund/roster
+behavior, since the random demo group therapies never deterministically produce a PAID group with
+a known payment split across members:
+
+| Username | Password | Purpose |
+|---|---|---|
+| `group_payment_demo_member_paid` | `password` | Already has a `SUCCESS` transaction on both groups below. |
+| `group_payment_demo_member_unpaid` | `password` | Has never paid on either group. |
+| `group_payment_demo_counsellor` | `password` | Assigned counsellor on both groups — log in as this account to see the per-member payment roster (SCRUM-261). |
+
+| Group Therapy | Payment model | Notes |
+|---|---|---|
+| Group Payment Demo (Per Therapy) | `PER_THERAPY`, USD 100 | "payment details" tab shows `group_payment_demo_member_paid` as "Paid" and `group_payment_demo_member_unpaid` with a real "pay now" control -- each scoped to their own status, not each other's. |
+| Group Payment Demo (Per Session) | `PER_SESSION`, USD 50 | Has one seeded session ("Group Payment Demo Session"), always within 5 minutes of its start time so it's immediately the group's active session -- same per-member split, in the "Session Actions" modal. |
+
 ## Counsellor payout (SCRUM-228)
 
 A dedicated counsellor with pending earnings but no payout destination yet, for testing the
