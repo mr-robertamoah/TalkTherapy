@@ -5494,3 +5494,40 @@ nested eager load to both; the existing N+1 regression test in
 session in that test ever had a `latestTransaction`), so it was extended to attach a real
 transaction to its growing sessions -- verified this addition actually catches the regression by
 confirming it fails when the eager load is reverted, not just that it passes once fixed.
+
+---
+
+## 2026-09-10 — SCRUM-255: queue-redelivery guard fix -- initial approach revised after security review
+
+**Bugfix-tier follow-up ticket** (filed during TT-7.7d's review), not a full-ceremony feature --
+implemented directly, still ran reviewer + security-engineer given both touched jobs make a real,
+external, money-moving Paystack call.
+
+**Initial fix was incomplete -- caught by security-engineer's second pass, not the first.** The
+ticket's own suggested fix (`WithoutOverlapping` middleware keyed by refund/payout id) was
+implemented first, and the `reviewer` subagent approved that version. Independently, the
+`security-engineer` subagent found (HIGH severity) that `WithoutOverlapping` alone does NOT close
+the gap the ticket is titled for: the lock is held only for the duration of the winning attempt's
+`handle()` call and releases the instant it returns -- including the normal, successful case where
+an async Paystack response is recorded as `processing` and the method returns cleanly. Since both
+jobs' own pre-flight guard only skipped a TERMINAL status (success/failed), a redelivery arriving
+*after* the first attempt had already finished (not during it -- the lock is long since free) would
+still see `processing`, pass the guard, and call Paystack a second time. This is not a narrow race;
+per both jobs' own existing comments, an async/`processing` outcome is the *documented common case*
+for live-mode Paystack calls, so the gap would have been hit routinely, not rarely.
+
+**Fix**: changed each job's pre-flight guard from "skip if terminal" to "proceed only if `pending`"
+(`ELIGIBLE_STATUS`) -- `pending` is the only status in which Paystack has definitely never been
+called yet for that refund/payout; every other status (`processing`, `success`/`succeeded`,
+`failed`) means either an attempt already happened or the outcome is final, so none of them should
+ever trigger a second call, only a webhook or admin action should resolve them further.
+`WithoutOverlapping` is kept as a belt-and-braces defense against a genuinely concurrent
+redelivery (arriving before the winning attempt even returns), not as the primary fix.
+
+**Verification discipline**: for both the original `WithoutOverlapping`-only fix and this revised
+one, added tests were verified to actually fail when the corresponding code change was temporarily
+reverted (not just that they pass once written) -- for the revised fix specifically, a new test
+per job ("a redelivered dispatch after the first attempt already finished as processing never
+calls Paystack again") was confirmed to fail against the original terminal-status-only guard,
+proving it exercises the exact gap the security review identified rather than a case the earlier
+fix already covered.
