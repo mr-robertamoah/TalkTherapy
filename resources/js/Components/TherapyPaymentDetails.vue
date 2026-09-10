@@ -80,6 +80,26 @@
       </div>
     </div>
 
+    <!-- TT-7.4d-d/SCRUM-261: counsellor-only, PER_THERAPY group roster -- `therapy.paymentRoster`
+         is only ever present in the response at all for this group's own counsellor (see
+         GroupTherapyResource's own guard), so the `computedIsCounsellor` check here is a display
+         nicety, not the actual authorization boundary. Deliberately real member identity (not
+         anonymized), per this ticket's own scoped exception to the anonymity rule -- logged in
+         documentation/decision-log.md. -->
+    <div v-if="therapyType === 'group' && computedIsCounsellor && therapy.paymentRoster" class="mt-4 pt-4 border-t border-gray-200">
+      <div class="text-gray-600 tracking-wide font-semibold mb-2">Member Payment Status</div>
+      <div
+        v-for="member in therapy.paymentRoster"
+        :key="member.id"
+        class="flex justify-between items-center py-1 border-b border-gray-100 last:border-b-0"
+      >
+        <div class="text-sm text-gray-700">{{ member.fullName }} <span v-if="member.username" class="text-gray-400">@{{ member.username }}</span></div>
+        <div class="text-sm font-semibold" :class="member.paymentStatus === 'FAILED' ? 'text-red-600' : (member.paymentStatus === 'SUCCESS' ? 'text-green-700' : 'text-gray-600')">
+          {{ paymentStatusLabel(member.paymentStatus) }}
+        </div>
+      </div>
+    </div>
+
     <!-- TT-7.7b/SCRUM-250: client-only, PER_THERAPY -- request/pending-status UI for a paid,
          not-yet-refunded engagement. Deliberately independent of the "Paid" block above so a
          REJECTED prior request still lets the client ask again (eligible-again per
