@@ -93,6 +93,7 @@ const {
   requestRefund,
   paymentStatusLabel,
   isRetryStatus,
+  viewerScopedPaymentStatus,
 } = usePayment(therapyRef, props.therapyType)
 
 // Tab items configuration (kept for compatibility)
@@ -1189,13 +1190,15 @@ function reportCreated(report) {
                   :disabled="payInitiating"
                   @click="clickedPaySession"
                   class="shrink-0"
-                  :class="isRetryStatus(activeSession?.paymentStatus) ? 'bg-amber-600 hover:bg-amber-700' : ''"
-                  >{{ isRetryStatus(activeSession?.paymentStatus) ? 'try payment again' : 'pay now' }}</PrimaryButton
+                  :class="isRetryStatus(viewerScopedPaymentStatus(activeSession)) ? 'bg-amber-600 hover:bg-amber-700' : ''"
+                  >{{ isRetryStatus(viewerScopedPaymentStatus(activeSession)) ? 'try payment again' : 'pay now' }}</PrimaryButton
                 >
                 <!-- TT-7.7e/SCRUM-253: mirrors TherapyPaymentDetails.vue's identical "Refunded"
                      override -- activeSession.paymentStatus itself never flips off SUCCESS on
-                     refund. -->
-                <div v-else-if="activeSession?.paymentType == 'PAID' && activeSession?.paymentStatus == 'SUCCESS'" class="text-sm font-semibold" :class="activeSession?.refundStatus === 'SUCCESS' ? 'text-gray-600' : 'text-green-700'">
+                     refund. TT-7.4d-b/SCRUM-259: viewerScopedPaymentStatus() reads MY OWN status
+                     for a group therapy session instead of activeSession.paymentStatus's "paid by
+                     ANY member". -->
+                <div v-else-if="activeSession?.paymentType == 'PAID' && viewerScopedPaymentStatus(activeSession) == 'SUCCESS'" class="text-sm font-semibold" :class="activeSession?.refundStatus === 'SUCCESS' ? 'text-gray-600' : 'text-green-700'">
                   {{ activeSession?.refundStatus === 'SUCCESS' ? 'refunded' : 'paid' }}
                 </div>
                 <div

@@ -33,8 +33,7 @@ function isRetryStatus(status) {
 
 // Owns the initiate/redirect/status/dismiss logic shared by TherapyPaymentDetails.vue (PER_THERAPY
 // pay action) and UnifiedTherapy.vue's session-actions modal (PER_SESSION pay action), so neither
-// embeds this logic itself and the other reuses it. Group therapy is explicitly unsupported here --
-// TT-7.4d, blocked on a per-member payment model that doesn't exist yet.
+// embeds this logic itself and the other reuses it.
 export default function usePayment(therapy, therapyType = 'individual') {
     const initiating = ref(false)
     const statusDismissed = ref(false)
@@ -62,20 +61,27 @@ export default function usePayment(therapy, therapyType = 'individual') {
         return !!computedTherapy.value?.orgRetainerCoverage
     }
 
+    // TT-7.4d-b/SCRUM-259: an individual Therapy/Session's own `paymentStatus` field is already
+    // scoped to the viewer (single-payer model -- see TherapyResource/GroupTherapyResource's own
+    // comments on this), but a GroupTherapy/its Sessions' `paymentStatus` is "paid by ANY member".
+    // `viewerPaymentStatus` is the per-viewer counterpart TT-7.4d-a/b added for exactly that case --
+    // centralized here so every "have I paid" check below reads the right field for both shapes.
+    function viewerScopedPaymentStatus(entity) {
+        return therapyType === 'group' ? entity?.viewerPaymentStatus : entity?.paymentStatus
+    }
+
     function canPayForTherapy(isParticipant, isCounsellor) {
-        return therapyType !== 'group' &&
-            computedTherapy.value?.paymentType === 'PAID' &&
+        return computedTherapy.value?.paymentType === 'PAID' &&
             computedTherapy.value?.paymentData?.per === 'PER_THERAPY' &&
-            computedTherapy.value?.paymentStatus !== 'SUCCESS' &&
+            viewerScopedPaymentStatus(computedTherapy.value) !== 'SUCCESS' &&
             !isOrgRetainerCovered() &&
             isParticipant && !isCounsellor
     }
 
     function canPayForSession(session, isParticipant, isCounsellor) {
-        return therapyType !== 'group' &&
-            computedTherapy.value?.paymentData?.per === 'PER_SESSION' &&
+        return computedTherapy.value?.paymentData?.per === 'PER_SESSION' &&
             session?.paymentType === 'PAID' &&
-            session?.paymentStatus !== 'SUCCESS' &&
+            viewerScopedPaymentStatus(session) !== 'SUCCESS' &&
             !isOrgRetainerCovered() &&
             isParticipant && !isCounsellor
     }
@@ -95,8 +101,18 @@ export default function usePayment(therapy, therapyType = 'individual') {
         }
     }
 
+    // TT-7.4d-b/SCRUM-259: a GroupTherapy charge must POST to its own dedicated
+    // transactions.initiate.group_therapy route (`/group-therapies/{groupTherapyId}/transactions`)
+    // -- TransactionController::getFor() resolves the payable strictly by which route param is
+    // present, so posting a GroupTherapy's id to the individual-Therapy route instead would either
+    // 404 or, worse, resolve a completely different Therapy record that happens to share the same
+    // id. This was unreachable before this ticket lifted usePayment.js's `therapyType !== 'group'`
+    // exclusion, so no GroupTherapy id had ever reached this call before.
     function payForTherapy() {
-        return initiate('transactions.initiate.therapy', computedTherapy.value.id)
+        return initiate(
+            therapyType === 'group' ? 'transactions.initiate.group_therapy' : 'transactions.initiate.therapy',
+            computedTherapy.value.id
+        )
     }
 
     function payForSession(session) {
@@ -114,6 +130,12 @@ export default function usePayment(therapy, therapyType = 'individual') {
     // ASK-time request's own status and is never set for a refund created any other way (e.g. an
     // already-approved one). EnsureTransactionIsRefundEligibleAction already blocks a second
     // refund server-side, but the control shouldn't invite the client to try in the first place.
+    // Unscoped `entity?.paymentStatus` read below is only correct because both call sites still
+    // wrap this in a `therapyType !== 'group'` template guard (refunds are individual-Therapy-only
+    // for this whole epic, see SessionResource's own comment) -- if a future ticket extends refunds
+    // to a GroupTherapy, route this through viewerScopedPaymentStatus() (or an equivalent
+    // viewer-scoped refund-eligibility field) first, or it will silently regress to showing one
+    // member's refund eligibility based on a DIFFERENT member's payment.
     function canRequestRefund(entity, isParticipant, isCounsellor) {
         return isParticipant && !isCounsellor &&
             entity?.paymentStatus === 'SUCCESS' &&
@@ -145,6 +167,7 @@ export default function usePayment(therapy, therapyType = 'individual') {
         statusBannerType,
         statusBannerMessage,
         dismissStatus,
+        viewerScopedPaymentStatus,
         canPayForTherapy,
         canPayForSession,
         canRequestRefund,

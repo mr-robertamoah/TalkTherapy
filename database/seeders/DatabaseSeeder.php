@@ -118,6 +118,13 @@ class DatabaseSeeder extends Seeder
         // produces an already-successfully-paid engagement to request a refund for (the payment
         // demo data above is deliberately left unpaid, to test the Pay Now flow itself).
         $this->createRefundDemoData();
+
+        // TT-7.4d-b/SCRUM-259: dedicated PAID GroupTherapies (one PER_THERAPY, one PER_SESSION)
+        // with two members each -- one already paid, one not -- for testing that a group member's
+        // own "pay now" control reflects THEIR OWN payment, not a co-member's. The random demo
+        // group therapies above never deterministically produce a PAID group with more than one
+        // member's payment state known in advance.
+        $this->createGroupPaymentDemoData();
     }
 
     private function createLanguages($user)
@@ -1062,6 +1069,125 @@ class DatabaseSeeder extends Seeder
             'currency' => 'USD',
             'reason' => 'Seeded already-successful refund.',
             'status' => RefundStatusEnum::success->value,
+        ]);
+    }
+
+    private function createGroupPaymentDemoData(): void
+    {
+        $memberPaid = User::factory()->create([
+            'firstName' => 'GroupPayment',
+            'lastName' => 'DemoMemberPaid',
+            'email' => 'group.payment.demo.member.paid@example.com',
+            'username' => 'group_payment_demo_member_paid',
+            'password' => Hash::make('password'),
+            'email_verified_at' => now(),
+        ]);
+
+        $memberUnpaid = User::factory()->create([
+            'firstName' => 'GroupPayment',
+            'lastName' => 'DemoMemberUnpaid',
+            'email' => 'group.payment.demo.member.unpaid@example.com',
+            'username' => 'group_payment_demo_member_unpaid',
+            'password' => Hash::make('password'),
+            'email_verified_at' => now(),
+        ]);
+
+        $counsellorUser = User::factory()->create([
+            'firstName' => 'GroupPayment',
+            'lastName' => 'DemoCounsellor',
+            'email' => 'group.payment.demo.counsellor@example.com',
+            'username' => 'group_payment_demo_counsellor',
+            'password' => Hash::make('password'),
+            'email_verified_at' => now(),
+        ]);
+
+        $counsellor = $counsellorUser->counsellor()->create([
+            'name' => 'Dr. GroupPayment DemoCounsellor',
+            'about' => 'Seeded counsellor for testing the group-therapy per-member payment UI (SCRUM-259).',
+            'email' => $counsellorUser->email,
+            'phone' => fake()->phoneNumber(),
+            'verified_at' => now(),
+            'email_verified_at' => now(),
+            'profession_id' => rand(1, 10),
+            'contact_visible' => true,
+        ]);
+
+        // PER_THERAPY: memberPaid has already paid their own flat per-head share; memberUnpaid has
+        // not -- logging in as either exercises the viewer-scoped "Paid"/"pay now" split introduced
+        // by TT-7.4d-a/b (each member must see THEIR OWN status, not whichever member paid first).
+        $groupTherapy = $memberPaid->addedGroupTherapies()->create([
+            'name' => 'Group Payment Demo (Per Therapy)',
+            'about' => 'Seeded PAID, PER_THERAPY group therapy for testing the per-member Pay Now action (SCRUM-259).',
+            'session_type' => 'Once',
+            'payment_type' => 'PAID',
+            'max_users' => 10,
+            'allow_anyone' => false,
+            'anonymous' => false,
+            'public' => false,
+            'status' => 'pending',
+            'payment_data' => [
+                'amount' => 100,
+                'currency' => 'USD',
+                'per' => 'PER_THERAPY',
+            ],
+        ]);
+        $groupTherapy->counsellors()->attach($counsellor->id, ['state' => 'ACTIVE']);
+        $groupTherapy->users()->attach($memberPaid->id, ['anonymous' => false, 'background_story' => 'test']);
+        $groupTherapy->users()->attach($memberUnpaid->id, ['anonymous' => false, 'background_story' => 'test']);
+
+        Transaction::query()->create([
+            'for_type' => $groupTherapy::class,
+            'for_id' => $groupTherapy->id,
+            'user_id' => $memberPaid->id,
+            'reference' => 'group_payment_demo_'.fake()->unique()->uuid(),
+            'amount' => 10000,
+            'currency' => 'USD',
+            'status' => TransactionStatusEnum::success->value,
+        ]);
+
+        // PER_SESSION: same paid/unpaid pairing, but on an immediately-active session instead of
+        // the group as a whole -- mirrors createPaymentDemoData()'s own identical precedent so the
+        // session-actions modal's Pay Now control is reachable without waiting.
+        $perSessionGroupTherapy = $memberPaid->addedGroupTherapies()->create([
+            'name' => 'Group Payment Demo (Per Session)',
+            'about' => 'Seeded PAID, PER_SESSION group therapy for testing the per-member Pay Now action (SCRUM-259).',
+            'session_type' => 'Periodic',
+            'payment_type' => 'PAID',
+            'max_users' => 10,
+            'allow_anyone' => false,
+            'anonymous' => false,
+            'public' => false,
+            'status' => 'in_session',
+            'payment_data' => [
+                'amount' => 50,
+                'currency' => 'USD',
+                'per' => 'PER_SESSION',
+            ],
+        ]);
+        $perSessionGroupTherapy->counsellors()->attach($counsellor->id, ['state' => 'ACTIVE']);
+        $perSessionGroupTherapy->users()->attach($memberPaid->id, ['anonymous' => false, 'background_story' => 'test']);
+        $perSessionGroupTherapy->users()->attach($memberUnpaid->id, ['anonymous' => false, 'background_story' => 'test']);
+
+        $session = $counsellor->addedSessions()->create([
+            'name' => 'Group Payment Demo Session',
+            'about' => 'Seeded PAID session, immediately active so its per-member Pay Now control is reachable without waiting.',
+            'for_id' => $perSessionGroupTherapy->id,
+            'for_type' => $perSessionGroupTherapy::class,
+            'start_time' => now()->addMinutes(2),
+            'end_time' => now()->addMinutes(62),
+            'type' => 'online',
+            'status' => 'pending',
+            'payment_type' => 'PAID',
+        ]);
+
+        Transaction::query()->create([
+            'for_type' => $session::class,
+            'for_id' => $session->id,
+            'user_id' => $memberPaid->id,
+            'reference' => 'group_payment_demo_'.fake()->unique()->uuid(),
+            'amount' => 5000,
+            'currency' => 'USD',
+            'status' => TransactionStatusEnum::success->value,
         ]);
     }
 
