@@ -136,6 +136,18 @@ trait TherapyTrait
         return $this->morphOne(Transaction::class, 'for')->latestOfMany('created_at');
     }
 
+    // TT-7.4d-a/SCRUM-258: the viewer-scoped counterpart to latestTransaction() above -- promoted
+    // from SessionResource's own identical inline `viewerTransaction` closure (TT-7.7b/SCRUM-250,
+    // TT-7.7e/SCRUM-253) so GroupTherapyResource/SessionResource/TT-7.4d-d's roster all share one
+    // implementation instead of three near-identical copies. For an individual Therapy/Session
+    // this degenerates to the same row latestTransaction() already returns (exactly one payer);
+    // for a GroupTherapy it's the difference between "the group's own latest attempt by ANYONE"
+    // and "MY OWN latest attempt" -- the two must never be conflated on a multi-payer model.
+    public function latestTransactionFor(User $user)
+    {
+        return $this->transactions()->where('user_id', $user->id)->latest('created_at')->first();
+    }
+
     public function cases(): MorphToMany
     {
         return $this

@@ -96,6 +96,15 @@ class Session extends Model
         return $this->morphOne(Transaction::class, 'for')->latestOfMany('created_at');
     }
 
+    // TT-7.4d-a/SCRUM-258: mirrors TherapyTrait::latestTransactionFor()'s identical counterpart --
+    // Session doesn't use TherapyTrait (it duplicates transactions()/latestTransaction()
+    // independently above), so this is added here too rather than left missing for the one model
+    // SessionResource's own viewer-scoped field actually needs it on.
+    public function latestTransactionFor(User $user)
+    {
+        return $this->transactions()->where('user_id', $user->id)->latest('created_at')->first();
+    }
+
     public function addedby()
     {
         return $this->morphTo('addedby');
