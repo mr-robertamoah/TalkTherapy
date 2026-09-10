@@ -12,6 +12,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Queue\SerializesModels;
 
 // TT-7.7d/SCRUM-252: the real Paystack refund call, isolated here rather than inline in
@@ -34,20 +35,37 @@ class ProcessRefundJob implements ShouldQueue
     // job's own identical gap is out of this ticket's scope).
     public $backoff = [30, 120, 600];
 
-    // A refund is terminal once success/failed -- mirrors ProcessCounsellorPayoutJob's own guard,
-    // checked here before ever calling Paystack: without this, a retried job (e.g. after this job
-    // itself failed on a 5xx and the queue retried it) could re-attempt a refund that a
-    // refund.processed webhook had already resolved in the meantime.
-    private const TERMINAL_STATUSES = [
-        RefundStatusEnum::success->value,
-        RefundStatusEnum::failed->value,
-    ];
+    // SCRUM-255 (security-engineer finding, HIGH, second pass): checking "not yet terminal" here
+    // is NOT the same as "Paystack hasn't been called yet" -- a refund sits in `processing`
+    // (non-terminal) for as long as an async Paystack response is outstanding, and
+    // WithoutOverlapping's lock below only blocks a TRULY concurrent redelivery; it releases the
+    // instant this method returns, which happens the moment this job records `processing` and
+    // exits normally. A redelivery arriving any time after that -- the common case for a
+    // live-mode async Transfer/refund, per this job's own comment further down -- would find the
+    // lock free and, under the old "skip only success/failed" guard, call Paystack a SECOND time.
+    // `pending` is the ONLY status in which this job has never yet called Paystack for this
+    // refund -- every other status (processing, success, failed) means either an attempt already
+    // happened, or the outcome is final. Proceeding only from `pending` closes this for good,
+    // independent of whatever the WithoutOverlapping lock's state happens to be.
+    private const ELIGIBLE_STATUS = RefundStatusEnum::pending->value;
+
+    // Serializes a genuinely CONCURRENT redelivery (a visibility-timeout mid-flight, before this
+    // job has even returned) so two workers can never both pass the ELIGIBLE_STATUS check above
+    // at the same instant and both call Paystack. Deliberately a belt-and-braces addition to (not
+    // a replacement for) that check -- see its own comment for why the status check alone is what
+    // actually closes the ticket's named gap. expireAfter comfortably covers a slow Paystack
+    // response (no explicit HTTP client timeout is set on PaystackClient, so Laravel's 30s
+    // default applies) without leaving a crashed worker's lock stuck indefinitely.
+    public function middleware(): array
+    {
+        return [(new WithoutOverlapping($this->refundId))->releaseAfter(5)->expireAfter(120)];
+    }
 
     public function handle(): void
     {
         $refund = Refund::find($this->refundId);
 
-        if (! $refund || in_array($refund->status, self::TERMINAL_STATUSES, true)) {
+        if (! $refund || $refund->status !== self::ELIGIBLE_STATUS) {
             return;
         }
 

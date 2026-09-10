@@ -8,6 +8,7 @@ use App\Models\Therapy;
 use App\Models\Transaction;
 use App\Models\User;
 use Illuminate\Http\Client\RequestException;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 
 // TT-7.7d/SCRUM-252: mirrors ProcessCounsellorPayoutJobTest's own shape exactly -- this is the
@@ -85,6 +86,52 @@ test('a retried job never calls Paystack again once the refund has already reach
     ProcessRefundJob::dispatchSync($refund->id);
 
     Http::assertNothingSent();
+});
+
+// SCRUM-255 (security-engineer finding, HIGH, second pass): the WithoutOverlapping lock alone
+// does NOT close this gap -- it releases the instant the first dispatch's handle() returns, which
+// happens the moment an async response is recorded as `processing`. A redelivery arriving AFTER
+// that (the common case for a live-mode async refund, not just a narrow race) would find the lock
+// free; only checking for `pending` (not "any non-terminal status") stops it calling Paystack a
+// second time. Deliberately does NOT hold any lock here -- proves the fix holds even when the
+// earlier attempt has already fully finished and released it.
+test('a redelivered dispatch after the first attempt already finished as processing never calls Paystack again', function () {
+    Http::fake(['*/refund' => Http::response([
+        'status' => true,
+        'data' => ['status' => 'pending'],
+    ], 200)]);
+    $refund = aPendingRefundWithTransaction();
+
+    ProcessRefundJob::dispatchSync($refund->id);
+    expect($refund->fresh()->status)->toBe(RefundStatusEnum::processing->value);
+
+    Http::fake(); // any call here would be a bug -- no stub means the test fails loudly if reached.
+    ProcessRefundJob::dispatchSync($refund->id);
+
+    Http::assertNothingSent();
+    expect($refund->fresh()->status)->toBe(RefundStatusEnum::processing->value);
+});
+
+// SCRUM-255: closes the gap the terminal-status guard above doesn't cover -- a queue-redelivered
+// dispatch (visibility-timeout mid-flight, or an operator's queue:retry) while ANOTHER attempt for
+// the SAME refund is still actually in flight (not yet terminal). Simulated here by holding the
+// WithoutOverlapping lock the job's own middleware() would acquire, exactly as a real in-flight
+// attempt would.
+test('a redelivered dispatch while another attempt for the same refund is in flight never calls Paystack', function () {
+    Http::fake(); // any call here would be a bug -- no stub means the test fails loudly if reached.
+    $refund = aPendingRefundWithTransaction();
+
+    $lock = Cache::lock('laravel-queue-overlap:App\\Jobs\\ProcessRefundJob:'.$refund->id, 120);
+    $lock->get();
+
+    try {
+        ProcessRefundJob::dispatchSync($refund->id);
+
+        Http::assertNothingSent();
+        expect($refund->fresh()->status)->toBe(RefundStatusEnum::pending->value);
+    } finally {
+        $lock->release();
+    }
 });
 
 // Security-engineer finding: seeding the grant for a brand-new, unrelated Therapy/User (as this

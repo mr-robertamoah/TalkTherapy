@@ -11,6 +11,7 @@ use App\Models\Therapy;
 use App\Models\Transaction;
 use App\Models\User;
 use Illuminate\Http\Client\RequestException;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 
 function aPendingPayoutWithClaimedEarning(): array
@@ -97,4 +98,52 @@ test('a retried job never calls Paystack again once the payout has already reach
     ProcessCounsellorPayoutJob::dispatchSync($payout->id);
 
     Http::assertNothingSent();
+});
+
+// SCRUM-255: closes the gap the terminal-status guard above doesn't cover -- a queue-redelivered
+// dispatch (visibility-timeout mid-flight, or an operator's queue:retry) while ANOTHER attempt for
+// the SAME payout is still actually in flight (not yet terminal). Simulated here by holding the
+// WithoutOverlapping lock the job's own middleware() would acquire, exactly as a real in-flight
+// attempt would.
+test('a redelivered dispatch while another attempt for the same payout is in flight never calls Paystack', function () {
+    Http::fake(); // any call here would be a bug -- no stub means the test fails loudly if reached.
+    [$payout, $earning] = aPendingPayoutWithClaimedEarning();
+
+    $lock = Cache::lock('laravel-queue-overlap:App\\Jobs\\ProcessCounsellorPayoutJob:'.$payout->id, 120);
+    $lock->get();
+
+    try {
+        ProcessCounsellorPayoutJob::dispatchSync($payout->id);
+
+        Http::assertNothingSent();
+        expect($payout->fresh()->status)->toBe(CounsellorPayoutStatusEnum::pending->value);
+        expect($earning->fresh()->status)->toBe(CounsellorEarningStatusEnum::processing->value);
+    } finally {
+        $lock->release();
+    }
+});
+
+// SCRUM-255 (security-engineer finding, HIGH, second pass): the WithoutOverlapping lock alone
+// does NOT close this gap -- it releases the instant the first dispatch's handle() returns, which
+// happens the moment an async response is recorded as `processing`. A redelivery arriving AFTER
+// that (the common case for a live-mode async Transfer, not just a narrow race) would find the
+// lock free; only checking for `pending` (not "any non-terminal status") stops it calling Paystack
+// a second time. Deliberately does NOT hold any lock here -- proves the fix holds even when the
+// earlier attempt has already fully finished and released it.
+test('a redelivered dispatch after the first attempt already finished as processing never calls Paystack again', function () {
+    Http::fake(['*/transfer' => Http::response([
+        'status' => true,
+        'data' => ['transfer_code' => 'TRF_3', 'status' => 'pending'],
+    ], 200)]);
+    [$payout, $earning] = aPendingPayoutWithClaimedEarning();
+
+    ProcessCounsellorPayoutJob::dispatchSync($payout->id);
+    expect($payout->fresh()->status)->toBe(CounsellorPayoutStatusEnum::processing->value);
+
+    Http::fake(); // any call here would be a bug -- no stub means the test fails loudly if reached.
+    ProcessCounsellorPayoutJob::dispatchSync($payout->id);
+
+    Http::assertNothingSent();
+    expect($payout->fresh()->status)->toBe(CounsellorPayoutStatusEnum::processing->value);
+    expect($earning->fresh()->status)->toBe(CounsellorEarningStatusEnum::processing->value);
 });
