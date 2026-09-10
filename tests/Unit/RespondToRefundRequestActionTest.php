@@ -11,16 +11,26 @@ use App\Enums\RequestTypeEnum;
 use App\Exceptions\BadRequestException;
 use App\Exceptions\CannotRespondToRequestException;
 use App\Exceptions\TransactionException;
+use App\Jobs\ProcessRefundJob;
 use App\Models\PaymentAccessGrant;
 use App\Models\Refund;
 use App\Models\Therapy;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Notifications\RefundRequestRejectedNotification;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Notification;
 
 // TT-7.7a/SCRUM-249: mirrors RespondToOrganizationCounsellorCompensationRequestAction's own
 // lock-then-mutate, idempotent-on-repeat shape.
+
+// TT-7.7d/SCRUM-252: every test in this file that accepts a refund request now also dispatches
+// ProcessRefundJob (which would otherwise run synchronously against the real Paystack API in
+// this test environment's QUEUE_CONNECTION=sync) -- faked globally here since this file's own
+// tests are about RespondToRefundRequestAction's behavior, not the job's.
+beforeEach(function () {
+    Bus::fake();
+});
 
 function aPendingRefundRequest(): array
 {
@@ -67,6 +77,41 @@ test('accepting creates a pending Refund row snapshotting the transaction amount
     expect($refund->status)->toBe(RefundStatusEnum::pending->value);
     expect($refund->reference)->not->toBeNull();
     expect($refund->statusHistories()->count())->toBe(1);
+});
+
+// TT-7.7d/SCRUM-252
+test('accepting dispatches ProcessRefundJob for the new Refund, after the transaction commits', function () {
+    [$request] = aPendingRefundRequest();
+
+    RespondToRefundRequestAction::new()->execute(
+        RequestResponseDTO::new()->fromArray(['response' => 'accepted', 'request' => $request])
+    );
+
+    Bus::assertDispatched(ProcessRefundJob::class);
+});
+
+test('a reject never dispatches ProcessRefundJob', function () {
+    [$request] = aPendingRefundRequest();
+
+    RespondToRefundRequestAction::new()->execute(
+        RequestResponseDTO::new()->fromArray(['response' => null, 'reason' => 'No refund warranted here.', 'request' => $request])
+    );
+
+    Bus::assertNotDispatched(ProcessRefundJob::class);
+});
+
+// An idempotent no-op re-response must not dispatch a second job for the same Refund.
+test('responding to an already-accepted request a second time does not dispatch a second job', function () {
+    [$request] = aPendingRefundRequest();
+
+    RespondToRefundRequestAction::new()->execute(
+        RequestResponseDTO::new()->fromArray(['response' => 'accepted', 'request' => $request])
+    );
+    RespondToRefundRequestAction::new()->execute(
+        RequestResponseDTO::new()->fromArray(['response' => 'accepted', 'request' => $request->fresh()])
+    );
+
+    Bus::assertDispatchedTimes(ProcessRefundJob::class, 1);
 });
 
 // TT-7.7c/SCRUM-251: a reject is this request's own final word (no later "outcome" step is
@@ -202,14 +247,18 @@ test('a non-admin cannot respond to a refund request', function () {
     ))->toThrow(CannotRespondToRequestException::class);
 });
 
+// Security-engineer finding (TT-7.7d/SCRUM-252): seeding the grant for a brand-new, unrelated
+// Therapy/User (as this test originally did) would pass identically even if this isolation
+// guarantee were entirely absent. Tying the grant to the SAME transaction/therapy/client the
+// refund request under test actually belongs to makes this a meaningful regression test.
 test('never reads or writes payment_access_grants', function () {
-    [$request] = aPendingRefundRequest();
-    $user = User::factory()->create();
-    $therapy = Therapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => User::factory()]);
+    [$request, $transaction, $client] = aPendingRefundRequest();
+    $therapy = $transaction->for;
     $existingGrant = PaymentAccessGrant::create([
-        'user_id' => $user->id,
+        'user_id' => $client->id,
         'for_type' => Therapy::class,
         'for_id' => $therapy->id,
+        'transaction_id' => $transaction->id,
         'granted_at' => now(),
     ]);
 

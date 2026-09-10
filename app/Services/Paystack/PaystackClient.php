@@ -77,6 +77,22 @@ class PaystackClient extends Service
             ->json();
     }
 
+    // TT-7.7d/SCRUM-252: the real money-movement call -- always dispatched from a queued job
+    // (ProcessRefundJob), never inline in a request/response cycle, mirroring initiateTransfer()'s
+    // own isolation-from-dispatcher precedent. Unlike initiateTransfer()/chargeAuthorization(),
+    // Paystack's refund endpoint takes no caller-supplied idempotency reference -- it keys
+    // entirely off the ORIGINAL transaction's own `transaction` field (id or reference), and
+    // (per Paystack's own docs, confirmed during this ticket's spike -- no live sandbox
+    // credentials in this dev environment to verify empirically, same limitation noted on
+    // ProcessCounsellorPayoutJob/TT-7.6c) omitting `amount` refunds the transaction in full.
+    public function refundTransaction(array $data): array
+    {
+        return $this->request()
+            ->post('/refund', $data)
+            ->throw()
+            ->json();
+    }
+
     private function request(): PendingRequest
     {
         return Http::baseUrl(config('services.paystack.base_url'))

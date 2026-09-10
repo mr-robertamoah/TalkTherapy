@@ -10,6 +10,7 @@ use App\Enums\RefundStatusSourceEnum;
 use App\Enums\RequestStatusEnum;
 use App\Exceptions\BadRequestException;
 use App\Exceptions\TransactionException;
+use App\Jobs\ProcessRefundJob;
 use App\Models\Refund;
 use App\Models\Request;
 use App\Models\Transaction;
@@ -22,17 +23,23 @@ use Illuminate\Support\Str;
 // lock-then-mutate under one DB transaction, idempotent no-op if already responded to.
 //
 // Architect decision (documentation/decision-log.md's 2026-09-02 SCRUM-223 entry): the real
-// Paystack refund call is deliberately isolated in its own queued job (TT-7.7d, not yet built),
-// never called inline from within this shared dispatcher -- RespondToRequestAction's per-type
-// `if`-chain is already on record (SCRUM-119/120) as growing debt, and its only tested
+// Paystack refund call is deliberately isolated in its own queued job (TT-7.7d/SCRUM-252,
+// ProcessRefundJob), never called inline from within this shared dispatcher -- RespondToRequestAction's
+// per-type `if`-chain is already on record (SCRUM-119/120) as growing debt, and its only tested
 // idempotency guarantee was built for simple internal-state flips, not "did we already call a
-// third-party payment API for this." This action's own job ends at creating the `Refund` row in
-// PENDING -- dispatching the execution job is TT-7.7d's addition to this same method.
+// third-party payment API for this."
 class RespondToRefundRequestAction extends Action
 {
     public function execute(RequestResponseDTO $requestResponseDTO)
     {
-        return DB::transaction(function () use ($requestResponseDTO) {
+        // TT-7.7d/SCRUM-252: captured outside the transaction closure so the job dispatch below
+        // can happen strictly after it commits -- mirrors TriggerCounsellorPayoutAction's own
+        // identical pattern (this queue connection's after_commit config is false, so a job
+        // dispatched from inside an open transaction could be picked up by a worker before the
+        // Refund row it describes is actually visible on that worker's own connection).
+        $refund = null;
+
+        $request = DB::transaction(function () use ($requestResponseDTO, &$refund) {
             $request = Request::query()->lockForUpdate()->findOrFail($requestResponseDTO->request->id);
 
             if ($request->status != RequestStatusEnum::pending->value) {
@@ -113,5 +120,15 @@ class RespondToRefundRequestAction extends Action
 
             return $request;
         });
+
+        // TT-7.7d/SCRUM-252: dispatched AFTER the transaction above commits, not from inside it
+        // (see this method's own top-of-function comment for why). Only fires when an accept
+        // actually created a Refund row above -- a no-op idempotent re-response, or a reject,
+        // leaves $refund null.
+        if ($refund) {
+            ProcessRefundJob::dispatch($refund->id);
+        }
+
+        return $request;
     }
 }

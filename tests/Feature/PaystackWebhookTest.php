@@ -4,6 +4,7 @@ use App\Enums\CounsellorEarningStatusEnum;
 use App\Enums\CounsellorPayoutStatusEnum;
 use App\Enums\OrganizationCounsellorCompensationTypeEnum;
 use App\Enums\OrganizationCounsellorStatusEnum;
+use App\Enums\RefundStatusEnum;
 use App\Enums\TherapyPaymentTypeEnum;
 use App\Enums\TherapyPerPaymentEnum;
 use App\Enums\TherapySessionTypeEnum;
@@ -15,6 +16,7 @@ use App\Models\CounsellorPayout;
 use App\Models\Organization;
 use App\Models\OrganizationCounsellor;
 use App\Models\OrganizationCounsellorCompensation;
+use App\Models\Refund;
 use App\Models\Therapy;
 use App\Models\Transaction;
 use App\Models\User;
@@ -422,4 +424,123 @@ test('a correctly signed transfer.failed webhook marks the payout failed and ret
     $response->assertOk();
     expect($payout->fresh()->status)->toBe(CounsellorPayoutStatusEnum::failed->value);
     expect($earning->fresh()->status)->toBe(CounsellorEarningStatusEnum::pending->value);
+});
+
+// TT-7.7d/SCRUM-252: extends this same job/webhook route with refund events (same architect
+// reasoning as the transfer.* tests above -- one webhook URL, no isolation benefit from a second
+// route). Unlike a transfer webhook's own `reference` (the payout's own reference we minted),
+// a refund webhook identifies the ORIGINAL transaction it's about -- correlated back here via
+// that transaction's own currently-active Refund row.
+
+test('a correctly signed refund.processed webhook marks the refund succeeded', function () {
+    $secret = 'test_secret';
+    config(['services.paystack.secret_key' => $secret]);
+
+    $therapy = Therapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => User::factory()]);
+    $transaction = Transaction::factory()->create([
+        'for_type' => Therapy::class,
+        'for_id' => $therapy->id,
+        'reference' => 'refund_webhook_txn_ref_1',
+        'status' => TransactionStatusEnum::success->value,
+    ]);
+    $refund = Refund::factory()->create([
+        'transaction_id' => $transaction->id,
+        'status' => RefundStatusEnum::pending->value,
+    ]);
+
+    $response = postSignedPaystackWebhook([
+        'event' => 'refund.processed',
+        'data' => [
+            'status' => 'processed',
+            'transaction' => ['reference' => 'refund_webhook_txn_ref_1'],
+        ],
+    ], $secret);
+
+    $response->assertOk();
+    expect($refund->fresh()->status)->toBe(RefundStatusEnum::success->value);
+});
+
+test('a correctly signed refund.failed webhook marks the refund failed', function () {
+    $secret = 'test_secret';
+    config(['services.paystack.secret_key' => $secret]);
+
+    $therapy = Therapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => User::factory()]);
+    $transaction = Transaction::factory()->create([
+        'for_type' => Therapy::class,
+        'for_id' => $therapy->id,
+        'reference' => 'refund_webhook_txn_ref_2',
+        'status' => TransactionStatusEnum::success->value,
+    ]);
+    $refund = Refund::factory()->create([
+        'transaction_id' => $transaction->id,
+        'status' => RefundStatusEnum::pending->value,
+    ]);
+
+    $response = postSignedPaystackWebhook([
+        'event' => 'refund.failed',
+        'data' => [
+            'status' => 'failed',
+            'transaction' => ['reference' => 'refund_webhook_txn_ref_2'],
+        ],
+    ], $secret);
+
+    $response->assertOk();
+    expect($refund->fresh()->status)->toBe(RefundStatusEnum::failed->value);
+});
+
+// A refund webhook payload's original-transaction reference can also arrive as a flat
+// `transaction_reference` field, depending on Paystack's payload version -- both are supported.
+test('a refund.processed webhook using the flat transaction_reference field also correlates correctly', function () {
+    $secret = 'test_secret';
+    config(['services.paystack.secret_key' => $secret]);
+
+    $therapy = Therapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => User::factory()]);
+    $transaction = Transaction::factory()->create([
+        'for_type' => Therapy::class,
+        'for_id' => $therapy->id,
+        'reference' => 'refund_webhook_txn_ref_3',
+        'status' => TransactionStatusEnum::success->value,
+    ]);
+    $refund = Refund::factory()->create([
+        'transaction_id' => $transaction->id,
+        'status' => RefundStatusEnum::pending->value,
+    ]);
+
+    $response = postSignedPaystackWebhook([
+        'event' => 'refund.processed',
+        'data' => [
+            'status' => 'processed',
+            'transaction_reference' => 'refund_webhook_txn_ref_3',
+        ],
+    ], $secret);
+
+    $response->assertOk();
+    expect($refund->fresh()->status)->toBe(RefundStatusEnum::success->value);
+});
+
+test('a later refund.failed webhook cannot regress an already-succeeded refund', function () {
+    $secret = 'test_secret';
+    config(['services.paystack.secret_key' => $secret]);
+
+    $therapy = Therapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => User::factory()]);
+    $transaction = Transaction::factory()->create([
+        'for_type' => Therapy::class,
+        'for_id' => $therapy->id,
+        'reference' => 'refund_webhook_txn_ref_4',
+        'status' => TransactionStatusEnum::success->value,
+    ]);
+    $refund = Refund::factory()->create([
+        'transaction_id' => $transaction->id,
+        'status' => RefundStatusEnum::success->value,
+    ]);
+
+    postSignedPaystackWebhook([
+        'event' => 'refund.failed',
+        'data' => [
+            'status' => 'failed',
+            'transaction' => ['reference' => 'refund_webhook_txn_ref_4'],
+        ],
+    ], $secret)->assertOk();
+
+    expect($refund->fresh()->status)->toBe(RefundStatusEnum::success->value);
 });
