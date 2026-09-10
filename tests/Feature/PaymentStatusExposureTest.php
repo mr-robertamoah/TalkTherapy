@@ -205,6 +205,54 @@ test('SessionResource exposes paymentStatus from its own latest transaction', fu
     );
 });
 
+// TT-7.4d-b/SCRUM-259: mirrors GroupTherapyResource's own viewerPaymentStatus test above --
+// SessionResource's `paymentStatus` is "paid by ANY member" for a GroupTherapy session (unlike an
+// individual-Therapy session, where it's already scoped by construction), so usePayment.js's
+// canPayForSession() switches to this new field for a group instead.
+test('SessionResource exposes viewerPaymentStatus scoped to the viewer\'s own transaction on a GroupTherapy session', function () {
+    $counsellorUser = User::factory()->create();
+    $counsellor = $counsellorUser->counsellor()->create(['email' => fake()->unique()->safeEmail(), 'about' => 'test']);
+    $groupTherapy = GroupTherapy::factory()->create([
+        'addedby_type' => User::class,
+        'addedby_id' => $counsellorUser->id,
+        'public' => true,
+    ]);
+    $groupTherapy->counsellors()->attach($counsellor->id, ['state' => CounsellorGroupTherapyStateEnum::active->value, 'role' => 'NORMAL']);
+    $memberA = User::factory()->create();
+    $memberB = User::factory()->create();
+    $groupTherapy->users()->attach($memberA->id, ['anonymous' => false]);
+    $groupTherapy->users()->attach($memberB->id, ['anonymous' => false]);
+    $session = TherapySession::factory()->create([
+        'for_type' => GroupTherapy::class,
+        'for_id' => $groupTherapy->id,
+        'payment_type' => 'PAID',
+    ]);
+    Transaction::factory()->create([
+        'for_type' => TherapySession::class,
+        'for_id' => $session->id,
+        'user_id' => $memberA->id,
+        'status' => TransactionStatusEnum::success->value,
+    ]);
+
+    // memberA sees their own SUCCESS status.
+    $this->actingAs($memberA)
+        ->get(route('group.therapies.get', ['groupTherapyId' => $groupTherapy->id]))
+        ->assertOk()->assertInertia(fn ($page) => $page
+        ->where('recentSessions.0.paymentStatus', TransactionStatusEnum::success->value)
+        ->where('recentSessions.0.viewerPaymentStatus', TransactionStatusEnum::success->value)
+        );
+
+    // memberB, who never paid, must not see memberA's SUCCESS reflected as their own -- the
+    // unscoped paymentStatus still shows it (pre-existing, unaffected), but viewerPaymentStatus
+    // must not.
+    $this->actingAs($memberB)
+        ->get(route('group.therapies.get', ['groupTherapyId' => $groupTherapy->id]))
+        ->assertOk()->assertInertia(fn ($page) => $page
+        ->where('recentSessions.0.paymentStatus', TransactionStatusEnum::success->value)
+        ->where('recentSessions.0.viewerPaymentStatus', null)
+        );
+});
+
 // TT-7.7e/SCRUM-253: paymentStatus itself never flips off SUCCESS on refund (refunds live in
 // their own table -- see TT-7.7a's decision-log entry), so refundStatus is a separate, additive
 // field the frontend checks to show "Refunded" instead of a now-stale "Paid".

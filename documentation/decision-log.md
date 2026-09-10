@@ -5587,3 +5587,43 @@ other member's payment status by elimination in a small group -- a real, if mode
 concern on a mental-health platform, but a pre-existing exposure this ticket only makes marginally
 easier to exploit, not a new hole it opened outright, so it's tracked rather than blocking this
 ticket's merge.
+
+## 2026-09-10 — SCRUM-259 (TT-7.4d-b): group-therapy per-member "pay now" UI
+
+Lifted `usePayment.js`'s hardcoded `therapyType !== 'group'` exclusion in
+`canPayForTherapy`/`canPayForSession`. Added a `viewerScopedPaymentStatus(entity)` helper that
+reads `entity.viewerPaymentStatus` for a group (TT-7.4d-a's new field) and `entity.paymentStatus`
+otherwise (already viewer-scoped by construction for an individual Therapy/Session's single-payer
+model) -- centralizes the branch instead of repeating the ternary at each of the four call sites
+that needed it (the "Paid"/"Refunded" display and the retry-status/button-label checks, in both
+`TherapyPaymentDetails.vue` and `UnifiedTherapy.vue`'s session-actions modal). Also added the
+missing `viewerPaymentStatus` field to `SessionResource` itself (TT-7.4d-a only added it to
+`GroupTherapyResource`; `SessionResource` needed the same additive field for the PER_SESSION case,
+reusing its pre-existing `$viewerTransaction` computation -- no new query).
+
+**Live routing defect found during Playwright QA, fixed as part of this ticket (not filed
+separately, since it's a one-line fix directly in this ticket's own code path)**:
+`usePayment.js`'s `payForTherapy()` always POSTed to the individual-Therapy
+`transactions.initiate.therapy` route regardless of `therapyType`, even though a dedicated
+`transactions.initiate.group_therapy` route (`/group-therapies/{groupTherapyId}/transactions`)
+already existed and `TransactionController::getFor()` already correctly branches on it. This was
+unreachable before this ticket lifted the `therapyType !== 'group'` exclusion (no GroupTherapy id
+had ever reached `payForTherapy()` before), so it surfaced as a 403 the first time a real
+GroupTherapy id was posted to the wrong route during golden-path QA. Fixed by branching
+`payForTherapy()`'s route name on `therapyType`, mirroring how `getFor()` itself already
+disambiguates by route param. `payForSession()` needed no equivalent fix -- the session route
+(`transactions.initiate.session`) is shared and already correctly resolves either type via the
+`Session` model directly.
+
+**Deterministic seed data added** (`createGroupPaymentDemoData()` in `DatabaseSeeder.php`): two
+PAID GroupTherapies (one PER_THERAPY, one PER_SESSION) each with one already-paid and one
+never-paid member, since the existing random demo group therapies never deterministically produce
+a PAID group with a known payment split across members. Used for this ticket's own Playwright QA
+and left in place for TT-7.4d-c/d/e's QA too.
+
+**Playwright QA**: confirmed, logged in as each of the two seeded members, that the unpaid member
+sees a real "pay now" control (both PER_THERAPY and PER_SESSION) while the paid member sees
+"Paid"/"paid" for the same group/session -- and that clicking "pay now" as the unpaid member
+correctly reaches `InitiatePaystackChargeAction` (observed as the expected 502 "Paystack
+unreachable" response, the same pre-existing sandbox-environment limitation seen throughout the
+TT-7.7 refund work, not a defect) rather than failing authorization or hitting the wrong route.

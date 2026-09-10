@@ -55,6 +55,14 @@ class SessionResource extends JsonResource
             'endTime' => $this->end_time,
             'paymentType' => $this->payment_type,
             'paymentStatus' => $this->latestTransaction?->status,
+            // TT-7.4d-b/SCRUM-259: `paymentStatus` above is unscoped (see `viewerTransaction`'s own
+            // comment) -- safe as the sole status field for an individual-Therapy session (exactly
+            // one payer, so it already reads as "did I pay"), but wrong for a GroupTherapy session
+            // once each member can have their own Transaction row. Additive, mirrors
+            // GroupTherapyResource's identical field: usePayment.js's canPayForSession() switches to
+            // this one for a group so a member's own Pay control reflects THEIR OWN payment, not
+            // whichever member paid first.
+            'viewerPaymentStatus' => $viewerTransaction?->status,
             // TT-7.7e/SCRUM-253 (security-engineer finding, MEDIUM): unlike TherapyResource's own
             // identical-looking field -- safe unscoped there, since an individual Therapy only
             // ever has one payer -- `latestTransaction` here is shared with GroupTherapy sessions,
