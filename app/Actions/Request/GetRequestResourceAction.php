@@ -6,6 +6,7 @@ use App\Actions\Action;
 use App\Enums\RequestTypeEnum;
 use App\Http\Resources\AdminCounsellorVerificationRequestResource;
 use App\Http\Resources\OrganizationRequestResource;
+use App\Http\Resources\RefundRequestResource;
 use App\Http\Resources\RequestResource;
 use App\Models\Request;
 
@@ -13,6 +14,12 @@ class GetRequestResourceAction extends Action
 {
     public function execute(Request $request)
     {
+        // TT-7.7c/SCRUM-251: `for` is a Transaction -- neither RequestResource nor
+        // OrganizationRequestResource below knows how to resolve that.
+        if ($request->type === RequestTypeEnum::refund->value) {
+            return new RefundRequestResource($request);
+        }
+
         if (
             in_array(
                 $request->type,

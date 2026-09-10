@@ -7,6 +7,7 @@ use App\Actions\Request\EnsureRequestIsStillPendingAction;
 use App\Actions\Request\EnsureRequestResponseIsValidAction;
 use App\Actions\Request\EnsureRequestResponseReasonIsValidAction;
 use App\Actions\Request\EnsureUserCanRespondToRequestAction;
+use App\Actions\Request\GetPendingRefundRequestsForAdminAction;
 use App\Actions\Request\GetRequestResourceAction;
 use App\Actions\Request\RespondToRequestAction;
 use App\DTOs\GetVerificationRequestsDTO;
@@ -108,6 +109,12 @@ class RequestService extends Service
         return AdminCounsellorVerificationRequestResource::collection($query->paginate(
             PaginationEnum::preferencesPagination->value
         ));
+    }
+
+    // TT-7.7c/SCRUM-251
+    public function getPendingRefundRequestsForAdmin(?User $user)
+    {
+        return GetPendingRefundRequestsForAdminAction::new()->execute($user);
     }
 
     public function respondToRequest(RequestResponseDTO $requestResponseDTO)

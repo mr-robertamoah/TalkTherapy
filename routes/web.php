@@ -4,6 +4,7 @@ use App\Http\Controllers\AboutController;
 use App\Http\Controllers\AdministratorController;
 use App\Http\Controllers\AdminOrganizationBillingController;
 use App\Http\Controllers\AdminPayoutController;
+use App\Http\Controllers\AdminRefundRequestController;
 use App\Http\Controllers\CounsellorController;
 use App\Http\Controllers\CounsellorPricingController;
 use App\Http\Controllers\DiscussionController;
@@ -101,6 +102,10 @@ Route::middleware('auth')->group(function () {
     Route::get('/administrator/organization-billing', [AdminOrganizationBillingController::class, 'index'])->name('administrator.organization_billing');
     Route::post('/administrator/organization-invoices/{organizationInvoiceId}/retry-settlement', [AdminOrganizationBillingController::class, 'retrySettlement'])->name('admin.organization_invoices.retry_settlement')->middleware('throttle:10,1');
     Route::post('/administrator/organizations/{organizationId}/lift-billing-suspension', [AdminOrganizationBillingController::class, 'liftSuspension'])->name('admin.organizations.lift_billing_suspension')->middleware('throttle:10,1');
+
+    // TT-7.7c/SCRUM-251: read-only list page -- approve/reject post directly to the existing
+    // generic requests.respond endpoint (routes/api.php), not a route here.
+    Route::get('/administrator/refund-requests', [AdminRefundRequestController::class, 'index'])->name('administrator.refund_requests');
 
     Route::get('/therapies', [TherapyController::class, 'show'])->name('therapies');
     Route::get('/therapies/{therapyId}/chat', [TherapyController::class, 'chat'])->name('therapies.chat');

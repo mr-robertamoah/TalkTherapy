@@ -8,6 +8,7 @@ use App\Models\Discussion;
 use App\Models\GroupTherapy;
 use App\Models\Organization;
 use App\Models\OrganizationCounsellor;
+use App\Models\Transaction;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -167,6 +168,18 @@ class RequestResource extends JsonResource
                 'id' => $this->for?->id,
                 'organization' => new OrganizationMiniResource($this->for?->organization),
                 'counsellor' => new CounsellorMiniResource($this->for?->counsellor),
+            ];
+        }
+
+        // TT-7.7c/SCRUM-251: a refund request's `for` is a Transaction -- previously fell through
+        // to CounsellorMiniResource below, which has no matching fields on a Transaction and
+        // silently rendered garbage/nulls for a client's own "my requests" listing.
+        if ($this->for_type == Transaction::class) {
+            return [
+                'id' => $this->for?->id,
+                'reference' => $this->for?->reference,
+                'amount' => $this->for?->amount,
+                'currency' => $this->for?->currency,
             ];
         }
 

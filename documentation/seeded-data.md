@@ -141,13 +141,14 @@ itself):
 
 | Username | Password | Purpose |
 |---|---|---|
-| `refund_demo_client` | `password` | Owns both refund demo therapies below. |
-| `refund_demo_counsellor` | `password` | Assigned counsellor on both — log in as this account to confirm no "request a refund" control ever renders for a counsellor. |
+| `refund_demo_client` | `password` | Owns all three refund demo therapies below. |
+| `refund_demo_counsellor` | `password` | Assigned counsellor on all three — log in as this account to confirm no "request a refund" control ever renders for a counsellor. |
 
 | Therapy | Payment model | Notes |
 |---|---|---|
 | Refund Demo Therapy (Per Therapy) | `PER_THERAPY`, USD 120, transaction already `SUCCESS` | "request a refund" lives on the "payment details" tab, right below the "Paid" label. |
 | Refund Demo Therapy (Per Session) | `PER_SESSION`, USD 40, transaction already `SUCCESS` | Has one seeded session ("Refund Demo Session"), always within 5 minutes of its start time so it's immediately the therapy's active session — "request a refund" lives in the "Session Actions" modal. |
+| Refund Demo Therapy (Pending Admin Review) | `PER_THERAPY`, USD 80, transaction already `SUCCESS` | Already has a `PENDING` refund request on it (SCRUM-251) — visit `/administrator/refund-requests` as the super admin to see and act on it immediately, with no manual "ask" step needed first. |
 
 ## Counsellor payout (SCRUM-228)
 

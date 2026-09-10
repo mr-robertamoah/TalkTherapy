@@ -8,6 +8,7 @@ use App\DTOs\RequestResponseDTO;
 use App\Enums\RefundStatusEnum;
 use App\Enums\RequestStatusEnum;
 use App\Enums\RequestTypeEnum;
+use App\Exceptions\BadRequestException;
 use App\Exceptions\CannotRespondToRequestException;
 use App\Exceptions\TransactionException;
 use App\Models\PaymentAccessGrant;
@@ -15,6 +16,8 @@ use App\Models\Refund;
 use App\Models\Therapy;
 use App\Models\Transaction;
 use App\Models\User;
+use App\Notifications\RefundRequestRejectedNotification;
+use Illuminate\Support\Facades\Notification;
 
 // TT-7.7a/SCRUM-249: mirrors RespondToOrganizationCounsellorCompensationRequestAction's own
 // lock-then-mutate, idempotent-on-repeat shape.
@@ -66,15 +69,60 @@ test('accepting creates a pending Refund row snapshotting the transaction amount
     expect($refund->statusHistories()->count())->toBe(1);
 });
 
-test('rejecting leaves the request rejected and creates no Refund row', function () {
-    [$request] = aPendingRefundRequest();
+// TT-7.7c/SCRUM-251: a reject is this request's own final word (no later "outcome" step is
+// coming the way accept has), so the client is notified immediately and told why.
+test('rejecting with a reason leaves the request rejected, creates no Refund row, and notifies the client', function () {
+    Notification::fake();
+    [$request, , $client] = aPendingRefundRequest();
 
     $result = RespondToRefundRequestAction::new()->execute(
-        RequestResponseDTO::new()->fromArray(['response' => null, 'request' => $request])
+        RequestResponseDTO::new()->fromArray(['response' => null, 'reason' => 'This session was already completed as scheduled.', 'request' => $request])
     );
 
     expect($result->status)->toBe(RequestStatusEnum::rejected->value);
     expect(Refund::count())->toBe(0);
+    // Distinct from the client's own ask-time `data.reason` -- never overwritten.
+    expect($result->data['reason'])->toBe('The session never happened.');
+    expect($result->data['rejectionReason'])->toBe('This session was already completed as scheduled.');
+    Notification::assertSentTo($client, RefundRequestRejectedNotification::class);
+});
+
+test('rejecting without a reason throws and leaves the request untouched', function () {
+    Notification::fake();
+    [$request] = aPendingRefundRequest();
+
+    expect(fn () => RespondToRefundRequestAction::new()->execute(
+        RequestResponseDTO::new()->fromArray(['response' => null, 'request' => $request])
+    ))->toThrow(BadRequestException::class);
+
+    expect($request->fresh()->status)->toBe(RequestStatusEnum::pending->value);
+    Notification::assertNothingSent();
+});
+
+test('rejecting with a blank reason throws the same as no reason at all', function () {
+    [$request] = aPendingRefundRequest();
+
+    expect(fn () => RespondToRefundRequestAction::new()->execute(
+        RequestResponseDTO::new()->fromArray(['response' => null, 'reason' => '   ', 'request' => $request])
+    ))->toThrow(BadRequestException::class);
+
+    expect($request->fresh()->status)->toBe(RequestStatusEnum::pending->value);
+});
+
+test('responding to an already-rejected request a second time is a no-op, not a second notification', function () {
+    Notification::fake();
+    [$request] = aPendingRefundRequest();
+
+    RespondToRefundRequestAction::new()->execute(
+        RequestResponseDTO::new()->fromArray(['response' => null, 'reason' => 'Already resolved out of band.', 'request' => $request])
+    );
+
+    $second = RespondToRefundRequestAction::new()->execute(
+        RequestResponseDTO::new()->fromArray(['response' => null, 'request' => $request->fresh()])
+    );
+
+    expect($second->status)->toBe(RequestStatusEnum::rejected->value);
+    Notification::assertSentTimes(RefundRequestRejectedNotification::class, 1);
 });
 
 test('responding to an already-accepted request a second time is a no-op, not a duplicate Refund row', function () {

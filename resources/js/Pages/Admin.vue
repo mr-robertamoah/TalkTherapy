@@ -297,6 +297,12 @@ function respondToVerificationRequest(requestId, response) {
                 :href="route('administrator.organization_billing')"
                 class="text-sm text-nowrap uppercase tracking-wider cursor-pointer rounded p-2 transition duration-75 mr-2 border-b-2 border-transparent hover:border-gray-700 hover:rounded-none"
             >organization billing</Link>
+
+            <!-- TT-7.7c/SCRUM-251: same reasoning as payouts above. -->
+            <Link
+                :href="route('administrator.refund_requests')"
+                class="text-sm text-nowrap uppercase tracking-wider cursor-pointer rounded p-2 transition duration-75 mr-2 border-b-2 border-transparent hover:border-gray-700 hover:rounded-none"
+            >refund requests</Link>
         </div>
 
         <div v-if="currentLink">
