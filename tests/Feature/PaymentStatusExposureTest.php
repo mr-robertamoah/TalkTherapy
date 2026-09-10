@@ -364,9 +364,15 @@ test('SessionResource never exposes refundStatus for a GroupTherapy session, eve
     ]);
     $groupTherapy->counsellors()->attach($counsellor->id, ['state' => CounsellorGroupTherapyStateEnum::active->value, 'role' => 'NORMAL']);
     $member = User::factory()->create();
+    // TT-7.4d-c/SCRUM-260 (reviewer finding): `payment_type` must be 'PAID' here -- SessionResource's
+    // $viewerTransaction guard short-circuits to null for a FREE session (the factory's own
+    // default) regardless of viewer identity, which would make this test pass for the wrong
+    // reason (the payment-type guard, not the counsellor never having a $viewerTransaction) and
+    // silently stop catching a real viewer-scoping regression.
     $session = TherapySession::factory()->create([
         'for_type' => GroupTherapy::class,
         'for_id' => $groupTherapy->id,
+        'payment_type' => 'PAID',
     ]);
     $transaction = Transaction::factory()->create([
         'for_type' => TherapySession::class,
@@ -386,6 +392,81 @@ test('SessionResource never exposes refundStatus for a GroupTherapy session, eve
     $response->assertOk()->assertInertia(fn ($page) => $page
         ->where('recentSessions.0.refundStatus', null)
     );
+});
+
+// TT-7.4d-c/SCRUM-260: SessionResource.refundStatus is no longer unconditionally null for a
+// GroupTherapy session -- it's now viewer-scoped via the same $viewerTransaction as
+// viewerPaymentStatus/transactionId, needed so a member whose refund succeeds sees "Refunded"
+// instead of a stale "paid" forever (paymentStatus itself never flips off SUCCESS on refund).
+test('SessionResource exposes refundStatus scoped to the viewer on a GroupTherapy session', function () {
+    $groupTherapy = GroupTherapy::factory()->create(['public' => true]);
+    $memberA = User::factory()->create();
+    $memberB = User::factory()->create();
+    $groupTherapy->users()->attach($memberA->id, ['anonymous' => false]);
+    $groupTherapy->users()->attach($memberB->id, ['anonymous' => false]);
+    $session = TherapySession::factory()->create([
+        'for_type' => GroupTherapy::class,
+        'for_id' => $groupTherapy->id,
+        'payment_type' => 'PAID',
+    ]);
+    $transaction = Transaction::factory()->create([
+        'for_type' => TherapySession::class,
+        'for_id' => $session->id,
+        'user_id' => $memberA->id,
+        'status' => TransactionStatusEnum::success->value,
+    ]);
+    Refund::factory()->create([
+        'transaction_id' => $transaction->id,
+        'status' => RefundStatusEnum::success->value,
+    ]);
+
+    // memberA (the one who was refunded) sees it.
+    $this->actingAs($memberA)
+        ->get(route('group.therapies.get', ['groupTherapyId' => $groupTherapy->id]))
+        ->assertOk()->assertInertia(fn ($page) => $page
+        ->where('recentSessions.0.refundStatus', RefundStatusEnum::success->value)
+        );
+
+    // memberB, who was never refunded, must not see memberA's refundStatus reflected as their own.
+    $this->actingAs($memberB)
+        ->get(route('group.therapies.get', ['groupTherapyId' => $groupTherapy->id]))
+        ->assertOk()->assertInertia(fn ($page) => $page
+        ->where('recentSessions.0.refundStatus', null)
+        );
+});
+
+test('GroupTherapyResource exposes refundStatus scoped to the viewer', function () {
+    $groupTherapy = GroupTherapy::factory()->create([
+        'payment_type' => 'PAID',
+        'payment_data' => ['per' => 'PER_THERAPY', 'amount' => 100, 'currency' => 'GHS'],
+        'public' => true,
+    ]);
+    $memberA = User::factory()->create();
+    $memberB = User::factory()->create();
+    $groupTherapy->users()->attach($memberA->id, ['anonymous' => false]);
+    $groupTherapy->users()->attach($memberB->id, ['anonymous' => false]);
+    $transaction = Transaction::factory()->create([
+        'for_type' => GroupTherapy::class,
+        'for_id' => $groupTherapy->id,
+        'user_id' => $memberA->id,
+        'status' => TransactionStatusEnum::success->value,
+    ]);
+    Refund::factory()->create([
+        'transaction_id' => $transaction->id,
+        'status' => RefundStatusEnum::success->value,
+    ]);
+
+    $this->actingAs($memberA)
+        ->get(route('group.therapies.get', ['groupTherapyId' => $groupTherapy->id]))
+        ->assertOk()->assertInertia(fn ($page) => $page
+        ->where('therapy.refundStatus', RefundStatusEnum::success->value)
+        );
+
+    $this->actingAs($memberB)
+        ->get(route('group.therapies.get', ['groupTherapyId' => $groupTherapy->id]))
+        ->assertOk()->assertInertia(fn ($page) => $page
+        ->where('therapy.refundStatus', null)
+        );
 });
 
 test('the transactionStatus flash value is passed through as an Inertia prop on the therapy page', function () {

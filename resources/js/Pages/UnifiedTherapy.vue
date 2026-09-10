@@ -1211,8 +1211,11 @@ function reportCreated(report) {
                 <!-- TT-7.7b/SCRUM-250: deliberately OUTSIDE the payment-status v-if/else-if chain
                      above (a sibling, not spliced into it) -- a client can be both "paid" and
                      (independently) mid-refund-request, and this must never affect whether the
-                     counsellor's own status label above renders. -->
-                <div v-if="therapyType !== 'group' && (canRequestRefund(activeSession, computedIsParticipant, computedIsCounsellor) || activeSession?.refundRequestStatus)" class="w-full max-w-xs">
+                     counsellor's own status label above renders.
+                     TT-7.4d-c/SCRUM-260: no longer individual-Therapy-only -- canRequestRefund()/
+                     activeSession.refundRequestStatus are both viewer-scoped for a GroupTherapy
+                     session too now. -->
+                <div v-if="canRequestRefund(activeSession, computedIsParticipant, computedIsCounsellor) || activeSession?.refundRequestStatus" class="w-full max-w-xs">
                   <div v-if="activeSession?.refundRequestStatus === 'PENDING'" class="text-sm text-amber-700 font-semibold text-center">
                     Refund requested -- pending admin review.
                   </div>

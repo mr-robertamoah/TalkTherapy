@@ -69,12 +69,18 @@ class SessionResource extends JsonResource
             // where it can belong to a DIFFERENT member entirely (see this file's own comment on
             // `viewerTransaction` above). Exposing refundStatus unconditionally would leak one
             // member's refund outcome -- a materially more sensitive, dispute-flavored fact than a
-            // generic paymentStatus -- to every other member and the counsellor. Refunds are
-            // individual-Therapy-only for this entire epic (no ask/admin-queue path exists for a
-            // GroupTherapy session), so this is simply withheld entirely for one, rather than
-            // attempting `viewerTransaction`-scoping (which would also hide it from the
-            // counsellor -- the exact opposite of this ticket's own point).
-            'refundStatus' => $isIndividualTherapy ? $this->latestTransaction?->successfulRefund?->status : null,
+            // generic paymentStatus -- to every other member and the counsellor.
+            //
+            // TT-7.4d-c/SCRUM-260: refund requests are no longer individual-Therapy-only (this
+            // ticket enables the ask for group members too, since RequestRefundAction was already
+            // transaction/user-scoped, not model-scoped) -- so a GroupTherapy session now gets
+            // viewer-scoped refundStatus via the same $viewerTransaction as viewerPaymentStatus/
+            // transactionId above, rather than withholding it entirely. Still correctly resolves to
+            // null for the counsellor (never the payer, never has a $viewerTransaction) and for a
+            // co-member who isn't the one who was refunded.
+            'refundStatus' => $isIndividualTherapy
+                ? $this->latestTransaction?->successfulRefund?->status
+                : $viewerTransaction?->successfulRefund?->status,
             // TT-7.7b/SCRUM-250
             'transactionId' => $viewerTransaction?->id,
             'refundRequestStatus' => $viewerTransaction?->latestRefundRequest?->status,

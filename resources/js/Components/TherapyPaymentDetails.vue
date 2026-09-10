@@ -83,8 +83,10 @@
     <!-- TT-7.7b/SCRUM-250: client-only, PER_THERAPY -- request/pending-status UI for a paid,
          not-yet-refunded engagement. Deliberately independent of the "Paid" block above so a
          REJECTED prior request still lets the client ask again (eligible-again per
-         EnsureTransactionIsRefundEligibleAction, which only blocks on an active/pending one). -->
-    <div v-if="therapyType !== 'group' && therapy.paymentData.per === 'PER_THERAPY' && (canRequestRefund(therapy, computedIsParticipant, computedIsCounsellor) || therapy.refundRequestStatus)" class="mt-4 pt-4 border-t border-gray-200">
+         EnsureTransactionIsRefundEligibleAction, which only blocks on an active/pending one).
+         TT-7.4d-c/SCRUM-260: no longer individual-Therapy-only -- canRequestRefund()/
+         therapy.refundRequestStatus are both viewer-scoped for a GroupTherapy too now. -->
+    <div v-if="therapy.paymentData.per === 'PER_THERAPY' && (canRequestRefund(therapy, computedIsParticipant, computedIsCounsellor) || therapy.refundRequestStatus)" class="mt-4 pt-4 border-t border-gray-200">
       <div v-if="therapy.refundRequestStatus === 'PENDING'" class="text-sm text-amber-700 font-semibold">
         Refund requested -- pending admin review.
       </div>

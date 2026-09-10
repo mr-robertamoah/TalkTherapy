@@ -130,15 +130,15 @@ export default function usePayment(therapy, therapyType = 'individual') {
     // ASK-time request's own status and is never set for a refund created any other way (e.g. an
     // already-approved one). EnsureTransactionIsRefundEligibleAction already blocks a second
     // refund server-side, but the control shouldn't invite the client to try in the first place.
-    // Unscoped `entity?.paymentStatus` read below is only correct because both call sites still
-    // wrap this in a `therapyType !== 'group'` template guard (refunds are individual-Therapy-only
-    // for this whole epic, see SessionResource's own comment) -- if a future ticket extends refunds
-    // to a GroupTherapy, route this through viewerScopedPaymentStatus() (or an equivalent
-    // viewer-scoped refund-eligibility field) first, or it will silently regress to showing one
-    // member's refund eligibility based on a DIFFERENT member's payment.
+    //
+    // TT-7.4d-c/SCRUM-260: routed through viewerScopedPaymentStatus() (not a raw `entity?.paymentStatus`
+    // read) now that a GroupTherapy/its Sessions can reach this too -- otherwise a member's own
+    // refund-request eligibility would be judged by a co-member's payment instead of their own.
+    // `refundRequestStatus`/`refundStatus` are already viewer-scoped at the resource level for both
+    // shapes, so no equivalent branching is needed for those two.
     function canRequestRefund(entity, isParticipant, isCounsellor) {
         return isParticipant && !isCounsellor &&
-            entity?.paymentStatus === 'SUCCESS' &&
+            viewerScopedPaymentStatus(entity) === 'SUCCESS' &&
             !entity?.refundRequestStatus &&
             !entity?.refundStatus &&
             !!entity?.transactionId

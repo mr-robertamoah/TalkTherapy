@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\GroupTherapy;
 use App\Models\Refund;
 use App\Models\Request;
 use App\Models\Therapy;
@@ -16,6 +17,18 @@ function aSuccessfulTransactionOwnedBy(User $client): Transaction
         'for_type' => Therapy::class,
         'for_id' => $therapy->id,
         'user_id' => $client->id,
+        'status' => 'SUCCESS',
+    ]);
+}
+
+function aSuccessfulGroupTherapyTransactionOwnedBy(User $member): Transaction
+{
+    $groupTherapy = GroupTherapy::factory()->create();
+
+    return Transaction::factory()->create([
+        'for_type' => GroupTherapy::class,
+        'for_id' => $groupTherapy->id,
+        'user_id' => $member->id,
         'status' => 'SUCCESS',
     ]);
 }
@@ -87,6 +100,40 @@ test('an already-refunded transaction returns a 422 rather than a duplicate requ
     ]);
 
     $response->assertStatus(422);
+    expect(Request::count())->toBe(0);
+});
+
+// TT-7.4d-c/SCRUM-260: confirms the ticket's own premise -- RequestRefundAction was already
+// transaction/user-scoped, not model-scoped, so a GroupTherapy member's own transaction is
+// refundable through this same endpoint with no backend change.
+test('a group therapy member can request a refund for their own transaction via the real HTTP endpoint', function () {
+    $member = User::factory()->create();
+    $transaction = aSuccessfulGroupTherapyTransactionOwnedBy($member);
+
+    $this->actingAs($member);
+
+    $response = $this->postJson(route('transactions.refund_request.store', ['transactionId' => $transaction->id]), [
+        'reason' => 'Could not attend the group session after all.',
+    ]);
+
+    $response->assertOk()->assertJson(['refundRequestStatus' => 'PENDING']);
+    expect(Request::where('type', 'REFUND_REQUEST')->count())->toBe(1);
+});
+
+// The same 403 co-ownership guard applies regardless of the payable's type -- one group member
+// must never be able to request a refund for a DIFFERENT member's own transaction.
+test('a different group therapy member gets a 403 requesting a refund for someone else\'s transaction', function () {
+    $payer = User::factory()->create();
+    $transaction = aSuccessfulGroupTherapyTransactionOwnedBy($payer);
+    $coMember = User::factory()->create();
+
+    $this->actingAs($coMember);
+
+    $response = $this->postJson(route('transactions.refund_request.store', ['transactionId' => $transaction->id]), [
+        'reason' => 'Trying to refund a co-member\'s transaction.',
+    ]);
+
+    $response->assertStatus(403);
     expect(Request::count())->toBe(0);
 });
 

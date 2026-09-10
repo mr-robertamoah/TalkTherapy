@@ -79,6 +79,14 @@ class GroupTherapyResource extends JsonResource
             // concept: TherapyResource never needed it, since an individual Therapy's single-payer
             // model means its own `paymentStatus` already IS the viewer's own status.
             'viewerPaymentStatus' => $viewerTransaction?->status,
+            // TT-7.4d-c/SCRUM-260: viewer-scoped counterpart to TherapyResource's own unscoped
+            // `refundStatus` -- safe unscoped there (one payer), but this resource is multi-payer,
+            // so it's derived from the same $viewerTransaction as viewerPaymentStatus/transactionId
+            // above rather than the group-wide `latestTransaction`. Needed once TT-7.4d-c enables
+            // real refund requests for group members: without it, a member whose refund succeeds
+            // would keep seeing "Paid" forever (paymentStatus/viewerPaymentStatus never flip off
+            // SUCCESS on refund -- see TT-7.7a's decision-log entry).
+            'refundStatus' => $viewerTransaction?->successfulRefund?->status,
             'transactionId' => $viewerTransaction?->id,
             'refundRequestStatus' => $viewerTransaction?->latestRefundRequest?->status,
             'sessionsCreated' => $this->sessionsCreated,
