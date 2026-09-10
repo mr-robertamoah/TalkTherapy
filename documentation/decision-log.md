@@ -5725,3 +5725,48 @@ roster -- previously only "never attached" was tested, not "assignment revoked."
 in the Action's own header comment that it performs no authorization of its own and must only be
 called after the caller verifies the viewer is this group's own counsellor, to guard against a
 future incorrect call site.
+
+## 2026-09-10 — SCRUM-262 (TT-7.4d-e): TT-7.4d epic closeout
+
+Closes the group-therapy per-member payment epic (SCRUM-256, TT-7.4d-a through -d, all merged).
+
+**`GetPayableAmountAction` locking-in test added, no code change**: confirmed and locked in
+(`tests/Unit/GetPayableAmountActionTest.php`) that this action already implements flat-per-head
+pricing correctly and by construction -- it reads `payment_data.amount` directly for a
+GroupTherapy exactly the same way it does for an individual Therapy, with no group-size-aware
+split/recalculation logic anywhere in it. Verified explicitly with two groups of very different
+sizes (5 vs. 50 max members) producing the identical payable amount.
+
+**One genuine test-coverage gap found and closed**: every other sub-ticket's own test suite
+(`EnsureCanInitiateChargeActionGroupTherapyTest`, `PaymentStatusExposureTest`,
+`TransactionControllerRequestRefundTest`, `GroupTherapyPaymentRosterTest`) exercises its own
+Action/Service/Resource layer directly, but none of them post through the real
+`transactions.initiate.group_therapy` HTTP route/controller -- exactly the route TT-7.4d-b's own
+`payForTherapy()` fix was written to actually use, and exactly the layer where that routing defect
+was originally found (only by Playwright QA, not by any existing Pest test). Added
+`tests/Feature/GroupTherapyPaymentEpicRegressionTest.php`: two different members of the same group
+each successfully initiate a charge via the real route (mutation-tested against SCRUM-257's own
+per-user guard to confirm it actually catches that regression), and a GroupTherapy id posted to
+the individual-Therapy route correctly fails closed (422) rather than ever resolving the wrong
+model.
+
+**Test-authoring note**: `Http::fake()` called twice with an overlapping URL pattern does NOT
+override the first registration for that pattern -- both requests in the "two members pay" test
+initially received the SAME fake response (including the same Paystack `reference`), which
+collided against `transactions.reference`'s own unique constraint on the second insert and
+surfaced as an opaque 500 rather than the expected 200. Fixed by using `Http::sequence()` instead,
+the correct pattern for asserting on multiple sequential calls to the same faked endpoint -- worth
+flagging here since the same mistake would silently produce misleading failures in any future test
+needing more than one distinct fake response from the same URL pattern.
+
+**Feature doc and seeded-data entry added**: `documentation/features/scrum-256-group-therapy-per-member-payment.md`
+covers the whole epic end to end; `documentation/seeded-data.md` gained a "Group therapy
+per-member payment (SCRUM-259, TT-7.4d)" section documenting the `group_payment_demo_*` accounts
+and two seeded PAID groups added during TT-7.4d-b's own implementation (previously undocumented).
+
+**Anonymity-vs-counsellor-roster-visibility exception**: already logged in full at TT-7.4d-d's own
+decision-log entry above, including the mid-review per-member-anonymity question resolved directly
+with the user -- referenced here rather than duplicated, per this ticket's own ask to ensure it's
+recorded somewhere durable.
+
+Full Pest suite: 1396 passed.
