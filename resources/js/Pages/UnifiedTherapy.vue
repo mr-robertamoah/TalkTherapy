@@ -1192,8 +1192,11 @@ function reportCreated(report) {
                   :class="isRetryStatus(activeSession?.paymentStatus) ? 'bg-amber-600 hover:bg-amber-700' : ''"
                   >{{ isRetryStatus(activeSession?.paymentStatus) ? 'try payment again' : 'pay now' }}</PrimaryButton
                 >
-                <div v-else-if="activeSession?.paymentType == 'PAID' && activeSession?.paymentStatus == 'SUCCESS'" class="text-sm text-green-700 font-semibold">
-                  paid
+                <!-- TT-7.7e/SCRUM-253: mirrors TherapyPaymentDetails.vue's identical "Refunded"
+                     override -- activeSession.paymentStatus itself never flips off SUCCESS on
+                     refund. -->
+                <div v-else-if="activeSession?.paymentType == 'PAID' && activeSession?.paymentStatus == 'SUCCESS'" class="text-sm font-semibold" :class="activeSession?.refundStatus === 'SUCCESS' ? 'text-gray-600' : 'text-green-700'">
+                  {{ activeSession?.refundStatus === 'SUCCESS' ? 'refunded' : 'paid' }}
                 </div>
                 <div
                   v-else-if="therapyType !== 'group' && activeSession?.paymentType == 'PAID' && computedIsCounsellor"

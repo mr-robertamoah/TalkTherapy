@@ -7,6 +7,8 @@ use App\Enums\RefundStatusEnum;
 use App\Models\Refund;
 use App\Models\User;
 use App\Notifications\RefundExecutionFailedNotification;
+use App\Notifications\RefundFailedNotification;
+use App\Notifications\RefundSucceededNotification;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Notification;
@@ -87,9 +89,9 @@ class RecordRefundStatusAction extends Action
                     ReconcileOrgFinancedRefundAction::new()->execute($transaction);
                 }
 
-                // The client-facing "your refund succeeded" notification (with the explicit
-                // "your platform/therapy access is unaffected" reassurance) is TT-7.7e's own
-                // scope, not built yet -- deliberately not added here.
+                // TT-7.7e/SCRUM-253: safe to call from inside this transaction despite being
+                // queued -- see the identical comment on notifyAdminsOfFailure() below.
+                $refund->requestedBy?->notify(new RefundSucceededNotification($refund));
             }
 
             if ($status === RefundStatusEnum::failed->value) {
@@ -100,11 +102,11 @@ class RecordRefundStatusAction extends Action
                 // called.
                 $this->notifyAdminsOfFailure($refund, $message);
 
-                // Same scope boundary as above: the client-facing "your refund failed"
-                // notification is TT-7.7e's job. This ticket only alerts staff so a human can
-                // investigate/decide next steps -- no automatic retry or reclaim mechanism exists
-                // (mirrors this epic's own "does not itself call Paystack a second time" scope
-                // boundary elsewhere).
+                // TT-7.7e/SCRUM-253: the client-facing counterpart -- RefundExecutionFailedNotification
+                // above stays admin-only (it's for a human to investigate/decide next steps; no
+                // automatic retry or reclaim mechanism exists, mirroring this epic's own "does not
+                // itself call Paystack a second time" scope boundary elsewhere).
+                $refund->requestedBy?->notify(new RefundFailedNotification($refund));
             }
 
             return $refund;

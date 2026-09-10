@@ -5450,3 +5450,47 @@ either the original response or a webhook resolves it. Filed as a shared follow-
 jobs (e.g. `WithoutOverlapping` keyed by refund/payout id) rather than fixed inline here, since
 this is an inherited pattern from the already-merged TT-7.6c, not a new regression introduced by
 this ticket, and fixing only one of the two jobs would leave the pattern inconsistent.
+
+---
+
+## 2026-09-10 — SCRUM-253 (TT-7.7e): refund outcome notifications implemented -- epic complete
+
+**Final sub-ticket in SCRUM-223 (TT-7.7)**. Closes the loop TT-7.7c/d deliberately left open
+("the client-facing outcome notification ... is TT-7.7e's own scope, not built yet") and extends
+TT-7.4c's counsellor-facing payment-status indicator to show "Refunded".
+
+**Judgment call: `refundStatus` exposure scope differs between TherapyResource and SessionResource**
+(logged since this wasn't spelled out in the ticket text, and the two resources ended up needing
+opposite treatment). Initial implementation exposed the new `refundStatus` field unscoped on both
+resources, mirroring the reasoning that it's "as coarse/non-identifying as the already-unscoped
+`paymentStatus` field." Security-engineer review correctly caught that this reasoning only holds
+for `TherapyResource` (individual Therapy, exactly one payer) -- `SessionResource` is shared with
+GroupTherapy sessions, where `latestTransaction` can belong to a DIFFERENT member entirely, so an
+unscoped `refundStatus` there would leak one member's refund outcome (a materially more sensitive,
+dispute-flavored fact than a generic payment failure) to every co-participant and the counsellor.
+Fixed by withholding `refundStatus` entirely (`null`) for a GroupTherapy session on
+`SessionResource`, rather than attempting the usual `$viewerTransaction`-scoping pattern used
+elsewhere on that same resource -- viewer-scoping would also hide it from the counsellor, which is
+the exact opposite of this ticket's own point (the counsellor is never the payer). Since refunds
+have no ask/admin-queue path anywhere in this epic for GroupTherapy, withholding it entirely for
+that case is a clean, no-functionality-lost fix, not a compromise.
+
+**Bug found via manual Playwright QA, fixed inline**: `usePayment.js`'s `canRequestRefund()` didn't
+check the new `refundStatus` field, so "request a refund" kept rendering even after a refund had
+already succeeded (`refundRequestStatus` only reflects the ASK-time request's own status, never set
+for an already-approved-and-executed refund). `EnsureTransactionIsRefundEligibleAction` already
+blocks a second refund server-side, but the control shouldn't invite the client to try in the first
+place. Caught before this reached review specifically because Playwright QA was run against real
+seed data (a new "Refund Demo Therapy (Refunded)" therapy, added for this reason) rather than
+relying on Pest coverage alone -- this class of bug (a stale client-side gate one field short of the
+new backend field) wouldn't have been caught by the backend resource-exposure tests alone.
+
+**Reviewer finding, applied**: the new `refundStatus` field's `latestTransaction->successfulRefund`
+access wasn't eager-loaded in either of `SessionResource`'s two bulk-render call sites
+(`GetCounsellorCalendarSessionsAction`, `TherapyController::show`'s `recentSessions`), reintroducing
+the exact N+1 class this codebase has already hardened against elsewhere. Fixed by adding the
+nested eager load to both; the existing N+1 regression test in
+`tests/Feature/CounsellorCalendarSessionsTest.php` didn't previously exercise this path at all (no
+session in that test ever had a `latestTransaction`), so it was extended to attach a real
+transaction to its growing sessions -- verified this addition actually catches the regression by
+confirming it fails when the eager load is reverted, not just that it passes once fixed.

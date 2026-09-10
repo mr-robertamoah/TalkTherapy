@@ -240,7 +240,11 @@ class TherapyController extends Controller
                 'transactionStatus' => session('transactionStatus'),
                 'pendingRequest' => $pendingRequest ? new RequestResource($pendingRequest) : null,
                 'pendingSessionScheduleProposal' => $pendingSessionScheduleProposal ? new RequestResource($pendingSessionScheduleProposal) : null,
-                'recentSessions' => SessionResource::collection($therapy->sessions()->with('latestTransaction')->latest()->take(5)->get()),
+                // TT-7.7e/SCRUM-253 (reviewer finding): nested-eager-load successfulRefund too --
+                // SessionResource's refundStatus field reads it for every individual-Therapy
+                // session in this bulk render (GroupTherapy sessions never touch it, so
+                // GroupTherapyController's own identical query doesn't need this).
+                'recentSessions' => SessionResource::collection($therapy->sessions()->with('latestTransaction.successfulRefund')->latest()->take(5)->get()),
                 'recentTopics' => TherapyTopicResource::collection($therapy->topics()->latest()->take(5)->get()),
             ]);
         } catch (PaymentRequiredException $th) {

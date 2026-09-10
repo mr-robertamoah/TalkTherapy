@@ -59,6 +59,19 @@ class TherapyResource extends JsonResource
             'status' => $this->getStatus(),
             'paymentData' => $this->payment_data,
             'paymentStatus' => $this->latestTransaction?->status,
+            // TT-7.7e/SCRUM-253: unlike refundRequestStatus below (deliberately viewer-scoped --
+            // it discloses a specific client's own pending/rejected ask), "has this transaction
+            // actually been refunded" is a coarse, non-identifying fact about the same
+            // latestTransaction paymentStatus already exposes to every viewer above -- so it's
+            // exposed the same, unscoped way. Safe specifically BECAUSE an individual Therapy has
+            // exactly one payer -- GroupTherapy (multiple payers) uses its own separate
+            // GroupTherapyResource, not this one, and deliberately does NOT get this field (see
+            // SessionResource's identical field for why its own shared, multi-payer-capable
+            // version of this exact field needs the opposite treatment). Once set, the
+            // client/counsellor UI shows "Refunded" instead of a now-stale "Paid" (paymentStatus
+            // itself never changes on refund -- see
+            // TT-7.7a's own decision-log entry on why refunds live in their own table).
+            'refundStatus' => $this->latestTransaction?->successfulRefund?->status,
             // TT-7.7b/SCRUM-250
             'transactionId' => $viewerTransaction?->id,
             'refundRequestStatus' => $viewerTransaction?->latestRefundRequest?->status,

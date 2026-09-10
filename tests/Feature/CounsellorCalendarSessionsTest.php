@@ -2,10 +2,12 @@
 
 use App\Enums\CounsellorGroupTherapyStateEnum;
 use App\Enums\SessionStatusEnum;
+use App\Enums\TransactionStatusEnum;
 use App\Models\Counsellor;
 use App\Models\GroupTherapy;
 use App\Models\Session;
 use App\Models\Therapy;
+use App\Models\Transaction;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 
@@ -288,11 +290,24 @@ test('the calendar aggregation is not N+1 across a growing number of sessions', 
 
     $queryCountFor = function (int $count) use ($counsellor, $therapy, $groupTherapy) {
         foreach (range(1, $count) as $i) {
-            aSessionForCalendarRoute($therapy, [
+            // TT-7.7e/SCRUM-253 (reviewer finding): a SUCCESS transaction on every individual
+            // session, so SessionResource's refundStatus field actually exercises
+            // latestTransaction->successfulRefund here -- without this, every prior run of this
+            // test passed by accident (no session ever had a latestTransaction to begin with),
+            // giving false confidence that this eager-load path was N+1-safe. Deliberately NOT
+            // marking the session PAID -- latestTransaction itself isn't gated on payment_type,
+            // and doing so would also awaken this file's own already-known, unrelated
+            // viewerTransaction N+1 (TT-7.7b), out of this ticket's scope to fix.
+            $session = aSessionForCalendarRoute($therapy, [
                 'addedby_type' => Counsellor::class,
                 'addedby_id' => $counsellor->id,
                 'start_time' => now()->addDays(2)->addHours($i * 2),
                 'end_time' => now()->addDays(2)->addHours($i * 2)->addMinutes(45),
+            ]);
+            Transaction::factory()->create([
+                'for_type' => Session::class,
+                'for_id' => $session->id,
+                'status' => TransactionStatusEnum::success->value,
             ]);
             aSessionForCalendarRoute($groupTherapy, [
                 'addedby_type' => Counsellor::class,
