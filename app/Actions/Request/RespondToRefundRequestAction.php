@@ -8,9 +8,13 @@ use App\DTOs\RequestResponseDTO;
 use App\Enums\RefundStatusEnum;
 use App\Enums\RefundStatusSourceEnum;
 use App\Enums\RequestStatusEnum;
+use App\Exceptions\BadRequestException;
+use App\Exceptions\TransactionException;
 use App\Models\Refund;
 use App\Models\Request;
 use App\Models\Transaction;
+use App\Models\User;
+use App\Notifications\RefundRequestRejectedNotification;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -39,7 +43,26 @@ class RespondToRefundRequestAction extends Action
                 ? RequestStatusEnum::rejected->value
                 : strtoupper($requestResponseDTO->response);
 
-            $request->update(['status' => $status]);
+            // TT-7.7c/SCRUM-251: unlike every other RespondTo*RequestAction's `reason` (generic,
+            // optional -- EnsureRequestResponseReasonIsValidAction only checks type/length, never
+            // requires it), a refund decline is required to explain why to the client, since there
+            // is no further "outcome" step coming later the way accept has (TT-7.7d/e) -- reject
+            // is this request's own final word. Checked before any write, so a missing reason
+            // fails closed without ever touching the Request row. BadRequestException (not
+            // TransactionException) to match EnsureRequestResponseReasonIsValidAction's own
+            // exception type for this same "bad reason input" class of error.
+            if ($status === RequestStatusEnum::rejected->value && (is_null($requestResponseDTO->reason) || trim($requestResponseDTO->reason) === '')) {
+                throw new BadRequestException('A reason is required to reject a refund request.', 422);
+            }
+
+            // Distinct data key from the client's own ask-time `reason` (set by RequestRefundAction)
+            // -- this is the admin's rejection note, never overwriting why the client originally asked.
+            $request->update([
+                'status' => $status,
+                'data' => $status === RequestStatusEnum::rejected->value
+                    ? array_merge($request->data, ['rejectionReason' => trim($requestResponseDTO->reason)])
+                    : $request->data,
+            ]);
             $request = $request->refresh();
 
             if ($status === RequestStatusEnum::accepted->value) {
@@ -80,8 +103,13 @@ class RespondToRefundRequestAction extends Action
                 ]);
             }
 
-            // Reject is a flat decline -- no Refund row is ever created. Outcome notifications to
-            // the client (either direction) are TT-7.7e's scope, not built yet.
+            // Reject is a flat decline -- no Refund row is ever created. Distinct from TT-7.7e's
+            // own future "refund outcome" notification (sent once TT-7.7d's Paystack call actually
+            // resolves) -- a reject has no further step coming, so the client is told now.
+            if ($status === RequestStatusEnum::rejected->value) {
+                $client = User::find($request->from_id);
+                $client?->notify(new RefundRequestRejectedNotification($request));
+            }
 
             return $request;
         });

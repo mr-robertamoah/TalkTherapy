@@ -5335,3 +5335,50 @@ condition to call the same shared `canRequestRefund()` helper `UnifiedTherapy.vu
 guard to the PER_SESSION refund block for consistency with its sibling conditions in the same
 `v-if`/`v-else-if` chain (currently unreachable since group payments aren't built yet, but would
 otherwise silently start showing a refund control the moment they are).
+
+---
+
+## 2026-09-10 — SCRUM-251 (TT-7.7c): admin refund review queue implemented
+
+**Decision (deviation from the ticket's own literal wording, logged per CLAUDE.md)**: the
+originally-planned ticket text (`documentation/implementation_plan.md`'s TT-7.7c row, written
+during the 2026-09-02 SCRUM-223 planning pass, before TT-7.7a's actual implementation existed)
+named two separate actions, `ApproveRefundRequestAction`/`RejectRefundRequestAction`. By the time
+this ticket started, TT-7.7a (merged) had already built a single unified
+`RespondToRefundRequestAction`, dispatched generically via `RespondToRequestAction`'s per-type
+chain -- the same one-action-per-request-type shape every other request type in this codebase
+uses (`RespondToOrganizationCounsellorCompensationRequestAction`,
+`RespondToDiscussionRequestAction`, etc.). Splitting into two new classes just to match the
+earlier planning text would have introduced the only two-action request-type in the codebase, for
+no functional benefit. Chose instead to extend the existing `RespondToRefundRequestAction`'s
+reject branch in place -- a low-risk, purely internal-implementation-shape choice (the actual
+user-facing behavior is identical either way), not a product decision, so implemented directly
+rather than pausing to ask.
+
+**Scope reconciliation**: the ticket's own "RejectRefundRequestAction... notifies client
+immediately" requirement is legitimately distinct from TT-7.7e's later "client outcome
+notification" (refunded/refund-failed, once TT-7.7d's Paystack call resolves) -- a reject is a
+terminal decision with no further step coming, so it needs its own immediate notification; TT-7.7e
+covers the *execution* outcome, not the *request* outcome. Implemented both as separate,
+non-overlapping notifications (`RefundRequestRejectedNotification` here; the accept path still has
+no notification yet, correctly deferred to TT-7.7e since nothing has actually happened until
+TT-7.7d executes).
+
+**Reason-required-on-reject has no existing generic mechanism** (confirmed by reading
+`EnsureRequestResponseReasonIsValidAction`, which only validates type/length, never
+requiredness) -- enforced directly inside `RespondToRefundRequestAction`, checked before any DB
+write so a missing reason fails closed without touching the `Request` row. The admin's rejection
+note is stored in a new `data.rejectionReason` key, deliberately distinct from the client's own
+ask-time `data.reason` -- the existing `RejectSessionScheduleProposalAction` precedent reuses
+`data.reason` for its own (optional) reject reason, but that pattern doesn't apply here since a
+refund's `data.reason` already holds a real, unrelated fact (why the client asked) that must never
+be overwritten.
+
+**Adjacent fixes made while in this area**: `GetRequestResourceAction` had no `RequestTypeEnum::refund`
+branch (fell through to a resource assuming `from` was a `Counsellor`) and `RequestResource::getFor()`
+(the generic personal "my requests" listing) had no `Transaction` branch either -- both would have
+rendered nonsense for a refund request reaching those code paths. Fixed both, and reused the new
+`RefundRequestResource` for the first. Also applied the same Markdown-escaping stopgap (pending
+SCRUM-254's broader cleanup) to `RefundRequestedNotification`'s own reason interpolation while
+already touching that file to fix its "no queue page yet" action link -- proactive hardening on
+the ticket's own new/touched notifications, not a claim that SCRUM-254 is resolved.

@@ -976,6 +976,47 @@ class DatabaseSeeder extends Seeder
             'currency' => 'USD',
             'status' => TransactionStatusEnum::success->value,
         ]);
+
+        // TT-7.7c/SCRUM-251 (reviewer finding): a third, dedicated therapy/transaction with an
+        // already-PENDING refund `Request` on it -- without this, the admin review queue
+        // (/administrator/refund-requests) would be empty until someone manually submits a
+        // refund request through the UI first, which CLAUDE.md's own seeding convention says to
+        // avoid. Kept separate from the two therapies above (still meant for exercising the
+        // client-side "ask" flow itself) rather than pre-filling their own requests.
+        $adminQueueTherapy = $client->addedTherapies()->create([
+            'name' => 'Refund Demo Therapy (Pending Admin Review)',
+            'background_story' => 'Seeded PAID, PER_THERAPY therapy with an already-PENDING refund request, for testing the admin review queue (SCRUM-251).',
+            'counsellor_id' => $counsellor->id,
+            'session_type' => 'Once',
+            'payment_type' => 'PAID',
+            'allow_in_person' => false,
+            'anonymous' => false,
+            'public' => false,
+            'status' => 'in_session',
+            'payment_data' => [
+                'amount' => 80,
+                'currency' => 'USD',
+                'per' => 'PER_THERAPY',
+            ],
+        ]);
+
+        $adminQueueTransaction = Transaction::query()->create([
+            'for_type' => $adminQueueTherapy::class,
+            'for_id' => $adminQueueTherapy->id,
+            'user_id' => $client->id,
+            'reference' => 'refund_demo_'.fake()->unique()->uuid(),
+            'amount' => 8000,
+            'currency' => 'USD',
+            'status' => TransactionStatusEnum::success->value,
+        ]);
+
+        $refundRequest = $client->sentRequests()->create([
+            'data' => ['reason' => 'I was charged twice for the same therapy session by mistake.'],
+            'type' => RequestTypeEnum::refund->value,
+            'status' => RequestStatusEnum::pending->value,
+        ]);
+        $refundRequest->for()->associate($adminQueueTransaction);
+        $refundRequest->save();
     }
 
     private function createPayoutDemoData(): void
