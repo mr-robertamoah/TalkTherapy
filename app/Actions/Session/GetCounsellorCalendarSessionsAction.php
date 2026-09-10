@@ -33,7 +33,11 @@ class GetCounsellorCalendarSessionsAction extends Action
         // reads, previously only ever N+1-safe by accident (never eager-loaded, never noticed at
         // the small scale those other call sites render at).
         $with = [
-            'latestTransaction',
+            // TT-7.7e/SCRUM-253 (reviewer finding): SessionResource's new refundStatus field
+            // reads latestTransaction->successfulRefund -- without eager-loading the nested
+            // relation too, every PAID session in this bulk render triggers its own extra lazy
+            // query, the exact N+1 class this file's own comment above already calls out.
+            'latestTransaction.successfulRefund',
             'topics',
             'cases',
             'therapyTopicSessions.therapyTopic',

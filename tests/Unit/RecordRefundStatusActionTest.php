@@ -14,6 +14,8 @@ use App\Models\Therapy;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Notifications\RefundExecutionFailedNotification;
+use App\Notifications\RefundFailedNotification;
+use App\Notifications\RefundSucceededNotification;
 use Illuminate\Support\Facades\Notification;
 
 // TT-7.7d/SCRUM-252: mirrors RecordCounsellorPayoutStatusActionTest's own shape exactly -- this is
@@ -140,7 +142,60 @@ test('recording failure notifies admins of the failed refund execution', functio
     Notification::assertSentTo($admin, RefundExecutionFailedNotification::class);
 });
 
+// TT-7.7e/SCRUM-253: the "outcome" notification TT-7.7d/TT-7.7c both deliberately left for this
+// ticket -- the requesting client, not just admins, needs to hear the refund actually succeeded.
+test('recording success notifies the requesting client of the refund outcome', function () {
+    Notification::fake();
+    $refund = aPendingRefundForTransaction();
+
+    RecordRefundStatusAction::new()->execute(
+        $refund,
+        RefundStatusEnum::success->value,
+        RefundStatusSourceEnum::initiate->value
+    );
+
+    Notification::assertSentTo($refund->requestedBy, RefundSucceededNotification::class);
+    // Product-owner-mandated, mental-health trust requirement: a client must never wonder if a
+    // refund means they've lost access to their counsellor -- assert the reassurance copy is
+    // actually present, not just that the right notification class was sent.
+    Notification::assertSentTo(
+        $refund->requestedBy,
+        RefundSucceededNotification::class,
+        fn ($notification, $channels, $notifiable) => str_contains(
+            $notification->toMail($notifiable)->render(),
+            'Your access to the platform and your therapy is completely unaffected'
+        )
+    );
+});
+
+test('recording failure notifies the requesting client of the refund outcome, distinct from the admin notification', function () {
+    Notification::fake();
+    $admin = User::factory()->has(Administrator::factory())->create();
+    $refund = aPendingRefundForTransaction();
+
+    RecordRefundStatusAction::new()->execute(
+        $refund,
+        RefundStatusEnum::failed->value,
+        RefundStatusSourceEnum::initiate->value,
+        'Paystack could not process this refund.'
+    );
+
+    Notification::assertSentTo($refund->requestedBy, RefundFailedNotification::class);
+    Notification::assertSentTo($admin, RefundExecutionFailedNotification::class);
+    Notification::assertNotSentTo($refund->requestedBy, RefundExecutionFailedNotification::class);
+    // Same reassurance requirement as the success notification above.
+    Notification::assertSentTo(
+        $refund->requestedBy,
+        RefundFailedNotification::class,
+        fn ($notification, $channels, $notifiable) => str_contains(
+            $notification->toMail($notifiable)->render(),
+            'Your access to the platform and your therapy is completely unaffected'
+        )
+    );
+});
+
 test('a terminal refund status is never regressed by a later, differently-statused event', function () {
+    Notification::fake();
     $refund = aPendingRefundForTransaction();
     $refund->update(['status' => RefundStatusEnum::success->value]);
 
@@ -153,6 +208,7 @@ test('a terminal refund status is never regressed by a later, differently-status
 
     expect($refund->fresh()->status)->toBe(RefundStatusEnum::success->value);
     expect($refund->fresh()->statusHistories()->count())->toBe(0);
+    Notification::assertNothingSent();
 });
 
 test('recording the same status twice is idempotent -- no duplicate history, no duplicate notification', function () {
@@ -165,6 +221,7 @@ test('recording the same status twice is idempotent -- no duplicate history, no 
 
     expect($refund->fresh()->statusHistories()->count())->toBe(1);
     Notification::assertSentToTimes($admin, RefundExecutionFailedNotification::class, 1);
+    Notification::assertSentToTimes($refund->requestedBy, RefundFailedNotification::class, 1);
 });
 
 // Security-engineer finding: seeding the grant for a brand-new, unrelated Therapy/User (as this

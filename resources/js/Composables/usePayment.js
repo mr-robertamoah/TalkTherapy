@@ -107,10 +107,18 @@ export default function usePayment(therapy, therapyType = 'individual') {
     // `refundRequestStatus` -- the Therapy resource itself for PER_THERAPY, or a Session resource
     // for PER_SESSION -- mirrors canPayForTherapy/canPayForSession's own split by taking the
     // already-resolved object rather than re-deriving PER_THERAPY/PER_SESSION here.
+    //
+    // TT-7.7e/SCRUM-253 (found during Playwright QA): `!entity?.refundStatus` is required here --
+    // without it, a transaction that's already been successfully refunded (refundStatus ===
+    // 'SUCCESS') still showed "request a refund", since refundRequestStatus only reflects the
+    // ASK-time request's own status and is never set for a refund created any other way (e.g. an
+    // already-approved one). EnsureTransactionIsRefundEligibleAction already blocks a second
+    // refund server-side, but the control shouldn't invite the client to try in the first place.
     function canRequestRefund(entity, isParticipant, isCounsellor) {
         return isParticipant && !isCounsellor &&
             entity?.paymentStatus === 'SUCCESS' &&
             !entity?.refundRequestStatus &&
+            !entity?.refundStatus &&
             !!entity?.transactionId
     }
 

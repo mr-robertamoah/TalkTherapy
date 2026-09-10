@@ -2,10 +2,12 @@
 
 namespace App\Models;
 
+use App\Enums\RefundStatusEnum;
 use App\Enums\RequestTypeEnum;
 use App\Enums\TransactionStatusEnum;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\MorphOne;
 
 class Transaction extends Model
@@ -71,6 +73,16 @@ class Transaction extends Model
             ->ofMany(['created_at' => 'max'], function ($query) {
                 $query->where('type', RequestTypeEnum::refund->value);
             });
+    }
+
+    // TT-7.7e/SCRUM-253: lets TherapyResource/SessionResource surface "has this transaction
+    // actually been refunded" (distinct from `latestRefundRequest`'s PENDING/REJECTED ask-time
+    // state) without a bespoke lookup -- at most one can ever exist per transaction, since
+    // EnsureTransactionIsRefundEligibleAction's ACTIVE_REFUND_STATUSES blocks any further refund
+    // attempt once one has succeeded.
+    public function successfulRefund(): HasOne
+    {
+        return $this->hasOne(Refund::class)->where('status', RefundStatusEnum::success->value);
     }
 
     public function isSuccessful(): bool

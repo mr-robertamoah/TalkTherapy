@@ -53,8 +53,11 @@
       <div v-if="therapy.paymentData.per === 'PER_THERAPY' && therapy.orgRetainerCoverage" class="text-sm text-gray-600">
         This therapy is covered under {{ therapy.orgRetainerCoverage.organizationName }}'s plan with TalkTherapy -- no payment needed from you.
       </div>
-      <div v-else-if="therapy.paymentData.per === 'PER_THERAPY' && therapy.paymentStatus === 'SUCCESS'" class="text-sm text-green-700 font-semibold">
-        Paid
+      <!-- TT-7.7e/SCRUM-253: paymentStatus itself never flips off SUCCESS on refund (refunds live
+           in their own table, see TT-7.7a's decision-log entry) -- refundStatus is checked here so
+           this stays accurate instead of permanently reading "Paid" after the money's gone back. -->
+      <div v-else-if="therapy.paymentData.per === 'PER_THERAPY' && therapy.paymentStatus === 'SUCCESS'" class="text-sm font-semibold" :class="therapy.refundStatus === 'SUCCESS' ? 'text-gray-600' : 'text-green-700'">
+        {{ therapy.refundStatus === 'SUCCESS' ? 'Refunded' : 'Paid' }}
       </div>
       <div class="relative" v-else-if="canPay">
         <FormLoader class="mx-auto" :show="initiating" :text="'starting your payment'" />

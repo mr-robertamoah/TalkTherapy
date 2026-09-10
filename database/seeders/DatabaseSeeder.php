@@ -15,6 +15,7 @@ use App\Enums\OrganizationCounsellorStatusEnum;
 use App\Enums\OrganizationInvoiceStatusEnum;
 use App\Enums\OrganizationMemberBillingModeEnum;
 use App\Enums\OrganizationMemberStatusEnum;
+use App\Enums\RefundStatusEnum;
 use App\Enums\RequestStatusEnum;
 use App\Enums\RequestTypeEnum;
 use App\Enums\TransactionStatusEnum;
@@ -24,6 +25,7 @@ use App\Models\Organization;
 use App\Models\OrganizationInvoice;
 use App\Models\OrganizationInvoiceLine;
 use App\Models\OrganizationPaymentInstrument;
+use App\Models\Refund;
 use App\Models\Request;
 use App\Models\Therapy;
 use App\Models\Transaction;
@@ -1017,6 +1019,50 @@ class DatabaseSeeder extends Seeder
         ]);
         $refundRequest->for()->associate($adminQueueTransaction);
         $refundRequest->save();
+
+        // TT-7.7e/SCRUM-253: a fourth, dedicated therapy already carrying a SUCCESS Refund --
+        // without this, the "Refunded" label (both the client's and counsellor's own payment-
+        // status indicator) would be unreachable without manually driving a request all the way
+        // through TT-7.7c's approve action first, which CLAUDE.md's own seeding convention says
+        // to avoid. `paymentStatus` deliberately stays SUCCESS (refunds never mutate it -- see
+        // TT-7.7a's decision-log entry), so this also doubles as a regression check that the UI
+        // reads refundStatus, not a stale paymentStatus, to decide what to show.
+        $refundedTherapy = $client->addedTherapies()->create([
+            'name' => 'Refund Demo Therapy (Refunded)',
+            'background_story' => 'Seeded PAID, PER_THERAPY therapy that has already been successfully refunded, for testing the "Refunded" payment-status label (SCRUM-253).',
+            'counsellor_id' => $counsellor->id,
+            'session_type' => 'Once',
+            'payment_type' => 'PAID',
+            'allow_in_person' => false,
+            'anonymous' => false,
+            'public' => false,
+            'status' => 'in_session',
+            'payment_data' => [
+                'amount' => 100,
+                'currency' => 'USD',
+                'per' => 'PER_THERAPY',
+            ],
+        ]);
+
+        $refundedTransaction = Transaction::query()->create([
+            'for_type' => $refundedTherapy::class,
+            'for_id' => $refundedTherapy->id,
+            'user_id' => $client->id,
+            'reference' => 'refund_demo_'.fake()->unique()->uuid(),
+            'amount' => 10000,
+            'currency' => 'USD',
+            'status' => TransactionStatusEnum::success->value,
+        ]);
+
+        Refund::query()->create([
+            'transaction_id' => $refundedTransaction->id,
+            'requested_by_id' => $client->id,
+            'reference' => 'refund_demo_'.fake()->unique()->uuid(),
+            'amount' => 10000,
+            'currency' => 'USD',
+            'reason' => 'Seeded already-successful refund.',
+            'status' => RefundStatusEnum::success->value,
+        ]);
     }
 
     private function createPayoutDemoData(): void
