@@ -5627,3 +5627,39 @@ sees a real "pay now" control (both PER_THERAPY and PER_SESSION) while the paid 
 correctly reaches `InitiatePaystackChargeAction` (observed as the expected 502 "Paystack
 unreachable" response, the same pre-existing sandbox-environment limitation seen throughout the
 TT-7.7 refund work, not a defect) rather than failing authorization or hitting the wrong route.
+
+## 2026-09-10 — SCRUM-260 (TT-7.4d-c): group-therapy refund-request UI
+
+Ticket's own premise confirmed correct: `RequestRefundAction`/`EnsureTransactionIsRefundEligibleAction`
+were already transaction/user-scoped, not model-scoped (re-verified directly, including
+`RespondToRefundRequestAction`, `ProcessRefundJob`, and the admin review queue -- none assume
+individual-Therapy-only), so lifting the `therapyType !== 'group'` guard on the refund-request
+blocks in `TherapyPaymentDetails.vue`/`UnifiedTherapy.vue` needed no backend authorization change.
+
+**Two real gaps found and fixed during implementation, both flagged as known landmines in
+TT-7.4d-b's own code comments**:
+1. `usePayment.js`'s `canRequestRefund()` was reading the unscoped `entity?.paymentStatus`
+   directly instead of `viewerScopedPaymentStatus()` -- for a GroupTherapy this would have judged
+   a member's refund-request eligibility by a co-member's payment, not their own. Fixed.
+2. `GroupTherapyResource` had no `refundStatus` field at all, and `SessionResource`'s existing one
+   was hardcoded `null` for any GroupTherapy session (TT-7.7e's "refunds are individual-Therapy-only"
+   assumption, now outdated). Both now expose a viewer-scoped `refundStatus` derived from the same
+   `$viewerTransaction` already used for `transactionId`/`refundRequestStatus` -- without this, a
+   group member whose refund succeeds would keep seeing "Paid" forever.
+
+Reviewer finding (required, applied): the pre-existing test
+`'SessionResource never exposes refundStatus for a GroupTherapy session...'` asserted null for the
+counsellor's view, but its session fixture defaulted to `payment_type: 'FREE'`, so the assertion
+held for the wrong reason (the PAID-only guard short-circuiting before viewer identity was ever
+considered) rather than proving the counsellor-specific scoping it claimed to. Fixed by setting
+`payment_type: 'PAID'` on the fixture; confirmed via mutation testing that it now actually fails
+if viewer-scoping regresses.
+
+Security-engineer review: no High/Medium findings; the full refund pipeline re-verified
+model-agnostic end-to-end. One low-severity, pre-existing, non-blocking note not acted on here:
+`RefundRequestResource`'s admin-facing `UserMiniResource` exposes a requesting client's real
+identity regardless of anonymous group-therapy participation -- this is an intentional,
+need-to-know exception (an admin reconciling a Paystack refund needs the real payer identity,
+which `Transaction.user_id` already ties to the payment regardless of anonymous display), not a
+new leak this ticket introduces, and is recorded here per the review's own suggestion rather than
+filed as a follow-up ticket.
