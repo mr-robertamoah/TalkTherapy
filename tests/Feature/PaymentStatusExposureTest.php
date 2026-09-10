@@ -2,6 +2,8 @@
 
 use App\Enums\CounsellorGroupTherapyStateEnum;
 use App\Enums\RefundStatusEnum;
+use App\Enums\RequestStatusEnum;
+use App\Enums\RequestTypeEnum;
 use App\Enums\TransactionStatusEnum;
 use App\Models\GroupTherapy;
 use App\Models\Refund;
@@ -88,6 +90,80 @@ test('GroupTherapyResource exposes paymentStatus from the latest transaction', f
 
     $response->assertOk()->assertInertia(fn ($page) => $page
         ->where('therapy.paymentStatus', TransactionStatusEnum::success->value)
+    );
+});
+
+// TT-7.4d-a/SCRUM-258: the viewer-scoped counterpart to the model-wide `paymentStatus` above --
+// needed once a GroupTherapy can have more than one member's own Transaction, where the model-wide
+// field alone can no longer answer "have I, specifically, paid."
+test('GroupTherapyResource exposes viewerPaymentStatus/transactionId scoped to the viewer\'s own transaction', function () {
+    $user = User::factory()->create();
+    $groupTherapy = GroupTherapy::factory()->create([
+        'addedby_type' => User::class,
+        'addedby_id' => $user->id,
+        'payment_type' => 'PAID',
+        'payment_data' => ['per' => 'PER_THERAPY', 'amount' => 100, 'currency' => 'GHS'],
+    ]);
+    $transaction = Transaction::factory()->create([
+        'for_type' => GroupTherapy::class,
+        'for_id' => $groupTherapy->id,
+        'user_id' => $user->id,
+        'status' => TransactionStatusEnum::success->value,
+    ]);
+
+    $response = $this->actingAs($user)->get(route('group.therapies.get', ['groupTherapyId' => $groupTherapy->id]));
+
+    $response->assertOk()->assertInertia(fn ($page) => $page
+        ->where('therapy.viewerPaymentStatus', TransactionStatusEnum::success->value)
+        ->where('therapy.transactionId', $transaction->id)
+    );
+});
+
+// The core privacy regression this ticket exists to close: before TT-7.4d-a, the only per-viewer
+// field GroupTherapyResource had was none at all -- any new field here MUST be scoped from day
+// one, not just the model-wide `paymentStatus` a co-participant could already see.
+test('GroupTherapyResource never leaks one member\'s transaction to a different member viewing the same group', function () {
+    $counsellorUser = User::factory()->create();
+    $counsellor = $counsellorUser->counsellor()->create(['email' => fake()->unique()->safeEmail(), 'about' => 'test']);
+    $groupTherapy = GroupTherapy::factory()->create([
+        'addedby_type' => User::class,
+        'addedby_id' => $counsellorUser->id,
+        'payment_type' => 'PAID',
+        'payment_data' => ['per' => 'PER_THERAPY', 'amount' => 100, 'currency' => 'GHS'],
+        'public' => true,
+    ]);
+    $groupTherapy->counsellors()->attach($counsellor->id, ['state' => CounsellorGroupTherapyStateEnum::active->value, 'role' => 'NORMAL']);
+    $memberA = User::factory()->create();
+    $memberB = User::factory()->create();
+    $groupTherapy->users()->attach($memberA->id, ['background_story' => 'test', 'anonymous' => false]);
+    $groupTherapy->users()->attach($memberB->id, ['background_story' => 'test', 'anonymous' => false]);
+
+    $transactionA = Transaction::factory()->create([
+        'for_type' => GroupTherapy::class,
+        'for_id' => $groupTherapy->id,
+        'user_id' => $memberA->id,
+        'status' => TransactionStatusEnum::success->value,
+    ]);
+    // Security-engineer finding: refundRequestStatus is derived from the same $viewerTransaction
+    // as viewerPaymentStatus/transactionId, so a null $viewerTransaction transitively covers it --
+    // but an explicit assertion (rather than relying on that being implicit) makes the coverage
+    // self-evident, per the review's own recommendation.
+    $memberA->sentRequests()->create([
+        'data' => ['reason' => 'test'],
+        'type' => RequestTypeEnum::refund->value,
+        'status' => RequestStatusEnum::pending->value,
+    ])->for()->associate($transactionA)->save();
+
+    // Member B has never paid -- must see their OWN (null) status, never A's SUCCESS or A's
+    // refund-request status, even though the model-wide paymentStatus below (a pre-existing,
+    // deliberately unscoped field) does reflect A's transaction.
+    $response = $this->actingAs($memberB)->get(route('group.therapies.get', ['groupTherapyId' => $groupTherapy->id]));
+
+    $response->assertOk()->assertInertia(fn ($page) => $page
+        ->where('therapy.paymentStatus', TransactionStatusEnum::success->value)
+        ->where('therapy.viewerPaymentStatus', null)
+        ->where('therapy.transactionId', null)
+        ->where('therapy.refundRequestStatus', null)
     );
 });
 

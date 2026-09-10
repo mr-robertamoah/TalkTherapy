@@ -5531,3 +5531,59 @@ per job ("a redelivered dispatch after the first attempt already finished as pro
 calls Paystack again") was confirmed to fail against the original terminal-status-only guard,
 proving it exercises the exact gap the security review identified rather than a case the earlier
 fix already covered.
+
+---
+
+## 2026-09-10 — SCRUM-256/258 (TT-7.4d/TT-7.4d-a): group-therapy per-member payment scoped and started
+
+**Epic scoped via full `/start-feature` pass** (product-owner/project-manager/architect, all three
+subagents run in sequence): TT-7.4d had sat unscoped since SCRUM-118 (2026-08-29) because
+per-member GroupTherapy payment was assumed to need a schema change. The product-owner pass found
+this largely untrue -- `Transaction.user_id` already scopes ownership, `payment_access_grants` is
+already `(user_id, for_type, for_id)`-keyed, and `EnsureTransactionIsRefundEligibleAction`/
+`RequestRefundAction` already scope by transaction/user, not by model. Split into 5 sub-tickets
+(TT-7.4d-a through -e, SCRUM-258-262, 22 points total) rather than 26-34-point epics like TT-7.5a/
+TT-7.7, since the four decisions below closed off the expensive forks before any milestone
+planning happened.
+
+**Four product decisions made by the user, not guessed** (each was a genuine fork where a wrong
+guess would have been costly to unwind):
+1. **Pricing: flat per-head**, not a total-group-amount split -- avoids the entire class of
+   "what happens to already-paid members when the group's membership count changes" problem a
+   split model would have introduced.
+2. **Peer visibility: counsellor + self only** -- a member never sees another member's payment
+   status, matching this platform's existing mental-health-context sensitivity bar for payment/
+   dispute-adjacent facts.
+3. **Counsellor roster: informational only for now, but shaped for later readiness signaling** --
+   no "N of M paid" enforcement ships in this epic (that's TT-7.5b's job), but field naming is kept
+   generic so a later feature can reuse it without rework.
+4. **Anonymity exception, scoped narrowly**: the counsellor's per-member payment roster (TT-7.4d-d,
+   not yet built) will pierce this platform's otherwise-universal anonymity rule
+   (`TherapyTrait::addedByUserIsMaskedFor()`, `RequestResource`, `MessageResource` all currently
+   mask identity from the counsellor too, confirmed via architect review) -- but ONLY for the
+   payment-status field. Nothing else about an anonymous group becomes de-anonymized. Logged here
+   explicitly per the architect's own recommendation, since this is a genuine first-of-its-kind
+   departure from an established cross-cutting pattern, not a confirmation of existing behavior.
+
+**Live authorization defect found during scoping, fixed first and separately (SCRUM-257, merged
+ahead of TT-7.4d-a)**: `EnsureCanInitiateChargeAction`'s "already paid" guard had no `user_id`
+scoping at all -- for a GroupTherapy (`transactions.initiate.group_therapy` already exists as a
+route, already reachable by any participant), the first member to pay successfully would
+permanently block every other member from ever paying. This was real and live, not hypothetical,
+so the user chose (of four options offered) to fix it first, in isolation, ahead of the rest of
+the epic's UI/backend work.
+
+**TT-7.4d-a implemented**: `TherapyTrait::latestTransactionFor(User $user)` (also added directly
+to `Session`, which doesn't use the trait) promotes `SessionResource`'s own pre-existing inline
+viewer-scoped closure (TT-7.7b/TT-7.7e) into one shared method, now also feeding three new
+additive fields on `GroupTherapyResource` (`viewerPaymentStatus`, `transactionId`,
+`refundRequestStatus`) alongside its existing unscoped `paymentStatus` (kept as-is for TT-7.4c's
+counsellor consumer, out of scope here). Reviewer suggestion applied: guarded the new query behind
+a `PER_THERAPY` check too (mirrors `TherapyResource`'s identical guard), not just `PAID`, so a
+`PER_SESSION` group never runs a query against the wrong model. Security-engineer finding
+deferred as a follow-up (SCRUM-263, not blocking): the new `viewerPaymentStatus` field, combined
+with the pre-existing unscoped `paymentStatus`, makes it easier for a member to infer a *specific*
+other member's payment status by elimination in a small group -- a real, if modest, sensitivity
+concern on a mental-health platform, but a pre-existing exposure this ticket only makes marginally
+easier to exploit, not a new hole it opened outright, so it's tracked rather than blocking this
+ticket's merge.

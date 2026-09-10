@@ -29,8 +29,13 @@ class SessionResource extends JsonResource
         // Only queried for a PAID session -- guarded BEFORE running the query, not just before
         // reading its result, so the common FREE case (e.g. the counsellor calendar's own N+1
         // regression test) never pays for it at all.
+        //
+        // TT-7.4d-a/SCRUM-258: this used to be its own inline query -- promoted to
+        // Session::latestTransactionFor(), the same method GroupTherapyResource/TT-7.4d-d's
+        // roster now share, instead of three near-identical copies of "this user's own latest
+        // transaction for this payable."
         $viewerTransaction = $this->payment_type === 'PAID' && $request->user()
-            ? $this->transactions()->where('user_id', $request->user()->id)->latest('created_at')->first()
+            ? $this->latestTransactionFor($request->user())
             : null;
 
         return [
