@@ -5663,3 +5663,65 @@ need-to-know exception (an admin reconciling a Paystack refund needs the real pa
 which `Transaction.user_id` already ties to the payment regardless of anonymous display), not a
 new leak this ticket introduces, and is recorded here per the review's own suggestion rather than
 filed as a follow-up ticket.
+
+## 2026-09-10 — SCRUM-261 (TT-7.4d-d): counsellor-facing per-member payment roster (anonymity exception)
+
+**Anonymity exception, executed as scoped during /start-feature (SCRUM-256)**: `GroupTherapyResource`
+gains a new `paymentRoster` field -- every `GroupTherapy::users()` member alongside their own
+scoped payment status, real identity included, visible ONLY to this specific group's own
+counsellor (`isCounsellor()`, not "any counsellor anywhere"). This is a deliberate, narrow
+departure from this codebase's otherwise-universal anonymity rule
+(`TherapyTrait::addedByUserIsMaskedFor()`, `RequestResource`, `MessageResource` all mask identity
+from the counsellor too, confirmed via architect review during SCRUM-256's own scoping) --
+confirmed via a new regression test (`'the roster shows real member identity to the counsellor
+even on an anonymous group'`) that the group's own `addedby` field stays correctly masked in the
+SAME response the roster's real identities appear in, so the exception is narrow and doesn't leak
+into any other field. Nothing else about an anonymous group becomes de-anonymized by this change.
+
+**N+1 requirement (architect finding, mandatory) implemented as specified**:
+`GetGroupTherapyPaymentRosterAction` eager-loads `users` and `transactions` (ordered once, via
+`latest('created_at')`) in exactly 2 queries regardless of member count, then matches each
+member's latest transaction in PHP via `groupBy('user_id')` -- never calls
+`latestTransactionFor($member)` in a per-member loop. Verified with a dedicated regression test
+asserting the query count stays fixed at 2 for an 8-member group.
+
+**Roster shape kept deliberately minimal (architect guidance)**: only a flat per-member list with
+each member's own `paymentStatus`/`transactionId` -- no aggregate "N of M paid" readiness
+abstraction was built, per the architect's explicit "don't build speculative, unused abstraction
+now" guidance from SCRUM-256's own scoping.
+
+**PER_SESSION excluded**: a PER_SESSION group's payment status lives per-session, not per-group
+(mirrors `viewerPaymentStatus`'s own PER_THERAPY-only guard, TT-7.4d-a) -- a single flat
+per-member roster row can't represent "paid for which session," so the field is guarded out
+entirely for that case rather than shown incorrectly. A per-session roster is a natural, distinct
+follow-up if ever needed, not folded into this ticket.
+
+**Playwright QA**: logged in as the group's own counsellor, confirmed the roster correctly lists
+both the paid and unpaid seeded members with their own individual status ("Paid"/"Awaiting
+payment"); confirmed it's entirely absent for the PER_SESSION seeded group; confirmed a group
+member (including the paying one) never sees the roster at all.
+
+**Follow-up decision, made mid-review (reviewer + security-engineer both independently flagged
+this, then put to the user rather than assumed)**: GroupTherapy has a SECOND, independent
+anonymity mechanism beyond the group-level `anonymous` flag this ticket's own approved exception
+covers -- a per-member opt-in (`group_therapy_user.anonymous`, set at join time), which
+`MessageResource`/`RequestResource` already mask identity for from everyone including the
+counsellor. The original scoping never addressed whether the roster's exception was meant to
+override this separate, member-owned signal too. Asked the user directly (a real fork, not a
+guessable default, on a mental-health platform): confirmed the roster must respect per-member
+anonymity -- a member who individually opted into anonymity is masked (`fullName`/`username`
+replaced/nulled, mirroring `GroupTherapyResource`'s own masked-`addedby` shape) even when the
+group itself is not anonymous, while their `paymentStatus`/`transactionId` stay visible (masking
+those would defeat the roster's entire reconciliation purpose). Implemented in
+`GetGroupTherapyPaymentRosterAction` by reading the member's own pivot flag directly --
+deliberately NOT `GroupTherapy::isAnonymousFor()`, which ORs in the group-level flag too and would
+incorrectly mask everyone on an anonymous group, contradicting this ticket's own approved
+exception for that case. Both a Unit test (action-level) and a Feature test (full HTTP
+round-trip) added and mutation-tested.
+
+**Two additional reviewer/security findings, addressed**: (1) added a Feature test confirming a
+counsellor whose assignment to this group was deactivated (`INACTIVE` pivot state) never sees the
+roster -- previously only "never attached" was tested, not "assignment revoked." (2) documented
+in the Action's own header comment that it performs no authorization of its own and must only be
+called after the caller verifies the viewer is this group's own counsellor, to guard against a
+future incorrect call site.

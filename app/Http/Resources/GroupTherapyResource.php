@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Actions\GroupTherapy\GetGroupTherapyPaymentRosterAction;
 use App\Enums\ConstantsEnum;
 use App\Enums\TherapyPaymentTypeEnum;
 use App\Enums\TherapyPerPaymentEnum;
@@ -42,11 +43,24 @@ class GroupTherapyResource extends JsonResource
         // a PER_SESSION group's transactions live on its Sessions, not here, so this query would
         // just return empty for one; guarding it out entirely avoids the wasted round-trip, same
         // as the FREE-case guard already does.
-        $viewerTransaction = $this->payment_type === TherapyPaymentTypeEnum::paid->value
-            && ($this->payment_data['per'] ?? null) === TherapyPerPaymentEnum::therapy->value
-            && $user
+        $isPaidPerTherapyGroup = $this->payment_type === TherapyPaymentTypeEnum::paid->value
+            && ($this->payment_data['per'] ?? null) === TherapyPerPaymentEnum::therapy->value;
+
+        $viewerTransaction = $isPaidPerTherapyGroup && $user
             ? $this->latestTransactionFor($user)
             : null;
+
+        // TT-7.4d-d/SCRUM-261: the counsellor-facing per-member payment roster -- a deliberate,
+        // scoped exception to this codebase's otherwise-universal anonymity rule
+        // (TherapyTrait::addedByUserIsMaskedFor(), RequestResource, MessageResource all mask
+        // identity from the counsellor too). Only THIS group's own counsellor (not any counsellor
+        // anywhere) ever receives it, and only real identity for payment reconciliation -- nothing
+        // else about an anonymous group becomes de-anonymized. PER_SESSION excluded, same reasoning
+        // as $viewerTransaction above: a PER_SESSION group's payment status lives per-session, not
+        // per-group, so a single flat per-member roster row can't represent it correctly.
+        $isRosterEligibleCounsellor = $isPaidPerTherapyGroup
+            && $user?->counsellor
+            && $this->isCounsellor($user->counsellor);
 
         return [
             'id' => $this->id,
@@ -89,6 +103,11 @@ class GroupTherapyResource extends JsonResource
             'refundStatus' => $viewerTransaction?->successfulRefund?->status,
             'transactionId' => $viewerTransaction?->id,
             'refundRequestStatus' => $viewerTransaction?->latestRefundRequest?->status,
+            // TT-7.4d-d/SCRUM-261
+            'paymentRoster' => $this->when(
+                $isRosterEligibleCounsellor,
+                fn () => GetGroupTherapyPaymentRosterAction::new()->execute($this->resource)
+            ),
             'sessionsCreated' => $this->sessionsCreated,
             'paymentType' => $this->payment_type,
             'sessionType' => $this->session_type,
