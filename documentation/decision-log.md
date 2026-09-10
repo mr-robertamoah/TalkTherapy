@@ -5382,3 +5382,71 @@ rendered nonsense for a refund request reaching those code paths. Fixed both, an
 SCRUM-254's broader cleanup) to `RefundRequestedNotification`'s own reason interpolation while
 already touching that file to fix its "no queue page yet" action link -- proactive hardening on
 the ticket's own new/touched notifications, not a claim that SCRUM-254 is resolved.
+
+---
+
+## 2026-09-10 — SCRUM-252 (TT-7.7d): Paystack refund execution implemented
+
+**Highest-risk ticket in the epic** -- the real, external, money-moving Paystack call. No live
+Paystack sandbox credentials exist in this dev environment (`.env.docker`'s `PAYSTACK_SECRET_KEY`
+confirmed empty via `grep`) -- every claim about Paystack's actual refund API behavior below is a
+documented spike finding from public docs research (WebSearch/a third-party article; paystack.com
+itself returns 403 to WebFetch), not an empirically-verified sandbox call, mirroring the identical
+limitation already noted on `ProcessCounsellorPayoutJob`/TT-7.6c.
+
+**Architectural finding with real consequences**: unlike `initiateTransfer()`/`chargeAuthorization()`,
+Paystack's refund endpoint (`POST /refund`) takes NO caller-supplied idempotency reference -- it
+keys entirely off the ORIGINAL transaction's own reference/id. This means `Refund.reference` (a
+locally-generated UUID from TT-7.7a, originally documented as "the caller-supplied reference sent
+to Paystack") is in fact purely internal/audit-only -- never sent to Paystack, never used for
+webhook correlation. Updated that migration's own comment to stop implying a safety net that
+doesn't exist. The `refund.processed`/`refund.failed` webhook instead correlates back via the
+payload's `data.transaction.reference` (or a flatter `data.transaction_reference`), looking up the
+original `Transaction` and then its one currently-active (pending/processing) `Refund` row --
+`EnsureTransactionIsRefundEligibleAction`'s own invariant guarantees at most one exists.
+
+**Deliberate scope boundary**: client-facing "your refund succeeded/failed" notifications are
+explicitly OUT of this ticket's scope (reserved for TT-7.7e, which needs the "your platform/
+therapy access is unaffected" reassurance copy). Only a new admin-only `RefundExecutionFailedNotification`
+exists here, so a human can investigate a failed execution -- mirrors `PayoutFailedNotification`'s
+admin-recipient half, deliberately without its counsellor-facing half (no counsellor is involved
+in a refund).
+
+**Reviewer + security-engineer findings applied** (both subagents run in parallel on the full
+diff, per this ticket's own explicit "especially careful review" mandate): (1) **Required** --
+`ReconcileOrgFinancedRefundAction`'s call in `RecordRefundStatusAction` was moved from after its
+own DB transaction committed to INSIDE it (Laravel nests via savepoints) -- it had incorrectly
+inherited the "queue's after_commit is false" justification from the queued notification a few
+lines below, but `ReconcileOrgFinancedRefundAction` is a plain synchronous `Action`, not a queued
+job; left outside, a transient failure there could permanently strand a transaction's
+`CounsellorEarning` row(s) in `pending` while the `Refund` itself was already committed `success`
+forever, with no retry path. (2) **High/security** -- `RecordRefundStatusAction`'s terminal/
+same-status guard was a genuine TOCTOU race (checked against the caller's in-memory copy, not a
+locked re-read) -- fixed by re-fetching the `Refund` row with `lockForUpdate()` inside the
+transaction and re-running both checks against that freshly-locked read, mirroring
+`EnsureTransactionIsRefundEligibleAction`/`RespondToRefundRequestAction`'s own established fix for
+this exact bug class. (3) **High/security** -- `ProcessRefundJob` was forwarding the client's own
+free-text refund reason to Paystack via `merchant_note`; on a mental-health platform that text can
+plausibly contain sensitive personal/therapy detail, and Paystack has no legitimate need for it --
+replaced with a fixed, non-sensitive string carrying only this refund's own internal reference.
+(4) Added a `$backoff` to `ProcessRefundJob` (immediate retries gave neither Paystack's own async
+resolution nor an incoming webhook time to settle) and excluded HTTP 429 from the "definite 4xx
+failure" bucket (not a real rejection signal). (5) Rewrote all three new/touched
+`payment_access_grants` isolation regression tests (`RecordRefundStatusActionTest`,
+`ProcessRefundJobTest`, and the pre-existing one in `RespondToRefundRequestActionTest`) -- they
+originally seeded the grant against a brand-new, unrelated Therapy/User, which would have passed
+identically even if the isolation guarantee were entirely absent; now tied to the SAME
+transaction/therapy the refund under test actually belongs to. (6) Defensively escaped
+`RefundExecutionFailedNotification`'s `$reason`/`$message` interpolation via the existing
+`EscapesMarkdown` trait (TT-7.7c/SCRUM-251) -- no live injection risk today (every call site only
+ever passes a static string or one of Paystack's own short status enum values), but this choke
+point is explicitly meant to carry Paystack's own gateway response text later.
+
+**Deferred, not fixed inline (follow-up ticket filed: SCRUM-255)**: both `ProcessRefundJob` and the
+already-shipped `ProcessCounsellorPayoutJob` guard against re-calling Paystack once TERMINAL
+(success/failed), but not while `processing` -- a queue redelivery mid-flight (visibility-timeout,
+or an operator's `queue:retry`) could call Paystack a second time for the same reference before
+either the original response or a webhook resolves it. Filed as a shared follow-up covering both
+jobs (e.g. `WithoutOverlapping` keyed by refund/payout id) rather than fixed inline here, since
+this is an inherited pattern from the already-merged TT-7.6c, not a new regression introduced by
+this ticket, and fixing only one of the two jobs would leave the pattern inconsistent.

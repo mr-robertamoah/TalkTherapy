@@ -30,9 +30,17 @@ return new class extends Migration
             $table->foreignIdFor(User::class, 'requested_by_id')->constrained('users');
             // SCRUM-243's own lesson applied here: generated and persisted at Refund-row creation
             // time (RespondToRefundRequestAction, on approval), BEFORE TT-7.7d's queued job ever
-            // calls Paystack -- a caller-supplied reference sent to Paystack's refund endpoint, so
-            // a failure creating this row fails closed instead of a successful-but-unrecorded
-            // refund call ever being possible.
+            // calls Paystack -- a failure creating this row fails closed instead of a
+            // successful-but-unrecorded refund call ever being possible.
+            //
+            // TT-7.7d/SCRUM-252 update: unlike this codebase's other Paystack-facing references
+            // (e.g. CounsellorPayout.reference, sent to Paystack's transfer endpoint as its own
+            // caller-supplied idempotency key), this ticket's own spike found Paystack's refund
+            // endpoint takes NO caller-supplied idempotency reference at all -- it keys entirely
+            // off the ORIGINAL transaction's own reference. This column is therefore internal/
+            // audit-only: never sent to Paystack, and never used to correlate a refund.processed/
+            // refund.failed webhook back to this row (that's done via the transaction's own
+            // reference instead -- see ProcessPaystackWebhookJob).
             $table->string('reference')->unique();
             // Minor units, snapshotted from the transaction at approval time -- full-refund-only
             // for this epic, so this always equals the transaction's own `amount`.
