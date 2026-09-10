@@ -8,6 +8,7 @@ use App\Enums\TherapyPaymentTypeEnum;
 use App\Enums\TherapyPerPaymentEnum;
 use App\Enums\TransactionStatusEnum;
 use App\Exceptions\TransactionException;
+use App\Models\GroupTherapy;
 use App\Models\Session;
 
 class EnsureCanInitiateChargeAction extends Action
@@ -52,11 +53,22 @@ class EnsureCanInitiateChargeAction extends Action
             throw new TransactionException('This therapy is paid for per session, not as a whole.', 422);
         }
 
-        if (
-            $dto->for->transactions()
-                ->where('status', TransactionStatusEnum::success->value)
-                ->exists()
-        ) {
+        // SCRUM-257: a GroupTherapy (or one of its own Sessions, for a PER_SESSION setup) has
+        // multiple legitimate payers -- one member's successful payment must never permanently
+        // block every OTHER member from ever paying against the same GroupTherapy. Scoped to the
+        // requesting user specifically in that case. An individual Therapy/Session keeps its
+        // existing model-scoped "one successful transaction, period" behavior unchanged, since
+        // there is exactly one legitimate payer there.
+        $isGroupTherapyPayable = $dto->for instanceof GroupTherapy
+            || ($isSessionFor && $dto->for->for_type === GroupTherapy::class);
+
+        $alreadyPaidQuery = $dto->for->transactions()->where('status', TransactionStatusEnum::success->value);
+
+        if ($isGroupTherapyPayable) {
+            $alreadyPaidQuery->where('user_id', $dto->user->id);
+        }
+
+        if ($alreadyPaidQuery->exists()) {
             throw new TransactionException('This has already been paid for.', 422);
         }
     }
