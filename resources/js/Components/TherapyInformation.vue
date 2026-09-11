@@ -279,6 +279,11 @@
             />
           </div>
 
+          <!-- Video Consent -->
+          <div v-if="activeTab === 'therapy_video_consent'">
+            <VideoConsentPanel :therapy="therapy" :is-counsellor="computedIsCounsellor" />
+          </div>
+
           <!-- Other Details -->
           <div v-if="activeTab === 'therapy_other_details'">
             <TherapyOtherDetails :therapy="therapy" :therapy-type="therapyType" />
@@ -313,6 +318,7 @@ import TherapyDetails from '@/Components/TherapyDetails.vue'
 import TherapyPaymentDetails from '@/Components/TherapyPaymentDetails.vue'
 import TherapyOtherDetails from '@/Components/TherapyOtherDetails.vue'
 import TherapyStats from '@/Components/TherapyStats.vue'
+import VideoConsentPanel from '@/Components/VideoConsentPanel.vue'
 
 const props = defineProps({
   therapy: { default: null },
@@ -341,16 +347,20 @@ const allTabItems = computed(() => {
     { id: "therapy_participants", name: "participants" },
     { id: "therapy_details", name: "details" },
     { id: "therapy_payment_details", name: "payment details" },
+    { id: "therapy_video_consent", name: "video consent" },
     { id: "therapy_other_details", name: "other details" },
     { id: "therapy_stats", name: "stats" },
     { id: "chat_history", name: "chat history" },
   ]
-  
-  return baseItems.filter((item) =>
-    props.therapy.paymentType == 'PAID'
-      ? item
-      : item.id !== 'therapy_payment_details'
-  )
+
+  return baseItems.filter((item) => {
+    if (item.id === 'therapy_payment_details') return props.therapy.paymentType == 'PAID'
+    // TT-3.1e-f/SCRUM-285: TherapyResource's own videoConsent field is already null unless this
+    // therapy actually has a minor client -- no separate "is individual therapy" check needed
+    // here, GroupTherapy never gets this field at all (it uses its own resource).
+    if (item.id === 'therapy_video_consent') return !!props.therapy.videoConsent
+    return true
+  })
 })
 
 function setActiveTab(tabId) {

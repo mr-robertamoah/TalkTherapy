@@ -224,6 +224,16 @@ with a failed retainer invoice and a payment instrument on file — log in as th
 (`mr_robertamoah`) and visit `/administrator/organization-billing` to retry its settlement or lift
 the suspension.
 
+For SCRUM-285 (TT-3.1e-f, guardian video-consent UI): a deterministic minor client, their
+guardian, and a counsellor, on an individual therapy already set to `PER_THERAPY` consent mode
+with an immediately in-progress online session, deliberately left WITHOUT a grant:
+
+| Username | Password | Purpose |
+|---|---|---|
+| `video_consent_demo_minor` | `password` | The therapy's own client (`dob` set to 15 years ago). Log in and try "join video" on "Video Consent Demo Therapy" to see the consent-required banner before the guardian approves. |
+| `video_consent_demo_guardian` | `password` | Guardian of the minor above. Log in, open the therapy's "video consent" tab to approve/revoke consent and view the audit trail. |
+| `video_consent_demo_counsellor` | `password` | Dr. VideoConsent DemoCounsellor — the assigned counsellor, who can also switch the consent mode (PER_THERAPY/PER_SESSION) from the same tab, but cannot approve/revoke consent itself. |
+
 ## Testing the registration/verification flow
 
 The 11 seeded accounts above all skip email verification. To test registration or the

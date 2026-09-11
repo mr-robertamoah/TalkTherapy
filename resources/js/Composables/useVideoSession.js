@@ -59,7 +59,7 @@ import axios from 'axios'
 //                                                     touches Session.status -- this composable
 //                                                     has no code path that ever could.
 export default function useVideoSession(session) {
-    const status = ref('idle') // idle | connecting | connected | payment_required | ended | error
+    const status = ref('idle') // idle | connecting | connected | payment_required | consent_required | ended | error
     const participants = ref([])
     const isMuted = ref(false)
     const isCameraOn = ref(true)
@@ -149,6 +149,16 @@ export default function useVideoSession(session) {
             if (err.response?.status === 402) {
                 status.value = 'payment_required'
                 lastError.value = err.response?.data?.message || 'Payment is required to access video for this session.'
+                return
+            }
+
+            // TT-3.1e-f/SCRUM-285: a dedicated flag from VideoConsentRequiredException, not a
+            // string match on the message -- lets VideoCallPanel.vue show a specific "guardian
+            // consent needed" banner instead of the generic error+retry UI, which would be
+            // misleading here since retrying does nothing until a guardian actually acts.
+            if (err.response?.data?.videoConsentRequired) {
+                status.value = 'consent_required'
+                lastError.value = err.response?.data?.message || 'Guardian video consent is required before this account can join video for this session.'
                 return
             }
 
