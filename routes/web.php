@@ -27,6 +27,7 @@ use App\Http\Controllers\SessionController;
 use App\Http\Controllers\SessionNoteController;
 use App\Http\Controllers\TherapyController;
 use App\Http\Controllers\TransactionController;
+use App\Http\Controllers\VideoSessionController;
 use App\Services\AppService;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -142,6 +143,15 @@ Route::middleware('auth')->group(function () {
     Route::post('/sessions/{sessionId}/end', [SessionController::class, 'endSession'])->name('sessions.end');
     Route::post('/sessions/{sessionId}/fail', [SessionController::class, 'failSession'])->name('sessions.fail');
     Route::post('/sessions/{sessionId}/abandon', [SessionController::class, 'abandonSession'])->name('sessions.abandon');
+
+    // TT-3.1b/SCRUM-275: join AND end both call out to the active provider's own API
+    // (Daily.co/Chime -- createRoom/createMeeting, deleteRoom/deleteMeeting respectively), on top
+    // of join being the strict-payment-gated entry point -- both throttled like
+    // transactions.initiate.* above, for the same reason (a real external-API-calling write, not
+    // just DB noise). leave is a cheap, self-scoped local write with no such concern.
+    Route::post('/sessions/{sessionId}/video/join', [VideoSessionController::class, 'join'])->name('sessions.video.join')->middleware('throttle:20,1');
+    Route::post('/sessions/{sessionId}/video/leave', [VideoSessionController::class, 'leave'])->name('sessions.video.leave');
+    Route::post('/sessions/{sessionId}/video/end', [VideoSessionController::class, 'end'])->name('sessions.video.end')->middleware('throttle:20,1');
 
     // SCRUM-197/TT-2.2b: a counsellor's own private notes on a session -- never exposed to the
     // client/participant side, see SessionNoteController's own comment on how counsellor_id is

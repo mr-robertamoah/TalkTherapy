@@ -78,6 +78,31 @@ test('a non-participant cannot join video even on an otherwise-available session
         ->toThrow(VideoException::class);
 });
 
+// TT-3.1b/SCRUM-275 security-review finding: this action became HTTP-reachable via
+// VideoSessionController, which resolves any Session by id from the URL with no ownership
+// scoping. The participant check now runs FIRST (not last), so an unrelated authenticated user
+// always gets the exact same generic denial regardless of the session's actual type/mode/status
+// -- they can no longer use the distinct messages below (group-vs-1:1, in-person-vs-online,
+// pending-vs-in-progress) as an oracle to learn facts about a session that isn't theirs.
+test('a non-participant gets the same generic denial regardless of the session\'s actual type, mode, or status', function () {
+    $groupTherapy = GroupTherapy::factory()->create([
+        'addedby_type' => User::class,
+        'addedby_id' => User::factory(),
+        'public' => true,
+    ]);
+    $session = Session::factory()->create([
+        'for_id' => $groupTherapy->id,
+        'for_type' => GroupTherapy::class,
+        'type' => 'ONLINE',
+        'status' => 'IN_SESSION',
+        'start_time' => now(),
+    ]);
+    $unrelatedUser = User::factory()->create();
+
+    expect(fn () => EnsureVideoIsAvailableForSessionAction::new()->execute($session, $unrelatedUser))
+        ->toThrow(VideoException::class, 'You are not allowed to join this session.');
+});
+
 test('the assigned counsellor is a valid participant for video', function () {
     $session = onlineInSessionTherapySession();
     $counsellorUser = $session->for->counsellor->user;

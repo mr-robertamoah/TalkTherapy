@@ -172,14 +172,22 @@ class Session extends Model
             });
     }
 
-    public function isParticipant(User $user)
+    public function isParticipant(User $user): bool
     {
-        return $this->for?->isParticipant($user);
+        return (bool) $this->for?->isParticipant($user);
     }
 
-    public function isNotParticipant(User $user)
+    // TT-3.1b/SCRUM-275 security-review finding: was `$this->for?->isNotParticipant($user)`,
+    // which returned null (falsy) rather than true when `for` doesn't resolve (an orphaned/
+    // soft-deleted parent, a for_type/for_id mismatch, SessionFactory's own default `for_id => 1`
+    // with no matching row) -- fail-OPEN for any authorization check that does
+    // `if ($session->isNotParticipant($user)) { deny }`, since a missing `for` would silently
+    // authorize everyone instead of no one. Mirrors Therapy::isNotParticipant()/
+    // GroupTherapy::isNotParticipant()'s own established convention (negate isParticipant(),
+    // which already fails closed via the same `?->` chain: `!null === true`).
+    public function isNotParticipant(User $user): bool
     {
-        return $this->for?->isNotParticipant($user);
+        return ! $this->isParticipant($user);
     }
 
     public function isAnonymousFor(User $sender): bool
