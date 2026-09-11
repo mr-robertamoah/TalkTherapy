@@ -130,18 +130,32 @@
 
     <!-- SCRUM-221/TT-7.5a: counsellor-only -- the therapy's own client can set this at creation
          but is never authorized to change it afterward (EnsureCanSetStrictPaymentGateAction), and
-         there is no client-facing "edit therapy" surface this could otherwise live on. GroupTherapy
-         excluded (TT-7.5b). -->
+         there is no client-facing "edit therapy" surface this could otherwise live on.
+         TT-7.5b-b5/SCRUM-269: widened to GroupTherapy too -- "counsellor" here means any ACTIVE
+         counsellor on the group (b0's own toggle-authority decision), not just the addedby;
+         `computedIsCounsellor` is only a display nicety (same as the paymentRoster block above),
+         the real authorization boundary is EnsureCanSetGroupTherapyPaymentGateAction server-side. -->
     <div
-      v-if="therapyType !== 'group' && computedIsCounsellor && therapy.paymentType === 'PAID'"
+      v-if="computedIsCounsellor && therapy.paymentType === 'PAID'"
       class="mt-4 pt-4 border-t border-gray-200"
     >
       <label class="flex items-center">
         <Checkbox :checked="strictPaymentGate" @update:checked="onToggleStrictGate" :disabled="savingStrictGate" />
-        <span class="ms-2 text-sm text-gray-600">Require payment before the client can access this therapy.</span>
+        <span class="ms-2 text-sm text-gray-600">Require payment before {{ subjectNoun }} can access this {{ gateNoun }}.</span>
       </label>
       <div class="mt-1 text-xs text-gray-500">
-        When on, the client must complete payment before they can access this therapy (or, for a per-session therapy, each session). When off (default), the client can access it while payment is still pending.
+        When on, {{ eachSubjectNoun }} must complete payment before they can access {{ theGateNoun }} (or, for a per-session {{ gateNoun }}, each session). When off (default), {{ subjectNoun }} can access it while payment is still pending.
+      </div>
+
+      <!-- TT-7.5b-b5/SCRUM-269: GroupTherapy-only sibling setting (b1's own allowFreeHistoricalAccess). -->
+      <div v-if="therapyType === 'group'" class="mt-4">
+        <label class="flex items-center">
+          <Checkbox :checked="allowFreeHistoricalAccess" @update:checked="onToggleAllowFreeHistoricalAccess" :disabled="savingHistoricalAccess" />
+          <span class="ms-2 text-sm text-gray-600">Let new joiners see content posted before they joined for free.</span>
+        </label>
+        <div class="mt-1 text-xs text-gray-500">
+          When on (default), a member who joins after payment is required can still see resources/messages posted before they joined without paying -- only new content requires payment. When off, everything requires payment regardless of when a member joined.
+        </div>
       </div>
     </div>
 
@@ -180,6 +194,13 @@ const { alertData, clearAlertData, setFailedAlertData, setSuccessAlertData } = u
 const { initiating, requestingRefund, canPayForTherapy, canRequestRefund, payForTherapy, requestRefund, paymentStatusLabel, isRetryStatus, viewerScopedPaymentStatus } = usePayment(toRef(props, 'therapy'), props.therapyType)
 
 const canPay = computed(() => canPayForTherapy(props.computedIsParticipant, props.computedIsCounsellor))
+
+// TT-7.5b-b5/SCRUM-269 (reviewer suggestion): factored out of what were four inline ternaries
+// repeated across the strict-gate toggle's copy below, purely for readability.
+const subjectNoun = computed(() => props.therapyType === 'group' ? 'a member' : 'the client')
+const eachSubjectNoun = computed(() => props.therapyType === 'group' ? 'each member' : 'the client')
+const gateNoun = computed(() => props.therapyType === 'group' ? 'group' : 'therapy')
+const theGateNoun = computed(() => props.therapyType === 'group' ? 'the group' : 'this therapy')
 
 async function clickedPay() {
   try {
@@ -230,24 +251,41 @@ watch(() => props.therapy?.paymentData?.strictPaymentGate, (value) => {
   strictPaymentGate.value = !!value
 })
 
-// Inertia's router.patch(), not plain axios -- TherapyController::updateTherapy() responds with
-// Redirect::back() (a 302, not JSON), which a raw axios request isn't set up to follow correctly
-// (it surfaced as ERR_TOO_MANY_REDIRECTS in manual testing). Inertia's router handles that
-// response as the partial reload it's meant to be, matching how UpdateIndividualTherapyFormModal.vue
-// already submits to this same endpoint via useForm().patch() rather than axios.
+// TT-7.5b-b5/SCRUM-269: GroupTherapy-only sibling toggle (b1's allowFreeHistoricalAccess).
+// Defaults to true, matching CreateGroupTherapyAction/UpdateGroupTherapyAction's own default.
+const allowFreeHistoricalAccess = ref(props.therapy?.paymentData?.allowFreeHistoricalAccess ?? true)
+const savingHistoricalAccess = ref(false)
+
+watch(() => props.therapy?.paymentData?.allowFreeHistoricalAccess, (value) => {
+  allowFreeHistoricalAccess.value = value ?? true
+})
+
+// Inertia's router.patch(), not plain axios -- both TherapyController::updateStrictPaymentGate()
+// and GroupTherapyService::updateGroupTherapyPaymentGate() respond with Redirect::back() (a 302,
+// not JSON), which a raw axios request isn't set up to follow correctly (it surfaced as
+// ERR_TOO_MANY_REDIRECTS in manual testing during TT-7.5a). Inertia's router handles that response
+// as the partial reload it's meant to be, matching how UpdateIndividualTherapyFormModal.vue already
+// submits to this same pattern via useForm().patch() rather than axios.
 function onToggleStrictGate(checked) {
   const previous = strictPaymentGate.value
   strictPaymentGate.value = checked
   savingStrictGate.value = true
 
-  router.patch(route('therapies.strict_payment_gate.update', { therapyId: props.therapy.id }), {
+  const routeName = props.therapyType === 'group'
+    ? 'group.therapies.payment_gate.update'
+    : 'therapies.strict_payment_gate.update'
+  const routeParams = props.therapyType === 'group'
+    ? { groupTherapyId: props.therapy.id }
+    : { therapyId: props.therapy.id }
+
+  router.patch(route(routeName, routeParams), {
     strictPaymentGate: checked,
   }, {
     preserveScroll: true,
     onSuccess: () => {
       setSuccessAlertData({
         message: checked
-          ? 'Strict payment gate enabled -- the client must pay before continuing.'
+          ? `Strict payment gate enabled -- ${props.therapyType === 'group' ? 'members' : 'the client'} must pay before continuing.`
           : 'Strict payment gate disabled -- trust-based access restored.',
         time: 6000,
       })
@@ -260,6 +298,38 @@ function onToggleStrictGate(checked) {
     },
     onFinish: () => {
       savingStrictGate.value = false
+    },
+  })
+}
+
+// TT-7.5b-b5/SCRUM-269: GroupTherapy-only -- deliberately always posts to the dedicated
+// group.therapies.payment_gate.update endpoint (never the general group.therapies.update one),
+// same reasoning as onToggleStrictGate above for the group branch.
+function onToggleAllowFreeHistoricalAccess(checked) {
+  const previous = allowFreeHistoricalAccess.value
+  allowFreeHistoricalAccess.value = checked
+  savingHistoricalAccess.value = true
+
+  router.patch(route('group.therapies.payment_gate.update', { groupTherapyId: props.therapy.id }), {
+    allowFreeHistoricalAccess: checked,
+  }, {
+    preserveScroll: true,
+    onSuccess: () => {
+      setSuccessAlertData({
+        message: checked
+          ? 'Free historical access enabled -- new joiners can see content posted before they joined.'
+          : 'Free historical access disabled -- all content now requires payment regardless of join date.',
+        time: 6000,
+      })
+    },
+    onError: (errors) => {
+      allowFreeHistoricalAccess.value = previous
+      setFailedAlertData({
+        message: errors?.alert || errors?.allowFreeHistoricalAccess || 'Could not update the payment gate setting. Please try again.',
+      })
+    },
+    onFinish: () => {
+      savingHistoricalAccess.value = false
     },
   })
 }

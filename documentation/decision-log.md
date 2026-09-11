@@ -5999,3 +5999,49 @@ transaction has no bearing on a new joiner's own join attempt. Full Pest suite: 
 tests). No mutation testing performed -- there is no authorization branch to mutate; the tests exist
 purely to catch a FUTURE regression if someone later, incorrectly, adds a payment check to the join
 path.
+
+---
+
+## 2026-09-11 — SCRUM-269 (TT-7.5b-b5): frontend -- toggle + payment-required banner
+
+**Widened, not forked**: per the architect's own finding during SCRUM-216's scoping,
+`PaymentRequiredBanner.vue` was widened to a payable-type-parameterized component
+(`payableId`/`payableType` props choosing between `transactions.initiate.therapy` and
+`transactions.initiate.group_therapy`) rather than forking a second `GroupPaymentRequiredBanner.vue`
+-- `GroupTherapyController` still renders its own separate Vue page today (`GroupTherapy/Index.vue`,
+itself a thin wrapper delegating to the same `UnifiedTherapy.vue` individual-Therapy already uses),
+so a fork would have been exactly the "third parallel pattern" this codebase is trying to move away
+from. `Home.vue` gained a sibling `paymentRequiredGroupTherapyId` prop (the backend already flashes
+this key, from TT-7.5b-b2) and a small computed pair resolving which of the two mutually-exclusive
+flash props is actually present.
+
+**Toggle surface confirmed live and correctly wired**: traced the actual page-component chain
+(`GroupTherapy/Index.vue` → `UnifiedTherapy.vue` → `BaseTherapyLayout.vue` → `TherapyInformation.vue`
+→ `TherapyPaymentDetails.vue`) to confirm `TherapyPaymentDetails.vue` -- not a dead/legacy
+component -- is the actual live surface for both Therapy and GroupTherapy today, despite
+`UnifiedTherapy.vue` itself not visibly referencing `strictPaymentGate` (it's several components
+deep). Widened its existing `therapyType !== 'group'`-excluded strict-gate toggle to cover both
+types, added a second, GroupTherapy-only toggle for `allowFreeHistoricalAccess`, and split the save
+handler by `therapyType` to post to the correct backend endpoint (`therapies.strict_payment_gate.update`
+vs. the dedicated `group.therapies.payment_gate.update` built in b1, specifically so an
+active-but-non-addedby counsellor can still reach it). `computedIsCounsellor` here is a display
+nicety only, matching the existing `paymentRoster` block's own precedent -- the real authorization
+boundary stays server-side (`EnsureCanSetGroupTherapyPaymentGateAction`).
+
+**Playwright-verified golden path** (mandatory per this ticket's own Process line): logged in as
+the seeded `group_payment_demo_counsellor`, toggled strict-gate on via the real UI (success toast
+confirmed, persisted across reload), confirmed `group_payment_demo_member_unpaid` gets redirected
+to Home with the working banner and a `pay now` button that initiates the correct backend request
+(gracefully failing only because no real Paystack key is configured in this dev environment),
+confirmed `group_payment_demo_member_paid` is unaffected, then toggled the setting back off to
+leave seeded demo data in its original state.
+
+**Two follow-ups filed from QA findings, both pre-existing and unrelated to this ticket's scope**:
+SCRUM-272 (Paystack initiation hangs to a 502 instead of failing fast when unreachable -- backend
+resilience, not a payment-gate correctness issue) and SCRUM-273 (a plain GroupTherapy member's UI
+shows counsellor-only update/delete actions -- unconfirmed whether the backend itself would also
+incorrectly allow it, flagged for its own triage rather than guessed at here).
+
+No backend/PHP files touched -- pure frontend change, full Pest suite unaffected (1482 passed,
+unchanged from b4). Reviewer approved with two minor suggestions (extracting repeated inline
+ternaries into computed properties, a pre-existing trailing-newline nit) applied before merge.

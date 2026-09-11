@@ -66,6 +66,8 @@ const therapyData = ref({
     'shareEqually': false,
     'asCounsellor': false,
     'sharePercentage': '',
+    'strictPaymentGate': false,
+    'allowFreeHistoricalAccess': true,
 })
 const therapyErrors = ref({
     'name': '',
@@ -86,6 +88,8 @@ const therapyErrors = ref({
     'allowAnyone': '',
     'shareEqually': '',
     'sharePercentage': '',
+    'strictPaymentGate': '',
+    'allowFreeHistoricalAccess': '',
 })
 
 watchEffect(() => {
@@ -103,6 +107,8 @@ watch(
             therapyData.value.amount = ''
             therapyData.value.currency = defaultCurrency
             therapyData.value.per = ''
+            therapyData.value.strictPaymentGate = false
+            therapyData.value.allowFreeHistoricalAccess = true
         }
     }
 )
@@ -267,7 +273,7 @@ async function createTherapy() {
             setErrorData(therapyErrors, err.response.data.errors, [
                 'name', 'about', 'anonymous', 'allowInPerson', 'public', 'sessionType',
                 'paymentType', 'per', 'amount', 'currency', 'maxSessions', 'maxUsers', 'maxCounsellors',
-                'allowAnyone'
+                'allowAnyone', 'strictPaymentGate', 'allowFreeHistoricalAccess'
             ])
             return
         }
@@ -303,6 +309,8 @@ function clearData() {
     therapyData.value.per = ''
     therapyData.value.cases = []
     therapyData.value.counsellorIds = []
+    therapyData.value.strictPaymentGate = false
+    therapyData.value.allowFreeHistoricalAccess = true
 }
 
 function closeModal() {
@@ -613,6 +621,28 @@ function closeModal() {
                                 <div class="mt-2 text-xs text-gray-500">Payment will automatically be PER THERAPY when session type is ONCE.</div>
                                 <InputError class="mt-2" :message="therapyErrors.amount" />
                             </div>
+
+                            <!-- TT-7.5b-b5/SCRUM-269: initial values only -- mirrors
+                                 IndividualTherapyFormModal.vue's own identical strictPaymentGate
+                                 initial-value block. Once an active counsellor is assigned, only
+                                 they (or an admin) can change either setting
+                                 (EnsureCanSetGroupTherapyPaymentGateAction). -->
+                            <div class="mt-4 mx-auto max-w-[400px]">
+                                <label class="flex items-center">
+                                    <Checkbox name="strictPaymentGate" v-model:checked="therapyData.strictPaymentGate" />
+                                    <span class="ms-2 text-sm text-gray-600">Require payment before a member can access this group.</span>
+                                </label>
+                                <div class="mt-2 text-xs text-gray-500">Once a counsellor is assigned, only an active counsellor can change this setting.</div>
+                                <InputError class="mt-2" :message="therapyErrors.strictPaymentGate" />
+
+                                <label class="flex items-center mt-4">
+                                    <Checkbox name="allowFreeHistoricalAccess" v-model:checked="therapyData.allowFreeHistoricalAccess" />
+                                    <span class="ms-2 text-sm text-gray-600">Let new joiners see content posted before they joined for free.</span>
+                                </label>
+                                <div class="mt-2 text-xs text-gray-500">When on (default), a member who joins after payment is required can still see resources posted before they joined -- only new content requires payment.</div>
+                                <InputError class="mt-2" :message="therapyErrors.allowFreeHistoricalAccess" />
+                            </div>
+
                             <div v-if="therapyData.asCounsellor" class="mt-4 mx-auto max-w-[400px]">
                                 <div class="text-gray-600">How do you want earnings shared?</div>
                                 <div class="mt-4">
