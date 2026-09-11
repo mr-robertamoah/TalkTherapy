@@ -45,7 +45,19 @@ import axios from 'axios'
 //     onVideoAvailable(id)                        -- this participant's video is ready;
 //                                                     VideoCallPanel.vue should call attachVideo
 //     onConnectionQualityChanged(quality)          -- 'good' | 'poor' | 'unknown'
-//     onError(error)
+//     onError(error)                               -- a reportable problem that does NOT mean
+//                                                     the call itself ended (e.g. Daily's own
+//                                                     'nonfatal-error') -- surfaced, not recovered
+//                                                     from
+//     onDisconnected(error)                        -- TT-3.1d/SCRUM-277: the LOCAL user's own
+//                                                     connection to the provider ended
+//                                                     unexpectedly (not because leave()/end()
+//                                                     was called) -- see handleDisconnected()
+//                                                     below for the reconnect flow this triggers.
+//                                                     Never a remote participant leaving (that's
+//                                                     onParticipantLeft), and NEVER anything that
+//                                                     touches Session.status -- this composable
+//                                                     has no code path that ever could.
 export default function useVideoSession(session) {
     const status = ref('idle') // idle | connecting | connected | payment_required | ended | error
     const participants = ref([])
@@ -53,6 +65,12 @@ export default function useVideoSession(session) {
     const isCameraOn = ref(true)
     const connectionQuality = ref('unknown')
     const lastError = ref('')
+    // TT-3.1d/SCRUM-277: layered independently on top of `status` rather than as its own status
+    // value -- a reconnect attempt goes through the exact same 'connecting' -> 'connected'/'error'
+    // states a first-time join does (same join(), same code path), this ref only exists so
+    // VideoCallPanel.vue can show "reconnecting…" instead of "connecting to video…" for the
+    // second case.
+    const reconnecting = ref(false)
 
     let client = null
     let channelName = null
@@ -91,6 +109,7 @@ export default function useVideoSession(session) {
             onError: (error) => {
                 lastError.value = error?.message || error?.errorMsg || 'An unexpected video error occurred.'
             },
+            onDisconnected: handleDisconnected,
         }
     }
 
@@ -187,8 +206,80 @@ export default function useVideoSession(session) {
         if (client) await teardownClient()
     }
 
+    // TT-3.1d/SCRUM-277: fired when the active provider client's own SDK reports the LOCAL
+    // connection dropped out from under us (not a leave()/end() we called ourselves -- both
+    // clients gate this via their own intentionalTeardown flag). Deliberately never touches
+    // Session.status or calls sessions.video.leave/end -- a transient disconnect is not a leave,
+    // the participant is still "in" the session's video from the backend's point of view (the
+    // VideoSession epoch stays open; nothing here ends it), they just need fresh provider
+    // credentials to reconnect to it. Rejoining reuses join() itself (the exact same code path a
+    // first-time join takes -- same payment-gate/availability checks, same VideoSession epoch
+    // reuse via JoinVideoSessionAction's own find-or-create logic) rather than any provider-
+    // specific "resume" API, so this works identically for both providers without needing to
+    // know which one is active.
+    async function handleDisconnected() {
+        if (status.value !== 'connected') return
+
+        // Security-review finding (2026-09-11): captured here, the same way join() captures its
+        // own token, so cancel() firing anywhere in this function's own async gaps (most
+        // importantly while `staleClient.destroy()` is pending, the one window where `client` is
+        // already null and cancel()'s `if (client) …` branch has nothing left to tear down) is
+        // actually noticed before the reconnect's HTTP call goes out -- without this, a
+        // component unmounting during exactly that window left a live camera/mic feed and
+        // provider connection open for nobody, the same resource-leak class join()'s own token
+        // check already guards against for a first-time join.
+        //
+        // Review finding (2026-09-11): leave()/end() now bump this SAME counter (see below), so
+        // a concurrent explicit "leave call" click or the other participant ending the call
+        // invalidates an in-flight reconnect exactly the same way an unmount does -- without
+        // that, a user who clicked "leave" while a disconnect was also being handled could see
+        // this reconnect silently resurrect the call after they'd already left it.
+        const token = ++joinToken
+
+        reconnecting.value = true
+        // Review finding (2026-09-11): deliberately does NOT stopListeningForStatusChanges() here
+        // (unlike leave()/end()/teardownClient()) -- the whole point of staying subscribed
+        // through the reconnect gap is so an "ended" broadcast arriving DURING it (e.g. the other
+        // participant ending the call at the same moment this side disconnected) is still seen.
+        // listenForStatusChanges()'s own handler below reacts to that by invalidating this same
+        // token, which the check after the destroy() await picks up.
+
+        const staleClient = client
+        client = null
+        participants.value = []
+        // 'idle', not 'connecting' -- join()'s own re-entry guard only blocks 'connecting'/
+        // 'connected', so this must clear 'connected' without tripping that guard when join() is
+        // called again just below.
+        status.value = 'idle'
+
+        if (staleClient) {
+            try {
+                await staleClient.destroy()
+            } catch (err) {
+                // Best-effort, same reasoning as leave()/end()'s own provider-call handling --
+                // the client is already gone from this composable's point of view either way.
+            }
+        }
+
+        if (token !== joinToken) {
+            // Cancelled while tearing down the stale client -- do not proceed to reconnect for a
+            // caller that's already gone.
+            reconnecting.value = false
+            return
+        }
+
+        await join()
+        reconnecting.value = false
+    }
+
     async function leave() {
         if (!session.value?.id) return
+
+        // Review finding (2026-09-11): invalidates any in-flight join()/handleDisconnected()
+        // reconnect attempt -- without this, a disconnect racing this explicit "leave call"
+        // click could complete its own automatic rejoin afterward and silently resurrect a call
+        // the user just left.
+        joinToken++
 
         try {
             await axios.post(route('sessions.video.leave', session.value.id))
@@ -211,6 +302,9 @@ export default function useVideoSession(session) {
     // a UI, not a new composable method.
     async function end() {
         if (!session.value?.id) return
+
+        // Same reasoning as leave()'s own joinToken bump above.
+        joinToken++
 
         try {
             await axios.post(route('sessions.video.end', session.value.id))
@@ -249,10 +343,21 @@ export default function useVideoSession(session) {
             // The room ended for everyone (e.g. the other participant ended it) -- react locally
             // even though we didn't call end() ourselves. Deliberately does NOT re-issue the
             // sessions.video.end HTTP call -- that's the ender's own action, already done.
-            if (data.status === 'ended' && status.value === 'connected') {
-                teardownClient()
-                status.value = 'ended'
-            }
+            //
+            // Review finding (2026-09-11): widened from `status.value === 'connected'` to "any
+            // state except already-ended" -- this listener stays subscribed through
+            // handleDisconnected()'s reconnect gap now (see its own comment), so an "ended"
+            // broadcast arriving DURING a reconnect must still be acted on. Without the joinToken
+            // bump here, a reconnect already past its own destroy()-await check could still go on
+            // to call join() and silently open a brand-new VideoSession epoch/room instead of
+            // surfacing "ended" -- JoinVideoSessionAction's own find-or-create only checks
+            // whereNull('ended_at'), so it has no way to know a rejoin was already stale.
+            if (data.status !== 'ended' || status.value === 'ended') return
+
+            joinToken++
+            teardownClient()
+            status.value = 'ended'
+            reconnecting.value = false
         })
     }
 
@@ -268,7 +373,7 @@ export default function useVideoSession(session) {
     }
 
     return {
-        status, participants, isMuted, isCameraOn, connectionQuality, lastError,
-        join, leave, end, toggleMute, toggleCamera, attachVideo,
+        status, participants, isMuted, isCameraOn, connectionQuality, lastError, reconnecting,
+        join, leave, end, cancel, toggleMute, toggleCamera, attachVideo,
     }
 }

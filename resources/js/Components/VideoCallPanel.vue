@@ -18,7 +18,7 @@ const emit = defineEmits(['close'])
 
 const sessionRef = computed(() => props.session)
 const {
-  status, participants, isMuted, isCameraOn, connectionQuality, lastError,
+  status, participants, isMuted, isCameraOn, connectionQuality, lastError, reconnecting,
   join, leave, cancel, toggleMute, toggleCamera, attachVideo,
 } = useVideoSession(sessionRef)
 
@@ -60,16 +60,20 @@ onMounted(() => {
 // while a camera/mic permission prompt is still up), the in-flight join() would resolve later
 // and open a live provider connection nobody is left to close. cancel() invalidates that in-flight
 // join so it tears itself down once its next await resolves, instead of ever reaching 'connected'.
+//
+// TT-3.1d/SCRUM-277: also covers 'idle' -- handleDisconnected()'s own reconnect flow briefly sets
+// status back to 'idle' before calling join() again, and cancel() is a safe no-op if called before
+// any join was ever attempted at all.
 onBeforeUnmount(() => {
   if (status.value === 'connected') leave()
-  else if (status.value === 'connecting') cancel()
+  else if (status.value === 'connecting' || status.value === 'idle') cancel()
 })
 </script>
 
 <template>
   <div class="mt-4 bg-white border border-gray-200 rounded-lg shadow-sm p-4">
-    <div v-if="status === 'connecting'" class="text-center text-sm text-gray-600 py-8">
-      Connecting to video…
+    <div v-if="status === 'connecting' || (status === 'idle' && reconnecting)" class="text-center text-sm text-gray-600 py-8">
+      {{ reconnecting ? 'Reconnecting…' : 'Connecting to video…' }}
     </div>
 
     <VideoPaymentRequiredBanner
