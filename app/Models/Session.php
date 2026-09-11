@@ -93,6 +93,13 @@ class Session extends Model
         return $this->hasMany(VideoSession::class);
     }
 
+    // TT-3.1e-a/SCRUM-280: PER_SESSION-scoped video consent grants for this specific session --
+    // a PER_THERAPY grant lives on the parent Therapy's own morphMany instead (see Therapy model).
+    public function videoConsents()
+    {
+        return $this->morphMany(VideoConsent::class, 'consentable');
+    }
+
     public function transactions()
     {
         return $this->morphMany(Transaction::class, 'for');

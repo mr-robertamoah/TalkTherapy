@@ -6272,3 +6272,72 @@ flag for COPPA-adjacent concerns given minors as young as 10 on this platform) r
 was presented to the user as this ticket's required `/start-feature` Requirements/Questions/Risks
 output, pending their answers before any further engineering (project-manager/architect
 consultation, or implementation) proceeds.
+
+---
+
+## 2026-09-11 — SCRUM-278 (TT-3.1e): full guardian video-consent feature scoped and approved
+
+**What happened**: following the interim-fix entry above, the user answered all 5 open policy
+questions directly, resolving SCRUM-278's own full scope. project-manager then split the work
+into 7 sub-tickets (SCRUM-280 through SCRUM-286, TT-3.1e-a through -g), and architect designed
+the data model for the first of those (TT-3.1e-a). The user reviewed and approved the complete
+plan, including one architect-suggested addition, before any implementation began.
+
+**Final policy decisions (user's own answers, verbatim intent)**:
+1. **Notification cadence**: a guardian is reminded a day before AND an hour before a video
+   session, but only while consent is not yet given for the relevant scope -- no reminder once
+   granted. Approval happens via a button on the therapy, from the guardian's own account.
+2. **Consent scope -- both modes exist, as a per-therapy setting**: `PER_THERAPY` (one grant
+   covers all of that therapy's sessions) and `PER_SESSION` (each session needs its own grant),
+   selectable by either the assigned counsellor or any guardian. Reminders for `PER_THERAPY`
+   fire per upcoming session only until the one-time grant exists; `PER_SESSION` reminders fire
+   per session, independently.
+3. **Revocation is immediate**: it must both block all future joins AND end any currently-active
+   call for that scope right now -- not a flag checked lazily on next join.
+4. **Guardianship deletion**: lapses that specific guardian's video consent grants for that ward.
+   A broader, related idea the user raised -- "a minor with no guardian at all can't even keep
+   the whole therapy, not just video" -- was explicitly deferred to its own separate ticket, not
+   folded into this one, per the user's own direction.
+5. **Multiple guardians**: any one guardian's consent is sufficient (no unanimity requirement),
+   but every guardian of that ward must be able to see WHO gave consent (an audit trail visible
+   to all co-guardians, not just the one who acted).
+
+**Data-model decisions (architect, user-approved)**: `therapies.video_consent_mode` as a
+dedicated nullable column (not folded into the existing `payment_data` JSON blob, which is
+payment-specific and has its own documented whole-blob-overwrite fragility). A single
+`video_consents` table, polymorphic to `Therapy` (PER_THERAPY) or `Session` (PER_SESSION) scope,
+with grant rows never deleted -- revocation sets `revoked_at`/`revoked_by_guardian_id` on the
+existing row rather than creating a new "leave" row (unlike `VideoSessionParticipant`'s own
+append-only-per-cycle precedent, which doesn't fit here since a consent grant has exactly one
+lifecycle at a time per scope). Mode switches are prospective-only -- an existing valid grant
+survives a later mode change, which the enforcement query (an OR across both scope types) makes
+correct by construction without any special-case invalidation logic. Added a
+`revocation_reason` enum (`guardian_action` | `guardianship_removed`) per the architect's own
+suggestion, explicitly agreed to by the user, so the audit UI can explain why a grant lapsed.
+
+**Sequencing**: e-a (schema) → e-b (grant flow) → {e-c (invalidation, flagged highest-risk --
+real-time call termination), e-e (reminders) in parallel} → e-d (enforcement, must wait for e-c
+fully done, not just started) → e-f (frontend) → e-g (regression/QA closeout, retires the
+interim block). ~47pts total, floor not ceiling per this project's own recurring estimation
+pattern. `documentation/implementation_plan.md`'s TT-3.1 row updated with the full breakdown.
+
+---
+
+## 2026-09-11 — SCRUM-280 (TT-3.1e-a): no DB-level "one valid grant per scope" constraint
+
+**What happened**: reviewing TT-3.1e-a's `video_consents` schema, the reviewer noted nothing at
+the database level prevents two simultaneously non-revoked rows for the same
+`consentable_type`/`consentable_id` scope -- MySQL 8 has no native partial/filtered unique index
+(the kind that would let a unique constraint apply only to rows `WHERE revoked_at IS NULL`), so
+this can't be enforced at the schema layer without a workaround (e.g. a generated/stored column
+collapsing all `revoked_at IS NULL` rows to a shared sentinel value for a real unique index).
+
+**Decision**: accept this as a known, deliberate limitation rather than adding a workaround
+column now -- the "exactly one currently-valid grant per scope" invariant is enforced entirely by
+application logic (the grant-creation action) rather than the schema. Flagging explicitly here so
+TT-3.1e-b's grant-creation action is written knowing it is the SOLE enforcer of this invariant
+(e.g. it must check for an existing valid grant for the scope before inserting a new one, inside
+a transaction/lock if double-submission is a realistic risk), and so a future reviewer doesn't
+mistake the missing constraint for an oversight and "fix" it by adding a plain (non-partial)
+unique index, which would incorrectly block the legitimate revoke-then-re-grant cycle the whole
+table design exists to support.
