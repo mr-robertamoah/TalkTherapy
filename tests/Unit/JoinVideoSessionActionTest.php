@@ -45,7 +45,7 @@ function fakeVideoProvider(): VideoProviderInterface
 
 function onlineInSessionTherapySessionForJoin(array $overrides = []): Session
 {
-    $client = User::factory()->create();
+    $client = User::factory()->adult()->create();
     $counsellorUser = User::factory()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
     $therapy = Therapy::factory()->create([

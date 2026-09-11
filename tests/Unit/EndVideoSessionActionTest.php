@@ -117,7 +117,7 @@ test('ending when there is no open video session at all is a safe no-op', functi
 // check at all, so anyone holding a Session object could end another pair's call. $user is
 // optional (see the action's own comment on why), but when given, must be a participant.
 test('a non-participant cannot end another pair\'s video call', function () {
-    $client = User::factory()->create();
+    $client = User::factory()->adult()->create();
     $counsellorUser = User::factory()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
     $therapy = Therapy::factory()->create([
@@ -154,7 +154,7 @@ test('a non-participant cannot end another pair\'s video call', function () {
 
 test('a session participant can end the call', function () {
     Event::fake();
-    $client = User::factory()->create();
+    $client = User::factory()->adult()->create();
     $counsellorUser = User::factory()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
     $therapy = Therapy::factory()->create([

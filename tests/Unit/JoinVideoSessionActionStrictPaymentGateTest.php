@@ -74,7 +74,7 @@ function onlineInSessionSessionForVideoPaymentGate(Therapy $therapy): Session
 
 test('joining denies a client with no grant for a PER_SESSION-gated session', function () {
     app()->instance(VideoProviderInterface::class, fakeVideoProviderForPaymentGateTest());
-    $client = User::factory()->create();
+    $client = User::factory()->adult()->create();
     $therapy = perSessionStrictGatedTherapyForVideoJoin(['addedby_id' => $client->id]);
     $session = onlineInSessionSessionForVideoPaymentGate($therapy);
 
@@ -86,7 +86,7 @@ test('joining denies a client with no grant for a PER_SESSION-gated session', fu
 
 test('joining allows a client once a session-level grant exists', function () {
     app()->instance(VideoProviderInterface::class, fakeVideoProviderForPaymentGateTest());
-    $client = User::factory()->create();
+    $client = User::factory()->adult()->create();
     $counsellorUser = User::factory()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
     $therapy = perSessionStrictGatedTherapyForVideoJoin(['addedby_id' => $client->id, 'counsellor_id' => $counsellor->id]);
@@ -104,7 +104,7 @@ test('joining allows a client once a session-level grant exists', function () {
 
 test('joining blocks a PER_THERAPY-gated therapy\'s video directly, closing the same still-reachable hole reading/creating messages was fixed for', function () {
     app()->instance(VideoProviderInterface::class, fakeVideoProviderForPaymentGateTest());
-    $client = User::factory()->create();
+    $client = User::factory()->adult()->create();
     $therapy = perTherapyStrictGatedTherapyForVideoJoin(['addedby_id' => $client->id]);
     $session = onlineInSessionSessionForVideoPaymentGate($therapy);
 
@@ -116,7 +116,7 @@ test('joining blocks a PER_THERAPY-gated therapy\'s video directly, closing the 
 
 test('joining allows a PER_THERAPY-gated therapy\'s video once a therapy-level grant already exists (e.g. from page load)', function () {
     app()->instance(VideoProviderInterface::class, fakeVideoProviderForPaymentGateTest());
-    $client = User::factory()->create();
+    $client = User::factory()->adult()->create();
     $counsellorUser = User::factory()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
     $therapy = perTherapyStrictGatedTherapyForVideoJoin(['addedby_id' => $client->id, 'counsellor_id' => $counsellor->id]);
@@ -137,7 +137,7 @@ test('joining allows a PER_THERAPY-gated therapy\'s video once a therapy-level g
 // identical scenario.
 test('joining denies a client when the retainer-covering organization is billing-suspended', function () {
     app()->instance(VideoProviderInterface::class, fakeVideoProviderForPaymentGateTest());
-    $client = User::factory()->create();
+    $client = User::factory()->adult()->create();
     $counsellorUser = User::factory()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
     $therapy = perTherapyStrictGatedTherapyForVideoJoin(['addedby_id' => $client->id, 'counsellor_id' => $counsellor->id]);

@@ -628,8 +628,16 @@ const computedCanAbandon = computed(() => {
 // (EnsureVideoIsAvailableForSessionAction) -- a defense-in-depth nicety, not the real
 // authorization, which the backend re-checks on every join/leave/end call regardless. TT-3.1 is
 // 1:1 Therapy only (therapyType === 'individual') -- GroupTherapy video is TT-3.2, unscoped.
+//
+// TT-3.1e/SCRUM-278 interim safeguard (2026-09-11): mirrors the same fail-closed block added to
+// EnsureVideoIsAvailableForSessionAction -- checks the CURRENTLY LOGGED IN viewer's own isAdult
+// (auth.user, already exposed by UserResource -- no resource change needed), not the therapy's
+// client specifically, since the counsellor side must stay exempt here too (props.isCounsellor).
+// Defaults to blocked (`?? false`, not `?? true`) if isAdult is ever missing/undefined for any
+// reason -- fail closed, matching the backend's own default-to-deny stance, not fail open.
 const computedCanJoinVideo = computed(() => {
     return props.therapyType === 'individual' &&
+        (props.isCounsellor || (usePage().props.auth.user?.isAdult ?? false)) &&
         props.activeSession?.type === 'ONLINE' &&
         ['IN_SESSION', 'IN_SESSION_CONFIRMATION'].includes(props.activeSession?.status) &&
         props.isParticipant
