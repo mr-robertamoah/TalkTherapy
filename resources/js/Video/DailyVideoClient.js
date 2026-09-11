@@ -16,6 +16,11 @@ export default function createDailyVideoClient(callbacks) {
     let callObject = null
     let audioEnabled = true
     let videoEnabled = true
+    // TT-3.1d/SCRUM-277: set right before WE call destroy() (leave()/end()) so the 'error' handler
+    // below can tell "the call ended because we tore it down on purpose" apart from "the call
+    // ended out from under us" -- only the latter is a disconnect useVideoSession.js should try to
+    // recover from.
+    let intentionalTeardown = false
     const attachedElements = new Map()
 
     function idFor(participant) {
@@ -62,7 +67,14 @@ export default function createDailyVideoClient(callbacks) {
         callObject.on('network-quality-change', (e) => {
             callbacks.onConnectionQualityChanged?.(e.networkState ?? 'unknown')
         })
-        callObject.on('error', (e) => callbacks.onError?.(e))
+        // TT-3.1d/SCRUM-277: Daily's own docs describe 'error' (unlike 'nonfatal-error') as
+        // meaning the call itself has ended -- an unrequested one is exactly a disconnect, not
+        // just a reportable problem, so it routes to onDisconnected (reconnect-worthy) rather
+        // than onError (which useVideoSession.js only ever surfaces as a dead-end message).
+        callObject.on('error', (e) => {
+            if (intentionalTeardown) return
+            callbacks.onDisconnected?.(e)
+        })
         callObject.on('nonfatal-error', (e) => callbacks.onError?.(e))
 
         await callObject.join({ url: credentials.url, token: credentials.token })
@@ -98,6 +110,7 @@ export default function createDailyVideoClient(callbacks) {
     }
 
     function teardown() {
+        intentionalTeardown = true
         callObject?.destroy()
     }
 

@@ -21,6 +21,13 @@ export default function createChimeVideoClient(callbacks) {
     let videoEnabled = false
     let localAttendeeId = null
     let presenceCallback = null
+    // TT-3.1d/SCRUM-277: set right before WE call stop() (via teardown(), from leave()/end()) so
+    // audioVideoDidStop below can tell "we stopped it on purpose" apart from "it stopped out from
+    // under us" -- only the latter is a disconnect useVideoSession.js should try to recover from.
+    // Replaces an earlier `if (!meetingSession) return` guard that was unreliable: destroy()
+    // didn't null meetingSession until AFTER teardown()/stop() resolved, so an intentional stop
+    // could still see meetingSession non-null at the exact moment this callback fired.
+    let intentionalTeardown = false
     const attachedElements = new Map()
     const tileIdToParticipantId = new Map()
 
@@ -46,9 +53,9 @@ export default function createChimeVideoClient(callbacks) {
         },
         audioVideoDidStop(sessionStatus) {
             // A non-explicit stop (we didn't call teardown() ourselves) means the connection
-            // dropped out from under us -- surface it as an error rather than silently going dark.
-            if (!meetingSession) return
-            callbacks.onError?.(new Error(`Video connection stopped unexpectedly (status ${sessionStatus?.statusCode?.()}).`))
+            // dropped out from under us -- a disconnect, not just a reportable error.
+            if (intentionalTeardown) return
+            callbacks.onDisconnected?.(new Error(`Video connection stopped unexpectedly (status ${sessionStatus?.statusCode?.()}).`))
         },
     }
 
@@ -116,6 +123,7 @@ export default function createChimeVideoClient(callbacks) {
     async function teardown() {
         if (!meetingSession) return
 
+        intentionalTeardown = true
         meetingSession.audioVideo.stopLocalVideoTile()
         await meetingSession.audioVideo.stopVideoInput()
         await meetingSession.audioVideo.stopAudioInput()
