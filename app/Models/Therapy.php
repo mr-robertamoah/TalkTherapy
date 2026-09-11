@@ -24,6 +24,7 @@ class Therapy extends Model
     protected $fillable = [
         'session_type', 'payment_type', 'background_story', 'allow_in_person', 'name',
         'public', 'anonymous', 'payment_data', 'status', 'max_sessions', 'counsellor_id',
+        'video_consent_mode',
     ];
 
     protected $casts = [
@@ -51,6 +52,13 @@ class Therapy extends Model
         // soft-deletes the Counsellor too) -- isParticipant()/notifications/etc. below all
         // assume this relation resolves rather than crashing on a null counsellor.
         return $this->belongsTo(Counsellor::class)->withTrashed();
+    }
+
+    // TT-3.1e-a/SCRUM-280: PER_THERAPY-scoped video consent grants for this therapy -- a
+    // PER_SESSION grant lives on the Session's own morphMany instead (see Session model).
+    public function videoConsents()
+    {
+        return $this->morphMany(VideoConsent::class, 'consentable');
     }
 
     public function isParticipant(User $user)
