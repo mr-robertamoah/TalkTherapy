@@ -125,6 +125,14 @@ class DatabaseSeeder extends Seeder
         // group therapies above never deterministically produce a PAID group with more than one
         // member's payment state known in advance.
         $this->createGroupPaymentDemoData();
+
+        // TT-7.5b-b6/SCRUM-270: a deterministic strict-gated GroupTherapy with an unpaid member
+        // AND a late-joining member -- nothing above ever produces a group with strictPaymentGate
+        // actually ON (createGroupPaymentDemoData()'s groups are trust-based/PAID-but-not-strict),
+        // so there was previously no way to manually exercise the payment-required redirect/banner
+        // or the late-joiner "free historical access" exemption without toggling a group's
+        // settings by hand first.
+        $this->createGroupStrictPaymentGateDemoData();
     }
 
     private function createLanguages($user)
@@ -1188,6 +1196,107 @@ class DatabaseSeeder extends Seeder
             'amount' => 5000,
             'currency' => 'USD',
             'status' => TransactionStatusEnum::success->value,
+        ]);
+    }
+
+    private function createGroupStrictPaymentGateDemoData(): void
+    {
+        $counsellorUser = User::factory()->create([
+            'firstName' => 'GroupStrictGate',
+            'lastName' => 'DemoCounsellor',
+            'email' => 'group.strict.gate.demo.counsellor@example.com',
+            'username' => 'group_strict_gate_demo_counsellor',
+            'password' => Hash::make('password'),
+            'email_verified_at' => now(),
+        ]);
+
+        $counsellor = $counsellorUser->counsellor()->create([
+            'name' => 'Dr. GroupStrictGate DemoCounsellor',
+            'about' => 'Seeded counsellor for testing the GroupTherapy strict-payment-gate/late-joiner UI (SCRUM-270).',
+            'email' => $counsellorUser->email,
+            'phone' => fake()->phoneNumber(),
+            'verified_at' => now(),
+            'email_verified_at' => now(),
+            'profession_id' => rand(1, 10),
+            'contact_visible' => true,
+        ]);
+
+        $memberUnpaid = User::factory()->create([
+            'firstName' => 'GroupStrictGate',
+            'lastName' => 'DemoMemberUnpaid',
+            'email' => 'group.strict.gate.demo.member.unpaid@example.com',
+            'username' => 'group_strict_gate_demo_member_unpaid',
+            'password' => Hash::make('password'),
+            'email_verified_at' => now(),
+        ]);
+
+        $lateJoiner = User::factory()->create([
+            'firstName' => 'GroupStrictGate',
+            'lastName' => 'DemoLateJoiner',
+            'email' => 'group.strict.gate.demo.late.joiner@example.com',
+            'username' => 'group_strict_gate_demo_late_joiner',
+            'password' => Hash::make('password'),
+            'email_verified_at' => now(),
+        ]);
+
+        // strictPaymentGate ON, allowFreeHistoricalAccess ON (the default) -- logging in as
+        // memberUnpaid demonstrates the payment-required redirect/banner at page load
+        // (TT-7.5b-b2); logging in as lateJoiner (joined well after the group's own creation and
+        // its "old" session below) demonstrates that old content stays free while a session dated
+        // after their join still requires payment (TT-7.5b-b3's late-joiner exemption).
+        $groupTherapy = $counsellorUser->addedGroupTherapies()->create([
+            'name' => 'Group Strict Payment Gate Demo',
+            'about' => 'Seeded strict-gated PAID group therapy for testing the payment-required redirect and late-joiner free-historical-access exemption (SCRUM-270).',
+            'session_type' => 'Periodic',
+            'payment_type' => 'PAID',
+            'max_users' => 10,
+            'allow_anyone' => true,
+            'anonymous' => false,
+            'public' => false,
+            'status' => 'in_session',
+            'payment_data' => [
+                'amount' => 100,
+                'currency' => 'USD',
+                'per' => 'PER_THERAPY',
+                'strictPaymentGate' => true,
+                'allowFreeHistoricalAccess' => true,
+            ],
+        ]);
+        $groupTherapy->counsellors()->attach($counsellor->id, ['state' => 'ACTIVE']);
+        $groupTherapy->users()->attach($memberUnpaid->id, [
+            'anonymous' => false, 'background_story' => 'test',
+        ]);
+        // Joined 5 days ago -- well after the group itself and its "old" session below, so their
+        // own join date sits strictly between the two seeded sessions.
+        $groupTherapy->users()->attach($lateJoiner->id, [
+            'anonymous' => false, 'background_story' => 'test', 'created_at' => now()->subDays(5),
+        ]);
+
+        // Predates lateJoiner's own join -- stays visible to them for free per
+        // allowFreeHistoricalAccess, even though they've never paid.
+        $counsellor->addedSessions()->create([
+            'name' => 'Group Strict Gate Demo Session (Before Late Joiner)',
+            'about' => 'Seeded session dated before the late joiner\'s own join date -- stays free for them under allowFreeHistoricalAccess.',
+            'for_id' => $groupTherapy->id,
+            'for_type' => $groupTherapy::class,
+            'start_time' => now()->subDays(20),
+            'end_time' => now()->subDays(20)->addHour(),
+            'type' => 'online',
+            'status' => 'held',
+            'payment_type' => 'PAID',
+        ]);
+
+        // Postdates lateJoiner's own join -- requires payment for them, same as memberUnpaid.
+        $counsellor->addedSessions()->create([
+            'name' => 'Group Strict Gate Demo Session (After Late Joiner)',
+            'about' => 'Seeded session dated after the late joiner\'s own join date -- requires payment for them, same as any other unpaid member.',
+            'for_id' => $groupTherapy->id,
+            'for_type' => $groupTherapy::class,
+            'start_time' => now()->subDay(),
+            'end_time' => now()->subDay()->addHour(),
+            'type' => 'online',
+            'status' => 'held',
+            'payment_type' => 'PAID',
         ]);
     }
 
