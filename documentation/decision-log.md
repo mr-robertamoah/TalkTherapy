@@ -5827,3 +5827,35 @@ authorization) -> b1 (setting persistence, both `strictPaymentGate` and the new
 -> b3 (session/chat enforcement, including the new temporal late-joiner logic) -> b4 (confirmed
 near-zero: content-access-only means no join-time gating work) -> b5 (frontend) -> b6 (regression
 closeout). Filed as SCRUM sub-tickets under this epic.
+
+## 2026-09-11 — SCRUM-265 (TT-7.5b-b1): payment-gate settings persistence
+
+Added `strictPaymentGate`/`allowFreeHistoricalAccess` to `GroupTherapyDTO` and wired both through
+`CreateGroupTherapyAction`/`UpdateGroupTherapyAction`, mirroring TT-7.5a's own `strictPaymentGate`
+treatment on individual Therapy almost exactly (defaults, force-cast to bool, reset to defaults on
+FREE-to-PAID transition). No authorization check needed at create time -- whoever creates a group
+sets its own initial values, same as every other creation field.
+
+**Two-endpoint design, mirroring TT-7.5a's own already-shipped precedent**: the general
+`group.therapies.update` endpoint gained a defense-in-depth call to `EnsureCanSetGroupTherapyPaymentGateAction`
+(only when a gate field is actually present), but `EnsureCanUpdateTherapyAction` (which gates that
+general endpoint) only recognizes the group's own `addedby` -- it has no branch for an ACTIVE
+counsellor who became assigned via accepting an assistance request rather than being the creator.
+Without a separate path, such a counsellor could never reach any authorization check for this
+setting at all. Added a dedicated `group.therapies.payment_gate.update` endpoint
+(`GroupTherapyService::updateGroupTherapyPaymentGate()`) that bypasses `EnsureCanUpdateTherapyAction`
+entirely, relying solely on `EnsureCanSetGroupTherapyPaymentGateAction`'s own self-contained check --
+this is the exact same gap TT-7.5a found via live Playwright testing for individual Therapy,
+confirmed to apply identically here.
+
+Reviewer and security-engineer both approved with no required changes -- specifically verified the
+"at least one field required" validation doesn't coerce an omitted field to `false` via
+`Request::boolean()` (checked presence via `is_null()` first for each field independently), and
+that `allowFreeHistoricalAccess` being persisted-but-not-yet-enforced (enforcement is TT-7.5b-b3)
+creates no misleading intermediate state -- `strictPaymentGate` itself is equally inert for
+GroupTherapy today, since `EnsureStrictPaymentGateSatisfiedAction` doesn't yet accept a
+`GroupTherapy` at all (that's TT-7.5b-b2's job).
+
+Full Pest suite: 1421 passed. Both new authorization paths (general-endpoint defense-in-depth,
+dedicated-endpoint gate) mutation-tested to confirm the tests actually catch a regression if either
+check were removed.

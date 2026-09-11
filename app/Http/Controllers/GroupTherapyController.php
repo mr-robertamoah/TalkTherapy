@@ -95,6 +95,8 @@ class GroupTherapyController extends Controller
                     'shareEqually' => $request->shareEqually,
                     'sharePercentage' => $request->sharePercentage ?: null,
                     'counsellorIds' => $request->counsellorIds,
+                    'strictPaymentGate' => $request->strictPaymentGate,
+                    'allowFreeHistoricalAccess' => $request->allowFreeHistoricalAccess,
                 ])
             );
 
@@ -138,6 +140,42 @@ class GroupTherapyController extends Controller
                     'shareEqually' => $request->shareEqually,
                     'sharePercentage' => $request->sharePercentage ?: null,
                     'counsellorIds' => $request->counsellorIds,
+                    'strictPaymentGate' => $request->strictPaymentGate,
+                    'allowFreeHistoricalAccess' => $request->allowFreeHistoricalAccess,
+                ])
+            );
+
+            return Redirect::back();
+        } catch (Throwable $th) {
+            $status = $this->statusFor($th);
+            $message = $this->messageFor($th, $status);
+
+            return Redirect::back()->withErrors(['alert' => $message]);
+        }
+    }
+
+    // TT-7.5b-b1/SCRUM-265: see the route comment and GroupTherapyService::updateGroupTherapyPaymentGate()'s
+    // own comment -- deliberately separate from updateGroupTherapy() above, mirroring
+    // TherapyController::updateStrictPaymentGate()'s exact precedent, so an active counsellor who
+    // isn't this group's own addedby can still reach it.
+    public function updateGroupTherapyPaymentGate(Request $request)
+    {
+        $request->validate([
+            'strictPaymentGate' => ['nullable', 'boolean'],
+            'allowFreeHistoricalAccess' => ['nullable', 'boolean'],
+        ]);
+
+        if (is_null($request->strictPaymentGate) && is_null($request->allowFreeHistoricalAccess)) {
+            return Redirect::back()->withErrors(['alert' => 'At least one payment gate setting must be provided.']);
+        }
+
+        try {
+            GroupTherapyService::new()->updateGroupTherapyPaymentGate(
+                GroupTherapyDTO::new()->fromArray([
+                    'user' => $request->user(),
+                    'groupTherapy' => GroupTherapy::find($request->route('groupTherapyId')),
+                    'strictPaymentGate' => is_null($request->strictPaymentGate) ? null : $request->boolean('strictPaymentGate'),
+                    'allowFreeHistoricalAccess' => is_null($request->allowFreeHistoricalAccess) ? null : $request->boolean('allowFreeHistoricalAccess'),
                 ])
             );
 

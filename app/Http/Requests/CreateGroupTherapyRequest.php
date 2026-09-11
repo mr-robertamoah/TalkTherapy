@@ -48,6 +48,9 @@ class CreateGroupTherapyRequest extends FormRequest
                 $this->get('allowInPerson')
             ), 'numeric'],
             'currency' => ['nullable', Rule::requiredIf($this->get('paymentType') == TherapyPaymentTypeEnum::paid->value), Rule::in(config('currencies.supported'))],
+            // TT-7.5b-b1/SCRUM-265: same convention CreateTherapyRequest already uses.
+            'strictPaymentGate' => ['nullable', 'boolean'],
+            'allowFreeHistoricalAccess' => ['nullable', 'boolean'],
         ];
     }
 }
