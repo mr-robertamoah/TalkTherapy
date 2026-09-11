@@ -3,6 +3,8 @@
 namespace App\Services;
 
 use App\Actions\Organization\SettleOrganizationInvoiceAction;
+use App\Actions\VideoConsent\GetWardForVideoConsentableAction;
+use App\Actions\VideoConsent\IsVideoConsentOutstandingForSessionAction;
 use App\Enums\DiscussionStatusEnum;
 use App\Enums\OrganizationInvoiceStatusEnum;
 use App\Enums\RequestStatusEnum;
@@ -21,9 +23,11 @@ use App\Models\Request;
 use App\Models\Session;
 use App\Models\Therapy;
 use App\Models\User;
+use App\Models\VideoConsentReminder;
 use App\Models\Visitor;
 use App\Notifications\DiscussionDueNotification;
 use App\Notifications\DiscussionFailedNotification;
+use App\Notifications\GuardianVideoConsentReminderNotification;
 use App\Notifications\OrganizationCounsellorCompensationChangeExpiredNotification;
 use App\Notifications\OrganizationCounsellorCompensationChangeExpiryReminderNotification;
 use App\Notifications\QueueJobFailedNotification;
@@ -31,6 +35,7 @@ use App\Notifications\ReportNotification;
 use App\Notifications\SessionDueNotification;
 use App\Notifications\SessionFailedNotification;
 use App\Notifications\VisitorsStatusNotification;
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Queue\Events\JobFailed;
 use Illuminate\Support\Facades\DB;
@@ -278,6 +283,83 @@ class AppService extends Service
                 } catch (Throwable $exception) {
                     Log::error('Failed to send a compensation-change expiry reminder.', [
                         'requestId' => $request->id,
+                        'exception' => $exception->getMessage(),
+                    ]);
+                }
+            });
+    }
+
+    // TT-3.1e-e/SCRUM-284: fires once, ~a day before a still-outstanding session's start_time --
+    // same exactly-once-via-a-timestamp-column shape as sendCompensationRequestExpiryReminders
+    // above (VideoConsentReminder.day_before_sent_at instead of Request.reminder_sent_at), same
+    // lock-then-recheck-then-write and per-row isolation for the same reasons. Window is
+    // "start_time within the next 24 hours" rather than pinned to exactly 24h before, since this
+    // runs dailyAt() once a day -- a tighter window would risk sessions slipping through if the
+    // schedule is ever delayed.
+    public function sendDayBeforeGuardianVideoConsentReminders(): void
+    {
+        $this->sendGuardianVideoConsentReminders('day_before', 'day_before_sent_at', now()->addDay());
+    }
+
+    // TT-3.1e-e/SCRUM-284: fires once, ~an hour before a still-outstanding session's start_time.
+    // Runs everyFiveMinutes() (see routes/console.php), the same cadence
+    // notifyParticipantsOfStartingSessions() already uses for its own "about to start" window.
+    public function sendHourBeforeGuardianVideoConsentReminders(): void
+    {
+        $this->sendGuardianVideoConsentReminders('hour_before', 'hour_before_sent_at', now()->addHour());
+    }
+
+    private function sendGuardianVideoConsentReminders(string $window, string $column, Carbon $upperBound): void
+    {
+        Session::query()
+            ->whereTherapy()
+            ->whereOnline()
+            ->where('status', SessionStatusEnum::pending->value)
+            ->where('start_time', '>', now())
+            ->where('start_time', '<=', $upperBound)
+            ->whereDoesntHave('videoConsentReminder', fn ($query) => $query->whereNotNull($column))
+            ->get()
+            ->each(function (Session $session) use ($window, $column) {
+                try {
+                    DB::transaction(function () use ($session, $window, $column) {
+                        // Reviewer finding (2026-09-11): lockForUpdate() on a VideoConsentReminder
+                        // row that doesn't exist yet (this session's very first reminder) locks
+                        // nothing -- the exact bug class already found and fixed in
+                        // GrantVideoConsentAction (see decision-log.md's SCRUM-281 entry). Locking
+                        // the guaranteed-already-existing Session row first serializes two
+                        // overlapping sweep runs correctly regardless of isolation level.
+                        Session::query()->lockForUpdate()->find($session->id);
+
+                        $reminder = VideoConsentReminder::query()->firstOrCreate(['session_id' => $session->id]);
+
+                        if ($reminder->{$column}) {
+                            return;
+                        }
+
+                        if (! IsVideoConsentOutstandingForSessionAction::new()->execute($session)) {
+                            return;
+                        }
+
+                        $ward = GetWardForVideoConsentableAction::new()->execute($session);
+
+                        if (! $ward) {
+                            return;
+                        }
+
+                        $guardians = $ward->guardians()->with('guardian')->get()->pluck('guardian')->filter();
+
+                        if ($guardians->isEmpty()) {
+                            return;
+                        }
+
+                        Notification::send($guardians, new GuardianVideoConsentReminderNotification($session, $window));
+
+                        $reminder->update([$column => now()]);
+                    });
+                } catch (Throwable $exception) {
+                    Log::error('Failed to send a guardian video-consent reminder.', [
+                        'sessionId' => $session->id,
+                        'window' => $window,
                         'exception' => $exception->getMessage(),
                     ]);
                 }

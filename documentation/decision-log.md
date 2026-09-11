@@ -6396,6 +6396,36 @@ limitation from TT-3.1e-a's own entry) -- the row-lock fix above is what keeps
 
 ---
 
+## 2026-09-11 — SCRUM-284 (TT-3.1e-e): reminder-sweep review fixes
+
+**Reviewer finding -- the same first-write locking bug already found and fixed in
+`GrantVideoConsentAction` (SCRUM-281's own decision-log entry) recurred here**:
+`AppService::sendGuardianVideoConsentReminders()`'s exactly-once guard originally did
+`VideoConsentReminder::query()->lockForUpdate()->firstOrCreate(['session_id' => $session->id])` --
+on a session's very first reminder there is no existing row to lock, so two overlapping sweep
+runs (realistic for the `everyFiveMinutes()` hour-before job if a run is ever slow) could both
+pass `firstOrCreate()`'s internal existence check before either commits. Unlike the grant-flow
+case, this can't produce a duplicate row (`video_consent_reminders.session_id` has a DB-level
+unique constraint), so the practical blast radius is a caught, logged exception and a
+delayed-by-one-cycle reminder rather than a lost or duplicated one -- still, the same fix applies:
+lock the guaranteed-already-existing `Session` row first, exactly as `GrantVideoConsentAction`
+now does, rather than relying on isolation-level-dependent gap-locking over a row that may not
+exist yet. **Pattern worth remembering**: `lockForUpdate()` immediately followed by
+`firstOrCreate()`/`first()-or-create` on the SAME table being locked is a recurring footgun in
+this codebase's find-or-create-under-lock idiom -- the row to lock must be one already guaranteed
+to exist (a parent, not the row being conditionally created), every time this shape is reused.
+
+**Reviewer finding, fixed**: `GuardianVideoConsentReminderNotification`'s day-before copy
+hardcoded "tomorrow", but the day-before sweep's window is "starts within the next 24 hours," not
+"starts exactly tomorrow" -- a session created or rescheduled with only a few hours' notice still
+matches that window and would get a misleadingly-worded reminder. Fixed via
+`$session->start_time->diffForHumans()`, which stays accurate regardless of how close start_time
+actually is when the sweep fires.
+
+**Opportunistic cleanup, reviewer-suggested**: extracted the `consentable_type`/`consentable_id`/
+`revoked_at IS NULL` where-chain (duplicated across `GrantVideoConsentAction` and twice in the new
+`IsVideoConsentOutstandingForSessionAction`) into `VideoConsent::scopeWhereValidFor()`. Applied to
+both call sites; `GrantVideoConsentAction`'s own existing test suite re-verified green.
 ## 2026-09-11 — SCRUM-282 (TT-3.1e-c): invalidation-flow design decision and review fixes
 
 **Design decision, not explicitly specified by the parent ticket**: `RevokeVideoConsentAction`

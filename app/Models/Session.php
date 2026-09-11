@@ -100,6 +100,13 @@ class Session extends Model
         return $this->morphMany(VideoConsent::class, 'consentable');
     }
 
+    // TT-3.1e-e/SCRUM-284: exactly-once guardian video-consent reminder tracking for this
+    // session -- see VideoConsentReminder's own docblock.
+    public function videoConsentReminder()
+    {
+        return $this->hasOne(VideoConsentReminder::class);
+    }
+
     public function transactions()
     {
         return $this->morphMany(Transaction::class, 'for');
