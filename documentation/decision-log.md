@@ -5975,3 +5975,27 @@ confirmed to fail the relevant test(s) when reverted/mutated, then restored. Rev
 security-engineer both approved with no required changes; two minor reviewer suggestions (an
 additional `getTherapyTopicMessages` exemption test, and the factory comment above) applied before
 merge.
+
+---
+
+## 2026-09-11 — SCRUM-268 (TT-7.5b-b4): join-time gating confirmation, no code change
+
+**Confirmed (already decided during SCRUM-216's own scoping pass, re-stated here for the trail)**:
+payment is required only for GroupTherapy CONTENT access, never for joining itself.
+`JoinGroupTherapyAction` (both the immediate-attach and membership-request-then-accept paths)
+stays entirely payment-unaware -- this matches TT-7.5a's own precedent for individual Therapy,
+which is never gated at creation or assistance-request-acceptance time, only at content access via
+`EnsureUserHasAccessToTherapyAction`/`EnsureUserCanAccessTherapyContentAction`. Deliberately not
+adding a second, independent enforcement point at join-time: that would create two gates that could
+silently drift out of sync with each other as b2/b3's content-layer gate evolves, for zero added
+protection (a member who joins for free but can't pay is still fully blocked from actual content,
+per b2/b3).
+
+No production code changed. Added `tests/Feature/GroupTherapyJoinPaymentGateRegressionTest.php`
+locking in the existing correct behavior (mirrors TT-7.4d-e's own "prove it works, don't just leave
+it undocumented" pattern): joining a strict-gated, unpaid GroupTherapy succeeds via both the
+immediate-attach and request-then-accept paths, and an unrelated member's existing successful
+transaction has no bearing on a new joiner's own join attempt. Full Pest suite: 1482 passed (3 new
+tests). No mutation testing performed -- there is no authorization branch to mutate; the tests exist
+purely to catch a FUTURE regression if someone later, incorrectly, adds a payment check to the join
+path.
