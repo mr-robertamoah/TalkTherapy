@@ -11,6 +11,7 @@ use App\Models\Therapy;
 use App\Models\User;
 use App\Models\VideoSession;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Log;
 
 // TT-3.1a/SCRUM-274: the VideoProviderInterface is swapped for a fake in the container throughout
 // -- this file pins down JoinVideoSessionAction's own orchestration, independent of any real
@@ -129,6 +130,43 @@ test('joining is blocked by the same availability gate as EnsureVideoIsAvailable
     expect(fn () => JoinVideoSessionAction::new()->execute($session, $client))
         ->toThrow(VideoException::class);
 
+    $this->assertDatabaseCount('video_sessions', 0);
+});
+
+// TT-3.1c/SCRUM-276 QA finding: createRoom() was unguarded, so a real provider HTTP failure
+// (Illuminate\Http\Client\RequestException, whose getCode() equals the upstream's own status,
+// not 500) sailed straight past ResolvesExceptionResponse::messageFor()'s 500-only masking and
+// leaked the provider's raw response body to the end user.
+test('a provider room-creation failure surfaces a safe, generic message, never the raw provider error', function () {
+    Log::shouldReceive('warning')->once();
+    $session = onlineInSessionTherapySessionForJoin();
+    $client = $session->for->addedby;
+    app()->instance(VideoProviderInterface::class, new class implements VideoProviderInterface
+    {
+        public function createRoom(VideoSession $videoSession): array
+        {
+            throw new RuntimeException('{"error":"authorization-header-error","info":"invalid authorization header"}');
+        }
+
+        public function createParticipantCredentials(VideoSession $videoSession, User $user, string $displayName, bool $isOwner = false): array
+        {
+            return [];
+        }
+
+        public function endRoom(VideoSession $videoSession): void {}
+    });
+
+    try {
+        JoinVideoSessionAction::new()->execute($session, $client);
+        $this->fail('Expected a VideoException to be thrown.');
+    } catch (VideoException $exception) {
+        expect($exception->getMessage())
+            ->toBe('Unable to start the video call right now. Please try again shortly.')
+            ->not->toContain('authorization-header-error');
+    }
+
+    // The transaction rolls back the whole find-or-create -- no half-created VideoSession left
+    // behind for a future join to stumble over.
     $this->assertDatabaseCount('video_sessions', 0);
 });
 

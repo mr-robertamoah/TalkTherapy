@@ -8,6 +8,8 @@ use App\Events\VideoSessionStatusChangedEvent;
 use App\Exceptions\VideoException;
 use App\Models\Session;
 use App\Models\User;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 
 // TT-3.1a/SCRUM-274: ends the whole room for every participant -- distinct from
 // LeaveVideoSessionAction's self-leave. A no-op if there is no currently-open video epoch (safe
@@ -38,8 +40,18 @@ class EndVideoSessionAction extends Action
         $videoSession->participants()->whereNull('left_at')->update(['left_at' => now()]);
 
         // Best-effort -- a provider-side failure here must never block marking the room ended
-        // locally (see VideoProviderInterface::endRoom()'s own contract).
-        app(VideoProviderInterface::class)->endRoom($videoSession);
+        // locally (see VideoProviderInterface::endRoom()'s own contract). TT-3.1c/SCRUM-276 QA
+        // finding: this comment previously described intent the code didn't actually implement --
+        // there was no try/catch, so a provider failure DID propagate and block the local
+        // ended_at update below. Fixed to match the stated contract.
+        try {
+            app(VideoProviderInterface::class)->endRoom($videoSession);
+        } catch (Throwable $exception) {
+            Log::warning('Provider-side video room teardown failed; local state ends anyway.', [
+                'video_session_id' => $videoSession->id,
+                'exception' => $exception->getMessage(),
+            ]);
+        }
 
         $videoSession->update(['ended_at' => now()]);
 

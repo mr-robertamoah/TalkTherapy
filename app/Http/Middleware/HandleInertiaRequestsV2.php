@@ -54,6 +54,11 @@ class HandleInertiaRequestsV2 extends Middleware
             // source of truth -- a currency added/removed via SUPPORTED_CURRENCIES reaches every
             // currency picker without a frontend code change.
             'supportedCurrencies' => config('currencies.supported'),
+            // TT-3.1c/SCRUM-276: which VideoProviderInterface adapter is active, so the frontend
+            // knows which provider SDK to dynamically import on join -- a deployment-level value,
+            // not per-therapy/session, so it's shared globally like supportedCurrencies above
+            // rather than threaded through as a page prop.
+            'videoProvider' => config('video.provider'),
         ];
     }
 }
