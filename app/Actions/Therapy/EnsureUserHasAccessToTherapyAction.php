@@ -28,11 +28,23 @@ class EnsureUserHasAccessToTherapyAction extends Action
             throw new TherapyAccessDeniedException("You are not allowed to access therapy with id: {$therapy->id}", 422);
         }
 
-        // SCRUM-219/TT-7.5a: the client (the therapy's own addedby, individual Therapy only --
-        // GroupTherapy gating is TT-7.5b) is the only participant ever subject to the strict
-        // payment gate below. Every other bypass in the big OR below (counsellor, admin,
-        // guardian, pending-request-counsellor) grants unconditional access, unchanged.
-        $isClient = $therapy->is_therapy && $therapy->addedby->is($user);
+        // SCRUM-219/TT-7.5a: the client (the therapy's own addedby) is the only participant ever
+        // subject to the strict payment gate below. Every other bypass in the big OR below
+        // (counsellor, admin, guardian, pending-request-counsellor) grants unconditional access,
+        // unchanged.
+        //
+        // TT-7.5b-b2/SCRUM-266: widened to GroupTherapy, where "the client" isn't a single
+        // addedby -- it's every member (creator or joined via the group_therapy_user pivot) who
+        // is NOT also an active counsellor on the group. A counsellor is never gated regardless
+        // of how they're attached (addedby, or via counsellors()), matching b0's "counsellors run
+        // the group, they don't pay into it" precedent. isParticipant() already covers exactly
+        // "addedby / counsellor / pivot member", so excluding the counsellor case here is
+        // sufficient -- no separate pivot-membership lookup needed.
+        $isGroupTherapyMember = $therapy->is_group_therapy
+            && $therapy->isParticipant($user)
+            && ! ($user->counsellor && $therapy->isCounsellor($user->counsellor));
+
+        $isClient = ($therapy->is_therapy && $therapy->addedby->is($user)) || $isGroupTherapyMember;
 
         if (
             $therapy->isParticipant($user) ||

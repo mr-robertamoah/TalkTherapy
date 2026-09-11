@@ -35,6 +35,12 @@ class HomeController extends Controller
             'alert' => session()->has('alert') ? session('alert') : null,
             'paymentRequired' => $paymentRequired,
             'paymentRequiredTherapyId' => session('paymentRequiredTherapyId'),
+            // TT-7.5b-b2/SCRUM-266: GroupTherapyController::redirectForPaymentRequired() flashes
+            // this sibling key (a GroupTherapy id is never the same id-space as a Therapy id, so
+            // it can't reuse paymentRequiredTherapyId without the banner linking to the wrong
+            // resource). The banner's actual GroupTherapy-aware link/wording is TT-7.5b-b5's job;
+            // this only keeps the flashed value from being silently dropped before then.
+            'paymentRequiredGroupTherapyId' => session('paymentRequiredGroupTherapyId'),
             'paymentRequiredMessage' => $paymentRequired ? $message : null,
         ]);
 

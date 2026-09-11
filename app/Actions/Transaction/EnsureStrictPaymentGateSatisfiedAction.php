@@ -10,6 +10,7 @@ use App\Enums\TherapyPerPaymentEnum;
 use App\Enums\TransactionStatusEnum;
 use App\Exceptions\OrganizationBillingSuspendedException;
 use App\Exceptions\PaymentRequiredException;
+use App\Models\GroupTherapy;
 use App\Models\Organization;
 use App\Models\PaymentAccessGrant;
 use App\Models\Session;
@@ -21,12 +22,18 @@ use App\Models\User;
 // MessageService's session/topic/reply content checks (SCRUM-220) delegate to the identical
 // logic rather than a second independent copy. Only ever meaningful for the therapy's own
 // addedby (the paying client) -- callers must already have established that before calling this.
+//
+// TT-7.5b-b2/SCRUM-266: widened to GroupTherapy -- "only ever meaningful for the addedby" above
+// no longer holds for GroupTherapy, where every paying MEMBER (not just whoever created the
+// group) has their own independent payment standing; callers are responsible for having
+// established that $user is a member (or counsellor, who this never gates -- see caller) before
+// calling this, same division of responsibility as before.
 class EnsureStrictPaymentGateSatisfiedAction extends Action
 {
     // $session, when provided, is the specific Session the content being checked belongs to --
     // required to satisfy a PER_SESSION-payable gate (the grant/transaction lookup is scoped to
     // that Session, not the parent Therapy). Omit it for the PER_THERAPY-payable case.
-    public function execute(Therapy $therapy, User $user, ?Session $session = null): void
+    public function execute(Therapy|GroupTherapy $therapy, User $user, ?Session $session = null): void
     {
         if (
             ! $therapy->strictPaymentGate ||
@@ -81,7 +88,7 @@ class EnsureStrictPaymentGateSatisfiedAction extends Action
         }
     }
 
-    private function ensureGrantedOrPaid(User $user, Therapy|Session $payable): void
+    private function ensureGrantedOrPaid(User $user, Therapy|GroupTherapy|Session $payable): void
     {
         $hasGrant = PaymentAccessGrant::query()
             ->where('user_id', $user->id)
@@ -117,7 +124,7 @@ class EnsureStrictPaymentGateSatisfiedAction extends Action
     // through that org's periodic invoicing (TT-7.3b-e), never a per-transaction charge, so it
     // must never be blocked on one existing. Returns the Organization (not just a bool) so the
     // caller can also check its billing-suspension standing (TT-7.3b-f2).
-    private function getRetainerCoveringOrganization(Therapy $therapy, User $user): ?Organization
+    private function getRetainerCoveringOrganization(Therapy|GroupTherapy $therapy, User $user): ?Organization
     {
         return GetRetainerCoveringOrganizationAction::new()->execute($therapy, $user);
     }

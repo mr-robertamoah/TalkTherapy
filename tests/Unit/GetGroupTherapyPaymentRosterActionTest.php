@@ -3,6 +3,7 @@
 use App\Actions\GroupTherapy\GetGroupTherapyPaymentRosterAction;
 use App\Enums\ConstantsEnum;
 use App\Enums\TransactionStatusEnum;
+use App\Models\Counsellor;
 use App\Models\GroupTherapy;
 use App\Models\Transaction;
 use App\Models\User;
@@ -122,4 +123,63 @@ test('a member who individually opted into anonymity is masked in the roster, ev
         ->and($byId[$anonymousMember->id]['paymentStatus'])->toBe(TransactionStatusEnum::success->value)
         ->and($byId[$regularMember->id]['fullName'])->toBe($regularMember->name)
         ->and($byId[$regularMember->id]['username'])->toBe($regularMember->username);
+});
+
+// TT-7.5b-b2/SCRUM-266: a User-type creator is an implicit member (GroupTherapy::getUsers()'s own
+// convention) even though they hold no group_therapy_user pivot row -- the roster must not
+// silently drop them.
+test('the group\'s own User-type creator appears in the roster even without a pivot row', function () {
+    $creator = User::factory()->create();
+    $groupTherapy = GroupTherapy::factory()->create([
+        'addedby_type' => User::class,
+        'addedby_id' => $creator->id,
+    ]);
+    $joinedMember = User::factory()->create();
+    $groupTherapy->users()->attach($joinedMember->id, ['anonymous' => false]);
+
+    Transaction::factory()->create([
+        'for_type' => GroupTherapy::class,
+        'for_id' => $groupTherapy->id,
+        'user_id' => $creator->id,
+        'status' => TransactionStatusEnum::success->value,
+    ]);
+
+    $roster = GetGroupTherapyPaymentRosterAction::new()->execute($groupTherapy);
+
+    expect($roster)->toHaveCount(2);
+    $byId = collect($roster)->keyBy('id');
+    expect($byId[$creator->id]['fullName'])->toBe($creator->name)
+        ->and($byId[$creator->id]['paymentStatus'])->toBe(TransactionStatusEnum::success->value);
+});
+
+// A creator who ALSO holds a pivot row (e.g. from some future/legacy path) must appear exactly
+// once, not duplicated.
+test('a creator who also holds a pivot row is not duplicated in the roster', function () {
+    $creator = User::factory()->create();
+    $groupTherapy = GroupTherapy::factory()->create([
+        'addedby_type' => User::class,
+        'addedby_id' => $creator->id,
+    ]);
+    $groupTherapy->users()->attach($creator->id, ['anonymous' => false]);
+
+    $roster = GetGroupTherapyPaymentRosterAction::new()->execute($groupTherapy);
+
+    expect($roster)->toHaveCount(1);
+});
+
+// A Counsellor-type creator is never a "paying member" -- getUsers() only ever synthesizes a
+// User-type addedby, so this must stay untouched.
+test('a Counsellor-type creator is not synthesized into the roster', function () {
+    $counsellor = Counsellor::factory()->create(['user_id' => User::factory()]);
+    $groupTherapy = GroupTherapy::factory()->create([
+        'addedby_type' => Counsellor::class,
+        'addedby_id' => $counsellor->id,
+    ]);
+    $member = User::factory()->create();
+    $groupTherapy->users()->attach($member->id, ['anonymous' => false]);
+
+    $roster = GetGroupTherapyPaymentRosterAction::new()->execute($groupTherapy);
+
+    expect($roster)->toHaveCount(1)
+        ->and($roster[0]['id'])->toBe($member->id);
 });
