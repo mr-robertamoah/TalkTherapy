@@ -3,7 +3,10 @@
 use App\Actions\Video\EndVideoSessionAction;
 use App\Contracts\VideoProviderInterface;
 use App\Events\VideoSessionStatusChangedEvent;
+use App\Exceptions\VideoException;
+use App\Models\Counsellor;
 use App\Models\Session;
+use App\Models\Therapy;
 use App\Models\User;
 use App\Models\VideoSession;
 use App\Models\VideoSessionParticipant;
@@ -75,6 +78,77 @@ test('ending when there is no open video session at all is a safe no-op', functi
 
     EndVideoSessionAction::new()->execute($session);
 })->throwsNoExceptions();
+
+// TT-3.1b/SCRUM-275: security-review finding on TT-3.1a -- this action took no $user/authorization
+// check at all, so anyone holding a Session object could end another pair's call. $user is
+// optional (see the action's own comment on why), but when given, must be a participant.
+test('a non-participant cannot end another pair\'s video call', function () {
+    $client = User::factory()->create();
+    $counsellorUser = User::factory()->create();
+    $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
+    $therapy = Therapy::factory()->create([
+        'addedby_type' => User::class,
+        'addedby_id' => $client->id,
+        'counsellor_id' => $counsellor->id,
+    ]);
+    $session = Session::factory()->create(['for_id' => $therapy->id, 'for_type' => Therapy::class]);
+    $videoSession = VideoSession::factory()->create(['session_id' => $session->id, 'provider_room_id' => 'room-1']);
+    app()->instance(VideoProviderInterface::class, new class implements VideoProviderInterface
+    {
+        public function createRoom(VideoSession $videoSession): array
+        {
+            return [];
+        }
+
+        public function createParticipantCredentials(VideoSession $videoSession, User $user, string $displayName, bool $isOwner = false): array
+        {
+            return [];
+        }
+
+        public function endRoom(VideoSession $videoSession): void
+        {
+            throw new RuntimeException('endRoom should never be called when the caller is not authorized.');
+        }
+    });
+    $outsider = User::factory()->create();
+
+    expect(fn () => EndVideoSessionAction::new()->execute($session, $outsider))
+        ->toThrow(VideoException::class);
+
+    expect($videoSession->fresh()->ended_at)->toBeNull();
+});
+
+test('a session participant can end the call', function () {
+    Event::fake();
+    $client = User::factory()->create();
+    $counsellorUser = User::factory()->create();
+    $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
+    $therapy = Therapy::factory()->create([
+        'addedby_type' => User::class,
+        'addedby_id' => $client->id,
+        'counsellor_id' => $counsellor->id,
+    ]);
+    $session = Session::factory()->create(['for_id' => $therapy->id, 'for_type' => Therapy::class]);
+    $videoSession = VideoSession::factory()->create(['session_id' => $session->id, 'provider_room_id' => 'room-1']);
+    app()->instance(VideoProviderInterface::class, new class implements VideoProviderInterface
+    {
+        public function createRoom(VideoSession $videoSession): array
+        {
+            return [];
+        }
+
+        public function createParticipantCredentials(VideoSession $videoSession, User $user, string $displayName, bool $isOwner = false): array
+        {
+            return [];
+        }
+
+        public function endRoom(VideoSession $videoSession): void {}
+    });
+
+    EndVideoSessionAction::new()->execute($session, $client);
+
+    expect($videoSession->fresh()->ended_at)->not->toBeNull();
+});
 
 test('ending an already-ended video session again is a safe no-op (does not re-call the provider)', function () {
     $session = Session::factory()->create();

@@ -3,6 +3,7 @@
 namespace App\Actions\Video;
 
 use App\Actions\Action;
+use App\Exceptions\VideoException;
 use App\Models\Session;
 use App\Models\User;
 
@@ -12,8 +13,17 @@ use App\Models\User;
 // is EndVideoSessionAction's own, separate job.
 class LeaveVideoSessionAction extends Action
 {
+    // TT-3.1b/SCRUM-275: security-review finding on TT-3.1a -- this action performed no
+    // authorization check of its own, safe only because nothing called it yet. Now that
+    // VideoSessionController derives $user from auth()->user() and calls this directly, a
+    // non-participant must be rejected explicitly rather than relying on the update query below
+    // simply matching no row for them (which would silently no-op instead of surfacing an error).
     public function execute(Session $session, User $user): void
     {
+        if ($session->isNotParticipant($user)) {
+            throw new VideoException('You are not allowed to leave this session\'s video call.', 422);
+        }
+
         $videoSession = $session->videoSessions()->whereNull('ended_at')->first();
 
         if (! $videoSession) {

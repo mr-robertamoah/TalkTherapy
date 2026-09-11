@@ -3,9 +3,11 @@
 namespace App\Actions\Video;
 
 use App\Actions\Action;
+use App\Actions\Message\EnsureUserCanAccessTherapyContentAction;
 use App\Contracts\VideoProviderInterface;
 use App\Enums\ConstantsEnum;
 use App\Events\VideoSessionStatusChangedEvent;
+use App\Exceptions\VideoException;
 use App\Models\Session;
 use App\Models\User;
 use App\Models\VideoSession;
@@ -14,8 +16,7 @@ use Illuminate\Support\Facades\DB;
 
 // TT-3.1a/SCRUM-274: the one entry point for joining a Session's video call -- finds or creates
 // the current "epoch" (VideoSession row), creates the provider room on first join, then mints
-// this specific user's own join credentials. Deliberately does NOT check the strict payment gate
-// itself -- that's TT-3.1b's own job, layered on top of this action, not duplicated here.
+// this specific user's own join credentials.
 class JoinVideoSessionAction extends Action
 {
     // Returns the provider-specific, JSON-serializable join credentials -- passed straight
@@ -23,6 +24,17 @@ class JoinVideoSessionAction extends Action
     public function execute(Session $session, User $user): array
     {
         EnsureVideoIsAvailableForSessionAction::new()->execute($session, $user);
+
+        // TT-3.1b/SCRUM-275: the SAME shared strict-payment-gate check message creation already
+        // reuses (EnsureCanSendMessageToForAction) -- deliberately not a second, independent
+        // payment check, so PER_THERAPY/PER_SESSION, retainer-org bypass, and billing-suspension
+        // all stay in exactly one place. A no-op for anyone but the therapy's own paying client
+        // (counsellor, or a co-client with an existing grant, always pass through unaffected) --
+        // see that action's own comment for why only `addedby` is ever gated here (TT-3.1 is 1:1
+        // Therapy only, already enforced above by EnsureVideoIsAvailableForSessionAction).
+        if (! EnsureUserCanAccessTherapyContentAction::new()->execute($session->for, $user, $session)) {
+            throw new VideoException('Payment is required to access video for this session.', 402);
+        }
 
         // Resolved from the container (config('video.provider')-driven binding, see
         // VideoServiceProvider), not a `new` provider class -- keeps this action ignorant of
