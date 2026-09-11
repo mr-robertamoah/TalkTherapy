@@ -5770,3 +5770,60 @@ with the user -- referenced here rather than duplicated, per this ticket's own a
 recorded somewhere durable.
 
 Full Pest suite: 1396 passed.
+
+## 2026-09-11 — SCRUM-216 (TT-7.5b): GroupTherapy payment-gated access -- scoped via /start-feature
+
+TT-7.4d's completion unblocked this ticket. Ran the full product-owner/project-manager/architect
+sequence; five genuinely open product/architecture questions surfaced, all resolved with the user
+before any code was written.
+
+1. **Toggle authority (multi-counsellor fork)**: any ACTIVE counsellor on the group may toggle
+   `strictPaymentGate` independently -- matches the existing `activeCounsellors()` convention used
+   for earnings split/org-payer eligibility elsewhere in this model, rather than inventing a new,
+   more restrictive authorization shape. Accepted trade-off (pre-existing debt, not new): one
+   active counsellor can silently override another's setting, with no audit trail -- individual
+   Therapy's own `UpdateTherapyAction` has no change-tracking on `payment_data` either.
+2. **Initial value at creation**: gated on whether the group already has an active counsellor at
+   creation time (`activeCounsellors()->isNotEmpty()`), not on the identity of `addedby` --
+   individual Therapy's "client sets it, no counsellor exists yet" premise doesn't hold for
+   GroupTherapy, since `createGroupTherapy` already accepts `counsellorIds` at creation time.
+3. **Creator membership (inherited TT-7.4d ambiguity)**: fixed at the shared membership
+   definition, not special-cased in TT-7.5b's own guards. `GroupTherapy::getUsers()` already treats
+   the creating User as a member; `group_therapy_user` (and by extension TT-7.4d's payment roster,
+   `GetGroupTherapyPaymentRosterAction`) will be updated to match, so "member" means the same thing
+   everywhere in this codebase rather than two silently-diverging definitions.
+4. **Late-joiner + historical content**: NOT hardcoded either way -- a new per-group setting,
+   `payment_data->allowFreeHistoricalAccess` (boolean, sibling to `strictPaymentGate`, same
+   toggle-authority rule, default `true`). When `strictPaymentGate` is on and this is `true`,
+   content dated before a member's own `group_therapy_user.created_at` (their join date) stays
+   visible regardless of payment, while content dated after is gated; when `false`, everything is
+   gated regardless of join date (the simpler binary check TT-7.5a already has). This is genuinely
+   new logic -- no existing TT-7.5a analogue does a temporal, per-member comparison -- so `b2`/`b3`
+   should be estimated with this in mind, not as a variant of the existing binary check.
+5. **Gate at join vs. content-access only**: content-access only. `JoinGroupTherapyAction` stays
+   payment-unaware, matching TT-7.5a's own precedent (never gated at Therapy-creation/
+   request-acceptance, only at content access) -- avoids a second, independent enforcement point
+   that could drift out of sync with the content-layer check.
+
+**Two non-optional widening fixes identified by the architect, to land atomically with whichever
+milestone widens `EnsureStrictPaymentGateSatisfiedAction`'s type-hint** (not as follow-up work):
+- `Therapy::getStrictPaymentGateAttribute()` exists only on `Therapy`, not `TherapyTrait` --
+  widening the gate action's type-hint without moving this accessor first means the gate would
+  silently NEVER trigger for any GroupTherapy (Eloquent returns null for an undefined dynamic
+  property, and `! null` is `true`) -- a silent bypass, not a crash, so it could ship undetected
+  without an explicit regression test proving the gate actually blocks a GroupTherapy member.
+- `GetRetainerCoveringOrganizationAction` (called unconditionally inside the gate check) reads
+  `$therapy->counsellor`, a property `GroupTherapy` doesn't have (only `counsellors()`/
+  `activeCounsellors()`) -- widening the outer action without fixing this causes a hard
+  `TypeError` on the very first strict-gated GroupTherapy check.
+
+Confirmed zero-schema-change: `payment_access_grants`' unique constraint is `(user_id, for_type,
+for_id)`, already scoped per-user and per-payable, so N members of the same GroupTherapy each get
+their own grant row with no migration needed.
+
+Milestones (project-manager, ~34-42 points, floor not ceiling): b0 (multi-counsellor toggle
+authorization) -> b1 (setting persistence, both `strictPaymentGate` and the new
+`allowFreeHistoricalAccess`) -> b2 (page-load enforcement, including the two widening fixes above)
+-> b3 (session/chat enforcement, including the new temporal late-joiner logic) -> b4 (confirmed
+near-zero: content-access-only means no join-time gating work) -> b5 (frontend) -> b6 (regression
+closeout). Filed as SCRUM sub-tickets under this epic.
