@@ -40,6 +40,28 @@ test('a payment-required redirect does not also trigger the generic errorMessage
     $response->assertInertia(fn (Assert $page) => $page->missing('errorMessage'));
 });
 
+// TT-7.5b-b2/SCRUM-266: GroupTherapyController::redirectForPaymentRequired() flashes a sibling
+// key (paymentRequiredGroupTherapyId) since a GroupTherapy id is not in the same id-space as a
+// Therapy id -- confirms HomeController actually surfaces it rather than silently dropping it.
+test('Home surfaces the group-therapy payment-required prop from the flash session', function () {
+    $user = User::factory()->create();
+
+    $response = $this->actingAs($user)
+        ->withSession([
+            'message' => 'Payment is required to access this content.',
+            'paymentRequired' => true,
+            'paymentRequiredGroupTherapyId' => 5,
+        ])
+        ->get(route('home'));
+
+    $response->assertInertia(fn (Assert $page) => $page
+        ->component('Home')
+        ->where('paymentRequired', true)
+        ->where('paymentRequiredGroupTherapyId', 5)
+        ->where('paymentRequiredMessage', 'Payment is required to access this content.')
+    );
+});
+
 test('a normal (non-payment-required) flashed message still triggers the generic errorMessage toast', function () {
     $user = User::factory()->create();
 

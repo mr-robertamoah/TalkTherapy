@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\DTOs\GetTherapyDTO;
 use App\DTOs\GroupTherapyDTO;
 use App\DTOs\JoinGroupTherapyDTO;
+use App\Exceptions\PaymentRequiredException;
 use App\Http\Requests\CreateGroupTherapyRequest;
 use App\Http\Requests\UpdateGroupTherapyRequest;
 use App\Http\Resources\GroupTherapyMiniResource;
@@ -250,6 +251,14 @@ class GroupTherapyController extends Controller
                 'recentSessions' => SessionResource::collection($therapy->sessions()->with('latestTransaction')->latest()->take(5)->get()),
                 'recentTopics' => TherapyTopicResource::collection($therapy->topics()->latest()->take(5)->get()),
             ]);
+        } catch (PaymentRequiredException $th) {
+            // TT-7.5b-b2/SCRUM-266: mirrors TherapyController::getTherapy()'s own identical
+            // catch -- without this, a strict-gated GroupTherapy member blocked by
+            // EnsureStrictPaymentGateSatisfiedAction fell through to the generic Throwable catch
+            // below and lost the "pay to continue" flash state entirely (no prior catch for this
+            // exception existed here at all, since GroupTherapy had no strict payment gate before
+            // this ticket).
+            return $this->redirectForPaymentRequired($th, $request);
         } catch (Throwable $th) {
             $status = $this->statusFor($th);
             $message = $this->messageFor($th, $status);
@@ -293,12 +302,27 @@ class GroupTherapyController extends Controller
             return Inertia::render('GroupTherapy/Chat', [
                 'therapy' => new GroupTherapyResource($therapy),
             ]);
+        } catch (PaymentRequiredException $th) {
+            // TT-7.5b-b2/SCRUM-266: chat() reaches the same EnsureUserHasAccessToTherapyAction as
+            // getGroupTherapy() above, so it can throw this exact exception too -- see that
+            // catch's own comment.
+            return $this->redirectForPaymentRequired($th, $request);
         } catch (Throwable $th) {
             $status = $this->statusFor($th);
             $message = $this->messageFor($th, $status);
 
             return Redirect::route('home')->with('message', $message);
         }
+    }
+
+    // TT-7.5b-b2/SCRUM-266: mirrors TherapyController::redirectForPaymentRequired()'s own
+    // precedent exactly, keyed by groupTherapyId instead of therapyId.
+    private function redirectForPaymentRequired(PaymentRequiredException $th, Request $request)
+    {
+        return Redirect::route('home')
+            ->with('message', $th->getMessage())
+            ->with('paymentRequired', true)
+            ->with('paymentRequiredGroupTherapyId', $request->route('groupTherapyId'));
     }
 
     private function returnFailure(Request $request, Throwable $th)

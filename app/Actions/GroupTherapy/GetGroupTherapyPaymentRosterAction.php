@@ -5,6 +5,7 @@ namespace App\Actions\GroupTherapy;
 use App\Actions\Action;
 use App\Enums\ConstantsEnum;
 use App\Models\GroupTherapy;
+use App\Models\User;
 
 // TT-7.4d-d/SCRUM-261: the counsellor-facing per-member payment roster. Architect finding
 // (mandatory): must eager-load `users` together with EVERY member's transactions in one extra
@@ -22,6 +23,12 @@ class GetGroupTherapyPaymentRosterAction extends Action
     {
         $groupTherapy->loadMissing([
             'users',
+            // TT-7.5b-b2/SCRUM-266: needed to synthesize the addedby-as-implicit-member entry
+            // below. Doesn't add a query when addedby_type/id are null (MorphTo::getResults()
+            // short-circuits) -- the fixed-query-count test below only ever exercises a group
+            // that actually HAS an addedby, so this is exactly one more query than before, not
+            // per-member.
+            'addedby',
             // Ordered once, here -- ->first() per group below then picks each member's latest
             // without a second sort, mirroring latestTransactionFor()'s own `latest('created_at')`.
             'transactions' => fn ($query) => $query->latest('created_at'),
@@ -33,7 +40,25 @@ class GetGroupTherapyPaymentRosterAction extends Action
         // groupBy() for something else could silently break "latest wins" without realizing it.
         $latestTransactionByUserId = $groupTherapy->transactions->groupBy('user_id');
 
-        return $groupTherapy->users->map(function ($member) use ($latestTransactionByUserId) {
+        // TT-7.5b-b2/SCRUM-266 (user-confirmed fix "at the source"): a User-type creator is
+        // already an implicit member per GroupTherapy::getUsers()'s own long-standing convention
+        // (pushes $addedby directly, no pivot row needed) -- this roster iterated the pivot
+        // `users` relation alone, so a creator who never separately joined was invisible to
+        // payment reconciliation entirely. Deliberately NOT fixed by attaching the creator to the
+        // group_therapy_user pivot at creation time instead: that pivot row also drives
+        // JoinGroupTherapyAction's max_users capacity check, and would have silently shrunk every
+        // future group's real joinable capacity by one. $member->pivot is null for this
+        // synthesized entry -- handled below.
+        $members = $groupTherapy->users;
+        if (
+            $groupTherapy->addedby_type === User::class &&
+            $groupTherapy->addedby &&
+            ! $members->contains('id', $groupTherapy->addedby_id)
+        ) {
+            $members = $members->push($groupTherapy->addedby);
+        }
+
+        return $members->map(function ($member) use ($latestTransactionByUserId) {
             $transaction = $latestTransactionByUserId->get($member->id)?->first();
 
             // Security review finding (user-confirmed, TT-7.4d-d): this roster's own approved
@@ -44,7 +69,7 @@ class GetGroupTherapyPaymentRosterAction extends Action
             // everyone including the counsellor) is a separate signal this roster must still
             // respect -- deliberately NOT GroupTherapy::isAnonymousFor(), which ORs in the
             // group-level flag too and would incorrectly mask everyone on an anonymous group.
-            $isMemberAnonymous = (bool) $member->pivot->anonymous;
+            $isMemberAnonymous = (bool) ($member->pivot->anonymous ?? false);
 
             return [
                 'id' => $member->id,

@@ -256,4 +256,20 @@ trait TherapyTrait
     {
         return $this->topics()->count();
     }
+
+    // SCRUM-217/TT-7.5a: defaults to false (trust-based) for any therapy predating this feature,
+    // or whose payment_data is currently null (e.g. a FREE therapy).
+    //
+    // TT-7.5b-b2/SCRUM-266 (architect finding, mandatory): moved here from Therapy itself so
+    // GroupTherapy (which also uses this trait) picks it up too -- reading
+    // `$therapy->strictPaymentGate` off a GroupTherapy previously silently resolved to `null` via
+    // Eloquent's "no such attribute/accessor" fallback, and `! null` is `true`, so
+    // EnsureStrictPaymentGateSatisfiedAction's own guard (`! $therapy->strictPaymentGate`) would
+    // have short-circuited to "gate satisfied, let them in" for EVERY GroupTherapy regardless of
+    // its actual setting -- a silent bypass, not a crash, and the reason this had to move before
+    // that action's own type-hint could be widened.
+    public function getStrictPaymentGateAttribute()
+    {
+        return (bool) data_get($this->payment_data, 'strictPaymentGate', false);
+    }
 }

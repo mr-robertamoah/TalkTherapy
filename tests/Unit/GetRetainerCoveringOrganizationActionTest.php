@@ -1,9 +1,11 @@
 <?php
 
 use App\Actions\Organization\GetRetainerCoveringOrganizationAction;
+use App\Enums\CounsellorGroupTherapyStateEnum;
 use App\Enums\OrganizationCounsellorStatusEnum;
 use App\Enums\OrganizationMemberBillingModeEnum;
 use App\Models\Counsellor;
+use App\Models\GroupTherapy;
 use App\Models\Organization;
 use App\Models\OrganizationCounsellor;
 use App\Models\OrganizationMember;
@@ -94,4 +96,55 @@ test('returns null when no retainer membership covers this specific counsellor',
     activeRetainerMembership($coveredCounsellor, $user);
 
     expect(GetRetainerCoveringOrganizationAction::new()->execute($therapy, $user))->toBeNull();
+});
+
+// TT-7.5b-b2/SCRUM-266: GroupTherapy coverage -- "covered" means covered via ANY of its active
+// counsellors, not just one, since GroupTherapy has no single `counsellor`.
+
+function groupTherapyWithActiveCounsellor(Counsellor $counsellor): GroupTherapy
+{
+    $groupTherapy = GroupTherapy::factory()->create([
+        'addedby_type' => User::class,
+        'addedby_id' => User::factory(),
+    ]);
+    $groupTherapy->counsellors()->attach($counsellor->id, ['state' => CounsellorGroupTherapyStateEnum::active->value, 'role' => 'NORMAL']);
+
+    return $groupTherapy;
+}
+
+test('returns the covering organization when a retainer covers ONE of a group therapy\'s several active counsellors', function () {
+    $user = User::factory()->create();
+    $coveredCounsellor = Counsellor::factory()->create(['user_id' => User::factory()]);
+    $uncoveredCounsellor = Counsellor::factory()->create(['user_id' => User::factory()]);
+    $groupTherapy = groupTherapyWithActiveCounsellor($coveredCounsellor);
+    $groupTherapy->counsellors()->attach($uncoveredCounsellor->id, ['state' => CounsellorGroupTherapyStateEnum::active->value, 'role' => 'NORMAL']);
+    $member = activeRetainerMembership($coveredCounsellor, $user);
+
+    $organization = GetRetainerCoveringOrganizationAction::new()->execute($groupTherapy, $user);
+
+    expect($organization)->not->toBeNull();
+    expect($organization->id)->toBe($member->organization_id);
+});
+
+test('returns null for a group therapy with no active counsellors at all', function () {
+    $user = User::factory()->create();
+    $groupTherapy = GroupTherapy::factory()->create([
+        'addedby_type' => User::class,
+        'addedby_id' => User::factory(),
+    ]);
+
+    expect(GetRetainerCoveringOrganizationAction::new()->execute($groupTherapy, $user))->toBeNull();
+});
+
+test('a retainer covering an INACTIVE (non-active) group therapy counsellor does not count', function () {
+    $user = User::factory()->create();
+    $formerCounsellor = Counsellor::factory()->create(['user_id' => User::factory()]);
+    $groupTherapy = GroupTherapy::factory()->create([
+        'addedby_type' => User::class,
+        'addedby_id' => User::factory(),
+    ]);
+    $groupTherapy->counsellors()->attach($formerCounsellor->id, ['state' => CounsellorGroupTherapyStateEnum::inactive->value, 'role' => 'NORMAL']);
+    activeRetainerMembership($formerCounsellor, $user);
+
+    expect(GetRetainerCoveringOrganizationAction::new()->execute($groupTherapy, $user))->toBeNull();
 });

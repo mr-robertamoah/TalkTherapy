@@ -5859,3 +5859,64 @@ GroupTherapy today, since `EnsureStrictPaymentGateSatisfiedAction` doesn't yet a
 Full Pest suite: 1421 passed. Both new authorization paths (general-endpoint defense-in-depth,
 dedicated-endpoint gate) mutation-tested to confirm the tests actually catch a regression if either
 check were removed.
+
+---
+
+## 2026-09-11 — SCRUM-266 (TT-7.5b-b2): page-load enforcement + mandatory widening fixes
+
+**Decision**: landed both architect-flagged mandatory widening fixes atomically with the gate
+widening itself, per the ticket's own explicit requirement -- moved `Therapy::getStrictPaymentGateAttribute()`
+into `TherapyTrait` (so GroupTherapy actually inherits it instead of silently reading `null`, which
+`! null` would have evaluated as "gate satisfied" -- a silent bypass, not a crash), and widened
+`GetRetainerCoveringOrganizationAction` to resolve retainer coverage against ANY of a GroupTherapy's
+`activeCounsellors()` rather than a single `$therapy->counsellor` (which GroupTherapy doesn't have).
+
+**Membership-ambiguity fix, "at the source" per the user's own earlier decision**: rather than
+attaching a User-type GroupTherapy creator to the `group_therapy_user` pivot at creation time (which
+a background investigation showed would silently shrink every future group's real joinable capacity
+by one, since `JoinGroupTherapyAction`'s `max_users` check counts pivot rows), fixed
+`GetGroupTherapyPaymentRosterAction` (TT-7.4d-d) directly to also treat the addedby as an implicit
+member when synthesizing its member list, mirroring `GroupTherapy::getUsers()`'s own existing
+addedby-is-implicit-member convention. `EnsureUserHasAccessToTherapyAction`'s own GroupTherapy
+membership check already worked correctly for the creator via `isParticipant()` without needing this
+fix (that method already treats a User-type addedby as a participant) -- the ambiguity was purely in
+the roster's own narrower, pivot-only iteration.
+
+**Bug caught mid-implementation, not by mutation testing but by an over-permissive test assertion**:
+`GrantPaymentAccessDTO::$for` was still typed `Therapy|Session|null` (missing GroupTherapy), so the
+very first GroupTherapy member with a successful transaction hit a `TypeError` inside
+`ensureGrantedOrPaid()` -- but the test asserting this used `->not->toThrow(PaymentRequiredException::class)`,
+which is blind to any other exception type, so it passed for the wrong reason (grant never actually
+persisted) until a separate `assertDatabaseHas` check caught the empty table. Fixed by widening the
+DTO and rewriting the test to call the action directly (no exception-class-scoped expectation) so
+any exception fails it. Widened the type across every `Therapy|Session`-only touchpoint in the
+grant/transaction path -- confirmed via review that this was the only remaining unwidened one.
+
+**Scope boundary confirmed against SCRUM-267 (b3), not a gap**: security review flagged that
+`EnsureUserCanAccessTherapyContentAction` (session/topic/reply message content) still only checks
+`$therapy instanceof Therapy`, so a strict-gated GroupTherapy member can still read chat/session
+content via the messages API even after this ticket's page-load redirect. Re-read both tickets'
+text to confirm this is SCRUM-267's own explicit, already-scoped job ("PER_SESSION enforcement:
+widen `EnsureUserCanAccessTherapyContentAction`... the GroupTherapy branch explicitly deferred"),
+not an omission from SCRUM-266 ("Widens `EnsureUserHasAccessToTherapyAction`/`EnsureStrictPaymentGateSatisfiedAction`
+to cover GroupTherapy (**PER_THERAPY case**)") -- no new follow-up ticket needed, b3 already covers
+it and is next in the dependency chain. Noted explicitly in this PR's description to avoid reviewer
+confusion about apparent incomplete coverage.
+
+**Accepted as intentional, not requiring further sign-off**: (1) "any one of a group's active
+counsellors having a retainer with the member's org waives that member's entire group payment
+obligation" -- matches the `activeCounsellors()`-based convention already used for
+earnings-split/org-payer-eligibility elsewhere, and was the architect's own explicit recommendation
+during this epic's `/start-feature` scoping pass. (2) A GroupTherapy's own creator has no
+`group_therapy_user` pivot row and therefore can never opt into the same per-member roster anonymity
+a joined member can (`GetGroupTherapyPaymentRosterAction`'s synthesized addedby entry is never
+masked) -- pre-existing asymmetry, not introduced by this ticket; flagged as a minor product-parity
+question worth a follow-up ticket if ever raised, not blocking here.
+
+Full Pest suite: 1448 passed (27 new tests). Three separate authorization-critical changes mutation-
+tested independently (GroupTherapy counsellor-exemption exclusion in `EnsureUserHasAccessToTherapyAction`,
+the active-counsellor-set widening in `GetRetainerCoveringOrganizationAction`, and the roster's
+addedby-inclusion fix) -- each confirmed to fail the relevant test(s) when reverted, then restored.
+Reviewer and security-engineer both reviewed; reviewer approved with no required changes; security-
+engineer's one high-severity finding (content-gating gap) confirmed to be SCRUM-267's own scope, not
+a regression or omission in this ticket.
