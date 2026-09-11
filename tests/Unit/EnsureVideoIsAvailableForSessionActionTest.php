@@ -12,7 +12,7 @@ use App\Models\User;
 
 function onlineInSessionTherapySession(array $overrides = []): Session
 {
-    $client = User::factory()->create();
+    $client = User::factory()->adult()->create();
     $counsellorUser = User::factory()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
     $therapy = Therapy::factory()->create([
@@ -106,6 +106,54 @@ test('a non-participant gets the same generic denial regardless of the session\'
 test('the assigned counsellor is a valid participant for video', function () {
     $session = onlineInSessionTherapySession();
     $counsellorUser = $session->for->counsellor->user;
+
+    expect(fn () => EnsureVideoIsAvailableForSessionAction::new()->execute($session, $counsellorUser))
+        ->not->toThrow(VideoException::class);
+});
+
+// TT-3.1e/SCRUM-278 interim safeguard: a minor client (User::factory()'s own default -- dob is
+// null, so isAdult() is false unless ->adult() is used, see UserFactory's own comment) must be
+// blocked entirely until the real guardian-consent flow ships, regardless of everything else
+// about the session being otherwise available.
+test('a minor client is blocked from joining video even on an otherwise-available session', function () {
+    $minorClient = User::factory()->create();
+    $counsellorUser = User::factory()->create();
+    $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
+    $therapy = Therapy::factory()->create([
+        'addedby_type' => User::class,
+        'addedby_id' => $minorClient->id,
+        'counsellor_id' => $counsellor->id,
+    ]);
+    $session = Session::factory()->create([
+        'for_id' => $therapy->id,
+        'for_type' => Therapy::class,
+        'type' => 'ONLINE',
+        'status' => 'IN_SESSION',
+        'start_time' => now(),
+    ]);
+
+    expect(fn () => EnsureVideoIsAvailableForSessionAction::new()->execute($session, $minorClient))
+        ->toThrow(VideoException::class, 'Video is not yet available for accounts under 18. Guardian consent support is coming soon.');
+});
+
+// The counsellor side is never gated by this interim block -- mirrors this codebase's own
+// established "counsellor is never gated" convention from the entire payment-gate epic.
+test('the counsellor can still join video even when the therapy\'s own client is a minor', function () {
+    $minorClient = User::factory()->create();
+    $counsellorUser = User::factory()->create();
+    $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
+    $therapy = Therapy::factory()->create([
+        'addedby_type' => User::class,
+        'addedby_id' => $minorClient->id,
+        'counsellor_id' => $counsellor->id,
+    ]);
+    $session = Session::factory()->create([
+        'for_id' => $therapy->id,
+        'for_type' => Therapy::class,
+        'type' => 'ONLINE',
+        'status' => 'IN_SESSION',
+        'start_time' => now(),
+    ]);
 
     expect(fn () => EnsureVideoIsAvailableForSessionAction::new()->execute($session, $counsellorUser))
         ->not->toThrow(VideoException::class);

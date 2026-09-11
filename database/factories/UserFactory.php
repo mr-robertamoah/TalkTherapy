@@ -44,4 +44,17 @@ class UserFactory extends Factory
             'email_verified_at' => null,
         ]);
     }
+
+    // TT-3.1e/SCRUM-278: dob defaults to null here, and User::isAdult() -- `$this->age &&
+    // $this->age >= 18` -- returns false for a null dob (age defaults to 0), so a bare
+    // User::factory()->create() is, perhaps surprisingly, a MINOR by this platform's own
+    // definition. Any test creating a user who must legitimately pass an isAdult()-gated check
+    // (e.g. EnsureVideoIsAvailableForSessionAction's interim minor-block) needs this explicit
+    // state rather than relying on the implicit default.
+    public function adult(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'dob' => now()->subYears(30)->toDateString(),
+        ]);
+    }
 }

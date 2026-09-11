@@ -6218,3 +6218,57 @@ pass, fixed here since both are directly in files this ticket's video-join flow 
 
 Both fixes mutation-tested (a throwing fake provider confirms the safe message/best-effort
 behavior in each case) and covered by new regression tests.
+
+---
+
+## 2026-09-11 — SCRUM-278 (TT-3.1e): urgent interim minor-video-block, ahead of the full consent-flow feature
+
+**What happened**: while scoping TT-3.1e (guardian/minor video-consent enforcement -- a
+deliberate placeholder ticket, not yet ready to implement per its own text and the earlier
+2026-09-11 epic-scoping entry above), a product-owner pass and independent code investigation
+both confirmed a real, live gap in already-merged code: TT-3.1a-d shipped with **zero** check
+blocking a minor client from joining video. `EnsureCanCreateTherapyAction` already allows a minor
+with a guardian on file (`$user->isAdult() || $user->hasGuardian()`) to create and own a `Therapy`
+as its `addedby`, and nothing in `app/Actions/Video/` inspected age before this fix -- meaning
+that same minor could click "Join video" today exactly like an adult client, on a mental-health
+platform, with live camera/microphone access. SCRUM-278's own ticket text explicitly anticipates
+and calls for exactly this stopgap: "Do not implement TT-3.1a-d in a way that ships minor video
+access by default -- until [a real consent flow] exists, minor clients should be blocked from the
+Join video control entirely (fail closed)."
+
+**Decision**: treated as an urgent bugfix (CLAUDE.md's "how much process a task needs": closing
+an already-identified, already-decided safeguarding gap in shipped code, not a new feature),
+landed on its own `bugfix/scrum-278-interim-minor-video-block` branch with the normal
+reviewer/security-engineer pass, rather than waiting for SCRUM-278's own full `/start-feature`
+scoping (still outstanding -- see below) to complete first. Every day that full scoping pass
+takes is a day the gap stays open in production-shape code.
+
+**Scope chosen (deliberately narrow, not the real consent flow)**: `EnsureVideoIsAvailableForSessionAction`
+now blocks the actual joiner (`$user`) if they are not an adult (`User::isAdult()`) AND not the
+therapy's own assigned counsellor -- the counsellor exemption mirrors this codebase's
+already-established "counsellor is never gated" convention from the whole TT-7.5 payment-gate
+epic (`EnsureUserCanAccessTherapyContentAction`'s identical pattern), and was chosen deliberately
+over an earlier draft that blocked the whole session (client AND counsellor) regardless of who
+was joining -- the ticket's own wording is "minor **clients**", not "sessions belonging to a
+minor," and blocking the counsellor too broke the counsellor-can-always-join invariant every
+other check in this codebase upholds. This interim block does no guardian lookup, no consent
+capture, and no notification -- it is a hard, unconditional "not yet" for the minor, matching
+"fail closed until [the real thing] exists" literally. It must be removed or superseded once
+SCRUM-278's real consent flow ships.
+
+**Also discovered and fixed as a consequence**: `database/factories/UserFactory.php`'s default
+`dob` is null, and `User::isAdult()` returns false for a null `dob` (age defaults to 0) -- meaning
+every existing video test's client user was already, accidentally, a "minor" by this platform's
+own definition, and would have been blocked by the new check. Added an explicit opt-in
+`UserFactory::adult()` state and applied it to every video test's client-user fixture rather than
+changing the factory's own default (which would have silently altered every OTHER test suite in
+the app relying on the implicit default, a far larger and riskier blast radius than this fix
+warrants).
+
+**Explicitly NOT resolved by this entry**: SCRUM-278's own full scope (who grants consent and
+when, what scope a grant covers -- per-therapy/per-session/platform-wide, revocation semantics,
+multiple-guardian handling, the `Guardianship`-deletion interaction, and a regulatory-awareness
+flag for COPPA-adjacent concerns given minors as young as 10 on this platform) remains open and
+was presented to the user as this ticket's required `/start-feature` Requirements/Questions/Risks
+output, pending their answers before any further engineering (project-manager/architect
+consultation, or implementation) proceeds.

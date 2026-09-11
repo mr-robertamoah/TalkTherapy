@@ -10,7 +10,7 @@ use App\Models\VideoSession;
 use App\Models\VideoSessionParticipant;
 
 test('leaving records the calling user\'s own left_at without affecting the other participant', function () {
-    $client = User::factory()->create();
+    $client = User::factory()->adult()->create();
     $counsellorUser = User::factory()->create();
     $therapy = Therapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => $client->id]);
     $session = Session::factory()->create(['for_id' => $therapy->id, 'for_type' => Therapy::class]);
@@ -36,7 +36,7 @@ test('leaving records the calling user\'s own left_at without affecting the othe
 });
 
 test('leaving when there is no open video session at all is a safe no-op', function () {
-    $client = User::factory()->create();
+    $client = User::factory()->adult()->create();
     $therapy = Therapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => $client->id]);
     $session = Session::factory()->create(['for_id' => $therapy->id, 'for_type' => Therapy::class]);
 
@@ -44,7 +44,7 @@ test('leaving when there is no open video session at all is a safe no-op', funct
 })->throwsNoExceptions();
 
 test('leaving only affects the participant\'s own most recent join row, not an earlier one already left', function () {
-    $client = User::factory()->create();
+    $client = User::factory()->adult()->create();
     $therapy = Therapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => $client->id]);
     $session = Session::factory()->create(['for_id' => $therapy->id, 'for_type' => Therapy::class]);
     $videoSession = VideoSession::factory()->create(['session_id' => $session->id]);
@@ -78,7 +78,7 @@ test('leaving only affects the participant\'s own most recent join row, not an e
 // default for_id/for_type with no matching row; fixed at the model level, but tests here still
 // use a real participant relationship rather than relying on that edge case either way.)
 test('a non-participant cannot leave another pair\'s video call', function () {
-    $client = User::factory()->create();
+    $client = User::factory()->adult()->create();
     $counsellorUser = User::factory()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
     $therapy = Therapy::factory()->create([
