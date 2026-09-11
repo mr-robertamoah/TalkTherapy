@@ -6341,3 +6341,55 @@ a transaction/lock if double-submission is a realistic risk), and so a future re
 mistake the missing constraint for an oversight and "fix" it by adding a plain (non-partial)
 unique index, which would incorrectly block the legitimate revoke-then-re-grant cycle the whole
 table design exists to support.
+
+---
+
+## 2026-09-11 — SCRUM-281 (TT-3.1e-b): grant-flow design decisions and review fixes
+
+**Two design decisions made during implementation, not explicitly specified by TT-3.1e-a's
+architect pass**:
+
+1. **Fail closed on an unset `video_consent_mode`**: `GrantVideoConsentAction` rejects granting
+   consent until the therapy's `video_consent_mode` has been actively set (via
+   `SetVideoConsentModeAction`) -- it does not default a null/unset mode to either interpretation.
+   `PER_THERAPY` is the more permissive of the two modes (one grant covers every future session),
+   so silently defaulting to it whenever nobody has actively configured anything would be the
+   wrong direction to default on a safeguarding feature. The counsellor or a guardian must
+   explicitly choose a mode first.
+2. **Scope must match the therapy's current mode at grant time**: a `PER_THERAPY`-shaped grant
+   (consentable = `Therapy`) can only be created while the mode is `PER_THERAPY`, and likewise for
+   `PER_SESSION`/`Session`. Without this, a stray `PER_THERAPY` grant could coexist with a
+   `PER_SESSION` mode and silently authorize every session at once via e-d's eventual OR-based
+   enforcement query, defeating the point of the stricter mode. This does not conflict with
+   "mode switches are prospective-only" (TT-3.1e-a) -- it only gates what NEW grants may be
+   created under the CURRENT mode; an existing grant made under a prior mode is untouched.
+
+**Review findings, both fixed before commit**:
+
+- **Reviewer + security-engineer independently flagged the same issue**: the original
+  `GrantVideoConsentAction` locked the `video_consents` row (`lockForUpdate()` on the
+  `VideoConsent` query) to prevent a double-grant race, but on the very first grant for a scope
+  there is no existing row to lock -- InnoDB's protection there depends on gap-locking under
+  REPEATABLE READ specifically, which security-engineer traced through in detail: two concurrent
+  first-grants can both pass the "no existing valid grant" check, and their inserts then deadlock
+  against each other's gap locks (error 1213) rather than one gracefully returning the other's
+  row, with no retry/catch in place. This also silently loses ALL protection under READ COMMITTED
+  (gap locking is disabled there for InnoDB). **Fix**: lock the guaranteed-already-existing
+  consentable row itself (`Therapy` or `Session`) before checking/creating the grant, mirroring
+  `JoinVideoSessionAction::currentOrNewVideoSession()`'s actual pattern (locks the parent `Session`
+  before deciding whether to create the child `VideoSession`) instead of approximating it against
+  a possibly-empty child table. This removes the isolation-level dependency entirely, since the
+  locked row is real regardless of MySQL's isolation setting.
+- **Security-engineer**: `GetWardForVideoConsentableAction::therapyFor()` returned
+  `$consentable->for` unconditionally for a `Session` consentable, typed `?Therapy` -- but a
+  Session's `for` can be a `GroupTherapy` (this feature is 1:1-therapy-only; group therapies have
+  no single "the minor" to resolve), which would throw a `TypeError` on the return statement
+  rather than failing gracefully. Fixed to check `instanceof Therapy` and return `null` otherwise
+  (handled identically to "no ward" by callers), matching `execute()`'s own existing guard. Added
+  a regression test (`tests/Unit/GetWardForVideoConsentableActionTest.php`) constructing a
+  `GroupTherapy`-backed `Session` and asserting no crash; verified via mutation testing (reverted
+  the guard, confirmed the test fails with the exact `TypeError` described, restored the fix).
+
+No DB-level backstop for the one-valid-grant-per-scope invariant was added (still the accepted
+limitation from TT-3.1e-a's own entry) -- the row-lock fix above is what keeps
+`GrantVideoConsentAction` a correct sole enforcer of it, rather than an accidentally-correct one.
