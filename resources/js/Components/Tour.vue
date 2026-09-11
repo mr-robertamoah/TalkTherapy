@@ -6,7 +6,7 @@
     >
         <div 
             :style="computedStyles"
-            class="z-50 bg-white shadow-xl border border-gray-200 text-gray-800 p-6 rounded-xl w-full sm:w-[320px] mx-auto relative backdrop-blur-sm"
+            class="z-50 bg-white shadow-xl border border-gray-200 text-gray-800 p-6 rounded-xl w-full sm:w-[320px] mx-auto relative"
         >
             <!-- Arrow -->
             <div 
@@ -72,7 +72,7 @@
     </div>
 
     <div
-        class="bg-black/20 backdrop-blur-sm fixed inset-0 z-40 transition-opacity"
+        class="bg-black/30 fixed inset-0 z-40 transition-opacity"
         v-on:click="() => clickedCancel()"
     ></div>
 </template>

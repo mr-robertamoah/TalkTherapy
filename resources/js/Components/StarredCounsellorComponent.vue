@@ -1,7 +1,7 @@
 <script setup>
 import Avatar from './Avatar.vue';
 import StarBadge from './StarBadge.vue';
-import StyledLink from './StyledLink.vue';
+import { Link } from '@inertiajs/vue3';
 
 
 defineProps({
@@ -47,12 +47,17 @@ defineProps({
                 </div>
                 
                 <!-- Visit Profile Button -->
+                <!-- Plain Link, not StyledLink -- StyledLink hardcodes its own bg/text classes on
+                     its root element, and Vue's class-fallthrough merge doesn't let a passed-in
+                     class reliably win over those (Tailwind's generated stylesheet order, not
+                     attribute order, decides the winner) -- that previously left this pill's text
+                     invisible. MiniTherapyComponent.vue/MiniGroupTherapyComponent.vue already use
+                     a plain Link for this same reason wherever a fully custom style is needed. -->
                 <div class="absolute top-3 right-3">
-                    <StyledLink 
-                        :text="'View'" 
+                    <Link
                         :href="route('counsellor.show', { counsellorId: counsellor.id })"
-                        class="bg-white/20 backdrop-blur-sm text-white px-3 py-1 rounded-full text-xs font-medium hover:bg-white/30 transition-colors"
-                    />
+                        class="bg-white text-gray-800 px-3 py-1 rounded-full text-xs font-medium hover:bg-gray-100 transition-colors shadow-sm inline-block"
+                    >View</Link>
                 </div>
             </div>
         </div>

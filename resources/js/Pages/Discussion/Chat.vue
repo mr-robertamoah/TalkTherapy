@@ -397,7 +397,7 @@ function addNewMessage(newMessage) {
         :class="[
           showAttachmentIcons ? 'opacity-100 visible z-[1]' : 'opacity-0 invisible -z-[1]',
         ]"
-        class="w-full top-0 absolute transition-all duration-100 right-0 h-full bg-gray-900/40 backdrop-blur-[2px] flex justify-center items-center"
+        class="w-full top-0 absolute transition-all duration-100 right-0 h-full bg-gray-900/50 flex justify-center items-center"
       >
         <div
           class="relative w-[85%] max-w-sm bg-white shadow-2xl rounded-2xl p-6 flex justify-center items-start gap-6"
