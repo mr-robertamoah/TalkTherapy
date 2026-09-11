@@ -5920,3 +5920,58 @@ addedby-inclusion fix) -- each confirmed to fail the relevant test(s) when rever
 Reviewer and security-engineer both reviewed; reviewer approved with no required changes; security-
 engineer's one high-severity finding (content-gating gap) confirmed to be SCRUM-267's own scope, not
 a regression or omission in this ticket.
+
+---
+
+## 2026-09-11 — SCRUM-267 (TT-7.5b-b3): session/chat enforcement + late-joiner temporal logic
+
+**Delivered the exact security gap SCRUM-266's own review flagged as its scope, not a regression**:
+`EnsureUserCanAccessTherapyContentAction` (shared by `MessageService::getSessionMessages()`/
+`getTherapyTopicMessages()`/`getMessageReplies()`) only ever checked `$therapy instanceof Therapy`,
+so a strict-gated GroupTherapy's own chat content stayed fully reachable through the messages API
+regardless of payment status, even after b2 correctly blocked the group's own page load. Widened
+with the identical `isParticipant() && !isCounsellor()` membership check b2 already added to
+`EnsureUserHasAccessToTherapyAction`.
+
+**Late-joiner "historical content" exemption design**: rather than defaulting the exemption's
+comparison timestamp from `$session->start_time` inside the shared action itself, made it an
+explicit, caller-supplied `?Carbon $contentTimestamp` parameter -- deliberately never passed by
+`EnsureCanSendMessageToForAction`'s message-CREATION call site, since a message being created right
+now has no historical timestamp to exempt on; auto-deriving it from session start_time there would
+have let a member in an old-but-still-open session send unlimited new messages for free forever,
+never just read old ones. Each of the 3 read call sites passes the timestamp that actually matches
+what it fetches: `getSessionMessages`/`getTherapyTopicMessages` pass the SESSION's own `start_time`
+(they fetch a whole session's worth of content at once, so "does this predate my join" is answered
+at session granularity); `getMessageReplies` passes the PARENT MESSAGE's own `created_at` (it
+fetches replies to one specific message, so gating happens at that finer granularity -- an old
+session that's still "in progress" can have a brand-new parent message whose replies are still
+gated, even though the session itself predates the join). New `GetGroupTherapyMemberJoinDateAction`
+resolves the member's own join date: their `group_therapy_user` pivot row's `created_at` if one
+exists, else (for a User-type creator with no pivot row, per b2's own membership-ambiguity fix) the
+group's own `created_at`.
+
+**Test-authoring pitfall found and documented**: `Session` factory's default `start_time` is
+`$this->faker->timezone()` (a junk string like "America/New_York"), which Carbon's cast silently
+coerces to roughly "now" rather than throwing -- this only mattered once GroupTherapy sessions
+started being compared against join dates (individual Therapy tests never triggered the comparison
+at all), and caused one new test to pass for the wrong reason until every GroupTherapy-parented
+`Session::factory()->create()` in the new test file was given an explicit `start_time` override.
+Added a one-line warning comment to the factory itself (reviewer suggestion) so a future test
+doesn't rediscover this the hard way.
+
+**Follow-up filed, not blocking**: security review surfaced that `routes/channels.php`'s broadcast-
+channel authorization for Therapy/GroupTherapy channels checks `isParticipant()` only, never the
+strict payment gate -- a subscribed, non-paying participant still receives *live*
+`MessageSentEvent`/`MessageUpdatedEvent` broadcasts regardless of payment status. Confirmed
+pre-existing (not introduced by this ticket or any other TT-7.5b ticket) and out of this epic's
+approved scope; filed as SCRUM-271 rather than silently left undocumented.
+
+Full Pest suite: 1479 passed (33 new tests across this ticket's own additions). Three separate
+authorization-critical changes mutation-tested independently (the GroupTherapy-member gating branch
+itself, the late-joiner date-comparison condition, and `GetGroupTherapyMemberJoinDateAction`'s
+creator-fallback branch), plus a fourth targeted mutation proving the message-creation call site
+would fail its own regression test if it ever gained the historical-exemption parameter -- each
+confirmed to fail the relevant test(s) when reverted/mutated, then restored. Reviewer and
+security-engineer both approved with no required changes; two minor reviewer suggestions (an
+additional `getTherapyTopicMessages` exemption test, and the factory comment above) applied before
+merge.
