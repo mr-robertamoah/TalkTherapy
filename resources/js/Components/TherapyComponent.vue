@@ -33,7 +33,15 @@
             <PrimaryButton
                 v-if="computedCanEnd"
                 @click="() => clickedSessionAction('end')" class="shrink-0">end session for you</PrimaryButton>
+            <PrimaryButton
+                v-if="computedCanJoinVideo && !videoActive"
+                @click="videoActive = true" class="shrink-0">join video</PrimaryButton>
     </div>
+    <VideoCallPanel
+        v-if="computedCanJoinVideo && videoActive"
+        :session="activeSession"
+        @close="videoActive = false"
+    />
     <div class="my-2 w-full h-1 rounded bg-stone-400"  v-if="showSessions"></div>
     <div v-bind="$attrs" class="min-h-[500px] relative flex flex-col items-center justify-center">
         <div v-if="therapy.status == 'PENDING' && !isParticipant"
@@ -340,6 +348,7 @@ import { usePage } from '@inertiajs/vue3';
 import MiniModal from './MiniModal.vue';
 import useConnectionStatus from '@/Composables/useConnectionStatus';
 import SessionNotesPanel from './SessionNotesPanel.vue';
+import VideoCallPanel from './VideoCallPanel.vue';
 
 const { goToLogin } = useAuth()
 const {
@@ -437,6 +446,10 @@ const selectedTopicSession = ref(null)
 const receivedMessages = ref(0)
 const otherPartyTyping = ref(false)
 let typingIdleTimer = null
+// TT-3.1c/SCRUM-276: local-only display state -- VideoCallPanel.vue owns the actual video
+// session's own lifecycle (it joins on mount, leaves on unmount); this ref only decides whether
+// that component is mounted at all.
+const videoActive = ref(false)
 const sessions = ref([])
 const chatMessages = ref([])
 const messages = reactive({
@@ -521,7 +534,7 @@ watch(() => props.deletedSessionOrTopic?.id, () => {
 })
 watch(() => props.newSession?.id, () => {
     if (!props.newSession?.id) return
-    
+
     sessions.value = [{...props.newSession}, ...sessions.value]
 })
 watchEffect(() => {
@@ -608,11 +621,27 @@ const computedCanEnd = computed(() => {
 })
 const computedCanAbandon = computed(() => {
     return ['PENDING', 'IN_SESSION', 'IN_SESSION_CONFIRMATION']
-            .includes(props.activeSession?.status) && 
+            .includes(props.activeSession?.status) &&
             props.canAbandon
 })
+// TT-3.1c/SCRUM-276: display-only mirror of the backend's own gate
+// (EnsureVideoIsAvailableForSessionAction) -- a defense-in-depth nicety, not the real
+// authorization, which the backend re-checks on every join/leave/end call regardless. TT-3.1 is
+// 1:1 Therapy only (therapyType === 'individual') -- GroupTherapy video is TT-3.2, unscoped.
+const computedCanJoinVideo = computed(() => {
+    return props.therapyType === 'individual' &&
+        props.activeSession?.type === 'ONLINE' &&
+        ['IN_SESSION', 'IN_SESSION_CONFIRMATION'].includes(props.activeSession?.status) &&
+        props.isParticipant
+})
 const computedHasActions = computed(() => {
-    return computedCanStart.value || computedCanEnd.value || computedCanAbandon.value
+    return computedCanStart.value || computedCanEnd.value || computedCanAbandon.value || computedCanJoinVideo.value
+})
+// Closes a stale panel if the active session changes out from under it (a different session
+// becomes active, or this one leaves the online/in-progress window) -- VideoCallPanel.vue's own
+// onBeforeUnmount already handles leaving the call cleanly either way.
+watch(() => computedCanJoinVideo.value, (canJoinVideo) => {
+    if (!canJoinVideo) videoActive.value = false
 })
 const computedSelectSessionIsActive = computed(() => {
     return props.activeSession?.id && selectedSession.value?.id && 

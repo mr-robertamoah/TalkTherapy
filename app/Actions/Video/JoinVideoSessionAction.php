@@ -13,6 +13,8 @@ use App\Models\User;
 use App\Models\VideoSession;
 use App\Models\VideoSessionParticipant;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 
 // TT-3.1a/SCRUM-274: the one entry point for joining a Session's video call -- finds or creates
 // the current "epoch" (VideoSession row), creates the provider room on first join, then mints
@@ -126,7 +128,24 @@ class JoinVideoSessionAction extends Action
                 'started_at' => now(),
             ]);
 
-            $room = $provider->createRoom($videoSession);
+            // TT-3.1c/SCRUM-276 QA finding: this call was unguarded, so a provider HTTP failure
+            // (e.g. a real 4xx from Daily's own API) propagated as a raw
+            // Illuminate\Http\Client\RequestException all the way to the frontend -- its
+            // getCode() equals the upstream HTTP status (not 500), so
+            // ResolvesExceptionResponse::messageFor()'s 500-only masking never applied, leaking
+            // the provider's own raw response body (e.g. Daily's literal
+            // {"error":"authorization-header-error",...}) straight to the end user. Caught and
+            // rethrown as our own controlled, generic VideoException instead.
+            try {
+                $room = $provider->createRoom($videoSession);
+            } catch (Throwable $exception) {
+                Log::warning('Video provider failed to create a room for a session.', [
+                    'session_id' => $session->id,
+                    'exception' => $exception->getMessage(),
+                ]);
+
+                throw new VideoException('Unable to start the video call right now. Please try again shortly.', 502);
+            }
 
             $videoSession->update([
                 'provider_room_id' => $room['room_id'],

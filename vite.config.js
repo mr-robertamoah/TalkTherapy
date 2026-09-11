@@ -24,5 +24,13 @@ export default defineConfig({
         hmr: {
             host: 'localhost',
         },
+        // TT-3.1c/SCRUM-276: node_modules grew enough (amazon-chime-sdk-js alone adds hundreds
+        // of files) that native inotify-based watching started hitting this host's
+        // fs.inotify.max_user_instances limit inside the bind-mounted Docker container, crashing
+        // the dev server on startup with EMFILE. Polling sidesteps the host's inotify limits
+        // entirely -- the standard fix for this exact Docker+bind-mount failure mode.
+        watch: {
+            usePolling: true,
+        },
     }
 });

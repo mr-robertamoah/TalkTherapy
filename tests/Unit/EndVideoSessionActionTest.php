@@ -11,6 +11,40 @@ use App\Models\User;
 use App\Models\VideoSession;
 use App\Models\VideoSessionParticipant;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Log;
+
+// TT-3.1c/SCRUM-276 QA finding: the "best-effort" comment above endRoom()'s call site previously
+// described intent the code didn't implement -- there was no try/catch, so a provider failure
+// DID propagate and block the local ended_at update, contradicting VideoProviderInterface's own
+// documented contract.
+test('a provider-side teardown failure still marks the room ended locally, matching endRoom()\'s best-effort contract', function () {
+    Event::fake();
+    Log::shouldReceive('warning')->once();
+    $session = Session::factory()->create();
+    $videoSession = VideoSession::factory()->create(['session_id' => $session->id, 'provider_room_id' => 'room-1']);
+    app()->instance(VideoProviderInterface::class, new class implements VideoProviderInterface
+    {
+        public function createRoom(VideoSession $videoSession): array
+        {
+            return [];
+        }
+
+        public function createParticipantCredentials(VideoSession $videoSession, User $user, string $displayName, bool $isOwner = false): array
+        {
+            return [];
+        }
+
+        public function endRoom(VideoSession $videoSession): void
+        {
+            throw new RuntimeException('Daily API is unreachable.');
+        }
+    });
+
+    EndVideoSessionAction::new()->execute($session);
+
+    expect($videoSession->fresh()->ended_at)->not->toBeNull();
+    Event::assertDispatched(VideoSessionStatusChangedEvent::class);
+});
 
 test('ending marks the room ended, marks every still-active participant left, and calls the provider to tear it down', function () {
     Event::fake();
