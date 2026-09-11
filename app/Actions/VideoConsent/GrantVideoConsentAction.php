@@ -73,9 +73,7 @@ class GrantVideoConsentAction extends Action
             $consentable::query()->lockForUpdate()->find($consentable->id);
 
             $existing = VideoConsent::query()
-                ->where('consentable_type', $consentable::class)
-                ->where('consentable_id', $consentable->id)
-                ->whereNull('revoked_at')
+                ->whereValidFor($consentable::class, $consentable->id)
                 ->first();
 
             if ($existing) {

@@ -57,3 +57,11 @@ Schedule::call(function () {
 Schedule::call(function () {
     AppService::new()->settleDueOrganizationInvoices();
 })->dailyAt('03:00');
+
+Schedule::call(function () {
+    AppService::new()->sendDayBeforeGuardianVideoConsentReminders();
+})->dailyAt('08:00');
+
+Schedule::call(function () {
+    AppService::new()->sendHourBeforeGuardianVideoConsentReminders();
+})->everyFiveMinutes();

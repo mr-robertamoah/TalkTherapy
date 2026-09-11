@@ -52,6 +52,17 @@ class VideoConsent extends Model
         return is_null($this->revoked_at);
     }
 
+    // TT-3.1e-e/SCRUM-284 (reviewer suggestion): the exact-scope, currently-valid lookup that
+    // GrantVideoConsentAction and IsVideoConsentOutstandingForSessionAction each need -- extracted
+    // here to remove the repeated consentable_type/consentable_id/revoked_at IS NULL where-chain.
+    public function scopeWhereValidFor($query, string $consentableType, int $consentableId)
+    {
+        return $query
+            ->where('consentable_type', $consentableType)
+            ->where('consentable_id', $consentableId)
+            ->whereNull('revoked_at');
+    }
+
     // TT-3.1e-c: a Guardianship-deletion cascade revokes on the guardian's behalf, with no
     // acting guardian to attribute it to (revoked_by_guardian_id stays null either way this
     // happened) -- revocation_reason is what actually distinguishes the two cases for an audit
