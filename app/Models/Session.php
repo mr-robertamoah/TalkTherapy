@@ -84,6 +84,15 @@ class Session extends Model
         return $this->morphMany(Message::class, 'for');
     }
 
+    // TT-3.1a/SCRUM-274: every video "epoch" this Session has ever had -- ended and current.
+    // Callers looking for the currently-open one filter ->whereNull('ended_at') themselves
+    // (see JoinVideoSessionAction/LeaveVideoSessionAction) rather than this relation assuming
+    // there's always exactly one to find.
+    public function videoSessions()
+    {
+        return $this->hasMany(VideoSession::class);
+    }
+
     public function transactions()
     {
         return $this->morphMany(Transaction::class, 'for');

@@ -6077,3 +6077,77 @@ individual-Therapy non-regression) that don't belong to any single earlier sub-t
 Full Pest suite: 1485 passed (3 new tests in this ticket). SCRUM-216 itself transitions straight to
 Done alongside SCRUM-270, following the same "epic-level ticket doesn't get individually worked"
 pattern TT-7.4d's own closeout (SCRUM-256) used.
+
+---
+
+## 2026-09-11 — SCRUM-7 (TT-3): Video & Audio Sessions -- scoped via /start-feature
+
+**Context**: first epic since TT-7.5b's closeout, and the first genuinely NEW capability (live
+media/WebRTC) in this codebase's history -- every prior epic this session widened existing
+patterns (payment gating, messaging, organizations). Went through a full product-owner →
+project-manager → architect pass (SCRUM-7/SCRUM-26), followed by two live web-research rounds on
+WebRTC infra vendors, since the infra choice here carries real recurring cost and vendor
+dependency unlike almost every other decision made in this backlog so far.
+
+**Scope decided this session**: TT-3.1 (SCRUM-26) only. TT-3.2 (multi-party, SCRUM-27) and TT-3.3
+(graceful degrade, SCRUM-28) are deliberately NOT scoped in depth yet -- both depend on TT-3.1's
+actual shape, per the project-manager's own explicit recommendation not to estimate them until
+TT-3.1's infra choice is proven out.
+
+**Infra decision (the epic's single highest-leverage question)**: initial architect recommendation
+was a managed SFU, specifically LiveKit Cloud, reasoning that its room model is multi-party-native
+from day one (TT-3.1 and TT-3.2 become the same infrastructure) and it avoids the real operational
+lift of self-hosting an SFU/TURN stack with no precedent in this project's Docker Compose setup.
+User asked for the actual LiveKit Cloud cost breakdown before deciding -- initial figures cited
+(Build tier free / Ship tier $50/mo) were **materially incomplete**: a follow-up, deeper research
+pass (comparing LiveKit against Daily.co, Agora, Vonage, Amazon Chime SDK, and Zoom Video SDK on
+cost/reliability/HIPAA-BAA support/multi-party pricing) surfaced that **LiveKit Cloud's HIPAA BAA
+is gated to its $500/mo Scale tier**, not the cheaper tiers -- since real client sessions are PHI
+from day one, the honest LiveKit Cloud cost floor is $500/mo flat, not $0-50/mo. Daily.co and
+Amazon Chime SDK both offer a self-serve BAA at no extra cost, at a small fraction of that price at
+this platform's likely launch scale (dozens to low-hundreds of sessions/month). Self-hosting
+LiveKit's own open-source server was researched and explicitly ruled out for now: LiveKit's own
+security documentation states it does not recommend self-hosting for compliance-sensitive
+production workloads without dedicated hardening/ops experience -- exactly this team's position
+today.
+
+**Final decision (user's own choice, not the architect's default)**: build a **dual-provider
+architecture** -- one `VideoProviderInterface` contract with two concrete adapters, `DailyVideoProvider`
+and `ChimeVideoProvider` (AWS Chime SDK), with the active provider selected via config per
+deployment (not a live per-session runtime switch, which would have meant running and maintaining
+two SDKs concurrently in production for no concrete reason). This was the user's own refinement
+after an initial "implement both, switch between them" ask was clarified down from "both live
+simultaneously, switchable at runtime" (rejected as unnecessarily expensive to build and maintain
+without a concrete reason to run both concurrently) to "one active provider per deployment, chosen
+by config, both fully implemented." Real cost impact: not a full doubling of the affected
+milestones (the second adapter reuses the interface/pattern the first establishes, and only one
+provider is ever active in a given deployment, so there's no concurrent-production complexity) but
+a genuine, material addition -- reflected as a ~40-50% uplift on the backend-integration (a) and
+frontend-client (c) milestones in `documentation/implementation_plan.md`'s updated TT-3.1 row,
+rather than a flat re-estimate from a fresh project-manager pass (user explicitly chose to proceed
+without one).
+
+**Signaling channel (resolved, architect recommendation accepted)**: the low-frequency "video call
+started/ended" app-level notification rides the existing per-session `sessions.{id}` `PrivateChannel`
+(already scoped via `Session::isParticipant()`, already low-traffic, matches `SessionUpdatedEvent`'s
+own precedent) -- NOT the busier per-therapy/group `PresenceChannel`. Actual WebRTC media signaling
+(SDP/ICE) is handled entirely by whichever provider's own SDK/servers are active, never Reverb --
+Reverb was validated (not assumed) to be a poor fit for trickle-ICE's rapid-small-message pattern,
+since every broadcast event in this app today is queued (`ShouldBroadcast`, not `ShouldBroadcastNow`).
+
+**Guardian/minor video consent (resolved, product/safeguarding decision, user's own call)**: a
+minor client requires an explicit new consent flow before joining video -- this does NOT silently
+extend `Guardianship`'s existing text-content-visibility model to a live camera/mic surface. Not
+yet scoped in detail (deliberately -- this is flagged as potentially deserving its own
+`/start-feature` pass rather than a same-epic sub-ticket, given the safeguarding stakes), sequenced
+as TT-3.1e, after the core video functionality (a-d) lands.
+
+**Data model (architect recommendation, accepted)**: new `VideoSession`/`video_session_participants`
+tables, designed for N participants from day one even though TT-3.1 only ever uses 2 -- so TT-3.2
+only relaxes a business-rule constant instead of needing new schema. Live/mid-call connection state
+(connected, muted, participant count) stays ephemeral (provider-side or client-side) and never
+touches `Session` columns -- a direct consequence of the product requirement that a transient
+disconnect must never mutate `Session.status`.
+
+Jira sub-tickets to be filed under SCRUM-26 as TT-3.1a through TT-3.1f (TT-3.1e pending its own
+scoping pass), per the breakdown now in `documentation/implementation_plan.md`.
