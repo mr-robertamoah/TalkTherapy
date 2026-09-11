@@ -43,6 +43,12 @@ class UpdateGroupTherapyRequest extends FormRequest
             'inPersonAmount' => ['nullable', 'numeric'],
             'currency' => ['nullable', Rule::in(config('currencies.supported'))],
             'counsellorIds' => ['nullable', 'array'],
+            // TT-7.5b-b1/SCRUM-265: same convention UpdateTherapyRequest already uses. Actual
+            // authorization for CHANGING these once the group exists is
+            // EnsureCanSetGroupTherapyPaymentGateAction's job (called from GroupTherapyService),
+            // not this request class's.
+            'strictPaymentGate' => ['nullable', 'boolean'],
+            'allowFreeHistoricalAccess' => ['nullable', 'boolean'],
         ];
     }
 }

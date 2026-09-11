@@ -64,4 +64,16 @@ class GroupTherapyDTO extends BaseDTO
     // at all (accepted but unvalidated), so it could already be omitted on creation, not just
     // update -- same crash, same fix (SCRUM-127).
     public ?bool $shareEqually = null;
+
+    // TT-7.5b-b1/SCRUM-265: same payment_data key name TT-7.5a already established for individual
+    // Therapy (CreateTherapyDTO::$strictPaymentGate). Authorization for CHANGING this once a
+    // GroupTherapy already exists is EnsureCanSetGroupTherapyPaymentGateAction's job (TT-7.5b-b0),
+    // not this DTO's.
+    public ?bool $strictPaymentGate = null;
+
+    // TT-7.5b-b1/SCRUM-265: sibling setting (default true, enforced at write time in
+    // CreateGroupTherapyAction/UpdateGroupTherapyAction, not here) -- controls whether a
+    // late-joining member can see content that predates their own join, once strictPaymentGate is
+    // on. Enforcement is TT-7.5b-b3's job; this ticket only persists the value.
+    public ?bool $allowFreeHistoricalAccess = null;
 }

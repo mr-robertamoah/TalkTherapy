@@ -127,6 +127,10 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/group-therapies/{groupTherapyId}/chat', [GroupTherapyController::class, 'chat'])->name('group.therapies.chat');
     Route::patch('/group-therapies/{groupTherapyId}', [GroupTherapyController::class, 'updateGroupTherapy'])->name('group.therapies.update');
+    // TT-7.5b-b1/SCRUM-265: mirrors therapies.strict_payment_gate.update's own route -- deliberately
+    // separate from group.therapies.update above, see GroupTherapyService::updateGroupTherapyPaymentGate()'s
+    // own comment for why.
+    Route::patch('/group-therapies/{groupTherapyId}/payment-gate', [GroupTherapyController::class, 'updateGroupTherapyPaymentGate'])->name('group.therapies.payment_gate.update')->middleware('throttle:30,1');
     Route::delete('/group-therapies/{groupTherapyId}', [GroupTherapyController::class, 'deleteGroupTherapy'])->name('group.therapies.delete');
     Route::post('/group-therapies/{groupTherapyId}', [GroupTherapyController::class, 'endGroupTherapy'])->name('group.therapies.end');
 

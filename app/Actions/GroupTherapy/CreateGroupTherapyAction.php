@@ -29,6 +29,14 @@ class CreateGroupTherapyAction extends Action
                 'inPersonAmount' => $dto->inPersonAmount ?: '',
                 'shareEqually' => $dto->shareEqually,
                 'sharePercentage' => $dto->shareEqually ? null : $dto->sharePercentage,
+                // TT-7.5b-b1/SCRUM-265: whoever is creating this GroupTherapy (User or Counsellor)
+                // sets its initial values -- there is no prior state to protect yet, so no
+                // authorization check is needed here (unlike a later update, which is
+                // EnsureCanSetGroupTherapyPaymentGateAction's job). Defaults mirror TT-7.5a's own
+                // trust-based default (strictPaymentGate: false) and the product decision for the
+                // new sibling setting (allowFreeHistoricalAccess: true).
+                'strictPaymentGate' => (bool) ($dto->strictPaymentGate ?? false),
+                'allowFreeHistoricalAccess' => (bool) ($dto->allowFreeHistoricalAccess ?? true),
             ],
         ];
 

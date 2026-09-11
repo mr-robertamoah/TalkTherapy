@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Actions\GroupTherapy\CreateGroupTherapyAction;
+use App\Actions\GroupTherapy\EnsureCanSetGroupTherapyPaymentGateAction;
 use App\Actions\GroupTherapy\JoinGroupTherapyAction;
 use App\Actions\GroupTherapy\UpdateGroupTherapyAction;
 use App\Actions\Request\SendTherapyAssistanceRequestAction;
@@ -81,7 +82,37 @@ class GroupTherapyService extends Service
 
         EnsureCanUpdateTherapyAction::new()->execute($groupTherapyDTO);
 
+        // TT-7.5b-b1/SCRUM-265: defense-in-depth, mirrors TherapyService::updateTherapy()'s own
+        // identical call -- only runs when one of the two gate-related fields is actually being
+        // touched (EnsureCanSetGroupTherapyPaymentGateAction itself has no such guard, since it
+        // doesn't own these field names; that's this call site's job). A paying client who passes
+        // EnsureCanUpdateTherapyAction above (they ARE the addedby) still can't sneak a gate change
+        // through the general update endpoint without also being an active counsellor or admin.
+        if (! is_null($groupTherapyDTO->strictPaymentGate) || ! is_null($groupTherapyDTO->allowFreeHistoricalAccess)) {
+            EnsureCanSetGroupTherapyPaymentGateAction::new()->execute($groupTherapyDTO->groupTherapy, $groupTherapyDTO->user);
+        }
+
         EnsureTherapyDataIsValidAction::new()->execute($groupTherapyDTO);
+
+        return UpdateGroupTherapyAction::new()->execute($groupTherapyDTO);
+    }
+
+    // TT-7.5b-b1/SCRUM-265: mirrors TherapyService::updateStrictPaymentGate()'s own precedent
+    // exactly -- deliberately separate from updateGroupTherapy() above so an ACTIVE counsellor who
+    // is NOT the group's own addedby (the normal case: a counsellor becomes assigned by accepting
+    // an assistance request, not by being addedby) can still reach
+    // EnsureCanSetGroupTherapyPaymentGateAction's own, self-contained authorization check, bypassing
+    // EnsureCanUpdateTherapyAction's addedby-only gate. Also deliberately skips
+    // EnsureTherapyDataIsValidAction, same rationale as TT-7.5a's own equivalent (these two
+    // settings should stay toggleable regardless of the group's current status/other field state).
+    public function updateGroupTherapyPaymentGate(GroupTherapyDTO $groupTherapyDTO)
+    {
+        EnsureTherapyExistsAction::new()->execute(
+            $groupTherapyDTO,
+            'Group Therapy'
+        );
+
+        EnsureCanSetGroupTherapyPaymentGateAction::new()->execute($groupTherapyDTO->groupTherapy, $groupTherapyDTO->user);
 
         return UpdateGroupTherapyAction::new()->execute($groupTherapyDTO);
     }
