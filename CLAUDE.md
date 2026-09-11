@@ -151,6 +151,9 @@ roster of seeded accounts and their credentials, and keep it updated when seed d
 
 - If requirements are unclear, ask questions — do not invent requirements.
 - Prefer maintainability over cleverness; follow existing architecture and naming conventions.
+- Before writing or reviewing any Vue/Tailwind UI, use the `frontend-design` skill
+  (`.claude/skills/frontend-design/`) — it catches decorative glassmorphism/blur and other
+  generic-AI-template tells this app has drifted into before.
 - Keep commits small and focused.
 - Do not add a `Co-Authored-By: Claude ...` trailer (or similar) to commit messages.
 - Run the formatter, linter, and test suite before calling a feature done; never skip or silently

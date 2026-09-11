@@ -45,7 +45,7 @@ const startTimeLabel = computed(() => {
       <span class="font-semibold shrink-0">{{ startTimeLabel }}</span>
       <span
         class="text-[10px] uppercase tracking-wide px-1 rounded shrink-0"
-        :class="event.forType === 'group' ? 'bg-white/30' : 'bg-black/20'"
+        :class="event.forType === 'group' ? 'bg-white text-gray-900' : 'bg-gray-900 text-white'"
       >{{ event.forType === 'group' ? 'group' : 'individual' }}</span>
     </div>
     <div class="text-white truncate">{{ event.name }}</div>

@@ -384,7 +384,7 @@ function closeModal() {
                         
                         <!-- Stars badge positioned at bottom right of cover -->
                         <div class="absolute -bottom-12 right-4 sm:right-8 z-20">
-                            <StarBadge class="bg-white/95 backdrop-blur-sm rounded-lg p-3 shadow-lg border border-gray-200"
+                            <StarBadge class="bg-white rounded-lg p-3 shadow-lg border border-gray-200"
                                 :overall="counsellor?.overallStarsCount"
                                 :month="counsellor?.currentMonthStarsCount" 
                             />
