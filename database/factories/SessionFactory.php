@@ -24,6 +24,11 @@ class SessionFactory extends Factory
         return [
             'name' => $this->faker->name,
             'about' => $this->faker->sentence(10),
+            // TT-7.5b-b3/SCRUM-267 (reviewer suggestion): these aren't real datetimes -- the
+            // 'datetime' cast coerces a timezone string like "America/New_York" via Carbon's
+            // fuzzy parsing, which silently resolves to roughly "now" rather than throwing.
+            // Any test asserting on start_time/end_time (e.g. comparing it to another timestamp)
+            // MUST override these explicitly rather than relying on this default.
             'start_time' => $this->faker->timezone(),
             'end_time' => $this->faker->timezone(),
             'payment_type' => TherapyPaymentTypeEnum::free->value,

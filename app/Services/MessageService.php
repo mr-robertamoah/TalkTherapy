@@ -60,10 +60,15 @@ class MessageService extends Service
         // the parent therapy) -- consolidated here from what used to be a bare participant check,
         // since a strict-gated therapy's chat would otherwise stay reachable through this
         // endpoint even when the main page correctly blocks it (EnsureUserHasAccessToTherapyAction).
+        //
+        // TT-7.5b-b3/SCRUM-267: the session's own start_time is the late-joiner exemption's
+        // comparison point here -- this fetches a WHOLE session's worth of messages at once, so
+        // "does this content predate my join" is answered at the session level, not per message.
         if (! EnsureUserCanAccessTherapyContentAction::new()->execute(
             $getSessionMessagesDTO->session?->for,
             $user,
-            $getSessionMessagesDTO->session
+            $getSessionMessagesDTO->session,
+            $getSessionMessagesDTO->session?->start_time
         )) {
             return [];
         }
@@ -176,8 +181,8 @@ class MessageService extends Service
         }
 
         // SCRUM-220/TT-7.5a: see getSessionMessages()'s identical comment -- same shared check,
-        // same reason.
-        if (! EnsureUserCanAccessTherapyContentAction::new()->execute($therapy, $user, $session)) {
+        // same reason. TT-7.5b-b3/SCRUM-267: same session-level late-joiner comparison point too.
+        if (! EnsureUserCanAccessTherapyContentAction::new()->execute($therapy, $user, $session, $session?->start_time)) {
             return [];
         }
 
@@ -244,7 +249,14 @@ class MessageService extends Service
             if ($for instanceof Session) {
                 // SCRUM-220/TT-7.5a: see getSessionMessages()'s identical comment -- same shared
                 // check, same reason.
-                if (! EnsureUserCanAccessTherapyContentAction::new()->execute($for->for, $user, $for)) {
+                //
+                // TT-7.5b-b3/SCRUM-267: unlike getSessionMessages()/getTherapyTopicMessages()
+                // above, this fetches replies to ONE specific parent $message, not a whole
+                // session's worth of content -- so the late-joiner comparison point here is that
+                // message's own created_at, not the session's start_time. Replies to a message
+                // posted before a member joined stay visible; replies to one posted after are
+                // gated normally.
+                if (! EnsureUserCanAccessTherapyContentAction::new()->execute($for->for, $user, $for, $message->created_at)) {
                     return [];
                 }
             } elseif ($for instanceof Discussion) {

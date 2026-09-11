@@ -58,6 +58,15 @@ class GroupTherapy extends Model
         return 'Group Therapy';
     }
 
+    // TT-7.5b-b1/SCRUM-265 persisted this; TT-7.5b-b3/SCRUM-267 is the first reader. Defaults to
+    // true (matches CreateGroupTherapyAction/UpdateGroupTherapyAction's own default) for any group
+    // predating this feature, or whose payment_data is currently null (e.g. a FREE group).
+    // Deliberately not on TherapyTrait -- this setting only exists for GroupTherapy.
+    public function getAllowFreeHistoricalAccessAttribute()
+    {
+        return (bool) data_get($this->payment_data, 'allowFreeHistoricalAccess', true);
+    }
+
     public function addedby()
     {
         // withTrashed: see Therapy::counsellor() -- addedby (User or Counsellor) may have
