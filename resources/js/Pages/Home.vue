@@ -51,11 +51,23 @@ const props = defineProps({
     paymentRequiredTherapyId: {
         default: null,
     },
+    // TT-7.5b-b5/SCRUM-269: sibling flash prop for a GroupTherapy-triggered redirect (see
+    // GroupTherapyController::redirectForPaymentRequired(), TT-7.5b-b2) -- a GroupTherapy id
+    // isn't in the same id-space as a Therapy id, so it can't reuse paymentRequiredTherapyId.
+    paymentRequiredGroupTherapyId: {
+        default: null,
+    },
     paymentRequiredMessage: {
         type: String,
         default: '',
     },
 })
+
+// TT-7.5b-b5/SCRUM-269: the two flash props above are mutually exclusive (a single redirect is
+// ever either Therapy- or GroupTherapy-triggered) -- resolves which one PaymentRequiredBanner
+// should actually target.
+const paymentRequiredPayableId = computed(() => props.paymentRequiredTherapyId ?? props.paymentRequiredGroupTherapyId)
+const paymentRequiredPayableType = computed(() => props.paymentRequiredGroupTherapyId ? 'group' : 'individual')
 
 const newTherapy = ref(null)
 const newGroupTherapy = ref(null)
@@ -310,7 +322,8 @@ function showPost() {
         <PaymentRequiredBanner
             v-if="paymentRequired"
             :message="paymentRequiredMessage"
-            :therapy-id="paymentRequiredTherapyId"
+            :payable-id="paymentRequiredPayableId"
+            :payable-type="paymentRequiredPayableType"
         />
 
         <div class="pt-6 pb-12">
