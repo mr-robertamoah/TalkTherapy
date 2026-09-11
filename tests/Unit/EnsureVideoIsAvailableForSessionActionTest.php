@@ -7,6 +7,7 @@ use App\Models\GroupTherapy;
 use App\Models\Session;
 use App\Models\Therapy;
 use App\Models\User;
+use App\Models\VideoConsent;
 
 // TT-3.1a/SCRUM-274: the one gate every video entry point passes through.
 
@@ -111,11 +112,12 @@ test('the assigned counsellor is a valid participant for video', function () {
         ->not->toThrow(VideoException::class);
 });
 
-// TT-3.1e/SCRUM-278 interim safeguard: a minor client (User::factory()'s own default -- dob is
-// null, so isAdult() is false unless ->adult() is used, see UserFactory's own comment) must be
-// blocked entirely until the real guardian-consent flow ships, regardless of everything else
-// about the session being otherwise available.
-test('a minor client is blocked from joining video even on an otherwise-available session', function () {
+// TT-3.1e-d/SCRUM-283: replaces the interim block's old blanket "no minor, ever" rule with the
+// real per-scope consent check -- these two regression tests prove the interim block's own
+// original scenarios (minor blocked without consent, counsellor exempt) still hold under the new
+// mechanism.
+function minorClientOnlineInSessionTherapySession(array $sessionOverrides = []): array
+{
     $minorClient = User::factory()->create();
     $counsellorUser = User::factory()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
@@ -124,38 +126,95 @@ test('a minor client is blocked from joining video even on an otherwise-availabl
         'addedby_id' => $minorClient->id,
         'counsellor_id' => $counsellor->id,
     ]);
-    $session = Session::factory()->create([
+    $session = Session::factory()->create(array_merge([
         'for_id' => $therapy->id,
         'for_type' => Therapy::class,
         'type' => 'ONLINE',
         'status' => 'IN_SESSION',
         'start_time' => now(),
-    ]);
+    ], $sessionOverrides));
 
-    expect(fn () => EnsureVideoIsAvailableForSessionAction::new()->execute($session, $minorClient))
-        ->toThrow(VideoException::class, 'Video is not yet available for accounts under 18. Guardian consent support is coming soon.');
+    return compact('minorClient', 'counsellorUser', 'therapy', 'session');
+}
+
+test('a minor client without any consent grant is blocked from joining video', function () {
+    $data = minorClientOnlineInSessionTherapySession();
+
+    expect(fn () => EnsureVideoIsAvailableForSessionAction::new()->execute($data['session'], $data['minorClient']))
+        ->toThrow(VideoException::class, 'Guardian video consent is required before this account can join video for this session.');
 });
 
-// The counsellor side is never gated by this interim block -- mirrors this codebase's own
-// established "counsellor is never gated" convention from the entire payment-gate epic.
-test('the counsellor can still join video even when the therapy\'s own client is a minor', function () {
-    $minorClient = User::factory()->create();
-    $counsellorUser = User::factory()->create();
-    $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
-    $therapy = Therapy::factory()->create([
-        'addedby_type' => User::class,
-        'addedby_id' => $minorClient->id,
-        'counsellor_id' => $counsellor->id,
-    ]);
-    $session = Session::factory()->create([
-        'for_id' => $therapy->id,
-        'for_type' => Therapy::class,
-        'type' => 'ONLINE',
-        'status' => 'IN_SESSION',
-        'start_time' => now(),
+// The counsellor side is never gated by this check -- mirrors this codebase's own established
+// "counsellor is never gated" convention from the entire payment-gate epic.
+test('the counsellor can still join video even when the therapy\'s own client is a minor with no consent', function () {
+    $data = minorClientOnlineInSessionTherapySession();
+
+    expect(fn () => EnsureVideoIsAvailableForSessionAction::new()->execute($data['session'], $data['counsellorUser']))
+        ->not->toThrow(VideoException::class);
+});
+
+test('a minor client CAN join once a valid PER_THERAPY consent grant exists', function () {
+    $data = minorClientOnlineInSessionTherapySession();
+    VideoConsent::factory()->create([
+        'ward_id' => $data['minorClient']->id,
+        'consentable_type' => Therapy::class,
+        'consentable_id' => $data['therapy']->id,
     ]);
 
-    expect(fn () => EnsureVideoIsAvailableForSessionAction::new()->execute($session, $counsellorUser))
+    expect(fn () => EnsureVideoIsAvailableForSessionAction::new()->execute($data['session'], $data['minorClient']))
+        ->not->toThrow(VideoException::class);
+});
+
+test('a minor client CAN join once a valid PER_SESSION consent grant exists for that exact session', function () {
+    $data = minorClientOnlineInSessionTherapySession();
+    VideoConsent::factory()->create([
+        'ward_id' => $data['minorClient']->id,
+        'consentable_type' => Session::class,
+        'consentable_id' => $data['session']->id,
+    ]);
+
+    expect(fn () => EnsureVideoIsAvailableForSessionAction::new()->execute($data['session'], $data['minorClient']))
+        ->not->toThrow(VideoException::class);
+});
+
+test('a PER_SESSION grant for a sibling session does not unlock this session', function () {
+    $data = minorClientOnlineInSessionTherapySession();
+    $siblingSession = Session::factory()->create(['for_id' => $data['therapy']->id, 'for_type' => Therapy::class]);
+    VideoConsent::factory()->create([
+        'ward_id' => $data['minorClient']->id,
+        'consentable_type' => Session::class,
+        'consentable_id' => $siblingSession->id,
+    ]);
+
+    expect(fn () => EnsureVideoIsAvailableForSessionAction::new()->execute($data['session'], $data['minorClient']))
+        ->toThrow(VideoException::class);
+});
+
+test('a minor client is blocked again once their consent grant is revoked', function () {
+    $data = minorClientOnlineInSessionTherapySession();
+    VideoConsent::factory()->revoked()->create([
+        'ward_id' => $data['minorClient']->id,
+        'consentable_type' => Therapy::class,
+        'consentable_id' => $data['therapy']->id,
+    ]);
+
+    expect(fn () => EnsureVideoIsAvailableForSessionAction::new()->execute($data['session'], $data['minorClient']))
+        ->toThrow(VideoException::class);
+});
+
+// TT-3.1e-a's "mode switches are prospective-only" guarantee, proven at the actual enforcement
+// point: a grant made under the OLD mode still unlocks the join even after the therapy switches.
+test('a grant made under a prior video consent mode still unlocks joining after the mode later switches', function () {
+    $data = minorClientOnlineInSessionTherapySession();
+    $data['therapy']->update(['video_consent_mode' => 'PER_SESSION']);
+    VideoConsent::factory()->create([
+        'ward_id' => $data['minorClient']->id,
+        'consentable_type' => Session::class,
+        'consentable_id' => $data['session']->id,
+    ]);
+    $data['therapy']->update(['video_consent_mode' => 'PER_THERAPY']);
+
+    expect(fn () => EnsureVideoIsAvailableForSessionAction::new()->execute($data['session'], $data['minorClient']))
         ->not->toThrow(VideoException::class);
 });
 

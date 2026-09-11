@@ -6471,3 +6471,27 @@ ticket), no code change needed now since neither action is HTTP-reachable yet**:
    surfacing repeated grant/revoke cycling for the same scope via the existing
    `GetVideoConsentAuditTrailForWardAction` so a counsellor/admin can see the pattern, not just a
    silently-logged one.
+
+---
+
+## 2026-09-11 — SCRUM-283 (TT-3.1e-d): security finding deferred to a follow-up ticket
+
+**Security-engineer finding, pre-existing (not introduced by this ticket, not fixed here)**:
+the entire minor/adult determination this whole guardian-consent feature (and the interim block it
+replaces) relies on is `User::isAdult()`, computed live from the user's own self-editable `dob`
+field. `ProfileUpdateRequest` only guards against setting an age below 10
+(`prohibitedIf($age < 10)`) -- there is no floor preventing a user from RAISING their declared age
+past 18 once they already have an established minor-client `Therapy`/`Guardianship`. Since
+`EnsureVideoIsAvailableForSessionAction`'s whole consent gate is short-circuited by
+`! $user->isAdult()`, a minor client could self-edit their `dob` to appear 18+ and skip the
+consent check entirely -- no guardian action, no `VideoConsent` grant, nothing. This was equally
+true of the interim blanket block (SCRUM-278's original bugfix) this ticket replaces, so it is not
+a regression TT-3.1e-d introduces -- but it fully defeats both the old and new safeguards, and
+isn't specific to video (it would equally let a minor bypass `EnsureCanCreateTherapyAction`'s own
+`isAdult() || hasGuardian()` check's intent elsewhere).
+
+**Decision**: do not fix inline as part of TT-3.1e-d -- this is a cross-cutting identity/profile
+concern (locking or gating `dob` changes) that affects more than just video consent, and deserves
+its own scoped ticket rather than a narrow patch bolted onto this one. Filed as SCRUM-287 (see
+below). TT-3.1e-d itself ships as reviewed -- it is at least as strict as the interim block it
+replaces for every case that doesn't involve this pre-existing, orthogonal bypass.
