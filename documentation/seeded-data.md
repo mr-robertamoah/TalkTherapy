@@ -168,6 +168,23 @@ a known payment split across members:
 | Group Payment Demo (Per Therapy) | `PER_THERAPY`, USD 100 | "payment details" tab shows `group_payment_demo_member_paid` as "Paid" and `group_payment_demo_member_unpaid` with a real "pay now" control -- each scoped to their own status, not each other's. |
 | Group Payment Demo (Per Session) | `PER_SESSION`, USD 50 | Has one seeded session ("Group Payment Demo Session"), always within 5 minutes of its start time so it's immediately the group's active session -- same per-member split, in the "Session Actions" modal. |
 
+## Group therapy strict payment gate / late-joiner (SCRUM-270, TT-7.5b)
+
+A dedicated, deterministic strict-gated GroupTherapy for testing the payment-required
+redirect/banner and the late-joiner "free historical access" exemption -- the group above
+(SCRUM-259) is PAID but trust-based (`strictPaymentGate: false`), so it never blocks access on
+its own.
+
+| Username | Password | Purpose |
+|---|---|---|
+| `group_strict_gate_demo_counsellor` | `password` | Active counsellor on the group below -- log in as this account to confirm a counsellor is never gated, and to toggle the payment-gate settings on the "payment details" tab (SCRUM-269). |
+| `group_strict_gate_demo_member_unpaid` | `password` | Joined at group creation, never paid -- visiting the group's page redirects to Home with the payment-required banner (SCRUM-266). |
+| `group_strict_gate_demo_late_joiner` | `password` | Joined 5 days ago (well after the group and its "before" session below), never paid -- can still open the "Group Strict Gate Demo Session (Before Late Joiner)" session's chat for free, but is blocked from "...( After Late Joiner)" the same way `member_unpaid` is blocked from everything (SCRUM-267). |
+
+| Group Therapy | Payment model | Notes |
+|---|---|---|
+| Group Strict Payment Gate Demo | `PER_THERAPY`, USD 100, `strictPaymentGate: true`, `allowFreeHistoricalAccess: true` | Two seeded sessions, one dated 20 days ago (before the late joiner's own join) and one dated yesterday (after it) -- log in as `group_strict_gate_demo_late_joiner` and compare access to each to see the late-joiner exemption directly. |
+
 ## Counsellor payout (SCRUM-228)
 
 A dedicated counsellor with pending earnings but no payout destination yet, for testing the

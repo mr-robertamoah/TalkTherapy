@@ -6045,3 +6045,35 @@ incorrectly allow it, flagged for its own triage rather than guessed at here).
 No backend/PHP files touched -- pure frontend change, full Pest suite unaffected (1482 passed,
 unchanged from b4). Reviewer approved with two minor suggestions (extracting repeated inline
 ternaries into computed properties, a pre-existing trailing-newline nit) applied before merge.
+
+---
+
+## 2026-09-11 — SCRUM-270 (TT-7.5b-b6): epic closeout, TT-7.5b (SCRUM-216) complete
+
+**Regression closeout**: added `tests/Feature/GroupTherapyPaymentGateEpicRegressionTest.php` --
+one end-to-end journey test through every stage of the gate for one group/one member via real HTTP
+routes (blocked → paid → historical-exemption proven both ways → counsellor never blocked →
+joining stays free), one explicit "individual Therapy's own strict-gate behavior is completely
+unaffected by the GroupTherapy widening" pinning test (page load + content access, both before and
+after payment), and one test confirming `payment_access_grants`' pre-existing schema needed no
+GroupTherapy-specific columns. Confirmed via `git log -- database/migrations` that no migration
+touched that table at any point across the whole epic -- the architect's own zero-schema-change
+assumption from the original scoping held all the way through.
+
+**Seed data added** (CLAUDE.md's seeding convention): `createGroupStrictPaymentGateDemoData()` in
+`DatabaseSeeder.php` -- a strict-gated `PER_THERAPY` GroupTherapy with `allowFreeHistoricalAccess`
+on, an active counsellor, an unpaid member, and a late-joining member (joined 5 days ago) with two
+sessions dated either side of their own join date, so the late-joiner exemption is directly
+observable by logging in and comparing the two sessions' chat access -- nothing in the existing
+TT-7.4d group-payment demo data (SCRUM-259) exercises `strictPaymentGate` at all (deliberately
+trust-based, to test the Pay Now flow itself).
+
+**Feature doc**: `documentation/features/scrum-216-group-therapy-payment-gated-access-tt-7-5b.md`,
+covering the whole 7-sub-ticket epic, mirroring TT-7.5a's own closeout doc's structure. No new
+decisions were resolved in this closeout ticket itself beyond what b0-b5's own entries already
+captured -- this entry exists primarily to record the epic-level confirmations (zero schema change,
+individual-Therapy non-regression) that don't belong to any single earlier sub-ticket.
+
+Full Pest suite: 1485 passed (3 new tests in this ticket). SCRUM-216 itself transitions straight to
+Done alongside SCRUM-270, following the same "epic-level ticket doesn't get individually worked"
+pattern TT-7.4d's own closeout (SCRUM-256) used.
