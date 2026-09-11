@@ -6183,3 +6183,38 @@ before ever failing authorization. All four checks are unchanged in logic, only 
 **Why this belongs in the log**: both fixes touch shared, pre-existing code (`Session` model,
 an action from the already-merged TT-3.1a) rather than being scoped purely to this ticket's own
 new files -- exactly the kind of judgment call CLAUDE.md's decision-log is for.
+
+---
+
+## 2026-09-11 — SCRUM-276 (TT-3.1c): video call UI -- QA limitation and two bugs found in already-merged code
+
+**QA limitation (not a defect, flagging per the ticket's own instruction not to skip silently)**:
+this Docker dev environment has no `DAILY_API_KEY`/`DAILY_DOMAIN` configured, so
+`DailyClient`'s real outbound call to Daily.co's API fails auth before any join credentials ever
+reach the browser -- the actual SDK-connect step, tile rendering, and dynamic-import chunk-load
+could not be browser-verified end-to-end. Everything short of that (join-video button
+visibility/scoping for both participants, GroupTherapy exclusion, payment-gate/error-path
+wiring, no console errors on page load) was verified via Playwright. Needs either a sandbox
+Daily.co API key provisioned for this environment, or a decision to build a local stub video
+provider, before a full golden-path browser pass is possible -- flagging as a follow-up need,
+not blocking this ticket (the actions this UI drives were already backend-tested extensively in
+TT-3.1a/TT-3.1b, and the frontend wiring itself is now Pint/Pest/build-verified).
+
+**Two real bugs found in already-merged TT-3.1a/TT-3.1b code, surfaced by this ticket's own QA
+pass, fixed here since both are directly in files this ticket's video-join flow depends on**:
+
+1. `JoinVideoSessionAction::currentOrNewVideoSession()`'s call to `$provider->createRoom()` was
+   unguarded -- a real provider HTTP failure (`Illuminate\Http\Client\RequestException`, whose
+   `getCode()` equals the upstream's own HTTP status, not 500) sailed past
+   `ResolvesExceptionResponse::messageFor()`'s 500-only masking and leaked the provider's raw
+   response body (e.g. Daily's literal `{"error":"authorization-header-error",...}`) straight to
+   the end user -- an information-disclosure/UX gap, not something specific to the missing local
+   API key (any 4xx from a real deployment's provider, e.g. rate limiting or a stale key, would
+   leak the same way). Fixed by catching and rethrowing as a generic `VideoException`.
+2. `EndVideoSessionAction`'s own docblock claimed provider-teardown failures were "best-effort"
+   and must never block the local `ended_at` update -- but the code never actually caught
+   anything, so a provider failure DID propagate and block it, contradicting the stated contract.
+   Fixed to match.
+
+Both fixes mutation-tested (a throwing fake provider confirms the safe message/best-effort
+behavior in each case) and covered by new regression tests.
