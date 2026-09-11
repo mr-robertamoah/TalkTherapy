@@ -6151,3 +6151,35 @@ disconnect must never mutate `Session.status`.
 
 Jira sub-tickets to be filed under SCRUM-26 as TT-3.1a through TT-3.1f (TT-3.1e pending its own
 scoping pass), per the breakdown now in `documentation/implementation_plan.md`.
+
+---
+
+## 2026-09-11 — SCRUM-275 (TT-3.1b): fail-open bug found in `Session::isNotParticipant()`
+
+**What happened**: security review of TT-3.1b (the ticket that first wires TT-3.1a's video
+backend to an HTTP route) found that `Session::isNotParticipant()` returned `null` (falsy)
+instead of `true` whenever the session's polymorphic `for` relation failed to resolve (an
+orphaned/soft-deleted parent, a `for_type`/`for_id` mismatch, or even `database/factories/SessionFactory.php`'s
+own default `for_id => 1` with no matching row). Every new authorization check this ticket added
+(`LeaveVideoSessionAction`, `EndVideoSessionAction`) does `if ($session->isNotParticipant($user)) { deny }`
+-- so a missing `for` would silently authorize *anyone*, not reject them. This predates TT-3.1b
+(the method has looked like this since it was written), but was only newly *exploitable* once
+this ticket gave it live authorization-check callers.
+
+**Decision**: fixed at the model level, not by adding a defensive null-check at each of the two
+new call sites -- `isNotParticipant()` now negates the already-fail-closed `isParticipant()`
+(`return ! $this->isParticipant($user);`), mirroring the exact convention `Therapy::isNotParticipant()`
+and `GroupTherapy::isNotParticipant()` already use. Both methods also gained a strict `bool`
+return type as a second line of defense: a future regression back to the old `$this->for?->...`
+form now throws a `TypeError` instead of silently returning `null` again.
+
+**Also fixed in the same review pass**: `EnsureVideoIsAvailableForSessionAction`'s four checks
+were reordered so the participant check runs first, not last -- this action became HTTP-reachable
+in TT-3.1b with no ownership scoping on the resolved `Session`, so with the participant check
+last, an unrelated authenticated user could distinguish an arbitrary session's therapy type,
+delivery mode, and live status from which of the four differently-worded exceptions came back,
+before ever failing authorization. All four checks are unchanged in logic, only reordered.
+
+**Why this belongs in the log**: both fixes touch shared, pre-existing code (`Session` model,
+an action from the already-merged TT-3.1a) rather than being scoped purely to this ticket's own
+new files -- exactly the kind of judgment call CLAUDE.md's decision-log is for.
