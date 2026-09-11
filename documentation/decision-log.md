@@ -6393,3 +6393,51 @@ architect pass**:
 No DB-level backstop for the one-valid-grant-per-scope invariant was added (still the accepted
 limitation from TT-3.1e-a's own entry) -- the row-lock fix above is what keeps
 `GrantVideoConsentAction` a correct sole enforcer of it, rather than an accidentally-correct one.
+
+---
+
+## 2026-09-11 — SCRUM-282 (TT-3.1e-c): invalidation-flow design decision and review fixes
+
+**Design decision, not explicitly specified by the parent ticket**: `RevokeVideoConsentAction`
+allows any ONE guardian of the ward to revoke a grant, not just the guardian who originally
+granted it -- symmetric with `GrantVideoConsentAction`'s own "any one guardian is sufficient, no
+unanimity" rule from TT-3.1e-b. Reasoning: guardians act as equals on the grant side, so requiring
+the *specific* granting guardian to be the only one who can revoke would be an inconsistent,
+unstated asymmetry. `revoked_by_guardian_id` correctly attributes to whichever guardian actually
+acted, verified by test and by the reviewer, so `GetVideoConsentAuditTrailForWardAction`'s
+existing co-guardian visibility guarantee stays accurate either way.
+
+**Reviewer finding, fixed before commit -- a real, currently-reachable crash/silent-skip**:
+`InvalidateVideoConsentAction::activeSessionsFor()` originally trusted `$consent->consentable`
+(a PER_SESSION consent's cached morphTo relation) or a plain `Session::query()` (for PER_THERAPY).
+`Session` uses `SoftDeletes`, and `Session::isNotDeleteable()` only blocks deletion during the
+"about to start" or "between start/end time" windows -- it never checks `wherePastEndTime()` or
+the session's `status`. A session whose call ran past its scheduled end time (still `in_session`,
+with a live `VideoSession`) can therefore legally be soft-deleted via the pre-existing
+`DeleteSessionAction`, which itself never calls `EndVideoSessionAction`. Reviewer reproduced this
+end-to-end: revoking a PER_SESSION consent for such a session threw an uncaught `TypeError`
+(the default morph query excludes trashed rows, so `$consent->consentable` resolved to `null`) --
+**after** `revoked_at` had already committed, leaving the consent marked revoked while the live
+call kept running unaddressed, in the exact scenario this ticket exists to prevent. The
+PER_THERAPY branch had the mirror-image problem silently: a trashed-but-still-`in_session` session
+was quietly skipped, no error, call left running. **Fix**: re-query fresh via
+`Session::withTrashed()->where(...)`/`whereTherapyId(...)` instead of trusting a possibly-null or
+possibly-stale relation, for both branches. Two regression tests added (PER_SESSION and
+PER_THERAPY, each with a soft-deleted-but-still-live session); verified via mutation testing
+(reverted the fix, confirmed both new tests fail with the exact crash/silent-skip described,
+restored).
+
+**Security-engineer's forward-looking recommendations for TT-3.1e-f (frontend/controller
+ticket), no code change needed now since neither action is HTTP-reachable yet**:
+1. The future controller/route MUST call `RevokeVideoConsentAction` (which self-authorizes via
+   `isGuardianOf`), never `InvalidateVideoConsentAction` directly (which has no authorization
+   check of its own by design -- it trusts both of its current callers to have already
+   authorized). Call this out as an explicit requirement on that ticket, not just left to this
+   class's own docblock.
+2. Add rate-limiting/cooldown on the future revoke endpoint (mirroring this codebase's existing
+   `throttle:60,1` pattern on `/users`), since nothing currently prevents a guardian from
+   grant-revoke looping to repeatedly force-end an in-progress call once a route exists -- a real
+   safeguarding concern given a custody-dispute scenario is plausible for this product. Consider
+   surfacing repeated grant/revoke cycling for the same scope via the existing
+   `GetVideoConsentAuditTrailForWardAction` so a counsellor/admin can see the pattern, not just a
+   silently-logged one.
