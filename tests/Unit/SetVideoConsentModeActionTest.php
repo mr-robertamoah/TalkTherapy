@@ -83,6 +83,40 @@ test('setting the mode fails when the therapy has an adult client', function () 
         ->toThrow(VideoConsentException::class, 'Video consent mode only applies to a minor client.');
 });
 
+// TT-4.10b/SCRUM-291: the mode-set gate must follow the stable client_was_minor_at_creation
+// snapshot, not a live re-check of the client's (self-editable) dob.
+
+test('setting the mode succeeds for a client who edited their dob to look adult, per the stable snapshot', function () {
+    $client = User::factory()->adult()->create();
+    $counsellorUser = User::factory()->create();
+    $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
+    $therapy = Therapy::factory()->create([
+        'addedby_type' => User::class,
+        'addedby_id' => $client->id,
+        'counsellor_id' => $counsellor->id,
+        'client_was_minor_at_creation' => true,
+    ]);
+
+    $therapy = SetVideoConsentModeAction::new()->execute($therapy, $counsellorUser, 'PER_THERAPY');
+
+    expect($therapy->fresh()->video_consent_mode)->toBe('PER_THERAPY');
+});
+
+test('setting the mode fails once the snapshot says adult, even if the client\'s live dob still reads as a minor', function () {
+    $client = User::factory()->create();
+    $counsellorUser = User::factory()->create();
+    $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
+    $therapy = Therapy::factory()->create([
+        'addedby_type' => User::class,
+        'addedby_id' => $client->id,
+        'counsellor_id' => $counsellor->id,
+        'client_was_minor_at_creation' => false,
+    ]);
+
+    expect(fn () => SetVideoConsentModeAction::new()->execute($therapy, $counsellorUser, 'PER_THERAPY'))
+        ->toThrow(VideoConsentException::class, 'Video consent mode only applies to a minor client.');
+});
+
 test('an invalid mode value is rejected', function () {
     $data = minorTherapyForModeSet();
 

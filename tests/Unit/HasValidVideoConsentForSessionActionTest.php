@@ -110,3 +110,37 @@ test('a group therapy session always satisfies the check (no ward concept)', fun
 
     expect(HasValidVideoConsentForSessionAction::new()->execute($session))->toBeTrue();
 });
+
+// TT-4.10b/SCRUM-291: the whole point of client_was_minor_at_creation is that it must NOT be
+// re-derivable from the client's current, possibly-edited dob -- these two prove the snapshot
+// wins over a live isAdult() re-check in both directions.
+
+test('a client who edited their dob to look adult AFTER creation still gets gated, per the stable snapshot', function () {
+    $client = User::factory()->adult()->create();
+    $counsellorUser = User::factory()->create();
+    $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
+    $therapy = Therapy::factory()->create([
+        'addedby_type' => User::class,
+        'addedby_id' => $client->id,
+        'counsellor_id' => $counsellor->id,
+        'client_was_minor_at_creation' => true,
+    ]);
+    $session = Session::factory()->create(['for_type' => Therapy::class, 'for_id' => $therapy->id]);
+
+    expect(HasValidVideoConsentForSessionAction::new()->execute($session))->toBeFalse();
+});
+
+test('a client whose live dob still reads as a minor is NOT gated once the snapshot says adult', function () {
+    $client = User::factory()->create();
+    $counsellorUser = User::factory()->create();
+    $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
+    $therapy = Therapy::factory()->create([
+        'addedby_type' => User::class,
+        'addedby_id' => $client->id,
+        'counsellor_id' => $counsellor->id,
+        'client_was_minor_at_creation' => false,
+    ]);
+    $session = Session::factory()->create(['for_type' => Therapy::class, 'for_id' => $therapy->id]);
+
+    expect(HasValidVideoConsentForSessionAction::new()->execute($session))->toBeTrue();
+});

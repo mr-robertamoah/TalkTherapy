@@ -223,6 +223,47 @@ test('a grant made under a prior video consent mode still unlocks joining after 
         ->not->toThrow(VideoException::class);
 });
 
+// TT-4.10b/SCRUM-291: the minor-client gate must follow the stable client_was_minor_at_creation
+// snapshot, not a live re-check of the joining client's (self-editable) dob.
+
+test('a client who edited their dob to look adult AFTER creation is still gated on consent, per the stable snapshot', function () {
+    $client = User::factory()->adult()->create();
+    $counsellorUser = User::factory()->create();
+    $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
+    $therapy = Therapy::factory()->create([
+        'addedby_type' => User::class,
+        'addedby_id' => $client->id,
+        'counsellor_id' => $counsellor->id,
+        'client_was_minor_at_creation' => true,
+    ]);
+    $session = Session::factory()->create([
+        'for_id' => $therapy->id, 'for_type' => Therapy::class,
+        'type' => 'ONLINE', 'status' => 'IN_SESSION', 'start_time' => now(),
+    ]);
+
+    expect(fn () => EnsureVideoIsAvailableForSessionAction::new()->execute($session, $client))
+        ->toThrow(VideoConsentRequiredException::class);
+});
+
+test('a client whose live dob still reads as a minor joins freely once the snapshot says adult', function () {
+    $client = User::factory()->create();
+    $counsellorUser = User::factory()->create();
+    $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
+    $therapy = Therapy::factory()->create([
+        'addedby_type' => User::class,
+        'addedby_id' => $client->id,
+        'counsellor_id' => $counsellor->id,
+        'client_was_minor_at_creation' => false,
+    ]);
+    $session = Session::factory()->create([
+        'for_id' => $therapy->id, 'for_type' => Therapy::class,
+        'type' => 'ONLINE', 'status' => 'IN_SESSION', 'start_time' => now(),
+    ]);
+
+    expect(fn () => EnsureVideoIsAvailableForSessionAction::new()->execute($session, $client))
+        ->not->toThrow(VideoException::class);
+});
+
 // TT-3.1 is 1:1 (individual Therapy) only -- GroupTherapy video is TT-3.2, not yet scoped.
 test('a GroupTherapy-backed session is not yet available for video', function () {
     $groupTherapy = GroupTherapy::factory()->create([

@@ -24,10 +24,14 @@ class IsVideoConsentOutstandingForSessionAction extends Action
         $wardResolver = GetWardForVideoConsentableAction::new();
         $ward = $wardResolver->execute($session);
 
-        // GetWardForVideoConsentableAction::execute() only resolves the therapy's addedby -- it
-        // doesn't check age (that's each grant/mode-set action's own job). An adult client has no
-        // guardian-consent concept to satisfy at all, so nothing is ever outstanding for them.
-        if (! $ward || $ward->isAdult()) {
+        // An adult client has no guardian-consent concept to satisfy at all, so nothing is ever
+        // outstanding for them.
+        //
+        // TT-4.10b/SCRUM-291: "adult client" was a live $ward->isAdult() re-check -- now prefers
+        // the therapy's own stable client_was_minor_at_creation snapshot (TT-4.10a) via
+        // GetWardForVideoConsentableAction::isMinor(), closing the self-editable-dob bypass
+        // SCRUM-287 found.
+        if (! $ward || ! $wardResolver->isMinor($session)) {
             return false;
         }
 

@@ -12,6 +12,7 @@ use App\Enums\RequestStatusEnum;
 use App\Exceptions\LinkException;
 use App\Models\Request;
 use App\Models\Therapy;
+use App\Models\User;
 use App\Notifications\TherapyAssistanceLinkNotification;
 use App\Notifications\TherapyAssistanceRequestAcceptedGuardianNotification;
 use Illuminate\Support\Facades\DB;
@@ -70,12 +71,22 @@ class PerformTherapyCounsellorLinkAction extends Action
             new TherapyAssistanceLinkNotification($therapy)
         );
 
+        // TT-4.10b/SCRUM-291: a THERAPY_COUNSELLOR link's own addedby is generic (LinkController
+        // accepts any addedbyType/addedbyId EnsureAddedbyIsValidAction will allow), so unlike
+        // TherapyService::createTherapy's own guaranteed-by-construction case, this can't assume
+        // the link's addedby is always this therapy's own client -- only pass 'for' when it
+        // provably is, so a mismatched pair never reads someone else's snapshot.
+        $linkAddedbyIsTherapyClient = $therapy->addedby_type === User::class
+            && $therapy->addedby
+            && $therapy->addedby->is($createLinkDTO->link->addedby);
+
         AlertGuardianAction::new()->execute(
             GuardianAlertDTO::new()->fromArray([
                 'user' => $createLinkDTO->link->addedby,
                 'notification' => new TherapyAssistanceRequestAcceptedGuardianNotification(
                     $therapy
                 ),
+                'for' => $linkAddedbyIsTherapyClient ? $therapy : null,
             ])
         );
 

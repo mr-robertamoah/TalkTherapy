@@ -61,6 +61,10 @@ class TherapyService extends Service
             GuardianAlertDTO::new()->fromArray([
                 'user' => $createTherapyDTO->user,
                 'notification' => new TherapyCreatedNotification($therapy),
+                // TT-4.10b/SCRUM-291: safe to always pass -- CreateTherapyAction's only creation
+                // path always sets addedby to $createTherapyDTO->user, so this record's snapshot
+                // always corresponds to the same person being alerted about here.
+                'for' => $therapy,
             ])
         );
 

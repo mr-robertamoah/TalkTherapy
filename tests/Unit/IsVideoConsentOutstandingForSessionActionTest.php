@@ -112,3 +112,36 @@ test('a group therapy session is never outstanding', function () {
 
     expect(IsVideoConsentOutstandingForSessionAction::new()->execute($session))->toBeFalse();
 });
+
+// TT-4.10b/SCRUM-291: outstanding-ness must follow the stable client_was_minor_at_creation
+// snapshot, not a live re-check of the client's (self-editable) dob.
+
+test('a client who edited their dob to look adult AFTER creation still has outstanding consent, per the stable snapshot', function () {
+    $client = User::factory()->adult()->create();
+    $counsellorUser = User::factory()->create();
+    $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
+    $therapy = Therapy::factory()->create([
+        'addedby_type' => User::class,
+        'addedby_id' => $client->id,
+        'counsellor_id' => $counsellor->id,
+        'client_was_minor_at_creation' => true,
+    ]);
+    $session = Session::factory()->create(['for_type' => Therapy::class, 'for_id' => $therapy->id]);
+
+    expect(IsVideoConsentOutstandingForSessionAction::new()->execute($session))->toBeTrue();
+});
+
+test('a client whose live dob still reads as a minor has nothing outstanding once the snapshot says adult', function () {
+    $client = User::factory()->create();
+    $counsellorUser = User::factory()->create();
+    $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
+    $therapy = Therapy::factory()->create([
+        'addedby_type' => User::class,
+        'addedby_id' => $client->id,
+        'counsellor_id' => $counsellor->id,
+        'client_was_minor_at_creation' => false,
+    ]);
+    $session = Session::factory()->create(['for_type' => Therapy::class, 'for_id' => $therapy->id]);
+
+    expect(IsVideoConsentOutstandingForSessionAction::new()->execute($session))->toBeFalse();
+});

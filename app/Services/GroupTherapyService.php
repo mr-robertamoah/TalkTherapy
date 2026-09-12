@@ -59,6 +59,14 @@ class GroupTherapyService extends Service
             GuardianAlertDTO::new()->fromArray([
                 'user' => $groupTherapyDTO->user,
                 'notification' => new TherapyCreatedNotification($therapy),
+                // TT-4.10b/SCRUM-291: only pass the record when it actually corresponds to
+                // $groupTherapyDTO->user -- CreateGroupTherapyAction sets addedby to
+                // $groupTherapyDTO->counsellor when present, NOT to $groupTherapyDTO->user, so
+                // the "created as a counsellor" branch must keep falling back to a live check on
+                // the user's own account (unchanged from before this ticket) rather than reading
+                // a snapshot that was correctly left null for a different reason entirely (no
+                // single client at all, not "this user wasn't a minor").
+                'for' => $groupTherapyDTO->counsellor ? null : $therapy,
             ])
         );
 

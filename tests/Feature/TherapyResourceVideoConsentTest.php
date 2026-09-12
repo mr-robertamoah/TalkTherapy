@@ -107,3 +107,34 @@ test('videoConsent.viewerIsGuardian is true for the minor\'s own guardian', func
         ->where('therapy.videoConsent.viewerIsGuardian', true)
         ->where('therapy.videoConsent.current.id', $consent->id));
 });
+
+// TT-4.10b/SCRUM-291: videoConsent's own "minor client" gate must follow the stable
+// client_was_minor_at_creation snapshot, not a live re-check of the client's (self-editable) dob.
+
+test('videoConsent is still present for a client who edited their dob to look adult, per the stable snapshot', function () {
+    $client = User::factory()->adult()->create();
+    $counsellorUser = User::factory()->create();
+    $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
+    $therapy = Therapy::factory()->create([
+        'addedby_type' => User::class, 'addedby_id' => $client->id, 'counsellor_id' => $counsellor->id,
+        'video_consent_mode' => 'PER_THERAPY', 'client_was_minor_at_creation' => true,
+    ]);
+
+    $response = $this->actingAs($counsellorUser)->get(route('therapies.get', ['therapyId' => $therapy->id]));
+
+    $response->assertOk()->assertInertia(fn ($page) => $page->where('therapy.videoConsent.mode', 'PER_THERAPY'));
+});
+
+test('videoConsent is null once the snapshot says adult, even if the client\'s live dob still reads as a minor', function () {
+    $client = User::factory()->create();
+    $counsellorUser = User::factory()->create();
+    $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
+    $therapy = Therapy::factory()->create([
+        'addedby_type' => User::class, 'addedby_id' => $client->id, 'counsellor_id' => $counsellor->id,
+        'video_consent_mode' => 'PER_THERAPY', 'client_was_minor_at_creation' => false,
+    ]);
+
+    $response = $this->actingAs($counsellorUser)->get(route('therapies.get', ['therapyId' => $therapy->id]));
+
+    $response->assertOk()->assertInertia(fn ($page) => $page->where('therapy.videoConsent', null));
+});

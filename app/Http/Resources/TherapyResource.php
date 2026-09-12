@@ -116,9 +116,14 @@ class TherapyResource extends JsonResource
         // GetWardForVideoConsentableAction already safely returns null for a non-User addedby
         // (e.g. an org-owned Therapy), where calling User::isGuardianOf() on a non-User value
         // would otherwise be a type error.
-        $ward = GetWardForVideoConsentableAction::new()->execute($this->resource);
+        $wardResolver = GetWardForVideoConsentableAction::new();
+        $ward = $wardResolver->execute($this->resource);
 
-        if (! $ward || $ward->isAdult()) {
+        // TT-4.10b/SCRUM-291: "adult client" was a live $ward->isAdult() re-check -- now prefers
+        // the therapy's own stable client_was_minor_at_creation snapshot (TT-4.10a) via
+        // GetWardForVideoConsentableAction::isMinor(), closing the self-editable-dob bypass
+        // SCRUM-287 found.
+        if (! $ward || ! $wardResolver->isMinor($this->resource)) {
             return null;
         }
 

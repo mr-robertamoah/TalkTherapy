@@ -40,4 +40,15 @@ class GetWardForVideoConsentableAction extends Action
         // rather than letting the ?Therapy return type throw a TypeError on the caller.
         return $consentable->for instanceof Therapy ? $consentable->for : null;
     }
+
+    // TT-4.10b/SCRUM-291: every caller here used to re-derive "is the ward a minor" via a live
+    // $ward->isAdult() check -- exactly the self-editable-dob bypass SCRUM-287 found. Prefers
+    // the resolved Therapy's own stable client_was_minor_at_creation snapshot (TT-4.10a) via
+    // Therapy::clientIsMinor() instead.
+    public function isMinor(Therapy|Session $consentable): bool
+    {
+        $therapy = $this->therapyFor($consentable);
+
+        return $therapy instanceof Therapy && $therapy->clientIsMinor();
+    }
 }

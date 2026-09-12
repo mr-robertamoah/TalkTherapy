@@ -222,10 +222,14 @@ class GroupTherapy extends Model
         // membership request) -- SCRUM-69/SCRUM-72.
         $users = $users->merge($this->users);
 
+        // TT-4.10b/SCRUM-291: was `! $this->addedby->isAdult()` -- prefers the stable
+        // client_was_minor_at_creation snapshot (TT-4.10a) over a live re-check, closing the
+        // self-editable-dob bypass SCRUM-287 found. clientIsMinor() already returns false when
+        // addedby isn't a User (a Counsellor-created group), so the addedby_type/addedby-truthy
+        // checks above are still needed for the OTHER pushes in this method but no longer for
+        // this condition.
         if (
-            $this->addedby_type === User::class &&
-            $this->addedby &&
-            ! $this->addedby->isAdult() &&
+            $this->clientIsMinor() &&
             $this->addedby->guardians()->count()
         ) {
             $users = $users->merge(User::query()->whereWard($this->addedby)->get());
@@ -254,10 +258,10 @@ class GroupTherapy extends Model
 
         $users = $users->merge($this->users->reject(fn ($pivotUser) => $pivotUser->is($user)));
 
+        // TT-4.10b/SCRUM-291: was `! $this->addedby->isAdult()` -- see getUsers()'s identical
+        // comment above.
         if (
-            $this->addedby_type === User::class &&
-            $this->addedby &&
-            ! $this->addedby->isAdult() &&
+            $this->clientIsMinor() &&
             $this->addedby->guardians()->count()
         ) {
             $users = $users->merge(

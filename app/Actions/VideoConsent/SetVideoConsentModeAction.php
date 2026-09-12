@@ -16,13 +16,17 @@ class SetVideoConsentModeAction extends Action
 {
     public function execute(Therapy $therapy, User $actor, string $mode): Therapy
     {
-        $ward = GetWardForVideoConsentableAction::new()->execute($therapy);
+        $wardResolver = GetWardForVideoConsentableAction::new();
+        $ward = $wardResolver->execute($therapy);
 
         if (! $ward) {
             throw new VideoConsentException('This therapy has no minor client -- video consent mode does not apply.', 422);
         }
 
-        if ($ward->isAdult()) {
+        // TT-4.10b/SCRUM-291: was a live $ward->isAdult() re-check -- now prefers the therapy's
+        // own stable client_was_minor_at_creation snapshot (TT-4.10a), closing the self-editable-
+        // dob bypass SCRUM-287 found.
+        if (! $wardResolver->isMinor($therapy)) {
             throw new VideoConsentException('Video consent mode only applies to a minor client.', 422);
         }
 
