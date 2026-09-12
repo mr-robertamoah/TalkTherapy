@@ -11,7 +11,11 @@ class Guardianship extends Model
 
     protected $table = 'guardianship';
 
-    protected $fillable = ['guardian_id', 'ward_id'];
+    protected $fillable = ['guardian_id', 'ward_id', 'ward_was_minor_at_creation'];
+
+    protected $casts = [
+        'ward_was_minor_at_creation' => 'boolean',
+    ];
 
     public function guardian()
     {

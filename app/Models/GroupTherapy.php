@@ -26,7 +26,7 @@ class GroupTherapy extends Model
     protected $fillable = [
         'session_type', 'payment_type', 'max_users', 'allow_anyone', 'about', 'name',
         'public', 'anonymous', 'payment_data', 'status', 'max_sessions', 'max_counsellors',
-        'allow_in_person',
+        'allow_in_person', 'client_was_minor_at_creation',
     ];
 
     // Memoized (SCRUM-212), same rationale as TherapyTrait::getSessionsHeldAttribute() -- a
@@ -41,6 +41,7 @@ class GroupTherapy extends Model
 
     protected $casts = [
         'payment_data' => 'array',
+        'client_was_minor_at_creation' => 'boolean',
     ];
 
     public function getIsTherapyAttribute()

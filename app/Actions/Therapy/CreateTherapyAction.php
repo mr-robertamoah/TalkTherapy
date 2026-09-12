@@ -20,6 +20,10 @@ class CreateTherapyAction extends Action
             'anonymous' => $createTherapyDTO->anonymous,
             'max_sessions' => $createTherapyDTO->maxSessions,
             'background_story' => $createTherapyDTO->backgroundStory,
+            // TT-4.10a/SCRUM-290: captured once, here, from the client's OWN live isAdult() at
+            // this exact moment -- see the column's own migration for why this must stay stable
+            // regardless of a later dob edit.
+            'client_was_minor_at_creation' => ! $createTherapyDTO->user->isAdult(),
             'payment_data' => [
                 'per' => $createTherapyDTO->per,
                 'amount' => $createTherapyDTO->amount,

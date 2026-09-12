@@ -104,6 +104,21 @@ broadcast — filed separately as SCRUM-195, not folded into this ticket's scope
 | TT-4.7 | Make Sent-notification counsellor/user type-check explicit instead of implicit recipient-type invariant | Task | Low | — | New (SCRUM-18 follow-up) | — |
 | TT-4.8 | Audit per-user group-therapy anonymity (`group_therapy_user.anonymous`) once it's actually read anywhere | Task | Low | — | New (SCRUM-18 follow-up) | — |
 | TT-4.9 | Add regression tests asserting anonymous-therapy notifications never leak real names | Task | Medium | — | New (SCRUM-18 follow-up) | — |
+| TT-4.10 | Prevent self-editable `dob` from bypassing minor-detection safeguards | Story | High | ~39 (floor) | New (SCRUM-283 follow-up) | — |
+
+TT-4.10 split into 6 sub-tickets (a-f, SCRUM-290–295) after its own `/start-feature` pass
+(2026-09-12) — a data-model snapshot (a), migrating all 13 `isAdult()` call sites to it (b), a
+boundary-crossing approval gate reusing the existing generic `Request` system (c), the
+approve/reject action (d), frontend (e), and regression closeout (f). See
+`documentation/decision-log.md`'s 2026-09-12 entry for the full policy decisions (snapshot +
+approval-flow approach, relationship-gated scope, both-directions crossing, retroactive
+correction on approval). SCRUM-289 (post-registration age/identity verification) was split out as
+its own, separately-scoped future ticket — not part of TT-4.10.
+
+SCRUM-296 (unvalidated `counsellorId` lets a client-suppliable value corrupt
+`group_therapies.client_was_minor_at_creation`, found during SCRUM-290's own security review) must
+be resolved or explicitly risk-accepted before TT-4.10b (SCRUM-291) starts trusting that column —
+see `documentation/decision-log.md`'s 2026-09-12 SCRUM-290 security-finding entry.
 
 > TT-4.4 is deliberately **not** the same as the icebox "AI Emergency" item (see TT-9.3). A
 > static hotline/quick-contact button ships in a sprint; an AI-mediated emergency flow is a

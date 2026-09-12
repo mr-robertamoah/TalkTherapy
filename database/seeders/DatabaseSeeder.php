@@ -1331,7 +1331,15 @@ class DatabaseSeeder extends Seeder
             'email_verified_at' => now(),
         ]);
 
-        Guardianship::query()->create(['guardian_id' => $guardian->id, 'ward_id' => $minor->id]);
+        // TT-4.10a/SCRUM-290: this seeder bypasses RespondToGuardianshipRequestAction (the only
+        // real write path for this snapshot), so ward_was_minor_at_creation must be set
+        // explicitly here -- otherwise it defaults to null ("not applicable"), which would
+        // misrepresent this deliberately-a-minor demo scenario once TT-4.10b starts reading it.
+        Guardianship::query()->create([
+            'guardian_id' => $guardian->id,
+            'ward_id' => $minor->id,
+            'ward_was_minor_at_creation' => ! $minor->isAdult(),
+        ]);
 
         $counsellorUser = User::factory()->create([
             'firstName' => 'VideoConsent',
@@ -1367,6 +1375,9 @@ class DatabaseSeeder extends Seeder
             'public' => false,
             'status' => 'in_session',
             'video_consent_mode' => 'PER_THERAPY',
+            // TT-4.10a/SCRUM-290: bypasses CreateTherapyAction (the real write path), so set
+            // explicitly -- see the Guardianship seed just above for the same reasoning.
+            'client_was_minor_at_creation' => ! $minor->isAdult(),
         ]);
 
         // Immediately in-progress and online, so "join video" (and therefore the
