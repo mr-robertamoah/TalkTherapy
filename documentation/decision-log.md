@@ -6580,3 +6580,62 @@ app's setup (confirmed via raw payload dump: the property is genuinely present a
 `null`; only the assertion helper mis-reports it). Worked around by extracting the raw page prop
 directly with `array_key_exists()` (not `??`, which has the identical isset()-based blind spot)
 for that one test case, rather than the fluent helper.
+
+---
+
+## 2026-09-12 — SCRUM-286 (TT-3.1e-g): closeout -- full regression matrix, stale-comment retirement, feature doc
+
+Closes out SCRUM-278 (TT-3.1e), the guardian/minor video-consent feature, after all seven
+sub-tickets (e-a through e-g) merged.
+
+**Full regression matrix** (`tests/Feature/GuardianVideoConsentRegressionTest.php`, 8 new
+end-to-end tests, exercised through the real HTTP routes wherever one exists, not just each
+sub-ticket's own unit-level Action tests -- this is the layer an integration gap between two
+independently-correct sub-tickets would actually surface at): PER_THERAPY mode covering a session
+created after the grant; PER_SESSION mode never leaking to a sibling session; revoke through the
+real controller route immediately ending a real, active `VideoSession` (not just
+`VideoConsent.isValid()` flipping); guardianship deletion through the real HTTP route (not just
+`DeleteGuardianshipAction` called directly) both lapsing consent and ending an active call; any
+one of two co-guardians acting while both can see the full, correctly-attributed audit trail;
+mode-switch prospective-only holding through the real controller routes, not just at the schema/
+unit level; a minor with NO guardian at all remaining permanently blocked (fails closed by
+construction -- there is no one who could ever grant on their behalf); and reminder suppression
+holding at the boundary between the grant controller route and the reminder sweep. **No gaps
+found** -- every sub-ticket's own individually-reviewed behavior held up under end-to-end
+exercise. One test-authoring mistake caught and fixed during this pass (not a product bug): an
+initial single test chaining a PER_THERAPY grant then a mode switch to PER_SESSION incorrectly
+expected the old PER_THERAPY grant to stop covering a sibling session -- that grant correctly
+kept covering it, per the feature's own prospective-only guarantee (TT-3.1e-a). Split into two
+independent tests instead of asserting a false expectation.
+
+**Stale-comment retirement**: `EnsureVideoIsAvailableForSessionAction`'s docblock previously said
+"final stale-comment/test cleanup for the interim era is TT-3.1e-g's job, not this ticket's" --
+that pointer is now itself stale (this is that ticket), reworded to describe what actually
+replaced the interim block rather than defer to a future ticket.
+
+**Final feature shape vs. the originally-scoped policy questions** (see SCRUM-278's own
+2026-09-11 entries for the original questions and the user's verbatim answers) -- all five
+delivered as scoped, no changes:
+1. Guardian reminded a day-before and hour-before, only while consent outstanding, via a button on
+   the therapy to approve -- delivered (TT-3.1e-e reminders, TT-3.1e-f approve button).
+2. Both PER_THERAPY and PER_SESSION modes, settable by counsellor or guardian -- delivered
+   (TT-3.1e-a schema, TT-3.1e-b/f mode-set action + UI).
+3. Revocation is immediate, ending any active call right now -- delivered (TT-3.1e-c, reusing
+   `EndVideoSessionAction`), now proven end-to-end through the real HTTP route in this closeout's
+   own regression matrix.
+4. Guardianship deletion lapses that guardian's own grants for that ward -- delivered
+   (TT-3.1e-c). The broader "minor with no guardian at all loses the whole therapy" idea remains
+   explicitly out of scope, filed separately as SCRUM-288 per the user's own "Separate ticket
+   (Recommended)" answer.
+5. Any one guardian's consent suffices; every guardian can see who acted -- delivered (grant/
+   revoke authorization throughout TT-3.1e-b/c, audit trail in TT-3.1e-b/f).
+
+**Known, accepted limitations carried forward** (not re-litigated here, already logged in their
+own sub-ticket's entry): no DB-level constraint preventing two simultaneously-valid grants for one
+scope (SCRUM-280); a join-time TOCTOU window between the consent check and credential issuance
+(SCRUM-283); `GetCurrentVideoConsentableForTherapyAction` resolving a single soonest session under
+PER_SESSION mode rather than supporting a full per-session management list (SCRUM-285's own
+review, an accepted simplification given the ticket's one-button scope). **Follow-up tickets
+filed during this epic, still open**: SCRUM-287 (self-editable `dob` bypasses every
+`isAdult()`-gated safeguard platform-wide, not specific to video) and SCRUM-288 (minor-loses-
+guardian losing the whole therapy, not just video).
