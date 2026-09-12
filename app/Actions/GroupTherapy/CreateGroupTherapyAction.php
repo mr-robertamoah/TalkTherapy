@@ -5,6 +5,7 @@ namespace App\Actions\GroupTherapy;
 use App\Actions\Action;
 use App\DTOs\GroupTherapyDTO;
 use App\Enums\TherapyStatusEnum;
+use App\Models\User;
 
 class CreateGroupTherapyAction extends Action
 {
@@ -22,6 +23,11 @@ class CreateGroupTherapyAction extends Action
             'anonymous' => $dto->anonymous,
             'allow_anyone' => $dto->allowAnyone,
             'about' => $dto->about,
+            // TT-4.10a/SCRUM-290: captured once, here, from the client's own live isAdult() at
+            // this exact moment -- left null (not coerced to false) when $addedby is a
+            // Counsellor, since a Counsellor-created group has no single "client" this applies
+            // to at all. See the column's own migration for the full reasoning.
+            'client_was_minor_at_creation' => $addedby instanceof User ? ! $addedby->isAdult() : null,
             'payment_data' => [
                 'per' => $dto->per,
                 'amount' => $dto->amount,

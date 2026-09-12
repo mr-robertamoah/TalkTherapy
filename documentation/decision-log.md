@@ -6639,3 +6639,116 @@ review, an accepted simplification given the ticket's one-button scope). **Follo
 filed during this epic, still open**: SCRUM-287 (self-editable `dob` bypasses every
 `isAdult()`-gated safeguard platform-wide, not specific to video) and SCRUM-288 (minor-loses-
 guardian losing the whole therapy, not just video).
+
+---
+
+## 2026-09-12 — SCRUM-287 (TT-4.10): dob self-edit bypass -- full scoping, all decisions final
+
+Full `/start-feature` pass (product-owner → user decisions → project-manager → architect) for
+SCRUM-287, the follow-up filed during TT-3.1e-d's own security review: `User::isAdult()` is
+computed live from the self-editable `dob` field, with no upper-boundary protection once a user
+already has a minor-relevant record on file -- a minor could self-edit past 18 to skip every
+`isAdult()`-gated safeguard platform-wide (13 call sites found, not just the two the original
+ticket named -- see below).
+
+**User's own final policy decisions (verbatim intent)**:
+1. **Approach**: snapshot + guardian/admin approval flow (not a hard permanent lock, not
+   snapshot-only with unrestricted editing).
+2. **Retroactive handling of already-existing accounts**: none needed -- nothing is in production
+   yet.
+3. **Scope**: relationship-gated, not platform-wide -- only a user who already has a
+   `Guardianship`-as-ward row or a minor-flagged `Therapy`/`GroupTherapy` on file gets the
+   snapshot/approval treatment.
+4. **Age/ID verification**: explicitly OUT of scope, split into its own future ticket (SCRUM-289)
+   per the user's own direction that it needs its own vendor/compliance/UX scoping pass, and
+   should run post-registration (hooking into the existing "preferences" step where `dob` is
+   already collected today) rather than gating signup itself.
+5. **Retroactivity of an approved change**: an approved dob correction ALSO corrects the "was this
+   person a minor" snapshot on the user's existing, still-relevant `Guardianship`/`Therapy`/
+   `GroupTherapy` records -- an approved change is treated as correcting the truth, not as a
+   prospective-only change. Deliberately the OPPOSITE of TT-3.1e-a's video-consent-mode switch
+   (which is prospective-only) -- that case is about not invalidating a past grant; this case is
+   about a person's actual historical age, which a guardian/admin has just vouched for.
+6. **Direction**: the approval gate applies in BOTH directions (minor-claiming-adult AND
+   adult-claiming-minor), not just the direction that removes an existing protection -- more
+   robust against gaming even though no reverse-direction benefit exists in the app today
+   (confirmed by the product-owner's own audit of every `isAdult()` call site).
+
+**Product-owner's own research, load-bearing for the plan**: `AdminUpdateUserRequest` has the
+IDENTICAL gap as `ProfileUpdateRequest` (only a lower floor, `prohibitedIf($age < 10)`, no
+ceiling) -- not named in the original ticket, found during this pass, now explicitly in scope
+(TT-4.10c). Confirmed 13 total `isAdult()` call sites (not the 2 the ticket named) -- full list
+in TT-4.10b's own Jira description. `dob` is 100% self-reported at every stage (registration
+doesn't even collect it) -- confirmed as the reason SCRUM-289 exists as its own ticket rather than
+being folded in here.
+
+**Architect's own data-model recommendation**: TWO separate nullable-boolean snapshot columns,
+not one shared mechanism -- `guardianship.ward_was_minor_at_creation` and a
+`client_was_minor_at_creation` column on BOTH `therapies` and `group_therapies` -- because a
+`Guardianship` row and a `Therapy`/`GroupTherapy` row answer different questions ("is the ward a
+minor" vs "is this specific therapy's client a minor") and don't necessarily correspond 1:1.
+Mirrors `video_consent_mode`'s own "nullable = not applicable" precedent from the guardian-consent
+epic. `EnsureCanCreateTherapyAction` and `EnsureUserCanBeGuardianAction` deliberately stay on live
+`isAdult()` -- the former is the trigger moment that WRITES the snapshot, not a consumer of it;
+the latter gates an unrelated question (the actor's own eligibility to become a guardian).
+
+**Approval mechanism**: reuses the existing generic `Request`/`RequestTypeEnum` system (new case),
+not a bespoke table -- the same system already used for guardianship/org-compensation/session-
+schedule/refund requests, since it already provides everything needed (morphs, `data` JSON,
+status, expiry sweep, reminder). Approval target: any one active guardian if one exists (mirrors
+`GrantVideoConsentAction`'s own "any one guardian, no unanimity" precedent), falling back to
+"any admin" only when no active guardian exists (mirrors `refund`'s existing null-`to` shape) --
+NOT an always-available admin bypass alongside an existing guardian, to avoid routinely
+short-circuiting the guardian-approval requirement.
+
+**Where the boundary-crossing decision lives**: a new shared Action invoked by BOTH
+`ProfileController::update()` and the admin update path -- NOT inside either `FormRequest`. This
+codebase's `FormRequest` layer does no custom model querying anywhere else (confirmed by the
+architect across all 42 existing FormRequests); doing DB lookups there would be new, unwanted
+coupling. This also closes an existing, unrelated duplication gap between the self-service and
+admin dob-floor-validation logic in the same pass.
+
+**Accepted limitation, logged proactively** (same class as SCRUM-280's own accepted gap): no
+DB-level constraint will prevent more than one outstanding dob-change approval request per user
+(MySQL 8's lack of partial/filtered unique indexes, same reason `video_consents` has the
+identical accepted limitation) -- application logic is the sole enforcer, per TT-4.10c's own Jira
+description.
+
+**Sequencing**: a (snapshot data model) → {b (call-site migration), c (approval gate + request
+type) in parallel} → d (approve/reject action, needs BOTH b and c fully done) → e (frontend) → f
+(regression closeout). ~39pts total (floor, not ceiling, per this project's own recurring
+estimation pattern -- see TT-2.2/TT-2.6/TT-6.3/TT-6.5/TT-7.2's own history of first-pass
+undersizing). Filed as SCRUM-290 through SCRUM-295. `documentation/implementation_plan.md`'s new
+TT-4.10 row (under Epic TT-4: Trust, Safety & Crisis Response) updated with the full breakdown.
+
+**Explicitly out of scope, tracked separately**: SCRUM-289 (post-registration age/identity
+verification) -- does not block and is not blocked by TT-4.10; no TT-4.10 sub-ticket should
+reference or wait on it.
+
+## 2026-09-12 — SCRUM-290 (TT-4.10a): security finding split into SCRUM-296, not fixed in-ticket
+
+During this ticket's security-engineer review, a real, exploitable gap was confirmed: a minor
+**with a guardian** legitimately passes `EnsureCanCreateTherapyAction` (`isAdult() ||
+hasGuardian()`) and can reach `GroupTherapyController::createGroupTherapy()`. Its `counsellorId`
+input has no validation at all (`CreateGroupTherapyRequest::rules()` only validates the plural
+`counsellorIds` array) and is not tied to the authenticated caller, so a minor can submit an
+arbitrary counsellor's id. `CreateGroupTherapyAction` then resolves `$addedby =
+$dto->counsellor ?: $dto->user` and -- per this ticket's own new logic -- writes
+`group_therapies.client_was_minor_at_creation = null` ("not applicable") instead of `true`,
+because `$addedby` is a `Counsellor`, not the real minor `User` who actually created the group.
+
+**Decision**: do not expand SCRUM-290's scope to fix this. The underlying trust-boundary gap
+(unvalidated `counsellorId`) is pre-existing, predates this ticket, and also appears in
+`TherapyController`/elsewhere -- fixing it properly touches `GroupTherapyController`/
+`CreateGroupTherapyRequest`/`GroupTherapyService` (none of which are in this ticket's
+data-model-only file scope) and raises its own product question (is there a legitimate case for
+a non-counsellor user to specify an arbitrary `counsellorId` at all?) that deserves its own look
+rather than a rushed fix bundled into a schema ticket. `CreateTherapyAction` (individual
+`Therapy`) is unaffected -- its snapshot always comes from `$request->user()`, never a
+client-suppliable value.
+
+**Filed as SCRUM-296** (High priority, Bug), with an explicit note that it must be resolved (or
+consciously risk-accepted) before or alongside TT-4.10b (SCRUM-291) starting to actually trust
+`group_therapies.client_was_minor_at_creation` for any authorization decision. Safe to ship
+SCRUM-290 itself in the meantime: nothing reads this column yet, so the corrupted-snapshot risk
+is inert until TT-4.10b lands -- but TT-4.10b's own kickoff must check SCRUM-296's status first.

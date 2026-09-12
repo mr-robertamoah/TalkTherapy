@@ -24,11 +24,12 @@ class Therapy extends Model
     protected $fillable = [
         'session_type', 'payment_type', 'background_story', 'allow_in_person', 'name',
         'public', 'anonymous', 'payment_data', 'status', 'max_sessions', 'counsellor_id',
-        'video_consent_mode',
+        'video_consent_mode', 'client_was_minor_at_creation',
     ];
 
     protected $casts = [
         'payment_data' => 'array',
+        'client_was_minor_at_creation' => 'boolean',
     ];
 
     public function getIsTherapyAttribute()

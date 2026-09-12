@@ -75,7 +75,14 @@ class RespondToGuardianshipRequestAction extends Action
         }
 
         try {
-            $request->from->guardians()->create(['guardian_id' => $request->to->id]);
+            // TT-4.10a/SCRUM-290: captured once, here, from the ward's OWN live isAdult() at
+            // this exact moment -- the one place this snapshot is ever written for a
+            // Guardianship row. See the column's own migration for why this must be stable
+            // regardless of a later dob edit.
+            $request->from->guardians()->create([
+                'guardian_id' => $request->to->id,
+                'ward_was_minor_at_creation' => ! $request->from->isAdult(),
+            ]);
 
             return true;
         } catch (UniqueConstraintViolationException) {
