@@ -43,4 +43,15 @@ enum RequestTypeEnum: string
     // already grants this without needing a specific `to` target, mirroring `administrator`'s own
     // never-populated `to` above). `data` carries the client's stated `reason`.
     case refund = 'REFUND_REQUEST';
+    // TT-4.10c/SCRUM-292: created by EnsureDobChangeIsAllowedAction when a dob edit would flip a
+    // user's minor/adult status in either direction AND that user has a qualifying relationship
+    // on file (a Guardianship-as-ward row, or a Therapy/GroupTherapy client snapshot, TT-4.10a).
+    // `for` is the User whose dob is changing; `from` is whoever made the edit (the user
+    // themselves, or an admin); `to` is any ONE of the ward's active guardians (mirrors
+    // GrantVideoConsentAction's own "any one guardian, no unanimity" precedent) when at least one
+    // exists, else left null so any admin may respond (mirrors `refund`'s own null-`to` shape) --
+    // never both an admin bypass AND an existing guardian at once. `data` carries `newDob` and
+    // `priorDob` for audit/notification copy and for the (not-yet-built, TT-4.10d) approval
+    // action's retroactive snapshot correction.
+    case dobChange = 'DOB_CHANGE_REQUEST';
 }

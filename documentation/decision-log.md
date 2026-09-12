@@ -6779,3 +6779,73 @@ SCRUM-287's own decision-log entry) -- there is no real pre-migration data to ba
 way to reconstruct a pre-migration user's dob at their therapy's actual creation time regardless.
 No backfill migration or follow-up ticket filed; revisit if this ships before any real
 Guardianship/Therapy/GroupTherapy data exists.
+
+## 2026-09-12 — SCRUM-292 (TT-4.10c): partial-apply design, bundled fix, and accepted limitation
+
+**Partial-apply, not all-or-nothing**: when a dob edit is blocked (crosses the minor/adult
+boundary for a user with a qualifying relationship), only the `dob` field itself is deferred --
+every other field submitted in the same request (name, email, gender, country, etc.) still
+applies immediately, in both `ProfileController::update()` (self-service) and `UpdateUserAction`
+(admin path). The ticket text didn't specify this either way; the alternative (block the whole
+submission, mirroring `ProfileController::destroy()`'s own `ValidationException` idiom for
+`EnsureCanDeleteCounsellorAction`) would mean a user loses unrelated profile edits just because
+their dob happened to cross a boundary in the same form submission. Chosen for better UX and
+because nothing else in the request actually failed -- there was no validation error, just one
+field's write deferred pending approval.
+
+**Signaling deferral**: `ProfileController::update()` flashes `dobChangePendingApproval => true`
+on redirect; the admin JSON path currently signals nothing beyond a plain success response (the
+User resource doesn't carry any "dob change is pending" flag). Deliberately minimal --
+TT-4.10c is backend-only; TT-4.10e (frontend) is the ticket that builds the actual approval UI
+and can extend the response/flash shape as needed once that UI exists.
+
+**Bundled fix**: `UpdateUserAction` previously ran `new Carbon($updateUserDTO->dob)`
+unconditionally -- Carbon treats a `null` argument as "now", so an admin submitting an update that
+didn't touch `dob` at all would have silently reset the target's dob to today. Discovered while
+adding the gate to this exact line (which needed to skip the write entirely when blocked anyway);
+fixed by only including `dob` in the update array when a value was actually submitted, mirroring
+`CreateGroupTherapyAction`'s own established "omit the key, let the existing/default value stand"
+convention (SCRUM-77).
+
+**First custom validation `Rule` class in this codebase**: `app/Rules/MinimumAgeForDobRule.php`
+replaces the identical inline `Rule::prohibitedIf(...)` closure duplicated across
+`ProfileUpdateRequest` and `AdminUpdateUserRequest` (TT-4.10c's own explicit scope). No prior
+`app/Rules/` convention existed to follow -- a plain `ValidationRule` implementation (Laravel 12's
+current contract) was chosen over a static-helper alternative since it's directly usable in a
+rules array like any other rule object, matching how `Rule::in(...)`/`Rule::unique(...)` already
+read at each call site.
+
+**Accepted, logged limitation** (identical class of gap to `video_consents`, TT-3.1e-a, and
+TT-4.10b's own request-duplication note): no DB-level constraint prevents more than one
+outstanding dob-change approval request per user (MySQL 8 lacks partial/filtered unique indexes).
+`EnsureDobChangeIsAllowedAction` mitigates this at the application level (locks the target User
+row, then checks for and reuses an existing pending request before creating a new one, mirroring
+`GrantVideoConsentAction`'s own find-or-create-under-lock shape) but this is not a DB-level
+guarantee.
+
+**Scope boundary respected**: this ticket creates the pending `Request` correctly shaped (`from`/
+`to`/`for`/`data`/`type`) but does NOT implement approving/rejecting it, nor any new
+`EnsureUserCanRespondToRequestAction` branch for "any one guardian of the `for` user may respond"
+-- that authorization shape doesn't exist yet anywhere in this codebase and is explicitly
+TT-4.10d's job (the approve/reject action), which depends on both this ticket and TT-4.10b being
+fully done.
+
+**Security-review findings, addressed in this same ticket** (2026-09-12):
+- `createOrReuseApprovalRequest()`'s reuse path originally kept the FIRST attempt's `newDob`
+  forever, silently discarding every later attempt's actual value while still reporting success
+  -- fixed to refresh the existing pending request's `data.newDob` on every reuse (`priorDob`
+  stays untouched, since the real stored dob never changes while a request is outstanding).
+- Because `RequestTypeEnum::dobChange` now exists but has no dedicated `RespondTo*RequestAction`
+  yet (TT-4.10d's job), hitting the existing generic `/requests/respond` endpoint against a
+  dobChange request fell through every dispatch branch in `RespondToRequestAction` and reported a
+  misleading success while leaving the request untouched -- the exact response-honesty gap
+  SCRUM-171 already fixed for an already-decided request. Added an explicit guard (mirroring that
+  same precedent) that rejects with a 422 instead, to be removed once TT-4.10d ships the real
+  handler.
+
+**Confirmed intended, not a bug** (security-review question): a minor with an active guardian can
+clear their own `dob` to null with no approval required. `isAdult()` and `isAdultForDob(null)` both
+treat a null dob as age 0 (already-minor), so clearing it while already flagged a minor produces no
+status flip -- correctly out of this gate's scope per its own literal rule ("does this edit flip
+the person's current effective minor/adult status"). Not a path to adult status: any subsequent
+dob set is still gated relative to the now-null (still-minor) baseline.

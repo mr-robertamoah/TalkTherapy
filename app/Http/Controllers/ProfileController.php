@@ -4,12 +4,15 @@ namespace App\Http\Controllers;
 
 use App\Actions\Counsellor\EnsureCanDeleteCounsellorAction;
 use App\Actions\EnsureNameStaysRetrievableAction;
+use App\Actions\User\EnsureDobChangeIsAllowedAction;
 use App\Actions\User\GetCounsellorCreationStepOfUserAction;
 use App\Actions\User\UpdateUserAvatarAction;
 use App\DTOs\CheckNameRetrievabilityDTO;
 use App\DTOs\DeleteCounsellorDTO;
+use App\DTOs\EnsureDobChangeIsAllowedDTO;
 use App\DTOs\UpdateUserAvatarDTO;
 use App\Exceptions\CannotDeleteCounsellorException;
+use App\Exceptions\DobChangeRequiresApprovalException;
 use App\Http\Requests\ProfileUpdateRequest;
 use App\Http\Requests\UpdateUserAvatarRequest;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
@@ -53,10 +56,30 @@ class ProfileController extends Controller
             ])
         );
 
-        $request->user()->fill(array_merge(
-            $request->validated(),
-            ['dob' => $request->dob ?: null]
-        ));
+        $newDob = $request->dob ?: null;
+        $dobChangeRequiresApproval = false;
+
+        // TT-4.10c/SCRUM-292: dob is deliberately excluded from the direct fill()/save() below
+        // when this throws -- everything else the user submitted in the same form still saves
+        // immediately (a pending guardian/admin approval for the dob specifically shouldn't hold
+        // an unrelated name/email/gender/country edit hostage). EnsureDobChangeIsAllowedAction has
+        // already created the pending approval Request by the time this throws.
+        try {
+            EnsureDobChangeIsAllowedAction::new()->execute(
+                EnsureDobChangeIsAllowedDTO::new()->fromArray([
+                    'user' => $request->user(),
+                    'actor' => $request->user(),
+                    'newDob' => $newDob,
+                ])
+            );
+        } catch (DobChangeRequiresApprovalException) {
+            $dobChangeRequiresApproval = true;
+        }
+
+        $fillData = $request->validated();
+        $fillData['dob'] = $dobChangeRequiresApproval ? $request->user()->dob : $newDob;
+
+        $request->user()->fill($fillData);
 
         if ($request->user()->isDirty('email')) {
             $request->user()->email_verified_at = null;
@@ -64,7 +87,9 @@ class ProfileController extends Controller
 
         $request->user()->save();
 
-        return Redirect::route('profile.show');
+        return Redirect::route('profile.show')->with(
+            $dobChangeRequiresApproval ? ['dobChangePendingApproval' => true] : []
+        );
     }
 
     /**
