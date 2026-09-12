@@ -6,6 +6,7 @@ use App\Actions\Video\EndVideoSessionAction;
 use App\Actions\Video\JoinVideoSessionAction;
 use App\Actions\Video\LeaveVideoSessionAction;
 use App\Exceptions\SessionException;
+use App\Exceptions\VideoConsentRequiredException;
 use App\Models\Session;
 use Illuminate\Http\Request;
 use Throwable;
@@ -66,6 +67,11 @@ class VideoSessionController extends Controller
         $status = $this->statusFor($th);
         $message = $this->messageFor($th, $status);
 
-        return response()->json(['message' => $message], $status);
+        // TT-3.1e-f/SCRUM-285: lets the frontend show a specific "guardian consent needed" banner
+        // instead of a generic error+retry, without string-matching $message.
+        return response()->json([
+            'message' => $message,
+            'videoConsentRequired' => $th instanceof VideoConsentRequiredException,
+        ], $status);
     }
 }

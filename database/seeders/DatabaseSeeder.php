@@ -21,6 +21,7 @@ use App\Enums\RequestTypeEnum;
 use App\Enums\TransactionStatusEnum;
 use App\Models\CounsellorEarning;
 use App\Models\CounsellorPayout;
+use App\Models\Guardianship;
 use App\Models\Organization;
 use App\Models\OrganizationInvoice;
 use App\Models\OrganizationInvoiceLine;
@@ -133,6 +134,15 @@ class DatabaseSeeder extends Seeder
         // or the late-joiner "free historical access" exemption without toggling a group's
         // settings by hand first.
         $this->createGroupStrictPaymentGateDemoData();
+
+        // TT-3.1e-f/SCRUM-285: a deterministic minor client with a guardian, an individual
+        // therapy already in PER_THERAPY consent mode, and an active session -- nothing above
+        // deterministically produces a minor-client Therapy at all (User::factory()'s own default
+        // leaves dob null, i.e. already a "minor" per isAdult(), but with no Guardianship and no
+        // video_consent_mode set), so there was previously no way to exercise the Video Consent
+        // tab, the guardian approve/revoke controls, or the consent-required video-join banner
+        // without creating this relationship chain by hand first.
+        $this->createGuardianVideoConsentDemoData();
     }
 
     private function createLanguages($user)
@@ -1297,6 +1307,80 @@ class DatabaseSeeder extends Seeder
             'type' => 'online',
             'status' => 'held',
             'payment_type' => 'PAID',
+        ]);
+    }
+
+    private function createGuardianVideoConsentDemoData(): void
+    {
+        $minor = User::factory()->create([
+            'firstName' => 'VideoConsent',
+            'lastName' => 'DemoMinor',
+            'email' => 'video.consent.demo.minor@example.com',
+            'username' => 'video_consent_demo_minor',
+            'password' => Hash::make('password'),
+            'email_verified_at' => now(),
+            'dob' => now()->subYears(15)->toDateString(),
+        ]);
+
+        $guardian = User::factory()->create([
+            'firstName' => 'VideoConsent',
+            'lastName' => 'DemoGuardian',
+            'email' => 'video.consent.demo.guardian@example.com',
+            'username' => 'video_consent_demo_guardian',
+            'password' => Hash::make('password'),
+            'email_verified_at' => now(),
+        ]);
+
+        Guardianship::query()->create(['guardian_id' => $guardian->id, 'ward_id' => $minor->id]);
+
+        $counsellorUser = User::factory()->create([
+            'firstName' => 'VideoConsent',
+            'lastName' => 'DemoCounsellor',
+            'email' => 'video.consent.demo.counsellor@example.com',
+            'username' => 'video_consent_demo_counsellor',
+            'password' => Hash::make('password'),
+            'email_verified_at' => now(),
+        ]);
+
+        $counsellor = $counsellorUser->counsellor()->create([
+            'name' => 'Dr. VideoConsent DemoCounsellor',
+            'about' => 'Seeded counsellor for testing the guardian video-consent UI (SCRUM-285).',
+            'email' => $counsellorUser->email,
+            'phone' => fake()->phoneNumber(),
+            'verified_at' => now(),
+            'email_verified_at' => now(),
+            'profession_id' => rand(1, 10),
+            'contact_visible' => true,
+        ]);
+
+        // PER_THERAPY mode already set, and deliberately left WITHOUT a grant -- exercises the
+        // "blocked, guardian must approve" golden path immediately, rather than requiring a mode
+        // to be set by hand before anything else can be tested.
+        $therapy = $minor->addedTherapies()->create([
+            'name' => 'Video Consent Demo Therapy',
+            'background_story' => 'Seeded minor-client therapy for testing the guardian video-consent tab, approve/revoke controls, and the consent-required video-join banner (SCRUM-285).',
+            'counsellor_id' => $counsellor->id,
+            'session_type' => 'Once',
+            'payment_type' => 'FREE',
+            'allow_in_person' => false,
+            'anonymous' => false,
+            'public' => false,
+            'status' => 'in_session',
+            'video_consent_mode' => 'PER_THERAPY',
+        ]);
+
+        // Immediately in-progress and online, so "join video" (and therefore the
+        // VideoConsentRequiredBanner, before the guardian approves) is reachable without waiting.
+        $counsellor->addedSessions()->create([
+            'name' => 'Video Consent Demo Session',
+            'about' => 'Seeded online, in-progress session for testing the video-join consent gate.',
+            'for_id' => $therapy->id,
+            'for_type' => $therapy::class,
+            'start_time' => now()->subMinutes(5),
+            'end_time' => now()->addHour(),
+            'type' => 'online',
+            'status' => 'in_session',
+            'payment_type' => 'FREE',
         ]);
     }
 

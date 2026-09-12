@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import PrimaryButton from '@/Components/PrimaryButton.vue'
 import VideoPaymentRequiredBanner from '@/Components/VideoPaymentRequiredBanner.vue'
+import VideoConsentRequiredBanner from '@/Components/VideoConsentRequiredBanner.vue'
 import useVideoSession from '@/Composables/useVideoSession'
 
 // TT-3.1c/SCRUM-276: the actual video call surface (tiles, controls, connection-quality
@@ -78,6 +79,11 @@ onBeforeUnmount(() => {
 
     <VideoPaymentRequiredBanner
       v-else-if="status === 'payment_required'"
+      :message="lastError"
+    />
+
+    <VideoConsentRequiredBanner
+      v-else-if="status === 'consent_required'"
       :message="lastError"
     />
 

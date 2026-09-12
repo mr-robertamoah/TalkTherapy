@@ -96,6 +96,49 @@ test('a client blocked by the strict payment gate cannot join video over the rou
     $response->assertStatus(402);
 });
 
+// TT-3.1e-f/SCRUM-285 (review finding): the new videoConsentRequired JSON flag was previously
+// untested at the actual HTTP-route level -- only the underlying Action's own exception type was
+// covered by a unit test. Proves the real join route surfaces the flag correctly, and that an
+// UNRELATED failure (here, the strict-payment-gate 402 above) never sets it.
+test('joining as a minor client with no video consent returns videoConsentRequired: true', function () {
+    app()->instance(VideoProviderInterface::class, fakeVideoProviderForRouteTest());
+    $minorClient = User::factory()->create();
+    $counsellorUser = User::factory()->create();
+    $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
+    $therapy = Therapy::factory()->create([
+        'addedby_type' => User::class,
+        'addedby_id' => $minorClient->id,
+        'counsellor_id' => $counsellor->id,
+    ]);
+    $session = Session::factory()->create([
+        'for_id' => $therapy->id,
+        'for_type' => Therapy::class,
+        'type' => 'ONLINE',
+        'status' => 'IN_SESSION',
+        'start_time' => now(),
+    ]);
+
+    $response = $this
+        ->actingAs($minorClient)
+        ->postJson(route('sessions.video.join', ['sessionId' => $session->id]));
+
+    $response->assertStatus(422)->assertJson([
+        'videoConsentRequired' => true,
+        'message' => 'Guardian video consent is required before this account can join video for this session.',
+    ]);
+});
+
+test('a non-participant\'s denial does not set videoConsentRequired', function () {
+    $data = onlineInSessionTherapySessionForVideoRoute();
+    $unrelatedUser = User::factory()->create();
+
+    $response = $this
+        ->actingAs($unrelatedUser)
+        ->postJson(route('sessions.video.join', ['sessionId' => $data['session']->id]));
+
+    $response->assertJson(['videoConsentRequired' => false]);
+});
+
 test('joining a session that does not exist returns a clean 422, not a server error', function () {
     $response = $this
         ->actingAs(User::factory()->create())

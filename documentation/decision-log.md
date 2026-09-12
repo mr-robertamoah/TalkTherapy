@@ -6495,3 +6495,88 @@ concern (locking or gating `dob` changes) that affects more than just video cons
 its own scoped ticket rather than a narrow patch bolted onto this one. Filed as SCRUM-287 (see
 below). TT-3.1e-d itself ships as reviewed -- it is at least as strict as the interim block it
 replaces for every case that doesn't involve this pre-existing, orthogonal bypass.
+
+---
+
+## 2026-09-11 — SCRUM-285 (TT-3.1e-f): Playwright QA finding -- Inertia prop staleness in this page
+
+**Found during this ticket's own mandatory Playwright QA pass, not by the reviewer/security
+subagents (they don't run a browser)**: `UnifiedTherapy.vue` (the page component behind
+`therapies.get`/`Therapy/Index.vue`) snapshots its `therapy` prop into a local ref exactly once at
+setup (`const therapyRef = ref(props.therapy)`), and nothing in that file re-syncs `therapyRef`
+from later Inertia visits to the same page (confirmed: several existing actions elsewhere in that
+same file already call `router.reload({ only: ['therapy'] })` after a write, e.g. the session
+refund-request flow -- but based on this ticket's own testing, that reload's fresh props still
+never reach `therapyRef`, only a full browser navigation does). `TherapyPaymentDetails.vue`'s own
+existing `strictPaymentGate` toggle independently works around this exact gap with a local
+`ref(...)` + manual optimistic assignment in its `onSuccess`/`onError` handlers rather than
+re-deriving state from `props.therapy` after a write -- confirmed by reading that component after
+reproducing the bug live, not by assumption.
+
+**Decision**: not a bug to fix in THIS ticket (a page-wide, pre-existing architectural gap
+affecting multiple existing features, not something TT-3.1e-f introduced) -- `VideoConsentPanel.vue`
+instead follows the exact same already-established workaround: local `ref()`s for `mode`/`current`,
+manually updated optimistically in each write handler (`onSetMode`/`onGrant`/`onRevoke`), reverted
+on error. One deliberate, documented trade-off from this: switching the consent mode resets the
+displayed `current` grant to null (fail-closed) rather than guessing the new scope's real state,
+since this component has no cheap client-side way to know whether the new scope already has a
+valid grant without a server round trip -- verified live that the REAL state is still correct
+immediately on the backend and becomes visible again after any full page reload; only the
+optimistic display can lag, and only in the conservative (under-claim, never over-claim) direction.
+
+**Recommendation for a future ticket** (not filed as a tracked issue -- flagging in-line since it's
+a UI-polish/tech-debt observation, not a safety/security gap): consider adding a
+`watch(() => props.therapy, (val) => { therapyRef.value = val })` in `UnifiedTherapy.vue` itself,
+which would let every write-action on this page (not just this ticket's own) reflect
+server-truth immediately after `router.reload({ only: ['therapy'] })` without each feature needing
+its own local-ref workaround.
+
+---
+
+## 2026-09-11 — SCRUM-285 (TT-3.1e-f): two independent PII-leak findings, both fixed before merge
+
+**Security-engineer finding (HIGH)**: `TherapyResource::videoConsentData()` had no gate of its
+own, unlike its sibling fields on the same resource (`'user'`/`orgRetainerCoverage()`, both gated
+behind `addedByUserIsMaskedFor()`). Since `GET /therapies/{id}` (`therapies.get`) sits OUTSIDE the
+`auth` middleware group and `EnsureUserHasAccessToTherapyAction` explicitly returns early for a
+`public` Therapy before even checking whether a user exists, an unauthenticated guest (or any
+unrelated authenticated user) loading a `public` therapy whose client is a minor could learn: that
+the client is a minor, the therapy's consent mode, whether consent is currently valid, and the
+real name of the guardian who granted/revoked it. **Fixed**: `videoConsentData()` now requires the
+viewer to be a participant (client or counsellor, via the existing `Therapy::isParticipant()`) or
+a guardian of the resolved ward before returning anything but `null` -- resolved via
+`GetWardForVideoConsentableAction` first (not `$this->addedby` directly), since that action
+already safely returns null for a non-User addedby where calling `User::isGuardianOf()` on a
+non-User value would otherwise be a type error.
+
+**Reviewer finding (a related but distinct gap)**: even with the resource fixed, all four new
+`VideoConsentController` write/read endpoints still delegated straight into their underlying
+Action with no gate of the controller's own -- each Action's own denial MESSAGE differs by the
+therapy's actual state ("no minor client" vs "only applies to a minor client" vs "not a
+guardian"), so any authenticated stranger could probe an arbitrary `therapyId` and learn, purely
+from which message came back, whether that therapy's client is a minor -- the exact fact this
+whole feature exists to protect, and the exact class of oracle this codebase's own SCRUM-275
+review already fixed once for `EnsureVideoIsAvailableForSessionAction` by ordering its
+participant-check first. **Fixed**: `VideoConsentController::requireRelationshipToTherapy()` runs
+before any Action on every endpoint, returning one single generic denial regardless of the
+therapy's actual minor/adult/mode/guardian state. Regression test added proving all four endpoints
+return byte-identical denial text for an unrelated caller against both an adult-client and a
+minor-client therapy.
+
+**Security-engineer's other findings, also addressed**:
+- The revoke endpoint's `throttle:10,1` keys by user/IP, but a ward can have multiple guardians
+  (`RevokeVideoConsentAction`'s own "any one guardian, no unanimity" rule) -- colluding/adversarial
+  co-guardians would each get an independent bucket against the SAME child's session, undermining
+  the whole point of rate-limiting this specific disruptive action. Fixed via a named limiter
+  (`RateLimiter::for('video-consent-revoke', ...)` in `RouteServiceProvider`) keyed by the
+  resolved ward id instead, falling back to user/IP only if the ward can't be resolved at all.
+- `audit_trail` had no throttle at all, inconsistent with other sensitive read endpoints in this
+  file. Added `throttle:60,1`.
+
+**Testing-infrastructure note, not a product bug**: while adding a regression test for the guest
+case above, found that Laravel's `assertInertia()->where('path', null)` fluent helper reports a
+present-but-null property as "does not exist" specifically for an unauthenticated request in this
+app's setup (confirmed via raw payload dump: the property is genuinely present and correctly
+`null`; only the assertion helper mis-reports it). Worked around by extracting the raw page prop
+directly with `array_key_exists()` (not `??`, which has the identical isset()-based blind spot)
+for that one test case, rather than the fluent helper.

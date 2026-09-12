@@ -1,6 +1,7 @@
 <?php
 
 use App\Actions\Video\EnsureVideoIsAvailableForSessionAction;
+use App\Exceptions\VideoConsentRequiredException;
 use App\Exceptions\VideoException;
 use App\Models\Counsellor;
 use App\Models\GroupTherapy;
@@ -140,8 +141,12 @@ function minorClientOnlineInSessionTherapySession(array $sessionOverrides = []):
 test('a minor client without any consent grant is blocked from joining video', function () {
     $data = minorClientOnlineInSessionTherapySession();
 
+    // TT-3.1e-f/SCRUM-285 (review finding): asserts the specific VideoConsentRequiredException
+    // subtype, not just its VideoException parent -- a plain VideoException::class assertion here
+    // would still pass even if this exact throw were reverted back to the parent type, silently
+    // losing the videoConsentRequired JSON flag VideoSessionController's instanceof check relies on.
     expect(fn () => EnsureVideoIsAvailableForSessionAction::new()->execute($data['session'], $data['minorClient']))
-        ->toThrow(VideoException::class, 'Guardian video consent is required before this account can join video for this session.');
+        ->toThrow(VideoConsentRequiredException::class, 'Guardian video consent is required before this account can join video for this session.');
 });
 
 // The counsellor side is never gated by this check -- mirrors this codebase's own established
@@ -187,7 +192,7 @@ test('a PER_SESSION grant for a sibling session does not unlock this session', f
     ]);
 
     expect(fn () => EnsureVideoIsAvailableForSessionAction::new()->execute($data['session'], $data['minorClient']))
-        ->toThrow(VideoException::class);
+        ->toThrow(VideoConsentRequiredException::class);
 });
 
 test('a minor client is blocked again once their consent grant is revoked', function () {
@@ -199,7 +204,7 @@ test('a minor client is blocked again once their consent grant is revoked', func
     ]);
 
     expect(fn () => EnsureVideoIsAvailableForSessionAction::new()->execute($data['session'], $data['minorClient']))
-        ->toThrow(VideoException::class);
+        ->toThrow(VideoConsentRequiredException::class);
 });
 
 // TT-3.1e-a's "mode switches are prospective-only" guarantee, proven at the actual enforcement

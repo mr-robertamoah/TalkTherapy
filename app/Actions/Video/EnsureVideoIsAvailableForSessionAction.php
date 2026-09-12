@@ -6,6 +6,7 @@ use App\Actions\Action;
 use App\Actions\VideoConsent\HasValidVideoConsentForSessionAction;
 use App\Enums\SessionStatusEnum;
 use App\Enums\SessionTypeEnum;
+use App\Exceptions\VideoConsentRequiredException;
 use App\Exceptions\VideoException;
 use App\Models\Session;
 use App\Models\Therapy;
@@ -65,7 +66,10 @@ class EnsureVideoIsAvailableForSessionAction extends Action
         $isCounsellor = (bool) ($user->counsellor && $session->for->isCounsellor($user->counsellor));
 
         if (! $isCounsellor && ! $user->isAdult() && ! HasValidVideoConsentForSessionAction::new()->execute($session)) {
-            throw new VideoException('Guardian video consent is required before this account can join video for this session.', 422);
+            // TT-3.1e-f/SCRUM-285: a dedicated exception type, not plain VideoException -- lets
+            // VideoSessionController surface a specific videoConsentRequired flag to the frontend
+            // rather than the client having to string-match this message.
+            throw new VideoConsentRequiredException('Guardian video consent is required before this account can join video for this session.', 422);
         }
 
         if ($session->type !== SessionTypeEnum::online->value) {

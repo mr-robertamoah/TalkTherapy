@@ -27,6 +27,7 @@ use App\Http\Controllers\SessionController;
 use App\Http\Controllers\SessionNoteController;
 use App\Http\Controllers\TherapyController;
 use App\Http\Controllers\TransactionController;
+use App\Http\Controllers\VideoConsentController;
 use App\Http\Controllers\VideoSessionController;
 use App\Services\AppService;
 use Illuminate\Support\Facades\Route;
@@ -119,6 +120,17 @@ Route::middleware('auth')->group(function () {
     // codebase's convention leans toward throttling newly-added write endpoints by default,
     // not because of any specific abuse concern the sibling route lacks.
     Route::patch('/therapies/{therapyId}/strict-payment-gate', [TherapyController::class, 'updateStrictPaymentGate'])->name('therapies.strict_payment_gate.update')->middleware('throttle:30,1');
+    // TT-3.1e-f/SCRUM-285: the first HTTP-reachable surface for the guardian video-consent
+    // Actions (TT-3.1e-b/c) -- see VideoConsentController's own docblock. The revoke endpoint is
+    // throttled more tightly than its siblings on purpose -- SCRUM-282's own security review
+    // flagged grant/revoke cycling as a real griefing risk once a route existed (repeatedly
+    // force-ending an in-progress call), not just a generic new-endpoint precaution.
+    Route::patch('/therapies/{therapyId}/video-consent-mode', [VideoConsentController::class, 'updateMode'])->name('therapies.video_consent.mode_update')->middleware('throttle:30,1');
+    Route::post('/therapies/{therapyId}/video-consent', [VideoConsentController::class, 'grant'])->name('therapies.video_consent.grant')->middleware('throttle:30,1');
+    // Named limiter, not throttle:10,1 -- keyed by ward, not by user/IP, since a ward can have
+    // multiple guardians (see RouteServiceProvider's own comment on this limiter).
+    Route::delete('/therapies/{therapyId}/video-consent', [VideoConsentController::class, 'revoke'])->name('therapies.video_consent.revoke')->middleware('throttle:video-consent-revoke');
+    Route::get('/therapies/{therapyId}/video-consent/audit-trail', [VideoConsentController::class, 'auditTrail'])->name('therapies.video_consent.audit_trail')->middleware('throttle:60,1');
     Route::delete('/therapies/{therapyId}', [TherapyController::class, 'deleteTherapy'])->name('therapies.delete');
     Route::post('/therapies/{therapyId}', [TherapyController::class, 'endTherapy'])->name('therapies.end');
 

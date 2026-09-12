@@ -3,6 +3,8 @@
 namespace App\Http\Resources;
 
 use App\Actions\Organization\GetRetainerCoveringOrganizationAction;
+use App\Actions\VideoConsent\GetCurrentValidVideoConsentForTherapyAction;
+use App\Actions\VideoConsent\GetWardForVideoConsentableAction;
 use App\Enums\ConstantsEnum;
 use App\Enums\TherapyPaymentTypeEnum;
 use App\Models\User;
@@ -87,6 +89,49 @@ class TherapyResource extends JsonResource
             'activeSession' => $activeSession ? new SessionResource($activeSession) : null,
             'activeDiscussion' => $activeDiscussion ? new DiscussionResource($activeDiscussion) : null,
             'orgRetainerCoverage' => $this->orgRetainerCoverage($user),
+            'videoConsent' => $this->videoConsentData($user),
+        ];
+    }
+
+    // TT-3.1e-f/SCRUM-285: null (the whole section doesn't apply) unless this therapy actually
+    // has a minor client -- avoids the ward/guardian/consent lookups below on every ordinary
+    // (adult-client) therapy page load. `viewerIsGuardian` is display-only, matching
+    // computedIsCounsellor's own existing role elsewhere on this page -- the real authorization
+    // boundary is always the backend Action itself (GrantVideoConsentAction/
+    // RevokeVideoConsentAction/SetVideoConsentModeAction), not this flag.
+    //
+    // Security-review finding (2026-09-11, HIGH): a `public` Therapy is reachable by ANY
+    // visitor, including a guest, before this method ran at all -- EnsureUserHasAccessToTherapyAction
+    // explicitly returns for `$therapy->public` before even checking whether $user exists. Unlike
+    // this resource's own 'user'/orgRetainerCoverage fields (both gated behind
+    // addedByUserIsMaskedFor()), this method had NO gate of its own, so it disclosed that a
+    // public therapy's client is a minor, the therapy's consent mode, whether consent is
+    // currently valid, and the granting/revoking guardian's real name, to a completely
+    // unauthenticated/unrelated visitor. Gated the same way every other guardian-facing surface
+    // in this feature already is: the viewer must actually be a participant (client or
+    // counsellor) OR a guardian of this specific ward.
+    private function videoConsentData(?User $user): ?array
+    {
+        // Resolved before the participant/guardian gate below (not $this->addedby directly) --
+        // GetWardForVideoConsentableAction already safely returns null for a non-User addedby
+        // (e.g. an org-owned Therapy), where calling User::isGuardianOf() on a non-User value
+        // would otherwise be a type error.
+        $ward = GetWardForVideoConsentableAction::new()->execute($this->resource);
+
+        if (! $ward || $ward->isAdult()) {
+            return null;
+        }
+
+        if (! $user || ! ($this->isParticipant($user) || $user->isGuardianOf($ward))) {
+            return null;
+        }
+
+        $currentConsent = GetCurrentValidVideoConsentForTherapyAction::new()->execute($this->resource);
+
+        return [
+            'mode' => $this->video_consent_mode,
+            'viewerIsGuardian' => (bool) ($user && $user->isGuardianOf($ward)),
+            'current' => $currentConsent ? new VideoConsentResource($currentConsent) : null,
         ];
     }
 
