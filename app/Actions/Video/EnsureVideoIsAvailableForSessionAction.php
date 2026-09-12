@@ -18,11 +18,10 @@ use App\Models\User;
 //
 // TT-3.1e-d/SCRUM-283: a minor client (the therapy's own addedby, joining as themselves) needs a
 // real, currently-valid guardian video-consent grant -- HasValidVideoConsentForSessionAction's own
-// single OR-across-both-scopes query, per the architect's design (TT-3.1e-a/b/c). This replaces
-// the interim fail-closed block SCRUM-278's own ticket text called for while the real consent flow
-// was being built (see documentation/decision-log.md's SCRUM-278 entry for that interim fix's own
-// reasoning) -- final stale-comment/test cleanup for the interim era is TT-3.1e-g's job, not this
-// ticket's, per that sub-ticket's own explicit scope.
+// single OR-across-both-scopes query, per the architect's design (TT-3.1e-a/b/c). This replaced
+// the interim fail-closed block SCRUM-278's own ticket text originally called for while the real
+// consent flow was being built (see documentation/decision-log.md's SCRUM-278 entries for that
+// interim fix's own reasoning and its later removal).
 //
 // Scoped to $user themselves (the actual joiner), not "the therapy's client, regardless of who's
 // joining" -- the counsellor side is never gated by ANY check in this codebase's whole payment/
