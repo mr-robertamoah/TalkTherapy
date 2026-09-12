@@ -75,6 +75,14 @@ class RespondToGroupTherapyMembershipRequestAction extends Action
         if ($outcome == 'accepted') {
             $request->from->notify(new GroupTherapyMembershipRequestAcceptedNotification($request));
 
+            // TT-4.10b/SCRUM-291: deliberately does NOT pass 'for' => $groupTherapy here --
+            // $request->from is the JOINING MEMBER, not the group's own addedby/owner, so
+            // $groupTherapy->client_was_minor_at_creation answers a question about a different
+            // person entirely (whoever created the group). There is no stable snapshot recorded
+            // anywhere for "was this member a minor at the moment they joined" (TT-4.10a only
+            // covers Guardianship/Therapy/GroupTherapy creation, not group membership), so this
+            // stays on AlertGuardianAction's live-isAdult() fallback, unchanged from before this
+            // ticket.
             AlertGuardianAction::new()->execute(
                 GuardianAlertDTO::new()->fromArray([
                     'user' => $request->from,

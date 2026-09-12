@@ -6752,3 +6752,30 @@ consciously risk-accepted) before or alongside TT-4.10b (SCRUM-291) starting to 
 `group_therapies.client_was_minor_at_creation` for any authorization decision. Safe to ship
 SCRUM-290 itself in the meantime: nothing reads this column yet, so the corrupted-snapshot risk
 is inert until TT-4.10b lands -- but TT-4.10b's own kickoff must check SCRUM-296's status first.
+
+## 2026-09-12 — SCRUM-291 (TT-4.10b): bundled pre-existing bug fix + accepted pre-migration gap
+
+**Bundled bug fix**: while migrating `Therapy::getUsers()`/`getOtherUsers()` to
+`TherapyTrait::clientIsMinor()`, discovered that both methods called `$users->merge(...)` without
+reassigning the result -- `Collection::merge()` returns a NEW collection rather than mutating in
+place, so a minor client's guardians were never actually being added to the participant list at
+all, regardless of the isAdult() check this ticket replaces. `GroupTherapy`'s own identical
+methods already did this correctly (`$users = $users->merge(...)`). Fixed in the same diff rather
+than filed as a separate ticket: it's the exact same lines already being touched for the snapshot
+migration, a one-token change, and immediately covered by this ticket's own new
+`tests/Unit/TherapyParticipantMinorSnapshotTest.php` (which fails without it). Confirmed via
+security review that `getUsers()`/`getOtherUsers()` are only ever used as notification-recipient
+lists, never an authorization boundary (`isParticipant()`/`isNotParticipant()` are separate,
+unaffected methods) -- so this fix only means an affected minor's guardian(s) now correctly
+receive existing session/discussion lifecycle notifications for their ward's therapy, consistent
+with this feature's existing guardian-alerting design, not a new access grant.
+
+**Accepted, logged limitation**: `client_was_minor_at_creation` has no backfill migration -- any
+`Therapy`/`GroupTherapy` row created before TT-4.10a's migration lands has this column `null` and
+therefore falls through `clientIsMinor()`'s own live-`isAdult()` fallback branch, meaning the
+exact SCRUM-287 self-edit-dob bypass this epic exists to close still applies to any such
+pre-migration row. Accepted per this project's own current stage (nothing in production yet, per
+SCRUM-287's own decision-log entry) -- there is no real pre-migration data to backfill, and no
+way to reconstruct a pre-migration user's dob at their therapy's actual creation time regardless.
+No backfill migration or follow-up ticket filed; revisit if this ships before any real
+Guardianship/Therapy/GroupTherapy data exists.

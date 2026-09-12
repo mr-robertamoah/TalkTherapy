@@ -78,6 +78,14 @@ class RespondToTherapyAssistanceRequestAction extends Action
                 new TherapyAssistanceRequestAcceptedNotification($request)
             );
 
+            // TT-4.10b/SCRUM-291: only pass 'for' => $request->for when $request->from is the
+            // therapy's own client (a User) -- when it's a Counsellor instead (this Counsellor
+            // is OFFERING to assist someone else's therapy, see TherapyService::sendAssistance-
+            // Request()'s own counsellor-initiated branch), 'user' above resolves to that
+            // counsellor's own account, which has no relationship at all to $request->for's
+            // client_was_minor_at_creation snapshot -- that snapshot is about the THERAPY'S
+            // CLIENT, a different person. Falls back to a live check on the counsellor's own
+            // account in that branch, unchanged from before this ticket.
             AlertGuardianAction::new()->execute(
                 GuardianAlertDTO::new()->fromArray([
                     'user' => $request->from::class == Counsellor::class
@@ -86,6 +94,7 @@ class RespondToTherapyAssistanceRequestAction extends Action
                     'notification' => new TherapyAssistanceRequestAcceptedGuardianNotification(
                         $request->for
                     ),
+                    'for' => $request->from::class == Counsellor::class ? null : $request->for,
                 ])
             );
         }

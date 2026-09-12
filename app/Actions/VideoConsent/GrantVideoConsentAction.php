@@ -30,7 +30,10 @@ class GrantVideoConsentAction extends Action
             throw new VideoConsentException('This therapy has no minor client to grant video consent for.', 422);
         }
 
-        if ($ward->isAdult()) {
+        // TT-4.10b/SCRUM-291: was a live $ward->isAdult() re-check -- now prefers the therapy's
+        // own stable client_was_minor_at_creation snapshot (TT-4.10a), closing the self-editable-
+        // dob bypass SCRUM-287 found.
+        if (! $wardResolver->isMinor($consentable)) {
             throw new VideoConsentException('Video consent only applies to a minor client.', 422);
         }
 
@@ -38,7 +41,7 @@ class GrantVideoConsentAction extends Action
             throw new VideoConsentException('You are not a guardian of this client.', 422);
         }
 
-        $therapy = GetWardForVideoConsentableAction::new()->therapyFor($consentable);
+        $therapy = $wardResolver->therapyFor($consentable);
 
         // Fail closed on an unset mode rather than silently defaulting to either interpretation
         // -- PER_THERAPY (one-time, broadest) is the more permissive of the two, so quietly

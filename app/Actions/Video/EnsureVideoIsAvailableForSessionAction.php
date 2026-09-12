@@ -64,7 +64,12 @@ class EnsureVideoIsAvailableForSessionAction extends Action
         // unconditionally, regardless of when the call started.
         $isCounsellor = (bool) ($user->counsellor && $session->for->isCounsellor($user->counsellor));
 
-        if (! $isCounsellor && ! $user->isAdult() && ! HasValidVideoConsentForSessionAction::new()->execute($session)) {
+        // TT-4.10b/SCRUM-291: was `! $user->isAdult()` -- $user here is the therapy's own client
+        // (the counsellor branch above is already exempted, and this codebase's "1:1 individual
+        // Therapy only" scope for TT-3.1 means the only other participant is the counsellor), so
+        // this now prefers the therapy's stable client_was_minor_at_creation snapshot over a live
+        // re-check, closing the exact self-editable-dob bypass SCRUM-287 found.
+        if (! $isCounsellor && $session->for->clientIsMinor() && ! HasValidVideoConsentForSessionAction::new()->execute($session)) {
             // TT-3.1e-f/SCRUM-285: a dedicated exception type, not plain VideoException -- lets
             // VideoSessionController surface a specific videoConsentRequired flag to the frontend
             // rather than the client having to string-match this message.

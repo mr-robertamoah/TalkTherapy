@@ -8,9 +8,11 @@ use App\Enums\LinkTypeEnum;
 use App\Exceptions\CounsellorNotFoundException;
 use App\Exceptions\LinkException;
 use App\Models\Counsellor;
+use App\Models\Guardianship;
 use App\Models\Therapy;
 use App\Models\User;
 use App\Notifications\TherapyAssistanceLinkNotification;
+use App\Notifications\TherapyAssistanceRequestAcceptedGuardianNotification;
 use App\Services\LinkService;
 use Illuminate\Support\Facades\Notification;
 
@@ -161,4 +163,78 @@ test('using a therapy-counsellor link once the therapy was concurrently assigned
 
     expect($therapy->fresh()->counsellor_id)->toBe($firstCounsellor->id);
     Notification::assertNothingSent();
+});
+
+// TT-4.10b/SCRUM-291: the guardian alert here must follow the stable client_was_minor_at_creation
+// snapshot, not a live re-check of the link creator's (self-editable) dob.
+
+test('using a therapy-counsellor link alerts the client\'s guardian even if their dob was edited to look adult after the therapy was created', function () {
+    Notification::fake();
+
+    $therapyOwner = User::factory()->adult()->create();
+    $guardian = User::factory()->create();
+    Guardianship::query()->create(['guardian_id' => $guardian->id, 'ward_id' => $therapyOwner->id]);
+    $therapy = Therapy::factory()->create([
+        'addedby_type' => User::class,
+        'addedby_id' => $therapyOwner->id,
+        'client_was_minor_at_creation' => true,
+    ]);
+    $counsellorUser = User::factory()->create();
+    Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
+
+    $link = CreateLinkAction::new()->execute(
+        CreateLinkDTO::new()->fromArray([
+            'addedby' => $therapyOwner,
+            'for' => $therapy,
+            'type' => LinkTypeEnum::therapyCounsellor->value,
+        ])
+    );
+
+    PerformTherapyCounsellorLinkAction::new()->execute(
+        CreateLinkDTO::new()->fromArray(['user' => $counsellorUser, 'link' => $link])
+    );
+
+    Notification::assertSentTo($guardian, TherapyAssistanceRequestAcceptedGuardianNotification::class);
+});
+
+// Defensive-guard case: this link type's own addedby is client-suppliable (LinkController accepts
+// any addedbyType/addedbyId EnsureAddedbyIsValidAction will allow) and isn't otherwise guaranteed
+// to be the same person as the therapy's own client -- unlike TherapyService::createTherapy's own
+// guaranteed-by-construction case, this action must NOT assume they match, and must fall back to
+// a live check on the link's own addedby rather than misreading a mismatched therapy's snapshot.
+test('falls back to a live check when the link\'s addedby does not match the therapy\'s own client', function () {
+    Notification::fake();
+
+    $therapyOwner = User::factory()->create(['dob' => now()->subYears(15)->toDateString()]);
+    $therapyOwnerGuardian = User::factory()->create();
+    Guardianship::query()->create(['guardian_id' => $therapyOwnerGuardian->id, 'ward_id' => $therapyOwner->id]);
+    $therapy = Therapy::factory()->create([
+        'addedby_type' => User::class,
+        'addedby_id' => $therapyOwner->id,
+        'client_was_minor_at_creation' => true,
+    ]);
+
+    $linkCreator = User::factory()->adult()->create();
+    $linkCreatorGuardian = User::factory()->create();
+    Guardianship::query()->create(['guardian_id' => $linkCreatorGuardian->id, 'ward_id' => $linkCreator->id]);
+    $counsellorUser = User::factory()->create();
+    Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
+
+    $link = CreateLinkAction::new()->execute(
+        CreateLinkDTO::new()->fromArray([
+            'addedby' => $linkCreator,
+            'for' => $therapy,
+            'type' => LinkTypeEnum::therapyCounsellor->value,
+        ])
+    );
+
+    PerformTherapyCounsellorLinkAction::new()->execute(
+        CreateLinkDTO::new()->fromArray(['user' => $counsellorUser, 'link' => $link])
+    );
+
+    // The link creator is a live adult, so no alert at all -- and specifically NOT the therapy
+    // owner's guardian, which is what a naive "just always pass $therapy" wiring would have
+    // wrongly notified instead.
+    Notification::assertNotSentTo($linkCreatorGuardian, TherapyAssistanceRequestAcceptedGuardianNotification::class);
+    Notification::assertNotSentTo($therapyOwnerGuardian, TherapyAssistanceRequestAcceptedGuardianNotification::class);
 });

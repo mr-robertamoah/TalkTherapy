@@ -108,6 +108,45 @@ test('granting fails when the therapy\'s client is an adult', function () {
         ->toThrow(VideoConsentException::class, 'Video consent only applies to a minor client.');
 });
 
+// TT-4.10b/SCRUM-291: the "minor client" gate must follow the stable client_was_minor_at_creation
+// snapshot, not a live re-check of the client's (self-editable) dob.
+
+test('granting succeeds for a client who edited their dob to look adult, per the stable snapshot', function () {
+    $client = User::factory()->adult()->create();
+    $counsellorUser = User::factory()->create();
+    $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
+    $therapy = Therapy::factory()->create([
+        'addedby_type' => User::class,
+        'addedby_id' => $client->id,
+        'counsellor_id' => $counsellor->id,
+        'video_consent_mode' => 'PER_THERAPY',
+        'client_was_minor_at_creation' => true,
+    ]);
+    $guardian = User::factory()->create();
+    Guardianship::query()->create(['guardian_id' => $guardian->id, 'ward_id' => $client->id]);
+
+    $consent = GrantVideoConsentAction::new()->execute($guardian, $therapy);
+
+    expect($consent)->toBeInstanceOf(VideoConsent::class);
+});
+
+test('granting fails once the snapshot says adult, even if the client\'s live dob still reads as a minor', function () {
+    $client = User::factory()->create();
+    $counsellorUser = User::factory()->create();
+    $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
+    $therapy = Therapy::factory()->create([
+        'addedby_type' => User::class,
+        'addedby_id' => $client->id,
+        'counsellor_id' => $counsellor->id,
+        'video_consent_mode' => 'PER_THERAPY',
+        'client_was_minor_at_creation' => false,
+    ]);
+    $guardian = User::factory()->create();
+
+    expect(fn () => GrantVideoConsentAction::new()->execute($guardian, $therapy))
+        ->toThrow(VideoConsentException::class, 'Video consent only applies to a minor client.');
+});
+
 test('granting is idempotent -- calling it again for an already-valid scope returns the same row', function () {
     $therapy = minorTherapyForConsentGrant(['video_consent_mode' => 'PER_THERAPY']);
     $guardian = User::factory()->create();

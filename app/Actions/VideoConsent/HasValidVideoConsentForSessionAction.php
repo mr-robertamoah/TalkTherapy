@@ -30,12 +30,15 @@ class HasValidVideoConsentForSessionAction extends Action
 
         // No ward concept for this session at all (e.g. an org-owned Therapy, or a session whose
         // therapy has no resolvable User addedby), or an adult client -- nothing to gate on, so
-        // consent is trivially satisfied. GetWardForVideoConsentableAction::execute() doesn't
-        // itself check age (that's each caller's own job, matching IsVideoConsentOutstandingFor-
-        // SessionAction's identical pattern) -- checked here too as defense-in-depth, even though
-        // the current caller (EnsureVideoIsAvailableForSessionAction) already only reaches this
+        // consent is trivially satisfied. Checked here too as defense-in-depth, even though the
+        // current caller (EnsureVideoIsAvailableForSessionAction) already only reaches this
         // action for a non-adult, non-counsellor joiner.
-        if (! $ward || $ward->isAdult()) {
+        //
+        // TT-4.10b/SCRUM-291: "adult client" was a live $ward->isAdult() re-check -- now prefers
+        // the therapy's own stable client_was_minor_at_creation snapshot (TT-4.10a) via
+        // GetWardForVideoConsentableAction::isMinor(), closing the self-editable-dob bypass
+        // SCRUM-287 found.
+        if (! $ward || ! $wardResolver->isMinor($session)) {
             return true;
         }
 

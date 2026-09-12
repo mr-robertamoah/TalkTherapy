@@ -272,4 +272,20 @@ trait TherapyTrait
     {
         return (bool) data_get($this->payment_data, 'strictPaymentGate', false);
     }
+
+    // TT-4.10b/SCRUM-291: prefers the stable client_was_minor_at_creation snapshot (TT-4.10a) --
+    // captured once, at creation, from the client's live isAdult() at that exact moment -- over
+    // a live isAdult() re-check, which is exactly what SCRUM-287 found could be bypassed by a
+    // later self-service dob edit. Falls back to a live check only for a row with no snapshot at
+    // all (this column predates every existing row) or a genuinely not-applicable one (a
+    // Counsellor-created GroupTherapy has no single "client" this applies to -- addedby isn't
+    // even a User to check isAdult() on).
+    public function clientIsMinor(): bool
+    {
+        if (! is_null($this->client_was_minor_at_creation)) {
+            return $this->client_was_minor_at_creation;
+        }
+
+        return $this->addedby_type === User::class && $this->addedby && ! $this->addedby->isAdult();
+    }
 }

@@ -164,12 +164,21 @@ class Therapy extends Model
             $users->push($this->counsellor->user);
         }
 
+        // TT-4.10b/SCRUM-291: was `! $this->addedby->isAdult()` -- prefers the stable
+        // client_was_minor_at_creation snapshot (TT-4.10a) over a live re-check, closing the
+        // self-editable-dob bypass SCRUM-287 found.
+        //
+        // Also fixes a pre-existing bug surfaced while writing this ticket's own regression
+        // tests: Collection::merge() returns a NEW collection rather than mutating in place, so
+        // the bare `$users->merge(...)` below silently discarded its result -- a minor client's
+        // guardians were never actually being added to this list at all, regardless of the
+        // isAdult() check this replaces. GroupTherapy's own identical method already reassigns
+        // correctly (`$users = $users->merge(...)`); this brings Therapy in line with it.
         if (
-            $this->addedby_type == User::class &&
-            ! $this->addedby->isAdult() &&
+            $this->clientIsMinor() &&
             $this->addedby->guardians()->count()
         ) {
-            $users->merge(User::query()->whereWard($this->addedby)->get());
+            $users = $users->merge(User::query()->whereWard($this->addedby)->get());
         }
 
         return $users;
@@ -208,8 +217,10 @@ class Therapy extends Model
             $users->push($this->counsellor->user);
         }
 
-        if (! $this->addedby->isAdult() && $this->addedby->guardians()->count()) {
-            $users->merge(User::query()->whereNot('id', $user->id)
+        // TT-4.10b/SCRUM-291: was `! $this->addedby->isAdult()` -- see getUsers()'s identical
+        // comment above (including the pre-existing missing-reassignment bug fix).
+        if ($this->clientIsMinor() && $this->addedby->guardians()->count()) {
+            $users = $users->merge(User::query()->whereNot('id', $user->id)
                 ->whereWard($this->addedby)->get());
         }
 
