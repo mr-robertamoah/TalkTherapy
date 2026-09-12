@@ -120,6 +120,19 @@ class User extends Authenticatable implements MustVerifyEmailContract
         return $this->age && $this->age >= 18;
     }
 
+    // TT-4.10c/SCRUM-292: mirrors getAgeAttribute()/isAdult()'s own math exactly, but for a
+    // CANDIDATE dob that isn't (yet) saved on any User instance -- EnsureDobChangeIsAllowedAction
+    // needs to compare "would this dob edit flip the person's adult status" without instantiating
+    // a throwaway model or duplicating the age calculation a third time.
+    public static function isAdultForDob(?string $dob): bool
+    {
+        if (! $dob) {
+            return false;
+        }
+
+        return (int) now()->diffInYears(new Carbon($dob), true) >= 18;
+    }
+
     public function isGuardianOf(User $user)
     {
         return $this->wards()->where('ward_id', $user->id)->exists();

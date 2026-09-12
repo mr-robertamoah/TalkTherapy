@@ -5,12 +5,23 @@ namespace App\Actions\Request;
 use App\Actions\Action;
 use App\DTOs\RequestResponseDTO;
 use App\Enums\RequestTypeEnum;
+use App\Exceptions\BadRequestException;
 
 class RespondToRequestAction extends Action
 {
     public function execute(RequestResponseDTO $requestResponseDTO)
     {
         $request = $requestResponseDTO->request;
+
+        // TT-4.10c/SCRUM-292: EnsureDobChangeIsAllowedAction can already create a dobChange-type
+        // request, but the approve/reject action that actually applies it (and its retroactive
+        // snapshot correction) is TT-4.10d's job, not yet built -- without this guard, hitting
+        // this shared endpoint against a dobChange request would silently no-op (falling through
+        // every branch below, status left PENDING) while still reporting a misleading success,
+        // the exact same response-honesty gap SCRUM-171 fixed for an already-decided request.
+        if ($request->type == RequestTypeEnum::dobChange->value) {
+            throw new BadRequestException('Responding to a date-of-birth change request is not yet supported here.', 422);
+        }
 
         if ($requestResponseDTO->request->type == RequestTypeEnum::counsellor->value) {
             $request = RespondToCounsellorVerificationRequestAction::new()->execute($requestResponseDTO);
