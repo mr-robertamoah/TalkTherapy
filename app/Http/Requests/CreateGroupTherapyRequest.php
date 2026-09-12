@@ -36,6 +36,7 @@ class CreateGroupTherapyRequest extends FormRequest
             'maxCounsellors' => ['nullable', 'integer', 'min:1'],
             'public' => ['required', 'boolean'],
             'cases' => ['nullable', 'array'],
+            'counsellorId' => ['nullable', 'integer'],
             'counsellorIds' => ['nullable', 'array'],
             'sessionType' => ['required', Rule::in(TherapySessionTypeEnum::values())],
             'paymentType' => ['required', Rule::in(TherapyPaymentTypeEnum::values())],
