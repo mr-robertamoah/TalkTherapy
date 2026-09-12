@@ -13,7 +13,6 @@ use App\Http\Resources\GroupTherapyResource;
 use App\Http\Resources\RequestResource;
 use App\Http\Resources\SessionResource;
 use App\Http\Resources\TherapyTopicResource;
-use App\Models\Counsellor;
 use App\Models\GroupTherapy;
 use App\Services\GroupTherapyService;
 use Illuminate\Http\Request;
@@ -76,7 +75,17 @@ class GroupTherapyController extends Controller
             $therapy = GroupTherapyService::new()->createGroupTherapy(
                 GroupTherapyDTO::new()->fromArray([
                     'user' => $request->user(),
-                    'counsellor' => Counsellor::find($request->counsellorId),
+                    // SCRUM-296: counsellorId was previously trusted as an arbitrary lookup
+                    // (Counsellor::find($request->counsellorId)), letting any caller attribute
+                    // the group to a Counsellor they don't own -- CreateGroupTherapyAction treats
+                    // a present 'counsellor' as the group's addedby/owner (and, since SCRUM-290,
+                    // as the actor whose minor-status snapshot is or isn't captured). The frontend
+                    // only ever sends the caller's OWN counsellor id (the "create as a counsellor"
+                    // checkbox), so counsellorId is treated purely as a boolean flag here and the
+                    // actual Counsellor is always resolved from the authenticated user's own
+                    // relation -- mirroring GetPayoutTargetCounsellorAction's identical
+                    // don't-trust-a-client-supplied-actor-id precedent (TT-7.6c/SCRUM-227).
+                    'counsellor' => $request->counsellorId ? $request->user()->counsellor : null,
                     'name' => $request->name,
                     'about' => $request->about,
                     'per' => $request->per,
