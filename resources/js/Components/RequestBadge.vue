@@ -96,13 +96,18 @@ const computedIsFrom = computed(() => {
 const computedIsTo = computed(() => {
     if (!props.request.from) return
 
-    // dobChange's own null-`to` shape means "any admin may respond" (mirrors refund's identical
-    // convention, though refund never reaches this generic badge) -- treat an admin viewer as
-    // the recipient in that case. Scoped to dobChange specifically (not any null-`to` type) since
-    // `administrator` also has a documented-but-currently-unused null `to` and shouldn't silently
-    // inherit this behavior if it ever gains a creation path.
-    if (!props.request.to)
-        return props.request.type === RequestTypeEnum.dobChange && !!usePage().props.auth.user?.isAdmin
+    // TT-4.10f/SCRUM-295: dobChange's respondent isn't just `to` -- any one of the target's
+    // CURRENT guardians (or any admin) may act, re-verified live server-side rather than by a
+    // `to`-identity match here (a ward's second guardian, or `to` after their own guardianship was
+    // revoked, would otherwise be wrongly shown as not the recipient, or wrongly shown as still
+    // the recipient, respectively). Trust the backend's own answer instead of re-deriving this --
+    // duplicating that authorization logic here is exactly what drifted out of sync before.
+    if (props.request.type == RequestTypeEnum.dobChange)
+        return !!props.request.dobChange?.isRespondent
+
+    // Defensive: dobChange is the only type with a genuinely null `to` today (handled above) --
+    // guards against a throw below if that ever changes for some other type.
+    if (!props.request.to) return
 
     if (props.request.to.isCounsellor)
         return userId == props.request.to.userId

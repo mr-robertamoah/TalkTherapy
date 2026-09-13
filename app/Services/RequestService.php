@@ -79,6 +79,24 @@ class RequestService extends Service
             });
         });
 
+        // TT-4.10f/SCRUM-295 QA finding: EnsureUserCanRespondToRequestAction authorizes ANY of a
+        // ward's guardians to respond to a dobChange request, not just the one `to` happens to be
+        // fixed to at creation time (mirroring GrantVideoConsentAction's own "any one guardian"
+        // precedent) -- but without this branch, a ward's OTHER guardian had no way to ever
+        // discover the request existed in the first place, since only whereTo($user) matched it.
+        // Additive, mirrors the $counsellor/$administeredOrganizationIds blocks above.
+        $wardIds = $user->wards()->pluck('ward_id');
+        $query->when($wardIds->isNotEmpty(), function ($query) use ($wardIds, $status) {
+            $query->orWhere(function ($query) use ($status, $wardIds) {
+                $query->where('type', RequestTypeEnum::dobChange->value)
+                    ->where('for_type', User::class)
+                    ->whereIn('for_id', $wardIds);
+                if ($status) {
+                    $query->where('status', $status);
+                }
+            });
+        });
+
         // TT-4.10e/SCRUM-294: a null-`to` dobChange request ("any admin may respond," mirroring
         // refund's own null-`to` shape) would otherwise never appear in ANY user's personal
         // requests listing above -- unlike refund, which surfaces its own null-`to` case via a

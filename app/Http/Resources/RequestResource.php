@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Actions\Request\EnsureUserCanRespondToRequestAction;
 use App\Enums\ConstantsEnum;
 use App\Enums\RequestTypeEnum;
 use App\Models\Discussion;
@@ -58,6 +59,13 @@ class RequestResource extends JsonResource
                 fn () => [
                     'newDob' => $this->data['newDob'] ?? null,
                     'priorDob' => $this->data['priorDob'] ?? null,
+                    // TT-4.10f/SCRUM-295: dobChange's own respondent isn't just `to` -- any one
+                    // of the target's current guardians (or any admin) may act, re-verified live
+                    // rather than by `to`-identity match (see EnsureUserCanRespondToRequestAction's
+                    // own reasoning). The frontend has no way to derive this itself without
+                    // duplicating that authorization logic (and drifting out of sync with it, as
+                    // already happened once) -- shipping the answer here instead.
+                    'isRespondent' => $viewer && EnsureUserCanRespondToRequestAction::new()->userCanRespond($viewer, $this->resource),
                 ]
             ),
             'round' => $this->when(! is_null($this->round), $this->round),

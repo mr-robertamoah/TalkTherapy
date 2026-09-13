@@ -6980,3 +6980,107 @@ access regardless of which key is ultimately selected by `[props.request?.type]`
 type whose `for`/`from` genuinely lacks a field another branch assumes exists could still crash
 this way in production. Out of scope for this presentation-only ticket; worth a future ticket if
 it's ever hit for real.)
+
+## 2026-09-13 — SCRUM-295 (TT-4.10f): closeout for SCRUM-287, one real bug found and fixed
+
+Final sub-ticket of the TT-4.10 split (a-f). Ran the full regression matrix this ticket's own
+scope calls for: all 13 `isAdult()` call sites (TT-4.10b), both boundary-crossing directions
+through real HTTP routes (self-service and admin), an ungated user's free edit, rejection leaving
+every snapshot untouched, and approval retroactively correcting every qualifying
+`Guardianship`/`Therapy`/`GroupTherapy` record -- all confirmed already correct and already
+covered by TT-4.10a-e's own test suites (216+ tests across the call-site migration, the gate, the
+approval action, and video-consent's own dependent behavior), so nothing needed rewriting there.
+
+**One item in this ticket's own regression matrix ("any one of multiple guardians can approve")
+turned up a real, confirmed bug**, per this ticket's own explicit instruction to fix a found bug
+in its owning sub-ticket's files rather than bolt a patch onto this one's scope. Reproduced first
+with a throwaway test before touching any code: a ward with TWO active guardians has their dob-
+change request's `to` fixed to whichever ONE guardian `EnsureDobChangeIsAllowedAction` happened to
+pick at creation time (`Guardianship::query()->where('ward_id', ...)->first()`) --
+`EnsureUserCanRespondToRequestAction` only ever checked "is the responder literally that one
+fixed `to`," so the ward's OTHER guardian got a 422 trying to respond at all. This directly
+contradicted TT-4.10c's own decision-log entry ("any one active guardian... mirrors
+GrantVideoConsentAction's own 'any one guardian, no unanimity' precedent") -- `GrantVideoConsentAction`
+actually checks the live relationship (`$guardian->isGuardianOf($ward)`), not a single fixed
+target, so the two features' behavior had silently diverged from their own stated shared design.
+
+**Fix**: added a dobChange-specific branch to `EnsureUserCanRespondToRequestAction` (shared across
+every request type) checking `$user->isGuardianOf($request->for)`, alongside the existing
+fixed-`to` check -- so either guardian may respond, matching the video-consent precedent this
+feature's own design explicitly cited. `RespondToDobChangeRequestAction` itself needed no change:
+it already reads `$request->for`/`$request->from`, never assumes the responding user IS
+`$request->to`, and its retroactive snapshot correction already updates every one of the ward's
+`Guardianship` rows (not just the addressed guardian's own row) -- so a second guardian responding
+correctly finishes the job. Added a permanent regression test to TT-4.10d's own
+`DobChangeRequestResponseTest.php` (the file this bug conceptually belongs to), plus one closing a
+smaller, related test-coverage gap this same matrix pass surfaced: the adult-to-minor direction
+had only ever been exercised at the Action level (`EnsureDobChangeIsAllowedActionTest`), never
+through the real `profile.update` HTTP route -- added to `ProfileDobChangeGateTest.php`.
+
+**Final shape vs. SCRUM-287's original decisions**: no other divergence found. Every one of the
+six user decisions in the 2026-09-12 scoping entry (snapshot+approval approach, no retroactive
+backfill needed, relationship-gated scope, age/ID verification split out as SCRUM-289, retroactive
+correction on approval, both-directions gating) landed exactly as decided, across a-f. Two
+accepted, logged limitations remain open by design (no DB-level unique constraint on outstanding
+dob-change requests, no backfill for pre-migration `client_was_minor_at_creation` -- both already
+documented in TT-4.10b/c's own entries above, neither revisited here since neither's precondition
+changed). SCRUM-296 (the group-therapy `counsellorId` trust-boundary gap, split out of TT-4.10a)
+was already fixed and merged (`acb4681`, PR #225) well before TT-4.10b started, per its own
+required precondition -- confirmed via `git log` rather than assumed. SCRUM-289 (age/ID
+verification) remains its own separate, unblocked ticket -- out of this epic's scope, as
+originally decided.
+
+**Second security-review pass, on this ticket's own diff, found one more real bug**: the
+multi-guardian fix above (a new `isGuardianOf` branch) was initially added ALONGSIDE the existing
+generic `respondent->is($user)` identity-match branch, rather than replacing it for dobChange --
+which meant a guardian whose `Guardianship` row was later hard-deleted (`DeleteGuardianshipAction`,
+a normal, reachable flow) could still respond to a dobChange request they were originally
+addressed to, forever, since the generic branch never re-verifies the relationship still exists.
+Unlike `GrantVideoConsentAction` (the precedent this feature explicitly cites), which re-checks
+`isGuardianOf` live with no legacy fallback at all. Fixed by giving dobChange its own fully
+separate authorization branch -- admin, or a LIVE `isGuardianOf` check, full stop -- instead of
+layering the new check on top of the old generic one. Regression test added proving a
+formerly-guardian `to` gets a 422 after their guardianship is deleted.
+
+**qa-engineer pass caught the backend fix was only half-shipped**: `EnsureUserCanRespondToRequestAction`
+now correctly AUTHORIZES a ward's second guardian, but `RequestService::getRequests()` (the query
+that populates the Requests list/modal a guardian would actually use to discover the request in
+the first place) was never given a matching branch -- it only ever matched `whereTo($user)`, so
+the second guardian had no way to ever find the request through the UI at all, verified by manual
+Playwright QA (their Pending tab showed "No pending requests"). This is the same "authority logic
+duplicated across layers, one layer not updated" root cause as the earlier `EnsureUserCanRespondTo
+RequestAction` bug itself. Fixed with an additive branch (mirrors the `$counsellor`/
+`$administeredOrganizationIds` blocks already in that method) matching any dobChange request whose
+`for` is one of the querying user's own wards (`$user->wards()->pluck('ward_id')`).
+
+**A third, related gap surfaced from the same root cause**: even once the second guardian could
+SEE the request, `RequestBadge.vue`'s frontend-only `computedIsTo` still compared `request.to.id`
+directly -- so the accept/reject buttons stayed hidden for anyone but the originally-addressed
+guardian, independently reinventing (and now disagreeing with) the backend's own authorization
+answer. Rather than have the frontend re-derive "can I respond" a third time (after the two
+backend layers above), extracted `EnsureUserCanRespondToRequestAction`'s boolean condition into a
+public `userCanRespond(User, Request): bool` method and exposed its answer directly on
+`RequestResource`'s existing `dobChange` field as `isRespondent`, so the frontend now simply
+trusts one server-computed answer instead of maintaining a fourth (now fifth, across all the
+places this logic had silently drifted) independent copy of the same authorization logic.
+`computedIsTo` now reads `request.dobChange?.isRespondent` for dobChange specifically, with the
+pre-existing `request.to.id` comparison kept only for every other request type (unaffected,
+confirmed via the full Pest suite plus a live Playwright check of an unrelated
+groupTherapyMembership accept/reject).
+
+Verified live end-to-end via Playwright, not just Pest: logged in as a hand-seeded ward's SECOND
+guardian, confirmed the request is now visible in their own Requests list, confirmed accept/reject
+buttons render, clicked accept, and confirmed via tinker that the dob was actually applied and the
+request transitioned to ACCEPTED.
+
+Added seed data for this scenario (per the QA finding that it wasn't independently verifiable via
+seeded-data.md otherwise): `createDobChangeMultiGuardianDemoData()` --
+`dobchange_demo_multi_guardian` (ward), `dobchange_demo_first_guardian` (the addressed `to`),
+`dobchange_demo_second_guardian` (the guardian this whole finding is about) -- documented in
+`documentation/seeded-data.md`.
+
+Feature doc: `documentation/features/scrum-287-dob-safeguard.md`. `documentation/seeded-data.md`
+carries all three of this feature's needed scenarios: `video_consent_demo_minor`/`_guardian` for
+the single-guardian-addressed path (added for SCRUM-285, equally valid here), `dobchange_demo_no_
+guardian` for the no-guardian/any-admin path (added in SCRUM-294), and the new multi-guardian trio
+above.

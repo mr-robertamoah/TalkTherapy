@@ -47,6 +47,25 @@ test('a qualifying user\'s boundary-crossing dob edit is deferred, but other sub
     expect($request->to_id)->toBe($guardian->id);
 });
 
+// TT-4.10f/SCRUM-295 regression-matrix: the reverse direction (adult claiming to become a minor)
+// was only previously exercised at the Action level (EnsureDobChangeIsAllowedActionTest), never
+// through the real HTTP profile.update route -- closing that gap here.
+test('a qualifying user\'s adult-to-minor boundary-crossing edit is also deferred via the real endpoint', function () {
+    $adult = User::factory()->create(['dob' => now()->subYears(30)->toDateString()]);
+    $guardian = User::factory()->create();
+    Guardianship::query()->create(['guardian_id' => $guardian->id, 'ward_id' => $adult->id]);
+
+    $response = $this->actingAs($adult)->patch(route('profile.update'), [
+        'firstName' => $adult->firstName,
+        'lastName' => $adult->lastName,
+        'dob' => now()->subYears(10)->toDateString(),
+    ]);
+
+    $response->assertSessionHasNoErrors();
+    $response->assertSessionHas('dobChangePendingApproval', true);
+    expect($adult->fresh()->dob->toDateString())->toBe(now()->subYears(30)->toDateString());
+});
+
 // TT-4.10e/SCRUM-294: the flash must actually reach the next page load as an Inertia prop, not
 // just exist in the session.
 test('the profile page shows the pending-approval flash as an Inertia prop on the very next load', function () {
