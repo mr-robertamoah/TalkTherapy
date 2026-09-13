@@ -7451,31 +7451,41 @@ the two cases added to `RespondToDobChangeRequestActionTest`/`ProfileDobChangeGa
 `app/` (exactly three: `ProfileController::update()`, `UpdateUserAction`, `ApplyVerifiedDobAction`
 -- no fourth path exists), no additional tests needed.
 
-**Baseline**: full suite was 1829 passed before this closeout's 4 new tests; 1833 passed
-(4824 assertions) after. `documentation/features/scrum-289-age-identity-verification.md` written
+**Baseline**: full suite was 1829 passed before this closeout's new tests; 1837 passed
+(4864 assertions) after (8 new tests total: 3 document-approval, 1 retention-window, 4
+submitted-indicator). `documentation/features/scrum-289-age-identity-verification.md` written
 per CLAUDE.md's feature-documentation requirement, closing out the epic.
 
 **Real bug found by `qa-engineer`'s own closeout pass, fixed in TT-4.11b/SCRUM-303's own files
 (not this ticket's scope), per this ticket's explicit instruction**: `AgeVerificationSection.vue`'s
 "submit a statement"/"submit another statement" button label depended entirely on a local,
 in-session `submitted` ref initialized to `false` on every fresh page load -- a user with a
-genuinely still-pending request (confirmed live via Playwright against the new
+genuinely already-submitted request (confirmed live via Playwright against the new
 `age_verification_demo_user` seed, logging in fresh with no prior submission in that browser
 session) always saw "submit a statement," implying no request existed, until they submitted again
-in that same session. Fixed by having `ProfileController::show()` query for a real pending
-`ageVerification` request and pass it as a durable `hasPendingAgeVerification` Inertia prop (NOT
-a one-time flash like the adjacent `dobChangePendingApproval` -- that one is correct as a flash
-since it only needs to survive one redirect; this one needs to reflect reality on every load), and
-having `AgeVerificationSection.vue` accept a `hasPendingRequest` prop to initialize `submitted`
-from instead of hardcoding `false`. New test file `tests/Feature/AgeVerificationPendingIndicatorTest.php`
-(4 tests: has one, has none, was decided so no longer pending, belongs to someone else). Re-verified
-live via Playwright against the seed account after the fix: fresh login now correctly shows
-"submit another statement" with no prior in-session action.
+in that same session.
 
-**Post-review refactor (reviewer suggestion, applied)**: the fix above originally queried
+**First fix attempt was incomplete (qa-engineer, second review pass)**: scoped the check to "has
+a PENDING request" (`GetPendingAgeVerificationRequestAction`, `hasPendingAgeVerification` prop).
+qa-engineer's re-verification pass caught that this reverted the label back to "submit a
+statement" the instant an admin decided the request (accepted or rejected) -- the exact same
+misleading-label bug, just shifted to a different state transition, since "submit another
+statement" is accurate regardless of whether the prior submission is pending, accepted, or
+rejected. Fixed by asking a different question -- "has this user ever submitted one at all,"
+any status -- via a new, separate `HasSubmittedAgeVerificationAction` (kept distinct from
+`GetPendingAgeVerificationRequestAction`, which is still correctly used, unchanged, by
+`SubmitAgeVerificationAction`'s own idempotent-reuse logic; that one genuinely does need
+PENDING-only semantics). Prop/component prop renamed accordingly
+(`hasSubmittedAgeVerification`/`hasSubmittedRequest`). Test file renamed
+`AgeVerificationPendingIndicatorTest.php` -> `AgeVerificationSubmittedIndicatorTest.php` with
+cases added for both the accepted and rejected outcomes asserting `true`, not just the original
+"was decided so reverts to false" case that the first attempt had gotten backwards.
+
+**Post-review refactor (reviewer suggestion, applied)**: the first fix attempt originally queried
 `Request::whereFrom($request->user())` in `ProfileController::show()`, while
 `SubmitAgeVerificationAction`'s own idempotency check used `whereFor($dto->user)` -- functionally
 identical today only because ageVerification's `from`/`for` are always the same user, but two
 independently-scoped queries expressing the same intent risk silently diverging if that invariant
-ever changed. Extracted `App\Actions\User\GetPendingAgeVerificationRequestAction`, now shared by
-both call sites.
+ever changed. Extracted `App\Actions\User\GetPendingAgeVerificationRequestAction`, shared by both
+call sites at that point (before the second fix above split the profile-page check off into its
+own, differently-scoped `HasSubmittedAgeVerificationAction`).

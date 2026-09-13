@@ -6,7 +6,7 @@ use App\Actions\Counsellor\EnsureCanDeleteCounsellorAction;
 use App\Actions\EnsureNameStaysRetrievableAction;
 use App\Actions\User\EnsureDobChangeIsAllowedAction;
 use App\Actions\User\GetCounsellorCreationStepOfUserAction;
-use App\Actions\User\GetPendingAgeVerificationRequestAction;
+use App\Actions\User\HasSubmittedAgeVerificationAction;
 use App\Actions\User\UpdateUserAvatarAction;
 use App\DTOs\CheckNameRetrievabilityDTO;
 use App\DTOs\DeleteCounsellorDTO;
@@ -49,10 +49,18 @@ class ProfileController extends Controller
             // "submit another statement" until they submitted again in that same session. Unlike
             // `dobChangePendingApproval` above (a one-time flash, correct for a notice that only
             // matters right after its own redirect), this needs to reflect DURABLE state on every
-            // load, so it's a real query, not a flash. Shares GetPendingAgeVerificationRequestAction
-            // with SubmitAgeVerificationAction's own idempotency check, rather than a second,
-            // independently-scoped query with the same intent.
-            'hasPendingAgeVerification' => (bool) GetPendingAgeVerificationRequestAction::new()->execute($request->user()),
+            // load, so it's a real query, not a flash.
+            //
+            // Deliberately "has ever submitted," not "has a pending one" (qa-engineer finding,
+            // second pass): "submit another statement" is accurate whether the prior submission
+            // is still pending, accepted, or rejected -- a decided request doesn't retroactively
+            // make it as if none was ever sent. Scoping this to pending-only left the label
+            // silently reverting to "submit a statement" the moment a request was decided, the
+            // same class of bug this ticket set out to fix, just shifted to a different state
+            // transition. See HasSubmittedAgeVerificationAction's own doc comment for why this is
+            // a distinct question from GetPendingAgeVerificationRequestAction (still used,
+            // correctly, by SubmitAgeVerificationAction's own idempotent-reuse logic).
+            'hasSubmittedAgeVerification' => HasSubmittedAgeVerificationAction::new()->execute($request->user()),
         ]);
     }
 
