@@ -16,10 +16,25 @@ class RespondToGuardianshipRequestAction extends Action
 {
     public function execute(RequestResponseDTO $requestResponseDTO)
     {
-        EnsureUserCanBeGuardianAction::new()->execute(
-            CreateRequestDTO::new()->fromArray(['to' => $requestResponseDTO->request->to]),
-            'You are trying to respond to a guardianship request but do not qualify to be a guardian because you are not an adult, have not set date or birth, have not set email or have not verified your email.'
-        );
+        // SCRUM-299: only an ACCEPT needs to re-confirm guardian eligibility -- rejecting a
+        // request one didn't ask for and doesn't qualify for must always be allowed regardless
+        // of eligibility, the same way EnsureUserCanRespondToRequestAction's own authorization
+        // check never depends on the requestor's eligibility either. This previously ran
+        // unconditionally, so a recipient who'd become ineligible (or never was) got a 422
+        // trying to reject, not just accept.
+        //
+        // A null response is an IMPLICIT reject (EnsureRequestResponseIsValidAction's own
+        // documented convention), but every real caller (RequestBadge.vue's clickedResponse(),
+        // and every other RespondTo*RequestAction's own test suite) sends the explicit string
+        // 'rejected' -- checking merely `! is_null(...)` would still run this for that real
+        // reject payload, since 'rejected' is non-null. Must key off "is this actually an
+        // accept" instead.
+        if (strtoupper((string) $requestResponseDTO->response) === RequestStatusEnum::accepted->value) {
+            EnsureUserCanBeGuardianAction::new()->execute(
+                CreateRequestDTO::new()->fromArray(['to' => $requestResponseDTO->request->to]),
+                'You are trying to respond to a guardianship request but do not qualify to be a guardian because you are not an adult, have not set date or birth, have not set email or have not verified your email.'
+            );
+        }
 
         // Locking the request row and re-checking its status inside the lock closes the same
         // double-submission race SCRUM-80 fixed for group therapy membership requests: two
