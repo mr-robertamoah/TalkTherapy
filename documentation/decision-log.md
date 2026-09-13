@@ -6953,3 +6953,30 @@ and narrowed `getFrom()` the same way -- specifically so this three-field asymme
 reappear if a future similar request type is added and only some of the three fields get updated.
 Added a matching regression test asserting `from` is narrowed for the self-service (from == for)
 case, mirroring the existing `for`-narrowing test.
+
+## 2026-09-13 — SCRUM-298: Requests UI redesign
+
+User-requested visual/UX pass on `RequestBadge.vue`/`RequestModal.vue` (the personal "User
+Requests" modal) -- filed as a chore-tier ticket per its own description, implemented directly.
+
+Removed `RequestBadge.vue`'s duplicate "visit therapy page" `StyledLink`, which only appeared for
+`RequestTypeEnum.therapy` inside the old hidden double-click-revealed actions row -- it navigated
+to the exact same `therapies.get` route the top-of-card "view therapy" link (covering both
+`discussion` and `therapy` types) already provides via `visitTherapy()`. Since the double-click
+reveal mechanism itself was removed (replaced with an always-visible accept/reject row when the
+viewer can act), keeping a second link to an identical destination would have been redundant
+clutter rather than a deliberate feature; this is a presentation-only simplification, not a
+behavior change -- same destination, same route.
+
+Discovered a false alarm while spot-checking a non-dobChange type (`guardianship`) during manual
+QA: `RequestBadge.vue`'s `computedTypeMessage` crashed with `Cannot read properties of null
+(reading 'forType')`. Root cause was my own malformed test data (created via raw tinker without
+`->for()->associate(...)`), not a real bug -- `UserController::sendGuardianshipRequest()` always
+sets `for = $request->user()` for a real guardianship request, so `for` is never actually null in
+production for this type. Confirmed by reading the controller directly rather than assuming;
+no code change was needed once the test data was fixed. (Noted for awareness: `computedTypeMessage`
+is a plain object literal, so Vue's `computed()` evaluates every key's expression on every
+access regardless of which key is ultimately selected by `[props.request?.type]` -- a request
+type whose `for`/`from` genuinely lacks a field another branch assumes exists could still crash
+this way in production. Out of scope for this presentation-only ticket; worth a future ticket if
+it's ever hit for real.)
