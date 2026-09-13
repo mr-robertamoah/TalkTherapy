@@ -110,6 +110,16 @@ class RequestService extends Service
                     $query->where('status', $status);
                 }
             });
+
+            // TT-4.11d/SCRUM-305: an ageVerification request is ALWAYS null-`to` (admin-only by
+            // design, no guardian counterpart) -- mirrors the dobChange branch immediately above
+            // exactly, for the identical reason (otherwise never appears in any admin's listing).
+            $query->orWhere(function ($query) use ($status) {
+                $query->where('type', RequestTypeEnum::ageVerification->value)->whereNull('to_id');
+                if ($status) {
+                    $query->where('status', $status);
+                }
+            });
         });
 
         // Not the actual enforcement -- SQL AND-binds-tighter-than-OR precedence means this only
