@@ -7084,3 +7084,94 @@ carries all three of this feature's needed scenarios: `video_consent_demo_minor`
 the single-guardian-addressed path (added for SCRUM-285, equally valid here), `dobchange_demo_no_
 guardian` for the no-guardian/any-admin path (added in SCRUM-294), and the new multi-guardian trio
 above.
+
+## 2026-09-13 — SCRUM-289 (TT-4.11): scoping decisions and epic split
+
+Full `/start-feature` pass (product-owner → user decisions → project-manager → architect) for
+SCRUM-289, the age/identity-verification ticket split out of SCRUM-287's own original scoping.
+
+**User's own final policy decisions**:
+1. Method: self-attestation + document upload, manually admin-reviewed. No paid third-party
+   vendor (Persona/Stripe Identity/Onfido) -- no budget, no live production users yet to justify
+   the cost/compliance overhead. Revisit if the project reaches that stage.
+2. Document upload for a regular user/client is OPTIONAL -- self-attestation alone is always
+   sufficient to submit for review. Explicitly NOT required, since a mandatory document would be
+   a real barrier for someone who needs help right now. Contrast with the SEPARATE, already-
+   existing counsellor license/national-ID upload (currently `nullable` in
+   `VerifyCounsellorRequest`), which the user separately decided SHOULD become required -- filed
+   as its own ticket (SCRUM-301), not folded in here, since it's a different subject (professional
+   credentials, not age) with a different barrier calculus (a counsellor isn't a help-seeker in
+   crisis).
+3. Visibility: internal/admin-only, no user-facing verified/unverified badge -- avoids an
+   accusatory-feeling UX on a mental-health platform.
+4. A verified dob SUPERSEDES the self-reported one, authoritative for TT-4.10/SCRUM-287's
+   `ward_was_minor_at_creation`/`client_was_minor_at_creation` snapshot mechanism, consistent with
+   that epic's own "an approval retroactively corrects the truth" precedent.
+5. Consequence for a later-discovered misrepresentation: no automation -- admin can act manually.
+6. Document retention: configurable, 30-day default.
+
+**Architect finding, split into its own separate ticket rather than folded into TT-4.11a**: the
+existing generic file-upload path (`FileService`/`File`/`getUrlFor()`) serves every file type
+through a plain public `asset()` URL with ZERO authorization check -- confirmed this already
+affects counsellor license/ID documents collected TODAY, not just a hypothetical for this new
+epic. TT-4.11a's own storage design deliberately does not repeat this pattern (new private disk,
+no `filesystems.php` `links` entry, authorized retrieval route only) but does not retroactively
+fix the existing gap either -- filed separately as **SCRUM-300** (High priority), mirroring the
+SCRUM-296 precedent (found mid-epic, unrelated pre-existing debt, filed rather than silently
+expanding this ticket's scope).
+
+**Split into 5 sub-tickets** (TT-4.11a-e, SCRUM-302 through SCRUM-306), mirroring TT-4.10's own
+6-part precedent: (a) hardened identity-document storage, (b) submission at the preferences step,
+(c) admin approve/reject + dob supersession, (d) admin review queue UI, (e) regression closeout.
+Architect-recommended technical approach for (c) -- extracting `RespondToDobChangeRequestAction`'s
+retroactive-correction logic into a shared, `Request`-agnostic `ApplyVerifiedDobAction`, adding a
+`users.dob_verified_at` marker column, locking the target `User` row (not just the `Request` row)
+across both dobChange and ageVerification flows to avoid a race, and a one-directional
+`RequestStatusEnum::superseded` status for a dobChange request overtaken by a stronger
+verification -- is captured in SCRUM-304's own ticket description for implementation.
+
+## 2026-09-13 — SCRUM-302 (TT-4.11a): identity-document storage foundation
+
+First of the 5-part SCRUM-289 split. Purely foundational -- no submission/review UI yet (that's
+TT-4.11b/d), no `RequestTypeEnum::ageVerification` case yet (deliberately deferred to TT-4.11b;
+this ticket's own tests use an existing, unrelated enum value as a generic placeholder, since
+`Request::files()` itself is completely type-agnostic).
+
+**Reused, not rebuilt**: the existing generic `File`/`fileables` polymorphic pivot (already
+supports per-tag uniqueness) rather than a new table -- the actual gap was disk placement and
+retrieval authorization, not the schema. `Request::files()`/`File::requests()` mirror
+`License::files()`'s own exact shape.
+
+**Two review passes (reviewer + security-engineer) found real, fixed issues**:
+- `EnsureUserCanViewIdentityDocumentAction` originally threw a distinct 404 ("file not attached to
+  this request") vs. 403 ("not authorized") -- security review flagged this as a distinguishable-
+  response oracle: an unrelated authenticated caller could confirm a specific file/request pairing
+  exists (i.e., that a specific user submitted an identity document at all) without any real
+  authorization, just by observing which status code came back. Fixed by collapsing both failure
+  modes into a single, uniform `404 "Document not found."` regardless of cause.
+- The new retrieval route had no rate limiting, unlike its sibling `requests.respond` -- and this
+  codebase's general `api` throttle is confirmed disabled entirely (`RouteServiceProvider`). Since
+  the uniform-404 fix above specifically depends on a caller not being able to distinguish
+  responses, an *unthrottled* route would still let an attacker script through sequential id pairs
+  cheaply. Added `throttle:30,1`, matching the existing `requests.respond` precedent.
+- `AppService::deleteExpiredIdentityDocuments()` originally re-derived the storage path inline and
+  hardcoded `Storage::disk('identity_documents')` -- reviewer pointed out this duplicates
+  `FileService::deleteFile()`'s own existing logic (already used by `DeleteReportAction`) and is
+  less robust (assumes every file this sweep ever touches lives on that one disk, rather than
+  reading `$file->storage` like `FileService` already does). Switched to call
+  `FileService::new()->deleteFile($file)` instead.
+- Added, proactively, one more layer of defense-in-depth per security review's own forward-looking
+  note: `getUrlFor()` (`File::url`) now throws for any file on the `identity_documents` disk,
+  rather than silently producing a working public link the way it does for every other disk today
+  (that universal-URL-building behavior, unscoped to `$file->storage`, is the confirmed pre-
+  existing SCRUM-300 gap -- not fixed here, but this guard means a future careless `$file->url`
+  call on an identity document fails loudly instead of quietly recreating SCRUM-300 for this most
+  sensitive file type).
+
+**Known, accepted residual (flagged by security review, not fixed here)**: Laravel's own implicit
+route-model-binding throws its default `ModelNotFoundException` (a different JSON body shape) when
+the `{request}`/`{file}` route segment doesn't resolve to any DB row at all, before this ticket's
+own uniform-404 action ever runs -- so a very determined caller could in principle still
+distinguish "no such row exists" from "a row exists but you can't see it" by response *body*
+(not status code). This is a systemic, app-wide route-model-binding behavior, not specific to this
+route; left as an optional future hardening rather than this ticket's scope.

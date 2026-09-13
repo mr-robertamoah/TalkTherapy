@@ -15,6 +15,7 @@ use App\Events\SessionStartedEvent;
 use App\Models\Alert;
 use App\Models\Counsellor;
 use App\Models\Discussion;
+use App\Models\File;
 use App\Models\GroupTherapy;
 use App\Models\Organization;
 use App\Models\OrganizationInvoice;
@@ -112,6 +113,30 @@ class AppService extends Service
             ->where('deleted_at', '<=', now()->subDays(config('counsellor.deletion_grace_period_days')))
             ->get()
             ->each(fn (Counsellor $counsellor) => $counsellor->forceDelete());
+    }
+
+    // TT-4.11a/SCRUM-302: an identity-verification document (age/identity verification) is only
+    // ever kept for a configurable window (30 days by default) after its owning Request has been
+    // DECIDED (accepted/rejected) -- a still-PENDING request's document is never swept, regardless
+    // of age, since it hasn't been reviewed yet. Deletes both the stored file and its DB row, not
+    // just one -- an orphaned File row pointing at an already-deleted path is exactly the kind of
+    // stale reference File::url/getUrlFor() would otherwise happily resolve to a 404 forever.
+    // Reuses FileService::deleteFile() (review finding) rather than re-deriving the storage path
+    // and hardcoding the disk name -- that also reads the disk from $file->storage itself instead
+    // of assuming every file this sweep ever encounters lives on 'identity_documents'.
+    public function deleteExpiredIdentityDocuments(): void
+    {
+        Request::query()
+            ->whereHas('files')
+            ->where('status', '!=', RequestStatusEnum::pending->value)
+            ->where('updated_at', '<=', now()->subDays(config('identity_verification.document_retention_days')))
+            ->get()
+            ->each(function (Request $request) {
+                $request->files->each(function (File $file) use ($request) {
+                    $request->files()->detach($file->id);
+                    FileService::new()->deleteFile($file);
+                });
+            });
     }
 
     public function notifyParticipantsOfStartingSessions()
