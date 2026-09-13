@@ -54,4 +54,10 @@ enum RequestTypeEnum: string
     // `priorDob` for audit/notification copy and for the (not-yet-built, TT-4.10d) approval
     // action's retroactive snapshot correction.
     case dobChange = 'DOB_CHANGE_REQUEST';
+    // TT-4.11b/SCRUM-303: a user self-attesting (optionally with an uploaded document, stored via
+    // TT-4.11a's hardened identity_documents disk) to strengthen their claimed dob against
+    // TT-4.10/SCRUM-287's snapshot mechanism. `for`/`from` are both the submitting user; `to` is
+    // always left null -- admin-only by design (no guardian counterpart makes sense here, unlike
+    // dobChange), mirrors `refund`'s own null-`to` shape. `data` carries the `attestation` text.
+    case ageVerification = 'AGE_VERIFICATION_REQUEST';
 }

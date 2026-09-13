@@ -36,6 +36,18 @@ class Request extends Model
             ->withTimestamps();
     }
 
+    // TT-4.11b/SCRUM-303: tag-scoped, mirrors User::avatarFile()'s own withPivotValue() shape --
+    // lets a re-submission simply ->sync() a new document in place of an old one (at most one
+    // per request, per the fileables table's own unique(fileable_type, fileable_id, tag) index)
+    // rather than managing the tag manually against the generic files() relation above.
+    public function identityDocument(): MorphToMany
+    {
+        return $this
+            ->morphToMany(File::class, 'fileable', 'fileables')
+            ->withPivotValue('tag', 'identity-document')
+            ->withTimestamps();
+    }
+
     public function to()
     {
         return $this->morphTo();

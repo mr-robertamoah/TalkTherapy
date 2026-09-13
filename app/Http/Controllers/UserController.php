@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\DTOs\CreateRequestDTO;
 use App\DTOs\GetGuardianshipDTO;
 use App\DTOs\GetUsersDTO;
+use App\DTOs\SubmitAgeVerificationDTO;
+use App\Http\Requests\SubmitAgeVerificationRequest;
 use App\Http\Resources\GuardianshipResource;
 use App\Http\Resources\UserMiniResource;
 use App\Models\Guardianship;
@@ -70,6 +72,27 @@ class UserController extends Controller
     {
         try {
             return UserService::new()->getGuardianship($request->user());
+        } catch (Throwable $th) {
+            return $this->returnFailure($request, $th);
+        }
+    }
+
+    // TT-4.11b/SCRUM-303
+    public function submitAgeVerification(SubmitAgeVerificationRequest $request)
+    {
+        try {
+            $requestModel = UserService::new()->submitAgeVerification(
+                SubmitAgeVerificationDTO::new()->fromArray([
+                    'user' => $request->user(),
+                    'attestation' => $request->attestation,
+                    'document' => $request->file('document'),
+                ])
+            );
+
+            return response()->json([
+                'status' => true,
+                'request' => $requestModel,
+            ], 201);
         } catch (Throwable $th) {
             return $this->returnFailure($request, $th);
         }

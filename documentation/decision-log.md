@@ -7175,3 +7175,78 @@ own uniform-404 action ever runs -- so a very determined caller could in princip
 distinguish "no such row exists" from "a row exists but you can't see it" by response *body*
 (not status code). This is a systemic, app-wide route-model-binding behavior, not specific to this
 route; left as an optional future hardening rather than this ticket's scope.
+
+---
+
+## 2026-09-13 — SCRUM-303 (TT-4.11b): submission UI placement, request shape, temporary respond guard
+
+**Decision 1 -- built the UI on the Profile page, not the "preferences step"**: the ticket's own
+text said to hook the age-verification submission form into "the existing preferences step where
+`dob` is already collected today." Direct inspection
+(`grep -n "dob" resources/js/Pages/Profile/Partials/UpdateProfileInformationForm.vue
+resources/js/Pages/Preferences.vue`) showed this premise was simply wrong: `dob` is edited
+exclusively on the Profile page's `UpdateProfileInformationForm.vue`; `Preferences.vue` is about
+cases/languages/religions/anonymity and has no `dob` field at all. Built `AgeVerificationSection.vue`
+as its own card on `resources/js/Pages/Profile/Show.vue`, directly under the existing profile-info
+card, instead of following the ticket's literal (inaccurate) instruction. This mirrors the identical
+class of correction made earlier in this epic for TT-4.10e's "refund reuses the generic modal"
+premise -- ticket text describing UI location/reuse is treated as a claim to verify against the
+actual code, not a given.
+
+**Decision 2 -- request shape**: `ageVerification` requests always have `to = null` (no guardian-style
+recipient makes sense here, unlike `dobChange`) and `for = from = the submitting user`, mirroring
+`refund`'s own null-`to` shape. `data` carries only the attestation text; the optional document is
+stored separately via a new tag-scoped `Request::identityDocument(): MorphToMany` relation
+(`withPivotValue('tag', 'identity-document')` on the `fileables` pivot), mirroring
+`User::avatarFile()`'s exact pattern -- chosen specifically so a re-submission can `->sync()` a new
+document cleanly in place of an old one without hand-rolled delete-then-attach logic.
+
+**Decision 3 -- idempotent resubmission**: `SubmitAgeVerificationAction` locks the user row
+(`lockForUpdate()` inside a `DB::transaction`) and looks for an existing PENDING `ageVerification`
+request `for` this user; if found, it updates that request's `data` in place instead of creating a
+second one. This mirrors `EnsureDobChangeIsAllowedAction`'s find-or-reuse-under-lock pattern from
+TT-4.10c exactly, for the same reason: prevents a user from accumulating unbounded duplicate pending
+requests (and unbounded orphaned document uploads) by resubmitting repeatedly.
+
+**Decision 4 -- temporary respond-pipeline guard**: `RespondToRequestAction` now throws a 422
+`BadRequestException` if anyone hits the shared respond endpoint against a pending `ageVerification`
+request, since the real approve/reject handler (dob supersession, retroactive snapshot correction,
+etc.) is TT-4.11c's job and doesn't exist yet. Without this guard the request would silently fall
+through every dispatch branch, leaving status untouched but reporting a misleading HTTP success.
+This exact pattern (guard now, remove once the real handler ships) was already used and later
+removed for `dobChange` in TT-4.10c/TT-4.10d -- same shape, same reason, expected to be removed
+again once SCRUM-304/TT-4.11c ships.
+
+---
+
+## 2026-09-13 — SCRUM-303 (TT-4.11b): dev-container storage permissions fix (found via QA)
+
+**What happened**: `qa-engineer`'s Playwright walkthrough of the age-verification submission
+feature found the document-upload path returned a 500 in the dev environment, while every Pest
+test covering the same code path passed. Root cause: `storage/` is bind-mounted from the host
+into the `php` container (`docker-compose.yml`'s `./storage:/var/www/html/storage`), so
+`storage/app/private/identity-documents` (the disk TT-4.11a/SCRUM-302 introduced) was owned by
+the host user (uid 1000), not `www-data`. `php-fpm`'s workers run as `www-data`
+(`docker/php/www.conf`'s `user`/`group`), and `755` permissions give a non-owning, non-group user
+no write bit at all -- so every real HTTP upload failed, while `docker compose exec` (which runs
+as root by default) and Pest's test runner (also invoked as root in this setup) both bypassed the
+problem entirely, masking it from every automated check.
+
+**Fix**: `docker/php/entrypoint.sh` now runs `chown -R www-data:www-data` on `storage/` and
+`bootstrap/cache/` before the existing `chmod -R 755`, on every container boot -- self-healing the
+same way the file's existing storage:link re-linking comment already reasons about bind-mount
+drift. Required rebuilding the `php` image (`entrypoint.sh` is `COPY`'d into the image, not bind-
+mounted, so editing the host file alone doesn't affect a running or restarted container). Verified
+by writing to the `identity_documents` disk explicitly as the `www-data` user
+(`docker compose exec -u www-data`) and by re-running the full Playwright walkthrough end-to-end
+(document upload now succeeds, file lands on disk, correctly associated via
+`Request::identityDocument()`).
+
+**Why this belongs in this ticket's log, not a separate one**: the bug was latent since
+TT-4.11a/SCRUM-302 (the first ticket to actually write to a *private*, non-`public`-disk path from
+this app), but had never been exercised end-to-end through a real browser until this ticket's own
+QA pass, since TT-4.11a's own QA only exercised the file-retrieval side, not a fresh upload.
+Fixing it here (rather than filing a separate ticket) matches this epic's "found mid-ticket,
+directly blocks or is caused by this ticket's own new code path" precedent -- distinct from
+SCRUM-300, which was pre-existing, unrelated debt discovered while scoping, not something this
+ticket's own new code triggered.

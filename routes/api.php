@@ -100,6 +100,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/users', [UserController::class, 'getUsers'])->name('api.users')->middleware('throttle:60,1');
     Route::get('/users/guardianship', [UserController::class, 'getGuardianship'])->name('api.users.guardianship');
     Route::post('/users/{userId}/guardianship', [UserController::class, 'sendGuardianshipRequest'])->name('api.users.guardianshiprequest');
+
+    // TT-4.11b/SCRUM-303: self-attestation (+ optional document) that a user's own dob is
+    // accurate -- always admin-reviewed, never auto-applied.
+    Route::post('/age-verification', [UserController::class, 'submitAgeVerification'])->name('api.users.age-verification')->middleware('throttle:10,1');
     Route::delete('/guardianship/{guardianshipId}', [UserController::class, 'deleteGuardianship'])->name('api.guardianship.delete');
 
     Route::get('/administrator/verification/requests', [AdministratorController::class, 'getVerificationRequests'])->name('admin.verification.requests');
