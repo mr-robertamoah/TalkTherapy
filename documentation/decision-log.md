@@ -6849,3 +6849,39 @@ treat a null dob as age 0 (already-minor), so clearing it while already flagged 
 status flip -- correctly out of this gate's scope per its own literal rule ("does this edit flip
 the person's current effective minor/adult status"). Not a path to adult status: any subsequent
 dob set is still gated relative to the now-null (still-minor) baseline.
+
+## 2026-09-12 — SCRUM-293 (TT-4.10d): approval action scope
+
+**Notifies only the requester (`$request->from`), not the target (`$request->for`) when they
+differ**: the ticket text says "requester is notified of the outcome," taken literally -- in the
+common self-service case `from === for`, so this only matters for an admin-initiated dob change
+(the admin, not the affected user, gets notified). Not expanded to also notify `for` separately,
+since that wasn't asked for and would be new scope; revisit if TT-4.10e's frontend surfaces a need
+for the target to be notified too.
+
+**Retroactive correction is an unconditional bulk update, not per-row nuance**: every
+currently-existing `Guardianship`/`Therapy`/`GroupTherapy` row for the target user gets its
+snapshot column set to the SAME newly-confirmed boolean, via a plain `Model::query()->where(...)
+->update([...])` per model (no individual-row logic, no partial application) -- matches "every
+currently-existing qualifying record," the literal scope TT-4.10c/TT-4.10a already established
+for what counts as "on file."
+
+**Closes the TT-4.10c stopgap**: `RespondToRequestAction`'s explicit 422 guard for `dobChange`
+(added in TT-4.10c specifically because this action didn't exist yet) is now replaced with a real
+dispatch to `RespondToDobChangeRequestAction`. The obsolete guard test
+(`RespondToRequestActionDobChangeGuardTest.php`) was deleted rather than kept alongside a
+contradictory new test.
+
+**`GetRequestResourceAction` still has no dedicated resource for `dobChange`** -- it falls through
+to `AdminCounsellorVerificationRequestResource`'s defensive null-degradation (confirmed safe, no
+data leak, by TT-4.10c's own security review). The underlying approve/reject state change is
+correct regardless; a proper display resource is frontend-adjacent work left for TT-4.10e.
+
+**Review finding, fixed in this same diff**: the first version notified `$request->from` based
+purely on the request's final status, not on whether THIS call actually caused that status --
+a second, redundant response to an already-decided request (a race, a stale UI, a double-click)
+re-sent the outcome notification. Fixed by threading a `$responded` flag out of the locked
+transaction (mirroring `RespondToGuardianshipRequestAction`'s own `$created` flag for the
+identical class of problem, SCRUM-80/91) and gating both notify() calls on it. Verified by
+temporarily reverting the fix and confirming the new regression test failed as expected, then
+restoring it.
