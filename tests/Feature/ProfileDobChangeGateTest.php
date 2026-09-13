@@ -23,6 +23,40 @@ test('a user with no qualifying relationship has their dob updated directly', fu
     expect(Request::query()->whereType(RequestTypeEnum::dobChange->value)->count())->toBe(0);
 });
 
+// TT-4.11c/SCRUM-304 security-review finding: a direct, unverified dob edit through this path
+// must clear any prior admin-verified marker, mirroring the existing email_verified_at clearing
+// just below it in the controller -- an admin-verified dob must never silently keep reading as
+// "verified" once the value it was verified for has actually changed.
+test('directly changing dob clears a previously-verified dob_verified_at', function () {
+    $user = User::factory()->create([
+        'dob' => now()->subYears(30)->toDateString(),
+        'dob_verified_at' => now(),
+    ]);
+
+    $response = $this->actingAs($user)->patch(route('profile.update'), [
+        'firstName' => $user->firstName,
+        'lastName' => $user->lastName,
+        'dob' => now()->subYears(25)->toDateString(),
+    ]);
+
+    $response->assertSessionHasNoErrors();
+    expect($user->fresh()->dob_verified_at)->toBeNull();
+});
+
+test('resubmitting the same dob does not clear an existing dob_verified_at', function () {
+    $dob = now()->subYears(30)->toDateString();
+    $user = User::factory()->create(['dob' => $dob, 'dob_verified_at' => now()]);
+
+    $response = $this->actingAs($user)->patch(route('profile.update'), [
+        'firstName' => $user->firstName,
+        'lastName' => $user->lastName,
+        'dob' => $dob,
+    ]);
+
+    $response->assertSessionHasNoErrors();
+    expect($user->fresh()->dob_verified_at)->not->toBeNull();
+});
+
 test('a qualifying user\'s boundary-crossing dob edit is deferred, but other submitted fields still save', function () {
     $minor = User::factory()->create(['dob' => now()->subYears(17)->toDateString(), 'firstName' => 'Original']);
     $guardian = User::factory()->create();

@@ -5,7 +5,6 @@ namespace App\Actions\Request;
 use App\Actions\Action;
 use App\DTOs\RequestResponseDTO;
 use App\Enums\RequestTypeEnum;
-use App\Exceptions\BadRequestException;
 
 class RespondToRequestAction extends Action
 {
@@ -13,19 +12,12 @@ class RespondToRequestAction extends Action
     {
         $request = $requestResponseDTO->request;
 
-        // TT-4.11b/SCRUM-303: SubmitAgeVerificationAction can already create an ageVerification-
-        // type request, but the approve/reject action that actually applies it (TT-4.11c's job)
-        // is not yet built -- without this guard, hitting this shared endpoint against an
-        // ageVerification request would silently no-op (falling through every branch below,
-        // status left PENDING) while still reporting a misleading success, mirroring the
-        // identical dobChange-era guard just below (TT-4.10c/SCRUM-292, itself mirroring
-        // SCRUM-171's own precedent for an already-decided request).
-        if ($request->type == RequestTypeEnum::ageVerification->value) {
-            throw new BadRequestException('Responding to an age-verification request is not yet supported here.', 422);
-        }
-
         if ($requestResponseDTO->request->type == RequestTypeEnum::dobChange->value) {
             $request = RespondToDobChangeRequestAction::new()->execute($requestResponseDTO);
+        }
+
+        if ($requestResponseDTO->request->type == RequestTypeEnum::ageVerification->value) {
+            $request = RespondToAgeVerificationRequestAction::new()->execute($requestResponseDTO);
         }
 
         if ($requestResponseDTO->request->type == RequestTypeEnum::counsellor->value) {

@@ -215,3 +215,44 @@ test('responding to an already-decided request a second time does not re-notify 
 
     Notification::assertSentToTimes($minor, DobChangeRequestApprovedNotification::class, 1);
 });
+
+// TT-4.11c/SCRUM-304: an ordinary dobChange approval is NOT admin-verified evidence (unlike an
+// approved ageVerification request) -- it must never supersede a pending ageVerification request
+// for the same user (the one-directional guarantee is only ever enforced from the
+// ageVerification side, see SupersedePendingDobChangeRequestsAction/
+// RespondToAgeVerificationRequestActionTest's own coverage of the reverse direction).
+test('approving an ordinary dobChange does not supersede a pending ageVerification request for the same user', function () {
+    $minor = User::factory()->create(['dob' => now()->subYears(17)->toDateString()]);
+    $guardian = User::factory()->create();
+    Guardianship::query()->create(['guardian_id' => $guardian->id, 'ward_id' => $minor->id]);
+    $ageVerificationRequest = CreateRequestAction::new()->execute(CreateRequestDTO::new()->fromArray([
+        'from' => $minor, 'to' => null, 'for' => $minor,
+        'type' => RequestTypeEnum::ageVerification->value,
+        'data' => ['attestation' => 'I confirm my dob is accurate.'],
+    ]));
+    $request = aDobChangeRequest($minor, $minor, $guardian, now()->subYears(30)->toDateString());
+
+    RespondToDobChangeRequestAction::new()->execute(RequestResponseDTO::new()->fromArray([
+        'user' => $guardian, 'response' => 'accepted', 'request' => $request,
+    ]));
+
+    expect($ageVerificationRequest->fresh()->status)->toBe(RequestStatusEnum::pending->value);
+});
+
+// TT-4.11c/SCRUM-304: without this, a user verified once could have a later, unverified dobChange
+// edit silently keep the stale "verified" guarantee attached to a brand new, never-verified value.
+test('approving an ordinary dobChange clears a previously-verified dob_verified_at', function () {
+    $minor = User::factory()->create([
+        'dob' => now()->subYears(17)->toDateString(),
+        'dob_verified_at' => now(),
+    ]);
+    $guardian = User::factory()->create();
+    Guardianship::query()->create(['guardian_id' => $guardian->id, 'ward_id' => $minor->id]);
+    $request = aDobChangeRequest($minor, $minor, $guardian, now()->subYears(30)->toDateString());
+
+    RespondToDobChangeRequestAction::new()->execute(RequestResponseDTO::new()->fromArray([
+        'user' => $guardian, 'response' => 'accepted', 'request' => $request,
+    ]));
+
+    expect($minor->fresh()->dob_verified_at)->toBeNull();
+});

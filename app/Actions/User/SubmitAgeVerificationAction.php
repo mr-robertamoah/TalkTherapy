@@ -36,14 +36,22 @@ class SubmitAgeVerificationAction extends Action
                 ->whereFor($dto->user)
                 ->first();
 
+            // TT-4.11c/SCRUM-304 security-review finding: `attestedDob` snapshots the dob the
+            // user is actually vouching for AT SUBMISSION TIME -- without it, an admin approving
+            // this request days later would unconditionally re-affirm whatever `dob` happens to
+            // be current on the User row at THAT moment, which may have drifted since (an
+            // unrelated edit, a concurrent dobChange approval), silently certifying a value
+            // nobody's attestation/document was actually about.
+            $data = ['attestation' => $dto->attestation, 'attestedDob' => $dto->user->dob?->toDateString()];
+
             $request = $existing
-                ? tap($existing)->update(['data' => ['attestation' => $dto->attestation]])
+                ? tap($existing)->update(['data' => $data])
                 : CreateRequestAction::new()->execute(CreateRequestDTO::new()->fromArray([
                     'from' => $dto->user,
                     'to' => null,
                     'for' => $dto->user,
                     'type' => RequestTypeEnum::ageVerification->value,
-                    'data' => ['attestation' => $dto->attestation],
+                    'data' => $data,
                 ]));
 
             if ($dto->document) {

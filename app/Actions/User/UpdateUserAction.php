@@ -37,6 +37,12 @@ class UpdateUserAction extends Action
                 );
 
                 $data['dob'] = (new Carbon($updateUserDTO->dob))->utc();
+
+                // TT-4.11c/SCRUM-304 security-review finding: this is a direct, unverified admin
+                // edit (bypassing ApplyVerifiedDobAction entirely) -- an existing "verified"
+                // marker must not silently survive an edit it didn't apply to, mirroring
+                // ProfileController::update()'s identical dob_verified_at clearing.
+                $data['dob_verified_at'] = null;
             } catch (DobChangeRequiresApprovalException) {
                 // dob omitted from $data -- a pending approval Request was already created by
                 // the gate above. Everything else the admin submitted still applies below.

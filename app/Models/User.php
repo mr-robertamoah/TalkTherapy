@@ -35,6 +35,7 @@ class User extends Authenticatable implements MustVerifyEmailContract
         'email',
         'password',
         'dob',
+        'dob_verified_at',
         'email_verified_at',
     ];
 
@@ -56,6 +57,7 @@ class User extends Authenticatable implements MustVerifyEmailContract
     protected $casts = [
         'email_verified_at' => 'datetime',
         'dob' => 'datetime',
+        'dob_verified_at' => 'datetime',
         'password' => 'hashed',
         'settings' => 'array',
     ];

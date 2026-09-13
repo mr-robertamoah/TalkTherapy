@@ -89,6 +89,16 @@ class ProfileController extends Controller
             $request->user()->email_verified_at = null;
         }
 
+        // TT-4.11c/SCRUM-304 security-review finding: an admin-verified dob (SubmitAgeVerification
+        // /RespondToAgeVerificationRequestAction) must not silently keep reading as "verified"
+        // once dob itself changes through this direct, unrelated path -- mirrors the email_verified_at
+        // clearing just above exactly. $dobChangeRequiresApproval requests never reach here with an
+        // actually-changed dob (the gate above holds `dob` at its current value in that case), so
+        // this only ever fires for a genuine, immediately-applied dob edit.
+        if ($request->user()->isDirty('dob')) {
+            $request->user()->dob_verified_at = null;
+        }
+
         $request->user()->save();
 
         return Redirect::route('profile.show')->with(
