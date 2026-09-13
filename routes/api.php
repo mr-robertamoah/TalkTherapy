@@ -10,6 +10,7 @@ use App\Http\Controllers\CounsellorController;
 use App\Http\Controllers\DiscussionController;
 use App\Http\Controllers\GroupTherapyController;
 use App\Http\Controllers\HowToController;
+use App\Http\Controllers\IdentityDocumentController;
 use App\Http\Controllers\LanguageController;
 use App\Http\Controllers\LicensingAuthorityController;
 use App\Http\Controllers\LikeController;
@@ -134,6 +135,14 @@ Route::middleware('auth:sanctum')->group(function () {
     // transaction (session-schedule-proposal accept/reject reuse this same generic endpoint), so
     // this needed the same rate limit already applied to the newer schedule-proposal routes below.
     Route::post('/requests/{requestId}', [RequestController::class, 'respond'])->name('requests.respond')->middleware('throttle:30,1');
+
+    // TT-4.11a/SCRUM-302: the only retrieval path for an identity-verification document -- an
+    // authenticated, authorized stream, never a public asset() URL. Throttled (security review):
+    // this codebase's general 'api' rate limiter is disabled entirely (see RouteServiceProvider),
+    // and this route's own uniform-404 response is specifically designed to resist enumeration --
+    // rate limiting is the second, load-bearing layer against scripting through sequential
+    // request/file id pairs to map out who has submitted an identity document.
+    Route::get('/requests/{request}/documents/{file}', [IdentityDocumentController::class, 'show'])->name('requests.documents.show')->middleware('throttle:30,1');
 
     Route::post('/testimonials', [TestimonialController::class, 'createTestimonial'])->name('api.testimonials.create');
     Route::delete('/testimonials/{testimonialId}', [TestimonialController::class, 'deleteTestimonial'])->name('api.testimonials.delete');

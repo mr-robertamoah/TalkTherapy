@@ -17,6 +17,14 @@ test('every upload path used in app/Actions and app/Services has a matching file
         ->map(fn (string $publicPath) => basename($publicPath))
         ->all();
 
+    // TT-4.11a/SCRUM-302: identity-verification documents are the one deliberate exception to
+    // this test's own invariant -- they must NEVER be reachable via a public symlink (see
+    // config/filesystems.php's 'identity_documents' disk and its own comment), unlike every
+    // other upload path this test protects. Excluded explicitly here, not by accident of the
+    // regex missing it, so a future path added to this same private disk doesn't silently need
+    // its own allowlist entry rediscovered from scratch.
+    $privateDiskPaths = ['identity_documents'];
+
     $usedPaths = [];
 
     foreach ([app_path('Actions'), app_path('Services')] as $dir) {
@@ -37,7 +45,7 @@ test('every upload path used in app/Actions and app/Services has a matching file
         }
     }
 
-    $usedPaths = array_keys($usedPaths);
+    $usedPaths = array_values(array_diff(array_keys($usedPaths), $privateDiskPaths));
 
     expect($usedPaths)->not->toBeEmpty();
     expect($usedPaths)->each(

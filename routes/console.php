@@ -65,3 +65,7 @@ Schedule::call(function () {
 Schedule::call(function () {
     AppService::new()->sendHourBeforeGuardianVideoConsentReminders();
 })->everyFiveMinutes();
+
+Schedule::call(function () {
+    AppService::new()->deleteExpiredIdentityDocuments();
+})->dailyAt('04:00');

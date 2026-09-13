@@ -46,6 +46,17 @@ return [
             'throw' => false,
         ],
 
+        // TT-4.11a/SCRUM-302: identity-adjacent documents (age/identity verification) must never
+        // be reachable via a public URL, unlike every other disk above -- deliberately has NO
+        // matching entry in the 'links' array below, so `php artisan storage:link` never symlinks
+        // it into public/. The only access path is the authorized, authenticated retrieval route
+        // (EnsureUserCanViewIdentityDocumentAction), never File::url/getUrlFor().
+        'identity_documents' => [
+            'driver' => 'local',
+            'root' => storage_path('app/private/identity-documents'),
+            'throw' => true,
+        ],
+
         's3' => [
             'driver' => 's3',
             'key' => env('AWS_ACCESS_KEY_ID'),

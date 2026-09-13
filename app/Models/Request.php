@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\RequestStatusEnum;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\MorphToMany;
 
 class Request extends Model
 {
@@ -21,6 +22,18 @@ class Request extends Model
     public function from()
     {
         return $this->morphTo();
+    }
+
+    // TT-4.11a/SCRUM-302: mirrors License::files() exactly -- introduced for identity-verification
+    // document attachments (age/identity verification, SCRUM-289), always uploaded to the private
+    // 'identity_documents' disk (never the public default), retrieved only through the dedicated
+    // authorized route/action, never File::url/getUrlFor(). Generic on the Request model itself
+    // (not type-specific) since nothing about the relation depends on `type`.
+    public function files(): MorphToMany
+    {
+        return $this
+            ->morphToMany(File::class, 'fileable', 'fileables')
+            ->withTimestamps();
     }
 
     public function to()

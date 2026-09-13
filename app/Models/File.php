@@ -11,7 +11,7 @@ class File extends Model
     use HasFactory;
 
     protected $fillable = [
-        'name', 'mime', 'size', 'path', 'storage'
+        'name', 'mime', 'size', 'path', 'storage',
     ];
 
     public function getUrlAttribute()
@@ -23,6 +23,15 @@ class File extends Model
     {
         return $this
             ->morphedByMany(License::class, 'fileable', 'fileables')
+            ->withTimestamps();
+    }
+
+    // TT-4.11a/SCRUM-302: mirrors licenses() above, for identity-verification document
+    // attachments on a Request row.
+    public function requests(): MorphToMany
+    {
+        return $this
+            ->morphedByMany(Request::class, 'fileable', 'fileables')
             ->withTimestamps();
     }
 }
