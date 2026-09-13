@@ -14,6 +14,7 @@ export default function useEnums() {
         organizationMemberApplication: 'ORGANIZATION_MEMBER_APPLICATION_REQUEST',
         organizationCounsellorCompensationChange: 'ORGANIZATION_COUNSELLOR_COMPENSATION_CHANGE_REQUEST',
         sessionScheduleProposal: 'SESSION_SCHEDULE_PROPOSAL_REQUEST',
+        dobChange: 'DOB_CHANGE_REQUEST',
     }
     const RequestStatusEnum = {
         accepted: 'ACCEPTED',

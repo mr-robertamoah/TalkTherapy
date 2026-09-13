@@ -36,6 +36,10 @@ class ProfileController extends Controller
             'mustVerifyEmail' => $request->user() instanceof MustVerifyEmail,
             'status' => session('status'),
             'counsellorCreationStep' => GetCounsellorCreationStepOfUserAction::new()->execute($request->user()),
+            // TT-4.10e/SCRUM-294: flashed by update() below when a dob edit was held for
+            // guardian/admin approval instead of applied immediately -- only present on the one
+            // page load immediately after that redirect (standard Laravel flash semantics).
+            'dobChangePendingApproval' => (bool) session('dobChangePendingApproval'),
         ]);
     }
 

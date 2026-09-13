@@ -143,6 +143,12 @@ class DatabaseSeeder extends Seeder
         // tab, the guardian approve/revoke controls, or the consent-required video-join banner
         // without creating this relationship chain by hand first.
         $this->createGuardianVideoConsentDemoData();
+
+        // TT-4.10e/SCRUM-294: the golden path (a minor WITH a guardian) is already reachable via
+        // createGuardianVideoConsentDemoData()'s minor/guardian pair above, but there was no
+        // seeded way to try the "no guardian exists -> any admin may respond" path without
+        // hand-building a user and a Request via tinker first.
+        $this->createDobChangeNoGuardianDemoData();
     }
 
     private function createLanguages($user)
@@ -1393,6 +1399,34 @@ class DatabaseSeeder extends Seeder
             'status' => 'in_session',
             'payment_type' => 'FREE',
         ]);
+    }
+
+    private function createDobChangeNoGuardianDemoData(): void
+    {
+        $minor = User::factory()->create([
+            'firstName' => 'DobChange',
+            'lastName' => 'DemoNoGuardian',
+            'email' => 'dobchange.demo.no.guardian@example.com',
+            'username' => 'dobchange_demo_no_guardian',
+            'password' => Hash::make('password'),
+            'email_verified_at' => now(),
+            'dob' => now()->subYears(15)->toDateString(),
+        ]);
+
+        // No Guardianship record for this user -- exercises the "no guardian exists, any admin
+        // may respond" path immediately, via a pending self-service dob-change request created
+        // the same way ProfileController::update() -> CreateRequestAction would (from == for ==
+        // this minor, to left unassociated).
+        $request = new Request;
+        $request->type = RequestTypeEnum::dobChange->value;
+        $request->status = RequestStatusEnum::pending->value;
+        $request->data = [
+            'newDob' => now()->subYears(30)->toDateString(),
+            'priorDob' => $minor->dob->toDateString(),
+        ];
+        $request->from()->associate($minor);
+        $request->for()->associate($minor);
+        $request->save();
     }
 
     private function createPayoutDemoData(): void

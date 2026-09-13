@@ -50,6 +50,16 @@ class RequestResource extends JsonResource
                     'reason' => $this->data['reason'] ?? null,
                 ]
             ),
+            // TT-4.10e/SCRUM-294: only meaningful for a dobChange request -- mirrors
+            // `proposal` above's identical "explicitly whitelisted, not a raw spread of `data`"
+            // precedent (nothing else in `data` needs to reach either party for this type).
+            'dobChange' => $this->when(
+                $this->type === RequestTypeEnum::dobChange->value,
+                fn () => [
+                    'newDob' => $this->data['newDob'] ?? null,
+                    'priorDob' => $this->data['priorDob'] ?? null,
+                ]
+            ),
             'round' => $this->when(! is_null($this->round), $this->round),
             'expiresAt' => $this->when(! is_null($this->expires_at), fn () => $this->expires_at?->diffForHumans()),
             'createdAt' => $this->created_at->diffForHumans(),
@@ -83,6 +93,15 @@ class RequestResource extends JsonResource
             }
         }
 
+        // TT-4.10e/SCRUM-294 security review: for a self-service dob edit, `from` and `for` are
+        // the same user (the ward editing their own dob) -- narrowing `getFor()` alone still let
+        // this branch broadcast the identical PII (gender/country/dob) to every admin via `from`.
+        // Shares `isNullToDobChange()` with getTo()/getFor() so a future similar type can't repeat
+        // this asymmetry by only narrowing one of the three fields.
+        if ($this->isNullToDobChange()) {
+            return $this->narrowUserProjection($this->from);
+        }
+
         if ($this->isOrgMemberFlowUser($this->from, $viewer)) {
             return $this->narrowUserProjection($this->from);
         }
@@ -92,6 +111,15 @@ class RequestResource extends JsonResource
 
     private function getTo(?User $viewer)
     {
+        // TT-4.10e/SCRUM-294: a dobChange request's `to` is genuinely nullable ("any admin may
+        // respond" when no guardian exists, mirroring refund's identical null-`to` shape) -- the
+        // generic `$this->to_type != User::class` branch below would otherwise call
+        // CounsellorMiniResource(null), which resolves to `{deleted: true, ...}` and
+        // misrepresents "not yet assigned to anyone" as "the guardian's account was deleted."
+        if ($this->isNullToDobChange()) {
+            return null;
+        }
+
         if ($this->to_type == Organization::class) {
             return new OrganizationMiniResource($this->to);
         }
@@ -139,6 +167,13 @@ class RequestResource extends JsonResource
         return ['id' => $user?->id, 'fullName' => $user?->name, 'username' => $user?->username, 'isUser' => true];
     }
 
+    // TT-4.10e/SCRUM-294 security review: shared by getFrom()/getTo()/getFor() so the null-`to`
+    // dobChange narrowing can't be applied to only one of the three fields by accident.
+    private function isNullToDobChange(): bool
+    {
+        return $this->type === RequestTypeEnum::dobChange->value && is_null($this->to_type);
+    }
+
     private function getFor()
     {
         // SCRUM-206 (TT-2.5a): a session-schedule proposal's `for` is also a Therapy directly,
@@ -152,6 +187,17 @@ class RequestResource extends JsonResource
         }
 
         if ($this->for_type == User::class) {
+            // TT-4.10e/SCRUM-294 security review: a null-`to` dobChange request is visible to
+            // *every* admin in their personal requests list (RequestService::getRequests()'s
+            // admin-visibility branch), not just whichever one eventually responds -- the full
+            // UserMiniResource (gender/country/dob) would broadcast a minor's PII to every admin
+            // who merely opens their requests list. Narrowed the same way isOrgMemberFlowUser()
+            // already narrows from/to for a viewer with no established relationship to the user;
+            // `dob` specifically is redundant anyway since `priorDob` above already carries it.
+            if ($this->isNullToDobChange()) {
+                return $this->narrowUserProjection($this->for);
+            }
+
             return new UserMiniResource($this->for);
         }
 

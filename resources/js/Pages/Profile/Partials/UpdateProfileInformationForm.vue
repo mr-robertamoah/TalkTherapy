@@ -11,6 +11,13 @@ import { onBeforeMount, ref } from 'vue';
 import { computed } from 'vue';
 import { subYears } from 'date-fns';
 
+defineProps({
+    dobChangePendingApproval: {
+        type: Boolean,
+        default: false,
+    },
+});
+
 const user = usePage().props.auth.user;
 
 const form = useForm({
@@ -133,6 +140,10 @@ function clickedUpdate() {
                         :capitalize="false"
                         :text="$page.props.auth.user?.dob ? new Date($page.props.auth.user.dob).toDateString() : ''"
                     />
+                    <div
+                        v-if="dobChangePendingApproval"
+                        class="mt-2 mb-6 p-4 bg-indigo-50 border border-indigo-200 rounded-lg text-sm text-indigo-700"
+                    >Your date-of-birth change has been submitted for your guardian's (or an admin's) approval and will take effect once approved. Everything else you changed has already been saved.</div>
                     <ProfileInformationDisplay
                         class="my-8"
                         label="gender"

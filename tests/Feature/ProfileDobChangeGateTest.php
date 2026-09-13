@@ -47,6 +47,23 @@ test('a qualifying user\'s boundary-crossing dob edit is deferred, but other sub
     expect($request->to_id)->toBe($guardian->id);
 });
 
+// TT-4.10e/SCRUM-294: the flash must actually reach the next page load as an Inertia prop, not
+// just exist in the session.
+test('the profile page shows the pending-approval flash as an Inertia prop on the very next load', function () {
+    $minor = User::factory()->create(['dob' => now()->subYears(17)->toDateString()]);
+    $guardian = User::factory()->create();
+    Guardianship::query()->create(['guardian_id' => $guardian->id, 'ward_id' => $minor->id]);
+
+    $this->actingAs($minor)->patch(route('profile.update'), [
+        'firstName' => $minor->firstName,
+        'lastName' => $minor->lastName,
+        'dob' => now()->subYears(30)->toDateString(),
+    ]);
+
+    $this->get(route('profile.show'))
+        ->assertInertia(fn ($page) => $page->where('dobChangePendingApproval', true));
+});
+
 test('resubmitting the profile form without changing dob never triggers the gate', function () {
     $minor = User::factory()->create(['dob' => now()->subYears(17)->toDateString()]);
     $guardian = User::factory()->create();
