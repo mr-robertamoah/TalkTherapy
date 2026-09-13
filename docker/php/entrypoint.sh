@@ -17,7 +17,17 @@ if [ ! -f /var/www/html/vendor/autoload.php ]; then
   composer install --no-interaction --optimize-autoloader
 fi
 
-# Set permissions
+# Set permissions. `storage` is bind-mounted from the host (see docker-compose.yml), so any
+# directory created there by a host process (or by an earlier `docker compose exec` running as
+# root) keeps the host user's ownership, overriding the Dockerfile's own build-time
+# `chown -R www-data:www-data /var/www/html` -- php-fpm's workers run as www-data (see
+# docker/php/www.conf's `user`/`group`), so without re-asserting ownership here, www-data can be
+# left unable to write into a subdirectory it doesn't own even after chmod 755 (chmod alone
+# doesn't change the owning user/group, and 755 gives a non-owning, non-group user no write bit
+# at all). Confirmed via TT-4.11b/SCRUM-303's `identity_documents` disk: uploads 500'd because
+# `storage/app/private/identity-documents` was owned 1000:1000, not www-data.
+chown -R www-data:www-data /var/www/html/storage 2>/dev/null || true
+chown -R www-data:www-data /var/www/html/bootstrap/cache 2>/dev/null || true
 chmod -R 755 /var/www/html/storage 2>/dev/null || true
 chmod -R 755 /var/www/html/bootstrap/cache 2>/dev/null || true
 

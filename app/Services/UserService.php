@@ -14,11 +14,13 @@ use App\Actions\User\EnsureUserCanBeGuardianAction;
 use App\Actions\User\EnsureUserDoesNotHaveAGuardianshipRequestAction;
 use App\Actions\User\EnsureUserExistsAction;
 use App\Actions\User\EnsureUserIsNotAlreadyGuardianAction;
+use App\Actions\User\SubmitAgeVerificationAction;
 use App\Actions\User\UpdateUserAction;
 use App\DTOs\CreateRequestDTO;
 use App\DTOs\GetGuardianshipDTO;
 use App\DTOs\GetModelsForAdminDTO;
 use App\DTOs\GetUsersDTO;
+use App\DTOs\SubmitAgeVerificationDTO;
 use App\DTOs\UpdateUserDTO;
 use App\Enums\PaginationEnum;
 use App\Http\Resources\AdminUserResource;
@@ -32,14 +34,20 @@ class UserService extends Service
     public function sendGuardianshipRequest(CreateRequestDTO $createRequestDTO)
     {
         EnsureRequestDataIsValidAction::new()->execute($createRequestDTO);
-        
+
         EnsureUserIsNotAlreadyGuardianAction::new()->execute($createRequestDTO);
-        
+
         EnsureUserDoesNotHaveAGuardianshipRequestAction::new()->execute($createRequestDTO);
-        
+
         EnsureUserCanBeGuardianAction::new()->execute($createRequestDTO);
-        
+
         return CreateGuardianshipRequestAction::new()->execute($createRequestDTO);
+    }
+
+    // TT-4.11b/SCRUM-303
+    public function submitAgeVerification(SubmitAgeVerificationDTO $submitAgeVerificationDTO)
+    {
+        return SubmitAgeVerificationAction::new()->execute($submitAgeVerificationDTO);
     }
 
     public function deleteGuardianship(GetGuardianshipDTO $getGuardianshipDTO)
@@ -49,7 +57,7 @@ class UserService extends Service
         EnsureGuardianshipExistsAction::new()->execute($getGuardianshipDTO);
 
         EnsureCanUpdateGuardianshipAction::new()->execute($getGuardianshipDTO);
-        
+
         DeleteGuardianshipAction::new()->execute($getGuardianshipDTO);
     }
 
@@ -57,9 +65,9 @@ class UserService extends Service
     {
         $settings = $updateUserDTO->user->settings ? $updateUserDTO->user->settings : [];
         $updateUserDTO->user->settings = [...$settings, ...$updateUserDTO->settings];
-        
+
         $updateUserDTO->user->save();
-        
+
         return $updateUserDTO->user->refresh();
     }
 
@@ -70,7 +78,7 @@ class UserService extends Service
         EnsureUserExistsAction::new()->execute($updateUserDTO->updatedUser);
 
         $user = UpdateUserAction::new()->execute($updateUserDTO);
-        
+
         return $user;
     }
 
@@ -121,14 +129,16 @@ class UserService extends Service
 
     public function getUsers(GetUsersDTO $getUsersDTO)
     {
-        if (is_null($getUsersDTO->like)) return [];
+        if (is_null($getUsersDTO->like)) {
+            return [];
+        }
 
         $query = User::query();
 
-        if ($getUsersDTO->user)
+        if ($getUsersDTO->user) {
             $query->whereNot('id', $getUsersDTO->user->id);
+        }
 
-        
         $query->where('username', 'LIKE', "%{$getUsersDTO->like}%");
         $query->orWhere(function ($query) use ($getUsersDTO) {
             $query->where('firstName', 'LIKE', "%{$getUsersDTO->like}%");

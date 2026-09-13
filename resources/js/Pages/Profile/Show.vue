@@ -9,6 +9,7 @@ import BecomeCounsellorForm from './Partials/BecomeCounsellorForm.vue';
 import TherapiesSection from './Partials/TherapiesSection.vue';
 import TestimonialSection from '@/Components/TestimonialSection.vue';
 import GuardianshipSection from '@/Components/GuardianshipSection.vue';
+import AgeVerificationSection from '@/Components/AgeVerificationSection.vue';
 import { ref, computed } from 'vue';
 import { Head, Link } from '@inertiajs/vue3';
 import HelpButton from '@/Components/HelpButton.vue';
@@ -103,7 +104,11 @@ function changeStep(value) {
                         :dob-change-pending-approval="dobChangePendingApproval"
                     />
                 </div>
-                
+
+                <div class="p-8 bg-white shadow-xl border border-gray-100 rounded-xl">
+                    <AgeVerificationSection class="max-w-xl" />
+                </div>
+
                 <div
                     class="p-8 bg-yellow-50 border border-yellow-200 shadow-xl rounded-xl"
                     v-if="mustVerifyEmail && !$page.props.auth.user?.emailVerifiedAt"
