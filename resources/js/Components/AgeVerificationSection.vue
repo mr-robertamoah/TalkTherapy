@@ -4,6 +4,7 @@ import InputLabel from './InputLabel.vue';
 import InputError from './InputError.vue';
 import TextBox from './TextBox.vue';
 import PrimaryButton from './PrimaryButton.vue';
+import SecondaryButton from './SecondaryButton.vue';
 import FormLoader from './FormLoader.vue';
 import Alert from './Alert.vue';
 import useAlert from '@/Composables/useAlert';
@@ -17,14 +18,28 @@ const submitting = ref(false)
 const submitted = ref(false)
 const attestation = ref('')
 const document = ref(null)
+const documentInput = ref(null)
 const errors = ref({})
 
 function openForm() {
     open.value = true
 }
 
+// The native <input type="file"> is visually hidden (see the template) -- this button-triggered
+// pattern (hidden input + a styled button that proxies the click) mirrors ImageUploadField.vue's
+// own convention elsewhere in this app, rather than the raw OS file-picker button, which doesn't
+// match this form's own styled inputs/buttons.
+function triggerDocumentInput() {
+    documentInput.value?.click()
+}
+
 function onDocumentChange(event) {
     document.value = event.target.files[0] ?? null
+}
+
+function clearDocument() {
+    document.value = null
+    if (documentInput.value) documentInput.value.value = ''
 }
 
 async function submit() {
@@ -40,7 +55,7 @@ async function submit() {
             submitted.value = true
             open.value = false
             attestation.value = ''
-            document.value = null
+            clearDocument()
             setSuccessAlertData({
                 message: 'Your submission has been sent for review. Thank you.',
             })
@@ -102,11 +117,30 @@ async function submit() {
             <div>
                 <InputLabel for="document" value="Supporting document (optional)" />
 
+                <div class="mt-1 flex items-center gap-3">
+                    <SecondaryButton type="button" @click="triggerDocumentInput">
+                        {{ document ? 'change file' : 'choose file' }}
+                    </SecondaryButton>
+
+                    <span v-if="document" class="text-sm text-gray-600 truncate max-w-[12rem]">{{ document.name }}</span>
+                    <span v-else class="text-sm text-gray-400">no file selected</span>
+
+                    <button
+                        v-if="document"
+                        type="button"
+                        @click="clearDocument"
+                        title="remove selected file"
+                        aria-label="remove selected file"
+                        class="text-gray-400 hover:text-red-600 text-lg leading-none"
+                    >&times;</button>
+                </div>
+
                 <input
                     id="document"
+                    ref="documentInput"
                     type="file"
                     accept=".jpg,.jpeg,.png,.pdf"
-                    class="mt-1 block w-full text-sm text-gray-600"
+                    class="hidden"
                     @change="onDocumentChange"
                 />
 
