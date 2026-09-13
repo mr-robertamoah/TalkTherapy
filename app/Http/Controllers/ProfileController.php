@@ -6,6 +6,7 @@ use App\Actions\Counsellor\EnsureCanDeleteCounsellorAction;
 use App\Actions\EnsureNameStaysRetrievableAction;
 use App\Actions\User\EnsureDobChangeIsAllowedAction;
 use App\Actions\User\GetCounsellorCreationStepOfUserAction;
+use App\Actions\User\GetPendingAgeVerificationRequestAction;
 use App\Actions\User\UpdateUserAvatarAction;
 use App\DTOs\CheckNameRetrievabilityDTO;
 use App\DTOs\DeleteCounsellorDTO;
@@ -40,6 +41,18 @@ class ProfileController extends Controller
             // guardian/admin approval instead of applied immediately -- only present on the one
             // page load immediately after that redirect (standard Laravel flash semantics).
             'dobChangePendingApproval' => (bool) session('dobChangePendingApproval'),
+            // TT-4.11b/SCRUM-303 bug (found during TT-4.11e/SCRUM-306's closeout QA pass):
+            // AgeVerificationSection.vue previously tracked whether a request was pending using
+            // only its own local, in-session `submitted` ref -- initialized to `false` on every
+            // fresh page load regardless of actual server-side state, so a user with a genuinely
+            // still-pending request saw "submit a statement" (implying none exists) instead of
+            // "submit another statement" until they submitted again in that same session. Unlike
+            // `dobChangePendingApproval` above (a one-time flash, correct for a notice that only
+            // matters right after its own redirect), this needs to reflect DURABLE state on every
+            // load, so it's a real query, not a flash. Shares GetPendingAgeVerificationRequestAction
+            // with SubmitAgeVerificationAction's own idempotency check, rather than a second,
+            // independently-scoped query with the same intent.
+            'hasPendingAgeVerification' => (bool) GetPendingAgeVerificationRequestAction::new()->execute($request->user()),
         ]);
     }
 

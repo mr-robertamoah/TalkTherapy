@@ -30,11 +30,7 @@ class SubmitAgeVerificationAction extends Action
         return DB::transaction(function () use ($dto) {
             User::query()->lockForUpdate()->find($dto->user->id);
 
-            $existing = Request::query()
-                ->whereType(RequestTypeEnum::ageVerification->value)
-                ->wherePending()
-                ->whereFor($dto->user)
-                ->first();
+            $existing = GetPendingAgeVerificationRequestAction::new()->execute($dto->user);
 
             // TT-4.11c/SCRUM-304 security-review finding: `attestedDob` snapshots the dob the
             // user is actually vouching for AT SUBMISSION TIME -- without it, an admin approving

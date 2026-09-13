@@ -10,12 +10,23 @@ import Alert from './Alert.vue';
 import useAlert from '@/Composables/useAlert';
 import useAuth from '@/Composables/useAuth';
 
+const props = defineProps({
+    // TT-4.11e/SCRUM-306 closeout QA finding: without this, `submitted` was purely local,
+    // in-session state initialized to `false` on every fresh page load -- a user with a
+    // genuinely still-pending request saw "submit a statement" (implying none exists) rather
+    // than "submit another statement" until they submitted again in that same session.
+    hasPendingRequest: {
+        type: Boolean,
+        default: false,
+    },
+})
+
 const { goToLogin } = useAuth()
 const { alertData, clearAlertData, setSuccessAlertData, setFailedAlertData } = useAlert()
 
 const open = ref(false)
 const submitting = ref(false)
-const submitted = ref(false)
+const submitted = ref(props.hasPendingRequest)
 const attestation = ref('')
 const document = ref(null)
 const documentInput = ref(null)
