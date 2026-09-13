@@ -7250,3 +7250,88 @@ Fixing it here (rather than filing a separate ticket) matches this epic's "found
 directly blocks or is caused by this ticket's own new code path" precedent -- distinct from
 SCRUM-300, which was pre-existing, unrelated debt discovered while scoping, not something this
 ticket's own new code triggered.
+
+---
+
+## 2026-09-13 — SCRUM-304 (TT-4.11c): dob_verified_at semantics, resource, and scope note for TT-4.11d
+
+**Decision 1 -- `dob_verified_at` is cleared, not just left stale, by an unverified edit**: the
+ticket's own rationale warned that "a later ordinary dobChange approval could silently
+overwrite/undo the 'this was verified' guarantee with no record it ever existed." Read literally
+this could mean either "block the overwrite" or "make sure the marker doesn't lie afterward." Since
+the user's own dobChange feature is explicitly allowed to keep editing dob going forward (no
+indication verification should freeze it), the correct read is the second: `ApplyVerifiedDobAction`
+now takes a `$verified` flag (default `false`) and *always* writes `dob_verified_at` -- `now()` when
+`true`, `null` otherwise -- so an ordinary dobChange approval after a prior verification explicitly
+clears the marker rather than leaving a stale timestamp attached to a new, unverified value. Covered
+by `RespondToDobChangeRequestActionTest`'s new "clears a previously-verified dob_verified_at" case.
+
+**Decision 2 -- `AgeVerificationRequestResource` built now, not deferred to TT-4.11d**: SCRUM-305
+(TT-4.11d)'s own ticket text plans to add "a new `AgeVerificationRequestResource`" for the admin
+review *queue listing*. But `GetRequestResourceAction` is also the resource used by the single
+respond-action's own return payload (`RequestService::respondToRequest()` calls it right after
+approving/rejecting) -- without a dedicated branch, an ageVerification request would fall through to
+`AdminCounsellorVerificationRequestResource`, which assumes `from` is a `Counsellor` and would
+silently return meaningless/empty data (not a crash, since it guards `from_type`, just wrong data)
+for every approve/reject response in this ticket's own scope. Built a minimal
+`AgeVerificationRequestResource` now (mirrors `DobChangeRequestResource`'s shape: whitelisted
+fields, `to` omitted since always null) so this ticket's own respond flow returns correct data.
+TT-4.11d should reuse this resource for its listing needs (extending it if the queue view needs
+more, e.g. a document-download link) rather than creating a second, competing resource for the
+same type.
+
+**Decision 3 -- `EnsureUserCanRespondToRequestAction` needed no code change**: the ticket asked for
+"isAdmin() only, no live-relationship check" for ageVerification. Since `to` is always null for
+this type and it isn't `dobChange`, every existing generic branch in that action already
+short-circuits to false, leaving only the `isAdmin()` clause able to match -- confirmed via the new
+Feature tests (a guardian of the submitting user, and the submitting user themselves, both get 422
+via the real endpoint). No special-casing added, avoiding unnecessary branching for a case the
+existing logic already handles correctly.
+
+**Decision 4 -- retention countdown needs no new code**: the ticket's third policy point ("reject/
+approve decisions trigger the retention countdown") is already satisfied by
+TT-4.11a/SCRUM-302's existing `AppService::deleteExpiredIdentityDocuments()` sweep, which keys off
+`requests.updated_at` for any non-pending request -- a status-changing `->update()` call (which
+every accept/reject already performs) bumps `updated_at` automatically, so the countdown starts the
+moment this ticket's own action runs. No changes needed to the sweep itself.
+
+**Decision 5 -- admin discoverability gap, not fixed here, explicitly deferred to TT-4.11d**: `reviewer`
+pointed out that `RequestService::getRequests()` has no branch surfacing a null-`to` `ageVerification`
+request to admins the way it already does for null-`to` `dobChange` (TT-4.10e) -- so although the
+respond endpoint built by this ticket works correctly (proven by `AgeVerificationRequestResponseTest`),
+there is currently no UI/listing path for an admin to discover a pending request's id without already
+knowing it. This is intentional sequencing, not an oversight: SCRUM-305/TT-4.11d's own scope is
+exactly "extend `RequestService::getRequests()`'s admin-visibility branch," so it isn't duplicated
+here. Noting it explicitly so this ticket isn't mistaken for fully wired end-to-end.
+
+**Post-review fixes (security-engineer, three findings, all addressed before merge)**:
+
+1. **Lock-order inversion / deadlock risk (Medium)**: `SubmitAgeVerificationAction` and
+   `EnsureDobChangeIsAllowedAction` (the submission side) both lock `User` then `Request` when
+   reusing an existing pending request. `RespondToDobChangeRequestAction`/
+   `RespondToAgeVerificationRequestAction` (this ticket's own respond side) locked `Request` then
+   `User` -- a genuine lock-order inversion that could deadlock under concurrent
+   resubmit-while-under-review. Fixed by reordering both respond actions to lock `User` first
+   (via `$requestResponseDTO->request->for_id`, no extra query), then `Request` -- one consistent
+   global order everywhere in the app that touches both rows.
+2. **TOCTOU on the verified value (High)**: `RespondToAgeVerificationRequestAction` originally
+   re-affirmed whatever `dob` was CURRENT on the `User` row at approval time, not necessarily the
+   value the attestation/document was actually about -- a value that drifted between submission and
+   (possibly days-later) admin review could be silently certified as verified. Fixed by having
+   `SubmitAgeVerificationAction` snapshot `data['attestedDob']` at submission time (refreshed on
+   every resubmission) and having the respond action verify/apply that snapshotted value instead of
+   the live column; surfaced in `AgeVerificationRequestResource` so an admin can see what's actually
+   being confirmed.
+3. **Stale `dob_verified_at` surviving an unrelated direct dob edit (High, latent)**: `dob` can also
+   be written directly, bypassing `ApplyVerifiedDobAction` entirely, via `ProfileController::update()`
+   (a same-side-of-the-adult/minor-line self-edit) or `UpdateUserAction` (an admin edit not crossing
+   that line) -- neither path touched `dob_verified_at`, so a previously-verified marker would
+   silently keep reading as "verified" for a brand-new, never-reviewed value. Fixed by clearing
+   `dob_verified_at` whenever `dob` is dirtied through either path, mirroring
+   `ProfileController::update()`'s own pre-existing `email_verified_at`-clearing convention exactly.
+
+**Incident note**: during this ticket's `reviewer` pass, the subagent deleted an untracked scratch
+file (`carbon_test_tmp.php`) at the repo root while reviewing -- outside its own mandate (report
+findings, never modify code). It disclosed this itself in its report. The file was untracked
+(no git history), unrelated to this ticket, and not restored. Flagged to the user; no other files
+were affected.

@@ -32,6 +32,40 @@ test('submitting with no document creates a pending, admin-addressed request car
     expect($request->identityDocument()->count())->toBe(0);
 });
 
+// TT-4.11c/SCRUM-304 security-review finding: snapshots the dob being vouched for AT SUBMISSION
+// TIME, so a later admin approval verifies exactly this value even if the live `users.dob` column
+// drifts in between (see RespondToAgeVerificationRequestActionTest's own coverage of that case).
+test('submitting snapshots the dob being attested to at that moment', function () {
+    $dob = now()->subYears(25)->toDateString();
+    $user = User::factory()->create(['dob' => $dob]);
+
+    $request = SubmitAgeVerificationAction::new()->execute(SubmitAgeVerificationDTO::new()->fromArray([
+        'user' => $user,
+        'attestation' => 'I am 25 years old.',
+    ]));
+
+    expect($request->data['attestedDob'])->toBe($dob);
+});
+
+test('resubmitting refreshes the attestedDob snapshot to the dob current at that moment', function () {
+    $user = User::factory()->create(['dob' => now()->subYears(25)->toDateString()]);
+
+    SubmitAgeVerificationAction::new()->execute(SubmitAgeVerificationDTO::new()->fromArray([
+        'user' => $user,
+        'attestation' => 'first attempt',
+    ]));
+
+    $newDob = now()->subYears(26)->toDateString();
+    $user->update(['dob' => $newDob]);
+
+    $request = SubmitAgeVerificationAction::new()->execute(SubmitAgeVerificationDTO::new()->fromArray([
+        'user' => $user,
+        'attestation' => 'second, corrected attempt',
+    ]));
+
+    expect($request->data['attestedDob'])->toBe($newDob);
+});
+
 test('submitting with a document stores it on the private identity_documents disk', function () {
     Storage::fake('identity_documents');
     $user = User::factory()->create();

@@ -5,6 +5,7 @@ namespace App\Actions\Request;
 use App\Actions\Action;
 use App\Enums\RequestTypeEnum;
 use App\Http\Resources\AdminCounsellorVerificationRequestResource;
+use App\Http\Resources\AgeVerificationRequestResource;
 use App\Http\Resources\DobChangeRequestResource;
 use App\Http\Resources\OrganizationRequestResource;
 use App\Http\Resources\RefundRequestResource;
@@ -25,6 +26,13 @@ class GetRequestResourceAction extends Action
         // AdminCounsellorVerificationRequestResource (the fallback below) model correctly.
         if ($request->type === RequestTypeEnum::dobChange->value) {
             return new DobChangeRequestResource($request);
+        }
+
+        // TT-4.11c/SCRUM-304: `from` is a User submitting for themselves (never a Counsellor),
+        // and `to` is always null -- neither RequestResource nor
+        // AdminCounsellorVerificationRequestResource (the fallback below) model this correctly.
+        if ($request->type === RequestTypeEnum::ageVerification->value) {
+            return new AgeVerificationRequestResource($request);
         }
 
         if (

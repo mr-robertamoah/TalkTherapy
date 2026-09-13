@@ -22,6 +22,25 @@ test('an admin can freely update dob for a user with no qualifying relationship'
     expect($target->fresh()->dob->toDateString())->toBe(now()->subYears(30)->toDateString());
 });
 
+// TT-4.11c/SCRUM-304 security-review finding: this is a direct, unverified admin edit (bypassing
+// ApplyVerifiedDobAction entirely) -- an existing "verified" marker must not silently survive an
+// edit it didn't apply to.
+test('a direct admin dob edit clears a previously-verified dob_verified_at', function () {
+    $admin = User::factory()->has(Administrator::factory())->create();
+    $target = User::factory()->create([
+        'dob' => now()->subYears(30)->toDateString(),
+        'dob_verified_at' => now(),
+    ]);
+
+    $response = $this->actingAs($admin)->postJson(route('admin.users.update', ['userId' => $target->id]), [
+        'firstName' => $target->firstName,
+        'dob' => now()->subYears(25)->toDateString(),
+    ]);
+
+    $response->assertSuccessful();
+    expect($target->fresh()->dob_verified_at)->toBeNull();
+});
+
 test('an admin\'s boundary-crossing dob edit for a qualifying user is deferred, but other submitted fields still save', function () {
     $admin = User::factory()->has(Administrator::factory())->create();
     $minor = User::factory()->create(['dob' => now()->subYears(17)->toDateString(), 'firstName' => 'Original']);

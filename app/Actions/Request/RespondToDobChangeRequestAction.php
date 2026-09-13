@@ -3,12 +3,10 @@
 namespace App\Actions\Request;
 
 use App\Actions\Action;
+use App\Actions\User\ApplyVerifiedDobAction;
 use App\DTOs\RequestResponseDTO;
 use App\Enums\RequestStatusEnum;
-use App\Models\GroupTherapy;
-use App\Models\Guardianship;
 use App\Models\Request;
-use App\Models\Therapy;
 use App\Models\User;
 use App\Notifications\DobChangeRequestApprovedNotification;
 use App\Notifications\DobChangeRequestRejectedNotification;
@@ -34,6 +32,19 @@ class RespondToDobChangeRequestAction extends Action
         // decided this" apart from "someone else already had," and would re-send on every
         // no-op call.
         [$request, $responded] = DB::transaction(function () use ($requestResponseDTO) {
+            // TT-4.11c/SCRUM-304 security-review finding: the target User row is locked FIRST,
+            // before the Request row -- matching SubmitAgeVerificationAction's and
+            // EnsureDobChangeIsAllowedAction's own lock order (User then Request) on the
+            // submission side. Locking Request first here (as this action used to) while those
+            // submission-side actions lock User first is a lock-order inversion: a user
+            // resubmitting/editing their still-pending request concurrently with an admin/
+            // guardian responding to it could deadlock (each transaction holding one row's lock
+            // and waiting on the other's). One consistent global order closes it. This also
+            // establishes the same serialization point a concurrent dobChange-approval and
+            // age-verification-approval for the same user need (see
+            // RespondToAgeVerificationRequestAction's identical ordering).
+            $user = User::query()->lockForUpdate()->find($requestResponseDTO->request->for_id);
+
             $request = Request::query()->lockForUpdate()->findOrFail($requestResponseDTO->request->id);
 
             if ($request->status != RequestStatusEnum::pending->value) {
@@ -49,7 +60,7 @@ class RespondToDobChangeRequestAction extends Action
             $request = $request->refresh();
 
             if ($request->status == RequestStatusEnum::accepted->value) {
-                $this->applyApprovedDobChange($request);
+                ApplyVerifiedDobAction::new()->execute($user, $request->data['newDob'] ?? null);
             }
 
             return [$request, true];
@@ -64,29 +75,5 @@ class RespondToDobChangeRequestAction extends Action
         }
 
         return $request;
-    }
-
-    // TT-4.10c/SCRUM-292's own explicit decision: an approved change is a CORRECTION of the
-    // truth, not a prospective-only change (unlike TT-3.1e-a's deliberately prospective-only
-    // video-consent-mode switch -- that one protects a past grant from being retroactively
-    // invalidated; this one corrects a person's actual historical age). Every currently-existing
-    // qualifying record is updated to match the now-confirmed dob, not just the user's own
-    // column -- otherwise TT-4.10b's own snapshot-preferring call sites would keep enforcing the
-    // stale, pre-approval status forever.
-    private function applyApprovedDobChange(Request $request): void
-    {
-        $user = $request->for;
-
-        $user->update(['dob' => $request->data['newDob'] ?? null]);
-
-        $isMinor = ! $user->refresh()->isAdult();
-
-        Guardianship::query()->where('ward_id', $user->id)->update(['ward_was_minor_at_creation' => $isMinor]);
-
-        Therapy::query()->where('addedby_type', User::class)->where('addedby_id', $user->id)
-            ->update(['client_was_minor_at_creation' => $isMinor]);
-
-        GroupTherapy::query()->where('addedby_type', User::class)->where('addedby_id', $user->id)
-            ->update(['client_was_minor_at_creation' => $isMinor]);
     }
 }
