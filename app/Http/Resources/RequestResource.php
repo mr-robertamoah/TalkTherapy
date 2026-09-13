@@ -68,6 +68,28 @@ class RequestResource extends JsonResource
                     'isRespondent' => $viewer && EnsureUserCanRespondToRequestAction::new()->userCanRespond($viewer, $this->resource),
                 ]
             ),
+            // TT-4.11d/SCRUM-305: only meaningful for an ageVerification request -- no
+            // `isRespondent` field needed here the way dobChange's own block has one, since
+            // authorization for this type is the simple isAdmin()-only check
+            // EnsureUserCanRespondToRequestAction already applies (no live-relationship check to
+            // duplicate/drift out of sync with, unlike dobChange's "any current guardian").
+            'ageVerification' => $this->when(
+                $this->type === RequestTypeEnum::ageVerification->value,
+                function () {
+                    $document = $this->identityDocument()->first();
+
+                    return [
+                        'attestation' => $this->data['attestation'] ?? null,
+                        'attestedDob' => $this->data['attestedDob'] ?? null,
+                        // Never a raw File::url (identity_documents is a private disk with no
+                        // public symlink and getUrlFor() refuses to resolve it) -- always this
+                        // dedicated, authorized retrieval route (TT-4.11a/SCRUM-302).
+                        'documentUrl' => $document
+                            ? route('requests.documents.show', ['request' => $this->id, 'file' => $document->id])
+                            : null,
+                    ];
+                }
+            ),
             'round' => $this->when(! is_null($this->round), $this->round),
             'expiresAt' => $this->when(! is_null($this->expires_at), fn () => $this->expires_at?->diffForHumans()),
             'createdAt' => $this->created_at->diffForHumans(),
@@ -104,9 +126,11 @@ class RequestResource extends JsonResource
         // TT-4.10e/SCRUM-294 security review: for a self-service dob edit, `from` and `for` are
         // the same user (the ward editing their own dob) -- narrowing `getFor()` alone still let
         // this branch broadcast the identical PII (gender/country/dob) to every admin via `from`.
-        // Shares `isNullToDobChange()` with getTo()/getFor() so a future similar type can't repeat
-        // this asymmetry by only narrowing one of the three fields.
-        if ($this->isNullToDobChange()) {
+        // Shares `isNullToAdminOnlyType()` with getTo()/getFor() so a future similar type can't
+        // repeat this asymmetry by only narrowing one of the three fields -- extended for
+        // ageVerification (TT-4.11d/SCRUM-305) for the identical reason: also always null-`to`
+        // and visible to every admin, and `from`/`for` are likewise the same submitting user.
+        if ($this->isNullToAdminOnlyType()) {
             return $this->narrowUserProjection($this->from);
         }
 
@@ -124,7 +148,9 @@ class RequestResource extends JsonResource
         // generic `$this->to_type != User::class` branch below would otherwise call
         // CounsellorMiniResource(null), which resolves to `{deleted: true, ...}` and
         // misrepresents "not yet assigned to anyone" as "the guardian's account was deleted."
-        if ($this->isNullToDobChange()) {
+        // ageVerification (TT-4.11d/SCRUM-305) is always null-`to` (admin-only by design, no
+        // guardian counterpart), so it shares this exact handling.
+        if ($this->isNullToAdminOnlyType()) {
             return null;
         }
 
@@ -175,11 +201,18 @@ class RequestResource extends JsonResource
         return ['id' => $user?->id, 'fullName' => $user?->name, 'username' => $user?->username, 'isUser' => true];
     }
 
-    // TT-4.10e/SCRUM-294 security review: shared by getFrom()/getTo()/getFor() so the null-`to`
-    // dobChange narrowing can't be applied to only one of the three fields by accident.
-    private function isNullToDobChange(): bool
+    // TT-4.10e/SCRUM-294 security review (extended by TT-4.11d/SCRUM-305 for ageVerification):
+    // shared by getFrom()/getTo()/getFor() so the null-`to` narrowing can't be applied to only
+    // one of the three fields by accident. Both types are visible to EVERY admin (not just
+    // whichever one eventually responds) via RequestService::getRequests()'s admin-visibility
+    // branch, so the full UserMiniResource (gender/country/dob) would otherwise broadcast PII to
+    // every admin who merely opens their requests list.
+    private function isNullToAdminOnlyType(): bool
     {
-        return $this->type === RequestTypeEnum::dobChange->value && is_null($this->to_type);
+        return is_null($this->to_type) && in_array($this->type, [
+            RequestTypeEnum::dobChange->value,
+            RequestTypeEnum::ageVerification->value,
+        ]);
     }
 
     private function getFor()
@@ -195,14 +228,16 @@ class RequestResource extends JsonResource
         }
 
         if ($this->for_type == User::class) {
-            // TT-4.10e/SCRUM-294 security review: a null-`to` dobChange request is visible to
+            // TT-4.10e/SCRUM-294 security review (extended by TT-4.11d/SCRUM-305 for
+            // ageVerification): a null-`to` dobChange/ageVerification request is visible to
             // *every* admin in their personal requests list (RequestService::getRequests()'s
             // admin-visibility branch), not just whichever one eventually responds -- the full
             // UserMiniResource (gender/country/dob) would broadcast a minor's PII to every admin
             // who merely opens their requests list. Narrowed the same way isOrgMemberFlowUser()
             // already narrows from/to for a viewer with no established relationship to the user;
-            // `dob` specifically is redundant anyway since `priorDob` above already carries it.
-            if ($this->isNullToDobChange()) {
+            // `dob` specifically is redundant anyway since `priorDob`/`attestedDob` above already
+            // carries it.
+            if ($this->isNullToAdminOnlyType()) {
                 return $this->narrowUserProjection($this->for);
             }
 

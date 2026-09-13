@@ -59,6 +59,12 @@ const computedTypeMessage = computed(() => {
         [RequestTypeEnum.dobChange]: computedIsFrom.value
             ? `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}requested a date-of-birth change for ${partyLabel(props.request.for)}.`
             : `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}received a request to approve a date-of-birth change for ${partyLabel(props.request.for)}.`,
+        // TT-4.11d/SCRUM-305: always a self-submission (from == for), admin-only recipient (no
+        // guardian counterpart), so this never needs the "for someone else" framing dobChange's
+        // own message above does.
+        [RequestTypeEnum.ageVerification]: computedIsFrom.value
+            ? `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}submitted an age-verification statement for review.`
+            : `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}received an age-verification submission to review.`,
     }[props.request?.type]
 })
 const computedStatus = computed(() => {
@@ -105,8 +111,19 @@ const computedIsTo = computed(() => {
     if (props.request.type == RequestTypeEnum.dobChange)
         return !!props.request.dobChange?.isRespondent
 
-    // Defensive: dobChange is the only type with a genuinely null `to` today (handled above) --
-    // guards against a throw below if that ever changes for some other type.
+    // TT-4.11d/SCRUM-305: ageVerification's authorization is the simple isAdmin()-only check
+    // (no live-relationship check to duplicate/drift out of sync with, unlike dobChange's "any
+    // current guardian") -- no server-computed isRespondent flag needed, unlike dobChange above.
+    // Excludes an admin who is ALSO the submitter (computedIsFrom) from seeing themselves as the
+    // recipient -- mirrors EnsureUserCanRespondToRequestAction's own identical server-side
+    // exclusion (review finding, SCRUM-305): the whole point of this type is an independent
+    // check, which an admin approving their own submission would defeat.
+    if (props.request.type == RequestTypeEnum.ageVerification)
+        return !!usePage().props.auth.user?.isAdmin && !computedIsFrom.value
+
+    // Defensive: dobChange/ageVerification are the only types with a genuinely null `to` today
+    // (both handled above) -- guards against a throw below if that ever changes for some other
+    // type.
     if (!props.request.to) return
 
     if (props.request.to.isCounsellor)
@@ -115,13 +132,18 @@ const computedIsTo = computed(() => {
     return userId == props.request.to.id
 })
 
+// TT-4.11d/SCRUM-305: mirrors RequestResource's own isNullToAdminOnlyType() naming -- a single
+// named list a third null-`to`, admin-only type gets added to once, instead of two separate
+// array literals (here and in the template below) that could drift apart.
+const nullToAdminOnlyTypes = [RequestTypeEnum.dobChange, RequestTypeEnum.ageVerification]
+
 // SCRUM-298: collapses the exact three-way OR the template's wrapping v-if and its inner
 // v-if/v-else-if/v-if branches would otherwise have to repeat in sync -- a future edit to one
 // inner condition without updating the wrapper could silently render empty spacing with no
 // content.
 const computedShowsPartyLine = computed(() => {
     return (computedIsFrom.value && props.request.to) ||
-        (computedIsFrom.value && !props.request.to && props.request.type == RequestTypeEnum.dobChange) ||
+        (computedIsFrom.value && !props.request.to && nullToAdminOnlyTypes.includes(props.request.type)) ||
         (computedIsTo.value && props.request.from)
 })
 
@@ -205,11 +227,26 @@ async function clickedResponse(response) {
         >proposed: {{ request.dobChange?.newDob ? new Date(request.dobChange.newDob).toDateString() : '--' }} (currently: {{ request.dobChange?.priorDob ? new Date(request.dobChange.priorDob).toDateString() : '--' }})</div>
 
         <div
+            v-if="request.type == RequestTypeEnum.ageVerification"
+            class="text-xs text-gray-500 mt-2 space-y-1"
+        >
+            <div>dob attested: {{ request.ageVerification?.attestedDob ? new Date(request.ageVerification.attestedDob).toDateString() : '--' }}</div>
+            <div v-if="request.ageVerification?.attestation" class="text-gray-700 italic">"{{ request.ageVerification.attestation }}"</div>
+            <a
+                v-if="request.ageVerification?.documentUrl"
+                :href="request.ageVerification.documentUrl"
+                target="_blank"
+                rel="noopener"
+                class="inline-block text-blue-600 hover:text-blue-800 underline"
+            >view submitted document</a>
+        </div>
+
+        <div
             v-if="computedShowsPartyLine"
             class="flex flex-wrap gap-x-4 text-xs text-gray-500 mt-2"
         >
             <div v-if="computedIsFrom && request.to">to: {{ partyLabel(request.to) }}</div>
-            <div v-else-if="computedIsFrom && !request.to && request.type == RequestTypeEnum.dobChange">to: any admin</div>
+            <div v-else-if="computedIsFrom && !request.to && nullToAdminOnlyTypes.includes(request.type)">to: any admin</div>
             <div v-if="computedIsTo && request.from">from: {{ partyLabel(request.from) }}</div>
         </div>
 

@@ -7335,3 +7335,68 @@ file (`carbon_test_tmp.php`) at the repo root while reviewing -- outside its own
 findings, never modify code). It disclosed this itself in its report. The file was untracked
 (no git history), unrelated to this ticket, and not restored. Flagged to the user; no other files
 were affected.
+
+---
+
+## 2026-09-13 — SCRUM-305 (TT-4.11d): admin queue UI scope decisions
+
+**Decision 1 -- generalized `RequestResource`'s null-`to` PII narrowing, didn't build a new
+mechanism**: `ageVerification` has the exact same shape TT-4.10e/SCRUM-294 already fixed for
+`dobChange` -- always null `to`, `from`/`for` the same self-submitting user, and visible to EVERY
+admin via `RequestService::getRequests()`'s admin-visibility branch (not just whichever admin
+eventually responds). Rather than duplicate that narrowing logic for a second type, renamed the
+existing `isNullToDobChange()` to `isNullToAdminOnlyType()` and extended its `in_array` check to
+include `ageVerification` -- one shared narrowing path for both types, consistent with this
+resource's own established "share the check across getFrom/getTo/getFor so a future type can't
+repeat the asymmetry" precedent.
+
+**Decision 2 -- added the admin-visibility branch to `RequestService::getRequests()`, mirroring
+dobChange's exactly**: without it, a null-`to` `ageVerification` request would never appear in any
+admin's personal requests listing, the same gap TT-4.10e fixed for dobChange. Added as a sibling
+`orWhere` inside the existing `$user->isAdmin()` closure rather than a new branch, since the shape
+is identical.
+
+**Decision 3 -- did NOT do the type-to-handler-map extraction the architect flagged as optional**:
+this ticket's own architect note said the growing per-type dispatch chain in
+`GetRequestResourceAction` "is worth considering (not required)" for extraction into a
+type-to-handler map. Left as-is -- it's already tracked, accepted debt (SCRUM-119/120,
+`RespondToRequestAction`'s own identical dispatch-chain comment), and a broad refactor of a
+working, well-tested dispatch mechanism is out of proportion to what this ticket actually needs
+(one more resource/branch). Deferring again, consistent with "don't fix pre-existing unrelated
+debt inside an unrelated ticket" unless it's a security-severity gap (SCRUM-300's own precedent
+for when that bar IS met).
+
+**Decision 4 -- document link is a plain authenticated-route link, not an inline image/fetch**:
+`FileComponent.vue` (used elsewhere for license/avatar files) renders `file.url` directly via
+`<img :src>`, which would throw for `identity_documents` (a private disk with no public URL,
+by TT-4.11a's own design) -- so it can't be reused here. Rendered `ageVerification.documentUrl`
+(built server-side via `route('requests.documents.show', ...)`, never a raw `File::url`) as a
+plain `<a target="_blank">` instead -- a full top-level browser navigation carries the session
+cookie Sanctum's stateful auth needs, is simpler than a fetch-and-blob-URL approach, and matches
+the ticket's own literal ask ("a link to the uploaded document").
+
+**Decision 5 -- no `isRespondent` field added to the new `ageVerification` resource block**:
+unlike `dobChange`, whose authorization is a non-trivial "any current guardian, re-verified live"
+check the frontend has no way to derive itself (hence TT-4.10f's own `isRespondent` field),
+`ageVerification`'s authorization is the simple, already-established `isAdmin()`-only check --
+the frontend derives this itself from `usePage().props.auth.user?.isAdmin`, the same way every
+other simple-authorization request type in `RequestBadge.vue` already does, avoiding an
+unnecessary field for a case with nothing to duplicate/drift out of sync.
+
+**Post-review fix (reviewer, one required change)**: `reviewer` found that this ticket's own new
+queue UI, for the first time, gives an admin who happens to also be an `ageVerification` request's
+own submitter a working, reachable way to approve their own submission -- defeating the type's
+whole purpose (an INDEPENDENT check on a self-attestation). Fixed by excluding self-response for
+this type specifically, both server-side (`EnsureUserCanRespondToRequestAction`, a new
+`$isSelfAgeVerification` check gating the existing unconditional `isAdmin()` clause) and
+client-side (`RequestBadge.vue`'s `computedIsTo`, so the accept/reject buttons don't even render
+for a self-submission, rather than rendering and then 422ing).
+
+**Scope note, not fixed here**: the identical self-response possibility (an admin who is also the
+request's own `from`/`for`) also exists today for `dobChange` and `refund`'s own "any admin" null-
+`to` fallback -- pre-existing, unrelated to this ticket's own new code, and each of those types'
+own admin-bypass is a deliberate stand-in for "no guardian/specific recipient exists" rather than
+this type's "an independent check must not be self-administered" rationale, so the fix isn't
+necessarily identical for those types either. Left as-is, consistent with the "fix only what this
+ticket's own new code newly exposes, file pre-existing/broader gaps separately" precedent
+(SCRUM-300). Worth a follow-up ticket if this is judged worth closing more broadly.

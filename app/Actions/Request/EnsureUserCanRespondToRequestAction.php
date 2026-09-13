@@ -45,7 +45,18 @@ class EnsureUserCanRespondToRequestAction extends Action
         // unanimity, checked live" precedent), not just the one `to` happens to name.
         $isDobChange = $request->type === RequestTypeEnum::dobChange->value;
 
-        return $user->isAdmin() ||
+        // TT-4.11d/SCRUM-305 review finding: an admin who is ALSO the request's own submitter
+        // must not be able to approve their own ageVerification submission -- the entire point of
+        // this type is an INDEPENDENT check on a user's self-attestation, unlike dobChange's
+        // "any admin" fallback (a deliberate stand-in for a missing guardian, not meant to gate a
+        // self-check the same way). Scoped to this type only -- the identical, pre-existing
+        // self-response possibility for dobChange/refund (an admin who is also the requester) is
+        // out of this ticket's scope; see decision log.
+        $isSelfAgeVerification = $request->type === RequestTypeEnum::ageVerification->value
+            && $request->for instanceof User
+            && $request->for->is($user);
+
+        return ($user->isAdmin() && ! $isSelfAgeVerification) ||
             ($isDobChange && $request->for instanceof User && $user->isGuardianOf($request->for)) ||
             (! $isDobChange && $respondent && $respondent->is($user)) ||
             // TT-7.7a/SCRUM-249 (security-engineer finding): `to` is null for a refund request

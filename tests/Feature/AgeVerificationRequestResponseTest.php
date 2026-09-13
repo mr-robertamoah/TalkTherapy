@@ -68,6 +68,43 @@ test('a guardian of the submitting user still cannot respond to their ageVerific
     expect($user->fresh()->dob_verified_at)->toBeNull();
 });
 
+// TT-4.11d/SCRUM-305 review finding: unlike dobChange's "any admin" fallback (a deliberate
+// stand-in for a missing guardian), ageVerification's whole purpose is an INDEPENDENT check on a
+// user's self-attestation -- an admin who happens to also be the submitter must not be able to
+// approve their own submission, or the feature is defeated for that account.
+test('an admin who is also the submitter cannot respond to their own ageVerification request', function () {
+    $adminUser = User::factory()->has(Administrator::factory())->create();
+    $request = CreateRequestAction::new()->execute(CreateRequestDTO::new()->fromArray([
+        'from' => $adminUser, 'to' => null, 'for' => $adminUser,
+        'type' => RequestTypeEnum::ageVerification->value,
+        'data' => ['attestation' => 'I confirm my dob is accurate.'],
+    ]));
+
+    $response = $this->actingAs($adminUser)->postJson(route('requests.respond', ['requestId' => $request->id]), [
+        'response' => 'accepted',
+    ]);
+
+    $response->assertStatus(422);
+    expect($adminUser->fresh()->dob_verified_at)->toBeNull();
+});
+
+test('a DIFFERENT admin can still respond to that same admin\'s ageVerification request', function () {
+    $adminUser = User::factory()->has(Administrator::factory())->create();
+    $otherAdmin = User::factory()->has(Administrator::factory())->create();
+    $request = CreateRequestAction::new()->execute(CreateRequestDTO::new()->fromArray([
+        'from' => $adminUser, 'to' => null, 'for' => $adminUser,
+        'type' => RequestTypeEnum::ageVerification->value,
+        'data' => ['attestation' => 'I confirm my dob is accurate.'],
+    ]));
+
+    $response = $this->actingAs($otherAdmin)->postJson(route('requests.respond', ['requestId' => $request->id]), [
+        'response' => 'accepted',
+    ]);
+
+    $response->assertSuccessful();
+    expect($adminUser->fresh()->dob_verified_at)->not->toBeNull();
+});
+
 test('the submitting user themselves cannot respond to their own ageVerification request', function () {
     $user = User::factory()->create();
     $request = CreateRequestAction::new()->execute(CreateRequestDTO::new()->fromArray([
