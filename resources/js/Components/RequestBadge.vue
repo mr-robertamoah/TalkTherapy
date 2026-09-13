@@ -6,7 +6,6 @@ import DangerButton from './DangerButton.vue';
 import useAlert from '@/Composables/useAlert';
 import Alert from './Alert.vue';
 import FormLoader from './FormLoader.vue';
-import StyledLink from './StyledLink.vue';
 import useEnums from '@/Composables/useEnums';
 
 
@@ -23,7 +22,6 @@ const emits = defineEmits(['onData', 'alert'])
 const { RequestStatusEnum, RequestTypeEnum } = useEnums()
 const userId = usePage().props.auth.user?.id;
 
-const showActions = ref(false)
 const responding = ref(false)
 const status = ref(null)
 
@@ -70,11 +68,21 @@ const computedStatus = computed(() => {
         [RequestStatusEnum.pending]: computedIsFrom.value ? 'Your request is pending.' : 'You have not responded to this request.',
     }[status.value]
 })
+// SCRUM-298: softer, calmer chip colors -- the previous bg-*-300/text-*-800 pairing was
+// jarringly saturated next to the rest of the app's muted palette (e.g. PaymentRequiredBanner's
+// bg-blue-50/border-blue-200).
 const computedStatusClasses = computed(() => {
     return {
-        [RequestStatusEnum.accepted]: 'text-green-800 bg-green-300',
-        [RequestStatusEnum.rejected]: 'text-red-800 bg-red-300',
-        [RequestStatusEnum.pending]: 'text-yellow-800 bg-yellow-300',
+        [RequestStatusEnum.accepted]: 'text-green-700 bg-green-50 border border-green-200',
+        [RequestStatusEnum.rejected]: 'text-red-700 bg-red-50 border border-red-200',
+        [RequestStatusEnum.pending]: 'text-amber-700 bg-amber-50 border border-amber-200',
+    }[props.request?.status]
+})
+const computedStatusLabel = computed(() => {
+    return {
+        [RequestStatusEnum.accepted]: 'Accepted',
+        [RequestStatusEnum.rejected]: 'Rejected',
+        [RequestStatusEnum.pending]: 'Pending',
     }[props.request?.status]
 })
 const computedIsFrom = computed(() => {
@@ -100,6 +108,16 @@ const computedIsTo = computed(() => {
         return userId == props.request.to.userId
 
     return userId == props.request.to.id
+})
+
+// SCRUM-298: collapses the exact three-way OR the template's wrapping v-if and its inner
+// v-if/v-else-if/v-if branches would otherwise have to repeat in sync -- a future edit to one
+// inner condition without updating the wrapper could silently render empty spacing with no
+// content.
+const computedShowsPartyLine = computed(() => {
+    return (computedIsFrom.value && props.request.to) ||
+        (computedIsFrom.value && !props.request.to && props.request.type == RequestTypeEnum.dobChange) ||
+        (computedIsTo.value && props.request.from)
 })
 
 // SCRUM-168: the from/to party can also be an Organization (org invite/application/compensation
@@ -161,41 +179,41 @@ async function clickedResponse(response) {
 </script>
 
 <template>
-    <div v-bind="$attrs" class="bg-stone-300 rounded w-full max-w-[400px] select-none p-2 relative">
+    <div v-bind="$attrs" class="bg-white shadow-sm border border-gray-200 rounded-lg w-full max-w-[440px] p-4 relative">
         <FormLoader v-if="responding" class="relative" :show="responding" :text="'responding to request'"/>
-        <div class="text-gray-600 text-sm tracking-wide">{{ computedTypeMessage }}<span
-                v-if="[RequestTypeEnum.discussion, RequestTypeEnum.therapy].includes(request.type)"
-                class="ml-2 text-xs text-blue-600 cursor-pointer"
-                @click="visitTherapy"
-            >view therapy</span></div>
+
+        <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0 text-sm text-gray-900 leading-snug">{{ computedTypeMessage }}<span
+                    v-if="[RequestTypeEnum.discussion, RequestTypeEnum.therapy].includes(request.type)"
+                    class="ml-1 text-xs text-blue-600 hover:text-blue-800 cursor-pointer whitespace-nowrap"
+                    @click="visitTherapy"
+                >view therapy</span></div>
+            <span
+                :class="computedStatusClasses"
+                class="shrink-0 px-2.5 py-1 rounded-full text-xs font-medium"
+            >{{ computedStatusLabel }}</span>
+        </div>
+
         <div
             v-if="request.type == RequestTypeEnum.dobChange"
-            class="text-xs text-gray-600 mt-1"
+            class="text-xs text-gray-500 mt-2"
         >proposed: {{ request.dobChange?.newDob ? new Date(request.dobChange.newDob).toDateString() : '--' }} (currently: {{ request.dobChange?.priorDob ? new Date(request.dobChange.priorDob).toDateString() : '--' }})</div>
-        <div class="flex justify-end items-center w-full text-xs my-2">
-            <div v-if="computedIsFrom && request.to" class="flex text-gray-600">to: {{ partyLabel(request.to) }}</div>
-            <div v-else-if="computedIsFrom && !request.to && request.type == RequestTypeEnum.dobChange" class="flex text-gray-600">to: any admin</div>
-            <div v-if="computedIsTo && request.from" class="flex text-gray-600">from: {{ partyLabel(request.from) }}</div>
-            <div 
-                @dblclick="() => {
-                    if (computedIsTo)
-                        showActions = !showActions
-                }"
-                :title="computedIsTo && request.status == 'PENDING' ? 'double click to show/hide actions' : ''"
-                :class="computedStatusClasses"
-                class="text-center p-2 rounded w-fit ml-auto cursor-pointer"
-            >{{ computedStatus }}</div>
+
+        <div
+            v-if="computedShowsPartyLine"
+            class="flex flex-wrap gap-x-4 text-xs text-gray-500 mt-2"
+        >
+            <div v-if="computedIsFrom && request.to">to: {{ partyLabel(request.to) }}</div>
+            <div v-else-if="computedIsFrom && !request.to && request.type == RequestTypeEnum.dobChange">to: any admin</div>
+            <div v-if="computedIsTo && request.from">from: {{ partyLabel(request.from) }}</div>
         </div>
-            
-        <template v-if="showActions">
-            <div class="flex justify-end items-center space-x-2 p-2 overflow-hidden overflow-x-auto">
-                    <StyledLink class="shrink-0" v-if="request.type == RequestTypeEnum.therapy" :href="route('therapies.get', { therapyId: request.for.id })" :text="'visit therapy page'"/>
-                    <template v-if="request.status == RequestStatusEnum.pending && computedIsTo">
-                        <PrimaryButton :disabled="responding" @click="() => clickedResponse('accepted')" class="shrink-0">accept</PrimaryButton>
-                        <DangerButton :disabled="responding" @click="() => clickedResponse('rejected')" class="shrink-0">reject</DangerButton>
-                    </template>
-            </div>
-        </template>
+
+        <div class="text-xs text-gray-500 mt-2">{{ computedStatus }}</div>
+
+        <div v-if="request.status == RequestStatusEnum.pending && computedIsTo" class="flex justify-end gap-2 mt-3">
+            <PrimaryButton :disabled="responding" @click="() => clickedResponse('accepted')">accept</PrimaryButton>
+            <DangerButton :disabled="responding" @click="() => clickedResponse('rejected')">reject</DangerButton>
+        </div>
     </div>
 
     <Alert

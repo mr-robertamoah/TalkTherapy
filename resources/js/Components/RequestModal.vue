@@ -153,80 +153,78 @@ function removeFromPendingRequests(request) {
         :show="show"
         @close="closeModal"
     >
-        <div class="p-4">
-            <div class="w-full mt-2 mb-4">
-                <div
-                    class="w-fit mx-auto text-2xl font-bold bg-gradient-to-r from-gray-800 to-gray-500 bg-clip-text text-transparent mb-2"
-                >User Requests</div>
-                <hr>
+        <div class="p-6">
+            <div class="w-full mb-6">
+                <div class="text-center">
+                    <h2 class="text-2xl font-bold text-gray-800 mb-2">User Requests</h2>
+                    <div class="w-16 h-1 bg-blue-600 mx-auto rounded-full"></div>
+                </div>
             </div>
 
-            <div class="p-2">
-                <div class="flex my-2 justify-between items-center mx-auto w-[90%]">
-                    <div
-                        @click="() => {
-                            requestStatus = RequestStatus.pending
-                        }"
-                        class="min-w-[25%] mx-auto text-center p-2 cursor-pointer rounded transition duration-75"
-                        :class="[requestStatus == RequestStatus.pending ? ' hover:bg-stone-200 hover:text-stone-600 bg-stone-600 text-stone-200' : 'bg-gray-200 text-gray-600 hover:bg-gray-600 hover:text-gray-200']"
-                    >Pending</div>
-                    <div
-                        @click="() => {
-                            requestStatus = RequestStatus.accepted
-                        }"
-                        class="min-w-[25%] mx-auto text-center p-2 cursor-pointer rounded transition duration-75"
-                        :class="[requestStatus == RequestStatus.accepted ? ' hover:bg-stone-200 hover:text-stone-600 bg-stone-600 text-stone-200' : 'bg-gray-200 text-gray-600 hover:bg-gray-600 hover:text-gray-200']"
-                    >Accepted</div>
-                    <div
-                        @click="() => {
-                            requestStatus = RequestStatus.rejected
-                        }"
-                        class="min-w-[25%] mx-auto text-center p-2 cursor-pointer rounded transition duration-75"
-                        :class="[requestStatus == RequestStatus.rejected ? ' hover:bg-stone-200 hover:text-stone-600 bg-stone-600 text-stone-200' : 'bg-gray-200 text-gray-600 hover:bg-gray-600 hover:text-gray-200']"
-                    >Rejected</div>
-                </div>
-                <hr class="mt-4">
-                <div class="h-[65vh] overflow-hidden overflow-y-auto p-2 flex justify-center items-center flex-col">
-                    <div v-if="loading" class="p-2 text-center lowercase my-2 text-green-300 transition duration-100 rounded mx-auto w-[90%] bg-green-700">getting {{ requestStatus }} ...</div>
-                    <div v-if="hasRequests" class="h-full w-full flex flex-col items-center">
-                        <template v-if="requestStatus == RequestStatus.pending">
-                            <RequestBadge
-                                class="mb-2"
-                                v-for="request in pendingRequests"
-                                :key="request.id"
-                                :request="request"
-                                @on-data="(req) => {
-                                    removeFromPendingRequests(req)
-                                }"
-                                @alert="(alertData) => {
-                                    setAlert(alertData)
-                                }"
-                            />
-                        </template>
-                        <template v-if="requestStatus == RequestStatus.rejected">
-                            <RequestBadge
-                                class="mb-2"
-                                v-for="request in rejectedRequests"
-                                :key="request.id"
-                                :request="request"
-                            />
-                        </template>
-                        <template v-if="requestStatus == RequestStatus.accepted">
-                            <RequestBadge
-                                class="mb-2"
-                                v-for="request in acceptedRequests"
-                                :key="request.id"
-                                :request="request"
-                            />
-                        </template>
-                    </div>
-                    <div v-else-if="!loading" class="flex justify-center items-center h-full text-gray-600 text-sm">
-                        <div class="lowercase">no {{ requestStatus }} requests</div>
-                    </div>
+            <div class="flex justify-center gap-1 mb-4 bg-gray-100 rounded-lg p-1 w-fit mx-auto">
+                <button
+                    type="button"
+                    @click="() => requestStatus = RequestStatus.pending"
+                    class="min-w-[6rem] text-center px-4 py-1.5 text-sm rounded-md transition duration-75"
+                    :class="requestStatus == RequestStatus.pending ? 'bg-gray-800 text-white' : 'text-gray-600 hover:bg-gray-200'"
+                >Pending</button>
+                <button
+                    type="button"
+                    @click="() => requestStatus = RequestStatus.accepted"
+                    class="min-w-[6rem] text-center px-4 py-1.5 text-sm rounded-md transition duration-75"
+                    :class="requestStatus == RequestStatus.accepted ? 'bg-gray-800 text-white' : 'text-gray-600 hover:bg-gray-200'"
+                >Accepted</button>
+                <button
+                    type="button"
+                    @click="() => requestStatus = RequestStatus.rejected"
+                    class="min-w-[6rem] text-center px-4 py-1.5 text-sm rounded-md transition duration-75"
+                    :class="requestStatus == RequestStatus.rejected ? 'bg-gray-800 text-white' : 'text-gray-600 hover:bg-gray-200'"
+                >Rejected</button>
+            </div>
 
-                    <div v-if="pages[requestStatus] && !loading" @click="debouncedGet" title="get more requests" class="mt-6 mb-4 p-4 flex justify-center items-center h-full text-gray-600 text-sm cursor-pointer">
-                        <div class="text-gray-600 text-lg cursor-pointer p-2">...</div>
+            <div class="min-h-[10rem] max-h-[60vh] overflow-hidden overflow-y-auto p-4 bg-gray-50 rounded-lg">
+                <div v-if="loading" class="p-3 text-center text-sm text-blue-700 bg-blue-50 border border-blue-200 rounded-lg mb-4">Loading {{ requestStatus.toLowerCase() }} requests...</div>
+                <div v-if="hasRequests" class="space-y-3">
+                    <template v-if="requestStatus == RequestStatus.pending">
+                        <RequestBadge
+                            v-for="request in pendingRequests"
+                            :key="request.id"
+                            :request="request"
+                            class="mx-auto"
+                            @on-data="(req) => {
+                                removeFromPendingRequests(req)
+                            }"
+                            @alert="(alertData) => {
+                                setAlert(alertData)
+                            }"
+                        />
+                    </template>
+                    <template v-if="requestStatus == RequestStatus.rejected">
+                        <RequestBadge
+                            v-for="request in rejectedRequests"
+                            :key="request.id"
+                            :request="request"
+                            class="mx-auto"
+                        />
+                    </template>
+                    <template v-if="requestStatus == RequestStatus.accepted">
+                        <RequestBadge
+                            v-for="request in acceptedRequests"
+                            :key="request.id"
+                            :request="request"
+                            class="mx-auto"
+                        />
+                    </template>
+                </div>
+                <div v-else-if="!loading" class="flex justify-center items-center h-24 text-gray-500 text-sm">
+                    <div class="text-center">
+                        <div class="text-4xl mb-2">📭</div>
+                        <div>No {{ requestStatus.toLowerCase() }} requests</div>
                     </div>
+                </div>
+
+                <div v-if="pages[requestStatus] && !loading" @click="debouncedGet" title="get more requests" class="mt-4 flex justify-center text-gray-500 text-sm cursor-pointer hover:text-gray-700">
+                    <div class="text-lg">...</div>
                 </div>
             </div>
         </div>
