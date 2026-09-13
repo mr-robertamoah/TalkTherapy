@@ -149,6 +149,10 @@ class DatabaseSeeder extends Seeder
         // seeded way to try the "no guardian exists -> any admin may respond" path without
         // hand-building a user and a Request via tinker first.
         $this->createDobChangeNoGuardianDemoData();
+
+        // TT-4.10f/SCRUM-295: nor was there a seeded way to try "any one of a ward's multiple
+        // guardians may respond, not just the one `to` names" without hand-building it first.
+        $this->createDobChangeMultiGuardianDemoData();
     }
 
     private function createLanguages($user)
@@ -1426,6 +1430,55 @@ class DatabaseSeeder extends Seeder
         ];
         $request->from()->associate($minor);
         $request->for()->associate($minor);
+        $request->save();
+    }
+
+    // TT-4.10f/SCRUM-295: exercises "any one of a ward's multiple guardians may respond," not just
+    // the one the request's `to` happens to be fixed to at creation -- log in as the SECOND
+    // guardian to confirm they can see and act on a request addressed to the first.
+    private function createDobChangeMultiGuardianDemoData(): void
+    {
+        $minor = User::factory()->create([
+            'firstName' => 'DobChange',
+            'lastName' => 'DemoMultiGuardian',
+            'email' => 'dobchange.demo.multi.guardian@example.com',
+            'username' => 'dobchange_demo_multi_guardian',
+            'password' => Hash::make('password'),
+            'email_verified_at' => now(),
+            'dob' => now()->subYears(15)->toDateString(),
+        ]);
+
+        $firstGuardian = User::factory()->create([
+            'firstName' => 'DobChange',
+            'lastName' => 'DemoFirstGuardian',
+            'email' => 'dobchange.demo.first.guardian@example.com',
+            'username' => 'dobchange_demo_first_guardian',
+            'password' => Hash::make('password'),
+            'email_verified_at' => now(),
+        ]);
+
+        $secondGuardian = User::factory()->create([
+            'firstName' => 'DobChange',
+            'lastName' => 'DemoSecondGuardian',
+            'email' => 'dobchange.demo.second.guardian@example.com',
+            'username' => 'dobchange_demo_second_guardian',
+            'password' => Hash::make('password'),
+            'email_verified_at' => now(),
+        ]);
+
+        Guardianship::query()->create(['guardian_id' => $firstGuardian->id, 'ward_id' => $minor->id]);
+        Guardianship::query()->create(['guardian_id' => $secondGuardian->id, 'ward_id' => $minor->id]);
+
+        $request = new Request;
+        $request->type = RequestTypeEnum::dobChange->value;
+        $request->status = RequestStatusEnum::pending->value;
+        $request->data = [
+            'newDob' => now()->subYears(30)->toDateString(),
+            'priorDob' => $minor->dob->toDateString(),
+        ];
+        $request->from()->associate($minor);
+        $request->for()->associate($minor);
+        $request->to()->associate($firstGuardian);
         $request->save();
     }
 

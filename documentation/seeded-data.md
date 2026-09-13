@@ -252,6 +252,16 @@ dobChange request, so this path is reachable without hand-building data through 
 |---|---|---|
 | `dobchange_demo_no_guardian` | `password` | Minor (`dob` set to 15 years ago) with no Guardianship record and an already-PENDING dobChange request (`data.newDob` set to 30 years ago). Log in as the super admin (`mr_robertamoah`) and open Requests to see and act on it immediately. |
 
+**Multi-guardian path** (TT-4.10f/SCRUM-295): a minor with TWO active guardians and an
+already-pending dobChange request addressed to only the first, so "any one of a ward's guardians
+may respond" is reachable without hand-building data through `tinker` first.
+
+| Username | Password | Purpose |
+|---|---|---|
+| `dobchange_demo_multi_guardian` | `password` | The minor (`dob` set to 15 years ago), with an already-PENDING dobChange request addressed to `dobchange_demo_first_guardian`. |
+| `dobchange_demo_first_guardian` | `password` | The guardian the request is addressed to (`to`) — can see and act on it via the normal `whereTo` match. |
+| `dobchange_demo_second_guardian` | `password` | A second, equally-valid guardian of the same minor, NOT named in the request's `to` — log in as this account and open Requests to confirm the request is still visible and actionable. |
+
 ## Testing the registration/verification flow
 
 The 11 seeded accounts above all skip email verification. To test registration or the
