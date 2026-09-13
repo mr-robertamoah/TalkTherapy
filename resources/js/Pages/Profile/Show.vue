@@ -26,6 +26,10 @@ const props = defineProps({
     counsellorCreationStep: {
         type: Number,
     },
+    dobChangePendingApproval: {
+        type: Boolean,
+        default: false,
+    },
 });
 
 const step = ref(0)
@@ -94,7 +98,10 @@ function changeStep(value) {
                 
                 <div id="profile-info-id" class="relative"></div>
                 <div class="p-8 bg-white shadow-xl border border-gray-100 rounded-xl">
-                    <UpdateProfileInformationForm class="max-w-xl" />
+                    <UpdateProfileInformationForm
+                        class="max-w-xl"
+                        :dob-change-pending-approval="dobChangePendingApproval"
+                    />
                 </div>
                 
                 <div

@@ -79,6 +79,21 @@ class RequestService extends Service
             });
         });
 
+        // TT-4.10e/SCRUM-294: a null-`to` dobChange request ("any admin may respond," mirroring
+        // refund's own null-`to` shape) would otherwise never appear in ANY user's personal
+        // requests listing above -- unlike refund, which surfaces its own null-`to` case via a
+        // completely separate admin-only page (AdminRefundRequestController/RefundRequests.vue),
+        // this ticket's own scope explicitly asks to reuse this generic list/modal UI rather than
+        // build a new page, so this additive branch surfaces it to any admin here instead.
+        $query->when($user->isAdmin(), function ($query) use ($status) {
+            $query->orWhere(function ($query) use ($status) {
+                $query->where('type', RequestTypeEnum::dobChange->value)->whereNull('to_id');
+                if ($status) {
+                    $query->where('status', $status);
+                }
+            });
+        });
+
         // Not the actual enforcement -- SQL AND-binds-tighter-than-OR precedence means this only
         // attaches to the last orWhere'd branch above. Each branch already applies its own
         // internal `if ($status)` filter (required, not redundant); this is just a no-op safety

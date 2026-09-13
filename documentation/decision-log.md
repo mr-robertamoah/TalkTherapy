@@ -6885,3 +6885,71 @@ transaction (mirroring `RespondToGuardianshipRequestAction`'s own `$created` fla
 identical class of problem, SCRUM-80/91) and gating both notify() calls on it. Verified by
 temporarily reverting the fix and confirming the new regression test failed as expected, then
 restoring it.
+
+## 2026-09-13 — SCRUM-294 (TT-4.10e): frontend reuse, and a discovered gap
+
+**Refund's own null-`to` case does NOT actually go through the generic personal Requests
+list/modal** -- despite the ticket text's own premise ("reuse the existing generic UI already
+used for... refund requests"), refund's null-`to` ("any admin") case is surfaced via a completely
+separate, dedicated admin-only page (`AdminRefundRequestController`/`RefundRequests.vue`), never
+`RequestModal.vue`/`RequestBadge.vue` -- `RequestService::getRequests()`'s own query has no branch
+that would ever match a null `to_id` for any viewer, admin or not. Confirmed by reading the
+query directly, not assumed. Rather than build a second, equally-separate admin page for
+dobChange (a real option, and the literal precedent), added a small, targeted branch to
+`getRequests()` instead -- `$user->isAdmin()` OR-branch matching a null-`to` `dobChange` row --
+so the null-`to` case reaches the SAME generic modal the ticket asked to reuse, consistent with
+its explicit "do not build a new one" instruction. The guardian-addressed case already worked via
+the existing `whereTo($user)` branch with no changes needed.
+
+**Discovered during manual Playwright QA, not from the ticket text**: `RequestResource` (the
+resource `getRequests()`'s list endpoint actually returns -- a DIFFERENT class from
+`DobChangeRequestResource`, which only serves the accept/reject endpoint's response) had no idea
+about `dobChange` at all. Its `getTo()` would have resolved a null `to` via
+`CounsellorMiniResource(null)` -> `{deleted: true, ...}`, misrepresenting "not yet assigned to
+anyone" as "the guardian's account was deleted" (the same class of bug `DobChangeRequestResource`
+was written to avoid, in the OTHER resource); and `newDob`/`priorDob` were never included at all,
+so a guardian saw "Invalid Date" in the request badge instead of the proposed change. Fixed by
+adding a dobChange-specific null-`to` branch to `getTo()` and a whitelisted `dobChange: {newDob,
+priorDob}` field to `toArray()`, mirroring the existing `proposal` field's own "explicitly
+whitelisted, not a raw spread of `data`" precedent for `sessionScheduleProposal`. Caught before
+committing by actually clicking through the golden path in a real browser (as the ticket's own
+"Playwright-verified golden path" requirement asks), not just by unit-testing the two resources
+in isolation -- a reminder that this codebase's dual-resource-per-type convention (one for the
+list, one for the respond response) means a new type needs BOTH updated, and testing only one in
+isolation would have shipped this gap invisibly.
+
+**Security review finding, fixed in this same diff**: the admin-visibility branch above means a
+null-`to` dobChange request appears in *every* admin's personal requests list, not just whichever
+admin eventually opens and responds to it -- unlike a guardian, who only ever sees the one request
+addressed to them. `RequestResource::getFor()` was returning the full `UserMiniResource` for the
+minor (`gender`/`country`/`dob`, on top of identity fields) to every one of those admins merely by
+them opening their own requests list, which is broader exposure than any admin needs just to see
+a pending item exists. This is the same class of problem `isOrgMemberFlowUser()` already exists to
+solve (narrowing PII for a viewer with no established relationship to the user) -- narrowed
+`getFor()` the same way for this case (`narrowUserProjection`: id/fullName/username only), scoped
+specifically to a null-`to` dobChange row so a guardian's own to-scoped view (who already has an
+established guardianship relationship with the minor) is unaffected. `dob` specifically was
+redundant to drop anyway since the sibling `dobChange.priorDob` field already carries it.
+`DobChangeRequestResource` (the accept/reject response payload, not a list) was left unnarrowed --
+that endpoint returns only the single request whichever admin already committed to acting on, not
+a broadcast to every admin, so the "visible before anyone has earned it" concern doesn't apply
+there the same way.
+
+Also tightened, per code review: `RequestBadge.vue`'s `computedIsTo` originally granted
+"recipient" status to any admin for *any* request type with a null `to`, not just `dobChange` --
+harmless today (no other type with a null `to` reaches this generic modal yet: `refund` has its
+own separate admin page, and `administrator` has no creation path), but scoped it explicitly to
+`dobChange` to match how the two backend fixes above are scoped, rather than relying on that
+being true forever.
+
+**Second security-review pass caught the fix was incomplete**: narrowing `getFor()` alone still
+left `getFrom()` returning the full `UserMiniResource` (gender/country/dob) for the same null-`to`
+dobChange row. This mattered concretely because the common case -- a ward editing their own dob via
+`ProfileController::update()` -- sets `from = for` = that same ward (`EnsureDobChangeIsAllowedAction`
+is called with `actor == user` there), so the exact PII the first narrowing pass closed off through
+`for` was still reachable through the sibling `from` field for every admin. Factored the shared
+condition into a private `isNullToDobChange()` helper, reused by `getFrom()`/`getTo()`/`getFor()`,
+and narrowed `getFrom()` the same way -- specifically so this three-field asymmetry can't silently
+reappear if a future similar request type is added and only some of the three fields get updated.
+Added a matching regression test asserting `from` is narrowed for the self-service (from == for)
+case, mirroring the existing `for`-narrowing test.

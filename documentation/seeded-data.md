@@ -234,6 +234,24 @@ with an immediately in-progress online session, deliberately left WITHOUT a gran
 | `video_consent_demo_guardian` | `password` | Guardian of the minor above. Log in, open the therapy's "video consent" tab to approve/revoke consent and view the audit trail. |
 | `video_consent_demo_counsellor` | `password` | Dr. VideoConsent DemoCounsellor — the assigned counsellor, who can also switch the consent mode (PER_THERAPY/PER_SESSION) from the same tab, but cannot approve/revoke consent itself. |
 
+## Dob-change approval (SCRUM-294, TT-4.10e)
+
+A minor's boundary-crossing dob edit is deferred to a `dobChange`-type Request needing approval,
+surfaced through the existing generic Requests list/modal (the same one used for guardianship,
+counsellor-verification, etc.) rather than a new dedicated UI.
+
+**Guardian-addressed path**: reuses `video_consent_demo_minor` / `video_consent_demo_guardian`
+above (the minor already has an active guardian) — no separate seed needed. Log in as the minor,
+edit dob on Profile → Update, confirm the pending-approval banner and unchanged displayed dob; log
+in as the guardian, open Requests, and accept/reject.
+
+**No-guardian / any-admin path**: a minor with no guardian at all and an already-pending null-`to`
+dobChange request, so this path is reachable without hand-building data through `tinker` first.
+
+| Username | Password | Purpose |
+|---|---|---|
+| `dobchange_demo_no_guardian` | `password` | Minor (`dob` set to 15 years ago) with no Guardianship record and an already-PENDING dobChange request (`data.newDob` set to 30 years ago). Log in as the super admin (`mr_robertamoah`) and open Requests to see and act on it immediately. |
+
 ## Testing the registration/verification flow
 
 The 11 seeded accounts above all skip email verification. To test registration or the

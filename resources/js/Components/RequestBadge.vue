@@ -54,6 +54,13 @@ const computedTypeMessage = computed(() => {
         [RequestTypeEnum.organizationMemberInvite]: computedIsFrom.value ? `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}invited a member to join your organization.` : `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}been invited to join an organization as a member.`,
         [RequestTypeEnum.organizationMemberApplication]: computedIsFrom.value ? `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}applied to join an organization as a member.` : `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}received an application to join your organization as a member.`,
         [RequestTypeEnum.organizationCounsellorCompensationChange]: 'A compensation negotiation for an organization affiliation is in progress.',
+        // TT-4.10e/SCRUM-294: `for` is the User whose dob is changing -- may or may not be the
+        // same person as `from` (an admin can initiate this on someone else's behalf), so this
+        // deliberately names `for` explicitly rather than assuming "your own" the way most other
+        // types above do.
+        [RequestTypeEnum.dobChange]: computedIsFrom.value
+            ? `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}requested a date-of-birth change for ${partyLabel(props.request.for)}.`
+            : `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}received a request to approve a date-of-birth change for ${partyLabel(props.request.for)}.`,
     }[props.request?.type]
 })
 const computedStatus = computed(() => {
@@ -80,6 +87,14 @@ const computedIsFrom = computed(() => {
 })
 const computedIsTo = computed(() => {
     if (!props.request.from) return
+
+    // dobChange's own null-`to` shape means "any admin may respond" (mirrors refund's identical
+    // convention, though refund never reaches this generic badge) -- treat an admin viewer as
+    // the recipient in that case. Scoped to dobChange specifically (not any null-`to` type) since
+    // `administrator` also has a documented-but-currently-unused null `to` and shouldn't silently
+    // inherit this behavior if it ever gains a creation path.
+    if (!props.request.to)
+        return props.request.type === RequestTypeEnum.dobChange && !!usePage().props.auth.user?.isAdmin
 
     if (props.request.to.isCounsellor)
         return userId == props.request.to.userId
@@ -148,13 +163,18 @@ async function clickedResponse(response) {
 <template>
     <div v-bind="$attrs" class="bg-stone-300 rounded w-full max-w-[400px] select-none p-2 relative">
         <FormLoader v-if="responding" class="relative" :show="responding" :text="'responding to request'"/>
-        <div class="text-gray-600 text-sm tracking-wide">{{ computedTypeMessage }}<span 
+        <div class="text-gray-600 text-sm tracking-wide">{{ computedTypeMessage }}<span
                 v-if="[RequestTypeEnum.discussion, RequestTypeEnum.therapy].includes(request.type)"
                 class="ml-2 text-xs text-blue-600 cursor-pointer"
                 @click="visitTherapy"
             >view therapy</span></div>
+        <div
+            v-if="request.type == RequestTypeEnum.dobChange"
+            class="text-xs text-gray-600 mt-1"
+        >proposed: {{ request.dobChange?.newDob ? new Date(request.dobChange.newDob).toDateString() : '--' }} (currently: {{ request.dobChange?.priorDob ? new Date(request.dobChange.priorDob).toDateString() : '--' }})</div>
         <div class="flex justify-end items-center w-full text-xs my-2">
             <div v-if="computedIsFrom && request.to" class="flex text-gray-600">to: {{ partyLabel(request.to) }}</div>
+            <div v-else-if="computedIsFrom && !request.to && request.type == RequestTypeEnum.dobChange" class="flex text-gray-600">to: any admin</div>
             <div v-if="computedIsTo && request.from" class="flex text-gray-600">from: {{ partyLabel(request.from) }}</div>
             <div 
                 @dblclick="() => {

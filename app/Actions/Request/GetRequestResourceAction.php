@@ -5,6 +5,7 @@ namespace App\Actions\Request;
 use App\Actions\Action;
 use App\Enums\RequestTypeEnum;
 use App\Http\Resources\AdminCounsellorVerificationRequestResource;
+use App\Http\Resources\DobChangeRequestResource;
 use App\Http\Resources\OrganizationRequestResource;
 use App\Http\Resources\RefundRequestResource;
 use App\Http\Resources\RequestResource;
@@ -18,6 +19,12 @@ class GetRequestResourceAction extends Action
         // OrganizationRequestResource below knows how to resolve that.
         if ($request->type === RequestTypeEnum::refund->value) {
             return new RefundRequestResource($request);
+        }
+
+        // TT-4.10e/SCRUM-294: `to` can be null (any admin), which neither RequestResource nor
+        // AdminCounsellorVerificationRequestResource (the fallback below) model correctly.
+        if ($request->type === RequestTypeEnum::dobChange->value) {
+            return new DobChangeRequestResource($request);
         }
 
         if (
