@@ -261,11 +261,12 @@ control:
 | `group_video_call_demo_counsellor` | `password` | The group's assigned counsellor. Sees "join video" and, once in the call, a "remove" control on every other participant's tile. |
 | `group_video_call_demo_creator` | `password` | The group's own creator (an adult client). Sees "join video" too (per TT-3.2's own v1 scope: counsellors, plus the creator, optionally). |
 | `group_video_call_demo_member` | `password` | An ordinary member. Never sees "join video" at all — group video in v1 is counsellor+creator only. |
+| `group_video_call_demo_minor_creator` | `password` | Creator of a SEPARATE group ("Group Video Call Demo (Minor Creator)"), created while a minor. "Join video" is still visible (intentional — see the feature doc), but clicking it is cleanly blocked with a 422. |
 
 "Group Video Call Demo" already has an immediately in-progress, online session. Same known
 limitation as the 1:1 video call fixture above (no real Daily/Chime credentials in this dev
 environment, so join succeeds up to minting/room-creation only) — see
-`documentation/features/scrum-26-video-calling.md`'s "Group video (TT-3.2)" section.
+`documentation/features/scrum-27-group-therapy-video.md`.
 
 ## Dob-change approval (SCRUM-294, TT-4.10e)
 

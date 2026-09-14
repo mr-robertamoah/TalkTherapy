@@ -142,64 +142,7 @@ no-consent-complexity case.
 
 ## Group video (TT-3.2, SCRUM-27)
 
-v1 scope (product decision, 2026-09-14 — see `documentation/decision-log.md`): a GroupTherapy
-video call is a **counsellor-team room, with the group's own creator optionally joining** — NOT
-full-membership video. An ordinary group member never has video access at all in v1
-(full-membership group video and group-scoped guardian consent are both deliberately deferred,
-tracked as SCRUM-314/SCRUM-313 respectively, unstarted).
-
-- **Authorization + participant cap** (TT-3.2a, SCRUM-308): `EnsureVideoIsAvailableForSessionAction`
-  gates GroupTherapy video with a strict allow-list (any active counsellor, or the creator if not a
-  minor) — an ordinary member is denied JOIN even though they're a legitimate `Session` participant
-  for other purposes. `DailyVideoProvider`'s room cap is now type-aware (`ConstantsEnum::therapyVideoMaxParticipants`
-  vs. `groupTherapyVideoMaxParticipants`) rather than a single flat value.
-- **Counsellor-only call termination** (TT-3.2d, SCRUM-311, bundled into the same PR as TT-3.2a
-  after a security-review finding): only an active counsellor may end a GroupTherapy call for
-  everyone — an ordinary member could otherwise still terminate the counsellor team's own call via
-  the pre-existing, broader `EndVideoSessionAction` participant check.
-- **In-call participant removal** (TT-3.2b/c, SCRUM-309/310): an active counsellor can eject one
-  specific participant (another counsellor, or the creator) from an in-progress call without ending
-  the room for everyone else, via a new `POST /sessions/{sessionId}/video/participants/{userId}/remove`
-  route. Removal targets are resolved only via the video session's own live participant rows, never
-  a global user lookup, to avoid a user-id-existence oracle (fixed during SCRUM-309's own security
-  review). The removed participant's own browser shows a distinct "You were removed from this call"
-  screen — deliberately never the generic "call ended" screen or a reconnect/disconnect message
-  (`useVideoSession.js`'s own `status === 'removed'`, driven by a new `VideoParticipantRemovedEvent`
-  on the existing `sessions.{id}` channel).
-
-### Test data
-
-Seeded by `DatabaseSeeder::createGroupVideoCallDemoData()` — see `documentation/seeded-data.md`'s
-"Group video call + participant removal (SCRUM-308/309/310)" section:
-
-| Username | Password | Role |
-|---|---|---|
-| `group_video_call_demo_counsellor` | `password` | The group's assigned counsellor — sees "join video" and a "remove" control on other participants' tiles once in the call |
-| `group_video_call_demo_creator` | `password` | The group's own (adult) creator — sees "join video" too |
-| `group_video_call_demo_member` | `password` | An ordinary member — never sees "join video" at all |
-
-"Group Video Call Demo" already has an immediately in-progress, online session.
-
-### Steps
-
-1. Log in as `group_video_call_demo_counsellor`, open "Group Video Call Demo" → chat page →
-   confirm "join video" is visible (it would not have been before TT-3.2c's own frontend gate
-   change).
-2. In a second browser/session, log in as `group_video_call_demo_creator` and join the same call.
-3. As the counsellor, confirm a "remove" button appears on the creator's tile (not on the
-   counsellor's own local tile); clicking it should eject the creator, whose own screen should show
-   the distinct "You were removed from this call" message.
-4. Log in as `group_video_call_demo_member` and confirm no "join video" button appears at all.
-
-### What a successful result looks like
-
-- Same provider-agnostic guarantees as the base 1:1 flow above.
-- An ordinary member never reaches video at all — neither the join button nor the route itself
-  (server-side 422 either way).
-- Being removed from a call is visibly, unambiguously distinct from the call simply ending or a
-  network disconnect.
-
-Same known limitation as the base 1:1 flow above (no real Daily/Chime credentials in this dev
-environment) applies here too — join succeeds up through room-creation/credential-minting, but a
-live media connection can't be manually driven end-to-end without populating real credentials
-first.
+Group video is a separate feature built on top of this base infrastructure — see
+`documentation/features/scrum-27-group-therapy-video.md` for its own scope (v1 is
+counsellor-team + optional creator, not full-membership), what was built (authorization,
+counsellor-only termination, in-call participant removal), test data, and known limitations.

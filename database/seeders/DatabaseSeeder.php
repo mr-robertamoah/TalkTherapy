@@ -1555,6 +1555,49 @@ class DatabaseSeeder extends Seeder
         ]);
         $session->for()->associate($groupTherapy);
         $counsellor->addedSessions()->save($session);
+
+        // TT-3.2e/SCRUM-312 closeout (qa-engineer finding): no seeded fixture existed for the
+        // minor-creator-hard-block case -- verifying it required hand-building data via tinker.
+        // "Join video" is intentionally still VISIBLE to a minor creator (see TherapyComponent.vue's
+        // own comment on why the frontend never pre-checks this), so this fixture's own value is in
+        // exercising the backend's clean 422 block on click, not a hidden button.
+        $minorCreator = User::factory()->create([
+            'firstName' => 'GroupVideoCall',
+            'lastName' => 'DemoMinorCreator',
+            'email' => 'group.video.call.demo.minor.creator@example.com',
+            'username' => 'group_video_call_demo_minor_creator',
+            'password' => Hash::make('password'),
+            'email_verified_at' => now(),
+            'dob' => now()->subYears(15)->toDateString(),
+        ]);
+
+        $minorCreatedGroupTherapy = $minorCreator->addedGroupTherapies()->create([
+            'name' => 'Group Video Call Demo (Minor Creator)',
+            'about' => 'Seeded FREE group therapy whose own creator is a minor, for testing the hard video block (SCRUM-308) ahead of the group-scoped guardian-consent flow (SCRUM-313, unstarted).',
+            'session_type' => 'Once',
+            'payment_type' => 'FREE',
+            'max_users' => 10,
+            'allow_anyone' => false,
+            'anonymous' => false,
+            'public' => false,
+            'status' => 'in_session',
+            // Bypasses CreateGroupTherapyAction (the real write path), so set explicitly -- same
+            // reasoning as createGuardianVideoConsentDemoData()'s own identical comment.
+            'client_was_minor_at_creation' => ! $minorCreator->isAdult(),
+        ]);
+        $minorCreatedGroupTherapy->counsellors()->attach($counsellor->id, ['state' => 'ACTIVE']);
+
+        $minorCreatorSession = new Session([
+            'name' => 'Group Video Call Demo Session (Minor Creator)',
+            'about' => 'Seeded online, in-progress session for testing the group video minor-creator hard block.',
+            'start_time' => now()->subMinutes(5),
+            'end_time' => now()->addHour(),
+            'type' => 'online',
+            'status' => 'in_session',
+            'payment_type' => 'FREE',
+        ]);
+        $minorCreatorSession->for()->associate($minorCreatedGroupTherapy);
+        $counsellor->addedSessions()->save($minorCreatorSession);
     }
 
     private function createDobChangeNoGuardianDemoData(): void
