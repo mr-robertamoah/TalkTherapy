@@ -13,6 +13,10 @@ import useVideoSession from '@/Composables/useVideoSession'
 // only ever needs to decide WHETHER to render this, never call join()/leave() itself.
 const props = defineProps({
   session: { type: Object, required: true },
+  // TT-3.2c/SCRUM-310: both display-only, mirroring the backend's own authorization exactly --
+  // the backend re-checks on every removeParticipant() call regardless (RemoveParticipantFromVideoSessionAction).
+  isCounsellor: { type: Boolean, default: false },
+  isGroupTherapy: { type: Boolean, default: false },
 })
 
 const emit = defineEmits(['close'])
@@ -20,10 +24,16 @@ const emit = defineEmits(['close'])
 const sessionRef = computed(() => props.session)
 const {
   status, participants, isMuted, isCameraOn, connectionQuality, lastError, reconnecting,
-  join, leave, cancel, toggleMute, toggleCamera, attachVideo,
+  join, leave, removeParticipant, cancel, toggleMute, toggleCamera, attachVideo,
 } = useVideoSession(sessionRef)
 
 const videoElements = ref({})
+// TT-3.2c/SCRUM-310: local-only "this specific remove request is in flight" + "it just failed"
+// state -- removeParticipant() itself deliberately has no built-in error handling (see its own
+// comment), so the acting counsellor needs feedback here rather than a click that silently does
+// nothing on failure (e.g. the target already left, or a transient network error).
+const removingParticipantId = ref(null)
+const removeError = ref('')
 
 function setVideoElement(participantId, element) {
   if (!element) {
@@ -43,6 +53,26 @@ function participantLabel(participant) {
 async function clickedLeave() {
   await leave()
   emit('close')
+}
+
+// TT-3.2c/SCRUM-310: shown only for a non-local tile, only when this viewer is a counsellor on a
+// GroupTherapy session -- the backend's own RemoveParticipantFromVideoSessionAction is the real
+// authorization (GroupTherapy-only, counsellor-only, self-removal blocked); this is purely display.
+function canRemove(participant) {
+  return props.isCounsellor && props.isGroupTherapy && !participant.isLocal && participant.userId != null
+}
+
+async function clickedRemove(participant) {
+  removeError.value = ''
+  removingParticipantId.value = participant.userId
+
+  try {
+    await removeParticipant(participant.userId)
+  } catch (err) {
+    removeError.value = err.response?.data?.message || 'Could not remove this participant. Please try again.'
+  } finally {
+    removingParticipantId.value = null
+  }
 }
 
 async function retryJoin() {
@@ -103,6 +133,21 @@ onBeforeUnmount(() => {
       </button>
     </div>
 
+    <!-- TT-3.2c/SCRUM-310: deliberately its own branch, not folded into the 'ended' case above --
+         a counsellor removed you specifically; this must never read like the call simply ended or
+         like a connection dropped (architect's own explicit requirement). -->
+    <div v-else-if="status === 'removed'" class="text-center py-6">
+      <div class="text-sm font-medium text-red-700 mb-1">You were removed from this call</div>
+      <div class="text-sm text-gray-600 mb-3">A counsellor removed you from this video call.</div>
+      <button
+        type="button"
+        class="text-sm text-gray-600 hover:underline"
+        @click="emit('close')"
+      >
+        close
+      </button>
+    </div>
+
     <div v-else-if="status === 'connected'">
       <div class="flex items-center justify-between mb-3">
         <div class="flex items-center gap-2 text-sm text-gray-600">
@@ -125,6 +170,8 @@ onBeforeUnmount(() => {
         </button>
       </div>
 
+      <div v-if="removeError" class="text-sm text-red-600 mb-3">{{ removeError }}</div>
+
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div
           v-for="participant in participants"
@@ -141,6 +188,15 @@ onBeforeUnmount(() => {
           <span class="absolute bottom-2 left-2 text-xs text-white bg-gray-900 px-2 py-0.5 rounded">
             {{ participantLabel(participant) }}
           </span>
+          <button
+            v-if="canRemove(participant)"
+            type="button"
+            class="absolute top-2 right-2 text-xs text-white bg-gray-900 hover:bg-red-700 px-2 py-0.5 rounded disabled:opacity-50"
+            :disabled="removingParticipantId === participant.userId"
+            @click="clickedRemove(participant)"
+          >
+            {{ removingParticipantId === participant.userId ? 'removing…' : 'remove' }}
+          </button>
         </div>
       </div>
 

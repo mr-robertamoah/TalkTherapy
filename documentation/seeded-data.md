@@ -250,6 +250,23 @@ base "join video" flow, across whichever provider `VIDEO_PROVIDER` is currently 
 known limitation that this dev environment has no real Daily/Chime credentials configured, so a
 live media connection can't be manually verified end-to-end without populating them first.
 
+## Group video call + participant removal (SCRUM-308/309/310, TT-3.2a/b/c)
+
+A FREE, non-strict-gated GroupTherapy with one active counsellor, its own (non-minor) creator, and
+one ordinary member — for trying group "join video" and the counsellor-only "remove participant"
+control:
+
+| Username | Password | Purpose |
+|---|---|---|
+| `group_video_call_demo_counsellor` | `password` | The group's assigned counsellor. Sees "join video" and, once in the call, a "remove" control on every other participant's tile. |
+| `group_video_call_demo_creator` | `password` | The group's own creator (an adult client). Sees "join video" too (per TT-3.2's own v1 scope: counsellors, plus the creator, optionally). |
+| `group_video_call_demo_member` | `password` | An ordinary member. Never sees "join video" at all — group video in v1 is counsellor+creator only. |
+
+"Group Video Call Demo" already has an immediately in-progress, online session. Same known
+limitation as the 1:1 video call fixture above (no real Daily/Chime credentials in this dev
+environment, so join succeeds up to minting/room-creation only) — see
+`documentation/features/scrum-26-video-calling.md`'s "Group video (TT-3.2)" section.
+
 ## Dob-change approval (SCRUM-294, TT-4.10e)
 
 A minor's boundary-crossing dob edit is deferred to a `dobChange`-type Request needing approval,

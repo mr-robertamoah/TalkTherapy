@@ -40,6 +40,8 @@
     <VideoCallPanel
         v-if="computedCanJoinVideo && videoActive"
         :session="activeSession"
+        :is-counsellor="isCounsellor"
+        :is-group-therapy="therapyType === 'group'"
         @close="videoActive = false"
     />
     <div class="my-2 w-full h-1 rounded bg-stone-400"  v-if="showSessions"></div>
@@ -626,8 +628,7 @@ const computedCanAbandon = computed(() => {
 })
 // TT-3.1c/SCRUM-276: display-only mirror of the backend's own gate
 // (EnsureVideoIsAvailableForSessionAction) -- a defense-in-depth nicety, not the real
-// authorization, which the backend re-checks on every join/leave/end call regardless. TT-3.1 is
-// 1:1 Therapy only (therapyType === 'individual') -- GroupTherapy video is TT-3.2, unscoped.
+// authorization, which the backend re-checks on every join/leave/end call regardless.
 //
 // TT-3.1e-f/SCRUM-285: no longer hard-blocks a minor client here (the interim isAdult-only check
 // this ticket replaces did, per SCRUM-278's own now-superseded safeguard) -- the real
@@ -636,11 +637,21 @@ const computedCanAbandon = computed(() => {
 // VideoConsentRequiredBanner explaining why, rather than the button being invisible and video
 // looking simply "not available" (product-owner's own explicit requirement). The counsellor/adult
 // exemption check moved out of this display gate entirely -- it's purely a backend concern now.
+//
+// TT-3.2c/SCRUM-310: the `therapyType === 'individual'` restriction here was a TT-3.1-era leftover
+// -- GroupTherapy video's own backend allow-list (counsellor, or the group's own creator) has been
+// live since SCRUM-308. Deliberately does NOT pre-check the group creator's minor status here the
+// way a display flag might -- same reasoning as the consent case just above: a minor creator can
+// still click "join video," and the backend's plain VideoException (no consent flow for group, per
+// this epic's own scoping) surfaces through the panel's existing generic `error` state.
 const computedCanJoinVideo = computed(() => {
-    return props.therapyType === 'individual' &&
-        props.activeSession?.type === 'ONLINE' &&
-        ['IN_SESSION', 'IN_SESSION_CONFIRMATION'].includes(props.activeSession?.status) &&
-        props.isParticipant
+    if (props.activeSession?.type !== 'ONLINE' ||
+        !['IN_SESSION', 'IN_SESSION_CONFIRMATION'].includes(props.activeSession?.status)
+    ) return false
+
+    if (props.therapyType === 'individual') return props.isParticipant
+
+    return props.therapyType === 'group' && (props.isCounsellor || props.isUser)
 })
 const computedHasActions = computed(() => {
     return computedCanStart.value || computedCanEnd.value || computedCanAbandon.value || computedCanJoinVideo.value

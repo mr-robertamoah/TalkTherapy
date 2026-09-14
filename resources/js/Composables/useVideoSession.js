@@ -39,8 +39,17 @@ import axios from 'axios'
 //   }
 //
 //   callbacks passed into the factory:
-//     onParticipantJoined({ id, isLocal, name })  -- name may be null (Chime has no display-name
-//                                                     field at all -- see ChimeVideoClient.js)
+//     onParticipantJoined({ id, isLocal, name, userId })  -- name may be null (Chime has no
+//                                                     display-name field at all -- see
+//                                                     ChimeVideoClient.js). userId (TT-3.2c/
+//                                                     SCRUM-310) is our OWN backend user id, never
+//                                                     the provider's own tile/attendee id (`id`) --
+//                                                     may be null for a brief window on Chime (its
+//                                                     presence callback's externalUserId can lag
+//                                                     the initial join) or if a provider response
+//                                                     shape ever changes; removeParticipant() below
+//                                                     is simply unavailable for that participant
+//                                                     until/unless it arrives on a later update.
 //     onParticipantLeft(id)
 //     onVideoAvailable(id)                        -- this participant's video is ready;
 //                                                     VideoCallPanel.vue should call attachVideo
@@ -59,7 +68,13 @@ import axios from 'axios'
 //                                                     touches Session.status -- this composable
 //                                                     has no code path that ever could.
 export default function useVideoSession(session) {
-    const status = ref('idle') // idle | connecting | connected | payment_required | consent_required | ended | error
+    // TT-3.2c/SCRUM-310: 'removed' is deliberately its own status, not folded into 'ended' -- the
+    // architect's own explicit requirement is that being forcibly removed by a counsellor must
+    // never look like a transient network disconnect (which reconnects) OR like the whole room
+    // ending (which is symmetric/nobody's "fault"). Only ever reached via the removed participant's
+    // own listenForStatusChanges() handler below, never set locally by removeParticipant() itself
+    // (that call is the COUNSELLOR's own action against someone else, not self-directed).
+    const status = ref('idle') // idle | connecting | connected | payment_required | consent_required | ended | removed | error
     const participants = ref([])
     const isMuted = ref(false)
     const isCameraOn = ref(true)
@@ -74,32 +89,49 @@ export default function useVideoSession(session) {
 
     let client = null
     let channelName = null
+    // TT-3.2c/SCRUM-310: read once, not re-derived per event -- the viewer's own id never changes
+    // mid-call, and this is only ever compared against a VideoParticipantRemovedEvent's own
+    // removedUserId to tell "I was the one removed" apart from "someone else was removed" (which
+    // needs no local handling here at all -- the provider's own SDK already fires its normal
+    // participant-left callback for every other browser in the call).
+    const ownUserId = usePage().props.auth.user?.id
 
-    function upsertParticipant({ id, isLocal, name }) {
+    function upsertParticipant({ id, isLocal, name, userId }) {
         const existingIndex = participants.value.findIndex((p) => p.id === id)
 
         // Daily's 'participant-joined' can fire before user_name is populated on the participant
         // object, with the real name only arriving on a later 'participant-updated' -- patch it
         // in rather than no-op entirely, or the tile stays stuck on the "Participant" fallback
-        // for the whole call (review finding, 2026-09-11).
+        // for the whole call (review finding, 2026-09-11). TT-3.2c/SCRUM-310: userId is patched in
+        // the same way for the same reason -- Chime's own presence callback can report a null
+        // externalUserId on an early update before patching in the real one on a later call.
         if (existingIndex !== -1) {
-            if (name && !participants.value[existingIndex].name) {
-                participants.value.splice(existingIndex, 1, { ...participants.value[existingIndex], name })
+            const patch = {}
+            if (name && !participants.value[existingIndex].name) patch.name = name
+            if (userId != null && participants.value[existingIndex].userId == null) patch.userId = userId
+
+            if (Object.keys(patch).length) {
+                participants.value.splice(existingIndex, 1, { ...participants.value[existingIndex], ...patch })
             }
             return
         }
 
-        participants.value = [...participants.value, { id, isLocal, name }]
+        participants.value = [...participants.value, { id, isLocal, name, userId: userId ?? null }]
     }
 
-    function removeParticipant(id) {
+    // Local-only: drops a tile once the provider's own SDK reports that participant gone (a normal
+    // leave, or the provider-side effect of removeParticipant()'s own eject/DeleteAttendee call
+    // reaching this browser). Deliberately named apart from the exported removeParticipant()
+    // action below, which is the COUNSELLOR's own request to eject someone else server-side --
+    // this one only ever reacts to a tile already being gone.
+    function dropParticipantTile(id) {
         participants.value = participants.value.filter((p) => p.id !== id)
     }
 
     function buildCallbacks() {
         return {
             onParticipantJoined: upsertParticipant,
-            onParticipantLeft: removeParticipant,
+            onParticipantLeft: dropParticipantTile,
             // Purely a signal -- VideoCallPanel.vue owns the actual <video> element refs and
             // decides when to (re-)call attachVideo(); there's no state to track here.
             onVideoAvailable: () => {},
@@ -326,6 +358,22 @@ export default function useVideoSession(session) {
         status.value = 'ended'
     }
 
+    // TT-3.2c/SCRUM-310: a counsellor's own "remove participant" action against someone ELSE in a
+    // GroupTherapy call -- the backend re-authorizes this on every call regardless (this is purely
+    // the HTTP call; VideoCallPanel.vue only ever shows the control when isCounsellor is true).
+    // Deliberately does nothing to local state here -- the acting counsellor's own tile list
+    // updates the normal way, via the provider's own participant-left callback once the eject/
+    // DeleteAttendee call actually takes effect; the removed user's own experience is handled
+    // entirely by listenForStatusChanges()'s own participant-removed handler below.
+    async function removeParticipant(targetUserId) {
+        if (!session.value?.id) return
+
+        await axios.post(route('sessions.video.participants.remove', {
+            sessionId: session.value.id,
+            userId: targetUserId,
+        }))
+    }
+
     async function teardownClient() {
         stopListeningForStatusChanges()
         if (client) await client.destroy()
@@ -369,6 +417,21 @@ export default function useVideoSession(session) {
             status.value = 'ended'
             reconnecting.value = false
         })
+
+        // TT-3.2c/SCRUM-310: fires for EVERY participant when anyone is removed, but only the
+        // removed user's own browser (data.removedUserId === ownUserId) needs to react -- every
+        // other participant's tile list already updates on its own via the provider's normal
+        // participant-left callback once the eject/DeleteAttendee call takes effect. Deliberately
+        // its own `status.value = 'removed'`, never 'ended' -- see this composable's own top-of-
+        // file status comment for why being removed must never look like the room simply ending.
+        window.Echo?.private(channelName).listen('.video-session.participant-removed', (data) => {
+            if (data.removedUserId !== ownUserId || status.value === 'ended' || status.value === 'removed') return
+
+            joinToken++
+            teardownClient()
+            status.value = 'removed'
+            reconnecting.value = false
+        })
     }
 
     function stopListeningForStatusChanges() {
@@ -379,11 +442,12 @@ export default function useVideoSession(session) {
         // itself in its own onBeforeUnmount; an independent Echo.leave() here would risk tearing
         // the channel down out from under that listener if unmount ordering differs.
         window.Echo?.private(channelName).stopListening('.video-session.status-changed')
+        window.Echo?.private(channelName).stopListening('.video-session.participant-removed')
         channelName = null
     }
 
     return {
         status, participants, isMuted, isCameraOn, connectionQuality, lastError, reconnecting,
-        join, leave, end, cancel, toggleMute, toggleCamera, attachVideo,
+        join, leave, end, removeParticipant, cancel, toggleMute, toggleCamera, attachVideo,
     }
 }

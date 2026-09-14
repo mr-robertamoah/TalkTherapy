@@ -75,13 +75,20 @@ export default function createChimeVideoClient(callbacks) {
 
         meetingSession.audioVideo.addObserver(observer)
 
-        presenceCallback = (attendeeId, present) => {
+        presenceCallback = (attendeeId, present, externalUserId) => {
             // Our own join is reported explicitly below, right after starting the local tile --
             // filtered here so it's never double-reported regardless of whether Chime's presence
             // stream also happens to include the local attendee.
             if (attendeeId === localAttendeeId) return
 
-            if (present) callbacks.onParticipantJoined?.({ id: attendeeId, isLocal: false, name: null })
+            // TT-3.2c/SCRUM-310: externalUserId is our OWN backend user id -- exactly what
+            // ChimeVideoProvider::createParticipantCredentials() sent as ExternalUserId when
+            // minting this attendee. May be undefined on some presence updates per the SDK's own
+            // docs; Number(undefined) is NaN, so this is normalized to null rather than a bogus
+            // numeric id useVideoSession.js's own patch-in-later logic could mistake for real.
+            const userId = externalUserId != null ? Number(externalUserId) : null
+
+            if (present) callbacks.onParticipantJoined?.({ id: attendeeId, isLocal: false, name: null, userId })
             else callbacks.onParticipantLeft?.(attendeeId)
         }
         meetingSession.audioVideo.realtimeSubscribeToAttendeeIdPresence(presenceCallback)
@@ -90,7 +97,17 @@ export default function createChimeVideoClient(callbacks) {
         meetingSession.audioVideo.startLocalVideoTile()
         videoEnabled = true
 
-        callbacks.onParticipantJoined?.({ id: 'local', isLocal: true, name: null })
+        // TT-3.2c/SCRUM-310: credentials.attendee is this same session's own CreateAttendee
+        // response (see ChimeVideoProvider::createParticipantCredentials()), which already
+        // carries the ExternalUserId this attendee was minted with -- no separate lookup needed
+        // for the local participant's own userId.
+        const localExternalUserId = credentials.attendee?.ExternalUserId
+        callbacks.onParticipantJoined?.({
+            id: 'local',
+            isLocal: true,
+            name: null,
+            userId: localExternalUserId != null ? Number(localExternalUserId) : null,
+        })
     }
 
     function attachVideo(id, element) {
