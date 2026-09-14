@@ -44,4 +44,22 @@ interface VideoProviderInterface
     // naturally (Daily via `exp`, Chime meetings end when empty), so a failure here should never
     // block the caller from marking VideoSession.ended_at locally.
     public function endRoom(VideoSession $videoSession): void;
+
+    // TT-3.2b/SCRUM-309: ejects one specific participant from an otherwise-still-open room,
+    // without ending it for anyone else -- distinct from endRoom(), which tears the whole room
+    // down. Deliberately identifies $user by OUR OWN known id, never a provider-generated
+    // participant/attendee id the caller would have to persist -- Daily's own eject endpoint
+    // accepts `user_ids` (matching the `user_id` this same interface's createParticipantCredentials()
+    // already sends it); Chime has no equivalent "eject by external id" call, so
+    // ChimeVideoProvider looks the live attendee up by its own stored ExternalUserId (also
+    // $user->id) via ListAttendees before calling DeleteAttendee -- either way, no new
+    // provider-specific id needs to be persisted on VideoSessionParticipant.
+    //
+    // A required interface method, not a separate optional trait (architect decision,
+    // 2026-09-14): both current providers support this, and there is no third,
+    // ejection-incapable provider on this app's roadmap to justify pre-splitting for.
+    //
+    // Best-effort, matching endRoom()'s own contract: a provider-side failure here must never
+    // block the caller from marking the participant left locally.
+    public function removeParticipant(VideoSession $videoSession, User $user): void;
 }

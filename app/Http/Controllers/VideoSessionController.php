@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Actions\Video\EndVideoSessionAction;
 use App\Actions\Video\JoinVideoSessionAction;
 use App\Actions\Video\LeaveVideoSessionAction;
+use App\Actions\Video\RemoveParticipantFromVideoSessionAction;
 use App\Exceptions\SessionException;
 use App\Exceptions\VideoConsentRequiredException;
 use App\Models\Session;
@@ -48,6 +49,22 @@ class VideoSessionController extends Controller
             EndVideoSessionAction::new()->execute($this->session($request), $request->user());
 
             return response()->json(['message' => 'Video call ended.']);
+        } catch (Throwable $th) {
+            return $this->failure($th);
+        }
+    }
+
+    // TT-3.2b/SCRUM-309: {userId} is the target being removed, never the acting user, which stays
+    // $request->user() -- the action authorizes against that separately. Deliberately passed as a
+    // bare id, never resolved via a global User lookup here (security-review finding: doing so
+    // let a "target id doesn't exist" 422 be distinguished from a "target exists but isn't in
+    // this call" no-op, a system-wide user-id-existence oracle) -- see the action's own comment.
+    public function removeParticipant(Request $request)
+    {
+        try {
+            RemoveParticipantFromVideoSessionAction::new()->execute($this->session($request), $request->user(), (int) $request->route('userId'));
+
+            return response()->json(['message' => 'Participant removed from the video call.']);
         } catch (Throwable $th) {
             return $this->failure($th);
         }

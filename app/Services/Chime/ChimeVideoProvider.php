@@ -64,4 +64,27 @@ class ChimeVideoProvider implements VideoProviderInterface
 
         $this->client->deleteMeeting($videoSession->provider_room_id);
     }
+
+    // TT-3.2b/SCRUM-309: no stored Chime-specific participant id to key off (see ChimeClient's
+    // own comment) -- looks the live attendee up by its ExternalUserId (== $user->id, set at
+    // CreateAttendee time) via ListAttendees, then deletes that specific AttendeeId. A no-op if
+    // the user isn't currently a live attendee at all (already left, or never actually joined
+    // this provider-side room) -- matches endRoom()'s own "nothing to do" precedent rather than
+    // throwing for an already-moot removal.
+    public function removeParticipant(VideoSession $videoSession, User $user): void
+    {
+        if (! $videoSession->provider_room_id) {
+            return;
+        }
+
+        $attendees = $this->client->listAttendees($videoSession->provider_room_id)['Attendees'] ?? [];
+
+        $attendee = collect($attendees)->firstWhere('ExternalUserId', (string) $user->id);
+
+        if (! $attendee) {
+            return;
+        }
+
+        $this->client->deleteAttendee($videoSession->provider_room_id, $attendee['AttendeeId']);
+    }
 }

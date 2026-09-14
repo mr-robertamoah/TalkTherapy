@@ -164,6 +164,9 @@ Route::middleware('auth')->group(function () {
     Route::post('/sessions/{sessionId}/video/join', [VideoSessionController::class, 'join'])->name('sessions.video.join')->middleware('throttle:20,1');
     Route::post('/sessions/{sessionId}/video/leave', [VideoSessionController::class, 'leave'])->name('sessions.video.leave');
     Route::post('/sessions/{sessionId}/video/end', [VideoSessionController::class, 'end'])->name('sessions.video.end')->middleware('throttle:20,1');
+    // TT-3.2b/SCRUM-309: ejects one participant via the provider's own API (like join/end above,
+    // a real external-API call, not just DB noise) -- same throttle tier as those.
+    Route::post('/sessions/{sessionId}/video/participants/{userId}/remove', [VideoSessionController::class, 'removeParticipant'])->name('sessions.video.participants.remove')->middleware('throttle:20,1');
 
     // SCRUM-197/TT-2.2b: a counsellor's own private notes on a session -- never exposed to the
     // client/participant side, see SessionNoteController's own comment on how counsellor_id is

@@ -7674,3 +7674,67 @@ fix, already next in the approved sequencing (`a → {b, d in parallel}`), and r
 separate, immediately-following PR would have meant deliberately shipping a known, live gap in
 the interim. SCRUM-311 will be transitioned straight to Done alongside SCRUM-308 rather than
 tracked as separately in-progress work, since its own full scope is delivered here.
+
+---
+
+## 2026-09-14 — SCRUM-309 (TT-3.2b): participant-removal API shapes and no-new-column design
+
+**Research spike (per the ticket's own explicit "do not assume the shape" instruction)**: used
+live web search to confirm the real current API shapes for ejecting one participant without
+ending the whole room, rather than guessing:
+
+- **Daily.co**: `POST /rooms/{room_name}/eject` with body `{"user_ids": [...]}` (docs:
+  https://docs.daily.co/reference/rest-api/rooms/eject). Accepts our own `user_id` values
+  directly -- the same ones already sent to `createMeetingToken` at join time.
+- **AWS Chime SDK Meetings**: `DeleteAttendee(MeetingId, AttendeeId)` requires the
+  AWS-generated `AttendeeId`, which we never persist (docs:
+  https://docs.aws.amazon.com/chime/latest/APIReference/API_DeleteAttendee.html). `ListAttendees`
+  (docs: https://docs.aws.amazon.com/chime-sdk/latest/APIReference/API_meeting-chime_ListAttendees.html)
+  returns each attendee's own `ExternalUserId`, which `ChimeVideoProvider::createParticipantCredentials()`
+  already sets to `(string) $user->id` -- so the `AttendeeId` can always be looked up live at
+  removal time by matching on that, rather than needing a new migration/column on
+  `VideoSessionParticipant` to track a provider-specific id.
+
+**Design decision**: added `VideoProviderInterface::removeParticipant(VideoSession, User): void`
+as a new REQUIRED interface method (not an optional trait) -- both current providers support it
+and there is no third, ejection-incapable provider on this app's roadmap to justify pre-splitting
+for. Keyed only by our own `User`, matching `endRoom()`'s own best-effort contract (a provider-side
+failure never blocks the local `left_at` update).
+
+**Scope decision**: `RemoveParticipantFromVideoSessionAction` is GroupTherapy-only and
+counsellor-only (any active counsellor may remove any other participant, including another
+counsellor -- moderation is a team-wide capability per TT-3.2's own "every active counsellor gets
+host credentials" scoping, not host-only). 1:1 Therapy has exactly 2 participants, so
+`EndVideoSessionAction` already covers "get the other person out." Added a dedicated
+`sessions/{sessionId}/video/participants/{userId}/remove` route + controller action now (rather
+than deferring it to TT-3.2c) since TT-3.2c is frontend-only wiring against an existing backend
+surface, matching how join/leave/end were already split.
+
+**Post-review fixes**:
+
+1. **Security-engineer finding (Medium): user-id-existence oracle.** The controller originally
+   resolved `{userId}` via a global `User::find()` before authorization, throwing a distinct 422
+   ("User was not found") when the id didn't exist at all, versus the action's own silent no-op
+   when the id existed but simply wasn't a live participant of this call. That distinguishable
+   response gave any active counsellor (on any single group, unrelated to the target) a
+   system-wide oracle for "does user id N exist in the `users` table at all." Fixed by never
+   resolving the target against the global `users` table: `RemoveParticipantFromVideoSessionAction`
+   now takes a bare `int $targetUserId` and resolves the actual `User` model only via the
+   `VideoSession`'s own live `participants()` relation (`$participant->participant`, guaranteed a
+   real user since the row only exists because they actually joined) -- a nonexistent id and a
+   real-but-unrelated id now produce the byte-identical response. Added both a unit test
+   (`RemoveParticipantFromVideoSessionActionTest`) and a feature-level test asserting the
+   controller returns an identical JSON body for both cases.
+2. **Reviewer finding (non-blocking): duplicated "is this User an active counsellor of this
+   GroupTherapy" check**, now independently inlined in `GroupTherapy::isParticipant()`,
+   `EndVideoSessionAction`, and this ticket's own new `RemoveParticipantFromVideoSessionAction` --
+   three copies. Extracted into `GroupTherapy::isCounsellorUser(User $user): bool` and updated all
+   three call sites.
+
+Security-engineer's other finding (Low/Informational: a provider-side removal failure still marks
+the participant left locally, matching `EndVideoSessionAction`'s existing best-effort contract,
+but could leave a forcibly-removed participant with continued live media access if the provider
+call itself failed) was deliberately NOT fixed here -- filed as a follow-up ticket per the
+security-engineer's own recommendation, since retry/queued-job semantics are a larger design
+question than this ticket's own scope and the current behavior matches an already-shipped,
+accepted precedent.

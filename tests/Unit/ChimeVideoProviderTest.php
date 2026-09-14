@@ -68,3 +68,45 @@ test('endRoom is a no-op when the meeting was never actually created', function 
 
     (new ChimeVideoProvider($client))->endRoom($videoSession);
 });
+
+// TT-3.2b/SCRUM-309: Chime has no "eject by external id" call -- the live attendee must be looked
+// up first (matched by ExternalUserId, set to $user->id at CreateAttendee time), then deleted by
+// its AWS-generated AttendeeId.
+test('removeParticipant looks up the live attendee by ExternalUserId and deletes it by AttendeeId', function () {
+    $user = User::factory()->create();
+    $videoSession = VideoSession::factory()->create(['provider_room_id' => 'aws-meeting-id']);
+
+    $client = Mockery::mock(ChimeClient::class);
+    $client->shouldReceive('listAttendees')
+        ->once()
+        ->with('aws-meeting-id')
+        ->andReturn(['Attendees' => [
+            ['AttendeeId' => 'attendee-other', 'ExternalUserId' => 'not-this-user'],
+            ['AttendeeId' => 'attendee-mine', 'ExternalUserId' => (string) $user->id],
+        ]]);
+    $client->shouldReceive('deleteAttendee')->once()->with('aws-meeting-id', 'attendee-mine');
+
+    (new ChimeVideoProvider($client))->removeParticipant($videoSession, $user);
+});
+
+test('removeParticipant is a no-op when the user is not currently a live attendee', function () {
+    $user = User::factory()->create();
+    $videoSession = VideoSession::factory()->create(['provider_room_id' => 'aws-meeting-id']);
+
+    $client = Mockery::mock(ChimeClient::class);
+    $client->shouldReceive('listAttendees')->once()->with('aws-meeting-id')->andReturn(['Attendees' => []]);
+    $client->shouldNotReceive('deleteAttendee');
+
+    (new ChimeVideoProvider($client))->removeParticipant($videoSession, $user);
+});
+
+test('removeParticipant is a no-op when the meeting was never actually created', function () {
+    $user = User::factory()->create();
+    $videoSession = VideoSession::factory()->create(['provider_room_id' => null]);
+
+    $client = Mockery::mock(ChimeClient::class);
+    $client->shouldNotReceive('listAttendees');
+    $client->shouldNotReceive('deleteAttendee');
+
+    (new ChimeVideoProvider($client))->removeParticipant($videoSession, $user);
+});
