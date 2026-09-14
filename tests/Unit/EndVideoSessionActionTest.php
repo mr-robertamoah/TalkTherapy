@@ -39,6 +39,8 @@ test('a provider-side teardown failure still marks the room ended locally, match
         {
             throw new RuntimeException('Daily API is unreachable.');
         }
+
+        public function removeParticipant(VideoSession $videoSession, User $user): void {}
     });
 
     EndVideoSessionAction::new()->execute($session);
@@ -78,6 +80,8 @@ test('ending marks the room ended, marks every still-active participant left, an
         {
             $this->endRoomCalls[] = $videoSession->id;
         }
+
+        public function removeParticipant(VideoSession $videoSession, User $user): void {}
     };
     app()->instance(VideoProviderInterface::class, $fakeProvider);
 
@@ -109,6 +113,8 @@ test('ending when there is no open video session at all is a safe no-op', functi
         {
             throw new RuntimeException('endRoom should never be called when there is nothing to end.');
         }
+
+        public function removeParticipant(VideoSession $videoSession, User $user): void {}
     });
 
     EndVideoSessionAction::new()->execute($session);
@@ -144,6 +150,8 @@ test('a non-participant cannot end another pair\'s video call', function () {
         {
             throw new RuntimeException('endRoom should never be called when the caller is not authorized.');
         }
+
+        public function removeParticipant(VideoSession $videoSession, User $user): void {}
     });
     $outsider = User::factory()->create();
 
@@ -178,6 +186,8 @@ test('a session participant can end the call', function () {
         }
 
         public function endRoom(VideoSession $videoSession): void {}
+
+        public function removeParticipant(VideoSession $videoSession, User $user): void {}
     });
 
     EndVideoSessionAction::new()->execute($session, $client);
@@ -205,6 +215,8 @@ test('ending an already-ended video session again is a safe no-op (does not re-c
         {
             throw new RuntimeException('endRoom should never be called on an already-ended VideoSession.');
         }
+
+        public function removeParticipant(VideoSession $videoSession, User $user): void {}
     });
 
     EndVideoSessionAction::new()->execute($session);
@@ -245,6 +257,8 @@ function onlineGroupTherapySessionForEndAction(): array
         }
 
         public function endRoom(VideoSession $videoSession): void {}
+
+        public function removeParticipant(VideoSession $videoSession, User $user): void {}
     });
 
     return compact('creator', 'groupTherapy', 'counsellorUser', 'counsellor', 'member', 'session', 'videoSession');
@@ -300,6 +314,8 @@ test('1:1 Therapy behavior is unchanged -- either the client or the counsellor c
         }
 
         public function endRoom(VideoSession $videoSession): void {}
+
+        public function removeParticipant(VideoSession $videoSession, User $user): void {}
     });
 
     EndVideoSessionAction::new()->execute($session, $client);

@@ -42,12 +42,8 @@ class EndVideoSessionAction extends Action
         // inside the $user-present branch so the internal/no-acting-user system-driven teardown
         // path (no single acting user, e.g. the Session itself later being marked
         // held/failed/abandoned) is untouched.
-        if ($user && $session->for instanceof GroupTherapy) {
-            $isCounsellor = (bool) ($user->counsellor && $session->for->isCounsellor($user->counsellor));
-
-            if (! $isCounsellor) {
-                throw new VideoException('Only a counsellor may end this group video call for everyone.', 422);
-            }
+        if ($user && $session->for instanceof GroupTherapy && ! $session->for->isCounsellorUser($user)) {
+            throw new VideoException('Only a counsellor may end this group video call for everyone.', 422);
         }
 
         $videoSession = $session->videoSessions()->whereNull('ended_at')->first();

@@ -33,6 +33,18 @@ class DailyClient extends Service
         $this->request()->delete("/rooms/{$roomName}")->throw();
     }
 
+    // TT-3.2b/SCRUM-309: Daily's own REST API for ejecting one or more currently-connected
+    // participants without ending the room (https://docs.daily.co/reference/rest-api/rooms/eject).
+    // Accepts `user_ids` (matching the `user_id` we already send when minting each participant's
+    // own meeting token), so no separate Daily-generated participant id needs to be tracked.
+    public function ejectParticipants(string $roomName, array $userIds): array
+    {
+        return $this->request()
+            ->post("/rooms/{$roomName}/eject", ['user_ids' => $userIds])
+            ->throw()
+            ->json();
+    }
+
     private function request(): PendingRequest
     {
         return Http::baseUrl(config('services.daily.base_url'))

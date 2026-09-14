@@ -27,6 +27,8 @@ function fakeVideoProviderForRouteTest(): VideoProviderInterface
         }
 
         public function endRoom(VideoSession $videoSession): void {}
+
+        public function removeParticipant(VideoSession $videoSession, User $user): void {}
     };
 }
 
@@ -291,4 +293,150 @@ test('an active counsellor CAN end the group video call for everyone over the ro
 
     $response->assertOk();
     expect(VideoSession::query()->where('session_id', $session->id)->first()->ended_at)->not->toBeNull();
+});
+
+// TT-3.2b/SCRUM-309: a counsellor can eject a specific participant over the route without ending
+// the room for everyone else. Targets the group's own creator here (an ordinary member is denied
+// JOIN entirely by TT-3.2a's own allow-list, so it can never actually become a video participant
+// to remove in the first place).
+test('an active counsellor can remove the group creator from the group video call over the route', function () {
+    app()->instance(VideoProviderInterface::class, fakeVideoProviderForRouteTest());
+    $creator = User::factory()->adult()->create();
+    $counsellorUser = User::factory()->create();
+    $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
+    $groupTherapy = GroupTherapy::factory()->create([
+        'addedby_type' => User::class,
+        'addedby_id' => $creator->id,
+        'public' => true,
+    ]);
+    $groupTherapy->counsellors()->attach($counsellor->id, ['state' => 'ACTIVE', 'role' => 'NORMAL']);
+    $session = Session::factory()->create([
+        'for_id' => $groupTherapy->id,
+        'for_type' => GroupTherapy::class,
+        'type' => 'ONLINE',
+        'status' => 'IN_SESSION',
+        'start_time' => now(),
+    ]);
+    $this->actingAs($counsellorUser)->postJson(route('sessions.video.join', ['sessionId' => $session->id]));
+    $this->actingAs($creator)->postJson(route('sessions.video.join', ['sessionId' => $session->id]));
+
+    $response = $this
+        ->actingAs($counsellorUser)
+        ->postJson(route('sessions.video.participants.remove', ['sessionId' => $session->id, 'userId' => $creator->id]));
+
+    $response->assertOk();
+    $videoSession = VideoSession::query()->where('session_id', $session->id)->first();
+    expect($videoSession->participants()->where('participant_id', $creator->id)->first()->left_at)->not->toBeNull();
+});
+
+test('an ordinary GroupTherapy member cannot remove anyone from the group video call over the route', function () {
+    app()->instance(VideoProviderInterface::class, fakeVideoProviderForRouteTest());
+    $creator = User::factory()->adult()->create();
+    $counsellorUser = User::factory()->create();
+    $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
+    $groupTherapy = GroupTherapy::factory()->create([
+        'addedby_type' => User::class,
+        'addedby_id' => $creator->id,
+        'public' => true,
+    ]);
+    $groupTherapy->counsellors()->attach($counsellor->id, ['state' => 'ACTIVE', 'role' => 'NORMAL']);
+    $member = User::factory()->create();
+    $groupTherapy->users()->attach($member->id, ['anonymous' => false]);
+    $session = Session::factory()->create([
+        'for_id' => $groupTherapy->id,
+        'for_type' => GroupTherapy::class,
+        'type' => 'ONLINE',
+        'status' => 'IN_SESSION',
+        'start_time' => now(),
+    ]);
+    $this->actingAs($counsellorUser)->postJson(route('sessions.video.join', ['sessionId' => $session->id]));
+
+    $response = $this
+        ->actingAs($member)
+        ->postJson(route('sessions.video.participants.remove', ['sessionId' => $session->id, 'userId' => $counsellorUser->id]));
+
+    $response->assertStatus(422);
+    $videoSession = VideoSession::query()->where('session_id', $session->id)->first();
+    expect($videoSession->participants()->where('participant_id', $counsellorUser->id)->first()->left_at)->toBeNull();
+});
+
+// TT-3.2b/SCRUM-309 security-review finding: a target user id that doesn't exist at all must get
+// the exact same response as one that exists but simply isn't a live participant of this call --
+// otherwise a distinguishable response (e.g. a 422 "not found" vs. a 200 no-op) would hand any
+// counsellor a system-wide user-id-existence oracle, unrelated to this group/session at all.
+test('removing a nonexistent target user id gets the identical response as removing a real but non-participant user id', function () {
+    app()->instance(VideoProviderInterface::class, fakeVideoProviderForRouteTest());
+    $creator = User::factory()->adult()->create();
+    $counsellorUser = User::factory()->create();
+    $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
+    $groupTherapy = GroupTherapy::factory()->create([
+        'addedby_type' => User::class,
+        'addedby_id' => $creator->id,
+        'public' => true,
+    ]);
+    $groupTherapy->counsellors()->attach($counsellor->id, ['state' => 'ACTIVE', 'role' => 'NORMAL']);
+    $realButUnrelatedUser = User::factory()->create();
+    $session = Session::factory()->create([
+        'for_id' => $groupTherapy->id,
+        'for_type' => GroupTherapy::class,
+        'type' => 'ONLINE',
+        'status' => 'IN_SESSION',
+        'start_time' => now(),
+    ]);
+    $this->actingAs($counsellorUser)->postJson(route('sessions.video.join', ['sessionId' => $session->id]));
+    $nonexistentUserId = User::max('id') + 1000;
+
+    $responseForNonexistentId = $this
+        ->actingAs($counsellorUser)
+        ->postJson(route('sessions.video.participants.remove', ['sessionId' => $session->id, 'userId' => $nonexistentUserId]));
+
+    $responseForRealUnrelatedId = $this
+        ->actingAs($counsellorUser)
+        ->postJson(route('sessions.video.participants.remove', ['sessionId' => $session->id, 'userId' => $realButUnrelatedUser->id]));
+
+    $responseForNonexistentId->assertOk();
+    $responseForRealUnrelatedId->assertOk();
+    expect($responseForNonexistentId->json())->toBe($responseForRealUnrelatedId->json());
+});
+
+// QA finding (route/unit parity gap): the action-level unit test already covers this, but the
+// route itself had no dedicated coverage -- added for parity with the other authorization cases
+// on this same route.
+test('a counsellor cannot remove themselves over the route -- must use leave instead', function () {
+    app()->instance(VideoProviderInterface::class, fakeVideoProviderForRouteTest());
+    $creator = User::factory()->adult()->create();
+    $counsellorUser = User::factory()->create();
+    $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
+    $groupTherapy = GroupTherapy::factory()->create([
+        'addedby_type' => User::class,
+        'addedby_id' => $creator->id,
+        'public' => true,
+    ]);
+    $groupTherapy->counsellors()->attach($counsellor->id, ['state' => 'ACTIVE', 'role' => 'NORMAL']);
+    $session = Session::factory()->create([
+        'for_id' => $groupTherapy->id,
+        'for_type' => GroupTherapy::class,
+        'type' => 'ONLINE',
+        'status' => 'IN_SESSION',
+        'start_time' => now(),
+    ]);
+    $this->actingAs($counsellorUser)->postJson(route('sessions.video.join', ['sessionId' => $session->id]));
+
+    $response = $this
+        ->actingAs($counsellorUser)
+        ->postJson(route('sessions.video.participants.remove', ['sessionId' => $session->id, 'userId' => $counsellorUser->id]));
+
+    $response->assertStatus(422);
+});
+
+test('removal is not available for a 1:1 Therapy video session over the route', function () {
+    app()->instance(VideoProviderInterface::class, fakeVideoProviderForRouteTest());
+    $data = onlineInSessionTherapySessionForVideoRoute();
+    $this->actingAs($data['client'])->postJson(route('sessions.video.join', ['sessionId' => $data['session']->id]));
+
+    $response = $this
+        ->actingAs($data['counsellorUser'])
+        ->postJson(route('sessions.video.participants.remove', ['sessionId' => $data['session']->id, 'userId' => $data['client']->id]));
+
+    $response->assertStatus(422);
 });

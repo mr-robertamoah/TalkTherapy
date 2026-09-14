@@ -39,4 +39,18 @@ class ChimeClient extends Service
     {
         $this->client->deleteMeeting(['MeetingId' => $meetingId]);
     }
+
+    // TT-3.2b/SCRUM-309: Chime SDK Meetings has no "eject by external id" call -- ejection
+    // requires the AWS-generated AttendeeId, which ChimeVideoProvider looks up here (matched
+    // against the ExternalUserId we set at CreateAttendee time) rather than persisting a
+    // provider-specific id ourselves.
+    public function listAttendees(string $meetingId): array
+    {
+        return $this->client->listAttendees(['MeetingId' => $meetingId])->toArray();
+    }
+
+    public function deleteAttendee(string $meetingId, string $attendeeId): void
+    {
+        $this->client->deleteAttendee(['MeetingId' => $meetingId, 'AttendeeId' => $attendeeId]);
+    }
 }

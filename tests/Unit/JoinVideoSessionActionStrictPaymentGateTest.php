@@ -36,6 +36,8 @@ function fakeVideoProviderForPaymentGateTest(): VideoProviderInterface
         }
 
         public function endRoom(VideoSession $videoSession): void {}
+
+        public function removeParticipant(VideoSession $videoSession, User $user): void {}
     };
 }
 

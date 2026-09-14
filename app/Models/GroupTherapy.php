@@ -116,13 +116,22 @@ class GroupTherapy extends Model
         return $this->addedby_type === User::class && $this->addedby?->is($user);
     }
 
+    // TT-3.2b/SCRUM-309 review finding: the "is $user an active counsellor of THIS group" check
+    // (isCounsellor() above, but starting from a User rather than a Counsellor) had drifted into
+    // three separate inline copies (here in isParticipant(), and once each in EndVideoSessionAction
+    // and RemoveParticipantFromVideoSessionAction) -- consolidated into one place.
+    public function isCounsellorUser(User $user): bool
+    {
+        return (bool) ($user->counsellor && $this->isCounsellor($user->counsellor));
+    }
+
     public function isParticipant(User $user)
     {
         if ($this->isUser($user)) {
             return true;
         }
 
-        if ($user->counsellor && $this->isCounsellor($user->counsellor)) {
+        if ($this->isCounsellorUser($user)) {
             return true;
         }
 

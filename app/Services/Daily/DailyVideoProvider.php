@@ -64,6 +64,15 @@ class DailyVideoProvider implements VideoProviderInterface
         $this->client->deleteRoom($videoSession->provider_room_id);
     }
 
+    public function removeParticipant(VideoSession $videoSession, User $user): void
+    {
+        if (! $videoSession->provider_room_id) {
+            return;
+        }
+
+        $this->client->ejectParticipants($videoSession->provider_room_id, [(string) $user->id]);
+    }
+
     // Rooms/tokens both need an explicit expiry -- Daily strongly recommends never omitting `exp`.
     // Ties to the underlying Session's own end_time (plus a buffer for overrun) when known, else
     // a conservative default so a room is never left open indefinitely.

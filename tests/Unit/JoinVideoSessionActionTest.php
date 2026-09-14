@@ -40,6 +40,8 @@ function fakeVideoProvider(): VideoProviderInterface
         }
 
         public function endRoom(VideoSession $videoSession): void {}
+
+        public function removeParticipant(VideoSession $videoSession, User $user): void {}
     };
 }
 
@@ -154,6 +156,8 @@ test('a provider room-creation failure surfaces a safe, generic message, never t
         }
 
         public function endRoom(VideoSession $videoSession): void {}
+
+        public function removeParticipant(VideoSession $videoSession, User $user): void {}
     });
 
     try {

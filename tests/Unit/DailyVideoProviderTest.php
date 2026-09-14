@@ -97,3 +97,25 @@ test('endRoom is a no-op when the room was never actually created', function () 
 
     (new DailyVideoProvider($client))->endRoom($videoSession);
 });
+
+// TT-3.2b/SCRUM-309: ejects the one participant, identified by our own known user id, without
+// touching the rest of the room.
+test('removeParticipant ejects only the given user from the provider room', function () {
+    $user = User::factory()->create();
+    $videoSession = VideoSession::factory()->create(['provider_room_id' => 'session-1-1']);
+
+    $client = Mockery::mock(DailyClient::class);
+    $client->shouldReceive('ejectParticipants')->once()->with('session-1-1', [(string) $user->id]);
+
+    (new DailyVideoProvider($client))->removeParticipant($videoSession, $user);
+});
+
+test('removeParticipant is a no-op when the room was never actually created', function () {
+    $user = User::factory()->create();
+    $videoSession = VideoSession::factory()->create(['provider_room_id' => null]);
+
+    $client = Mockery::mock(DailyClient::class);
+    $client->shouldNotReceive('ejectParticipants');
+
+    (new DailyVideoProvider($client))->removeParticipant($videoSession, $user);
+});
