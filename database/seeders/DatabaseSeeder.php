@@ -158,6 +158,11 @@ class DatabaseSeeder extends Seeder
         // age-verification golden path required hand-picking dobchange_demo_no_guardian (a
         // dobChange fixture, not built for this feature) or hand-building a user via tinker first.
         $this->createAgeVerificationDemoData();
+
+        // TT-3.1f/SCRUM-279 closeout: every existing video-related seed (createGuardianVideoConsentDemoData)
+        // is deliberately minor/consent-focused -- there was no plain, adult, no-consent-complexity
+        // therapy+session for simply trying the base "join video" flow itself.
+        $this->createVideoCallDemoData();
     }
 
     private function createLanguages($user)
@@ -1400,6 +1405,67 @@ class DatabaseSeeder extends Seeder
         $counsellor->addedSessions()->create([
             'name' => 'Video Consent Demo Session',
             'about' => 'Seeded online, in-progress session for testing the video-join consent gate.',
+            'for_id' => $therapy->id,
+            'for_type' => $therapy::class,
+            'start_time' => now()->subMinutes(5),
+            'end_time' => now()->addHour(),
+            'type' => 'online',
+            'status' => 'in_session',
+            'payment_type' => 'FREE',
+        ]);
+    }
+
+    // TT-3.1f/SCRUM-279 closeout: a plain adult client + counsellor pair, no guardian-consent
+    // complexity at all -- createGuardianVideoConsentDemoData() above is deliberately
+    // minor-focused (it exists specifically to demo the consent gate), so it's the wrong fixture
+    // to point at for simply trying the base dual-provider "join video" flow itself.
+    private function createVideoCallDemoData(): void
+    {
+        $client = User::factory()->adult()->create([
+            'firstName' => 'VideoCall',
+            'lastName' => 'DemoClient',
+            'email' => 'video.call.demo.client@example.com',
+            'username' => 'video_call_demo_client',
+            'password' => Hash::make('password'),
+            'email_verified_at' => now(),
+        ]);
+
+        $counsellorUser = User::factory()->create([
+            'firstName' => 'VideoCall',
+            'lastName' => 'DemoCounsellor',
+            'email' => 'video.call.demo.counsellor@example.com',
+            'username' => 'video_call_demo_counsellor',
+            'password' => Hash::make('password'),
+            'email_verified_at' => now(),
+        ]);
+
+        $counsellor = $counsellorUser->counsellor()->create([
+            'name' => 'Dr. VideoCall DemoCounsellor',
+            'about' => 'Seeded counsellor for testing the base video-call join/leave/end flow (SCRUM-279).',
+            'email' => $counsellorUser->email,
+            'phone' => fake()->phoneNumber(),
+            'verified_at' => now(),
+            'email_verified_at' => now(),
+            'profession_id' => rand(1, 10),
+            'contact_visible' => true,
+        ]);
+
+        $therapy = $client->addedTherapies()->create([
+            'name' => 'Video Call Demo Therapy',
+            'background_story' => 'Seeded adult-client therapy for testing the base video-call join/leave/end flow across both providers (SCRUM-279) -- no guardian-consent complexity.',
+            'counsellor_id' => $counsellor->id,
+            'session_type' => 'Once',
+            'payment_type' => 'FREE',
+            'allow_in_person' => false,
+            'anonymous' => false,
+            'public' => false,
+            'status' => 'in_session',
+        ]);
+
+        // Immediately in-progress and online, so "join video" is reachable without waiting.
+        $counsellor->addedSessions()->create([
+            'name' => 'Video Call Demo Session',
+            'about' => 'Seeded online, in-progress session for testing the base video-join flow.',
             'for_id' => $therapy->id,
             'for_type' => $therapy::class,
             'start_time' => now()->subMinutes(5),
