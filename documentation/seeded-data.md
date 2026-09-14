@@ -234,6 +234,22 @@ with an immediately in-progress online session, deliberately left WITHOUT a gran
 | `video_consent_demo_guardian` | `password` | Guardian of the minor above. Log in, open the therapy's "video consent" tab to approve/revoke consent and view the audit trail. |
 | `video_consent_demo_counsellor` | `password` | Dr. VideoConsent DemoCounsellor — the assigned counsellor, who can also switch the consent mode (PER_THERAPY/PER_SESSION) from the same tab, but cannot approve/revoke consent itself. |
 
+## Video call (SCRUM-279, TT-3.1f)
+
+A plain adult client + counsellor pair, no guardian-consent complexity at all (the
+`video_consent_demo_*` accounts above are deliberately minor-focused) — for simply trying the
+base "join video" flow, across whichever provider `VIDEO_PROVIDER` is currently configured to:
+
+| Username | Password | Purpose |
+|---|---|---|
+| `video_call_demo_client` | `password` | An adult client. Log in and try "join video" on "Video Call Demo Therapy" — no consent gate to clear first. |
+| `video_call_demo_counsellor` | `password` | The assigned counsellor. |
+
+"Video Call Demo Therapy" already has an immediately in-progress, online session. See
+`documentation/features/scrum-26-video-calling.md` for the full feature write-up, including the
+known limitation that this dev environment has no real Daily/Chime credentials configured, so a
+live media connection can't be manually verified end-to-end without populating them first.
+
 ## Dob-change approval (SCRUM-294, TT-4.10e)
 
 A minor's boundary-crossing dob edit is deferred to a `dobChange`-type Request needing approval,

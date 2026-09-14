@@ -7489,3 +7489,64 @@ independently-scoped queries expressing the same intent risk silently diverging 
 ever changed. Extracted `App\Actions\User\GetPendingAgeVerificationRequestAction`, shared by both
 call sites at that point (before the second fix above split the profile-page check off into its
 own, differently-scoped `HasSubmittedAgeVerificationAction`).
+
+---
+
+## 2026-09-14 — SCRUM-279 (TT-3.1f): closeout scope actually covers a-e, not just a-d
+
+**What happened**: this ticket's own text says "TT-3.1e's own consent scoping may still be
+pending -- this ticket covers a-d's closeout, and can be revisited once e lands." Checked before
+starting: TT-3.1e's own 7 sub-tickets (SCRUM-280 through 286, TT-3.1e-a through -g) are ALL Done,
+including TT-3.1e-g's own regression closeout (`GuardianVideoConsentRegressionTest.php`,
+`documentation/features/scrum-278-guardian-video-consent.md`). Since e has already fully landed,
+this closeout naturally covers the complete epic (a-e), not just a-d as the ticket's own text
+anticipated when it was written before e's scope split existed. No separate re-visit needed.
+
+**Regression matrix**: full Pest suite 1838 passed, no regressions. The ticket's own specific
+concern -- "confirming no regression to existing chat/status-change broadcast behavior on the
+sessions.{id}/therapies.{id}/groupTherapies.{id} Reverb channels under the new signaling event
+volume" -- is closed by DESIGN, not by adding a new test: `VideoSessionStatusChangedEvent`
+deliberately broadcasts only on `sessions.{id}` (never the busier `therapies.{id}`/
+`groupTherapies.{id}` channels), a decision already made and documented by the architect on
+2026-09-11 specifically to prevent this exact class of regression. The event that actually DOES
+share `sessions.{id}` with video is `SessionUpdatedEvent` (its own `broadcastOn()` returns both
+the `PresenceChannel` for `therapies.{id}`/`groupTherapies.{id}` AND a `PrivateChannel` for
+`sessions.{id}`) -- `SessionTopicSetEvent` only ever broadcasts on the `PresenceChannel`, never on
+`sessions.{id}` at all, so it was never actually the relevant coexistence pairing to begin with
+(reviewer finding, corrected below). Verified the real pairing holds by tracing both dispatch call
+sites (`JoinVideoSessionAction`/`EndVideoSessionAction`'s `VideoSessionStatusChangedEvent::dispatch()`
+vs. `SessionService`'s `broadcast(new SessionUpdatedEvent(...))->toOthers()`) -- genuinely separate
+code paths, no shared mutable state, so nothing about video's new event volume can interfere with
+chat/status-change broadcasts at the PHP level.
+
+**Attempted and abandoned: a literal combined-broadcast Pest test.** Tried writing a single test
+asserting both `VideoSessionStatusChangedEvent` and `SessionUpdatedEvent` fire correctly on the
+same `sessions.{id}` channel for the same session (the actual pairing that shares that channel --
+see the correction above). `Event::fake()` caught the video event (dispatched via the standard
+`::dispatch()`/`Dispatchable` trait) but NOT `SessionUpdatedEvent`, because `SessionService` fires
+it via the raw `broadcast()` helper + `->toOthers()` (three call sites, lines 122/140/158) -- a
+separate mechanism from Laravel's own event dispatcher that `Event::fake()` does not intercept.
+Testing that properly would need `Broadcast::fake()`, a pattern with zero precedent anywhere in
+this codebase's existing tests. Introducing a whole new test-fake pattern for one closeout-only
+assertion, when the architectural separation is already guaranteed by construction (confirmed
+above by direct code inspection), was judged disproportionate -- abandoned the test rather than
+force it. Incidental discovery while investigating this: any existing test asserting
+`Event::assertNotDispatched(...)` against a `broadcast()`-helper-dispatched event (e.g.
+`SessionTopicSetEvent`/`SessionUpdatedEvent` in `SessionNoteTest.php`/`MessageNoteTest.php`) may be
+vacuously true for the identical reason (`Event::fake()` never sees a `broadcast()`-helper dispatch
+either way, so it trivially "wasn't dispatched" from the fake's point of view regardless of what
+the real code did) -- pre-existing, unrelated to video, not fixed here; flagged for whoever next
+touches those tests' own assumptions.
+
+**Seed data added**: `DatabaseSeeder::createVideoCallDemoData()` -- every existing video-related
+seed (`createGuardianVideoConsentDemoData()`) is deliberately minor/consent-focused, so there was
+no plain adult client+counsellor+in-progress-session fixture for simply trying the base
+join/leave/end flow without consent-gate complexity in the way. New accounts:
+`video_call_demo_client`/`video_call_demo_counsellor`, both `password`.
+
+**Known, accepted limitation, not a gap in this ticket's own work**: this dev environment has no
+real `DAILY_API_KEY`/`DAILY_DOMAIN` or Chime AWS credentials configured (first flagged during
+TT-3.1c) -- a genuine live end-to-end video connection can't be manually verified for either
+provider without populating real credentials first. Every automated test already mocks the
+provider client directly, so this doesn't affect actual code coverage, only manual/Playwright
+verification depth. Documented plainly in the new feature doc rather than worked around.
