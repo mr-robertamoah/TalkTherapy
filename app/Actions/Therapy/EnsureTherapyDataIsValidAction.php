@@ -130,7 +130,15 @@ class EnsureTherapyDataIsValidAction extends Action
             throw new TherapyCreationDataIsNotValidException("Your counsellors cannot be more than {$maxCounsellors}.", 422);
         }
 
-        $maxUsers = env('GROUP_THERAPY_MAX_USERS', 50);
+        // TT-3.2f-a/SCRUM-318: default lowered 50 -> 25, unified with
+        // ConstantsEnum::groupTherapyVideoMaxParticipants -- once SCRUM-314's video work opens
+        // group video to the full membership, both ceilings must be the same number so a group's
+        // video room can always admit everyone in it (user's own explicit decision, 2026-09-14).
+        // Review finding: this is a SHARED VALUE, not an enforced coupling -- changing
+        // GROUP_THERAPY_MAX_USERS (an env-only, no-deploy change) without also updating the enum
+        // silently reintroduces the exact drift this ticket exists to eliminate. Keep both in sync
+        // by hand until/unless a single source of truth is worth the refactor.
+        $maxUsers = env('GROUP_THERAPY_MAX_USERS', 25);
         if (
             $dto->maxUsers > $maxUsers &&
             ! ($therapy && $dto->maxUsers === $therapy->max_users)
