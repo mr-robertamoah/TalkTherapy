@@ -3,6 +3,8 @@
 namespace App\Services\Daily;
 
 use App\Contracts\VideoProviderInterface;
+use App\Enums\ConstantsEnum;
+use App\Models\GroupTherapy;
 use App\Models\User;
 use App\Models\VideoSession;
 use Illuminate\Support\Carbon;
@@ -25,7 +27,7 @@ class DailyVideoProvider implements VideoProviderInterface
             'properties' => [
                 'exp' => $this->expiresAt($videoSession)->getTimestamp(),
                 'enable_chat' => false, // this app's own text chat already covers this
-                'max_participants' => 2,
+                'max_participants' => $this->maxParticipantsFor($videoSession),
             ],
         ]);
 
@@ -70,5 +72,16 @@ class DailyVideoProvider implements VideoProviderInterface
         $endTime = $videoSession->session?->end_time;
 
         return $endTime ? $endTime->clone()->addHours(2) : now()->addHours(6);
+    }
+
+    // TT-3.2a/SCRUM-308 (architect finding): a single flat cap would either loosen 1:1 Therapy's
+    // own cap or under-cap a GroupTherapy room -- must be computed per session type. Defaults to
+    // the smaller Therapy cap if `session`/`for` somehow isn't resolvable (the safer failure mode
+    // for a 1:1-shaped room by construction).
+    private function maxParticipantsFor(VideoSession $videoSession): int
+    {
+        return $videoSession->session?->for instanceof GroupTherapy
+            ? (int) ConstantsEnum::groupTherapyVideoMaxParticipants->value
+            : (int) ConstantsEnum::therapyVideoMaxParticipants->value;
     }
 }

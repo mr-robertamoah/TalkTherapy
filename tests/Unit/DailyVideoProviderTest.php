@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\GroupTherapy;
 use App\Models\Session;
 use App\Models\User;
 use App\Models\VideoSession;
@@ -28,6 +29,27 @@ test('createRoom names the room deterministically from the VideoSession id and r
 
     expect($result['room_id'])->toBe("session-{$videoSession->session_id}-{$videoSession->id}")
         ->and($result['meta'])->toBe(['url' => 'https://example.daily.co/room']);
+});
+
+// TT-3.2a/SCRUM-308 (architect finding): the cap must be computed per session type, not a single
+// flat value -- 1:1 Therapy stays capped near 2 (covered by the test above, whose default Session
+// factory `for_type` is Therapy), while GroupTherapy needs headroom for the counsellor team + 1.
+test('createRoom uses the larger GroupTherapy cap, not the 1:1 Therapy cap, for a GroupTherapy-backed session', function () {
+    $groupTherapy = GroupTherapy::factory()->create();
+    $session = Session::factory()->create([
+        'for_id' => $groupTherapy->id,
+        'for_type' => GroupTherapy::class,
+        'end_time' => now()->addHour(),
+    ]);
+    $videoSession = VideoSession::factory()->create(['session_id' => $session->id, 'provider' => 'daily']);
+
+    $client = Mockery::mock(DailyClient::class);
+    $client->shouldReceive('createRoom')
+        ->once()
+        ->with(Mockery::on(fn ($data) => $data['properties']['max_participants'] === 10))
+        ->andReturn(['name' => 'room-name', 'url' => 'https://example.daily.co/room']);
+
+    (new DailyVideoProvider($client))->createRoom($videoSession);
 });
 
 test('createParticipantCredentials mints a token scoped to the room and this user, returning the room url alongside it', function () {

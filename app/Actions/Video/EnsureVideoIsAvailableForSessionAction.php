@@ -8,6 +8,7 @@ use App\Enums\SessionStatusEnum;
 use App\Enums\SessionTypeEnum;
 use App\Exceptions\VideoConsentRequiredException;
 use App\Exceptions\VideoException;
+use App\Models\GroupTherapy;
 use App\Models\Session;
 use App\Models\Therapy;
 use App\Models\User;
@@ -44,24 +45,39 @@ class EnsureVideoIsAvailableForSessionAction extends Action
             throw new VideoException('You are not allowed to join this session.', 422);
         }
 
-        // TT-3.1 is scoped to 1:1 (individual Therapy) sessions only -- GroupTherapy video is
-        // TT-3.2, not yet scoped. Deliberately explicit here rather than silently allowing a
-        // GroupTherapy session through and producing a confusing 2-participant-only room.
-        if (! $session->for instanceof Therapy) {
-            throw new VideoException('Video is not yet available for group therapy sessions.', 422);
+        if ($session->for instanceof GroupTherapy) {
+            $this->ensureGroupTherapyVideoIsAllowed($session->for, $user);
+        } elseif ($session->for instanceof Therapy) {
+            $this->ensureTherapyVideoIsAllowed($session, $user);
+        } else {
+            // Defensive: $session->for is currently always one of the two above. Kept explicit
+            // (rather than falling through) so a future third `for` type doesn't silently skip
+            // every check below it instead of failing loudly.
+            throw new VideoException('Video is not available for this session.', 422);
         }
 
-        // TT-3.1e-d/SCRUM-283: the counsellor side is exempt (mirrors JoinVideoSessionAction's own
-        // identical $isOwner computation) -- this gates the minor CLIENT's own join attempt, not
-        // the counsellor's. An adult joiner never needs a consent check at all.
-        //
-        // Security-review note (2026-09-11): this check runs once, synchronously, at join time --
-        // if a guardian revokes consent in the exact instant between this read and credential
-        // issuance below (JoinVideoSessionAction), the join can still succeed once. Accepted,
-        // pre-existing risk shape (the payment gate earlier in the same call chain has an
-        // identical single-read-then-act window) -- NOT the same as revoking DURING an already-
-        // active call, which InvalidateVideoConsentAction (TT-3.1e-c) tears down synchronously and
-        // unconditionally, regardless of when the call started.
+        if ($session->type !== SessionTypeEnum::online->value) {
+            throw new VideoException('Video is only available for online sessions.', 422);
+        }
+
+        if (! in_array($session->status, [SessionStatusEnum::in_session->value, SessionStatusEnum::in_session_confirmation->value])) {
+            throw new VideoException('Video is only available while the session is in progress.', 422);
+        }
+    }
+
+    // TT-3.1e-d/SCRUM-283: the counsellor side is exempt (mirrors JoinVideoSessionAction's own
+    // identical $isOwner computation) -- this gates the minor CLIENT's own join attempt, not
+    // the counsellor's. An adult joiner never needs a consent check at all.
+    //
+    // Security-review note (2026-09-11): this check runs once, synchronously, at join time --
+    // if a guardian revokes consent in the exact instant between this read and credential
+    // issuance below (JoinVideoSessionAction), the join can still succeed once. Accepted,
+    // pre-existing risk shape (the payment gate earlier in the same call chain has an
+    // identical single-read-then-act window) -- NOT the same as revoking DURING an already-
+    // active call, which InvalidateVideoConsentAction (TT-3.1e-c) tears down synchronously and
+    // unconditionally, regardless of when the call started.
+    private function ensureTherapyVideoIsAllowed(Session $session, User $user): void
+    {
         $isCounsellor = (bool) ($user->counsellor && $session->for->isCounsellor($user->counsellor));
 
         // TT-4.10b/SCRUM-291: was `! $user->isAdult()` -- $user here is the therapy's own client
@@ -75,13 +91,33 @@ class EnsureVideoIsAvailableForSessionAction extends Action
             // rather than the client having to string-match this message.
             throw new VideoConsentRequiredException('Guardian video consent is required before this account can join video for this session.', 422);
         }
+    }
 
-        if ($session->type !== SessionTypeEnum::online->value) {
-            throw new VideoException('Video is only available for online sessions.', 422);
+    // TT-3.2a/SCRUM-308: v1's own locked scope -- video access limited to every currently-active
+    // counsellor PLUS optionally the group's own creator (client `addedby`). Ordinary members
+    // (attached only via the group_therapy_user pivot, or a co-client with no addedby role) get
+    // NO video access in this version at all -- deliberately narrower than
+    // Session::isNotParticipant()'s own, broader "is this user a participant of the group at
+    // all" check above, which already passed for every ordinary member too (that check answers a
+    // different question: "may this user be IN this session's chat/roster," not "may this user
+    // join VIDEO"). This is a strict allow-list, not an extension of that participant check.
+    private function ensureGroupTherapyVideoIsAllowed(GroupTherapy $groupTherapy, User $user): void
+    {
+        $isCounsellor = (bool) ($user->counsellor && $groupTherapy->isCounsellor($user->counsellor));
+        $isCreator = $groupTherapy->isUser($user);
+
+        if (! $isCounsellor && ! $isCreator) {
+            throw new VideoException('Video is only available to counsellors and the group\'s own creator at this time.', 422);
         }
 
-        if (! in_array($session->status, [SessionStatusEnum::in_session->value, SessionStatusEnum::in_session_confirmation->value])) {
-            throw new VideoException('Video is only available while the session is in progress.', 422);
+        // Interim fail-closed, mirroring TT-3.1's own original 1:1 precedent (the age check that
+        // shipped ahead of TT-3.1e's real consent flow) -- group-scoped guardian video-consent
+        // doesn't exist yet (SCRUM-313, not started), so a minor creator is hard-blocked entirely
+        // rather than let through ungated. Only the creator can ever reach this branch as a
+        // client; ordinary members already failed the allow-list above, so there is no other
+        // minor-client path into group video today.
+        if ($isCreator && $groupTherapy->clientIsMinor()) {
+            throw new VideoException('Video is not yet available to a minor client for group therapy.', 422);
         }
     }
 }

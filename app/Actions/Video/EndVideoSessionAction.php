@@ -6,6 +6,7 @@ use App\Actions\Action;
 use App\Contracts\VideoProviderInterface;
 use App\Events\VideoSessionStatusChangedEvent;
 use App\Exceptions\VideoException;
+use App\Models\GroupTherapy;
 use App\Models\Session;
 use App\Models\User;
 use Illuminate\Support\Facades\Log;
@@ -29,6 +30,24 @@ class EndVideoSessionAction extends Action
     {
         if ($user && $session->isNotParticipant($user)) {
             throw new VideoException('You are not allowed to end this session\'s video call.', 422);
+        }
+
+        // TT-3.2d/SCRUM-311 security-review finding (found while reviewing TT-3.2a): 1:1 Therapy
+        // keeps its existing symmetric behavior (either party may end the call for both sides),
+        // but a GroupTherapy's room now has multiple counsellors plus, per TT-3.2a's own locked
+        // scope, at most one client -- an ordinary member (who is correctly denied JOIN by
+        // EnsureVideoIsAvailableForSessionAction, but is still a legitimate Session participant
+        // for this action's own, broader isNotParticipant() check above) must not be able to
+        // unilaterally terminate a call the counsellor team is running for everyone else. Nested
+        // inside the $user-present branch so the internal/no-acting-user system-driven teardown
+        // path (no single acting user, e.g. the Session itself later being marked
+        // held/failed/abandoned) is untouched.
+        if ($user && $session->for instanceof GroupTherapy) {
+            $isCounsellor = (bool) ($user->counsellor && $session->for->isCounsellor($user->counsellor));
+
+            if (! $isCounsellor) {
+                throw new VideoException('Only a counsellor may end this group video call for everyone.', 422);
+            }
         }
 
         $videoSession = $session->videoSessions()->whereNull('ended_at')->first();

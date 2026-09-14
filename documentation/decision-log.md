@@ -7550,3 +7550,127 @@ TT-3.1c) -- a genuine live end-to-end video connection can't be manually verifie
 provider without populating real credentials first. Every automated test already mocks the
 provider client directly, so this doesn't affect actual code coverage, only manual/Playwright
 verification depth. Documented plainly in the new feature doc rather than worked around.
+
+---
+
+## 2026-09-14 — SCRUM-27 (TT-3.2): scoping decisions and epic split
+
+**What happened**: TT-3.1 (SCRUM-26) fully landed, including TT-3.1e's own 7 sub-tickets. Ran the
+full `/start-feature` sequence for TT-3.2 (a brand-new epic per its own ticket text, "NOT yet
+scoped in depth" -- required per CLAUDE.md even mid-autonomous-execution). product-owner's first
+pass surfaced 7 open policy questions; presented 4 of the most consequential to the user via
+AskUserQuestion.
+
+**User's own scope-narrowing redirect (the most consequential decision)**: rather than pick a
+concurrent-video-participant cap number for "every group member joins video" (the epic's own
+original framing), the user proposed a materially different, narrower shape instead: "video for
+just counsellors for now and optional for a user who created the group therapy." This
+substantially reduces v1's risk surface -- ordinary members never get video access at all in this
+version, so most of the product-owner's original questions about large-N caps, per-member
+anonymity/payment/minor-status enforcement, and moderation-at-scale become moot for v1 (they're
+exactly what the SCRUM-314 full-membership follow-up will need to answer later, not TT-3.2).
+
+**Follow-up clarification, also resolved directly by the user**: since the creator could still be
+a minor even under this narrower shape, and group-scoped guardian consent doesn't exist yet
+(`VideoConsent` has no relation to `GroupTherapy` today), the user chose to hard-block a minor
+creator entirely (interim fail-closed, mirroring TT-3.1's own original 1:1 precedent) rather than
+allow it ungated -- and confirmed this counsellor+creator shape is intentionally v1, not the
+final, permanent shape of group video (full-membership access is a separate, later, tracked
+follow-up, SCRUM-314).
+
+**Final locked decisions** (user's own explicit answers):
+1. Group-scoped guardian video-consent: deferred to its own follow-up ticket (SCRUM-313), mirroring
+   how TT-3.1e was split out of TT-3.1 -- not solved in TT-3.2 itself.
+2. Video cap / access model: NOT a numeric cap on full membership -- narrowed to counsellors +
+   optional creator only (see redirect above).
+3. In-call moderation/removal: in scope for TT-3.2, despite being genuinely new interface surface
+   on both provider adapters -- judged a real clinical safety gap, not a nicety, for a live
+   multi-party mental-health session with no way to remove a disruptive/distressed participant.
+4. Multi-counsellor video credentials: every active counsellor gets equal host credentials, no
+   new "lead counsellor" concept -- consistent with this codebase's existing precedent (TT-7.5b-b0,
+   TT-2.6) of treating every active counsellor as an equal peer.
+5. Minor creator: hard-blocked from joining video entirely until SCRUM-313 lands.
+6. This is v1; full-membership group video is SCRUM-314, a separate, later, unscoped follow-up.
+
+**project-manager's own research corrected the product-owner's brief in three places, each
+REDUCING scope** (documenting since CLAUDE.md's decision-log covers judgment calls, not just user
+decisions): `GroupTherapy::isUser()` already correctly detects the creator (product-owner assumed
+this needed building); `TherapyTrait::clientIsMinor()` already correctly resolves against a
+GroupTherapy's own `addedby` (assumed a new, narrower method was needed); `JoinVideoSessionAction`'s
+`$isOwner` computation and `displayNameFor()` anonymity masking already generalize to GroupTherapy
+with zero code changes (both are already written polymorphically against `$session->for`). One
+item the brief under-stated: `DailyVideoProvider::createRoom()`'s `max_participants: 2` is a literal
+hardcoded API payload value, not an abstract "business rule" -- confirmed as real, required scope.
+
+**architect review added two corrections to the project-manager's own plan**:
+1. The proposed "bump the hardcoded 2 to a small shared constant" would have been a flat, global
+   bump -- wrong, since 1:1 `Therapy` legitimately needs to stay capped near 2 while `GroupTherapy`
+   needs headroom for the counsellor team + 1. Must be computed per session type, not a single
+   value. Constant belongs in `App\Enums\ConstantsEnum` (this codebase's existing home for this
+   kind of atomic cross-cutting value), not `config/video.php` (scoped strictly to
+   provider-selection config, not business rules).
+2. Real security gap in the proposed design: `Session::isNotParticipant()` -> `GroupTherapy::isParticipant()`
+   returns true for ANY pivot member, including ordinary members who must NOT get video under the
+   locked scope. The new GroupTherapy authorization branch must be a strict allow-list
+   (counsellor OR creator only) layered on top of that existing, broader check -- not "already a
+   participant, so let them in." Flagged as a required regression test in TT-3.2a
+   (SCRUM-308), not just a design note.
+
+Also confirmed (architect): keeping the new `EnsureVideoIsAvailableForSessionAction` branch inline
+rather than extracting a separate action is the right call here, since `$session->for` is a
+CLOSED two-type set (Therapy/GroupTherapy) -- the same pattern already used by
+`EnsureUserCanAccessTherapyContentAction` -- not the open-ended per-type dispatch anti-pattern
+`RespondToRequestAction` already carries as tracked debt (SCRUM-119/120). Keeping the new
+participant-removal capability as a 4th REQUIRED `VideoProviderInterface` method (not a separate
+optional trait) was also confirmed -- both current providers exist specifically for HIPAA-BAA
+reasons with no third provider on the roadmap, so pre-splitting for a hypothetical future
+ejection-incapable provider is premature abstraction.
+
+**Tickets filed**: SCRUM-308 (TT-3.2a), SCRUM-309 (TT-3.2b), SCRUM-310 (TT-3.2c), SCRUM-311
+(TT-3.2d), SCRUM-312 (TT-3.2e), plus placeholders SCRUM-313 (group-scoped guardian video-consent)
+and SCRUM-314 (full-membership group video), both explicitly not started. `documentation/implementation_plan.md`'s
+TT-3.2 row updated with the full breakdown and two new placeholder rows.
+
+---
+
+## 2026-09-14 — SCRUM-308 (TT-3.2a): Chime needs no cap fix; ordinary-member test coverage
+
+**Chime's own lack of a participant-cap parameter is deliberately left as-is, not fixed here**:
+`ChimeVideoProvider::createMeeting()` has no equivalent to Daily's `max_participants`. Unlike the
+ORIGINAL "every group member joins video" framing (where an uncapped Chime room really would risk
+hosting an unbounded number of people), this ticket's own locked v1 scope means the actual set of
+people who can ever reach `createParticipantCredentials()` for a GroupTherapy session is already
+bounded by `EnsureVideoIsAvailableForSessionAction`'s own new allow-list (active counsellors + at
+most one client) -- app-level authorization, not a provider-level room parameter, is what's doing
+the real limiting here. Chime being uncapped at the provider level carries no practical risk under
+this ticket's own scope; revisit if SCRUM-314 (full-membership) ever needs it.
+
+**`EnsureVideoIsAvailableForSessionAction`'s new `ensureGroupTherapyVideoIsAllowed()` is a strict
+allow-list layered on top of the existing, broader `Session::isNotParticipant()` check** (architect
+finding, applied as designed) -- confirmed via a dedicated regression test that an ordinary
+`group_therapy_user` pivot member, who legitimately passes the participant check (they're allowed
+in chat/roster), is still denied video access. A second test confirms a counsellor-created
+GroupTherapy (`addedby_type = Counsellor`) has no "creator client" concept at all -- `isUser()`
+correctly returns false for it, so only that group's own counsellors ever get video access, never
+its ordinary members.
+
+**Post-review: bundled TT-3.2d into this same branch, ahead of its own separate ticket
+(security-engineer finding)**: `security-engineer`'s review of this ticket found that opening
+group video authorization at join-time, without ALSO restricting who may END the call for
+everyone, left a live, exploitable gap -- `EndVideoSessionAction`/`LeaveVideoSessionAction` were
+untouched by this ticket and only checked `Session::isNotParticipant()`, which returns `true`
+("is a participant") for ANY `group_therapy_user` pivot member, not just the counsellor-or-creator
+allow-list this ticket just built for `join`. Before this ticket, this was harmless (GroupTherapy
+video was hard-blocked entirely, so no live `VideoSession` could exist to end). Now that
+counsellors/the creator can actually create one, an ordinary member -- correctly denied JOIN --
+could still `POST /sessions/{id}/video/end` and forcibly terminate the counsellor team's own call.
+`LeaveVideoSessionAction` was confirmed NOT exploitable the same way (it only ever updates the
+caller's own, non-existent participant row -- a no-op for a never-joined ordinary member).
+
+Rather than ship TT-3.2a alone with this window open (security-engineer's own explicit
+recommendation was either close it now or land TT-3.2d/SCRUM-311 in the same PR), implemented
+TT-3.2d's full scope in this same branch, since SCRUM-311's own scope already WAS exactly this
+fix, already next in the approved sequencing (`a → {b, d in parallel}`), and re-scoping it into a
+separate, immediately-following PR would have meant deliberately shipping a known, live gap in
+the interim. SCRUM-311 will be transitioned straight to Done alongside SCRUM-308 rather than
+tracked as separately in-progress work, since its own full scope is delivered here.
