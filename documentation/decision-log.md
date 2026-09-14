@@ -7738,3 +7738,47 @@ call itself failed) was deliberately NOT fixed here -- filed as a follow-up tick
 security-engineer's own recommendation, since retry/queued-job semantics are a larger design
 question than this ticket's own scope and the current behavior matches an already-shipped,
 accepted precedent.
+
+---
+
+## 2026-09-14 — SCRUM-310 (TT-3.2c): folded in the missing group-video frontend gate
+
+**Gap found**: none of TT-3.2's sub-tickets (SCRUM-308/309/310/311) ever called out that
+`TherapyComponent.vue`'s own `computedCanJoinVideo` -- the display gate that shows/hides the
+entire `VideoCallPanel.vue` "join video" button -- was hard-coded to `therapyType === 'individual'`
+only (a TT-3.1-era leftover, explicitly commented "GroupTherapy video is TT-3.2, unscoped"). The
+backend (SCRUM-308/309) already supports GroupTherapy video end-to-end, but the frontend had no way
+to ever reach it -- SCRUM-310's own "remove participant" control would have had nothing to attach
+to, and this ticket's own mandatory Playwright QA golden-path walk would have had no join button to
+click at all.
+
+**User decision** (asked directly, real product/scope fork -- not guessed): fold the fix into this
+ticket rather than filing a separate blocking ticket or skipping browser QA. `computedCanJoinVideo`
+now also allows an eligible GroupTherapy session (online, in-session, viewer is a counsellor OR the
+group's own creator) -- mirroring `EnsureVideoIsAvailableForSessionAction`'s own server-side
+allow-list. Deliberately did NOT add a new `clientIsMinor` display flag to `GroupTherapyResource`
+for this: the existing 1:1-Therapy precedent (`computedCanJoinVideo`'s own comment) already
+established that a display-only pre-check for the minor case is unnecessary -- a minor creator can
+still click "join video," the backend's existing `VideoException` (not a consent flow, per this
+epic's own earlier scoping) surfaces through the panel's own generic `error` state with a clear
+message, exactly like every other join-time rejection.
+
+**QA follow-ups (qa-engineer, conditional approval)**: browser QA could not exercise the actual
+remove-button/removed-screen flow live (no real Daily/Chime credentials in this dev environment --
+a pre-existing, already-documented limitation, not a defect in this diff), but flagged three gaps
+against this repo's own "done" criteria, all addressed before merge:
+1. Added `DatabaseSeeder::createGroupVideoCallDemoData()` (a counsellor, a non-minor creator, and
+   an ordinary member on a FREE, immediately in-progress GroupTherapy session) -- no such fixture
+   existed before this ticket, so verifying it required hand-building data via tinker.
+2. **Real, sitewide, pre-existing bug found while building that fixture, unrelated to this ticket**:
+   `Session::$fillable` has no `for_id`/`for_type`, so several existing seeder methods
+   (`createGroupPaymentDemoData()`, `createGroupStrictPaymentGateDemoData()`, etc.) that pass those
+   two keys into a relation's `->create([...])` call silently drop them -- `CreateSessionAction`
+   itself avoids this correctly via `->for()->associate()->save()`. Filed as SCRUM-316 rather than
+   fixed broadly here (out of this ticket's own scope); `createGroupVideoCallDemoData()` was written
+   using the same safe `associate()` pattern so it doesn't add a ninth broken instance.
+3. Added a "Group video (TT-3.2)" section to `documentation/features/scrum-26-video-calling.md`
+   (Test data + steps + what-success-looks-like) and a matching entry in
+   `documentation/seeded-data.md`, rather than deferring all documentation to the epic's own
+   closeout ticket (SCRUM-312) -- qa-engineer's own charter treats this as a per-ticket "done"
+   criterion, not an epic-level one.

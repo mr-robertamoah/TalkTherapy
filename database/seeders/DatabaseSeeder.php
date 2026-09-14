@@ -28,6 +28,7 @@ use App\Models\OrganizationInvoiceLine;
 use App\Models\OrganizationPaymentInstrument;
 use App\Models\Refund;
 use App\Models\Request;
+use App\Models\Session;
 use App\Models\Therapy;
 use App\Models\Transaction;
 use App\Models\User;
@@ -163,6 +164,7 @@ class DatabaseSeeder extends Seeder
         // is deliberately minor/consent-focused -- there was no plain, adult, no-consent-complexity
         // therapy+session for simply trying the base "join video" flow itself.
         $this->createVideoCallDemoData();
+        $this->createGroupVideoCallDemoData();
     }
 
     private function createLanguages($user)
@@ -1474,6 +1476,85 @@ class DatabaseSeeder extends Seeder
             'status' => 'in_session',
             'payment_type' => 'FREE',
         ]);
+    }
+
+    // TT-3.2c/SCRUM-310 (qa-engineer finding): no seeded fixture existed for GroupTherapy video at
+    // all -- verifying this ticket required hand-building data via tinker. Deliberately builds the
+    // Session via `->for()->associate()` + an explicit save(), NOT `addedSessions()->create([...,
+    // 'for_id' => ..., 'for_type' => ...])` the way this file's OTHER group seeder methods do
+    // (createGroupPaymentDemoData(), createGroupStrictPaymentGateDemoData(), etc.) -- that
+    // established pattern is itself broken (Session::$fillable has no for_id/for_type, so those
+    // keys are silently dropped by mass assignment; only currently-running dev DB rows still work
+    // because they predate a `migrate:fresh --seed`), a real, sitewide, pre-existing bug this
+    // ticket's own QA pass discovered and filed separately (SCRUM-316) rather than fixing broadly
+    // here. This method uses the same safe, explicit pattern CreateSessionAction itself already
+    // uses, so it actually works today rather than reproducing a ninth broken instance of the bug.
+    private function createGroupVideoCallDemoData(): void
+    {
+        $counsellorUser = User::factory()->create([
+            'firstName' => 'GroupVideoCall',
+            'lastName' => 'DemoCounsellor',
+            'email' => 'group.video.call.demo.counsellor@example.com',
+            'username' => 'group_video_call_demo_counsellor',
+            'password' => Hash::make('password'),
+            'email_verified_at' => now(),
+        ]);
+
+        $counsellor = $counsellorUser->counsellor()->create([
+            'name' => 'Dr. GroupVideoCall DemoCounsellor',
+            'about' => 'Seeded counsellor for testing group video call join/removal (SCRUM-308/309/310).',
+            'email' => $counsellorUser->email,
+            'phone' => fake()->phoneNumber(),
+            'verified_at' => now(),
+            'email_verified_at' => now(),
+            'profession_id' => rand(1, 10),
+            'contact_visible' => true,
+        ]);
+
+        $creator = User::factory()->adult()->create([
+            'firstName' => 'GroupVideoCall',
+            'lastName' => 'DemoCreator',
+            'email' => 'group.video.call.demo.creator@example.com',
+            'username' => 'group_video_call_demo_creator',
+            'password' => Hash::make('password'),
+            'email_verified_at' => now(),
+        ]);
+
+        $member = User::factory()->create([
+            'firstName' => 'GroupVideoCall',
+            'lastName' => 'DemoMember',
+            'email' => 'group.video.call.demo.member@example.com',
+            'username' => 'group_video_call_demo_member',
+            'password' => Hash::make('password'),
+            'email_verified_at' => now(),
+        ]);
+
+        $groupTherapy = $creator->addedGroupTherapies()->create([
+            'name' => 'Group Video Call Demo',
+            'about' => 'Seeded FREE group therapy for testing group video call join/removal across both providers (SCRUM-308/309/310) -- no payment or guardian-consent complexity.',
+            'session_type' => 'Once',
+            'payment_type' => 'FREE',
+            'max_users' => 10,
+            'allow_anyone' => false,
+            'anonymous' => false,
+            'public' => false,
+            'status' => 'in_session',
+        ]);
+        $groupTherapy->counsellors()->attach($counsellor->id, ['state' => 'ACTIVE']);
+        $groupTherapy->users()->attach($member->id, ['anonymous' => false, 'background_story' => 'test']);
+
+        // Immediately in-progress and online, so "join video" is reachable without waiting.
+        $session = new Session([
+            'name' => 'Group Video Call Demo Session',
+            'about' => 'Seeded online, in-progress session for testing the group video join/remove-participant flow.',
+            'start_time' => now()->subMinutes(5),
+            'end_time' => now()->addHour(),
+            'type' => 'online',
+            'status' => 'in_session',
+            'payment_type' => 'FREE',
+        ]);
+        $session->for()->associate($groupTherapy);
+        $counsellor->addedSessions()->save($session);
     }
 
     private function createDobChangeNoGuardianDemoData(): void

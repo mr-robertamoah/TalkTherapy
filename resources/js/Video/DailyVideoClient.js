@@ -37,6 +37,11 @@ export default function createDailyVideoClient(callbacks) {
             // display name JoinVideoSessionAction::displayNameFor() already resolved server-side
             // (see DailyVideoProvider::createParticipantCredentials()'s own `user_name` field).
             name: participant.user_name || null,
+            // TT-3.2c/SCRUM-310: our OWN backend user id, exactly what DailyVideoProvider sent as
+            // `user_id` when minting this participant's token -- distinct from `id` above (Daily's
+            // own tile/session_id), needed so a counsellor's "remove" click can name the right
+            // backend user rather than a Daily-internal id the backend has never seen.
+            userId: participant.user_id != null ? Number(participant.user_id) : null,
         })
 
         attachIfReady(id, participant)
