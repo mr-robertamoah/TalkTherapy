@@ -264,15 +264,83 @@ test('a client whose live dob still reads as a minor joins freely once the snaps
         ->not->toThrow(VideoException::class);
 });
 
-// TT-3.1 is 1:1 (individual Therapy) only -- GroupTherapy video is TT-3.2, not yet scoped.
-test('a GroupTherapy-backed session is not yet available for video', function () {
-    $groupTherapy = GroupTherapy::factory()->create([
+// TT-3.2a/SCRUM-308: v1's own locked scope -- video access limited to every currently-active
+// counsellor plus optionally the group's own creator. Ordinary members (attached only via the
+// group_therapy_user pivot) get NO video access in this version, even though they're already a
+// legitimate participant for chat/roster purposes (Session::isNotParticipant() already passed
+// for them above -- this is a strictly narrower, separate allow-list, not an extension of that
+// broader check).
+
+function onlineInSessionGroupTherapySession(array $groupOverrides = [], array $sessionOverrides = []): array
+{
+    $creator = User::factory()->adult()->create();
+    $groupTherapy = GroupTherapy::factory()->create(array_merge([
         'addedby_type' => User::class,
-        'addedby_id' => User::factory(),
+        'addedby_id' => $creator->id,
+        'public' => true,
+    ], $groupOverrides));
+    $counsellorUser = User::factory()->create();
+    $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
+    $groupTherapy->counsellors()->attach($counsellor->id, ['state' => 'ACTIVE', 'role' => 'NORMAL']);
+    $session = Session::factory()->create(array_merge([
+        'for_id' => $groupTherapy->id,
+        'for_type' => GroupTherapy::class,
+        'type' => 'ONLINE',
+        'status' => 'IN_SESSION',
+        'start_time' => now(),
+    ], $sessionOverrides));
+
+    return compact('creator', 'groupTherapy', 'counsellorUser', 'counsellor', 'session');
+}
+
+test('an ordinary GroupTherapy member (not a counsellor, not the creator) cannot join video in this version', function () {
+    $data = onlineInSessionGroupTherapySession();
+    $member = User::factory()->create();
+    $data['groupTherapy']->users()->attach($member->id, ['anonymous' => false]);
+
+    expect(fn () => EnsureVideoIsAvailableForSessionAction::new()->execute($data['session'], $member))
+        ->toThrow(VideoException::class, "Video is only available to counsellors and the group's own creator at this time.");
+});
+
+test('an active counsellor on a GroupTherapy can join video', function () {
+    $data = onlineInSessionGroupTherapySession();
+
+    expect(fn () => EnsureVideoIsAvailableForSessionAction::new()->execute($data['session'], $data['counsellorUser']))
+        ->not->toThrow(VideoException::class);
+});
+
+test('an adult creator of a GroupTherapy can join video', function () {
+    $data = onlineInSessionGroupTherapySession();
+
+    expect(fn () => EnsureVideoIsAvailableForSessionAction::new()->execute($data['session'], $data['creator']))
+        ->not->toThrow(VideoException::class);
+});
+
+test('a minor creator is hard-blocked from group video entirely, with no consent check', function () {
+    $data = onlineInSessionGroupTherapySession(['client_was_minor_at_creation' => true]);
+
+    // A plain VideoException, NOT VideoConsentRequiredException -- there is no group-scoped
+    // consent flow to redirect to yet (SCRUM-313, not started); this is an interim, unconditional
+    // block, not a gate a guardian grant could ever satisfy today.
+    expect(fn () => EnsureVideoIsAvailableForSessionAction::new()->execute($data['session'], $data['creator']))
+        ->toThrow(VideoException::class, 'Video is not yet available to a minor client for group therapy.');
+});
+
+test('a counsellor can still join group video even when the group\'s own creator is a minor', function () {
+    $data = onlineInSessionGroupTherapySession(['client_was_minor_at_creation' => true]);
+
+    expect(fn () => EnsureVideoIsAvailableForSessionAction::new()->execute($data['session'], $data['counsellorUser']))
+        ->not->toThrow(VideoException::class);
+});
+
+test('a counsellor-created GroupTherapy has no "creator client" concept -- only its counsellors get video access', function () {
+    $creatorCounsellorUser = User::factory()->create();
+    $creatorCounsellor = Counsellor::factory()->create(['user_id' => $creatorCounsellorUser->id]);
+    $groupTherapy = GroupTherapy::factory()->create([
+        'addedby_type' => Counsellor::class,
+        'addedby_id' => $creatorCounsellor->id,
         'public' => true,
     ]);
-    $member = User::factory()->create();
-    $groupTherapy->users()->attach($member->id, ['anonymous' => false]);
     $session = Session::factory()->create([
         'for_id' => $groupTherapy->id,
         'for_type' => GroupTherapy::class,
@@ -280,7 +348,11 @@ test('a GroupTherapy-backed session is not yet available for video', function ()
         'status' => 'IN_SESSION',
         'start_time' => now(),
     ]);
+    $member = User::factory()->create();
+    $groupTherapy->users()->attach($member->id, ['anonymous' => false]);
 
+    expect(fn () => EnsureVideoIsAvailableForSessionAction::new()->execute($session, $creatorCounsellorUser))
+        ->not->toThrow(VideoException::class);
     expect(fn () => EnsureVideoIsAvailableForSessionAction::new()->execute($session, $member))
         ->toThrow(VideoException::class);
 });

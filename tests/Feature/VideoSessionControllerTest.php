@@ -2,6 +2,7 @@
 
 use App\Contracts\VideoProviderInterface;
 use App\Models\Counsellor;
+use App\Models\GroupTherapy;
 use App\Models\Session;
 use App\Models\Therapy;
 use App\Models\User;
@@ -92,6 +93,39 @@ test('a client blocked by the strict payment gate cannot join video over the rou
     $response = $this
         ->actingAs($data['client'])
         ->postJson(route('sessions.video.join', ['sessionId' => $data['session']->id]));
+
+    $response->assertStatus(402);
+});
+
+// TT-3.2a/SCRUM-308: EnsureUserCanAccessTherapyContentAction was already widened by the completed
+// TT-7.5b epic to gate a GroupTherapy member (including its own creator) generically -- this
+// proves that already-existing widening correctly reaches group video too, once
+// EnsureVideoIsAvailableForSessionAction's own new GroupTherapy branch (also TT-3.2a) lets a
+// creator through far enough to reach this check. Requires zero new payment code.
+test('a strict-gated GroupTherapy\'s own creator cannot join video without having paid, over the route', function () {
+    app()->instance(VideoProviderInterface::class, fakeVideoProviderForRouteTest());
+    $creator = User::factory()->adult()->create();
+    $counsellorUser = User::factory()->create();
+    $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
+    $groupTherapy = GroupTherapy::factory()->create([
+        'addedby_type' => User::class,
+        'addedby_id' => $creator->id,
+        'public' => false,
+        'payment_type' => 'PAID',
+        'payment_data' => ['per' => 'PER_SESSION', 'amount' => 50, 'currency' => 'GHS', 'strictPaymentGate' => true],
+    ]);
+    $groupTherapy->counsellors()->attach($counsellor->id, ['state' => 'ACTIVE', 'role' => 'NORMAL']);
+    $session = Session::factory()->create([
+        'for_id' => $groupTherapy->id,
+        'for_type' => GroupTherapy::class,
+        'type' => 'ONLINE',
+        'status' => 'IN_SESSION',
+        'start_time' => now(),
+    ]);
+
+    $response = $this
+        ->actingAs($creator)
+        ->postJson(route('sessions.video.join', ['sessionId' => $session->id]));
 
     $response->assertStatus(402);
 });
@@ -195,4 +229,66 @@ test('a non-participant cannot end the video call over the route', function () {
 
     $response->assertStatus(422);
     expect(VideoSession::query()->where('session_id', $data['session']->id)->first()->ended_at)->toBeNull();
+});
+
+// TT-3.2d/SCRUM-311 security-review finding (found while reviewing TT-3.2a, SCRUM-308): proves
+// the counsellor-only restriction over the REAL route, not just at the unit level -- an ordinary
+// group member is a legitimate Session participant (so the generic isNotParticipant() check
+// alone would let them through) but must still be denied ending the call for everyone.
+test('an ordinary GroupTherapy member cannot end the group video call for everyone over the route', function () {
+    app()->instance(VideoProviderInterface::class, fakeVideoProviderForRouteTest());
+    $creator = User::factory()->adult()->create();
+    $counsellorUser = User::factory()->create();
+    $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
+    $groupTherapy = GroupTherapy::factory()->create([
+        'addedby_type' => User::class,
+        'addedby_id' => $creator->id,
+        'public' => true,
+    ]);
+    $groupTherapy->counsellors()->attach($counsellor->id, ['state' => 'ACTIVE', 'role' => 'NORMAL']);
+    $member = User::factory()->create();
+    $groupTherapy->users()->attach($member->id, ['anonymous' => false]);
+    $session = Session::factory()->create([
+        'for_id' => $groupTherapy->id,
+        'for_type' => GroupTherapy::class,
+        'type' => 'ONLINE',
+        'status' => 'IN_SESSION',
+        'start_time' => now(),
+    ]);
+    $this->actingAs($counsellorUser)->postJson(route('sessions.video.join', ['sessionId' => $session->id]));
+
+    $response = $this
+        ->actingAs($member)
+        ->postJson(route('sessions.video.end', ['sessionId' => $session->id]));
+
+    $response->assertStatus(422);
+    expect(VideoSession::query()->where('session_id', $session->id)->first()->ended_at)->toBeNull();
+});
+
+test('an active counsellor CAN end the group video call for everyone over the route', function () {
+    app()->instance(VideoProviderInterface::class, fakeVideoProviderForRouteTest());
+    $creator = User::factory()->adult()->create();
+    $counsellorUser = User::factory()->create();
+    $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
+    $groupTherapy = GroupTherapy::factory()->create([
+        'addedby_type' => User::class,
+        'addedby_id' => $creator->id,
+        'public' => true,
+    ]);
+    $groupTherapy->counsellors()->attach($counsellor->id, ['state' => 'ACTIVE', 'role' => 'NORMAL']);
+    $session = Session::factory()->create([
+        'for_id' => $groupTherapy->id,
+        'for_type' => GroupTherapy::class,
+        'type' => 'ONLINE',
+        'status' => 'IN_SESSION',
+        'start_time' => now(),
+    ]);
+    $this->actingAs($counsellorUser)->postJson(route('sessions.video.join', ['sessionId' => $session->id]));
+
+    $response = $this
+        ->actingAs($counsellorUser)
+        ->postJson(route('sessions.video.end', ['sessionId' => $session->id]));
+
+    $response->assertOk();
+    expect(VideoSession::query()->where('session_id', $session->id)->first()->ended_at)->not->toBeNull();
 });
