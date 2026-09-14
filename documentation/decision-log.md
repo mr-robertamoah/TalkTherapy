@@ -7400,3 +7400,92 @@ this type's "an independent check must not be self-administered" rationale, so t
 necessarily identical for those types either. Left as-is, consistent with the "fix only what this
 ticket's own new code newly exposes, file pre-existing/broader gaps separately" precedent
 (SCRUM-300). Worth a follow-up ticket if this is judged worth closing more broadly.
+
+---
+
+## 2026-09-13 — SCRUM-306 (TT-4.11e): closeout regression matrix results
+
+Full regression matrix run against SCRUM-289 (TT-4.11)'s 6 stated closeout items, per this
+ticket's own explicit "verification and documentation, not new behavior" scope. No behavioral bugs
+found in any prior sub-ticket -- every review pass across TT-4.11a-d already caught and fixed its
+own issues before merging. Three **test-coverage gaps** found and closed here (the ticket's own
+scope reserves *behavioral bug* fixes for the sub-ticket that introduced them; missing test
+coverage for already-correct behavior is this closeout's own job to fill):
+
+1. **Document-upload approve/reject was never tested end-to-end.** Submission (TT-4.11b) and
+   respond (TT-4.11c) each had thorough real-HTTP coverage independently, but no test ever chained
+   them for a request that actually had a document attached -- so "does approving/rejecting a
+   document-bearing request work, and does the document stay retrievable only via the authorized
+   route throughout (before AND after the decision)" was untested. Added
+   `tests/Feature/AgeVerificationDocumentApprovalTest.php` (3 tests: approve, reject, and an
+   unrelated user still blocked post-decision).
+2. **The retention window's configurability was never actually proven.** Every test in
+   `tests/Unit/DeleteExpiredIdentityDocumentsTest.php` set the config to the SAME value as its own
+   default (30 days) -- which would pass identically even if `AppService::deleteExpiredIdentityDocuments()`
+   had the window hardcoded rather than genuinely reading `config('identity_verification.document_retention_days')`.
+   Added a test using a non-default window (7 days) proving both sides of that window's own
+   boundary are respected. (Also parameterized the shared `anIdentityDocumentRequest()` test
+   helper's filename, since the new test needed two documents alive at once and the original
+   hardcoded `'doc.jpg'` for every call would have collided on the same fake-disk path.)
+3. **No seeded demo user had a `dob` set at all.** Confirmed independently by both this
+   investigation and `qa-engineer`'s own SCRUM-305 QA pass, which had to hand-pick
+   `dobchange_demo_no_guardian` (a dobChange fixture, not built for this feature) to get a
+   meaningful attested dob. Added `age_verification_demo_user` (adult, `dob` set, one pre-seeded
+   PENDING `ageVerification` request) to `DatabaseSeeder`, documented in
+   `documentation/seeded-data.md`'s new "Age verification" section.
+
+**Retroactive-correction item (TT-4.10b's 13 call sites) -- confirmed correct, no code change
+needed**: traced commit `9bcce0c` (SCRUM-291/TT-4.10b) -- 11 of the 13 `isAdult()` call sites were
+migrated to prefer `client_was_minor_at_creation`/`ward_was_minor_at_creation` via two shared
+helpers (`TherapyTrait::clientIsMinor()`, `GetWardForVideoConsentableAction::isMinor()`); the other
+2 (`EnsureCanCreateTherapyAction`, `EnsureUserCanBeGuardianAction`) are deliberately excluded
+(snapshot-writing trigger, and an unrelated eligibility question). `ApplyVerifiedDobAction`'s bulk
+`->update()` on `Guardianship`/`Therapy`/`GroupTherapy` reaches every row either shared helper could
+ever read, with the identical scope the original pre-extraction method already used -- no stale
+in-memory or cached copy of these columns exists anywhere in the codebase.
+
+**Supersession (both directions) and `dob_verified_at` set/cleared correctly** -- both already
+fully covered by existing tests from TT-4.11c's own security-review fixes (`SupersedePendingDobChangeRequestsActionTest`,
+the two cases added to `RespondToDobChangeRequestActionTest`/`ProfileDobChangeGateTest`/
+`AdminUpdateUserDobChangeGateTest`) -- confirmed by grepping every `users.dob` write site in
+`app/` (exactly three: `ProfileController::update()`, `UpdateUserAction`, `ApplyVerifiedDobAction`
+-- no fourth path exists), no additional tests needed.
+
+**Baseline**: full suite was 1829 passed before this closeout's new tests; 1837 passed
+(4864 assertions) after (8 new tests total: 3 document-approval, 1 retention-window, 4
+submitted-indicator). `documentation/features/scrum-289-age-identity-verification.md` written
+per CLAUDE.md's feature-documentation requirement, closing out the epic.
+
+**Real bug found by `qa-engineer`'s own closeout pass, fixed in TT-4.11b/SCRUM-303's own files
+(not this ticket's scope), per this ticket's explicit instruction**: `AgeVerificationSection.vue`'s
+"submit a statement"/"submit another statement" button label depended entirely on a local,
+in-session `submitted` ref initialized to `false` on every fresh page load -- a user with a
+genuinely already-submitted request (confirmed live via Playwright against the new
+`age_verification_demo_user` seed, logging in fresh with no prior submission in that browser
+session) always saw "submit a statement," implying no request existed, until they submitted again
+in that same session.
+
+**First fix attempt was incomplete (qa-engineer, second review pass)**: scoped the check to "has
+a PENDING request" (`GetPendingAgeVerificationRequestAction`, `hasPendingAgeVerification` prop).
+qa-engineer's re-verification pass caught that this reverted the label back to "submit a
+statement" the instant an admin decided the request (accepted or rejected) -- the exact same
+misleading-label bug, just shifted to a different state transition, since "submit another
+statement" is accurate regardless of whether the prior submission is pending, accepted, or
+rejected. Fixed by asking a different question -- "has this user ever submitted one at all,"
+any status -- via a new, separate `HasSubmittedAgeVerificationAction` (kept distinct from
+`GetPendingAgeVerificationRequestAction`, which is still correctly used, unchanged, by
+`SubmitAgeVerificationAction`'s own idempotent-reuse logic; that one genuinely does need
+PENDING-only semantics). Prop/component prop renamed accordingly
+(`hasSubmittedAgeVerification`/`hasSubmittedRequest`). Test file renamed
+`AgeVerificationPendingIndicatorTest.php` -> `AgeVerificationSubmittedIndicatorTest.php` with
+cases added for both the accepted and rejected outcomes asserting `true`, not just the original
+"was decided so reverts to false" case that the first attempt had gotten backwards.
+
+**Post-review refactor (reviewer suggestion, applied)**: the first fix attempt originally queried
+`Request::whereFrom($request->user())` in `ProfileController::show()`, while
+`SubmitAgeVerificationAction`'s own idempotency check used `whereFor($dto->user)` -- functionally
+identical today only because ageVerification's `from`/`for` are always the same user, but two
+independently-scoped queries expressing the same intent risk silently diverging if that invariant
+ever changed. Extracted `App\Actions\User\GetPendingAgeVerificationRequestAction`, shared by both
+call sites at that point (before the second fix above split the profile-page check off into its
+own, differently-scoped `HasSubmittedAgeVerificationAction`).

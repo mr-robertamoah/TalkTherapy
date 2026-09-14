@@ -6,6 +6,7 @@ use App\Actions\Counsellor\EnsureCanDeleteCounsellorAction;
 use App\Actions\EnsureNameStaysRetrievableAction;
 use App\Actions\User\EnsureDobChangeIsAllowedAction;
 use App\Actions\User\GetCounsellorCreationStepOfUserAction;
+use App\Actions\User\HasSubmittedAgeVerificationAction;
 use App\Actions\User\UpdateUserAvatarAction;
 use App\DTOs\CheckNameRetrievabilityDTO;
 use App\DTOs\DeleteCounsellorDTO;
@@ -40,6 +41,26 @@ class ProfileController extends Controller
             // guardian/admin approval instead of applied immediately -- only present on the one
             // page load immediately after that redirect (standard Laravel flash semantics).
             'dobChangePendingApproval' => (bool) session('dobChangePendingApproval'),
+            // TT-4.11b/SCRUM-303 bug (found during TT-4.11e/SCRUM-306's closeout QA pass):
+            // AgeVerificationSection.vue previously tracked whether a request was pending using
+            // only its own local, in-session `submitted` ref -- initialized to `false` on every
+            // fresh page load regardless of actual server-side state, so a user with a genuinely
+            // still-pending request saw "submit a statement" (implying none exists) instead of
+            // "submit another statement" until they submitted again in that same session. Unlike
+            // `dobChangePendingApproval` above (a one-time flash, correct for a notice that only
+            // matters right after its own redirect), this needs to reflect DURABLE state on every
+            // load, so it's a real query, not a flash.
+            //
+            // Deliberately "has ever submitted," not "has a pending one" (qa-engineer finding,
+            // second pass): "submit another statement" is accurate whether the prior submission
+            // is still pending, accepted, or rejected -- a decided request doesn't retroactively
+            // make it as if none was ever sent. Scoping this to pending-only left the label
+            // silently reverting to "submit a statement" the moment a request was decided, the
+            // same class of bug this ticket set out to fix, just shifted to a different state
+            // transition. See HasSubmittedAgeVerificationAction's own doc comment for why this is
+            // a distinct question from GetPendingAgeVerificationRequestAction (still used,
+            // correctly, by SubmitAgeVerificationAction's own idempotent-reuse logic).
+            'hasSubmittedAgeVerification' => HasSubmittedAgeVerificationAction::new()->execute($request->user()),
         ]);
     }
 

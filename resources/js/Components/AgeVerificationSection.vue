@@ -10,12 +10,27 @@ import Alert from './Alert.vue';
 import useAlert from '@/Composables/useAlert';
 import useAuth from '@/Composables/useAuth';
 
+const props = defineProps({
+    // TT-4.11e/SCRUM-306 closeout QA finding (two passes): without this, `submitted` was purely
+    // local, in-session state initialized to `false` on every fresh page load -- a user with a
+    // genuinely already-submitted request saw "submit a statement" (implying none exists) rather
+    // than "submit another statement." Deliberately "has ever submitted," not "has a pending
+    // one" -- the first fix scoped this to pending-only, which left the label reverting back to
+    // "submit a statement" the moment an admin decided the request, the same misleading-label bug
+    // just shifted to a different state transition. "submit another statement" is accurate
+    // whether the prior submission is still pending, accepted, or rejected.
+    hasSubmittedRequest: {
+        type: Boolean,
+        default: false,
+    },
+})
+
 const { goToLogin } = useAuth()
 const { alertData, clearAlertData, setSuccessAlertData, setFailedAlertData } = useAlert()
 
 const open = ref(false)
 const submitting = ref(false)
-const submitted = ref(false)
+const submitted = ref(props.hasSubmittedRequest)
 const attestation = ref('')
 const document = ref(null)
 const documentInput = ref(null)

@@ -31,6 +31,10 @@ const props = defineProps({
         type: Boolean,
         default: false,
     },
+    hasSubmittedAgeVerification: {
+        type: Boolean,
+        default: false,
+    },
 });
 
 const step = ref(0)
@@ -106,7 +110,7 @@ function changeStep(value) {
                 </div>
 
                 <div class="p-8 bg-white shadow-xl border border-gray-100 rounded-xl">
-                    <AgeVerificationSection class="max-w-xl" />
+                    <AgeVerificationSection class="max-w-xl" :has-submitted-request="hasSubmittedAgeVerification" />
                 </div>
 
                 <div

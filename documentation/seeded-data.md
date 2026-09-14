@@ -262,6 +262,18 @@ may respond" is reachable without hand-building data through `tinker` first.
 | `dobchange_demo_first_guardian` | `password` | The guardian the request is addressed to (`to`) — can see and act on it via the normal `whereTo` match. |
 | `dobchange_demo_second_guardian` | `password` | A second, equally-valid guardian of the same minor, NOT named in the request's `to` — log in as this account and open Requests to confirm the request is still visible and actionable. |
 
+## Age verification (SCRUM-289/TT-4.11)
+
+A user can optionally submit a self-attestation (+ an optional supporting document) strengthening
+their claimed `dob`, reviewed by any admin through the same generic Requests list/modal. Before
+this seed existed, no demo user had a `dob` set at all, so exercising this golden path required
+hand-picking a dobChange fixture (`dobchange_demo_no_guardian`, built for a different feature) or
+building a user via `tinker` first.
+
+| Username | Password | Purpose |
+|---|---|---|
+| `age_verification_demo_user` | `password` | Adult (`dob` set to 25 years ago) with an already-PENDING `ageVerification` request (self-attestation only, no document). Log in as the super admin (`mr_robertamoah`) and open Requests to see and act on it. To try the document-upload path, log in as this account instead, go to Profile → Age Verification → submit another statement, and attach any small image/PDF. |
+
 ## Testing the registration/verification flow
 
 The 11 seeded accounts above all skip email verification. To test registration or the

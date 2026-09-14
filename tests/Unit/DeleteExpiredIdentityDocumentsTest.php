@@ -13,9 +13,8 @@ use Illuminate\Support\Facades\Storage;
 // DECIDED (not PENDING) and the configurable retention window (30 days by default) has passed
 // since that decision -- never for a still-pending request, regardless of age.
 
-function anIdentityDocumentRequest(string $status, ?Carbon $updatedAt = null): array
+function anIdentityDocumentRequest(string $status, ?Carbon $updatedAt = null, string $filename = 'doc.jpg'): array
 {
-    Storage::fake('identity_documents');
     $for = User::factory()->create();
 
     // `Request::files()` is generic and type-agnostic -- TT-4.11a adds no RequestTypeEnum case of
@@ -35,14 +34,15 @@ function anIdentityDocumentRequest(string $status, ?Carbon $updatedAt = null): a
         $request->forceFill(['updated_at' => $updatedAt])->save();
     }
 
-    Storage::disk('identity_documents')->put('doc.jpg', 'contents');
-    $file = File::factory()->create(['name' => 'doc.jpg', 'path' => '', 'storage' => 'identity_documents']);
+    Storage::disk('identity_documents')->put($filename, 'contents');
+    $file = File::factory()->create(['name' => $filename, 'path' => '', 'storage' => 'identity_documents']);
     $request->files()->attach($file->id, ['tag' => 'front-id']);
 
     return [$request, $file];
 }
 
 test('a decided request older than the retention window has its document deleted', function () {
+    Storage::fake('identity_documents');
     config(['identity_verification.document_retention_days' => 30]);
     [$request, $file] = anIdentityDocumentRequest(RequestStatusEnum::accepted->value, now()->subDays(31));
 
@@ -54,6 +54,7 @@ test('a decided request older than the retention window has its document deleted
 });
 
 test('a decided request within the retention window is left untouched', function () {
+    Storage::fake('identity_documents');
     config(['identity_verification.document_retention_days' => 30]);
     [$request, $file] = anIdentityDocumentRequest(RequestStatusEnum::accepted->value, now()->subDays(5));
 
@@ -65,6 +66,7 @@ test('a decided request within the retention window is left untouched', function
 });
 
 test('a still-pending request is never swept regardless of age', function () {
+    Storage::fake('identity_documents');
     config(['identity_verification.document_retention_days' => 30]);
     [$request, $file] = anIdentityDocumentRequest(RequestStatusEnum::pending->value, now()->subDays(90));
 
@@ -73,4 +75,25 @@ test('a still-pending request is never swept regardless of age', function () {
     Storage::disk('identity_documents')->assertExists('doc.jpg');
     expect(File::query()->find($file->id))->not->toBeNull();
     expect($request->files()->count())->toBe(1);
+});
+
+// TT-4.11e/SCRUM-306 closeout: every other test in this file happens to set the retention window
+// to its own default value (30), which would pass identically even if the config were never
+// actually read (a hardcoded 30 would look the same). This proves the window is genuinely
+// configurable -- a non-default value of 7 days is respected on both sides of its own boundary.
+test('a shorter, non-default retention window is genuinely respected, not hardcoded to the default', function () {
+    Storage::fake('identity_documents');
+    config(['identity_verification.document_retention_days' => 7]);
+    [$requestJustPast, $fileJustPast] = anIdentityDocumentRequest(RequestStatusEnum::accepted->value, now()->subDays(8), 'just-past.jpg');
+    [$requestNotYet, $fileNotYet] = anIdentityDocumentRequest(RequestStatusEnum::accepted->value, now()->subDays(6), 'not-yet.jpg');
+
+    AppService::new()->deleteExpiredIdentityDocuments();
+
+    Storage::disk('identity_documents')->assertMissing('just-past.jpg');
+    expect(File::query()->find($fileJustPast->id))->toBeNull();
+    expect($requestJustPast->files()->count())->toBe(0);
+
+    Storage::disk('identity_documents')->assertExists('not-yet.jpg');
+    expect(File::query()->find($fileNotYet->id))->not->toBeNull();
+    expect($requestNotYet->files()->count())->toBe(1);
 });

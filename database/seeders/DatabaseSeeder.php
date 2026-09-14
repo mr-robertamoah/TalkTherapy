@@ -153,6 +153,11 @@ class DatabaseSeeder extends Seeder
         // TT-4.10f/SCRUM-295: nor was there a seeded way to try "any one of a ward's multiple
         // guardians may respond, not just the one `to` names" without hand-building it first.
         $this->createDobChangeMultiGuardianDemoData();
+
+        // TT-4.11e/SCRUM-306 closeout: no seeded demo user had a `dob` set at all, so trying the
+        // age-verification golden path required hand-picking dobchange_demo_no_guardian (a
+        // dobChange fixture, not built for this feature) or hand-building a user via tinker first.
+        $this->createAgeVerificationDemoData();
     }
 
     private function createLanguages($user)
@@ -1479,6 +1484,34 @@ class DatabaseSeeder extends Seeder
         $request->from()->associate($minor);
         $request->for()->associate($minor);
         $request->to()->associate($firstGuardian);
+        $request->save();
+    }
+
+    // TT-4.11e/SCRUM-306: a normal adult user with a `dob` already set, plus a pending
+    // ageVerification request (self-attestation only, no document -- document upload is
+    // optional per the feature's own design) -- log in as any admin to see and act on it in the
+    // Requests modal.
+    private function createAgeVerificationDemoData(): void
+    {
+        $user = User::factory()->create([
+            'firstName' => 'AgeVerification',
+            'lastName' => 'DemoUser',
+            'email' => 'age.verification.demo@example.com',
+            'username' => 'age_verification_demo_user',
+            'password' => Hash::make('password'),
+            'email_verified_at' => now(),
+            'dob' => now()->subYears(25)->toDateString(),
+        ]);
+
+        $request = new Request;
+        $request->type = RequestTypeEnum::ageVerification->value;
+        $request->status = RequestStatusEnum::pending->value;
+        $request->data = [
+            'attestation' => 'I confirm that the date of birth on my account is accurate.',
+            'attestedDob' => $user->dob->toDateString(),
+        ];
+        $request->from()->associate($user);
+        $request->for()->associate($user);
         $request->save();
     }
 
