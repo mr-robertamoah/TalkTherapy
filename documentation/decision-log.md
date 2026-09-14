@@ -7782,3 +7782,55 @@ against this repo's own "done" criteria, all addressed before merge:
    `documentation/seeded-data.md`, rather than deferring all documentation to the epic's own
    closeout ticket (SCRUM-312) -- qa-engineer's own charter treats this as a per-ticket "done"
    criterion, not an epic-level one.
+
+---
+
+## 2026-09-14 — SCRUM-312 (TT-3.2e): epic closeout, TT-3.2 (SCRUM-27) complete
+
+Mirrors TT-3.1f's own closeout shape (`documentation/features/scrum-26-video-calling.md`'s own
+precedent). All of a-d (SCRUM-308/309/310/311) merged into `develop` beforehand.
+
+**Regression result**: full Pest suite green (1872 passed). A dedicated cross-provider filtered
+run covering every GroupTherapy video path together (78 tests: `EnsureVideoIsAvailableForSessionActionTest`,
+`EndVideoSessionActionTest`, `RemoveParticipantFromVideoSessionActionTest`, both
+`DailyVideoProviderTest`/`ChimeVideoProviderTest`, `VideoSessionControllerTest`) also passed --
+authorization, minor-creator block, counsellor-only termination, and participant removal are all
+independently proven against BOTH providers, not just whichever one this environment happens to
+default to.
+
+**Feature doc split**: rather than leave the "Group video (TT-3.2)" section folded into
+`scrum-26-video-calling.md` (where SCRUM-310 had provisionally added it), extracted it into its own
+`documentation/features/scrum-27-group-therapy-video.md` per this ticket's own explicit
+instruction, cross-referencing back to `scrum-26` for the shared base infrastructure rather than
+duplicating it. The new doc consolidates the full v1 scope, all four prior sub-tickets' own
+findings, the regression matrix above, and both known-limitation notes (no live provider
+credentials; no consent flow for a minor creator) in one place, rather than requiring a reader to
+piece it together from four separate tickets' own Jira comments.
+
+**Playwright QA**: qa-engineer walked this ticket's own explicit checklist and approved. Findings:
+authorization passes cleanly for both counsellor and creator (reaching the documented, pre-existing
+502 "provider unavailable" failure only after authorization succeeds -- confirmed this is
+`JoinVideoSessionAction`'s own deliberate provider-exception translation from TT-3.1c, not a new
+bug); an ordinary member never sees "join video" at all; a minor creator DOES see "join video"
+(intentional, matching the 1:1 consent-banner precedent of never pre-checking this client-side) but
+is cleanly blocked on click with a 422 and the exact `EnsureGroupTherapyVideoIsAllowed()` message --
+visibly distinct from the counsellor/creator's 502. "One counsellor ejects a participant" could not
+be driven to completion, exactly as already documented (no call ever reaches `connected` without
+real provider credentials) -- not a new finding, re-confirms SCRUM-317's own scope.
+
+**Post-QA addendum**: no seeded fixture existed for the minor-creator case at all -- qa-engineer had
+to hand-build one via tinker to verify it. Added a fourth account,
+`group_video_call_demo_minor_creator` (its own separate GroupTherapy, "Group Video Call Demo (Minor
+Creator)", with `client_was_minor_at_creation` set explicitly the same way
+`createGuardianVideoConsentDemoData()` already does), to `DatabaseSeeder::createGroupVideoCallDemoData()`
+so this edge case doesn't require manual setup on every future regression pass. Full Pest suite
+re-confirmed green (1872 passed) after this addition.
+
+SCRUM-317 (filed after SCRUM-310 merged, per the user's own "we will do the sandboxed test later"
+instruction) remains the single tracked place a REAL live multi-party connection gets verified,
+covering both the 1:1 and group matrices together once real Daily/Chime credentials exist.
+
+**No application-code changes required for this closeout** beyond the seeded fixture addition above
+-- a-d's own reviews (reviewer/security-engineer/qa-engineer across all three PRs) already caught
+and fixed every real defect found during this epic's own development; this closeout's own
+regression pass and Playwright QA surfaced no new code defects.
