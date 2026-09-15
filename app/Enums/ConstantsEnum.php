@@ -13,12 +13,14 @@ enum ConstantsEnum: string
 
     // TT-3.2a/SCRUM-308: DailyVideoProvider's own room-size cap must be computed per session type,
     // not a single flat value (architect finding) -- 1:1 Therapy stays capped near 2; GroupTherapy
-    // needs headroom for the active counsellor team (unbounded in the data model -- `max_counsellors`
-    // has no upper bound, see CreateGroupTherapyRequest) plus, per this ticket's own locked v1
-    // scope, at most one client (the group's own creator; ordinary members get no video access at
-    // all in this version). 10 comfortably covers a realistic counsellor-team size with headroom,
-    // while staying meaningfully smaller than the 50-person full-membership number a future
-    // full-membership ticket (SCRUM-314) would need its own, much larger value for.
+    // needs headroom for the active counsellor team plus its members.
+    //
+    // TT-3.2f-a/SCRUM-318: raised 10 -> 25 and unified with the group's own membership ceiling
+    // (GROUP_THERAPY_MAX_USERS, see EnsureTherapyDataIsValidAction) -- SCRUM-314/TT-3.2f opens
+    // video to the full membership (receive-only + raise-hand/grant-to-speak, not everyone getting
+    // full two-way access), so this is no longer "counsellors + 1 creator" but "counsellors + every
+    // member," and the two ceilings are now deliberately the same number so a group's video room
+    // can always admit its full membership (user's own explicit decision, 2026-09-14).
     case therapyVideoMaxParticipants = '2';
-    case groupTherapyVideoMaxParticipants = '10';
+    case groupTherapyVideoMaxParticipants = '25';
 }
