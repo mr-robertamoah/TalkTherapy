@@ -65,6 +65,8 @@ function fakeVideoProviderRecordingRemovals(array &$removedUserIds, bool $should
 
             $this->removedUserIds[] = $user->id;
         }
+
+        public function updateParticipantCapabilities(VideoSession $videoSession, User $user, bool $canSendAudio, bool $canSendVideo): void {}
     };
 }
 

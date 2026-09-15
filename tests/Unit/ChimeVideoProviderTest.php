@@ -141,3 +141,80 @@ test('removeParticipant is a no-op when the meeting was never actually created',
 
     (new ChimeVideoProvider($client))->removeParticipant($videoSession, $user);
 });
+
+// TT-3.2f-e/SCRUM-322: same live-attendee lookup pattern as removeParticipant() above.
+
+test('updateParticipantCapabilities sends SendReceive for both when audio and video are allowed', function () {
+    $user = User::factory()->create();
+    $videoSession = VideoSession::factory()->create(['provider_room_id' => 'aws-meeting-id']);
+
+    $client = Mockery::mock(ChimeClient::class);
+    $client->shouldReceive('listAttendees')
+        ->once()
+        ->with('aws-meeting-id')
+        ->andReturn(['Attendees' => [['AttendeeId' => 'attendee-mine', 'ExternalUserId' => (string) $user->id]]]);
+    $client->shouldReceive('updateAttendeeCapabilities')
+        ->once()
+        ->with('aws-meeting-id', 'attendee-mine', [
+            'Audio' => 'SendReceive', 'Video' => 'SendReceive', 'Content' => 'Receive',
+        ]);
+
+    (new ChimeVideoProvider($client))->updateParticipantCapabilities($videoSession, $user, true, true);
+});
+
+test('updateParticipantCapabilities sends Receive for both when revoked back to receive-only', function () {
+    $user = User::factory()->create();
+    $videoSession = VideoSession::factory()->create(['provider_room_id' => 'aws-meeting-id']);
+
+    $client = Mockery::mock(ChimeClient::class);
+    $client->shouldReceive('listAttendees')
+        ->once()
+        ->andReturn(['Attendees' => [['AttendeeId' => 'attendee-mine', 'ExternalUserId' => (string) $user->id]]]);
+    $client->shouldReceive('updateAttendeeCapabilities')
+        ->once()
+        ->with('aws-meeting-id', 'attendee-mine', [
+            'Audio' => 'Receive', 'Video' => 'Receive', 'Content' => 'Receive',
+        ]);
+
+    (new ChimeVideoProvider($client))->updateParticipantCapabilities($videoSession, $user, false, false);
+});
+
+// TT-3.2f-g's own anonymity rule: an anonymous member granted speaking permission is audio-only.
+test('updateParticipantCapabilities sends audio SendReceive but video Receive for audio-only (anonymous speaker) permission', function () {
+    $user = User::factory()->create();
+    $videoSession = VideoSession::factory()->create(['provider_room_id' => 'aws-meeting-id']);
+
+    $client = Mockery::mock(ChimeClient::class);
+    $client->shouldReceive('listAttendees')
+        ->once()
+        ->andReturn(['Attendees' => [['AttendeeId' => 'attendee-mine', 'ExternalUserId' => (string) $user->id]]]);
+    $client->shouldReceive('updateAttendeeCapabilities')
+        ->once()
+        ->with('aws-meeting-id', 'attendee-mine', [
+            'Audio' => 'SendReceive', 'Video' => 'Receive', 'Content' => 'Receive',
+        ]);
+
+    (new ChimeVideoProvider($client))->updateParticipantCapabilities($videoSession, $user, true, false);
+});
+
+test('updateParticipantCapabilities is a no-op when the user is not currently a live attendee', function () {
+    $user = User::factory()->create();
+    $videoSession = VideoSession::factory()->create(['provider_room_id' => 'aws-meeting-id']);
+
+    $client = Mockery::mock(ChimeClient::class);
+    $client->shouldReceive('listAttendees')->once()->andReturn(['Attendees' => []]);
+    $client->shouldNotReceive('updateAttendeeCapabilities');
+
+    (new ChimeVideoProvider($client))->updateParticipantCapabilities($videoSession, $user, true, true);
+});
+
+test('updateParticipantCapabilities is a no-op when the meeting was never actually created', function () {
+    $user = User::factory()->create();
+    $videoSession = VideoSession::factory()->create(['provider_room_id' => null]);
+
+    $client = Mockery::mock(ChimeClient::class);
+    $client->shouldNotReceive('listAttendees');
+    $client->shouldNotReceive('updateAttendeeCapabilities');
+
+    (new ChimeVideoProvider($client))->updateParticipantCapabilities($videoSession, $user, true, true);
+});

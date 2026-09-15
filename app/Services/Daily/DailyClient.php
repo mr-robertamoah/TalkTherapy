@@ -45,6 +45,19 @@ class DailyClient extends Service
             ->json();
     }
 
+    // TT-3.2f-e/SCRUM-322: Daily's own REST API for changing an already-connected participant's
+    // permissions live, without a reconnect (https://docs.daily.co/reference/rest-api/rooms/update-permissions),
+    // confirmed via the SCRUM-320 research spike. $data is keyed by participant id (mirroring
+    // ejectParticipants()'s own `user_ids`, matching the `user_id` sent at token-mint time) ->
+    // an array of permission fields (canSend, hasPresence, canAdmin, canReceive) to overwrite.
+    public function updateRoomPermissions(string $roomName, array $data): array
+    {
+        return $this->request()
+            ->post("/rooms/{$roomName}/update-permissions", ['data' => $data])
+            ->throw()
+            ->json();
+    }
+
     private function request(): PendingRequest
     {
         return Http::baseUrl(config('services.daily.base_url'))

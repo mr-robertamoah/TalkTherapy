@@ -71,4 +71,25 @@ interface VideoProviderInterface
     // Best-effort, matching endRoom()'s own contract: a provider-side failure here must never
     // block the caller from marking the participant left locally.
     public function removeParticipant(VideoSession $videoSession, User $user): void;
+
+    // TT-3.2f-e/SCRUM-322: changes an ALREADY-CONNECTED participant's own publish capability --
+    // the mechanism behind granting/revoking speaking permission for a receive-only GroupTherapy
+    // member (TT-3.2f-f). Confirmed via the SCRUM-320 research spike that BOTH current providers
+    // support this live, with no reconnect/token-reissue required -- unlike removeParticipant()
+    // above, this contract does NOT need to signal "applied live vs. requires reissue" (the
+    // architect's own design left room for either outcome; the spike found the simpler one).
+    //
+    // $canSendAudio/$canSendVideo are independent -- an anonymous member granted speaking
+    // permission gets audio-only (canSendAudio: true, canSendVideo: false; TT-3.2f-g's own
+    // anonymity rule), a non-anonymous member gets both true. Revoking sets both false, identical
+    // in shape to the receive-only credentials createParticipantCredentials() already mints at
+    // join time -- deliberately not a separate "revoke" method, since it's the same operation.
+    //
+    // Deliberately identified by OUR OWN known $user, never a provider-generated id the caller
+    // would have to persist -- same reasoning as removeParticipant()'s own identical comment.
+    // Best-effort is NOT assumed here the way it is for endRoom()/removeParticipant() -- callers
+    // must make their own explicit decision about failure handling (see TT-3.2f-f's own scope),
+    // since a silent failure on a GRANT is a materially different risk than a silent failure on a
+    // teardown/removal.
+    public function updateParticipantCapabilities(VideoSession $videoSession, User $user, bool $canSendAudio, bool $canSendVideo): void;
 }

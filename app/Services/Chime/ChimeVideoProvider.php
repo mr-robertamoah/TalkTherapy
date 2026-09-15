@@ -96,4 +96,36 @@ class ChimeVideoProvider implements VideoProviderInterface
 
         $this->client->deleteAttendee($videoSession->provider_room_id, $attendee['AttendeeId']);
     }
+
+    // TT-3.2f-e/SCRUM-322: same live-attendee lookup pattern as removeParticipant() above -- no
+    // stored Chime-specific participant id to key off, so the AttendeeId is looked up by matching
+    // ExternalUserId (== $user->id) via ListAttendees. A no-op if the user isn't currently a live
+    // attendee, same "nothing to do" precedent as removeParticipant().
+    public function updateParticipantCapabilities(VideoSession $videoSession, User $user, bool $canSendAudio, bool $canSendVideo): void
+    {
+        if (! $videoSession->provider_room_id) {
+            return;
+        }
+
+        $attendees = $this->client->listAttendees($videoSession->provider_room_id)['Attendees'] ?? [];
+
+        $attendee = collect($attendees)->firstWhere('ExternalUserId', (string) $user->id);
+
+        if (! $attendee) {
+            return;
+        }
+
+        // Content is always 'Receive' here regardless of $canSendVideo -- this app has no
+        // screen-share/content-sharing feature to ever need 'Send' for, and AWS itself requires
+        // Video to be Receive/SendReceive (never None) whenever Content is Receive/SendReceive --
+        // Video is always one of those two here, so this is always valid. This is an invariant of
+        // THIS APP's own usage (neither this method nor createParticipantCredentials() ever sets
+        // Video to 'None'), not a general AWS guarantee -- revisit this hardcode if a future
+        // change ever introduces a Video: 'None' capability state.
+        $this->client->updateAttendeeCapabilities($videoSession->provider_room_id, $attendee['AttendeeId'], [
+            'Audio' => $canSendAudio ? 'SendReceive' : 'Receive',
+            'Video' => $canSendVideo ? 'SendReceive' : 'Receive',
+            'Content' => 'Receive',
+        ]);
+    }
 }

@@ -29,6 +29,8 @@ function fakeVideoProviderForRouteTest(): VideoProviderInterface
         public function endRoom(VideoSession $videoSession): void {}
 
         public function removeParticipant(VideoSession $videoSession, User $user): void {}
+
+        public function updateParticipantCapabilities(VideoSession $videoSession, User $user, bool $canSendAudio, bool $canSendVideo): void {}
     };
 }
 
