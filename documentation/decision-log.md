@@ -7837,6 +7837,50 @@ regression pass and Playwright QA surfaced no new code defects.
 
 ---
 
+## 2026-09-15 — SCRUM-320 (TT-3.2f-c): research spike, live participant-capability updates
+
+Research spike per the ticket's own explicit "do not assume the shape" instruction (mirrors the
+TT-3.2b/SCRUM-309 ejection-API spike precedent). Confirms whether Daily and Chime can change an
+ALREADY-CONNECTED participant's publish capability (grant/revoke speaking permission) without
+forcing a reconnect/new token -- the ticket's own "critical finding to report back" gate for
+TT-3.2f-e (SCRUM-322).
+
+**Finding: BOTH providers support this live, no reconnect required.** This is the good outcome the
+ticket flagged as uncertain, not the bad one -- `VideoProviderInterface::updateParticipantCapabilities()`
+can be a straightforward server-side interface method on both adapters, matching the original
+design assumption, with no "requires reissue" fallback branch needed after all.
+
+- **Daily.co**: `POST /rooms/{room_name}/update-permissions` (docs:
+  https://docs.daily.co/reference/rest-api/rooms/update-permissions). A real, documented REST
+  endpoint -- NOT the client-side-only `daily-js` `updateParticipant()`/`updateParticipants()`
+  instance methods a first search pass found first (those require an already-connected admin
+  browser call object, which would have meant a materially different, frontend-driven design; this
+  server-side sibling endpoint in the same `/rooms` family, alongside the already-implemented
+  `/rooms/{room}/eject`, resolves that). Request shape: `POST` body `{"data": {"<participant
+  identifier>": {"canSend": [...] | true | false, "hasPresence": ..., "canAdmin": ..., "canReceive":
+  {...}}}}`, keyed by a specific participant id or `"*"` for all. Response: `{"status": "sent"}`.
+  **One remaining implementation-detail uncertainty, not blocking**: the docs don't explicitly
+  confirm whether the participant-identifier key is the same `user_id` we already send at
+  `createMeetingToken` time (matching `ejectParticipants`'s own `user_ids` array, which IS confirmed
+  to use that same id) or a different Daily-generated identifier -- verify with a real test call
+  during SCRUM-322's own implementation rather than assuming; if it turns out to require a
+  different id, the design still holds (just needs a lookup step, same shape as
+  `ChimeVideoProvider::removeParticipant()`'s own `ListAttendees` lookup below), so this doesn't
+  change TT-3.2f-e's approach, just a detail to confirm.
+- **AWS Chime SDK Meetings**: `UpdateAttendeeCapabilities` (docs:
+  https://docs.aws.amazon.com/chime-sdk/latest/APIReference/API_meeting-chime_UpdateAttendeeCapabilities.html).
+  A real, confirmed AWS API action, keyed by `AttendeeId` (not our own user id) -- requires the same
+  `ListAttendees`-then-match-`ExternalUserId` lookup pattern `ChimeVideoProvider::removeParticipant()`
+  (SCRUM-309) already established, reusable as-is. Applies live: per AWS's own docs, changing an
+  audio/video capability from `None`/`Receive` to `Send`/`SendReceive` takes effect on the existing
+  connection (audio flows immediately if unmuted; video/content require a media renegotiation the
+  SDK already handles, not a full reconnect).
+
+**Implication for TT-3.2f-e (SCRUM-322)**: no design change needed from what was already planned --
+proceed with `updateParticipantCapabilities()` as a plain required interface method on both
+adapters, no "applied live vs. requires reissue" branching in the contract after all (the
+architect's own design allowed for either outcome; this is the simpler one). Chime's own
+implementation mirrors `removeParticipant()`'s existing lookup-then-act shape almost exactly.
 ## 2026-09-14 — SCRUM-314 (TT-3.2f): full-membership group video scoped and approved
 
 Ran the full `/start-feature` sequence (product-owner -> project-manager -> architect) for
