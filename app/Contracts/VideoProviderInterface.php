@@ -36,9 +36,18 @@ interface VideoProviderInterface
     // "host"/"owner" role (Daily's is_owner; Chime has no equivalent concept at the attendee
     // level, ignored there).
     //
+    // TT-3.2f-d/SCRUM-321: $receiveOnly mints a participant who can watch/listen but never
+    // publish their own audio/video -- SERVER-enforced by the provider itself (Daily's
+    // `permissions.canSend`, Chime's attendee `Capabilities`), never a client-side-only
+    // restriction the browser could bypass. Resolved by the caller (JoinVideoSessionAction's own
+    // isReceiveOnly()), same reasoning as $isOwner/$displayName above -- this interface stays
+    // ignorant of GroupTherapy's own authorization rules, receiving only the capability it should
+    // actually mint. Mutually exclusive with $isOwner in practice (an owner is never receive-only)
+    // but not asserted as such here -- that invariant belongs to the caller, not this contract.
+    //
     // Returns a provider-specific, JSON-serializable array handed straight through to the
     // frontend's provider SDK -- never inspected or reshaped by callers of this interface.
-    public function createParticipantCredentials(VideoSession $videoSession, User $user, string $displayName, bool $isOwner = false): array;
+    public function createParticipantCredentials(VideoSession $videoSession, User $user, string $displayName, bool $isOwner = false, bool $receiveOnly = false): array;
 
     // Ends/tears down the room with the provider. Best-effort: providers also expire rooms
     // naturally (Daily via `exp`, Chime meetings end when empty), so a failure here should never

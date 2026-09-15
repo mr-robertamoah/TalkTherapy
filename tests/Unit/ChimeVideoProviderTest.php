@@ -51,6 +51,37 @@ test('createParticipantCredentials creates an attendee against the stored meetin
     expect($result)->toBe(['meeting' => $meeting, 'attendee' => $attendee]);
 });
 
+// TT-3.2f-d/SCRUM-321: a full (non-receive-only) attendee gets no `Capabilities` key at all --
+// unchanged from before this ticket, never merely a permissive value.
+test('createParticipantCredentials omits Capabilities entirely for a full participant', function () {
+    $user = User::factory()->create();
+    $videoSession = VideoSession::factory()->create(['provider_room_id' => 'aws-meeting-id']);
+
+    $client = Mockery::mock(ChimeClient::class);
+    $client->shouldReceive('createAttendee')
+        ->once()
+        ->with(Mockery::on(fn ($args) => ! array_key_exists('Capabilities', $args)))
+        ->andReturn(['Attendee' => []]);
+
+    (new ChimeVideoProvider($client))->createParticipantCredentials($videoSession, $user, 'Some Display Name');
+});
+
+// TT-3.2f-d/SCRUM-321: a receive-only attendee's Capabilities are server-enforced by Chime itself.
+test('createParticipantCredentials mints receive-only Capabilities when requested', function () {
+    $user = User::factory()->create();
+    $videoSession = VideoSession::factory()->create(['provider_room_id' => 'aws-meeting-id']);
+
+    $client = Mockery::mock(ChimeClient::class);
+    $client->shouldReceive('createAttendee')
+        ->once()
+        ->with(Mockery::on(fn ($args) => ($args['Capabilities'] ?? null) === [
+            'Audio' => 'Receive', 'Video' => 'Receive', 'Content' => 'Receive',
+        ]))
+        ->andReturn(['Attendee' => []]);
+
+    (new ChimeVideoProvider($client))->createParticipantCredentials($videoSession, $user, 'Some Member', false, true);
+});
+
 test('endRoom deletes the provider meeting by its stored provider_room_id', function () {
     $videoSession = VideoSession::factory()->create(['provider_room_id' => 'aws-meeting-id']);
 

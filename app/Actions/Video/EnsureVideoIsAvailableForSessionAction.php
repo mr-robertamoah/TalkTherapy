@@ -93,29 +93,32 @@ class EnsureVideoIsAvailableForSessionAction extends Action
         }
     }
 
-    // TT-3.2a/SCRUM-308: v1's own locked scope -- video access limited to every currently-active
-    // counsellor PLUS optionally the group's own creator (client `addedby`). Ordinary members
-    // (attached only via the group_therapy_user pivot, or a co-client with no addedby role) get
-    // NO video access in this version at all -- deliberately narrower than
-    // Session::isNotParticipant()'s own, broader "is this user a participant of the group at
-    // all" check above, which already passed for every ordinary member too (that check answers a
-    // different question: "may this user be IN this session's chat/roster," not "may this user
-    // join VIDEO"). This is a strict allow-list, not an extension of that participant check.
+    // TT-3.2a/SCRUM-308's own v1 scope limited video access to every currently-active counsellor
+    // PLUS optionally the group's own creator, hard-EXCLUDING every ordinary member entirely.
+    //
+    // TT-3.2f-d/SCRUM-321 widens this: an ordinary member (attached only via the
+    // group_therapy_user pivot) is no longer excluded from video AT ALL -- they're admitted, just
+    // never with full two-way access. That distinction (receive-only vs. full) is deliberately
+    // NOT decided here -- mirrors how $isOwner was already computed independently in
+    // JoinVideoSessionAction rather than returned from this action -- see that action's own
+    // isReceiveOnly() for where it's actually enforced (both at credential-minting time via the
+    // provider, and structurally: a receive-only member can never be the one this method itself
+    // would need to gate any further, since Session::isNotParticipant() above already excludes
+    // anyone who isn't even a group participant).
+    //
+    // This method's own remaining job is narrower than it once was: only the group's own
+    // creator's minor status is gated here.
     private function ensureGroupTherapyVideoIsAllowed(GroupTherapy $groupTherapy, User $user): void
     {
-        $isCounsellor = (bool) ($user->counsellor && $groupTherapy->isCounsellor($user->counsellor));
         $isCreator = $groupTherapy->isUser($user);
-
-        if (! $isCounsellor && ! $isCreator) {
-            throw new VideoException('Video is only available to counsellors and the group\'s own creator at this time.', 422);
-        }
 
         // Interim fail-closed, mirroring TT-3.1's own original 1:1 precedent (the age check that
         // shipped ahead of TT-3.1e's real consent flow) -- group-scoped guardian video-consent
-        // doesn't exist yet (SCRUM-313, not started), so a minor creator is hard-blocked entirely
-        // rather than let through ungated. Only the creator can ever reach this branch as a
-        // client; ordinary members already failed the allow-list above, so there is no other
-        // minor-client path into group video today.
+        // doesn't exist yet (SCRUM-313, not started), so a minor CREATOR is hard-blocked entirely
+        // rather than let through ungated. Deliberately does NOT apply to an ordinary minor
+        // member -- per the user's own explicit decision (2026-09-14), receive-only join is
+        // allowed unconditionally regardless of an ordinary member's age; only a later GRANT of
+        // speaking permission (TT-3.2f-g, not yet built) hard-blocks a minor member specifically.
         if ($isCreator && $groupTherapy->clientIsMinor()) {
             throw new VideoException('Video is not yet available to a minor client for group therapy.', 422);
         }

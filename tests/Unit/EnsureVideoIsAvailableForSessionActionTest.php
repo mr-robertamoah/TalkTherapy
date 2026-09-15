@@ -264,12 +264,13 @@ test('a client whose live dob still reads as a minor joins freely once the snaps
         ->not->toThrow(VideoException::class);
 });
 
-// TT-3.2a/SCRUM-308: v1's own locked scope -- video access limited to every currently-active
-// counsellor plus optionally the group's own creator. Ordinary members (attached only via the
-// group_therapy_user pivot) get NO video access in this version, even though they're already a
-// legitimate participant for chat/roster purposes (Session::isNotParticipant() already passed
-// for them above -- this is a strictly narrower, separate allow-list, not an extension of that
-// broader check).
+// TT-3.2a/SCRUM-308's own v1 scope limited video access to every currently-active counsellor plus
+// optionally the group's own creator, hard-EXCLUDING every ordinary member entirely.
+//
+// TT-3.2f-d/SCRUM-321 widens this: an ordinary member (attached only via the group_therapy_user
+// pivot) is no longer excluded from video AT ALL -- they're admitted (JoinVideoSessionAction's own
+// isReceiveOnly() then decides they only ever get receive-only access, tested separately in that
+// action's own test file, not here -- this action's own job is authorization, not capability).
 
 function onlineInSessionGroupTherapySession(array $groupOverrides = [], array $sessionOverrides = []): array
 {
@@ -293,13 +294,25 @@ function onlineInSessionGroupTherapySession(array $groupOverrides = [], array $s
     return compact('creator', 'groupTherapy', 'counsellorUser', 'counsellor', 'session');
 }
 
-test('an ordinary GroupTherapy member (not a counsellor, not the creator) cannot join video in this version', function () {
+test('an ordinary GroupTherapy member (not a counsellor, not the creator) can now join video (receive-only, per TT-3.2f)', function () {
     $data = onlineInSessionGroupTherapySession();
     $member = User::factory()->create();
     $data['groupTherapy']->users()->attach($member->id, ['anonymous' => false]);
 
     expect(fn () => EnsureVideoIsAvailableForSessionAction::new()->execute($data['session'], $member))
-        ->toThrow(VideoException::class, "Video is only available to counsellors and the group's own creator at this time.");
+        ->not->toThrow(VideoException::class);
+});
+
+// TT-3.2f-d/SCRUM-321: a minor ORDINARY member is allowed to join (receive-only) unconditionally --
+// unlike the group's own creator, whose minor status IS still gated below. Only a later grant of
+// speaking permission (TT-3.2f-g, not yet built) will hard-block a minor member specifically.
+test('a minor ordinary GroupTherapy member can join video unconditionally, unlike a minor creator', function () {
+    $data = onlineInSessionGroupTherapySession();
+    $minorMember = User::factory()->create(['dob' => now()->subYears(15)]);
+    $data['groupTherapy']->users()->attach($minorMember->id, ['anonymous' => false, 'was_minor_at_join' => true]);
+
+    expect(fn () => EnsureVideoIsAvailableForSessionAction::new()->execute($data['session'], $minorMember))
+        ->not->toThrow(VideoException::class);
 });
 
 test('an active counsellor on a GroupTherapy can join video', function () {
@@ -333,7 +346,7 @@ test('a counsellor can still join group video even when the group\'s own creator
         ->not->toThrow(VideoException::class);
 });
 
-test('a counsellor-created GroupTherapy has no "creator client" concept -- only its counsellors get video access', function () {
+test('a counsellor-created GroupTherapy has no "creator client" concept -- its counsellors get full access, its ordinary members receive-only', function () {
     $creatorCounsellorUser = User::factory()->create();
     $creatorCounsellor = Counsellor::factory()->create(['user_id' => $creatorCounsellorUser->id]);
     $groupTherapy = GroupTherapy::factory()->create([
@@ -353,6 +366,8 @@ test('a counsellor-created GroupTherapy has no "creator client" concept -- only 
 
     expect(fn () => EnsureVideoIsAvailableForSessionAction::new()->execute($session, $creatorCounsellorUser))
         ->not->toThrow(VideoException::class);
+    // TT-3.2f-d/SCRUM-321: the member is now admitted too (receive-only) -- this action's own job
+    // is authorization, not capability, so it correctly no longer throws for them either.
     expect(fn () => EnsureVideoIsAvailableForSessionAction::new()->execute($session, $member))
-        ->toThrow(VideoException::class);
+        ->not->toThrow(VideoException::class);
 });

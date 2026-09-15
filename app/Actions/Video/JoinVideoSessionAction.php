@@ -8,6 +8,7 @@ use App\Contracts\VideoProviderInterface;
 use App\Enums\ConstantsEnum;
 use App\Events\VideoSessionStatusChangedEvent;
 use App\Exceptions\VideoException;
+use App\Models\GroupTherapy;
 use App\Models\Session;
 use App\Models\User;
 use App\Models\VideoSession;
@@ -44,18 +45,29 @@ class JoinVideoSessionAction extends Action
         // never taking constructor dependencies.
         $provider = app(VideoProviderInterface::class);
 
-        $videoSession = $this->currentOrNewVideoSession($session, $provider);
+        $videoSession = $this->currentOrNewVideoSessionAndJoin($session, $user, $provider);
 
         $isOwner = (bool) ($user->counsellor && $session->for->isCounsellor($user->counsellor));
 
-        VideoSessionParticipant::query()->create([
-            'video_session_id' => $videoSession->id,
-            'participant_type' => User::class,
-            'participant_id' => $user->id,
-            'joined_at' => now(),
-        ]);
+        return $provider->createParticipantCredentials(
+            $videoSession, $user, $this->displayNameFor($session, $user), $isOwner, $this->isReceiveOnly($session, $user)
+        );
+    }
 
-        return $provider->createParticipantCredentials($videoSession, $user, $this->displayNameFor($session, $user), $isOwner);
+    // TT-3.2f-d/SCRUM-321: an ordinary GroupTherapy member (not a counsellor, not the creator) is
+    // admitted to video but only ever receive-only -- EnsureVideoIsAvailableForSessionAction's own
+    // allow-list no longer excludes them entirely, so this is where the distinction actually gets
+    // decided, mirroring how $isOwner above is already computed independently of that action
+    // rather than returned from it. Always false for 1:1 Therapy (no receive-only concept there)
+    // and false for a GroupTherapy's own counsellor/creator (full access, unchanged from TT-3.2's
+    // own v1 shape).
+    private function isReceiveOnly(Session $session, User $user): bool
+    {
+        if (! $session->for instanceof GroupTherapy) {
+            return false;
+        }
+
+        return ! $session->for->isCounsellorUser($user) && ! $session->for->isUser($user);
     }
 
     // Security-review finding (2026-09-11): DailyVideoProvider was sending $user->name straight
@@ -98,7 +110,15 @@ class JoinVideoSessionAction extends Action
     // unready placeholder". A human clicking "join video" is not a high-throughput path, so
     // holding the lock for one external API call's duration is an acceptable, deliberate trade-off
     // here -- do not use this as a pattern for anything actually high-concurrency.
-    private function currentOrNewVideoSession(Session $session, VideoProviderInterface $provider): VideoSession
+    //
+    // TT-3.2f-d/SCRUM-321: this method now ALSO performs the Chime-specific participant-cap check
+    // and creates this user's own VideoSessionParticipant row, both inside the SAME lock -- Chime
+    // has no native provider-level room-size cap (unlike Daily's own max_participants), so it's
+    // enforced here in application code instead. Moving the participant-row creation into this
+    // same transaction (it used to happen after this method returned) is what actually closes the
+    // race: two near-simultaneous joins against an already-full room could otherwise both read
+    // "N active, room for one more" before either's insert committed.
+    private function currentOrNewVideoSessionAndJoin(Session $session, User $user, VideoProviderInterface $provider): VideoSession
     {
         // wasNewlyCreated tracked outside the transaction closure deliberately -- this app's
         // queue connections all have after_commit=false (config/queue.php), so a ShouldBroadcast
@@ -107,7 +127,7 @@ class JoinVideoSessionAction extends Action
         // returns guarantees the row is visible to whatever reads it back when the job runs.
         $wasNewlyCreated = false;
 
-        $videoSession = DB::transaction(function () use ($session, $provider, &$wasNewlyCreated) {
+        $videoSession = DB::transaction(function () use ($session, $user, $provider, &$wasNewlyCreated) {
             Session::query()->lockForUpdate()->find($session->id);
 
             $videoSession = VideoSession::query()
@@ -115,44 +135,51 @@ class JoinVideoSessionAction extends Action
                 ->whereNull('ended_at')
                 ->first();
 
-            if ($videoSession) {
-                return $videoSession;
-            }
-
-            // Created (and persisted) BEFORE calling the provider -- both DailyVideoProvider and
-            // ChimeVideoProvider derive their own room/meeting id from $videoSession->id, so it
-            // must already exist.
-            $videoSession = VideoSession::query()->create([
-                'session_id' => $session->id,
-                'provider' => config('video.provider'),
-                'started_at' => now(),
-            ]);
-
-            // TT-3.1c/SCRUM-276 QA finding: this call was unguarded, so a provider HTTP failure
-            // (e.g. a real 4xx from Daily's own API) propagated as a raw
-            // Illuminate\Http\Client\RequestException all the way to the frontend -- its
-            // getCode() equals the upstream HTTP status (not 500), so
-            // ResolvesExceptionResponse::messageFor()'s 500-only masking never applied, leaking
-            // the provider's own raw response body (e.g. Daily's literal
-            // {"error":"authorization-header-error",...}) straight to the end user. Caught and
-            // rethrown as our own controlled, generic VideoException instead.
-            try {
-                $room = $provider->createRoom($videoSession);
-            } catch (Throwable $exception) {
-                Log::warning('Video provider failed to create a room for a session.', [
+            if (! $videoSession) {
+                // Created (and persisted) BEFORE calling the provider -- both DailyVideoProvider
+                // and ChimeVideoProvider derive their own room/meeting id from $videoSession->id,
+                // so it must already exist.
+                $videoSession = VideoSession::query()->create([
                     'session_id' => $session->id,
-                    'exception' => $exception->getMessage(),
+                    'provider' => config('video.provider'),
+                    'started_at' => now(),
                 ]);
 
-                throw new VideoException('Unable to start the video call right now. Please try again shortly.', 502);
+                // TT-3.1c/SCRUM-276 QA finding: this call was unguarded, so a provider HTTP
+                // failure (e.g. a real 4xx from Daily's own API) propagated as a raw
+                // Illuminate\Http\Client\RequestException all the way to the frontend -- its
+                // getCode() equals the upstream HTTP status (not 500), so
+                // ResolvesExceptionResponse::messageFor()'s 500-only masking never applied,
+                // leaking the provider's own raw response body (e.g. Daily's literal
+                // {"error":"authorization-header-error",...}) straight to the end user. Caught
+                // and rethrown as our own controlled, generic VideoException instead.
+                try {
+                    $room = $provider->createRoom($videoSession);
+                } catch (Throwable $exception) {
+                    Log::warning('Video provider failed to create a room for a session.', [
+                        'session_id' => $session->id,
+                        'exception' => $exception->getMessage(),
+                    ]);
+
+                    throw new VideoException('Unable to start the video call right now. Please try again shortly.', 502);
+                }
+
+                $videoSession->update([
+                    'provider_room_id' => $room['room_id'],
+                    'provider_meta' => $room['meta'],
+                ]);
+
+                $wasNewlyCreated = true;
             }
 
-            $videoSession->update([
-                'provider_room_id' => $room['room_id'],
-                'provider_meta' => $room['meta'],
-            ]);
+            $this->ensureChimeGroupTherapyCapacity($session, $videoSession);
 
-            $wasNewlyCreated = true;
+            VideoSessionParticipant::query()->create([
+                'video_session_id' => $videoSession->id,
+                'participant_type' => User::class,
+                'participant_id' => $user->id,
+                'joined_at' => now(),
+            ]);
 
             return $videoSession;
         });
@@ -162,5 +189,38 @@ class JoinVideoSessionAction extends Action
         }
 
         return $videoSession;
+    }
+
+    // TT-3.2f-d/SCRUM-321: Daily gets its own room-size ceiling for free via `max_participants`
+    // at createRoom() time (DailyVideoProvider::maxParticipantsFor()) -- Chime has no equivalent
+    // provider-level parameter, so the same ConstantsEnum::groupTherapyVideoMaxParticipants ceiling
+    // is enforced here in application code instead, against a live count of still-active
+    // participants for THIS video session epoch. A no-op for 1:1 Therapy (Daily/Chime alike --
+    // the counsellor/client pair is already bounded by EnsureVideoIsAvailableForSessionAction's
+    // own allow-list, never reaches a size where this matters) and for Daily (already capped
+    // provider-side, checking again here would just duplicate that ceiling).
+    //
+    // Review finding, filed as SCRUM-330 (not fixed here): this counts VideoSessionParticipant
+    // AUDIT ROWS (whereNull('left_at')), not distinct users -- a person who disconnects without
+    // an explicit leave (refresh, crash, network drop) leaves a stale row still counted as
+    // "active" until something marks it left_at, and a reconnect via the frontend's own
+    // handleDisconnected() just creates ANOTHER row via a fresh join() call (TT-3.1d's own
+    // design) rather than reconciling the old one. A real cap-slot-leak risk over a long-running
+    // group call with several reconnects -- accepted as a known, tracked gap, not silently
+    // papered over.
+    private function ensureChimeGroupTherapyCapacity(Session $session, VideoSession $videoSession): void
+    {
+        if (! $session->for instanceof GroupTherapy || config('video.provider') !== 'chime') {
+            return;
+        }
+
+        $activeCount = VideoSessionParticipant::query()
+            ->where('video_session_id', $videoSession->id)
+            ->whereNull('left_at')
+            ->count();
+
+        if ($activeCount >= (int) ConstantsEnum::groupTherapyVideoMaxParticipants->value) {
+            throw new VideoException('This video call has reached its maximum number of participants.', 422);
+        }
     }
 }
