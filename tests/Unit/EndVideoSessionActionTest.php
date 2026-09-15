@@ -30,7 +30,7 @@ test('a provider-side teardown failure still marks the room ended locally, match
             return [];
         }
 
-        public function createParticipantCredentials(VideoSession $videoSession, User $user, string $displayName, bool $isOwner = false): array
+        public function createParticipantCredentials(VideoSession $videoSession, User $user, string $displayName, bool $isOwner = false, bool $receiveOnly = false): array
         {
             return [];
         }
@@ -71,7 +71,7 @@ test('ending marks the room ended, marks every still-active participant left, an
             return [];
         }
 
-        public function createParticipantCredentials(VideoSession $videoSession, User $user, string $displayName, bool $isOwner = false): array
+        public function createParticipantCredentials(VideoSession $videoSession, User $user, string $displayName, bool $isOwner = false, bool $receiveOnly = false): array
         {
             return [];
         }
@@ -104,7 +104,7 @@ test('ending when there is no open video session at all is a safe no-op', functi
             return [];
         }
 
-        public function createParticipantCredentials(VideoSession $videoSession, User $user, string $displayName, bool $isOwner = false): array
+        public function createParticipantCredentials(VideoSession $videoSession, User $user, string $displayName, bool $isOwner = false, bool $receiveOnly = false): array
         {
             return [];
         }
@@ -141,7 +141,7 @@ test('a non-participant cannot end another pair\'s video call', function () {
             return [];
         }
 
-        public function createParticipantCredentials(VideoSession $videoSession, User $user, string $displayName, bool $isOwner = false): array
+        public function createParticipantCredentials(VideoSession $videoSession, User $user, string $displayName, bool $isOwner = false, bool $receiveOnly = false): array
         {
             return [];
         }
@@ -180,7 +180,7 @@ test('a session participant can end the call', function () {
             return [];
         }
 
-        public function createParticipantCredentials(VideoSession $videoSession, User $user, string $displayName, bool $isOwner = false): array
+        public function createParticipantCredentials(VideoSession $videoSession, User $user, string $displayName, bool $isOwner = false, bool $receiveOnly = false): array
         {
             return [];
         }
@@ -206,7 +206,7 @@ test('ending an already-ended video session again is a safe no-op (does not re-c
             return [];
         }
 
-        public function createParticipantCredentials(VideoSession $videoSession, User $user, string $displayName, bool $isOwner = false): array
+        public function createParticipantCredentials(VideoSession $videoSession, User $user, string $displayName, bool $isOwner = false, bool $receiveOnly = false): array
         {
             return [];
         }
@@ -251,7 +251,7 @@ function onlineGroupTherapySessionForEndAction(): array
             return [];
         }
 
-        public function createParticipantCredentials(VideoSession $videoSession, User $user, string $displayName, bool $isOwner = false): array
+        public function createParticipantCredentials(VideoSession $videoSession, User $user, string $displayName, bool $isOwner = false, bool $receiveOnly = false): array
         {
             return [];
         }
@@ -308,7 +308,7 @@ test('1:1 Therapy behavior is unchanged -- either the client or the counsellor c
             return [];
         }
 
-        public function createParticipantCredentials(VideoSession $videoSession, User $user, string $displayName, bool $isOwner = false): array
+        public function createParticipantCredentials(VideoSession $videoSession, User $user, string $displayName, bool $isOwner = false, bool $receiveOnly = false): array
         {
             return [];
         }

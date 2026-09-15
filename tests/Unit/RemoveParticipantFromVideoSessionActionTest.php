@@ -50,7 +50,7 @@ function fakeVideoProviderRecordingRemovals(array &$removedUserIds, bool $should
             return [];
         }
 
-        public function createParticipantCredentials(VideoSession $videoSession, User $user, string $displayName, bool $isOwner = false): array
+        public function createParticipantCredentials(VideoSession $videoSession, User $user, string $displayName, bool $isOwner = false, bool $receiveOnly = false): array
         {
             return [];
         }

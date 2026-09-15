@@ -6,10 +6,13 @@ use App\Enums\ConstantsEnum;
 use App\Events\VideoSessionStatusChangedEvent;
 use App\Exceptions\VideoException;
 use App\Models\Counsellor;
+use App\Models\GroupTherapy;
 use App\Models\Session;
 use App\Models\Therapy;
 use App\Models\User;
 use App\Models\VideoSession;
+use App\Models\VideoSessionParticipant;
+use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Log;
 
@@ -32,9 +35,9 @@ function fakeVideoProvider(): VideoProviderInterface
             return ['room_id' => "fake-room-{$videoSession->id}", 'meta' => ['fake' => true]];
         }
 
-        public function createParticipantCredentials(VideoSession $videoSession, User $user, string $displayName, bool $isOwner = false): array
+        public function createParticipantCredentials(VideoSession $videoSession, User $user, string $displayName, bool $isOwner = false, bool $receiveOnly = false): array
         {
-            $this->createParticipantCredentialsCalls[] = [$videoSession->id, $user->id, $displayName, $isOwner];
+            $this->createParticipantCredentialsCalls[] = [$videoSession->id, $user->id, $displayName, $isOwner, $receiveOnly];
 
             return ['token' => "fake-token-{$user->id}"];
         }
@@ -150,7 +153,7 @@ test('a provider room-creation failure surfaces a safe, generic message, never t
             throw new RuntimeException('{"error":"authorization-header-error","info":"invalid authorization header"}');
         }
 
-        public function createParticipantCredentials(VideoSession $videoSession, User $user, string $displayName, bool $isOwner = false): array
+        public function createParticipantCredentials(VideoSession $videoSession, User $user, string $displayName, bool $isOwner = false, bool $receiveOnly = false): array
         {
             return [];
         }
@@ -238,4 +241,120 @@ test('a non-anonymous therapy\'s client joins video under their own real name', 
 
     [, , $displayName] = $fakeProvider->createParticipantCredentialsCalls[0];
     expect($displayName)->toBe($client->name);
+});
+
+// TT-3.2f-d/SCRUM-321: an ordinary GroupTherapy member now joins receive-only rather than being
+// denied entirely.
+
+function onlineInSessionGroupTherapySessionForJoin(): array
+{
+    $creator = User::factory()->adult()->create();
+    $groupTherapy = GroupTherapy::factory()->create([
+        'addedby_type' => User::class,
+        'addedby_id' => $creator->id,
+        'public' => true,
+    ]);
+    $counsellorUser = User::factory()->create();
+    $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
+    $groupTherapy->counsellors()->attach($counsellor->id, ['state' => 'ACTIVE', 'role' => 'NORMAL']);
+    $member = User::factory()->create();
+    $groupTherapy->users()->attach($member->id, ['anonymous' => false]);
+    $session = Session::factory()->create([
+        'for_id' => $groupTherapy->id,
+        'for_type' => GroupTherapy::class,
+        'type' => 'ONLINE',
+        'status' => 'IN_SESSION',
+        'start_time' => now(),
+    ]);
+
+    return compact('creator', 'groupTherapy', 'counsellorUser', 'member', 'session');
+}
+
+test('an ordinary GroupTherapy member joins receive-only', function () {
+    $data = onlineInSessionGroupTherapySessionForJoin();
+    $fakeProvider = fakeVideoProvider();
+    app()->instance(VideoProviderInterface::class, $fakeProvider);
+
+    JoinVideoSessionAction::new()->execute($data['session'], $data['member']);
+
+    [, , , , $receiveOnly] = $fakeProvider->createParticipantCredentialsCalls[0];
+    expect($receiveOnly)->toBeTrue();
+});
+
+test('an active counsellor on a GroupTherapy joins with full access, not receive-only', function () {
+    $data = onlineInSessionGroupTherapySessionForJoin();
+    $fakeProvider = fakeVideoProvider();
+    app()->instance(VideoProviderInterface::class, $fakeProvider);
+
+    JoinVideoSessionAction::new()->execute($data['session'], $data['counsellorUser']);
+
+    [, , , , $receiveOnly] = $fakeProvider->createParticipantCredentialsCalls[0];
+    expect($receiveOnly)->toBeFalse();
+});
+
+test('the group\'s own creator joins with full access, not receive-only', function () {
+    $data = onlineInSessionGroupTherapySessionForJoin();
+    $fakeProvider = fakeVideoProvider();
+    app()->instance(VideoProviderInterface::class, $fakeProvider);
+
+    JoinVideoSessionAction::new()->execute($data['session'], $data['creator']);
+
+    [, , , , $receiveOnly] = $fakeProvider->createParticipantCredentialsCalls[0];
+    expect($receiveOnly)->toBeFalse();
+});
+
+test('a 1:1 Therapy client never joins receive-only, regardless of role', function () {
+    $session = onlineInSessionTherapySessionForJoin();
+    $client = $session->for->addedby;
+    $fakeProvider = fakeVideoProvider();
+    app()->instance(VideoProviderInterface::class, $fakeProvider);
+
+    JoinVideoSessionAction::new()->execute($session, $client);
+
+    [, , , , $receiveOnly] = $fakeProvider->createParticipantCredentialsCalls[0];
+    expect($receiveOnly)->toBeFalse();
+});
+
+// TT-3.2f-d/SCRUM-321: Chime has no native provider-level room-size cap (unlike Daily's own
+// max_participants), so the group video cap is enforced in application code, inside the same lock
+// that already serializes concurrent joins, specifically (and only) when Chime is the active
+// provider for a GroupTherapy session.
+
+test('Chime enforces the group video participant cap in application code', function () {
+    Config::set('video.provider', 'chime');
+    $data = onlineInSessionGroupTherapySessionForJoin();
+    app()->instance(VideoProviderInterface::class, fakeVideoProvider());
+    $videoSession = VideoSession::factory()->create(['session_id' => $data['session']->id, 'provider' => 'chime']);
+    // Fill the room to exactly the cap with already-active participants.
+    VideoSessionParticipant::factory()->count((int) ConstantsEnum::groupTherapyVideoMaxParticipants->value)->create([
+        'video_session_id' => $videoSession->id,
+        'left_at' => null,
+    ]);
+
+    expect(fn () => JoinVideoSessionAction::new()->execute($data['session'], $data['member']))
+        ->toThrow(VideoException::class, 'This video call has reached its maximum number of participants.');
+});
+
+test('Chime does not enforce the group video cap for a 1:1 Therapy session', function () {
+    Config::set('video.provider', 'chime');
+    $session = onlineInSessionTherapySessionForJoin();
+    $client = $session->for->addedby;
+    app()->instance(VideoProviderInterface::class, fakeVideoProvider());
+
+    expect(fn () => JoinVideoSessionAction::new()->execute($session, $client))
+        ->not->toThrow(VideoException::class);
+});
+
+test('Daily does not duplicate its own provider-level cap with an application-level check', function () {
+    Config::set('video.provider', 'daily');
+    $data = onlineInSessionGroupTherapySessionForJoin();
+    app()->instance(VideoProviderInterface::class, fakeVideoProvider());
+    $videoSession = VideoSession::factory()->create(['session_id' => $data['session']->id, 'provider' => 'daily']);
+    VideoSessionParticipant::factory()->count((int) ConstantsEnum::groupTherapyVideoMaxParticipants->value)->create([
+        'video_session_id' => $videoSession->id,
+        'left_at' => null,
+    ]);
+
+    expect(fn () => JoinVideoSessionAction::new()->execute($data['session'], $data['member']))
+        ->not->toThrow(VideoException::class);
 });

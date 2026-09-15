@@ -8004,3 +8004,51 @@ interop), SCRUM-327 (j, frontend), SCRUM-328 (k, closeout), plus SCRUM-329 (plac
 g's interim minor-block once SCRUM-313 ships). SCRUM-314 itself updated from a vague placeholder to
 the full locked scope + sub-ticket index; `documentation/implementation_plan.md`'s
 `TT-3.2-follow-up-2` row replaced with the full breakdown.
+
+---
+
+## 2026-09-15 — SCRUM-321 (TT-3.2f-d): receive-only join, backend
+
+Widens `EnsureVideoIsAvailableForSessionAction::ensureGroupTherapyVideoIsAllowed()` -- the strict
+counsellor-or-creator-only allow-list from TT-3.2a's own v1 scope is removed for ordinary members
+entirely (only the group's own creator's minor status is still gated there); a new
+`JoinVideoSessionAction::isReceiveOnly()` decides the resulting capability independently, mirroring
+how `$isOwner` was already computed independently of that action rather than returned from it.
+
+**Provider changes, per SCRUM-320's own spike findings**: `VideoProviderInterface::createParticipantCredentials()`
+gains a `bool $receiveOnly = false` parameter. `DailyVideoProvider` sets meeting-token
+`permissions.canSend: false` when true (omitted entirely otherwise, not merely a permissive
+value); `ChimeVideoProvider` sets attendee `Capabilities: {Audio: Receive, Video: Receive, Content:
+Receive}` when true (also omitted entirely otherwise). Both server-enforced by the provider
+itself, never a client-side-only restriction.
+
+**Chime cap enforcement**: per the user's own decision, Chime (no native provider-level room-size
+limit, unlike Daily's `max_participants`) now gets an app-level enforced cap. Per the architect's
+own explicit design, this required restructuring `JoinVideoSessionAction`'s own
+`currentOrNewVideoSession()` (renamed `currentOrNewVideoSessionAndJoin()`) to move the
+`VideoSessionParticipant` row creation INSIDE the same `lockForUpdate()` transaction that already
+serializes concurrent joins -- it used to happen after the transaction returned. Without that move,
+the cap check itself would still race (two near-simultaneous joins against an already-full room
+could both read "room for one more" before either's insert committed). A no-op for Daily (already
+capped provider-side; checking again here would just duplicate that ceiling) and for 1:1 Therapy
+(never reaches a size where this matters, already bounded by the existing allow-list).
+
+Nothing in this ticket touches the frontend "join video" display gate
+(`TherapyComponent.vue`'s `computedCanJoinVideo`) -- it still only shows the button for a
+counsellor/creator, correctly deferred to TT-3.2f-j/SCRUM-327 (the dedicated frontend sub-ticket),
+not folded in here the way SCRUM-310 folded in an equivalent gap for TT-3.2's own v1 scope. That
+precedent was considered and deliberately NOT repeated: TT-3.2f's own sub-ticket sequencing already
+has a dedicated frontend ticket queued next-but-several, unlike TT-3.2c's situation where no such
+ticket existed at all for the gap found.
+
+**Reviewer finding, filed as SCRUM-330 (not fixed here)**: `ensureChimeGroupTherapyCapacity()`
+counts `VideoSessionParticipant` AUDIT rows (`whereNull('left_at')`), not distinct users -- a
+person who disconnects without an explicit leave (refresh, crash, network drop) leaves a stale row
+counted as "active" indefinitely, and TT-3.1d's own existing reconnect design (`handleDisconnected()`
+calling `join()` again) creates a brand-new row rather than reconciling the old one. Over a
+long-running group call with several reconnects, this could lock out real new joiners well before
+the group is actually near its 25-participant cap -- specific to Chime (Daily's own provider-level
+cap doesn't share this failure mode, since it's enforced against real live connections, not our own
+audit rows). A pre-existing characteristic of the audit-log table's own design, not a regression
+this ticket introduces -- this ticket is simply the first thing to actually COUNT those rows for an
+enforcement decision.

@@ -72,13 +72,35 @@ test('createParticipantCredentials mints a token scoped to the room and this use
             return $properties['room_name'] === 'session-1-1'
                 && $properties['user_name'] === 'Anonymous Display Name'
                 && $properties['user_id'] === (string) $user->id
-                && $properties['is_owner'] === true;
+                && $properties['is_owner'] === true
+                // TT-3.2f-d/SCRUM-321: a full (non-receive-only) participant gets no `permissions`
+                // key at all -- never present, not merely a permissive value.
+                && ! array_key_exists('permissions', $properties);
         }))
         ->andReturn(['token' => 'jwt-token-value']);
 
     $result = (new DailyVideoProvider($client))->createParticipantCredentials($videoSession, $user, 'Anonymous Display Name', true);
 
     expect($result)->toBe(['url' => 'https://example.daily.co/room', 'token' => 'jwt-token-value']);
+});
+
+// TT-3.2f-d/SCRUM-321: a receive-only participant's own meeting token is server-enforced --
+// Daily's own `permissions.canSend: false` means the browser cannot publish audio/video even if
+// it tries, regardless of any client-side UI state.
+test('createParticipantCredentials mints a receive-only token with canSend false when requested', function () {
+    $user = User::factory()->create();
+    $videoSession = VideoSession::factory()->create([
+        'provider_room_id' => 'session-1-1',
+        'provider_meta' => ['url' => 'https://example.daily.co/room'],
+    ]);
+
+    $client = Mockery::mock(DailyClient::class);
+    $client->shouldReceive('createMeetingToken')
+        ->once()
+        ->with(Mockery::on(fn ($properties) => ($properties['permissions']['canSend'] ?? null) === false))
+        ->andReturn(['token' => 'jwt-token-value']);
+
+    (new DailyVideoProvider($client))->createParticipantCredentials($videoSession, $user, 'Some Member', false, true);
 });
 
 test('endRoom deletes the provider room by its stored provider_room_id', function () {

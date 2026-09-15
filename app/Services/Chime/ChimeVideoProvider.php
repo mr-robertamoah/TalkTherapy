@@ -43,12 +43,21 @@ class ChimeVideoProvider implements VideoProviderInterface
     // field at all (only ExternalUserId); the frontend maps attendee id -> display name itself.
     // Still part of the interface's own signature for parity with DailyVideoProvider, which does
     // send $displayName to its provider (see VideoProviderInterface's own comment on why).
-    public function createParticipantCredentials(VideoSession $videoSession, User $user, string $displayName, bool $isOwner = false): array
+    public function createParticipantCredentials(VideoSession $videoSession, User $user, string $displayName, bool $isOwner = false, bool $receiveOnly = false): array
     {
-        $response = $this->client->createAttendee([
+        $args = [
             'MeetingId' => $videoSession->provider_room_id,
             'ExternalUserId' => (string) $user->id,
-        ]);
+        ];
+
+        // TT-3.2f-d/SCRUM-321: server-enforced by Chime itself, not merely omitted client-side --
+        // confirmed via the research spike (SCRUM-320). Omitted entirely (not just set to
+        // SendReceive) for a full participant, unchanged from before this ticket.
+        if ($receiveOnly) {
+            $args['Capabilities'] = ['Audio' => 'Receive', 'Video' => 'Receive', 'Content' => 'Receive'];
+        }
+
+        $response = $this->client->createAttendee($args);
 
         return [
             'meeting' => data_get($videoSession->provider_meta, 'meeting'),

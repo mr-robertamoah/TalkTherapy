@@ -37,9 +37,9 @@ class DailyVideoProvider implements VideoProviderInterface
         ];
     }
 
-    public function createParticipantCredentials(VideoSession $videoSession, User $user, string $displayName, bool $isOwner = false): array
+    public function createParticipantCredentials(VideoSession $videoSession, User $user, string $displayName, bool $isOwner = false, bool $receiveOnly = false): array
     {
-        $token = $this->client->createMeetingToken([
+        $properties = [
             'room_name' => $videoSession->provider_room_id,
             // Deliberately $displayName, NOT $user->name -- see VideoProviderInterface's own
             // comment. This is the label every OTHER participant in the room sees.
@@ -47,7 +47,17 @@ class DailyVideoProvider implements VideoProviderInterface
             'user_id' => (string) $user->id,
             'is_owner' => $isOwner,
             'exp' => $this->expiresAt($videoSession)->getTimestamp(),
-        ]);
+        ];
+
+        // TT-3.2f-d/SCRUM-321: server-enforced by Daily itself at the token level -- this
+        // participant's own browser cannot publish audio/video even if it tries, regardless of
+        // any client-side UI state. Confirmed via the research spike (SCRUM-320): Daily's
+        // meeting-token `permissions.canSend` accepts `false` for "none".
+        if ($receiveOnly) {
+            $properties['permissions'] = ['canSend' => false];
+        }
+
+        $token = $this->client->createMeetingToken($properties);
 
         return [
             'url' => data_get($videoSession->provider_meta, 'url'),
