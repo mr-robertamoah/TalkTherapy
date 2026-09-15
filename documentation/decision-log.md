@@ -7837,6 +7837,59 @@ regression pass and Playwright QA surfaced no new code defects.
 
 ---
 
+## 2026-09-15 — SCRUM-319 (TT-3.2f-b): data model, and a MySQL identifier-length bug found + fixed
+
+Implemented the architect's own exact design from SCRUM-314's scoping: `video_session_speaking_grants`
+(new, append-only, modeled on `video_consents`, anchored to `video_session_participants.id`),
+`video_session_hand_raises` (new, small, deliberately mutable -- not append-only), and
+`group_therapy_user.was_minor_at_join` (new nullable column, closing the per-membership
+minor-detection gap `RespondToGroupTherapyMembershipRequestAction`'s own comment had already
+flagged as missing). New `GroupTherapy::memberIsMinor(User $user)` accessor, distinct from
+`clientIsMinor()` (which only ever answers "is the group's own creator a minor"), with the same
+null-fallback-to-live-`isAdult()` pattern `clientIsMinor()` already uses for a pre-existing row.
+
+**Real bug found and fixed during implementation**: `php artisan migrate` failed with a MySQL
+`1059 Identifier name ... is too long` error -- `video_session_speaking_grants`' own auto-generated
+foreign-key/index names (Laravel's default `{table}_{column}_foreign`/`_index` convention) exceed
+MySQL's 64-character identifier limit once combined with this table's own long name and long
+column names (e.g. `video_session_speaking_grants_video_session_participant_id_foreign` is 68
+characters). Not caught by a manual raw-SQL test with short placeholder constraint names during
+initial debugging -- only reproduced via the real `php artisan migrate` command, which uses
+Laravel's own auto-naming. Fixed by passing explicit, short constraint/index names
+(`vssg_participant_fk`, `vssg_granted_by_fk`, `vssg_revoked_by_fk`, `vssg_participant_revoked_idx`,
+and the sibling `vshr_participant_lowered_idx` on the hand-raises table) rather than relying on
+Laravel's auto-generated names. Worth remembering for any FUTURE migration on a similarly
+long-named table with long column names -- this is a real, previously-unencountered constraint in
+this codebase (no prior table name here has been long enough to trigger it).
+
+Also updated `JoinGroupTherapyAction`/`RespondToGroupTherapyMembershipRequestAction` to write the
+new snapshot at both attach points, and corrected `RespondToGroupTherapyMembershipRequestAction`'s
+own stale comment (previously stated flatly "there is no stable snapshot recorded anywhere for
+this" -- now there is, for the video speaking-permission path specifically, though
+`AlertGuardianAction`'s own live-isAdult() check at that exact call site is correctly left
+unchanged, since it fires at the moment of acceptance when the live value IS the accurate answer).
+
+**security-engineer review**: approved, no High/Critical findings -- confirmed the snapshot design
+genuinely closes the self-editable-dob bypass (mirrors `clientIsMinor()`'s own precedent exactly),
+no production path can set/overwrite the column incorrectly, and `memberIsMinor()` can't be
+confused with `isUser()`/`clientIsMinor()`/`isCounsellorUser()`. Three forward-looking, non-blocking
+observations accepted as deferred rather than expanding this ticket's own scope (this ticket is
+data-model only; no enforcement exists yet to bypass):
+1. `DatabaseSeeder.php`'s existing `GroupTherapy` member-attach calls don't pass `was_minor_at_join`
+   -- currently harmless (every seeded member is the factory's own default adult `dob`, so the
+   null-fallback still correctly evaluates to `false`), but TT-3.2f-k's own closeout ticket
+   (which already plans a seeded minor-member fixture for testing the later grant-blocking
+   enforcement) must set this column explicitly when it adds that fixture, not rely on the
+   fallback.
+2. No leave/rejoin flow exists for ordinary GroupTherapy membership today, so "does a re-attach
+   correctly refresh a stale snapshot" is currently unreachable -- if/when such a feature is ever
+   built, it must route through `JoinGroupTherapyAction`/`RespondToGroupTherapyMembershipRequestAction`
+   (or otherwise explicitly recompute `was_minor_at_join`), never a raw `attach()`.
+3. `EnsureDobChangeIsAllowedAction::hasQualifyingRelationship()` doesn't cover ordinary
+   `group_therapy_user` membership (only Guardianship/Therapy/a group's own creator) -- doesn't
+   bypass `memberIsMinor()`'s own snapshot (immutable post-attach regardless), but means an
+   ordinary member's dob stays freely editable, which matters only for the null-fallback case
+   above. Left as a known, accepted gap, not this ticket's own scope to close.
 ## 2026-09-15 — SCRUM-320 (TT-3.2f-c): research spike, live participant-capability updates
 
 Research spike per the ticket's own explicit "do not assume the shape" instruction (mirrors the
