@@ -544,7 +544,6 @@ function closeModal() {
                                 id="maxUsers"
                                 type="number"
                                 class="mt-1 block w-full"
-                                default="50"
                                 v-model="therapyData.maxUsers"
                             />
                             

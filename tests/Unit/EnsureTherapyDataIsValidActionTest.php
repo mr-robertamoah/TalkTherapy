@@ -61,7 +61,8 @@ test('resending an unrelated update with an already-over-ceiling, UNCHANGED maxS
     // Read the real configured ceiling rather than hardcoding a number that could coincidentally
     // sit under whatever THERAPY_MAX_SESSIONS actually is in a given environment (this exact
     // mistake was caught here during review: an earlier draft of the maxUsers test below used a
-    // hardcoded 75, which never exceeded this project's real GROUP_THERAPY_MAX_USERS=100).
+    // hardcoded 75, which never exceeded this project's real GROUP_THERAPY_MAX_USERS at the time,
+    // 100 -- since lowered to 25 by TT-3.2f-a/SCRUM-318).
     $overCeiling = env('THERAPY_MAX_SESSIONS', 100) + 50;
 
     $therapy = Therapy::factory()->create([

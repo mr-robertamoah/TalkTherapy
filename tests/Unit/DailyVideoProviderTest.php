@@ -33,7 +33,8 @@ test('createRoom names the room deterministically from the VideoSession id and r
 
 // TT-3.2a/SCRUM-308 (architect finding): the cap must be computed per session type, not a single
 // flat value -- 1:1 Therapy stays capped near 2 (covered by the test above, whose default Session
-// factory `for_type` is Therapy), while GroupTherapy needs headroom for the counsellor team + 1.
+// factory `for_type` is Therapy), while GroupTherapy needs headroom for the counsellor team plus
+// its members (TT-3.2f/SCRUM-318 raised this to 25, unified with the group's own membership cap).
 test('createRoom uses the larger GroupTherapy cap, not the 1:1 Therapy cap, for a GroupTherapy-backed session', function () {
     $groupTherapy = GroupTherapy::factory()->create();
     $session = Session::factory()->create([
@@ -46,7 +47,7 @@ test('createRoom uses the larger GroupTherapy cap, not the 1:1 Therapy cap, for 
     $client = Mockery::mock(DailyClient::class);
     $client->shouldReceive('createRoom')
         ->once()
-        ->with(Mockery::on(fn ($data) => $data['properties']['max_participants'] === 10))
+        ->with(Mockery::on(fn ($data) => $data['properties']['max_participants'] === 25))
         ->andReturn(['name' => 'room-name', 'url' => 'https://example.daily.co/room']);
 
     (new DailyVideoProvider($client))->createRoom($videoSession);

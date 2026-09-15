@@ -7881,3 +7881,73 @@ proceed with `updateParticipantCapabilities()` as a plain required interface met
 adapters, no "applied live vs. requires reissue" branching in the contract after all (the
 architect's own design allowed for either outcome; this is the simpler one). Chime's own
 implementation mirrors `removeParticipant()`'s existing lookup-then-act shape almost exactly.
+## 2026-09-14 — SCRUM-314 (TT-3.2f): full-membership group video scoped and approved
+
+Ran the full `/start-feature` sequence (product-owner -> project-manager -> architect) for
+SCRUM-314, a placeholder filed during TT-3.2's own scoping with vague "every member gets full
+two-way access" text. The user's own follow-up question ("is it doable to have others join without
+their video stream?") led directly into this ticket being pulled forward and given a concrete,
+materially different shape than the placeholder's original framing.
+
+**User's own product decision (the most consequential one)**: NOT full two-way access for every
+member. A moderated "town hall" instead -- ordinary members join **receive-only** (mic/camera never
+published, confirmed technically feasible and SERVER-enforced by both providers' own primitives:
+Daily meeting-token `permissions.canSend`, Chime attendee `Capabilities`, never client trust), can
+raise a hand, and any active counsellor can grant/revoke real speaking permission from a live
+queue.
+
+**Locked decisions, in the order asked**:
+1. Minor members: receive-only join allowed unconditionally now; being GRANTED speaking permission
+   is hard-blocked until SCRUM-313 (guardian consent) ships -- mirrors TT-3.2a's own interim-block
+   pattern, does not wait on SCRUM-313.
+2. Anonymity/speaking mode: user's own freeform redirect, not one of the offered options --
+   "when anonymity is set on group therapy or membership, then no video at all, just give reason
+   why." Follow-up clarified this means AUDIO-ONLY (not fully blocked from speaking) for an
+   anonymous member -- camera capability permanently disabled, with a shown reason; a
+   non-anonymous member gets full audio+video with a one-time pre-unmute reveal warning.
+3. Participant cap: user chose the "smaller fixed operational ceiling" option, but with a second
+   freeform addition -- "that means the cap for group therapy should be set to that as well," tying
+   the video-specific cap to the group's own membership ceiling (previously two independent
+   numbers). Follow-up confirmed the exact number (**25**) and that no grandfathering is needed
+   (nothing is in production yet; seeded data may be freely adjusted).
+4. Revoke semantics: any active counsellor can revoke any grant (peer model, matching the existing
+   TT-3.2b moderation precedent) manually, PLUS an idle auto-expiry.
+5. (Second round, after project-manager surfaced two new gaps) Minor detection for ordinary
+   members: user chose to add a REAL per-membership snapshot (`group_therapy_user.was_minor_at_join`)
+   rather than accept a live `isAdult()` re-check, which would have reopened the exact
+   self-editable-dob bypass TT-4.10/SCRUM-287 already closed for the creator case.
+6. Chime cap: user chose to add a real app-level enforced cap for Chime (which has no native
+   room-size limit), rather than leave it relying on the allow-list alone at the new, much larger
+   scale (up to 25 real members, vs. TT-3.2's own "counsellors + 1" scale where this was
+   deliberately accepted as low-risk).
+
+**project-manager's own research findings** (grounding the sizing, not guessed): `GROUP_THERAPY_MAX_USERS`
+is validated in exactly one place (`EnsureTherapyDataIsValidAction.php`), so unifying it with the
+video cap is a contained change, not a scattered one; `EnsureUserCanAccessTherapyContentAction`
+already returns a bool and is directly reusable for gating receive-only join, confirming no new
+payment logic is needed; no generic audit-log table exists anywhere in this codebase, so the
+auditability requirement needs a new table, not a slot into existing infrastructure; a scheduler
+precedent (`Schedule::call(...)->everyFiveMinutes()`) already exists for the idle-expiry sweep,
+no new infra needed there either.
+
+**architect's own design corrections** (full authority exercised, not just validation): rejected
+extending `video_session_participants` for hand-raise/grant state (that table's own migration
+comment explicitly rejects mutable current-status columns) in favor of two new tables --
+`video_session_speaking_grants` (append-only, modeled on `video_consents`' proven shape, anchored to
+`video_session_participants.id` rather than a bare `(session, participant)` pair, to remove
+rejoin-ambiguity) and a separate, deliberately mutable `video_session_hand_raises` table (raise/
+lower is current-state, not history-shaped, so forcing it append-only would be over-engineering by
+analogy). Required the Chime cap check to live INSIDE `JoinVideoSessionAction`'s existing
+`lockForUpdate()` transaction, not a separate check outside it, to avoid reintroducing the exact
+TOCTOU race that lock already exists to close. Required a single shared `RevokeSpeakingPermissionAction`
+reused by manual revoke, the idle sweep, and removal cleanup, rather than three separate
+implementations of the same operation with different `revocation_reason`s.
+
+**Tickets filed**: SCRUM-318 (a, cap unification), SCRUM-319 (b, data model), SCRUM-320 (c, provider
+research spike), SCRUM-321 (d, receive-only join + Chime cap), SCRUM-322 (e,
+`updateParticipantCapabilities()`), SCRUM-323 (f, raise-hand + grant/revoke backend), SCRUM-324 (g,
+minor-block + anonymity-aware speaking), SCRUM-325 (h, idle auto-expiry), SCRUM-326 (i, removal
+interop), SCRUM-327 (j, frontend), SCRUM-328 (k, closeout), plus SCRUM-329 (placeholder to replace
+g's interim minor-block once SCRUM-313 ships). SCRUM-314 itself updated from a vague placeholder to
+the full locked scope + sub-ticket index; `documentation/implementation_plan.md`'s
+`TT-3.2-follow-up-2` row replaced with the full breakdown.
