@@ -62,7 +62,13 @@ class JoinGroupTherapyAction extends Action
             }
 
             try {
-                $lockedGroupTherapy->users()->attach($user->id, ['anonymous' => $anonymous]);
+                // TT-3.2f-b/SCRUM-319: was_minor_at_join is the new per-membership snapshot
+                // GroupTherapy::memberIsMinor() reads -- closes the "no stable minor record for an
+                // ordinary member" gap (only the group's own creator/addedby had one before this).
+                $lockedGroupTherapy->users()->attach($user->id, [
+                    'anonymous' => $anonymous,
+                    'was_minor_at_join' => ! $user->isAdult(),
+                ]);
             } catch (UniqueConstraintViolationException) {
                 throw new CannotJoinGroupTherapyException('You are already a participant of this group therapy.', 422);
             }

@@ -57,6 +57,29 @@ test('immediate join (allow_anyone true) attaches the joiner with the requested 
     expect($groupTherapy->users()->whereKey($joiner->id)->exists())->toBeTrue();
     expect((bool) $groupTherapy->users()->whereKey($joiner->id)->first()->pivot->anonymous)->toBeTrue();
     expect($groupTherapy->fresh()->isParticipant($joiner))->toBeTrue();
+    // TT-3.2f-b/SCRUM-319: the new per-membership minor snapshot, set at attach-time.
+    expect((bool) $groupTherapy->users()->whereKey($joiner->id)->first()->pivot->was_minor_at_join)->toBeFalse();
+});
+
+// TT-3.2f-b/SCRUM-319: an immediate join (allow_anyone true) for a MINOR joiner with a guardian on
+// file -- EnsureCanCreateTherapyAction's own guardian gate runs first regardless of allow_anyone,
+// so this exercises JoinGroupTherapyAction::attachImmediately()'s own snapshot write, not just the
+// request-based path the pre-existing minor test below covers.
+test('immediate join (allow_anyone true) for a minor with a guardian records was_minor_at_join true', function () {
+    $creator = anAdult();
+    $groupTherapy = aGroupTherapy($creator, ['allow_anyone' => true]);
+    $minor = User::factory()->create(['dob' => now()->subYears(15)]);
+    $guardian = anAdult();
+    Guardianship::query()->create(['guardian_id' => $guardian->id, 'ward_id' => $minor->id]);
+
+    JoinGroupTherapyAction::new()->execute(
+        JoinGroupTherapyDTO::new()->fromArray([
+            'user' => $minor,
+            'groupTherapy' => $groupTherapy,
+        ])
+    );
+
+    expect((bool) $groupTherapy->users()->whereKey($minor->id)->first()->pivot->was_minor_at_join)->toBeTrue();
 });
 
 test('a group-level anonymous flag forces the pivot anonymity to true at join-time regardless of what was requested', function () {
@@ -128,6 +151,7 @@ test('accepting a membership request attaches the requester with the anonymity v
     expect($groupTherapy->users()->whereKey($joiner->id)->exists())->toBeTrue();
     expect((bool) $groupTherapy->users()->whereKey($joiner->id)->first()->pivot->anonymous)->toBeTrue();
     expect($groupTherapy->fresh()->isParticipant($joiner))->toBeTrue();
+    expect((bool) $groupTherapy->users()->whereKey($joiner->id)->first()->pivot->was_minor_at_join)->toBeFalse();
 
     Notification::assertSentTo($joiner, GroupTherapyMembershipRequestAcceptedNotification::class);
 });
@@ -361,6 +385,7 @@ test('a minor with a guardian can request to join, and accepting it alerts the g
     );
 
     expect($groupTherapy->users()->whereKey($minor->id)->exists())->toBeTrue();
+    expect((bool) $groupTherapy->users()->whereKey($minor->id)->first()->pivot->was_minor_at_join)->toBeTrue();
 
     Notification::assertSentTo($guardian, GroupTherapyMembershipRequestAcceptedGuardianNotification::class);
 });

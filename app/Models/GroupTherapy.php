@@ -90,7 +90,7 @@ class GroupTherapy extends Model
     public function users()
     {
         return $this->belongsToMany(User::class, 'group_therapy_user', 'group_therapy_id', 'user_id')
-            ->withPivot(['background_story', 'anonymous'])
+            ->withPivot(['background_story', 'anonymous', 'was_minor_at_join'])
             ->withTimestamps();
     }
 
@@ -123,6 +123,24 @@ class GroupTherapy extends Model
     public function isCounsellorUser(User $user): bool
     {
         return (bool) ($user->counsellor && $this->isCounsellor($user->counsellor));
+    }
+
+    // TT-3.2f-b/SCRUM-319: a distinct question from clientIsMinor() (which answers "is the
+    // group's own creator a minor") -- this is "is this ORDINARY member a minor," using the
+    // was_minor_at_join snapshot recorded on their own group_therapy_user pivot row at join time
+    // (JoinGroupTherapyAction/RespondToGroupTherapyMembershipRequestAction). Null-fallback to a
+    // live isAdult() re-check for any pre-existing membership row that predates this column,
+    // mirroring TherapyTrait::clientIsMinor()'s identical fallback pattern -- never assumed false
+    // for an unknown past state.
+    public function memberIsMinor(User $user): bool
+    {
+        $membership = $this->users()->where('users.id', $user->id)->first();
+
+        if ($membership && ! is_null($membership->pivot->was_minor_at_join)) {
+            return (bool) $membership->pivot->was_minor_at_join;
+        }
+
+        return ! $user->isAdult();
     }
 
     public function isParticipant(User $user)

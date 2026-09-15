@@ -34,4 +34,27 @@ class VideoSessionParticipant extends Model
     {
         return ! is_null($this->joined_at) && is_null($this->left_at);
     }
+
+    // TT-3.2f-b/SCRUM-319: this specific join-cycle's own full grant/raise history -- see
+    // VideoSessionSpeakingGrant/VideoSessionHandRaise's own comments for why each is shaped the
+    // way it is (append-only audit vs. mutable current-state).
+    public function speakingGrants()
+    {
+        return $this->hasMany(VideoSessionSpeakingGrant::class);
+    }
+
+    public function handRaises()
+    {
+        return $this->hasMany(VideoSessionHandRaise::class);
+    }
+
+    public function currentSpeakingGrant(): ?VideoSessionSpeakingGrant
+    {
+        return $this->speakingGrants()->whereNull('revoked_at')->latest('granted_at')->first();
+    }
+
+    public function currentHandRaise(): ?VideoSessionHandRaise
+    {
+        return $this->handRaises()->whereNull('lowered_at')->latest('raised_at')->first();
+    }
 }

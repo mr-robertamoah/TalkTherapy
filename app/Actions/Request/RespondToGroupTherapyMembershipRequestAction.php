@@ -57,8 +57,11 @@ class RespondToGroupTherapyMembershipRequestAction extends Action
 
             if ($response == RequestStatusEnum::accepted->value) {
                 try {
+                    // TT-3.2f-b/SCRUM-319: was_minor_at_join snapshot, same reasoning as
+                    // JoinGroupTherapyAction's own identical attach call.
                     $groupTherapy->users()->attach($request->from->id, [
                         'anonymous' => $groupTherapy->resolveMembershipAnonymity((bool) ($request->data['anonymous'] ?? false)),
+                        'was_minor_at_join' => ! $request->from->isAdult(),
                     ]);
                 } catch (UniqueConstraintViolationException) {
                     // Already a member via some other path (e.g. an immediate join that
@@ -78,11 +81,13 @@ class RespondToGroupTherapyMembershipRequestAction extends Action
             // TT-4.10b/SCRUM-291: deliberately does NOT pass 'for' => $groupTherapy here --
             // $request->from is the JOINING MEMBER, not the group's own addedby/owner, so
             // $groupTherapy->client_was_minor_at_creation answers a question about a different
-            // person entirely (whoever created the group). There is no stable snapshot recorded
-            // anywhere for "was this member a minor at the moment they joined" (TT-4.10a only
-            // covers Guardianship/Therapy/GroupTherapy creation, not group membership), so this
-            // stays on AlertGuardianAction's live-isAdult() fallback, unchanged from before this
-            // ticket.
+            // person entirely (whoever created the group). TT-3.2f-b/SCRUM-319 later added a
+            // per-membership snapshot (group_therapy_user.was_minor_at_join) for exactly this
+            // question, but AlertGuardianAction's own live-isAdult() check here predates and is
+            // independent of that -- this alert fires at the moment of acceptance, when
+            // $request->from's live status IS the accurate, current answer, so there's no
+            // bypass risk the snapshot exists to close elsewhere (GroupTherapy::memberIsMinor(),
+            // used by the video speaking-permission grant path).
             AlertGuardianAction::new()->execute(
                 GuardianAlertDTO::new()->fromArray([
                     'user' => $request->from,
