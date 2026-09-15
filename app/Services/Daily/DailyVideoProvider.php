@@ -83,6 +83,38 @@ class DailyVideoProvider implements VideoProviderInterface
         $this->client->ejectParticipants($videoSession->provider_room_id, [(string) $user->id]);
     }
 
+    public function updateParticipantCapabilities(VideoSession $videoSession, User $user, bool $canSendAudio, bool $canSendVideo): void
+    {
+        if (! $videoSession->provider_room_id) {
+            return;
+        }
+
+        $this->client->updateRoomPermissions($videoSession->provider_room_id, [
+            (string) $user->id => ['canSend' => $this->canSendValueFor($canSendAudio, $canSendVideo)],
+        ]);
+    }
+
+    // Daily's own `canSend` accepts `true` (all), `false` (none), or an explicit array of the
+    // specific media types allowed -- collapses to the simplest form Daily itself documents for
+    // each case, rather than always sending an array (e.g. `['audio', 'video']` instead of `true`
+    // for the both-allowed case would work identically, but doesn't match the shape Daily's own
+    // examples use for "everything").
+    private function canSendValueFor(bool $canSendAudio, bool $canSendVideo): array|bool
+    {
+        if ($canSendAudio && $canSendVideo) {
+            return true;
+        }
+
+        if (! $canSendAudio && ! $canSendVideo) {
+            return false;
+        }
+
+        return array_values(array_filter([
+            $canSendAudio ? 'audio' : null,
+            $canSendVideo ? 'video' : null,
+        ]));
+    }
+
     // Rooms/tokens both need an explicit expiry -- Daily strongly recommends never omitting `exp`.
     // Ties to the underlying Session's own end_time (plus a buffer for overrun) when known, else
     // a conservative default so a room is never left open indefinitely.

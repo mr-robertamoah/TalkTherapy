@@ -142,3 +142,65 @@ test('removeParticipant is a no-op when the room was never actually created', fu
 
     (new DailyVideoProvider($client))->removeParticipant($videoSession, $user);
 });
+
+// TT-3.2f-e/SCRUM-322: changes an already-connected participant's publish capability live, keyed
+// by our own known user id (same identification pattern as removeParticipant() above).
+
+test('updateParticipantCapabilities sends canSend: true when both audio and video are allowed', function () {
+    $user = User::factory()->create();
+    $videoSession = VideoSession::factory()->create(['provider_room_id' => 'session-1-1']);
+
+    $client = Mockery::mock(DailyClient::class);
+    $client->shouldReceive('updateRoomPermissions')
+        ->once()
+        ->with('session-1-1', [(string) $user->id => ['canSend' => true]]);
+
+    (new DailyVideoProvider($client))->updateParticipantCapabilities($videoSession, $user, true, true);
+});
+
+test('updateParticipantCapabilities sends canSend: false when both are revoked', function () {
+    $user = User::factory()->create();
+    $videoSession = VideoSession::factory()->create(['provider_room_id' => 'session-1-1']);
+
+    $client = Mockery::mock(DailyClient::class);
+    $client->shouldReceive('updateRoomPermissions')
+        ->once()
+        ->with('session-1-1', [(string) $user->id => ['canSend' => false]]);
+
+    (new DailyVideoProvider($client))->updateParticipantCapabilities($videoSession, $user, false, false);
+});
+
+// TT-3.2f-g's own anonymity rule: an anonymous member granted speaking permission is audio-only.
+test('updateParticipantCapabilities sends an explicit [audio] array for audio-only (anonymous speaker) permission', function () {
+    $user = User::factory()->create();
+    $videoSession = VideoSession::factory()->create(['provider_room_id' => 'session-1-1']);
+
+    $client = Mockery::mock(DailyClient::class);
+    $client->shouldReceive('updateRoomPermissions')
+        ->once()
+        ->with('session-1-1', [(string) $user->id => ['canSend' => ['audio']]]);
+
+    (new DailyVideoProvider($client))->updateParticipantCapabilities($videoSession, $user, true, false);
+});
+
+test('updateParticipantCapabilities sends an explicit [video] array for video-only permission', function () {
+    $user = User::factory()->create();
+    $videoSession = VideoSession::factory()->create(['provider_room_id' => 'session-1-1']);
+
+    $client = Mockery::mock(DailyClient::class);
+    $client->shouldReceive('updateRoomPermissions')
+        ->once()
+        ->with('session-1-1', [(string) $user->id => ['canSend' => ['video']]]);
+
+    (new DailyVideoProvider($client))->updateParticipantCapabilities($videoSession, $user, false, true);
+});
+
+test('updateParticipantCapabilities is a no-op when the room was never actually created', function () {
+    $user = User::factory()->create();
+    $videoSession = VideoSession::factory()->create(['provider_room_id' => null]);
+
+    $client = Mockery::mock(DailyClient::class);
+    $client->shouldNotReceive('updateRoomPermissions');
+
+    (new DailyVideoProvider($client))->updateParticipantCapabilities($videoSession, $user, true, true);
+});

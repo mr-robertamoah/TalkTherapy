@@ -8052,3 +8052,33 @@ cap doesn't share this failure mode, since it's enforced against real live conne
 audit rows). A pre-existing characteristic of the audit-log table's own design, not a regression
 this ticket introduces -- this ticket is simply the first thing to actually COUNT those rows for an
 enforcement decision.
+
+---
+
+## 2026-09-15 — SCRUM-322 (TT-3.2f-e): VideoProviderInterface::updateParticipantCapabilities()
+
+Implemented the SCRUM-320 spike's own findings directly -- both providers support this live, no
+"applied live vs. requires reissue" branching needed in the interface contract after all (the
+architect's own design left room for either outcome; the spike found the simpler one).
+
+- **Daily**: new `DailyClient::updateRoomPermissions()` wraps `POST /rooms/{room}/update-permissions`,
+  keyed by our own `user_id` (same identification pattern as the existing `ejectParticipants()`).
+  `canSend` collapses to Daily's own simplest documented shape per case: `true` (both allowed),
+  `false` (both revoked), or an explicit `['audio']`/`['video']` array (the audio-only case
+  TT-3.2f-g's own anonymity rule needs).
+- **Chime**: new `ChimeClient::updateAttendeeCapabilities()` wraps AWS's `UpdateAttendeeCapabilities`,
+  keyed by the AWS-generated `AttendeeId` looked up via the same `ListAttendees`-then-match-`ExternalUserId`
+  pattern `ChimeVideoProvider::removeParticipant()` (SCRUM-309) already established -- no new
+  persisted id needed. `Content` is always sent as `'Receive'` regardless of the video capability
+  (this app has no screen-share feature to ever need `'Send'` for); AWS requires `Video` to be
+  `Receive`/`SendReceive` (never `None`) whenever `Content` is `Receive`/`SendReceive`, which is
+  always true here since Video is one of those two values in every call this app makes.
+- Deliberately did NOT wrap either provider call in a best-effort try/catch the way `endRoom()`/
+  `removeParticipant()` are -- the interface's own comment now explicitly requires the CALLER
+  (TT-3.2f-f, not yet built) to make its own explicit decision about failure handling, per the
+  security-engineer's own SCRUM-309 finding that a silent failure on a GRANT (counsellor believes
+  a member can now speak, but the provider call silently failed) is a materially different, likely
+  worse risk than a silent failure on a teardown/removal.
+- All ~9 test files with fake/anonymous `VideoProviderInterface` implementations mechanically
+  patched to add the new required method as a no-op, same approach as every prior interface
+  addition this epic (TT-3.2b's `removeParticipant()`).

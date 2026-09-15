@@ -53,4 +53,18 @@ class ChimeClient extends Service
     {
         $this->client->deleteAttendee(['MeetingId' => $meetingId, 'AttendeeId' => $attendeeId]);
     }
+
+    // TT-3.2f-e/SCRUM-322: changes an already-connected attendee's publish capability live, no
+    // reconnect required (confirmed via the SCRUM-320 research spike). $capabilities is the raw
+    // AttendeeCapabilities shape (['Audio' => ..., 'Video' => ..., 'Content' => ...]) -- keyed by
+    // the AWS-generated AttendeeId, same as deleteAttendee() above, since Chime has no equivalent
+    // "by external id" call for this either.
+    public function updateAttendeeCapabilities(string $meetingId, string $attendeeId, array $capabilities): void
+    {
+        $this->client->updateAttendeeCapabilities([
+            'MeetingId' => $meetingId,
+            'AttendeeId' => $attendeeId,
+            'Capabilities' => $capabilities,
+        ]);
+    }
 }
