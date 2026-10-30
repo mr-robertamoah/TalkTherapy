@@ -79,9 +79,20 @@ class JoinVideoSessionAction extends Action
     // Mirrors TherapyTrait::addedByUserIsMaskedFor()'s own logic (anonymity only ever applies to a
     // User addedby/client, never a counsellor, and never masks someone's view of their own name --
     // moot here since the label is for OTHER participants, never the user themselves).
+    //
+    // TT-3.2f-g/SCRUM-324 review finding: for a GroupTherapy this used to mask only the creator, so
+    // an ordinary member who is anonymous (group flag OR their own pivot flag) joined under their
+    // REAL name -- shown to every other participant, and sent to the provider. Now mirrors
+    // routes/channels.php's own group masking exactly: any non-counsellor anonymous participant.
     private function displayNameFor(Session $session, User $user): string
     {
         $therapy = $session->for;
+
+        if ($therapy instanceof GroupTherapy) {
+            return ! $therapy->isCounsellorUser($user) && $therapy->isAnonymousFor($user)
+                ? ConstantsEnum::anonymousUserLabel->value
+                : $user->name;
+        }
 
         $isAnonymousAddedbyUser = $therapy->addedby_type === User::class
             && $therapy->addedby->is($user)

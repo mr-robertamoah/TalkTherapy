@@ -7,6 +7,7 @@ use App\Contracts\VideoProviderInterface;
 use App\Events\HandLoweredEvent;
 use App\Events\SpeakingPermissionChangedEvent;
 use App\Exceptions\VideoException;
+use App\Models\GroupTherapy;
 use App\Models\Session;
 use App\Models\User;
 use App\Models\VideoSessionParticipant;
@@ -54,7 +55,9 @@ class GrantSpeakingPermissionAction extends Action
             throw new VideoException('This participant can already speak in this video call.', 422);
         }
 
-        [$canSendAudio, $canSendVideo] = $this->capabilitiesFor($targetUser);
+        EnsureMemberMayBeGrantedSpeakingAction::new()->execute($session->for, $targetUser);
+
+        [$canSendAudio, $canSendVideo] = $this->capabilitiesFor($session->for, $targetUser);
 
         // Events are dispatched only after the transaction commits -- see
         // JoinVideoSessionAction::currentOrNewVideoSessionAndJoin() for why (after_commit=false).
@@ -112,11 +115,20 @@ class GrantSpeakingPermissionAction extends Action
         return $grant;
     }
 
-    // Audio-only for everyone until TT-3.2f-g/SCRUM-324 lands its anonymity-aware rule (anonymous
-    // member: audio-only forever; non-anonymous: audio + video). Fails safe in the meantime -- an
-    // anonymous member's camera can never be enabled before that rule exists.
-    private function capabilitiesFor(User $targetUser): array
+    // TT-3.2f-g/SCRUM-324: an anonymous member (group-wide flag OR their own pivot flag -- the same
+    // rule isAnonymousFor() applies when masking their name) gets audio-only, forever: their camera
+    // capability is never enabled at the PROVIDER, so no client can turn it on. Everyone else gets
+    // audio + video; the frontend (TT-3.2f-j) shows a one-time "speaking reveals your voice/face"
+    // warning, keyed off the canSendVideo flag SpeakingPermissionChangedEvent carries.
+    //
+    // Security-review hardening: read straight from the membership row rather than via
+    // isAnonymousFor(), which reads a possibly-cached `users` relation and treats a non-member as
+    // NOT anonymous. Here, video is only ever enabled for a positively-confirmed, non-anonymous
+    // member of a non-anonymous group -- anything else fails closed to audio-only.
+    private function capabilitiesFor(GroupTherapy $groupTherapy, User $targetUser): array
     {
-        return [true, false];
+        $membership = $groupTherapy->users()->where('users.id', $targetUser->id)->first();
+
+        return [true, ! $groupTherapy->anonymous && $membership && ! $membership->pivot->anonymous];
     }
 }
