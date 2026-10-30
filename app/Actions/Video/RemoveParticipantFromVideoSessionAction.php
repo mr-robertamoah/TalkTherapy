@@ -4,11 +4,15 @@ namespace App\Actions\Video;
 
 use App\Actions\Action;
 use App\Contracts\VideoProviderInterface;
+use App\Enums\SpeakingPermissionRevocationReasonEnum;
+use App\Events\HandLoweredEvent;
 use App\Events\VideoParticipantRemovedEvent;
 use App\Exceptions\VideoException;
 use App\Models\GroupTherapy;
 use App\Models\Session;
 use App\Models\User;
+use App\Models\VideoSession;
+use App\Models\VideoSessionHandRaise;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
@@ -59,7 +63,35 @@ class RemoveParticipantFromVideoSessionAction extends Action
         // joined this video session at some point.
         $targetUser = $participant->participant;
 
-        $participant->update(['left_at' => now()]);
+        // TT-3.2f-i/SCRUM-326: clear their speaking state BEFORE ejecting, while their row is still
+        // the live one -- so the shared revoke pushes receive-only to the provider first. The eject
+        // below is best-effort; if it fails, the member is at least no longer able to speak. Uses
+        // the SAME revoke as a counsellor's manual one (architect requirement), with its own reason.
+        // $actingUser recorded as the revoker: unlike the idle sweep, removal IS a counsellor's own
+        // action, and the grant row is the only place that counsellor gets recorded.
+        $revoke = RevokeSpeakingPermissionAction::new();
+        $revoked = $revoke->revokeAllFor($videoSession, $participant, SpeakingPermissionRevocationReasonEnum::participant_removed, $actingUser);
+
+        // Security-review finding: a grant only on a STALE row is closed locally, never muting the
+        // live join -- but a reconnected Chime attendee may still carry that grant's capability, so
+        // mute explicitly (non-fatal for this reason) rather than rely on the best-effort eject alone.
+        if ($revoked->isNotEmpty() && ! $revoked->contains('video_session_participant_id', $participant->id)) {
+            $revoke->muteAtProvider($videoSession, $targetUser, SpeakingPermissionRevocationReasonEnum::participant_removed);
+        }
+
+        $loweredHand = $this->lowerHandsFor($videoSession, $targetUserId);
+
+        // Every open row, not just the live one -- a stale row left open by a reconnect (SCRUM-330)
+        // would otherwise keep the removed user counted as "in the call", grantable, and able to
+        // raise a hand again.
+        $videoSession->participantRowsFor($targetUserId)->whereNull('left_at')->update(['left_at' => now()]);
+
+        // Second pass, now that every row is left: catches a grant/raise that landed between the
+        // cleanup above and marking left (this can't sit behind the participant-row lock grant/raise
+        // take, since the mute must happen while the row is still live). Grants on left rows are
+        // closed locally only; the eject below removes the person regardless.
+        $revoke->revokeAllFor($videoSession, $participant, SpeakingPermissionRevocationReasonEnum::participant_removed, $actingUser);
+        $loweredHand = $this->lowerHandsFor($videoSession, $targetUserId) || $loweredHand;
 
         // Best-effort, matching endRoom()'s own contract -- a provider-side failure here must
         // never block the caller from marking the participant left locally.
@@ -73,6 +105,18 @@ class RemoveParticipantFromVideoSessionAction extends Action
             ]);
         }
 
+        if ($loweredHand) {
+            HandLoweredEvent::dispatch($videoSession, $targetUserId);
+        }
+
         VideoParticipantRemovedEvent::dispatch($videoSession, $targetUserId);
+    }
+
+    private function lowerHandsFor(VideoSession $videoSession, int $userId): bool
+    {
+        return (bool) VideoSessionHandRaise::query()
+            ->whereNull('lowered_at')
+            ->whereIn('video_session_participant_id', $videoSession->participantRowsFor($userId)->select('id'))
+            ->update(['lowered_at' => now()]);
     }
 }

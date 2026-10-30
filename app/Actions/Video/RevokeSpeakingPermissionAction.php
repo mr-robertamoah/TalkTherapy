@@ -12,6 +12,7 @@ use App\Models\User;
 use App\Models\VideoSession;
 use App\Models\VideoSessionParticipant;
 use App\Models\VideoSessionSpeakingGrant;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -41,24 +42,40 @@ class RevokeSpeakingPermissionAction extends Action
             return;
         }
 
-        // Stale rows first (closed locally only, see revokeGrant()), the live row's own grant last
-        // -- that's the one call that actually reaches the provider.
+        $revoked = $this->revokeAllFor($videoSession, $liveParticipant, SpeakingPermissionRevocationReasonEnum::manual, $actingUser);
+
+        if (! $revoked->contains('video_session_participant_id', $liveParticipant->id)) {
+            $this->muteAtProvider($videoSession, $liveParticipant->participant, SpeakingPermissionRevocationReasonEnum::manual);
+        }
+    }
+
+    // Closes every open grant this participant's user holds in the call, across ALL their join rows
+    // -- stale rows first (closed locally only, see revokeGrant()), the live row's own grant last,
+    // since that's the one call that actually reaches the provider. Shared by the manual revoke above
+    // and TT-3.2f-i/SCRUM-326's removal cleanup. Returns the open grants it found. Does no
+    // authorization of its own -- callers must have authorized the acting user already.
+    public function revokeAllFor(VideoSession $videoSession, VideoSessionParticipant $liveParticipant, SpeakingPermissionRevocationReasonEnum $reason, ?User $revokedBy = null): Collection
+    {
         $openGrants = VideoSessionSpeakingGrant::query()
             ->whereNull('revoked_at')
-            ->whereIn('video_session_participant_id', $videoSession->participants()
-                ->where('participant_type', User::class)
-                ->where('participant_id', $targetUserId)
-                ->select('id'))
+            ->whereIn('video_session_participant_id', $videoSession->participantRowsFor($liveParticipant->participant_id)->select('id'))
             ->get()
             ->sortBy(fn (VideoSessionSpeakingGrant $grant) => $grant->video_session_participant_id === $liveParticipant->id);
 
         foreach ($openGrants as $grant) {
-            $this->revokeGrant($grant, SpeakingPermissionRevocationReasonEnum::manual, $actingUser);
+            $this->revokeGrant($grant, $reason, $revokedBy);
         }
 
-        if (! $openGrants->contains('video_session_participant_id', $liveParticipant->id)) {
-            $this->revokedAtProvider($videoSession, $liveParticipant->participant, SpeakingPermissionRevocationReasonEnum::manual);
-        }
+        return $openGrants;
+    }
+
+    // Pushes receive-only to the provider without any grant row involved -- for when a grant sat on
+    // a STALE join row (closed locally only) but a reconnected attendee may still carry its old
+    // publish capability (Chime reuses attendees by ExternalUserId). Failure follows the same
+    // per-reason rule as revokeGrant().
+    public function muteAtProvider(VideoSession $videoSession, User $targetUser, SpeakingPermissionRevocationReasonEnum $reason): void
+    {
+        $this->revokedAtProvider($videoSession, $targetUser, $reason);
     }
 
     // Provider failure handling depends on WHY the grant is being revoked -- an explicit decision,
