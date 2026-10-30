@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Actions\GroupTherapy\CreateGroupTherapyAction;
 use App\Actions\GroupTherapy\EnsureCanSetGroupTherapyPaymentGateAction;
+use App\Actions\GroupTherapy\EnsureGroupTherapyCanBecomeAnonymousAction;
 use App\Actions\GroupTherapy\JoinGroupTherapyAction;
 use App\Actions\GroupTherapy\UpdateGroupTherapyAction;
 use App\Actions\Request\SendTherapyAssistanceRequestAction;
@@ -101,6 +102,8 @@ class GroupTherapyService extends Service
         }
 
         EnsureTherapyDataIsValidAction::new()->execute($groupTherapyDTO);
+
+        EnsureGroupTherapyCanBecomeAnonymousAction::new()->execute($groupTherapyDTO->groupTherapy, $groupTherapyDTO->anonymous);
 
         return UpdateGroupTherapyAction::new()->execute($groupTherapyDTO);
     }

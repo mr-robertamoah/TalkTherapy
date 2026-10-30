@@ -47,10 +47,21 @@ class JoinVideoSessionAction extends Action
 
         $videoSession = $this->currentOrNewVideoSessionAndJoin($session, $user, $provider);
 
-        $isOwner = (bool) ($user->counsellor && $session->for->isCounsellor($user->counsellor));
+        // SCRUM-331: never an owner in a GroupTherapy call -- a Daily owner's browser can change ANY
+        // participant's permissions client-side, bypassing the server-enforced minor/anonymity
+        // speaking rules (SCRUM-324). Every moderation action (remove, end, grant/revoke) goes
+        // through our server with the API key, so group counsellors lose nothing they use; they
+        // all remain equal peers. Unchanged for 1:1 Therapy (two participants, no such rules).
+        $isOwner = ! $session->for instanceof GroupTherapy
+            && (bool) ($user->counsellor && $session->for->isCounsellor($user->counsellor));
 
         return $provider->createParticipantCredentials(
-            $videoSession, $user, $this->displayNameFor($session, $user), $isOwner, $this->isReceiveOnly($session, $user)
+            $videoSession,
+            $user,
+            $this->displayNameFor($session, $user),
+            isOwner: $isOwner,
+            receiveOnly: $this->isReceiveOnly($session, $user),
+            canSendVideo: ! $this->isMaskedGroupParticipant($session, $user),
         );
     }
 
@@ -89,7 +100,7 @@ class JoinVideoSessionAction extends Action
         $therapy = $session->for;
 
         if ($therapy instanceof GroupTherapy) {
-            return ! $therapy->isCounsellorUser($user) && $therapy->isAnonymousFor($user)
+            return $this->isMaskedGroupParticipant($session, $user)
                 ? ConstantsEnum::anonymousUserLabel->value
                 : $user->name;
         }
@@ -99,6 +110,19 @@ class JoinVideoSessionAction extends Action
             && $therapy->isAnonymousFor($user);
 
         return $isAnonymousAddedbyUser ? ConstantsEnum::anonymousUserLabel->value : $user->name;
+    }
+
+    // Any non-counsellor anonymous participant of a GroupTherapy (group flag OR their own pivot
+    // flag) -- masked by name (displayNameFor() above) AND, per SCRUM-332, never given a camera:
+    // the creator of an anonymous group joins audio-only, matching the audio-only rule SCRUM-324
+    // applies to anonymous members' speaking grants. (Ordinary members join receive-only anyway.)
+    // Decided per join: turning a group's anonymity OFF mid-call leaves the creator audio-only
+    // until they rejoin -- the safe direction.
+    private function isMaskedGroupParticipant(Session $session, User $user): bool
+    {
+        return $session->for instanceof GroupTherapy
+            && ! $session->for->isCounsellorUser($user)
+            && $session->for->isAnonymousFor($user);
     }
 
     // A VideoSession that hasn't ended yet is the current epoch to join -- there is at most one

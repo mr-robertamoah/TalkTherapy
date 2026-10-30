@@ -61,7 +61,7 @@ function fakeVideoProviderRecordingGrantCapabilities(array &$calls, bool $should
             return [];
         }
 
-        public function createParticipantCredentials(VideoSession $videoSession, User $user, string $displayName, bool $isOwner = false, bool $receiveOnly = false): array
+        public function createParticipantCredentials(VideoSession $videoSession, User $user, string $displayName, bool $isOwner = false, bool $receiveOnly = false, bool $canSendVideo = true): array
         {
             return [];
         }

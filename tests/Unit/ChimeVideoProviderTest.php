@@ -82,6 +82,37 @@ test('createParticipantCredentials mints receive-only Capabilities when requeste
     (new ChimeVideoProvider($client))->createParticipantCredentials($videoSession, $user, 'Some Member', false, true);
 });
 
+// SCRUM-332: the creator of an anonymous group may publish audio but never video.
+test('createParticipantCredentials mints audio-only Capabilities when video is not allowed', function () {
+    $user = User::factory()->create();
+    $videoSession = VideoSession::factory()->create(['provider_room_id' => 'aws-meeting-id']);
+
+    $client = Mockery::mock(ChimeClient::class);
+    $client->shouldReceive('createAttendee')
+        ->once()
+        ->with(Mockery::on(fn ($args) => ($args['Capabilities'] ?? null) === [
+            'Audio' => 'SendReceive', 'Video' => 'Receive', 'Content' => 'Receive',
+        ]))
+        ->andReturn(['Attendee' => []]);
+
+    (new ChimeVideoProvider($client))->createParticipantCredentials($videoSession, $user, 'Anonymous', false, false, false);
+});
+
+test('receive-only wins over audio-only on Chime too', function () {
+    $user = User::factory()->create();
+    $videoSession = VideoSession::factory()->create(['provider_room_id' => 'aws-meeting-id']);
+
+    $client = Mockery::mock(ChimeClient::class);
+    $client->shouldReceive('createAttendee')
+        ->once()
+        ->with(Mockery::on(fn ($args) => ($args['Capabilities'] ?? null) === [
+            'Audio' => 'Receive', 'Video' => 'Receive', 'Content' => 'Receive',
+        ]))
+        ->andReturn(['Attendee' => []]);
+
+    (new ChimeVideoProvider($client))->createParticipantCredentials($videoSession, $user, 'Anonymous', false, true, false);
+});
+
 test('endRoom deletes the provider meeting by its stored provider_room_id', function () {
     $videoSession = VideoSession::factory()->create(['provider_room_id' => 'aws-meeting-id']);
 

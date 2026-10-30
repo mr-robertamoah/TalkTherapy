@@ -37,7 +37,7 @@ class DailyVideoProvider implements VideoProviderInterface
         ];
     }
 
-    public function createParticipantCredentials(VideoSession $videoSession, User $user, string $displayName, bool $isOwner = false, bool $receiveOnly = false): array
+    public function createParticipantCredentials(VideoSession $videoSession, User $user, string $displayName, bool $isOwner = false, bool $receiveOnly = false, bool $canSendVideo = true): array
     {
         $properties = [
             'room_name' => $videoSession->provider_room_id,
@@ -53,8 +53,12 @@ class DailyVideoProvider implements VideoProviderInterface
         // participant's own browser cannot publish audio/video even if it tries, regardless of
         // any client-side UI state. Confirmed via the research spike (SCRUM-320): Daily's
         // meeting-token `permissions.canSend` accepts `false` for "none".
-        if ($receiveOnly) {
-            $properties['permissions'] = ['canSend' => false];
+        // SCRUM-332: also audio-only ($canSendVideo false) -- same canSendValueFor() shape
+        // updateParticipantCapabilities() uses, so the two can't drift. $receiveOnly wins.
+        $canSend = $this->canSendValueFor(! $receiveOnly, ! $receiveOnly && $canSendVideo);
+
+        if ($canSend !== true) {
+            $properties['permissions'] = ['canSend' => $canSend];
         }
 
         $token = $this->client->createMeetingToken($properties);

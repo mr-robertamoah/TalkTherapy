@@ -44,7 +44,7 @@ class ChimeVideoProvider implements VideoProviderInterface
     // field at all (only ExternalUserId); the frontend maps attendee id -> display name itself.
     // Still part of the interface's own signature for parity with DailyVideoProvider, which does
     // send $displayName to its provider (see VideoProviderInterface's own comment on why).
-    public function createParticipantCredentials(VideoSession $videoSession, User $user, string $displayName, bool $isOwner = false, bool $receiveOnly = false): array
+    public function createParticipantCredentials(VideoSession $videoSession, User $user, string $displayName, bool $isOwner = false, bool $receiveOnly = false, bool $canSendVideo = true): array
     {
         $args = [
             'MeetingId' => $videoSession->provider_room_id,
@@ -56,6 +56,9 @@ class ChimeVideoProvider implements VideoProviderInterface
         // SendReceive) for a full participant, unchanged from before this ticket.
         if ($receiveOnly) {
             $args['Capabilities'] = ['Audio' => 'Receive', 'Video' => 'Receive', 'Content' => 'Receive'];
+        } elseif (! $canSendVideo) {
+            // SCRUM-332: audio-only, same shape updateParticipantCapabilities() sends.
+            $args['Capabilities'] = ['Audio' => 'SendReceive', 'Video' => 'Receive', 'Content' => 'Receive'];
         }
 
         $response = $this->client->createAttendee($args);

@@ -103,6 +103,39 @@ test('createParticipantCredentials mints a receive-only token with canSend false
     (new DailyVideoProvider($client))->createParticipantCredentials($videoSession, $user, 'Some Member', false, true);
 });
 
+// SCRUM-332: the creator of an anonymous group may publish audio but never video.
+test('createParticipantCredentials mints an audio-only token when video is not allowed', function () {
+    $user = User::factory()->create();
+    $videoSession = VideoSession::factory()->create([
+        'provider_room_id' => 'session-1-1',
+        'provider_meta' => ['url' => 'https://example.daily.co/room'],
+    ]);
+
+    $client = Mockery::mock(DailyClient::class);
+    $client->shouldReceive('createMeetingToken')
+        ->once()
+        ->with(Mockery::on(fn ($properties) => ($properties['permissions']['canSend'] ?? null) === ['audio']))
+        ->andReturn(['token' => 'jwt-token-value']);
+
+    (new DailyVideoProvider($client))->createParticipantCredentials($videoSession, $user, 'Anonymous', false, false, false);
+});
+
+test('receive-only wins over audio-only when both are requested', function () {
+    $user = User::factory()->create();
+    $videoSession = VideoSession::factory()->create([
+        'provider_room_id' => 'session-1-1',
+        'provider_meta' => ['url' => 'https://example.daily.co/room'],
+    ]);
+
+    $client = Mockery::mock(DailyClient::class);
+    $client->shouldReceive('createMeetingToken')
+        ->once()
+        ->with(Mockery::on(fn ($properties) => ($properties['permissions']['canSend'] ?? null) === false))
+        ->andReturn(['token' => 'jwt-token-value']);
+
+    (new DailyVideoProvider($client))->createParticipantCredentials($videoSession, $user, 'Anonymous', false, true, false);
+});
+
 test('endRoom deletes the provider room by its stored provider_room_id', function () {
     $videoSession = VideoSession::factory()->create(['provider_room_id' => 'session-1-1']);
 

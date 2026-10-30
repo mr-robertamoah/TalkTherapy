@@ -8229,3 +8229,44 @@ architect's own design left room for either outcome; the spike found the simpler
   - The schedule is named and `withoutOverlapping()` (I1).
   - L3 (on Chime, an idle grant left on a stale join row is closed locally without muting the
     reconnected attendee) is pre-existing and noted on SCRUM-330.
+
+---
+
+## 2026-10-30 — SCRUM-331 + SCRUM-332: group-video credential hardening (user decisions)
+
+- **SCRUM-331 (user: yes)**: group-therapy counsellors no longer get Daily `is_owner` tokens. An
+  owner's browser can change ANY participant's permissions client-side, which would bypass the
+  server-enforced rules (minors never speak; anonymous members are audio-only). Every moderation
+  action (remove, end, grant/revoke) goes through our server, so counsellors lose nothing they use
+  and remain equal peers. This revisits TT-3.2's "equal host credentials" decision: counsellors keep
+  equal rights, they just aren't Daily owners. 1:1 Therapy is unchanged (two participants, no such
+  rules).
+- **SCRUM-332 (user: anonymous creator is audio-only)**: the creator of an anonymous group joins
+  video audio-only, enforced by the provider. This uses a new `canSendVideo` parameter on
+  `VideoProviderInterface::createParticipantCredentials()` (appended, default `true`; `receiveOnly`
+  wins if both are set). `JoinVideoSessionAction::isMaskedGroupParticipant()` is now the single
+  rule both for masking the name and for withholding the camera: any non-counsellor anonymous
+  group participant.
+- **SCRUM-332, mid-call anonymity change**: I chose to REFUSE switching a group to anonymous while
+  one of its video calls is live (`EnsureGroupTherapyCanBecomeAnonymousAction`, 422 "End the current
+  video call before making this group anonymous."), rather than downgrading people mid-call.
+  Everyone in that call has already seen names and faces, so a mid-call downgrade couldn't honestly
+  undo the exposure. After the call ends, every new join is masked and audio-only.
+- **Review follow-ups**:
+  - The anonymity-flip guard counts a call as "live" only while someone is still in it (reviewer).
+    An abandoned call stays open until an explicit End, and the creator can't end group calls, so
+    counting abandoned calls would have blocked the change forever.
+  - Daily's audio-only token now reuses `canSendValueFor()`.
+  - The join passes named arguments.
+- **Accepted / deferred**:
+  - The guard and the update aren't atomic with a concurrent first join (a milliseconds window, one
+    unmasked token). Filed as SCRUM-334, along with three issues the security review found that
+    already existed: Daily self-renaming, real user ids visible in calls, and implicit Daily room
+    defaults.
+  - A group creator who is ALSO a counsellor of that group is never masked or audio-only. This is
+    consistent with the app-wide "counsellors are never anonymous" rule and only exposes their own
+    identity.
+  - Tokens minted before deploy (owner, or full-video creator) stay valid until they expire (session
+    end + 2h).
+  - The browser isn't told that a participant is audio-only (the camera toggle shows "on" but the
+    provider refuses). Handle this in SCRUM-327 by returning the capability with the credentials.

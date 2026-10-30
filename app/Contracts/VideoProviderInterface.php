@@ -45,9 +45,13 @@ interface VideoProviderInterface
     // actually mint. Mutually exclusive with $isOwner in practice (an owner is never receive-only)
     // but not asserted as such here -- that invariant belongs to the caller, not this contract.
     //
+    // SCRUM-332: $canSendVideo = false mints a participant who may publish AUDIO but never video
+    // (server-enforced the same way as $receiveOnly) -- the creator of an anonymous GroupTherapy.
+    // Only meaningful when $receiveOnly is false; $receiveOnly always wins.
+    //
     // Returns a provider-specific, JSON-serializable array handed straight through to the
     // frontend's provider SDK -- never inspected or reshaped by callers of this interface.
-    public function createParticipantCredentials(VideoSession $videoSession, User $user, string $displayName, bool $isOwner = false, bool $receiveOnly = false): array;
+    public function createParticipantCredentials(VideoSession $videoSession, User $user, string $displayName, bool $isOwner = false, bool $receiveOnly = false, bool $canSendVideo = true): array;
 
     // Ends/tears down the room with the provider. Best-effort: providers also expire rooms
     // naturally (Daily via `exp`, Chime meetings end when empty), so a failure here should never
