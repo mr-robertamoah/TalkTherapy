@@ -26,6 +26,10 @@ class RaiseHandAction extends Action
             throw new VideoException('You can already speak in this video call.', 422);
         }
 
+        // TT-3.2f-g/SCRUM-324: a hand that could never be granted would only be a dead-end entry in
+        // every counsellor's queue -- refused up front with the same reason instead.
+        EnsureMemberMayBeGrantedSpeakingAction::new()->execute($session->for, $user);
+
         $participant = $session->videoSessions()->whereNull('ended_at')->first()?->activeParticipantFor($user->id)
             ?? throw new VideoException('Join the video call before raising your hand.', 422);
 

@@ -8140,3 +8140,39 @@ architect's own design left room for either outcome; the spike found the simpler
   - All `throttle:N,1` routes share one per-user counter (security F6, info only). For example, a
     member who toggles their hand 20+ times in a minute can get a 429 on rejoin. Named limiters
     would be the fix if this shows up in practice.
+
+---
+
+## 2026-10-30 — SCRUM-324 (TT-3.2f-g): minor-grant hard-block + anonymity-aware speaking mode
+
+- **Minor block**: `GrantSpeakingPermissionAction` refuses a target for whom
+  `GroupTherapy::memberIsMinor()` is true (the join-time snapshot, falling back to live age). It's an
+  interim block until SCRUM-313's group-scoped guardian consent exists, and SCRUM-329 replaces it then.
+  A minor can still join receive-only.
+- **Not in the ticket text**: `RaiseHandAction` also refuses minors, with the same message. Their hand
+  could never be granted, so it would only be a dead-end entry in every counsellor's queue. Both
+  actions call the one `EnsureMemberMayBeGrantedSpeakingAction`, so SCRUM-329 replaces a single
+  place.
+- **Capabilities**: anonymous members (`isAnonymousFor()`: the group flag OR the member's own pivot
+  flag) get audio-only at the provider; everyone else gets audio + video. This replaces SCRUM-323's
+  interim audio-only-for-all. The frontend's one-time reveal warning (SCRUM-327) uses the
+  `canSendVideo` flag already carried by `SpeakingPermissionChangedEvent`, so no new payload field
+  is needed.
+- **Fixed here, out of the ticket's literal scope (both reviewers rated it High)**:
+  `JoinVideoSessionAction::displayNameFor()` used to mask only a group's CREATOR. Since SCRUM-321 let
+  ordinary members join, an anonymous member (group flag or pivot flag) was labelled with their real
+  name for every other participant and in what Daily receives. Masking now matches
+  `routes/channels.php`: any non-counsellor anonymous participant. Fixed in this PR rather than
+  deferred, because this ticket is what lets anonymous members speak, and its own design assumes
+  "your name stays masked".
+- **Security hardening**: the capability choice reads the membership row directly and enables video
+  only for a confirmed, non-anonymous member of a non-anonymous group. It no longer relies on
+  `isAnonymousFor()`'s cached relation, which treats a non-member as non-anonymous; any doubt now
+  falls back to audio-only.
+- **Filed, not fixed (decisions needed)**:
+  - SCRUM-331 (High): Daily `is_owner` tokens let a counsellor's browser change any participant's
+    permissions, which goes around these server-side rules. Not reachable through the current UI.
+    Fixing it means revisiting TT-3.2's "equal host credentials" product decision, so it was left
+    for the user rather than changed here.
+  - SCRUM-332: the group `anonymous` flag being turned on mid-call doesn't downgrade open grants, and
+    the anonymous group's creator still gets a camera (product question).
