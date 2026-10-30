@@ -125,6 +125,17 @@ class GroupTherapy extends Model
         return (bool) ($user->counsellor && $this->isCounsellor($user->counsellor));
     }
 
+    // TT-3.2f-f/SCRUM-323: an ordinary member (not an active counsellor, not the creator) only
+    // ever joins this group's video receive-only, and is the only kind of participant hand-raise
+    // and grant/revoke apply to -- moved here from JoinVideoSessionAction's own private
+    // isReceiveOnly() so the join path and the moderation actions can't drift apart. NOT an
+    // authorization check on its own -- true for any non-member too; every caller must already have
+    // established membership (in practice: the user has joined the call, which checked it).
+    public function isReceiveOnlyVideoParticipant(User $user): bool
+    {
+        return ! $this->isCounsellorUser($user) && ! $this->isUser($user);
+    }
+
     // TT-3.2f-b/SCRUM-319: a distinct question from clientIsMinor() (which answers "is the
     // group's own creator a minor") -- this is "is this ORDINARY member a minor," using the
     // was_minor_at_join snapshot recorded on their own group_therapy_user pivot row at join time

@@ -442,3 +442,90 @@ test('removal is not available for a 1:1 Therapy video session over the route', 
 
     $response->assertStatus(422);
 });
+
+// TT-3.2f-f/SCRUM-323: raise-hand and grant/revoke speaking permission over the routes -- the
+// actions' own logic is covered in their Unit tests; these prove wiring and authorization.
+function groupVideoCallWithJoinedMemberForSpeakingRoutes($test): array
+{
+    app()->instance(VideoProviderInterface::class, fakeVideoProviderForRouteTest());
+    $creator = User::factory()->adult()->create();
+    $counsellorUser = User::factory()->create();
+    $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
+    $groupTherapy = GroupTherapy::factory()->create([
+        'addedby_type' => User::class,
+        'addedby_id' => $creator->id,
+        'public' => true,
+    ]);
+    $groupTherapy->counsellors()->attach($counsellor->id, ['state' => 'ACTIVE', 'role' => 'NORMAL']);
+    $member = User::factory()->adult()->create();
+    $groupTherapy->users()->attach($member->id, ['anonymous' => false]);
+    $session = Session::factory()->create([
+        'for_id' => $groupTherapy->id,
+        'for_type' => GroupTherapy::class,
+        'type' => 'ONLINE',
+        'status' => 'IN_SESSION',
+        'start_time' => now(),
+    ]);
+    $test->actingAs($counsellorUser)->postJson(route('sessions.video.join', ['sessionId' => $session->id]))->assertOk();
+    $test->actingAs($member)->postJson(route('sessions.video.join', ['sessionId' => $session->id]))->assertOk();
+    $memberParticipant = VideoSession::query()->where('session_id', $session->id)->first()->activeParticipantFor($member->id);
+
+    return compact('creator', 'counsellorUser', 'member', 'session', 'memberParticipant');
+}
+
+test('a joined member raises a hand, a counsellor grants, then revokes, over the routes', function () {
+    $data = groupVideoCallWithJoinedMemberForSpeakingRoutes($this);
+    $ids = ['sessionId' => $data['session']->id, 'userId' => $data['member']->id];
+
+    $this->actingAs($data['member'])->postJson(route('sessions.video.hand.raise', ['sessionId' => $data['session']->id]))->assertOk();
+    expect($data['memberParticipant']->currentHandRaise())->not->toBeNull();
+
+    $this->actingAs($data['counsellorUser'])->postJson(route('sessions.video.participants.grant_speaking', $ids))->assertOk();
+    expect($data['memberParticipant']->currentSpeakingGrant())->not->toBeNull()
+        ->and($data['memberParticipant']->currentHandRaise())->toBeNull();
+
+    $this->actingAs($data['counsellorUser'])->postJson(route('sessions.video.participants.revoke_speaking', $ids))->assertOk();
+    expect($data['memberParticipant']->currentSpeakingGrant())->toBeNull();
+});
+
+test('a joined member can lower their own hand over the route', function () {
+    $data = groupVideoCallWithJoinedMemberForSpeakingRoutes($this);
+    $this->actingAs($data['member'])->postJson(route('sessions.video.hand.raise', ['sessionId' => $data['session']->id]));
+
+    $this->actingAs($data['member'])->postJson(route('sessions.video.hand.lower', ['sessionId' => $data['session']->id]))->assertOk();
+
+    expect($data['memberParticipant']->currentHandRaise())->toBeNull();
+});
+
+test('a member cannot grant or revoke speaking permission over the routes', function () {
+    $data = groupVideoCallWithJoinedMemberForSpeakingRoutes($this);
+    $ids = ['sessionId' => $data['session']->id, 'userId' => $data['member']->id];
+
+    $this->actingAs($data['member'])->postJson(route('sessions.video.participants.grant_speaking', $ids))->assertStatus(422);
+    $this->actingAs($data['creator'])->postJson(route('sessions.video.participants.grant_speaking', $ids))->assertStatus(422);
+    $this->actingAs($data['member'])->postJson(route('sessions.video.participants.revoke_speaking', $ids))->assertStatus(422);
+
+    expect($data['memberParticipant']->currentSpeakingGrant())->toBeNull();
+});
+
+test('granting a nonexistent user id gets the identical response as a real user who is not in the call', function () {
+    $data = groupVideoCallWithJoinedMemberForSpeakingRoutes($this);
+    $realButUnrelatedUser = User::factory()->create();
+
+    $responseForNonexistentId = $this->actingAs($data['counsellorUser'])
+        ->postJson(route('sessions.video.participants.grant_speaking', ['sessionId' => $data['session']->id, 'userId' => User::max('id') + 1000]));
+    $responseForRealUnrelatedId = $this->actingAs($data['counsellorUser'])
+        ->postJson(route('sessions.video.participants.grant_speaking', ['sessionId' => $data['session']->id, 'userId' => $realButUnrelatedUser->id]));
+
+    $responseForNonexistentId->assertStatus(422);
+    $responseForRealUnrelatedId->assertStatus(422);
+    expect($responseForNonexistentId->json())->toBe($responseForRealUnrelatedId->json());
+});
+
+test('an unauthenticated request cannot raise a hand or grant speaking permission', function () {
+    $data = groupVideoCallWithJoinedMemberForSpeakingRoutes($this);
+    auth()->logout();
+
+    $this->postJson(route('sessions.video.hand.raise', ['sessionId' => $data['session']->id]))->assertUnauthorized();
+    $this->postJson(route('sessions.video.participants.grant_speaking', ['sessionId' => $data['session']->id, 'userId' => $data['member']->id]))->assertUnauthorized();
+});

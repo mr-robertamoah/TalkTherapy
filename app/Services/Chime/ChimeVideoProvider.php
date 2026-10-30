@@ -6,6 +6,7 @@ use App\Contracts\VideoProviderInterface;
 use App\Models\User;
 use App\Models\VideoSession;
 use Illuminate\Support\Str;
+use RuntimeException;
 
 // Chime SDK Meetings has no attendee-level "owner"/"host" concept (unlike Daily's is_owner), so
 // $isOwner is accepted for interface parity but has no effect here.
@@ -99,8 +100,12 @@ class ChimeVideoProvider implements VideoProviderInterface
 
     // TT-3.2f-e/SCRUM-322: same live-attendee lookup pattern as removeParticipant() above -- no
     // stored Chime-specific participant id to key off, so the AttendeeId is looked up by matching
-    // ExternalUserId (== $user->id) via ListAttendees. A no-op if the user isn't currently a live
-    // attendee, same "nothing to do" precedent as removeParticipant().
+    // ExternalUserId (== $user->id) via ListAttendees.
+    //
+    // TT-3.2f-f/SCRUM-323 security-review finding: an attendee that can't be found THROWS rather
+    // than returning quietly (unlike removeParticipant()) -- a silent no-op here would let a
+    // grant or manual revoke report success without anything actually changing at the provider.
+    // The calling action decides what a failure means (see RevokeSpeakingPermissionAction).
     public function updateParticipantCapabilities(VideoSession $videoSession, User $user, bool $canSendAudio, bool $canSendVideo): void
     {
         if (! $videoSession->provider_room_id) {
@@ -109,11 +114,8 @@ class ChimeVideoProvider implements VideoProviderInterface
 
         $attendees = $this->client->listAttendees($videoSession->provider_room_id)['Attendees'] ?? [];
 
-        $attendee = collect($attendees)->firstWhere('ExternalUserId', (string) $user->id);
-
-        if (! $attendee) {
-            return;
-        }
+        $attendee = collect($attendees)->firstWhere('ExternalUserId', (string) $user->id)
+            ?? throw new RuntimeException("No live Chime attendee found for user {$user->id}.");
 
         // Content is always 'Receive' here regardless of $canSendVideo -- this app has no
         // screen-share/content-sharing feature to ever need 'Send' for, and AWS itself requires

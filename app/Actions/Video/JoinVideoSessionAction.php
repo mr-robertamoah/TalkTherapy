@@ -67,7 +67,7 @@ class JoinVideoSessionAction extends Action
             return false;
         }
 
-        return ! $session->for->isCounsellorUser($user) && ! $session->for->isUser($user);
+        return $session->for->isReceiveOnlyVideoParticipant($user);
     }
 
     // Security-review finding (2026-09-11): DailyVideoProvider was sending $user->name straight

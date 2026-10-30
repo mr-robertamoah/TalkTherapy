@@ -49,11 +49,7 @@ class RemoveParticipantFromVideoSessionAction extends Action
             return;
         }
 
-        $participant = $videoSession->participants()
-            ->where('participant_type', User::class)
-            ->where('participant_id', $targetUserId)
-            ->whereNull('left_at')
-            ->first();
+        $participant = $videoSession->activeParticipantFor($targetUserId);
 
         if (! $participant) {
             return;

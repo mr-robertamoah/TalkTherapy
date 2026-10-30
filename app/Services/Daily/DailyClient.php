@@ -62,6 +62,10 @@ class DailyClient extends Service
     {
         return Http::baseUrl(config('services.daily.base_url'))
             ->withToken(config('services.daily.api_key'))
-            ->acceptJson();
+            ->acceptJson()
+            // TT-3.2f-f/SCRUM-323 security-review finding: grant/revoke call Daily while holding a
+            // row lock -- bound how long a slow Daily can hold it (Laravel's default is 30s).
+            ->connectTimeout(5)
+            ->timeout(10);
     }
 }

@@ -167,6 +167,12 @@ Route::middleware('auth')->group(function () {
     // TT-3.2b/SCRUM-309: ejects one participant via the provider's own API (like join/end above,
     // a real external-API call, not just DB noise) -- same throttle tier as those.
     Route::post('/sessions/{sessionId}/video/participants/{userId}/remove', [VideoSessionController::class, 'removeParticipant'])->name('sessions.video.participants.remove')->middleware('throttle:20,1');
+    // TT-3.2f-f/SCRUM-323: grant/revoke call the provider's own API (same tier as remove above);
+    // raise/lower are local writes but each one broadcasts, so they're throttled too.
+    Route::post('/sessions/{sessionId}/video/participants/{userId}/grant-speaking', [VideoSessionController::class, 'grantSpeaking'])->name('sessions.video.participants.grant_speaking')->middleware('throttle:20,1');
+    Route::post('/sessions/{sessionId}/video/participants/{userId}/revoke-speaking', [VideoSessionController::class, 'revokeSpeaking'])->name('sessions.video.participants.revoke_speaking')->middleware('throttle:20,1');
+    Route::post('/sessions/{sessionId}/video/hand/raise', [VideoSessionController::class, 'raiseHand'])->name('sessions.video.hand.raise')->middleware('throttle:30,1');
+    Route::post('/sessions/{sessionId}/video/hand/lower', [VideoSessionController::class, 'lowerHand'])->name('sessions.video.hand.lower')->middleware('throttle:30,1');
 
     // SCRUM-197/TT-2.2b: a counsellor's own private notes on a session -- never exposed to the
     // client/participant side, see SessionNoteController's own comment on how counsellor_id is

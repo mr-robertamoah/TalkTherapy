@@ -30,12 +30,6 @@ class LeaveVideoSessionAction extends Action
             return;
         }
 
-        $videoSession->participants()
-            ->where('participant_type', User::class)
-            ->where('participant_id', $user->id)
-            ->whereNull('left_at')
-            ->latest('joined_at')
-            ->first()
-            ?->update(['left_at' => now()]);
+        $videoSession->activeParticipantFor($user->id)?->update(['left_at' => now()]);
     }
 }
