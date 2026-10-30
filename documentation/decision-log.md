@@ -8143,6 +8143,27 @@ architect's own design left room for either outcome; the spike found the simpler
 
 ---
 
+## 2026-10-30 — SCRUM-326 (TT-3.2f-i): removal clears hand-raise/speaking state
+
+- **Order**: the grant is revoked (and the member muted at the provider) BEFORE their row is marked
+  left and they're ejected. The mute has to happen while the row is still the live one, otherwise
+  `revokeGrant()` treats the grant as stale and only closes it locally. It's also defence in depth:
+  if the best-effort eject fails, the member still can't speak. It uses the shared
+  `RevokeSpeakingPermissionAction::revokeAllFor()` (extracted from the manual revoke) with reason
+  `participant_removed`. The removing counsellor is recorded as `revoked_by_user_id` (reviewer): it
+  is their action, and the grant row is the only place it would be recorded.
+- **Cleanup covers every one of the user's join rows** in the call, via
+  `VideoSession::participantRowsFor()`. Removal now marks every open row left, not just the latest,
+  so a stale row from a reconnect (SCRUM-330) no longer keeps a removed user grantable or able to
+  raise a hand (security F1 / reviewer). If only a stale row held the grant, removal still pushes
+  receive-only to the provider (security F2).
+- **Race**: the cleanup can't be behind the participant-row lock, because it must mute before
+  marking left. A second cleanup pass after marking left catches any grant or hand-raise that landed
+  in between (security F4).
+- **Accepted residual risk (security F3)**: if BOTH the provider mute and the eject fail, the member
+  can still publish while local state says removed. The only record is two `Log::warning` lines, and
+  nothing retries. This needs two provider failures in a row. Revisit if provider failures turn out
+  to be common in practice (SCRUM-315 covers making provider failures visible).
 ## 2026-10-30 — SCRUM-324 (TT-3.2f-g): minor-grant hard-block + anonymity-aware speaking mode
 
 - **Minor block**: `GrantSpeakingPermissionAction` refuses a target for whom

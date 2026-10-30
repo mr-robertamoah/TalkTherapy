@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 // TT-3.1a/SCRUM-274: one "epoch" of a Session's video capability -- created on first join,
 // ended (provider-side) when the underlying Session's video ends. Deliberately holds only coarse
@@ -42,9 +43,7 @@ class VideoSession extends Model
     // could drift from the actual join/leave audit trail.
     public function hasActiveParticipant(User $user): bool
     {
-        return $this->participants()
-            ->where('participant_type', User::class)
-            ->where('participant_id', $user->id)
+        return $this->participantRowsFor($user->id)
             ->whereNull('left_at')
             ->exists();
     }
@@ -56,11 +55,19 @@ class VideoSession extends Model
     // join wins if stale open rows exist (see SCRUM-330).
     public function activeParticipantFor(int $userId): ?VideoSessionParticipant
     {
-        return $this->participants()
-            ->where('participant_type', User::class)
-            ->where('participant_id', $userId)
+        return $this->participantRowsFor($userId)
             ->whereNull('left_at')
             ->latest('joined_at')
             ->first();
+    }
+
+    // TT-3.2f-i/SCRUM-326: every join-cycle row this user has in this video session, open or not --
+    // speaking/hand-raise cleanup must cover stale rows too, since a reconnect can leave an older
+    // row still open (SCRUM-330).
+    public function participantRowsFor(int $userId): HasMany
+    {
+        return $this->participants()
+            ->where('participant_type', User::class)
+            ->where('participant_id', $userId);
     }
 }
