@@ -362,3 +362,54 @@ test('Daily does not duplicate its own provider-level cap with an application-le
     expect(fn () => JoinVideoSessionAction::new()->execute($data['session'], $data['member']))
         ->not->toThrow(VideoException::class);
 });
+
+// TT-3.2f-g/SCRUM-324 review finding: an anonymous ORDINARY group member (not just the creator) must
+// join under the anonymous label -- mirrors routes/channels.php's own group masking.
+test('an ordinary GroupTherapy member with their own anonymous flag joins under the anonymous label', function () {
+    $data = onlineInSessionGroupTherapySessionForJoin();
+    $data['groupTherapy']->update(['anonymous' => false]);
+    $data['groupTherapy']->users()->updateExistingPivot($data['member']->id, ['anonymous' => true]);
+    $fakeProvider = fakeVideoProvider();
+    app()->instance(VideoProviderInterface::class, $fakeProvider);
+
+    JoinVideoSessionAction::new()->execute($data['session'], $data['member']);
+
+    [, , $displayName] = $fakeProvider->createParticipantCredentialsCalls[0];
+    expect($displayName)->toBe(ConstantsEnum::anonymousUserLabel->value);
+});
+
+test('every ordinary member of an anonymous group joins under the anonymous label', function () {
+    $data = onlineInSessionGroupTherapySessionForJoin();
+    $data['groupTherapy']->update(['anonymous' => true]);
+    $fakeProvider = fakeVideoProvider();
+    app()->instance(VideoProviderInterface::class, $fakeProvider);
+
+    JoinVideoSessionAction::new()->execute($data['session'], $data['member']);
+
+    [, , $displayName] = $fakeProvider->createParticipantCredentialsCalls[0];
+    expect($displayName)->toBe(ConstantsEnum::anonymousUserLabel->value);
+});
+
+test('a non-anonymous member of a non-anonymous group joins under their real name', function () {
+    $data = onlineInSessionGroupTherapySessionForJoin();
+    $data['groupTherapy']->update(['anonymous' => false]);
+    $fakeProvider = fakeVideoProvider();
+    app()->instance(VideoProviderInterface::class, $fakeProvider);
+
+    JoinVideoSessionAction::new()->execute($data['session'], $data['member']);
+
+    [, , $displayName] = $fakeProvider->createParticipantCredentialsCalls[0];
+    expect($displayName)->toBe($data['member']->name);
+});
+
+test('a counsellor of an anonymous group still joins under their real name', function () {
+    $data = onlineInSessionGroupTherapySessionForJoin();
+    $data['groupTherapy']->update(['anonymous' => true]);
+    $fakeProvider = fakeVideoProvider();
+    app()->instance(VideoProviderInterface::class, $fakeProvider);
+
+    JoinVideoSessionAction::new()->execute($data['session'], $data['counsellorUser']);
+
+    [, , $displayName] = $fakeProvider->createParticipantCredentialsCalls[0];
+    expect($displayName)->toBe($data['counsellorUser']->name);
+});

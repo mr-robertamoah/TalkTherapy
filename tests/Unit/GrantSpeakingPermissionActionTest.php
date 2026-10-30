@@ -26,6 +26,8 @@ function groupVideoCallForGrantSpeakingAction(): array
         'addedby_type' => User::class,
         'addedby_id' => $creator->id,
         'public' => true,
+        // Explicit -- the factory defaults this to true, and anonymity now decides the granted capability.
+        'anonymous' => false,
     ]);
     $counsellorUser = User::factory()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
@@ -91,12 +93,12 @@ test('an active counsellor can grant a receive-only member speaking permission',
         ->and($grant->granted_by_user_id)->toBe($data['counsellorUser']->id)
         ->and($grant->isActive())->toBeTrue()
         ->and($grant->last_activity_at)->not->toBeNull()
-        ->and($calls)->toBe([[$data['member']->id, true, false]]);
+        ->and($calls)->toBe([[$data['member']->id, true, true]]);
     Event::assertDispatched(SpeakingPermissionChangedEvent::class, fn ($event) => $event->broadcastWith() === [
         'sessionId' => $data['session']->id,
         'userId' => $data['member']->id,
         'canSendAudio' => true,
-        'canSendVideo' => false,
+        'canSendVideo' => true,
     ]);
 });
 
@@ -292,4 +294,69 @@ test('a counsellor of a different group cannot grant in this group\'s call', fun
 
     expect(fn () => GrantSpeakingPermissionAction::new()->execute($data['session'], $outsideCounsellorUser, $data['member']->id))
         ->toThrow(VideoException::class, 'Only a counsellor may change who can speak in this group video call.');
+});
+
+// TT-3.2f-g/SCRUM-324: anonymity-aware capability -- an anonymous member's camera is never enabled
+// at the provider, whether the anonymity comes from the member's own pivot flag or the group's.
+test('an anonymous member (own pivot flag) is granted audio-only', function () {
+    Event::fake();
+    $data = groupVideoCallForGrantSpeakingAction();
+    $data['groupTherapy']->users()->updateExistingPivot($data['member']->id, ['anonymous' => true]);
+    $calls = [];
+    app()->instance(VideoProviderInterface::class, fakeVideoProviderRecordingGrantCapabilities($calls));
+
+    GrantSpeakingPermissionAction::new()->execute($data['session'], $data['counsellorUser'], $data['member']->id);
+
+    expect($calls)->toBe([[$data['member']->id, true, false]]);
+    Event::assertDispatched(SpeakingPermissionChangedEvent::class, fn ($event) => $event->broadcastWith()['canSendVideo'] === false);
+});
+
+test('every member of an anonymous group is granted audio-only', function () {
+    Event::fake();
+    $data = groupVideoCallForGrantSpeakingAction();
+    $data['groupTherapy']->update(['anonymous' => true]);
+    $calls = [];
+    app()->instance(VideoProviderInterface::class, fakeVideoProviderRecordingGrantCapabilities($calls));
+
+    GrantSpeakingPermissionAction::new()->execute($data['session'], $data['counsellorUser'], $data['member']->id);
+
+    expect($calls)->toBe([[$data['member']->id, true, false]]);
+});
+
+// TT-3.2f-g/SCRUM-324: interim hard-block until group-scoped guardian consent (SCRUM-313) exists.
+test('a minor member cannot be granted speaking permission', function () {
+    Event::fake();
+    $data = groupVideoCallForGrantSpeakingAction();
+    $data['groupTherapy']->users()->updateExistingPivot($data['member']->id, ['was_minor_at_join' => true]);
+    $calls = [];
+    app()->instance(VideoProviderInterface::class, fakeVideoProviderRecordingGrantCapabilities($calls));
+
+    expect(fn () => GrantSpeakingPermissionAction::new()->execute($data['session'], $data['counsellorUser'], $data['member']->id))
+        ->toThrow(VideoException::class, 'Speaking permission is not yet available to a minor member in group therapy video.');
+
+    expect($calls)->toBe([])
+        ->and($data['memberParticipant']->speakingGrants()->count())->toBe(0);
+    Event::assertNotDispatched(SpeakingPermissionChangedEvent::class);
+});
+
+// The join-time snapshot wins over today's age (the plain minor test above already covers an adult
+// who joined as a minor staying blocked); a member with no snapshot (a row predating the column)
+// falls back to a live age check.
+test('the minor check uses the join-time snapshot, falling back to live age when there is none', function () {
+    $data = groupVideoCallForGrantSpeakingAction();
+    $calls = [];
+    app()->instance(VideoProviderInterface::class, fakeVideoProviderRecordingGrantCapabilities($calls));
+
+    $data['groupTherapy']->users()->updateExistingPivot($data['member']->id, ['was_minor_at_join' => null]);
+    $data['member']->update(['dob' => now()->subYears(15)]);
+
+    expect(fn () => GrantSpeakingPermissionAction::new()->execute($data['session'], $data['counsellorUser'], $data['member']->id))
+        ->toThrow(VideoException::class, 'Speaking permission is not yet available to a minor member in group therapy video.');
+
+    $data['groupTherapy']->users()->updateExistingPivot($data['member']->id, ['was_minor_at_join' => false]);
+    Event::fake();
+
+    GrantSpeakingPermissionAction::new()->execute($data['session'], $data['counsellorUser'], $data['member']->id);
+
+    expect($data['memberParticipant']->currentSpeakingGrant())->not->toBeNull();
 });

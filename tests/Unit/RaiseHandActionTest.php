@@ -38,7 +38,7 @@ function groupVideoCallForRaiseHandAction(): array
         'left_at' => null,
     ]);
 
-    return compact('creator', 'counsellorUser', 'member', 'session', 'videoSession', 'memberParticipant');
+    return compact('creator', 'groupTherapy', 'counsellorUser', 'member', 'session', 'videoSession', 'memberParticipant');
 }
 
 test('an admitted receive-only member can raise their hand', function () {
@@ -113,4 +113,18 @@ test('raising a hand is not available for a 1:1 Therapy video session', function
 
     expect(fn () => RaiseHandAction::new()->execute($session, $client))
         ->toThrow(VideoException::class, 'Raising a hand is only available in group therapy video calls.');
+});
+
+// TT-3.2f-g/SCRUM-324: a minor can never be granted yet, so their hand-raise is refused up front
+// rather than left as a dead-end entry in the counsellors' queue.
+test('a minor member cannot raise their hand', function () {
+    Event::fake();
+    $data = groupVideoCallForRaiseHandAction();
+    $data['groupTherapy']->users()->updateExistingPivot($data['member']->id, ['was_minor_at_join' => true]);
+
+    expect(fn () => RaiseHandAction::new()->execute($data['session'], $data['member']))
+        ->toThrow(VideoException::class, 'Speaking permission is not yet available to a minor member in group therapy video.');
+
+    expect($data['memberParticipant']->currentHandRaise())->toBeNull();
+    Event::assertNotDispatched(HandRaisedEvent::class);
 });
