@@ -11,7 +11,7 @@ with verified counsellors (see `README.md` for the product overview, and
 - **Tests**: Pest 3 (`pestphp/pest`, `pestphp/pest-plugin-laravel`).
 - **DB**: MySQL 8.
 - **Dev environment**: Docker Compose (`docker-compose.yml`) — services are `php` (app),
-  `vite` (dev server, :5173), `web` (nginx, :8000), `db` (MySQL), `queue` (Supervisor), `reverb`
+  `vite` (dev server, :5173), `web` (nginx, :8000), `db` (MySQL), `queue` (Supervisor: queue worker + Laravel scheduler), `reverb`
   (websockets, :8081), `mailpit` (SMTP catcher, :8025 UI). `.env.docker` is the env file actually
   used by containers (via `env_file:`, not a bind-mounted `.env`); the plain `.env` is for
   running things directly on the host, outside Docker, and the two are **not** kept in sync
