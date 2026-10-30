@@ -529,3 +529,34 @@ test('an unauthenticated request cannot raise a hand or grant speaking permissio
     $this->postJson(route('sessions.video.hand.raise', ['sessionId' => $data['session']->id]))->assertUnauthorized();
     $this->postJson(route('sessions.video.participants.grant_speaking', ['sessionId' => $data['session']->id, 'userId' => $data['member']->id]))->assertUnauthorized();
 });
+
+// TT-3.2f-h/SCRUM-325: the activity ping route, and its own rate-limit bucket.
+test('a granted member can ping speaking activity over the route', function () {
+    $data = groupVideoCallWithJoinedMemberForSpeakingRoutes($this);
+    $this->actingAs($data['counsellorUser'])->postJson(route('sessions.video.participants.grant_speaking', ['sessionId' => $data['session']->id, 'userId' => $data['member']->id]));
+
+    $grant = $data['memberParticipant']->currentSpeakingGrant();
+    $grant->update(['last_activity_at' => now()->subMinutes(4)]);
+
+    $this->actingAs($data['member'])->postJson(route('sessions.video.speaking_activity', ['sessionId' => $data['session']->id]))->assertOk();
+
+    expect($grant->fresh()->last_activity_at->greaterThan(now()->subMinute()))->toBeTrue();
+});
+
+test('speaking-activity pings use their own rate-limit bucket, never the one join shares', function () {
+    $data = groupVideoCallWithJoinedMemberForSpeakingRoutes($this);
+
+    foreach (range(1, 12) as $i) {
+        $this->actingAs($data['member'])->postJson(route('sessions.video.speaking_activity', ['sessionId' => $data['session']->id]))->assertOk();
+    }
+
+    $this->actingAs($data['member'])->postJson(route('sessions.video.speaking_activity', ['sessionId' => $data['session']->id]))->assertStatus(429);
+    $this->actingAs($data['member'])->postJson(route('sessions.video.join', ['sessionId' => $data['session']->id]))->assertOk();
+});
+
+test('an unauthenticated request cannot ping speaking activity', function () {
+    $data = groupVideoCallWithJoinedMemberForSpeakingRoutes($this);
+    auth()->logout();
+
+    $this->postJson(route('sessions.video.speaking_activity', ['sessionId' => $data['session']->id]))->assertUnauthorized();
+});

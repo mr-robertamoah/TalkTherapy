@@ -8197,3 +8197,35 @@ architect's own design left room for either outcome; the spike found the simpler
     for the user rather than changed here.
   - SCRUM-332: the group `anonymous` flag being turned on mid-call doesn't downgrade open grants, and
     the anonymous group's creator still gets a camera (product question).
+## 2026-10-30 — SCRUM-325 (TT-3.2f-h): idle auto-expiry for unused speaking permission
+
+- **Sweep runs `everyMinute()`, not the ticket's `everyFiveMinutes()`**: with the 300s default
+  timeout, a 5-minute sweep would let an idle grant stay open for up to ~10 minutes. Every minute
+  caps it at ~6. The query is cheap, and `broadcastStartedSessionsAndDiscussions` already runs
+  every minute. Reviewer endorsed this.
+- `AppService::expireIdleSpeakingGrants()` revokes through the shared `revokeGrant()` with reason
+  `idle_auto_expiry`. A provider failure leaves the grant open for the next run (per SCRUM-323). Any
+  other failure is logged per grant (`Log::error`, the same pattern as the other AppService sweeps)
+  and doesn't stop the rest. Only grants in still-open calls are swept. A grant with no
+  `last_activity_at` falls back to `granted_at`.
+- **Ping endpoint** `POST /sessions/{id}/video/speaking-activity` (`RecordSpeakingActivityAction`):
+  - Self-service only, and only ever touches the caller's own open grant on their live join.
+  - A single conditional UPDATE, so it can't write to a grant revoked in the same instant.
+  - Silent 200 otherwise, so the response doesn't reveal whether the caller holds a grant.
+  - It has its own named limiter (`video-speaking-activity`, 12/min) so ~30s background pings never
+    use up the shared per-user `throttle:N,1` bucket that join/raise/grant count against.
+- `config('video.speaking_grant_idle_timeout')` comes from `VIDEO_SPEAKING_GRANT_IDLE_TIMEOUT`
+  (default 300). It's floored at 30s, because a blank value would otherwise make it 0 and revoke
+  every open grant at once.
+- **Found, filed as SCRUM-333 (High)**: nothing in the Docker stack runs the Laravel scheduler, so
+  this sweep never fires locally, and neither do the other 14 scheduled jobs. Production may have a
+  host crontab outside the repo; that's unconfirmed.
+- **Security-review fixes**:
+  - `revokeGrant()` takes an optional `$idleCutoff` and re-checks it under the lock, so a ping that
+    lands after the sweep's own query never mutes an active speaker (L2).
+  - `revokeGrant()` resolves the target with `User::withTrashed()`. A soft-deleted user's
+    polymorphic participant resolved to null and would have made every sweep throw on their grant
+    forever (L1).
+  - The schedule is named and `withoutOverlapping()` (I1).
+  - L3 (on Chime, an idle grant left on a stale join row is closed locally without muting the
+    reconnected attendee) is pre-existing and noted on SCRUM-330.

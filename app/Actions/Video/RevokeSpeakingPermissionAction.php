@@ -12,6 +12,7 @@ use App\Models\User;
 use App\Models\VideoSession;
 use App\Models\VideoSessionParticipant;
 use App\Models\VideoSessionSpeakingGrant;
+use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -91,12 +92,18 @@ class RevokeSpeakingPermissionAction extends Action
     // Callers must not wrap this in their own outer transaction: the broadcast below relies on
     // this method's own transaction having committed (after_commit=false, see
     // JoinVideoSessionAction::currentOrNewVideoSessionAndJoin()).
-    public function revokeGrant(VideoSessionSpeakingGrant $grant, SpeakingPermissionRevocationReasonEnum $reason, ?User $revokedBy = null): void
+    //
+    // $idleCutoff (TT-3.2f-h/SCRUM-325, idle sweep only): re-checked under the lock, so a ping that
+    // landed after the sweep's own query never gets an active speaker muted.
+    public function revokeGrant(VideoSessionSpeakingGrant $grant, SpeakingPermissionRevocationReasonEnum $reason, ?User $revokedBy = null, ?Carbon $idleCutoff = null): void
     {
         $videoSession = $grant->videoSessionParticipant->videoSession;
-        $targetUser = $grant->videoSessionParticipant->participant;
+        // withTrashed (SCRUM-325 security review): a soft-deleted user's polymorphic participant
+        // resolves to null, which would make every sweep throw on their grant forever -- they still
+        // need muting at the provider and their grant closed.
+        $targetUser = User::withTrashed()->find($grant->videoSessionParticipant->participant_id);
 
-        $wasRevoked = DB::transaction(function () use ($grant, $reason, $revokedBy, $videoSession, $targetUser) {
+        $wasRevoked = DB::transaction(function () use ($grant, $reason, $revokedBy, $videoSession, $targetUser, $idleCutoff) {
             // Same lock as grant/raise/lower take, so every speaking-state change for a participant
             // is serialized behind one row -- a revoke can't interleave with a grant, or with the
             // idle sweep racing a manual revoke.
@@ -104,6 +111,10 @@ class RevokeSpeakingPermissionAction extends Action
             $grant = VideoSessionSpeakingGrant::query()->find($grant->id);
 
             if (! $grant->isActive()) {
+                return false;
+            }
+
+            if ($idleCutoff && ($grant->last_activity_at ?? $grant->granted_at)->greaterThan($idleCutoff)) {
                 return false;
             }
 
