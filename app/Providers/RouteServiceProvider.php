@@ -55,6 +55,13 @@ class RouteServiceProvider extends ServiceProvider
             return Limit::perMinute(10)->by($wardId ?? $request->user()?->id ?: $request->ip());
         });
 
+        // TT-3.2f-h/SCRUM-325: a granted speaker's client pings this every ~30s while active; a
+        // dedicated bucket (named limiters are keyed per limiter name) so the pings never consume
+        // the shared per-user `throttle:N,1` bucket that video join/raise/grant also count against.
+        RateLimiter::for('video-speaking-activity', function (Request $request) {
+            return Limit::perMinute(12)->by($request->user()?->id ?: $request->ip());
+        });
+
         $this->routes(function () {
             Route::middleware('api')
                 ->prefix('api')

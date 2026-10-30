@@ -173,6 +173,9 @@ Route::middleware('auth')->group(function () {
     Route::post('/sessions/{sessionId}/video/participants/{userId}/revoke-speaking', [VideoSessionController::class, 'revokeSpeaking'])->name('sessions.video.participants.revoke_speaking')->middleware('throttle:20,1');
     Route::post('/sessions/{sessionId}/video/hand/raise', [VideoSessionController::class, 'raiseHand'])->name('sessions.video.hand.raise')->middleware('throttle:30,1');
     Route::post('/sessions/{sessionId}/video/hand/lower', [VideoSessionController::class, 'lowerHand'])->name('sessions.video.hand.lower')->middleware('throttle:30,1');
+    // TT-3.2f-h/SCRUM-325: a periodic background ping -- its own named limiter so it never eats
+    // into the per-user `throttle:N,1` bucket join/raise/grant share (SCRUM-323 security F6).
+    Route::post('/sessions/{sessionId}/video/speaking-activity', [VideoSessionController::class, 'speakingActivity'])->name('sessions.video.speaking_activity')->middleware('throttle:video-speaking-activity');
 
     // SCRUM-197/TT-2.2b: a counsellor's own private notes on a session -- never exposed to the
     // client/participant side, see SessionNoteController's own comment on how counsellor_id is

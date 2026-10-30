@@ -69,3 +69,9 @@ Schedule::call(function () {
 Schedule::call(function () {
     AppService::new()->deleteExpiredIdentityDocuments();
 })->dailyAt('04:00');
+
+// TT-3.2f-h/SCRUM-325: every minute, not every five -- with the 5-minute default timeout, a
+// five-minute sweep would let an idle grant linger for up to ~10 minutes.
+Schedule::call(function () {
+    AppService::new()->expireIdleSpeakingGrants();
+})->name('expire-idle-speaking-grants')->everyMinute()->withoutOverlapping();

@@ -8,6 +8,7 @@ use App\Actions\Video\JoinVideoSessionAction;
 use App\Actions\Video\LeaveVideoSessionAction;
 use App\Actions\Video\LowerHandAction;
 use App\Actions\Video\RaiseHandAction;
+use App\Actions\Video\RecordSpeakingActivityAction;
 use App\Actions\Video\RemoveParticipantFromVideoSessionAction;
 use App\Actions\Video\RevokeSpeakingPermissionAction;
 use App\Exceptions\SessionException;
@@ -115,6 +116,18 @@ class VideoSessionController extends Controller
             RevokeSpeakingPermissionAction::new()->execute($this->session($request), $request->user(), (int) $request->route('userId'));
 
             return response()->json(['message' => 'Speaking permission revoked.']);
+        } catch (Throwable $th) {
+            return $this->failure($th);
+        }
+    }
+
+    // TT-3.2f-h/SCRUM-325: always self-service ($request->user() only), like raise/lower.
+    public function speakingActivity(Request $request)
+    {
+        try {
+            RecordSpeakingActivityAction::new()->execute($this->session($request), $request->user());
+
+            return response()->json(['message' => 'Activity recorded.']);
         } catch (Throwable $th) {
             return $this->failure($th);
         }
