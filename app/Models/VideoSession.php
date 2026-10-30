@@ -48,4 +48,19 @@ class VideoSession extends Model
             ->whereNull('left_at')
             ->exists();
     }
+
+    // TT-3.2f-f/SCRUM-323: the one place a target is resolved for any per-participant moderation
+    // action (remove, grant/revoke speaking, raise/lower hand) -- ONLY from this video session's own
+    // live participant rows, never a global User lookup (TT-3.2b/SCRUM-309's security-review fix:
+    // a nonexistent id and an id that simply isn't in this call must be indistinguishable). Latest
+    // join wins if stale open rows exist (see SCRUM-330).
+    public function activeParticipantFor(int $userId): ?VideoSessionParticipant
+    {
+        return $this->participants()
+            ->where('participant_type', User::class)
+            ->where('participant_id', $userId)
+            ->whereNull('left_at')
+            ->latest('joined_at')
+            ->first();
+    }
 }

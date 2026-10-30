@@ -44,9 +44,27 @@ class ChimeClient extends Service
     // requires the AWS-generated AttendeeId, which ChimeVideoProvider looks up here (matched
     // against the ExternalUserId we set at CreateAttendee time) rather than persisting a
     // provider-specific id ourselves.
+    //
+    // TT-3.2f-f/SCRUM-323 security-review finding: ListAttendees is paginated -- reading only the
+    // first page could silently miss an attendee in a full group call, turning a grant/revoke/remove
+    // into a no-op. Walks every page and returns them merged under the same 'Attendees' key.
     public function listAttendees(string $meetingId): array
     {
-        return $this->client->listAttendees(['MeetingId' => $meetingId])->toArray();
+        $attendees = [];
+        $nextToken = null;
+
+        do {
+            $page = $this->client->listAttendees(array_filter([
+                'MeetingId' => $meetingId,
+                'MaxResults' => 100,
+                'NextToken' => $nextToken,
+            ]))->toArray();
+
+            $attendees = array_merge($attendees, $page['Attendees'] ?? []);
+            $nextToken = $page['NextToken'] ?? null;
+        } while ($nextToken);
+
+        return ['Attendees' => $attendees];
     }
 
     public function deleteAttendee(string $meetingId, string $attendeeId): void

@@ -197,7 +197,9 @@ test('updateParticipantCapabilities sends audio SendReceive but video Receive fo
     (new ChimeVideoProvider($client))->updateParticipantCapabilities($videoSession, $user, true, false);
 });
 
-test('updateParticipantCapabilities is a no-op when the user is not currently a live attendee', function () {
+// TT-3.2f-f/SCRUM-323 security-review finding: throws rather than silently no-op'ing, so a grant or
+// manual revoke can never report success without the provider actually changing anything.
+test('updateParticipantCapabilities throws when the user is not currently a live attendee', function () {
     $user = User::factory()->create();
     $videoSession = VideoSession::factory()->create(['provider_room_id' => 'aws-meeting-id']);
 
@@ -205,7 +207,8 @@ test('updateParticipantCapabilities is a no-op when the user is not currently a 
     $client->shouldReceive('listAttendees')->once()->andReturn(['Attendees' => []]);
     $client->shouldNotReceive('updateAttendeeCapabilities');
 
-    (new ChimeVideoProvider($client))->updateParticipantCapabilities($videoSession, $user, true, true);
+    expect(fn () => (new ChimeVideoProvider($client))->updateParticipantCapabilities($videoSession, $user, true, true))
+        ->toThrow(RuntimeException::class);
 });
 
 test('updateParticipantCapabilities is a no-op when the meeting was never actually created', function () {

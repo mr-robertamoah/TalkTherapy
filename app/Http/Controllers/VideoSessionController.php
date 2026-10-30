@@ -3,9 +3,13 @@
 namespace App\Http\Controllers;
 
 use App\Actions\Video\EndVideoSessionAction;
+use App\Actions\Video\GrantSpeakingPermissionAction;
 use App\Actions\Video\JoinVideoSessionAction;
 use App\Actions\Video\LeaveVideoSessionAction;
+use App\Actions\Video\LowerHandAction;
+use App\Actions\Video\RaiseHandAction;
 use App\Actions\Video\RemoveParticipantFromVideoSessionAction;
+use App\Actions\Video\RevokeSpeakingPermissionAction;
 use App\Exceptions\SessionException;
 use App\Exceptions\VideoConsentRequiredException;
 use App\Models\Session;
@@ -65,6 +69,52 @@ class VideoSessionController extends Controller
             RemoveParticipantFromVideoSessionAction::new()->execute($this->session($request), $request->user(), (int) $request->route('userId'));
 
             return response()->json(['message' => 'Participant removed from the video call.']);
+        } catch (Throwable $th) {
+            return $this->failure($th);
+        }
+    }
+
+    // TT-3.2f-f/SCRUM-323: raise/lower are always self-service ($request->user() only); grant/revoke
+    // take the target as a bare {userId}, same reasoning as removeParticipant() above.
+    public function raiseHand(Request $request)
+    {
+        try {
+            RaiseHandAction::new()->execute($this->session($request), $request->user());
+
+            return response()->json(['message' => 'Hand raised.']);
+        } catch (Throwable $th) {
+            return $this->failure($th);
+        }
+    }
+
+    public function lowerHand(Request $request)
+    {
+        try {
+            LowerHandAction::new()->execute($this->session($request), $request->user());
+
+            return response()->json(['message' => 'Hand lowered.']);
+        } catch (Throwable $th) {
+            return $this->failure($th);
+        }
+    }
+
+    public function grantSpeaking(Request $request)
+    {
+        try {
+            GrantSpeakingPermissionAction::new()->execute($this->session($request), $request->user(), (int) $request->route('userId'));
+
+            return response()->json(['message' => 'Speaking permission granted.']);
+        } catch (Throwable $th) {
+            return $this->failure($th);
+        }
+    }
+
+    public function revokeSpeaking(Request $request)
+    {
+        try {
+            RevokeSpeakingPermissionAction::new()->execute($this->session($request), $request->user(), (int) $request->route('userId'));
+
+            return response()->json(['message' => 'Speaking permission revoked.']);
         } catch (Throwable $th) {
             return $this->failure($th);
         }

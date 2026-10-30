@@ -8082,3 +8082,61 @@ architect's own design left room for either outcome; the spike found the simpler
 - All ~9 test files with fake/anonymous `VideoProviderInterface` implementations mechanically
   patched to add the new required method as a no-op, same approach as every prior interface
   addition this epic (TT-3.2b's `removeParticipant()`).
+
+---
+
+## 2026-10-30 — SCRUM-323 (TT-3.2f-f): raise-hand + grant/revoke speaking permission, backend
+
+- **Provider-failure handling (the ticket's required explicit call)**: a GRANT is not best-effort.
+  `updateParticipantCapabilities()` runs inside the grant's transaction, so a provider failure rolls
+  the grant row (and the hand-raise closure) back and returns a 502. Local state never claims a grant
+  the provider didn't apply. A MANUAL revoke also fails loudly and leaves the grant open, so the
+  counsellor can retry or remove the member instead of wrongly believing the member is muted. An
+  `idle_auto_expiry` revoke that fails logs a warning and leaves the grant open, so the next sweep
+  retries. The first draft closed it locally, but the reviewer found that leaves a member still
+  publishing with no open grant for anyone to revoke. A `participant_removed` revoke logs and closes
+  the grant locally anyway, since the member is being ejected regardless.
+- **Revoking a grant on a stale join row** (left open by a leave or reconnect, see SCRUM-330) closes
+  the row locally without calling the provider. The provider keys on user id, not join-cycle, so the
+  call would mute the member's CURRENT join, which may hold its own valid grant (reviewer finding).
+  All speaking-state changes now lock the participant row, so grant and revoke serialize.
+- **One revoke implementation**: `RevokeSpeakingPermissionAction::execute()` is the counsellor's manual
+  path. `revokeGrant($grant, $reason, ?$revokedBy)` is the shared core that SCRUM-325's sweep and
+  SCRUM-326's removal cleanup call directly.
+- **Interim capability = audio-only for everyone**: SCRUM-324 owns the anonymity rule (anonymous →
+  audio-only, others → audio+video). Until it lands, every grant is audio-only, so an anonymous
+  member's camera can't be enabled in between. The minor hard-block also stays in SCRUM-324 as
+  ticketed. Nothing in the UI can reach grant until SCRUM-327, which is sequenced after SCRUM-324.
+- **Grant doesn't require a raised hand** (a counsellor may invite someone to speak). Granting
+  closes any open raise. A re-grant while a grant is open is an idempotent no-op.
+- **Grant to a target not in the call → uniform 422** (removal uses a 200 no-op instead). It's still
+  oracle-safe: a nonexistent id and a real-but-absent id get the identical response, because the
+  lookup only ever touches this call's own participant rows. A no-op felt wrong for an action whose
+  caller expects a state change.
+- **Small refactors**: `VideoSession::activeParticipantFor()` is now the single participant-lookup
+  helper (`RemoveParticipantFromVideoSessionAction` reuses it). `JoinVideoSessionAction`'s private
+  `isReceiveOnly()` moved to `GroupTherapy::isReceiveOnlyVideoParticipant()` so join and moderation
+  can't drift.
+- `last_activity_at` is seeded at grant time, so SCRUM-325's sweep measures from the grant until the
+  first ping.
+- **Security-review fixes, applied in this PR**:
+  - A manual revoke closes every open grant the user holds in the call, across all their join rows,
+    and always finishes by pushing receive-only to the provider for their live join. Before this,
+    after a reconnect the live row could have no grant while a stale row did; the revoke then
+    returned "revoked" without calling the provider, and a reused Chime attendee could still be
+    able to speak.
+  - `ChimeClient::listAttendees()` now walks every page (MaxResults 100).
+    `ChimeVideoProvider::updateParticipantCapabilities()` now THROWS when the attendee isn't found
+    (it used to return silently), so a grant or revoke can't report success while the provider
+    changed nothing.
+  - `DailyClient` now has `connectTimeout(5)` / `timeout(10)`, because grant and revoke hold a row
+    lock across the call.
+  - Grant now requires the target to still be a group participant (`GroupTherapy::isParticipant()`),
+    using the same "not in this call" message.
+- **Known and accepted, not fixed here**:
+  - An idle revoke for a member whose join row is open but who has no live provider attendee (a
+    crash, see SCRUM-330) will fail at the provider and be retried by every sweep until that row
+    closes. That produces noisy logs but is safe.
+  - All `throttle:N,1` routes share one per-user counter (security F6, info only). For example, a
+    member who toggles their hand 20+ times in a minute can get a 429 on rejoin. Named limiters
+    would be the fix if this shows up in practice.
