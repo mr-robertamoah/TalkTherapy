@@ -11,6 +11,7 @@ use App\DTOs\GetTherapyDTO;
 use App\DTOs\GroupTherapyDTO;
 use App\DTOs\JoinGroupTherapyDTO;
 use App\DTOs\SessionScheduleProposalDTO;
+use App\Exceptions\TherapyException;
 use App\Exceptions\TherapyNotFoundException;
 
 class EnsureTherapyExistsAction extends Action
@@ -27,6 +28,6 @@ class EnsureTherapyExistsAction extends Action
 
         // SCRUM-343: the same answer EnsureCanUpdateTherapyAction gives a caller it refuses --
         // otherwise the difference reveals which therapy ids exist.
-        throw new TherapyNotFoundException('You are not allowed to do that with this therapy.', 422);
+        throw new TherapyNotFoundException(TherapyException::NOT_ALLOWED, 422);
     }
 }

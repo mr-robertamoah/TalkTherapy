@@ -14,8 +14,11 @@ class EnsureRequestDataIsValidAction extends Action
             $createRequestDTO->from &&
             $createRequestDTO->to &&
             $createRequestDTO->for
-        ) return;
+        ) {
+            return;
+        }
 
-        throw new UserException("Not enough data was provided for a guardianship request.", 422);
+        // Shared by guardianship and discussion requests (SCRUM-344) -- so no request type in the text.
+        throw new UserException('Not enough data was provided for this request.', 422);
     }
 }

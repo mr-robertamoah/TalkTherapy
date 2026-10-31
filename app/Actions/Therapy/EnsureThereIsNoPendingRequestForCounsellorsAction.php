@@ -16,21 +16,20 @@ class EnsureThereIsNoPendingRequestForCounsellorsAction extends Action
 
         $counsellorsArray = Counsellor::query()
             ->whereIn('id', $counsellorIds)
-            ->whereHas('sentRequests', function($query) use ($assistTherapyDTO) {
+            // SCRUM-344: a pending request in EITHER direction blocks another -- this used to need
+            // both at once, so it almost never fired. Grouped so the OR stays inside whereIn().
+            ->where(function ($query) use ($assistTherapyDTO) {
                 $query
-                    ->wherePending()
-                    ->whereFor($assistTherapyDTO->therapy);
-            })
-            ->whereHas('receivedRequests', function($query) use ($assistTherapyDTO) {
-                $query
-                    ->wherePending()
-                    ->whereFor($assistTherapyDTO->therapy);
+                    ->whereHas('sentRequests', fn ($q) => $q->wherePending()->whereFor($assistTherapyDTO->therapy))
+                    ->orWhereHas('receivedRequests', fn ($q) => $q->wherePending()->whereFor($assistTherapyDTO->therapy));
             })
             ->get();
 
         if (
-            !$counsellorsArray->count()
-        ) return;
+            ! $counsellorsArray->count()
+        ) {
+            return;
+        }
 
         $s = $counsellorsArray->count() == 1 ? '' : 's';
         $counsellorNames = implode(', ', $counsellorsArray->map(fn ($counsellor) => $counsellor->getName())->toArray());

@@ -123,6 +123,10 @@ class RequestResource extends JsonResource
             }
         }
 
+        if ($this->isMaskedTherapyClient($this->from, $viewer)) {
+            return $this->anonymousUser($this->from);
+        }
+
         // TT-4.10e/SCRUM-294 security review: for a self-service dob edit, `from` and `for` are
         // the same user (the ward editing their own dob) -- narrowing `getFor()` alone still let
         // this branch broadcast the identical PII (gender/country/dob) to every admin via `from`.
@@ -173,11 +177,41 @@ class RequestResource extends JsonResource
             }
         }
 
+        if ($this->isMaskedTherapyClient($this->to, $viewer)) {
+            return $this->anonymousUser($this->to);
+        }
+
         if ($this->isOrgMemberFlowUser($this->to, $viewer)) {
             return $this->narrowUserProjection($this->to);
         }
 
         return new UserMiniResource($this->to);
+    }
+
+    // SCRUM-344 (security review): on a request about a therapy -- assistance requests either way
+    // round, and session schedule proposals -- the User side is that therapy's client, so it is
+    // masked exactly as the therapy itself masks them (TherapyTrait::addedByUserIsMaskedFor()).
+    // Without this, any counsellor could offer to assist a public anonymous therapy and read the
+    // client's full identity off their own request; invited counsellors saw it too.
+    private function isMaskedTherapyClient(?User $user, ?User $viewer): bool
+    {
+        $therapyRequestTypes = [
+            RequestTypeEnum::therapy->value,
+            RequestTypeEnum::groupTherapy->value,
+            RequestTypeEnum::sessionScheduleProposal->value,
+        ];
+
+        return $user && $this->for
+            && in_array($this->type, $therapyRequestTypes, true)
+            && method_exists($this->for, 'addedByUserIsMaskedFor')
+            && $this->for->addedby_type === User::class
+            && (bool) $this->for->addedby?->is($user)
+            && $this->for->addedByUserIsMaskedFor($viewer);
+    }
+
+    private function anonymousUser(User $user): array
+    {
+        return ['id' => $user->id, 'fullName' => ConstantsEnum::anonymousUserLabel->value, 'isUser' => true];
     }
 
     // SCRUM-162 security review: TT-6.6d's org-scoped request queue newly surfaces

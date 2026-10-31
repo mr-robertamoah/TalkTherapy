@@ -25,6 +25,6 @@ class EnsureCanUpdateTherapyAction extends Action
         }
 
         // SCRUM-343: never names the therapy -- this refusal reaches people with no access to it.
-        throw new TherapyException('You are not allowed to do that with this therapy.', 422);
+        throw TherapyException::notAllowed();
     }
 }

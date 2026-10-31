@@ -57,9 +57,10 @@ class DiscussionService extends Service
 
     public function sendCounsellorRequest(CreateRequestDTO $createRequestDTO)
     {
-        EnsureRequestDataIsValidAction::new()->execute($createRequestDTO);
-
+        // SCRUM-344: authorize (which also covers a missing discussion) before validating the rest.
         EnsureCanSendDiscussionRequestAction::new()->execute($createRequestDTO);
+
+        EnsureRequestDataIsValidAction::new()->execute($createRequestDTO);
 
         EnsureNotAlreadyPartOfDiscussionAction::new()->execute($createRequestDTO);
 

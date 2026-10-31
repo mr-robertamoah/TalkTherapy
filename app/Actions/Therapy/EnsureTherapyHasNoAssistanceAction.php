@@ -12,8 +12,12 @@ class EnsureTherapyHasNoAssistanceAction extends Action
     {
         if (
             $assistTherapyDTO->therapy->doesNotHaveAssistance()
-        ) return;
+        ) {
+            return;
+        }
 
-        throw new TherapyAlreadyHasAssistanceException("Therapy already has the assistance of {$assistTherapyDTO->therapy->counsellor->getName()}.", 422);
+        // SCRUM-344: never names the counsellor -- who counsels a private or anonymous therapy is
+        // not the caller's business, even once they're allowed to ask.
+        throw new TherapyAlreadyHasAssistanceException('This therapy already has a counsellor.', 422);
     }
 }
