@@ -71,7 +71,7 @@ gap across all of TT-6.1–6.4b, not something introduced by this ticket). Verif
   );
   ```
   Confirm `$request->status === 'PENDING'`, `$affiliation->compensations()->count() === 0`, and
-  check Mailpit (http://localhost:8025) for the counsellor's notification email.
+  check Mailpit (http://localhost:8027) for the counsellor's notification email.
 - **HTTP**: `POST /organization-counsellors/{organizationCounsellorId}/compensations` (existing
   route, unchanged) as an authenticated org admin — now returns the created pending `Request`
   instead of a compensation resource.

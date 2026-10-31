@@ -12,7 +12,7 @@ with verified counsellors (see `README.md` for the product overview, and
 - **DB**: MySQL 8.
 - **Dev environment**: Docker Compose (`docker-compose.yml`) — services are `php` (app),
   `vite` (dev server, :5173), `web` (nginx, :8000), `db` (MySQL), `queue` (Supervisor: queue worker + Laravel scheduler), `reverb`
-  (websockets, :8081), `mailpit` (SMTP catcher, :8025 UI). `.env.docker` is the env file actually
+  (websockets, :8081), `mailpit` (SMTP catcher, :8027 UI). `.env.docker` is the env file actually
   used by containers (via `env_file:`, not a bind-mounted `.env`); the plain `.env` is for
   running things directly on the host, outside Docker, and the two are **not** kept in sync
   automatically — check both if something behaves differently in vs. out of Docker.
@@ -30,7 +30,7 @@ docker compose exec php php artisan migrate               # run migrations
 docker compose exec vite npm run build                    # production frontend build
 ```
 Emails sent in the Docker environment are caught by Mailpit, not actually delivered — view them
-at http://localhost:8025.
+at http://localhost:8027.
 
 ## Branching & releases
 

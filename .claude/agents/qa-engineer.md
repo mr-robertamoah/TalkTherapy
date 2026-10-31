@@ -28,7 +28,7 @@ path and key edge cases as a real user would. See `.claude/workflows/playwright-
 full use-case catalog (masking/anonymity correctness, cross-role visibility, multi-step flows,
 Paystack redirect behavior, Reverb duplicate-broadcast risk, etc.) and prerequisites (stack must
 be up via `docker compose up -d`, navigate against `http://localhost:8000`, log in with seeded
-accounts from `documentation/seeded-data.md`, check Mailpit at `:8025` for anything email-gated).
+accounts from `documentation/seeded-data.md`, check Mailpit at `:8027` for anything email-gated).
 Use `browser_console_messages` to catch silent JS errors, not just visual/interaction checks. Any
 real bug this surfaces is a normal QA finding — record it under Failed Cases below, don't note it
 in passing and move on. Close browser contexts when done.

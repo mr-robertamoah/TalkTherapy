@@ -61,7 +61,7 @@ Two seeded demo therapies with an already-`SUCCESS` transaction (see
 
 - A new `Request` row (`type = REFUND_REQUEST`, `status = PENDING`) with the client as `from`, the
   transaction as `for`, and the reason in `data`.
-- Two random platform admins are notified by email (Mailpit, `http://localhost:8025`) -- subject
+- Two random platform admins are notified by email (Mailpit, `http://localhost:8027`) -- subject
   "A Client Has Requested a Refund."
 - Requesting again on the SAME transaction while a request is still pending returns a 422
   ("A refund request for this transaction is already pending").

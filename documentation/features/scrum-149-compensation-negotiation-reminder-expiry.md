@@ -58,7 +58,7 @@ App\Services\AppService::new()->expireStaleCompensationRequests();
 
 Confirm: `$request->fresh()->status` is `REJECTED`, `$request->fresh()->data['resolvedBy']` is
 `'expiry'`, the affiliation's status/terms are untouched, and the recipient has a new
-notification (check Mailpit at http://localhost:8025 for the email).
+notification (check Mailpit at http://localhost:8027 for the email).
 
 ## Not yet built (next sub-ticket)
 

@@ -31,14 +31,14 @@ guidance, but it's not an automatic gate for bugfix-tier work.
 ## Prerequisites
 
 - The dev stack must be running: `docker compose up -d` (services: `php`, `vite`, `web` on
-  `:8000`, `db`, `queue`, `reverb` on `:8081`, `mailpit` on `:8025`).
+  `:8000`, `db`, `queue`, `reverb` on `:8081`, `mailpit` on `:8027`).
 - Navigate against `http://localhost:8000` (the `web`/nginx service) — that's the real
   full-stack path a user actually hits, not the raw Vite dev server port.
 - Log in using seeded accounts from `documentation/seeded-data.md` rather than creating
   throwaway accounts by hand. If a scenario needs data that doesn't exist in the seeder, that's
   itself a QA finding — the seeder should be updated (per the existing feature-development
   workflow step), not worked around with manual setup.
-- Emails (verification, notifications) land in Mailpit (`http://localhost:8025`), not a real
+- Emails (verification, notifications) land in Mailpit (`http://localhost:8027`), not a real
   inbox — check there if a flow's assertion depends on an email being sent.
 
 ## Best use cases
