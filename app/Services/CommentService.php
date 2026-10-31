@@ -46,6 +46,7 @@ class CommentService extends Service
             $createCommentDTO
                 ->commentable
                 ->comments()
+                ->with(['user', 'commentable'])
                 ->latest()
                 ->paginate(
                     PaginationEnum::preferencesPagination->value

@@ -64,6 +64,13 @@
         @on-delete="$emit('handle-discussion-delete', $event)"
       />
 
+      <!-- Likes and comments (SCRUM-354): public therapies only -- `engagement` is absent otherwise -->
+      <TherapyEngagementBar
+        v-if="computedTherapy.engagement"
+        :therapy="computedTherapy"
+        :type="therapyType === 'individual' ? 'Therapy' : 'GroupTherapy'"
+      />
+
       <!-- Therapy Information -->
       <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
         <TherapyInformation
@@ -128,6 +135,7 @@ import TherapyActiveHeader from '@/Components/TherapyActiveHeader.vue'
 import TherapyRecentSections from '@/Components/TherapyRecentSections.vue'
 import TherapyDiscussions from '@/Components/TherapyDiscussions.vue'
 import TherapyInformation from '@/Components/TherapyInformation.vue'
+import TherapyEngagementBar from '@/Components/TherapyEngagementBar.vue'
 import TherapyActions from '@/Components/TherapyActions.vue'
 import SessionScheduleProposalSection from '@/Components/SessionScheduleProposalSection.vue'
 import useLocalDateTimed from '@/Composables/useLocalDateTime'

@@ -34,26 +34,6 @@ class LinkController extends Controller
         }
     }
 
-    public function createMultipleLinks(Request $request)
-    {
-        try {
-            $links = LinkService::new()->createMultipleLinks(
-                CreateLinkDTO::new()->fromArray([
-                    'user' => $request->user(),
-                    'type' => $request->type,
-                    'linksData' => $request->linksData,
-                    'addedby' => GetModelWithModelNameAndIdAction::new()->execute($request->addedbyType, $request->addedbyId),
-                    'to' => GetModelWithModelNameAndIdAction::new()->execute($request->toType, $request->toId),
-                    'for' => GetModelWithModelNameAndIdAction::new()->execute($request->forType, $request->forId),
-                ])
-            );
-
-            return response()->json(['links' => LinkResource::collection($links)]);
-        } catch (Throwable $th) {
-            return $this->returnFailure($request, $th);
-        }
-    }
-
     // Reads $request->route('linkId'/'uuid') rather than the magic ->linkId/->uuid properties --
     // see the identical fix/rationale in SessionController (SCRUM-116/SCRUM-130/SCRUM-133).
     public function changeLinkStatus(Request $request)

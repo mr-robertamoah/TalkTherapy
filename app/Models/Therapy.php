@@ -150,7 +150,8 @@ class Therapy extends Model
 
     public function isUser(User $user)
     {
-        return $this->addedby->is($user);
+        // Null-safe: a deleted client used to make callers 500 (security review, SCRUM-350).
+        return (bool) $this->addedby?->is($user);
     }
 
     public function getUsers()

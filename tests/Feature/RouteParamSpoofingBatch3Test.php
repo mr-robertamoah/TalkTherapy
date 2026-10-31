@@ -110,7 +110,8 @@ test('LinkController::performAction applies to the URL\'s link, not a spoofed uu
         'type' => LinkTypeEnum::guardianship->value,
         'state' => LinkStateEnum::active->value,
         'addedby_type' => User::class,
-        'addedby_id' => User::factory()->create()->id,
+        // SCRUM-350: a guardianship link is only valid when issued by the ward themselves.
+        'addedby_id' => $ownedWard->id,
         'for_type' => User::class,
         'for_id' => $ownedWard->id,
     ]);
@@ -119,7 +120,7 @@ test('LinkController::performAction applies to the URL\'s link, not a spoofed uu
         'type' => LinkTypeEnum::guardianship->value,
         'state' => LinkStateEnum::active->value,
         'addedby_type' => User::class,
-        'addedby_id' => User::factory()->create()->id,
+        'addedby_id' => $unrelatedWard->id,
         'for_type' => User::class,
         'for_id' => $unrelatedWard->id,
     ]);

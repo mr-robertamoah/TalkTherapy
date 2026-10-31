@@ -11,6 +11,8 @@ class Comment extends Model
 
     protected $fillable = ['content'];
 
+    protected $casts = ['anonymous' => 'boolean'];
+
     public function user()
     {
         // withTrashed: see Therapy::counsellor() for why callers need this to resolve rather

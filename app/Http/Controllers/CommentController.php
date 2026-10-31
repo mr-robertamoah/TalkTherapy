@@ -6,6 +6,7 @@ use App\Actions\GetModelWithModelNameAndIdAction;
 use App\DTOs\CreateCommentDTO;
 use App\Http\Resources\CommentResource;
 use App\Models\Comment;
+use App\Models\GroupTherapy;
 use App\Models\Post;
 use App\Models\Therapy;
 use App\Services\CommentService;
@@ -15,9 +16,8 @@ use Throwable;
 
 class CommentController extends Controller
 {
-    // SCRUM-349: never GroupTherapy until commentes are authorized (SCRUM-351) -- it
-    // resolves now, and getComments has no visibility check.
-    private const COMMENTABLE_MODELS = [Post::class, Therapy::class];
+    // SCRUM-354: groups too -- only public therapies and groups get through EnsureCommentableExistsAction.
+    private const COMMENTABLE_MODELS = [Post::class, Therapy::class, GroupTherapy::class];
 
     public function createComment(Request $request)
     {

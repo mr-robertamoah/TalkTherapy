@@ -93,7 +93,6 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::get('/links', [LinkController::class, 'getLinks'])->name('api.links');
     Route::post('/links', [LinkController::class, 'createLink'])->name('api.links.create');
-    Route::post('/links/multiple', [LinkController::class, 'createLink'])->name('api.links.createmultiple');
     Route::post('/links/{linkId}/status', [LinkController::class, 'changeLinkStatus'])->name('api.links.status');
     Route::post('/links/status/multiple', [LinkController::class, 'changeMultipleLinkStatuses'])->name('api.links.statusmultiple');
     Route::post('/links/{linkId}/delete', [LinkController::class, 'deleteLink'])->name('api.links.delete');
