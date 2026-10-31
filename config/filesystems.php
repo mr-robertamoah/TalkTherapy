@@ -75,6 +75,20 @@ return [
             ],
         ],
 
+        // SCRUM-336: therapy/group chat attachments -- private for the same reason as the two disks
+        // above, with no 'links' entry (messages/ used to be symlinked into public/, reachable by
+        // anyone with a URL, forever, regardless of who could still see the message). Retrieved
+        // only via messages.attachments.show (EnsureUserCanViewMessageAttachmentAction).
+        'message_attachments' => [
+            'driver' => 'local',
+            'root' => storage_path('app/private/message-attachments'),
+            'throw' => true,
+            'permissions' => [
+                'file' => ['public' => 0660, 'private' => 0660],
+                'dir' => ['public' => 0770, 'private' => 0770],
+            ],
+        ],
+
         's3' => [
             'driver' => 's3',
             'key' => env('AWS_ACCESS_KEY_ID'),
@@ -103,7 +117,6 @@ return [
     'links' => [
         public_path('storage/avatars') => storage_path('app/public/avatars'),
         public_path('storage/covers') => storage_path('app/public/covers'),
-        public_path('storage/messages') => storage_path('app/public/messages'),
         public_path('storage/others') => storage_path('app/public/others'),
         // SCRUM-182/TT-10.5: organization logos (UpdateOrganizationAction's 'logos' upload path)
         // were 404ing in the browser -- uploads succeeded and saved fine (Pest's $this->patch()

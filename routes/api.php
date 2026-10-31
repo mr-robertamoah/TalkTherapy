@@ -16,6 +16,7 @@ use App\Http\Controllers\LicenseDocumentController;
 use App\Http\Controllers\LicensingAuthorityController;
 use App\Http\Controllers\LikeController;
 use App\Http\Controllers\LinkController;
+use App\Http\Controllers\MessageAttachmentController;
 use App\Http\Controllers\MessageController;
 use App\Http\Controllers\MessageNoteController;
 use App\Http\Controllers\PostController;
@@ -236,6 +237,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/sessions/{sessionId}/messages', [MessageController::class, 'getSessionMessages'])->name('api.session.messages.get');
     Route::get('/topics/{topicId}/messages', [MessageController::class, 'getTopicMessages'])->name('api.topic.messages.get');
     Route::get('/messages/{messageId}/replies', [MessageController::class, 'getMessageReplies'])->name('api.message.replies.get');
+    // SCRUM-336: chat attachments -- authorized, uniform-404, throttled generously since a chat page
+    // loads every visible message's attachments at once.
+    Route::get('/messages/{message}/attachments/{file}', [MessageAttachmentController::class, 'show'])->name('messages.attachments.show')->middleware('throttle:300,1')
+        ->missing(fn () => response()->json(['status' => false, 'error' => 'Attachment not found.'], 404));
     // SCRUM-195: how a confidential message's parties fetch its content -- broadcasts never carry it.
     Route::get('/messages/{messageId}', [MessageController::class, 'getMessage'])->name('api.messages.show')->whereNumber('messageId')->middleware('throttle:60,1');
     Route::get('/messages/discussions/{discussionId}', [MessageController::class, 'getDiscussionMessages'])->name('api.discussion.messages.get');

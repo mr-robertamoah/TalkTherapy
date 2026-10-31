@@ -4,7 +4,6 @@ namespace App\Http\Requests;
 
 use App\Enums\SessionTypeEnum;
 use App\Enums\TherapyPaymentTypeEnum;
-use App\Models\Session;
 use Carbon\Carbon;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
@@ -35,7 +34,10 @@ class CreateSessionRequest extends FormRequest
         Log::info('create session request', [$startTime, $endTime, $now, now()]);
 
         return [
-            'name' => ['required', 'string', 'max:255', Rule::prohibitedIf(Session::query()->whereTherapyId($this->get('requestId'))->whereName($this->get('name'))->exists())],
+            // SCRUM-339: a former prohibitedIf() here checked name uniqueness against a client-chosen
+            // `requestId` (never sent by the app, so it never applied to real requests) -- usable
+            // only to confirm guessed session names of any therapy, before any authorization.
+            'name' => ['required', 'string', 'max:255'],
             'about' => ['required', 'string'],
             'landmark' => ['nullable', 'string'],
             'lat' => ['nullable', Rule::requiredIf($this->get('type') == SessionTypeEnum::in_person->value), 'numeric', 'between:-90,90'],

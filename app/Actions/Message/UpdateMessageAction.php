@@ -28,6 +28,8 @@ class UpdateMessageAction extends Action
                     FileUploadDTO::new()->fromArray([
                         'file' => $uploadedFile,
                         'path' => 'messages',
+                        // SCRUM-336: private, never the public disk -- see config/filesystems.php.
+                        'disk' => 'message_attachments',
                     ])
                 );
 

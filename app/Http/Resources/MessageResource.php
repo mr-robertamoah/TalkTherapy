@@ -119,7 +119,7 @@ class MessageResource extends JsonResource
             'topicId' => $message->therapy_topic_id,
             'forType' => $forType,
             'status' => $message->status,
-            'files' => FileResource::collection($message->files),
+            'files' => self::attachmentsOf($message),
             'updatedAt' => $message->updated_at,
             'createdAt' => $message->created_at,
         ];
@@ -143,5 +143,17 @@ class MessageResource extends JsonResource
         }
 
         return $data;
+    }
+
+    // SCRUM-336: never File::url -- chat attachments live on a private disk, and getUrlFor()
+    // refuses them. Always the authorized retrieval route, in FileResource's own shape.
+    public static function attachmentsOf(Message $message): array
+    {
+        return $message->files->map(fn ($file) => [
+            'id' => $file->id,
+            'name' => $file->name,
+            'mime' => $file->mime,
+            'url' => route('messages.attachments.show', ['message' => $message->id, 'file' => $file->id]),
+        ])->values()->all();
     }
 }

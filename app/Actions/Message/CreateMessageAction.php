@@ -27,8 +27,9 @@ class CreateMessageAction extends Action
         $message->to()->associate($createMessageDTO->to);
         $message->save();
 
-        if (!$createMessageDTO->files)
+        if (! $createMessageDTO->files) {
             return $message;
+        }
 
         $fileService = FileService::new();
         $files = [];
@@ -37,14 +38,16 @@ class CreateMessageAction extends Action
             $fileData = $fileService->uploadFile(
                 FileUploadDTO::new()->fromArray([
                     'file' => $uploadedFile,
-                    'path' => 'messages'
+                    'path' => 'messages',
+                    // SCRUM-336: private, never the public disk -- see config/filesystems.php.
+                    'disk' => 'message_attachments',
                 ])
             );
 
             $files[] = $fileService->saveFile($createMessageDTO->user, $fileData);
         }
 
-        $message->files()->attach(array_map(fn($f) => $f->id, $files));
+        $message->files()->attach(array_map(fn ($f) => $f->id, $files));
 
         return $message->refresh();
     }

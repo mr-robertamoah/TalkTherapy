@@ -8,7 +8,6 @@ use App\Models\License;
 use App\Traits\ResolvesExceptionResponse;
 use App\Traits\StreamsPrivateDocuments;
 use Illuminate\Http\Request;
-use Throwable;
 
 // SCRUM-300: the ONLY retrieval path for a counsellor-verification document -- streams from the
 // file's own private disk, never a public asset() URL. Mirrors IdentityDocumentController.
@@ -18,20 +17,13 @@ class LicenseDocumentController extends Controller
 
     public function show(Request $httpRequest, License $license, File $file)
     {
-        try {
-            EnsureUserCanViewLicenseDocumentAction::new()->execute($httpRequest->user(), $license, $file);
-
-            // The disk is whichever EnsureUserCanViewLicenseDocumentAction just allowed -- never
-            // an arbitrary one named by the row.
-            return $this->privateDocumentResponse($file->storage, $file);
-        } catch (Throwable $th) {
-            $status = $this->statusFor($th);
-            $message = $this->messageFor($th, $status);
-
-            return response()->json([
-                'status' => false,
-                'error' => $message,
-            ], $status);
-        }
+        // The disk is whichever EnsureUserCanViewLicenseDocumentAction allows -- never an arbitrary
+        // one named by the row.
+        return $this->authorizedDocumentResponse(
+            fn () => EnsureUserCanViewLicenseDocumentAction::new()->execute($httpRequest->user(), $license, $file),
+            $file->storage,
+            $file,
+            'Document not found.',
+        );
     }
 }
