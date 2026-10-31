@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Administrator;
 use App\Models\Counsellor;
 use App\Models\Discussion;
 use App\Models\Therapy;
@@ -23,7 +24,9 @@ test('listing discussion counsellors does not N+1 on avatar', function () {
             $counsellor->discussions()->attach($discussion->id);
         }
 
-        $this->actingAs(User::factory()->create());
+        // An admin (SCRUM-204): anyone outside the discussion now gets an empty list, which would
+        // make this query-count comparison meaningless.
+        $this->actingAs(User::factory()->has(Administrator::factory())->create());
 
         DB::enableQueryLog();
         $this->getJson(route('api.discussions.counsellors', ['discussionId' => $discussion->id]))->assertOk();
@@ -38,4 +41,64 @@ test('listing discussion counsellors does not N+1 on avatar', function () {
     // regardless of row count -- only a genuine per-row N+1 would make this grow with the
     // attached-counsellor count.
     expect($queryCountFor(10))->toBe($queryCountFor(2));
+});
+
+// SCRUM-204: the roster is only for the discussion's own counsellors and admins.
+function aDiscussionForRosterVisibility(): array
+{
+    $therapyOwner = User::factory()->create();
+    $therapy = Therapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => $therapyOwner->id]);
+    $owner = Counsellor::factory()->create(['user_id' => User::factory()]);
+    $discussion = Discussion::factory()->create([
+        'for_id' => $therapy->id,
+        'for_type' => Therapy::class,
+        'addedby_type' => Counsellor::class,
+        'addedby_id' => $owner->id,
+    ]);
+    $member = Counsellor::factory()->create(['user_id' => User::factory()]);
+    $member->discussions()->attach($discussion->id);
+
+    return compact('discussion', 'owner', 'member');
+}
+
+test('a discussion\'s own counsellors and admins can see its roster', function () {
+    $data = aDiscussionForRosterVisibility();
+    $admin = User::factory()->has(Administrator::factory())->create();
+
+    foreach ([$data['owner']->user, $data['member']->user, $admin] as $viewer) {
+        $this->actingAs($viewer)
+            ->getJson(route('api.discussions.counsellors', ['discussionId' => $data['discussion']->id]))
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $data['member']->id);
+    }
+});
+
+test('anyone else gets the same empty list as a discussion that does not exist', function () {
+    $data = aDiscussionForRosterVisibility();
+    $otherCounsellor = Counsellor::factory()->create(['user_id' => User::factory()]);
+
+    foreach ([User::factory()->create(), $otherCounsellor->user] as $viewer) {
+        $this->actingAs($viewer)
+            ->getJson(route('api.discussions.counsellors', ['discussionId' => $data['discussion']->id]))
+            ->assertOk()
+            ->assertExactJson([]);
+    }
+
+    $this->actingAs($otherCounsellor->user)
+        ->getJson(route('api.discussions.counsellors', ['discussionId' => 999999]))
+        ->assertOk()
+        ->assertExactJson([]);
+});
+
+test('a discussion with no recorded creator is refused cleanly, not with an error', function () {
+    $therapyOwner = User::factory()->create();
+    $therapy = Therapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => $therapyOwner->id]);
+    $discussion = Discussion::factory()->create(['for_id' => $therapy->id, 'for_type' => Therapy::class]);
+    $counsellor = Counsellor::factory()->create(['user_id' => User::factory()]);
+
+    $this->actingAs($counsellor->user)
+        ->getJson(route('api.discussions.counsellors', ['discussionId' => $discussion->id]))
+        ->assertOk()
+        ->assertExactJson([]);
 });

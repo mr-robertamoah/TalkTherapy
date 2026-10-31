@@ -246,6 +246,14 @@ class DiscussionService extends Service
             return [];
         }
 
+        // SCRUM-204: only an admin or a counsellor in the discussion may see its roster -- the
+        // same gate DiscussionController::showChat() applies. Anyone else gets the same empty list
+        // as a nonexistent discussion, so this endpoint's response says nothing either way.
+        $user = $getDiscussionsDTO->user;
+        if (! $user || ($user->isNotAdmin() && $getDiscussionsDTO->discussion->isNotParticipant($user->counsellor))) {
+            return [];
+        }
+
         $query = Counsellor::query();
 
         $query->whereDiscussion($getDiscussionsDTO->discussion);

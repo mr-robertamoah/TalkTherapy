@@ -229,6 +229,6 @@ class Therapy extends Model
 
     public function isCounsellor(Counsellor $counsellor)
     {
-        return $this->counsellor->is($counsellor);
+        return (bool) $this->counsellor?->is($counsellor);
     }
 }
