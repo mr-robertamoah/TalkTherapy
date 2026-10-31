@@ -11,6 +11,11 @@
 // manual Playwright testing in SCRUM-187. This test catches it automatically instead, by
 // scanning the actual source for every FileUploadDTO 'path' literal in use.
 
+// Upload paths on private disks -- deliberately never symlinked into public/. TT-4.11a/SCRUM-302's
+// identity documents first; SCRUM-300 added counsellor license/ID documents ('licenses', on the
+// private license_documents disk). Shared by both tests below so they can't drift apart.
+const PRIVATE_DOCUMENT_UPLOAD_PATHS = ['identity_documents', 'licenses'];
+
 test('every upload path used in app/Actions and app/Services has a matching filesystems.links entry', function () {
     $configuredPaths = collect(config('filesystems.links'))
         ->keys()
@@ -23,7 +28,7 @@ test('every upload path used in app/Actions and app/Services has a matching file
     // other upload path this test protects. Excluded explicitly here, not by accident of the
     // regex missing it, so a future path added to this same private disk doesn't silently need
     // its own allowlist entry rediscovered from scratch.
-    $privateDiskPaths = ['identity_documents'];
+    $privateDiskPaths = PRIVATE_DOCUMENT_UPLOAD_PATHS;
 
     $usedPaths = [];
 
@@ -51,4 +56,14 @@ test('every upload path used in app/Actions and app/Services has a matching file
     expect($usedPaths)->each(
         fn ($path) => expect($configuredPaths)->toContain($path->value)
     );
+});
+
+// SCRUM-300: the inverse guarantee -- a private-document upload path must never regain a public
+// symlink (licenses/ was publicly linked, serving national ID scans to anyone with the URL).
+test('no private-document upload path is symlinked into public/', function () {
+    $linkedPaths = collect(config('filesystems.links'))->keys()->map(fn (string $publicPath) => basename($publicPath));
+
+    foreach (PRIVATE_DOCUMENT_UPLOAD_PATHS as $privatePath) {
+        expect($linkedPaths)->not->toContain($privatePath);
+    }
 });
