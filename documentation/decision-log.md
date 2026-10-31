@@ -8498,3 +8498,23 @@ The user asked for the three follow-ups in one PR. SCRUM-340 (admin access to co
   - End and Fail split authorization from the time rule. The semantics are unchanged: admins still bypass the time rule.
   - `EnsureCanEndTherapyAction` no longer dumps the whole therapy model into its message.
 - **Deferred to SCRUM-344**: assistance-request and topic endpoints that name counsellors, therapies or topics before authorization, and the discussion-request existence probe.
+
+## SCRUM-344: assistance-request, topic and discussion-request name leaks — 2026-10-31
+
+- **Authorize before anything else, and give one generic refusal.** This is the SCRUM-339/343 pattern applied to assistance requests, therapy topics and counsellor discussion requests. "Therapy, topic or discussion not found" now gives the same answer as "not allowed". "Already has a counsellor" no longer names the counsellor. A discussion request now requires an actual `Discussion`.
+- **Who may send an assistance request** (new `EnsureCanSendTherapyAssistanceRequestAction`):
+  - the therapy's own client;
+  - any counsellor, but **only for a public therapy**, the only kind a counsellor can discover.
+  - Everyone else is refused, on purpose. This includes counsellors who have only seen the therapy through a discussion request, and admin-counsellors. Before this, any counsellor could POST any therapy id and learn its counsellor's name. If counsellors need to offer on private therapies, that is a product decision for a new ticket.
+- **Fixes found by the security review and included here, rather than ticketed:**
+  - `RequestResource` showed an anonymous client's real name on their own therapy, group-therapy and session-proposal requests. These are now masked with the anonymous label for everyone but the client, using the same check the therapy resources use (`addedByUserIsMaskedFor`).
+  - The `CreateTherapyTopicRequest` unique-name rule was removed rather than fixed, as SCRUM-339 did for sessions. It queried the dropped `therapy_id` column, so every topic create failed with a 500. Fixed naively, it would have let anyone confirm guessed topic names on any therapy before authorization.
+  - `TherapyTopic::therapy()` (a belongsTo on the dropped column) was replaced with `topicable()`, so topic update and delete work again.
+  - The owner check on topic update is now null-safe.
+  - The pending-request guard on "assist" now checks for a pending request in either direction. Before, it needed both at once, so it almost never fired.
+- **Pre-existing bug fixed along the way:** an assistance request on a therapy with no payment terms crashed, because `requests.data` is NOT NULL. It now stores `[]`.
+- **Security re-review follow-ups:**
+  - Topic session validation now checks against the topic's own owner. Before, group-therapy topic updates always crashed after authorization.
+  - The dead `therapy_id` fillable and scope are removed.
+  - Masked users still return their real user `id`, so a viewer can link the same anonymous client across requests. This isn't new and has the same shape as the existing masking, so it's deferred to **SCRUM-345**.
+- **Left as is:** `EnsureIsCounsellorAction` in the counsellor branch is now redundant but harmless. The frontend's `group.therapies.assist` route doesn't exist (dead code, untouched).

@@ -10,7 +10,6 @@ use App\Models\Counsellor;
 use App\Models\GroupTherapy;
 use App\Notifications\GroupTherapyAssistanceRequestSentNotification;
 use App\Notifications\TherapyAssistanceRequestSentNotification;
-use App\Services\RequestService;
 
 class SendTherapyAssistanceRequestAction extends Action
 {
@@ -20,11 +19,15 @@ class SendTherapyAssistanceRequestAction extends Action
             is_null($therapyAssistanceRequestDTO->from) ||
             is_null($therapyAssistanceRequestDTO->for) ||
             is_null($therapyAssistanceRequestDTO->to)
-        ) return null;
+        ) {
+            return null;
+        }
 
         if (
             $therapyAssistanceRequestDTO->for::class == GroupTherapy::class
-        ) return $this->sendMultipleRequests($therapyAssistanceRequestDTO);
+        ) {
+            return $this->sendMultipleRequests($therapyAssistanceRequestDTO);
+        }
 
         $request = CreateRequestAction::new()->execute(
             CreateRequestDTO::new()->fromArray([
@@ -32,14 +35,14 @@ class SendTherapyAssistanceRequestAction extends Action
                 'to' => $therapyAssistanceRequestDTO->to,
                 'for' => $therapyAssistanceRequestDTO->for,
                 'type' => RequestTypeEnum::therapy->value,
-                'data' => $therapyAssistanceRequestDTO->for->payment_data,
+                'data' => $therapyAssistanceRequestDTO->for->payment_data ?? [], // null for a therapy with no payment terms; requests.data is NOT NULL (SCRUM-344)
             ])
         );
 
         $therapyAssistanceRequestDTO->to->notify(
             new TherapyAssistanceRequestSentNotification($request)
         );
-        
+
         return $request;
     }
 
@@ -49,8 +52,10 @@ class SendTherapyAssistanceRequestAction extends Action
 
         foreach ($therapyAssistanceRequestDTO->to as $key => $value) {
             $counsellor = Counsellor::find($value);
-    
-            if (!$counsellor) return;
+
+            if (! $counsellor) {
+                return;
+            }
 
             $request = CreateRequestAction::new()->execute(
                 CreateRequestDTO::new()->fromArray([
@@ -58,14 +63,14 @@ class SendTherapyAssistanceRequestAction extends Action
                     'to' => $counsellor,
                     'for' => $therapyAssistanceRequestDTO->for,
                     'type' => RequestTypeEnum::groupTherapy->value,
-                    'data' => $therapyAssistanceRequestDTO->for->payment_data,
+                    'data' => $therapyAssistanceRequestDTO->for->payment_data ?? [], // null for a therapy with no payment terms; requests.data is NOT NULL (SCRUM-344)
                 ])
             );
-    
+
             $request->to->notify(
                 new GroupTherapyAssistanceRequestSentNotification($request)
             );
-            
+
             $requests[] = $request;
         }
 

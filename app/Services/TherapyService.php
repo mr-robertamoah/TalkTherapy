@@ -9,6 +9,7 @@ use App\Actions\Therapy\DeleteTherapyAction;
 use App\Actions\Therapy\EndTherapyAction;
 use App\Actions\Therapy\EnsureCanCreateTherapyAction;
 use App\Actions\Therapy\EnsureCanEndTherapyAction;
+use App\Actions\Therapy\EnsureCanSendTherapyAssistanceRequestAction;
 use App\Actions\Therapy\EnsureCanSetStrictPaymentGateAction;
 use App\Actions\Therapy\EnsureCanUpdateTherapyAction;
 use App\Actions\Therapy\EnsureIsCounsellorAction;
@@ -177,6 +178,8 @@ class TherapyService extends Service
     public function sendAssistanceRequest(AssistTherapyDTO $assistTherapyDTO)
     {
         EnsureTherapyExistsAction::new()->execute($assistTherapyDTO);
+
+        EnsureCanSendTherapyAssistanceRequestAction::new()->execute($assistTherapyDTO);
 
         EnsureTherapyHasNoAssistanceAction::new()->execute($assistTherapyDTO);
 

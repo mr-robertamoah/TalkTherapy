@@ -11,8 +11,11 @@ class EnsureTherapyTopicExistsAction extends Action
 {
     public function execute(CreateTherapyTopicDTO|CreateSessionDTO $createTherapyTopicDTO)
     {
-        if ($createTherapyTopicDTO->therapyTopic) return;
+        if ($createTherapyTopicDTO->therapyTopic) {
+            return;
+        }
 
-        throw new TherapyTopicException("Topic was not found.", 422);
+        // SCRUM-344: the same answer as a refused topic action, so topic ids can't be probed.
+        throw TherapyTopicException::notAllowed();
     }
 }

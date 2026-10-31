@@ -14,7 +14,7 @@ class TherapyTopic extends Model
         Starreable;
 
     protected $fillable = [
-        'name', 'description', 'counsellor_id', 'therapy_id',
+        'name', 'description', 'counsellor_id',
     ];
 
     public function sessions()
@@ -28,9 +28,12 @@ class TherapyTopic extends Model
         return $this->hasMany(TherapyTopicSession::class);
     }
 
-    public function therapy()
+    // SCRUM-344: replaces a therapy() belongsTo on the `therapy_id` column that
+    // 2025_02_10_084703 moved to topicable_id/topicable_type -- it always resolved to null, which
+    // crashed every topic update. A topic belongs to a Therapy or a GroupTherapy.
+    public function topicable()
     {
-        return $this->belongsTo(Therapy::class);
+        return $this->morphTo();
     }
 
     public function counsellor()
@@ -42,11 +45,6 @@ class TherapyTopic extends Model
     public function messages()
     {
         return $this->hasMany(Message::class);
-    }
-
-    public function scopeWhereTherapyId($query, $therapyId)
-    {
-        return $query->where('therapy_id', $therapyId);
     }
 
     public function scopeWhereName($query, $name)

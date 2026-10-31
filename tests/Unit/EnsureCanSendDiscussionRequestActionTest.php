@@ -75,7 +75,7 @@ test('a counsellor with no relationship to the discussion cannot send a counsell
 
     expect(fn () => EnsureCanSendDiscussionRequestAction::new()->execute(
         CreateRequestDTO::new()->fromArray(['from' => $outsider, 'for' => $discussion])
-    ))->toThrow(DiscussionException::class, 'You are not authorized to send a request for this discussion.');
+    ))->toThrow(DiscussionException::class, 'You are not allowed to do that with this discussion.');
 });
 
 test('a non-counsellor `from` is cleanly rejected instead of throwing a TypeError', function () {
@@ -91,7 +91,7 @@ test('a non-counsellor `from` is cleanly rejected instead of throwing a TypeErro
 
     expect(fn () => EnsureCanSendDiscussionRequestAction::new()->execute(
         CreateRequestDTO::new()->fromArray(['from' => $nonCounsellorUser, 'for' => $discussion])
-    ))->toThrow(DiscussionException::class, 'You are not authorized to send a request for this discussion.');
+    ))->toThrow(DiscussionException::class, 'You are not allowed to do that with this discussion.');
 });
 
 test('DiscussionService::sendCounsellorRequest rejects a counsellor with no relationship to the discussion', function () {

@@ -67,7 +67,7 @@ class TherapyTopicController extends Controller
                     'name' => $request->name,
                     'description' => $request->description,
                     'sessions' => $request->sessions,
-                    'therapy' => $topic?->therapy,
+                    'therapy' => $topic?->topicable instanceof Therapy ? $topic->topicable : null,
                     'therapyTopic' => $topic,
                 ])
             );
@@ -87,7 +87,7 @@ class TherapyTopicController extends Controller
             TherapyTopicService::new()->deleteTherapyTopic(
                 CreateTherapyTopicDTO::new()->fromArray([
                     'user' => $request->user(),
-                    'therapy' => $topic?->therapy,
+                    'therapy' => $topic?->topicable instanceof Therapy ? $topic->topicable : null,
                     'therapyTopic' => $topic,
                 ])
             );
