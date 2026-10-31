@@ -17,7 +17,6 @@ use App\Models\MessageNote;
 use App\Models\Session;
 use App\Models\Therapy;
 use App\Models\User;
-use Illuminate\Http\Resources\MissingValue;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 
@@ -380,6 +379,6 @@ test('MessageResource never exposes a message note unless the caller explicitly 
 
     $array = (new MessageResource($message->fresh()))->toArray(request());
 
-    expect($array)->not->toHaveKeys(['notes', 'messageNotes']);
-    expect($array['note'])->toBeInstanceOf(MissingValue::class);
+    // SCRUM-195: MessageResource::present() simply leaves the key out (same JSON as a MissingValue).
+    expect($array)->not->toHaveKeys(['notes', 'messageNotes', 'note']);
 });

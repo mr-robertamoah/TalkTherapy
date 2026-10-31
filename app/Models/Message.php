@@ -62,18 +62,41 @@ class Message extends Model
         return $this->hasMany(MessageNote::class);
     }
 
-    public function isParty(?User $user)
+    // Whether $user sent THIS message or it was addressed to them (as a user, or through their
+    // counsellor account). SCRUM-195: this used to run $this->query()->whereTo()->orWhereFrom()
+    // ->exists() -- a fresh, unscoped query over the whole table -- so it was true for anyone who
+    // had ever sent or received ANY message, which made every confidential message readable to
+    // almost everyone and let them subscribe to any messages.{id} channel.
+    public function isParty(?User $user): bool
     {
         if (! $user) {
             return false;
         }
 
-        return $this->query()
-            ->whereTo($user)
-            ->orWhere(function ($query) use ($user) {
-                $query->whereFrom($user);
-            })
-            ->exists();
+        return $this->morphRefersTo($this->from_type, $this->from_id, $user)
+            || $this->morphRefersTo($this->to_type, $this->to_id, $user);
+    }
+
+    // The recipient as a USER id, whichever kind of account the message was addressed to -- the
+    // frontend compares it against the viewer's own user id. SCRUM-195: previously derived from the
+    // SENDER's type, which gave a counsellor id for a counsellor-to-counsellor message.
+    public function recipientUserId(): ?int
+    {
+        return match ($this->to_type) {
+            User::class => (int) $this->to_id,
+            Counsellor::class => $this->to?->user_id,
+            default => null,
+        };
+    }
+
+    // Whether this from/to morph is $user, directly or through their counsellor account.
+    private function morphRefersTo(?string $type, $id, User $user): bool
+    {
+        return match ($type) {
+            User::class => (int) $id === $user->id,
+            Counsellor::class => $user->counsellor !== null && (int) $id === $user->counsellor->id,
+            default => false,
+        };
     }
 
     public function isNotParty(?User $user)

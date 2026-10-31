@@ -297,6 +297,7 @@ import FilePreview from "./FilePreview.vue";
 import FileModal from "./FileModal.vue";
 import TextBox from "./TextBox.vue";
 import InputError from "./InputError.vue";
+import { createBroadcastMessageQueue } from "@/Composables/resolveBroadcastMessage";
 
 
 const { goToLogin } = useAuth()
@@ -388,13 +389,14 @@ watchEffect(() => {
 
     if (listening.value) return
     listening.value = true
+    const enqueueUpdate = createBroadcastMessageQueue(userId)
 
     Echo
         .private(`messages.${props.msg?.id}`)
         .listen('.message.updated', (data) => {
             if (data.message?.fromUserId == userId)
                 return
-            emits('onUpdate', data.message)
+            enqueueUpdate(data.message, (message) => emits('onUpdate', message))
         })
         .listen('.message.deleted', (data) => {
             console.log(data, 'message.deleted');

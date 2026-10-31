@@ -236,6 +236,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/sessions/{sessionId}/messages', [MessageController::class, 'getSessionMessages'])->name('api.session.messages.get');
     Route::get('/topics/{topicId}/messages', [MessageController::class, 'getTopicMessages'])->name('api.topic.messages.get');
     Route::get('/messages/{messageId}/replies', [MessageController::class, 'getMessageReplies'])->name('api.message.replies.get');
+    // SCRUM-195: how a confidential message's parties fetch its content -- broadcasts never carry it.
+    Route::get('/messages/{messageId}', [MessageController::class, 'getMessage'])->name('api.messages.show')->whereNumber('messageId')->middleware('throttle:60,1');
     Route::get('/messages/discussions/{discussionId}', [MessageController::class, 'getDiscussionMessages'])->name('api.discussion.messages.get');
     Route::post('/messages', [MessageController::class, 'createMessage'])->name('api.messages.create')->middleware('throttle:messages');
     Route::post('/messages/{messageId}', [MessageController::class, 'updateMessage'])->name('api.messages.update')->middleware('throttle:messages');

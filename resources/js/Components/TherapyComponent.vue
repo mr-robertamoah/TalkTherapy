@@ -349,6 +349,7 @@ import MiniModal from './MiniModal.vue';
 import useConnectionStatus from '@/Composables/useConnectionStatus';
 import SessionNotesPanel from './SessionNotesPanel.vue';
 import VideoCallPanel from './VideoCallPanel.vue';
+import { createBroadcastMessageQueue } from '@/Composables/resolveBroadcastMessage';
 
 const { goToLogin } = useAuth()
 const {
@@ -726,6 +727,7 @@ function listenToMessages() {
     if (listening.value) return
 
     listening.value = true
+    const enqueueMessage = createBroadcastMessageQueue(userId)
     const channel = Echo
         .private(`sessions.${props.activeSession.id}`)
         .listen('.message.created', (data) => {
@@ -733,7 +735,7 @@ function listenToMessages() {
             if (data.message?.fromUserId == userId)
                 return
 
-            onMessageCreated(data.message)
+            enqueueMessage(data.message, onMessageCreated)
 
             // The other party just sent a message, so they're no longer "typing".
             if (props.therapyType === 'individual') clearTypingIndicator()
