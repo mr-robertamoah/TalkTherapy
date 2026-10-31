@@ -73,10 +73,13 @@ class RevokeSpeakingPermissionAction extends Action
     // Pushes receive-only to the provider without any grant row involved -- for when a grant sat on
     // a STALE join row (closed locally only) but a reconnected attendee may still carry its old
     // publish capability (Chime reuses attendees by ExternalUserId). Failure follows the same
-    // per-reason rule as revokeGrant().
+    // per-reason rule as revokeGrant(). Broadcast like a live-join revoke (TT-3.2f-j/SCRUM-327): it
+    // does change what the user's current join can do.
     public function muteAtProvider(VideoSession $videoSession, User $targetUser, SpeakingPermissionRevocationReasonEnum $reason): void
     {
-        $this->revokedAtProvider($videoSession, $targetUser, $reason);
+        if ($this->revokedAtProvider($videoSession, $targetUser, $reason)) {
+            SpeakingPermissionChangedEvent::dispatch($videoSession, $targetUser->id, false, false, $reason->value);
+        }
     }
 
     // Provider failure handling depends on WHY the grant is being revoked -- an explicit decision,
@@ -103,7 +106,12 @@ class RevokeSpeakingPermissionAction extends Action
         // need muting at the provider and their grant closed.
         $targetUser = User::withTrashed()->find($grant->videoSessionParticipant->participant_id);
 
-        $wasRevoked = DB::transaction(function () use ($grant, $reason, $revokedBy, $videoSession, $targetUser, $idleCutoff) {
+        // TT-3.2f-j/SCRUM-327: only a revoke on the user's live join changes what they can do right
+        // now -- closing a stale row's grant must not tell their client (or the counsellors' speaker
+        // list) that they were muted while their current join may still hold a valid grant.
+        $wasCurrentJoin = false;
+
+        $wasRevoked = DB::transaction(function () use ($grant, $reason, $revokedBy, $videoSession, $targetUser, $idleCutoff, &$wasCurrentJoin) {
             // Same lock as grant/raise/lower take, so every speaking-state change for a participant
             // is serialized behind one row -- a revoke can't interleave with a grant, or with the
             // idle sweep racing a manual revoke.
@@ -129,6 +137,8 @@ class RevokeSpeakingPermissionAction extends Action
                 return false;
             }
 
+            $wasCurrentJoin = $isCurrentJoin;
+
             $grant->update([
                 'revoked_at' => now(),
                 'revoked_by_user_id' => $revokedBy?->id,
@@ -138,8 +148,8 @@ class RevokeSpeakingPermissionAction extends Action
             return true;
         });
 
-        if ($wasRevoked) {
-            SpeakingPermissionChangedEvent::dispatch($videoSession, $targetUser->id, false, false);
+        if ($wasRevoked && $wasCurrentJoin) {
+            SpeakingPermissionChangedEvent::dispatch($videoSession, $targetUser->id, false, false, $reason->value);
         }
     }
 

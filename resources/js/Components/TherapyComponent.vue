@@ -40,8 +40,6 @@
     <VideoCallPanel
         v-if="computedCanJoinVideo && videoActive"
         :session="activeSession"
-        :is-counsellor="isCounsellor"
-        :is-group-therapy="therapyType === 'group'"
         @close="videoActive = false"
     />
     <div class="my-2 w-full h-1 rounded bg-stone-400"  v-if="showSessions"></div>
@@ -651,7 +649,9 @@ const computedCanJoinVideo = computed(() => {
 
     if (props.therapyType === 'individual') return props.isParticipant
 
-    return props.therapyType === 'group' && (props.isCounsellor || props.isUser)
+    // TT-3.2f-j/SCRUM-327: every group participant now -- an ordinary member joins receive-only
+    // (SCRUM-321's backend allow-list), so they need the button too.
+    return props.therapyType === 'group' && props.isParticipant
 })
 const computedHasActions = computed(() => {
     return computedCanStart.value || computedCanEnd.value || computedCanAbandon.value || computedCanJoinVideo.value

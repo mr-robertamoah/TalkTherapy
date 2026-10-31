@@ -24,6 +24,9 @@ class SpeakingPermissionChangedEvent implements ShouldBroadcast
         private int $userId,
         private bool $canSendAudio,
         private bool $canSendVideo,
+        // TT-3.2f-j/SCRUM-327: null on a grant; the revocation reason's value on a revoke, so the
+        // member's own client can tell an idle expiry apart from a counsellor's deliberate revoke.
+        private ?string $reason = null,
     ) {
         //
     }
@@ -50,6 +53,7 @@ class SpeakingPermissionChangedEvent implements ShouldBroadcast
             'userId' => $this->userId,
             'canSendAudio' => $this->canSendAudio,
             'canSendVideo' => $this->canSendVideo,
+            'reason' => $this->reason,
         ];
     }
 }

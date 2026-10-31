@@ -103,7 +103,7 @@ test('joining allows a client once a session-level grant exists', function () {
 
     $credentials = JoinVideoSessionAction::new()->execute($session, $client);
 
-    expect($credentials)->toBe(['token' => "fake-token-{$client->id}"]);
+    expect($credentials['token'])->toBe("fake-token-{$client->id}");
 });
 
 test('joining blocks a PER_THERAPY-gated therapy\'s video directly, closing the same still-reachable hole reading/creating messages was fixed for', function () {
@@ -133,7 +133,7 @@ test('joining allows a PER_THERAPY-gated therapy\'s video once a therapy-level g
 
     $credentials = JoinVideoSessionAction::new()->execute($session, $client);
 
-    expect($credentials)->toBe(['token' => "fake-token-{$client->id}"]);
+    expect($credentials['token'])->toBe("fake-token-{$client->id}");
 });
 
 // TT-7.3b-f2/SCRUM-238: proves real-caller wiring for joining video too, not just messaging --
@@ -175,5 +175,5 @@ test('joining is unaffected for the counsellor of a strict-gated therapy', funct
 
     $credentials = JoinVideoSessionAction::new()->execute($session, $counsellorUser);
 
-    expect($credentials)->toBe(['token' => "fake-token-{$counsellorUser->id}"]);
+    expect($credentials['token'])->toBe("fake-token-{$counsellorUser->id}");
 });

@@ -19,6 +19,11 @@ import {
 export default function createChimeVideoClient(callbacks) {
     let meetingSession = null
     let videoEnabled = false
+    let audioInputStarted = false
+    let videoInputStarted = false
+    // Bumped by disableLocalMedia() -- a toggle still awaiting a device start when a revoke lands
+    // must not switch the mic/camera back on afterwards (re-review finding).
+    let mediaGeneration = 0
     let localAttendeeId = null
     let presenceCallback = null
     // TT-3.1d/SCRUM-277: set right before WE call stop() (via teardown(), from leave()/end()) so
@@ -67,11 +72,14 @@ export default function createChimeVideoClient(callbacks) {
         const configuration = new MeetingSessionConfiguration(credentials.meeting, credentials.attendee)
         meetingSession = new DefaultMeetingSession(configuration, logger, deviceController)
 
-        const mics = await meetingSession.audioVideo.listAudioInputDevices()
-        if (mics[0]) await meetingSession.audioVideo.startAudioInput(mics[0].deviceId)
+        // TT-3.2f-j/SCRUM-327: a receive-only member (or, for video, the audio-only creator of an
+        // anonymous group) never opens a device it can't send from -- started lazily instead, by
+        // toggleMute()/toggleCamera(), once a speaking grant arrives. The attendee's own Chime
+        // capabilities enforce this regardless.
+        const capabilities = credentials.participant ?? { canSendAudio: true, canSendVideo: true }
 
-        const cams = await meetingSession.audioVideo.listVideoInputDevices()
-        if (cams[0]) await meetingSession.audioVideo.startVideoInput(cams[0].deviceId)
+        if (capabilities.canSendAudio) await startAudioInput()
+        if (capabilities.canSendVideo) await startVideoInput()
 
         meetingSession.audioVideo.addObserver(observer)
 
@@ -94,8 +102,11 @@ export default function createChimeVideoClient(callbacks) {
         meetingSession.audioVideo.realtimeSubscribeToAttendeeIdPresence(presenceCallback)
 
         meetingSession.audioVideo.start()
-        meetingSession.audioVideo.startLocalVideoTile()
-        videoEnabled = true
+        if (capabilities.canSendVideo) {
+            meetingSession.audioVideo.startLocalVideoTile()
+            videoEnabled = true
+        }
+        if (!capabilities.canSendAudio) meetingSession.audioVideo.realtimeMuteLocalAudio()
 
         // TT-3.2c/SCRUM-310: credentials.attendee is this same session's own CreateAttendee
         // response (see ChimeVideoProvider::createParticipantCredentials()), which already
@@ -118,20 +129,75 @@ export default function createChimeVideoClient(callbacks) {
         }
     }
 
-    function toggleMute() {
-        if (!meetingSession) return true
-        const isMuted = meetingSession.audioVideo.realtimeIsLocalAudioMuted()
-        if (isMuted) meetingSession.audioVideo.realtimeUnmuteLocalAudio()
-        else meetingSession.audioVideo.realtimeMuteLocalAudio()
-        return !isMuted
+    async function startAudioInput() {
+        const mics = await meetingSession.audioVideo.listAudioInputDevices()
+        if (mics[0]) await meetingSession.audioVideo.startAudioInput(mics[0].deviceId)
+        audioInputStarted = true
     }
 
-    function toggleCamera() {
+    async function startVideoInput() {
+        const cams = await meetingSession.audioVideo.listVideoInputDevices()
+        if (cams[0]) await meetingSession.audioVideo.startVideoInput(cams[0].deviceId)
+        videoInputStarted = true
+    }
+
+    // Async (unlike Daily's) because a receive-only join opens no devices -- the first unmute or
+    // camera-on after a speaking grant has to start the input first. State flips only once the
+    // device has actually started (a denied permission rejects, leaving everything off), and a
+    // teardown landing during that await is respected rather than resurrecting the media.
+    // useVideoSession.js serializes calls, so two toggles never interleave.
+    async function toggleMute() {
+        if (!meetingSession) return true
+        const isMuted = meetingSession.audioVideo.realtimeIsLocalAudioMuted()
+        if (!isMuted) {
+            meetingSession.audioVideo.realtimeMuteLocalAudio()
+            return true
+        }
+
+        const generation = mediaGeneration
+        if (!audioInputStarted) await startAudioInput()
+        if (!meetingSession) return true
+        if (generation !== mediaGeneration) {
+            await disableLocalMedia()
+            return true
+        }
+        meetingSession.audioVideo.realtimeUnmuteLocalAudio()
+        return false
+    }
+
+    async function toggleCamera() {
         if (!meetingSession) return videoEnabled
-        videoEnabled = !videoEnabled
-        if (videoEnabled) meetingSession.audioVideo.startLocalVideoTile()
-        else meetingSession.audioVideo.stopLocalVideoTile()
-        return videoEnabled
+        if (videoEnabled) {
+            meetingSession.audioVideo.stopLocalVideoTile()
+            videoEnabled = false
+            return false
+        }
+
+        const generation = mediaGeneration
+        if (!videoInputStarted) await startVideoInput()
+        if (!meetingSession) return false
+        if (generation !== mediaGeneration) {
+            await disableLocalMedia()
+            return false
+        }
+        meetingSession.audioVideo.startLocalVideoTile()
+        videoEnabled = true
+        return true
+    }
+
+    // TT-3.2f-j/SCRUM-327: see DailyVideoClient.js's own disableLocalMedia(). Also releases the
+    // devices themselves, so the browser's camera/mic indicator goes off after a revoke -- a later
+    // grant starts them again lazily, exactly like a receive-only join.
+    async function disableLocalMedia() {
+        mediaGeneration++
+        if (!meetingSession) return
+        meetingSession.audioVideo.realtimeMuteLocalAudio()
+        meetingSession.audioVideo.stopLocalVideoTile()
+        videoEnabled = false
+        await meetingSession.audioVideo.stopVideoInput()
+        await meetingSession.audioVideo.stopAudioInput()
+        videoInputStarted = false
+        audioInputStarted = false
     }
 
     // Docs are explicit that stop() does not clean up observers/subscriptions itself -- this
@@ -162,5 +228,5 @@ export default function createChimeVideoClient(callbacks) {
         tileIdToParticipantId.clear()
     }
 
-    return { join, leave, end, toggleMute, toggleCamera, attachVideo, destroy }
+    return { join, leave, end, toggleMute, toggleCamera, disableLocalMedia, attachVideo, destroy }
 }

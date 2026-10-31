@@ -1,4 +1,4 @@
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { usePage } from '@inertiajs/vue3'
 import axios from 'axios'
 
@@ -24,8 +24,13 @@ import axios from 'axios'
 //                                                clients (verified against Daily/Chime's own docs,
 //                                                2026-09: neither SDK has a client-side "end for
 //                                                everyone" primitive of its own).
-//     toggleMute(): boolean                  -- returns the new isMuted state
-//     toggleCamera(): boolean                -- returns the new isCameraOn state
+//     toggleMute(): boolean|Promise<boolean> -- returns the new isMuted state (async on Chime,
+//                                                which starts a receive-only join's mic lazily)
+//     toggleCamera(): boolean|Promise<boolean> -- returns the new isCameraOn state (same)
+//     disableLocalMedia(): void|Promise      -- TT-3.2f-j/SCRUM-327: stop sending audio+video
+//                                                (a revoked speaking permission). join() reads
+//                                                credentials.participant's canSendAudio/
+//                                                canSendVideo to decide which devices to open.
 //     attachVideo(participantId, videoEl)    -- attach participantId's video stream to this
 //                                                <video> element ('local' is always the calling
 //                                                user's own id). Its own method (not a raw
@@ -87,6 +92,26 @@ export default function useVideoSession(session) {
     // second case.
     const reconnecting = ref(false)
 
+    // TT-3.2f-j/SCRUM-327: what THIS viewer may do in the call -- seeded from the join response's
+    // own `participant` key (JoinVideoSessionAction::participantStateFor()), then kept current by
+    // the speaking-permission broadcasts below. Display-only: the provider token is what actually
+    // enforces sending, and every moderation endpoint re-authorizes on its own.
+    const capabilities = ref(defaultCapabilities())
+    const handRaised = ref(false)
+    // Counsellor-only: our own backend user ids, never provider tile ids.
+    const raisedHandUserIds = ref([])
+    const speakerUserIds = ref([])
+    // A one-line explanation of the viewer's last speaking-permission change ('' when none).
+    const speakingNotice = ref('')
+    // Seconds until an unused speaking grant is expired by the backend's idle sweep (null when the
+    // viewer holds no grant). See startIdleTracking().
+    const idleSecondsRemaining = ref(null)
+    // True while a mute/camera toggle is still waiting on the provider (Chime may be starting a
+    // device behind a permission prompt) -- the controls are disabled meanwhile, so a second click
+    // can't race the first into publishing while the UI says off. mediaError explains a failure.
+    const mediaBusy = ref(false)
+    const mediaError = ref('')
+
     let client = null
     let channelName = null
     // TT-3.2c/SCRUM-310: read once, not re-derived per event -- the viewer's own id never changes
@@ -95,6 +120,23 @@ export default function useVideoSession(session) {
     // needs no local handling here at all -- the provider's own SDK already fires its normal
     // participant-left callback for every other browser in the call).
     const ownUserId = usePage().props.auth.user?.id
+
+    function defaultCapabilities() {
+        return {
+            receiveOnly: false,
+            canSendAudio: true,
+            canSendVideo: true,
+            isAnonymous: false,
+            canRaiseHand: false,
+            isMinorMember: false,
+            canModerate: false,
+            speakingGrantIdleTimeout: 300,
+        }
+    }
+
+    // A receive-only member who currently holds a speaking grant -- the only viewer the idle
+    // sweep can ever affect (counsellors and the creator never hold grants).
+    const holdsSpeakingGrant = computed(() => capabilities.value.receiveOnly && capabilities.value.canSendAudio)
 
     function upsertParticipant({ id, isLocal, name, userId }) {
         const existingIndex = participants.value.findIndex((p) => p.id === id)
@@ -125,7 +167,15 @@ export default function useVideoSession(session) {
     // action below, which is the COUNSELLOR's own request to eject someone else server-side --
     // this one only ever reacts to a tile already being gone.
     function dropParticipantTile(id) {
+        const leaving = participants.value.find((p) => p.id === id)
         participants.value = participants.value.filter((p) => p.id !== id)
+
+        // TT-3.2f-j/SCRUM-327: someone who left can't be granted or revoked -- drop them from the
+        // counsellor's queue too, unless another tile (a reconnect) still carries the same user.
+        const userId = leaving?.userId
+        if (userId == null || participants.value.some((p) => p.userId === userId)) return
+        raisedHandUserIds.value = raisedHandUserIds.value.filter((uid) => uid !== userId)
+        speakerUserIds.value = speakerUserIds.value.filter((uid) => uid !== userId)
     }
 
     function buildCallbacks() {
@@ -207,6 +257,12 @@ export default function useVideoSession(session) {
             return
         }
 
+        // TT-3.2f-j/SCRUM-327 review finding: subscribed as soon as the join response arrives, not
+        // after client.join()'s media setup (seconds, longer behind a camera prompt) -- a hand
+        // raised or grant made in that window would otherwise never reach a counsellor's lists.
+        applyJoinState(credentials.participant)
+        listenForStatusChanges()
+
         try {
             client = await loadClient()
 
@@ -224,10 +280,12 @@ export default function useVideoSession(session) {
                 return
             }
 
-            listenForStatusChanges()
             status.value = 'connected'
         } catch (err) {
             if (token !== joinToken) return
+
+            stopIdleTracking()
+            stopListeningForStatusChanges()
 
             // The join-video HTTP call already succeeded (a VideoSession/room exists) -- this is
             // strictly the SDK/media layer failing (camera/mic permission denial, a connection
@@ -245,6 +303,10 @@ export default function useVideoSession(session) {
     // its own teardown once its next await resolves (see the token checks above).
     async function cancel() {
         joinToken++
+        // Not inside teardownClient()'s `if (client)` only -- join() now subscribes before a client
+        // exists, so a cancel during loadClient() must unsubscribe too.
+        stopIdleTracking()
+        stopListeningForStatusChanges()
         if (client) await teardownClient()
     }
 
@@ -289,6 +351,10 @@ export default function useVideoSession(session) {
         const staleClient = client
         client = null
         participants.value = []
+        // TT-3.2f-j/SCRUM-327 review finding: no activity pings for a call this browser isn't in --
+        // and if the rejoin fails, nothing else would ever stop the timer. The rejoin's
+        // applyJoinState() resets mute/camera/grant state from its own response.
+        stopIdleTracking()
         // 'idle', not 'connecting' -- join()'s own re-entry guard only blocks 'connecting'/
         // 'connected', so this must clear 'connected' without tripping that guard when join() is
         // called again just below.
@@ -374,21 +440,177 @@ export default function useVideoSession(session) {
         }))
     }
 
+    // TT-3.2f-j/SCRUM-327: every join starts fresh (a reconnect included -- the backend mints a new,
+    // receive-only token for a member's new join row, so any earlier grant no longer applies).
+    //
+    // On a reconnect the counsellor lists are MERGED with the response's snapshot: the listeners
+    // stayed subscribed through the gap, so the live lists may already hold changes newer than the
+    // snapshot. Any other join (first join, or a retry after a failure, when nothing was listening)
+    // takes the snapshot as-is. Known gap: someone who leaves during a counsellor's own reconnect
+    // keeps a list entry (their tile never comes back to be dropped) until it's acted on.
+    function applyJoinState(state) {
+        capabilities.value = { ...defaultCapabilities(), ...(state ?? {}) }
+        isMuted.value = !capabilities.value.canSendAudio
+        isCameraOn.value = capabilities.value.canSendVideo
+        handRaised.value = false
+        speakingNotice.value = ''
+        mediaError.value = ''
+
+        const snapshotHands = capabilities.value.canModerate ? (state?.raisedHandUserIds ?? []) : []
+        const snapshotSpeakers = capabilities.value.canModerate ? (state?.speakerUserIds ?? []) : []
+        const merge = reconnecting.value && capabilities.value.canModerate
+
+        raisedHandUserIds.value = merge ? [...new Set([...raisedHandUserIds.value, ...snapshotHands])] : snapshotHands
+        speakerUserIds.value = merge ? [...new Set([...speakerUserIds.value, ...snapshotSpeakers])] : snapshotSpeakers
+
+        stopIdleTracking()
+    }
+
+    // Asks to speak / withdraws the ask. The local flag is set from the response, not only the
+    // broadcast, so the button responds even if the websocket is slow; the broadcast agrees.
+    async function raiseHand() {
+        if (!session.value?.id) return
+        await axios.post(route('sessions.video.hand.raise', session.value.id))
+        handRaised.value = true
+    }
+
+    async function lowerHand() {
+        if (!session.value?.id) return
+        await axios.post(route('sessions.video.hand.lower', session.value.id))
+        handRaised.value = false
+    }
+
+    // Counsellor actions. Like removeParticipant(), no error handling here -- the caller shows the
+    // backend's own message. Local lists update from the broadcasts, the single source of truth.
+    async function grantSpeaking(targetUserId) {
+        if (!session.value?.id) return
+        await axios.post(route('sessions.video.participants.grant_speaking', {
+            sessionId: session.value.id,
+            userId: targetUserId,
+        }))
+    }
+
+    async function revokeSpeaking(targetUserId) {
+        if (!session.value?.id) return
+        await axios.post(route('sessions.video.participants.revoke_speaking', {
+            sessionId: session.value.id,
+            userId: targetUserId,
+        }))
+    }
+
+    // TT-3.2f-j/SCRUM-327 / TT-3.2f-h: a granted member's client pings while they're actually
+    // sending (unmuted or camera on); the backend's idle sweep reverts a grant with no ping for
+    // speakingGrantIdleTimeout seconds. Tracked locally too, so the member can be warned before it
+    // happens rather than only told afterwards.
+    const ACTIVITY_PING_INTERVAL_MS = 30000
+    const IDLE_TICK_MS = 1000
+    let idleTimer = null
+    let lastActivityAt = 0
+    let lastPingAt = 0
+
+    function startIdleTracking() {
+        stopIdleTracking()
+        lastActivityAt = Date.now()
+        lastPingAt = 0
+        idleTick()
+        idleTimer = setInterval(idleTick, IDLE_TICK_MS)
+    }
+
+    function stopIdleTracking() {
+        if (idleTimer) clearInterval(idleTimer)
+        idleTimer = null
+        idleSecondsRemaining.value = null
+    }
+
+    function idleTick() {
+        const now = Date.now()
+        const isSending = !isMuted.value || isCameraOn.value
+
+        if (isSending && now - lastPingAt >= ACTIVITY_PING_INTERVAL_MS) {
+            lastPingAt = now
+            // Best-effort: a missed ping can only bring the expiry closer, which this countdown
+            // already reflects by not advancing lastActivityAt until the ping succeeds.
+            axios.post(route('sessions.video.speaking_activity', session.value.id))
+                .then(() => { lastActivityAt = Date.now() })
+                .catch(() => {})
+        }
+
+        const elapsed = Math.floor((now - lastActivityAt) / 1000)
+        idleSecondsRemaining.value = Math.max(0, capabilities.value.speakingGrantIdleTimeout - elapsed)
+    }
+
+    function applyOwnSpeakingPermission({ canSendAudio, canSendVideo, reason }) {
+        if (!capabilities.value.receiveOnly) return
+
+        const wasGranted = holdsSpeakingGrant.value
+        capabilities.value = { ...capabilities.value, canSendAudio, canSendVideo }
+        handRaised.value = false
+
+        if (canSendAudio) {
+            // Granted: nothing is sent until the member chooses to unmute.
+            isMuted.value = true
+            isCameraOn.value = false
+            speakingNotice.value = ''
+            startIdleTracking()
+            return
+        }
+
+        // A provider-level "make sure they're muted" (RevokeSpeakingPermissionAction::muteAtProvider)
+        // also broadcasts for someone who was only ever watching -- nothing to undo or explain then.
+        if (!wasGranted) return
+
+        Promise.resolve(client?.disableLocalMedia()).catch(() => {})
+        isMuted.value = true
+        isCameraOn.value = false
+        stopIdleTracking()
+        speakingNotice.value = reason === 'IDLE_AUTO_EXPIRY'
+            ? 'Your permission to speak ended because you stayed muted for a while. Raise your hand to ask again.'
+            : 'A counsellor ended your permission to speak.'
+    }
+
     async function teardownClient() {
+        stopIdleTracking()
         stopListeningForStatusChanges()
         if (client) await client.destroy()
         client = null
         participants.value = []
     }
 
-    function toggleMute() {
-        if (!client) return
-        isMuted.value = client.toggleMute()
+    async function toggleMute() {
+        await toggleMedia(async () => {
+            isMuted.value = await client.toggleMute()
+        }, 'Could not use your microphone. Check your browser\'s microphone permission and try again.')
     }
 
-    function toggleCamera() {
-        if (!client) return
-        isCameraOn.value = client.toggleCamera()
+    async function toggleCamera() {
+        await toggleMedia(async () => {
+            isCameraOn.value = await client.toggleCamera()
+        }, 'Could not use your camera. Check your browser\'s camera permission and try again.')
+    }
+
+    async function toggleMedia(toggle, failureMessage) {
+        if (!client || mediaBusy.value) return
+
+        mediaBusy.value = true
+        mediaError.value = ''
+
+        try {
+            await toggle()
+            if (holdsSpeakingGrant.value) idleTick()
+
+            // A revoke landed while this toggle was in flight (its broadcast already ran
+            // applyOwnSpeakingPermission()) -- never leave a device on that the hidden controls
+            // can no longer turn off.
+            if (capabilities.value.receiveOnly && !holdsSpeakingGrant.value) {
+                await Promise.resolve(client?.disableLocalMedia()).catch(() => {})
+                isMuted.value = true
+                isCameraOn.value = false
+            }
+        } catch (err) {
+            mediaError.value = failureMessage
+        } finally {
+            mediaBusy.value = false
+        }
     }
 
     function attachVideo(participantId, element) {
@@ -396,6 +618,10 @@ export default function useVideoSession(session) {
     }
 
     function listenForStatusChanges() {
+        // A reconnect deliberately keeps the listeners from the first join (see
+        // handleDisconnected()) -- subscribing again would stack a second copy of every handler.
+        if (channelName) return
+
         channelName = `sessions.${session.value.id}`
         window.Echo?.private(channelName).listen('.video-session.status-changed', (data) => {
             // The room ended for everyone (e.g. the other participant ended it) -- react locally
@@ -432,6 +658,31 @@ export default function useVideoSession(session) {
             status.value = 'removed'
             reconnecting.value = false
         })
+
+        // TT-3.2f-j/SCRUM-327: hand-raise and speaking broadcasts carry ids only (anonymity-safe);
+        // counsellors resolve names from the call's own tiles. Each viewer also watches for its
+        // OWN id, to follow its hand and speaking state.
+        window.Echo?.private(channelName).listen('.video-session.hand-raised', (data) => {
+            if (data.userId === ownUserId) handRaised.value = true
+            if (capabilities.value.canModerate && !raisedHandUserIds.value.includes(data.userId)) {
+                raisedHandUserIds.value = [...raisedHandUserIds.value, data.userId]
+            }
+        })
+
+        window.Echo?.private(channelName).listen('.video-session.hand-lowered', (data) => {
+            if (data.userId === ownUserId) handRaised.value = false
+            if (capabilities.value.canModerate) {
+                raisedHandUserIds.value = raisedHandUserIds.value.filter((uid) => uid !== data.userId)
+            }
+        })
+
+        window.Echo?.private(channelName).listen('.video-session.speaking-permission-changed', (data) => {
+            if (data.userId === ownUserId) applyOwnSpeakingPermission(data)
+
+            if (!capabilities.value.canModerate) return
+            speakerUserIds.value = speakerUserIds.value.filter((uid) => uid !== data.userId)
+            if (data.canSendAudio) speakerUserIds.value = [...speakerUserIds.value, data.userId]
+        })
     }
 
     function stopListeningForStatusChanges() {
@@ -443,11 +694,17 @@ export default function useVideoSession(session) {
         // the channel down out from under that listener if unmount ordering differs.
         window.Echo?.private(channelName).stopListening('.video-session.status-changed')
         window.Echo?.private(channelName).stopListening('.video-session.participant-removed')
+        window.Echo?.private(channelName).stopListening('.video-session.hand-raised')
+        window.Echo?.private(channelName).stopListening('.video-session.hand-lowered')
+        window.Echo?.private(channelName).stopListening('.video-session.speaking-permission-changed')
         channelName = null
     }
 
     return {
         status, participants, isMuted, isCameraOn, connectionQuality, lastError, reconnecting,
+        capabilities, holdsSpeakingGrant, handRaised, raisedHandUserIds, speakerUserIds, speakingNotice,
+        idleSecondsRemaining, mediaBusy, mediaError,
         join, leave, end, removeParticipant, cancel, toggleMute, toggleCamera, attachVideo,
+        raiseHand, lowerHand, grantSpeaking, revokeSpeaking,
     }
 }

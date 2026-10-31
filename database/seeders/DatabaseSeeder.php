@@ -1520,7 +1520,9 @@ class DatabaseSeeder extends Seeder
             'email_verified_at' => now(),
         ]);
 
-        $member = User::factory()->create([
+        // TT-3.2f-j/SCRUM-327: explicitly adult -- a bare factory user has a null dob, which this
+        // platform treats as a minor, and a minor member can never raise a hand.
+        $member = User::factory()->adult()->create([
             'firstName' => 'GroupVideoCall',
             'lastName' => 'DemoMember',
             'email' => 'group.video.call.demo.member@example.com',
@@ -1541,7 +1543,30 @@ class DatabaseSeeder extends Seeder
             'status' => 'in_session',
         ]);
         $groupTherapy->counsellors()->attach($counsellor->id, ['state' => 'ACTIVE']);
-        $groupTherapy->users()->attach($member->id, ['anonymous' => false, 'background_story' => 'test']);
+        $groupTherapy->users()->attach($member->id, ['anonymous' => false, 'background_story' => 'test', 'was_minor_at_join' => false]);
+
+        // TT-3.2f-j/SCRUM-327: the other two receive-only cases -- a minor member (watch only, no
+        // raise-hand) and an anonymous member (granted audio-only, under a masked name).
+        $minorMember = User::factory()->create([
+            'firstName' => 'GroupVideoCall',
+            'lastName' => 'DemoMinorMember',
+            'email' => 'group.video.call.demo.minor.member@example.com',
+            'username' => 'group_video_call_demo_minor_member',
+            'password' => Hash::make('password'),
+            'email_verified_at' => now(),
+            'dob' => now()->subYears(15)->toDateString(),
+        ]);
+        $groupTherapy->users()->attach($minorMember->id, ['anonymous' => false, 'background_story' => 'test', 'was_minor_at_join' => true]);
+
+        $anonymousMember = User::factory()->adult()->create([
+            'firstName' => 'GroupVideoCall',
+            'lastName' => 'DemoAnonymousMember',
+            'email' => 'group.video.call.demo.anonymous.member@example.com',
+            'username' => 'group_video_call_demo_anonymous_member',
+            'password' => Hash::make('password'),
+            'email_verified_at' => now(),
+        ]);
+        $groupTherapy->users()->attach($anonymousMember->id, ['anonymous' => true, 'background_story' => 'test', 'was_minor_at_join' => false]);
 
         // Immediately in-progress and online, so "join video" is reachable without waiting.
         $session = new Session([

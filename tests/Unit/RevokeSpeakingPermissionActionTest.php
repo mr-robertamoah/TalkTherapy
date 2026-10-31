@@ -101,6 +101,7 @@ test('any active counsellor can manually revoke a member\'s speaking permission'
         'userId' => $data['member']->id,
         'canSendAudio' => false,
         'canSendVideo' => false,
+        'reason' => SpeakingPermissionRevocationReasonEnum::manual->value,
     ]);
 });
 
@@ -189,6 +190,8 @@ test('revoking a grant on a stale join row closes it locally without touching th
     expect($data['grant']->fresh()->isActive())->toBeFalse()
         ->and($currentGrant->fresh()->isActive())->toBeTrue()
         ->and($calls)->toBe([]);
+    // The member's live join can still speak -- nothing must tell their client otherwise.
+    Event::assertNotDispatched(SpeakingPermissionChangedEvent::class);
 });
 
 test('revoking an already-revoked grant is a no-op -- no provider call, no second broadcast', function () {
@@ -268,9 +271,13 @@ test('a manual revoke after the member reconnected closes the stale grant and st
 
     expect($data['grant']->fresh()->isActive())->toBeFalse()
         ->and($calls)->toBe([[$data['member']->id, false, false]]);
+    // Only the provider mute reaches the live join, so exactly one broadcast, from that mute.
+    Event::assertDispatchedTimes(SpeakingPermissionChangedEvent::class, 1);
+    Event::assertDispatched(SpeakingPermissionChangedEvent::class, fn ($event) => $event->broadcastWith()['reason'] === SpeakingPermissionRevocationReasonEnum::manual->value);
 });
 
 test('a manual revoke of a live member with no open grant still asserts receive-only at the provider', function () {
+    Event::fake();
     $data = groupVideoCallWithGrantForRevokeSpeakingAction();
     $data['grant']->update(['revoked_at' => now(), 'revocation_reason' => SpeakingPermissionRevocationReasonEnum::manual->value]);
     $calls = [];
@@ -279,6 +286,9 @@ test('a manual revoke of a live member with no open grant still asserts receive-
     RevokeSpeakingPermissionAction::new()->execute($data['session'], $data['counsellorUser'], $data['member']->id);
 
     expect($calls)->toBe([[$data['member']->id, false, false]]);
+    // The provider mute changes the live join, so it's broadcast (with its reason) like any revoke.
+    Event::assertDispatched(SpeakingPermissionChangedEvent::class, fn ($event) => $event->broadcastWith()['canSendAudio'] === false
+        && $event->broadcastWith()['reason'] === SpeakingPermissionRevocationReasonEnum::manual->value);
 });
 
 test('a counsellor of a different group cannot revoke in this group\'s call', function () {
