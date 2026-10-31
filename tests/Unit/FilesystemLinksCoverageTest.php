@@ -14,7 +14,8 @@
 // Upload paths on private disks -- deliberately never symlinked into public/. TT-4.11a/SCRUM-302's
 // identity documents first; SCRUM-300 added counsellor license/ID documents ('licenses', on the
 // private license_documents disk). Shared by both tests below so they can't drift apart.
-const PRIVATE_DOCUMENT_UPLOAD_PATHS = ['identity_documents', 'licenses'];
+// SCRUM-336 added chat attachments ('messages', on the private message_attachments disk).
+const PRIVATE_DOCUMENT_UPLOAD_PATHS = ['identity_documents', 'licenses', 'messages'];
 
 test('every upload path used in app/Actions and app/Services has a matching filesystems.links entry', function () {
     $configuredPaths = collect(config('filesystems.links'))

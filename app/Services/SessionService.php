@@ -201,9 +201,10 @@ class SessionService extends Service
     {
         EnsureSessionExistsAction::new()->execute($createSessionDTO);
 
-        EnsureTherapyTopicExistsAction::new()->execute($createSessionDTO);
-
+        // SCRUM-339: authorize before the topic lookup, so a refused caller can't probe topic ids.
         EnsureCanChangeSessionTopicAction::new()->execute($createSessionDTO);
+
+        EnsureTherapyTopicExistsAction::new()->execute($createSessionDTO);
 
         $session = SetCurrentTopicOfSessionAction::new()->execute($createSessionDTO);
 
@@ -216,9 +217,10 @@ class SessionService extends Service
     {
         EnsureSessionExistsAction::new()->execute($createSessionDTO);
 
-        EnsureTherapyTopicExistsAction::new()->execute($createSessionDTO);
-
+        // SCRUM-339: authorize before the topic lookup, so a refused caller can't probe topic ids.
         EnsureCanChangeSessionTopicAction::new()->execute($createSessionDTO);
+
+        EnsureTherapyTopicExistsAction::new()->execute($createSessionDTO);
 
         $session = UnsetCurrentTopicOfSessionAction::new()->execute($createSessionDTO);
 

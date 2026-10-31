@@ -8440,3 +8440,40 @@ architect's own design left room for either outcome; the spike found the simpler
   - SCRUM-338: license documents are never deleted.
 - **Not fixable in code**: these scans were publicly reachable for as long as the link existed. Whether
   anything further is owed to the affected counsellors is a privacy-owner decision.
+
+## SCRUM-336 + SCRUM-339: private chat attachments, session-name leaks — 2026-10-31
+
+The user asked for both in one PR.
+
+- **SCRUM-336 (chat attachments)**:
+  - Attachments move to a private `message_attachments` disk, and the public `messages` link is
+    removed.
+  - The only way to fetch one is `messages.attachments.show`. It serves whoever may see the message
+    (the same rule as `api.messages.show` and the `messages.{id}` channel), but a confidential
+    message's files go only to its parties.
+- **Reuse instead of a third copy**:
+  - SCRUM-300's license move was extracted into `MovePublicFilesToPrivateDiskAction`. The license
+    action is now a thin wrapper, kept because its already-run migration refers to it.
+  - `StreamsPrivateDocuments::authorizedDocumentResponse()` is now the shared body of all three
+    private-document controllers (identity, license, attachment).
+- **Media**:
+  - Chat attachments may play inline as images, video or audio, chosen by server-detected type. SVG
+    and HTML are never inline. Everything else downloads with `nosniff` and a sandbox CSP.
+  - The response is a `BinaryFileResponse`, so HTTP Range works. Code and devops review found the
+    first version, a plain stream, would break video seeking and Safari playback.
+- **Transitional disks**: attachments still on `public` (deployed before the migration runs) or on
+  `local` (host-run installs) are served through the route until SCRUM-341 removes them.
+- **SCRUM-339 (session names)**:
+  - Session actions authorize first.
+  - "Session not found", "therapy not found" and every session refusal now share the same message,
+    so a caller can't probe which ids exist.
+  - The topic lookup runs after authorization.
+  - End now explains the end-time rule only to participants.
+  - The `CreateSessionRequest` unique-name rule was removed rather than fixed. It checked a
+    client-chosen `requestId` the app never sends, so it never applied to real requests and was only
+    useful for confirming guessed names. Enforcing unique names would be a new product rule.
+- **Deferred**:
+  - SCRUM-342 (High, blocks the first promotion to production): the EC2 deploy runs migrations as
+    `ubuntu`, so private-storage ownership, `config:clear` and `queue:restart` need handling.
+  - SCRUM-343: the same name-leak pattern in therapy and discussion actions.
+  - SCRUM-341: remove the transitional disks.

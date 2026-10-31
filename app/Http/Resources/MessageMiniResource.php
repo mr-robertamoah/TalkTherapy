@@ -36,7 +36,7 @@ class MessageMiniResource extends JsonResource
         return [
             'id' => $message->id,
             'content' => $message->content,
-            'files' => FileResource::collection($message->files),
+            'files' => MessageResource::attachmentsOf($message),
             'updatedAt' => $message->updated_at->diffForHumans(),
         ];
     }

@@ -16,7 +16,7 @@ class File extends Model
 
     // Disks whose files must never get a public URL -- see config/filesystems.php. getUrlFor()
     // refuses them; each has its own authorized retrieval route instead.
-    public const PRIVATE_DISKS = ['identity_documents', 'license_documents'];
+    public const PRIVATE_DISKS = ['identity_documents', 'license_documents', 'message_attachments'];
 
     public function isOnPrivateDisk(): bool
     {
@@ -32,6 +32,14 @@ class File extends Model
     public function getUrlAttribute()
     {
         return getUrlFor($this);
+    }
+
+    // SCRUM-336: the messages a file is attached to (chat attachments).
+    public function messages(): MorphToMany
+    {
+        return $this
+            ->morphedByMany(Message::class, 'fileable', 'fileables')
+            ->withTimestamps();
     }
 
     public function licenses(): MorphToMany

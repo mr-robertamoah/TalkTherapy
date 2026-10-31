@@ -29,6 +29,8 @@ return new class extends Migration
         }
     }
 
+    // Superseded for new migrations by MovePublicFilesToPrivateDiskAction::handOwnershipToWebServer()
+    // (SCRUM-336); kept here because this migration has already run.
     // Migrations run as root (docker compose exec) or the deploy user (EC2), not the web server
     // user who must read and write these files -- so hand the new tree to whoever owns the public
     // storage directory, which is the web server. Only root can chown; anyone else is told to.
