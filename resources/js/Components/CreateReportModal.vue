@@ -85,17 +85,37 @@ watch(() => reportableType.value, () => {
 const computedIsCounsellor = computed(() => {
     return !!user?.counsellor
 })
-const computedDataHasUser = computed(() => {
-    return props.type == 'Therapy' && reportData.value.data?.userId == props.item.user.id && !reportData.value.data?.counsellorId
+
+// SCRUM-347: the people a participant can report -- everyone else in the therapy, never
+// themselves. Individual therapy: the client reports the counsellor, the counsellor the client.
+// Group therapy: its counsellors (members aren't listed on the group page, so a member is
+// reported through the group as a whole, named in the description).
+const computedReportablePeople = computed(() => {
+    if (props.type == 'Therapy') {
+        const isClient = !!user?.id && user.id == props.item?.user?.id
+        if (isClient)
+            return props.item?.counsellor?.id
+                ? [{ key: 'counsellor', label: `${props.item.counsellor.name} (Counsellor)`, data: { counsellorId: props.item.counsellor.id } }]
+                : []
+
+        return props.item?.user?.id
+            ? [{ key: 'user', label: `${props.item.user.fullName} (Client)`, data: { userId: props.item.user.id } }]
+            : []
+    }
+
+    if (props.type == 'GroupTherapy')
+        return (props.item?.counsellors ?? [])
+            .filter((counsellor) => counsellor.id && counsellor.userId != user?.id &&
+                (props.item?.activeCounsellorIds ?? []).includes(counsellor.id))
+            .map((counsellor) => ({ key: `counsellor-${counsellor.id}`, label: `${counsellor.name} (Counsellor)`, data: { counsellorId: counsellor.id } }))
+
+    return []
 })
-const computedDataHasCounsellor = computed(() => {
-    return props.type == 'Therapy' && reportData.value.data?.counsellorId == props.item.counsellor?.id &&
-        props.item.counsellor?.id && !reportData.value.data?.userId
-})
-const computedDataHasBoth = computed(() => {
-    return props.type == 'Therapy' && reportData.value.data?.userId == props.item.user.id &&
-        props.type == 'Therapy' && reportData.value.data?.counsellorId == props.item.counsellor?.id && props.item.counsellor?.id
-})
+
+function isSelectedPerson(person) {
+    return (reportData.value.data?.userId ?? null) == (person.data.userId ?? null) &&
+        (reportData.value.data?.counsellorId ?? null) == (person.data.counsellorId ?? null)
+}
 
 async function createReport() {
     if (!reportData.value.description) {
@@ -105,26 +125,37 @@ async function createReport() {
         return
     }
     
+    // These used to assign the id twice (addedbyId = 'User', reportableId = props.type), so a
+    // report made without picking a type always failed.
     if (
         !reportData.value.addedbyType || !reportData.value.addedbyId
     ) {
         reportData.value.addedbyId = user.id
-        reportData.value.addedbyId = 'User'
+        reportData.value.addedbyType = 'User'
     }
     
     if (
         !reportData.value.reportableType || !reportData.value.reportableId
     ) {
         reportData.value.reportableId = props.item.id
-        reportData.value.reportableId = props.type
+        reportData.value.reportableType = props.type
     }
     
+    // An individual therapy report names one person -- the other party, unless one was chosen.
     if (
         props.type == 'Therapy' &&
         !reportData.value.data?.userId && 
         !reportData.value.data?.counsellorId
-    )
-        reportData.value.data = {'userId': props.item.user.id,}
+    ) {
+        if (!computedReportablePeople.value.length) {
+            setFailedAlertData({
+                message: 'There is no one else in this therapy to report yet.',
+            })
+            return
+        }
+
+        reportData.value.data = { ...computedReportablePeople.value[0].data }
+    }
 
     clearErrorData(reportErrors, [
         'description', 'data', 'files',
@@ -301,6 +332,7 @@ function closeModal() {
                         
                         <div class="p-4 mb-4 rounded bg-gray-200 shadow-sm">
                             <div class="text-left text-sm font-bold mb-2">What are you reporting</div>
+                            <div v-if="type == 'GroupTherapy'" class="text-sm text-gray-700">This group therapy: {{ item?.name }}</div>
                             <template v-if="type == 'Therapy'">
                                 <div class="mt-4 mx-auto max-w-[400px]">
                                     <InputLabel for="type" value="Type" />
@@ -374,46 +406,32 @@ function closeModal() {
                         </div>
                         
                         <div class="p-4 mb-4 rounded bg-gray-200 shadow-sm" 
-                            v-if="type == 'Therapy' && item.counsellor"
+                            v-if="computedReportablePeople.length || type == 'GroupTherapy'"
                         >
                             <div class="text-left text-sm font-bold mb-2">Who are you reporting</div>
-                            <div class="flex px-3 py-2 justify-start space-x-3 items-center overflow-hidden overflow-x-auto" v-if="type == 'Therapy'">
+                            <div class="flex px-3 py-2 justify-start space-x-3 items-center overflow-hidden overflow-x-auto">
                                 <div
+                                    v-if="type == 'GroupTherapy'"
                                     title="double click to select"
                                     class="rounded p-2 mx-auto w-[80%] cursor-pointer my-2 min-w-[150px] text-sm"
-                                    :class="[computedDataHasBoth ? 'bg-green-300 text-green-800' : 'bg-white text-gray-600']"
-                                    @dblclick="() => {
-                                        reportData.data = {
-                                            'counsellorId': item.counsellor.id,
-                                            'userId': item.user.id,
-                                        }
-                                    }"
+                                    :class="[!reportData.data?.userId && !reportData.data?.counsellorId ? 'bg-green-300 text-green-800' : 'bg-white text-gray-600']"
+                                    @dblclick="() => { reportData.data = {} }"
                                 >
-                                    Report User and Counsellor
+                                    The group in general
                                 </div>
                                 <div
+                                    v-for="person in computedReportablePeople"
+                                    :key="person.key"
                                     title="double click to select"
                                     class="rounded p-2 mx-auto w-[80%] cursor-pointer my-2 min-w-[150px] text-sm"
-                                    :class="[computedDataHasUser ? 'bg-green-300 text-green-800' : 'bg-white text-gray-600']"
-                                    @dblclick="() => {
-                                        reportData.data = {'userId': item.user.id}
-                                    }"
+                                    :class="[isSelectedPerson(person) ? 'bg-green-300 text-green-800' : 'bg-white text-gray-600']"
+                                    @dblclick="() => { reportData.data = { ...person.data } }"
                                 >
-                                    Report {{ item.user.fullName }} (User)
+                                    Report {{ person.label }}
                                 </div>
-                                <div
-                                    title="double click to select"
-                                    class="rounded p-2 mx-auto w-[80%] cursor-pointer my-2 min-w-[150px] text-sm"
-                                    :class="[computedDataHasCounsellor ? 'bg-green-300 text-green-800' : 'bg-white text-gray-600']"
-                                    @dblclick="() => {
-                                        reportData.data = {'counsellorId': item.counsellor.id}
-                                    }"
-                                >
-                                    Report {{ item.counsellor.name }} (Counsellor)
-                                </div>
-
-                                <InputError class="mt-2" :message="reportErrors.data" />
                             </div>
+                            <div v-if="type == 'GroupTherapy'" class="mt-2 text-xs text-gray-500">To report a member, choose the group in general and name them in the description.</div>
+                            <InputError class="mt-2" :message="reportErrors.data" />
                         </div>
 
                         <div class="p-4 rounded bg-gray-200 shadow-sm">

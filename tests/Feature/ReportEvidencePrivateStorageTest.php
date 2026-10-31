@@ -96,7 +96,7 @@ test('new evidence is uploaded to the private disk and exposed only through the 
         'reportableId' => $therapy->id,
         'addedbyType' => 'user',
         'addedbyId' => $reporter->id,
-        'data' => ['userId' => $reporter->id, 'counsellorId' => $counsellor->id],
+        'data' => ['counsellorId' => $counsellor->id],
         'files' => [UploadedFile::fake()->image('proof.png')],
     ])->assertOk();
 

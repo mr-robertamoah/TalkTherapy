@@ -6,6 +6,7 @@ use App\Actions\EnsureAddedbyIsValidAction;
 use App\Actions\Report\CreateReportAction;
 use App\Actions\Report\DeleteReportAction;
 use App\Actions\Report\EnsureCanCreateReportAction;
+use App\Actions\Report\EnsureCanReportReportableAction;
 use App\Actions\Report\EnsureCanUpdateReportAction;
 use App\Actions\Report\EnsureReportDataIsValidAction;
 use App\Actions\Report\EnsureReportExistsAction;
@@ -26,6 +27,8 @@ class ReportService extends Service
 
         EnsureCanCreateReportAction::new()->execute($createReportDTO);
 
+        EnsureCanReportReportableAction::new()->execute($createReportDTO);
+
         EnsureReportDataIsValidAction::new()->execute($createReportDTO);
 
         $report = CreateReportAction::new()->execute($createReportDTO);
@@ -40,6 +43,9 @@ class ReportService extends Service
         EnsureReportExistsAction::new()->execute($createReportDTO);
 
         EnsureCanUpdateReportAction::new()->execute($createReportDTO);
+
+        // SCRUM-347: a reporter can't re-point their report at a therapy they aren't in.
+        EnsureCanReportReportableAction::new()->execute($createReportDTO, required: false);
 
         EnsureReportDataIsValidAction::new()->execute($createReportDTO, 'update');
 

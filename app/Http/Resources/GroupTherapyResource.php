@@ -4,6 +4,7 @@ namespace App\Http\Resources;
 
 use App\Actions\GroupTherapy\GetGroupTherapyPaymentRosterAction;
 use App\Enums\ConstantsEnum;
+use App\Enums\CounsellorGroupTherapyStateEnum;
 use App\Enums\TherapyPaymentTypeEnum;
 use App\Enums\TherapyPerPaymentEnum;
 use App\Models\Counsellor;
@@ -83,6 +84,10 @@ class GroupTherapyResource extends JsonResource
             'allowInPerson' => (bool) $this->allow_in_person,
             'allowAnyone' => (bool) $this->allow_anyone,
             'counsellors' => CounsellorMiniResource::collection($this->counsellors),
+            // SCRUM-347: `counsellors` includes invited/left ones; the report form offers only these.
+            'activeCounsellorIds' => $this->counsellors
+                ->filter(fn ($counsellor) => $counsellor->pivot?->state === CounsellorGroupTherapyStateEnum::active->value)
+                ->pluck('id')->values(),
             'about' => $this->about,
             'sessionsHeld' => $this->sessionsHeld,
             'status' => $this->getStatus(),

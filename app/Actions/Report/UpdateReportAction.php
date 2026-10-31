@@ -69,7 +69,11 @@ class UpdateReportAction extends Action
             $this->data['description'] = $createReportDTO->description;
         }
 
-        if ($createReportDTO->data) {
+        // SCRUM-347: re-pointing a report replaces who it names -- merging would keep people from
+        // the old therapy on the new one. EnsureReportDataIsValidAction validates the same result.
+        if ($createReportDTO->reportable) {
+            $this->data['data'] = $createReportDTO->data ?: [];
+        } elseif ($createReportDTO->data) {
             $this->data['data'] = array_merge($createReportDTO->report->data ?: [], $createReportDTO->data);
         }
     }
