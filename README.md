@@ -97,6 +97,14 @@ Welcome to the TalkTherapy application, a Laravel and Vue.js based project desig
 
 Continuously deployed to AWS EC2 instance by leveraging AWS Systems Manger's Run Command capability which enhances security becauses no SSH port is left open.
 
+Scheduled jobs (`routes/console.php` -- reminders, invoice settlement, document retention, the group-video
+idle speaking sweep) need Laravel's scheduler running. In Docker, the `queue` container runs it via
+Supervisor (`php artisan schedule:work`, see `docker/queue/supervisord.conf`); any other host must run
+`php artisan schedule:run` every minute (cron) or keep `schedule:work` alive. Run exactly ONE scheduler
+per database -- a second one (e.g. `schedule:work` on the host too) runs every task twice. Seeded demo data
+built relative to "now" (open invoices, pending sessions) will be processed by these jobs as it ages --
+re-seed (`php artisan migrate:fresh --seed`) to reset it.
+
 ## Portfolio
 
 You can find more about me on my [portfolio](https://www.robertamoah.com).
