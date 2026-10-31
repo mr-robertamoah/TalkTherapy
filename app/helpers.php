@@ -26,14 +26,12 @@ function constructName(
 
 function getUrlFor(File $file)
 {
-    // TT-4.11a/SCRUM-302 (security review, defense-in-depth): every other disk's files are
-    // intentionally public and safe to resolve this way (SCRUM-300 is the pre-existing ticket
-    // for hardening those too) -- but a file on the private 'identity_documents' disk must NEVER
-    // get a public URL, regardless of what calls this helper. A future careless ->url/getUrlFor()
-    // call on an identity document (bypassing the dedicated authorized route) fails loudly here
-    // instead of silently producing a working public link.
-    if ($file->storage === 'identity_documents') {
-        throw new RuntimeException('Identity-verification documents have no public URL -- use the authorized requests.documents.show route instead.');
+    // TT-4.11a/SCRUM-302 (security review, defense-in-depth), widened by SCRUM-300: a file on a
+    // private disk (identity or license documents) must NEVER get a public URL, regardless of what
+    // calls this helper. A careless ->url/getUrlFor() on one (bypassing its dedicated authorized
+    // route) fails loudly here instead of silently producing a working public link.
+    if ($file->isOnPrivateDisk()) {
+        throw new RuntimeException('Private documents have no public URL -- use their authorized retrieval route (requests.documents.show / licenses.documents.show) instead.');
     }
 
     $path = 'storage';
