@@ -12,6 +12,7 @@ use App\Models\Therapy;
 use App\Models\User;
 use App\Models\VideoSession;
 use App\Models\VideoSessionParticipant;
+use App\Models\VideoSessionSpeakingGrant;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Log;
@@ -83,7 +84,19 @@ test('joining creates a new VideoSession, calls the provider to create a room, a
     expect($videoSession)->not->toBeNull()
         ->and($videoSession->provider_room_id)->toBe("fake-room-{$videoSession->id}")
         ->and($fakeProvider->createRoomCalls)->toBe([$videoSession->id])
-        ->and($credentials)->toBe(['token' => "fake-token-{$client->id}"]);
+        ->and($credentials['token'])->toBe("fake-token-{$client->id}")
+        ->and($credentials['participant'])->toBe([
+            'receiveOnly' => false,
+            'canSendAudio' => true,
+            'canSendVideo' => true,
+            'isAnonymous' => false,
+            'canRaiseHand' => false,
+            'isMinorMember' => false,
+            'canModerate' => false,
+            'speakingGrantIdleTimeout' => (int) config('video.speaking_grant_idle_timeout'),
+            'raisedHandUserIds' => [],
+            'speakerUserIds' => [],
+        ]);
 
     $this->assertDatabaseHas('video_session_participants', [
         'video_session_id' => $videoSession->id,
@@ -491,4 +504,92 @@ test('an anonymous 1:1 Therapy client still joins with video allowed', function 
 
     [, , , , , $canSendVideo] = $fakeProvider->createParticipantCredentialsCalls[0];
     expect($canSendVideo)->toBeTrue();
+});
+
+// TT-3.2f-j/SCRUM-327: the `participant` state the call UI starts from.
+test('an ordinary member\'s join state is receive-only with a raisable hand', function () {
+    $data = onlineInSessionGroupTherapySessionForJoin();
+    $data['groupTherapy']->users()->updateExistingPivot($data['member']->id, ['was_minor_at_join' => false]);
+    app()->instance(VideoProviderInterface::class, fakeVideoProvider());
+
+    $state = JoinVideoSessionAction::new()->execute($data['session'], $data['member'])['participant'];
+
+    expect($state['receiveOnly'])->toBeTrue()
+        ->and($state['canSendAudio'])->toBeFalse()
+        ->and($state['canSendVideo'])->toBeFalse()
+        ->and($state['canRaiseHand'])->toBeTrue()
+        ->and($state['canModerate'])->toBeFalse()
+        ->and($state['raisedHandUserIds'])->toBe([])
+        ->and($state['speakerUserIds'])->toBe([]);
+});
+
+test('a minor member is never offered a raisable hand', function () {
+    $data = onlineInSessionGroupTherapySessionForJoin();
+    $data['groupTherapy']->users()->updateExistingPivot($data['member']->id, ['was_minor_at_join' => true]);
+    app()->instance(VideoProviderInterface::class, fakeVideoProvider());
+
+    $state = JoinVideoSessionAction::new()->execute($data['session'], $data['member'])['participant'];
+
+    expect($state['receiveOnly'])->toBeTrue()
+        ->and($state['canRaiseHand'])->toBeFalse()
+        ->and($state['isMinorMember'])->toBeTrue();
+});
+
+test('an anonymous group\'s creator joins audio-only and flagged anonymous', function () {
+    $data = onlineInSessionGroupTherapySessionForJoin();
+    $data['groupTherapy']->update(['anonymous' => true]);
+    app()->instance(VideoProviderInterface::class, fakeVideoProvider());
+
+    $state = JoinVideoSessionAction::new()->execute($data['session'], $data['creator'])['participant'];
+
+    expect($state['receiveOnly'])->toBeFalse()
+        ->and($state['canSendAudio'])->toBeTrue()
+        ->and($state['canSendVideo'])->toBeFalse()
+        ->and($state['isAnonymous'])->toBeTrue()
+        ->and($state['canRaiseHand'])->toBeFalse();
+});
+
+test('a counsellor joining mid-call sees the hands and speakers already live in the call', function () {
+    $data = onlineInSessionGroupTherapySessionForJoin();
+    app()->instance(VideoProviderInterface::class, fakeVideoProvider());
+    JoinVideoSessionAction::new()->execute($data['session'], $data['member']);
+    $speaker = User::factory()->create();
+    $data['groupTherapy']->users()->attach($speaker->id, ['anonymous' => false]);
+    JoinVideoSessionAction::new()->execute($data['session'], $speaker);
+    $leaver = User::factory()->create();
+    $data['groupTherapy']->users()->attach($leaver->id, ['anonymous' => false]);
+    JoinVideoSessionAction::new()->execute($data['session'], $leaver);
+
+    $videoSession = VideoSession::query()->where('session_id', $data['session']->id)->first();
+    $videoSession->activeParticipantFor($data['member']->id)->handRaises()->create(['raised_at' => now()]);
+    VideoSessionSpeakingGrant::factory()->create([
+        'video_session_participant_id' => $videoSession->activeParticipantFor($speaker->id)->id,
+        'revoked_at' => null,
+    ]);
+    // A hand left open on a row that has since left the call must not show up.
+    $leaverRow = $videoSession->activeParticipantFor($leaver->id);
+    $leaverRow->handRaises()->create(['raised_at' => now()]);
+    $leaverRow->update(['left_at' => now()]);
+
+    $state = JoinVideoSessionAction::new()->execute($data['session'], $data['counsellorUser'])['participant'];
+
+    expect($state['canModerate'])->toBeTrue()
+        ->and($state['receiveOnly'])->toBeFalse()
+        ->and($state['raisedHandUserIds'])->toBe([$data['member']->id])
+        ->and($state['speakerUserIds'])->toBe([$speaker->id]);
+});
+
+test('the counsellor snapshot ignores a hand left on a stale join row the member has since replaced', function () {
+    $data = onlineInSessionGroupTherapySessionForJoin();
+    app()->instance(VideoProviderInterface::class, fakeVideoProvider());
+    JoinVideoSessionAction::new()->execute($data['session'], $data['member']);
+    $videoSession = VideoSession::query()->where('session_id', $data['session']->id)->first();
+    $videoSession->activeParticipantFor($data['member']->id)->handRaises()->create(['raised_at' => now()]);
+    // A reconnect: a newer open row, without the hand, while the old row was never closed.
+    $this->travel(1)->seconds();
+    JoinVideoSessionAction::new()->execute($data['session'], $data['member']);
+
+    $state = JoinVideoSessionAction::new()->execute($data['session'], $data['counsellorUser'])['participant'];
+
+    expect($state['raisedHandUserIds'])->toBe([]);
 });

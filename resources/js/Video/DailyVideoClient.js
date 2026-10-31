@@ -82,7 +82,19 @@ export default function createDailyVideoClient(callbacks) {
         })
         callObject.on('nonfatal-error', (e) => callbacks.onError?.(e))
 
-        await callObject.join({ url: credentials.url, token: credentials.token })
+        // TT-3.2f-j/SCRUM-327: a receive-only member (or the audio-only creator of an anonymous
+        // group, for video) joins with those devices off, so the browser never asks for a camera or
+        // mic the token can't send from anyway. Daily enforces the token's canSend regardless.
+        const capabilities = credentials.participant ?? { canSendAudio: true, canSendVideo: true }
+        audioEnabled = capabilities.canSendAudio
+        videoEnabled = capabilities.canSendVideo
+
+        await callObject.join({
+            url: credentials.url,
+            token: credentials.token,
+            startAudioOff: !audioEnabled,
+            startVideoOff: !videoEnabled,
+        })
 
         // Belt-and-braces: 'participant-joined' is expected to fire for the local participant
         // too, but explicitly processing callObject.participants().local here means the local
@@ -114,6 +126,15 @@ export default function createDailyVideoClient(callbacks) {
         return videoEnabled
     }
 
+    // TT-3.2f-j/SCRUM-327: a revoked speaking permission -- stop sending locally too, rather than
+    // leave the UI showing a live mic the provider is already dropping.
+    function disableLocalMedia() {
+        audioEnabled = false
+        videoEnabled = false
+        callObject?.setLocalAudio(false)
+        callObject?.setLocalVideo(false)
+    }
+
     function teardown() {
         intentionalTeardown = true
         callObject?.destroy()
@@ -129,5 +150,5 @@ export default function createDailyVideoClient(callbacks) {
         attachedElements.clear()
     }
 
-    return { join, leave, end, toggleMute, toggleCamera, attachVideo, destroy }
+    return { join, leave, end, toggleMute, toggleCamera, disableLocalMedia, attachVideo, destroy }
 }

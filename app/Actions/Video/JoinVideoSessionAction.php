@@ -23,7 +23,9 @@ use Throwable;
 class JoinVideoSessionAction extends Action
 {
     // Returns the provider-specific, JSON-serializable join credentials -- passed straight
-    // through to the frontend's active provider SDK, never inspected or reshaped here.
+    // through to the frontend's active provider SDK, never inspected or reshaped here -- plus one
+    // `participant` key of our own (TT-3.2f-j/SCRUM-327) describing what this joiner may do. Neither
+    // provider's credentials use that key, and both client SDK wrappers read only their own.
     public function execute(Session $session, User $user): array
     {
         EnsureVideoIsAvailableForSessionAction::new()->execute($session, $user);
@@ -55,14 +57,70 @@ class JoinVideoSessionAction extends Action
         $isOwner = ! $session->for instanceof GroupTherapy
             && (bool) ($user->counsellor && $session->for->isCounsellor($user->counsellor));
 
-        return $provider->createParticipantCredentials(
+        $receiveOnly = $this->isReceiveOnly($session, $user);
+        $isMasked = $this->isMaskedGroupParticipant($session, $user);
+
+        $credentials = $provider->createParticipantCredentials(
             $videoSession,
             $user,
             $this->displayNameFor($session, $user),
             isOwner: $isOwner,
-            receiveOnly: $this->isReceiveOnly($session, $user),
-            canSendVideo: ! $this->isMaskedGroupParticipant($session, $user),
+            receiveOnly: $receiveOnly,
+            canSendVideo: ! $isMasked,
         );
+
+        return [
+            ...$credentials,
+            'participant' => $this->participantStateFor($session, $user, $videoSession, $receiveOnly, $isMasked),
+        ];
+    }
+
+    // TT-3.2f-j/SCRUM-327: display-only -- the provider token minted above is what actually
+    // enforces the send capabilities, and every moderation endpoint re-authorizes on its own. Lets
+    // the call UI start in the right state (receive-only member, audio-only anonymous creator) and
+    // lets a counsellor who joins mid-call see the hands and speakers that already exist, since the
+    // broadcasts that built them were sent before they subscribed.
+    private function participantStateFor(Session $session, User $user, VideoSession $videoSession, bool $receiveOnly, bool $isMasked): array
+    {
+        $isGroup = $session->for instanceof GroupTherapy;
+        $canModerate = $isGroup && $session->for->isCounsellorUser($user);
+        // Only ever asked of a receive-only member, i.e. a GroupTherapy member.
+        $isMinorMember = $receiveOnly && $session->for->memberIsMinor($user);
+
+        return [
+            'receiveOnly' => $receiveOnly,
+            'canSendAudio' => ! $receiveOnly,
+            'canSendVideo' => ! $receiveOnly && ! $isMasked,
+            'isAnonymous' => $isMasked,
+            // Mirrors RaiseHandAction's own refusal for a minor (SCRUM-324) -- a hand that could
+            // never be granted is never offered. isMinorMember is the reason, for the UI's copy;
+            // it describes only the joiner themselves.
+            'canRaiseHand' => $receiveOnly && ! $isMinorMember,
+            'isMinorMember' => $isMinorMember,
+            'canModerate' => $canModerate,
+            'speakingGrantIdleTimeout' => (int) config('video.speaking_grant_idle_timeout'),
+            'raisedHandUserIds' => $canModerate ? $this->liveUserIdsWith($videoSession, 'handRaises', 'lowered_at') : [],
+            'speakerUserIds' => $canModerate ? $this->liveUserIdsWith($videoSession, 'speakingGrants', 'revoked_at') : [],
+        ];
+    }
+
+    // Users whose LIVE join row in this call holds an open hand-raise/speaking grant -- the latest
+    // open row per user, the same row VideoSession::activeParticipantFor() treats as current, so a
+    // stale row left open by a reconnect (SCRUM-330) never lists someone who can't actually speak.
+    private function liveUserIdsWith(VideoSession $videoSession, string $relation, string $closedColumn): array
+    {
+        return $videoSession->participants()
+            ->where('participant_type', User::class)
+            ->whereNull('left_at')
+            ->withExists([$relation.' as has_open' => fn ($query) => $query->whereNull($closedColumn)])
+            ->orderByDesc('joined_at')
+            ->orderByDesc('id')
+            ->get()
+            ->unique('participant_id')
+            ->filter(fn ($row) => $row->has_open)
+            ->map(fn ($row) => (int) $row->participant_id)
+            ->values()
+            ->all();
     }
 
     // TT-3.2f-d/SCRUM-321: an ordinary GroupTherapy member (not a counsellor, not the creator) is

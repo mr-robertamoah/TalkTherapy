@@ -89,7 +89,8 @@ test('a grant with no activity past the timeout is revoked as idle_auto_expiry a
         ->and($grant->revoked_by_user_id)->toBeNull()
         ->and($calls)->toHaveCount(1)
         ->and($calls[0][1])->toBeFalse();
-    Event::assertDispatched(SpeakingPermissionChangedEvent::class);
+    // The member's client words its notice off this exact reason.
+    Event::assertDispatched(SpeakingPermissionChangedEvent::class, fn ($event) => $event->broadcastWith()['reason'] === SpeakingPermissionRevocationReasonEnum::idle_auto_expiry->value);
 });
 
 test('a grant with recent activity is left alone', function () {

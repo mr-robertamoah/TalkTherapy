@@ -8270,3 +8270,55 @@ architect's own design left room for either outcome; the spike found the simpler
     end + 2h).
   - The browser isn't told that a participant is audio-only (the camera toggle shows "on" but the
     provider refuses). Handle this in SCRUM-327 by returning the capability with the credentials.
+
+## SCRUM-327 (TT-3.2f-j): group video speaking-moderation frontend — 2026-10-31
+
+- **Join response carries a `participant` key**: a sibling of the provider credentials, not a
+  separate endpoint. It describes what the joiner may do (`receiveOnly`, `canSendAudio`,
+  `canSendVideo`, `isAnonymous`, `canRaiseHand`, `isMinorMember`, `canModerate`,
+  `speakingGrantIdleTimeout`). For a group counsellor it also includes `raisedHandUserIds` /
+  `speakerUserIds`, so someone joining mid-call sees hands and speakers that were broadcast before
+  they subscribed. It's display-only: the provider token and per-endpoint authorization still
+  enforce everything. Neither provider's credentials use the key.
+- **Revocation reason on the broadcast**: `SpeakingPermissionChangedEvent` gained `reason` (null
+  on a grant), so a member is told "you stayed muted" (idle expiry) as opposed to "a counsellor
+  ended it".
+- **Revoke broadcasts only describe the live join**:
+  - Closing a grant stranded on a stale reconnect row no longer broadcasts "muted". Doing so would
+    have told the member's client (and the counsellors' speaker list) that someone who can still
+    speak was muted.
+  - `muteAtProvider()` does broadcast, because it changes the live join.
+- **Scope choice: queue-only moderation.** Counsellors grant from the raised-hand queue and revoke
+  from the speaker list. There's no per-tile "let speak" for members who haven't raised a hand.
+  The backend supports it, but the UI can't tell which tiles are receive-only without exposing
+  more per-participant state.
+- **Reveal warning**: shown once per call, before the first unmute or camera-on of a granted
+  non-anonymous member. Anonymous members are audio-only under a masked name, so the warning
+  doesn't apply to them.
+- **Idle warning**: the client pings `speaking_activity` every 30s while sending, and mirrors the
+  countdown locally. It warns in the final `min(60s, timeout/2)` while muted with the camera off.
+- **"join video" for every group participant**: the frontend gate now uses `isParticipant`. The
+  backend already admitted ordinary members receive-only (SCRUM-321); the button had simply never
+  been widened.
+- **Spotlight layout (user request, added to this ticket)**:
+  - Focusing a tile shows it large, with everyone else in a narrow, vertically scrollable strip
+    beside it. It's a local view state only.
+  - Tiles were extracted into a presentational `VideoTile.vue`, so the grid, spotlight and strip
+    can't drift. This isn't a new call surface: `VideoCallPanel.vue` still owns everything.
+- **Review follow-ups applied**:
+  - The idle timer stops on disconnect and failed rejoin.
+  - Listeners subscribe right after the join POST, and the counsellor lists are merged instead of
+    replaced.
+  - Mute/camera toggles are serialized. Chime flips state only after a device starts and releases
+    devices on revoke.
+  - The reveal dialog closes on revoke.
+  - No revoke notice is shown to someone who never held a grant.
+  - The counsellor snapshot counts only each user's live row.
+- **Deferred**:
+  - The idle sweep closing a grant on a stale row never mutes a reused Chime attendee (security
+    review, Low, pre-existing) — added to SCRUM-330.
+  - A token-minting failure leaks the raw provider error and leaves an open participant row —
+    SCRUM-335.
+- **Environment finding (not code)**: the dev queue worker had been FATAL since 00:00 UTC, because
+  the `mailpit` hostname didn't resolve and Laravel treats getaddrinfo failures as lost
+  connections. Mailpit's host ports moved to 1027/8027 in a separate PR (#256).

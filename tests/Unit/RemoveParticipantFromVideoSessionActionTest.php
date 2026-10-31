@@ -291,6 +291,7 @@ test('removing a member who holds speaking permission revokes it (participant_re
         'userId' => $data['member']->id,
         'canSendAudio' => false,
         'canSendVideo' => false,
+        'reason' => SpeakingPermissionRevocationReasonEnum::participant_removed->value,
     ]);
     Event::assertDispatched(VideoParticipantRemovedEvent::class);
 });

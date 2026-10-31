@@ -99,6 +99,7 @@ test('an active counsellor can grant a receive-only member speaking permission',
         'userId' => $data['member']->id,
         'canSendAudio' => true,
         'canSendVideo' => true,
+        'reason' => null,
     ]);
 });
 
