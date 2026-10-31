@@ -4,6 +4,7 @@ namespace App\Http\Resources;
 
 use App\Models\Counsellor;
 use App\Models\Therapy;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -40,8 +41,8 @@ class SessionResource extends JsonResource
 
         return [
             'id' => $this->id,
-            'userId' => $this->addedby_type == Counsellor::class ? $this->addedby->user->id : $this->addedby_id,
-            'updatedById' => $this->updatedby_type == Counsellor::class ? $this->updatedby->user_id : $this->updatedby_id,
+            'userId' => $this->addedby_type == Counsellor::class ? $this->addedby->user->id : $this->maskedUserId($this->addedby, $request->user()),
+            'updatedById' => $this->updatedby_type == Counsellor::class ? $this->updatedby->user_id : $this->maskedUserId($this->updatedby, $request->user()),
             'name' => $this->name,
             'about' => $this->about,
             'type' => $this->type,
@@ -100,5 +101,17 @@ class SessionResource extends JsonResource
             // (therapies.get vs group.therapies.get) without inferring it from field presence.
             'forType' => $this->whenLoaded('for', fn () => $isIndividualTherapy ? 'individual' : 'group'),
         ];
+    }
+
+    // SCRUM-345 (security review): a client who adds or confirms a session in an anonymous therapy
+    // is recorded as its addedby/updatedby -- their real id went to every other member. The frontend
+    // only compares these with the viewer's own id, and a masked person is never the viewer.
+    private function maskedUserId(?User $user, ?User $viewer): ?int
+    {
+        if (! $user) {
+            return null;
+        }
+
+        return $this->isAnonymousFor($user) && ! $user->is($viewer) ? null : $user->id;
     }
 }

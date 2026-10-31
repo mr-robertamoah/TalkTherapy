@@ -23,6 +23,7 @@ use App\Http\Controllers\PostController;
 use App\Http\Controllers\ProfessionController;
 use App\Http\Controllers\ReligionController;
 use App\Http\Controllers\ReportController;
+use App\Http\Controllers\ReportEvidenceController;
 use App\Http\Controllers\RequestController;
 use App\Http\Controllers\SessionController;
 use App\Http\Controllers\SessionNoteController;
@@ -157,6 +158,11 @@ Route::middleware('auth:sanctum')->group(function () {
     // professional licenses) -- same authenticated, authorized, throttled, uniform-404 shape.
     Route::get('/licenses/{license}/documents/{file}', [LicenseDocumentController::class, 'show'])->name('licenses.documents.show')->middleware('throttle:30,1')
         ->missing(fn () => response()->json(['status' => false, 'error' => 'Document not found.'], 404));
+
+    // SCRUM-337: the only retrieval path for report evidence -- same authenticated, authorized,
+    // throttled, uniform-404 shape as the document routes above.
+    Route::get('/reports/{report}/evidence/{file}', [ReportEvidenceController::class, 'show'])->name('reports.evidence.show')->middleware('throttle:30,1')
+        ->missing(fn () => response()->json(['status' => false, 'error' => 'Evidence not found.'], 404));
 
     Route::post('/testimonials', [TestimonialController::class, 'createTestimonial'])->name('api.testimonials.create');
     Route::delete('/testimonials/{testimonialId}', [TestimonialController::class, 'deleteTestimonial'])->name('api.testimonials.delete');

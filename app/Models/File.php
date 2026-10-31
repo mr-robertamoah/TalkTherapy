@@ -16,7 +16,7 @@ class File extends Model
 
     // Disks whose files must never get a public URL -- see config/filesystems.php. getUrlFor()
     // refuses them; each has its own authorized retrieval route instead.
-    public const PRIVATE_DISKS = ['identity_documents', 'license_documents', 'message_attachments'];
+    public const PRIVATE_DISKS = ['identity_documents', 'license_documents', 'message_attachments', 'report_evidence'];
 
     public function isOnPrivateDisk(): bool
     {
@@ -39,6 +39,14 @@ class File extends Model
     {
         return $this
             ->morphedByMany(Message::class, 'fileable', 'fileables')
+            ->withTimestamps();
+    }
+
+    // SCRUM-337: the reports a file is evidence for.
+    public function reports(): MorphToMany
+    {
+        return $this
+            ->morphedByMany(Report::class, 'fileable', 'fileables')
             ->withTimestamps();
     }
 

@@ -23,8 +23,11 @@ class MovePublicFilesToPrivateDiskAction extends Action
      * @param  string  $privateDisk  the private disk it moves to
      * @param  string  $sourceDisk  where it lives now -- 'public' by default; SCRUM-341 also moves
      *                              host-run installs' rows off the default 'local' disk
+     * @param  bool  $sweepDirectory  also move every other file under $directory -- false when the
+     *                                directory is shared with files that must stay public (SCRUM-337:
+     *                                report evidence lived in others/, beside post/how-to images)
      */
-    public function execute(string $relation, string $directory, string $privateDisk, string $sourceDisk = 'public'): int
+    public function execute(string $relation, string $directory, string $privateDisk, string $sourceDisk = 'public', bool $sweepDirectory = true): int
     {
         $moved = 0;
 
@@ -52,6 +55,10 @@ class MovePublicFilesToPrivateDiskAction extends Action
 
                 $moved++;
             });
+
+        if (! $sweepDirectory) {
+            return $moved;
+        }
 
         // Anything else still under the directory (no matching relation on its row, or no row at
         // all: an interrupted upload, manual testing, a crash between the row update and the delete

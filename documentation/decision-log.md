@@ -8518,3 +8518,36 @@ The user asked for the three follow-ups in one PR. SCRUM-340 (admin access to co
   - The dead `therapy_id` fillable and scope are removed.
   - Masked users still return their real user `id`, so a viewer can link the same anonymous client across requests. This isn't new and has the same shape as the existing masking, so it's deferred to **SCRUM-345**.
 - **Left as is:** `EnsureIsCounsellorAction` in the counsellor branch is now redundant but harmless. The frontend's `group.therapies.assist` route doesn't exist (dead code, untouched).
+
+## SCRUM-337 + SCRUM-345: report evidence private, masked users carry no id — 2026-10-31
+
+The user asked for both in one PR.
+
+- **SCRUM-337, report evidence:**
+  - New uploads go to a private `report_evidence` disk (`reports/`). They are served only through `reports.evidence.show`, to admins and the reporter. This follows the chat-attachment pattern: the file must be attached to that report, the private disk only, a uniform 404, and server-detected content types (images inline, everything else downloaded).
+  - The data migration moves existing evidence out of the public `others/` folder **without** sweeping the whole directory, because post and how-to images live there too and must stay public. `MovePublicFilesToPrivateDiskAction` gained a `sweepDirectory` option for this.
+- **Fixed in the same area rather than ticketed, because evidence would have leaked through each of them:**
+  - `GET /reports` and `GET /reports/{id}` had no permission check, so any signed-in user could read every report. Reads are now for admins and the reporter only, and a non-admin listing is always limited to their own reports.
+  - `ReportResource` was a raw model dump. It now has an explicit shape, and evidence links go through the authorized route.
+  - Report update deleted any file id it was given. It is now scoped to the report's own files, matching the SCRUM-195 message fix. The HTTP route doesn't pass `deletedFiles` today; the guard lives in the action.
+  - Update, delete and get give the same "Report not found." 404 for a missing report as for someone else's.
+  - The report-list endpoint returned a 500 on every call, because it passed a `like` key that the DTO lacks.
+  - The report-create validation named the therapy for any therapy id.
+  - Report updates that didn't re-send the reportable always crashed. The validation is now null-safe.
+- **From the reviews, also fixed here:**
+  - **High:** post update deleted any file id it was sent, so a reported user could wipe the evidence against them, or anyone's documents. It's now scoped to the post's own files.
+  - `SessionResource` sent a masked member's real id (`updatedById`/`userId`) when they confirmed or added a session. It's now masked like the others.
+  - The guest checks in `UnifiedTherapy.vue`, `useTherapyState.js` and `SessionBadge.vue` used `undefined == null`, so with masked ids now null a guest would have counted as the client. Each now checks for a signed-in user first.
+  - The migration also moves evidence from the `local` disk (host-run installs). It logs any report evidence still public afterwards, and any file in `others/` with no row. Those are never moved blindly, because they can't be told apart from post images.
+  - Migrated evidence keeps its stored `others/` path on the private disk, while new uploads go to `reports/`. Both work, because each row stores its own path. Leave it as is.
+  - The report list now eager-loads files.
+- **Deferred:**
+  - **SCRUM-347 (Medium, needs a product decision):** report create and update still let anyone test who is in a therapy, through the different error messages or success. The recommended fix is to let only participants report a therapy.
+  - **SCRUM-348 (Low):** a therapy's counsellor still receives the anonymous client's id, because counsellor→client messages are addressed with it. The fix is for the server to resolve the recipient.
+  - `ReportController::updateReport` never passes `deletedFiles`, so evidence removal is unreachable over HTTP. It's safe now, but left unwired.
+  - Report uploads have no type, size or count limit. Serving is safe; disk use is not capped.
+- **SCRUM-345, masked users:**
+  - Masked people now get `id: null` in `RequestResource`, `GroupTherapyResource` and `GroupTherapyMiniResource`.
+  - `TherapyResource` keeps the real id only for the therapy's own counsellor, because `TherapyComponent.vue` addresses chat messages to it. Removing it would break counsellor-to-client messaging on anonymous therapies.
+  - The other frontend uses of these ids only compare them with the viewer's own id, and a masked party is never the viewer.
+  - The counsellor of an anonymous *group* already couldn't address the creator (the masked entry has no `isUser`). That's unchanged here.

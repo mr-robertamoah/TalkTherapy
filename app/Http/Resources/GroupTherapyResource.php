@@ -74,7 +74,9 @@ class GroupTherapyResource extends JsonResource
                 : $this->when(
                     ! $isAnonymous,
                     new UserMiniResource($this->addedby),
-                    ['id' => $this->addedby?->id, 'fullName' => ConstantsEnum::anonymousUserLabel->value]
+                    // SCRUM-345: never the real id -- it would let viewers link the anonymous creator
+                    // across groups and requests. Nothing in the frontend needs it for a masked creator.
+                    ['id' => null, 'fullName' => ConstantsEnum::anonymousUserLabel->value]
                 ),
             'public' => (bool) $this->public,
             'anonymous' => (bool) $this->anonymous,

@@ -30,7 +30,9 @@ class CreateReportAction extends Action
             $fileData = $fileService->uploadFile(
                 FileUploadDTO::new()->fromArray([
                     'file' => $uploadedFile,
-                    'path' => 'others',
+                    // SCRUM-337: private -- never the public others/ folder.
+                    'disk' => 'report_evidence',
+                    'path' => 'reports',
                 ])
             );
 
