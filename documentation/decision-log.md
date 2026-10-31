@@ -8352,6 +8352,22 @@ architect's own design left room for either outcome; the spike found the simpler
   speakers), SCRUM-317 (live-provider QA), SCRUM-330 (stale reconnect rows), SCRUM-334 (identity
   exposure in calls), SCRUM-335 (token-mint error leak).
 
+## SCRUM-204 + SCRUM-210: two small information leaks — 2026-10-31
+
+- **SCRUM-204**: a discussion's counsellor roster is now only returned to admins and the discussion's
+  own counsellors, using the same gate as `showChat`. Anyone else gets the same `[]` as a nonexistent
+  discussion. `DiscussionModal` tolerates that empty response.
+- **SCRUM-210**: `EnsureCanCreateSessionAction` now authorizes FIRST, with a generic message. The
+  ticket assumed the "has an active session" message only fired after the participancy check, but
+  it ran before it, so it also leaked the therapy's name and live status to anyone.
+- **Hardening done alongside**: `Discussion::isParticipant` and `Therapy::isCounsellor` are now
+  null-safe. An unmatched therapy used to crash with a 500, which a counsellor could use to tell
+  "unmatched" apart from "someone else's".
+- **Deferred to SCRUM-339**:
+  - other session actions that still name the session before authorizing (update, delete, topic,
+    end, status);
+  - the `CreateSessionRequest` check that lets a caller confirm a guessed session name;
+  - therapy-exists vs not-allowed giving different answers.
 ## SCRUM-195: confidential messages, and the leaks found around them — 2026-10-31
 
 - **The ticket**: confidential messages were broadcast in full on the shared `sessions.{id}` channel.

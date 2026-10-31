@@ -52,7 +52,9 @@ test('DiscussionService::getDiscussionCounsellors returns only the counsellors a
     $unrelatedCounsellor->discussions()->attach($otherDiscussion->id);
 
     $result = DiscussionService::new()->getDiscussionCounsellors(
-        GetDiscussionsDTO::new()->fromArray(['discussion' => $discussion])
+        // A participant viewer: since SCRUM-204 the roster is only returned to the discussion's own
+        // counsellors and admins.
+        GetDiscussionsDTO::new()->fromArray(['discussion' => $discussion, 'user' => $attachedCounsellor->user])
     );
 
     $ids = collect($result)->pluck('id')->all();

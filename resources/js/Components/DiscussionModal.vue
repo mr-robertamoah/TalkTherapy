@@ -949,7 +949,7 @@ function hideOptions() {
 }
 
 function updatePage(res, data) {
-  if (res.data.links.next) data.value.page = data.value.page + 1;
+  if (res.data?.links?.next) data.value.page = data.value.page + 1;
   else data.value.page = 0;
 }
 
@@ -1134,7 +1134,8 @@ async function getDiscussionCounsellors() {
 
       discussionCounsellors.value.data = [
         ...discussionCounsellors.value.data,
-        ...res.data.data,
+        // SCRUM-204: a viewer outside the discussion now gets a bare [] instead of a page.
+        ...(res.data?.data ?? []),
       ];
 
       updatePage(res, discussionCounsellors);

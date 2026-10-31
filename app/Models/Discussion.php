@@ -62,7 +62,7 @@ class Discussion extends Model
             return false;
         }
 
-        return $this->addedby->is($counsellor) ||
+        return (bool) $this->addedby?->is($counsellor) ||
             $this->counsellors()
                 ->where('counsellor_id', $counsellor->id)
                 ->exists();
