@@ -59,7 +59,7 @@ The seeded "Refund Demo Therapy (Refunded)" therapy (owned by `refund_demo_clien
        $refund, \App\Enums\RefundStatusEnum::success->value, \App\Enums\RefundStatusSourceEnum::initiate->value
    );
    ```
-   Check Mailpit (`http://localhost:8025`) for the "Your Refund Has Been Processed" email to the
+   Check Mailpit (`http://localhost:8027`) for the "Your Refund Has Been Processed" email to the
    refund's `requestedBy`. Re-run with `RefundStatusEnum::failed->value` for "We Could Not Process
    Your Refund".
 

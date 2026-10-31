@@ -313,7 +313,7 @@ building a user via `tinker` first.
 The 11 seeded accounts above all skip email verification. To test registration or the
 verification email itself, register a new account through the UI with any email address — the
 app sends real emails through **Mailpit** in this dev environment, not out to the internet.
-View them at **http://localhost:8025**.
+View them at **http://localhost:8027**.
 
 ## Keeping this file current
 

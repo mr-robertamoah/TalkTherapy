@@ -53,7 +53,7 @@ App\Services\RequestService::new()->respondToRequest(
 Confirm: `$affiliation->currentCompensation()` now returns the proposed terms (on accept) or
 `null`/the prior terms unchanged (on reject); `$affiliation->status` is `active` only on accept
 of a first-ever proposal; the org admin who proposed receives the resolution notification (check
-Mailpit at http://localhost:8025).
+Mailpit at http://localhost:8027).
 
 ## Not yet built (later sub-tickets)
 

@@ -51,7 +51,7 @@ reachable immediately, with no manual "submit a refund request first" step. See
    visible via `App\Models\Refund`).
 5. Click "reject" on another row -- a reason textarea appears. Submitting with fewer than 10
    characters shows a client-side error; a valid reason removes the row, and the client (Mailpit,
-   `http://localhost:8025`) receives a "Your Refund Request Was Declined" email including the
+   `http://localhost:8027`) receives a "Your Refund Request Was Declined" email including the
    reason and an explicit statement that their platform/therapy access is unaffected.
 
 ### What a successful result looks like

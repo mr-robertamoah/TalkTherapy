@@ -77,7 +77,7 @@ already has a `PENDING` refund request -- see `documentation/seeded-data.md`'s "
   exists (source `INITIATE`), and (if the underlying transaction is org-financed) the
   organization's affected `CounsellorEarning` rows are reversed.
 - Running the same tinker call with `RefundStatusEnum::failed->value` instead notifies 2 random
-  platform admins via email (Mailpit, `http://localhost:8025`) with subject "A Refund Could Not Be
+  platform admins via email (Mailpit, `http://localhost:8027`) with subject "A Refund Could Not Be
   Processed."
 - The full backend test suite (`docker compose exec php php artisan test --parallel`) covers all
   of the above end-to-end without needing live credentials, via `Http::fake()`:
