@@ -35,9 +35,9 @@ function fakeVideoProvider(): VideoProviderInterface
             return ['room_id' => "fake-room-{$videoSession->id}", 'meta' => ['fake' => true]];
         }
 
-        public function createParticipantCredentials(VideoSession $videoSession, User $user, string $displayName, bool $isOwner = false, bool $receiveOnly = false): array
+        public function createParticipantCredentials(VideoSession $videoSession, User $user, string $displayName, bool $isOwner = false, bool $receiveOnly = false, bool $canSendVideo = true): array
         {
-            $this->createParticipantCredentialsCalls[] = [$videoSession->id, $user->id, $displayName, $isOwner, $receiveOnly];
+            $this->createParticipantCredentialsCalls[] = [$videoSession->id, $user->id, $displayName, $isOwner, $receiveOnly, $canSendVideo];
 
             return ['token' => "fake-token-{$user->id}"];
         }
@@ -155,7 +155,7 @@ test('a provider room-creation failure surfaces a safe, generic message, never t
             throw new RuntimeException('{"error":"authorization-header-error","info":"invalid authorization header"}');
         }
 
-        public function createParticipantCredentials(VideoSession $videoSession, User $user, string $displayName, bool $isOwner = false, bool $receiveOnly = false): array
+        public function createParticipantCredentials(VideoSession $videoSession, User $user, string $displayName, bool $isOwner = false, bool $receiveOnly = false, bool $canSendVideo = true): array
         {
             return [];
         }
@@ -412,4 +412,83 @@ test('a counsellor of an anonymous group still joins under their real name', fun
 
     [, , $displayName] = $fakeProvider->createParticipantCredentialsCalls[0];
     expect($displayName)->toBe($data['counsellorUser']->name);
+});
+
+// SCRUM-331: no Daily owner tokens in group calls -- an owner's browser could change any
+// participant's permissions client-side, bypassing the server-enforced minor/anonymity rules.
+test('a GroupTherapy counsellor never joins as a provider-side owner', function () {
+    $data = onlineInSessionGroupTherapySessionForJoin();
+    $fakeProvider = fakeVideoProvider();
+    app()->instance(VideoProviderInterface::class, $fakeProvider);
+
+    JoinVideoSessionAction::new()->execute($data['session'], $data['counsellorUser']);
+
+    [, , , $isOwner, $receiveOnly, $canSendVideo] = $fakeProvider->createParticipantCredentialsCalls[0];
+    expect($isOwner)->toBeFalse()
+        ->and($receiveOnly)->toBeFalse()
+        ->and($canSendVideo)->toBeTrue();
+});
+
+test('a 1:1 Therapy counsellor still joins as owner, unchanged', function () {
+    $session = onlineInSessionTherapySessionForJoin();
+    $fakeProvider = fakeVideoProvider();
+    app()->instance(VideoProviderInterface::class, $fakeProvider);
+    $counsellorUser = $session->for->counsellor->user;
+
+    JoinVideoSessionAction::new()->execute($session, $counsellorUser);
+
+    [, , , $isOwner] = $fakeProvider->createParticipantCredentialsCalls[0];
+    expect($isOwner)->toBeTrue();
+});
+
+// SCRUM-332: the creator of an anonymous group joins audio-only -- their face is never shown.
+test('the creator of an anonymous group joins audio-only', function () {
+    $data = onlineInSessionGroupTherapySessionForJoin();
+    $data['groupTherapy']->update(['anonymous' => true]);
+    $fakeProvider = fakeVideoProvider();
+    app()->instance(VideoProviderInterface::class, $fakeProvider);
+
+    JoinVideoSessionAction::new()->execute($data['session'], $data['creator']);
+
+    [, , $displayName, , $receiveOnly, $canSendVideo] = $fakeProvider->createParticipantCredentialsCalls[0];
+    expect($displayName)->toBe(ConstantsEnum::anonymousUserLabel->value)
+        ->and($receiveOnly)->toBeFalse()
+        ->and($canSendVideo)->toBeFalse();
+});
+
+test('the creator of a non-anonymous group keeps their camera', function () {
+    $data = onlineInSessionGroupTherapySessionForJoin();
+    $data['groupTherapy']->update(['anonymous' => false]);
+    $fakeProvider = fakeVideoProvider();
+    app()->instance(VideoProviderInterface::class, $fakeProvider);
+
+    JoinVideoSessionAction::new()->execute($data['session'], $data['creator']);
+
+    [, , , , , $canSendVideo] = $fakeProvider->createParticipantCredentialsCalls[0];
+    expect($canSendVideo)->toBeTrue();
+});
+
+test('a counsellor of an anonymous group keeps their camera', function () {
+    $data = onlineInSessionGroupTherapySessionForJoin();
+    $data['groupTherapy']->update(['anonymous' => true]);
+    $fakeProvider = fakeVideoProvider();
+    app()->instance(VideoProviderInterface::class, $fakeProvider);
+
+    JoinVideoSessionAction::new()->execute($data['session'], $data['counsellorUser']);
+
+    [, , , , , $canSendVideo] = $fakeProvider->createParticipantCredentialsCalls[0];
+    expect($canSendVideo)->toBeTrue();
+});
+
+// SCRUM-332's audio-only rule is group-only: an anonymous 1:1 Therapy client keeps their camera.
+test('an anonymous 1:1 Therapy client still joins with video allowed', function () {
+    $session = onlineInSessionTherapySessionForJoin();
+    $session->for->update(['anonymous' => true]);
+    $fakeProvider = fakeVideoProvider();
+    app()->instance(VideoProviderInterface::class, $fakeProvider);
+
+    JoinVideoSessionAction::new()->execute($session, $session->for->addedby);
+
+    [, , , , , $canSendVideo] = $fakeProvider->createParticipantCredentialsCalls[0];
+    expect($canSendVideo)->toBeTrue();
 });
