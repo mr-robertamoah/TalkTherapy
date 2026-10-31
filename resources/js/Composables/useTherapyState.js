@@ -36,7 +36,8 @@ export default function useTherapyState(therapy, therapyType = 'individual') {
             return (userId.value == computedTherapy.value.addedby?.id && computedTherapy.value.addedby?.isUser) ||
                    (userId.value == computedTherapy.value.addedby?.userId && computedTherapy.value.addedby?.isCounsellor)
         }
-        return userId.value == computedTherapy.value.user?.id
+        // !!userId: a masked client's id is null (SCRUM-345), and a guest's undefined == null.
+        return !!userId.value && userId.value == computedTherapy.value.user?.id
     })
     
     const computedIsCounsellor = computed(() => {

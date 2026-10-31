@@ -79,9 +79,9 @@ as_deploy npm --prefix "$APP_DIR" install --no-audit --no-fund --loglevel=error
 as_deploy npm --prefix "$APP_DIR" run build --silent
 as_deploy composer --working-dir="$APP_DIR" install --no-interaction --quiet
 
-# Private storage (identity, license and chat-attachment disks -- config/filesystems.php): owned by
+# Private storage (identity, license, chat-attachment and report-evidence disks -- config/filesystems.php): owned by
 # the web server user, group-shared, never world-readable.
-mkdir -p storage/app/private/identity-documents storage/app/private/license-documents storage/app/private/message-attachments
+mkdir -p storage/app/private/identity-documents storage/app/private/license-documents storage/app/private/message-attachments storage/app/private/report-evidence
 chown -R "${WEB_USER}:${WEB_GROUP}" storage/app/private
 chmod -R ug+rwX,o-rwx storage/app/private
 # setgid so later files inherit the group -- as the tree's owner, never as root through a path the

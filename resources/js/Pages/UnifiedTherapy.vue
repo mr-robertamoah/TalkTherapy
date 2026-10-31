@@ -134,7 +134,8 @@ const therapyForm = useForm({})
 // Computed properties
 const computedCanParticipate = computed(() => {
   const user = usePage().props.auth.user
-  if (user?.id == computedTherapy.value.user?.id || user?.counsellor) return true
+  // `user?.id &&`: a masked client has a null id (SCRUM-345), and a guest's undefined == null.
+  if ((user?.id && user.id == computedTherapy.value.user?.id) || user?.counsellor) return true
   return false
 })
 
@@ -223,11 +224,11 @@ function shouldGetCounsellorLinks() {
   const currentTherapy = computedTherapy.value
   
   if (props.therapyType === 'individual') {
-    return !currentTherapy.counsellor && user?.id == currentTherapy.user.id
+    return !currentTherapy.counsellor && !!user?.id && user.id == currentTherapy.user?.id
   } else {
     return (
-      (user?.id == currentTherapy.addedby.id && currentTherapy.addedby.isUser) ||
-      (user?.id == currentTherapy.addedby.userId && currentTherapy.addedby.isCounsellor)
+      (!!user?.id && user.id == currentTherapy.addedby?.id && currentTherapy.addedby.isUser) ||
+      (!!user?.id && user.id == currentTherapy.addedby?.userId && currentTherapy.addedby.isCounsellor)
     )
   }
 }

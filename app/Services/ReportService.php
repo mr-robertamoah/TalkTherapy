@@ -3,15 +3,16 @@
 namespace App\Services;
 
 use App\Actions\EnsureAddedbyIsValidAction;
-use App\Actions\Report\EnsureCanUpdateReportAction;
-use App\Actions\Report\EnsureReportExistsAction;
-use App\Actions\Report\EnsureReportDataIsValidAction;
 use App\Actions\Report\CreateReportAction;
 use App\Actions\Report\DeleteReportAction;
 use App\Actions\Report\EnsureCanCreateReportAction;
+use App\Actions\Report\EnsureCanUpdateReportAction;
+use App\Actions\Report\EnsureReportDataIsValidAction;
+use App\Actions\Report\EnsureReportExistsAction;
 use App\Actions\Report\UpdateReportAction;
 use App\DTOs\CreateReportDTO;
 use App\Enums\PaginationEnum;
+use App\Exceptions\ReportException;
 use App\Models\Report;
 
 class ReportService extends Service
@@ -20,7 +21,7 @@ class ReportService extends Service
     {
         EnsureAddedbyIsValidAction::new()->execute(
             $createReportDTO,
-            "You are not allowed to use the account to add the report."
+            'You are not allowed to use the account to add the report.'
         );
 
         EnsureCanCreateReportAction::new()->execute($createReportDTO);
@@ -56,7 +57,10 @@ class ReportService extends Service
 
     public function getReport(CreateReportDTO $createReportDTO)
     {
-        EnsureReportExistsAction::new()->execute($createReportDTO);
+        // SCRUM-337: admins and the reporter only, and a missing report gets the same answer.
+        if (! $createReportDTO->report?->isViewableBy($createReportDTO->user)) {
+            throw new ReportException('Report not found.', 404);
+        }
 
         return $createReportDTO->report;
     }
@@ -64,6 +68,12 @@ class ReportService extends Service
     public function getReports(CreateReportDTO $createReportDTO)
     {
         $query = Report::query();
+
+        // SCRUM-337: this listed every report to anyone signed in. Admins see all; everyone else
+        // only their own, whatever addedby/reportable filter they pass.
+        if (! $createReportDTO->user->isAdmin()) {
+            $query->whereReportedBy($createReportDTO->user);
+        }
 
         $query->when($createReportDTO->addedby, function ($query) use ($createReportDTO) {
             $query->whereAddedby($createReportDTO->addedby);
@@ -73,7 +83,8 @@ class ReportService extends Service
             $query->whereReportable($createReportDTO->reportable);
         });
 
-        $query->orderByDesc('created_at');
+        // ReportResource lists each report's evidence.
+        $query->with('files')->orderByDesc('created_at');
 
         return $query->paginate(PaginationEnum::preferencesPagination->value);
     }

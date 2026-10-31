@@ -100,7 +100,8 @@ test('MessageController::getTopicMessages applies to the URL\'s topic, not a spo
 });
 
 test('ReportController::getReport applies to the URL\'s report, not a spoofed reportId in the query', function () {
-    $user = User::factory()->create();
+    // An admin since SCRUM-337: reports are no longer readable by any signed-in user.
+    $user = anAdminForBatch2();
     $ownedReport = Report::create(['description' => 'Owned']);
     $unrelatedReport = Report::create(['description' => 'Untouched']);
 

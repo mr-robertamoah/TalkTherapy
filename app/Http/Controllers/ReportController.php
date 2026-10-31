@@ -99,7 +99,8 @@ class ReportController extends Controller
             $reports = ReportService::new()->getReports(
                 CreateReportDTO::new()->fromArray([
                     'user' => $request->user(),
-                    'like' => $request->like,
+                    // SCRUM-337: no 'like' here -- CreateReportDTO has no such property, so passing
+                    // it made this endpoint fail with a 500 on every call.
                     'addedby' => GetModelWithModelNameAndIdAction::new()->execute($request->addedbyType, $request->addedbyId),
                     'reportable' => GetModelWithModelNameAndIdAction::new()->execute($request->reportableType, $request->reportableId),
                 ])

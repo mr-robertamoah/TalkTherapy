@@ -19,7 +19,9 @@ class EnsureReportDataIsValidAction extends Action
         if (
             $this->canCreate($createReportDTO) ||
             ($action == 'update' && $this->canUpdate($createReportDTO))
-        ) return;
+        ) {
+            return;
+        }
 
         throw new ReportException("You have not provided enough data to {$action} report.", 422);
     }
@@ -29,39 +31,46 @@ class EnsureReportDataIsValidAction extends Action
         return $createReportDTO->description && $createReportDTO->reportable;
     }
 
+    // SCRUM-337: null-safe -- an update needn't re-send the reportable, and every such update used to 500.
     private function validateData(CreateReportDTO $createReportDTO)
     {
         if (
-            $createReportDTO->reportable->isTherapy &&
+            $createReportDTO->reportable?->isTherapy &&
             (
                 is_null($createReportDTO->data) ||
-                !count($createReportDTO->data) ||
-                !array_key_exists('userId', $createReportDTO->data) ||
-                !array_key_exists('counsellorId', $createReportDTO->data)
+                ! count($createReportDTO->data) ||
+                ! array_key_exists('userId', $createReportDTO->data) ||
+                ! array_key_exists('counsellorId', $createReportDTO->data)
             )
-        ) throw new ReportException("Please provide the person(s) you are reporting for this therapy.", 422);
+        ) {
+            throw new ReportException('Please provide the person(s) you are reporting for this therapy.', 422);
+        }
 
-        return;
     }
 
     private function validateDataEntries(CreateReportDTO $createReportDTO)
     {
         if (
-            $createReportDTO->reportable->isTherapy &&
+            $createReportDTO->reportable?->isTherapy &&
             (
                 array_key_exists('userId', $createReportDTO->data) &&
-                !$createReportDTO->reportable->isUser(User::find($createReportDTO->data['userId']))
+                ! $createReportDTO->reportable->isUser(User::find($createReportDTO->data['userId']))
             )
-        ) throw new ReportException("The user provided is not participating in the therapy ". $createReportDTO->reportable->name . ".", 422);
+            // SCRUM-337: never the therapy's name -- any therapy id can be sent here.
+        ) {
+            throw new ReportException('The user provided is not participating in this therapy.', 422);
+        }
 
         if (
-            $createReportDTO->reportable->isTherapy &&
+            $createReportDTO->reportable?->isTherapy &&
             (
                 array_key_exists('counsellorId', $createReportDTO->data) &&
-                !$createReportDTO->reportable->isCounsellor(Counsellor::find($createReportDTO->data['counsellorId']))
+                ! $createReportDTO->reportable->isCounsellor(Counsellor::find($createReportDTO->data['counsellorId']))
             )
-        ) throw new ReportException("The counsellor provided is not participating in the therapy ". $createReportDTO->reportable->name . ".", 422);
-        return;
+        ) {
+            throw new ReportException('The counsellor provided is not participating in this therapy.', 422);
+        }
+
     }
 
     private function canUpdate(CreateReportDTO $createReportDTO)

@@ -12,8 +12,10 @@ class EnsureReportExistsAction extends Action
     {
         if (
             $createReportDTO->report
-        ) return;
+        ) {
+            return;
+        }
 
-        throw new ReportException("You cannot perform this action because report was not found.", 422);
+        throw new ReportException('Report not found.', 404);
     }
 }

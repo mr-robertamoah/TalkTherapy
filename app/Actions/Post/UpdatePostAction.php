@@ -5,7 +5,6 @@ namespace App\Actions\Post;
 use App\Actions\Action;
 use App\DTOs\CreatePostDTO;
 use App\DTOs\FileUploadDTO;
-use App\Models\File;
 use App\Services\FileService;
 
 class UpdatePostAction extends Action
@@ -33,7 +32,7 @@ class UpdatePostAction extends Action
                 $fileData = $fileService->uploadFile(
                     FileUploadDTO::new()->fromArray([
                         'file' => $uploadedFile,
-                        'path' => 'others'
+                        'path' => 'others',
                     ])
                 );
 
@@ -42,14 +41,18 @@ class UpdatePostAction extends Action
 
             $createPostDTO->post->files()->attach(array_map(fn ($f) => $f->id, $files));
         }
-        
+
         if ($createPostDTO->deletedFiles) {
             $files = [];
 
-            foreach ($createPostDTO->deletedFiles as $fileId) {
-                $fileData = $fileService->deleteFile(File::find($fileId));
+            // Security review (SCRUM-337): only this post's own files -- any File id used to be
+            // accepted, so a post author could delete anyone's file, report evidence included.
+            $ownFiles = $createPostDTO->post->files()->whereIn('files.id', $createPostDTO->deletedFiles)->get();
 
-                $files[] = $fileId;
+            foreach ($ownFiles as $file) {
+                $fileService->deleteFile($file);
+
+                $files[] = $file->id;
             }
 
             $createPostDTO->post->files()->detach($files);
@@ -60,7 +63,8 @@ class UpdatePostAction extends Action
 
     private function setData(CreatePostDTO $createPostDTO)
     {
-        if ($createPostDTO->content !== $createPostDTO->post->content)
+        if ($createPostDTO->content !== $createPostDTO->post->content) {
             $this->data['content'] = $createPostDTO->content;
+        }
     }
 }

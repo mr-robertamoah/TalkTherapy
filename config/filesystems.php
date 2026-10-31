@@ -89,6 +89,18 @@ return [
             ],
         ],
 
+        // SCRUM-337: report evidence (often screenshots of private conversations). Served only by
+        // reports.evidence.show, to admins and the reporter.
+        'report_evidence' => [
+            'driver' => 'local',
+            'root' => storage_path('app/private/report-evidence'),
+            'throw' => true,
+            'permissions' => [
+                'file' => ['public' => 0660, 'private' => 0660],
+                'dir' => ['public' => 0770, 'private' => 0770],
+            ],
+        ],
+
         's3' => [
             'driver' => 's3',
             'key' => env('AWS_ACCESS_KEY_ID'),

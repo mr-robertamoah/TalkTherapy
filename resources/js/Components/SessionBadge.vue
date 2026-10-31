@@ -201,7 +201,9 @@ watchEffect(() => {
 
 
 const computedCanPerformActions = computed(() => {
-    return props.hasActions && props.session?.userId == usePage().props.auth.user?.id
+    // !!user: a masked id is null (SCRUM-345), and a guest's undefined == null.
+    const user = usePage().props.auth.user
+    return props.hasActions && !!user && props.session?.userId == user.id
 })
 
 async function deleteSession() {

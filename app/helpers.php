@@ -31,7 +31,7 @@ function getUrlFor(File $file)
     // calls this helper. A careless ->url/getUrlFor() on one (bypassing its dedicated authorized
     // route) fails loudly here instead of silently producing a working public link.
     if ($file->isOnPrivateDisk()) {
-        throw new RuntimeException('Private documents have no public URL -- use their authorized retrieval route (requests.documents.show / licenses.documents.show / messages.attachments.show) instead.');
+        throw new RuntimeException('Private documents have no public URL -- use their authorized retrieval route (requests.documents.show / licenses.documents.show / messages.attachments.show / reports.evidence.show) instead.');
     }
 
     $path = 'storage';

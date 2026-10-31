@@ -35,7 +35,8 @@ class GroupTherapyMiniResource extends JsonResource
                 : $this->when(
                     ! $isAnonymous,
                     new UserMiniResource($this->addedby),
-                    ['id' => $this->addedby?->id, 'fullName' => ConstantsEnum::anonymousUserLabel->value]
+                    // SCRUM-345: never the real id (see GroupTherapyResource).
+                    ['id' => null, 'fullName' => ConstantsEnum::anonymousUserLabel->value]
                 ),
             'counsellorsCount' => $this->counsellorsCount,
             'about' => $this->about,

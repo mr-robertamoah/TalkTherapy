@@ -119,12 +119,12 @@ class RequestResource extends JsonResource
             $isAnonymous = $this->for?->anonymous || (bool) ($this->data['anonymous'] ?? false);
 
             if ($isAnonymous && ! $this->from?->is($viewer)) {
-                return ['id' => $this->from?->id, 'fullName' => ConstantsEnum::anonymousUserLabel->value, 'isUser' => true];
+                return $this->anonymousUser();
             }
         }
 
         if ($this->isMaskedTherapyClient($this->from, $viewer)) {
-            return $this->anonymousUser($this->from);
+            return $this->anonymousUser();
         }
 
         // TT-4.10e/SCRUM-294 security review: for a self-service dob edit, `from` and `for` are
@@ -173,12 +173,12 @@ class RequestResource extends JsonResource
         // creator's own view of their own request.
         if ($this->type == RequestTypeEnum::groupTherapyMembership->value) {
             if ($this->for?->anonymous && ! $this->to?->is($viewer)) {
-                return ['id' => $this->to?->id, 'fullName' => ConstantsEnum::anonymousUserLabel->value, 'isUser' => true];
+                return $this->anonymousUser();
             }
         }
 
         if ($this->isMaskedTherapyClient($this->to, $viewer)) {
-            return $this->anonymousUser($this->to);
+            return $this->anonymousUser();
         }
 
         if ($this->isOrgMemberFlowUser($this->to, $viewer)) {
@@ -209,9 +209,12 @@ class RequestResource extends JsonResource
             && $this->for->addedByUserIsMaskedFor($viewer);
     }
 
-    private function anonymousUser(User $user): array
+    // SCRUM-345: no id -- a stable real id would let the viewer link the same anonymous person
+    // across requests. RequestBadge.vue only compares it with the viewer's own id, and a masked
+    // party is never the viewer.
+    private function anonymousUser(): array
     {
-        return ['id' => $user->id, 'fullName' => ConstantsEnum::anonymousUserLabel->value, 'isUser' => true];
+        return ['id' => null, 'fullName' => ConstantsEnum::anonymousUserLabel->value, 'isUser' => true];
     }
 
     // SCRUM-162 security review: TT-6.6d's org-scoped request queue newly surfaces
