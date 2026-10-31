@@ -25,6 +25,8 @@ class EnsureTherapyExistsAction extends Action
             return;
         }
 
-        throw new TherapyNotFoundException("{$type} was not found.", 422);
+        // SCRUM-343: the same answer EnsureCanUpdateTherapyAction gives a caller it refuses --
+        // otherwise the difference reveals which therapy ids exist.
+        throw new TherapyNotFoundException('You are not allowed to do that with this therapy.', 422);
     }
 }

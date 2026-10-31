@@ -10,17 +10,13 @@ class EnsureCanEndDiscussionAction extends Action
 {
     public function execute(CreateDiscussionDTO $createDiscussionDTO)
     {
-        if (
-            $createDiscussionDTO->user->isAdmin() ||
-            (
-                now()->greaterThan($createDiscussionDTO->discussion->end_time) &&
-                (
-                    $createDiscussionDTO->discussion->addedby->is($createDiscussionDTO->user) ||
-                    $createDiscussionDTO->discussion->addedby->is($createDiscussionDTO->user->counsellor)
-                )
-            )
-        ) return;
+        // SCRUM-343: authorize before the state check below, which names the discussion.
+        if (! $createDiscussionDTO->discussion->isManageableBy($createDiscussionDTO->user)) {
+            throw DiscussionException::notAllowed();
+        }
 
-        throw new DiscussionException("You are not allowed to end discussion with name: {$createDiscussionDTO->discussion->name}. Also ensure that it is past the end time of the discussion.", 422);
+        if (! $createDiscussionDTO->user->isAdmin() && ! now()->greaterThan($createDiscussionDTO->discussion->end_time)) {
+            throw new DiscussionException('You can only end this discussion once its end time has passed.', 422);
+        }
     }
 }

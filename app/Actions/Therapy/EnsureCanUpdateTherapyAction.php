@@ -20,8 +20,11 @@ class EnsureCanUpdateTherapyAction extends Action
                 $dto->user->counsellor &&
                 $dto->user->counsellor->is($therapy->addedby)
             )
-        ) return;
+        ) {
+            return;
+        }
 
-        throw new TherapyException("You are not allowed to update therapy with name: {$dto->therapy->name}.", 422);
+        // SCRUM-343: never names the therapy -- this refusal reaches people with no access to it.
+        throw new TherapyException('You are not allowed to do that with this therapy.', 422);
     }
 }

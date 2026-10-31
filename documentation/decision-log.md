@@ -8477,3 +8477,24 @@ The user asked for both in one PR.
     `ubuntu`, so private-storage ownership, `config:clear` and `queue:restart` need handling.
   - SCRUM-343: the same name-leak pattern in therapy and discussion actions.
   - SCRUM-341: remove the transitional disks.
+
+## SCRUM-341 + SCRUM-342 + SCRUM-343: follow-ups boxed into one PR — 2026-10-31
+
+The user asked for the three follow-ups in one PR. SCRUM-340 (admin access to confidential messages on a complaint) is excluded: it's a new feature that needs `/start-feature` and approval first.
+
+- **SCRUM-342, deploy design** (`scripts/deploy.sh` and `.github/workflows/main.yml`):
+  - The workflow extracts the script from the exact commit being deployed and runs it as root. The commit must be on `main`, and deploys are serialized.
+  - Root only handles ownership and removes stale symlinks. It never runs PHP: the security review showed that root artisan over the web-writable `storage/` and `bootstrap/cache` would hand the web user root.
+  - Every artisan command, including migrations, runs as the web server user. That user already owns the uploads being moved, and is detected from the php-fpm workers. The script aborts rather than guess, because a wrong user makes every private document unreadable.
+  - Maintenance mode is fatal if it can't be switched on. After a failure past the checkout, the site stays down rather than serving half-deployed code.
+  - Output is printed only on failure, because the repo is public.
+  - Not verifiable from here: the production box itself, its php-fpm user and process manager, and `ubuntu`'s sudo rights. The script's checks make the first deploy fail loudly rather than silently misconfigure.
+- **SCRUM-341**: the transitional `public`/`local` allowances were removed now, rather than "once every environment migrated". With the site down from checkout to migrate, nothing can serve a row before its move.
+  - A new migration moves `local`-disk message attachments from host-run installs.
+  - The move action refuses symlinks and uses `lchown`.
+- **SCRUM-343**: the SCRUM-339 pattern applied to the therapy update check and to every discussion management action.
+  - There is now one shared check, `Discussion::isManageableBy()`, and one refusal, `DiscussionException::notAllowed()`, which is also used for "discussion not found".
+  - Therapy "not found" now gives the same answer as the therapy refusal.
+  - End and Fail split authorization from the time rule. The semantics are unchanged: admins still bypass the time rule.
+  - `EnsureCanEndTherapyAction` no longer dumps the whole therapy model into its message.
+- **Deferred to SCRUM-344**: assistance-request and topic endpoints that name counsellors, therapies or topics before authorization, and the discussion-request existence probe.

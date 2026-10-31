@@ -4,6 +4,12 @@ on:
   push:
     branches: [main]
 
+# SCRUM-342: one deploy at a time -- two quick pushes must never run two deploys on the box at once.
+# Note: cancelling this job does not cancel a running SSM command.
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
 jobs:
   deployment:
     runs-on: ubuntu-latest
@@ -19,10 +25,43 @@ jobs:
           aws-access-key-id: ${{ secrets.ACCESS_KEY }}
           aws-secret-access-key: ${{ secrets.SECRET_ACCESS_KEY }}
 
+      # SCRUM-342: the deploy steps live in scripts/deploy.sh (versioned, reviewable, shellchecked).
+      # The instance extracts the script from the exact commit that triggered this run and runs it
+      # as root with DEPLOY_SHA set, so the commit deployed is the commit the script came from.
       - name: Deploy and build
+        id: deploy
         run: |
-          aws ssm send-command \
+          # $(mktemp), $f and $rc must expand on the instance, not on this runner -- hence single quotes.
+          # shellcheck disable=SC2016
+          COMMAND_ID=$(aws ssm send-command \
               --instance-ids "i-0ceef8e041cbec9af" \
               --document-name "AWS-RunShellScript" \
-              --parameters 'commands=["sudo -u ubuntu /bin/bash -c \"cd /var/www/TalkTherapy && git stash && git pull origin main && npm install && npm run build && composer install && php artisan migrate --force && php artisan cache:clear \"",]' \
-              --comment "Deploying TalkTherapy code"
+              --parameters 'commands=["set -e; cd /var/www/TalkTherapy; sudo -u ubuntu git fetch --quiet origin; f=$(mktemp); sudo -u ubuntu git show ${{ github.sha }}:scripts/deploy.sh > $f; rc=0; DEPLOY_SHA=${{ github.sha }} bash $f || rc=$?; rm -f $f; exit $rc"],executionTimeout=["3600"]' \
+              --comment "Deploying TalkTherapy ${{ github.sha }}" \
+              --query "Command.CommandId" --output text)
+          echo "command_id=$COMMAND_ID" >> "$GITHUB_OUTPUT"
+
+      # Previously fire-and-forget: a failed deploy still showed green here. Now the job waits for the
+      # command and fails if the deploy did. The repo is public, so the deploy's output is printed
+      # only on failure, and only its tail.
+      - name: Wait for the deploy to finish
+        env:
+          COMMAND_ID: ${{ steps.deploy.outputs.command_id }}
+          INSTANCE_ID: i-0ceef8e041cbec9af
+        run: |
+          # The waiter also absorbs the brief InvocationDoesNotExist window right after send-command,
+          # which would otherwise fail this step on the first get-command-invocation; it gives up
+          # after ~100s, so the loop below keeps polling for the rest of the deploy.
+          aws ssm wait command-executed --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" || true
+          for _ in $(seq 1 120); do
+            STATUS=$(aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --query Status --output text)
+            case "$STATUS" in Pending|InProgress|Delayed) sleep 30 ;; *) break ;; esac
+          done
+          echo "Deploy status: $STATUS"
+          if [ "$STATUS" != "Success" ]; then
+            aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" \
+                --query StandardOutputContent --output text | tail -c 3000
+            aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" \
+                --query StandardErrorContent --output text | tail -c 3000
+            exit 1
+          fi
