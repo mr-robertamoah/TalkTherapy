@@ -18,6 +18,12 @@ class EnsureCanUseLinkAction extends Action
             throw new LinkException('This link is no longer active.', 422);
         }
 
+        // SCRUM-350 (security review): its creator must still be allowed to issue it -- same answer
+        // as an inactive link.
+        if (! EnsureUserCanCreateLinkForAction::creatorMayStillIssue($createLinkDTO->link)) {
+            throw new LinkException('This link is no longer active.', 422);
+        }
+
         if (
             $createLinkDTO->link->addedby->is($createLinkDTO->user) ||
             $createLinkDTO->link->addedby->is($createLinkDTO->user->counsellor)

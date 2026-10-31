@@ -3,7 +3,6 @@
 namespace App\Services;
 
 use App\Actions\EnsureAddedbyIsValidAction;
-use App\Actions\GetModelWithModelNameAndIdAction;
 use App\Actions\Link\ChangeLinkStatusAction;
 use App\Actions\Link\CreateLinkAction;
 use App\Actions\Link\DeleteLinkAction;
@@ -11,6 +10,7 @@ use App\Actions\Link\EnsureCanUpdateLinkAction;
 use App\Actions\Link\EnsureCanUseLinkAction;
 use App\Actions\Link\EnsureLinkDataIsValidAction;
 use App\Actions\Link\EnsureLinkExistsAction;
+use App\Actions\Link\EnsureUserCanCreateLinkForAction;
 use App\Actions\Link\EnsureUserCanCreateOrganizationSelfApplyLinkAction;
 use App\Actions\Link\PerformLinkAction;
 use App\Actions\User\EnsureUserExistsAction;
@@ -45,39 +45,11 @@ class LinkService extends Service
         // leaking organization-id existence via 422-vs-403 (security review, SCRUM-164).
         EnsureUserCanCreateOrganizationSelfApplyLinkAction::new()->execute($createLinkDTO);
 
+        EnsureUserCanCreateLinkForAction::new()->execute($createLinkDTO);
+
         EnsureLinkDataIsValidAction::new()->execute($createLinkDTO);
 
         return CreateLinkAction::new()->execute($createLinkDTO);
-    }
-
-    public function createMultipleLinks(CreateLinkDTO $createLinkDTO)
-    {
-        EnsureUserExistsAction::new()->execute($createLinkDTO->user);
-
-        EnsureAddedbyIsValidAction::new()->execute(dto: $createLinkDTO, force: true);
-
-        $links = [];
-        foreach ($createLinkDTO->linksData as $data) {
-            $dto = CreateLinkDTO::new()->fromArray([
-                'user' => $createLinkDTO->user,
-                'addedby' => $createLinkDTO->addedby,
-                'type' => $createLinkDTO->type,
-                'for' => GetModelWithModelNameAndIdAction::new()->execute($data['forType'], $data['forId']),
-                'to' => GetModelWithModelNameAndIdAction::new()->execute($data['toType'], $data['toId']),
-            ]);
-
-            // Same authorization guard as createLink() -- without this, the per-item loop here
-            // would let any authenticated user bulk-create an organizationSelfApply link for an
-            // organization they don't administer (security review, SCRUM-164). A no-op for every
-            // other link type.
-            EnsureUserCanCreateOrganizationSelfApplyLinkAction::new()->execute($dto);
-
-            EnsureLinkDataIsValidAction::new()->execute($dto);
-
-            $links[] = CreateLinkAction::new()->execute($dto);
-        }
-
-        return $links;
     }
 
     public function changeLinkStatus(CreateLinkDTO $createLinkDTO)

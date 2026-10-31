@@ -138,13 +138,13 @@ function updatePage(res) {
                             v-for="(comment, idx) in comments.data"
                             :key="comment.id"
                             :comment="comment"
-                            @deleted="() => deletedComment(idx)"
+                            @deleted="(deleted) => deletedComment(deleted, idx)"
                         />
                     </div>
                     <div v-else-if="!loading" class="flex justify-center items-center h-full text-gray-500 text-sm">
                         <div class="text-center">
                             <div class="text-4xl mb-2">💬</div>
-                            <div>No comments for this {{ commentableType.toLowerCase() }}</div>
+                            <div>No comments for this {{ commentableType.replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase() }}</div>
                         </div>
                     </div>
 

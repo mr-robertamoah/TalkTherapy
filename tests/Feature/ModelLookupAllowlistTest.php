@@ -77,7 +77,7 @@ test('a link must be for the kind of model its type acts on', function () {
     $this->actingAs($owner)->postJson(route('api.links.create'), [
         'type' => 'THERAPY_COUNSELLOR', 'addedbyType' => 'User', 'addedbyId' => $owner->id,
         'forType' => 'GroupTherapy', 'forId' => $group->id,
-    ])->assertStatus(422);
+    ])->assertStatus(403); // SCRUM-350's per-type check refuses it first
 
     expect(Link::query()->count())->toBe(0);
 });

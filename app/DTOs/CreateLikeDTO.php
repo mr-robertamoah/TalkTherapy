@@ -14,9 +14,8 @@ class CreateLikeDTO extends BaseDTO
 {
     public ?User $user = null;
 
-    // SCRUM-349: no GroupTherapy until likes are authorized -- getLikes is public and would list who
-    // liked a private/anonymous group (SCRUM-351).
-    public Counsellor|Post|Therapy|null $likeable = null;
+    // SCRUM-354: public therapies and groups only -- EnsureLikeableExistsAction checks.
+    public Counsellor|Post|Therapy|GroupTherapy|null $likeable = null;
 
     public ?Like $like = null;
 }

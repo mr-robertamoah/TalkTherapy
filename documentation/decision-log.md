@@ -8595,3 +8595,37 @@ The user asked for both in one PR.
   - **SCRUM-351 (High):** comments and likes are public and unauthorized.
   - **SCRUM-352:** discussion session binding, and the alert participant check.
   - **SCRUM-353:** sending from the therapy chat page makes no request.
+
+## SCRUM-350 + SCRUM-351 + SCRUM-354: link authorization, public-only likes and comments — 2026-10-31
+
+The user asked for likes and comments on public individual and group therapies, ticketed as SCRUM-354 and boxed into the same PR as SCRUM-350 and SCRUM-351.
+
+- **SCRUM-350, link authorization:**
+  - New `EnsureUserCanCreateLinkForAction`, run in both `createLink` and `createMultipleLinks`. Each type follows the one place the app creates it:
+    - GUARDIANSHIP: only for yourself.
+    - THERAPY_COUNSELLOR: only the therapy's client.
+    - GROUP_THERAPY_*: only the group's creator (a user, or a counsellor's user).
+    - DISCUSSION: anyone who can manage the discussion (`Discussion::isManageableBy`, which includes admins).
+  - Every refusal is the same 403, including for a missing target.
+  - The misrouted `/links/multiple` route (it pointed at `createLink`; nothing used it) is removed. `createMultipleLinks` stays, because it's tested directly, and it gets the same check.
+- **SCRUM-351/354, who can like and comment.**
+  - "Public" (`public = true`) is the only rule, with no participant exception. A participant of a private therapy doesn't need likes or comments on it, and one rule is simpler to reason about.
+  - A private therapy is refused exactly like a missing one, and so are reads of comments already on it.
+- **Anonymity in comments.**
+  - **Masked:** a commenter who is one of the therapy's own anonymous people (`isAnonymousParticipant`).
+  - **Not masked:** outsiders, even on an anonymous therapy, because `isAnonymousFor()` alone is true for *anyone* there. Authors also always see their own comments.
+- **Therapy likes** return `{count, liked}`, never ids. Post and counsellor likes keep their id list, which their UI uses.
+- **The UI** is a self-contained `TherapyEngagementBar` that reuses `CommentsModal`, shown only when the resource includes `engagement`.
+- **From the reviews:**
+  - **Links are re-checked when used.** `EnsureCanUseLinkAction` now asks whether the link's creator could still issue it (`creatorMayStillIssue`), giving the same answer as an inactive link. Old malicious links stop working, a creator can't revive one through `changeLinkStatus`, and a link stops working once its creator loses authority.
+  - **Link clean-up migration** (`2026_10_31_150000`): deletes every link its creator couldn't have issued. Any that were already *used* are logged with their type and target first, for a manual audit of guardianships, therapy counsellors and discussion members. Production must check `laravel.log` for "SCRUM-350: removing a USED link" after deploy. Dev had none.
+  - **Creator must be the requester.** A link's `addedby` must be the requester or their counsellor profile, so an admin can't issue a link in someone else's name.
+  - **Comment anonymity is snapshotted** (`comments.anonymous`, migration `2026_10_31_140000`). The decision: a later change never unmasks a comment, whether the author leaves the group or anonymity is switched off. Older comments fall back to the live check.
+  - **Unliking always works.** Removing your own like is allowed after a therapy turns private.
+  - **Smaller fixes:**
+    - `Therapy::isUser` is null-safe.
+    - `instanceof` replaces `method_exists`, which a typo would have silently disabled.
+    - Group membership comes from the loaded relation, avoiding a query per comment.
+    - The CommentsModal delete removed the first comment, not the deleted one (an existing bug, reachable now).
+  - **Dead code removed:** the unreachable `createMultipleLinks` controller and service methods, and their test.
+  - **Follow-up:** **SCRUM-355**. Post and counsellor likes still list who liked them publicly.

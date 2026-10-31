@@ -80,6 +80,13 @@ class GroupTherapyResource extends JsonResource
                     ['id' => null, 'fullName' => ConstantsEnum::anonymousUserLabel->value]
                 ),
             'public' => (bool) $this->public,
+            // SCRUM-354: likes and comments exist only on public therapies -- a count and the viewer's
+            // own like, never who liked it.
+            'engagement' => $this->when($this->acceptsPublicEngagement(), fn () => [
+                'likesCount' => $this->likes()->count(),
+                'isLiked' => (bool) $user && $this->likes()->where('user_id', $user->id)->exists(),
+                'commentsCount' => $this->comments()->count(),
+            ]),
             'anonymous' => (bool) $this->anonymous,
             'allowInPerson' => (bool) $this->allow_in_person,
             'allowAnyone' => (bool) $this->allow_anyone,

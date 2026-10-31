@@ -7,6 +7,7 @@ use App\Enums\SessionStatusEnum;
 use App\Enums\TherapyStatusEnum;
 use App\Models\Counsellor;
 use App\Models\Discussion;
+use App\Models\GroupTherapy;
 use App\Models\Language;
 use App\Models\Message;
 use App\Models\Religion;
@@ -193,6 +194,25 @@ trait TherapyTrait
             ->whereType(RequestTypeEnum::sessionScheduleProposal->value)
             ->latest()
             ->first();
+    }
+
+    // SCRUM-351/354: only public therapies and groups can be liked or commented on -- and their
+    // comments read. A private therapy's likes and comments don't exist as far as anyone can tell.
+    public function acceptsPublicEngagement(): bool
+    {
+        return (bool) $this->public;
+    }
+
+    // SCRUM-354: whether $user is one of this therapy's own anonymous people (its anonymous client,
+    // or an anonymous group member/creator) -- their comments show the anonymous label. Anyone else
+    // commenting on a public therapy is never masked, even when the therapy itself is anonymous.
+    public function isAnonymousParticipant(User $user): bool
+    {
+        $isClientOrMember = $this instanceof GroupTherapy
+            ? $this->isUser($user) || $this->users->contains('id', $user->id)
+            : (bool) $this->addedby?->is($user);
+
+        return $isClientOrMember && $this->isAnonymousFor($user);
     }
 
     // Extracted from four independent copies of this same ternary (TherapyResource,

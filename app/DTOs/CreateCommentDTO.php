@@ -13,9 +13,8 @@ class CreateCommentDTO extends BaseDTO
 {
     public ?User $user = null;
 
-    // SCRUM-349: no GroupTherapy until comments are authorized -- getComments has no visibility
-    // check, so resolving groups here would publish private/anonymous group comments (SCRUM-351).
-    public Post|Therapy|null $commentable = null;
+    // SCRUM-354: public therapies and groups only -- EnsureCommentableExistsAction checks.
+    public Post|Therapy|GroupTherapy|null $commentable = null;
 
     public ?Comment $comment = null;
 

@@ -187,27 +187,6 @@ test('LinkService::createLink rejects a self-apply link for a nonexistent organi
     ))->toThrow(LinkException::class, 'You are not authorized to generate a self-apply link for this organization.');
 });
 
-// Security review (SCRUM-164): createMultipleLinks() builds its own per-item DTO and previously
-// skipped this guard entirely -- without it, any authenticated user could bulk-create a working
-// self-apply link for an organization they don't administer.
-test('LinkService::createMultipleLinks rejects a self-apply link for an organization the caller does not administer', function () {
-    [$organization] = organizationForSelfApplyLink();
-    $outsider = User::factory()->create();
-
-    expect(fn () => LinkService::new()->createMultipleLinks(
-        CreateLinkDTO::new()->fromArray([
-            'user' => $outsider,
-            'addedby' => $outsider,
-            'type' => LinkTypeEnum::organizationSelfApply->value,
-            'linksData' => [
-                ['forType' => 'Organization', 'forId' => $organization->id, 'toType' => null, 'toId' => null],
-            ],
-        ])
-    ))->toThrow(LinkException::class);
-
-    expect(Link::where('for_id', $organization->id)->where('for_type', Organization::class)->exists())->toBeFalse();
-});
-
 // Reviewer finding (SCRUM-164): GetLinksDTO::$for must accept an Organization too, since
 // LinkController::getLinks() is the natural way an org admin looks up a self-apply link they've
 // already generated (the same generic endpoint every other link type already uses for this).

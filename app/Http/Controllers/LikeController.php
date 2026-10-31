@@ -6,6 +6,7 @@ use App\Actions\GetModelWithModelNameAndIdAction;
 use App\DTOs\CreateLikeDTO;
 use App\Http\Resources\LikeResource;
 use App\Models\Counsellor;
+use App\Models\GroupTherapy;
 use App\Models\Like;
 use App\Models\Post;
 use App\Models\Therapy;
@@ -16,9 +17,8 @@ use Throwable;
 
 class LikeController extends Controller
 {
-    // SCRUM-349: never GroupTherapy until likees are authorized (SCRUM-351) -- it
-    // resolves now, and getLikes has no visibility check.
-    private const LIKEABLE_MODELS = [Counsellor::class, Post::class, Therapy::class];
+    // SCRUM-354: groups too -- only public therapies and groups get through EnsureLikeableExistsAction.
+    private const LIKEABLE_MODELS = [Counsellor::class, Post::class, Therapy::class, GroupTherapy::class];
 
     public function like(Request $request)
     {
@@ -59,6 +59,8 @@ class LikeController extends Controller
         try {
             return LikeService::new()->getLikes(
                 CreateLikeDTO::new()->fromArray([
+                    // A public route: the viewer is resolved from the SPA session when there is one.
+                    'user' => $request->user('sanctum'),
                     'likeable' => GetModelWithModelNameAndIdAction::new()->execute($request->likeableType, $request->likeableId, self::LIKEABLE_MODELS),
                 ])
             );
