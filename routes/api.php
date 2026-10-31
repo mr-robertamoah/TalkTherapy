@@ -12,6 +12,7 @@ use App\Http\Controllers\GroupTherapyController;
 use App\Http\Controllers\HowToController;
 use App\Http\Controllers\IdentityDocumentController;
 use App\Http\Controllers\LanguageController;
+use App\Http\Controllers\LicenseDocumentController;
 use App\Http\Controllers\LicensingAuthorityController;
 use App\Http\Controllers\LikeController;
 use App\Http\Controllers\LinkController;
@@ -146,7 +147,15 @@ Route::middleware('auth:sanctum')->group(function () {
     // and this route's own uniform-404 response is specifically designed to resist enumeration --
     // rate limiting is the second, load-bearing layer against scripting through sequential
     // request/file id pairs to map out who has submitted an identity document.
-    Route::get('/requests/{request}/documents/{file}', [IdentityDocumentController::class, 'show'])->name('requests.documents.show')->middleware('throttle:30,1');
+    // SCRUM-300 (security review): ->missing() keeps a nonexistent request/file id on the same 404
+    // body as a refusal -- otherwise route-model binding's own 404 tells ids that exist apart.
+    Route::get('/requests/{request}/documents/{file}', [IdentityDocumentController::class, 'show'])->name('requests.documents.show')->middleware('throttle:30,1')
+        ->missing(fn () => response()->json(['status' => false, 'error' => 'Document not found.'], 404));
+
+    // SCRUM-300: the counsellor-verification equivalent of the route above (national ID scans,
+    // professional licenses) -- same authenticated, authorized, throttled, uniform-404 shape.
+    Route::get('/licenses/{license}/documents/{file}', [LicenseDocumentController::class, 'show'])->name('licenses.documents.show')->middleware('throttle:30,1')
+        ->missing(fn () => response()->json(['status' => false, 'error' => 'Document not found.'], 404));
 
     Route::post('/testimonials', [TestimonialController::class, 'createTestimonial'])->name('api.testimonials.create');
     Route::delete('/testimonials/{testimonialId}', [TestimonialController::class, 'deleteTestimonial'])->name('api.testimonials.delete');
@@ -227,6 +236,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/sessions/{sessionId}/messages', [MessageController::class, 'getSessionMessages'])->name('api.session.messages.get');
     Route::get('/topics/{topicId}/messages', [MessageController::class, 'getTopicMessages'])->name('api.topic.messages.get');
     Route::get('/messages/{messageId}/replies', [MessageController::class, 'getMessageReplies'])->name('api.message.replies.get');
+    // SCRUM-195: how a confidential message's parties fetch its content -- broadcasts never carry it.
+    Route::get('/messages/{messageId}', [MessageController::class, 'getMessage'])->name('api.messages.show')->whereNumber('messageId')->middleware('throttle:60,1');
     Route::get('/messages/discussions/{discussionId}', [MessageController::class, 'getDiscussionMessages'])->name('api.discussion.messages.get');
     Route::post('/messages', [MessageController::class, 'createMessage'])->name('api.messages.create')->middleware('throttle:messages');
     Route::post('/messages/{messageId}', [MessageController::class, 'updateMessage'])->name('api.messages.update')->middleware('throttle:messages');

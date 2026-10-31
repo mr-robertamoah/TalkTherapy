@@ -57,6 +57,24 @@ return [
             'throw' => true,
         ],
 
+        // SCRUM-300/SCRUM-191: counsellor verification documents (national ID scans, professional
+        // licenses) -- private for the same reason as identity_documents above, and likewise has
+        // NO 'links' entry. They used to live on the public disk under licenses/, symlinked into
+        // public/ and reachable by anyone with the URL. Retrieved only via licenses.documents.show
+        // (EnsureUserCanViewLicenseDocumentAction). See File::PRIVATE_DISKS.
+        'license_documents' => [
+            'driver' => 'local',
+            'root' => storage_path('app/private/license-documents'),
+            'throw' => true,
+            // Group-shared rather than Flysystem's owner-only 0700/0600 default: whichever user
+            // first creates a directory (a root migration, a deploy user) must not lock the web
+            // server user out of it. Still never world-readable.
+            'permissions' => [
+                'file' => ['public' => 0660, 'private' => 0660],
+                'dir' => ['public' => 0770, 'private' => 0770],
+            ],
+        ],
+
         's3' => [
             'driver' => 's3',
             'key' => env('AWS_ACCESS_KEY_ID'),
@@ -85,7 +103,6 @@ return [
     'links' => [
         public_path('storage/avatars') => storage_path('app/public/avatars'),
         public_path('storage/covers') => storage_path('app/public/covers'),
-        public_path('storage/licenses') => storage_path('app/public/licenses'),
         public_path('storage/messages') => storage_path('app/public/messages'),
         public_path('storage/others') => storage_path('app/public/others'),
         // SCRUM-182/TT-10.5: organization logos (UpdateOrganizationAction's 'logos' upload path)

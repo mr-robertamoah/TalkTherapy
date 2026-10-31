@@ -8368,3 +8368,75 @@ architect's own design left room for either outcome; the spike found the simpler
     end, status);
   - the `CreateSessionRequest` check that lets a caller confirm a guessed session name;
   - therapy-exists vs not-allowed giving different answers.
+## SCRUM-195: confidential messages, and the leaks found around them — 2026-10-31
+
+- **The ticket**: confidential messages were broadcast in full on the shared `sessions.{id}` channel.
+- **Worse than reported**: `Message::isParty()` ran an unscoped query over the whole table, so it was
+  true for anyone who had ever sent or received ANY message. The page-load redaction the ticket
+  assumed worked was therefore ineffective too, and almost anyone could subscribe to any
+  `messages.{id}` channel. It is now a per-message comparison of `from`/`to` against the user or
+  their counsellor account.
+- **Design: broadcasts never carry per-viewer data.**
+  - `MessageResource::present(Message, ?User)` is now the one request-free place a message's shape
+    is decided. The broadcast uses it with NO viewer, which by construction gives the most
+    restricted view: no confidential content or replied-to content, and anonymous sender and
+    recipient ids masked. This replaces a hand-copied second shape in `MessageBroadcastTrait`.
+  - A confidential message's recipient fetches the full message from the new `api.messages.show`,
+    which uses the same visibility rule as replies (`MessageService::userCanSeeMessage`).
+  - The `messages.{id}` channel reuses that rule too.
+  - Frontend listeners run through a per-channel queue (`createBroadcastMessageQueue`), so waiting
+    on a fetch never reorders messages.
+- **Further holes found by the security review and fixed here**, because each defeated this
+  ticket's guarantee:
+  - **Reply target:** `replyId` accepted any message id, so the reply preview could read any message
+    in the system. Replies are now limited to the same conversation, and the preview is
+    confidential-aware.
+  - **Edit:** editing a confidential message silently cleared the flag. It is now only changed when
+    the edit request actually sends it.
+  - **Anonymous recipient:** the recipient's real user id was exposed. It is now masked, with
+    `recipientMasked` so the recipient's client still fetches.
+  - **Deleting files:** `deletedFiles` could delete ANY file by id. It is now scoped to the
+    message's own files.
+  - **Private notes:** a counsellor's note can never reach a broadcast.
+- **Behaviour change to confirm**: admins are no longer treated as parties to confidential messages,
+  so they see the redacted view like any other non-party. Before, they saw everything, but only
+  through the `isParty` bug.
+- **Known limitation**: `toOthers()` only skips the sending socket, so the sender's other tabs show
+  their own message in its restricted form.
+## SCRUM-300 + SCRUM-191: counsellor license/ID documents made private — 2026-10-31
+
+- **Scope**:
+  - Moves counsellor verification documents (national ID scans and professional licenses) off the
+    publicly symlinked `licenses/` path and onto a private `license_documents` disk.
+  - Serves them only through `licenses.documents.show`, to admins and the license's own counsellor.
+    Any other request gets a uniform 404.
+  - SCRUM-191 asked whether `licenses/` was meant to be public. It holds national ID scans, so it
+    isn't, and both tickets close together.
+  - Avatars, covers and logos stay public as intended.
+- **Pattern**: this mirrors SCRUM-302's identity-document route, so `getUrlFor()` now refuses every
+  disk in `File::PRIVATE_DISKS`.
+  - Ownership rules differ between the two (the request's `for` user versus the license's counsellor),
+    so the authorizers stay separate.
+  - The response hardening is shared: `StreamsPrivateDocuments`.
+- **Security-review fix, beyond the ticket**: the new route originally served files inline with the
+  uploader's claimed `Content-Type`, and verification uploads accepted any file. A counsellor could
+  have uploaded HTML/SVG that ran in an admin's session. Now:
+  - uploads only accept jpg/png/pdf, up to 10MB;
+  - the response uses the server-detected type, inline only for images;
+  - responses carry `nosniff` and a `sandbox` CSP;
+  - the identity-document route gets the same hardening.
+  Also: unknown ids get the same 404 body as refusals (`->missing()`), the owner check uses the
+  relation, and only license disks are ever streamed.
+- **Existing files**: a data migration moves them, along with orphans under `licenses/`, and removes
+  the stale `public/storage/licenses` symlink, which `storage:link --force` never prunes.
+  - It hands the new folder to the web-server user. The devops review found that a root or deploy-user
+    migration otherwise creates `0700` directories php-fpm can't read.
+  - The disk now uses group-shared permissions.
+  - It is skipped under the test runner, because `RefreshDatabase` migrates before a test can fake its
+    disks. While developing this, an unguarded version moved real dev files during a test run.
+- **Follow-ups filed**:
+  - SCRUM-336 (High): chat attachments are still on a public symlink.
+  - SCRUM-337: report evidence sits in the public `others/` folder.
+  - SCRUM-338: license documents are never deleted.
+- **Not fixable in code**: these scans were publicly reachable for as long as the link existed. Whether
+  anything further is owed to the affected counsellors is a privacy-owner decision.

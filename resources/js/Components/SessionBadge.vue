@@ -112,6 +112,7 @@ import useLocalDateTime from '@/Composables/useLocalDateTime';
 import Alert from './Alert.vue';
 import useShowMore from '@/Composables/useShowMore';
 import useUtilities from '@/Composables/useUtilities';
+import { createBroadcastMessageQueue } from '@/Composables/resolveBroadcastMessage';
 
 const { modalData, closeModal, showModal } = useModal()
 const { toDiffForHumans } = useLocalDateTime()
@@ -182,6 +183,7 @@ watchEffect(() => {
     if (!user || !props.listen || !props.session?.id) return
 
     mainSession.value = {...props.session}
+    const enqueueMessage = createBroadcastMessageQueue(user?.id)
 
     Echo
         .private(`sessions.${props.session.id}`)
@@ -190,7 +192,7 @@ watchEffect(() => {
             if (data.message?.fromUserId == user?.id)
                 return
 
-            emits('onMessageCreated', data.message)
+            enqueueMessage(data.message, (message) => emits('onMessageCreated', message))
         })
         .listen('.session.updated', (data) => {
             emits('onUpdate', data.session)

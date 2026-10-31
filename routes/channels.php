@@ -8,6 +8,7 @@ use App\Models\Message;
 use App\Models\Session;
 use App\Models\Therapy;
 use App\Models\User;
+use App\Services\MessageService;
 use Illuminate\Support\Facades\Broadcast;
 
 /*
@@ -107,6 +108,12 @@ Broadcast::channel('discussions.{discussionId}', function ($user, $discussionId)
     ];
 });
 
+// SCRUM-195: whoever may see the message at all -- the same rule as api.messages.show and
+// message replies (MessageService::userCanSeeMessage), so live edits/deletes reach every viewer of
+// the message. The payload is restricted for everyone (MessageBroadcastTrait), never per-viewer.
 Broadcast::channel('messages.{messageId}', function ($user, $messageId) {
-    return Message::withTrashed()->find($messageId)?->isParty($user);
+    $message = Message::withTrashed()->find($messageId);
+
+    return $message
+        && ($message->isParty($user) || MessageService::new()->userCanSeeMessage($message, $user));
 });

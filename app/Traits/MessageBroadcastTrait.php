@@ -2,9 +2,7 @@
 
 namespace App\Traits;
 
-use App\Http\Resources\FileResource;
-use App\Http\Resources\MessageMiniResource;
-use App\Models\Counsellor;
+use App\Http\Resources\MessageResource;
 use App\Models\Message;
 use App\Models\Session;
 
@@ -19,52 +17,14 @@ trait MessageBroadcastTrait
         return "discussions.{$message->for_id}";
     }
 
+    // One payload for every subscriber of a shared channel, so it is MessageResource's own view for
+    // NO viewer (SCRUM-195) -- by construction the most restricted one: a confidential message never
+    // carries its content, files or replied-to content, and anonymous sender/recipient ids are
+    // masked. A confidential message's parties fetch the full message from api.messages.show
+    // (resolveBroadcastMessage.js). Note toOthers() only skips the sending socket: the sender's
+    // other tabs get this restricted view of their own message too.
     public function getMessageBroadcastData(Message $message)
     {
-        $fromCounsellor = $message->from_type == Counsellor::class;
-
-        $fromId = $fromCounsellor ? $message->from?->user?->id : $message->from_id;
-
-        if ($message->deleted_at) {
-            return [
-                'id' => $message->id,
-                'status' => 'deleted for everyone',
-                'topicId' => $message->therapy_topic_id,
-                'fromUserId' => $fromId,
-                'type' => $message->type,
-                'updatedAt' => $message->updated_at,
-            ];
-        }
-
-        $counsellor = $fromCounsellor ? $message->from : $message->to?->counsellor;
-        $counsellorAvatar = $counsellor?->avatar?->url;
-
-        $toId = ! $fromCounsellor ? $message->to?->user?->id : $message->to_id;
-        $forType = str_replace('App\Models\\', '', $message->for_type);
-        $data = [
-            'id' => $message->id,
-            'fromUserId' => $fromId,
-            'toUserId' => $toId,
-            'fromCounsellor' => $fromCounsellor,
-            'replying' => $message->replying ? new MessageMiniResource($message->replying) : null,
-            'counsellorAvatar' => $counsellorAvatar,
-            'content' => $message->content,
-            'confidential' => $message->confidential,
-            'type' => $message->type,
-            'topicId' => $message->therapy_topic_id,
-            'forType' => $forType,
-            'status' => $message->status,
-            'files' => FileResource::collection($message->files),
-            'updatedAt' => $message->updated_at,
-            'createdAt' => $message->created_at,
-        ];
-
-        if ($forType == 'Discussion') {
-            return array_merge($data, [
-                'counsellorName' => $counsellor?->getName(),
-            ]);
-        }
-
-        return $data;
+        return MessageResource::present($message, null);
     }
 }

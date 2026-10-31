@@ -10,7 +10,7 @@ class LicenseService extends Service
     public function createLicense(CreateLicenseDTO $createLicenseDTO)
     {
         $license = $createLicenseDTO->licensingAuthority->licenses()->create([
-            'number' => $createLicenseDTO->number
+            'number' => $createLicenseDTO->number,
         ]);
 
         $license->addedby()->associate($createLicenseDTO->addedby);
@@ -23,12 +23,13 @@ class LicenseService extends Service
             $fileService = FileService::new();
             $data = $fileService->uploadFile(FileUploadDTO::new()->fromArray([
                 'file' => $createLicenseDTO->file,
-                'disk' => 'public',
-                'path' => 'licenses'
+                // SCRUM-300: private, never the public disk -- see config/filesystems.php.
+                'disk' => 'license_documents',
+                'path' => 'licenses',
             ]));
 
             $file = $fileService->saveFile(
-                $createLicenseDTO->addedby, 
+                $createLicenseDTO->addedby,
                 $data
             );
 

@@ -14,6 +14,21 @@ class File extends Model
         'name', 'mime', 'size', 'path', 'storage',
     ];
 
+    // Disks whose files must never get a public URL -- see config/filesystems.php. getUrlFor()
+    // refuses them; each has its own authorized retrieval route instead.
+    public const PRIVATE_DISKS = ['identity_documents', 'license_documents'];
+
+    public function isOnPrivateDisk(): bool
+    {
+        return in_array($this->storage, self::PRIVATE_DISKS, true);
+    }
+
+    // The path within its disk, as stored by FileService::uploadFile().
+    public function diskPath(): string
+    {
+        return (strlen($this->path) ? $this->path.'/' : '').$this->name;
+    }
+
     public function getUrlAttribute()
     {
         return getUrlFor($this);
