@@ -146,3 +146,5 @@ Group video is a separate feature built on top of this base infrastructure — s
 `documentation/features/scrum-27-group-therapy-video.md` for its own scope (v1 is
 counsellor-team + optional creator, not full-membership), what was built (authorization,
 counsellor-only termination, in-call participant removal), test data, and known limitations.
+Full-membership group video (every member joins receive-only, raises a hand, and counsellors let
+them speak) followed as TT-3.2f — see `documentation/features/scrum-314-full-membership-group-video.md`.

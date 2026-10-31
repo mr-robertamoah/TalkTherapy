@@ -8322,3 +8322,32 @@ architect's own design left room for either outcome; the spike found the simpler
 - **Environment finding (not code)**: the dev queue worker had been FATAL since 00:00 UTC, because
   the `mailpit` hostname didn't resolve and Laravel treats getaddrinfo failures as lost
   connections. Mailpit's host ports moved to 1027/8027 in a separate PR (#256).
+
+## SCRUM-328 (TT-3.2f-k): epic closeout, full-membership group video (SCRUM-314) — 2026-10-31
+
+- **How the spike's findings held up (SCRUM-320 → SCRUM-322)**: both providers did support live
+  capability changes server-side, as the spike found, so `updateParticipantCapabilities()` shipped as
+  a plain interface method with no "requires reissue" branch, which is the design originally
+  proposed. The spike left one detail open: whether Daily's `update-permissions` is keyed by the same
+  `user_id` we send at token mint. The adapter keys by our user id, matching `/eject`'s confirmed
+  `user_ids`. That still hasn't been checked against a live Daily account (no sandbox credentials,
+  SCRUM-317), so it's part of that ticket's live pass.
+- **Regression suite design**: a closeout suite that only re-ran the action tests' fake providers
+  would only re-check our database. Instead, `GroupVideoSpeakingModerationRegressionTest` drives the
+  real HTTP routes through the **real** adapters for both providers, and fakes only the transport. The
+  assertions then check what each provider would enforce: Daily's `canSend` from token minting and
+  update-permissions, and Chime attendee `Capabilities`.
+- **Seed fixtures**: no new seeding was needed. SCRUM-327 already added the adult, minor and
+  anonymous members the golden path needs (the old demo "member" had a null dob, so it was silently a
+  minor).
+- **Judgment calls made across a–j**: each is logged under its own ticket entry above. The
+  consequential ones were:
+  - refusing the anonymity switch during a live call (SCRUM-332), rather than downgrading people
+    mid-call;
+  - per-reason provider-failure semantics for revokes (SCRUM-323);
+  - broadcasting only live-join revokes (SCRUM-327);
+  - the extra scope the user asked for: the spotlight view (SCRUM-327) and moving mailpit's host ports
+    (#256).
+- **Epic status**: TT-3.2f is complete. Open follow-ups: SCRUM-313/329 (guardian consent for minor
+  speakers), SCRUM-317 (live-provider QA), SCRUM-330 (stale reconnect rows), SCRUM-334 (identity
+  exposure in calls), SCRUM-335 (token-mint error leak).
