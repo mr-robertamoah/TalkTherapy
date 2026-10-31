@@ -13,10 +13,12 @@ class FileService extends Service
 {
     public function uploadFile(FileUploadDTO $fileUploadDTO)
     {
-        if (is_null($fileUploadDTO->file)) return null;
+        if (is_null($fileUploadDTO->file)) {
+            return null;
+        }
 
         $disk = $fileUploadDTO->disk ?: env('FILESYSTEM_DISK');
-        
+
         $data = [];
         $data['mime'] = $fileUploadDTO->file->getClientMimeType();
         $data['size'] = $fileUploadDTO->file->getSize();
@@ -25,7 +27,7 @@ class FileService extends Service
 
         $result = Storage::disk($disk)->put($fileUploadDTO->path, $fileUploadDTO->file);
 
-        $data['name'] = str_replace(strlen($data['path']) ? $data['path'] . '/' : '', '', $result);
+        $data['name'] = str_replace(strlen($data['path']) ? $data['path'].'/' : '', '', $result);
 
         return $data;
     }
@@ -42,13 +44,13 @@ class FileService extends Service
         return $file;
     }
 
-    public function deleteFile(File|null $file)
+    public function deleteFile(?File $file)
     {
-        if (is_null($file)) return;
+        if (is_null($file)) {
+            return;
+        }
 
-        $path = (strlen($file->path) ? $file->path . '/' : '') . $file->name;
-        
-        Storage::disk($file->storage)->delete($path);
+        Storage::disk($file->storage)->delete($file->diskPath());
 
         return $file->delete();
     }
