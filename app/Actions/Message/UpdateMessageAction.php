@@ -5,7 +5,6 @@ namespace App\Actions\Message;
 use App\Actions\Action;
 use App\DTOs\CreateMessageDTO;
 use App\DTOs\FileUploadDTO;
-use App\Models\File;
 use App\Models\Message;
 use App\Services\FileService;
 
@@ -28,7 +27,7 @@ class UpdateMessageAction extends Action
                 $fileData = $fileService->uploadFile(
                     FileUploadDTO::new()->fromArray([
                         'file' => $uploadedFile,
-                        'path' => 'messages'
+                        'path' => 'messages',
                     ])
                 );
 
@@ -37,14 +36,18 @@ class UpdateMessageAction extends Action
 
             $createMessageDTO->message->files()->attach(array_map(fn ($f) => $f->id, $files));
         }
-        
+
         if ($createMessageDTO->deletedFiles) {
             $files = [];
 
-            foreach ($createMessageDTO->deletedFiles as $fileId) {
-                $fileData = $fileService->deleteFile(File::find($fileId));
+            // SCRUM-195 (security review): only this message's own files -- any File id used to
+            // be accepted, letting anyone who could edit a message of theirs delete any file.
+            $ownFiles = $createMessageDTO->message->files()->whereIn('files.id', $createMessageDTO->deletedFiles)->get();
 
-                $files[] = $fileId;
+            foreach ($ownFiles as $file) {
+                $fileService->deleteFile($file);
+
+                $files[] = $file->id;
             }
 
             $createMessageDTO->message->files()->detach($files);
@@ -64,18 +67,19 @@ class UpdateMessageAction extends Action
             ? $createMessageDTO->therapyTopic?->id
             : $createMessageDTO->message->therapy_topic_id;
     }
-    
+
     private function setValueOnData(
-        String $dataKey,
+        string $dataKey,
         CreateMessageDTO $createMessageDTO,
-        String|null $objectKey = null
+        ?string $objectKey = null
     ) {
         $objectKey = $objectKey ?: $dataKey;
 
         if (
-            !is_null($createMessageDTO->$objectKey) &&
+            ! is_null($createMessageDTO->$objectKey) &&
             $createMessageDTO->$objectKey !== $createMessageDTO->message->$dataKey
-        )        
+        ) {
             $this->data[$dataKey] = $createMessageDTO->$objectKey;
+        }
     }
 }

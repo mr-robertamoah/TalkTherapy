@@ -589,13 +589,9 @@ describe('update message tests', function () {
                 'files' => $files,
             ])
         );
-        $message = Message::factory()->create([
-            'from_id' => $fromUser->id,
-            'from_type' => $fromUser::class,
-            'for_id' => $session->id,
-            'for_type' => $session::class,
-        ]);
-
+        // SCRUM-195: the files being deleted must belong to the message being edited -- this test
+        // used to edit an unrelated message and delete the first message's file through it, the
+        // exact cross-message delete the fix now refuses (see the test below).
         $this->assertDatabaseHas('files', [
             'mime' => 'image/jpeg',
         ]);

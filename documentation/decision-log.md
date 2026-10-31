@@ -8351,3 +8351,39 @@ architect's own design left room for either outcome; the spike found the simpler
 - **Epic status**: TT-3.2f is complete. Open follow-ups: SCRUM-313/329 (guardian consent for minor
   speakers), SCRUM-317 (live-provider QA), SCRUM-330 (stale reconnect rows), SCRUM-334 (identity
   exposure in calls), SCRUM-335 (token-mint error leak).
+
+## SCRUM-195: confidential messages, and the leaks found around them — 2026-10-31
+
+- **The ticket**: confidential messages were broadcast in full on the shared `sessions.{id}` channel.
+- **Worse than reported**: `Message::isParty()` ran an unscoped query over the whole table, so it was
+  true for anyone who had ever sent or received ANY message. The page-load redaction the ticket
+  assumed worked was therefore ineffective too, and almost anyone could subscribe to any
+  `messages.{id}` channel. It is now a per-message comparison of `from`/`to` against the user or
+  their counsellor account.
+- **Design: broadcasts never carry per-viewer data.**
+  - `MessageResource::present(Message, ?User)` is now the one request-free place a message's shape
+    is decided. The broadcast uses it with NO viewer, which by construction gives the most
+    restricted view: no confidential content or replied-to content, and anonymous sender and
+    recipient ids masked. This replaces a hand-copied second shape in `MessageBroadcastTrait`.
+  - A confidential message's recipient fetches the full message from the new `api.messages.show`,
+    which uses the same visibility rule as replies (`MessageService::userCanSeeMessage`).
+  - The `messages.{id}` channel reuses that rule too.
+  - Frontend listeners run through a per-channel queue (`createBroadcastMessageQueue`), so waiting
+    on a fetch never reorders messages.
+- **Further holes found by the security review and fixed here**, because each defeated this
+  ticket's guarantee:
+  - **Reply target:** `replyId` accepted any message id, so the reply preview could read any message
+    in the system. Replies are now limited to the same conversation, and the preview is
+    confidential-aware.
+  - **Edit:** editing a confidential message silently cleared the flag. It is now only changed when
+    the edit request actually sends it.
+  - **Anonymous recipient:** the recipient's real user id was exposed. It is now masked, with
+    `recipientMasked` so the recipient's client still fetches.
+  - **Deleting files:** `deletedFiles` could delete ANY file by id. It is now scoped to the
+    message's own files.
+  - **Private notes:** a counsellor's note can never reach a broadcast.
+- **Behaviour change to confirm**: admins are no longer treated as parties to confidential messages,
+  so they see the redacted view like any other non-party. Before, they saw everything, but only
+  through the `isParty` bug.
+- **Known limitation**: `toOthers()` only skips the sending socket, so the sender's other tabs show
+  their own message in its restricted form.

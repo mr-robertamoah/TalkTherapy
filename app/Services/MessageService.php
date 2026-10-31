@@ -12,6 +12,7 @@ use App\Actions\Message\EnsureCanUpdateMessageAction;
 use App\Actions\Message\EnsureIsFromUserAction;
 use App\Actions\Message\EnsureMessageDataIsValidAction;
 use App\Actions\Message\EnsureMessageExistsAction;
+use App\Actions\Message\EnsureReplyIsInSameConversationAction;
 use App\Actions\Message\EnsureUserCanAccessTherapyContentAction;
 use App\Actions\Message\UpdateMessageAction;
 use App\DTOs\CreateMessageDTO;
@@ -225,17 +226,41 @@ class MessageService extends Service
 
     public function getMessageReplies(?Message $message, ?User $user)
     {
-        if (! $message) {
+        if (! $message || ! $this->userCanSeeMessage($message, $user)) {
             return [];
         }
 
+        $query = $message->replies()->withTrashed();
+
+        return MessageResource::collection($query->latest()->paginate(
+            PaginationEnum::preferencesPagination->value
+        ));
+    }
+
+    // SCRUM-195: one message, through MessageResource's own per-viewer rules (confidential
+    // redaction, anonymity masking) -- how a confidential message's parties get its content, since
+    // broadcasts never carry it. Same visibility rule as getMessageReplies().
+    public function getMessage(?Message $message, ?User $user): ?MessageResource
+    {
+        if (! $message || ! $this->userCanSeeMessage($message, $user)) {
+            return null;
+        }
+
+        return new MessageResource($message);
+    }
+
+    // Whether $user may see $message at all, based on whatever it belongs to. Extracted from
+    // getMessageReplies() (SCRUM-195) so getMessage() and the messages.{id} channel can't drift
+    // from it.
+    public function userCanSeeMessage(Message $message, ?User $user): bool
+    {
         // SCRUM-74: this previously had NO authorization check at all -- any caller (including,
         // before this route moved behind auth:sanctum, an unauthenticated one) could fetch
         // replies to any message by id. Mirror the same participant checks used by
         // getSessionMessages()/getDiscussionMessages(), based on whatever the parent message
         // belongs to.
         if (! $user) {
-            return [];
+            return false;
         }
 
         // This outer isNotAdmin() stays (rather than letting EnsureUserCanAccessTherapyContentAction
@@ -251,31 +276,26 @@ class MessageService extends Service
                 // check, same reason.
                 //
                 // TT-7.5b-b3/SCRUM-267: unlike getSessionMessages()/getTherapyTopicMessages()
-                // above, this fetches replies to ONE specific parent $message, not a whole
+                // above, this concerns ONE specific $message (itself, or its replies), not a whole
                 // session's worth of content -- so the late-joiner comparison point here is that
-                // message's own created_at, not the session's start_time. Replies to a message
-                // posted before a member joined stay visible; replies to one posted after are
-                // gated normally.
+                // message's own created_at, not the session's start_time. A message posted before
+                // a member joined stays visible; one posted after is gated normally.
                 if (! EnsureUserCanAccessTherapyContentAction::new()->execute($for->for, $user, $for, $message->created_at)) {
-                    return [];
+                    return false;
                 }
             } elseif ($for instanceof Discussion) {
                 if ($for->isNotParticipant($user->counsellor)) {
-                    return [];
+                    return false;
                 }
             } else {
                 // $for is null (the message's own Session/Discussion has been soft-deleted --
                 // Message::for() isn't withTrashed()) or an unexpected type -- deny by default
                 // instead of silently falling through to the unguarded query below.
-                return [];
+                return false;
             }
         }
 
-        $query = $message->replies()->withTrashed();
-
-        return MessageResource::collection($query->latest()->paginate(
-            PaginationEnum::preferencesPagination->value
-        ));
+        return true;
     }
 
     /**
@@ -290,6 +310,8 @@ class MessageService extends Service
         EnsureCanSendMessageToRecepientAction::new()->execute($createMessageDTO);
 
         EnsureMessageDataIsValidAction::new()->execute($createMessageDTO);
+
+        EnsureReplyIsInSameConversationAction::new()->execute($createMessageDTO);
 
         $message = CreateMessageAction::new()->execute($createMessageDTO);
 
@@ -308,6 +330,8 @@ class MessageService extends Service
         EnsureCanUpdateMessageAction::new()->execute($createMessageDTO);
 
         EnsureMessageDataIsValidAction::new()->execute($createMessageDTO, true);
+
+        EnsureReplyIsInSameConversationAction::new()->execute($createMessageDTO);
 
         $message = UpdateMessageAction::new()->execute($createMessageDTO);
 

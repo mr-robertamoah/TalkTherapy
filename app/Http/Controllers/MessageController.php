@@ -26,6 +26,16 @@ class MessageController extends Controller
     // SessionController (SCRUM-116/SCRUM-130). Note topicId is legitimately body-only in
     // createMessage/updateMessage/getSessionMessages (no {topicId} route segment there) but IS
     // the route parameter in getTopicMessages -- fixed only where it's actually route-bound.
+
+    // SCRUM-195: a 404 for both "no such message" and "not yours to see", like the document routes.
+    public function getMessage(Request $request)
+    {
+        return MessageService::new()->getMessage(
+            Message::find($request->route('messageId')),
+            $request->user()
+        ) ?? response()->json(['message' => 'Message not found.'], 404);
+    }
+
     public function getMessageReplies(Request $request)
     {
         return MessageService::new()->getMessageReplies(
@@ -118,7 +128,10 @@ class MessageController extends Controller
                     'reply' => Message::find($request->replyId),
                     'message' => $message,
                     'therapyTopic' => TherapyTopic::find($request->topicId),
-                    'confidential' => $request->boolean('confidential'),
+                    // SCRUM-195 (security review): only when actually sent -- boolean() turns a
+                    // missing field into false, so every edit used to quietly make a confidential
+                    // message public (MessageBadge's edit never sends the flag).
+                    'confidential' => $request->has('confidential') ? $request->boolean('confidential') : null,
                     'for' => $message?->for,
                 ])
             );
