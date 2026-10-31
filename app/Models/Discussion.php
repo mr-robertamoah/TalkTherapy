@@ -56,6 +56,15 @@ class Discussion extends Model
             ->withTimestamps();
     }
 
+    // SCRUM-343: who may manage a discussion (update, delete, start/end/fail, remove counsellors) --
+    // an admin or its creator, whether they act as themselves or as their counsellor account.
+    public function isManageableBy(User $user): bool
+    {
+        return $user->isAdmin()
+            || (bool) $this->addedby?->is($user)
+            || (bool) $this->addedby?->is($user->counsellor);
+    }
+
     public function isParticipant(?Counsellor $counsellor)
     {
         if (! $counsellor) {

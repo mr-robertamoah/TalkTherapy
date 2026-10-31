@@ -19,32 +19,36 @@ class MovePublicFilesToPrivateDiskAction extends Action
 {
     /**
      * @param  string  $relation  the File relation that identifies the category ('licenses', 'messages')
-     * @param  string  $publicDirectory  its directory on the public disk
+     * @param  string  $directory  its directory on the source disk
      * @param  string  $privateDisk  the private disk it moves to
+     * @param  string  $sourceDisk  where it lives now -- 'public' by default; SCRUM-341 also moves
+     *                              host-run installs' rows off the default 'local' disk
      */
-    public function execute(string $relation, string $publicDirectory, string $privateDisk): int
+    public function execute(string $relation, string $directory, string $privateDisk, string $sourceDisk = 'public'): int
     {
         $moved = 0;
 
         File::query()
-            ->where('storage', 'public')
+            ->where('storage', $sourceDisk)
             ->whereHas($relation)
-            // By id, not offset: each moved row drops out of this where('storage', 'public') filter,
+            // By id, not offset: each moved row drops out of this where('storage', $sourceDisk) filter,
             // which would make offset paging skip rows.
             ->lazyById()
-            ->each(function (File $file) use (&$moved, $privateDisk) {
+            ->each(function (File $file) use (&$moved, $privateDisk, $sourceDisk) {
                 $path = $file->diskPath();
 
-                if (Storage::disk('public')->exists($path)) {
-                    $this->copyToPrivate($path, $privateDisk);
+                if ($this->isSymlink($sourceDisk, $path)) {
+                    Log::error('Refusing to move a symlinked file to private storage.', ['file_id' => $file->id, 'disk' => $sourceDisk]);
+                } elseif (Storage::disk($sourceDisk)->exists($path)) {
+                    $this->copyToPrivate($path, $privateDisk, $sourceDisk);
                 } else {
-                    Log::warning('File missing from the public disk while moving it to private storage.', ['file_id' => $file->id, 'disk' => $privateDisk]);
+                    Log::warning('File missing from its source disk while moving it to private storage.', ['file_id' => $file->id, 'from' => $sourceDisk, 'to' => $privateDisk]);
                 }
 
-                // Row first, then the public copy: if deleting fails, the file is merely orphaned
-                // on the public disk, never left as a row pointing at a public location.
+                // Row first, then the source copy: if deleting fails, the file is merely orphaned
+                // on the source disk, never left as a row pointing at the old location.
                 $file->update(['storage' => $privateDisk]);
-                $this->deletePublicCopy($path);
+                $this->deletePublicCopy($path, $sourceDisk);
 
                 $moved++;
             });
@@ -52,14 +56,20 @@ class MovePublicFilesToPrivateDiskAction extends Action
         // Anything else still under the directory (no matching relation on its row, or no row at
         // all: an interrupted upload, manual testing, a crash between the row update and the delete
         // above) was served by the same public symlink, so it moves too.
-        foreach (Storage::disk('public')->allFiles($publicDirectory) as $orphan) {
-            $this->copyToPrivate($orphan, $privateDisk);
-            $this->deletePublicCopy($orphan);
+        foreach (Storage::disk($sourceDisk)->allFiles($directory) as $orphan) {
+            if ($this->isSymlink($sourceDisk, $orphan)) {
+                Log::error('Refusing to move a symlinked file to private storage.', ['disk' => $sourceDisk, 'path' => $orphan]);
+
+                continue;
+            }
+
+            $this->copyToPrivate($orphan, $privateDisk, $sourceDisk);
+            $this->deletePublicCopy($orphan, $sourceDisk);
             $moved++;
         }
 
-        if ($left = Storage::disk('public')->allFiles($publicDirectory)) {
-            Log::error('Files are still on the public disk after the move -- remove them by hand.', ['paths' => $left]);
+        if ($left = Storage::disk($sourceDisk)->allFiles($directory)) {
+            Log::error('Files are still on the source disk after the move -- remove them by hand.', ['disk' => $sourceDisk, 'paths' => $left]);
         }
 
         return $moved;
@@ -83,7 +93,9 @@ class MovePublicFilesToPrivateDiskAction extends Action
         )];
 
         foreach ($paths as $path) {
-            if (! (@chown($path, $owner) && @chgrp($path, $group))) {
+            // lchown/lchgrp: never follow a symlink planted in the tree to a file outside it
+            // (security review -- this may run as root).
+            if (! (@lchown($path, $owner) && @lchgrp($path, $group))) {
                 Log::warning("Could not hand {$root} to the web server user -- run: chown -R \$(stat -c %U:%G storage/app/public) {$root}");
 
                 return;
@@ -91,9 +103,18 @@ class MovePublicFilesToPrivateDiskAction extends Action
         }
     }
 
-    private function copyToPrivate(string $path, string $privateDisk): void
+    // Security review (SCRUM-342): a symlink in an uploads directory must never make this copy some
+    // other file on the box into private storage, where a route would then serve it. Only local
+    // disks can hold one.
+    private function isSymlink(string $disk, string $path): bool
     {
-        $stream = Storage::disk('public')->readStream($path);
+        return config("filesystems.disks.{$disk}.driver") === 'local'
+            && is_link(Storage::disk($disk)->path($path));
+    }
+
+    private function copyToPrivate(string $path, string $privateDisk, string $sourceDisk): void
+    {
+        $stream = Storage::disk($sourceDisk)->readStream($path);
 
         try {
             Storage::disk($privateDisk)->writeStream($path, $stream);
@@ -104,12 +125,12 @@ class MovePublicFilesToPrivateDiskAction extends Action
         }
     }
 
-    // The public disk doesn't throw (config/filesystems.php), so a failed delete would otherwise be
-    // silent -- leaving a private file behind in a publicly-served directory.
-    private function deletePublicCopy(string $path): void
+    // The public (and local) disks don't throw (config/filesystems.php), so a failed delete would
+    // otherwise be silent -- leaving a private file behind, possibly in a publicly-served directory.
+    private function deletePublicCopy(string $path, string $sourceDisk): void
     {
-        if (! Storage::disk('public')->delete($path)) {
-            Log::error('Could not delete a file\'s public copy after moving it to private storage -- remove it by hand.', ['path' => $path]);
+        if (! Storage::disk($sourceDisk)->delete($path)) {
+            Log::error('Could not delete a file\'s source copy after moving it to private storage -- remove it by hand.', ['disk' => $sourceDisk, 'path' => $path]);
         }
     }
 }

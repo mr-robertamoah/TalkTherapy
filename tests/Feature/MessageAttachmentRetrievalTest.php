@@ -139,13 +139,17 @@ test('a file stored on another private disk is never streamed through a message'
     $this->actingAs($data['member'])->getJson(attachmentUrlForAttachmentRoute($data))->assertStatus(404);
 });
 
-test('a row the move migration has not reached yet is still served through the route', function () {
+// SCRUM-341: the transitional disks are gone -- only the private disk is ever served.
+test('a row left on a public or local disk is never served through the route', function () {
     $data = aGroupChatWithAttachmentForAttachmentRoute();
-    Storage::fake('public');
-    Storage::disk('public')->put('messages/photo.png', Storage::disk('message_attachments')->get('messages/photo.png'));
-    $data['file']->update(['storage' => 'public']);
 
-    $this->actingAs($data['member'])->get(attachmentUrlForAttachmentRoute($data))->assertSuccessful();
+    foreach (['public', 'local'] as $disk) {
+        Storage::fake($disk);
+        Storage::disk($disk)->put('messages/photo.png', 'old copy');
+        $data['file']->update(['storage' => $disk]);
+
+        $this->actingAs($data['member'])->getJson(attachmentUrlForAttachmentRoute($data))->assertStatus(404);
+    }
 });
 
 test('a scriptable upload is downloaded as an opaque file, an allowed video plays inline', function () {

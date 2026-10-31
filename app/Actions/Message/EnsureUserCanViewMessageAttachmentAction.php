@@ -15,11 +15,11 @@ use App\Services\MessageService;
 // is the same 404, like the identity/license document routes.
 class EnsureUserCanViewMessageAttachmentAction extends Action
 {
-    // Transitional extras (SCRUM-341 removes them once every environment has migrated): 'public'
-    // for rows the move migration hasn't reached yet (code deploys before migrate), and 'local' for
-    // rows from host-run installs whose default disk was the already-private 'local'. A file on any
-    // other disk is never streamed under message rules.
-    private const ATTACHMENT_DISKS = ['message_attachments', 'public', 'local'];
+    // SCRUM-341: only the private disk. The transitional 'public'/'local' allowances are gone: the
+    // deploy (scripts/deploy.sh) now keeps the site down from pull to migrate, so no request can
+    // see a row the move migrations haven't reached, and 2026_10_31_120000 moves 'local' rows too.
+    // A file on any other disk is never streamed under message rules.
+    private const ATTACHMENT_DISKS = ['message_attachments'];
 
     public function execute(User $user, Message $message, File $file): void
     {

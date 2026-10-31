@@ -97,6 +97,23 @@ Welcome to the TalkTherapy application, a Laravel and Vue.js based project desig
 
 Continuously deployed to AWS EC2 instance by leveraging AWS Systems Manger's Run Command capability which enhances security becauses no SSH port is left open.
 
+Each push to `main` runs `.github/workflows/main.yml`. Only one deploy runs at a time. The workflow extracts `scripts/deploy.sh` from the exact commit being deployed, runs it as root on the instance, and fails the job if the deploy fails. The deploy's output is printed only on failure, because the repo is public.
+
+The script does the following, in order:
+1. Puts the site in maintenance mode for the whole deploy. It aborts, changing nothing, if it can't.
+2. Checks out the commit (it must be on `main`) and builds it as the `ubuntu` user.
+3. Gives the private storage folders (identity, license and chat-attachment documents) to the web server user. That user is detected from the running php-fpm workers; set `WEB_USER`/`WEB_GROUP` if detection fails.
+4. Runs every `artisan` command, including the migrations, as that web user. Root never runs PHP.
+5. Clears the config and cache, and asks the queue and Reverb workers to restart. They only come back if a process manager runs them; the deploy prints what it finds.
+
+**If a deploy fails after the code changed,** the site deliberately stays in maintenance mode. That way it never serves code whose migrations haven't run. Fix the cause on the box, then re-run the same commit:
+
+```bash
+sudo DEPLOY_SHA=<sha> bash scripts/deploy.sh
+```
+
+To give up instead, check out the previous commit printed at the top of the deploy log, run `composer install`, and run `php artisan up`. Back up `storage/app` and the database before a promotion that includes data migrations: those migrations can't be rolled back.
+
 Scheduled jobs (`routes/console.php` -- reminders, invoice settlement, document retention, the group-video
 idle speaking sweep) need Laravel's scheduler running. In Docker, the `queue` container runs it via
 Supervisor (`php artisan schedule:work`, see `docker/queue/supervisord.conf`); any other host must run

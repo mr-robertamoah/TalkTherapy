@@ -16,9 +16,9 @@ use App\Models\User;
 // given counsellor submitted identity documents.
 class EnsureUserCanViewLicenseDocumentAction extends Action
 {
-    // 'public' only for rows the move migration hasn't reached yet (code deploys before migrate);
-    // a file on any other disk is never streamed under license rules.
-    private const LICENSE_DISKS = ['license_documents', 'public'];
+    // SCRUM-341: only the private disk -- see EnsureUserCanViewMessageAttachmentAction for why the
+    // transitional 'public' allowance could go. A file on any other disk is never streamed here.
+    private const LICENSE_DISKS = ['license_documents'];
 
     public function execute(User $user, License $license, File $file): void
     {
