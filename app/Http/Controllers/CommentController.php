@@ -6,6 +6,8 @@ use App\Actions\GetModelWithModelNameAndIdAction;
 use App\DTOs\CreateCommentDTO;
 use App\Http\Resources\CommentResource;
 use App\Models\Comment;
+use App\Models\Post;
+use App\Models\Therapy;
 use App\Services\CommentService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Redirect;
@@ -13,6 +15,10 @@ use Throwable;
 
 class CommentController extends Controller
 {
+    // SCRUM-349: never GroupTherapy until commentes are authorized (SCRUM-351) -- it
+    // resolves now, and getComments has no visibility check.
+    private const COMMENTABLE_MODELS = [Post::class, Therapy::class];
+
     public function createComment(Request $request)
     {
         try {
@@ -20,7 +26,7 @@ class CommentController extends Controller
                 CreateCommentDTO::new()->fromArray([
                     'user' => $request->user(),
                     'content' => $request->content,
-                    'commentable' => GetModelWithModelNameAndIdAction::new()->execute($request->commentableType, $request->commentableId),
+                    'commentable' => GetModelWithModelNameAndIdAction::new()->execute($request->commentableType, $request->commentableId, self::COMMENTABLE_MODELS),
                 ])
             );
 
@@ -55,7 +61,7 @@ class CommentController extends Controller
         try {
             return CommentService::new()->getComments(
                 CreateCommentDTO::new()->fromArray([
-                    'commentable' => GetModelWithModelNameAndIdAction::new()->execute($request->commentableType, $request->commentableId),
+                    'commentable' => GetModelWithModelNameAndIdAction::new()->execute($request->commentableType, $request->commentableId, self::COMMENTABLE_MODELS),
                 ])
             );
         } catch (Throwable $th) {

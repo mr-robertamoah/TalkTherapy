@@ -29,7 +29,7 @@ class CommentService extends Service
     public function deleteComment(CreateCommentDTO $createCommentDTO)
     {
         EnsureCanCreateCommentAction::new()->execute($createCommentDTO);
-        
+
         EnsureCommentExistsAction::new()->execute($createCommentDTO);
 
         EnsureCanUpdateCommentAction::new()->execute($createCommentDTO);
@@ -39,6 +39,9 @@ class CommentService extends Service
 
     public function getComments(CreateCommentDTO $createCommentDTO)
     {
+        // A missing or unsupported commentable was a null dereference (500).
+        EnsureCommentableExistsAction::new()->execute($createCommentDTO);
+
         return CommentResource::collection(
             $createCommentDTO
                 ->commentable

@@ -7,7 +7,6 @@ use App\Actions\Report\EnsureCanReportReportableAction;
 use App\DTOs\CreateReportDTO;
 use App\Exceptions\ReportException;
 use App\Http\Resources\ReportResource;
-use App\Models\GroupTherapy;
 use App\Models\Report;
 use App\Services\ReportService;
 use Illuminate\Database\Eloquent\Model;
@@ -146,14 +145,8 @@ class ReportController extends Controller
         return Redirect::back()->withErrors(['alert' => $message]);
     }
 
-    // SCRUM-347: GetModelWithModelNameAndIdAction lowercases the name ('GroupTherapy' becomes
-    // 'Grouptherapy', which the autoloader can't find), so a group report never resolved its group.
     private function reportable(Request $request): ?Model
     {
-        if (strcasecmp((string) $request->reportableType, 'GroupTherapy') === 0) {
-            return GroupTherapy::find($request->reportableId);
-        }
-
         return GetModelWithModelNameAndIdAction::new()->execute($request->reportableType, $request->reportableId);
     }
 }

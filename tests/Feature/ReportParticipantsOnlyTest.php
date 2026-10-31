@@ -18,7 +18,8 @@ function aCounselledTherapyFor347(): array
 {
     $client = User::factory()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => User::factory()->create()->id]);
-    $therapy = Therapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => $client->id, 'counsellor_id' => $counsellor->id]);
+    // Not anonymous: TherapyFactory defaults to anonymous, which hides the client's id (SCRUM-348).
+    $therapy = Therapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => $client->id, 'counsellor_id' => $counsellor->id, 'anonymous' => false]);
 
     return [$therapy, $client, $counsellor];
 }
@@ -128,11 +129,14 @@ test('anyone signed in can still report a post, but cannot name people on it', f
         ->assertStatus(422)->assertJsonPath('message', EnsureReportDataIsValidAction::INVALID_DATA);
 });
 
-test('an individual therapy report must name someone, never yourself, and only known keys', function () {
+test('an individual therapy report names the other party by default, never yourself, and only known keys', function () {
     [$therapy, $client, $counsellor] = aCounselledTherapyFor347();
 
-    $this->actingAs($client)->postJson(route('api.reports.create'), reportPayloadFor347($client, 'therapy', $therapy->id))
-        ->assertStatus(422)->assertJsonPath('message', 'Please choose who you are reporting in this therapy.');
+    // SCRUM-348: naming nobody means the other party -- how a counsellor reports an anonymous client.
+    $toCounsellor = $this->actingAs($client)->postJson(route('api.reports.create'), reportPayloadFor347($client, 'therapy', $therapy->id))->assertOk();
+    expect(Report::find($toCounsellor->json('report.id'))->data)->toEqual(['counsellorId' => $counsellor->id]);
+    $toClient = $this->actingAs($counsellor->user)->postJson(route('api.reports.create'), reportPayloadFor347($counsellor->user, 'therapy', $therapy->id))->assertOk();
+    expect(Report::find($toClient->json('report.id'))->data)->toEqual(['userId' => $client->id]);
     $this->actingAs($client)->postJson(route('api.reports.create'), reportPayloadFor347($client, 'therapy', $therapy->id, ['userId' => $client->id]))
         ->assertStatus(422)->assertJsonPath('message', 'You cannot report yourself.');
     $this->actingAs($client)->postJson(route('api.reports.create'), reportPayloadFor347($client, 'therapy', $therapy->id, ['counsellorId' => $counsellor->id, 'notes' => '<script>']))

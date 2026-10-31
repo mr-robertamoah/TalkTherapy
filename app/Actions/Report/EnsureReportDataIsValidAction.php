@@ -59,6 +59,16 @@ class EnsureReportDataIsValidAction extends Action
         $userId = $data['userId'] ?? null;
         $counsellorId = $data['counsellorId'] ?? null;
 
+        // On update, the same rule DefaultReportedPartyAction applies on create: never accept a
+        // client-sent id for a client who is anonymous to the reporter (no guess oracle).
+        $therapyOfReport = $reportable instanceof Session ? $reportable->for : $reportable;
+        if (
+            $action == 'update' && ($createReportDTO->data['userId'] ?? null) &&
+            $therapyOfReport instanceof Therapy && $therapyOfReport->addedByUserIsMaskedFor($createReportDTO->user)
+        ) {
+            throw new ReportException(self::NOT_A_PARTICIPANT, 422);
+        }
+
         $reporter = $createReportDTO->user;
         if (($userId && $userId == $reporter?->id) || ($counsellorId && $counsellorId == $reporter?->counsellor?->id)) {
             throw new ReportException('You cannot report yourself.', 422);
@@ -77,6 +87,8 @@ class EnsureReportDataIsValidAction extends Action
 
         // An individual therapy report names at least one person (SCRUM-347: this used to demand
         // BOTH, so reporting just the client or just the counsellor always failed).
+        // Reached when the other party doesn't exist yet (a client reporting a therapy with no
+        // counsellor) -- DefaultReportedPartyAction fills in everyone else.
         if ($reportable instanceof Therapy && ! $userId && ! $counsellorId) {
             throw new ReportException('Please choose who you are reporting in this therapy.', 422);
         }

@@ -30,7 +30,7 @@ function aCounsellorFor345(): Counsellor
     return Counsellor::factory()->create(['user_id' => User::factory()->create()->id]);
 }
 
-test('an anonymous therapy\'s client id goes only to its own counsellor', function () {
+test('an anonymous therapy\'s client id goes to no one but the client', function () {
     $client = User::factory()->create();
     $counsellor = aCounsellorFor345();
     $therapy = Therapy::factory()->create([
@@ -42,8 +42,8 @@ test('an anonymous therapy\'s client id goes only to its own counsellor', functi
     expect($toStranger['user']['id'])->toBeNull()
         ->and($toStranger['user']['fullName'])->toBe(ConstantsEnum::anonymousUserLabel->value);
 
-    // Its counsellor addresses chat messages to this id.
-    expect(presentFor345(new TherapyResource($therapy), $counsellor->user)['user']['id'])->toBe($client->id);
+    // SCRUM-348: not even its own counsellor -- the server addresses therapy messages itself.
+    expect(presentFor345(new TherapyResource($therapy), $counsellor->user)['user']['id'])->toBeNull();
     expect(presentFor345(new TherapyResource($therapy), $client)['user']['id'])->toBe($client->id);
 });
 

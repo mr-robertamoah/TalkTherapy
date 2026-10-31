@@ -98,8 +98,10 @@ const computedReportablePeople = computed(() => {
                 ? [{ key: 'counsellor', label: `${props.item.counsellor.name} (Counsellor)`, data: { counsellorId: props.item.counsellor.id } }]
                 : []
 
-        return props.item?.user?.id
-            ? [{ key: 'user', label: `${props.item.user.fullName} (Client)`, data: { userId: props.item.user.id } }]
+        // An anonymous client's id is never sent (SCRUM-348): with no id the server fills in the
+        // other party itself (DefaultReportedPartyAction).
+        return props.item?.user
+            ? [{ key: 'user', label: `${props.item.user.fullName} (Client)`, data: props.item.user.id ? { userId: props.item.user.id } : {} }]
             : []
     }
 

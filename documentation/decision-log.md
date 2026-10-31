@@ -8567,3 +8567,31 @@ The user chose "only the therapy's participants", and asked for the two frontend
   - `data` accepts only `userId` and `counsellorId`, both ids. Post reports can't name people. Session reports are checked against the session's therapy. Nobody can name themselves.
   - The `ReportController` GroupTherapy workaround stays for now. The shared lookup is ticketed as **SCRUM-349**.
 - **Browser-tested:** `maria_garcia` reporting her counsellor on therapy 1, and reporting group 1 as a member, both succeed. The QA reports were removed afterwards.
+
+## SCRUM-348 + SCRUM-349: server-chosen message recipient, allowlisted model lookup — 2026-10-31
+
+The user asked for both in one PR.
+
+- **SCRUM-349, an allowlist rather than a generic StudlyCase lookup:**
+  - `GetModelWithModelNameAndIdAction` lowercased names, so no multi-word model ever resolved. That silently broke group alerts (the `/api/alerts` 422 on every group page), the discussion filter for groups, and group reports.
+  - It also resolved *any* single-word model, so the 500-vs-422 difference on a typed DTO revealed which ids existed in unrelated tables.
+  - It now resolves only the models some caller's DTO accepts: User, Counsellor, Therapy, GroupTherapy, Discussion, Session, Post, Organization, Transaction. Matching is case-insensitive, and non-scalar ids are rejected.
+  - The ReportController workaround from SCRUM-347 is removed.
+- **Groups stay out of likes and comments.** A security audit of every path the fix makes reachable found that `getComments` and `getLikes` have no authorization and need no login. Resolving groups there would have published private and anonymous group comments, so `GroupTherapy` was removed from those two DTOs, which no UI uses for groups. The existing problem for therapies is **SCRUM-351**.
+- **Paths that are now safe to reach:** alerts, discussion create and filter, link listing, and reports. Creating a group link is reachable but does nothing, because no handler exists.
+- **SCRUM-348, the server picks the recipient** of an individual-therapy session message: always the other party, ignoring any client-sent `toId`. So `TherapyResource` sends a masked client's id to nobody, their counsellor included. Group and discussion messages keep their optional, participant-checked `to`.
+- **Counsellor reporting an anonymous client** (from SCRUM-347): without the id, a report on an individual therapy that names nobody now means the other party, filled in by the server (`DefaultReportedPartyAction`). The form sends `{}` for an anonymous client.
+- **Tests updated to the new behaviour:** two MessageServiceTest tests that expected "recipient required" and "recipient not participating" on individual therapy sessions, and one assertion in MaskedUsersExposeNoIdTest.
+- **From the reviews:**
+  - **The recipient fails closed.** On an individual-therapy session, any sender who isn't exactly the therapy's Counsellor or its client is refused. Before, a counsellor posting as their User account kept their own `to`, which let them confirm a guessed client id.
+  - **No id guessing through reports.** A report naming an anonymous client by id is always refused, right or wrong, on both create and update; the server default is the only way to name them.
+  - **The report response hides the client.** `ReportResource` nulls `data.userId` for non-admins when the client is masked for them, and adds `reportedClient: true`. Admins still see the real id.
+  - **Link type checks.** Each link type now requires its own kind of target. Otherwise a THERAPY_COUNSELLOR link aimed at a group, which now resolves, would assign a counsellor to the unrelated Therapy with the same id. Who may create a link is still **SCRUM-350**.
+  - **Likes and comments.** Their controllers narrow the lookup to the models they support (a new `$only` parameter), so a group gives a clean 422. Listing likes and comments now checks that the target exists first; a missing one used to cause a 500.
+  - `Transaction` was dropped from the allowlist, because no caller uses it.
+  - **Chat page.** `TherapyChat.vue` read the active session without unwrapping the resource. That's fixed, but sending from the chat page still makes no request, which is **SCRUM-353**. The server path is covered by HTTP tests, including a send with no recipient id.
+- **Existing bugs the audit found:**
+  - **SCRUM-350 (Critical):** link creation has no authorization over its target, which allows a guardianship takeover and joining someone else's therapy or a discussion.
+  - **SCRUM-351 (High):** comments and likes are public and unauthorized.
+  - **SCRUM-352:** discussion session binding, and the alert participant check.
+  - **SCRUM-353:** sending from the therapy chat page makes no request.
