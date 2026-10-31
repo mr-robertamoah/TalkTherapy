@@ -13,6 +13,9 @@ tracked separately, unstarted as of this closeout:
 - **SCRUM-314** — full-membership group video (every ordinary member gets video access, with a
   real numeric participant cap and per-member anonymity/payment/minor enforcement at scale). v1
   deliberately narrows this away entirely — see the scoping decision below.
+  **Since shipped** (2026-10-31) as a moderated, receive-only-by-default "town hall": see
+  `documentation/features/scrum-314-full-membership-group-video.md`. Ordinary members now DO see
+  "join video"; the v1-only statements about members below are superseded there.
 
 ## v1 scope (product decision)
 
