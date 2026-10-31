@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Actions\EnsureAddedbyIsValidAction;
 use App\Actions\Report\CreateReportAction;
+use App\Actions\Report\DefaultReportedPartyAction;
 use App\Actions\Report\DeleteReportAction;
 use App\Actions\Report\EnsureCanCreateReportAction;
 use App\Actions\Report\EnsureCanReportReportableAction;
@@ -28,6 +29,8 @@ class ReportService extends Service
         EnsureCanCreateReportAction::new()->execute($createReportDTO);
 
         EnsureCanReportReportableAction::new()->execute($createReportDTO);
+
+        DefaultReportedPartyAction::new()->execute($createReportDTO);
 
         EnsureReportDataIsValidAction::new()->execute($createReportDTO);
 
@@ -90,7 +93,7 @@ class ReportService extends Service
         });
 
         // ReportResource lists each report's evidence.
-        $query->with('files')->orderByDesc('created_at');
+        $query->with(['files', 'reportable'])->orderByDesc('created_at');
 
         return $query->paginate(PaginationEnum::preferencesPagination->value);
     }

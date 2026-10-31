@@ -50,10 +50,10 @@ class TherapyResource extends JsonResource
             'user' => $this->when(
                 ! $this->addedByUserIsMaskedFor($user),
                 new UserMiniResource($this->addedby),
-                // SCRUM-345: the real id only for this therapy's own counsellor, who addresses chat
-                // messages to it (TherapyComponent.vue getMessageTo()). Anyone else gets null: a stable
-                // id would let them link the same anonymous client across therapies and requests.
-                ['id' => $user?->counsellor && $this->isCounsellor($user->counsellor) ? $this->addedby?->id : null, 'fullName' => ConstantsEnum::anonymousUserLabel->value]
+                // SCRUM-345/348: never the real id -- a stable id would let a viewer (the counsellor
+                // included) link the same anonymous client across therapies. The server picks the
+                // recipient of a therapy message itself (ResolveTherapyMessageRecipientAction).
+                ['id' => null, 'fullName' => ConstantsEnum::anonymousUserLabel->value]
             ),
             'public' => (bool) $this->public,
             'anonymous' => (bool) $this->anonymous,

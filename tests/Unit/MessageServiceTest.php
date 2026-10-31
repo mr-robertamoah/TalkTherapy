@@ -184,7 +184,8 @@ describe('create message tests', function () {
     // });
 
     test(
-        "fail message creation when no recepient is provided for a therapy session's message.",
+        // SCRUM-348: the server now addresses individual-therapy messages itself.
+        'an individual therapy session message without a recipient goes to the other party.',
         function () {
 
             $therapyOwner = User::factory()->create();
@@ -205,20 +206,22 @@ describe('create message tests', function () {
                 'for_type' => $therapy::class,
             ]);
 
-            $this->expectException(MessageException::class);
-            $this->expectExceptionMessage('Recepient is required for a therapy session.');
-
-            MessageService::new()->createMessage(
+            $message = MessageService::new()->createMessage(
                 CreateMessageDTO::new()->fromArray([
                     'from' => $therapyOwner,
                     'user' => $therapyOwner,
                     'for' => $session,
+                    'content' => 'Hello',
+                    'type' => 'NORMAL',
                 ])
             );
+
+            expect($message->to?->is($counsellor))->toBeTrue();
         });
 
     test(
-        'fail message creation when recepient to message is not a participant to therapy or discussion.',
+        // SCRUM-348: a client-chosen recipient is ignored in an individual therapy session.
+        'an individual therapy session message to a non-participant goes to the other party instead.',
         function () {
 
             $otherUser = User::factory()->create();
@@ -240,17 +243,19 @@ describe('create message tests', function () {
                 'for_type' => $therapy::class,
             ]);
 
-            $this->expectException(MessageException::class);
-            $this->expectExceptionMessage('You are sending the message to someone who is not participating in session/discussion.');
-
-            MessageService::new()->createMessage(
+            $message = MessageService::new()->createMessage(
                 CreateMessageDTO::new()->fromArray([
                     'from' => $therapyOwner,
                     'user' => $therapyOwner,
                     'for' => $session,
                     'to' => $otherUser,
+                    'content' => 'Hello',
+                    'type' => 'NORMAL',
                 ])
             );
+
+            expect($message->to?->is($counsellor))->toBeTrue()
+                ->and($message->to?->is($otherUser))->toBeFalse();
         });
 
     test(

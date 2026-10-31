@@ -44,8 +44,12 @@ const currentUpdatedSessionOrTopic = ref(null);
 const currentDeletedSessionOrTopic = ref(null);
 
 watchEffect(() => {
-  if (props.therapy?.activeSession?.id) {
-    activeSession.value = props.therapy.activeSession;
+  // The page prop is a TherapyResource ({data: {...}}) -- read through it like the rest of this
+  // page does. Reading props.therapy.activeSession directly left activeSession unset until a
+  // broadcast arrived, so nothing could be sent from a freshly loaded chat page.
+  const currentTherapy = props.therapy?.data ? props.therapy.data : props.therapy;
+  if (currentTherapy?.activeSession?.id) {
+    activeSession.value = currentTherapy.activeSession;
     startTimer();
   }
 });

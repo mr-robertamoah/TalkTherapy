@@ -14,6 +14,7 @@ use App\Actions\Message\EnsureMessageDataIsValidAction;
 use App\Actions\Message\EnsureMessageExistsAction;
 use App\Actions\Message\EnsureReplyIsInSameConversationAction;
 use App\Actions\Message\EnsureUserCanAccessTherapyContentAction;
+use App\Actions\Message\ResolveTherapyMessageRecipientAction;
 use App\Actions\Message\UpdateMessageAction;
 use App\DTOs\CreateMessageDTO;
 use App\DTOs\GetDiscussionMessagesDTO;
@@ -306,6 +307,8 @@ class MessageService extends Service
         EnsureIsFromUserAction::new()->execute($createMessageDTO);
 
         EnsureCanSendMessageToForAction::new()->execute($createMessageDTO);
+
+        ResolveTherapyMessageRecipientAction::new()->execute($createMessageDTO);
 
         EnsureCanSendMessageToRecepientAction::new()->execute($createMessageDTO);
 

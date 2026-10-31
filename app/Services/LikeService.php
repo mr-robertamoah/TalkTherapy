@@ -19,7 +19,7 @@ class LikeService extends Service
 
         return CreateLikeAction::new()->execute($createLikeDTO);
     }
-    
+
     public function dislike(CreateLikeDTO $createLikeDTO)
     {
         EnsureCanCreateLikeAction::new()->execute($createLikeDTO);
@@ -33,6 +33,9 @@ class LikeService extends Service
 
     public function getLikes(CreateLikeDTO $createLikeDTO)
     {
+        // A missing or unsupported likeable was a null dereference (500).
+        EnsureLikeableExistsAction::new()->execute($createLikeDTO);
+
         return $createLikeDTO->likeable->likes()->get(['user_id']);
     }
 }

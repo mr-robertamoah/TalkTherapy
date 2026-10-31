@@ -2,6 +2,10 @@
 
 namespace App\Http\Resources;
 
+use App\Models\GroupTherapy;
+use App\Models\Session;
+use App\Models\Therapy;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -18,7 +22,7 @@ class ReportResource extends JsonResource
         return [
             'id' => $this->id,
             'description' => $this->description,
-            'data' => $this->data,
+            'data' => $this->presentedData($request->user()),
             'addedbyType' => $this->addedby_type ? class_basename($this->addedby_type) : null,
             'addedbyId' => $this->addedby_id,
             'reportableType' => $this->reportable_type ? class_basename($this->reportable_type) : null,
@@ -32,5 +36,26 @@ class ReportResource extends JsonResource
             'createdAt' => $this->created_at,
             'updatedAt' => $this->updated_at,
         ];
+    }
+
+    // Security review (SCRUM-348): a counsellor's report on their anonymous client stores the
+    // client's real id (DefaultReportedPartyAction). Only admins see it; the reporter sees that the
+    // client was reported, never which user id that is.
+    private function presentedData(?User $viewer): ?array
+    {
+        $data = $this->data;
+
+        if (! is_array($data) || ! isset($data['userId']) || $viewer?->isAdmin()) {
+            return $data;
+        }
+
+        $therapy = $this->reportable instanceof Session ? $this->reportable->for : $this->reportable;
+
+        if (($therapy instanceof Therapy || $therapy instanceof GroupTherapy) && $therapy->addedByUserIsMaskedFor($viewer)) {
+            $data['userId'] = null;
+            $data['reportedClient'] = true;
+        }
+
+        return $data;
     }
 }
