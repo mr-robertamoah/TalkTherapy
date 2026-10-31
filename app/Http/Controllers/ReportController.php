@@ -3,10 +3,14 @@
 namespace App\Http\Controllers;
 
 use App\Actions\GetModelWithModelNameAndIdAction;
+use App\Actions\Report\EnsureCanReportReportableAction;
 use App\DTOs\CreateReportDTO;
+use App\Exceptions\ReportException;
 use App\Http\Resources\ReportResource;
+use App\Models\GroupTherapy;
 use App\Models\Report;
 use App\Services\ReportService;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Redirect;
 use Throwable;
@@ -24,7 +28,7 @@ class ReportController extends Controller
                     'description' => $request->description,
                     'data' => $request->data,
                     'files' => $request->file('files'),
-                    'reportable' => GetModelWithModelNameAndIdAction::new()->execute($request->reportableType, $request->reportableId),
+                    'reportable' => $this->reportable($request),
                     'addedby' => GetModelWithModelNameAndIdAction::new()->execute($request->addedbyType, $request->addedbyId),
                 ])
             );
@@ -39,6 +43,12 @@ class ReportController extends Controller
     public function updateReport(Request $request)
     {
         try {
+            // Security review (SCRUM-347): a re-point to a therapy id that doesn't exist answers like
+            // one the reporter isn't in, instead of being silently ignored.
+            if (($request->filled('reportableType') || $request->filled('reportableId')) && ! $this->reportable($request)) {
+                throw new ReportException(EnsureCanReportReportableAction::NOT_ALLOWED, 422);
+            }
+
             $report = ReportService::new()->updateReport(
                 CreateReportDTO::new()->fromArray([
                     'user' => $request->user(),
@@ -46,7 +56,7 @@ class ReportController extends Controller
                     'data' => $request->data,
                     'report' => Report::find($request->route('reportId')),
                     'files' => $request->file('files'),
-                    'reportable' => GetModelWithModelNameAndIdAction::new()->execute($request->reportableType, $request->reportableId),
+                    'reportable' => $this->reportable($request),
                 ])
             );
 
@@ -102,7 +112,7 @@ class ReportController extends Controller
                     // SCRUM-337: no 'like' here -- CreateReportDTO has no such property, so passing
                     // it made this endpoint fail with a 500 on every call.
                     'addedby' => GetModelWithModelNameAndIdAction::new()->execute($request->addedbyType, $request->addedbyId),
-                    'reportable' => GetModelWithModelNameAndIdAction::new()->execute($request->reportableType, $request->reportableId),
+                    'reportable' => $this->reportable($request),
                 ])
             );
 
@@ -134,5 +144,16 @@ class ReportController extends Controller
         }
 
         return Redirect::back()->withErrors(['alert' => $message]);
+    }
+
+    // SCRUM-347: GetModelWithModelNameAndIdAction lowercases the name ('GroupTherapy' becomes
+    // 'Grouptherapy', which the autoloader can't find), so a group report never resolved its group.
+    private function reportable(Request $request): ?Model
+    {
+        if (strcasecmp((string) $request->reportableType, 'GroupTherapy') === 0) {
+            return GroupTherapy::find($request->reportableId);
+        }
+
+        return GetModelWithModelNameAndIdAction::new()->execute($request->reportableType, $request->reportableId);
     }
 }

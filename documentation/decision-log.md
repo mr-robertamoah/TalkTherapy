@@ -8551,3 +8551,19 @@ The user asked for both in one PR.
   - `TherapyResource` keeps the real id only for the therapy's own counsellor, because `TherapyComponent.vue` addresses chat messages to it. Removing it would break counsellor-to-client messaging on anonymous therapies.
   - The other frontend uses of these ids only compare them with the viewer's own id, and a masked party is never the viewer.
   - The counsellor of an anonymous *group* already couldn't address the creator (the masked entry has no `isUser`). That's unchanged here.
+
+## SCRUM-347: only participants may report a therapy — 2026-10-31
+
+The user chose "only the therapy's participants", and asked for the two frontend gaps to go in the same PR.
+
+- **Rule** (`EnsureCanReportReportableAction`): a Therapy, GroupTherapy or Session can be reported only by its participants. A missing reportable gets the same refusal. Posts are public, so anyone may report one. Update runs the same check when `reportable` changes, so a report can't be re-pointed at someone else's therapy. Checking who the report names now runs only after that, with one generic message, so it can't be used to probe who is in a therapy.
+- **Individual therapy:** a report must name at least one person. It used to demand both the client and the counsellor, so "report the client" or "report the counsellor" alone always failed.
+- **Client can report:** the "make a report" button was hidden from the client (`v-if="!computedIsUser"`). It now shows for every participant; the panel itself only renders for participants. The form offers only the *other* participants, never yourself, and defaults to the other party.
+- **Group reports:** they always failed for two reasons. The DTO didn't accept a GroupTherapy, and `GetModelWithModelNameAndIdAction` lowercases names, turning "GroupTherapy" into "Grouptherapy", which the autoloader can't find. `ReportController` now resolves GroupTherapy itself; the shared action is left alone because 58 call sites depend on it. A group report can be about the group in general or name one of its counsellors. Members aren't listed on the group page (and may be anonymous), so a member is reported through "the group in general" and named in the description. The API also accepts a member's `userId` when it's known.
+- **Form bugs fixed:** fallbacks assigned `addedbyId = 'User'` and `reportableId = props.type`, so a report made without picking a type always failed.
+- **From the reviews:**
+  - Group reports never accept a member's `userId`. A member and a non-member get the same answer, so membership (anonymous members included) can't be probed. Only the group's *active* counsellors can be named, and the form lists only those (`activeCounsellorIds`).
+  - Updates are validated against the report's own therapy when none is sent, so an update can't name arbitrary people. Re-pointing a report *replaces* the people it names instead of merging in the old therapy's people. A re-point to a therapy id that doesn't exist gets the same refusal as one you're not in.
+  - `data` accepts only `userId` and `counsellorId`, both ids. Post reports can't name people. Session reports are checked against the session's therapy. Nobody can name themselves.
+  - The `ReportController` GroupTherapy workaround stays for now. The shared lookup is ticketed as **SCRUM-349**.
+- **Browser-tested:** `maria_garcia` reporting her counsellor on therapy 1, and reporting group 1 as a member, both succeed. The QA reports were removed afterwards.

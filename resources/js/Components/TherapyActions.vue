@@ -9,10 +9,11 @@
       <div
         class="flex space-x-2 justify-start items-center w-full overflow-hidden overflow-x-auto p-2"
       >
+        <!-- SCRUM-347: every participant may report, the client included (this panel only renders
+             for participants). -->
         <PrimaryButton
           @click="$emit('clicked-report')"
           class="shrink-0"
-          v-if="!computedIsUser"
           >make a report</PrimaryButton
         >
         

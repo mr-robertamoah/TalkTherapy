@@ -6,15 +6,22 @@ use App\Actions\Action;
 use App\DTOs\CreateReportDTO;
 use App\Exceptions\ReportException;
 use App\Models\Counsellor;
+use App\Models\GroupTherapy;
+use App\Models\Session;
+use App\Models\Therapy;
 use App\Models\User;
 
+// Runs after EnsureCanReportReportableAction, so the reporter is already a participant -- these
+// checks can't be used to probe who is in a therapy (SCRUM-347).
 class EnsureReportDataIsValidAction extends Action
 {
+    public const NOT_A_PARTICIPANT = 'The person you are reporting is not part of this therapy.';
+
+    public const INVALID_DATA = 'The report details are not valid.';
+
     public function execute(CreateReportDTO $createReportDTO, string $action = 'create')
     {
-        $this->validateData($createReportDTO);
-
-        $this->validateDataEntries($createReportDTO);
+        $this->validatePeople($createReportDTO, $action);
 
         if (
             $this->canCreate($createReportDTO) ||
@@ -31,46 +38,60 @@ class EnsureReportDataIsValidAction extends Action
         return $createReportDTO->description && $createReportDTO->reportable;
     }
 
-    // SCRUM-337: null-safe -- an update needn't re-send the reportable, and every such update used to 500.
-    private function validateData(CreateReportDTO $createReportDTO)
+    // Whoever `data` names must be part of the reported therapy. On update, that's the merged data
+    // UpdateReportAction will store, checked against the report's effective reportable -- otherwise
+    // an update could name anyone, or keep a stale person after a re-point (security review).
+    private function validatePeople(CreateReportDTO $createReportDTO, string $action): void
     {
-        if (
-            $createReportDTO->reportable?->isTherapy &&
-            (
-                is_null($createReportDTO->data) ||
-                ! count($createReportDTO->data) ||
-                ! array_key_exists('userId', $createReportDTO->data) ||
-                ! array_key_exists('counsellorId', $createReportDTO->data)
-            )
-        ) {
-            throw new ReportException('Please provide the person(s) you are reporting for this therapy.', 422);
+        // A re-pointed report's people are replaced, not merged (UpdateReportAction::setData()).
+        $data = $action == 'update' && ! $createReportDTO->reportable
+            ? array_merge($createReportDTO->report?->data ?: [], $createReportDTO->data ?: [])
+            : ($createReportDTO->data ?: []);
+        $reportable = $createReportDTO->reportable ?? ($action == 'update' ? $createReportDTO->report?->reportable : null);
+
+        // Only these two keys, as ids -- anything else was stored and returned verbatim.
+        foreach ($data as $key => $value) {
+            if (! in_array($key, ['userId', 'counsellorId'], true) || ! (is_null($value) || is_int($value) || ctype_digit((string) $value))) {
+                throw new ReportException(self::INVALID_DATA, 422);
+            }
         }
 
-    }
+        $userId = $data['userId'] ?? null;
+        $counsellorId = $data['counsellorId'] ?? null;
 
-    private function validateDataEntries(CreateReportDTO $createReportDTO)
-    {
-        if (
-            $createReportDTO->reportable?->isTherapy &&
-            (
-                array_key_exists('userId', $createReportDTO->data) &&
-                ! $createReportDTO->reportable->isUser(User::find($createReportDTO->data['userId']))
-            )
-            // SCRUM-337: never the therapy's name -- any therapy id can be sent here.
-        ) {
-            throw new ReportException('The user provided is not participating in this therapy.', 422);
+        $reporter = $createReportDTO->user;
+        if (($userId && $userId == $reporter?->id) || ($counsellorId && $counsellorId == $reporter?->counsellor?->id)) {
+            throw new ReportException('You cannot report yourself.', 422);
         }
 
-        if (
-            $createReportDTO->reportable?->isTherapy &&
-            (
-                array_key_exists('counsellorId', $createReportDTO->data) &&
-                ! $createReportDTO->reportable->isCounsellor(Counsellor::find($createReportDTO->data['counsellorId']))
-            )
-        ) {
-            throw new ReportException('The counsellor provided is not participating in this therapy.', 422);
+        // A session's people are its therapy's people.
+        $therapy = $reportable instanceof Session ? $reportable->for : $reportable;
+
+        if (! $therapy instanceof Therapy && ! $therapy instanceof GroupTherapy) {
+            if ($userId || $counsellorId) {
+                throw new ReportException(self::INVALID_DATA, 422);
+            }
+
+            return;
         }
 
+        // An individual therapy report names at least one person (SCRUM-347: this used to demand
+        // BOTH, so reporting just the client or just the counsellor always failed).
+        if ($reportable instanceof Therapy && ! $userId && ! $counsellorId) {
+            throw new ReportException('Please choose who you are reporting in this therapy.', 422);
+        }
+
+        // Group members are never named by id: whether an id belongs to the group would answer
+        // "who is in this group", anonymous members included (security review). A member is
+        // reported through the group as a whole, named in the description.
+        if ($userId && ! ($therapy instanceof Therapy && $therapy->isUser(User::find($userId) ?? new User))) {
+            throw new ReportException(self::NOT_A_PARTICIPANT, 422);
+        }
+
+        $counsellor = $counsellorId ? Counsellor::find($counsellorId) : null;
+        if ($counsellorId && ! ($counsellor && $therapy->isCounsellor($counsellor))) {
+            throw new ReportException(self::NOT_A_PARTICIPANT, 422);
+        }
     }
 
     private function canUpdate(CreateReportDTO $createReportDTO)
