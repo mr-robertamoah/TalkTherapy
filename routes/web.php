@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AboutController;
+use App\Http\Controllers\AdminContentAccessController;
 use App\Http\Controllers\AdministratorController;
 use App\Http\Controllers\AdminOrganizationBillingController;
 use App\Http\Controllers\AdminPayoutController;
@@ -68,6 +69,8 @@ Route::get('/', [HomeController::class, 'goHome'])
     ->name('home');
 Route::get('/about', AboutController::class)
     ->name('about');
+// SCRUM-361
+Route::inertia('/privacy', 'Privacy')->name('privacy');
 Route::get('/public-therapies', function () {
     return Inertia::render('PublicTherapies');
 })->name('public.therapies');
@@ -118,6 +121,8 @@ Route::middleware('auth')->group(function () {
     Route::get('/administrator/reports/{report}', [AdminReportController::class, 'show'])->name('administrator.reports.show')->whereNumber('report');
     Route::post('/administrator/reports/{report}/status', [AdminReportController::class, 'transition'])->name('admin.reports.status')->whereNumber('report')->middleware('throttle:30,1');
     Route::post('/administrator/reports/{report}/party', [AdminReportController::class, 'recordParty'])->name('admin.reports.party')->whereNumber('report')->middleware('throttle:30,1');
+    // SCRUM-360: the admin content-read log (super admins only).
+    Route::get('/administrator/content-accesses', [AdminContentAccessController::class, 'index'])->name('administrator.content-accesses');
     // SCRUM-359: suspensions -- applied from a resolved report, lifted early, appeals decided.
     Route::get('/administrator/suspensions', [AdminSuspensionController::class, 'index'])->name('administrator.suspensions');
     Route::post('/administrator/reports/{report}/suspensions', [AdminSuspensionController::class, 'apply'])->name('admin.suspensions.apply')->whereNumber('report')->middleware('throttle:30,1');

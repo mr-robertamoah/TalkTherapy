@@ -12,6 +12,7 @@ use App\Actions\SessionNote\EnsureSessionExistsAction;
 use App\Actions\SessionNote\EnsureSessionNoteExistsAction;
 use App\Actions\SessionNote\GetOwnSessionNotesAction;
 use App\Actions\SessionNote\UpdateSessionNoteAction;
+use App\Actions\Suspension\EnsureCanActAsCounsellorAction;
 use App\DTOs\CreateSessionNoteDTO;
 use App\Models\SessionNote;
 use Illuminate\Database\Eloquent\Collection;
@@ -39,6 +40,9 @@ class SessionNoteService extends Service
 
         EnsureCanCreateSessionNoteAction::new()->execute($dto);
 
+        // SCRUM-363: notes are counsellor work; a suspended counsellor can still read theirs.
+        EnsureCanActAsCounsellorAction::new()->execute($dto->counsellor ?? $dto->user?->counsellor);
+
         return CreateSessionNoteAction::new()->execute($dto);
     }
 
@@ -48,6 +52,9 @@ class SessionNoteService extends Service
 
         EnsureCanUpdateSessionNoteAction::new()->execute($dto);
 
+        // SCRUM-363: notes are counsellor work; a suspended counsellor can still read theirs.
+        EnsureCanActAsCounsellorAction::new()->execute($dto->counsellor ?? $dto->user?->counsellor);
+
         return UpdateSessionNoteAction::new()->execute($dto);
     }
 
@@ -56,6 +63,9 @@ class SessionNoteService extends Service
         EnsureSessionNoteExistsAction::new()->execute($dto);
 
         EnsureCanDeleteSessionNoteAction::new()->execute($dto);
+
+        // SCRUM-363: notes are counsellor work; a suspended counsellor can still read theirs.
+        EnsureCanActAsCounsellorAction::new()->execute($dto->counsellor ?? $dto->user?->counsellor);
 
         return DeleteSessionNoteAction::new()->execute($dto);
     }

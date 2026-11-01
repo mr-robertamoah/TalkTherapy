@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Actions\Admin\RecordAdminContentReadAction;
 use App\Actions\Message\EnsureUserCanViewMessageAttachmentAction;
+use App\Models\AdminContentAccess;
 use App\Models\File;
 use App\Models\Message;
 use App\Traits\ResolvesExceptionResponse;
@@ -19,7 +21,11 @@ class MessageAttachmentController extends Controller
         // The disk is whichever EnsureUserCanViewMessageAttachmentAction allows -- never an
         // arbitrary one named by the row.
         return $this->authorizedDocumentResponse(
-            fn () => EnsureUserCanViewMessageAttachmentAction::new()->execute($httpRequest->user(), $message, $file),
+            function () use ($httpRequest, $message, $file) {
+                EnsureUserCanViewMessageAttachmentAction::new()->execute($httpRequest->user(), $message, $file);
+                // SCRUM-360
+                RecordAdminContentReadAction::new()->execute($httpRequest->user(), AdminContentAccess::MESSAGE_ATTACHMENT, $message, fileId: $file->id);
+            },
             $file->storage,
             $file,
             'Attachment not found.',

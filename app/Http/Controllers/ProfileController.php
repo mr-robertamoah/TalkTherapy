@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Actions\Counsellor\EnsureCanDeleteCounsellorAction;
 use App\Actions\EnsureNameStaysRetrievableAction;
+use App\Actions\Suspension\EnsureCanDeleteOwnAccountWhileSuspendedAction;
 use App\Actions\User\EnsureDobChangeIsAllowedAction;
 use App\Actions\User\GetCounsellorCreationStepOfUserAction;
 use App\Actions\User\HasSubmittedAgeVerificationAction;
@@ -14,6 +15,7 @@ use App\DTOs\EnsureDobChangeIsAllowedDTO;
 use App\DTOs\UpdateUserAvatarDTO;
 use App\Exceptions\CannotDeleteCounsellorException;
 use App\Exceptions\DobChangeRequiresApprovalException;
+use App\Exceptions\SuspensionException;
 use App\Http\Requests\ProfileUpdateRequest;
 use App\Http\Requests\UpdateUserAvatarRequest;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
@@ -153,6 +155,13 @@ class ProfileController extends Controller
         ]);
 
         $user = $request->user();
+
+        // SCRUM-363
+        try {
+            EnsureCanDeleteOwnAccountWhileSuspendedAction::new()->execute($user);
+        } catch (SuspensionException $e) {
+            throw ValidationException::withMessages(['password' => $e->getMessage()]);
+        }
 
         // A counsellor with pending sessions can't just stop being a counsellor (see
         // CounsellorController::deleteCounsellor / EnsureCanDeleteCounsellorAction) -- deleting

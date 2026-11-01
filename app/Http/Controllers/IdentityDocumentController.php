@@ -2,9 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Actions\Admin\RecordAdminContentReadAction;
 use App\Actions\User\EnsureUserCanViewIdentityDocumentAction;
+use App\Models\AdminContentAccess;
 use App\Models\File;
 use App\Models\Request as ModelsRequest;
+use App\Models\User;
 use App\Traits\ResolvesExceptionResponse;
 use App\Traits\StreamsPrivateDocuments;
 use Illuminate\Http\Request;
@@ -19,7 +22,12 @@ class IdentityDocumentController extends Controller
     public function show(Request $httpRequest, ModelsRequest $request, File $file)
     {
         return $this->authorizedDocumentResponse(
-            fn () => EnsureUserCanViewIdentityDocumentAction::new()->execute($httpRequest->user(), $request, $file),
+            function () use ($httpRequest, $request, $file) {
+                EnsureUserCanViewIdentityDocumentAction::new()->execute($httpRequest->user(), $request, $file);
+                // SCRUM-360: an admin opening someone else's identity document.
+                $owner = $request->for instanceof User ? $request->for : ($request->from instanceof User ? $request->from : null);
+                RecordAdminContentReadAction::new()->execute($httpRequest->user(), AdminContentAccess::IDENTITY_DOCUMENT, $request, owner: $owner, fileId: $file->id);
+            },
             'identity_documents',
             $file,
             'Document not found.',

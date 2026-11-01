@@ -15,7 +15,7 @@ class EnsureAccountIsNotSuspended
 {
     public const CODE = 'account_suspended';
 
-    private const ALLOWED_ROUTES = ['suspended.show', 'suspended.appeal', 'logout'];
+    private const ALLOWED_ROUTES = ['suspended.show', 'suspended.appeal', 'logout', 'privacy'];
 
     public function handle(Request $request, Closure $next): Response
     {

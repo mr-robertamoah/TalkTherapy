@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Actions\EnsureIsAdminAction;
 use App\Actions\EnsureIsSuperAdminAction;
+use App\Actions\Suspension\EnsureCanDeleteOwnAccountWhileSuspendedAction;
 use App\Actions\User\CreateGuardianshipRequestAction;
 use App\Actions\User\DeleteGuardianshipAction;
 use App\Actions\User\DeleteUserAction;
@@ -89,6 +90,12 @@ class UserService extends Service
 
         EnsureUserExistsAction::new()->execute($updateUserDTO->updatedUser);
 
+        // SCRUM-363 (security review): not a way round the block on deleting your own account while
+        // suspended.
+        if ($updateUserDTO->updatedUser->is($updateUserDTO->user)) {
+            EnsureCanDeleteOwnAccountWhileSuspendedAction::new()->execute($updateUserDTO->user);
+        }
+
         DeleteUserAction::new()->execute($updateUserDTO);
     }
 
@@ -102,18 +109,8 @@ class UserService extends Service
 
         $query->whereNot('id', $getModelsForAdminDTO->user->id);
 
-        $query->when($getModelsForAdminDTO->name, function ($query) use ($getModelsForAdminDTO) {
-            $query->where(function ($query) use ($getModelsForAdminDTO) {
-                $query
-                    ->where('firstName', 'LIKE', "%{$getModelsForAdminDTO->name}%")
-                    ->orWhere('lastName', 'LIKE', "%{$getModelsForAdminDTO->name}%")
-                    ->orWhere('otherNames', 'LIKE', "%{$getModelsForAdminDTO->name}%");
-            });
-        });
-        $query->when($getModelsForAdminDTO->username, function ($query) use ($getModelsForAdminDTO) {
-            $query
-                ->where('username', 'LIKE', "%{$getModelsForAdminDTO->username}%");
-        });
+        $query->when($getModelsForAdminDTO->name, fn ($query) => $query->whereContains(['firstName', 'lastName', 'otherNames'], $getModelsForAdminDTO->name));
+        $query->when($getModelsForAdminDTO->username, fn ($query) => $query->whereContains('username', $getModelsForAdminDTO->username));
 
         $query->when($getModelsForAdminDTO->age, function ($query) use ($getModelsForAdminDTO) {
             $query->where(function ($query) use ($getModelsForAdminDTO) {
@@ -130,7 +127,8 @@ class UserService extends Service
 
     public function getUsers(GetUsersDTO $getUsersDTO)
     {
-        if (is_null($getUsersDTO->like)) {
+        // SCRUM-363: an empty search used to list everyone.
+        if (trim((string) $getUsersDTO->like) === '') {
             return [];
         }
 
@@ -140,13 +138,8 @@ class UserService extends Service
             $query->whereNot('id', $getUsersDTO->user->id);
         }
 
-        // Grouped: the ORs used to escape the "not yourself" filter above.
-        $query->where(function ($query) use ($getUsersDTO) {
-            $query->where('username', 'LIKE', "%{$getUsersDTO->like}%")
-                ->orWhere('firstName', 'LIKE', "%{$getUsersDTO->like}%")
-                ->orWhere('lastName', 'LIKE', "%{$getUsersDTO->like}%")
-                ->orWhere('otherNames', 'LIKE', "%{$getUsersDTO->like}%");
-        });
+        // Grouped (whereContains), so the ORs can't escape the "not yourself" filter above.
+        $query->whereContains(['username', 'firstName', 'lastName', 'otherNames'], trim($getUsersDTO->like));
 
         // SCRUM-359: this feeds the guardian and organisation invite pickers.
         $query->whereDoesntHave('suspensions', fn ($q) => $q->active()->where('scope', SuspensionScopeEnum::account->value));

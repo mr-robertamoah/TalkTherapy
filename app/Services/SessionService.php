@@ -211,6 +211,9 @@ class SessionService extends Service
         // SCRUM-339: authorize before the topic lookup, so a refused caller can't probe topic ids.
         EnsureCanChangeSessionTopicAction::new()->execute($createSessionDTO);
 
+        // SCRUM-363: running a session's topics is counsellor work.
+        EnsureTherapyCounsellorIsAvailableAction::new()->execute($createSessionDTO->user, $createSessionDTO->session->for, includeTarget: false);
+
         EnsureTherapyTopicExistsAction::new()->execute($createSessionDTO);
 
         $session = SetCurrentTopicOfSessionAction::new()->execute($createSessionDTO);
@@ -226,6 +229,8 @@ class SessionService extends Service
 
         // SCRUM-339: authorize before the topic lookup, so a refused caller can't probe topic ids.
         EnsureCanChangeSessionTopicAction::new()->execute($createSessionDTO);
+
+        EnsureTherapyCounsellorIsAvailableAction::new()->execute($createSessionDTO->user, $createSessionDTO->session->for, includeTarget: false);
 
         EnsureTherapyTopicExistsAction::new()->execute($createSessionDTO);
 

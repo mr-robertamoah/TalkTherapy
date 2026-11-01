@@ -91,6 +91,12 @@ function submitAppeal() {
                     Your appeal was reviewed and the suspension stays in place.
                 </p>
 
+                <ul class="text-sm text-gray-600 list-disc pl-5 space-y-1">
+                    <li v-if="suspension.isCounsellor">Your payouts are on hold until the suspension ends. Nothing you have earned is lost.</li>
+                    <li>You can't delete your account while you are suspended.</li>
+                    <li>Read how suspensions work in our <Link :href="route('privacy') + '#suspensions'" class="underline hover:text-gray-900">privacy page</Link>.</li>
+                </ul>
+
                 <p class="text-sm text-gray-600">
                     If you need support urgently, please contact your local emergency services or a crisis line.
                 </p>

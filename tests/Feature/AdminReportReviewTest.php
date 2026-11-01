@@ -486,4 +486,4 @@ test('the database itself refuses to change or remove an access record', functio
         ->and(fn () => DB::table('confidential_message_accesses')->delete())
         ->toThrow(QueryException::class, 'append-only')
         ->and(ConfidentialMessageAccess::query()->first()->reason)->toBe('Reviewing the abuse complaint');
-});
+})->group('mysql-triggers');

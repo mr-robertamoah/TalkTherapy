@@ -8864,3 +8864,88 @@ with "suspension recommended", a suspended counsellor's clients keep their thera
 - **Left for SCRUM-363:** cutting live websocket and video access server-side, holding payouts, account
   deletion while suspended, guardians of all group members, live session-status broadcast, search
   wildcard escaping, a future GDPR purge and the `restrictOnDelete` foreign keys, and MySQL in CI.
+
+## SCRUM-360 + 361 + 363 + 316 + 254: admin read log, confidential switch and privacy page, suspension follow-ups — 2026-11-01
+
+One PR, as the user asked ("the 36* ones and another task or 2"). SCRUM-316 and SCRUM-254 were picked
+as the extra two because both touched this work: the seeder bug QA hit on PR #273, and the suspension
+emails carrying admin-written reasons. User decisions: admins keep reading ordinary messages but
+every read is recorded; the log is kept forever; build the confidential switch now; we write
+`/privacy`, marked for legal review (SCRUM-364); payouts are held during a suspension and
+counsellors are told; self-deletion is blocked while suspended (user's reason: otherwise someone
+could delete the account and sign up again with the same email).
+
+- **New `admin_content_accesses` table, not a wider `confidential_message_accesses`.** That table needs
+  a report and a session and means "confidential read under a review". It feeds the close
+  notification, so widening it would blur both. Same append-only pattern: a shared `AppendOnly`
+  model trait plus database triggers.
+- **What counts as an admin read:** a read the admin could only make as an admin. That means an
+  admin who isn't a participant, of a non-public therapy or discussion, or of someone else's
+  licence or identity document. Recorded at the read points, after their own check passed, by
+  `RecordAdminContentReadAction`. Never recorded inside the boolean access checks: those also run
+  for sending and channel auth.
+- **One row per fetch, with a ten-minute de-duplication for files.** A chat page loads every
+  attachment in it, so per-file rows would flood the log.
+- **Not recorded:** subscriptions to the `messages.{id}` channel (restricted payload, SCRUM-365) and
+  page loads that only show therapy metadata.
+- **The confidential switch appears only when a message has one recipient.** The server refuses
+  `confidential` without a recipient, since only the sender could read it. An edit is checked only
+  when it newly makes a message confidential, so older confidential messages stay editable.
+- **Disclosure wording** says "the people the report is about are told when the review closes",
+  not "you are told". Only the reporter and the reported person get the close notification.
+- **`/privacy` uses a plain layout and is reachable by a suspended account.** `AuthenticatedLayout`
+  calls APIs that a suspended account is refused.
+- **Live sockets are not closed server-side (deviation, SCRUM-366).** An attempt used Reverb's
+  terminate-user API, keyed by a per-user `connections.{id}` presence channel. It worked in a
+  two-user browser test. But the devops and code reviews showed Reverb v1.10's handler fails with a
+  500 whenever a connection's first channel is a private one (it reads `user_id`, which only presence
+  subscriptions carry), and the earlier pass only worked because of channel creation order. It also
+  relied on the client joining that channel. Removed rather than shipped as a false guarantee.
+  Enforcement is unchanged: the open page is sent to `/suspended`, and every request and channel
+  re-authorisation is refused. Residual risk: a modified client keeps receiving broadcasts on
+  subscriptions it already has open.
+- **Video:** removal reuses the counsellor-removal steps, now `EjectVideoParticipantAction`, with the
+  existing `participant_removed` reason. A new reason would need a MySQL enum ALTER. Provider calls
+  run after commit and are best effort.
+- **Payout hold** is checked in `TriggerCounsellorPayoutAction`, which both the counsellor and an admin
+  use. It is not checked in `ProcessCounsellorPayoutJob`: a transfer already started would need a
+  new status. "Released when it ends" needs no job; the check simply stops refusing.
+- **Self-deletion** is refused for the person's own account or counsellor profile while any
+  suspension is active. An admin deleting it is unaffected.
+- **Guardians of every group member** count as part of a report. That is the cautious choice: more
+  admins are kept away from a case, never fewer.
+- **Search:** a `whereContains` query macro escapes `%`, `_` and `!` with an explicit `ESCAPE '!'`, so
+  MySQL and SQLite agree. Applied to user, counsellor and discussion search. The other `LIKE`
+  sites are a mechanical follow-up.
+- **Purge note (SCRUM-363 #9):** `suspensions.user_id` and `report_id` are `restrictOnDelete`. No path
+  hard-deletes such a user or report today. A future GDPR purge must delete or anonymise
+  suspension rows first.
+- **MySQL CI** runs only the migrations and the trigger tests (`phpunit.mysql.xml`), not the whole
+  suite: the full suite on MySQL has known failures (SCRUM-365). `TestCase`'s sqlite-only guard
+  allows exactly one other database, `talktherapy_mysql_ci`, so a dev database can still never be
+  wiped.
+- **SCRUM-316:** `Session::$fillable` stays as it is (no mass assignment of the parent). Seeders use one
+  `seedSession()` helper. The ticket overstated the bug: `db:seed` runs unguarded, so seeded rows
+  were fine, and only the seeder run by hand dropped the parent.
+- **SCRUM-254:** Laravel's `Markdown::withSecuredEncoding()` is switched on once, for every email, in
+  place of a per-string helper. It escapes `[` and `<` in the HTML part only, so plain text has no
+  stray backslashes. The old `EscapesMarkdown` trait was removed, because escaping twice would
+  bring link injection back.
+- **Review fixes:**
+  - *Message search* only matches messages the searcher can read. It used to match confidential
+    and deleted text, letting someone guess its content letter by letter (security, high).
+  - *Private therapy pages* opened by an admin are logged (resource `therapy`).
+  - *A queued payout* is held by the job itself while the counsellor is suspended, and sent again
+    when the suspension ends, is lifted, or an appeal succeeds.
+  - *Self-delete through the admin panel* is blocked while suspended.
+  - *`isSuperAdmin`* is only sent about the signed-in user.
+  - *Everything after a suspension is saved* runs in one best-effort step, so a failure can't stop
+    the person being told: the session broadcasts and the video clean-up. The video clean-up
+    picks each person's latest join row.
+  - *Broadcast client* timeouts are 3s/2s.
+  - *Read-log migration* can be re-run if its triggers failed.
+  - *MySQL CI* runs `--group=mysql-triggers --fail-on-empty-test-suite` through Pest directly.
+  - *`TestCase`'s database guard* also runs before RefreshDatabase migrates.
+- **Left for SCRUM-366:** server-side socket close, the remaining unescaped `LIKE` sites, Markdown
+  formatting spoofing (headings or bold, not links) in mail, and a subject filter plus
+  access-history link on the read-log page.

@@ -3,6 +3,7 @@
 namespace App\Actions\Suspension;
 
 use App\Actions\Action;
+use App\Actions\Payout\ResumeHeldPayoutsAction;
 use App\Enums\SuspensionAppealDecisionEnum;
 use App\Exceptions\SuspensionException;
 use App\Models\ReportStatusHistory;
@@ -59,6 +60,10 @@ class DecideSuspensionAppealAction extends Action
         });
 
         Notification::send($suspension->user, new SuspensionAppealDecidedNotification($suspension));
+
+        if ($decision == SuspensionAppealDecisionEnum::lifted) {
+            rescue(fn () => ResumeHeldPayoutsAction::new()->execute($suspension->user), report: true);
+        }
 
         return $suspension;
     }

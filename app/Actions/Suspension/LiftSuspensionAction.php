@@ -3,6 +3,7 @@
 namespace App\Actions\Suspension;
 
 use App\Actions\Action;
+use App\Actions\Payout\ResumeHeldPayoutsAction;
 use App\Enums\SuspensionAppealDecisionEnum;
 use App\Exceptions\SuspensionException;
 use App\Models\ReportStatusHistory;
@@ -29,6 +30,7 @@ class LiftSuspensionAction extends Action
         $suspension = DB::transaction(fn () => $this->lift($admin, $suspension, $reason, $event));
 
         Notification::send($suspension->user, new SuspensionEndedNotification($suspension, SuspensionEndedNotification::LIFTED));
+        rescue(fn () => ResumeHeldPayoutsAction::new()->execute($suspension->user), report: true);
 
         return $suspension;
     }

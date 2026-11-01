@@ -1,23 +1,34 @@
 <?php
 
+use App\Actions\Payout\GetCounsellorPayoutOverviewAction;
+use App\Actions\Payout\TriggerCounsellorPayoutAction;
 use App\Actions\Request\CreateRequestAction;
 use App\Actions\Suspension\ApplySuspensionAction;
 use App\Actions\Suspension\ApplySuspensionEffectsAction;
 use App\Actions\Suspension\EnsureCanActAsCounsellorAction;
 use App\Actions\Suspension\EnsureCanApplySuspensionAction;
+use App\Actions\Suspension\EnsureCanDeleteOwnAccountWhileSuspendedAction;
 use App\Actions\Suspension\EnsureTherapyCounsellorIsAvailableAction;
 use App\Actions\Suspension\SubmitSuspensionAppealAction;
+use App\Contracts\VideoProviderInterface;
 use App\DTOs\CreatePostDTO;
 use App\DTOs\CreateRequestDTO;
+use App\DTOs\CreateTherapyTopicDTO;
+use App\DTOs\TriggerPayoutDTO;
+use App\DTOs\UpdateUserDTO;
 use App\Enums\ReportStatusEnum;
 use App\Enums\RequestStatusEnum;
 use App\Enums\RequestTypeEnum;
 use App\Enums\SessionStatusEnum;
 use App\Enums\SuspensionScopeEnum;
 use App\Events\AccountSuspendedEvent;
+use App\Events\SessionUpdatedEvent;
+use App\Exceptions\PayoutException;
 use App\Exceptions\SuspensionException;
+use App\Jobs\ProcessCounsellorPayoutJob;
 use App\Models\Administrator;
 use App\Models\Counsellor;
+use App\Models\CounsellorPayout;
 use App\Models\GroupTherapy;
 use App\Models\Guardianship;
 use App\Models\Report;
@@ -27,6 +38,8 @@ use App\Models\Session;
 use App\Models\Suspension;
 use App\Models\Therapy;
 use App\Models\User;
+use App\Models\VideoSession;
+use App\Models\VideoSessionParticipant;
 use App\Notifications\CounsellorUnavailableNotification;
 use App\Notifications\SuspensionAppealDecidedNotification;
 use App\Notifications\SuspensionAppliedNotification;
@@ -34,8 +47,11 @@ use App\Notifications\SuspensionEndedNotification;
 use App\Notifications\WardSuspendedNotification;
 use App\Services\PostService;
 use App\Services\SuspensionService;
+use App\Services\TherapyTopicService;
+use App\Services\UserService;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Queue;
 use Laravel\Sanctum\Sanctum;
 
 // SCRUM-359: suspending a person from a resolved report -- who may, what it blocks, what it does
@@ -486,6 +502,8 @@ arch('counsellor entry points call the suspension check')
         'App\Services\DiscussionService',
         'App\Services\PostService',
         'App\Actions\Link\PerformLinkAction',
+        'App\Services\SessionNoteService',
+        'App\Services\MessageNoteService',
     ])
     ->toUse('App\Actions\Suspension\EnsureCanActAsCounsellorAction');
 
@@ -495,6 +513,7 @@ arch('session entry points call the therapy-counsellor check')
         'App\Services\SessionScheduleProposalService',
         'App\Actions\Video\JoinVideoSessionAction',
         'App\Services\MessageService',
+        'App\Services\TherapyTopicService',
     ])
     ->toUse('App\Actions\Suspension\EnsureTherapyCounsellorIsAvailableAction');
 
@@ -513,4 +532,197 @@ test('a signed-out visitor can search counsellors, and suspended ones are left o
     $this->getJson(route('api.counsellors'))->assertOk()
         ->assertJsonFragment(['id' => $other->id])
         ->assertJsonMissing(['id' => $c['counsellor']->id]);
+});
+
+// SCRUM-363 ---------------------------------------------------------------------------------------
+
+test('a suspended counsellor can not write session notes or change topics, and reading still works', function () {
+    $c = suspCounsellorCase();
+    suspApply(suspSuperAdmin(), $c['report'], 'counsellor', 7);
+    // Notes need a running session; a suspension ends those, so one is started afterwards.
+    $session = Session::factory()->create(['for_id' => $c['therapy']->id, 'for_type' => Therapy::class, 'status' => SessionStatusEnum::in_session->value, 'start_time' => now()->subMinutes(5), 'end_time' => now()->addHour()]);
+
+    $this->actingAs($c['counsellorUser'])->postJson(route('api.session.notes.store', ['sessionId' => $session->id]), ['content' => 'A note'])
+        ->assertForbidden();
+    $this->actingAs($c['counsellorUser'])->getJson(route('api.session.notes.index', ['sessionId' => $session->id]))->assertOk();
+
+    expect(fn () => TherapyTopicService::new()->createTherapyTopic(CreateTherapyTopicDTO::new()->fromArray([
+        'user' => $c['counsellorUser'], 'therapy' => $c['therapy'], 'name' => 'Sleep', 'description' => 'About sleep',
+    ])))->toThrow(SuspensionException::class);
+});
+
+test('a guardian of any member of a reported group is part of the report', function () {
+    $member = User::factory()->adult()->create();
+    $group = GroupTherapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => User::factory()->create()->id]);
+    $group->users()->attach($member->id, ['anonymous' => true]);
+    $report = new Report(['description' => 'Something happened', 'data' => []]);
+    $report->addedby()->associate(User::factory()->create());
+    $report->reportable()->associate($group);
+    $report->save();
+    $guardian = suspSuperAdmin();
+    Guardianship::create(['guardian_id' => $guardian->id, 'ward_id' => $member->id]);
+
+    expect(Report::find($report->id)->involves($guardian))->toBeTrue()
+        ->and(Report::find($report->id)->involves(suspSuperAdmin()))->toBeFalse();
+});
+
+test('sessions a suspension cancels are broadcast to open pages', function () {
+    Event::fake([AccountSuspendedEvent::class, SessionUpdatedEvent::class]);
+    $c = suspCounsellorCase();
+    suspPendingSession($c['therapy'], 2);
+
+    suspApply(suspSuperAdmin(), $c['report'], 'counsellor', 7);
+
+    Event::assertDispatched(SessionUpdatedEvent::class, 1);
+});
+
+test('a suspended counsellor\'s payouts are held, whoever asks, and they are told', function () {
+    $c = suspCounsellorCase();
+    suspApply(suspSuperAdmin(), $c['report'], 'counsellor', 7);
+
+    expect(fn () => TriggerCounsellorPayoutAction::new()->execute(TriggerPayoutDTO::new()->fromArray(['user' => $c['counsellorUser']])))
+        ->toThrow(PayoutException::class, TriggerCounsellorPayoutAction::ON_HOLD);
+
+    $overview = GetCounsellorPayoutOverviewAction::new()->execute($c['counsellor']->fresh());
+    expect($overview['onHold'])->toBeTrue()->and($overview['onHoldUntil'])->not->toBeNull();
+
+    Notification::assertSentTo($c['counsellorUser'], SuspensionAppliedNotification::class, fn ($n, $channels, $notifiable) => str_contains(implode(' ', $n->toMail($notifiable)->introLines), 'payouts are on hold'));
+
+    $this->travel(8)->days();
+    expect(GetCounsellorPayoutOverviewAction::new()->execute($c['counsellor']->fresh())['onHold'])->toBeFalse();
+});
+
+test('a suspended person can not delete their own account or counsellor profile', function () {
+    $c = suspCounsellorCase();
+    suspApply(suspSuperAdmin(), $c['report'], 'counsellor', 7);
+
+    $this->actingAs($c['counsellorUser'])->delete(route('profile.destroy'), ['password' => 'password'])
+        ->assertSessionHasErrors(['password' => EnsureCanDeleteOwnAccountWhileSuspendedAction::SUSPENDED]);
+    $this->actingAs($c['counsellorUser'])->delete(route('counsellor.delete', ['counsellorId' => $c['counsellor']->id]), ['password' => 'password'])
+        ->assertSessionHasErrors('alert');
+
+    expect($c['counsellorUser']->fresh())->not->toBeNull()
+        ->and($c['counsellor']->fresh())->not->toBeNull();
+});
+
+test('the privacy page is open to everyone, a suspended account included', function () {
+    $this->get(route('privacy'))->assertOk()->assertInertia(fn ($page) => $page->component('Privacy'));
+
+    $c = suspCounsellorCase();
+    suspApply(suspSuperAdmin(), $c['report']);
+    $this->actingAs($c['counsellorUser'])->get(route('privacy'))->assertOk();
+});
+
+function suspVideoProvider(array &$removed): VideoProviderInterface
+{
+    return new class($removed) implements VideoProviderInterface
+    {
+        public function __construct(private array &$removed) {}
+
+        public function createRoom(VideoSession $videoSession): array
+        {
+            return [];
+        }
+
+        public function createParticipantCredentials(VideoSession $videoSession, User $user, string $displayName, bool $isOwner = false, bool $receiveOnly = false, bool $canSendVideo = true): array
+        {
+            return [];
+        }
+
+        public function endRoom(VideoSession $videoSession): void
+        {
+            $this->removed[] = "room:{$videoSession->id}";
+        }
+
+        public function removeParticipant(VideoSession $videoSession, User $user): void
+        {
+            $this->removed[] = "user:{$user->id}";
+        }
+
+        public function updateParticipantCapabilities(VideoSession $videoSession, User $user, bool $canSendAudio, bool $canSendVideo): void {}
+    };
+}
+
+test('a suspended counsellor is taken out of a live group call that carries on with another counsellor', function () {
+    $c = suspCounsellorCase();
+    $group = GroupTherapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => User::factory()->create()->id]);
+    $group->counsellors()->attach($c['counsellor']->id, ['state' => 'ACTIVE', 'role' => 'NORMAL']);
+    $group->counsellors()->attach(Counsellor::factory()->create(['user_id' => User::factory()->create()->id])->id, ['state' => 'ACTIVE', 'role' => 'NORMAL']);
+    $session = Session::factory()->create(['for_id' => $group->id, 'for_type' => GroupTherapy::class, 'status' => SessionStatusEnum::in_session->value, 'start_time' => now()->subMinutes(5), 'end_time' => now()->addHour()]);
+    $videoSession = VideoSession::factory()->create(['session_id' => $session->id, 'provider_room_id' => 'room-g']);
+    $row = VideoSessionParticipant::factory()->create(['video_session_id' => $videoSession->id, 'participant_type' => User::class, 'participant_id' => $c['counsellorUser']->id, 'left_at' => null]);
+    $removed = [];
+    app()->instance(VideoProviderInterface::class, suspVideoProvider($removed));
+
+    suspApply(suspSuperAdmin(), $c['report'], 'counsellor', 7);
+
+    expect($session->fresh()->status)->toBe(SessionStatusEnum::in_session->value)
+        ->and($row->fresh()->left_at)->not->toBeNull()
+        ->and($removed)->toContain("user:{$c['counsellorUser']->id}")
+        ->and($videoSession->fresh()->ended_at)->toBeNull();
+});
+
+test('the video room of a session a suspension ends is closed', function () {
+    $c = suspCounsellorCase();
+    $session = Session::factory()->create(['for_id' => $c['therapy']->id, 'for_type' => Therapy::class, 'status' => SessionStatusEnum::in_session->value, 'start_time' => now()->subMinutes(5), 'end_time' => now()->addHour()]);
+    $videoSession = VideoSession::factory()->create(['session_id' => $session->id, 'provider_room_id' => 'room-i']);
+    $removed = [];
+    app()->instance(VideoProviderInterface::class, suspVideoProvider($removed));
+
+    suspApply(suspSuperAdmin(), $c['report'], 'counsellor', 7);
+
+    expect($session->fresh()->status)->toBe(SessionStatusEnum::abandoned->value)
+        ->and($videoSession->fresh()->ended_at)->not->toBeNull()
+        ->and($removed)->toContain("room:{$videoSession->id}");
+});
+
+test('a video provider failing after the suspension is saved never stops the person being told', function () {
+    $c = suspCounsellorCase();
+    $session = Session::factory()->create(['for_id' => $c['therapy']->id, 'for_type' => Therapy::class, 'status' => SessionStatusEnum::in_session->value, 'start_time' => now()->subMinutes(5), 'end_time' => now()->addHour()]);
+    VideoSession::factory()->create(['session_id' => $session->id, 'provider_room_id' => 'room-x']);
+    $provider = Mockery::mock(VideoProviderInterface::class);
+    $provider->shouldReceive('endRoom', 'removeParticipant')->andThrow(new RuntimeException('Daily API is unreachable.'));
+    app()->instance(VideoProviderInterface::class, $provider);
+
+    $suspension = suspApply(suspSuperAdmin(), $c['report'], 'account', 7);
+
+    expect($suspension->exists)->toBeTrue();
+    Notification::assertSentTo($c['counsellorUser'], SuspensionAppliedNotification::class);
+});
+
+test('a suspended counsellor can not set or unset a session topic', function () {
+    $c = suspCounsellorCase();
+    suspApply(suspSuperAdmin(), $c['report'], 'counsellor', 7);
+    $session = Session::factory()->create(['for_id' => $c['therapy']->id, 'for_type' => Therapy::class, 'addedby_type' => Counsellor::class, 'addedby_id' => $c['counsellor']->id, 'status' => SessionStatusEnum::in_session->value, 'start_time' => now()->subMinutes(5), 'end_time' => now()->addHour()]);
+    $topic = $c['therapy']->topics()->create(['name' => 'Sleep', 'description' => 'About sleep', 'counsellor_id' => $c['counsellor']->id]);
+
+    foreach (['api.session.topic.set', 'api.session.topic.unset'] as $route) {
+        $this->actingAs($c['counsellorUser'])->postJson(route($route, ['sessionId' => $session->id]), ['topicId' => $topic->id])
+            ->assertStatus(403);
+    }
+});
+
+test('a payout requested just before a suspension is held, and sent once it is lifted', function () {
+    Queue::fake();
+    $c = suspCounsellorCase();
+    $payout = CounsellorPayout::factory()->create(['counsellor_id' => $c['counsellor']->id, 'status' => 'PENDING']);
+    $suspension = suspApply(suspSuperAdmin(), $c['report'], 'counsellor', null);
+
+    (new ProcessCounsellorPayoutJob($payout->id))->handle();
+    expect($payout->fresh()->status)->toBe('PENDING');
+
+    $this->actingAs(suspSuperAdmin())->post(route('admin.suspensions.lift', ['suspension' => $suspension->id]), ['reason' => 'Lifted after a second look'])
+        ->assertSessionHasNoErrors();
+
+    Queue::assertPushed(ProcessCounsellorPayoutJob::class);
+});
+
+test('an admin can not delete their own account through the admin panel while suspended', function () {
+    $c = suspCounsellorCase();
+    Administrator::factory()->create(['user_id' => $c['counsellorUser']->id]);
+    // A super admin can't be suspended through the flow, so the suspension is recorded directly.
+    Suspension::create(['user_id' => $c['counsellorUser']->id, 'report_id' => $c['report']->id, 'scope' => 'counsellor', 'starts_at' => now(), 'public_reason' => 'Seeded for the test.']);
+
+    expect(fn () => UserService::new()->deleteUserByAdmin(UpdateUserDTO::new()->fromArray(['user' => $c['counsellorUser']->fresh(), 'updatedUser' => $c['counsellorUser']->fresh()])))
+        ->toThrow(SuspensionException::class);
 });

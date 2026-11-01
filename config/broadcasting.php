@@ -43,6 +43,10 @@ return [
             ],
             'client_options' => [
                 // Guzzle client options: https://docs.guzzlephp.org/en/stable/request-options.html
+                // SCRUM-363 (devops review): a hung Reverb must not hold an admin's request for the
+                // client's 30-second default -- synchronous broadcasts fail fast instead.
+                'timeout' => 3,
+                'connect_timeout' => 2,
             ],
         ],
 

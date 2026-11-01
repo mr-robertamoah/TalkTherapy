@@ -3,7 +3,6 @@
 namespace App\Notifications;
 
 use App\Models\Request;
-use App\Notifications\Concerns\EscapesMarkdown;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -14,7 +13,7 @@ use Illuminate\Notifications\Notification;
 // unlike accept it can't wait for a later notification to explain what happened.
 class RefundRequestRejectedNotification extends Notification implements ShouldQueue
 {
-    use EscapesMarkdown, Queueable;
+    use Queueable;
 
     public function __construct(private Request $request)
     {
@@ -47,8 +46,8 @@ class RefundRequestRejectedNotification extends Notification implements ShouldQu
             ->line("Your refund request for transaction \"{$transaction->reference}\" has been declined.");
 
         if ($reason) {
-            // SCRUM-254 (filed during TT-7.7b review): see EscapesMarkdown's own doc comment.
-            $mail->line('Reason given: '.$this->escapeMarkdown($reason));
+            // SCRUM-254: escaped app-wide (Markdown::withSecuredEncoding in AppServiceProvider).
+            $mail->line('Reason given: '.$reason);
         }
 
         return $mail

@@ -117,6 +117,7 @@ const belowMinimumPayout = computed(() => {
 const latestPayoutStatus = computed(() => counsellorOverview.value?.payoutHistory?.[0]?.status)
 const canTriggerPayout = computed(() => {
     return !!counsellorOverview.value
+        && !counsellorOverview.value.onHold
         && hasPayoutDestination.value
         && (counsellorOverview.value.availableAmount ?? 0) > 0
         && !belowMinimumPayout.value
@@ -124,6 +125,8 @@ const canTriggerPayout = computed(() => {
 })
 const payoutDisabledReason = computed(() => {
     if (!counsellorOverview.value) return ''
+    // SCRUM-363
+    if (counsellorOverview.value.onHold) return 'Payouts are on hold while this counsellor is suspended.'
     if (!hasPayoutDestination.value) return 'This counsellor has not set up a payout destination yet.'
     if (['PENDING', 'PROCESSING'].includes(latestPayoutStatus.value)) return 'A payout is already in progress for this counsellor.'
     if (belowMinimumPayout.value) {

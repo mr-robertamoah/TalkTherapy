@@ -14,6 +14,7 @@ use Illuminate\Http\Client\RequestException;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Log;
 
 // TT-7.6c/SCRUM-227: the real Paystack Transfer call, isolated here rather than inline in
 // TriggerCounsellorPayoutAction -- dispatched only after that action's DB transaction commits
@@ -64,6 +65,15 @@ class ProcessCounsellorPayoutJob implements ShouldQueue
         }
 
         $counsellor = $payout->counsellor;
+
+        // SCRUM-363 (security review): a suspension that landed after the payout was requested
+        // holds it -- still pending, not failed -- until ResumeHeldPayoutsAction sends it again.
+        if ($counsellor->isSuspended()) {
+            Log::info('Payout held while the counsellor is suspended.', ['payout' => $payout->id]);
+
+            return;
+        }
+
         $payoutAccount = $counsellor->payoutAccount;
 
         try {

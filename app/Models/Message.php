@@ -150,9 +150,25 @@ class Message extends Model
         });
     }
 
-    public function scopeWhereLike($query, string $like)
+    // SCRUM-363 (security review): searching must not reveal text the searcher can't see -- a hit on
+    // a confidential message would leak its content letter by letter. So only messages they can
+    // read are matched: not confidential, or confidential and they sent or received it; never one
+    // deleted for everyone. Wildcards are matched literally.
+    public function scopeWhereLike($query, string $like, ?User $viewer = null)
     {
-        return $query->where('content', 'LIKE', "%{$like}%");
+        $counsellorId = $viewer?->counsellor?->id;
+
+        return $query
+            ->whereNull('messages.deleted_at')
+            ->whereContains('messages.content', $like)
+            ->where(fn ($query) => $query
+                ->where('messages.confidential', false)
+                ->when($viewer, fn ($query) => $query->orWhere(fn ($query) => $query
+                    ->where(fn ($q) => $q->where('from_type', User::class)->where('from_id', $viewer->id))
+                    ->orWhere(fn ($q) => $q->where('to_type', User::class)->where('to_id', $viewer->id))
+                    ->when($counsellorId, fn ($query) => $query
+                        ->orWhere(fn ($q) => $q->where('from_type', Counsellor::class)->where('from_id', $counsellorId))
+                        ->orWhere(fn ($q) => $q->where('to_type', Counsellor::class)->where('to_id', $counsellorId))))));
     }
 
     public function scopeWhereTherapyTopicId($query, string|int|null $topicId)

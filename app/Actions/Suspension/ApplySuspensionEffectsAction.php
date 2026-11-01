@@ -35,15 +35,17 @@ class ApplySuspensionEffectsAction extends Action
 {
     public const DECLINED_REASON = 'The counsellor is not available at the moment.';
 
-    public function execute(Suspension $suspension): void
+    // Returns the sessions it ended or cancelled -- the caller broadcasts them and closes their
+    // video rooms once the transaction has committed.
+    public function execute(Suspension $suspension): Collection
     {
         $counsellor = $suspension->user->counsellor;
 
         if (! $counsellor) {
-            return;
+            return collect();
         }
 
-        $cancelledByClient = $this->failSessions($counsellor, $suspension);
+        [$cancelledByClient, $endedSessions] = $this->failSessions($counsellor, $suspension);
         $declinedRequesters = $this->declineRequests($counsellor);
         $this->withdrawSentRequests($counsellor);
         $name = $counsellor->getName();
@@ -58,9 +60,11 @@ class ApplySuspensionEffectsAction extends Action
                 $cancelledByClient[$client->id] ?? 0,
                 $declinedRequesters->contains('id', $client->id),
             )));
+
+        return $endedSessions;
     }
 
-    // clientId => number of their sessions cancelled. A session already running is ended
+    // [clientId => number of their sessions cancelled, the sessions]. A session already running is ended
     // (ABANDONED: "held but ended early" -- neither status bills); a scheduled one in the window FAILED.
     private function failSessions(Counsellor $counsellor, Suspension $suspension): array
     {
@@ -68,7 +72,7 @@ class ApplySuspensionEffectsAction extends Action
         $running = [SessionStatusEnum::in_session->value, SessionStatusEnum::in_session_confirmation->value];
         $alone = [];
 
-        Session::query()
+        $ended = Session::query()
             ->where(fn ($q) => $q
                 ->whereIn('status', $running)
                 ->orWhere(fn ($q) => $q
@@ -102,7 +106,7 @@ class ApplySuspensionEffectsAction extends Action
                 });
             });
 
-        return $counts;
+        return [$counts, $ended->values()];
     }
 
     // Offers they made (e.g. a proposed session time) can't be accepted any more -- withdraw them

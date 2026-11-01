@@ -3,7 +3,6 @@
 namespace App\Notifications;
 
 use App\Models\Request as ModelsRequest;
-use App\Notifications\Concerns\EscapesMarkdown;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -16,7 +15,7 @@ use Illuminate\Notifications\Notification;
 // recipient the way a compensation-change proposal has.
 class RefundRequestedNotification extends Notification implements ShouldQueue
 {
-    use EscapesMarkdown, Queueable;
+    use Queueable;
 
     public function __construct(private ModelsRequest $request)
     {
@@ -37,8 +36,8 @@ class RefundRequestedNotification extends Notification implements ShouldQueue
             ->subject('A Client Has Requested a Refund')
             ->greeting("Hello {$notifiable->name}!")
             ->line("A client has requested a refund for transaction \"{$transaction->reference}\" ({$transaction->currency} ".number_format($transaction->amount / 100, 2).').')
-            // SCRUM-254 (filed during TT-7.7b review): see EscapesMarkdown's own doc comment.
-            ->line('Reason given: '.$this->escapeMarkdown($reason))
+            // SCRUM-254: escaped app-wide (Markdown::withSecuredEncoding in AppServiceProvider).
+            ->line('Reason given: '.$reason)
             // TT-7.7c/SCRUM-251: the review queue this notification was waiting on now exists.
             ->action('Review Refund Requests', route('administrator.refund_requests'))
             ->line('Thank you for choosing to "TalkTherapy".');

@@ -146,12 +146,18 @@ const belowMinimumPayout = computed(() => {
     return minimumPayoutAmount != null && (availableAmount ?? 0) < minimumPayoutAmount
 })
 const canTriggerPayout = computed(() => {
-    return hasPayoutDestination.value
+    return !props.payoutOverview?.onHold
+        && hasPayoutDestination.value
         && (props.payoutOverview?.availableAmount ?? 0) > 0
         && !belowMinimumPayout.value
         && !['PENDING', 'PROCESSING'].includes(latestPayout.value?.status)
 })
 const payoutDisabledReason = computed(() => {
+    // SCRUM-363
+    if (props.payoutOverview?.onHold) {
+        const until = props.payoutOverview.onHoldUntil ? ` until ${new Date(props.payoutOverview.onHoldUntil).toLocaleDateString()}` : ''
+        return `Payouts are on hold while your counsellor role is suspended${until}. Nothing you earned is lost; you can withdraw it once the suspension ends.`
+    }
     if (!hasPayoutDestination.value) return 'Set up a payout destination first.'
     if (['PENDING', 'PROCESSING'].includes(latestPayout.value?.status)) return 'A payout is already in progress.'
     if (belowMinimumPayout.value) {

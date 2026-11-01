@@ -5,13 +5,16 @@ namespace App\Actions\Suspension;
 use App\Actions\Action;
 use App\Enums\SuspensionScopeEnum;
 use App\Events\AccountSuspendedEvent;
+use App\Events\SessionUpdatedEvent;
 use App\Exceptions\SuspensionException;
 use App\Models\Report;
 use App\Models\ReportStatusHistory;
+use App\Models\Session;
 use App\Models\Suspension;
 use App\Models\User;
 use App\Notifications\SuspensionAppliedNotification;
 use App\Notifications\WardSuspendedNotification;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
 
@@ -42,7 +45,7 @@ class ApplySuspensionAction extends Action
             throw new SuspensionException('Write the reason the person will see (at least 10 characters).', 422);
         }
 
-        $suspension = DB::transaction(function () use ($admin, $report, $scope, $days, $publicReason, $internalNote) {
+        [$suspension, $endedSessions] = DB::transaction(function () use ($admin, $report, $scope, $days, $publicReason, $internalNote) {
             $report = Report::query()->lockForUpdate()->findOrFail($report->id);
             $target = EnsureCanApplySuspensionAction::new()->execute($admin, $report, $scope);
             User::query()->whereKey($target->id)->lockForUpdate()->first();
@@ -77,14 +80,26 @@ class ApplySuspensionAction extends Action
                 ],
             ]);
 
-            ApplySuspensionEffectsAction::new()->execute($suspension->setRelation('user', $target->forgetActiveSuspension()));
+            $endedSessions = ApplySuspensionEffectsAction::new()->execute($suspension->setRelation('user', $target->forgetActiveSuspension()));
 
-            return $suspension;
+            return [$suspension, $endedSessions];
         });
 
         $this->notify($suspension);
+        $this->afterEffects($suspension, $endedSessions);
 
         return $suspension;
+    }
+
+    // SCRUM-363: everything that reaches outside the database, once committed and after the person
+    // has been told -- each step best effort, so none can undo or block the others.
+    private function afterEffects(Suspension $suspension, Collection $endedSessions): void
+    {
+        // Open pages see the cancelled sessions change without reloading.
+        $endedSessions->each(fn (Session $session) => rescue(fn () => SessionUpdatedEvent::dispatch($session), report: true));
+
+        // Provider calls never run inside the locked transaction.
+        rescue(fn () => RemoveSuspendedPersonFromVideoAction::new()->execute($suspension, $endedSessions), report: true);
     }
 
     private function notify(Suspension $suspension): void

@@ -211,6 +211,24 @@
                     />
                 </div>
             </div>
+            <!-- SCRUM-361: confidential is only offered when the message has one recipient -- with
+                 none, only the sender could ever read it (the server refuses that too). -->
+            <div v-if="computedCanMarkConfidential" class="w-[90%] mx-auto mt-2">
+                <label class="inline-flex items-center gap-2 text-sm text-gray-700 cursor-pointer select-none">
+                    <input
+                        v-model="message.confidential"
+                        type="checkbox"
+                        class="rounded border-gray-300 text-indigo-600 shadow-sm focus:ring-indigo-500"
+                    />
+                    Confidential
+                </label>
+                <p v-if="message.confidential" class="mt-1 text-xs text-gray-600">
+                    Only you and the person you're writing to can read this. If this conversation is reported, an
+                    administrator may read it; every read is recorded, and when the review closes the person who reported
+                    and the person it's about are told whether confidential messages were read.
+                    <a :href="route('privacy') + '#confidential-messages'" target="_blank" class="underline text-gray-700 hover:text-gray-900">Learn more</a>
+                </p>
+            </div>
             <div class="w-full max-h-[100px] p-2 flex justify-start overflow-hidden overflow-x-auto items-center space-x-2" v-if="files?.length">
                 <FilePreview
                     v-for="(file, idx) in files"
@@ -587,6 +605,13 @@ onBeforeUnmount(() => {
     unbindConnectionStatus()
 })
 
+
+// SCRUM-361
+const computedCanMarkConfidential = computed(() => !!getMessageTo().id)
+// Never send a confidential flag the person can no longer see.
+watch(computedCanMarkConfidential, (can) => {
+    if (!can) message.value.confidential = false
+})
 
 const computedCanSendMessage = computed(() => {
     if (!props.isParticipant) return false

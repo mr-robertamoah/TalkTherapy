@@ -66,6 +66,12 @@
                 </div>
             </div>
             <div class="flex justify-end items-center space-x-2" v-if="!reply">
+                <!-- SCRUM-361: only the sender and the recipient ever see a confidential message. -->
+                <div
+                    v-if="msg.confidential"
+                    class="text-xs text-indigo-700 lowercase"
+                    title="Only you and the other person in this message can read it."
+                >confidential .</div>
                 <div 
                     class="text-gray-600 text-xs"
                     v-if="msg.createdAt && msg.createdAt !== msg.updatedAt">edited .</div>

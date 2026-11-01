@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Actions\Payout\ResumeHeldPayoutsAction;
 use App\Models\ReportStatusHistory;
 use App\Models\Suspension;
 use App\Notifications\SuspensionEndedNotification;
@@ -48,6 +49,7 @@ class SuspensionService extends Service
 
                     if ($suspension) {
                         Notification::send($suspension->user, new SuspensionEndedNotification($suspension, SuspensionEndedNotification::EXPIRED));
+                        ResumeHeldPayoutsAction::new()->execute($suspension->user);
                         $ended++;
                     }
                 } catch (\Throwable $th) {
