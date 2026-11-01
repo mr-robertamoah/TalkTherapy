@@ -11,6 +11,7 @@ use App\Enums\TherapyStatusEnum;
 use App\Models\Counsellor;
 use App\Models\Request;
 use App\Models\Therapy;
+use App\Models\User;
 use App\Notifications\TherapyAssistanceRequestAcceptedGuardianNotification;
 use App\Notifications\TherapyAssistanceRequestAcceptedNotification;
 use Illuminate\Support\Facades\DB;
@@ -78,25 +79,20 @@ class RespondToTherapyAssistanceRequestAction extends Action
                 new TherapyAssistanceRequestAcceptedNotification($request)
             );
 
-            // TT-4.10b/SCRUM-291: only pass 'for' => $request->for when $request->from is the
-            // therapy's own client (a User) -- when it's a Counsellor instead (this Counsellor
-            // is OFFERING to assist someone else's therapy, see TherapyService::sendAssistance-
-            // Request()'s own counsellor-initiated branch), 'user' above resolves to that
-            // counsellor's own account, which has no relationship at all to $request->for's
-            // client_was_minor_at_creation snapshot -- that snapshot is about the THERAPY'S
-            // CLIENT, a different person. Falls back to a live check on the counsellor's own
-            // account in that branch, unchanged from before this ticket.
-            AlertGuardianAction::new()->execute(
-                GuardianAlertDTO::new()->fromArray([
-                    'user' => $request->from::class == Counsellor::class
-                        ? $request->from->user
-                        : $request->from,
-                    'notification' => new TherapyAssistanceRequestAcceptedGuardianNotification(
-                        $request->for
-                    ),
-                    'for' => $request->from::class == Counsellor::class ? null : $request->for,
-                ])
-            );
+            // SCRUM-358: the guardians to tell are the THERAPY CLIENT's -- whoever sent the request.
+            // This used to alert the guardians of `$request->from`, which for a counsellor's offer
+            // was the counsellor's own account: a (minor) counsellor's guardian would have been
+            // told a client's name. The client is never a Counsellor.
+            $client = $request->for->addedby;
+            if ($client instanceof User) {
+                AlertGuardianAction::new()->execute(
+                    GuardianAlertDTO::new()->fromArray([
+                        'user' => $client,
+                        'notification' => new TherapyAssistanceRequestAcceptedGuardianNotification($request->for),
+                        'for' => $request->for,
+                    ])
+                );
+            }
         }
 
         return $request;

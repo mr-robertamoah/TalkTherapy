@@ -37,7 +37,10 @@ class CreateGroupTherapyRequest extends FormRequest
             'public' => ['required', 'boolean'],
             'cases' => ['nullable', 'array'],
             'counsellorId' => ['nullable', 'integer'],
-            'counsellorIds' => ['nullable', 'array'],
+            // SCRUM-358 (security review): invites now actually let a counsellor join -- only real
+            // counsellors, and a bounded list.
+            'counsellorIds' => ['nullable', 'array', 'max:50'],
+            'counsellorIds.*' => ['integer', 'exists:counsellors,id'],
             'sessionType' => ['required', Rule::in(TherapySessionTypeEnum::values())],
             'paymentType' => ['required', Rule::in(TherapyPaymentTypeEnum::values())],
             'maxSessions' => ['nullable', Rule::requiredIf($this->get('sessionType') == TherapySessionTypeEnum::periodic->value), 'integer', 'min:1'],

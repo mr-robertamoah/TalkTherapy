@@ -105,11 +105,16 @@ export default function useTherapyState(therapy, therapyType = 'individual') {
             ? `groupTherapies.${currentTherapy.id}`
             : `therapies.${currentTherapy.id}`
             
-        Echo.join(channelName)
+        // SCRUM-357: members are listed by a per-channel key, never a user id -- this browser's own
+        // key is the channel's `members.me`, so each entry is marked with whether it's us.
+        const presence = Echo.join(channelName)
+        const ownPresenceId = () => presence.subscription?.members?.me?.id
+
+        presence
             .here((users) => {
-                onlineParticipants.value = [...users]
+                onlineParticipants.value = users.map((u) => ({ ...u, isMe: u.id === ownPresenceId() }))
                 
-                let otherUser = users.find((u) => userId.value !== u.id)
+                let otherUser = onlineParticipants.value.find((u) => !u.isMe)
                 if (!otherUser) return
                 
                 setSuccessAlertData({
@@ -121,7 +126,7 @@ export default function useTherapyState(therapy, therapyType = 'individual') {
                 let found = onlineParticipants.value.find((u) => u.id == user.id)
                 if (found) return
                 
-                onlineParticipants.value.push(user)
+                onlineParticipants.value.push({ ...user, isMe: false })
                 setSuccessAlertData({
                     message: `${user.name} just came online.`,
                     time: 4000,

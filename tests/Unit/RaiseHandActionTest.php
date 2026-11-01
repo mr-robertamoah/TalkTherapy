@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Models\VideoSession;
 use App\Models\VideoSessionParticipant;
 use App\Models\VideoSessionSpeakingGrant;
+use App\Support\VideoParticipantKey;
 use Illuminate\Support\Facades\Event;
 
 // TT-3.2f-f/SCRUM-323: a receive-only member, already admitted to the call, asks to speak.
@@ -50,7 +51,7 @@ test('an admitted receive-only member can raise their hand', function () {
     expect($data['memberParticipant']->currentHandRaise())->not->toBeNull();
     Event::assertDispatched(HandRaisedEvent::class, fn ($event) => $event->broadcastWith() === [
         'sessionId' => $data['session']->id,
-        'userId' => $data['member']->id,
+        'participantKey' => VideoParticipantKey::for($data['session']->id, $data['member']->id),
     ]);
 });
 

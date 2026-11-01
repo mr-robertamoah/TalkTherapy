@@ -2,6 +2,7 @@
 
 namespace App\Notifications;
 
+use App\Enums\ConstantsEnum;
 use App\Models\Counsellor;
 use App\Models\Request;
 use App\Models\User;
@@ -97,7 +98,7 @@ class GroupTherapyMembershipRequestAcceptedNotification extends Notification imp
         // SCRUM-56: the same rule GroupTherapyResource uses (addedByUserIsMaskedFor). A deleted
         // creator is never named either.
         return ! $groupTherapy->addedby || $groupTherapy->addedByUserIsMaskedFor($notifiable instanceof User ? $notifiable : null)
-            ? 'an anonymous user'
+            ? ConstantsEnum::anonymousPersonPhrase->value
             : $groupTherapy->addedby->name;
     }
 }

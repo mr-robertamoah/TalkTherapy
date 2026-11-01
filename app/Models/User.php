@@ -112,6 +112,22 @@ class User extends Authenticatable implements MustVerifyEmailContract
         return $this->avatarFile->first();
     }
 
+    // SCRUM-357: the identity a presence channel shows for this user -- never the real id, which
+    // anyone signed in can resolve through /api/users. Laravel's Pusher/Reverb broadcaster asks for
+    // this inside the /broadcasting/auth request, so it is scoped to the channel being joined
+    // (`channel_name`): the same person gets a different key in every channel, so being in two
+    // channels never links an anonymous member of one to a named member of another (code review).
+    // A keyed hash: stable per channel (a browser recognises itself), not reversible.
+    public function getAuthIdentifierForBroadcasting(): string
+    {
+        return $this->broadcastKeyFor((string) request('channel_name'));
+    }
+
+    public function broadcastKeyFor(string $channelName): string
+    {
+        return substr(hash_hmac('sha256', "presence:{$channelName}:user:{$this->id}", (string) config('app.key')), 0, 24);
+    }
+
     public function guardians()
     {
         return $this->hasMany(Guardianship::class, 'ward_id');

@@ -7,6 +7,7 @@ use App\Models\Session;
 use App\Models\Therapy;
 use App\Models\User;
 use App\Models\VideoSession;
+use App\Support\VideoParticipantKey;
 
 // TT-3.1b/SCRUM-275: the first HTTP-reachable surface for TT-3.1's video backend -- proves the
 // route/controller wiring itself (auth, participant/payment-gate authorization, response shape),
@@ -324,7 +325,7 @@ test('an active counsellor can remove the group creator from the group video cal
 
     $response = $this
         ->actingAs($counsellorUser)
-        ->postJson(route('sessions.video.participants.remove', ['sessionId' => $session->id, 'userId' => $creator->id]));
+        ->postJson(route('sessions.video.participants.remove', ['sessionId' => $session->id, 'participantKey' => VideoParticipantKey::for($session->id, $creator->id)]));
 
     $response->assertOk();
     $videoSession = VideoSession::query()->where('session_id', $session->id)->first();
@@ -355,7 +356,7 @@ test('an ordinary GroupTherapy member cannot remove anyone from the group video 
 
     $response = $this
         ->actingAs($member)
-        ->postJson(route('sessions.video.participants.remove', ['sessionId' => $session->id, 'userId' => $counsellorUser->id]));
+        ->postJson(route('sessions.video.participants.remove', ['sessionId' => $session->id, 'participantKey' => VideoParticipantKey::for($session->id, $counsellorUser->id)]));
 
     $response->assertStatus(422);
     $videoSession = VideoSession::query()->where('session_id', $session->id)->first();
@@ -366,6 +367,8 @@ test('an ordinary GroupTherapy member cannot remove anyone from the group video 
 // the exact same response as one that exists but simply isn't a live participant of this call --
 // otherwise a distinguishable response (e.g. a 422 "not found" vs. a 200 no-op) would hand any
 // counsellor a system-wide user-id-existence oracle, unrelated to this group/session at all.
+// SCRUM-357: the target is now a participant key -- a forged key that matches nobody must take the
+// same path too.
 test('removing a nonexistent target user id gets the identical response as removing a real but non-participant user id', function () {
     app()->instance(VideoProviderInterface::class, fakeVideoProviderForRouteTest());
     $creator = User::factory()->adult()->create();
@@ -390,15 +393,21 @@ test('removing a nonexistent target user id gets the identical response as remov
 
     $responseForNonexistentId = $this
         ->actingAs($counsellorUser)
-        ->postJson(route('sessions.video.participants.remove', ['sessionId' => $session->id, 'userId' => $nonexistentUserId]));
+        ->postJson(route('sessions.video.participants.remove', ['sessionId' => $session->id, 'participantKey' => VideoParticipantKey::for($session->id, $nonexistentUserId)]));
 
     $responseForRealUnrelatedId = $this
         ->actingAs($counsellorUser)
-        ->postJson(route('sessions.video.participants.remove', ['sessionId' => $session->id, 'userId' => $realButUnrelatedUser->id]));
+        ->postJson(route('sessions.video.participants.remove', ['sessionId' => $session->id, 'participantKey' => VideoParticipantKey::for($session->id, $realButUnrelatedUser->id)]));
+
+    $responseForForgedKey = $this
+        ->actingAs($counsellorUser)
+        ->postJson(route('sessions.video.participants.remove', ['sessionId' => $session->id, 'participantKey' => 'not-a-real-participant-key']));
 
     $responseForNonexistentId->assertOk();
     $responseForRealUnrelatedId->assertOk();
-    expect($responseForNonexistentId->json())->toBe($responseForRealUnrelatedId->json());
+    $responseForForgedKey->assertOk();
+    expect($responseForNonexistentId->json())->toBe($responseForRealUnrelatedId->json())
+        ->and($responseForForgedKey->json())->toBe($responseForRealUnrelatedId->json());
 });
 
 // QA finding (route/unit parity gap): the action-level unit test already covers this, but the
@@ -426,7 +435,7 @@ test('a counsellor cannot remove themselves over the route -- must use leave ins
 
     $response = $this
         ->actingAs($counsellorUser)
-        ->postJson(route('sessions.video.participants.remove', ['sessionId' => $session->id, 'userId' => $counsellorUser->id]));
+        ->postJson(route('sessions.video.participants.remove', ['sessionId' => $session->id, 'participantKey' => VideoParticipantKey::for($session->id, $counsellorUser->id)]));
 
     $response->assertStatus(422);
 });
@@ -438,7 +447,7 @@ test('removal is not available for a 1:1 Therapy video session over the route', 
 
     $response = $this
         ->actingAs($data['counsellorUser'])
-        ->postJson(route('sessions.video.participants.remove', ['sessionId' => $data['session']->id, 'userId' => $data['client']->id]));
+        ->postJson(route('sessions.video.participants.remove', ['sessionId' => $data['session']->id, 'participantKey' => VideoParticipantKey::for($data['session']->id, $data['client']->id)]));
 
     $response->assertStatus(422);
 });
@@ -475,7 +484,7 @@ function groupVideoCallWithJoinedMemberForSpeakingRoutes($test): array
 
 test('a joined member raises a hand, a counsellor grants, then revokes, over the routes', function () {
     $data = groupVideoCallWithJoinedMemberForSpeakingRoutes($this);
-    $ids = ['sessionId' => $data['session']->id, 'userId' => $data['member']->id];
+    $ids = ['sessionId' => $data['session']->id, 'participantKey' => VideoParticipantKey::for($data['session']->id, $data['member']->id)];
 
     $this->actingAs($data['member'])->postJson(route('sessions.video.hand.raise', ['sessionId' => $data['session']->id]))->assertOk();
     expect($data['memberParticipant']->currentHandRaise())->not->toBeNull();
@@ -499,7 +508,7 @@ test('a joined member can lower their own hand over the route', function () {
 
 test('a member cannot grant or revoke speaking permission over the routes', function () {
     $data = groupVideoCallWithJoinedMemberForSpeakingRoutes($this);
-    $ids = ['sessionId' => $data['session']->id, 'userId' => $data['member']->id];
+    $ids = ['sessionId' => $data['session']->id, 'participantKey' => VideoParticipantKey::for($data['session']->id, $data['member']->id)];
 
     $this->actingAs($data['member'])->postJson(route('sessions.video.participants.grant_speaking', $ids))->assertStatus(422);
     $this->actingAs($data['creator'])->postJson(route('sessions.video.participants.grant_speaking', $ids))->assertStatus(422);
@@ -513,13 +522,18 @@ test('granting a nonexistent user id gets the identical response as a real user 
     $realButUnrelatedUser = User::factory()->create();
 
     $responseForNonexistentId = $this->actingAs($data['counsellorUser'])
-        ->postJson(route('sessions.video.participants.grant_speaking', ['sessionId' => $data['session']->id, 'userId' => User::max('id') + 1000]));
+        ->postJson(route('sessions.video.participants.grant_speaking', ['sessionId' => $data['session']->id, 'participantKey' => VideoParticipantKey::for($data['session']->id, User::max('id') + 1000)]));
     $responseForRealUnrelatedId = $this->actingAs($data['counsellorUser'])
-        ->postJson(route('sessions.video.participants.grant_speaking', ['sessionId' => $data['session']->id, 'userId' => $realButUnrelatedUser->id]));
+        ->postJson(route('sessions.video.participants.grant_speaking', ['sessionId' => $data['session']->id, 'participantKey' => VideoParticipantKey::for($data['session']->id, $realButUnrelatedUser->id)]));
+
+    $responseForForgedKey = $this->actingAs($data['counsellorUser'])
+        ->postJson(route('sessions.video.participants.grant_speaking', ['sessionId' => $data['session']->id, 'participantKey' => 'not-a-real-participant-key']));
 
     $responseForNonexistentId->assertStatus(422);
     $responseForRealUnrelatedId->assertStatus(422);
-    expect($responseForNonexistentId->json())->toBe($responseForRealUnrelatedId->json());
+    $responseForForgedKey->assertStatus(422);
+    expect($responseForNonexistentId->json())->toBe($responseForRealUnrelatedId->json())
+        ->and($responseForForgedKey->json())->toBe($responseForRealUnrelatedId->json());
 });
 
 test('an unauthenticated request cannot raise a hand or grant speaking permission', function () {
@@ -527,13 +541,13 @@ test('an unauthenticated request cannot raise a hand or grant speaking permissio
     auth()->logout();
 
     $this->postJson(route('sessions.video.hand.raise', ['sessionId' => $data['session']->id]))->assertUnauthorized();
-    $this->postJson(route('sessions.video.participants.grant_speaking', ['sessionId' => $data['session']->id, 'userId' => $data['member']->id]))->assertUnauthorized();
+    $this->postJson(route('sessions.video.participants.grant_speaking', ['sessionId' => $data['session']->id, 'participantKey' => VideoParticipantKey::for($data['session']->id, $data['member']->id)]))->assertUnauthorized();
 });
 
 // TT-3.2f-h/SCRUM-325: the activity ping route, and its own rate-limit bucket.
 test('a granted member can ping speaking activity over the route', function () {
     $data = groupVideoCallWithJoinedMemberForSpeakingRoutes($this);
-    $this->actingAs($data['counsellorUser'])->postJson(route('sessions.video.participants.grant_speaking', ['sessionId' => $data['session']->id, 'userId' => $data['member']->id]));
+    $this->actingAs($data['counsellorUser'])->postJson(route('sessions.video.participants.grant_speaking', ['sessionId' => $data['session']->id, 'participantKey' => VideoParticipantKey::for($data['session']->id, $data['member']->id)]));
 
     $grant = $data['memberParticipant']->currentSpeakingGrant();
     $grant->update(['last_activity_at' => now()->subMinutes(4)]);

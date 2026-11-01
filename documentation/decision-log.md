@@ -8673,3 +8673,33 @@ The user asked for all three in one PR.
 - **Found by the security sweep, outside this PR's scope and ticketed:**
   - **SCRUM-357 (Medium):** presence channels and video events broadcast anonymous members' real user ids.
   - **SCRUM-358:** a guardian alert can go to a counsellor's guardian. Also, group-therapy assistance requests can't actually be accepted, so the group acceptance path tested here is only reachable in tests.
+
+## SCRUM-356 + SCRUM-357 + SCRUM-358: notification cleanup, no real ids in realtime, group invites — 2026-11-01
+
+The user asked for the three follow-ups in one PR.
+
+- **SCRUM-356:**
+  - `GroupTherapyAssistanceRequestSentNotification` now just extends `TherapyAssistanceRequestSentNotification`; the class name is kept for existing callers.
+  - Notifications share one phrase for someone they mustn't name: `ConstantsEnum::anonymousPersonPhrase`.
+- **SCRUM-357, the design:** two opaque identities, both keyed hashes (HMAC with the app key), so they can't be reversed or resolved through `/api/users`.
+  - **Video:** a per-session **participant key** (`App\Support\VideoParticipantKey`) replaces the user id everywhere another participant can see it:
+    - the provider's own participant identity (Daily `user_id`, Chime `ExternalUserId`), which every client in the room can read, so masking only our events wouldn't have been enough;
+    - the hand-raise, speaking and removal broadcasts, and the join snapshot;
+    - the moderation routes (`{participantKey}`), which the server maps back to the user, with an unknown key treated exactly like an absent participant.
+
+    Because the key is per session, nobody can link the same person across calls.
+  - **Presence:** `therapies.*` and `groupTherapies.*` list members by a **per-channel** key (`User::broadcastKeyFor($channelName)`, served as `getAuthIdentifierForBroadcasting()` inside `/broadcasting/auth`), so the Pusher/Reverb member id isn't the real id either.
+    - **Why per channel:** both reviews caught that my first version (one key per user) let anyone in two channels link someone who's anonymous in one to their name in the other.
+    - Each browser reads its own key from the channel (`members.me`), so no key is shipped to the browser.
+  - **`APP_KEY` rotation:** both kinds of key derive from `APP_KEY`. Rotating it mid-call breaks moderation targeting until participants rejoin, and presence self-recognition until a reload. Plan rotations outside live sessions.
+  - **`/api/users`:** `UserMiniResource` no longer returns `dob` except to the user themselves and admins.
+  - **Not changed:** the counsellor-only `discussions.*` presence channel, because counsellors aren't anonymous.
+- **SCRUM-358:**
+  - **Guardian alert:** the "assistance accepted" guardian alert now always goes to the therapy **client's** guardians. Before, a counsellor's offer alerted the counsellor's own guardians, and the client's guardians weren't told at all.
+  - **Group invites (product decision, 2026-11-01):** accepting one adds the counsellor to the group as an active, normal-role counsellor, unless the group is full. A full group refuses with a clear message and leaves the invite pending. Once it fills, the remaining invites close.
+  - The accepted email links to the right page for groups.
+  - No guardian alert is sent for groups: the guardian notification is written for a single counsellor.
+  - **Who can accept** (security review): accepting now really adds a counsellor, so it's refused unless the responder is the invited counsellor themselves (an admin can't accept for them, because joining is their consent), still verified, not the group's own client or a member (who would gain moderation powers over the others), and the group hasn't ended. One generic message covers all of these.
+    - Creating a group validates `counsellorIds.*` (they must exist, at most 50).
+    - A re-joining counsellor keeps their previous role.
+    - A counsellor-created group's invite gets group wording, and its database notification uses `group_therapy_id`.

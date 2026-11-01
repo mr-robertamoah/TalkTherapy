@@ -197,12 +197,11 @@ test('using a therapy-counsellor link alerts the client\'s guardian even if thei
     Notification::assertSentTo($guardian, TherapyAssistanceRequestAcceptedGuardianNotification::class);
 });
 
-// Defensive-guard case: this link type's own addedby is client-suppliable (LinkController accepts
-// any addedbyType/addedbyId EnsureAddedbyIsValidAction will allow) and isn't otherwise guaranteed
-// to be the same person as the therapy's own client -- unlike TherapyService::createTherapy's own
-// guaranteed-by-construction case, this action must NOT assume they match, and must fall back to
-// a live check on the link's own addedby rather than misreading a mismatched therapy's snapshot.
-test('falls back to a live check when the link\'s addedby does not match the therapy\'s own client', function () {
+// SCRUM-358: this link type's own addedby is client-suppliable (LinkController accepts any
+// addedbyType/addedbyId EnsureAddedbyIsValidAction will allow), so the alert must never follow it --
+// it always goes to the guardians of the THERAPY'S OWN CLIENT (judged by the therapy's snapshot),
+// and never to the guardians of whoever happened to create the link.
+test('alerts the therapy client\'s guardians, not the link creator\'s, when the link\'s addedby does not match the therapy\'s own client', function () {
     Notification::fake();
 
     $therapyOwner = User::factory()->create(['dob' => now()->subYears(15)->toDateString()]);
@@ -232,9 +231,8 @@ test('falls back to a live check when the link\'s addedby does not match the the
         CreateLinkDTO::new()->fromArray(['user' => $counsellorUser, 'link' => $link])
     );
 
-    // The link creator is a live adult, so no alert at all -- and specifically NOT the therapy
-    // owner's guardian, which is what a naive "just always pass $therapy" wiring would have
-    // wrongly notified instead.
+    // The therapy's client was a minor at creation, so THEIR guardian is told -- the link
+    // creator's guardian, a stranger to this therapy, never is.
+    Notification::assertSentTo($therapyOwnerGuardian, TherapyAssistanceRequestAcceptedGuardianNotification::class);
     Notification::assertNotSentTo($linkCreatorGuardian, TherapyAssistanceRequestAcceptedGuardianNotification::class);
-    Notification::assertNotSentTo($therapyOwnerGuardian, TherapyAssistanceRequestAcceptedGuardianNotification::class);
 });

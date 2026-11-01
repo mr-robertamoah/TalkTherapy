@@ -99,15 +99,18 @@ class JoinVideoSessionAction extends Action
             'isMinorMember' => $isMinorMember,
             'canModerate' => $canModerate,
             'speakingGrantIdleTimeout' => (int) config('video.speaking_grant_idle_timeout'),
-            'raisedHandUserIds' => $canModerate ? $this->liveUserIdsWith($videoSession, 'handRaises', 'lowered_at') : [],
-            'speakerUserIds' => $canModerate ? $this->liveUserIdsWith($videoSession, 'speakingGrants', 'revoked_at') : [],
+            // SCRUM-357: participant keys, never user ids -- the same identity the provider and the
+            // broadcasts use. `key` is the joiner's own, so their browser can recognise itself.
+            'key' => $videoSession->participantKeyFor($user->id),
+            'raisedHandKeys' => $canModerate ? $this->liveKeysWith($videoSession, 'handRaises', 'lowered_at') : [],
+            'speakerKeys' => $canModerate ? $this->liveKeysWith($videoSession, 'speakingGrants', 'revoked_at') : [],
         ];
     }
 
     // Users whose LIVE join row in this call holds an open hand-raise/speaking grant -- the latest
     // open row per user, the same row VideoSession::activeParticipantFor() treats as current, so a
     // stale row left open by a reconnect (SCRUM-330) never lists someone who can't actually speak.
-    private function liveUserIdsWith(VideoSession $videoSession, string $relation, string $closedColumn): array
+    private function liveKeysWith(VideoSession $videoSession, string $relation, string $closedColumn): array
     {
         return $videoSession->participants()
             ->where('participant_type', User::class)
@@ -118,7 +121,7 @@ class JoinVideoSessionAction extends Action
             ->get()
             ->unique('participant_id')
             ->filter(fn ($row) => $row->has_open)
-            ->map(fn ($row) => (int) $row->participant_id)
+            ->map(fn ($row) => $videoSession->participantKeyFor((int) $row->participant_id))
             ->values()
             ->all();
     }

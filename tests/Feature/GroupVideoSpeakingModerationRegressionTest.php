@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Models\VideoSession;
 use App\Services\AppService;
 use App\Services\Chime\ChimeClient;
+use App\Support\VideoParticipantKey;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 
@@ -19,12 +20,12 @@ use Illuminate\Support\Facades\Http;
 // Each fake keeps its own view of "what may this user send", so the assertions are about what the
 // provider would be TOLD to enforce, not merely what our database believes. The fakes model each
 // provider's protocol as our adapters assume it (e.g. Daily's update-permissions keyed by our
-// user_id) -- they can't catch a wrong assumption about the real provider; only a live sandbox pass
+// user_id, which since SCRUM-357 is the per-session participant key, never the user id) -- they can't catch a wrong assumption about the real provider; only a live sandbox pass
 // can (SCRUM-317). Per-action edge cases live in the individual action tests; this file pins the
 // cross-provider end-to-end behaviour.
 
-// In-memory provider state, shared shape for both fakes: Daily records canSend per user id (from
-// token minting and update-permissions calls) plus ejected ids; Chime keeps live attendees.
+// In-memory provider state, shared shape for both fakes: Daily records canSend per participant key
+// (from token minting and update-permissions calls) plus ejected keys; Chime keeps live attendees.
 function gvrFakeDaily(): object
 {
     config([
@@ -63,8 +64,8 @@ function gvrFakeDaily(): object
         }
 
         if (str_ends_with($path, '/update-permissions')) {
-            foreach ($data['data'] as $userId => $permissions) {
-                $state->canSend[(string) $userId] = $permissions['canSend'];
+            foreach ($data['data'] as $participantKey => $permissions) {
+                $state->canSend[(string) $participantKey] = $permissions['canSend'];
             }
 
             return Http::response(['status' => 'sent']);
@@ -98,7 +99,7 @@ function gvrFakeChime(): object
 
         public array $attendees = [];
 
-        public array $deletedUserIds = [];
+        public array $deletedExternalUserIds = [];
 
         // Deliberately skips the parent constructor -- no AWS SDK client is ever built.
         public function __construct() {}
@@ -136,7 +137,7 @@ function gvrFakeChime(): object
 
         public function deleteAttendee(string $meetingId, string $attendeeId): void
         {
-            $this->deletedUserIds[] = $this->attendees[$attendeeId]['ExternalUserId'];
+            $this->deletedExternalUserIds[] = $this->attendees[$attendeeId]['ExternalUserId'];
             unset($this->attendees[$attendeeId]);
         }
 
@@ -158,11 +159,16 @@ function gvrFakeProvider(string $provider): object
 
 // What the provider has been told to let this user publish right now. A user the provider has never
 // heard of is a test bug, not "can't send" -- it fails rather than passing a negative assertion.
-function gvrCanSendAtProvider(object $fake, int $userId): array
+// SCRUM-357: the provider only ever knows the per-session participant key -- the real user id must
+// never reach it, since every client in the room can read it.
+function gvrCanSendAtProvider(object $fake, Session $session, User $user): array
 {
+    $key = VideoParticipantKey::for($session->id, $user->id);
+
     if ($fake->provider === 'daily') {
-        expect($fake->canSend)->toHaveKey((string) $userId);
-        $canSend = $fake->canSend[(string) $userId];
+        expect($fake->canSend)->toHaveKey($key)
+            ->and($fake->canSend)->not->toHaveKey((string) $user->id);
+        $canSend = $fake->canSend[$key];
 
         return [
             'audio' => $canSend === true || (is_array($canSend) && in_array('audio', $canSend, true)),
@@ -171,8 +177,9 @@ function gvrCanSendAtProvider(object $fake, int $userId): array
     }
 
     // firstWhere, the same lookup ChimeVideoProvider itself uses.
-    $attendee = collect($fake->attendees)->firstWhere('ExternalUserId', (string) $userId);
-    expect($attendee)->not->toBeNull();
+    $attendee = collect($fake->attendees)->firstWhere('ExternalUserId', $key);
+    expect($attendee)->not->toBeNull()
+        ->and(collect($fake->attendees)->firstWhere('ExternalUserId', (string) $user->id))->toBeNull();
     $sends = fn (?string $capability) => in_array($capability, ['Send', 'SendReceive'], true);
 
     return [
@@ -181,9 +188,13 @@ function gvrCanSendAtProvider(object $fake, int $userId): array
     ];
 }
 
-function gvrWasEjected(object $fake, int $userId): bool
+function gvrWasEjected(object $fake, Session $session, User $user): bool
 {
-    return in_array((string) $userId, $fake->provider === 'daily' ? $fake->ejected : $fake->deletedUserIds, true);
+    return in_array(
+        VideoParticipantKey::for($session->id, $user->id),
+        $fake->provider === 'daily' ? $fake->ejected : $fake->deletedExternalUserIds,
+        true
+    );
 }
 
 function gvrGroupCall(): array
@@ -239,7 +250,7 @@ function gvrJoin($test, Session $session, User $user)
 function gvrPost($test, string $routeName, Session $session, User $actingUser, ?User $target = null)
 {
     $parameters = $target
-        ? ['sessionId' => $session->id, 'userId' => $target->id]
+        ? ['sessionId' => $session->id, 'participantKey' => VideoParticipantKey::for($session->id, $target->id)]
         : $session->id;
 
     return $test->actingAs($actingUser)->postJson(route($routeName, $parameters));
@@ -258,10 +269,10 @@ test('an ordinary member joins receive-only at the provider while counsellors an
         ->assertJsonPath('participant.canRaiseHand', true);
     gvrJoin($this, $data['session'], $data['anonymousMember'])->assertOk()->assertJsonPath('participant.receiveOnly', true);
 
-    expect(gvrCanSendAtProvider($fake, $data['member']->id))->toBe(['audio' => false, 'video' => false])
-        ->and(gvrCanSendAtProvider($fake, $data['anonymousMember']->id))->toBe(['audio' => false, 'video' => false])
-        ->and(gvrCanSendAtProvider($fake, $data['counsellorA']->id))->toBe(['audio' => true, 'video' => true])
-        ->and(gvrCanSendAtProvider($fake, $data['creator']->id))->toBe(['audio' => true, 'video' => true]);
+    expect(gvrCanSendAtProvider($fake, $data['session'], $data['member']))->toBe(['audio' => false, 'video' => false])
+        ->and(gvrCanSendAtProvider($fake, $data['session'], $data['anonymousMember']))->toBe(['audio' => false, 'video' => false])
+        ->and(gvrCanSendAtProvider($fake, $data['session'], $data['counsellorA']))->toBe(['audio' => true, 'video' => true])
+        ->and(gvrCanSendAtProvider($fake, $data['session'], $data['creator']))->toBe(['audio' => true, 'video' => true]);
 })->with('video providers');
 
 test('raise hand, a grant from one counsellor, then a revoke by another, each change what the provider allows', function (string $provider) {
@@ -272,19 +283,19 @@ test('raise hand, a grant from one counsellor, then a revoke by another, each ch
 
     gvrPost($this, 'sessions.video.hand.raise', $data['session'], $data['member'])->assertOk();
     gvrJoin($this, $data['session'], $data['counsellorB'])->assertOk()
-        ->assertJsonPath('participant.raisedHandUserIds', [$data['member']->id]);
+        ->assertJsonPath('participant.raisedHandKeys', [VideoParticipantKey::for($data['session']->id, $data['member']->id)]);
 
     gvrPost($this, 'sessions.video.participants.grant_speaking', $data['session'], $data['counsellorA'], $data['member'])->assertOk();
 
     $participant = VideoSession::query()->where('session_id', $data['session']->id)->first()->activeParticipantFor($data['member']->id);
-    expect(gvrCanSendAtProvider($fake, $data['member']->id))->toBe(['audio' => true, 'video' => true])
+    expect(gvrCanSendAtProvider($fake, $data['session'], $data['member']))->toBe(['audio' => true, 'video' => true])
         ->and($participant->currentHandRaise())->toBeNull()
         ->and($participant->currentSpeakingGrant())->not->toBeNull();
 
     // Peer model: a DIFFERENT counsellor revokes the first one's grant.
     gvrPost($this, 'sessions.video.participants.revoke_speaking', $data['session'], $data['counsellorB'], $data['member'])->assertOk();
 
-    expect(gvrCanSendAtProvider($fake, $data['member']->id))->toBe(['audio' => false, 'video' => false])
+    expect(gvrCanSendAtProvider($fake, $data['session'], $data['member']))->toBe(['audio' => false, 'video' => false])
         ->and($participant->fresh()->currentSpeakingGrant())->toBeNull();
 
     // Lowering your own hand round-trips too.
@@ -309,7 +320,7 @@ test('a minor member can watch but can neither raise a hand nor be granted speak
     gvrPost($this, 'sessions.video.participants.grant_speaking', $data['session'], $data['counsellorA'], $data['minorMember'])
         ->assertStatus(422)->assertJsonPath('message', $minorBlocked);
 
-    expect(gvrCanSendAtProvider($fake, $data['minorMember']->id))->toBe(['audio' => false, 'video' => false]);
+    expect(gvrCanSendAtProvider($fake, $data['session'], $data['minorMember']))->toBe(['audio' => false, 'video' => false]);
 })->with('video providers');
 
 test('an anonymous member is granted audio only, a non-anonymous member audio and video', function (string $provider) {
@@ -322,8 +333,8 @@ test('an anonymous member is granted audio only, a non-anonymous member audio an
     gvrPost($this, 'sessions.video.participants.grant_speaking', $data['session'], $data['counsellorA'], $data['anonymousMember'])->assertOk();
     gvrPost($this, 'sessions.video.participants.grant_speaking', $data['session'], $data['counsellorA'], $data['member'])->assertOk();
 
-    expect(gvrCanSendAtProvider($fake, $data['anonymousMember']->id))->toBe(['audio' => true, 'video' => false])
-        ->and(gvrCanSendAtProvider($fake, $data['member']->id))->toBe(['audio' => true, 'video' => true]);
+    expect(gvrCanSendAtProvider($fake, $data['session'], $data['anonymousMember']))->toBe(['audio' => true, 'video' => false])
+        ->and(gvrCanSendAtProvider($fake, $data['session'], $data['member']))->toBe(['audio' => true, 'video' => true]);
 })->with('video providers');
 
 test('the creator of an anonymous group joins audio-only at the provider', function (string $provider) {
@@ -335,7 +346,7 @@ test('the creator of an anonymous group joins audio-only at the provider', funct
         ->assertJsonPath('participant.canSendAudio', true)
         ->assertJsonPath('participant.canSendVideo', false);
 
-    expect(gvrCanSendAtProvider($fake, $data['creator']->id))->toBe(['audio' => true, 'video' => false]);
+    expect(gvrCanSendAtProvider($fake, $data['session'], $data['creator']))->toBe(['audio' => true, 'video' => false]);
 })->with('video providers');
 
 test('an unused grant is reverted at the provider by the idle sweep, while an active speaker keeps theirs', function (string $provider) {
@@ -355,9 +366,9 @@ test('an unused grant is reverted at the provider by the idle sweep, while an ac
 
     $videoSession = VideoSession::query()->where('session_id', $data['session']->id)->first();
     $idleGrant = $videoSession->activeParticipantFor($data['member']->id)->speakingGrants()->latest('id')->first();
-    expect(gvrCanSendAtProvider($fake, $data['member']->id))->toBe(['audio' => false, 'video' => false])
+    expect(gvrCanSendAtProvider($fake, $data['session'], $data['member']))->toBe(['audio' => false, 'video' => false])
         ->and($idleGrant->revocation_reason)->toBe(SpeakingPermissionRevocationReasonEnum::idle_auto_expiry->value)
-        ->and(gvrCanSendAtProvider($fake, $data['anonymousMember']->id))->toBe(['audio' => true, 'video' => false]);
+        ->and(gvrCanSendAtProvider($fake, $data['session'], $data['anonymousMember']))->toBe(['audio' => true, 'video' => false]);
 })->with('video providers');
 
 test('removing a participant clears their hand-raise and speaking grant and ejects them at the provider', function (string $provider) {
@@ -381,13 +392,13 @@ test('removing a participant clears their hand-raise and speaking grant and ejec
         ->and($memberRow->speakingGrants()->latest('id')->first()->revocation_reason)
         ->toBe(SpeakingPermissionRevocationReasonEnum::participant_removed->value)
         ->and($anonymousRow->currentHandRaise())->toBeNull()
-        ->and(gvrWasEjected($fake, $data['member']->id))->toBeTrue()
-        ->and(gvrWasEjected($fake, $data['anonymousMember']->id))->toBeTrue();
+        ->and(gvrWasEjected($fake, $data['session'], $data['member']))->toBeTrue()
+        ->and(gvrWasEjected($fake, $data['session'], $data['anonymousMember']))->toBeTrue();
 
     // And a later counsellor joining sees nothing left over for them.
     gvrJoin($this, $data['session'], $data['counsellorB'])->assertOk()
-        ->assertJsonPath('participant.raisedHandUserIds', [])
-        ->assertJsonPath('participant.speakerUserIds', []);
+        ->assertJsonPath('participant.raisedHandKeys', [])
+        ->assertJsonPath('participant.speakerKeys', []);
 })->with('video providers');
 
 // The unified cap (SCRUM-318): one number for group membership and the video room. Daily enforces it

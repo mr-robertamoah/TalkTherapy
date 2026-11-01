@@ -24,8 +24,23 @@ class UserMiniResource extends JsonResource
             'username' => $this->username,
             'gender' => $this->gender,
             'country' => $this->country,
-            'dob' => $this->dob,
+            // SCRUM-357: a date of birth is for the user themselves and admins -- this resource is
+            // returned by the user search to anyone signed in.
+            'dob' => $this->when(
+                (bool) $request->user()?->is($this->resource) || self::viewerIsAdmin($request),
+                fn () => $this->dob
+            ),
             'isUser' => true,
         ];
+    }
+
+    // Once per request, not per row -- isAdmin() is a query, and this resource renders lists.
+    private static function viewerIsAdmin(Request $request): bool
+    {
+        if (! $request->attributes->has('viewerIsAdmin')) {
+            $request->attributes->set('viewerIsAdmin', (bool) $request->user()?->isAdmin());
+        }
+
+        return $request->attributes->get('viewerIsAdmin');
     }
 }

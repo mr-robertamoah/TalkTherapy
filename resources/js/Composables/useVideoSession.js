@@ -47,7 +47,8 @@ import axios from 'axios'
 //     onParticipantJoined({ id, isLocal, name, userId })  -- name may be null (Chime has no
 //                                                     display-name field at all -- see
 //                                                     ChimeVideoClient.js). userId (TT-3.2c/
-//                                                     SCRUM-310) is our OWN backend user id, never
+//                                                     SCRUM-310, SCRUM-357) is the participant KEY
+//                                                     the backend minted (never a user id), never
 //                                                     the provider's own tile/attendee id (`id`) --
 //                                                     may be null for a brief window on Chime (its
 //                                                     presence callback's externalUserId can lag
@@ -114,12 +115,12 @@ export default function useVideoSession(session) {
 
     let client = null
     let channelName = null
-    // TT-3.2c/SCRUM-310: read once, not re-derived per event -- the viewer's own id never changes
-    // mid-call, and this is only ever compared against a VideoParticipantRemovedEvent's own
-    // removedUserId to tell "I was the one removed" apart from "someone else was removed" (which
-    // needs no local handling here at all -- the provider's own SDK already fires its normal
-    // participant-left callback for every other browser in the call).
-    const ownUserId = usePage().props.auth.user?.id
+    // SCRUM-357: everyone in a call is identified by a per-session PARTICIPANT KEY, never their
+    // user id -- the provider's participant identity, the hand/speaking/removal broadcasts, the
+    // join snapshot and the moderation routes all carry it (see App\Support\VideoParticipantKey).
+    // So every `userId` on a participant and every entry in raisedHandUserIds/speakerUserIds below
+    // is a participant key. The viewer's own key comes from the join response (state.key).
+    let ownUserId = null
 
     function defaultCapabilities() {
         return {
@@ -436,7 +437,7 @@ export default function useVideoSession(session) {
 
         await axios.post(route('sessions.video.participants.remove', {
             sessionId: session.value.id,
-            userId: targetUserId,
+            participantKey: targetUserId,
         }))
     }
 
@@ -456,8 +457,9 @@ export default function useVideoSession(session) {
         speakingNotice.value = ''
         mediaError.value = ''
 
-        const snapshotHands = capabilities.value.canModerate ? (state?.raisedHandUserIds ?? []) : []
-        const snapshotSpeakers = capabilities.value.canModerate ? (state?.speakerUserIds ?? []) : []
+        ownUserId = state?.key ?? null
+        const snapshotHands = capabilities.value.canModerate ? (state?.raisedHandKeys ?? []) : []
+        const snapshotSpeakers = capabilities.value.canModerate ? (state?.speakerKeys ?? []) : []
         const merge = reconnecting.value && capabilities.value.canModerate
 
         raisedHandUserIds.value = merge ? [...new Set([...raisedHandUserIds.value, ...snapshotHands])] : snapshotHands
@@ -486,7 +488,7 @@ export default function useVideoSession(session) {
         if (!session.value?.id) return
         await axios.post(route('sessions.video.participants.grant_speaking', {
             sessionId: session.value.id,
-            userId: targetUserId,
+            participantKey: targetUserId,
         }))
     }
 
@@ -494,7 +496,7 @@ export default function useVideoSession(session) {
         if (!session.value?.id) return
         await axios.post(route('sessions.video.participants.revoke_speaking', {
             sessionId: session.value.id,
-            userId: targetUserId,
+            participantKey: targetUserId,
         }))
     }
 
@@ -645,13 +647,13 @@ export default function useVideoSession(session) {
         })
 
         // TT-3.2c/SCRUM-310: fires for EVERY participant when anyone is removed, but only the
-        // removed user's own browser (data.removedUserId === ownUserId) needs to react -- every
+        // removed user's own browser (data.removedParticipantKey === ownUserId) needs to react -- every
         // other participant's tile list already updates on its own via the provider's normal
         // participant-left callback once the eject/DeleteAttendee call takes effect. Deliberately
         // its own `status.value = 'removed'`, never 'ended' -- see this composable's own top-of-
         // file status comment for why being removed must never look like the room simply ending.
         window.Echo?.private(channelName).listen('.video-session.participant-removed', (data) => {
-            if (data.removedUserId !== ownUserId || status.value === 'ended' || status.value === 'removed') return
+            if (data.removedParticipantKey !== ownUserId || status.value === 'ended' || status.value === 'removed') return
 
             joinToken++
             teardownClient()
@@ -663,25 +665,25 @@ export default function useVideoSession(session) {
         // counsellors resolve names from the call's own tiles. Each viewer also watches for its
         // OWN id, to follow its hand and speaking state.
         window.Echo?.private(channelName).listen('.video-session.hand-raised', (data) => {
-            if (data.userId === ownUserId) handRaised.value = true
-            if (capabilities.value.canModerate && !raisedHandUserIds.value.includes(data.userId)) {
-                raisedHandUserIds.value = [...raisedHandUserIds.value, data.userId]
+            if (data.participantKey === ownUserId) handRaised.value = true
+            if (capabilities.value.canModerate && !raisedHandUserIds.value.includes(data.participantKey)) {
+                raisedHandUserIds.value = [...raisedHandUserIds.value, data.participantKey]
             }
         })
 
         window.Echo?.private(channelName).listen('.video-session.hand-lowered', (data) => {
-            if (data.userId === ownUserId) handRaised.value = false
+            if (data.participantKey === ownUserId) handRaised.value = false
             if (capabilities.value.canModerate) {
-                raisedHandUserIds.value = raisedHandUserIds.value.filter((uid) => uid !== data.userId)
+                raisedHandUserIds.value = raisedHandUserIds.value.filter((uid) => uid !== data.participantKey)
             }
         })
 
         window.Echo?.private(channelName).listen('.video-session.speaking-permission-changed', (data) => {
-            if (data.userId === ownUserId) applyOwnSpeakingPermission(data)
+            if (data.participantKey === ownUserId) applyOwnSpeakingPermission(data)
 
             if (!capabilities.value.canModerate) return
-            speakerUserIds.value = speakerUserIds.value.filter((uid) => uid !== data.userId)
-            if (data.canSendAudio) speakerUserIds.value = [...speakerUserIds.value, data.userId]
+            speakerUserIds.value = speakerUserIds.value.filter((uid) => uid !== data.participantKey)
+            if (data.canSendAudio) speakerUserIds.value = [...speakerUserIds.value, data.participantKey]
         })
     }
 

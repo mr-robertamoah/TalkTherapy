@@ -2,6 +2,7 @@
 
 namespace App\Notifications;
 
+use App\Enums\ConstantsEnum;
 use App\Models\Request;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -41,7 +42,7 @@ class GroupTherapyMembershipRequestSentNotification extends Notification impleme
         // that's about to become anonymous once the request is accepted.
         $isAnonymous = $this->request->for->anonymous || (bool) ($this->request->data['anonymous'] ?? false);
 
-        $fromName = $isAnonymous ? 'an anonymous user' : $this->request->from->name;
+        $fromName = $isAnonymous ? ConstantsEnum::anonymousPersonPhrase->value : $this->request->from->name;
 
         return (new MailMessage)
             ->success()

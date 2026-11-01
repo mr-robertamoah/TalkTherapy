@@ -14,6 +14,7 @@ use App\Actions\Video\RevokeSpeakingPermissionAction;
 use App\Exceptions\SessionException;
 use App\Exceptions\VideoConsentRequiredException;
 use App\Models\Session;
+use App\Support\VideoParticipantKey;
 use Illuminate\Http\Request;
 use Throwable;
 
@@ -59,15 +60,15 @@ class VideoSessionController extends Controller
         }
     }
 
-    // TT-3.2b/SCRUM-309: {userId} is the target being removed, never the acting user, which stays
-    // $request->user() -- the action authorizes against that separately. Deliberately passed as a
-    // bare id, never resolved via a global User lookup here (security-review finding: doing so
+    // TT-3.2b/SCRUM-309: {participantKey} (SCRUM-357) is the target being removed, never the acting user, which stays
+    // $request->user() -- the action authorizes against that separately. Resolved only among this
+    // session's own video participants (VideoParticipantKey::resolve), never via a global User lookup (security-review finding: doing so
     // let a "target id doesn't exist" 422 be distinguished from a "target exists but isn't in
     // this call" no-op, a system-wide user-id-existence oracle) -- see the action's own comment.
     public function removeParticipant(Request $request)
     {
         try {
-            RemoveParticipantFromVideoSessionAction::new()->execute($this->session($request), $request->user(), (int) $request->route('userId'));
+            RemoveParticipantFromVideoSessionAction::new()->execute($session = $this->session($request), $request->user(), $this->targetUserId($request, $session));
 
             return response()->json(['message' => 'Participant removed from the video call.']);
         } catch (Throwable $th) {
@@ -76,7 +77,7 @@ class VideoSessionController extends Controller
     }
 
     // TT-3.2f-f/SCRUM-323: raise/lower are always self-service ($request->user() only); grant/revoke
-    // take the target as a bare {userId}, same reasoning as removeParticipant() above.
+    // take the target as a bare {participantKey}, same reasoning as removeParticipant() above.
     public function raiseHand(Request $request)
     {
         try {
@@ -102,7 +103,7 @@ class VideoSessionController extends Controller
     public function grantSpeaking(Request $request)
     {
         try {
-            GrantSpeakingPermissionAction::new()->execute($this->session($request), $request->user(), (int) $request->route('userId'));
+            GrantSpeakingPermissionAction::new()->execute($session = $this->session($request), $request->user(), $this->targetUserId($request, $session));
 
             return response()->json(['message' => 'Speaking permission granted.']);
         } catch (Throwable $th) {
@@ -113,7 +114,7 @@ class VideoSessionController extends Controller
     public function revokeSpeaking(Request $request)
     {
         try {
-            RevokeSpeakingPermissionAction::new()->execute($this->session($request), $request->user(), (int) $request->route('userId'));
+            RevokeSpeakingPermissionAction::new()->execute($session = $this->session($request), $request->user(), $this->targetUserId($request, $session));
 
             return response()->json(['message' => 'Speaking permission revoked.']);
         } catch (Throwable $th) {
@@ -137,6 +138,14 @@ class VideoSessionController extends Controller
     // property, matching SessionController's own established convention (SCRUM-116) -- a client
     // could otherwise send {"sessionId": <other id>} in the body and have it resolve instead of
     // the URL's own id.
+    // SCRUM-357: the target is a participant key, never a user id (see VideoParticipantKey). A key
+    // that matches no one in this session's video resolves to 0 -- a user id that's never in any
+    // call -- so it takes the exact same "not in this call" path an absent participant always did.
+    private function targetUserId(Request $request, Session $session): int
+    {
+        return VideoParticipantKey::resolve($session, (string) $request->route('participantKey')) ?? 0;
+    }
+
     private function session(Request $request): Session
     {
         return Session::find($request->route('sessionId')) ?? throw new SessionException('Session was not found.', 422);

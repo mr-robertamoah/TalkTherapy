@@ -13,6 +13,7 @@ use App\Models\User;
 use App\Models\VideoSession;
 use App\Models\VideoSessionParticipant;
 use App\Models\VideoSessionSpeakingGrant;
+use App\Support\VideoParticipantKey;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Log;
@@ -94,8 +95,9 @@ test('joining creates a new VideoSession, calls the provider to create a room, a
             'isMinorMember' => false,
             'canModerate' => false,
             'speakingGrantIdleTimeout' => (int) config('video.speaking_grant_idle_timeout'),
-            'raisedHandUserIds' => [],
-            'speakerUserIds' => [],
+            'key' => VideoParticipantKey::for($session->id, $client->id),
+            'raisedHandKeys' => [],
+            'speakerKeys' => [],
         ]);
 
     $this->assertDatabaseHas('video_session_participants', [
@@ -519,8 +521,9 @@ test('an ordinary member\'s join state is receive-only with a raisable hand', fu
         ->and($state['canSendVideo'])->toBeFalse()
         ->and($state['canRaiseHand'])->toBeTrue()
         ->and($state['canModerate'])->toBeFalse()
-        ->and($state['raisedHandUserIds'])->toBe([])
-        ->and($state['speakerUserIds'])->toBe([]);
+        ->and($state['key'])->toBe(VideoParticipantKey::for($data['session']->id, $data['member']->id))
+        ->and($state['raisedHandKeys'])->toBe([])
+        ->and($state['speakerKeys'])->toBe([]);
 });
 
 test('a minor member is never offered a raisable hand', function () {
@@ -575,8 +578,8 @@ test('a counsellor joining mid-call sees the hands and speakers already live in 
 
     expect($state['canModerate'])->toBeTrue()
         ->and($state['receiveOnly'])->toBeFalse()
-        ->and($state['raisedHandUserIds'])->toBe([$data['member']->id])
-        ->and($state['speakerUserIds'])->toBe([$speaker->id]);
+        ->and($state['raisedHandKeys'])->toBe([VideoParticipantKey::for($data['session']->id, $data['member']->id)])
+        ->and($state['speakerKeys'])->toBe([VideoParticipantKey::for($data['session']->id, $speaker->id)]);
 });
 
 test('the counsellor snapshot ignores a hand left on a stale join row the member has since replaced', function () {
@@ -591,5 +594,5 @@ test('the counsellor snapshot ignores a hand left on a stale join row the member
 
     $state = JoinVideoSessionAction::new()->execute($data['session'], $data['counsellorUser'])['participant'];
 
-    expect($state['raisedHandUserIds'])->toBe([]);
+    expect($state['raisedHandKeys'])->toBe([]);
 });

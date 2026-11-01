@@ -41,7 +41,8 @@ class HandLoweredEvent implements ShouldBroadcast
     {
         return [
             'sessionId' => $this->videoSession->session_id,
-            'userId' => $this->userId,
+            // SCRUM-357: the participant key, never the user id.
+            'participantKey' => $this->videoSession->participantKeyFor($this->userId),
         ];
     }
 }

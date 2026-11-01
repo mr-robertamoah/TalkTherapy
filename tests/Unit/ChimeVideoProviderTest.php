@@ -41,7 +41,7 @@ test('createParticipantCredentials creates an attendee against the stored meetin
     $client = Mockery::mock(ChimeClient::class);
     $client->shouldReceive('createAttendee')
         ->once()
-        ->with(['MeetingId' => 'aws-meeting-id', 'ExternalUserId' => (string) $user->id])
+        ->with(['MeetingId' => 'aws-meeting-id', 'ExternalUserId' => $videoSession->participantKeyFor($user->id)])
         ->andReturn(['Attendee' => $attendee]);
 
     // $displayName is intentionally passed but unused -- Chime's CreateAttendee API has no
@@ -132,7 +132,7 @@ test('endRoom is a no-op when the meeting was never actually created', function 
 });
 
 // TT-3.2b/SCRUM-309: Chime has no "eject by external id" call -- the live attendee must be looked
-// up first (matched by ExternalUserId, set to $user->id at CreateAttendee time), then deleted by
+// up first (matched by ExternalUserId, set to the per-session participant key (SCRUM-357) at CreateAttendee time), then deleted by
 // its AWS-generated AttendeeId.
 test('removeParticipant looks up the live attendee by ExternalUserId and deletes it by AttendeeId', function () {
     $user = User::factory()->create();
@@ -144,7 +144,7 @@ test('removeParticipant looks up the live attendee by ExternalUserId and deletes
         ->with('aws-meeting-id')
         ->andReturn(['Attendees' => [
             ['AttendeeId' => 'attendee-other', 'ExternalUserId' => 'not-this-user'],
-            ['AttendeeId' => 'attendee-mine', 'ExternalUserId' => (string) $user->id],
+            ['AttendeeId' => 'attendee-mine', 'ExternalUserId' => $videoSession->participantKeyFor($user->id)],
         ]]);
     $client->shouldReceive('deleteAttendee')->once()->with('aws-meeting-id', 'attendee-mine');
 
@@ -183,7 +183,7 @@ test('updateParticipantCapabilities sends SendReceive for both when audio and vi
     $client->shouldReceive('listAttendees')
         ->once()
         ->with('aws-meeting-id')
-        ->andReturn(['Attendees' => [['AttendeeId' => 'attendee-mine', 'ExternalUserId' => (string) $user->id]]]);
+        ->andReturn(['Attendees' => [['AttendeeId' => 'attendee-mine', 'ExternalUserId' => $videoSession->participantKeyFor($user->id)]]]);
     $client->shouldReceive('updateAttendeeCapabilities')
         ->once()
         ->with('aws-meeting-id', 'attendee-mine', [
@@ -200,7 +200,7 @@ test('updateParticipantCapabilities sends Receive for both when revoked back to 
     $client = Mockery::mock(ChimeClient::class);
     $client->shouldReceive('listAttendees')
         ->once()
-        ->andReturn(['Attendees' => [['AttendeeId' => 'attendee-mine', 'ExternalUserId' => (string) $user->id]]]);
+        ->andReturn(['Attendees' => [['AttendeeId' => 'attendee-mine', 'ExternalUserId' => $videoSession->participantKeyFor($user->id)]]]);
     $client->shouldReceive('updateAttendeeCapabilities')
         ->once()
         ->with('aws-meeting-id', 'attendee-mine', [
@@ -218,7 +218,7 @@ test('updateParticipantCapabilities sends audio SendReceive but video Receive fo
     $client = Mockery::mock(ChimeClient::class);
     $client->shouldReceive('listAttendees')
         ->once()
-        ->andReturn(['Attendees' => [['AttendeeId' => 'attendee-mine', 'ExternalUserId' => (string) $user->id]]]);
+        ->andReturn(['Attendees' => [['AttendeeId' => 'attendee-mine', 'ExternalUserId' => $videoSession->participantKeyFor($user->id)]]]);
     $client->shouldReceive('updateAttendeeCapabilities')
         ->once()
         ->with('aws-meeting-id', 'attendee-mine', [

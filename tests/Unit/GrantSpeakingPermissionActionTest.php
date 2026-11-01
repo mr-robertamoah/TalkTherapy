@@ -13,6 +13,7 @@ use App\Models\User;
 use App\Models\VideoSession;
 use App\Models\VideoSessionParticipant;
 use App\Models\VideoSessionSpeakingGrant;
+use App\Support\VideoParticipantKey;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Log;
 
@@ -96,7 +97,7 @@ test('an active counsellor can grant a receive-only member speaking permission',
         ->and($calls)->toBe([[$data['member']->id, true, true]]);
     Event::assertDispatched(SpeakingPermissionChangedEvent::class, fn ($event) => $event->broadcastWith() === [
         'sessionId' => $data['session']->id,
-        'userId' => $data['member']->id,
+        'participantKey' => VideoParticipantKey::for($data['session']->id, $data['member']->id),
         'canSendAudio' => true,
         'canSendVideo' => true,
         'reason' => null,
