@@ -5,6 +5,7 @@ namespace App\Notifications;
 use App\Models\Counsellor;
 use App\Models\Request;
 use App\Models\Therapy;
+use App\Models\User;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\BroadcastMessage;
@@ -14,6 +15,8 @@ use Illuminate\Notifications\Notification;
 class TherapyAssistanceRequestAcceptedNotification extends Notification implements ShouldQueue
 {
     use Queueable;
+
+    private const ANONYMOUS = 'an anonymous user';
 
     /**
      * Create a new notification instance.
@@ -32,9 +35,10 @@ class TherapyAssistanceRequestAcceptedNotification extends Notification implemen
     {
         $via = ['database', 'broadcast'];
 
-        if ($notifiable->email_verified_at)
+        if ($notifiable->email_verified_at) {
             $via[] = 'mail';
-        
+        }
+
         return $via;
     }
 
@@ -44,28 +48,28 @@ class TherapyAssistanceRequestAcceptedNotification extends Notification implemen
     public function toMail(object $notifiable): MailMessage
     {
         $isCounsellor = false;
-        if ($notifiable::class == Counsellor::class) $isCounsellor = true;
+        if ($notifiable::class == Counsellor::class) {
+            $isCounsellor = true;
+        }
 
         $name = $notifiable::class == Counsellor::class ? $notifiable->getName() : $notifiable->name;
 
         return (new MailMessage)
             ->success()
-            ->subject("Assistance Request Accepted")
+            ->subject('Assistance Request Accepted')
             ->greeting("Hello {$name}!")
             ->when($isCounsellor, function ($mail) {
                 $mail
-                    ->line($this->request->for->anonymous
-                        ? "Your request to render assistance for the therapy with name: '{$this->request->for->name}' has been accepted by an anonymous user."
-                        : "Your request to render assistance for the therapy with name: '{$this->request->for->name}' has been accepted by user with name: '{$this->request->to->name}'.")
+                    ->line("Your request to render assistance for the therapy with name: '{$this->request->for->name}' has been accepted by {$this->acceptedByPhrase()}.")
                     ->line("Start creating sessions and lets help make user's wellbeing better.");
             })
-            ->when(!$isCounsellor, function ($mail) {
+            ->when(! $isCounsellor, function ($mail) {
                 $mail
                     ->line("Your request for assistance for the therapy with name: '{$this->request->for->name}' has been accepted by counsellor with name: '{$this->request->to->getName()}'.")
-                    ->action("Visit Counsellor Page", url("counsellors/{$this->request->to_id}"));
+                    ->action('Visit Counsellor Page', url("counsellors/{$this->request->to_id}"));
             })
-            ->line("You may receive other reminders before the starting time.")
-            ->action("Visit Therapy Page", url("therapies/{$this->request->for->id}"))
+            ->line('You may receive other reminders before the starting time.')
+            ->action('Visit Therapy Page', url("therapies/{$this->request->for->id}"))
             ->line("Thank you for choosing to 'TalkTherapy'.");
     }
 
@@ -80,23 +84,46 @@ class TherapyAssistanceRequestAcceptedNotification extends Notification implemen
             'therapy_id' => $this->request->for_id,
         ];
     }
-    
+
     public function toBroadcast(object $notifiable): BroadcastMessage
     {
-        return (new BroadcastMessage([
+        return new BroadcastMessage([
             'therapy' => [
                 'id' => $this->request->for->id,
                 'name' => $this->request->for->name,
                 'backgroundStory' => $this->request->for->background_story,
             ],
-            'to' => $this->request->to_type == Counsellor::class
+            'to' => $this->request->to instanceof Counsellor
                 ? $this->request->to->getName()
-                : ($this->request->for->anonymous ? 'an anonymous user' : $this->request->to->name)
-        ]));
+                : $this->acceptedByName(),
+        ]);
     }
 
     public function broadcastType(): string
     {
         return 'therapy.assistance';
+    }
+
+    // SCRUM-56: masked by the therapy's anonymity *for that user* (isAnonymousFor), so a group
+    // member's own anonymity choice counts, not just the group-level flag. Only ever a User here --
+    // a counsellor is never masked.
+    private function acceptedByName(): string
+    {
+        $user = $this->request->to;
+
+        // Only reached for a User `to` (toBroadcast handles a Counsellor first). A deleted user is
+        // never named either.
+        if (! $user instanceof User) {
+            return self::ANONYMOUS;
+        }
+
+        return $this->request->for->isAnonymousFor($user) ? self::ANONYMOUS : $user->name;
+    }
+
+    private function acceptedByPhrase(): string
+    {
+        $name = $this->acceptedByName();
+
+        return $name === self::ANONYMOUS ? $name : "user with name: '{$name}'";
     }
 }
