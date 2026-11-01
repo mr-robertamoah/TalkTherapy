@@ -355,7 +355,9 @@ All of these share the password **`password`**.
 |---|---|
 | `suspension_demo_admin` | A second **super admin**. It "applied" the seeded suspensions, so the main super admin (`mr_robertamoah`) is the one who can decide the waiting appeal — the admin who applied a suspension never may. |
 | `suspension_demo_client` | A client with therapies with the two counsellors below. Has an old, already-ended account suspension (7 days, two weeks ago). |
-| `suspension_ready_counsellor` | A counsellor whose report (filed by `suspension_demo_client`, "[Suspension demo: ready to suspend]") is resolved with "suspension recommended" and nobody suspended yet. Its therapy has an upcoming session in 3 days. |
+| `suspension_ready_counsellor` | A counsellor whose report (filed by `suspension_demo_client`, "[Suspension demo: ready to suspend]") is resolved with "suspension recommended" and nobody suspended yet. Its therapy has an upcoming session in 3 days, and `suspension_waiting_client` has a pending request to them — suspending them fails the session and declines the request. |
+| `suspension_waiting_client` | A client waiting on a request to `suspension_ready_counsellor`. |
+| `suspension_demo_normal_admin` | A **normal** (not super) admin: sees `/administrator/suspensions` but can't apply, lift or decide anything. |
 | `suspended_counsellor_demo` | A counsellor whose **counsellor role** is suspended for 30 days. Signs in normally and can use TalkTherapy as a client; is hidden from counsellor search. |
 | `suspended_client_demo` | A client whose **whole account** is suspended until lifted, with an **appeal waiting**. Every page sends them to `/suspended`. |
 

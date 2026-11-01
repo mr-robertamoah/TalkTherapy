@@ -94,6 +94,8 @@ of these; the super admin is `mr_robertamoah` (password in `.env.docker` as `SUP
 | `suspended_counsellor_demo` | Already suspended (counsellor role): signs in as a client, hidden from search |
 | `suspended_client_demo` | Already suspended (whole account), appeal waiting |
 | `suspension_demo_admin` | The second super admin who "applied" the seeded suspensions |
+| `suspension_waiting_client` | Has a pending request to the counsellor you suspend; it's declined |
+| `suspension_demo_normal_admin` | A normal admin: no suspend form, can't lift or decide |
 
 ### 1. Suspend a counsellor
 
@@ -105,7 +107,9 @@ of these; the super admin is `mr_robertamoah` (password in `.env.docker` as `SUP
    - `suspension.ready.counsellor@example.com` (the counsellor) got "Your counsellor role on TalkTherapy has been
      suspended", with the reason and an appeal link, and no names.
    - `suspension.demo.client@example.com` got "Your counsellor is unavailable for now", saying 1 upcoming
-     session was cancelled, with no mention of a suspension.
+     session was cancelled and how to request a refund, with no mention of a suspension.
+   - `suspension.waiting.client@example.com` got the same "unavailable" email, saying their
+     pending request was declined.
 5. Sign in as `suspension_ready_counsellor`: counsellor work is refused ("Your counsellor role is
    suspended…"); `/suspended` shows the details and the appeal form; the rest of the site works.
 
@@ -125,7 +129,8 @@ of these; the super admin is `mr_robertamoah` (password in `.env.docker` as `SUP
 
 ### 4. Hardening checks
 
-- `php artisan licenses:apply-retention --dry-run` lists abandoned uploads as `abandoned upload`.
+- `php artisan licenses:apply-retention --dry-run` lists abandoned uploads as `abandoned upload`
+  (none are seeded; `LicenseRetentionTest` covers it).
 - On MySQL, `UPDATE confidential_message_accesses SET reason = 'x'` fails with
   "confidential_message_accesses is append-only".
 

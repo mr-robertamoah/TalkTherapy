@@ -57,7 +57,7 @@ class CounsellorService extends Service
         $updateCounsellorDTO->counsellor->notify(new VerifyCounsellorEmailNotification);
     }
 
-    public function getCounsellors(User $user, ?string $name)
+    public function getCounsellors(?User $user, ?string $name)
     {
         $query = Counsellor::query();
 
@@ -66,7 +66,8 @@ class CounsellorService extends Service
             $query->where(fn ($q) => $q->whereName($name));
         });
 
-        $query->whereNotUser($user);
+        // A signed-out visitor can search too (this used to fail with a null user).
+        $query->when($user, fn ($q) => $q->whereNotUser($user));
         // SCRUM-359: a suspended counsellor isn't offered to anyone.
         $query->whereNotSuspended();
         $query->withCount('stars');

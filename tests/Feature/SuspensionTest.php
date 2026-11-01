@@ -497,3 +497,20 @@ arch('session entry points call the therapy-counsellor check')
         'App\Services\MessageService',
     ])
     ->toUse('App\Actions\Suspension\EnsureTherapyCounsellorIsAvailableAction');
+
+test('a normal admin is not offered the suspend form', function () {
+    $c = suspCounsellorCase();
+
+    $this->actingAs(suspNormalAdmin())->get(route('administrator.reports.show', ['report' => $c['report']->id]))->assertOk()
+        ->assertInertia(fn ($page) => $page->where('report.suspend.available', false)->where('report.suspend.superAdminOnly', true));
+});
+
+test('a signed-out visitor can search counsellors, and suspended ones are left out', function () {
+    $c = suspCounsellorCase();
+    $other = Counsellor::factory()->create(['user_id' => User::factory()->create()->id]);
+    suspApply(suspSuperAdmin(), $c['report'], 'counsellor', 7);
+
+    $this->getJson(route('api.counsellors'))->assertOk()
+        ->assertJsonFragment(['id' => $other->id])
+        ->assertJsonMissing(['id' => $c['counsellor']->id]);
+});

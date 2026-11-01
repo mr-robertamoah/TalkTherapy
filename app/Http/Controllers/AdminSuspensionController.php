@@ -42,6 +42,7 @@ class AdminSuspensionController extends Controller
                 'report.reportable' => fn ($morph) => $morph->morphWith([Session::class => ['for']]),
             ])
             ->orderByRaw('appealed_at is not null and appeal_decided_at is null desc')
+            ->orderByRaw('case when appealed_at is not null and appeal_decided_at is null then appealed_at end')
             ->orderByRaw('lifted_at is null desc')
             ->latest('id')
             ->paginate(20);

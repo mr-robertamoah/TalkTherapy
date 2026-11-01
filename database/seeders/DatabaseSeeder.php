@@ -2398,6 +2398,7 @@ class DatabaseSeeder extends Seeder
                 'outcome' => ReportOutcomeEnum::suspension_recommended,
                 'resolution_note' => 'Seeded: the messages broke the community rules.',
                 'resolved_at' => now()->subHour(),
+                'created_at' => now()->subDays(2),
             ])->save();
 
             return $report;
@@ -2414,17 +2415,35 @@ class DatabaseSeeder extends Seeder
         //    counsellor has an upcoming session and a waiting request, to see what suspending does.
         $ready = $counsellor($user('suspension_ready_counsellor', 'Ready', 'ToSuspend'), 'Seeded counsellor whose report is ready for a suspension (SCRUM-359).');
         $readyTherapy = $therapy($client, $ready, 'Suspension Demo Therapy (ready to suspend)');
-        $ready->addedSessions()->create([
+        // for_* aren't fillable on Session, so the therapy is associated explicitly.
+        $upcoming = $ready->addedSessions()->make([
             'name' => 'Suspension Demo Upcoming Session',
             'about' => 'Fails when its counsellor is suspended for 7 days or more.',
-            'for_id' => $readyTherapy->id,
-            'for_type' => Therapy::class,
             'start_time' => now()->addDays(3),
             'end_time' => now()->addDays(3)->addHour(),
             'type' => 'online',
             'status' => 'pending',
             'payment_type' => 'FREE',
         ]);
+        $upcoming->for()->associate($readyTherapy);
+        $upcoming->save();
+
+        // ...and a client waiting on them, whose request is declined by a suspension.
+        $waiting = $user('suspension_waiting_client', 'Waiting', 'Client');
+        $waitingTherapy = $waiting->addedTherapies()->create([
+            'name' => 'Suspension Demo Therapy (waiting for a counsellor)',
+            'background_story' => 'Seeded therapy whose request to a counsellor is declined if they are suspended (SCRUM-359).',
+            'session_type' => 'Once',
+            'payment_type' => 'FREE',
+            'allow_in_person' => false,
+            'anonymous' => false,
+            'public' => false,
+            'status' => 'pending',
+        ]);
+        $request = $waiting->sentRequests()->create(['type' => RequestTypeEnum::therapy->value, 'data' => [], 'status' => RequestStatusEnum::pending->value]);
+        $request->to()->associate($ready);
+        $request->for()->associate($waitingTherapy);
+        $request->save();
         $resolvedReport($client, $readyTherapy, ['counsellorId' => $ready->id], '[Suspension demo: ready to suspend] My counsellor insulted me in our sessions.');
 
         // 2. A counsellor suspended (counsellor role, 30 days): still signs in as a client.
@@ -2445,6 +2464,10 @@ class DatabaseSeeder extends Seeder
         $ended = $resolvedReport($ready->user, $readyTherapy, ['userId' => $client->id], '[Suspension demo: ended] My client was abusive in a session.');
         $old = $this->seedSuspension($ended, $client, $applier, 'account', now()->subDays(7), 'Abusive messages in a session.', now()->subDays(14));
         $old->forceFill(['end_processed_at' => now()->subDays(7)])->save();
+        ReportStatusHistory::create(['report_id' => $ended->id, 'user_id' => null, 'event' => ReportStatusHistory::EVENT_SUSPENSION_ENDED, 'data' => ['suspension' => $old->id]]);
+
+        // A normal (not super) administrator: sees suspensions, but can't apply, lift or decide them.
+        $user('suspension_demo_normal_admin', 'Normal', 'DemoAdmin')->administrator()->create(['type' => 'NORMAL', 'verified_at' => now()]);
     }
 
     private function seedSuspension(Report $report, User $person, User $admin, string $scope, $endsAt, string $reason, $startsAt = null): Suspension

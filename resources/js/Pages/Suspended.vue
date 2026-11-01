@@ -80,6 +80,7 @@ function submitAppeal() {
                         maxlength="3000"
                         class="block w-full border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 rounded-md shadow-sm text-sm"
                     ></textarea>
+                    <p class="text-xs text-gray-500">At least 20 characters.</p>
                     <InputError :message="appealForm.errors.appeal" />
                     <PrimaryButton :disabled="appealForm.processing || appealForm.appeal.trim().length < 20" @click="submitAppeal">send appeal</PrimaryButton>
                 </section>
