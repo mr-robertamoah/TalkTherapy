@@ -109,10 +109,13 @@ broadcast — filed separately as SCRUM-195, not folded into this ticket's scope
 | TT-4.10 | Prevent self-editable `dob` from bypassing minor-detection safeguards | Story | High | ~39 (floor) | New (SCRUM-283 follow-up) | — |
 | TT-4.12 | Admin complaint review: report lifecycle, review queue, confidential messages unlocked only for an open report (SCRUM-340) | Story | High | 13 | New (SCRUM-335 decision) | — |
 | TT-4.13 | Counsellor verification documents: a rejection no longer validates licenses; retention deletes ID scans and rejected documents (SCRUM-338) | Story | High | 5 | New | — |
+| TT-4.14 | Account/counsellor suspension as a report outcome: apply, lift, auto-expiry, appeals, effects on clients (SCRUM-359) | Story | High | 21 | New (SCRUM-340 follow-up) | TT-4.12 |
+| TT-4.15 | Report and verification-document hardening: involved-admin list rows, guardian involvement, append-only confidential access log, reported-party lock, abandoned-licence retention, shared file purge, requests.responded_at (SCRUM-362) | Task | High | 8 | New (SCRUM-340/338 follow-up) | TT-4.12, TT-4.13 |
 
-TT-4.12 and TT-4.13 shipped together in one PR (user's choice, 2026-11-01). TT-4.11 is the
-identity-verification document work (SCRUM-302) already referenced in code. Follow-ups: account
-suspension as a report outcome (SCRUM-359) and auditing admins' non-confidential reads (SCRUM-360).
+TT-4.12 and TT-4.13 shipped together in one PR (user's choice, 2026-11-01), as did TT-4.14 and
+TT-4.15 (user's choice, 2026-11-01). TT-4.11 is the identity-verification document work
+(SCRUM-302) already referenced in code. Remaining follow-ups: auditing admins' non-confidential
+reads (SCRUM-360) and the confidential-toggle/privacy-policy disclosure (SCRUM-361).
 
 TT-4.10 split into 6 sub-tickets (a-f, SCRUM-290–295) after its own `/start-feature` pass
 (2026-09-12) — a data-model snapshot (a), migrating all 13 `isAdult()` call sites to it (b), a

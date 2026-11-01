@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Actions\Request\SendTherapyAssistanceRequestAction;
 use App\Actions\Star\CreateStarAction;
+use App\Actions\Suspension\EnsureCanActAsCounsellorAction;
 use App\Actions\Therapy\CreateTherapyAction;
 use App\Actions\Therapy\DeleteTherapyAction;
 use App\Actions\Therapy\EndTherapyAction;
@@ -46,6 +47,9 @@ class TherapyService extends Service
         EnsureCanCreateTherapyAction::new()->execute($createTherapyDTO->user);
 
         EnsureTherapyDataIsValidAction::new()->execute($createTherapyDTO);
+
+        // SCRUM-359: before anything is created (the request to them is refused too, later).
+        EnsureCanActAsCounsellorAction::new()->execute($createTherapyDTO->counsellor, asTarget: true);
 
         $therapy = CreateTherapyAction::new()->execute($createTherapyDTO);
 

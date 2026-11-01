@@ -49,7 +49,7 @@ class AdminReportController extends Controller
 
     public function show(Request $request, int $report)
     {
-        $model = Report::query()->with(['addedby', 'reportable', 'files', 'histories.user'])->find($report);
+        $model = Report::query()->with(['addedby', 'reportable', 'files', 'histories.user', 'suspensions.user', 'suspensions.createdBy', 'suspensions.liftedBy', 'suspensions.appealDecidedBy'])->find($report);
 
         try {
             // Security review: an admin who is part of the report doesn't get the page at all --
@@ -100,9 +100,10 @@ class AdminReportController extends Controller
             $validated = $request->validate([
                 'type' => ['required', Rule::in(['user', 'counsellor'])],
                 'id' => ['required', 'integer'],
+                'reason' => ['nullable', 'string', 'max:1000'],
             ]);
 
-            RecordReportedPartyAction::new()->execute($request->user(), $model, $validated['type'], (int) $validated['id']);
+            RecordReportedPartyAction::new()->execute($request->user(), $model, $validated['type'], (int) $validated['id'], $validated['reason'] ?? null);
 
             return Redirect::back()->with('message', 'Reported person recorded.');
         } catch (Throwable $th) {

@@ -1,6 +1,7 @@
 <?php
 
 use App\Actions\Report\EnsureAdminCanReviewReportAction;
+use App\Actions\Report\RecordReportedPartyAction;
 use App\Enums\ReportStatusEnum;
 use App\Http\Resources\AdminReportedMessageResource;
 use App\Models\Administrator;
@@ -8,6 +9,7 @@ use App\Models\ConfidentialMessageAccess;
 use App\Models\Counsellor;
 use App\Models\File;
 use App\Models\GroupTherapy;
+use App\Models\Guardianship;
 use App\Models\Message;
 use App\Models\Post;
 use App\Models\Report;
@@ -17,7 +19,9 @@ use App\Models\Therapy;
 use App\Models\User;
 use App\Notifications\ReportClosedNotification;
 use App\Services\ReportService;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Storage;
 
@@ -397,3 +401,89 @@ arch('the admin message presenter is only used by the review service')
 arch('the unlock scope resolver stays inside the report review code')
     ->expect('App\Actions\Report\ResolveReportUnlockScopeAction')
     ->toOnlyBeUsedIn(['App\Services\ReportService', 'App\Http\Resources\AdminReportResource']);
+
+// SCRUM-362 ------------------------------------------------------------------------------------
+
+function arrNormalAdmin(): User
+{
+    return User::factory()->has(Administrator::factory()->state(['type' => 'NORMAL']))->create();
+}
+
+test('the JSON report list shows an admin a report they are part of only as existing', function () {
+    $g = arrGroupReport(['userId' => null]);
+    $involved = arrAdmin();
+    $g['group']->users()->attach($involved->id, ['anonymous' => false]);
+    $uninvolved = arrAdmin();
+
+    $this->actingAs($involved)->getJson(route('api.reports'))->assertOk()
+        ->assertJsonPath('data.0', ['id' => $g['report']->id, 'status' => 'open', 'involved' => true, 'createdAt' => $g['report']->created_at->toJSON()])
+        ->assertJsonMissingPath('data.0.description');
+    $this->actingAs($uninvolved)->getJson(route('api.reports'))->assertOk()
+        ->assertJsonPath('data.0.description', 'A member was abusive');
+});
+
+test('a guardian of the reporter, the reported person or the therapy client is part of the report', function () {
+    $g = arrGroupReport(['userId' => null]);
+    $g['report']->forceFill(['data' => ['userId' => $g['member']->id]])->save();
+    $report = fn () => Report::find($g['report']->id);
+
+    foreach ([$g['creator'], $g['member']] as $ward) {
+        $guardian = arrAdmin();
+        Guardianship::create(['guardian_id' => $guardian->id, 'ward_id' => $ward->id]);
+
+        expect($report()->involves($guardian))->toBeTrue()
+            ->and($report()->isViewableBy($guardian))->toBeFalse();
+        $this->actingAs($guardian)->get(route('administrator.reports.show', ['report' => $g['report']->id]))->assertRedirect(route('administrator.reports'));
+    }
+
+    $unrelatedGuardian = arrAdmin();
+    Guardianship::create(['guardian_id' => $unrelatedGuardian->id, 'ward_id' => User::factory()->create()->id]);
+    expect($report()->involves($unrelatedGuardian))->toBeFalse();
+});
+
+test('a group member is still part of the report after the group moves on (membership rows are never removed)', function () {
+    $g = arrGroupReport(['userId' => null]);
+    $admin = arrAdmin();
+    $g['group']->users()->attach($admin->id, ['anonymous' => false]);
+    $g['group']->users()->updateExistingPivot($admin->id, ['anonymous' => true]);
+
+    expect(Report::find($g['report']->id)->involves($admin))->toBeTrue();
+});
+
+test('after a confidential read only a super admin, with a reason, can change who the report is about', function () {
+    $g = arrGroupReport(['userId' => null]);
+    $super = arrAdmin();
+    $normal = arrNormalAdmin();
+    $party = route('admin.reports.party', ['report' => $g['report']->id]);
+
+    $this->actingAs($normal)->post($party, ['type' => 'user', 'id' => $g['member']->id])->assertSessionHasNoErrors();
+    arrUnlock($this, $normal, $g['report'], $g['session'])->assertOk();
+
+    $this->actingAs($normal)->post($party, ['type' => 'user', 'id' => $g['otherMember']->id])
+        ->assertSessionHasErrors(['alert' => RecordReportedPartyAction::LOCKED_AFTER_READ]);
+    $this->actingAs($super)->post($party, ['type' => 'user', 'id' => $g['otherMember']->id])->assertSessionHasErrors('alert');
+    expect(Report::find($g['report']->id)->reportedUser()->is($g['member']))->toBeTrue();
+
+    // Re-recording the same person is not a change.
+    $this->actingAs($normal)->post($party, ['type' => 'user', 'id' => $g['member']->id])->assertSessionHasNoErrors();
+
+    $this->actingAs($super)->post($party, ['type' => 'user', 'id' => $g['otherMember']->id, 'reason' => 'The complaint was about the other member'])
+        ->assertSessionHasNoErrors();
+    expect(Report::find($g['report']->id)->reportedUser()->is($g['otherMember']))->toBeTrue()
+        ->and(ReportStatusHistory::where('report_id', $g['report']->id)->where('event', 'party_recorded')->latest('id')->first()->note)
+        ->toBe('The complaint was about the other member');
+
+    $this->actingAs($normal)->get(route('administrator.reports.show', ['report' => $g['report']->id]))
+        ->assertInertia(fn ($page) => $page->where('report.partyLocked', true)->where('report.canChangeLockedParty', false));
+});
+
+test('the database itself refuses to change or remove an access record', function () {
+    $g = arrGroupReport(['userId' => null]);
+    ConfidentialMessageAccess::record($g['report'], arrAdmin(), $g['session']->id, 'Reviewing the abuse complaint');
+
+    expect(fn () => DB::table('confidential_message_accesses')->update(['reason' => 'rewritten']))
+        ->toThrow(QueryException::class, 'append-only')
+        ->and(fn () => DB::table('confidential_message_accesses')->delete())
+        ->toThrow(QueryException::class, 'append-only')
+        ->and(ConfidentialMessageAccess::query()->first()->reason)->toBe('Reviewing the abuse complaint');
+});

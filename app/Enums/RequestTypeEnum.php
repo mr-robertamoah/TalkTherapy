@@ -60,4 +60,20 @@ enum RequestTypeEnum: string
     // always left null -- admin-only by design (no guardian counterpart makes sense here, unlike
     // dobChange), mirrors `refund`'s own null-`to` shape. `data` carries the `attestation` text.
     case ageVerification = 'AGE_VERIFICATION_REQUEST';
+
+    // SCRUM-359: requests that ask a counsellor to work with someone (or offer to). A suspended
+    // counsellor can't send, receive or accept these, and pending ones are declined when they are
+    // suspended. Values, for whereIn()/in_array().
+    public static function counsellingTypes(): array
+    {
+        return array_map(fn (self $type) => $type->value, [
+            self::therapy,
+            self::groupTherapy,
+            self::discussion,
+            self::groupTherapyMembership,
+            self::sessionScheduleProposal,
+            self::organizationCounsellorInvite,
+            self::organizationCounsellorApplication,
+        ]);
+    }
 }

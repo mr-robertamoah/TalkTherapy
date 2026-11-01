@@ -16,10 +16,12 @@ use App\Enums\OrganizationInvoiceStatusEnum;
 use App\Enums\OrganizationMemberBillingModeEnum;
 use App\Enums\OrganizationMemberStatusEnum;
 use App\Enums\RefundStatusEnum;
+use App\Enums\ReportOutcomeEnum;
 use App\Enums\ReportStatusEnum;
 use App\Enums\RequestStatusEnum;
 use App\Enums\RequestTypeEnum;
 use App\Enums\TransactionStatusEnum;
+use App\Models\Counsellor;
 use App\Models\CounsellorEarning;
 use App\Models\CounsellorPayout;
 use App\Models\Guardianship;
@@ -33,6 +35,7 @@ use App\Models\Report;
 use App\Models\ReportStatusHistory;
 use App\Models\Request;
 use App\Models\Session;
+use App\Models\Suspension;
 use App\Models\Therapy;
 use App\Models\Transaction;
 use App\Models\User;
@@ -173,6 +176,10 @@ class DatabaseSeeder extends Seeder
         // SCRUM-340: reports at each review stage, on a group whose session holds confidential
         // messages, so /administrator/reports can be tried end to end (log in as the super admin).
         $this->createReportReviewDemoData($superAdmin);
+
+        // SCRUM-359: a report ready to suspend from, a suspended counsellor, a suspended client with
+        // an appeal waiting, and a suspension that has already ended.
+        $this->createSuspensionDemoData();
     }
 
     private function createLanguages($user)
@@ -2347,5 +2354,119 @@ class DatabaseSeeder extends Seeder
             'to_status' => 'dismissed',
             'note' => 'The session ended on time; no breach found.',
         ]);
+    }
+
+    private function createSuspensionDemoData(): void
+    {
+        $user = fn (string $username, string $first, string $last) => User::factory()->create([
+            'firstName' => $first,
+            'lastName' => $last,
+            'email' => str_replace('_', '.', $username).'@example.com',
+            'username' => $username,
+            'password' => Hash::make('password'),
+            'email_verified_at' => now(),
+            'dob' => now()->subYears(30)->toDateString(),
+        ]);
+        $counsellor = fn (User $user, string $about) => $user->counsellor()->create([
+            'name' => "Dr. {$user->firstName} {$user->lastName}",
+            'about' => $about,
+            'email' => $user->email,
+            'phone' => fake()->phoneNumber(),
+            'verified_at' => now(),
+            'email_verified_at' => now(),
+            'profession_id' => rand(1, 10),
+            'contact_visible' => true,
+        ]);
+        $therapy = fn (User $client, Counsellor $counsellor, string $name) => $client->addedTherapies()->create([
+            'name' => $name,
+            'background_story' => 'Seeded therapy for trying suspensions (SCRUM-359).',
+            'counsellor_id' => $counsellor->id,
+            'session_type' => 'Periodic',
+            'payment_type' => 'FREE',
+            'allow_in_person' => false,
+            'anonymous' => false,
+            'public' => false,
+            'status' => 'in_session',
+        ]);
+        $resolvedReport = function (User $reporter, $reportable, array $data, string $description) {
+            $report = new Report(['description' => $description, 'data' => $data]);
+            $report->addedby()->associate($reporter);
+            $report->reportable()->associate($reportable);
+            $report->save();
+            $report->forceFill([
+                'status' => ReportStatusEnum::resolved,
+                'outcome' => ReportOutcomeEnum::suspension_recommended,
+                'resolution_note' => 'Seeded: the messages broke the community rules.',
+                'resolved_at' => now()->subHour(),
+            ])->save();
+
+            return $report;
+        };
+
+        // A second super admin who "applied" the seeded suspensions, so the seeded super admin can
+        // decide the waiting appeal (the admin who applied one never may).
+        $applier = $user('suspension_demo_admin', 'Suspension', 'DemoAdmin');
+        $applier->administrator()->create(['type' => 'SUPER', 'verified_at' => now()]);
+
+        $client = $user('suspension_demo_client', 'Suspension', 'DemoClient');
+
+        // 1. Ready to suspend: resolved with "suspension recommended", nobody suspended yet. Its
+        //    counsellor has an upcoming session and a waiting request, to see what suspending does.
+        $ready = $counsellor($user('suspension_ready_counsellor', 'Ready', 'ToSuspend'), 'Seeded counsellor whose report is ready for a suspension (SCRUM-359).');
+        $readyTherapy = $therapy($client, $ready, 'Suspension Demo Therapy (ready to suspend)');
+        $ready->addedSessions()->create([
+            'name' => 'Suspension Demo Upcoming Session',
+            'about' => 'Fails when its counsellor is suspended for 7 days or more.',
+            'for_id' => $readyTherapy->id,
+            'for_type' => Therapy::class,
+            'start_time' => now()->addDays(3),
+            'end_time' => now()->addDays(3)->addHour(),
+            'type' => 'online',
+            'status' => 'pending',
+            'payment_type' => 'FREE',
+        ]);
+        $resolvedReport($client, $readyTherapy, ['counsellorId' => $ready->id], '[Suspension demo: ready to suspend] My counsellor insulted me in our sessions.');
+
+        // 2. A counsellor suspended (counsellor role, 30 days): still signs in as a client.
+        $suspendedCounsellor = $counsellor($user('suspended_counsellor_demo', 'Suspended', 'Counsellor'), 'Seeded counsellor whose counsellor role is suspended (SCRUM-359).');
+        $suspendedTherapy = $therapy($client, $suspendedCounsellor, 'Suspension Demo Therapy (counsellor suspended)');
+        $report = $resolvedReport($client, $suspendedTherapy, ['counsellorId' => $suspendedCounsellor->id], '[Suspension demo: counsellor suspended] My counsellor shared what I told them.');
+        $this->seedSuspension($report, $suspendedCounsellor->user, $applier, 'counsellor', now()->addDays(30), 'Sharing a client\'s private information.');
+
+        // 3. A client whose whole account is suspended until lifted, with an appeal waiting.
+        $suspendedClient = $user('suspended_client_demo', 'Suspended', 'Client');
+        $clientTherapy = $therapy($suspendedClient, $ready, 'Suspension Demo Therapy (client suspended)');
+        $report = $resolvedReport($ready->user, $clientTherapy, ['userId' => $suspendedClient->id], '[Suspension demo: client suspended] My client sent threatening messages.');
+        $suspension = $this->seedSuspension($report, $suspendedClient, $applier, 'account', null, 'Threatening messages to your counsellor.');
+        $suspension->forceFill(['appeal_text' => 'I was upset and I apologise. It will not happen again.', 'appealed_at' => now()->subMinutes(30)])->save();
+        ReportStatusHistory::create(['report_id' => $report->id, 'user_id' => $suspendedClient->id, 'event' => ReportStatusHistory::EVENT_APPEAL_SUBMITTED, 'data' => ['suspension' => $suspension->id]]);
+
+        // 4. A suspension that ran its course (7 days, ended last week).
+        $ended = $resolvedReport($ready->user, $readyTherapy, ['userId' => $client->id], '[Suspension demo: ended] My client was abusive in a session.');
+        $old = $this->seedSuspension($ended, $client, $applier, 'account', now()->subDays(7), 'Abusive messages in a session.', now()->subDays(14));
+        $old->forceFill(['end_processed_at' => now()->subDays(7)])->save();
+    }
+
+    private function seedSuspension(Report $report, User $person, User $admin, string $scope, $endsAt, string $reason, $startsAt = null): Suspension
+    {
+        $suspension = Suspension::create([
+            'user_id' => $person->id,
+            'report_id' => $report->id,
+            'scope' => $scope,
+            'starts_at' => $startsAt ?? now()->subDay(),
+            'ends_at' => $endsAt,
+            'public_reason' => $reason,
+            'internal_note' => 'Seeded (SCRUM-359).',
+            'created_by' => $admin->id,
+        ]);
+
+        ReportStatusHistory::create([
+            'report_id' => $report->id,
+            'user_id' => $admin->id,
+            'event' => ReportStatusHistory::EVENT_SUSPENSION_APPLIED,
+            'data' => ['suspension' => $suspension->id, 'scope' => $scope, 'endsAt' => $suspension->ends_at?->toJSON()],
+        ]);
+
+        return $suspension;
     }
 }

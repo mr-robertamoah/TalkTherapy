@@ -6,6 +6,7 @@ use App\Http\Controllers\AdminOrganizationBillingController;
 use App\Http\Controllers\AdminPayoutController;
 use App\Http\Controllers\AdminRefundRequestController;
 use App\Http\Controllers\AdminReportController;
+use App\Http\Controllers\AdminSuspensionController;
 use App\Http\Controllers\CounsellorController;
 use App\Http\Controllers\CounsellorPricingController;
 use App\Http\Controllers\DiscussionController;
@@ -26,6 +27,7 @@ use App\Http\Controllers\PreferenceController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\SessionController;
 use App\Http\Controllers\SessionNoteController;
+use App\Http\Controllers\SuspensionController;
 use App\Http\Controllers\TherapyController;
 use App\Http\Controllers\TransactionController;
 use App\Http\Controllers\VideoConsentController;
@@ -116,6 +118,14 @@ Route::middleware('auth')->group(function () {
     Route::get('/administrator/reports/{report}', [AdminReportController::class, 'show'])->name('administrator.reports.show')->whereNumber('report');
     Route::post('/administrator/reports/{report}/status', [AdminReportController::class, 'transition'])->name('admin.reports.status')->whereNumber('report')->middleware('throttle:30,1');
     Route::post('/administrator/reports/{report}/party', [AdminReportController::class, 'recordParty'])->name('admin.reports.party')->whereNumber('report')->middleware('throttle:30,1');
+    // SCRUM-359: suspensions -- applied from a resolved report, lifted early, appeals decided.
+    Route::get('/administrator/suspensions', [AdminSuspensionController::class, 'index'])->name('administrator.suspensions');
+    Route::post('/administrator/reports/{report}/suspensions', [AdminSuspensionController::class, 'apply'])->name('admin.suspensions.apply')->whereNumber('report')->middleware('throttle:30,1');
+    Route::post('/administrator/suspensions/{suspension}/lift', [AdminSuspensionController::class, 'lift'])->name('admin.suspensions.lift')->whereNumber('suspension')->middleware('throttle:30,1');
+    Route::post('/administrator/suspensions/{suspension}/appeal', [AdminSuspensionController::class, 'decideAppeal'])->name('admin.suspensions.appeal')->whereNumber('suspension')->middleware('throttle:30,1');
+    // SCRUM-359: the only pages a suspended account can reach (EnsureAccountIsNotSuspended).
+    Route::get('/suspended', [SuspensionController::class, 'show'])->name('suspended.show');
+    Route::post('/suspended/{suspension}/appeal', [SuspensionController::class, 'appeal'])->name('suspended.appeal')->whereNumber('suspension')->middleware('throttle:10,1');
 
     Route::get('/therapies', [TherapyController::class, 'show'])->name('therapies');
     Route::get('/therapies/{therapyId}/chat', [TherapyController::class, 'chat'])->name('therapies.chat');

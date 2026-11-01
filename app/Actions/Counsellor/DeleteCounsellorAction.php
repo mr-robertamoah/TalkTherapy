@@ -8,9 +8,7 @@ use App\Enums\CounsellorGroupTherapyStateEnum;
 use App\Enums\OrganizationCounsellorStatusEnum;
 use App\Enums\RequestStatusEnum;
 use App\Models\Counsellor;
-use App\Models\User;
 use App\Notifications\CounsellorAccountDeletedNotification;
-use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 class DeleteCounsellorAction extends Action
@@ -21,7 +19,7 @@ class DeleteCounsellorAction extends Action
     {
         $counsellor = $deleteCounsellorDTO->counsellor;
 
-        $formerClients = $this->getFormerClients($counsellor);
+        $formerClients = GetCounsellorClientsAction::new()->execute($counsellor);
 
         DB::transaction(function () use ($counsellor) {
             // State-flip, not detach: the pivot's `state` column already models "no longer
@@ -45,7 +43,7 @@ class DeleteCounsellorAction extends Action
             // blocked by EnsureCanDeleteCounsellorAction and can't exist here.
             $counsellor->sentRequests()
                 ->wherePending()
-                ->update(['status' => RequestStatusEnum::inconsequencial->value]);
+                ->update(['status' => RequestStatusEnum::inconsequencial->value, 'responded_at' => now()]);
 
             $counsellor->delete();
         });
@@ -55,24 +53,5 @@ class DeleteCounsellorAction extends Action
         }
 
         return true;
-    }
-
-    private function getFormerClients(Counsellor $counsellor): Collection
-    {
-        $fromTherapies = $counsellor->therapies()->get()
-            ->map(fn ($therapy) => $therapy->addedby_type === User::class ? $therapy->addedby : null);
-
-        // Deliberately NOT GroupTherapy::getUsers() -- that helper also returns every OTHER
-        // counsellor attached to the group (and, since this counsellor's own pivot row hasn't
-        // been flipped to inactive yet at this point, the counsellor being deleted themselves).
-        // Only actual members (the group_therapy_user pivot) and a User-owner count as clients.
-        $fromGroupTherapies = $counsellor->groupTherapies()->get()
-            ->flatMap(function ($groupTherapy) {
-                $owner = $groupTherapy->addedby_type === User::class ? $groupTherapy->addedby : null;
-
-                return $groupTherapy->users->merge([$owner]);
-            });
-
-        return $fromTherapies->merge($fromGroupTherapies)->filter()->unique('id');
     }
 }

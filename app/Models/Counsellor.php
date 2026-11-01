@@ -459,6 +459,17 @@ class Counsellor extends Model
             });
     }
 
+    // SCRUM-359: counsellors who may be offered to clients -- not suspended, in either scope.
+    public function scopeWhereNotSuspended($query)
+    {
+        return $query->whereDoesntHave('user.suspensions', fn ($q) => $q->active());
+    }
+
+    public function isSuspended(): bool
+    {
+        return (bool) $this->user?->isSuspendedAsCounsellor();
+    }
+
     public function scopeWhereNotUser($query, $user)
     {
         return $query->where(function ($query) use ($user) {

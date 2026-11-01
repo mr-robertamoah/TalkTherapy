@@ -108,8 +108,12 @@ class ReportService extends Service
             $query->whereReportable($createReportDTO->reportable);
         });
 
-        // ReportResource lists each report's evidence.
-        $query->with(['files', 'reportable'])->orderByDesc('created_at');
+        // ReportResource lists each report's evidence, and (SCRUM-362) asks involves() of each row.
+        $query->with([
+            'files',
+            'addedby' => fn (MorphTo $morph) => $morph->morphWith([Counsellor::class => ['user']]),
+            'reportable' => fn (MorphTo $morph) => $morph->morphWith([Session::class => ['for']]),
+        ])->orderByDesc('created_at');
 
         return $query->paginate(PaginationEnum::preferencesPagination->value);
     }

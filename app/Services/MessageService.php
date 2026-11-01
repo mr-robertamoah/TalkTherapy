@@ -16,6 +16,8 @@ use App\Actions\Message\EnsureReplyIsInSameConversationAction;
 use App\Actions\Message\EnsureUserCanAccessTherapyContentAction;
 use App\Actions\Message\ResolveTherapyMessageRecipientAction;
 use App\Actions\Message\UpdateMessageAction;
+use App\Actions\Suspension\EnsureCanActAsCounsellorAction;
+use App\Actions\Suspension\EnsureTherapyCounsellorIsAvailableAction;
 use App\DTOs\CreateMessageDTO;
 use App\DTOs\GetDiscussionMessagesDTO;
 use App\DTOs\GetSessionMessagesDTO;
@@ -306,6 +308,11 @@ class MessageService extends Service
     {
         EnsureIsFromUserAction::new()->execute($createMessageDTO);
 
+        // SCRUM-359: a suspended counsellor can read their conversations but not write in them --
+        // judged by the role they hold in the conversation, not the identity they send as (which
+        // the client picks).
+        $this->ensureNotWritingAsSuspendedCounsellor($createMessageDTO->user, $createMessageDTO->for);
+
         EnsureCanSendMessageToForAction::new()->execute($createMessageDTO);
 
         ResolveTherapyMessageRecipientAction::new()->execute($createMessageDTO);
@@ -331,6 +338,8 @@ class MessageService extends Service
         EnsureMessageExistsAction::new()->execute($createMessageDTO);
 
         EnsureCanUpdateMessageAction::new()->execute($createMessageDTO);
+
+        $this->ensureNotWritingAsSuspendedCounsellor($createMessageDTO->user, $createMessageDTO->message?->for);
 
         EnsureMessageDataIsValidAction::new()->execute($createMessageDTO, true);
 
@@ -371,5 +380,16 @@ class MessageService extends Service
         $message = DeleteMessageForMeAction::new()->execute($createMessageDTO);
 
         return $message;
+    }
+
+    private function ensureNotWritingAsSuspendedCounsellor(?User $user, mixed $for): void
+    {
+        if ($for instanceof Discussion) {
+            EnsureCanActAsCounsellorAction::new()->execute($user?->counsellor);
+        }
+
+        if ($for instanceof Session) {
+            EnsureTherapyCounsellorIsAvailableAction::new()->execute($user, $for->for, includeTarget: false);
+        }
     }
 }

@@ -22,6 +22,7 @@ use App\Actions\Discussion\RemoveCounsellorFromDiscussionAction;
 use App\Actions\Discussion\UpdateDiscussionAction;
 use App\Actions\EnsureAddedbyIsValidAction;
 use App\Actions\Star\CreateStarAction;
+use App\Actions\Suspension\EnsureCanActAsCounsellorAction;
 use App\Actions\Therapy\EnsureIsCounsellorAction;
 use App\Actions\User\EnsureRequestDataIsValidAction;
 use App\Actions\User\EnsureUserExistsAction;
@@ -74,6 +75,10 @@ class DiscussionService extends Service
         EnsureIsCounsellorAction::new()->execute($createDiscussionDTO);
 
         EnsureAddedbyIsValidAction::new()->execute($createDiscussionDTO, force: true);
+
+        // SCRUM-359
+        EnsureCanActAsCounsellorAction::new()->execute($createDiscussionDTO->addedby);
+        EnsureCanActAsCounsellorAction::new()->execute($createDiscussionDTO->user?->counsellor);
 
         EnsureCanCreateDiscussionForAction::new()->execute($createDiscussionDTO);
 
@@ -138,6 +143,8 @@ class DiscussionService extends Service
         EnsureDiscussionExistsAction::new()->execute($createDiscussionDTO);
 
         EnsureCanUpdateDiscussionStatusAction::new()->execute($createDiscussionDTO);
+
+        EnsureCanActAsCounsellorAction::new()->execute($createDiscussionDTO->user?->counsellor);
 
         $discussion = ChangeDiscussionStatusAction::new()->execute($createDiscussionDTO, DiscussionStatusEnum::in_session->value);
 

@@ -8792,3 +8792,75 @@ keep the license; any admin may unlock with a reason, except one who is part of 
   *records* are still never deleted; their uploaded *files* now are, under this policy.
   `licenses.documents_removed_at` says when, and the admin license card says so.
 
+
+## SCRUM-359 + SCRUM-362: suspension as a report outcome, report/retention hardening — 2026-11-01
+
+One PR, as the user asked. The user approved the plan with these defaults: two scopes (whole account or
+counsellor role), 7/30/90 days or until lifted, super admin only and only from a report resolved
+with "suspension recommended", a suspended counsellor's clients keep their therapies and are told
+"unavailable", one appeal decided by a different admin.
+
+- **Deviation: a suspended account can still sign in.** The plan said login would be refused. But the
+  appeal form is on a page that needs a signed-in session, so refusing sign-in would leave no way to
+  appeal. Instead, `EnsureAccountIsNotSuspended` (web and api groups, `/broadcasting/auth` included)
+  sends every page to `/suspended` and refuses every API call with `403 account_suspended`. Only the
+  suspended page, the appeal form and sign-out are allowed. It also checks the `sanctum` guard,
+  because the api group runs it before a route's `auth:sanctum` (security review).
+- **"Active" is worked out from the dates** (`Suspension::scopeActive`) on every request, with no
+  `users.suspended_until` cache. A missed scheduler run can never lengthen a block. The
+  five-minute sweep only records the end and emails the person.
+- **Appeals are columns on `suspensions`**, because there is one per suspension. Lifting while an appeal
+  is waiting also answers the appeal (review finding).
+- **No cancelled status: `FAILED` (scheduled, "not held") and `ABANDONED` (already running).**
+  Neither status bills (only `HELD` does). A cancelled status would touch everything that reads session
+  status. Sessions already running are ended too, so a suspended counsellor can't keep writing in
+  them (security review). Nothing is refunded automatically. Clients are told they can request a
+  refund through the normal flow.
+- **Group sessions only fail when no other active, unsuspended counsellor can run them.**
+- **Which requests are affected:** `RequestTypeEnum::counsellingTypes()`, the one list for all of
+  these:
+  - creating requests (`CreateRequestAction`, where every request is created);
+  - accepting them (`RequestService::respondToRequest`);
+  - declining the ones a suspended counsellor has received;
+  - withdrawing the ones they sent.
+  An organisation's compensation change is about the counsellor's own terms, so it stays pending.
+- **Messages are checked against the role the writer holds in the conversation**, not the identity they
+  send as. The client picks `fromType`, so a counsellor could otherwise write as their User
+  (security review).
+- **Guards sit at each entry point** (`EnsureCanActAsCounsellorAction`,
+  `EnsureTherapyCounsellorIsAvailableAction`). An arch test lists every class that must call them.
+  `EnsureAddedbyIsValidAction` was rejected as the choke point, because it would also stop a
+  suspended counsellor from filing a report.
+- **Notifications are queued after commit** (`afterCommit()`, the existing convention), so effects
+  are sent from inside the transaction. The live sign-out broadcast is wrapped in `rescue()`: it's
+  only a convenience, and Reverb being down mustn't fail a committed suspension (devops review).
+- **The duplicate-suspension check uses a locking read** after locking the person. Under REPEATABLE
+  READ a plain read could miss another admin's suspension committed meanwhile (architect and
+  reviewer). Effects lock and re-check each request and session row, so one accepted or started at
+  the same moment isn't overwritten.
+- **Reopening a report keeps its suspension.** Lifting is always explicit. The report can't be
+  re-pointed while a suspension from it is in force.
+- **Who is "involved" in a suspension** (may not handle or see it): anyone involved in the report, plus
+  the suspended person and their guardians, even if the report was later re-pointed (security review).
+- **Suspended admins are no longer picked for admin alerts** (`User::scopeWhereAdmin`).
+- **The counsellor profile says "isn't taking new requests"** through a page prop, not a
+  `CounsellorResource` field. The field would add a query per counsellor in every list.
+- **SCRUM-362:**
+  - *Former group members:* no "sent a message" heuristic. Nothing ever removes a group membership
+    row, so `isParticipant()` already covers them. A comment and a test pin this.
+  - *Guardians:* those of the reporter, the reported person and the therapy's creator count as
+    involved. Guardians of other group members don't yet (SCRUM-363).
+  - *Party lock:* after a confidential read, only a super admin with a reason may change who a
+    report is about. A second admin's approval was judged too heavy for a small team.
+  - *Append-only:* triggers, not REVOKE. The deployed DB user's grants aren't under our control.
+    They stop row updates and deletes, not `TRUNCATE`/`DROP`. They need
+    `log_bin_trust_function_creators=1` on MySQL with binlog (set in docker-compose; production
+    must set it before deploying, see README).
+  - *`responded_at`:* set by a `saving` hook the first time a request leaves PENDING (accepted,
+    rejected, superseded or made moot), not only on accept/reject. Both retention sweeps treat
+    "not pending" as decided. The four query-builder updates set it themselves.
+  - *File deletion:* `FileService::deleteFile` now returns false, and keeps the row, when the stored
+    file couldn't be deleted. A deleted report that leaves such a file logs an error with the file ids.
+- **Left for SCRUM-363:** cutting live websocket and video access server-side, holding payouts, account
+  deletion while suspended, guardians of all group members, live session-status broadcast, search
+  wildcard escaping, a future GDPR purge and the `restrictOnDelete` foreign keys, and MySQL in CI.

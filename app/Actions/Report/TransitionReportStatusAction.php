@@ -77,9 +77,8 @@ class TransitionReportStatusAction extends Action
 
     private function notifyParties(Report $report): void
     {
-        $reporter = $report->addedby instanceof User ? $report->addedby : $report->addedby?->user;
-        // Only when restricted content was actually shown, not merely a session opened.
-        $confidentialRead = $report->confidentialAccesses()->whereNotNull('message_id')->exists();
+        $reporter = $report->reporterUser();
+        $confidentialRead = $report->hasConfidentialReads();
 
         if ($reporter) {
             Notification::send($reporter, new ReportClosedNotification($report, $report->status, ReportClosedNotification::REPORTER, $confidentialRead));

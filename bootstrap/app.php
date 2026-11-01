@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\EnsureAccountIsNotSuspended;
 use App\Http\Middleware\HandleInertiaRequestsV2;
 use App\Http\Middleware\StoreVisitationMiddleware;
 use Illuminate\Foundation\Application;
@@ -21,12 +22,16 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->web(append: [
             HandleInertiaRequestsV2::class,
             AddLinkHeadersForPreloadedAssets::class,
+            // SCRUM-359: after the session has started, so the signed-in user resolves.
+            EnsureAccountIsNotSuspended::class,
         ]);
 
         $middleware->api(append: [
             EnsureFrontendRequestsAreStateful::class,
             // \Illuminate\Routing\Middleware\ThrottleRequests::class.':api',
             SubstituteBindings::class,
+            // SCRUM-359: after EnsureFrontendRequestsAreStateful has started the session.
+            EnsureAccountIsNotSuspended::class,
         ]);
 
         $middleware->append(StoreVisitationMiddleware::class);

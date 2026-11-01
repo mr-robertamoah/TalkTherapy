@@ -346,3 +346,20 @@ Session", with:
 Review them as the super admin at `/administrator/reports`. See
 `documentation/features/scrum-340-338-complaint-review-and-license-retention.md`.
 
+
+## Suspension demo (SCRUM-359)
+
+All of these share the password **`password`**.
+
+| Username | What it is |
+|---|---|
+| `suspension_demo_admin` | A second **super admin**. It "applied" the seeded suspensions, so the main super admin (`mr_robertamoah`) is the one who can decide the waiting appeal — the admin who applied a suspension never may. |
+| `suspension_demo_client` | A client with therapies with the two counsellors below. Has an old, already-ended account suspension (7 days, two weeks ago). |
+| `suspension_ready_counsellor` | A counsellor whose report (filed by `suspension_demo_client`, "[Suspension demo: ready to suspend]") is resolved with "suspension recommended" and nobody suspended yet. Its therapy has an upcoming session in 3 days. |
+| `suspended_counsellor_demo` | A counsellor whose **counsellor role** is suspended for 30 days. Signs in normally and can use TalkTherapy as a client; is hidden from counsellor search. |
+| `suspended_client_demo` | A client whose **whole account** is suspended until lifted, with an **appeal waiting**. Every page sends them to `/suspended`. |
+
+Try it as `mr_robertamoah`: open `/administrator/reports?status=resolved`, open the
+"ready to suspend" report and suspend the counsellor; or go to `/administrator/suspensions` to
+decide the appeal or lift a suspension. See
+`documentation/features/scrum-359-362-suspension-and-report-hardening.md`.

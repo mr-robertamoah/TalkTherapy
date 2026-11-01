@@ -40,6 +40,7 @@ const { alertData, clearAlertData, setAlertData, setFailedAlertData, setSuccessA
 
 const props = defineProps({
     counsellor: {},
+    counsellorUnavailable: { type: Boolean, default: false },
     counsellorCreationStep: {
         type: Number,
     },
@@ -723,14 +724,17 @@ function closeModal() {
                 <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
                     <div class="p-6 text-gray-900">
                         <div class="capitalize text-lg font-medium text-gray-900">Therapy</div>
-                        <div class="mt-1 text-sm text-gray-600">
+                        <div v-if="counsellorUnavailable" class="mt-1 text-sm text-gray-600">
+                            This counsellor isn't taking new requests at the moment.
+                        </div>
+                        <div v-else class="mt-1 text-sm text-gray-600">
                             Create a therapy that requests the assistance of this counsellor.
                         </div>
-                        <div v-if="!$page.props.auth.user" class="mt-1 text-sm text-red-600">
+                        <div v-if="!$page.props.auth.user && !counsellorUnavailable" class="mt-1 text-sm text-red-600">
                             You would have to login in order to create a request.
                         </div>
 
-                        <div class="flex justify-end mt-6 ">
+                        <div v-if="!counsellorUnavailable" class="flex justify-end mt-6 ">
 
                             <CreateTherapyButton :counsellor="counsellor" v-if="$page.props.auth.user"/>
                             <StyledLink v-else :text="'login to create a therapy'" :href="route('login')"/>

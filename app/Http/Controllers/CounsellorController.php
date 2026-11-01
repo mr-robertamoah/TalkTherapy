@@ -126,6 +126,8 @@ class CounsellorController extends Controller
             $data = [
                 'counsellor' => $counsellorResource,
                 'counsellorCreationStep' => GetCounsellorCreationStepOfUserAction::new()->execute($counsellor->user),
+                // SCRUM-359: offered to nobody while suspended -- the profile says so, never why.
+                'counsellorUnavailable' => $counsellor->isSuspended(),
             ];
 
             if ($counsellor->user->is($request->user())) {
