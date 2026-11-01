@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Enums\ReportOutcomeEnum;
+use App\Enums\ReportStatusEnum;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphToMany;
@@ -10,9 +12,107 @@ class Report extends Model
 {
     use HasFactory;
 
+    // SCRUM-340: status/outcome/resolved_* are deliberately not fillable -- only
+    // TransitionReportStatusAction changes them.
     protected $fillable = ['description', 'data'];
 
-    protected $casts = ['data' => 'array'];
+    protected $casts = [
+        'data' => 'array',
+        'status' => ReportStatusEnum::class,
+        'outcome' => ReportOutcomeEnum::class,
+        'resolved_at' => 'datetime',
+    ];
+
+    protected $attributes = [
+        'status' => 'open',
+    ];
+
+    public function histories()
+    {
+        return $this->hasMany(ReportStatusHistory::class)->latest('id');
+    }
+
+    public function resolvedBy()
+    {
+        return $this->belongsTo(User::class, 'resolved_by')->withTrashed();
+    }
+
+    public function confidentialAccesses()
+    {
+        return $this->hasMany(ConfidentialMessageAccess::class)->latest('id');
+    }
+
+    public function isActive(): bool
+    {
+        return $this->status->isActive();
+    }
+
+    // SCRUM-340: the therapy a report is about -- a session's therapy, or the therapy itself.
+    // Null for a post or anything else.
+    public function therapy(): Therapy|GroupTherapy|null
+    {
+        $reportable = $this->reportable instanceof Session ? $this->reportable->for : $this->reportable;
+
+        return $reportable instanceof Therapy || $reportable instanceof GroupTherapy ? $reportable : null;
+    }
+
+    private bool $reportedPartyResolved = false;
+
+    private User|Counsellor|null $reportedPartyCache = null;
+
+    // SCRUM-340: THE one answer to "who is this report about" -- the admin page, the unlock scope,
+    // involves() and the close notifications all use it (review finding: they used to disagree).
+    // Whoever data.userId / data.counsellorId names, minus the reporter themselves (reports made
+    // before SCRUM-347 had to name both parties, the reporter included). Exactly one person, or
+    // null: nobody named, or still ambiguous -- an admin then records who it is.
+    public function reportedParty(): User|Counsellor|null
+    {
+        if ($this->reportedPartyResolved) {
+            return $this->reportedPartyCache;
+        }
+
+        $data = is_array($this->data) ? $this->data : [];
+        $named = array_filter([
+            ($data['userId'] ?? null) ? User::withTrashed()->find($data['userId']) : null,
+            ($data['counsellorId'] ?? null) ? Counsellor::withTrashed()->with('user')->find($data['counsellorId']) : null,
+        ]);
+        $named = array_values(array_filter(
+            $named,
+            fn (User|Counsellor $person) => ! $this->isReportedBy($person instanceof Counsellor ? $person->user : $person)
+        ));
+
+        $this->reportedPartyResolved = true;
+
+        return $this->reportedPartyCache = count($named) == 1 ? $named[0] : null;
+    }
+
+    // The User behind the reported party (a counsellor's own account).
+    public function reportedUser(): ?User
+    {
+        $party = $this->reportedParty();
+
+        return $party instanceof Counsellor ? $party->user : $party;
+    }
+
+    // SCRUM-340: an admin who is the reporter, the reported person, the author of a reported post,
+    // or a participant (past counsellors included) of the reported therapy can't review the report
+    // or see it beyond its existence.
+    public function involves(User $user): bool
+    {
+        if ($this->isReportedBy($user) || $this->reportedUser()?->is($user)) {
+            return true;
+        }
+
+        $therapy = $this->therapy();
+        if ($therapy) {
+            return (bool) $therapy->isParticipant($user)
+                || ($therapy instanceof GroupTherapy && $user->counsellor && $therapy->counsellors()->whereKey($user->counsellor->id)->exists());
+        }
+
+        $author = $this->reportable?->addedby;
+
+        return (bool) ($author instanceof Counsellor ? $author->user?->is($user) : $author?->is($user));
+    }
 
     public function addedby()
     {
@@ -33,10 +133,15 @@ class Report extends Model
             : $this->addedby->is($user);
     }
 
-    // SCRUM-337: reports (and their evidence) are for admins and the reporter only.
+    // SCRUM-337: reports (and their evidence) are for admins and the reporter only. SCRUM-340: not
+    // for an admin who is part of the report -- that would show the reported person who reported them.
     public function isViewableBy(?User $user): bool
     {
-        return (bool) $user && ($user->isAdmin() || $this->isReportedBy($user));
+        if (! $user) {
+            return false;
+        }
+
+        return $this->isReportedBy($user) || ($user->isAdmin() && ! $this->involves($user));
     }
 
     // Reports a non-admin may list: their own, as a User or as their Counsellor.

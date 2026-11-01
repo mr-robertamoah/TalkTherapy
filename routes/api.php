@@ -3,6 +3,7 @@
 use App\Http\Controllers\AboutController;
 use App\Http\Controllers\AdministratorController;
 use App\Http\Controllers\AdminPayoutController;
+use App\Http\Controllers\AdminReportController;
 use App\Http\Controllers\AlertController;
 use App\Http\Controllers\CommentController;
 use App\Http\Controllers\ContactController;
@@ -172,6 +173,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/contacts/{contactId}', [ContactController::class, 'updateContact'])->name('api.contacts.update');
     Route::get('/contacts', [ContactController::class, 'getContacts'])->name('api.contacts');
 
+    // SCRUM-340: an admin reading a reported conversation (reason required, every confidential
+    // message recorded), and the attachments of messages they unlocked. Uniform 404s.
+    Route::post('/admin/reports/{report}/sessions/{session}/messages', [AdminReportController::class, 'conversation'])->name('admin.reports.conversation')->whereNumber(['report', 'session'])->middleware('throttle:20,1');
+    Route::get('/admin/reports/{report}/messages/{message}/attachments/{file}', [AdminReportController::class, 'attachment'])->name('admin.reports.attachments.show')->whereNumber(['report', 'message', 'file'])->middleware('throttle:120,1');
     Route::get('/reports', [ReportController::class, 'getReports'])->name('api.reports');
     Route::get('/reports/{reportId}', [ReportController::class, 'getReport'])->name('api.reports.get');
     Route::post('/reports', [ReportController::class, 'createReport'])->name('api.reports.create');

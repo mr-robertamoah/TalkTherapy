@@ -5,6 +5,7 @@ namespace App\Actions\Request;
 use App\Actions\Action;
 use App\DTOs\RequestResponseDTO;
 use App\Enums\RequestStatusEnum;
+use App\Exceptions\InvalidVerificationRequestData;
 use App\Models\License;
 use App\Models\Request;
 use Illuminate\Support\Facades\DB;
@@ -24,23 +25,32 @@ class RespondToCounsellorVerificationRequestAction extends Action
                 return $request;
             }
 
-            $nationalIdLicense = License::find($request->data['nationalIdLicense']);
+            $status = is_null($requestResponseDTO->response)
+                ? RequestStatusEnum::rejected->value
+                : strtoupper($requestResponseDTO->response);
 
-            $nationalIdLicense->validate();
+            // SCRUM-338: only an ACCEPTED request validates the licenses (and a not-yet-validated
+            // licensing authority). This used to run before the response was even read, so a
+            // rejection left both licenses validated -- and hasNationalIdentification() true for
+            // a counsellor whose ID was just rejected.
+            if ($status == RequestStatusEnum::accepted->value) {
+                $nationalIdLicense = License::find($request->data['nationalIdLicense'] ?? null);
+                $otherLicense = License::find($request->data['otherLicense'] ?? null);
 
-            $otherLicense = License::find($request->data['otherLicense']);
+                // Review finding: never accept a verification with nothing to validate.
+                if (! $nationalIdLicense || ! $otherLicense) {
+                    throw new InvalidVerificationRequestData('This verification request is missing its documents and cannot be accepted.', 422);
+                }
 
-            $otherLicense->validate();
+                $nationalIdLicense->validate();
+                $otherLicense->validate();
 
-            if ($otherLicense->licensingAuthority->isNotValidated()) {
-                $otherLicense->licensingAuthority->validate();
+                if ($otherLicense->licensingAuthority?->isNotValidated()) {
+                    $otherLicense->licensingAuthority->validate();
+                }
             }
 
-            $request->update([
-                'status' => is_null($requestResponseDTO->response)
-                    ? RequestStatusEnum::rejected->value
-                    : strtoupper($requestResponseDTO->response),
-            ]);
+            $request->update(['status' => $status]);
 
             $request = $request->refresh();
 

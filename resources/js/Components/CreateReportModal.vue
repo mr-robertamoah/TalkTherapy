@@ -305,6 +305,12 @@ function closeModal() {
                             <div class="p-4 rounded bg-gray-200 shadow-sm">
                                 Reporting as {{ reportData.addedbyType }}
                             </div>
+                            <!-- SCRUM-340: the standing disclosure of what reviewing a report can involve. -->
+                            <div v-if="['Therapy', 'GroupTherapy'].includes(type)" class="p-4 rounded border border-gray-200 bg-white mt-4 text-xs text-gray-600">
+                                An administrator reviews every report. To investigate it, they may read the reported
+                                person's messages in this therapy, including confidential ones. Every read is recorded,
+                                and you and the reported person are told when the review is closed.
+                            </div>
                             <div v-if="computedIsCounsellor" class="p-4 rounded bg-gray-200 shadow-sm mt-4">
                                 <div class="text-left text-sm font-bold mb-2">You may report as</div>
                                 <div

@@ -325,3 +325,24 @@ When a feature needs its own seed data to be testable via the UI (a new model, a
 doesn't exist in the current seeder, a specific edge case), add it to `DatabaseSeeder.php` (or a
 dedicated seeder it calls) rather than requiring manual setup, and document it in that feature's
 `documentation/features/<feature-slug>.md` — see "Feature documentation" in `CLAUDE.md`.
+
+## Report review demo (SCRUM-340)
+
+"Report Demo Group Therapy" is created by `maria_garcia` and counselled by Dr. Emma Williams. Its
+members `amy_taylor` and `robert_miller` are anonymous. It has one finished session, "Report Demo
+Session", with:
+
+- public messages;
+- a confidential message from amy_taylor to the counsellor, and the counsellor's confidential reply;
+- a confidential message from robert_miller (which must stay hidden from a reviewer);
+- a confidential message from amy_taylor that was deleted for everyone.
+
+`maria_garcia` has filed three reports on the group:
+
+- **open, naming amy_taylor:** the conversation can be read;
+- **open, naming nobody:** record a reported person first;
+- **dismissed, with history:** can be reopened.
+
+Review them as the super admin at `/administrator/reports`. See
+`documentation/features/scrum-340-338-complaint-review-and-license-retention.md`.
+

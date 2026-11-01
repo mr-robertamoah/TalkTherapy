@@ -19,7 +19,7 @@ class EnsureUserCanViewMessageAttachmentAction extends Action
     // deploy (scripts/deploy.sh) now keeps the site down from pull to migrate, so no request can
     // see a row the move migrations haven't reached, and 2026_10_31_120000 moves 'local' rows too.
     // A file on any other disk is never streamed under message rules.
-    private const ATTACHMENT_DISKS = ['message_attachments'];
+    public const ATTACHMENT_DISKS = ['message_attachments'];
 
     public function execute(User $user, Message $message, File $file): void
     {
