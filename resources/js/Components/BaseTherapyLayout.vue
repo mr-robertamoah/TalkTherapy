@@ -26,7 +26,6 @@
       :active-discussion="activeDiscussion"
       :timer="timer"
       :is-participant="computedIsParticipant"
-      :user-id="userId"
       :session-action-running="sessionActionRunning"
       @clicked-show-all="$emit('clicked-show-all')"
       @clicked-active-session="$emit('clicked-active-session')"

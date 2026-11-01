@@ -47,7 +47,8 @@ class VideoParticipantRemovedEvent implements ShouldBroadcast
     {
         return [
             'sessionId' => $this->videoSession->session_id,
-            'removedUserId' => $this->removedUserId,
+            // SCRUM-357: the participant key, never the user id.
+            'removedParticipantKey' => $this->videoSession->participantKeyFor($this->removedUserId),
         ];
     }
 }

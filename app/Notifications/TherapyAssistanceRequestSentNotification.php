@@ -16,7 +16,7 @@ class TherapyAssistanceRequestSentNotification extends Notification implements S
     /**
      * Create a new notification instance.
      */
-    public function __construct(private Request $request)
+    public function __construct(protected Request $request)
     {
         $this->afterCommit();
     }

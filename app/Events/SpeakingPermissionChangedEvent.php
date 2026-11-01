@@ -50,7 +50,8 @@ class SpeakingPermissionChangedEvent implements ShouldBroadcast
     {
         return [
             'sessionId' => $this->videoSession->session_id,
-            'userId' => $this->userId,
+            // SCRUM-357: the participant key, never the user id.
+            'participantKey' => $this->videoSession->participantKeyFor($this->userId),
             'canSendAudio' => $this->canSendAudio,
             'canSendVideo' => $this->canSendVideo,
             'reason' => $this->reason,

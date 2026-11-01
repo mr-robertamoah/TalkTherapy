@@ -70,7 +70,7 @@
         v-if="onlineParticipants.length > 1"
         class="p-2 text-center mt-2 text-gray-600 select-none font-bold text-sm w-[80%] md:w-[70%] lg:w-[60%] mx-auto rounded-lg bg-slate-300"
       >
-        {{ onlineParticipants.find((u) => u.id !== userId).name }} is online
+        {{ onlineParticipants.find((u) => !u.isMe)?.name }} is online
       </div>
     </template>
 
@@ -173,7 +173,6 @@ defineProps({
   activeDiscussion: { default: null },
   timer: { default: () => ({ beforeStart: 0, beforeEnd: 0, set: false }) },
   isParticipant: { type: Boolean, default: false },
-  userId: { default: null },
   sessionActionRunning: { type: String, default: '' },
   onlineParticipants: { default: () => [] },
 })

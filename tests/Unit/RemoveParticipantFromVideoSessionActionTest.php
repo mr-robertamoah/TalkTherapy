@@ -15,6 +15,7 @@ use App\Models\User;
 use App\Models\VideoSession;
 use App\Models\VideoSessionParticipant;
 use App\Models\VideoSessionSpeakingGrant;
+use App\Support\VideoParticipantKey;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Log;
 
@@ -288,7 +289,7 @@ test('removing a member who holds speaking permission revokes it (participant_re
         ]);
     Event::assertDispatched(SpeakingPermissionChangedEvent::class, fn ($event) => $event->broadcastWith() === [
         'sessionId' => $data['session']->id,
-        'userId' => $data['member']->id,
+        'participantKey' => VideoParticipantKey::for($data['session']->id, $data['member']->id),
         'canSendAudio' => false,
         'canSendVideo' => false,
         'reason' => SpeakingPermissionRevocationReasonEnum::participant_removed->value,
@@ -309,7 +310,7 @@ test('removing a member with a raised hand lowers it and broadcasts that', funct
     expect($raise->fresh()->lowered_at)->not->toBeNull();
     Event::assertDispatched(HandLoweredEvent::class, fn ($event) => $event->broadcastWith() === [
         'sessionId' => $data['session']->id,
-        'userId' => $data['member']->id,
+        'participantKey' => VideoParticipantKey::for($data['session']->id, $data['member']->id),
     ]);
 });
 

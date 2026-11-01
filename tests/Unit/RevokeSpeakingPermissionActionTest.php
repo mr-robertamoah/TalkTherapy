@@ -12,6 +12,7 @@ use App\Models\User;
 use App\Models\VideoSession;
 use App\Models\VideoSessionParticipant;
 use App\Models\VideoSessionSpeakingGrant;
+use App\Support\VideoParticipantKey;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Log;
 
@@ -98,7 +99,7 @@ test('any active counsellor can manually revoke a member\'s speaking permission'
         ->and($calls)->toBe([[$data['member']->id, false, false]]);
     Event::assertDispatched(SpeakingPermissionChangedEvent::class, fn ($event) => $event->broadcastWith() === [
         'sessionId' => $data['session']->id,
-        'userId' => $data['member']->id,
+        'participantKey' => VideoParticipantKey::for($data['session']->id, $data['member']->id),
         'canSendAudio' => false,
         'canSendVideo' => false,
         'reason' => SpeakingPermissionRevocationReasonEnum::manual->value,

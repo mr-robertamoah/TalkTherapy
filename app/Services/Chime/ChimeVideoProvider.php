@@ -48,7 +48,8 @@ class ChimeVideoProvider implements VideoProviderInterface
     {
         $args = [
             'MeetingId' => $videoSession->provider_room_id,
-            'ExternalUserId' => (string) $user->id,
+            // SCRUM-357: every attendee can see this -- never the real user id.
+            'ExternalUserId' => $videoSession->participantKeyFor($user->id),
         ];
 
         // TT-3.2f-d/SCRUM-321: server-enforced by Chime itself, not merely omitted client-side --
@@ -79,7 +80,7 @@ class ChimeVideoProvider implements VideoProviderInterface
     }
 
     // TT-3.2b/SCRUM-309: no stored Chime-specific participant id to key off (see ChimeClient's
-    // own comment) -- looks the live attendee up by its ExternalUserId (== $user->id, set at
+    // own comment) -- looks the live attendee up by its ExternalUserId (the participant key, set at
     // CreateAttendee time) via ListAttendees, then deletes that specific AttendeeId. A no-op if
     // the user isn't currently a live attendee at all (already left, or never actually joined
     // this provider-side room) -- matches endRoom()'s own "nothing to do" precedent rather than
@@ -92,7 +93,7 @@ class ChimeVideoProvider implements VideoProviderInterface
 
         $attendees = $this->client->listAttendees($videoSession->provider_room_id)['Attendees'] ?? [];
 
-        $attendee = collect($attendees)->firstWhere('ExternalUserId', (string) $user->id);
+        $attendee = collect($attendees)->firstWhere('ExternalUserId', $videoSession->participantKeyFor($user->id));
 
         if (! $attendee) {
             return;
@@ -103,7 +104,7 @@ class ChimeVideoProvider implements VideoProviderInterface
 
     // TT-3.2f-e/SCRUM-322: same live-attendee lookup pattern as removeParticipant() above -- no
     // stored Chime-specific participant id to key off, so the AttendeeId is looked up by matching
-    // ExternalUserId (== $user->id) via ListAttendees.
+    // ExternalUserId (the participant key) via ListAttendees.
     //
     // TT-3.2f-f/SCRUM-323 security-review finding: an attendee that can't be found THROWS rather
     // than returning quietly (unlike removeParticipant()) -- a silent no-op here would let a
@@ -117,7 +118,7 @@ class ChimeVideoProvider implements VideoProviderInterface
 
         $attendees = $this->client->listAttendees($videoSession->provider_room_id)['Attendees'] ?? [];
 
-        $attendee = collect($attendees)->firstWhere('ExternalUserId', (string) $user->id)
+        $attendee = collect($attendees)->firstWhere('ExternalUserId', $videoSession->participantKeyFor($user->id))
             ?? throw new RuntimeException("No live Chime attendee found for user {$user->id}.");
 
         // Content is always 'Receive' here regardless of $canSendVideo -- this app has no

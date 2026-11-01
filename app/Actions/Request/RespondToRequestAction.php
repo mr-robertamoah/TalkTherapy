@@ -28,6 +28,11 @@ class RespondToRequestAction extends Action
             $request = RespondToTherapyAssistanceRequestAction::new()->execute($requestResponseDTO);
         }
 
+        // SCRUM-358: group invites have their own response (they used to have none at all).
+        if ($requestResponseDTO->request->type == RequestTypeEnum::groupTherapy->value) {
+            $request = RespondToGroupTherapyAssistanceRequestAction::new()->execute($requestResponseDTO);
+        }
+
         if ($requestResponseDTO->request->type == RequestTypeEnum::guardianship->value) {
             $request = RespondToGuardianshipRequestAction::new()->execute($requestResponseDTO);
         }

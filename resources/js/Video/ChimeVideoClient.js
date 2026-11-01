@@ -89,12 +89,12 @@ export default function createChimeVideoClient(callbacks) {
             // stream also happens to include the local attendee.
             if (attendeeId === localAttendeeId) return
 
-            // TT-3.2c/SCRUM-310: externalUserId is our OWN backend user id -- exactly what
+            // TT-3.2c/SCRUM-310, SCRUM-357: externalUserId is the participant key
             // ChimeVideoProvider::createParticipantCredentials() sent as ExternalUserId when
-            // minting this attendee. May be undefined on some presence updates per the SDK's own
-            // docs; Number(undefined) is NaN, so this is normalized to null rather than a bogus
-            // numeric id useVideoSession.js's own patch-in-later logic could mistake for real.
-            const userId = externalUserId != null ? Number(externalUserId) : null
+            // minting this attendee -- never a user id. May be undefined on some presence updates
+            // per the SDK's own docs; normalized to null so useVideoSession.js's patch-in-later
+            // logic never mistakes it for a real key.
+            const userId = externalUserId ?? null
 
             if (present) callbacks.onParticipantJoined?.({ id: attendeeId, isLocal: false, name: null, userId })
             else callbacks.onParticipantLeft?.(attendeeId)
@@ -117,7 +117,7 @@ export default function createChimeVideoClient(callbacks) {
             id: 'local',
             isLocal: true,
             name: null,
-            userId: localExternalUserId != null ? Number(localExternalUserId) : null,
+            userId: localExternalUserId ?? null,
         })
     }
 

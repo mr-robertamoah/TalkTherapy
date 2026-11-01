@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Broadcast;
 // call the registered presence-channel closures directly (via reflection into the Broadcaster's
 // protected $channels map) rather than round-tripping through the actual broadcasting/auth HTTP
 // endpoint and a real Pusher/Reverb signature.
+// SCRUM-357: every member is listed by their per-channel key (User::getAuthIdentifierForBroadcasting), never the real user id.
 function broadcastChannelCallback(string $pattern): Closure
 {
     $broadcaster = Broadcast::connection();
@@ -38,7 +39,7 @@ test('individual therapy channel masks the client\'s own name when the therapy i
 
     $result = $callback($client, $therapy->id);
 
-    expect($result)->toBe(['id' => $client->id, 'name' => ConstantsEnum::anonymousUserLabel->value]);
+    expect($result)->toBe(['id' => $client->getAuthIdentifierForBroadcasting(), 'name' => ConstantsEnum::anonymousUserLabel->value]);
 });
 
 test('individual therapy channel never masks the counsellor\'s own name', function () {
@@ -56,7 +57,7 @@ test('individual therapy channel never masks the counsellor\'s own name', functi
 
     $result = $callback($counsellorUser, $therapy->id);
 
-    expect($result)->toBe(['id' => $counsellorUser->id, 'name' => $counsellorUser->name]);
+    expect($result)->toBe(['id' => $counsellorUser->getAuthIdentifierForBroadcasting(), 'name' => $counsellorUser->name]);
 });
 
 test('group therapy channel masks a member whose own pivot is anonymous, even though the group is not', function () {
@@ -77,7 +78,7 @@ test('group therapy channel masks a member whose own pivot is anonymous, even th
 
     $result = $callback($member, $groupTherapy->id);
 
-    expect($result)->toBe(['id' => $member->id, 'name' => ConstantsEnum::anonymousUserLabel->value]);
+    expect($result)->toBe(['id' => $member->getAuthIdentifierForBroadcasting(), 'name' => ConstantsEnum::anonymousUserLabel->value]);
 });
 
 test('group therapy channel masks every member when the group-level flag is anonymous (the OR branch the old bug missed)', function () {
@@ -96,7 +97,7 @@ test('group therapy channel masks every member when the group-level flag is anon
 
     $result = $callback($member, $groupTherapy->id);
 
-    expect($result)->toBe(['id' => $member->id, 'name' => ConstantsEnum::anonymousUserLabel->value]);
+    expect($result)->toBe(['id' => $member->getAuthIdentifierForBroadcasting(), 'name' => ConstantsEnum::anonymousUserLabel->value]);
 });
 
 test('group therapy channel never masks a counsellor\'s own name, even when the group is anonymous', function () {
@@ -115,7 +116,7 @@ test('group therapy channel never masks a counsellor\'s own name, even when the 
 
     $result = $callback($counsellorUser, $groupTherapy->id);
 
-    expect($result)->toBe(['id' => $counsellorUser->id, 'name' => $counsellorUser->name]);
+    expect($result)->toBe(['id' => $counsellorUser->getAuthIdentifierForBroadcasting(), 'name' => $counsellorUser->name]);
 });
 
 test('group therapy channel does not mask a member when neither the group nor their own pivot is anonymous', function () {
@@ -136,5 +137,5 @@ test('group therapy channel does not mask a member when neither the group nor th
 
     $result = $callback($member, $groupTherapy->id);
 
-    expect($result)->toBe(['id' => $member->id, 'name' => $member->name]);
+    expect($result)->toBe(['id' => $member->getAuthIdentifierForBroadcasting(), 'name' => $member->name]);
 });

@@ -101,29 +101,17 @@ test('GroupTherapyService::createGroupTherapy still alerts the guardian of a min
     Notification::assertSentTo($guardian, TherapyCreatedNotification::class);
 });
 
-// The subtle case: RespondToTherapyAssistanceRequestAction's $request->from can be a Counsellor
-// OFFERING to assist someone else's therapy (TherapyService::sendAssistanceRequest's own
-// counsellor-initiated branch) -- $request->for's client_was_minor_at_creation snapshot is about
-// THAT THERAPY'S CLIENT, a different person entirely, and must not be read as this counsellor's
-// own minor status.
-test('RespondToTherapyAssistanceRequestAction alerts the guardian of a minor counsellor offering assistance, not based on the therapy\'s own (adult) client snapshot', function () {
-    Notification::fake();
-    $adultClient = User::factory()->adult()->create();
-    $minorCounsellorUser = User::factory()->create(['dob' => now()->subYears(15)->toDateString()]);
-    $counsellor = Counsellor::factory()->create(['user_id' => $minorCounsellorUser->id]);
-    $guardian = User::factory()->create();
-    Guardianship::query()->create(['guardian_id' => $guardian->id, 'ward_id' => $minorCounsellorUser->id]);
-    $therapy = Therapy::factory()->create([
-        'addedby_type' => User::class,
-        'addedby_id' => $adultClient->id,
-        'client_was_minor_at_creation' => false,
-        'status' => TherapyStatusEnum::pending->value,
-    ]);
-
+// SCRUM-358: RespondToTherapyAssistanceRequestAction's $request->from can be a Counsellor OFFERING
+// to assist someone else's therapy (TherapyService::sendAssistanceRequest's own counsellor-initiated
+// branch). The alert is about the THERAPY'S CLIENT, so it goes to the client's guardians (judged by
+// the therapy's own snapshot) -- never to the counsellor's own guardians, who would otherwise be
+// told the name of a stranger's therapy.
+function guardianWiringCounsellorOfferAcceptedFor(User $client, Therapy $therapy, Counsellor $counsellor): void
+{
     $request = CreateRequestAction::new()->execute(
         CreateRequestDTO::new()->fromArray([
             'from' => $counsellor,
-            'to' => $adultClient,
+            'to' => $client,
             'for' => $therapy,
             'type' => RequestTypeEnum::therapy->value,
         ])
@@ -133,11 +121,50 @@ test('RespondToTherapyAssistanceRequestAction alerts the guardian of a minor cou
         RequestResponseDTO::new()->fromArray([
             'request' => $request,
             'response' => 'accepted',
-            'user' => $adultClient,
+            'user' => $client,
         ])
     );
+}
 
-    Notification::assertSentTo($guardian, TherapyAssistanceRequestAcceptedGuardianNotification::class);
+test('RespondToTherapyAssistanceRequestAction alerts the minor client\'s guardian, never the offering counsellor\'s own guardian', function () {
+    Notification::fake();
+    $minorClient = User::factory()->create(['dob' => now()->subYears(15)->toDateString()]);
+    $clientGuardian = User::factory()->create();
+    Guardianship::query()->create(['guardian_id' => $clientGuardian->id, 'ward_id' => $minorClient->id]);
+    $minorCounsellorUser = User::factory()->create(['dob' => now()->subYears(15)->toDateString()]);
+    $counsellor = Counsellor::factory()->create(['user_id' => $minorCounsellorUser->id]);
+    $counsellorGuardian = User::factory()->create();
+    Guardianship::query()->create(['guardian_id' => $counsellorGuardian->id, 'ward_id' => $minorCounsellorUser->id]);
+    $therapy = Therapy::factory()->create([
+        'addedby_type' => User::class,
+        'addedby_id' => $minorClient->id,
+        'client_was_minor_at_creation' => true,
+        'status' => TherapyStatusEnum::pending->value,
+    ]);
+
+    guardianWiringCounsellorOfferAcceptedFor($minorClient, $therapy, $counsellor);
+
+    Notification::assertSentTo($clientGuardian, TherapyAssistanceRequestAcceptedGuardianNotification::class);
+    Notification::assertNotSentTo($counsellorGuardian, TherapyAssistanceRequestAcceptedGuardianNotification::class);
+});
+
+test('RespondToTherapyAssistanceRequestAction alerts nobody when the therapy\'s client is an adult, even if the offering counsellor is a minor', function () {
+    Notification::fake();
+    $adultClient = User::factory()->adult()->create();
+    $minorCounsellorUser = User::factory()->create(['dob' => now()->subYears(15)->toDateString()]);
+    $counsellor = Counsellor::factory()->create(['user_id' => $minorCounsellorUser->id]);
+    $counsellorGuardian = User::factory()->create();
+    Guardianship::query()->create(['guardian_id' => $counsellorGuardian->id, 'ward_id' => $minorCounsellorUser->id]);
+    $therapy = Therapy::factory()->create([
+        'addedby_type' => User::class,
+        'addedby_id' => $adultClient->id,
+        'client_was_minor_at_creation' => false,
+        'status' => TherapyStatusEnum::pending->value,
+    ]);
+
+    guardianWiringCounsellorOfferAcceptedFor($adultClient, $therapy, $counsellor);
+
+    Notification::assertNothingSentTo($counsellorGuardian);
 });
 
 // The subtle case: RespondToGroupTherapyMembershipRequestAction's $request->from is the JOINING

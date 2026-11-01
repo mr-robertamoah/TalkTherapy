@@ -44,7 +44,8 @@ class DailyVideoProvider implements VideoProviderInterface
             // Deliberately $displayName, NOT $user->name -- see VideoProviderInterface's own
             // comment. This is the label every OTHER participant in the room sees.
             'user_name' => $displayName,
-            'user_id' => (string) $user->id,
+            // SCRUM-357: every client in the room can read this -- never the real user id.
+            'user_id' => $videoSession->participantKeyFor($user->id),
             'is_owner' => $isOwner,
             'exp' => $this->expiresAt($videoSession)->getTimestamp(),
         ];
@@ -84,7 +85,7 @@ class DailyVideoProvider implements VideoProviderInterface
             return;
         }
 
-        $this->client->ejectParticipants($videoSession->provider_room_id, [(string) $user->id]);
+        $this->client->ejectParticipants($videoSession->provider_room_id, [$videoSession->participantKeyFor($user->id)]);
     }
 
     public function updateParticipantCapabilities(VideoSession $videoSession, User $user, bool $canSendAudio, bool $canSendVideo): void
@@ -94,7 +95,7 @@ class DailyVideoProvider implements VideoProviderInterface
         }
 
         $this->client->updateRoomPermissions($videoSession->provider_room_id, [
-            (string) $user->id => ['canSend' => $this->canSendValueFor($canSendAudio, $canSendVideo)],
+            $videoSession->participantKeyFor($user->id) => ['canSend' => $this->canSendValueFor($canSendAudio, $canSendVideo)],
         ]);
     }
 

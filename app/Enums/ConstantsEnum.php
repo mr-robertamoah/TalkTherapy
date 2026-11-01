@@ -10,6 +10,8 @@ enum ConstantsEnum: string
 
     case nationalId = 'National Identification Authority';
     case anonymousUserLabel = 'Client (Anonymous User)';
+    // SCRUM-356: how notifications refer to someone they must not name.
+    case anonymousPersonPhrase = 'an anonymous user';
 
     // TT-3.2a/SCRUM-308: DailyVideoProvider's own room-size cap must be computed per session type,
     // not a single flat value (architect finding) -- 1:1 Therapy stays capped near 2; GroupTherapy

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\VideoParticipantKey;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -69,5 +70,11 @@ class VideoSession extends Model
         return $this->participants()
             ->where('participant_type', User::class)
             ->where('participant_id', $userId);
+    }
+
+    // SCRUM-357: how this user is identified to the other people in the call (see VideoParticipantKey).
+    public function participantKeyFor(int $userId): string
+    {
+        return VideoParticipantKey::for($this->session_id, $userId);
     }
 }

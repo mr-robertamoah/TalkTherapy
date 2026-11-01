@@ -7,6 +7,7 @@ use App\Models\Session;
 use App\Models\User;
 use App\Models\VideoSession;
 use App\Models\VideoSessionParticipant;
+use App\Support\VideoParticipantKey;
 use Illuminate\Support\Facades\Event;
 
 // TT-3.2f-f/SCRUM-323: self-service withdrawal of your own raised hand.
@@ -39,7 +40,7 @@ test('a member can lower their own raised hand', function () {
     expect($raise->fresh()->lowered_at)->not->toBeNull();
     Event::assertDispatched(HandLoweredEvent::class, fn ($event) => $event->broadcastWith() === [
         'sessionId' => $data['session']->id,
-        'userId' => $data['member']->id,
+        'participantKey' => VideoParticipantKey::for($data['session']->id, $data['member']->id),
     ]);
 });
 

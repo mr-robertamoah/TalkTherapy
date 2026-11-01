@@ -2,6 +2,7 @@
 
 namespace App\Notifications;
 
+use App\Enums\ConstantsEnum;
 use App\Models\Counsellor;
 use App\Models\Request;
 use App\Models\Therapy;
@@ -15,8 +16,6 @@ use Illuminate\Notifications\Notification;
 class TherapyAssistanceRequestAcceptedNotification extends Notification implements ShouldQueue
 {
     use Queueable;
-
-    private const ANONYMOUS = 'an anonymous user';
 
     /**
      * Create a new notification instance.
@@ -58,18 +57,30 @@ class TherapyAssistanceRequestAcceptedNotification extends Notification implemen
             ->success()
             ->subject('Assistance Request Accepted')
             ->greeting("Hello {$name}!")
-            ->when($isCounsellor, function ($mail) {
+            // SCRUM-358: a group invite -- sent by the group's creator (a user OR a counsellor) and
+            // accepted by a counsellor joining the group. Its own wording either way.
+            ->when(! $this->request->for->isTherapy, function ($mail) {
+                $acceptedBy = $this->request->to instanceof Counsellor
+                    ? "counsellor with name: '{$this->request->to->getName()}'"
+                    : $this->acceptedByPhrase();
+                $mail->line("Your invitation to join the group therapy with name: '{$this->request->for->name}' has been accepted by {$acceptedBy}.");
+            })
+            ->when($this->request->for->isTherapy && $isCounsellor, function ($mail) {
                 $mail
                     ->line("Your request to render assistance for the therapy with name: '{$this->request->for->name}' has been accepted by {$this->acceptedByPhrase()}.")
                     ->line("Start creating sessions and lets help make user's wellbeing better.");
             })
-            ->when(! $isCounsellor, function ($mail) {
+            ->when($this->request->for->isTherapy && ! $isCounsellor, function ($mail) {
                 $mail
                     ->line("Your request for assistance for the therapy with name: '{$this->request->for->name}' has been accepted by counsellor with name: '{$this->request->to->getName()}'.")
                     ->action('Visit Counsellor Page', url("counsellors/{$this->request->to_id}"));
             })
             ->line('You may receive other reminders before the starting time.')
-            ->action('Visit Therapy Page', url("therapies/{$this->request->for->id}"))
+            // SCRUM-358: also sent for group invites now -- link to the right page.
+            ->action(
+                $this->request->for->isTherapy ? 'Visit Therapy Page' : 'Visit Group Therapy Page',
+                url(($this->request->for->isTherapy ? 'therapies/' : 'group-therapies/').$this->request->for->id)
+            )
             ->line("Thank you for choosing to 'TalkTherapy'.");
     }
 
@@ -81,7 +92,8 @@ class TherapyAssistanceRequestAcceptedNotification extends Notification implemen
     public function toArray(object $notifiable): array
     {
         return [
-            'therapy_id' => $this->request->for_id,
+            // SCRUM-358: group invites use this notification too -- never label a group as a therapy.
+            $this->request->for->isTherapy ? 'therapy_id' : 'group_therapy_id' => $this->request->for_id,
         ];
     }
 
@@ -114,16 +126,16 @@ class TherapyAssistanceRequestAcceptedNotification extends Notification implemen
         // Only reached for a User `to` (toBroadcast handles a Counsellor first). A deleted user is
         // never named either.
         if (! $user instanceof User) {
-            return self::ANONYMOUS;
+            return ConstantsEnum::anonymousPersonPhrase->value;
         }
 
-        return $this->request->for->isAnonymousFor($user) ? self::ANONYMOUS : $user->name;
+        return $this->request->for->isAnonymousFor($user) ? ConstantsEnum::anonymousPersonPhrase->value : $user->name;
     }
 
     private function acceptedByPhrase(): string
     {
         $name = $this->acceptedByName();
 
-        return $name === self::ANONYMOUS ? $name : "user with name: '{$name}'";
+        return $name === ConstantsEnum::anonymousPersonPhrase->value ? $name : "user with name: '{$name}'";
     }
 }

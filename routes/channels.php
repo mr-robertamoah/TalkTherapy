@@ -59,7 +59,8 @@ Broadcast::channel('therapies.{therapyId}', function ($user, $therapyId) {
         $name = ConstantsEnum::anonymousUserLabel->value;
     }
 
-    return ['id' => $user->id, 'name' => $name];
+    // SCRUM-357: this channel's key for the user, never their id (User::getAuthIdentifierForBroadcasting).
+    return ['id' => $user->getAuthIdentifierForBroadcasting(), 'name' => $name];
 });
 
 Broadcast::channel('groupTherapies.{groupTherapyId}', function ($user, $groupTherapyId) {
@@ -89,7 +90,8 @@ Broadcast::channel('groupTherapies.{groupTherapyId}', function ($user, $groupThe
         $name = ConstantsEnum::anonymousUserLabel->value;
     }
 
-    return ['id' => $user->id, 'name' => $name];
+    // SCRUM-357: this channel's key for the user, never their id (User::getAuthIdentifierForBroadcasting).
+    return ['id' => $user->getAuthIdentifierForBroadcasting(), 'name' => $name];
 });
 
 Broadcast::channel('discussions.{discussionId}', function ($user, $discussionId) {
