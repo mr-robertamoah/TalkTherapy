@@ -102,7 +102,7 @@ docker compose exec php php artisan licenses:apply-retention --dry-run          
 docker compose exec php php artisan licenses:repair-rejected-validations --dry-run
 ```
 
-Both commands print a table and change nothing with `--dry-run`. The behaviour is covered in
+With `--dry-run` both change nothing: `apply-retention` prints a table of what it would remove, and `repair-rejected-validations` prints the license ids it would un-validate. The behaviour is covered in
 `tests/Feature/LicenseRetentionTest.php`.
 
 ## Tests

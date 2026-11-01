@@ -150,7 +150,8 @@ Artisan::command('licenses:repair-rejected-validations {--dry-run}', function ()
         Log::info('Licenses un-validated by licenses:repair-rejected-validations.', ['licenses' => $result['licenses']]);
     }
 
-    $this->info(($dryRun ? 'Would un-validate' : 'Un-validated').' '.count($result['licenses']).' license(s): '.implode(', ', $result['licenses']));
+    $this->info(($dryRun ? 'Would un-validate' : 'Un-validated').' '.count($result['licenses']).' license(s)'
+        .($result['licenses'] ? ': '.implode(', ', $result['licenses']) : '.'));
 
     if ($result['authorities']->isNotEmpty()) {
         $this->warn('Validated licensing authorities on those licenses -- check by hand, not changed:');
