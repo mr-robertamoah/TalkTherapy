@@ -8652,3 +8652,24 @@ The user asked for the three follow-ups in one PR.
   - `Therapy::isParticipant` is null-safe, now that it's on every alert request.
   - The comment and docs no longer blame `failUnheldSessions()`, which never touches `in_session` records.
   - **Not done here:** the post feed loads every like row per post just to count them. That predates this PR, so it's noted rather than changed.
+
+## SCRUM-55 + SCRUM-56 + SCRUM-57: anonymity in notifications — 2026-11-01
+
+The user asked for all three in one PR.
+
+- **SCRUM-55:** the two "assistance request sent" notifications now decide what to say by who **sent** the request (`from instanceof Counsellor`), not by who receives it. A counsellor sender is named. A user sender never is, even on a non-anonymous therapy.
+  - In every current flow the recipient is always the opposite type, so users see no change. This is a robustness fix, plus a wording fix ("him/her" removed).
+  - The two classes are still identical copies; merging them is a follow-up (SCRUM-356).
+- **SCRUM-56:** the per-member anonymity flag (`group_therapy_user.anonymous`) is now read in many places: comments, session ids, video, and `isAnonymousFor`. So the audit was due.
+  - **Correction (code review):** I first called this a real leak, but it **isn't reachable today**. A group's creator never gets a `group_therapy_user` row (they're a participant through `isUser()`), so `isAnonymousFor($creator)` always equals the group-wide flag on real data.
+  - The change is defensive and makes every place agree on one rule. The membership-accepted emails (to the member and to their guardian) and `RequestResource`'s membership `to` now use the existing `addedByUserIsMaskedFor()`, the rule `GroupTherapyResource` already uses. The assistance-accepted email and broadcast use `isAnonymousFor()`.
+  - The tests set up the creator-pivot state on purpose, as an invariant guard. They fail against the old code, and positive controls check the names do appear when nobody is anonymous.
+  - A since-deleted accepting user is never named, and no longer crashes.
+  - Other uses of the anonymity flag check out:
+    - the resource `anonymous` fields are just the setting;
+    - `GrantSpeakingPermissionAction` already reads the member's own setting;
+    - `RequestResource`'s membership `from` already honours the requester's choice.
+- **SCRUM-57:** there were no notification tests. The new tests render the real email (`toMail()->render()`) and broadcast payloads for anonymous therapies and groups, and assert the anonymous person's first name, last name and username never appear, with a non-anonymous sanity check.
+- **Found by the security sweep, outside this PR's scope and ticketed:**
+  - **SCRUM-357 (Medium):** presence channels and video events broadcast anonymous members' real user ids.
+  - **SCRUM-358:** a guardian alert can go to a counsellor's guardian. Also, group-therapy assistance requests can't actually be accepted, so the group acceptance path tested here is only reachable in tests.

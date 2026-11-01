@@ -4,6 +4,7 @@ namespace App\Notifications;
 
 use App\Models\Counsellor;
 use App\Models\GroupTherapy;
+use App\Models\User;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -46,7 +47,7 @@ class GroupTherapyMembershipRequestAcceptedGuardianNotification extends Notifica
             ->success()
             ->subject('Group Therapy Membership Request Accepted')
             ->greeting("Hello {$notifiable->name}!")
-            ->line("Your ward's request to join the group therapy with name: '{$this->groupTherapy->name}' created by '{$this->creatorName()}' has been accepted.")
+            ->line("Your ward's request to join the group therapy with name: '{$this->groupTherapy->name}' created by '{$this->creatorName($notifiable)}' has been accepted.")
             ->action('Visit Group Therapy Page', url("group-therapies/{$this->groupTherapy->id}"))
             ->line("Thank you for choosing to 'TalkTherapy'.");
     }
@@ -65,12 +66,16 @@ class GroupTherapyMembershipRequestAcceptedGuardianNotification extends Notifica
 
     // Same masking convention as GroupTherapyMembershipRequestAcceptedNotification -- don't
     // reveal an anonymous group's creator identity to the ward's guardian either.
-    private function creatorName(): ?string
+    private function creatorName(object $notifiable): ?string
     {
         if ($this->groupTherapy->addedby_type == Counsellor::class) {
             return $this->groupTherapy->addedby?->getName();
         }
 
-        return $this->groupTherapy->anonymous ? 'an anonymous user' : $this->groupTherapy->addedby?->name;
+        // SCRUM-56: the same rule GroupTherapyResource uses (addedByUserIsMaskedFor). A deleted
+        // creator is never named either.
+        return ! $this->groupTherapy->addedby || $this->groupTherapy->addedByUserIsMaskedFor($notifiable instanceof User ? $notifiable : null)
+            ? 'an anonymous user'
+            : $this->groupTherapy->addedby->name;
     }
 }

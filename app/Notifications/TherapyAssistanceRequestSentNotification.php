@@ -36,26 +36,24 @@ class TherapyAssistanceRequestSentNotification extends Notification implements S
      */
     public function toMail(object $notifiable): MailMessage
     {
-        $isCounsellor = false;
-        if ($notifiable::class == Counsellor::class) {
-            $isCounsellor = true;
-        }
-
-        $name = $isCounsellor ? $notifiable->getName() : $notifiable->name;
-        $fromName = $isCounsellor ? $this->request->from->name : $this->request->from->getName();
+        // SCRUM-55: decided by who SENT the request, not by who receives it. A counsellor sender is
+        // named; a user sender never is -- they may be anonymous in this therapy, and the email
+        // goes to a counsellor who hasn't been accepted yet.
+        $fromCounsellor = $this->request->from instanceof Counsellor ? $this->request->from : null;
+        $name = $notifiable instanceof Counsellor ? $notifiable->getName() : $notifiable->name;
         $type = $this->request->for->isTherapy ? 'therapy' : 'group therapy';
 
         return (new MailMessage)
             ->success()
             ->subject('Assistance Request Sent')
             ->greeting("Hello {$name}!")
-            ->when($isCounsellor, function ($mail) use ($type) {
+            ->when(! $fromCounsellor, function ($mail) use ($type) {
                 $mail
                     ->line("A user has sent you a request for assistance with {$type} with name: '{$this->request->for->name}'. Check your requests to accept or decline.");
             })
-            ->when(! $isCounsellor, function ($mail) use ($type, $fromName) {
+            ->when((bool) $fromCounsellor, function ($mail) use ($type, $fromCounsellor) {
                 $mail
-                    ->line("A counsellor with name: '{$fromName}' has sent you a request to assist you with {$type} with name: '{$this->request->for->name}'. Check your requests to accept or decline.");
+                    ->line("A counsellor with name: '{$fromCounsellor->getName()}' has sent you a request to assist you with {$type} with name: '{$this->request->for->name}'. Check your requests to accept or decline.");
             })
             ->when($this->request->for->isTherapy, function ($mail) {
                 $mail

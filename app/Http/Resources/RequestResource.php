@@ -166,15 +166,11 @@ class RequestResource extends JsonResource
             return new CounsellorMiniResource($this->to);
         }
 
-        // For a group-therapy membership request, `to` is always the group's creator -- mask
-        // them the same way GroupTherapyResource/GroupTherapyMiniResource already do for an
-        // anonymous group (group-level flag only; the creator has no personal per-request
-        // anonymity choice the way the requester in getFrom() above does), except to the
-        // creator's own view of their own request.
-        if ($this->type == RequestTypeEnum::groupTherapyMembership->value) {
-            if ($this->for?->anonymous && ! $this->to?->is($viewer)) {
-                return $this->anonymousUser();
-            }
+        // For a group-therapy membership request, `to` is always the group's creator -- masked by
+        // the same rule GroupTherapyResource uses (addedByUserIsMaskedFor: the creator's anonymity
+        // for them, never to themselves). SCRUM-56: one shared rule instead of a group-flag copy.
+        if ($this->type == RequestTypeEnum::groupTherapyMembership->value && $this->for?->addedByUserIsMaskedFor($viewer)) {
+            return $this->anonymousUser();
         }
 
         if ($this->isMaskedTherapyClient($this->to, $viewer)) {

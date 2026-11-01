@@ -4,6 +4,7 @@ namespace App\Notifications;
 
 use App\Models\Counsellor;
 use App\Models\Request;
+use App\Models\User;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\BroadcastMessage;
@@ -49,7 +50,7 @@ class GroupTherapyMembershipRequestAcceptedNotification extends Notification imp
             ->success()
             ->subject('Group Therapy Membership Request Accepted')
             ->greeting("Hello {$notifiable->name}!")
-            ->line("Your request to join the group therapy with name: '{$groupTherapy->name}' created by '{$this->creatorName($groupTherapy)}' has been accepted.")
+            ->line("Your request to join the group therapy with name: '{$groupTherapy->name}' created by '{$this->creatorName($groupTherapy, $notifiable)}' has been accepted.")
             ->action('Visit Group Therapy Page', url("group-therapies/{$groupTherapy->id}"))
             ->line('You may receive other reminders before its next session.')
             ->line("Thank you for choosing to 'TalkTherapy'.");
@@ -87,12 +88,16 @@ class GroupTherapyMembershipRequestAcceptedNotification extends Notification imp
     // Anonymity only ever applies to a User (client) creator, never a Counsellor one, mirroring
     // GroupTherapyResource's own "mask addedby when the group is anonymous" convention -- don't
     // reveal the creator's identity to a newly-accepted member of an anonymous group.
-    private function creatorName($groupTherapy): ?string
+    private function creatorName($groupTherapy, object $notifiable): ?string
     {
         if ($groupTherapy->addedby_type == Counsellor::class) {
             return $groupTherapy->addedby?->getName();
         }
 
-        return $groupTherapy->anonymous ? 'an anonymous user' : $groupTherapy->addedby?->name;
+        // SCRUM-56: the same rule GroupTherapyResource uses (addedByUserIsMaskedFor). A deleted
+        // creator is never named either.
+        return ! $groupTherapy->addedby || $groupTherapy->addedByUserIsMaskedFor($notifiable instanceof User ? $notifiable : null)
+            ? 'an anonymous user'
+            : $groupTherapy->addedby->name;
     }
 }
