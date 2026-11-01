@@ -2,9 +2,7 @@
 
 namespace App\Exceptions;
 
-use Exception;
-
-class TestimonialException extends Exception
+class TestimonialException extends AppException
 {
     //
 }

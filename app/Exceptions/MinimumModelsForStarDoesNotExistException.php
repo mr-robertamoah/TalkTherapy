@@ -2,9 +2,7 @@
 
 namespace App\Exceptions;
 
-use Exception;
-
-class MinimumModelsForStarDoesNotExistException extends Exception
+class MinimumModelsForStarDoesNotExistException extends AppException
 {
     //
 }

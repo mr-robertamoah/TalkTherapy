@@ -79,7 +79,7 @@ Route::get('/therapies/{therapyId}', [TherapyController::class, 'getTherapy'])->
 Route::get('/group-therapies/{groupTherapyId}', [GroupTherapyController::class, 'getGroupTherapy'])->name('group.therapies.get');
 
 Route::get('/counsellor/{counsellorId}/verify-email/{hash}', [CounsellorController::class, 'verifyEmail'])
-    ->middleware(['signed', 'throttle:6,1'])
+    ->middleware(['signed', 'throttle:6,1,counsellor.verification.verify'])
     ->name('counsellor.verification.verify');
 // SCRUM-213/TT-2.6b: a counsellor's own cross-therapy session calendar -- must be registered
 // before the /counsellor/{counsellorId} route below, or "calendar" gets swallowed as a
@@ -101,15 +101,15 @@ Route::middleware('auth')->group(function () {
     // (Inertia's native response shape), so they live here rather than routes/api.php, matching
     // payout.trigger/payout.destination.store's own precedent (SCRUM-228).
     Route::get('/administrator/payouts', [AdminPayoutController::class, 'index'])->name('administrator.payouts');
-    Route::post('/administrator/settings/platform-fee', [AdminPayoutController::class, 'updatePlatformFee'])->name('admin.settings.platform-fee.update')->middleware('throttle:10,1');
-    Route::post('/administrator/settings/minimum-payout', [AdminPayoutController::class, 'updateMinimumPayoutAmounts'])->name('admin.settings.minimum-payout.update')->middleware('throttle:10,1');
+    Route::post('/administrator/settings/platform-fee', [AdminPayoutController::class, 'updatePlatformFee'])->name('admin.settings.platform-fee.update')->middleware('throttle:10,1,admin.settings.platform-fee.update');
+    Route::post('/administrator/settings/minimum-payout', [AdminPayoutController::class, 'updateMinimumPayoutAmounts'])->name('admin.settings.minimum-payout.update')->middleware('throttle:10,1,admin.settings.minimum-payout.update');
 
     // TT-7.3b-followup/SCRUM-245: the manual "resolve this" surface SCRUM-238 left unbuilt --
     // platform-admin only (mirrors administrator.payouts' own convention exactly). Write routes
     // throttled to match admin.settings.*'s real-effect rate, not the read-only page's default.
     Route::get('/administrator/organization-billing', [AdminOrganizationBillingController::class, 'index'])->name('administrator.organization_billing');
-    Route::post('/administrator/organization-invoices/{organizationInvoiceId}/retry-settlement', [AdminOrganizationBillingController::class, 'retrySettlement'])->name('admin.organization_invoices.retry_settlement')->middleware('throttle:10,1');
-    Route::post('/administrator/organizations/{organizationId}/lift-billing-suspension', [AdminOrganizationBillingController::class, 'liftSuspension'])->name('admin.organizations.lift_billing_suspension')->middleware('throttle:10,1');
+    Route::post('/administrator/organization-invoices/{organizationInvoiceId}/retry-settlement', [AdminOrganizationBillingController::class, 'retrySettlement'])->name('admin.organization_invoices.retry_settlement')->middleware('throttle:10,1,admin.organization_invoices.retry_settlement');
+    Route::post('/administrator/organizations/{organizationId}/lift-billing-suspension', [AdminOrganizationBillingController::class, 'liftSuspension'])->name('admin.organizations.lift_billing_suspension')->middleware('throttle:10,1,admin.organizations.lift_billing_suspension');
 
     // TT-7.7c/SCRUM-251: read-only list page -- approve/reject post directly to the existing
     // generic requests.respond endpoint (routes/api.php), not a route here.
@@ -119,18 +119,18 @@ Route::middleware('auth')->group(function () {
     // form posts; reading the reported conversation is a JSON route in routes/api.php.
     Route::get('/administrator/reports', [AdminReportController::class, 'index'])->name('administrator.reports');
     Route::get('/administrator/reports/{report}', [AdminReportController::class, 'show'])->name('administrator.reports.show')->whereNumber('report');
-    Route::post('/administrator/reports/{report}/status', [AdminReportController::class, 'transition'])->name('admin.reports.status')->whereNumber('report')->middleware('throttle:30,1');
-    Route::post('/administrator/reports/{report}/party', [AdminReportController::class, 'recordParty'])->name('admin.reports.party')->whereNumber('report')->middleware('throttle:30,1');
+    Route::post('/administrator/reports/{report}/status', [AdminReportController::class, 'transition'])->name('admin.reports.status')->whereNumber('report')->middleware('throttle:30,1,admin.reports.status');
+    Route::post('/administrator/reports/{report}/party', [AdminReportController::class, 'recordParty'])->name('admin.reports.party')->whereNumber('report')->middleware('throttle:30,1,admin.reports.party');
     // SCRUM-360: the admin content-read log (super admins only).
     Route::get('/administrator/content-accesses', [AdminContentAccessController::class, 'index'])->name('administrator.content-accesses');
     // SCRUM-359: suspensions -- applied from a resolved report, lifted early, appeals decided.
     Route::get('/administrator/suspensions', [AdminSuspensionController::class, 'index'])->name('administrator.suspensions');
-    Route::post('/administrator/reports/{report}/suspensions', [AdminSuspensionController::class, 'apply'])->name('admin.suspensions.apply')->whereNumber('report')->middleware('throttle:30,1');
-    Route::post('/administrator/suspensions/{suspension}/lift', [AdminSuspensionController::class, 'lift'])->name('admin.suspensions.lift')->whereNumber('suspension')->middleware('throttle:30,1');
-    Route::post('/administrator/suspensions/{suspension}/appeal', [AdminSuspensionController::class, 'decideAppeal'])->name('admin.suspensions.appeal')->whereNumber('suspension')->middleware('throttle:30,1');
+    Route::post('/administrator/reports/{report}/suspensions', [AdminSuspensionController::class, 'apply'])->name('admin.suspensions.apply')->whereNumber('report')->middleware('throttle:30,1,admin.suspensions.apply');
+    Route::post('/administrator/suspensions/{suspension}/lift', [AdminSuspensionController::class, 'lift'])->name('admin.suspensions.lift')->whereNumber('suspension')->middleware('throttle:30,1,admin.suspensions.lift');
+    Route::post('/administrator/suspensions/{suspension}/appeal', [AdminSuspensionController::class, 'decideAppeal'])->name('admin.suspensions.appeal')->whereNumber('suspension')->middleware('throttle:30,1,admin.suspensions.appeal');
     // SCRUM-359: the only pages a suspended account can reach (EnsureAccountIsNotSuspended).
     Route::get('/suspended', [SuspensionController::class, 'show'])->name('suspended.show');
-    Route::post('/suspended/{suspension}/appeal', [SuspensionController::class, 'appeal'])->name('suspended.appeal')->whereNumber('suspension')->middleware('throttle:10,1');
+    Route::post('/suspended/{suspension}/appeal', [SuspensionController::class, 'appeal'])->name('suspended.appeal')->whereNumber('suspension')->middleware('throttle:10,1,suspended.appeal');
 
     Route::get('/therapies', [TherapyController::class, 'show'])->name('therapies');
     Route::get('/therapies/{therapyId}/chat', [TherapyController::class, 'chat'])->name('therapies.chat');
@@ -142,18 +142,18 @@ Route::middleware('auth')->group(function () {
     // Throttled (unlike its sibling above, which has none) simply because it's new and this
     // codebase's convention leans toward throttling newly-added write endpoints by default,
     // not because of any specific abuse concern the sibling route lacks.
-    Route::patch('/therapies/{therapyId}/strict-payment-gate', [TherapyController::class, 'updateStrictPaymentGate'])->name('therapies.strict_payment_gate.update')->middleware('throttle:30,1');
+    Route::patch('/therapies/{therapyId}/strict-payment-gate', [TherapyController::class, 'updateStrictPaymentGate'])->name('therapies.strict_payment_gate.update')->middleware('throttle:30,1,therapies.strict_payment_gate.update');
     // TT-3.1e-f/SCRUM-285: the first HTTP-reachable surface for the guardian video-consent
     // Actions (TT-3.1e-b/c) -- see VideoConsentController's own docblock. The revoke endpoint is
     // throttled more tightly than its siblings on purpose -- SCRUM-282's own security review
     // flagged grant/revoke cycling as a real griefing risk once a route existed (repeatedly
     // force-ending an in-progress call), not just a generic new-endpoint precaution.
-    Route::patch('/therapies/{therapyId}/video-consent-mode', [VideoConsentController::class, 'updateMode'])->name('therapies.video_consent.mode_update')->middleware('throttle:30,1');
-    Route::post('/therapies/{therapyId}/video-consent', [VideoConsentController::class, 'grant'])->name('therapies.video_consent.grant')->middleware('throttle:30,1');
+    Route::patch('/therapies/{therapyId}/video-consent-mode', [VideoConsentController::class, 'updateMode'])->name('therapies.video_consent.mode_update')->middleware('throttle:30,1,therapies.video_consent.mode_update');
+    Route::post('/therapies/{therapyId}/video-consent', [VideoConsentController::class, 'grant'])->name('therapies.video_consent.grant')->middleware('throttle:30,1,therapies.video_consent.grant');
     // Named limiter, not throttle:10,1 -- keyed by ward, not by user/IP, since a ward can have
     // multiple guardians (see RouteServiceProvider's own comment on this limiter).
     Route::delete('/therapies/{therapyId}/video-consent', [VideoConsentController::class, 'revoke'])->name('therapies.video_consent.revoke')->middleware('throttle:video-consent-revoke');
-    Route::get('/therapies/{therapyId}/video-consent/audit-trail', [VideoConsentController::class, 'auditTrail'])->name('therapies.video_consent.audit_trail')->middleware('throttle:60,1');
+    Route::get('/therapies/{therapyId}/video-consent/audit-trail', [VideoConsentController::class, 'auditTrail'])->name('therapies.video_consent.audit_trail')->middleware('throttle:60,1,therapies.video_consent.audit_trail');
     Route::delete('/therapies/{therapyId}', [TherapyController::class, 'deleteTherapy'])->name('therapies.delete');
     Route::post('/therapies/{therapyId}', [TherapyController::class, 'endTherapy'])->name('therapies.end');
 
@@ -166,7 +166,7 @@ Route::middleware('auth')->group(function () {
     // TT-7.5b-b1/SCRUM-265: mirrors therapies.strict_payment_gate.update's own route -- deliberately
     // separate from group.therapies.update above, see GroupTherapyService::updateGroupTherapyPaymentGate()'s
     // own comment for why.
-    Route::patch('/group-therapies/{groupTherapyId}/payment-gate', [GroupTherapyController::class, 'updateGroupTherapyPaymentGate'])->name('group.therapies.payment_gate.update')->middleware('throttle:30,1');
+    Route::patch('/group-therapies/{groupTherapyId}/payment-gate', [GroupTherapyController::class, 'updateGroupTherapyPaymentGate'])->name('group.therapies.payment_gate.update')->middleware('throttle:30,1,group.therapies.payment_gate.update');
     Route::delete('/group-therapies/{groupTherapyId}', [GroupTherapyController::class, 'deleteGroupTherapy'])->name('group.therapies.delete');
     Route::post('/group-therapies/{groupTherapyId}', [GroupTherapyController::class, 'endGroupTherapy'])->name('group.therapies.end');
 
@@ -184,18 +184,19 @@ Route::middleware('auth')->group(function () {
     // of join being the strict-payment-gated entry point -- both throttled like
     // transactions.initiate.* above, for the same reason (a real external-API-calling write, not
     // just DB noise). leave is a cheap, self-scoped local write with no such concern.
-    Route::post('/sessions/{sessionId}/video/join', [VideoSessionController::class, 'join'])->name('sessions.video.join')->middleware('throttle:20,1');
+    // SCRUM-367: every route below that calls the video provider shares the `video-provider` counter.
+    Route::post('/sessions/{sessionId}/video/join', [VideoSessionController::class, 'join'])->name('sessions.video.join')->middleware('throttle:20,1,video-provider');
     Route::post('/sessions/{sessionId}/video/leave', [VideoSessionController::class, 'leave'])->name('sessions.video.leave');
-    Route::post('/sessions/{sessionId}/video/end', [VideoSessionController::class, 'end'])->name('sessions.video.end')->middleware('throttle:20,1');
+    Route::post('/sessions/{sessionId}/video/end', [VideoSessionController::class, 'end'])->name('sessions.video.end')->middleware('throttle:20,1,video-provider');
     // TT-3.2b/SCRUM-309: ejects one participant via the provider's own API (like join/end above,
     // a real external-API call, not just DB noise) -- same throttle tier as those.
-    Route::post('/sessions/{sessionId}/video/participants/{participantKey}/remove', [VideoSessionController::class, 'removeParticipant'])->name('sessions.video.participants.remove')->middleware('throttle:20,1');
+    Route::post('/sessions/{sessionId}/video/participants/{participantKey}/remove', [VideoSessionController::class, 'removeParticipant'])->name('sessions.video.participants.remove')->middleware('throttle:20,1,video-provider');
     // TT-3.2f-f/SCRUM-323: grant/revoke call the provider's own API (same tier as remove above);
     // raise/lower are local writes but each one broadcasts, so they're throttled too.
-    Route::post('/sessions/{sessionId}/video/participants/{participantKey}/grant-speaking', [VideoSessionController::class, 'grantSpeaking'])->name('sessions.video.participants.grant_speaking')->middleware('throttle:20,1');
-    Route::post('/sessions/{sessionId}/video/participants/{participantKey}/revoke-speaking', [VideoSessionController::class, 'revokeSpeaking'])->name('sessions.video.participants.revoke_speaking')->middleware('throttle:20,1');
-    Route::post('/sessions/{sessionId}/video/hand/raise', [VideoSessionController::class, 'raiseHand'])->name('sessions.video.hand.raise')->middleware('throttle:30,1');
-    Route::post('/sessions/{sessionId}/video/hand/lower', [VideoSessionController::class, 'lowerHand'])->name('sessions.video.hand.lower')->middleware('throttle:30,1');
+    Route::post('/sessions/{sessionId}/video/participants/{participantKey}/grant-speaking', [VideoSessionController::class, 'grantSpeaking'])->name('sessions.video.participants.grant_speaking')->middleware('throttle:20,1,video-provider');
+    Route::post('/sessions/{sessionId}/video/participants/{participantKey}/revoke-speaking', [VideoSessionController::class, 'revokeSpeaking'])->name('sessions.video.participants.revoke_speaking')->middleware('throttle:20,1,video-provider');
+    Route::post('/sessions/{sessionId}/video/hand/raise', [VideoSessionController::class, 'raiseHand'])->name('sessions.video.hand.raise')->middleware('throttle:30,1,sessions.video.hand.raise');
+    Route::post('/sessions/{sessionId}/video/hand/lower', [VideoSessionController::class, 'lowerHand'])->name('sessions.video.hand.lower')->middleware('throttle:30,1,sessions.video.hand.lower');
     // TT-3.2f-h/SCRUM-325: a periodic background ping -- its own named limiter so it never eats
     // into the per-user `throttle:N,1` bucket join/raise/grant share (SCRUM-323 security F6).
     Route::post('/sessions/{sessionId}/video/speaking-activity', [VideoSessionController::class, 'speakingActivity'])->name('sessions.video.speaking_activity')->middleware('throttle:video-speaking-activity');
@@ -211,18 +212,19 @@ Route::middleware('auth')->group(function () {
     // throttle: this calls out to Paystack's own API per request, on top of being a real
     // money-initiation endpoint -- unlike most routes here, an unthrottled version is a genuine
     // abuse vector, not just noise.
-    Route::post('/therapies/{therapyId}/transactions', [TransactionController::class, 'initiate'])->name('transactions.initiate.therapy')->middleware('throttle:20,1');
-    Route::post('/group-therapies/{groupTherapyId}/transactions', [TransactionController::class, 'initiate'])->name('transactions.initiate.group_therapy')->middleware('throttle:20,1');
-    Route::post('/sessions/{sessionId}/transactions', [TransactionController::class, 'initiate'])->name('transactions.initiate.session')->middleware('throttle:20,1');
-    Route::get('/transactions/callback', [TransactionController::class, 'callback'])->name('transactions.callback')->middleware('throttle:30,1');
+    // SCRUM-367: the three Paystack initiations share one counter (one allowance across them).
+    Route::post('/therapies/{therapyId}/transactions', [TransactionController::class, 'initiate'])->name('transactions.initiate.therapy')->middleware('throttle:20,1,transactions-initiate');
+    Route::post('/group-therapies/{groupTherapyId}/transactions', [TransactionController::class, 'initiate'])->name('transactions.initiate.group_therapy')->middleware('throttle:20,1,transactions-initiate');
+    Route::post('/sessions/{sessionId}/transactions', [TransactionController::class, 'initiate'])->name('transactions.initiate.session')->middleware('throttle:20,1,transactions-initiate');
+    Route::get('/transactions/callback', [TransactionController::class, 'callback'])->name('transactions.callback')->middleware('throttle:30,1,transactions.callback');
     // TT-7.7b/SCRUM-250: throttled like the initiate.* routes above -- not itself a money-moving
     // call, but still a client-initiated write against a specific transaction.
-    Route::post('/transactions/{transactionId}/refund-request', [TransactionController::class, 'requestRefund'])->name('transactions.refund_request.store')->middleware('throttle:20,1');
+    Route::post('/transactions/{transactionId}/refund-request', [TransactionController::class, 'requestRefund'])->name('transactions.refund_request.store')->middleware('throttle:20,1,transactions.refund_request.store');
 
     // throttle: read-only and non-money-moving, but this is the first endpoint that lets any
     // authenticated user enumerate every verified org on the platform -- a higher cap than the
     // write endpoints below, but still bounded (security review, SCRUM-161).
-    Route::get('/organizations', [OrganizationController::class, 'index'])->name('organizations.index')->middleware('throttle:60,1');
+    Route::get('/organizations', [OrganizationController::class, 'index'])->name('organizations.index')->middleware('throttle:60,1,organizations.index');
     Route::post('/organizations', [OrganizationController::class, 'store'])->name('organizations.store');
     Route::get('/organizations/{organizationId}', [OrganizationController::class, 'show'])->name('organizations.show');
     Route::patch('/organizations/{organizationId}', [OrganizationController::class, 'update'])->name('organizations.update')->middleware('throttle:10,1,image-uploads'); // SCRUM-192: image uploads, own counter
@@ -260,39 +262,39 @@ Route::middleware('auth')->group(function () {
     // not the plain-roster routes' unthrottled default. reconciliation is the browser-navigable
     // Inertia page, .transactions/.invoices are the dedicated JSON list endpoints its own
     // pagination continues against (mirrors organizations.dashboard's own page-plus-JSON split).
-    Route::get('/organizations/{organizationId}/reconciliation', [OrganizationReconciliationController::class, 'index'])->name('organizations.reconciliation')->middleware('throttle:60,1');
-    Route::get('/organizations/{organizationId}/reconciliation/transactions', [OrganizationReconciliationController::class, 'transactions'])->name('organizations.reconciliation.transactions')->middleware('throttle:60,1');
-    Route::get('/organizations/{organizationId}/reconciliation/invoices', [OrganizationReconciliationController::class, 'invoices'])->name('organizations.reconciliation.invoices')->middleware('throttle:60,1');
+    Route::get('/organizations/{organizationId}/reconciliation', [OrganizationReconciliationController::class, 'index'])->name('organizations.reconciliation')->middleware('throttle:60,1,organizations.reconciliation');
+    Route::get('/organizations/{organizationId}/reconciliation/transactions', [OrganizationReconciliationController::class, 'transactions'])->name('organizations.reconciliation.transactions')->middleware('throttle:60,1,organizations.reconciliation.transactions');
+    Route::get('/organizations/{organizationId}/reconciliation/invoices', [OrganizationReconciliationController::class, 'invoices'])->name('organizations.reconciliation.invoices')->middleware('throttle:60,1,organizations.reconciliation.invoices');
 
     // Org-admin payment-instrument onboarding UI (SCRUM-240/TT-7.3b-i) -- index is the
     // browser-navigable Inertia page (admin-gated, throttled like reconciliation above since it
     // discloses masked card details); initiate starts the real Paystack checkout redirect that
     // captures a reusable card authorization, throttled at the same rate as the other
     // real-money-movement transactions.initiate.* routes above, not reconciliation's read-only rate.
-    Route::get('/organizations/{organizationId}/payment-instrument', [OrganizationPaymentInstrumentController::class, 'index'])->name('organizations.payment_instrument')->middleware('throttle:60,1');
-    Route::post('/organizations/{organizationId}/payment-instrument', [OrganizationPaymentInstrumentController::class, 'initiate'])->name('organizations.payment_instrument.initiate')->middleware('throttle:20,1');
+    Route::get('/organizations/{organizationId}/payment-instrument', [OrganizationPaymentInstrumentController::class, 'index'])->name('organizations.payment_instrument')->middleware('throttle:60,1,organizations.payment_instrument');
+    Route::post('/organizations/{organizationId}/payment-instrument', [OrganizationPaymentInstrumentController::class, 'initiate'])->name('organizations.payment_instrument.initiate')->middleware('throttle:20,1,organizations.payment_instrument.initiate');
 
     // throttle: uncapped, either of these could be used to spam an org's admins with invites,
     // or spam every provider org on the platform with applications (SCRUM-120 security review).
-    Route::post('/organizations/{organizationId}/counsellor-invites', [OrganizationCounsellorController::class, 'invite'])->name('organizations.counsellors.invite')->middleware('throttle:30,1');
-    Route::post('/organizations/{organizationId}/counsellor-applications', [OrganizationCounsellorController::class, 'apply'])->name('organizations.counsellors.apply')->middleware('throttle:30,1');
+    Route::post('/organizations/{organizationId}/counsellor-invites', [OrganizationCounsellorController::class, 'invite'])->name('organizations.counsellors.invite')->middleware('throttle:30,1,organizations.counsellors.invite');
+    Route::post('/organizations/{organizationId}/counsellor-applications', [OrganizationCounsellorController::class, 'apply'])->name('organizations.counsellors.apply')->middleware('throttle:30,1,organizations.counsellors.apply');
 
     Route::get('/organization-counsellors/{organizationCounsellorId}/compensations', [OrganizationCounsellorCompensationController::class, 'index'])->name('organization_counsellors.compensations.index');
-    Route::post('/organization-counsellors/{organizationCounsellorId}/compensations', [OrganizationCounsellorCompensationController::class, 'store'])->name('organization_counsellors.compensations.store')->middleware('throttle:30,1');
-    Route::post('/requests/{requestId}/compensation-counter-offer', [OrganizationCounsellorCompensationController::class, 'counterOffer'])->name('requests.compensation_counter_offer')->middleware('throttle:30,1');
+    Route::post('/organization-counsellors/{organizationCounsellorId}/compensations', [OrganizationCounsellorCompensationController::class, 'store'])->name('organization_counsellors.compensations.store')->middleware('throttle:30,1,organization_counsellors.compensations.store');
+    Route::post('/requests/{requestId}/compensation-counter-offer', [OrganizationCounsellorCompensationController::class, 'counterOffer'])->name('requests.compensation_counter_offer')->middleware('throttle:30,1,requests.compensation_counter_offer');
     Route::get('/organization-counsellors/{organizationCounsellorId}/compensations/negotiation-state', [OrganizationCounsellorCompensationController::class, 'negotiationState'])->name('organization_counsellors.compensations.negotiation_state');
 
     // throttle: same reasoning as the counsellor-invite/apply routes above (SCRUM-124).
-    Route::post('/organizations/{organizationId}/member-invites', [OrganizationMemberController::class, 'invite'])->name('organizations.members.invite')->middleware('throttle:30,1');
-    Route::post('/organizations/{organizationId}/member-applications', [OrganizationMemberController::class, 'apply'])->name('organizations.members.apply')->middleware('throttle:30,1');
+    Route::post('/organizations/{organizationId}/member-invites', [OrganizationMemberController::class, 'invite'])->name('organizations.members.invite')->middleware('throttle:30,1,organizations.members.invite');
+    Route::post('/organizations/{organizationId}/member-applications', [OrganizationMemberController::class, 'apply'])->name('organizations.members.apply')->middleware('throttle:30,1,organizations.members.apply');
 
     // Owner-only co-admin management (SCRUM-163). throttle: mutating actions on shared org state,
     // same modest cap as the other Organization write routes above.
-    Route::post('/organizations/{organizationId}/admins', [OrganizationAdminController::class, 'store'])->name('organizations.admins.store')->middleware('throttle:30,1');
-    Route::patch('/organizations/{organizationId}/admins/{userId}', [OrganizationAdminController::class, 'update'])->name('organizations.admins.update')->middleware('throttle:30,1');
-    Route::delete('/organizations/{organizationId}/admins/{userId}', [OrganizationAdminController::class, 'destroy'])->name('organizations.admins.destroy')->middleware('throttle:30,1');
+    Route::post('/organizations/{organizationId}/admins', [OrganizationAdminController::class, 'store'])->name('organizations.admins.store')->middleware('throttle:30,1,organizations.admins.store');
+    Route::patch('/organizations/{organizationId}/admins/{userId}', [OrganizationAdminController::class, 'update'])->name('organizations.admins.update')->middleware('throttle:30,1,organizations.admins.update');
+    Route::delete('/organizations/{organizationId}/admins/{userId}', [OrganizationAdminController::class, 'destroy'])->name('organizations.admins.destroy')->middleware('throttle:30,1,organizations.admins.destroy');
 
-    Route::post('/organization-members/{organizationMemberId}/billing-configs', [OrganizationMemberBillingConfigController::class, 'store'])->name('organization_members.billing_configs.store')->middleware('throttle:30,1');
+    Route::post('/organization-members/{organizationMemberId}/billing-configs', [OrganizationMemberBillingConfigController::class, 'store'])->name('organization_members.billing_configs.store')->middleware('throttle:30,1,organization_members.billing_configs.store');
 
     Route::get('/preferences', [PreferenceController::class, 'show'])->name('preferences');
     Route::post('/preferences', [PreferenceController::class, 'set'])->name('preferences.set');
@@ -300,17 +302,17 @@ Route::middleware('auth')->group(function () {
     // Route::get('/profile', [ProfileController::class, 'show'])->name('profile.show');
 
     Route::post('/counsellor/{counsellorId}', [CounsellorController::class, 'updateCounsellor'])->name('counsellor.update')->middleware('throttle:30,1,counsellor-update'); // SCRUM-192: image uploads (shared by the four profile forms, so roomier), own counter
-    Route::post('/counsellor/{counsellorId}/pricings', [CounsellorPricingController::class, 'store'])->name('counsellor.pricings.store')->middleware('throttle:30,1');
-    Route::delete('/counsellor/{counsellorId}/pricings', [CounsellorPricingController::class, 'destroy'])->name('counsellor.pricings.destroy')->middleware('throttle:30,1');
+    Route::post('/counsellor/{counsellorId}/pricings', [CounsellorPricingController::class, 'store'])->name('counsellor.pricings.store')->middleware('throttle:30,1,counsellor.pricings.store');
+    Route::delete('/counsellor/{counsellorId}/pricings', [CounsellorPricingController::class, 'destroy'])->name('counsellor.pricings.destroy')->middleware('throttle:30,1,counsellor.pricings.destroy');
     // TT-7.6d/SCRUM-228: deliberately no {counsellorId} route param -- self-service only, always
     // the authenticated user's own counsellor/payout (security requirement carried from TT-7.6a's
     // review). TT-7.6e's admin-on-behalf-of trigger reuses this same route via counsellorId in
     // the request body instead, which GetPayoutTargetCounsellorAction only honors for an admin.
-    Route::post('/payout-destination', [PayoutController::class, 'onboardDestination'])->name('payout.destination.store')->middleware('throttle:30,1');
+    Route::post('/payout-destination', [PayoutController::class, 'onboardDestination'])->name('payout.destination.store')->middleware('throttle:30,1,payout.destination.store');
     // A tighter ceiling than the form-submission rate above -- this one actually moves money
     // (security-engineer finding; TriggerCounsellorPayoutAction's own locked transaction already
     // prevents a double-spend, this is just a lower ceiling on attempts).
-    Route::post('/payout/trigger', [PayoutController::class, 'triggerPayout'])->name('payout.trigger')->middleware('throttle:6,1');
+    Route::post('/payout/trigger', [PayoutController::class, 'triggerPayout'])->name('payout.trigger')->middleware('throttle:6,1,payout.trigger');
     Route::post('/counsellor/{counsellorId}/verify', [CounsellorController::class, 'verifyCounsellor'])->name('counsellor.verify');
     Route::post('/counsellor/{counsellorId}/verify-email', [CounsellorController::class, 'sendVerificationEmail'])->name('counsellor.email.verification');
     // SCRUM-134: was missing entirely -- the frontend's delete button has always called this

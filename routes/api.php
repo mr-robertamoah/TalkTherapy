@@ -63,7 +63,7 @@ Route::get('/counsellors/random', [CounsellorController::class, 'getRandomCounse
 // SCRUM-177: the general 'api' RateLimiter is disabled (see RouteServiceProvider/bootstrap/app.php),
 // so this search endpoint had no rate limiting despite gaining more UI call sites (SCRUM-172) --
 // 60/minute matches the existing precedent for a similar read/search route (organizations.index).
-Route::get('/counsellors', [CounsellorController::class, 'getCounsellors'])->name('api.counsellors')->middleware('throttle:60,1');
+Route::get('/counsellors', [CounsellorController::class, 'getCounsellors'])->name('api.counsellors')->middleware('throttle:60,1,api.counsellors');
 
 Route::get('/testimonials', [TestimonialController::class, 'getTestimonials'])->name('api.testimonials');
 
@@ -73,7 +73,7 @@ Route::post('/contacts', [ContactController::class, 'createContact'])->name('api
 // boundary is the signature check inside TransactionService::handleWebhook(), not auth:sanctum.
 // Throttled generously (not per-user, since there's no auth) purely as abuse protection, not to
 // constrain legitimate Paystack retries.
-Route::post('/paystack/webhook', [TransactionController::class, 'webhook'])->name('api.paystack.webhook')->middleware('throttle:120,1');
+Route::post('/paystack/webhook', [TransactionController::class, 'webhook'])->name('api.paystack.webhook')->middleware('throttle:120,1,api.paystack.webhook');
 
 Route::get('/therapy-cases', [TherapyCaseController::class, 'getCases'])->name('cases.get');
 Route::get('/languages', [LanguageController::class, 'getLanguages'])->name('languages.get');
@@ -100,13 +100,13 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/links/delete/multiple', [LinkController::class, 'deleteMultipleLinks'])->name('api.links.deletemultiple');
 
     // SCRUM-177: see the matching comment on api.counsellors above.
-    Route::get('/users', [UserController::class, 'getUsers'])->name('api.users')->middleware('throttle:60,1');
+    Route::get('/users', [UserController::class, 'getUsers'])->name('api.users')->middleware('throttle:60,1,api.users');
     Route::get('/users/guardianship', [UserController::class, 'getGuardianship'])->name('api.users.guardianship');
     Route::post('/users/{userId}/guardianship', [UserController::class, 'sendGuardianshipRequest'])->name('api.users.guardianshiprequest');
 
     // TT-4.11b/SCRUM-303: self-attestation (+ optional document) that a user's own dob is
     // accurate -- always admin-reviewed, never auto-applied.
-    Route::post('/age-verification', [UserController::class, 'submitAgeVerification'])->name('api.users.age-verification')->middleware('throttle:10,1');
+    Route::post('/age-verification', [UserController::class, 'submitAgeVerification'])->name('api.users.age-verification')->middleware('throttle:10,1,api.users.age-verification');
     Route::delete('/guardianship/{guardianshipId}', [UserController::class, 'deleteGuardianship'])->name('api.guardianship.delete');
 
     Route::get('/administrator/verification/requests', [AdministratorController::class, 'getVerificationRequests'])->name('admin.verification.requests');
@@ -141,7 +141,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // Throttled (security review, SCRUM-207): every accept/reject now also runs a lockForUpdate()
     // transaction (session-schedule-proposal accept/reject reuse this same generic endpoint), so
     // this needed the same rate limit already applied to the newer schedule-proposal routes below.
-    Route::post('/requests/{requestId}', [RequestController::class, 'respond'])->name('requests.respond')->middleware('throttle:30,1');
+    Route::post('/requests/{requestId}', [RequestController::class, 'respond'])->name('requests.respond')->middleware('throttle:30,1,requests.respond');
 
     // TT-4.11a/SCRUM-302: the only retrieval path for an identity-verification document -- an
     // authenticated, authorized stream, never a public asset() URL. Throttled (security review):
@@ -151,17 +151,17 @@ Route::middleware('auth:sanctum')->group(function () {
     // request/file id pairs to map out who has submitted an identity document.
     // SCRUM-300 (security review): ->missing() keeps a nonexistent request/file id on the same 404
     // body as a refusal -- otherwise route-model binding's own 404 tells ids that exist apart.
-    Route::get('/requests/{request}/documents/{file}', [IdentityDocumentController::class, 'show'])->name('requests.documents.show')->middleware('throttle:30,1')
+    Route::get('/requests/{request}/documents/{file}', [IdentityDocumentController::class, 'show'])->name('requests.documents.show')->middleware('throttle:30,1,requests.documents.show')
         ->missing(fn () => response()->json(['status' => false, 'error' => 'Document not found.'], 404));
 
     // SCRUM-300: the counsellor-verification equivalent of the route above (national ID scans,
     // professional licenses) -- same authenticated, authorized, throttled, uniform-404 shape.
-    Route::get('/licenses/{license}/documents/{file}', [LicenseDocumentController::class, 'show'])->name('licenses.documents.show')->middleware('throttle:30,1')
+    Route::get('/licenses/{license}/documents/{file}', [LicenseDocumentController::class, 'show'])->name('licenses.documents.show')->middleware('throttle:30,1,licenses.documents.show')
         ->missing(fn () => response()->json(['status' => false, 'error' => 'Document not found.'], 404));
 
     // SCRUM-337: the only retrieval path for report evidence -- same authenticated, authorized,
     // throttled, uniform-404 shape as the document routes above.
-    Route::get('/reports/{report}/evidence/{file}', [ReportEvidenceController::class, 'show'])->name('reports.evidence.show')->middleware('throttle:30,1')
+    Route::get('/reports/{report}/evidence/{file}', [ReportEvidenceController::class, 'show'])->name('reports.evidence.show')->middleware('throttle:30,1,reports.evidence.show')
         ->missing(fn () => response()->json(['status' => false, 'error' => 'Evidence not found.'], 404));
 
     Route::post('/testimonials', [TestimonialController::class, 'createTestimonial'])->name('api.testimonials.create');
@@ -175,8 +175,8 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // SCRUM-340: an admin reading a reported conversation (reason required, every confidential
     // message recorded), and the attachments of messages they unlocked. Uniform 404s.
-    Route::post('/admin/reports/{report}/sessions/{session}/messages', [AdminReportController::class, 'conversation'])->name('admin.reports.conversation')->whereNumber(['report', 'session'])->middleware('throttle:20,1');
-    Route::get('/admin/reports/{report}/messages/{message}/attachments/{file}', [AdminReportController::class, 'attachment'])->name('admin.reports.attachments.show')->whereNumber(['report', 'message', 'file'])->middleware('throttle:120,1');
+    Route::post('/admin/reports/{report}/sessions/{session}/messages', [AdminReportController::class, 'conversation'])->name('admin.reports.conversation')->whereNumber(['report', 'session'])->middleware('throttle:20,1,admin.reports.conversation');
+    Route::get('/admin/reports/{report}/messages/{message}/attachments/{file}', [AdminReportController::class, 'attachment'])->name('admin.reports.attachments.show')->whereNumber(['report', 'message', 'file'])->middleware('throttle:120,1,admin.reports.attachments.show');
     Route::get('/reports', [ReportController::class, 'getReports'])->name('api.reports');
     Route::get('/reports/{reportId}', [ReportController::class, 'getReport'])->name('api.reports.get');
     Route::post('/reports', [ReportController::class, 'createReport'])->name('api.reports.create');
@@ -224,11 +224,11 @@ Route::middleware('auth:sanctum')->group(function () {
     // creates a pending Request only, never a Session directly (that only happens on accept,
     // TT-2.5b). No web.php duplicate registration -- see SCRUM-200 for why that pattern is
     // avoided now.
-    Route::post('/therapies/{therapyId}/schedule-proposals', [SessionScheduleProposalController::class, 'store'])->name('api.session_schedule_proposals.store')->middleware('throttle:30,1');
+    Route::post('/therapies/{therapyId}/schedule-proposals', [SessionScheduleProposalController::class, 'store'])->name('api.session_schedule_proposals.store')->middleware('throttle:30,1,api.session_schedule_proposals.store');
     // SCRUM-207/TT-2.5b: accept/reject reuse the existing generic requests.respond endpoint
     // (RespondToRequestAction's per-type dispatch already covers this type) -- only
     // counter-offer needs its own endpoint, mirroring requests.compensation_counter_offer.
-    Route::post('/requests/{requestId}/schedule-counter-offer', [SessionScheduleProposalController::class, 'counterOffer'])->name('api.session_schedule_proposals.counter_offer')->middleware('throttle:30,1');
+    Route::post('/requests/{requestId}/schedule-counter-offer', [SessionScheduleProposalController::class, 'counterOffer'])->name('api.session_schedule_proposals.counter_offer')->middleware('throttle:30,1,api.session_schedule_proposals.counter_offer');
 
     // SCRUM-198/TT-2.2c: fetched/mutated via axios from the counsellor's already-loaded therapy
     // chat page (TherapyComponent.vue), same pattern as api.session.messages.get below -- never
@@ -246,12 +246,14 @@ Route::middleware('auth:sanctum')->group(function () {
     // a fully unauthenticated request could read a private, non-public session/topic's full
     // message history (including confidential messages and files) -- moved behind auth here,
     // matching every other message-reading route in this group.
+    // SCRUM-367: session broadcasts only announce a session; each open page fetches it here.
+    Route::get('/sessions/{sessionId}', [SessionController::class, 'getSession'])->name('api.sessions.show')->whereNumber('sessionId')->middleware('throttle:120,1,api.sessions.show');
     Route::get('/sessions/{sessionId}/messages', [MessageController::class, 'getSessionMessages'])->name('api.session.messages.get');
     Route::get('/topics/{topicId}/messages', [MessageController::class, 'getTopicMessages'])->name('api.topic.messages.get');
     Route::get('/messages/{messageId}/replies', [MessageController::class, 'getMessageReplies'])->name('api.message.replies.get');
     // SCRUM-336: chat attachments -- authorized, uniform-404, throttled generously since a chat page
     // loads every visible message's attachments at once.
-    Route::get('/messages/{message}/attachments/{file}', [MessageAttachmentController::class, 'show'])->name('messages.attachments.show')->middleware('throttle:300,1')
+    Route::get('/messages/{message}/attachments/{file}', [MessageAttachmentController::class, 'show'])->name('messages.attachments.show')->middleware('throttle:300,1,messages.attachments.show')
         ->missing(fn () => response()->json(['status' => false, 'error' => 'Attachment not found.'], 404));
     // SCRUM-195: how a confidential message's parties fetch its content -- broadcasts never carry it.
     Route::get('/messages/{messageId}', [MessageController::class, 'getMessage'])->name('api.messages.show')->whereNumber('messageId')->middleware('throttle:240,1,message-show'); // SCRUM-366: every live message is now fetched here -- its own counter

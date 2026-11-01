@@ -2,9 +2,7 @@
 
 namespace App\Exceptions;
 
-use Exception;
-
-class ProfessionNameIsNotUniqueException extends Exception
+class ProfessionNameIsNotUniqueException extends AppException
 {
     //
 }

@@ -1,5 +1,6 @@
 <?php
 
+use App\Exceptions\TherapyException;
 use App\Http\Controllers\AboutController;
 use App\Http\Controllers\AdministratorController;
 use App\Http\Controllers\CommentController;
@@ -64,7 +65,7 @@ test('an exception with a real HTTP status code returns that status and its own 
     $request = Request::create('/', 'GET');
     $request->headers->set('Accept', 'application/json');
 
-    $response = callControllerReturnFailure($controllerClass, $request, new Exception('you are not allowed to do that', 422));
+    $response = callControllerReturnFailure($controllerClass, $request, new TherapyException('you are not allowed to do that', 422));
 
     expect($response->getStatusCode())->toBe(422);
     expect($response->getData(true)['message'])->toBe('you are not allowed to do that');
@@ -74,7 +75,7 @@ test('a non-JSON request still redirects back with a flashed error, unaffected b
     $request = Request::create('/', 'GET');
     $request->headers->set('Accept', 'text/html');
 
-    $response = callControllerReturnFailure($controllerClass, $request, new Exception('you are not allowed to do that', 422));
+    $response = callControllerReturnFailure($controllerClass, $request, new TherapyException('you are not allowed to do that', 422));
 
     expect($response->getTargetUrl())->not->toBeNull();
 })->with($controllers);

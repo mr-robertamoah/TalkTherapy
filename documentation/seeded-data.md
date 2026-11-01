@@ -373,3 +373,16 @@ and a licence document when one is seeded), so `/administrator/content-accesses`
 show. Reading any private therapy you aren't part of adds more. `suspension_demo_normal_admin` can't
 open the page. See
 `documentation/features/scrum-360-361-363-316-254-admin-read-log-privacy-and-suspension-followups.md`.
+
+## Closed accounts (SCRUM-367)
+
+Two closed (deleted) accounts, password **`password`** (they can't sign in while closed):
+
+| Username | What it is |
+|---|---|
+| `closed_account_demo_old` | Closed 31 days ago. The next run of the daily anonymisation job erases its personal details; it then shows as "Deleted user". |
+| `closed_account_demo_recent` | Closed yesterday. Kept until its 30 days are up. |
+
+Run the job by hand with
+`docker compose exec php php artisan tinker --execute="App\Services\AppService::new()->anonymiseClosedAccounts();"`.
+See `documentation/features/scrum-367-privacy-access-hardening.md`.

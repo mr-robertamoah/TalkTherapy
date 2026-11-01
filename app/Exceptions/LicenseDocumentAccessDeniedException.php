@@ -2,9 +2,7 @@
 
 namespace App\Exceptions;
 
-use Exception;
-
-class LicenseDocumentAccessDeniedException extends Exception
+class LicenseDocumentAccessDeniedException extends AppException
 {
     //
 }

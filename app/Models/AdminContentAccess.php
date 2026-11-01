@@ -15,6 +15,9 @@ class AdminContentAccess extends Model
     // A private therapy's or group's page: its background story, members and sessions.
     public const THERAPY = 'therapy';
 
+    // SCRUM-367: a session's details (name, about, topics), fetched after a live update.
+    public const SESSION = 'session';
+
     public const SESSION_MESSAGES = 'session_messages';
 
     public const TOPIC_MESSAGES = 'topic_messages';
@@ -33,6 +36,7 @@ class AdminContentAccess extends Model
 
     public const RESOURCES = [
         self::THERAPY,
+        self::SESSION,
         self::SESSION_MESSAGES,
         self::TOPIC_MESSAGES,
         self::MESSAGE,

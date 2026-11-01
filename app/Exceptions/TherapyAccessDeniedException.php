@@ -2,9 +2,7 @@
 
 namespace App\Exceptions;
 
-use Exception;
-
-class TherapyAccessDeniedException extends Exception
+class TherapyAccessDeniedException extends AppException
 {
     //
 }

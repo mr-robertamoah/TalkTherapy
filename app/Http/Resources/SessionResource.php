@@ -55,7 +55,11 @@ class SessionResource extends JsonResource
             'startTime' => $this->start_time,
             'endTime' => $this->end_time,
             'paymentType' => $this->payment_type,
-            'paymentStatus' => $this->latestTransaction?->status,
+            // SCRUM-263: a group session's status is "some member's latest transaction" -- null for
+            // anyone but that group's counsellors and administrators (members use viewerPaymentStatus).
+            'paymentStatus' => $isIndividualTherapy || $this->showsGroupPaymentStatusTo($request->user())
+                ? $this->latestTransaction?->status
+                : null,
             // TT-7.4d-b/SCRUM-259: `paymentStatus` above is unscoped (see `viewerTransaction`'s own
             // comment) -- safe as the sole status field for an individual-Therapy session (exactly
             // one payer, so it already reads as "did I pay"), but wrong for a GroupTherapy session

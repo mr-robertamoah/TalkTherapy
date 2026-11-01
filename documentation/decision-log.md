@@ -9006,3 +9006,46 @@ One PR, as the user asked: the three new follow-ups, plus older tickets that tou
   removes its data. It doesn't (users are only closed). The page now says so and offers erasure on
   request. It also says visit records are deleted daily, and lists Bunny Fonts. A purge job is
   SCRUM-367, along with the older leaks the review found in discussion and session broadcasts.
+
+## SCRUM-367 + 263 + 273 + 335 + 95 + 144 + 307: privacy and access hardening — 2026-11-01
+
+One PR, as the user asked. User decisions ("go with the recommendations"): case discussions are
+counsellors-only, clients never see them; closed accounts are erased 30 days after closing, with
+messages kept as "Deleted user" and payment, complaint and audit records kept; a group's
+payment status goes only to its counsellors and admins.
+
+- **SCRUM-273 closed as not a bug.** The seeded "member" in the report is the group's creator, and
+  creators may update and delete their group. The server already refused other members; a test
+  now proves it. No UI change.
+- **Admins see the group-wide payment status too** (not only counsellors), matching how admins see
+  everything else they moderate. `null` (not omitted) for everyone else, so the field keeps its shape.
+- **Discussions go to counsellors' own channels** (`counsellors.{id}`, already authorised and
+  already joined by the layout) rather than a new per-therapy counsellor channel: no new channel to
+  authorise. The therapy page filters by `forType`/`forId`. A consulted counsellor was also removed
+  from the therapy presence channels (security review): their presence revealed the consult to the
+  client. One definition of discussion participant (creator as profile or account, plus added
+  counsellors); the old scope also matched a creator of the wrong type by id.
+- **Sessions follow messages' announce-then-fetch.** One payload shape for all four session events,
+  `{sessionId}`; a new `api.sessions.show` with the session-messages access rule. Admin-only fetches
+  go in the read log as "session details", once per ten minutes (an open page refetches on every
+  update). Two session notifications that were never sent were deleted; the one that is sent now
+  carries only the id.
+- **Rate-limit prefix = route name**, except families that should share one allowance: Paystack
+  initiations (`transactions-initiate`) and video-provider calls (`video-provider`) (security
+  review: separate counters would have tripled those allowances), plus the existing shared ones.
+- **Erasure scope.** Beyond the fields the user listed, the job also clears what would otherwise
+  keep them: the dates of birth inside age/DOB requests and any identity scan still attached (a
+  pending request is closed as inconsequential, since nobody will review it), notifications,
+  password-reset token, API tokens, the name/email on contact messages, the visit-record link, and
+  the counsellor profile's contact details (the profile row is still purged at 60 days).
+  Guardianship and organisation rows hold only ids and stay.
+- **Held accounts.** Not erased while a suspension hasn't ended (including one not yet started) or a
+  complaint about them is open, so nobody can re-register with the same email to escape it (the
+  user's earlier reason for blocking self-deletion while suspended). A permanent suspension holds
+  the account indefinitely, as the privacy page says ("once that is over").
+- **Retention floor of 7 days** on `CLOSED_ACCOUNT_RETENTION_DAYS`, so an empty or mistyped value
+  can't erase accounts the day they close.
+- **Exceptions:** an abstract `AppException` base rather than a marker interface: all 64 extended
+  `Exception` directly, and a base class can't be implemented by accident outside the app.
+- **Deferred to SCRUM-368:** an individual public therapy's payment status visible to viewers,
+  counsellor-channel ownership, retention periods on /privacy from config, naming.

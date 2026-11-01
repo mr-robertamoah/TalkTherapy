@@ -2,9 +2,7 @@
 
 namespace App\Exceptions;
 
-use Exception;
-
-class TherapyAlreadyHasAssistanceException extends Exception
+class TherapyAlreadyHasAssistanceException extends AppException
 {
     //
 }

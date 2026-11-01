@@ -2,9 +2,7 @@
 
 namespace App\Exceptions;
 
-use Exception;
-
-class CannotRespondToRequestException extends Exception
+class CannotRespondToRequestException extends AppException
 {
     //
 }

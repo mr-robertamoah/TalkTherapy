@@ -2,9 +2,7 @@
 
 namespace App\Exceptions;
 
-use Exception;
-
-class DiscussionException extends Exception
+class DiscussionException extends AppException
 {
     // SCRUM-343: the one refusal every discussion action -- and EnsureDiscussionExistsAction --
     // gives a caller it turns away. It names nothing (discussion names are free text about cases)

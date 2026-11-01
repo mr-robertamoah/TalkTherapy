@@ -54,6 +54,11 @@ Schedule::call(function () {
     AppService::new()->purgeExpiredSoftDeletedCounsellors();
 })->dailyAt('01:00');
 
+// SCRUM-367: closed accounts' personal details, after the retention period.
+Schedule::call(function () {
+    AppService::new()->anonymiseClosedAccounts();
+})->name('anonymise-closed-accounts')->dailyAt('01:30')->withoutOverlapping()->onOneServer();
+
 Schedule::call(function () {
     AppService::new()->sendCompensationRequestExpiryReminders();
 })->dailyAt('02:00');

@@ -5,11 +5,13 @@ namespace App\Services;
 use App\Actions\File\DeleteAttachedFilesAction;
 use App\Actions\License\PurgeLicenseDocumentsAction;
 use App\Actions\Organization\SettleOrganizationInvoiceAction;
+use App\Actions\User\AnonymiseClosedAccountAction;
 use App\Actions\Video\RevokeSpeakingPermissionAction;
 use App\Actions\VideoConsent\GetWardForVideoConsentableAction;
 use App\Actions\VideoConsent\IsVideoConsentOutstandingForSessionAction;
 use App\Enums\DiscussionStatusEnum;
 use App\Enums\OrganizationInvoiceStatusEnum;
+use App\Enums\ReportStatusEnum;
 use App\Enums\RequestStatusEnum;
 use App\Enums\RequestTypeEnum;
 use App\Enums\SessionStatusEnum;
@@ -26,6 +28,7 @@ use App\Models\OrganizationInvoice;
 use App\Models\Report;
 use App\Models\Request;
 use App\Models\Session;
+use App\Models\Suspension;
 use App\Models\Therapy;
 use App\Models\User;
 use App\Models\VideoConsentReminder;
@@ -133,6 +136,64 @@ class AppService extends Service
                     Log::error('Could not purge a soft-deleted counsellor.', ['counsellor' => $counsellor->id, 'error' => $th->getMessage()]);
                 }
             });
+    }
+
+    // SCRUM-367: erases the personal details of accounts closed longer than the retention period
+    // (config accounts.closed_account_retention_days). An account still answerable for something
+    // is left until that's over: a suspension that hasn't ended (or hasn't started yet), or a
+    // report about it that is still open -- otherwise the person could sign up again with the same
+    // email meanwhile. One account failing doesn't stop the rest; it is retried on the next run.
+    public function anonymiseClosedAccounts(): void
+    {
+        $counts = ['anonymised' => 0, 'held' => 0, 'retried' => 0, 'failed' => 0];
+
+        User::onlyTrashed()
+            ->whereNull('anonymised_at')
+            ->where('deleted_at', '<=', now()->subDays(config('accounts.closed_account_retention_days')))
+            ->lazyById()
+            ->each(function (User $user) use (&$counts) {
+                if ($this->closedAccountIsOnHold($user)) {
+                    $counts['held']++;
+
+                    return;
+                }
+
+                try {
+                    if (AnonymiseClosedAccountAction::new()->execute($user)) {
+                        $counts['anonymised']++;
+                    } else {
+                        $counts['retried']++;
+                        Log::warning('A closed account kept a file that could not be deleted; it will be retried.', ['user' => $user->id]);
+                    }
+                } catch (Throwable $th) {
+                    $counts['failed']++;
+                    Log::error('Could not anonymise a closed account.', ['user' => $user->id, 'error' => $th->getMessage()]);
+                }
+            });
+
+        Log::info('Closed accounts anonymisation run.', $counts);
+    }
+
+    private function closedAccountIsOnHold(User $user): bool
+    {
+        $unfinishedSuspension = Suspension::query()
+            ->where('user_id', $user->id)
+            ->whereNull('lifted_at')
+            ->where(fn ($query) => $query->whereNull('ends_at')->orWhere('ends_at', '>', now()))
+            ->exists();
+
+        if ($unfinishedSuspension) {
+            return true;
+        }
+
+        $counsellorId = Counsellor::withTrashed()->where('user_id', $user->id)->value('id');
+
+        return Report::query()
+            ->whereIn('status', [ReportStatusEnum::open->value, ReportStatusEnum::under_review->value])
+            ->where(fn ($query) => $query
+                ->whereIn('data->userId', [$user->id, (string) $user->id])
+                ->when($counsellorId, fn ($q) => $q->orWhereIn('data->counsellorId', [$counsellorId, (string) $counsellorId])))
+            ->exists();
     }
 
     // TT-4.11a/SCRUM-302: an identity-verification document (age/identity verification) is only

@@ -73,12 +73,16 @@ test('paymentStatus reflects the most recently created transaction even when it 
     );
 });
 
-test('GroupTherapyResource exposes paymentStatus from the latest transaction', function () {
+// SCRUM-263: the group-wide status is only for the group's own counsellors (and admins).
+test('GroupTherapyResource exposes paymentStatus from the latest transaction to the group\'s counsellor, not its creator', function () {
     $user = User::factory()->create();
+    $counsellorUser = User::factory()->create();
+    $counsellor = $counsellorUser->counsellor()->create(['email' => fake()->unique()->safeEmail(), 'about' => 'test']);
     $groupTherapy = GroupTherapy::factory()->create([
         'addedby_type' => User::class,
         'addedby_id' => $user->id,
     ]);
+    $groupTherapy->counsellors()->attach($counsellor->id, ['state' => CounsellorGroupTherapyStateEnum::active->value, 'role' => 'NORMAL']);
 
     Transaction::factory()->create([
         'for_type' => GroupTherapy::class,
@@ -86,11 +90,14 @@ test('GroupTherapyResource exposes paymentStatus from the latest transaction', f
         'status' => TransactionStatusEnum::success->value,
     ]);
 
-    $response = $this->actingAs($user)->get(route('group.therapies.get', ['groupTherapyId' => $groupTherapy->id]));
-
-    $response->assertOk()->assertInertia(fn ($page) => $page
+    $this->actingAs($counsellorUser)->get(route('group.therapies.get', ['groupTherapyId' => $groupTherapy->id]))
+        ->assertOk()->assertInertia(fn ($page) => $page
         ->where('therapy.paymentStatus', TransactionStatusEnum::success->value)
-    );
+        );
+    $this->actingAs($user)->get(route('group.therapies.get', ['groupTherapyId' => $groupTherapy->id]))
+        ->assertOk()->assertInertia(fn ($page) => $page
+        ->where('therapy.paymentStatus', null)
+        );
 });
 
 // TT-7.4d-a/SCRUM-258: the viewer-scoped counterpart to the model-wide `paymentStatus` above --
@@ -155,12 +162,11 @@ test('GroupTherapyResource never leaks one member\'s transaction to a different 
     ])->for()->associate($transactionA)->save();
 
     // Member B has never paid -- must see their OWN (null) status, never A's SUCCESS or A's
-    // refund-request status, even though the model-wide paymentStatus below (a pre-existing,
-    // deliberately unscoped field) does reflect A's transaction.
+    // refund-request status. SCRUM-263: nor the group-wide paymentStatus, which reflects A's.
     $response = $this->actingAs($memberB)->get(route('group.therapies.get', ['groupTherapyId' => $groupTherapy->id]));
 
     $response->assertOk()->assertInertia(fn ($page) => $page
-        ->where('therapy.paymentStatus', TransactionStatusEnum::success->value)
+        ->where('therapy.paymentStatus', null)
         ->where('therapy.viewerPaymentStatus', null)
         ->where('therapy.transactionId', null)
         ->where('therapy.refundRequestStatus', null)
@@ -234,22 +240,27 @@ test('SessionResource exposes viewerPaymentStatus scoped to the viewer\'s own tr
         'status' => TransactionStatusEnum::success->value,
     ]);
 
-    // memberA sees their own SUCCESS status.
+    // memberA sees their own SUCCESS status (SCRUM-263: not the group-wide one).
     $this->actingAs($memberA)
         ->get(route('group.therapies.get', ['groupTherapyId' => $groupTherapy->id]))
         ->assertOk()->assertInertia(fn ($page) => $page
-        ->where('recentSessions.0.paymentStatus', TransactionStatusEnum::success->value)
+        ->where('recentSessions.0.paymentStatus', null)
         ->where('recentSessions.0.viewerPaymentStatus', TransactionStatusEnum::success->value)
         );
 
-    // memberB, who never paid, must not see memberA's SUCCESS reflected as their own -- the
-    // unscoped paymentStatus still shows it (pre-existing, unaffected), but viewerPaymentStatus
-    // must not.
+    // memberB, who never paid, must not see memberA's SUCCESS reflected as their own.
     $this->actingAs($memberB)
         ->get(route('group.therapies.get', ['groupTherapyId' => $groupTherapy->id]))
         ->assertOk()->assertInertia(fn ($page) => $page
-        ->where('recentSessions.0.paymentStatus', TransactionStatusEnum::success->value)
+        ->where('recentSessions.0.paymentStatus', null)
         ->where('recentSessions.0.viewerPaymentStatus', null)
+        );
+
+    // The group's counsellor sees the group-wide status.
+    $this->actingAs($counsellorUser)
+        ->get(route('group.therapies.get', ['groupTherapyId' => $groupTherapy->id]))
+        ->assertOk()->assertInertia(fn ($page) => $page
+        ->where('recentSessions.0.paymentStatus', TransactionStatusEnum::success->value)
         );
 });
 

@@ -1,5 +1,6 @@
 <?php
 
+use App\Exceptions\TherapyException;
 use App\Http\Controllers\MessageController;
 use Illuminate\Http\Request;
 
@@ -28,7 +29,7 @@ test('an exception with a real HTTP status code still shows its own message', fu
     $request = Request::create('/', 'GET');
     $request->headers->set('Accept', 'application/json');
 
-    $response = callReturnFailure($request, new Exception('you are not allowed to do that', 422));
+    $response = callReturnFailure($request, new TherapyException('you are not allowed to do that', 422));
 
     expect($response->getStatusCode())->toBe(422);
     expect($response->getData(true)['message'])->toBe('you are not allowed to do that');

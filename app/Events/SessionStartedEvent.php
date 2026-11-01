@@ -2,12 +2,10 @@
 
 namespace App\Events;
 
-use App\Http\Resources\SessionResource;
 use App\Models\Session;
 use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PresenceChannel;
-use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
@@ -27,7 +25,7 @@ class SessionStartedEvent implements ShouldBroadcast
     /**
      * Get the channels the event should broadcast on.
      *
-     * @return array<int, \Illuminate\Broadcasting\Channel>
+     * @return array<int, Channel>
      */
     public function broadcastOn(): array
     {
@@ -44,7 +42,10 @@ class SessionStartedEvent implements ShouldBroadcast
     public function broadcastWith(): array
     {
         return [
-            'session' => new SessionResource($this->session)
+            // SCRUM-367: every session announcement has this one shape -- the session's id. Each
+            // page fetches the session (api.sessions.show), so a viewer who has since lost access
+            // (suspended, unpaid) gets nothing.
+            'sessionId' => $this->session->id,
         ];
     }
 }

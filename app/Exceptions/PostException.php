@@ -2,9 +2,7 @@
 
 namespace App\Exceptions;
 
-use Exception;
-
-class PostException extends Exception
+class PostException extends AppException
 {
     //
 }

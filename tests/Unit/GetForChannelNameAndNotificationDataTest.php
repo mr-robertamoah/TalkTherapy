@@ -36,31 +36,8 @@ test('Session::getForChannelName is unaffected for an individual therapy', funct
     expect($session->getForChannelName())->toBe("therapies.{$therapy->id}");
 });
 
-test('Discussion::getForChannelName uses camelCase groupTherapies, matching the registered presence channel', function () {
-    $groupTherapy = GroupTherapy::factory()->create([
-        'addedby_type' => User::class,
-        'addedby_id' => User::factory(),
-    ]);
-    $discussion = Discussion::factory()->create([
-        'for_id' => $groupTherapy->id,
-        'for_type' => GroupTherapy::class,
-    ]);
-
-    expect($discussion->getForChannelName())->toBe("groupTherapies.{$groupTherapy->id}");
-});
-
-test('Discussion::getForChannelName is unaffected for an individual therapy', function () {
-    $therapy = Therapy::factory()->create([
-        'addedby_type' => User::class,
-        'addedby_id' => User::factory(),
-    ]);
-    $discussion = Discussion::factory()->create([
-        'for_id' => $therapy->id,
-        'for_type' => Therapy::class,
-    ]);
-
-    expect($discussion->getForChannelName())->toBe("therapies.{$therapy->id}");
-});
+// SCRUM-367: Discussion::getForChannelName() was removed -- discussions are never broadcast on the
+// therapy's channel any more (see DiscussionUpdatedEvent).
 
 test('Session::getNotificationActionData links to the real hyphenated group-therapies route', function () {
     // Regression guard for SCRUM-58 (found during reviewer's follow-up pass): this used

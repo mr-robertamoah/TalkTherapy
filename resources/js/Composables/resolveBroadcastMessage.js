@@ -12,12 +12,11 @@ const RETRY_DELAYS_MS = [1000, 4000]
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
-export default async function resolveBroadcastMessage(message) {
-    if (!message?.withheld) return message ?? null
-
+// SCRUM-367: shared by every "announce, then fetch" broadcast (messages, sessions).
+export async function fetchAnnounced(url) {
     for (let attempt = 0; ; attempt++) {
         try {
-            const response = await axios.get(route('api.messages.show', message.id))
+            const response = await axios.get(url)
             return response.data?.data ?? null
         } catch (err) {
             const status = err?.response?.status
@@ -29,16 +28,30 @@ export default async function resolveBroadcastMessage(message) {
     }
 }
 
+export default async function resolveBroadcastMessage(message) {
+    if (!message?.withheld) return message ?? null
+
+    return fetchAnnounced(route('api.messages.show', message.id))
+}
+
+// SCRUM-367: session broadcasts carry only the session's id ({ sessionId }) -- fetched like a
+// message, so a viewer who has lost access (suspended, unpaid) gets null.
+export function resolveBroadcastSession(sessionId) {
+    return sessionId ? fetchAnnounced(route('api.sessions.show', sessionId)) : Promise.resolve(null)
+}
+
 // Handles one channel's broadcasts strictly in arrival order, even though each waits on a fetch --
 // otherwise a later message could overtake an earlier one and be inserted above it. A message the
 // viewer may not see is dropped. Usage: const enqueue = createBroadcastMessageQueue();
 //                                       enqueue(data.message, (message) => addMessage(message))
-export function createBroadcastMessageQueue() {
+// Pass another resolver for other announcements, e.g. createBroadcastMessageQueue(resolveBroadcastSession)
+// and enqueue(sessionId, ...).
+export function createBroadcastMessageQueue(resolve = resolveBroadcastMessage) {
     let chain = Promise.resolve()
 
     return (message, handle) => {
         chain = chain
-            .then(() => resolveBroadcastMessage(message))
+            .then(() => resolve(message))
             .then((resolved) => resolved && handle(resolved))
             .catch(() => {})
     }

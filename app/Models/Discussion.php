@@ -67,14 +67,19 @@ class Discussion extends Model
 
     public function isParticipant(?Counsellor $counsellor)
     {
-        if (! $counsellor) {
-            return false;
-        }
+        return $counsellor && in_array($counsellor->id, $this->participantCounsellorIds());
+    }
 
-        return (bool) $this->addedby?->is($counsellor) ||
-            $this->counsellors()
-                ->where('counsellor_id', $counsellor->id)
-                ->exists();
+    // SCRUM-367: the counsellor profiles taking part -- its creator and every added counsellor.
+    // Discussion broadcasts go to these counsellors' own channels only: a discussion is
+    // counsellors-only, and the therapy's channel also reaches its client and members.
+    public function participantCounsellorIds(): array
+    {
+        $creator = $this->addedby instanceof User ? $this->addedby->counsellor : $this->addedby;
+
+        return $this->counsellors()->pluck('counsellors.id')
+            ->push($creator instanceof Counsellor ? $creator->id : null)
+            ->filter()->unique()->values()->all();
     }
 
     public function getOtherUsers(User $user)
@@ -129,14 +134,18 @@ class Discussion extends Model
         });
     }
 
+    // SCRUM-367: the one definition of a discussion's participants -- its creator (as a counsellor
+    // profile, or as that profile's own user account) and every added counsellor. isParticipant()
+    // and participantCounsellorIds() agree with it. Grouped, and checks addedby_type: it used to
+    // match any creator whose id merely equalled the counsellor's.
     public function scopeWhereIsParticipant($query, Counsellor $counsellor)
     {
         return $query->where(function ($query) use ($counsellor) {
-            $query->whereCounsellor($counsellor);
-        })
-            ->orWhere(function ($query) use ($counsellor) {
-                $query->where('addedby_id', $counsellor->id);
-            });
+            $query
+                ->where(fn ($q) => $q->where('addedby_type', Counsellor::class)->where('addedby_id', $counsellor->id))
+                ->orWhere(fn ($q) => $q->where('addedby_type', User::class)->where('addedby_id', $counsellor->user_id))
+                ->orWhereHas('counsellors', fn ($q) => $q->where('counsellor_id', $counsellor->id));
+        });
     }
 
     public function scopeWhereInSession($query)
@@ -159,17 +168,6 @@ class Discussion extends Model
         }
 
         return ['Group Therapy', url("group-therapies/{$this->for->id}")];
-    }
-
-    public function getForChannelName()
-    {
-        if ($this->for_type == Therapy::class) {
-            return "therapies.{$this->for_id}";
-        }
-
-        // groupTherapies (camelCase): see Session::getForChannelName() -- must match the
-        // presence channel registered in routes/channels.php and joined by useTherapyState.js.
-        return "groupTherapies.{$this->for_id}";
     }
 
     public function doesNotAcceptMessage()

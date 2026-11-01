@@ -41,13 +41,10 @@ Broadcast::channel('therapies.{therapyId}', function ($user, $therapyId) {
         return false;
     }
 
-    $counsellor = $user->counsellor;
-    $isCounsellorForDiscussion = $counsellor && $therapy->discussions()->whereIsParticipant($counsellor)->exists();
-
-    if (
-        ! $therapy?->isParticipant($user) &&
-        ! $isCounsellorForDiscussion
-    ) {
+    // SCRUM-367: participants only. A counsellor consulted in a case discussion used to be let in
+    // too, which showed the client that a discussion exists (their presence) and showed the
+    // consultant the client's roster; discussions now reach counsellors on their own channels.
+    if (! $therapy->isParticipant($user)) {
         return false;
     }
 
@@ -70,15 +67,14 @@ Broadcast::channel('groupTherapies.{groupTherapyId}', function ($user, $groupThe
         return false;
     }
 
-    $counsellor = $user->counsellor;
-    $isCounsellorForDiscussion = $counsellor && $therapy->discussions()->whereIsParticipant($counsellor)->exists();
-
-    if (
-        ! $therapy?->isParticipant($user) &&
-        ! $isCounsellorForDiscussion
-    ) {
+    // SCRUM-367: participants only. A counsellor consulted in a case discussion used to be let in
+    // too, which showed the client that a discussion exists (their presence) and showed the
+    // consultant the client's roster; discussions now reach counsellors on their own channels.
+    if (! $therapy->isParticipant($user)) {
         return false;
     }
+
+    $counsellor = $user->counsellor;
 
     $name = $user->name;
 

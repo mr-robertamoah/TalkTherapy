@@ -2,9 +2,7 @@
 
 namespace App\Exceptions;
 
-use Exception;
-
-class VideoException extends Exception
+class VideoException extends AppException
 {
     //
 }

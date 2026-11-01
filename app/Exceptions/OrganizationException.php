@@ -2,9 +2,7 @@
 
 namespace App\Exceptions;
 
-use Exception;
-
-class OrganizationException extends Exception
+class OrganizationException extends AppException
 {
     //
 }

@@ -2,9 +2,7 @@
 
 namespace App\Exceptions;
 
-use Exception;
-
-class TherapyException extends Exception
+class TherapyException extends AppException
 {
     // SCRUM-343/344: the one refusal every therapy action gives a caller it turns away -- the same
     // text as EnsureTherapyExistsAction's "not found", so neither names the therapy nor reveals

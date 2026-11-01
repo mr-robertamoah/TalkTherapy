@@ -2,7 +2,6 @@
 
 namespace App\Notifications;
 
-use App\Http\Resources\SessionResource;
 use App\Models\Counsellor;
 use App\Models\Session;
 use Carbon\Carbon;
@@ -33,9 +32,10 @@ class SessionUpdatedNotification extends Notification implements ShouldQueue
     {
         $via = ['database', 'broadcast'];
 
-        if ($notifiable->email_verified_at)
+        if ($notifiable->email_verified_at) {
             $via[] = 'mail';
-        
+        }
+
         return $via;
     }
 
@@ -49,7 +49,7 @@ class SessionUpdatedNotification extends Notification implements ShouldQueue
         $duration = $start->diffInMinutes(new Carbon($this->session->end_time));
         [$type, $url] = $this->session->getNotificationActionData();
         $name = $notifiable::class == Counsellor::class ? $notifiable->getName() : $notifiable->name;
-        
+
         return (new MailMessage)
             ->success()
             ->subject("'{$this->session->name}' Session")
@@ -57,7 +57,7 @@ class SessionUpdatedNotification extends Notification implements ShouldQueue
             ->line("The session with name: '{$this->session->name}' has been updated.")
             ->line("This session will start on {$startTime}. The session will last {$duration} minutes. Please take notice.")
             ->action("Visit {$type} Page", $url)
-            ->line("You may receive other reminders before the starting time.")
+            ->line('You may receive other reminders before the starting time.')
             ->line("Thank you for choosing to 'TalkTherapy'.");
     }
 
@@ -72,12 +72,14 @@ class SessionUpdatedNotification extends Notification implements ShouldQueue
             'session_id' => $this->session->id,
         ];
     }
-    
+
     public function toBroadcast(object $notifiable): BroadcastMessage
     {
-        return (new BroadcastMessage([
-            'session' => new SessionResource($this->session)
-        ]));
+        // SCRUM-367: the id only, like the session events -- nothing reads more, and this channel
+        // also reaches a participant who has since been suspended or not paid.
+        return new BroadcastMessage([
+            'sessionId' => $this->session->id,
+        ]);
     }
 
     public function broadcastType(): string

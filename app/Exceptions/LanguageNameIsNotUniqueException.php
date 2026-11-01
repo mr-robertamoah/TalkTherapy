@@ -2,9 +2,7 @@
 
 namespace App\Exceptions;
 
-use Exception;
-
-class LanguageNameIsNotUniqueException extends Exception
+class LanguageNameIsNotUniqueException extends AppException
 {
     //
 }

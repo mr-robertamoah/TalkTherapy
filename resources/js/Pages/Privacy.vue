@@ -84,6 +84,11 @@ const contactEmail = 'robertamoah.dev@gmail.com'
                     <h2 class="text-lg font-semibold text-gray-900">Who sees it</h2>
                     <ul class="list-disc pl-5 space-y-1">
                         <li><strong>Your counsellors and the members of your groups</strong> see what you share in those therapies. In an anonymous therapy or group, your name is hidden from the others.</li>
+                        <li>
+                            <strong>Other counsellors your counsellor consults.</strong> A counsellor may open a case discussion
+                            about your therapy with other counsellors on TalkTherapy, to get advice. These discussions
+                            are between counsellors only, and you don't see them.
+                        </li>
                         <li><strong>A guardian</strong> of a minor is told about, and can approve, parts of the minor's use of TalkTherapy.</li>
                         <li><strong>Administrators</strong>, as described below.</li>
                         <li>
@@ -139,10 +144,21 @@ const contactEmail = 'robertamoah.dev@gmail.com'
                     <ul class="list-disc pl-5 space-y-1">
                         <li>Your account, preferences and therapy content are kept while your account is open.</li>
                         <li>
-                            Deleting your account closes it: it can no longer be used or seen by others. Today, the information
-                            in a closed account — your details, preferences, messages and therapies — is kept; it is not yet
-                            deleted automatically. If you want it erased, email us and we will delete or anonymise it,
-                            except the records below, which we keep to account for what happened.
+                            Deleting your account closes it: it can no longer be used or seen by others. 30 days after it
+                            is closed, your personal details are erased: your name, username, email address, date of birth,
+                            gender, country, preferences and profile photo, along with your notifications, any identity document
+                            still waiting for a check, and your counsellor profile's contact details. If your account is suspended,
+                            or a complaint about you is still open, at that point, this happens once that is over.
+                        </li>
+                        <li>
+                            Messages you sent stay in the conversations of the people you sent them to, shown as from a
+                            "Deleted user", and the therapies you took part in stay part of other people's history. If you want
+                            those erased as well, email us and we will remove or anonymise what we can, except the records
+                            below, which we keep to account for what happened.
+                        </li>
+                        <li>
+                            A counsellor profile is removed permanently 60 days after it is deleted, with its uploaded
+                            verification documents. A record that a licence was verified (its issuer and number) is kept.
                         </li>
                         <li>Payment records, complaint and suspension records, and records of administrators' access are kept even after an account is closed.</li>
                         <li>Records of administrators reading content are kept permanently and can't be changed.</li>
