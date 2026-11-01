@@ -77,6 +77,7 @@ class RespondToGroupTherapyAssistanceRequestAction extends Action
                     ->where('type', $request->type)
                     ->update([
                         'status' => RequestStatusEnum::inconsequencial->value,
+                        'responded_at' => now(),
                         'data' => ['reason' => 'This group has filled all its counsellor places.'],
                     ]);
             }

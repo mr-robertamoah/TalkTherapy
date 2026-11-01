@@ -30,8 +30,9 @@ function anIdentityDocumentRequest(string $status, ?Carbon $updatedAt = null, st
         // `updated_at` isn't in Request's own $fillable, and Eloquent would otherwise overwrite
         // a manually-set value back to "now" on save -- forceFill() bypasses the fillable guard,
         // and disabling timestamps stops save() from re-stamping it automatically afterward.
+        // SCRUM-362: the sweep reads responded_at (when it was decided), so set both.
         $request->timestamps = false;
-        $request->forceFill(['updated_at' => $updatedAt])->save();
+        $request->forceFill(['updated_at' => $updatedAt, 'responded_at' => $updatedAt])->save();
     }
 
     Storage::disk('identity_documents')->put($filename, 'contents');
@@ -96,4 +97,19 @@ test('a shorter, non-default retention window is genuinely respected, not hardco
     Storage::disk('identity_documents')->assertExists('not-yet.jpg');
     expect(File::query()->find($fileNotYet->id))->not->toBeNull();
     expect($requestNotYet->files()->count())->toBe(1);
+});
+
+// SCRUM-362: the window runs from when the request was decided (responded_at), so a later touch of
+// the row -- which moves updated_at -- no longer restarts it.
+test('a decided request touched later is still swept from when it was decided', function () {
+    Storage::fake('identity_documents');
+    config(['identity_verification.document_retention_days' => 30]);
+    [$request, $file] = anIdentityDocumentRequest(RequestStatusEnum::accepted->value, now()->subDays(31));
+
+    $request->fresh()->forceFill(['data' => ['touched' => true]])->save();
+    expect($request->fresh()->updated_at->isToday())->toBeTrue();
+
+    AppService::new()->deleteExpiredIdentityDocuments();
+
+    expect(File::query()->find($file->id))->toBeNull();
 });

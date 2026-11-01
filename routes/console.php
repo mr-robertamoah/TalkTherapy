@@ -6,6 +6,7 @@ use App\Models\Session;
 use App\Models\Therapy;
 use App\Services\AppService;
 use App\Services\LicenseService;
+use App\Services\SuspensionService;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schedule;
@@ -85,6 +86,12 @@ Schedule::call(function () {
     );
 })->name('delete-expired-license-documents')->dailyAt('04:15')
     ->onFailure(fn () => Log::error('The license document retention sweep failed.'));
+
+// SCRUM-359: tells people whose suspension reached its end. Enforcement never waits for this --
+// a suspension stops applying the moment its end passes (Suspension::scopeActive).
+Schedule::call(fn () => SuspensionService::new()->endExpiredSuspensions())
+    ->name('end-expired-suspensions')->everyFiveMinutes()->withoutOverlapping(10)
+    ->onFailure(fn () => Log::error('The suspension expiry sweep failed.'));
 
 // TT-3.2f-h/SCRUM-325: every minute, not every five -- with the 5-minute default timeout, a
 // five-minute sweep would let an idle grant linger for up to ~10 minutes.

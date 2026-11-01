@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\SuspensionScopeEnum;
 use App\Notifications\VerifyEmailNotification;
 use Carbon\Carbon;
 use Illuminate\Auth\MustVerifyEmail;
@@ -13,6 +14,7 @@ use Illuminate\Database\Eloquent\Relations\MorphToMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Collection;
 use Laravel\Sanctum\HasApiTokens;
 
 class User extends Authenticatable implements MustVerifyEmailContract
@@ -168,6 +170,14 @@ class User extends Authenticatable implements MustVerifyEmailContract
         return $this->hasMany(Guardianship::class, 'guardian_id');
     }
 
+    private ?Collection $wardIdsCache = null;
+
+    // SCRUM-362: memoised -- Report::involves() asks it for every row of an admin's report list.
+    public function wardIds(): Collection
+    {
+        return $this->wardIdsCache ??= $this->wards()->pluck('ward_id');
+    }
+
     public function comments()
     {
         return $this->hasMany(Comment::class);
@@ -195,9 +205,11 @@ class User extends Authenticatable implements MustVerifyEmailContract
         return $this->administeredOrganizations()->whereKey($organization->id)->exists();
     }
 
+    private ?bool $isSuperAdminCache = null;
+
     public function isSuperAdmin()
     {
-        return $this
+        return $this->isSuperAdminCache ??= $this
             ->administrator()
             ->whereSuperAdmin()
             ->exists();
@@ -213,9 +225,12 @@ class User extends Authenticatable implements MustVerifyEmailContract
         return $this->hasMany(HowToStep::class);
     }
 
+    private ?bool $isAdminCache = null;
+
+    // Memoised: list resources ask it once per row (SCRUM-362 review).
     public function isAdmin()
     {
-        return $this->administrator()->exists();
+        return $this->isAdminCache ??= $this->administrator()->exists();
     }
 
     public function isGuardianOfAUserFor(GroupTherapy $groupTherapy)
@@ -347,6 +362,58 @@ class User extends Authenticatable implements MustVerifyEmailContract
         return $this->hasOne(Counsellor::class);
     }
 
+    // SCRUM-359 ---------------------------------------------------------------------------------
+
+    public function suspensions()
+    {
+        return $this->hasMany(Suspension::class)->latest('id');
+    }
+
+    private array $activeSuspensionCache = [];
+
+    // The suspension in force that covers $scope (an account suspension covers both), memoised for
+    // the request: the middleware and the guards ask on every request.
+    public function activeSuspension(SuspensionScopeEnum $scope = SuspensionScopeEnum::account): ?Suspension
+    {
+        // Re-read if the cached one has since run out (a long-lived instance, e.g. in tests).
+        $cached = $this->activeSuspensionCache[$scope->value] ?? null;
+        if (! array_key_exists($scope->value, $this->activeSuspensionCache) || ($cached && ! $cached->isActive())) {
+            $this->activeSuspensionCache[$scope->value] = Suspension::query()
+                ->where('user_id', $this->id)
+                ->active()
+                ->covering($scope)
+                ->orderByRaw("scope = 'account' desc")
+                ->orderByRaw('ends_at is null desc')
+                ->orderByDesc('ends_at')
+                ->first();
+        }
+
+        return $this->activeSuspensionCache[$scope->value];
+    }
+
+    public function forgetActiveSuspension(): static
+    {
+        $this->activeSuspensionCache = [];
+
+        return $this;
+    }
+
+    // Either scope -- an account suspension first.
+    public function anyActiveSuspension(): ?Suspension
+    {
+        return $this->activeSuspension(SuspensionScopeEnum::counsellor);
+    }
+
+    public function isAccountSuspended(): bool
+    {
+        return (bool) $this->activeSuspension(SuspensionScopeEnum::account);
+    }
+
+    public function isSuspendedAsCounsellor(): bool
+    {
+        return (bool) $this->activeSuspension(SuspensionScopeEnum::counsellor);
+    }
+
     public function stars()
     {
         return $this->morphMany(Star::class, 'starred');
@@ -398,10 +465,13 @@ class User extends Authenticatable implements MustVerifyEmailContract
             });
     }
 
+    // Used to pick admins to alert. SCRUM-359: never one whose account is suspended -- they
+    // can't act on it.
     public function scopeWhereAdmin($query)
     {
         return $query
-            ->whereHas('administrator');
+            ->whereHas('administrator')
+            ->whereDoesntHave('suspensions', fn ($q) => $q->active()->where('scope', SuspensionScopeEnum::account->value));
     }
 
     public function scopeWhereWard($query, User $user)

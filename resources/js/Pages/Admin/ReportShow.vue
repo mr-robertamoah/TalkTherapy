@@ -9,6 +9,7 @@ import SecondaryButton from '@/Components/SecondaryButton.vue'
 import DangerButton from '@/Components/DangerButton.vue'
 import InputLabel from '@/Components/InputLabel.vue'
 import InputError from '@/Components/InputError.vue'
+import SuspensionCard from '@/Components/SuspensionCard.vue'
 import TextBox from '@/Components/TextBox.vue'
 import ReportStatusBadge from '@/Components/ReportStatusBadge.vue'
 import useAlert from '@/Composables/useAlert'
@@ -28,6 +29,15 @@ const isActive = computed(() => ['open', 'under_review'].includes(props.report.s
 
 function formatDate(value) {
     return value ? new Date(value).toLocaleString() : '--'
+}
+
+// SCRUM-359
+const historyLabels = {
+    suspension_applied: 'applied a suspension',
+    suspension_lifted: 'lifted the suspension',
+    suspension_ended: 'recorded that the suspension ended',
+    appeal_submitted: 'appealed the suspension',
+    appeal_decided: 'decided the appeal',
 }
 
 function readable(value) {
@@ -71,7 +81,12 @@ const partyKey = ref(personKey(props.report.reportedPerson))
 watch(() => props.report.reportedPerson, (person) => {
     partyKey.value = personKey(person)
 })
-const partyForm = useForm({ type: '', id: null })
+const partyForm = useForm({ type: '', id: null, reason: '' })
+// SCRUM-362: once confidential messages were read, only a super admin may re-point the report,
+// with a reason that goes into the history.
+const partyLocked = computed(() => props.report.partyLocked)
+const partyChanged = computed(() => partyKey.value !== personKey(props.report.reportedPerson))
+const needsPartyReason = computed(() => partyLocked.value && partyChanged.value)
 
 function recordParty() {
     const [type, id] = partyKey.value.split(':')
@@ -79,7 +94,17 @@ function recordParty() {
 
     partyForm.type = type
     partyForm.id = Number(id)
-    partyForm.post(route('admin.reports.party', { report: props.report.id }), postOptions('Reported person recorded.'))
+    partyForm.post(route('admin.reports.party', { report: props.report.id }), postOptions('Reported person recorded.', () => partyForm.reset('reason')))
+}
+
+// --- Suspension (SCRUM-359) -------------------------------------------------------------------
+const suspendForm = useForm({ scope: props.report.suspend.scopes[0] ?? '', duration: '30', public_reason: '', internal_note: '' })
+watch(() => props.report.suspend.scopes, (scopes) => {
+    if (!scopes.includes(suspendForm.scope)) suspendForm.scope = scopes[0] ?? ''
+})
+
+function applySuspension() {
+    suspendForm.post(route('admin.suspensions.apply', { report: props.report.id }), postOptions('Suspension applied.', () => suspendForm.reset('public_reason', 'internal_note')))
 }
 
 // --- Conversation -----------------------------------------------------------------------------
@@ -200,7 +225,11 @@ const visibleConfidentialCount = computed(() =>
                     <span v-else class="text-amber-700">Not recorded yet.</span>
                 </div>
 
-                <div v-if="isActive && report.participants.length" class="mt-4 flex flex-col sm:flex-row sm:items-end gap-3">
+                <p v-if="isActive && partyLocked && !report.canChangeLockedParty" class="mt-4 text-sm text-gray-600">
+                    Confidential messages have been read on this report, so only a super administrator can change who it is about.
+                </p>
+
+                <div v-else-if="isActive && report.participants.length" class="mt-4 flex flex-col sm:flex-row sm:items-end gap-3">
                     <div class="flex-1">
                         <InputLabel for="reported_person" value="Record who this report is about" />
                         <select
@@ -216,7 +245,17 @@ const visibleConfidentialCount = computed(() =>
                             >{{ person.name }} ({{ person.role }})</option>
                         </select>
                     </div>
-                    <PrimaryButton :disabled="partyForm.processing || !partyKey" @click="recordParty">record</PrimaryButton>
+                    <PrimaryButton :disabled="partyForm.processing || !partyKey || (needsPartyReason && partyForm.reason.trim().length < 10)" @click="recordParty">record</PrimaryButton>
+                </div>
+                <div v-if="isActive && partyLocked && report.canChangeLockedParty && needsPartyReason" class="mt-3">
+                    <InputLabel for="party_reason" value="Why are you changing who this report is about? (kept in the history)" />
+                    <textarea
+                        id="party_reason"
+                        v-model="partyForm.reason"
+                        rows="2"
+                        maxlength="1000"
+                        class="mt-1 block w-full border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 rounded-md shadow-sm text-sm"
+                    ></textarea>
                 </div>
             </section>
 
@@ -258,6 +297,57 @@ const visibleConfidentialCount = computed(() =>
                         <PrimaryButton v-else :disabled="statusForm.processing" @click="() => submitStatus('resolved')">resolve report</PrimaryButton>
                         <SecondaryButton :disabled="statusForm.processing" @click="() => (closing = null)">cancel</SecondaryButton>
                     </div>
+                </div>
+            </section>
+
+            <!-- SCRUM-359: Suspension -->
+            <section v-if="report.suspensions.length || report.suspend.available || report.outcome === 'suspension_recommended'" class="bg-white shadow-sm border border-gray-200 sm:rounded-lg p-6 space-y-4">
+                <h3 class="font-semibold text-gray-900">Suspension</h3>
+
+                <SuspensionCard
+                    v-for="suspension in report.suspensions"
+                    :key="suspension.id"
+                    :suspension="suspension"
+                    :show-report-link="false"
+                    @done="(message) => setSuccessAlertData({ message })"
+                    @failed="(message) => setFailedAlertData({ message })"
+                />
+
+                <p v-if="report.suspend.superAdminOnly && report.outcome === 'suspension_recommended'" class="text-sm text-gray-600">
+                    Only a super administrator can suspend someone.
+                </p>
+
+                <div v-if="report.suspend.available && report.suspend.scopes.length" class="space-y-3">
+                    <p class="text-sm text-gray-600">
+                        Suspend {{ report.reportedPerson?.name }}. They are told the dates and the reason you write for them,
+                        never who reported them or who you are. Their clients are told they are unavailable, not why.
+                    </p>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                            <InputLabel for="suspend_scope" value="What it covers" />
+                            <select id="suspend_scope" v-model="suspendForm.scope" class="mt-1 block w-full border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 rounded-md shadow-sm text-sm">
+                                <option v-for="scope in report.suspend.scopes" :key="scope" :value="scope">
+                                    {{ scope === 'account' ? 'Whole account (no access at all)' : 'Counsellor role only (can still be a client)' }}
+                                </option>
+                            </select>
+                        </div>
+                        <div>
+                            <InputLabel for="suspend_duration" value="How long" />
+                            <select id="suspend_duration" v-model="suspendForm.duration" class="mt-1 block w-full border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 rounded-md shadow-sm text-sm">
+                                <option v-for="days in report.suspend.durations" :key="days" :value="String(days)">{{ days }} days</option>
+                                <option value="until_lifted">Until lifted</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div>
+                        <InputLabel for="suspend_reason" value="Reason the person will see" />
+                        <textarea id="suspend_reason" v-model="suspendForm.public_reason" rows="3" maxlength="2000" class="mt-1 block w-full border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 rounded-md shadow-sm text-sm"></textarea>
+                    </div>
+                    <div>
+                        <InputLabel for="suspend_note" value="Internal note (admins only, optional)" />
+                        <textarea id="suspend_note" v-model="suspendForm.internal_note" rows="2" maxlength="2000" class="mt-1 block w-full border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 rounded-md shadow-sm text-sm"></textarea>
+                    </div>
+                    <DangerButton :disabled="suspendForm.processing || !suspendForm.scope || suspendForm.public_reason.trim().length < 10" @click="applySuspension">suspend</DangerButton>
                 </div>
             </section>
 
@@ -348,7 +438,8 @@ const visibleConfidentialCount = computed(() =>
                                 to <span class="capitalize">{{ readable(entry.toStatus) }}</span>
                                 <span v-if="entry.outcome" class="capitalize"> ({{ readable(entry.outcome) }})</span>
                             </template>
-                            <template v-else>{{ entry.by }} recorded the reported person</template>
+                            <template v-else-if="entry.event === 'party_recorded'">{{ entry.by }} recorded the reported person</template>
+                            <template v-else>{{ entry.by }} {{ historyLabels[entry.event] ?? readable(entry.event) }}</template>
                         </div>
                         <div class="text-xs text-gray-500">{{ formatDate(entry.at) }}</div>
                         <p v-if="entry.note" class="mt-1 text-gray-700 whitespace-pre-line">{{ entry.note }}</p>

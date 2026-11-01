@@ -4,6 +4,7 @@ namespace App\Actions\Video;
 
 use App\Actions\Action;
 use App\Actions\Message\EnsureUserCanAccessTherapyContentAction;
+use App\Actions\Suspension\EnsureTherapyCounsellorIsAvailableAction;
 use App\Contracts\VideoProviderInterface;
 use App\Enums\ConstantsEnum;
 use App\Events\VideoSessionStatusChangedEvent;
@@ -29,6 +30,9 @@ class JoinVideoSessionAction extends Action
     public function execute(Session $session, User $user): array
     {
         EnsureVideoIsAvailableForSessionAction::new()->execute($session, $user);
+
+        // SCRUM-359
+        EnsureTherapyCounsellorIsAvailableAction::new()->execute($user, $session->for);
 
         // TT-3.1b/SCRUM-275: the SAME shared strict-payment-gate check message creation already
         // reuses (EnsureCanSendMessageToForAction) -- deliberately not a second, independent

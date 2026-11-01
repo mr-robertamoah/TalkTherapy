@@ -9,6 +9,7 @@ use App\Actions\SessionScheduleProposal\EnsureCanProposeSessionScheduleAction;
 use App\Actions\SessionScheduleProposal\EnsureNoPendingSessionScheduleProposalAction;
 use App\Actions\SessionScheduleProposal\EnsureSessionScheduleProposalDataIsValidAction;
 use App\Actions\SessionScheduleProposal\ProposeSessionScheduleAction;
+use App\Actions\Suspension\EnsureTherapyCounsellorIsAvailableAction;
 use App\Actions\Therapy\EnsureTherapyExistsAction;
 use App\DTOs\RequestResponseDTO;
 use App\DTOs\SessionScheduleProposalDTO;
@@ -45,6 +46,9 @@ class SessionScheduleProposalService extends Service
 
             EnsureCanProposeSessionScheduleAction::new()->execute($dto);
 
+            // SCRUM-359
+            EnsureTherapyCounsellorIsAvailableAction::new()->execute($dto->user, $dto->therapy);
+
             EnsureSessionScheduleProposalDataIsValidAction::new()->execute($dto);
 
             EnsureNoPendingSessionScheduleProposalAction::new()->execute($dto);
@@ -72,6 +76,8 @@ class SessionScheduleProposalService extends Service
         );
 
         EnsureSessionScheduleProposalDataIsValidAction::new()->execute($dto);
+
+        EnsureTherapyCounsellorIsAvailableAction::new()->execute($dto->user, $dto->request->for instanceof Therapy ? $dto->request->for : null);
 
         return CounterOfferSessionScheduleProposalAction::new()->execute($dto);
     }

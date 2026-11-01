@@ -55,7 +55,9 @@ class LicenseService extends Service
     //  - a license on an ACCEPTED request: only a national ID loses its scan and number, once
     //    national_id_retention_days have passed -- the professional license stays as the record
     //    of what verified the counsellor;
-    //  - a license cited by a still-PENDING request is never touched, whatever its age.
+    //  - a license cited by a still-PENDING request is never touched, whatever its age;
+    //  - SCRUM-362: a license no verification request ever cited (an abandoned upload), not
+    //    validated, created more than license_abandoned_retention_days ago.
     // The License rows are always kept. Returns what it removed (or, with $dryRun, would remove).
     public function applyDocumentRetention(bool $dryRun = false): Collection
     {
@@ -63,7 +65,9 @@ class LicenseService extends Service
         $nationalIdCutoff = now()->subDays(config('counsellor.national_id_retention_days'));
 
         $citations = $this->licenseCitations();
-        $licenses = License::query()->with(['files', 'licensingAuthority'])->findMany($citations->keys())->keyBy('id');
+        $abandoned = $this->abandonedLicenses($citations->keys());
+        $licenses = License::query()->with(['files', 'licensingAuthority'])->findMany($citations->keys())->keyBy('id')
+            ->union($abandoned->keyBy('id'));
 
         return $citations
             ->map(function (Collection $citations, $licenseId) use ($licenses, $rejectedCutoff, $nationalIdCutoff) {
@@ -93,6 +97,7 @@ class LicenseService extends Service
                 return $pending ? $item : null;
             })
             ->filter()
+            ->merge($abandoned->map(fn (License $license) => ['license' => $license->id, 'clearNumber' => $license->isNationalId(), 'reason' => 'abandoned upload']))
             ->each(function (array $item) use ($licenses, $dryRun) {
                 if (! $dryRun) {
                     PurgeLicenseDocumentsAction::new()->execute($licenses->get($item['license']), $item['clearNumber']);
@@ -126,22 +131,33 @@ class LicenseService extends Service
         return ['licenses' => $licenses->pluck('id')->all(), 'authorities' => $authorities];
     }
 
+    // SCRUM-362: licenses no verification request cites, with documents still to remove.
+    private function abandonedLicenses(Collection $citedIds): Collection
+    {
+        return License::query()
+            ->with(['files', 'licensingAuthority'])
+            ->whereNotIn('id', $citedIds)
+            ->where('validated', false)
+            ->where('created_at', '<=', now()->subDays(config('counsellor.license_abandoned_retention_days')))
+            ->whereHas('files')
+            ->get();
+    }
+
     // licenseId => [{status, decidedAt}, ...] across every counsellor verification request,
-    // streamed so the nightly sweep doesn't hold every request at once. "Decided at" is the
-    // request's updated_at: anything that later touches the request restarts the clock (only ever
-    // later, never earlier).
+    // streamed so the nightly sweep doesn't hold every request at once. "Decided at" is when the
+    // request was decided (SCRUM-362: responded_at, set once); updated_at only for a row without it.
     private function licenseCitations(): Collection
     {
         $citations = collect();
 
         Request::query()
             ->where('type', RequestTypeEnum::counsellor->value)
-            ->select(['id', 'status', 'data', 'updated_at'])
+            ->select(['id', 'status', 'data', 'responded_at', 'updated_at'])
             ->lazyById()
             ->each(function (Request $request) use ($citations) {
                 foreach (['nationalIdLicense', 'otherLicense'] as $key) {
                     if (! empty($request->data[$key] ?? null)) {
-                        $citations->push(['license' => (int) $request->data[$key], 'status' => $request->status, 'decidedAt' => $request->updated_at]);
+                        $citations->push(['license' => (int) $request->data[$key], 'status' => $request->status, 'decidedAt' => $request->responded_at ?? $request->updated_at]);
                     }
                 }
             });

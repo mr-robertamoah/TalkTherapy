@@ -3,8 +3,9 @@
 namespace App\Actions\Report;
 
 use App\Actions\Action;
+use App\Actions\File\DeleteAttachedFilesAction;
 use App\DTOs\CreateReportDTO;
-use App\Services\FileService;
+use Illuminate\Support\Facades\Log;
 
 class DeleteReportAction extends Action
 {
@@ -15,16 +16,15 @@ class DeleteReportAction extends Action
             $createReportDTO->report->save();
         }
 
-        $fileService = FileService::new();
-        $files = [];
-
-        foreach ($createReportDTO->report->files as $file) {
-            $files[] = $file->id;
-            
-            $fileService->deleteFile($file);
+        // The report goes on the next line, so nothing will retry a file that couldn't be deleted --
+        // say so loudly, with ids, for someone to clean up.
+        $report = $createReportDTO->report;
+        $attached = $report->files()->pluck('files.id');
+        DeleteAttachedFilesAction::new()->execute($report, 'report deleted');
+        $left = $report->files()->pluck('files.id');
+        if ($left->isNotEmpty()) {
+            Log::error('A deleted report left stored files that could not be deleted.', ['report' => $report->id, 'files' => $left->all(), 'of' => $attached->count()]);
         }
-
-        $createReportDTO->report->files()->detach($files);
 
         return $createReportDTO->report->delete();
     }

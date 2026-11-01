@@ -44,14 +44,18 @@ class FileService extends Service
         return $file;
     }
 
-    public function deleteFile(?File $file)
+    // False, keeping the row, when the stored blob couldn't be deleted (SCRUM-362) -- deleting the
+    // row anyway would orphan a blob nothing points at.
+    public function deleteFile(?File $file): bool
     {
         if (is_null($file)) {
-            return;
+            return false;
         }
 
-        Storage::disk($file->storage)->delete($file->diskPath());
+        if (! Storage::disk($file->storage)->delete($file->diskPath())) {
+            return false;
+        }
 
-        return $file->delete();
+        return (bool) $file->delete();
     }
 }

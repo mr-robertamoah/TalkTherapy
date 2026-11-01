@@ -19,6 +19,13 @@ class ReportResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
+        // SCRUM-362: the JSON list (api.reports) shows every report to an admin -- but one they are
+        // part of (and didn't file themselves) only as that it exists, as in the review queue.
+        $viewer = $request->user();
+        if ($viewer?->isAdmin() && ! $this->isReportedBy($viewer) && $this->involves($viewer)) {
+            return $this->resource->involvedSummary();
+        }
+
         return [
             'id' => $this->id,
             'description' => $this->description,

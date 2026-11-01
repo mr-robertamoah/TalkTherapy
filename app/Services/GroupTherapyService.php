@@ -9,6 +9,7 @@ use App\Actions\GroupTherapy\JoinGroupTherapyAction;
 use App\Actions\GroupTherapy\UpdateGroupTherapyAction;
 use App\Actions\Request\SendTherapyAssistanceRequestAction;
 use App\Actions\Star\CreateStarAction;
+use App\Actions\Suspension\EnsureCanActAsCounsellorAction;
 use App\Actions\Therapy\DeleteTherapyAction;
 use App\Actions\Therapy\EndTherapyAction;
 use App\Actions\Therapy\EnsureCanCreateTherapyAction;
@@ -42,6 +43,11 @@ class GroupTherapyService extends Service
         EnsureCanCreateTherapyAction::new()->execute($groupTherapyDTO->user);
 
         EnsureTherapyDataIsValidAction::new()->execute($groupTherapyDTO);
+
+        // SCRUM-359: a suspended counsellor can't start a group, or be asked to join a new one.
+        EnsureCanActAsCounsellorAction::new()->execute($groupTherapyDTO->counsellor);
+        Counsellor::query()->whereKey($groupTherapyDTO->counsellorIds ?: [])->get()
+            ->each(fn (Counsellor $counsellor) => EnsureCanActAsCounsellorAction::new()->execute($counsellor, asTarget: true));
 
         $therapy = CreateGroupTherapyAction::new()->execute($groupTherapyDTO);
 

@@ -10,9 +10,11 @@ use App\Actions\Request\EnsureUserCanRespondToRequestAction;
 use App\Actions\Request\GetPendingRefundRequestsForAdminAction;
 use App\Actions\Request\GetRequestResourceAction;
 use App\Actions\Request\RespondToRequestAction;
+use App\Actions\Suspension\EnsureCanActAsCounsellorAction;
 use App\DTOs\GetVerificationRequestsDTO;
 use App\DTOs\RequestResponseDTO;
 use App\Enums\PaginationEnum;
+use App\Enums\RequestStatusEnum;
 use App\Enums\RequestTypeEnum;
 use App\Http\Resources\AdminCounsellorVerificationRequestResource;
 use App\Http\Resources\RequestResource;
@@ -178,9 +180,24 @@ class RequestService extends Service
         // EnsureRequestIsStillPendingAction's own comment for the full rationale.
         EnsureRequestIsStillPendingAction::new()->execute($requestResponseDTO);
 
+        $this->ensureNoSuspendedCounsellorIsTakenOn($requestResponseDTO);
+
         $request = RespondToRequestAction::new()->execute($requestResponseDTO);
 
         // TODO dispatch event
         return GetRequestResourceAction::new()->execute($request);
+    }
+
+    // SCRUM-359: the one place every request is accepted -- a suspended counsellor can't take on
+    // work (as the recipient), and nobody can accept a suspended counsellor's offer (as the sender).
+    private function ensureNoSuspendedCounsellorIsTakenOn(RequestResponseDTO $requestResponseDTO): void
+    {
+        $request = $requestResponseDTO->request;
+        if (strtoupper((string) $requestResponseDTO->response) !== RequestStatusEnum::accepted->value || ! in_array($request->type, RequestTypeEnum::counsellingTypes(), true)) {
+            return;
+        }
+
+        EnsureCanActAsCounsellorAction::new()->execute($request->to);
+        EnsureCanActAsCounsellorAction::new()->execute($request->from, asTarget: true);
     }
 }

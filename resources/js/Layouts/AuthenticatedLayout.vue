@@ -53,7 +53,11 @@ watchEffect(() => {
 
   if (page.props.auth.user?.id && !listening.value) {
     listening.value = true;
-    Echo.private(`users.${page.props.auth.user?.id}`).notification(
+    Echo.private(`users.${page.props.auth.user?.id}`)
+      // SCRUM-359: leave for the suspended page the moment an account is suspended (the server
+      // refuses everything else from then on anyway).
+      .listen(".account.suspended", () => router.visit(route("suspended.show")))
+      .notification(
       (notification) => {
         console.log(notification, "notification");
 

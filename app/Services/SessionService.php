@@ -20,6 +20,7 @@ use App\Actions\Session\GetCounsellorCalendarSessionsAction;
 use App\Actions\Session\SetCurrentTopicOfSessionAction;
 use App\Actions\Session\UnsetCurrentTopicOfSessionAction;
 use App\Actions\Session\UpdateSessionAction;
+use App\Actions\Suspension\EnsureTherapyCounsellorIsAvailableAction;
 use App\Actions\TherapyTopic\EnsureTherapyTopicExistsAction;
 use App\DTOs\CreateSessionDTO;
 use App\DTOs\GetCounsellorCalendarSessionsDTO;
@@ -84,6 +85,8 @@ class SessionService extends Service
 
         EnsureCanCreateSessionAction::new()->execute($createSessionDTO);
 
+        EnsureTherapyCounsellorIsAvailableAction::new()->execute($createSessionDTO->user, $createSessionDTO->for);
+
         EnsureSessionDataIsValidAction::new()->execute($createSessionDTO);
 
         $session = CreateSessionAction::new()->execute($createSessionDTO);
@@ -98,6 +101,8 @@ class SessionService extends Service
         EnsureSessionExistsAction::new()->execute($createSessionDTO);
 
         EnsureCanUpdateSessionAction::new()->execute($createSessionDTO);
+
+        EnsureTherapyCounsellorIsAvailableAction::new()->execute($createSessionDTO->user, $createSessionDTO->session->for);
 
         EnsureSessionDataIsValidAction::new()->execute($createSessionDTO);
 
@@ -134,6 +139,8 @@ class SessionService extends Service
         EnsureSessionExistsAction::new()->execute($createSessionDTO);
 
         EnsureCanUpdateSessionStatusAction::new()->execute($createSessionDTO);
+
+        EnsureTherapyCounsellorIsAvailableAction::new()->execute($createSessionDTO->user, $createSessionDTO->session->for);
 
         $session = ChangeSessionStatusAction::new()->execute($createSessionDTO, SessionStatusEnum::in_session->value);
 

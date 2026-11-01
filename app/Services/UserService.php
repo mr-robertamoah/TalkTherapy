@@ -23,6 +23,7 @@ use App\DTOs\GetUsersDTO;
 use App\DTOs\SubmitAgeVerificationDTO;
 use App\DTOs\UpdateUserDTO;
 use App\Enums\PaginationEnum;
+use App\Enums\SuspensionScopeEnum;
 use App\Http\Resources\AdminUserResource;
 use App\Http\Resources\GuardianshipResource;
 use App\Http\Resources\UserMiniResource;
@@ -139,16 +140,16 @@ class UserService extends Service
             $query->whereNot('id', $getUsersDTO->user->id);
         }
 
-        $query->where('username', 'LIKE', "%{$getUsersDTO->like}%");
-        $query->orWhere(function ($query) use ($getUsersDTO) {
-            $query->where('firstName', 'LIKE', "%{$getUsersDTO->like}%");
+        // Grouped: the ORs used to escape the "not yourself" filter above.
+        $query->where(function ($query) use ($getUsersDTO) {
+            $query->where('username', 'LIKE', "%{$getUsersDTO->like}%")
+                ->orWhere('firstName', 'LIKE', "%{$getUsersDTO->like}%")
+                ->orWhere('lastName', 'LIKE', "%{$getUsersDTO->like}%")
+                ->orWhere('otherNames', 'LIKE', "%{$getUsersDTO->like}%");
         });
-        $query->orWhere(function ($query) use ($getUsersDTO) {
-            $query->where('lastName', 'LIKE', "%{$getUsersDTO->like}%");
-        });
-        $query->orWhere(function ($query) use ($getUsersDTO) {
-            $query->where('otherNames', 'LIKE', "%{$getUsersDTO->like}%");
-        });
+
+        // SCRUM-359: this feeds the guardian and organisation invite pickers.
+        $query->whereDoesntHave('suspensions', fn ($q) => $q->active()->where('scope', SuspensionScopeEnum::account->value));
 
         return UserMiniResource::collection($query->paginate(PaginationEnum::preferencesPagination->value));
     }

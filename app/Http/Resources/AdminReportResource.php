@@ -3,7 +3,11 @@
 namespace App\Http\Resources;
 
 use App\Actions\Report\ResolveReportUnlockScopeAction;
+use App\Actions\Suspension\ApplySuspensionAction;
 use App\Enums\CounsellorGroupTherapyStateEnum;
+use App\Enums\ReportOutcomeEnum;
+use App\Enums\ReportStatusEnum;
+use App\Enums\SuspensionScopeEnum;
 use App\Models\ConfidentialMessageAccess;
 use App\Models\Counsellor;
 use App\Models\GroupTherapy;
@@ -34,12 +38,7 @@ class AdminReportResource extends JsonResource
         // Security review: in the queue, an admin who is part of a report sees only that it exists
         // (AdminReportController::show refuses them the page).
         if (! $this->detailed && $request->user() && $this->involves($request->user())) {
-            return [
-                'id' => $this->id,
-                'status' => $this->status->value,
-                'involved' => true,
-                'createdAt' => $this->created_at,
-            ];
+            return $this->resource->involvedSummary();
         }
 
         $therapy = $this->therapy();
@@ -85,7 +84,7 @@ class AdminReportResource extends JsonResource
                 'toStatus' => $history->to_status,
                 'outcome' => $history->outcome,
                 'note' => $history->note,
-                'by' => $history->user?->name ?? 'a deleted account',
+                'by' => $history->user?->name ?? ($history->user_id ? 'a deleted account' : 'TalkTherapy'),
                 'at' => $history->created_at,
             ])->values()->all(),
             'participants' => $therapy ? $this->participantsOf($therapy) : [],
@@ -113,6 +112,35 @@ class AdminReportResource extends JsonResource
                     'at' => $access->created_at,
                 ])->values()->all(),
             'confidentialMessagesRead' => (int) $this->confidential_reads_count,
+            // SCRUM-362: after a confidential read only a super admin, with a reason, may re-point it.
+            'partyLocked' => (int) $this->confidential_reads_count > 0,
+            'canChangeLockedParty' => (bool) $request->user()?->isSuperAdmin(),
+            // SCRUM-359
+            'suspensions' => AdminSuspensionResource::collection($this->suspensions->each->setRelation('report', $this->resource))->resolve($request),
+            'suspend' => $this->suspendOptions($request),
+        ];
+    }
+
+    // SCRUM-359: whether the suspend form is offered, and with which scopes. The actions decide.
+    private function suspendOptions(Request $request): array
+    {
+        $target = $this->reportedUser();
+        $available = $request->user()?->isSuperAdmin()
+            && $this->status == ReportStatusEnum::resolved
+            && $this->outcome == ReportOutcomeEnum::suspension_recommended
+            && $target
+            && ! $target->isSuperAdmin();
+
+        return [
+            'available' => (bool) $available,
+            'superAdminOnly' => ! $request->user()?->isSuperAdmin(),
+            'scopes' => $available
+                ? array_values(array_filter([
+                    $target->isAccountSuspended() ? null : SuspensionScopeEnum::account->value,
+                    $target->counsellor && ! $target->isSuspendedAsCounsellor() ? SuspensionScopeEnum::counsellor->value : null,
+                ]))
+                : [],
+            'durations' => ApplySuspensionAction::DURATIONS,
         ];
     }
 

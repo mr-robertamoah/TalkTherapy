@@ -57,15 +57,19 @@ class CounsellorService extends Service
         $updateCounsellorDTO->counsellor->notify(new VerifyCounsellorEmailNotification);
     }
 
-    public function getCounsellors(User $user, ?string $name)
+    public function getCounsellors(?User $user, ?string $name)
     {
         $query = Counsellor::query();
 
+        // Grouped: whereName() ORs its conditions, which would otherwise escape the filters below.
         $query->when($name, function ($query) use ($name) {
-            $query->whereName($name);
+            $query->where(fn ($q) => $q->whereName($name));
         });
 
-        $query->whereNotUser($user);
+        // A signed-out visitor can search too (this used to fail with a null user).
+        $query->when($user, fn ($q) => $q->whereNotUser($user));
+        // SCRUM-359: a suspended counsellor isn't offered to anyone.
+        $query->whereNotSuspended();
         $query->withCount('stars');
         $query->orderBy('stars_count');
         // CounsellorMiniResource reads ->avatar; see GetOrganizationCounsellorsAction's comment
@@ -220,7 +224,7 @@ class CounsellorService extends Service
             ->withCount(['stars' => function ($q) {
                 $q->whereWithinCurrentMonth();
             }])
-            ->has('counsellor');
+            ->whereHas('counsellor', fn ($q) => $q->whereNotSuspended());
 
         $query->orderBy('stars_count', 'desc');
         $query->limit(5);
@@ -237,7 +241,7 @@ class CounsellorService extends Service
             ->withCount(['stars' => function ($q) {
                 $q->whereWithinPreviousMonth();
             }])
-            ->has('counsellor');
+            ->whereHas('counsellor', fn ($q) => $q->whereNotSuspended());
 
         $query->orderBy('stars_count', 'desc');
         $query->limit(5);
@@ -253,6 +257,7 @@ class CounsellorService extends Service
             $query->whereNot('user_id', $user->id);
         });
 
+        $query->whereNotSuspended();
         $query->inRandomOrder();
         // StarredCounsellorResource reads ->avatar and ->cover -- see the eager-load comments above.
         $query->with(['avatarFile', 'coverFile']);

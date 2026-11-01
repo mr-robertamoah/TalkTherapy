@@ -1,5 +1,6 @@
 <?php
 
+use App\Actions\File\DeleteAttachedFilesAction;
 use App\Actions\Request\CreateRequestAction;
 use App\Actions\Request\RespondToCounsellorVerificationRequestAction;
 use App\DTOs\CreateRequestDTO;
@@ -19,6 +20,7 @@ use App\Models\Request;
 use App\Models\User;
 use App\Services\AppService;
 use App\Services\LicenseService;
+use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 
@@ -83,7 +85,7 @@ function retentionRespond(Request $request, ?string $response): Request
 
 function retentionDecidedDaysAgo(Request $request, string $status, int $days): void
 {
-    Request::query()->whereKey($request->id)->update(['status' => $status, 'updated_at' => now()->subDays($days)]);
+    Request::query()->whereKey($request->id)->update(['status' => $status, 'updated_at' => now()->subDays($days), 'responded_at' => now()->subDays($days)]);
 }
 
 beforeEach(function () {
@@ -265,4 +267,77 @@ test('the license resource says when its documents were removed under the retent
 
     expect($data['documentsRemovedAt'])->not->toBeNull()
         ->and($data['file'])->toBeEmpty();
+});
+
+// SCRUM-362 ------------------------------------------------------------------------------------
+
+function retentionAbandonedLicense(int $daysOld, bool $validated = false): License
+{
+    $counsellor = Counsellor::factory()->create(['user_id' => User::factory()->create()->id, 'verified_at' => null]);
+    $license = retentionLicense($counsellor, retentionAuthority(ConstantsEnum::nationalId->value, true), 'ABN-'.fake()->unique()->numerify('#####'));
+    $license->forceFill(['validated' => $validated, 'created_at' => now()->subDays($daysOld)])->save();
+
+    return $license;
+}
+
+test('a license no request ever cited loses its documents after the abandoned-upload window', function () {
+    $old = retentionAbandonedLicense(31);
+    $recent = retentionAbandonedLicense(29);
+    $validated = retentionAbandonedLicense(90, validated: true);
+    [, , $cited] = retentionVerificationRequest();
+    $cited->forceFill(['created_at' => now()->subDays(90)])->save();
+
+    $dryRun = LicenseService::new()->applyDocumentRetention(dryRun: true);
+    expect($dryRun->pluck('license')->all())->toBe([$old->id])
+        ->and($dryRun->first()['reason'])->toBe('abandoned upload')
+        ->and($old->fresh()->files)->toHaveCount(1);
+
+    LicenseService::new()->applyDocumentRetention();
+
+    expect($old->fresh()->files)->toBeEmpty()
+        ->and($old->fresh()->documents_removed_at)->not->toBeNull()
+        ->and($old->fresh()->number)->toBeNull()
+        ->and($recent->fresh()->files)->toHaveCount(1)
+        ->and($validated->fresh()->files)->toHaveCount(1)
+        ->and($cited->fresh()->files)->toHaveCount(1)
+        ->and(LicenseService::new()->applyDocumentRetention(dryRun: true))->toBeEmpty();
+});
+
+test('a request is stamped responded_at once, when it leaves pending, and a later touch keeps it', function () {
+    [, $request] = retentionVerificationRequest();
+    expect($request->fresh()->responded_at)->toBeNull();
+
+    $this->travelTo(now()->subDays(40));
+    retentionRespond($request->fresh(), 'rejected');
+    $this->travelBack();
+    $decidedAt = $request->fresh()->responded_at;
+
+    $request->fresh()->forceFill(['data' => $request->data + ['touched' => true]])->save();
+
+    expect($decidedAt)->not->toBeNull()
+        ->and($request->fresh()->responded_at->equalTo($decidedAt))->toBeTrue()
+        ->and($request->fresh()->updated_at->isToday())->toBeTrue();
+});
+
+test('a rejected request touched after the decision is still swept from the decision', function () {
+    [, $request, $nationalId] = retentionVerificationRequest();
+    retentionDecidedDaysAgo($request, RequestStatusEnum::rejected->value, 31);
+    Request::query()->whereKey($request->id)->update(['updated_at' => now()]);
+
+    LicenseService::new()->applyDocumentRetention();
+
+    expect($nationalId->fresh()->files)->toBeEmpty();
+});
+
+test('a file whose stored blob cannot be deleted stays attached so the next run retries it', function () {
+    [, , $nationalId] = retentionVerificationRequest();
+    $file = $nationalId->files->first();
+
+    $disk = Mockery::mock(Filesystem::class);
+    $disk->shouldReceive('delete')->andReturn(false);
+    Storage::shouldReceive('disk')->with('license_documents')->andReturn($disk);
+
+    expect(DeleteAttachedFilesAction::new()->execute($nationalId, 'test'))->toBe(0)
+        ->and($nationalId->files()->count())->toBe(1)
+        ->and(File::query()->find($file->id))->not->toBeNull();
 });

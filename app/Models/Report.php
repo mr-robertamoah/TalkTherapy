@@ -37,9 +37,20 @@ class Report extends Model
         return $this->belongsTo(User::class, 'resolved_by')->withTrashed();
     }
 
+    public function suspensions()
+    {
+        return $this->hasMany(Suspension::class)->latest('id');
+    }
+
     public function confidentialAccesses()
     {
         return $this->hasMany(ConfidentialMessageAccess::class)->latest('id');
+    }
+
+    // Restricted content was actually shown on this report -- not merely a session opened.
+    public function hasConfidentialReads(): bool
+    {
+        return $this->confidentialAccesses()->whereNotNull('message_id')->exists();
     }
 
     public function isActive(): bool
@@ -96,10 +107,17 @@ class Report extends Model
 
     // SCRUM-340: an admin who is the reporter, the reported person, the author of a reported post,
     // or a participant (past counsellors included) of the reported therapy can't review the report
-    // or see it beyond its existence.
+    // or see it beyond its existence. SCRUM-362: nor a guardian of the reporter, of the reported
+    // person, or of the reported therapy's client. Former group members are covered by
+    // isParticipant(): nothing removes a group_therapy_user row -- a future "leave group" must
+    // change the row's state, not delete it, or this check (and the report history) loses them.
     public function involves(User $user): bool
     {
         if ($this->isReportedBy($user) || $this->reportedUser()?->is($user)) {
+            return true;
+        }
+
+        if ($this->isGuardianOfSomeoneIn($user)) {
             return true;
         }
 
@@ -112,6 +130,38 @@ class Report extends Model
         $author = $this->reportable?->addedby;
 
         return (bool) ($author instanceof Counsellor ? $author->user?->is($user) : $author?->is($user));
+    }
+
+    private function isGuardianOfSomeoneIn(User $user): bool
+    {
+        $wardIds = $user->wardIds();
+
+        if ($wardIds->isEmpty()) {
+            return false;
+        }
+
+        $client = $this->therapy()?->addedby;
+
+        return collect([$this->reporterUser(), $this->reportedUser(), $client instanceof User ? $client : null])
+            ->filter()
+            ->contains(fn (User $person) => $wardIds->contains($person->id));
+    }
+
+    // SCRUM-340/362: all an admin who is part of a report sees of it in any list -- that it exists.
+    public function involvedSummary(): array
+    {
+        return [
+            'id' => $this->id,
+            'status' => $this->status->value,
+            'involved' => true,
+            'createdAt' => $this->created_at,
+        ];
+    }
+
+    // The User behind the reporter (a reporting counsellor's own account).
+    public function reporterUser(): ?User
+    {
+        return $this->addedby instanceof Counsellor ? $this->addedby->user : $this->addedby;
     }
 
     public function addedby()
