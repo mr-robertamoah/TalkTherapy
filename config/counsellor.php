@@ -12,4 +12,7 @@ return [
     'license_rejected_retention_days' => (int) env('COUNSELLOR_LICENSE_REJECTED_RETENTION_DAYS', 30),
     //  - the national ID scan and number of an ACCEPTED request (the professional license is kept).
     'national_id_retention_days' => (int) env('COUNSELLOR_NATIONAL_ID_RETENTION_DAYS', 30),
+    //  - SCRUM-362: every document of a license no verification request ever cited (an abandoned
+    //    upload), this many days after it was uploaded.
+    'license_abandoned_retention_days' => (int) env('COUNSELLOR_LICENSE_ABANDONED_RETENTION_DAYS', 30),
 ];

@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Actions\File\DeleteAttachedFilesAction;
 use App\Actions\License\PurgeLicenseDocumentsAction;
 use App\Actions\Organization\SettleOrganizationInvoiceAction;
 use App\Actions\Video\RevokeSpeakingPermissionAction;
@@ -18,7 +19,6 @@ use App\Events\SessionStartedEvent;
 use App\Models\Alert;
 use App\Models\Counsellor;
 use App\Models\Discussion;
-use App\Models\File;
 use App\Models\GroupTherapy;
 use App\Models\License;
 use App\Models\Organization;
@@ -141,22 +141,17 @@ class AppService extends Service
     // of age, since it hasn't been reviewed yet. Deletes both the stored file and its DB row, not
     // just one -- an orphaned File row pointing at an already-deleted path is exactly the kind of
     // stale reference File::url/getUrlFor() would otherwise happily resolve to a 404 forever.
-    // Reuses FileService::deleteFile() (review finding) rather than re-deriving the storage path
-    // and hardcoding the disk name -- that also reads the disk from $file->storage itself instead
-    // of assuming every file this sweep ever encounters lives on 'identity_documents'.
+    // SCRUM-362: through the shared DeleteAttachedFilesAction, which reads each file's disk from
+    // $file->storage and keeps a file attached (retried next run) if its blob couldn't be deleted.
     public function deleteExpiredIdentityDocuments(): void
     {
         Request::query()
             ->whereHas('files')
             ->where('status', '!=', RequestStatusEnum::pending->value)
-            ->where('updated_at', '<=', now()->subDays(config('identity_verification.document_retention_days')))
+            // SCRUM-362: from when the request was decided, not its last touch.
+            ->where('responded_at', '<=', now()->subDays(config('identity_verification.document_retention_days')))
             ->get()
-            ->each(function (Request $request) {
-                $request->files->each(function (File $file) use ($request) {
-                    $request->files()->detach($file->id);
-                    FileService::new()->deleteFile($file);
-                });
-            });
+            ->each(fn (Request $request) => DeleteAttachedFilesAction::new()->execute($request, 'identity document retention'));
     }
 
     public function notifyParticipantsOfStartingSessions()

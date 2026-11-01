@@ -64,6 +64,7 @@ class RespondToTherapyAssistanceRequestAction extends Action
                     ->whereFor($therapy)
                     ->update([
                         'status' => RequestStatusEnum::inconsequencial->value,
+                        'responded_at' => now(),
                         'data' => [
                             'reason' => 'A similar request for therapy assistance has been accepted by someone else.',
                         ],

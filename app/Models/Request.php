@@ -17,7 +17,21 @@ class Request extends Model
         'data' => 'array',
         'expires_at' => 'datetime',
         'reminder_sent_at' => 'datetime',
+        'responded_at' => 'datetime',
     ];
+
+    // SCRUM-362: stamp the moment a request first leaves PENDING (accepted, rejected, superseded or
+    // made moot) -- once, so a later change to the row never moves it. Query-builder updates skip
+    // this hook, so those few call sites set responded_at themselves.
+    protected static function booted(): void
+    {
+        static::saving(function (Request $request) {
+            // A new row without a status is PENDING (the column's default).
+            if ($request->status && $request->status !== RequestStatusEnum::pending->value && is_null($request->responded_at)) {
+                $request->responded_at = now();
+            }
+        });
+    }
 
     public function from()
     {

@@ -57,6 +57,9 @@ services:
     image: mysql:8.0
     container_name: talktherapy-db
     restart: unless-stopped
+    # SCRUM-362: lets the app user create the append-only triggers on the audit log while binary
+    # logging is on (MySQL 8's default). Production's database needs the same setting.
+    command: --log-bin-trust-function-creators=1
     environment:
       MYSQL_DATABASE: talktherapy
       MYSQL_ROOT_PASSWORD: root

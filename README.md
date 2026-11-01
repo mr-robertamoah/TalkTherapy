@@ -114,6 +114,15 @@ sudo DEPLOY_SHA=<sha> bash scripts/deploy.sh
 
 To give up instead, check out the previous commit printed at the top of the deploy log, run `composer install`, and run `php artisan up`. Back up `storage/app` and the database before a promotion that includes data migrations: those migrations can't be rolled back.
 
+**Database prerequisite (SCRUM-362):** a migration creates triggers that make the confidential-message
+access log append-only. With binary logging on (MySQL 8's default), a database user without SUPER can
+only create triggers when `log_bin_trust_function_creators=1`. Set it before the first deploy that
+includes this migration -- `SET PERSIST log_bin_trust_function_creators=1;` as root, `[mysqld]` in
+`my.cnf`, or a custom parameter group on RDS -- otherwise the migration fails and the site stays in
+maintenance mode. The Docker `db` service already sets it (recreate the container after pulling:
+`docker compose up -d --force-recreate db`). If a deploy did fail on it: set the flag, run
+`DROP TRIGGER IF EXISTS cma_no_update; DROP TRIGGER IF EXISTS cma_no_delete;`, and re-run the deploy.
+
 Scheduled jobs (`routes/console.php` -- reminders, invoice settlement, document retention, the group-video
 idle speaking sweep) need Laravel's scheduler running. In Docker, the `queue` container runs it via
 Supervisor (`php artisan schedule:work`, see `docker/queue/supervisord.conf`); any other host must run
