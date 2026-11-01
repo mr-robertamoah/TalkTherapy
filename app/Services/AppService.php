@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Actions\License\PurgeLicenseDocumentsAction;
 use App\Actions\Organization\SettleOrganizationInvoiceAction;
 use App\Actions\Video\RevokeSpeakingPermissionAction;
 use App\Actions\VideoConsent\GetWardForVideoConsentableAction;
@@ -19,6 +20,7 @@ use App\Models\Counsellor;
 use App\Models\Discussion;
 use App\Models\File;
 use App\Models\GroupTherapy;
+use App\Models\License;
 use App\Models\Organization;
 use App\Models\OrganizationInvoice;
 use App\Models\Report;
@@ -110,12 +112,27 @@ class AppService extends Service
     // default 60) has passed. Only the Counsellor row itself is force-deleted -- related
     // historical records (therapies, sessions, licenses, testimonials) are left untouched, same
     // as they already are for a merely-soft-deleted counsellor.
+    // SCRUM-338: the counsellor's license documents go with them (the License rows are kept, like
+    // the rest of their history) -- otherwise ID scans outlived the account they belonged to. One
+    // counsellor failing is logged and skipped, so it can't stop everyone after it being purged.
     public function purgeExpiredSoftDeletedCounsellors()
     {
         Counsellor::onlyTrashed()
             ->where('deleted_at', '<=', now()->subDays(config('counsellor.deletion_grace_period_days')))
+            ->with('licensesFor.files', 'licensesFor.licensingAuthority')
             ->get()
-            ->each(fn (Counsellor $counsellor) => $counsellor->forceDelete());
+            ->each(function (Counsellor $counsellor) {
+                try {
+                    $counsellor->licensesFor->each(fn (License $license) => PurgeLicenseDocumentsAction::new()->execute(
+                        $license,
+                        clearNumber: $license->isNationalId(),
+                    ));
+
+                    $counsellor->forceDelete();
+                } catch (Throwable $th) {
+                    Log::error('Could not purge a soft-deleted counsellor.', ['counsellor' => $counsellor->id, 'error' => $th->getMessage()]);
+                }
+            });
     }
 
     // TT-4.11a/SCRUM-302: an identity-verification document (age/identity verification) is only

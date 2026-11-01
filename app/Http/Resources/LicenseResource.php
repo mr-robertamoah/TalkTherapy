@@ -22,6 +22,9 @@ class LicenseResource extends JsonResource
             'id' => $this->id,
             'number' => $this->number,
             'validated' => $this->validated,
+            // SCRUM-338: set when the documents were deleted under the retention policy, so the
+            // admin UI can say so rather than showing an empty license.
+            'documentsRemovedAt' => $this->documents_removed_at?->toIso8601String(),
             'licensingAuthority' => new LicensingAuthorityResource($this->licensingAuthority),
             // SCRUM-300: never File::url -- license documents live on a private disk, and
             // getUrlFor() refuses them. Always the authorized retrieval route instead.

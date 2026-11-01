@@ -5,7 +5,9 @@ use App\Models\GroupTherapy;
 use App\Models\Session;
 use App\Models\Therapy;
 use App\Services\AppService;
+use App\Services\LicenseService;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schedule;
 
 /*
@@ -75,6 +77,15 @@ Schedule::call(function () {
     AppService::new()->deleteExpiredIdentityDocuments();
 })->dailyAt('04:00');
 
+// SCRUM-338: counsellor verification documents past their retention window.
+// Each deletion is logged (devops review): the files can't be restored, so the log is the trail.
+Schedule::call(function () {
+    LicenseService::new()->applyDocumentRetention()->each(
+        fn (array $item) => Log::info('License documents removed under the retention policy.', $item)
+    );
+})->name('delete-expired-license-documents')->dailyAt('04:15')
+    ->onFailure(fn () => Log::error('The license document retention sweep failed.'));
+
 // TT-3.2f-h/SCRUM-325: every minute, not every five -- with the 5-minute default timeout, a
 // five-minute sweep would let an idle grant linger for up to ~10 minutes.
 Schedule::call(function () {
@@ -111,3 +122,40 @@ Artisan::command('demo:refresh-chat', function () {
 
     return 0;
 })->purpose('Make the seeded Chat Demo sessions and discussion live again (local only)');
+
+// SCRUM-338: applies the license document retention policy now, to everything already past its
+// window (the same rules the daily 04:15 sweep uses). --dry-run lists what would go.
+Artisan::command('licenses:apply-retention {--dry-run}', function () {
+    $dryRun = (bool) $this->option('dry-run');
+    $removed = LicenseService::new()->applyDocumentRetention($dryRun);
+    if (! $dryRun) {
+        $removed->each(fn (array $item) => Log::info('License documents removed under the retention policy.', $item));
+    }
+
+    $this->table(['License', 'Reason', 'Number cleared'], $removed->map(fn ($item) => [
+        $item['license'], $item['reason'], $item['clearNumber'] ? 'yes' : 'no',
+    ])->all());
+    $this->info(($dryRun ? 'Would remove' : 'Removed').' documents of '.$removed->count().' license(s).');
+
+    return 0;
+})->purpose('Delete counsellor license documents that are past their retention window');
+
+// SCRUM-338: before the fix, rejecting a counsellor verification request validated its licenses.
+// Un-validates licenses that only ever appeared on rejected requests; lists (doesn't change) their
+// licensing authorities for an admin to check by hand.
+Artisan::command('licenses:repair-rejected-validations {--dry-run}', function () {
+    $dryRun = (bool) $this->option('dry-run');
+    $result = LicenseService::new()->repairRejectedVerificationValidations($dryRun);
+    if (! $dryRun && $result['licenses']) {
+        Log::info('Licenses un-validated by licenses:repair-rejected-validations.', ['licenses' => $result['licenses']]);
+    }
+
+    $this->info(($dryRun ? 'Would un-validate' : 'Un-validated').' '.count($result['licenses']).' license(s): '.implode(', ', $result['licenses']));
+
+    if ($result['authorities']->isNotEmpty()) {
+        $this->warn('Validated licensing authorities on those licenses -- check by hand, not changed:');
+        $this->table(['Authority', 'Name'], $result['authorities']->map(fn ($a) => [$a->id, $a->name])->all());
+    }
+
+    return 0;
+})->purpose('Un-validate licenses that were wrongly validated by a rejected verification request');
