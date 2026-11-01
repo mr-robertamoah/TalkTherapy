@@ -64,7 +64,8 @@ class Therapy extends Model
 
     public function isParticipant(User $user)
     {
-        if ($this->addedby->is($user)) {
+        // Null-safe: a deleted client used to 500 here -- now on every alert request (SCRUM-352).
+        if ($this->addedby?->is($user)) {
             return true;
         }
 

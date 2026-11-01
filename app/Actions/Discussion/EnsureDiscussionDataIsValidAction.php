@@ -19,6 +19,14 @@ class EnsureDiscussionDataIsValidAction extends Action
             throw new DiscussionException('No therapy or group therapy for the discussion was given.', 422);
         }
 
+        // SCRUM-352: a discussion's session must be one of its own therapy's -- any session id used
+        // to be accepted, exposing another therapy's session to this discussion's counsellors. One
+        // answer for a session that's someone else's or doesn't belong here.
+        $session = $createDiscussionDTO->session;
+        if ($session && ! ($session->for_type === $createDiscussionDTO->for::class && (int) $session->for_id === (int) $createDiscussionDTO->for->id)) {
+            throw new DiscussionException('That session is not part of this therapy.', 422);
+        }
+
         if (! is_null($createDiscussionDTO->maxCounsellors)) {
             // Upper ceiling mirrors the identical GroupTherapy.max_counsellors precedent
             // (EnsureTherapyDataIsValidAction) -- a separate, independently-configurable env var

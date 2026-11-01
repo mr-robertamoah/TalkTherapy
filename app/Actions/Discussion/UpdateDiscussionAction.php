@@ -35,14 +35,15 @@ class UpdateDiscussionAction extends Action
 
         if (
             $createDiscussionDTO->deletedSession &&
-            $createDiscussionDTO->discussion->session->id == $createDiscussionDTO->deletedSession->id
+            $createDiscussionDTO->discussion->session?->id == $createDiscussionDTO->deletedSession->id
         ) {
             $this->data['session_id'] = null;
         }
 
         if (
             $createDiscussionDTO->session &&
-            $createDiscussionDTO->discussion->session->id !== $createDiscussionDTO->session->id
+            // Null-safe: adding a session to a discussion that had none used to 500 (SCRUM-352).
+            $createDiscussionDTO->discussion->session?->id !== $createDiscussionDTO->session->id
         ) {
             $this->data['session_id'] = $createDiscussionDTO->session->id;
         }
