@@ -51,7 +51,6 @@ class MessageController extends Controller
                 'user' => $request->user(),
                 'session' => Session::find($request->route('sessionId')),
                 'like' => $request->like,
-                'groupBy' => $request->groupBy,
                 'topicId' => $request->topicId,
                 'replyId' => $request->replyId,
             ])
@@ -66,7 +65,6 @@ class MessageController extends Controller
                     'user' => $request->user(),
                     'sessionId' => $request->sessionId,
                     'like' => $request->like,
-                    'groupBy' => $request->groupBy,
                     'topic' => TherapyTopic::find($request->route('topicId')),
                 ])
             );

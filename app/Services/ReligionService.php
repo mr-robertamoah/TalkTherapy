@@ -17,21 +17,25 @@ use App\Models\User;
 
 class ReligionService extends Service
 {
-    public function getReligions(String $name = '') {
+    public function getReligions(string $name = '')
+    {
         $query = Religion::query();
 
-        if ($name) $query->where('name', 'LIKE', "%{$name}%");
+        if ($name) {
+            $query->whereContains('name', (string) $name);
+        }
 
         return ReligionResource::collection($query->paginate(
             PaginationEnum::preferencesPagination->value
         ));
     }
 
-    public function createReligion(CreateReligionDTO $createReligionDTO) {
+    public function createReligion(CreateReligionDTO $createReligionDTO)
+    {
         EnsureAddedbyIsValidAction::new()->execute($createReligionDTO);
-        
+
         EnsureUserCanCreateReligionAction::new()->execute($createReligionDTO->user);
-        
+
         EnsureReligionNameIsUniqueAction::new()->execute($createReligionDTO->name);
 
         $religion = CreateReligionAction::new()->execute($createReligionDTO);
@@ -44,7 +48,7 @@ class ReligionService extends Service
                         $createReligionDTO->addedby::class == User::class
                             ? $createReligionDTO->addedby
                             : $createReligionDTO->addedby->user
-                    ) 
+                    )
                     : $createReligionDTO->user,
                 'starreable' => $religion,
                 'type' => StarTypeEnum::contribution->value,

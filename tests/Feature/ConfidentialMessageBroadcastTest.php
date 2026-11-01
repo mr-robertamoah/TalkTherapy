@@ -97,18 +97,18 @@ test('the shared-channel broadcast never carries a confidential message\'s conte
     $payload = (new MessageSentEvent($data['message']))->broadcastWith()['message'];
 
     expect($payload)->not->toHaveKeys(['content', 'files', 'replying'])
-        ->and($payload['confidential'])->toBeTruthy()
-        ->and($payload['toUserId'])->toBe($data['counsellorUser']->id);
+        ->and($payload['withheld'])->toBeTrue();
 });
 
-test('a non-confidential broadcast still carries its content', function () {
+// SCRUM-366/SCRUM-271: no broadcast carries content any more -- every page fetches the message
+// (api.messages.show), which refuses anyone who may not see it.
+test('a non-confidential broadcast is only an announcement too: its id and sender', function () {
     $data = cmbGroupSessionWithConfidentialMessage();
     $data['message']->update(['confidential' => false]);
 
     $payload = (new MessageSentEvent($data['message']->fresh()))->broadcastWith()['message'];
 
-    expect($payload['content'])->toBe('something private for the counsellor')
-        ->and($payload['fromUserId'])->toBe($data['member']->id);
+    expect($payload)->toBe(['id' => $data['message']->id, 'fromUserId' => $data['member']->id, 'withheld' => true]);
 });
 
 test('the broadcast never carries an anonymous sender\'s user id', function () {
@@ -196,7 +196,7 @@ test('replying to a confidential message never re-publishes its content to non-p
     $forCreator = MessageResource::present($reply, $data['creator']);
     $forMember = MessageResource::present($reply, $data['member']);
 
-    expect($broadcast['replying'])->not->toHaveKey('content')
+    expect($broadcast)->not->toHaveKey('replying')
         ->and($forCreator['replying'])->not->toHaveKey('content')
         ->and($forMember['replying']['content'])->toBe('something private for the counsellor');
 });
@@ -237,8 +237,7 @@ test('an anonymous recipient\'s id is masked for everyone but themselves', funct
 
     $broadcast = (new MessageSentEvent($toMember))->broadcastWith()['message'];
 
-    expect($broadcast['toUserId'])->toBeNull()
-        ->and($broadcast['recipientMasked'])->toBeTrue()
+    expect($broadcast)->not->toHaveKey('toUserId')
         ->and(MessageResource::present($toMember, $data['creator'])['toUserId'])->toBeNull()
         ->and(MessageResource::present($toMember, $data['member'])['toUserId'])->toBe($data['member']->id);
 });

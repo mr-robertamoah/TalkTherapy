@@ -35,7 +35,7 @@ class Testimonial extends Model
         return $query
             ->when($like, function ($query) use ($like) {
                 $query
-                    ->where('content', 'LIKE', "%{$like}%");
+                    ->whereContains('content', (string) $like);
             });
     }
 }

@@ -8949,3 +8949,60 @@ could delete the account and sign up again with the same email).
 - **Left for SCRUM-366:** server-side socket close, the remaining unescaped `LIKE` sites, Markdown
   formatting spoofing (headings or bold, not links) in mail, and a subject filter plus
   access-history link on the read-log page.
+
+## SCRUM-364 + 365 + 366 + 271 + 209 + 205 + 199 + 192: messaging and realtime hardening — 2026-11-01
+
+One PR, as the user asked: the three new follow-ups, plus older tickets that touch the same code.
+
+- **Live updates announce, never deliver (user's choice).** Message created/updated broadcasts carry
+  only `{id, fromUserId, withheld}`. Every page fetches through `api.messages.show`, the same check
+  as a page load. This closes both the suspended-socket gap (SCRUM-366 #1) and unpaid participants
+  receiving live content (SCRUM-271), without depending on Reverb's terminate API or touching
+  channel authorisation. Cost: one GET per message per open page, so `api.messages.show`'s throttle
+  went from 60 to 240 a minute. Deleted-for-everyone broadcasts keep their content-free payload.
+  Channel authorisation for therapies was left as it is: a subscription now reveals only that a
+  message arrived.
+- **groupBy removed, not fixed (SCRUM-365).** No caller used it, and grouping `messages.*` by a
+  topic or session name can't return messages under MySQL's ONLY_FULL_GROUP_BY anyway.
+- **Admins off `messages.{id}`** only when they reach the message solely as an admin
+  (`RecordAdminContentReadAction::isBypass`, now shared). A party, or an admin who takes part in
+  the conversation, keeps the channel.
+- **Mail block formatting (SCRUM-366 #3).** `App\Support\MailText::inline()` in the published
+  notification template collapses newlines and escapes a leading Markdown marker in the greeting and
+  every line. Inline emphasis is left alone: it can't add a link, and escaping `_` would put
+  backslashes into usernames in the plain-text part.
+- **Access history** is the read log filtered by administrator. It is reached from the admin user
+  list, which now eager-loads `administrator` so the flag costs no query per row.
+- **Privacy policy (SCRUM-364).** Written from what the code does, with the controller details the
+  user gave. It deliberately says what deletion keeps, and that only essential cookies are used. It
+  names an "email delivery provider" generically, because the production mail provider isn't fixed
+  in config. The lawyer review can't be done here, so SCRUM-364 stays open after this PR, for that
+  alone.
+- **SCRUM-209:** the topic-messages session filter now uses `for_type`/`for_id`.
+- **SCRUM-205:** eager-loads `files`, `replying` and `to`.
+- **SCRUM-199/192:** rate limits of 30 a minute for session mutations and 10 a minute for image
+  uploads.
+- **Review fixes:**
+  - *A temporary fetch failure* (429, 5xx, network) is retried twice with backoff (honouring
+    `Retry-After`). Only 401, 403 and 404 drop the message, so a real message isn't silently lost.
+  - *Separate rate-limit counters.* The touched routes got their own prefixes (`message-show`,
+    `session-actions`, `image-uploads`, `counsellor-update`). A bare `throttle:N,M` shares one
+    per-user counter across every such route, so the extra fetches could otherwise lock people out
+    of unrelated actions. The other ~76 routes are SCRUM-367.
+  - *Session badges* only fetch when a parent listens for the message, and subscribe once.
+  - *The single-message fetch* eager-loads what the resource reads.
+  - *`counsellor.update`* allows 30 a minute, since four profile forms share it.
+  - *`AdminBypass`* (App\Support) holds the "reached only as an admin" rule. It used to live as
+    static methods on a write-side Action, which is now gone.
+  - *`recipientMasked` and the viewer-id argument* were removed; they were dead code.
+  - *Escaping in emails:* `MailText` puts a zero-width space before a leading Markdown marker
+    instead of a backslash, so neither the HTML nor the plain-text part shows a backslash. It now
+    also covers horizontal rules and the salutation.
+  - *Deletion broadcasts* fall back to the announcement if the message isn't actually deleted.
+  - *The typing whisper* sends a random per-page token, not the user id (it was leaking an
+    anonymous client's id).
+  - *Leftover test events* (`PingTherapyEvent`, `TestEvent`) were removed.
+- **Privacy wording corrected (security review):** the draft implied that deleting an account
+  removes its data. It doesn't (users are only closed). The page now says so and offers erasure on
+  request. It also says visit records are deleted daily, and lists Bunny Fonts. A purge job is
+  SCRUM-367, along with the older leaks the review found in discussion and session broadcasts.

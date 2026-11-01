@@ -752,7 +752,7 @@ function listenToMessages() {
     if (listening.value) return
 
     listening.value = true
-    const enqueueMessage = createBroadcastMessageQueue(userId)
+    const enqueueMessage = createBroadcastMessageQueue()
     const channel = Echo
         .private(`sessions.${props.activeSession.id}`)
         .listen('.message.created', (data) => {
@@ -776,7 +776,7 @@ function listenToMessages() {
         channel.listenForWhisper('typing', (data) => {
             // Echo does not exclude the sender's own client from whisper events (unlike
             // server-broadcast events), so this self-exclusion check is required.
-            if (data?.userId == userId) return
+            if (data?.token === typingToken) return
 
             otherPartyTyping.value = true
             resetTypingIdleTimer()
@@ -787,10 +787,13 @@ function listenToMessages() {
 // Throttled so a whisper is sent roughly once every 2s while the user keeps typing,
 // rather than on every keystroke. Guarded internally (not just at the call site) so it's
 // a no-op for group therapy even if ever invoked outside the individual-only watcher.
+const typingToken = (window.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`)
 const emitTypingWhisper = _.throttle(() => {
     if (props.therapyType !== 'individual' || !props.activeSession?.id) return
 
-    Echo.private(`sessions.${props.activeSession.id}`).whisper('typing', { userId })
+    // SCRUM-366 (security review): a random per-page token, not the user id -- in an anonymous
+    // therapy the other party must never receive the client's real id (SCRUM-357).
+    Echo.private(`sessions.${props.activeSession.id}`).whisper('typing', { token: typingToken })
 }, 2000, { leading: true, trailing: true })
 
 function resetTypingIdleTimer() {
@@ -835,7 +838,7 @@ function getMessageTo() {
             to.userId = props.therapy.addedby.id ?? 0
         }
 
-        if (props.isUser && props.therapy.counsellors?.length === 1) {
+        if (!props.isCounsellor && props.therapy.counsellors?.length === 1) {
             // With more than one assigned counsellor there's no single unambiguous recipient
             // to target, so `to` is left blank. EnsureCanSendMessageToRecepientAction (backend)
             // skips its participant check when `to` is null rather than crashing -- the message
@@ -885,10 +888,13 @@ function getMessageFrom() {
             from.avatar = viewerCounsellor?.avatar ?? null
         }
 
-        if (props.isUser) {
+        if (!props.isCounsellor) {
+            // The viewer themselves, for any member -- not only the creator (isUser), and not the
+            // creator's id, which made every other member's messages fail (QA finding, SCRUM-366 PR).
+            const viewer = usePage().props.auth.user
             from.type = 'User'
-            from.id = props.therapy.addedby?.id ?? 0
-            from.userId = props.therapy.addedby?.id ?? 0
+            from.id = viewer?.id ?? 0
+            from.userId = viewer?.id ?? 0
         }
 
         return from

@@ -116,6 +116,9 @@ broadcast — filed separately as SCRUM-195, not folded into this ticket's scope
 | TT-4.18 | Suspension follow-ups: close live sockets and video, payout hold, no self-deletion, topic/notes block, all-member guardian involvement, session-status broadcast, literal search, purge note, MySQL CI trigger job (SCRUM-363) | Task | High | 21 | New (SCRUM-359/362 follow-up) | TT-4.14, TT-4.15, TT-4.16 |
 | TT-4.19 | Seeded sessions always belong to their therapy/group via for()->associate(), without widening Session::$fillable (SCRUM-316) | Task | Low | 2 | New (seed-data follow-up) | — |
 | TT-4.20 | Escape user-supplied text in mail notifications app-wide (Markdown link-injection hardening) (SCRUM-254) | Task | Medium | 5 | New (payments-review follow-up) | — |
+| TT-4.21 | Live chat broadcasts carry no content (each page fetches the message), closing live leaks to suspended and unpaid participants (SCRUM-366, SCRUM-271) | Task | High | 5 | New (SCRUM-363 follow-up) | TT-4.18 |
+| TT-4.22 | Messaging/realtime hardening: broken message groupBy removed, dead broadcast provider, admins off messages.{id}, literal search everywhere, mail block-formatting stripped, read-log subject filter and access history, topic session filter, message-list eager loads, rate limits (SCRUM-365, 366, 209, 205, 199, 192) | Task | Medium | 8 | New (review follow-ups) | TT-4.16 |
+| TT-4.23 | Full privacy policy draft (TalkTherapy GH, Ghana, Act 843); legal review still open (SCRUM-364) | Task | High | 3 | New (SCRUM-361 follow-up) | TT-4.17 |
 
 TT-4.12 and TT-4.13 shipped together in one PR (user's choice, 2026-11-01), as did TT-4.14 and
 TT-4.15, and TT-4.16–TT-4.20 (user's choices, 2026-11-01). The /privacy page from TT-4.17 needs

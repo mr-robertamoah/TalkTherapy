@@ -70,7 +70,7 @@
                 <div
                     v-if="msg.confidential"
                     class="text-xs text-indigo-700 lowercase"
-                    title="Only you and the other person in this message can read it."
+                    title="Only its sender and its recipient can read a confidential message."
                 >confidential .</div>
                 <div 
                     class="text-gray-600 text-xs"
@@ -395,7 +395,7 @@ watchEffect(() => {
 
     if (listening.value) return
     listening.value = true
-    const enqueueUpdate = createBroadcastMessageQueue(userId)
+    const enqueueUpdate = createBroadcastMessageQueue()
 
     Echo
         .private(`messages.${props.msg?.id}`)

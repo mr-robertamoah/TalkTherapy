@@ -207,12 +207,14 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/therapies/{therapyId}/sessions', [SessionController::class, 'createSession'])->name('api.sessions.create');
     Route::patch('/sessions/{sessionId}', [SessionController::class, 'updateSession'])->name('api.sessions.update');
     Route::delete('/sessions/{sessionId}', [SessionController::class, 'deleteSession'])->name('api.sessions.delete');
-    Route::post('/sessions/{sessionId}/end', [SessionController::class, 'endSession'])->name('api.sessions.end');
-    Route::post('/sessions/{sessionId}/in_session', [SessionController::class, 'getInSession'])->name('api.sessions.in_session');
-    Route::post('/sessions/{sessionId}/fail', [SessionController::class, 'failSession'])->name('api.sessions.fail');
-    Route::post('/sessions/{sessionId}/topics/set', [SessionController::class, 'setCurrentTopic'])->name('api.session.topic.set');
-    Route::post('/sessions/{sessionId}/topics/unset', [SessionController::class, 'unsetCurrentTopic'])->name('api.session.topic.unset');
-    Route::post('/sessions/{sessionId}/abandon', [SessionController::class, 'abandonSession'])->name('api.sessions.abandon');
+    // SCRUM-199: session status, topic and note changes are rate limited like messages -- with their
+    // own counter (the prefix): a bare throttle:N,M counts every such route against one per-user total.
+    Route::post('/sessions/{sessionId}/end', [SessionController::class, 'endSession'])->name('api.sessions.end')->middleware('throttle:30,1,session-actions');
+    Route::post('/sessions/{sessionId}/in_session', [SessionController::class, 'getInSession'])->name('api.sessions.in_session')->middleware('throttle:30,1,session-actions');
+    Route::post('/sessions/{sessionId}/fail', [SessionController::class, 'failSession'])->name('api.sessions.fail')->middleware('throttle:30,1,session-actions');
+    Route::post('/sessions/{sessionId}/topics/set', [SessionController::class, 'setCurrentTopic'])->name('api.session.topic.set')->middleware('throttle:30,1,session-actions');
+    Route::post('/sessions/{sessionId}/topics/unset', [SessionController::class, 'unsetCurrentTopic'])->name('api.session.topic.unset')->middleware('throttle:30,1,session-actions');
+    Route::post('/sessions/{sessionId}/abandon', [SessionController::class, 'abandonSession'])->name('api.sessions.abandon')->middleware('throttle:30,1,session-actions');
 
     // SCRUM-212/TT-2.6a: a counsellor's own sessions aggregated across every Therapy/GroupTherapy
     // they're currently assigned to, date-range bounded for a calendar week/month view.
@@ -232,9 +234,9 @@ Route::middleware('auth:sanctum')->group(function () {
     // chat page (TherapyComponent.vue), same pattern as api.session.messages.get below -- never
     // broadcast, never reaches the client/participant side of the therapy.
     Route::get('/sessions/{sessionId}/notes', [SessionNoteController::class, 'index'])->name('api.session.notes.index');
-    Route::post('/sessions/{sessionId}/notes', [SessionNoteController::class, 'store'])->name('api.session.notes.store');
-    Route::patch('/sessions/notes/{noteId}', [SessionNoteController::class, 'update'])->name('api.session.notes.update');
-    Route::delete('/sessions/notes/{noteId}', [SessionNoteController::class, 'destroy'])->name('api.session.notes.destroy');
+    Route::post('/sessions/{sessionId}/notes', [SessionNoteController::class, 'store'])->name('api.session.notes.store')->middleware('throttle:30,1,session-actions');
+    Route::patch('/sessions/notes/{noteId}', [SessionNoteController::class, 'update'])->name('api.session.notes.update')->middleware('throttle:30,1,session-actions');
+    Route::delete('/sessions/notes/{noteId}', [SessionNoteController::class, 'destroy'])->name('api.session.notes.destroy')->middleware('throttle:30,1,session-actions');
 
     Route::post('/therapies/{therapyId}/topics', [TherapyTopicController::class, 'createTherapyTopic'])->name('api.topics.create');
     Route::patch('/topics/{topicId}', [TherapyTopicController::class, 'updateTherapyTopic'])->name('api.topics.update');
@@ -252,7 +254,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/messages/{message}/attachments/{file}', [MessageAttachmentController::class, 'show'])->name('messages.attachments.show')->middleware('throttle:300,1')
         ->missing(fn () => response()->json(['status' => false, 'error' => 'Attachment not found.'], 404));
     // SCRUM-195: how a confidential message's parties fetch its content -- broadcasts never carry it.
-    Route::get('/messages/{messageId}', [MessageController::class, 'getMessage'])->name('api.messages.show')->whereNumber('messageId')->middleware('throttle:60,1');
+    Route::get('/messages/{messageId}', [MessageController::class, 'getMessage'])->name('api.messages.show')->whereNumber('messageId')->middleware('throttle:240,1,message-show'); // SCRUM-366: every live message is now fetched here -- its own counter
     Route::get('/messages/discussions/{discussionId}', [MessageController::class, 'getDiscussionMessages'])->name('api.discussion.messages.get');
     Route::post('/messages', [MessageController::class, 'createMessage'])->name('api.messages.create')->middleware('throttle:messages');
     Route::post('/messages/{messageId}', [MessageController::class, 'updateMessage'])->name('api.messages.update')->middleware('throttle:messages');

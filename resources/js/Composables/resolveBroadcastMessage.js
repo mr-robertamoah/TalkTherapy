@@ -1,37 +1,45 @@
 import axios from 'axios'
 
-// SCRUM-195: message broadcasts go to a shared channel, so they never carry a confidential
-// message's content (see MessageBroadcastTrait). Its recipient gets that redacted shape like
-// everyone else -- this swaps it for the full message, fetched through api.messages.show, which
-// applies the same per-viewer rules as a page load (so asking is always safe). A masked anonymous
-// recipient can't be matched by id, so a masked confidential message is always asked about.
-// Anything else is returned untouched, and a failed fetch falls back to the redacted message.
-export default async function resolveBroadcastMessage(message, viewerId) {
-    const mightBeForViewer = viewerId != null
-        && (message?.toUserId == viewerId || message?.recipientMasked)
-    const isRedacted = message?.confidential && !('content' in message)
+// SCRUM-366/SCRUM-271: message broadcasts only announce a message -- its id and (masked) sender id,
+// never its content (see MessageBroadcastTrait). Each page fetches the message itself from
+// api.messages.show, which applies the same per-viewer rules as a page load: confidential redaction,
+// anonymity masking, the strict payment gate, and suspension. A deleted-for-everyone broadcast
+// carries no content and is used as it is.
+//  - refused (403/404, or 401 signed out): the viewer may not see it -- nothing is shown (null);
+//  - a temporary failure (429, 5xx, network): retried twice with a short backoff (honouring
+//    Retry-After), so a busy chat or a blip doesn't silently lose a real message.
+const RETRY_DELAYS_MS = [1000, 4000]
 
-    if (!isRedacted || !mightBeForViewer) return message
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
-    try {
-        const response = await axios.get(route('api.messages.show', message.id))
-        return response.data?.data ?? message
-    } catch (err) {
-        return message
+export default async function resolveBroadcastMessage(message) {
+    if (!message?.withheld) return message ?? null
+
+    for (let attempt = 0; ; attempt++) {
+        try {
+            const response = await axios.get(route('api.messages.show', message.id))
+            return response.data?.data ?? null
+        } catch (err) {
+            const status = err?.response?.status
+            if ([401, 403, 404].includes(status) || attempt >= RETRY_DELAYS_MS.length) return null
+
+            const retryAfter = Number(err?.response?.headers?.['retry-after'])
+            await wait(retryAfter > 0 ? Math.min(retryAfter * 1000, 10000) : RETRY_DELAYS_MS[attempt])
+        }
     }
 }
 
-// Handles one channel's broadcasts strictly in arrival order, even when one of them waits on a
-// fetch -- otherwise a later message could overtake an earlier confidential one and be inserted
-// above it. Usage: const enqueue = createBroadcastMessageQueue(userId);
-//                  enqueue(data.message, (message) => addMessage(message))
-export function createBroadcastMessageQueue(viewerId) {
+// Handles one channel's broadcasts strictly in arrival order, even though each waits on a fetch --
+// otherwise a later message could overtake an earlier one and be inserted above it. A message the
+// viewer may not see is dropped. Usage: const enqueue = createBroadcastMessageQueue();
+//                                       enqueue(data.message, (message) => addMessage(message))
+export function createBroadcastMessageQueue() {
     let chain = Promise.resolve()
 
     return (message, handle) => {
         chain = chain
-            .then(() => resolveBroadcastMessage(message, viewerId))
-            .then(handle)
+            .then(() => resolveBroadcastMessage(message))
+            .then((resolved) => resolved && handle(resolved))
             .catch(() => {})
     }
 }

@@ -225,7 +225,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/organizations', [OrganizationController::class, 'index'])->name('organizations.index')->middleware('throttle:60,1');
     Route::post('/organizations', [OrganizationController::class, 'store'])->name('organizations.store');
     Route::get('/organizations/{organizationId}', [OrganizationController::class, 'show'])->name('organizations.show');
-    Route::patch('/organizations/{organizationId}', [OrganizationController::class, 'update'])->name('organizations.update');
+    Route::patch('/organizations/{organizationId}', [OrganizationController::class, 'update'])->name('organizations.update')->middleware('throttle:10,1,image-uploads'); // SCRUM-192: image uploads, own counter
 
     // "My organizations" (SCRUM-160/TT-6.6b, SCRUM-167/TT-6.5b) -- self-scoped to the caller, no
     // throttle beyond the default web group (same reasoning as organizations.show). /mine/...
@@ -299,7 +299,7 @@ Route::middleware('auth')->group(function () {
 
     // Route::get('/profile', [ProfileController::class, 'show'])->name('profile.show');
 
-    Route::post('/counsellor/{counsellorId}', [CounsellorController::class, 'updateCounsellor'])->name('counsellor.update');
+    Route::post('/counsellor/{counsellorId}', [CounsellorController::class, 'updateCounsellor'])->name('counsellor.update')->middleware('throttle:30,1,counsellor-update'); // SCRUM-192: image uploads (shared by the four profile forms, so roomier), own counter
     Route::post('/counsellor/{counsellorId}/pricings', [CounsellorPricingController::class, 'store'])->name('counsellor.pricings.store')->middleware('throttle:30,1');
     Route::delete('/counsellor/{counsellorId}/pricings', [CounsellorPricingController::class, 'destroy'])->name('counsellor.pricings.destroy')->middleware('throttle:30,1');
     // TT-7.6d/SCRUM-228: deliberately no {counsellorId} route param -- self-service only, always
@@ -322,7 +322,7 @@ Route::middleware('auth')->group(function () {
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
     // Self-service only -- always operates on $request->user(), never a route-supplied user id,
     // so there's no other-user id to check/enumerate (SCRUM-182/TT-10.6).
-    Route::post('/profile/avatar', [ProfileController::class, 'updateAvatar'])->name('profile.avatar.update');
+    Route::post('/profile/avatar', [ProfileController::class, 'updateAvatar'])->name('profile.avatar.update')->middleware('throttle:10,1,image-uploads'); // SCRUM-192: image uploads, own counter
 });
 
 require __DIR__.'/auth.php';

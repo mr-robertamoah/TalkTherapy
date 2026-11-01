@@ -49,6 +49,12 @@
         </div>
         <div class="flex overflow-hidden overflow-x-auto space-x-3 justify-start items-center mt-3" v-if="showActions">
             <PrimaryButton @click="() => showModal('update')">update</PrimaryButton>        
+            <!-- SCRUM-366: what this administrator has read (super admins only). -->
+            <Link
+                v-if="user.isAdmin && $page.props.auth.user?.isSuperAdmin"
+                :href="route('administrator.content-accesses', { admin: user.id })"
+                class="inline-flex items-center px-4 py-2 bg-white border border-gray-300 rounded-md font-semibold text-xs text-gray-700 uppercase tracking-widest shadow-sm hover:bg-gray-50"
+            >access history</Link>
             <PrimaryButton>ban</PrimaryButton>        
             <DangerButton @click="() => showModal('delete')">delete</DangerButton>      
         </div>
@@ -103,6 +109,7 @@ import useModal from "@/Composables/useModal"
 import Alert from "@/Components/Alert.vue"
 import AdminUserUpdateModal from "@/Components/AdminUserUpdateModal.vue"
 import { ref, computed } from "vue"
+import { Link } from "@inertiajs/vue3"
 import DangerButton from "./DangerButton.vue"
 import PrimaryButton from "./PrimaryButton.vue"
 import FormLoader from "./FormLoader.vue"

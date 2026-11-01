@@ -2,8 +2,11 @@
 import { Head, Link } from '@inertiajs/vue3'
 import ApplicationLogo from '@/Components/ApplicationLogo.vue'
 
-// SCRUM-361: what TalkTherapy does with what you share, written to match what the app actually
-// does (SCRUM-338/340/359/360). A plain layout, not AuthenticatedLayout: it must be readable by
+// SCRUM-364: the user's address for now; it moves to info@talktherapy.org later -- one place to change.
+const contactEmail = 'robertamoah.dev@gmail.com'
+
+// SCRUM-361/364: TalkTherapy's privacy policy, written to match what the app actually does
+// (SCRUM-338/340/359/360). The controller and contact details are the user's (2026-11-01). A plain layout, not AuthenticatedLayout: it must be readable by
 // anyone, including a suspended account. Not yet reviewed by a lawyer -- see the notice below.
 </script>
 
@@ -21,13 +24,77 @@ import ApplicationLogo from '@/Components/ApplicationLogo.vue'
 
             <article class="mt-6 bg-white shadow-sm border border-gray-200 rounded-lg p-6 sm:p-8 space-y-8 text-sm text-gray-700 leading-relaxed">
                 <header>
-                    <h1 class="text-2xl font-bold text-gray-900">Privacy</h1>
+                    <h1 class="text-2xl font-bold text-gray-900">Privacy policy</h1>
                     <div class="w-16 h-1 bg-blue-600 mt-2"></div>
                     <p class="mt-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-amber-900">
-                        This page describes how TalkTherapy handles your information today. It has not yet been reviewed
-                        by a lawyer and will be replaced by a full privacy policy before TalkTherapy launches.
+                        This policy describes how TalkTherapy handles your information today. It has not yet been reviewed
+                        by a lawyer, and may change before TalkTherapy launches.
                     </p>
+                    <nav aria-label="On this page" class="mt-4">
+                        <ul class="flex flex-wrap gap-x-4 gap-y-1 text-gray-700">
+                            <li><a href="#who-we-are" class="underline hover:text-gray-900">Who we are</a></li>
+                            <li><a href="#what-we-collect" class="underline hover:text-gray-900">What we collect</a></li>
+                            <li><a href="#why" class="underline hover:text-gray-900">Why</a></li>
+                            <li><a href="#sharing" class="underline hover:text-gray-900">Who sees it</a></li>
+                            <li><a href="#confidential-messages" class="underline hover:text-gray-900">Confidential messages</a></li>
+                            <li><a href="#administrator-access" class="underline hover:text-gray-900">Administrators</a></li>
+                            <li><a href="#retention" class="underline hover:text-gray-900">How long we keep it</a></li>
+                            <li><a href="#cookies" class="underline hover:text-gray-900">Cookies</a></li>
+                            <li><a href="#rights" class="underline hover:text-gray-900">Your rights</a></li>
+                            <li><a href="#contact" class="underline hover:text-gray-900">Contact</a></li>
+                        </ul>
+                    </nav>
                 </header>
+
+                <section id="who-we-are" class="space-y-2">
+                    <h2 class="text-lg font-semibold text-gray-900">Who we are</h2>
+                    <p>
+                        TalkTherapy is run by <strong>TalkTherapy GH</strong>, in Ghana. TalkTherapy GH decides how your
+                        personal information is used and is responsible for it under Ghana's Data Protection Act, 2012
+                        (Act 843). You can reach us at
+                        <a :href="`mailto:${contactEmail}`" class="underline hover:text-gray-900">{{ contactEmail }}</a>.
+                    </p>
+                </section>
+
+                <section id="what-we-collect" class="space-y-2">
+                    <h2 class="text-lg font-semibold text-gray-900">What we collect</h2>
+                    <ul class="list-disc pl-5 space-y-1">
+                        <li><strong>Your account:</strong> your name, username, email address, password (stored only in scrambled form), country, gender and date of birth.</li>
+                        <li><strong>Your preferences:</strong> the languages, religions and concerns you choose, so we can suggest counsellors and therapies. Concerns and religion can say something about your health and beliefs, so please only share what you are comfortable with.</li>
+                        <li><strong>Your therapy:</strong> the therapies and groups you start or join, their sessions and topics, your messages and the files you attach, and the notes a counsellor keeps about sessions and messages.</li>
+                        <li><strong>Counsellors:</strong> your profile, and the licence and national ID documents you upload to be verified.</li>
+                        <li><strong>Age and identity checks:</strong> the documents you upload when asked to confirm your age or identity, and the details of a guardian who looks after a minor's account.</li>
+                        <li><strong>Payments:</strong> what was paid, by whom and for what. Card payments are handled by Paystack; we never see or store your full card number.</li>
+                        <li><strong>Technical information:</strong> the network address and time of your visits (deleted every day), and — when an administrator reads content — the device and network address they used.</li>
+                    </ul>
+                </section>
+
+                <section id="why" class="space-y-2">
+                    <h2 class="text-lg font-semibold text-gray-900">Why we use it</h2>
+                    <ul class="list-disc pl-5 space-y-1">
+                        <li><strong>To provide TalkTherapy</strong> — connecting you with counsellors, running therapies, sessions, chat and video, and handling payments — because you asked us to.</li>
+                        <li><strong>With your consent</strong> for anything sensitive you choose to share, such as your concerns, religion, and what you say in therapy. You can stop sharing it at any time.</li>
+                        <li><strong>To keep people safe</strong> — verifying counsellors, checking ages, reviewing complaints, suspending accounts, and keeping records of who accessed what.</li>
+                        <li><strong>To meet our legal obligations</strong>, such as keeping payment records.</li>
+                    </ul>
+                    <p>We do not sell your information, and we do not use it for advertising.</p>
+                </section>
+
+                <section id="sharing" class="space-y-2">
+                    <h2 class="text-lg font-semibold text-gray-900">Who sees it</h2>
+                    <ul class="list-disc pl-5 space-y-1">
+                        <li><strong>Your counsellors and the members of your groups</strong> see what you share in those therapies. In an anonymous therapy or group, your name is hidden from the others.</li>
+                        <li><strong>A guardian</strong> of a minor is told about, and can approve, parts of the minor's use of TalkTherapy.</li>
+                        <li><strong>Administrators</strong>, as described below.</li>
+                        <li>
+                            <strong>Service providers who work for us:</strong> Paystack (payments), Daily or Amazon Chime (video
+                            calls), an email delivery provider (emails), and the cloud servers TalkTherapy runs on. They may
+                            only use your information to provide that service to us.
+                        </li>
+                        <li><strong>Bunny Fonts</strong>, which serves the typeface our pages use, receives your network address when a page loads.</li>
+                        <li><strong>Authorities</strong>, only where the law requires it.</li>
+                    </ul>
+                </section>
 
                 <section id="confidential-messages" class="space-y-2">
                     <h2 class="text-lg font-semibold text-gray-900">Confidential messages</h2>
@@ -67,6 +134,22 @@ import ApplicationLogo from '@/Components/ApplicationLogo.vue'
                     </p>
                 </section>
 
+                <section id="retention" class="space-y-2">
+                    <h2 class="text-lg font-semibold text-gray-900">How long we keep it</h2>
+                    <ul class="list-disc pl-5 space-y-1">
+                        <li>Your account, preferences and therapy content are kept while your account is open.</li>
+                        <li>
+                            Deleting your account closes it: it can no longer be used or seen by others. Today, the information
+                            in a closed account — your details, preferences, messages and therapies — is kept; it is not yet
+                            deleted automatically. If you want it erased, email us and we will delete or anonymise it,
+                            except the records below, which we keep to account for what happened.
+                        </li>
+                        <li>Payment records, complaint and suspension records, and records of administrators' access are kept even after an account is closed.</li>
+                        <li>Records of administrators reading content are kept permanently and can't be changed.</li>
+                        <li>Verification and identity documents are deleted on the schedule below.</li>
+                    </ul>
+                </section>
+
                 <section id="documents" class="space-y-2">
                     <h2 class="text-lg font-semibold text-gray-900">Verification documents</h2>
                     <ul class="list-disc pl-5 space-y-1">
@@ -92,6 +175,47 @@ import ApplicationLogo from '@/Components/ApplicationLogo.vue'
                         <li>A suspended counsellor's clients are told the counsellor is unavailable — not why.</li>
                         <li>Suspension records, and what happened to them, are kept.</li>
                     </ul>
+                </section>
+                <section id="cookies" class="space-y-2">
+                    <h2 class="text-lg font-semibold text-gray-900">Cookies</h2>
+                    <p>
+                        We only use the cookies TalkTherapy needs to work: one that keeps you signed in, one that protects
+                        your forms from being submitted by other websites, and, if you tick "Remember me", one that keeps
+                        you signed in between visits. We don't use advertising or tracking cookies.
+                    </p>
+                </section>
+
+                <section id="rights" class="space-y-2">
+                    <h2 class="text-lg font-semibold text-gray-900">Your rights</h2>
+                    <p>Under Ghana's Data Protection Act, you can ask us to:</p>
+                    <ul class="list-disc pl-5 space-y-1">
+                        <li>tell you what personal information we hold about you, and give you a copy;</li>
+                        <li>correct it if it is wrong;</li>
+                        <li>delete it, unless we have to keep it (see above);</li>
+                        <li>stop using it for a particular purpose.</li>
+                    </ul>
+                    <p>
+                        Email us to ask. If you're not happy with our answer, you can complain to Ghana's Data Protection
+                        Commission.
+                    </p>
+                </section>
+
+                <section id="children" class="space-y-2">
+                    <h2 class="text-lg font-semibold text-gray-900">Children</h2>
+                    <p>
+                        Someone under 18 needs a guardian on TalkTherapy for some things, such as video calls. Their
+                        guardian is told about their therapies and suspensions, and can approve requests on their behalf.
+                    </p>
+                </section>
+
+                <section id="contact" class="space-y-2">
+                    <h2 class="text-lg font-semibold text-gray-900">Contact and changes</h2>
+                    <p>
+                        Questions about this policy or your information:
+                        <a :href="`mailto:${contactEmail}`" class="underline hover:text-gray-900">{{ contactEmail }}</a>
+                        (TalkTherapy GH, Ghana). If we change this policy in a way that matters, we'll say so on this page
+                        before the change takes effect.
+                    </p>
                 </section>
             </article>
         </div>

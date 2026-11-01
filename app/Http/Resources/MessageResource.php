@@ -51,8 +51,7 @@ class MessageResource extends JsonResource
 
         // SCRUM-195 (security review): the recipient's id gets the same masking as the sender's --
         // a counsellor writing to an anonymous member must not reveal that member's real user id to
-        // the rest of the group. `recipientMasked` lets the recipient's own client still recognise
-        // a redacted confidential broadcast as possibly theirs (see resolveBroadcastMessage.js).
+        // the rest of the group.
         $toUser = $message->to_type === User::class ? $message->to : null;
         $isAnonymousRecipient = $toUser
             && $message->for instanceof Session
@@ -60,7 +59,7 @@ class MessageResource extends JsonResource
             && ! $toUser->is($viewer);
         $toId = $isAnonymousRecipient ? null : $message->recipientUserId();
         $recipient = $isAnonymousRecipient
-            ? ['toUserId' => null, 'recipientMasked' => true]
+            ? ['toUserId' => null]
             : ['toUserId' => $toId];
 
         if ($message->deleted_at) {

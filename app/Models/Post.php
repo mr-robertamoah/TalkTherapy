@@ -11,10 +11,10 @@ use Illuminate\Database\Eloquent\Relations\MorphToMany;
 
 class Post extends Model
 {
-    use HasFactory,
-    Likeable,
-    Commentable,
-    Starreable;
+    use Commentable,
+        HasFactory,
+        Likeable,
+        Starreable;
 
     protected $fillable = ['content'];
 
@@ -30,7 +30,7 @@ class Post extends Model
 
     public function scopeWhereLike($query, string $like)
     {
-        return $query->where('content', 'LIKE', "%{$like}%");
+        return $query->whereContains('content', (string) $like);
     }
 
     public function scopeWhereAddedby($query, Counsellor|User $addedby)
