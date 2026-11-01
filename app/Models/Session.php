@@ -298,7 +298,7 @@ class Session extends Model
 
     public function scopeWhereNameLike($query, $name)
     {
-        return $query->where('name', 'LIKE', "%{$name}%");
+        return $query->whereContains('name', (string) $name);
     }
 
     public function scopeWhereOnline($query)

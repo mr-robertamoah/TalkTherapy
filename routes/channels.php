@@ -9,6 +9,7 @@ use App\Models\Session;
 use App\Models\Therapy;
 use App\Models\User;
 use App\Services\MessageService;
+use App\Support\AdminBypass;
 use Illuminate\Support\Facades\Broadcast;
 
 /*
@@ -113,8 +114,14 @@ Broadcast::channel('discussions.{discussionId}', function ($user, $discussionId)
 // SCRUM-195: whoever may see the message at all -- the same rule as api.messages.show and
 // message replies (MessageService::userCanSeeMessage), so live edits/deletes reach every viewer of
 // the message. The payload is restricted for everyone (MessageBroadcastTrait), never per-viewer.
+// SCRUM-365: not an administrator who could only see it as an administrator -- those reads are
+// recorded (SCRUM-360) and a subscription isn't, so admins fetch instead of listening.
 Broadcast::channel('messages.{messageId}', function ($user, $messageId) {
     $message = Message::withTrashed()->find($messageId);
+
+    if ($message && $user->isAdmin() && ! $message->isParty($user) && AdminBypass::applies($user, AdminBypass::contextOf($message))) {
+        return false;
+    }
 
     return $message
         && ($message->isParty($user) || MessageService::new()->userCanSeeMessage($message, $user));

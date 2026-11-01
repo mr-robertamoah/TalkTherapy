@@ -100,7 +100,7 @@
 <script setup>
 import useModal from '@/Composables/useModal';
 import { usePage } from '@inertiajs/vue3';
-import { computed, onBeforeUnmount, ref, watch, watchEffect } from 'vue';
+import { computed, getCurrentInstance, onBeforeUnmount, ref, watch, watchEffect } from 'vue';
 import SessionModal from './SessionModal.vue';
 import MiniModal from './MiniModal.vue';
 import PrimaryButton from './PrimaryButton.vue';
@@ -171,6 +171,10 @@ const props = defineProps({
 
 const mainSession = ref(null)
 const loading = ref(false)
+// SCRUM-366: each live message is now fetched, so only fetch when a parent actually listens for
+// it (DiscussionModal's badges don't), and subscribe to a session's channel once.
+const hasMessageListener = !!getCurrentInstance()?.vnode.props?.onOnMessageCreated
+let subscribedSessionId = null
 
 onBeforeUnmount(() => {
     if (props.listen)
@@ -183,13 +187,15 @@ watchEffect(() => {
     if (!user || !props.listen || !props.session?.id) return
 
     mainSession.value = {...props.session}
-    const enqueueMessage = createBroadcastMessageQueue(user?.id)
+    if (subscribedSessionId === props.session.id) return
+    subscribedSessionId = props.session.id
+    const enqueueMessage = createBroadcastMessageQueue()
 
     Echo
         .private(`sessions.${props.session.id}`)
         .listen('.message.created', (data) => {
             console.log(data, 'message created');
-            if (data.message?.fromUserId == user?.id)
+            if (!hasMessageListener || data.message?.fromUserId == user?.id)
                 return
 
             enqueueMessage(data.message, (message) => emits('onMessageCreated', message))

@@ -23,23 +23,29 @@ class HowTo extends Model
 
     public function scopeWhereNameLike($query, ?string $name)
     {
-        if (is_null($name)) $name = '';
-        return $query->where('name', "LIKE", "%{$name}%");
+        if (is_null($name)) {
+            $name = '';
+        }
+
+        return $query->whereContains('name', (string) $name);
     }
 
     public function scopeWherePageLike($query, ?string $page)
     {
-        if (is_null($page)) $page = '';
-        return $query->where('page', "LIKE", "%{$page}%");
+        if (is_null($page)) {
+            $page = '';
+        }
+
+        return $query->whereContains('page', (string) $page);
     }
 
     public function scopeWhereAll($query)
     {
-        return $query->where('page', "all");
+        return $query->where('page', 'all');
     }
 
     public function scopeOrWhereAll($query)
     {
-        return $query->orWhere('page', "all");
+        return $query->orWhere('page', 'all');
     }
 }

@@ -105,7 +105,7 @@ class UserService extends Service
             return [];
         }
 
-        $query = User::query();
+        $query = User::query()->with('administrator');
 
         $query->whereNot('id', $getModelsForAdminDTO->user->id);
 

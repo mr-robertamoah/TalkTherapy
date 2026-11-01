@@ -17,14 +17,32 @@ trait MessageBroadcastTrait
         return "discussions.{$message->for_id}";
     }
 
-    // One payload for every subscriber of a shared channel, so it is MessageResource's own view for
-    // NO viewer (SCRUM-195) -- by construction the most restricted one: a confidential message never
-    // carries its content, files or replied-to content, and anonymous sender/recipient ids are
-    // masked. A confidential message's parties fetch the full message from api.messages.show
-    // (resolveBroadcastMessage.js). Note toOthers() only skips the sending socket: the sender's
-    // other tabs get this restricted view of their own message too.
-    public function getMessageBroadcastData(Message $message)
+    // SCRUM-366/SCRUM-271: a new or edited message is announced, never delivered -- the payload is
+    // just its id and the (already masked, SCRUM-195) sender id, so each page can skip its own
+    // messages. Every page then fetches the message from api.messages.show
+    // (resolveBroadcastMessage.js), which applies all the per-viewer rules of a page load: a
+    // suspended account (403), a participant who hasn't paid a strict-gated therapy, or anyone who
+    // may no longer see it gets nothing. A websocket subscription that outlives someone's access
+    // therefore learns only that a message arrived, never what it says.
+    public function getMessageBroadcastData(Message $message): array
     {
+        return [
+            'id' => $message->id,
+            'fromUserId' => MessageResource::present($message, null)['fromUserId'] ?? null,
+            // Always true: it tells the page "fetch me". Never send content alongside it.
+            'withheld' => true,
+        ];
+    }
+
+    // A message deleted for everyone: its "deleted" shape carries no content (MessageResource), so
+    // it is sent as it is -- there is nothing to fetch.
+    public function getDeletedMessageBroadcastData(Message $message): array
+    {
+        // Never content: a message that isn't actually deleted is only announced.
+        if (! $message->deleted_at) {
+            return $this->getMessageBroadcastData($message);
+        }
+
         return MessageResource::present($message, null);
     }
 }

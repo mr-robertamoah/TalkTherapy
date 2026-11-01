@@ -28,7 +28,7 @@ class Contact extends Model
         return $query
             ->when($like, function ($query) use ($like) {
                 $query
-                    ->where('content', 'LIKE', "%{$like}%");
+                    ->whereContains('content', (string) $like);
             });
     }
 
@@ -37,7 +37,7 @@ class Contact extends Model
         return $query
             ->when($name, function ($query) use ($name) {
                 $query
-                    ->where('name', 'LIKE', "%{$name}%");
+                    ->whereContains('name', (string) $name);
             });
     }
 
@@ -46,7 +46,7 @@ class Contact extends Model
         return $query
             ->when($organisation, function ($query) use ($organisation) {
                 $query
-                    ->where('organisation', 'LIKE', "%{$organisation}%");
+                    ->whereContains('organisation', (string) $organisation);
             });
     }
 }

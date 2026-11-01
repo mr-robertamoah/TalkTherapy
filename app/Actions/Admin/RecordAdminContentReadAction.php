@@ -7,9 +7,9 @@ use App\Models\AdminContentAccess;
 use App\Models\Discussion;
 use App\Models\GroupTherapy;
 use App\Models\Message;
-use App\Models\Session;
 use App\Models\Therapy;
 use App\Models\User;
+use App\Support\AdminBypass;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Cache;
 
@@ -37,13 +37,11 @@ class RecordAdminContentReadAction extends Action
             return;
         }
 
-        // A single message (or its replies, or a file on it): its therapy or discussion.
         if ($subject instanceof Message && ! $context) {
-            $for = $subject->for;
-            $context = $for instanceof Session ? $for->for : ($for instanceof Discussion ? $for : null);
+            $context = AdminBypass::contextOf($subject);
         }
 
-        if (! $this->isBypass($viewer, $context, $owner)) {
+        if (! AdminBypass::applies($viewer, $context, $owner)) {
             return;
         }
 
@@ -61,18 +59,5 @@ class RecordAdminContentReadAction extends Action
             'ip' => request()?->ip(),
             'user_agent' => ($agent = request()?->userAgent()) ? mb_substr($agent, 0, 512) : null,
         ]);
-    }
-
-    private function isBypass(User $admin, Therapy|GroupTherapy|Discussion|null $context, ?User $owner): bool
-    {
-        if ($owner) {
-            return ! $owner->is($admin);
-        }
-
-        return match (true) {
-            $context instanceof Discussion => $context->isNotParticipant($admin->counsellor),
-            $context instanceof Therapy, $context instanceof GroupTherapy => ! $context->public && $context->isNotParticipant($admin),
-            default => true,
-        };
     }
 }

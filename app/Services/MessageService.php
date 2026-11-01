@@ -36,7 +36,6 @@ use App\Models\Message;
 use App\Models\Session;
 use App\Models\User;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
-use Illuminate\Support\Facades\DB;
 
 /**
  * Class MessageService
@@ -82,7 +81,9 @@ class MessageService extends Service
 
         $query = $getSessionMessagesDTO->session->messages()
             ->withTrashed()
-            ->with(['therapyTopic', 'from'])
+            // SCRUM-205: MessageResource reads files, the replied-to message and the recipient of
+            // every row -- loaded in batches, not one query per message.
+            ->with(['therapyTopic', 'from', 'to', 'files', 'replying'])
             // Scoped to the requesting counsellor's own id -- never eager-loaded at all for a
             // client viewer, so their message list never even queries message_notes
             // (SCRUM-203/TT-2.3b; isolation guarantee mirrors GetOwnMessageNoteAction's own
@@ -98,12 +99,6 @@ class MessageService extends Service
             })
             ->when($getSessionMessagesDTO->replyId, function ($query) use ($getSessionMessagesDTO) {
                 $query->whereReplyId($getSessionMessagesDTO->replyId);
-            })
-            ->when($getSessionMessagesDTO->groupBy, function ($query) {
-                $query
-                    ->leftJoin('therapy_topics', 'messages.therapy_topic_id', '=', 'therapy_topic.id')
-                    ->select('messages.*', DB::raw('COALESCE(therapy_topic.name, "No Topic") as topic_name'))
-                    ->groupBy('topic_name');
             });
 
         // Every message here is scoped through this single session (session->messages()), so
@@ -153,6 +148,7 @@ class MessageService extends Service
 
         $query = $getDiscussionMessagesDTO->discussion->messages()
             ->withTrashed()
+            ->with(['from', 'to', 'files', 'replying'])
             ->when($user->counsellor, function ($query) use ($user) {
                 $query->with(['notes' => fn ($q) => $q->where('counsellor_id', $user->counsellor->id)]);
             })
@@ -210,25 +206,19 @@ class MessageService extends Service
             // creates one for a GroupTherapy, so `for.for` is a Therapy in practice today --
             // if that ever changes, this eager-load also needs GroupTherapy's `users` pivot
             // (see Session::isAnonymousFor()) to avoid reintroducing this same N+1.
-            ->with(['for.for', 'from'])
+            ->with(['for.for', 'from', 'to', 'files', 'replying'])
             ->when($user->counsellor, function ($query) use ($user) {
                 $query->with(['notes' => fn ($q) => $q->where('counsellor_id', $user->counsellor->id)]);
             })
             ->when($getTherapyTopicMessagesDTO->like, function ($query) use ($getTherapyTopicMessagesDTO, $user) {
                 $query->whereLike($getTherapyTopicMessagesDTO->like, $user);
             })
+            // SCRUM-209: messages have no session_id column -- they belong to a session through for_*.
             ->when($getTherapyTopicMessagesDTO->sessionId, function ($query) use ($getTherapyTopicMessagesDTO) {
-                $query->whereSessionId($getTherapyTopicMessagesDTO->sessionId);
+                $query->where('messages.for_type', Session::class)->where('messages.for_id', $getTherapyTopicMessagesDTO->sessionId);
             })
             ->when($getTherapyTopicMessagesDTO->replyId, function ($query) use ($getTherapyTopicMessagesDTO) {
                 $query->whereReplyId($getTherapyTopicMessagesDTO->replyId);
-            })
-            ->when($getTherapyTopicMessagesDTO->groupBy, function ($query) {
-                $query
-                    ->where('for_type', Session::class)
-                    ->leftJoin('sessions', 'messages.for_id', '=', 'session.id')
-                    ->select('messages.*', DB::raw('COALESCE(session.name, "No Session") as session_name'))
-                    ->groupBy('session_name');
             });
 
         $messages = $query->latest()->paginate(PaginationEnum::preferencesPagination->value);
@@ -265,6 +255,10 @@ class MessageService extends Service
 
         // SCRUM-360
         RecordAdminContentReadAction::new()->execute($user, AdminContentAccess::MESSAGE, $message);
+
+        // SCRUM-366: every live message is fetched here, once per open page -- load what the
+        // resource reads in one go.
+        $message->loadMissing(['from', 'to', 'files', 'replying']);
 
         return new MessageResource($message);
     }

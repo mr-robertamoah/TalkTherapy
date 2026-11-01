@@ -1,7 +1,10 @@
+{{-- SECURITY (SCRUM-254/366): user text goes through App\Support\MailText and secured Markdown
+     encoding. If this published template is ever re-published or replaced, keep MailText::inline
+     on the greeting and every line -- tests/Unit/MailMarkdownInjectionTest.php will fail if not. --}}
 <x-mail::message>
 {{-- Greeting --}}
 @if (! empty($greeting))
-# {{ $greeting }}
+# {{ \App\Support\MailText::inline($greeting) }}
 @else
 @if ($level === 'error')
 # @lang('Whoops!')
@@ -12,7 +15,7 @@
 
 {{-- Intro Lines --}}
 @foreach ($introLines as $line)
-{{ $line }}
+{{ \App\Support\MailText::inline($line) }}
 
 @endforeach
 
@@ -31,13 +34,13 @@
 
 {{-- Outro Lines --}}
 @foreach ($outroLines as $line)
-{{ $line }}
+{{ \App\Support\MailText::inline($line) }}
 
 @endforeach
 
 {{-- Salutation --}}
 @if (! empty($salutation))
-{{ $salutation }}
+{{ \App\Support\MailText::inline($salutation) }}
 @else
 @lang('Regards'),<br>
 {{ config('app.name') }}

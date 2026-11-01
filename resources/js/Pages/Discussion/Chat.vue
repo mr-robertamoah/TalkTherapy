@@ -132,7 +132,7 @@ function listenToMessages() {
 
   listening.value = true;
   let userId = computedUser.value?.id;
-  const enqueueMessage = createBroadcastMessageQueue(userId);
+  const enqueueMessage = createBroadcastMessageQueue();
 
   // Independent join from DiscussionModal.vue's own presence join for this same channel --
   // this page has its own lifecycle, so it listens for `.message.created` on its own rather

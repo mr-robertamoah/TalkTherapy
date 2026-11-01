@@ -72,6 +72,12 @@ function formatDate(value) {
                     class="text-sm text-gray-700 underline hover:text-gray-900"
                     @click="() => filter({ admin: null })"
                 >show every administrator</button>
+                <button
+                    v-if="filters.subject"
+                    type="button"
+                    class="text-sm text-gray-700 underline hover:text-gray-900"
+                    @click="() => filter({ subject: null, subject_id: null })"
+                >show everything read, not just {{ filters.subject }} #{{ filters.subject_id }}</button>
             </div>
 
             <div class="bg-white shadow-sm border border-gray-200 sm:rounded-lg p-6">
@@ -101,7 +107,13 @@ function formatDate(value) {
                                     <span v-if="access.page && access.page > 1" class="text-gray-500">(page {{ access.page }})</span>
                                 </td>
                                 <td class="py-3 pr-4">
-                                    {{ access.subject }}
+                                    <button
+                                        v-if="access.subjectKey"
+                                        type="button"
+                                        class="underline text-gray-800 hover:text-gray-900"
+                                        @click="() => filter({ subject: access.subjectKey, subject_id: access.subjectId })"
+                                    >{{ access.subject }}</button>
+                                    <template v-else>{{ access.subject }}</template>
                                     <span v-if="access.fileId" class="text-gray-500">· file #{{ access.fileId }}</span>
                                 </td>
                                 <td class="py-3 text-gray-500">{{ access.ip ?? '--' }}</td>
