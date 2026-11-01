@@ -220,7 +220,7 @@ class DiscussionService extends Service
         $query->where(function ($query) use ($counsellor, $getDiscussionsDTO) {
 
             if ($getDiscussionsDTO->name) {
-                $query->where('name', 'LIKE', "%{$getDiscussionsDTO->name}%");
+                $query->whereContains('name', $getDiscussionsDTO->name);
             }
 
             if ($getDiscussionsDTO->for) {
@@ -233,7 +233,7 @@ class DiscussionService extends Service
         $query->orWhere(function ($query) use ($counsellor, $getDiscussionsDTO) {
 
             if ($getDiscussionsDTO->name) {
-                $query->where('name', 'LIKE', "%{$getDiscussionsDTO->name}%");
+                $query->whereContains('name', $getDiscussionsDTO->name);
             }
 
             if ($getDiscussionsDTO->for) {

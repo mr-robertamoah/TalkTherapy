@@ -46,7 +46,7 @@
           <h4 class="text-white font-semibold mb-4">Support</h4>
           <ul class="space-y-2">
             <li><a href="#" class="text-gray-400 hover:text-white transition-colors">Help Center</a></li>
-            <li><a href="#" class="text-gray-400 hover:text-white transition-colors">Privacy Policy</a></li>
+            <li><Link :href="route('privacy')" class="text-gray-400 hover:text-white transition-colors">Privacy</Link></li>
             <li><a href="#" class="text-gray-400 hover:text-white transition-colors">Terms of Service</a></li>
             <li><button @click="$emit('contact-us')" class="text-gray-400 hover:text-white transition-colors text-left">Contact Us</button></li>
           </ul>

@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Actions\Admin\RecordAdminContentReadAction;
 use App\Actions\Message\CreateMessageAction;
 use App\Actions\Message\DeleteMessageAction;
 use App\Actions\Message\DeleteMessageForMeAction;
@@ -9,6 +10,7 @@ use App\Actions\Message\EnsureCanDeleteMessageForSelfAction;
 use App\Actions\Message\EnsureCanSendMessageToForAction;
 use App\Actions\Message\EnsureCanSendMessageToRecepientAction;
 use App\Actions\Message\EnsureCanUpdateMessageAction;
+use App\Actions\Message\EnsureConfidentialMessageHasRecipientAction;
 use App\Actions\Message\EnsureIsFromUserAction;
 use App\Actions\Message\EnsureMessageDataIsValidAction;
 use App\Actions\Message\EnsureMessageExistsAction;
@@ -27,6 +29,7 @@ use App\Events\MessageDeletedEvent;
 use App\Events\MessageSentEvent;
 use App\Events\MessageUpdatedEvent;
 use App\Http\Resources\MessageResource;
+use App\Models\AdminContentAccess;
 use App\Models\Discussion;
 use App\Models\GroupTherapy;
 use App\Models\Message;
@@ -87,8 +90,8 @@ class MessageService extends Service
             ->when($user->counsellor, function ($query) use ($user) {
                 $query->with(['notes' => fn ($q) => $q->where('counsellor_id', $user->counsellor->id)]);
             })
-            ->when($getSessionMessagesDTO->like, function ($query) use ($getSessionMessagesDTO) {
-                $query->whereLike($getSessionMessagesDTO->like);
+            ->when($getSessionMessagesDTO->like, function ($query) use ($getSessionMessagesDTO, $user) {
+                $query->whereLike($getSessionMessagesDTO->like, $user);
             })
             ->when($getSessionMessagesDTO->topicId, function ($query) use ($getSessionMessagesDTO) {
                 $query->whereTherapyTopicId($getSessionMessagesDTO->topicId);
@@ -117,6 +120,9 @@ class MessageService extends Service
             PaginationEnum::preferencesPagination->value
         );
         $messages->getCollection()->each(fn (Message $message) => $message->setRelation('for', $session));
+
+        // SCRUM-360
+        RecordAdminContentReadAction::new()->execute($user, AdminContentAccess::SESSION_MESSAGES, $session, $session->for, page: $messages->currentPage());
 
         return MessageResource::collection($messages);
     }
@@ -150,16 +156,19 @@ class MessageService extends Service
             ->when($user->counsellor, function ($query) use ($user) {
                 $query->with(['notes' => fn ($q) => $q->where('counsellor_id', $user->counsellor->id)]);
             })
-            ->when($getDiscussionMessagesDTO->like, function ($query) use ($getDiscussionMessagesDTO) {
-                $query->whereLike($getDiscussionMessagesDTO->like);
+            ->when($getDiscussionMessagesDTO->like, function ($query) use ($getDiscussionMessagesDTO, $user) {
+                $query->whereLike($getDiscussionMessagesDTO->like, $user);
             })
             ->when($getDiscussionMessagesDTO->replyId, function ($query) use ($getDiscussionMessagesDTO) {
                 $query->whereReplyId($getDiscussionMessagesDTO->replyId);
             });
 
-        return MessageResource::collection($query->latest()->paginate(
-            PaginationEnum::preferencesPagination->value
-        ));
+        $messages = $query->latest()->paginate(PaginationEnum::preferencesPagination->value);
+
+        // SCRUM-360
+        RecordAdminContentReadAction::new()->execute($user, AdminContentAccess::DISCUSSION_MESSAGES, $getDiscussionMessagesDTO->discussion, $getDiscussionMessagesDTO->discussion, page: $messages->currentPage());
+
+        return MessageResource::collection($messages);
     }
 
     /**
@@ -205,8 +214,8 @@ class MessageService extends Service
             ->when($user->counsellor, function ($query) use ($user) {
                 $query->with(['notes' => fn ($q) => $q->where('counsellor_id', $user->counsellor->id)]);
             })
-            ->when($getTherapyTopicMessagesDTO->like, function ($query) use ($getTherapyTopicMessagesDTO) {
-                $query->whereLike($getTherapyTopicMessagesDTO->like);
+            ->when($getTherapyTopicMessagesDTO->like, function ($query) use ($getTherapyTopicMessagesDTO, $user) {
+                $query->whereLike($getTherapyTopicMessagesDTO->like, $user);
             })
             ->when($getTherapyTopicMessagesDTO->sessionId, function ($query) use ($getTherapyTopicMessagesDTO) {
                 $query->whereSessionId($getTherapyTopicMessagesDTO->sessionId);
@@ -222,9 +231,12 @@ class MessageService extends Service
                     ->groupBy('session_name');
             });
 
-        return MessageResource::collection($query->latest()->paginate(
-            PaginationEnum::preferencesPagination->value
-        ));
+        $messages = $query->latest()->paginate(PaginationEnum::preferencesPagination->value);
+
+        // SCRUM-360
+        RecordAdminContentReadAction::new()->execute($user, AdminContentAccess::TOPIC_MESSAGES, $getTherapyTopicMessagesDTO->topic, $therapy, page: $messages->currentPage());
+
+        return MessageResource::collection($messages);
     }
 
     public function getMessageReplies(?Message $message, ?User $user)
@@ -234,10 +246,12 @@ class MessageService extends Service
         }
 
         $query = $message->replies()->withTrashed();
+        $replies = $query->latest()->paginate(PaginationEnum::preferencesPagination->value);
 
-        return MessageResource::collection($query->latest()->paginate(
-            PaginationEnum::preferencesPagination->value
-        ));
+        // SCRUM-360
+        RecordAdminContentReadAction::new()->execute($user, AdminContentAccess::MESSAGE_REPLIES, $message, page: $replies->currentPage());
+
+        return MessageResource::collection($replies);
     }
 
     // SCRUM-195: one message, through MessageResource's own per-viewer rules (confidential
@@ -248,6 +262,9 @@ class MessageService extends Service
         if (! $message || ! $this->userCanSeeMessage($message, $user)) {
             return null;
         }
+
+        // SCRUM-360
+        RecordAdminContentReadAction::new()->execute($user, AdminContentAccess::MESSAGE, $message);
 
         return new MessageResource($message);
     }
@@ -319,6 +336,8 @@ class MessageService extends Service
 
         EnsureCanSendMessageToRecepientAction::new()->execute($createMessageDTO);
 
+        EnsureConfidentialMessageHasRecipientAction::new()->execute($createMessageDTO);
+
         EnsureMessageDataIsValidAction::new()->execute($createMessageDTO);
 
         EnsureReplyIsInSameConversationAction::new()->execute($createMessageDTO);
@@ -342,6 +361,8 @@ class MessageService extends Service
         $this->ensureNotWritingAsSuspendedCounsellor($createMessageDTO->user, $createMessageDTO->message?->for);
 
         EnsureMessageDataIsValidAction::new()->execute($createMessageDTO, true);
+
+        EnsureConfidentialMessageHasRecipientAction::new()->execute($createMessageDTO);
 
         EnsureReplyIsInSameConversationAction::new()->execute($createMessageDTO);
 

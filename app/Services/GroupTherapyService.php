@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Actions\Admin\RecordAdminContentReadAction;
 use App\Actions\GroupTherapy\CreateGroupTherapyAction;
 use App\Actions\GroupTherapy\EnsureCanSetGroupTherapyPaymentGateAction;
 use App\Actions\GroupTherapy\EnsureGroupTherapyCanBecomeAnonymousAction;
@@ -28,6 +29,7 @@ use App\DTOs\JoinGroupTherapyDTO;
 use App\DTOs\TherapyAssistanceRequestDTO;
 use App\Enums\PaginationEnum;
 use App\Enums\StarTypeEnum;
+use App\Models\AdminContentAccess;
 use App\Models\Counsellor;
 use App\Models\GroupTherapy;
 use App\Models\User;
@@ -171,6 +173,9 @@ class GroupTherapyService extends Service
             $getTherapyDTO,
             'groupTherapy'
         );
+
+        // SCRUM-360 (security review)
+        RecordAdminContentReadAction::new()->execute($getTherapyDTO->user, AdminContentAccess::THERAPY, $getTherapyDTO->groupTherapy, $getTherapyDTO->groupTherapy);
 
         // TODO load relationships for efficiency
         return $getTherapyDTO->groupTherapy;

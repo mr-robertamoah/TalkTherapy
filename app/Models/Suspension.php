@@ -106,6 +106,8 @@ class Suspension extends Model
             'canAppeal' => $this->canBeAppealed(),
             'appealedAt' => $this->appealed_at,
             'appealDecision' => $this->appeal_decision?->value,
+            // SCRUM-363: their payouts are held -- the page says so.
+            'isCounsellor' => (bool) $this->user?->counsellor,
         ];
     }
 }

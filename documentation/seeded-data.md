@@ -365,3 +365,11 @@ Try it as `mr_robertamoah`: open `/administrator/reports?status=resolved`, open 
 "ready to suspend" report and suspend the counsellor; or go to `/administrator/suspensions` to
 decide the appeal or lift a suspension. See
 `documentation/features/scrum-359-362-suspension-and-report-hardening.md`.
+
+## Admin read log (SCRUM-360)
+
+Three entries by `mr_robertamoah` (reading "Report Demo Session"'s messages, a message's replies,
+and a licence document when one is seeded), so `/administrator/content-accesses` has something to
+show. Reading any private therapy you aren't part of adds more. `suspension_demo_normal_admin` can't
+open the page. See
+`documentation/features/scrum-360-361-363-316-254-admin-read-log-privacy-and-suspension-followups.md`.

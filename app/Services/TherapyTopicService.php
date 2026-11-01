@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Actions\Star\CreateStarAction;
+use App\Actions\Suspension\EnsureTherapyCounsellorIsAvailableAction;
 use App\Actions\Therapy\EnsureTherapyExistsAction;
 use App\Actions\TherapyTopic\CreateTherapyTopicAction;
 use App\Actions\TherapyTopic\DeleteTherapyTopicAction;
@@ -17,6 +18,8 @@ use App\DTOs\GetTherapyTopicsDTO;
 use App\Enums\PaginationEnum;
 use App\Enums\StarTypeEnum;
 use App\Http\Resources\TherapyTopicResource;
+use App\Models\GroupTherapy;
+use App\Models\Therapy;
 use App\Models\User;
 
 class TherapyTopicService extends Service
@@ -56,6 +59,9 @@ class TherapyTopicService extends Service
 
         EnsureCanCreateTherapyTopicAction::new()->execute($createTherapyTopicDTO);
 
+        // SCRUM-363: a suspended counsellor can read topics but not change them.
+        EnsureTherapyCounsellorIsAvailableAction::new()->execute($createTherapyTopicDTO->user, $createTherapyTopicDTO->therapy, includeTarget: false);
+
         EnsureDataIsValidAction::new()->execute($createTherapyTopicDTO);
 
         $topic = CreateTherapyTopicAction::new()->execute($createTherapyTopicDTO);
@@ -78,6 +84,8 @@ class TherapyTopicService extends Service
 
         EnsureCanUpdateTherapyTopicAction::new()->execute($createTherapyTopicDTO);
 
+        $this->ensureCounsellorAvailable($createTherapyTopicDTO);
+
         EnsureDataIsValidAction::new()->execute($createTherapyTopicDTO);
 
         return UpdateTherapyTopicAction::new()->execute($createTherapyTopicDTO);
@@ -89,6 +97,19 @@ class TherapyTopicService extends Service
 
         EnsureCanUpdateTherapyTopicAction::new()->execute($createTherapyTopicDTO);
 
+        $this->ensureCounsellorAvailable($createTherapyTopicDTO);
+
         return DeleteTherapyTopicAction::new()->execute($createTherapyTopicDTO);
+    }
+
+    private function ensureCounsellorAvailable(CreateTherapyTopicDTO $dto): void
+    {
+        $therapy = $dto->therapyTopic?->topicable;
+
+        EnsureTherapyCounsellorIsAvailableAction::new()->execute(
+            $dto->user,
+            $therapy instanceof Therapy || $therapy instanceof GroupTherapy ? $therapy : null,
+            includeTarget: false,
+        );
     }
 }

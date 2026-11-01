@@ -12,6 +12,7 @@ use App\Actions\MessageNote\EnsureMessageExistsAction;
 use App\Actions\MessageNote\EnsureMessageNoteExistsAction;
 use App\Actions\MessageNote\GetOwnMessageNoteAction;
 use App\Actions\MessageNote\UpdateMessageNoteAction;
+use App\Actions\Suspension\EnsureCanActAsCounsellorAction;
 use App\DTOs\CreateMessageNoteDTO;
 use App\Models\MessageNote;
 
@@ -39,6 +40,9 @@ class MessageNoteService extends Service
 
         EnsureCanCreateMessageNoteAction::new()->execute($dto);
 
+        // SCRUM-363: notes are counsellor work; a suspended counsellor can still read theirs.
+        EnsureCanActAsCounsellorAction::new()->execute($dto->counsellor ?? $dto->user?->counsellor);
+
         return CreateMessageNoteAction::new()->execute($dto);
     }
 
@@ -48,6 +52,9 @@ class MessageNoteService extends Service
 
         EnsureCanUpdateMessageNoteAction::new()->execute($dto);
 
+        // SCRUM-363: notes are counsellor work; a suspended counsellor can still read theirs.
+        EnsureCanActAsCounsellorAction::new()->execute($dto->counsellor ?? $dto->user?->counsellor);
+
         return UpdateMessageNoteAction::new()->execute($dto);
     }
 
@@ -56,6 +63,9 @@ class MessageNoteService extends Service
         EnsureMessageNoteExistsAction::new()->execute($dto);
 
         EnsureCanDeleteMessageNoteAction::new()->execute($dto);
+
+        // SCRUM-363: notes are counsellor work; a suspended counsellor can still read theirs.
+        EnsureCanActAsCounsellorAction::new()->execute($dto->counsellor ?? $dto->user?->counsellor);
 
         return DeleteMessageNoteAction::new()->execute($dto);
     }

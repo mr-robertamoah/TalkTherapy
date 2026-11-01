@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Actions\Admin\RecordAdminContentReadAction;
 use App\Actions\Request\SendTherapyAssistanceRequestAction;
 use App\Actions\Star\CreateStarAction;
 use App\Actions\Suspension\EnsureCanActAsCounsellorAction;
@@ -32,6 +33,7 @@ use App\DTOs\GuardianAlertDTO;
 use App\DTOs\TherapyAssistanceRequestDTO;
 use App\Enums\PaginationEnum;
 use App\Enums\StarTypeEnum;
+use App\Models\AdminContentAccess;
 use App\Models\GroupTherapy;
 use App\Models\Therapy;
 use App\Models\User;
@@ -150,6 +152,9 @@ class TherapyService extends Service
         EnsureTherapyExistsAction::new()->execute($getTherapyDTO);
 
         EnsureUserHasAccessToTherapyAction::new()->execute($getTherapyDTO);
+
+        // SCRUM-360 (security review): a private therapy's page shows its background story.
+        RecordAdminContentReadAction::new()->execute($getTherapyDTO->user, AdminContentAccess::THERAPY, $getTherapyDTO->therapy, $getTherapyDTO->therapy);
 
         // TODO load relationships for efficiency
         return $getTherapyDTO->therapy;

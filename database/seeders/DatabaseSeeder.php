@@ -21,10 +21,13 @@ use App\Enums\ReportStatusEnum;
 use App\Enums\RequestStatusEnum;
 use App\Enums\RequestTypeEnum;
 use App\Enums\TransactionStatusEnum;
+use App\Models\AdminContentAccess;
 use App\Models\Counsellor;
 use App\Models\CounsellorEarning;
 use App\Models\CounsellorPayout;
+use App\Models\GroupTherapy;
 use App\Models\Guardianship;
+use App\Models\License;
 use App\Models\Message;
 use App\Models\Organization;
 use App\Models\OrganizationInvoice;
@@ -180,6 +183,9 @@ class DatabaseSeeder extends Seeder
         // SCRUM-359: a report ready to suspend from, a suspended counsellor, a suspended client with
         // an appeal waiting, and a suspension that has already ended.
         $this->createSuspensionDemoData();
+
+        // SCRUM-360: a few admin read-log entries, so /administrator/content-accesses isn't empty.
+        $this->createAdminReadLogDemoData($superAdmin);
     }
 
     private function createLanguages($user)
@@ -389,11 +395,9 @@ class DatabaseSeeder extends Seeder
             $statuses = ['pending', 'held', 'in_session', 'abandoned'];
             $status = $statuses[array_rand($statuses)];
 
-            $session = $counsellor->addedSessions()->create([
+            $session = $this->seedSession($counsellor, $therapy, [
                 'name' => 'Session '.($i + 1).' - '.fake()->words(3, true),
                 'about' => fake()->paragraph(2),
-                'for_id' => $therapy->id,
-                'for_type' => $therapy::class,
                 'start_time' => $startTime,
                 'end_time' => $endTime,
                 'type' => ['online', 'in_person'][rand(0, 1)],
@@ -566,11 +570,9 @@ class DatabaseSeeder extends Seeder
             'status' => 'in_session',
         ]);
 
-        $counsellor->addedSessions()->create([
+        $this->seedSession($counsellor, $therapy, [
             'name' => 'Chat Demo Live Session',
             'about' => 'Seeded live session for testing the therapy chat page.',
-            'for_id' => $therapy->id,
-            'for_type' => $therapy::class,
             'start_time' => now()->subMinutes(10),
             'end_time' => now()->addHour(),
             'type' => 'online',
@@ -606,11 +608,9 @@ class DatabaseSeeder extends Seeder
         // and confirm neither ever sees the other's private notes on this session.
         $groupTherapy->counsellors()->attach($secondCounsellor->id, ['state' => 'ACTIVE']);
 
-        $groupSession = $counsellor->addedSessions()->create([
+        $groupSession = $this->seedSession($counsellor, $groupTherapy, [
             'name' => 'Chat Demo Group Live Session',
             'about' => 'Seeded live session for testing the group therapy chat page.',
-            'for_id' => $groupTherapy->id,
-            'for_type' => $groupTherapy::class,
             'start_time' => now()->subMinutes(10),
             'end_time' => now()->addHour(),
             'type' => 'online',
@@ -925,11 +925,9 @@ class DatabaseSeeder extends Seeder
         // Kept within 5 minutes of "now" so it's immediately the therapy's activeSession -- the
         // Pay Now control in the session-actions modal only appears once a session is active
         // (mirrors how "start session"/"end session" already work).
-        $counsellor->addedSessions()->create([
+        $this->seedSession($counsellor, $perSessionTherapy, [
             'name' => 'Payment Demo Session',
             'about' => 'Seeded PAID session, immediately active so its Pay Now control is reachable without waiting.',
-            'for_id' => $perSessionTherapy->id,
-            'for_type' => $perSessionTherapy::class,
             'start_time' => now()->addMinutes(2),
             'end_time' => now()->addMinutes(62),
             'type' => 'online',
@@ -1019,11 +1017,9 @@ class DatabaseSeeder extends Seeder
 
         // Kept within 5 minutes of "now", mirroring createPaymentDemoData()'s own identical
         // precedent, so it's immediately the therapy's activeSession.
-        $session = $counsellor->addedSessions()->create([
+        $session = $this->seedSession($counsellor, $perSessionTherapy, [
             'name' => 'Refund Demo Session',
             'about' => 'Seeded PAID, already-SUCCESS session, immediately active so its refund-request control is reachable without waiting.',
-            'for_id' => $perSessionTherapy->id,
-            'for_type' => $perSessionTherapy::class,
             'start_time' => now()->addMinutes(2),
             'end_time' => now()->addMinutes(62),
             'type' => 'online',
@@ -1223,11 +1219,9 @@ class DatabaseSeeder extends Seeder
         $perSessionGroupTherapy->users()->attach($memberPaid->id, ['anonymous' => false, 'background_story' => 'test']);
         $perSessionGroupTherapy->users()->attach($memberUnpaid->id, ['anonymous' => false, 'background_story' => 'test']);
 
-        $session = $counsellor->addedSessions()->create([
+        $session = $this->seedSession($counsellor, $perSessionGroupTherapy, [
             'name' => 'Group Payment Demo Session',
             'about' => 'Seeded PAID session, immediately active so its per-member Pay Now control is reachable without waiting.',
-            'for_id' => $perSessionGroupTherapy->id,
-            'for_type' => $perSessionGroupTherapy::class,
             'start_time' => now()->addMinutes(2),
             'end_time' => now()->addMinutes(62),
             'type' => 'online',
@@ -1321,11 +1315,9 @@ class DatabaseSeeder extends Seeder
 
         // Predates lateJoiner's own join -- stays visible to them for free per
         // allowFreeHistoricalAccess, even though they've never paid.
-        $counsellor->addedSessions()->create([
+        $this->seedSession($counsellor, $groupTherapy, [
             'name' => 'Group Strict Gate Demo Session (Before Late Joiner)',
             'about' => 'Seeded session dated before the late joiner\'s own join date -- stays free for them under allowFreeHistoricalAccess.',
-            'for_id' => $groupTherapy->id,
-            'for_type' => $groupTherapy::class,
             'start_time' => now()->subDays(20),
             'end_time' => now()->subDays(20)->addHour(),
             'type' => 'online',
@@ -1334,11 +1326,9 @@ class DatabaseSeeder extends Seeder
         ]);
 
         // Postdates lateJoiner's own join -- requires payment for them, same as memberUnpaid.
-        $counsellor->addedSessions()->create([
+        $this->seedSession($counsellor, $groupTherapy, [
             'name' => 'Group Strict Gate Demo Session (After Late Joiner)',
             'about' => 'Seeded session dated after the late joiner\'s own join date -- requires payment for them, same as any other unpaid member.',
-            'for_id' => $groupTherapy->id,
-            'for_type' => $groupTherapy::class,
             'start_time' => now()->subDay(),
             'end_time' => now()->subDay()->addHour(),
             'type' => 'online',
@@ -1419,11 +1409,9 @@ class DatabaseSeeder extends Seeder
 
         // Immediately in-progress and online, so "join video" (and therefore the
         // VideoConsentRequiredBanner, before the guardian approves) is reachable without waiting.
-        $counsellor->addedSessions()->create([
+        $this->seedSession($counsellor, $therapy, [
             'name' => 'Video Consent Demo Session',
             'about' => 'Seeded online, in-progress session for testing the video-join consent gate.',
-            'for_id' => $therapy->id,
-            'for_type' => $therapy::class,
             'start_time' => now()->subMinutes(5),
             'end_time' => now()->addHour(),
             'type' => 'online',
@@ -1480,11 +1468,9 @@ class DatabaseSeeder extends Seeder
         ]);
 
         // Immediately in-progress and online, so "join video" is reachable without waiting.
-        $counsellor->addedSessions()->create([
+        $this->seedSession($counsellor, $therapy, [
             'name' => 'Video Call Demo Session',
             'about' => 'Seeded online, in-progress session for testing the base video-join flow.',
-            'for_id' => $therapy->id,
-            'for_type' => $therapy::class,
             'start_time' => now()->subMinutes(5),
             'end_time' => now()->addHour(),
             'type' => 'online',
@@ -1494,16 +1480,7 @@ class DatabaseSeeder extends Seeder
     }
 
     // TT-3.2c/SCRUM-310 (qa-engineer finding): no seeded fixture existed for GroupTherapy video at
-    // all -- verifying this ticket required hand-building data via tinker. Deliberately builds the
-    // Session via `->for()->associate()` + an explicit save(), NOT `addedSessions()->create([...,
-    // 'for_id' => ..., 'for_type' => ...])` the way this file's OTHER group seeder methods do
-    // (createGroupPaymentDemoData(), createGroupStrictPaymentGateDemoData(), etc.) -- that
-    // established pattern is itself broken (Session::$fillable has no for_id/for_type, so those
-    // keys are silently dropped by mass assignment; only currently-running dev DB rows still work
-    // because they predate a `migrate:fresh --seed`), a real, sitewide, pre-existing bug this
-    // ticket's own QA pass discovered and filed separately (SCRUM-316) rather than fixing broadly
-    // here. This method uses the same safe, explicit pattern CreateSessionAction itself already
-    // uses, so it actually works today rather than reproducing a ninth broken instance of the bug.
+    // all -- verifying this ticket required hand-building data via tinker.
     private function createGroupVideoCallDemoData(): void
     {
         $counsellorUser = User::factory()->create([
@@ -2032,15 +2009,13 @@ class DatabaseSeeder extends Seeder
             ],
         ]);
 
-        $orgRetainerDemoSession = $affiliatedCounsellor->addedSessions()->create([
+        $orgRetainerDemoSession = $this->seedSession($affiliatedCounsellor, $orgRetainerPerSessionTherapy, [
             'name' => 'Org Retainer Demo Session',
             // Started a minute ago (not "starts in 5 minutes", unlike createPaymentDemoData()'s
             // sibling) -- getActiveSession() (used by TherapyResource's 'activeSession', which the
             // session-actions modal reads) requires start_time <= now(), so this is immediately
             // active with no window to wait out.
             'about' => 'Seeded PAID session, immediately active so the disclosure in the session-actions modal is reachable without waiting.',
-            'for_id' => $orgRetainerPerSessionTherapy->id,
-            'for_type' => $orgRetainerPerSessionTherapy::class,
             'start_time' => now()->subMinute(),
             'end_time' => now()->addHour(),
             'type' => 'online',
@@ -2161,11 +2136,9 @@ class DatabaseSeeder extends Seeder
             'status' => CounsellorEarningStatusEnum::pending->value,
         ]);
 
-        $openInvoiceSession = $affiliatedCounsellor->addedSessions()->create([
+        $openInvoiceSession = $this->seedSession($affiliatedCounsellor, $orgRetainerPerSessionTherapy, [
             'name' => 'Org Retainer Demo Session (Current Period)',
             'about' => 'A second retainer-covered session, already held, accruing against the CURRENT (still-open) invoice period.',
-            'for_id' => $orgRetainerPerSessionTherapy->id,
-            'for_type' => $orgRetainerPerSessionTherapy::class,
             'start_time' => now()->subDay(),
             'end_time' => now()->subDay()->addHour(),
             'type' => 'online',
@@ -2491,5 +2464,36 @@ class DatabaseSeeder extends Seeder
         ]);
 
         return $suspension;
+    }
+
+    // SCRUM-316: every seeded session is linked to its therapy/group explicitly -- for_id/for_type
+    // aren't fillable on Session (deliberately: nothing should mass-assign them), so passing them
+    // to create() only worked while db:seed ran unguarded.
+    private function seedSession(Counsellor|User $by, Therapy|GroupTherapy $for, array $attributes): Session
+    {
+        $session = $by->addedSessions()->make($attributes);
+        $session->for()->associate($for);
+        $session->save();
+
+        return $session;
+    }
+
+    private function createAdminReadLogDemoData(User $superAdmin): void
+    {
+        $session = Session::where('name', 'Report Demo Session')->firstOrFail();
+        $license = License::query()->first();
+
+        $rows = [
+            ['resource' => AdminContentAccess::SESSION_MESSAGES, 'subject_type' => Session::class, 'subject_id' => $session->id, 'page' => 1, 'file_id' => null],
+            ['resource' => AdminContentAccess::MESSAGE_REPLIES, 'subject_type' => Message::class, 'subject_id' => $session->messages()->value('id'), 'page' => 1, 'file_id' => null],
+        ];
+
+        if ($license) {
+            $rows[] = ['resource' => AdminContentAccess::LICENSE_DOCUMENT, 'subject_type' => License::class, 'subject_id' => $license->id, 'page' => null, 'file_id' => $license->files()->value('files.id')];
+        }
+
+        foreach ($rows as $i => $row) {
+            AdminContentAccess::create([...$row, 'admin_user_id' => $superAdmin->id, 'ip' => '127.0.0.1', 'user_agent' => 'Seeded (SCRUM-360)', 'created_at' => now()->subHours(3 - $i)]);
+        }
     }
 }

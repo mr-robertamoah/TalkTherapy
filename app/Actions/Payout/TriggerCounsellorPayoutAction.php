@@ -7,6 +7,7 @@ use App\DTOs\TriggerPayoutDTO;
 use App\Enums\CounsellorEarningStatusEnum;
 use App\Enums\CounsellorPayoutStatusEnum;
 use App\Enums\CounsellorPayoutStatusSourceEnum;
+use App\Exceptions\PayoutException;
 use App\Jobs\ProcessCounsellorPayoutJob;
 use App\Models\CounsellorEarning;
 use App\Models\CounsellorPayout;
@@ -21,9 +22,17 @@ use Illuminate\Support\Str;
 // left to claim rather than claiming the same money twice.
 class TriggerCounsellorPayoutAction extends Action
 {
+    public const ON_HOLD = 'Payouts are on hold while this counsellor is suspended. Nothing earned is lost; it can be withdrawn once the suspension ends.';
+
     public function execute(TriggerPayoutDTO $dto): CounsellorPayout
     {
         $counsellor = GetPayoutTargetCounsellorAction::new()->execute($dto);
+
+        // SCRUM-363: held, not forfeited -- the earnings stay pending and can be withdrawn once the
+        // suspension ends. Whoever asks (the counsellor, or an admin on their behalf).
+        if ($counsellor->isSuspended()) {
+            throw new PayoutException(self::ON_HOLD, 403);
+        }
 
         EnsureCounsellorHasPayoutDestinationAction::new()->execute($counsellor);
 

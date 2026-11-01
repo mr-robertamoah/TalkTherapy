@@ -3,7 +3,6 @@
 namespace App\Notifications;
 
 use App\Models\Refund;
-use App\Notifications\Concerns\EscapesMarkdown;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -18,12 +17,12 @@ use Illuminate\Notifications\Notification;
 //
 // Security-engineer finding: every call site today only ever passes a static string or one of
 // Paystack's own short status enum values ('failed'/'processed') as $reason -- never raw free
-// text -- so there is no live injection issue yet. Still escaped defensively (EscapesMarkdown,
-// TT-7.7c/SCRUM-251's own shared trait) since this choke point is explicitly meant to carry
+// text -- so there is no live injection issue yet. Still escaped (SCRUM-254: app-wide, through
+// Markdown::withSecuredEncoding in AppServiceProvider) since this choke point is meant to carry
 // Paystack's own gateway response text, which this codebase does not control the contents of.
 class RefundExecutionFailedNotification extends Notification implements ShouldQueue
 {
-    use EscapesMarkdown, Queueable;
+    use Queueable;
 
     public function __construct(private Refund $refund, private ?string $reason = null)
     {
@@ -47,7 +46,7 @@ class RefundExecutionFailedNotification extends Notification implements ShouldQu
             ->line("A refund of {$amount} for transaction \"{$transaction->reference}\" could not be completed by Paystack.");
 
         if ($this->reason) {
-            $message->line('Reason: '.$this->escapeMarkdown($this->reason));
+            $message->line('Reason: '.$this->reason);
         }
 
         return $message

@@ -35,6 +35,7 @@ jobs:
               - 'composer.json'
               - 'composer.lock'
               - 'phpunit.xml'
+              - 'phpunit.mysql.xml'
               - '.github/workflows/ci.yml'
             frontend:
               - 'resources/**'
@@ -122,6 +123,52 @@ jobs:
 
       - name: Run Pest suite
         run: php artisan test --parallel
+
+  # SCRUM-363: the append-only audit logs are enforced by database triggers whose MySQL syntax
+  # (SIGNAL) differs from SQLite's (RAISE) -- the main suite only ever exercises SQLite. This runs
+  # every migration and the trigger tests against a real MySQL 8, as root, so trigger creation
+  # doesn't depend on log_bin_trust_function_creators.
+  test-php-mysql:
+    name: Test (MySQL triggers)
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: talktherapy_mysql_ci
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -proot"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: mbstring, bcmath, gd, exif, pcntl, sockets, sqlite3, pdo_sqlite, pdo_mysql
+          coverage: none
+
+      - uses: ramsey/composer-install@v3
+        with:
+          composer-options: '--prefer-dist --no-interaction'
+
+      - name: Prepare test environment
+        run: cp .env.testing .env
+
+      - name: Run the trigger tests on MySQL
+        env:
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_USERNAME: root
+          DB_PASSWORD: root
+        # By group, not by name, and --fail-on-empty-test-suite: a renamed test can never leave this
+        # job green while running nothing.
+        run: vendor/bin/pest --configuration=phpunit.mysql.xml --group=mysql-triggers --fail-on-empty-test-suite
 
   build-frontend:
     name: Build frontend (Vite)

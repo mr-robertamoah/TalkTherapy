@@ -20,6 +20,7 @@ use App\Actions\Counsellor\UpdateCounsellorAction;
 use App\Actions\Counsellor\VerifyEmailAction;
 use App\Actions\EnsureNameStaysRetrievableAction;
 use App\Actions\Payout\GetCounsellorPayoutOverviewAction;
+use App\Actions\Suspension\EnsureCanDeleteOwnAccountWhileSuspendedAction;
 use App\DTOs\CheckNameRetrievabilityDTO;
 use App\DTOs\CreateCounsellorDTO;
 use App\DTOs\CreateLicenseDTO;
@@ -61,10 +62,8 @@ class CounsellorService extends Service
     {
         $query = Counsellor::query();
 
-        // Grouped: whereName() ORs its conditions, which would otherwise escape the filters below.
-        $query->when($name, function ($query) use ($name) {
-            $query->where(fn ($q) => $q->whereName($name));
-        });
+        // whereName() groups its own ORs, so they can't escape the filters below.
+        $query->when($name, fn ($query) => $query->whereName($name));
 
         // A signed-out visitor can search too (this used to fail with a null user).
         $query->when($user, fn ($q) => $q->whereNotUser($user));
@@ -131,6 +130,11 @@ class CounsellorService extends Service
 
         EnsureCanDeleteCounsellorAction::new()->execute($deleteCounsellorDTO);
 
+        // SCRUM-363: not their own profile while suspended (an admin deleting it is unaffected).
+        if ($deleteCounsellorDTO->counsellor->user?->is($deleteCounsellorDTO->user)) {
+            EnsureCanDeleteOwnAccountWhileSuspendedAction::new()->execute($deleteCounsellorDTO->user);
+        }
+
         return DeleteCounsellorAction::new()->execute($deleteCounsellorDTO);
     }
 
@@ -188,15 +192,7 @@ class CounsellorService extends Service
         $query = Counsellor::query();
 
         if ($getModelsForAdminDTO->filterType == 'name') {
-            $query
-                ->where($getModelsForAdminDTO->filterType, 'LIKE', "%{$getModelsForAdminDTO->filterValue}%")
-                ->orWhereHas('user', function ($q) use ($getModelsForAdminDTO) {
-                    $q
-                        ->where('firstName', 'LIKE', "%{$getModelsForAdminDTO->filterValue}%")
-                        ->orWhere('lastName', 'LIKE', "%{$getModelsForAdminDTO->filterValue}%")
-                        ->orWhere('otherNames', 'LIKE', "%{$getModelsForAdminDTO->filterValue}%")
-                        ->orWhere('username', 'LIKE', "%{$getModelsForAdminDTO->filterValue}%");
-                });
+            $query->whereName((string) $getModelsForAdminDTO->filterValue);
         }
 
         return AdminCounsellorResource::collection($query->paginate(

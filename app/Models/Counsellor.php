@@ -440,14 +440,10 @@ class Counsellor extends Model
 
     public function scopeWhereName($query, $name)
     {
-        return $query->where('name', 'LIKE', "%{$name}%")
-            ->orWhereHas('user', function ($query) use ($name) {
-                $query
-                    ->where('username', 'LIKE', "%{$name}%")
-                    ->orWhere('firstName', 'LIKE', "%{$name}%")
-                    ->orWhere('lastName', 'LIKE', "%{$name}%")
-                    ->orWhere('otherNames', 'LIKE', "%{$name}%");
-            });
+        // Grouped, and wildcards matched literally (SCRUM-363).
+        return $query->where(fn ($query) => $query
+            ->whereContains('name', $name)
+            ->orWhereHas('user', fn ($query) => $query->whereContains(['username', 'firstName', 'lastName', 'otherNames'], $name)));
     }
 
     public function scopeWhereDiscussion($query, Discussion $discussion)

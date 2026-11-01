@@ -4,6 +4,7 @@ namespace App\Actions\Payout;
 
 use App\Actions\Action;
 use App\Enums\CounsellorEarningStatusEnum;
+use App\Enums\SuspensionScopeEnum;
 use App\Http\Resources\CounsellorEarningResource;
 use App\Http\Resources\CounsellorPayoutAccountResource;
 use App\Http\Resources\CounsellorPayoutResource;
@@ -35,6 +36,9 @@ class GetCounsellorPayoutOverviewAction extends Action
 
         return [
             'payoutAccount' => $payoutAccount ? new CounsellorPayoutAccountResource($payoutAccount) : null,
+            // SCRUM-363: suspended -- payouts held until it ends.
+            'onHold' => $counsellor->isSuspended(),
+            'onHoldUntil' => $counsellor->user?->activeSuspension(SuspensionScopeEnum::counsellor)?->ends_at,
             'pendingEarnings' => CounsellorEarningResource::collection($pendingEarnings),
             'availableAmount' => $availableAmount,
             'currency' => $currency,

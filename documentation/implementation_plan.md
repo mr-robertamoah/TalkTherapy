@@ -111,11 +111,16 @@ broadcast — filed separately as SCRUM-195, not folded into this ticket's scope
 | TT-4.13 | Counsellor verification documents: a rejection no longer validates licenses; retention deletes ID scans and rejected documents (SCRUM-338) | Story | High | 5 | New | — |
 | TT-4.14 | Account/counsellor suspension as a report outcome: apply, lift, auto-expiry, appeals, effects on clients (SCRUM-359) | Story | High | 21 | New (SCRUM-340 follow-up) | TT-4.12 |
 | TT-4.15 | Report and verification-document hardening: involved-admin list rows, guardian involvement, append-only confidential access log, reported-party lock, abandoned-licence retention, shared file purge, requests.responded_at (SCRUM-362) | Task | High | 8 | New (SCRUM-340/338 follow-up) | TT-4.12, TT-4.13 |
+| TT-4.16 | Append-only log of every admin read of therapy/group content, attachments and licence/identity documents, with a super-admin view (SCRUM-360) | Story | High | 8 | New (SCRUM-340/362 follow-up) | TT-4.12, TT-4.15 |
+| TT-4.17 | Confidential-message switch with disclosure in chat, and a public /privacy page describing admin access, read logging and retention (SCRUM-361) | Story | High | 5 | New (SCRUM-340 follow-up) | TT-4.16 |
+| TT-4.18 | Suspension follow-ups: close live sockets and video, payout hold, no self-deletion, topic/notes block, all-member guardian involvement, session-status broadcast, literal search, purge note, MySQL CI trigger job (SCRUM-363) | Task | High | 21 | New (SCRUM-359/362 follow-up) | TT-4.14, TT-4.15, TT-4.16 |
+| TT-4.19 | Seeded sessions always belong to their therapy/group via for()->associate(), without widening Session::$fillable (SCRUM-316) | Task | Low | 2 | New (seed-data follow-up) | — |
+| TT-4.20 | Escape user-supplied text in mail notifications app-wide (Markdown link-injection hardening) (SCRUM-254) | Task | Medium | 5 | New (payments-review follow-up) | — |
 
 TT-4.12 and TT-4.13 shipped together in one PR (user's choice, 2026-11-01), as did TT-4.14 and
-TT-4.15 (user's choice, 2026-11-01). TT-4.11 is the identity-verification document work
-(SCRUM-302) already referenced in code. Remaining follow-ups: auditing admins' non-confidential
-reads (SCRUM-360) and the confidential-toggle/privacy-policy disclosure (SCRUM-361).
+TT-4.15, and TT-4.16–TT-4.20 (user's choices, 2026-11-01). The /privacy page from TT-4.17 needs
+legal review before production. TT-4.11 is the identity-verification document work
+(SCRUM-302) already referenced in code.
 
 TT-4.10 split into 6 sub-tickets (a-f, SCRUM-290–295) after its own `/start-feature` pass
 (2026-09-12) — a data-model snapshot (a), migrating all 13 `isAdult()` call sites to it (b), a
@@ -304,7 +309,7 @@ scheduled follow-up, unaffected by this resequencing.
 see their individual rows above. Two follow-ups filed during review, not blocking: SCRUM-255
 (queue-redelivery guard for `ProcessRefundJob`/`ProcessCounsellorPayoutJob`, PR #197, in review)
 and SCRUM-254 (Markdown-injection hardening for free-text `reason` fields across several
-notifications, not yet started). TT-7.4d (group-therapy per-member payment, unscoped since
+notifications, now TT-4.20). TT-7.4d (group-therapy per-member payment, unscoped since
 SCRUM-118) was scoped the same day — see its own TT-7.4d-a…e rows above — after a
 product-owner pass surfaced a real, live, already-reachable authorization defect
 (`EnsureCanInitiateChargeAction`'s "already paid" guard had no per-member scoping for

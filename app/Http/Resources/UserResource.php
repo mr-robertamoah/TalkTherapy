@@ -35,6 +35,9 @@ class UserResource extends JsonResource
             'counsellor' => $this->counsellor ? new CounsellorMiniResource($this->counsellor) : null,
             'createdAt' => $this->created_at->diffForHumans(),
             'isAdmin' => $this->when($this->isAdmin(), true, false),
+            // SCRUM-360: only about the signed-in user themselves (it drives their own admin menu) --
+            // never revealed about anyone else in a list.
+            'isSuperAdmin' => $request->user()?->is($this->resource) && $this->isAdmin() && $this->isSuperAdmin(),
         ];
     }
 }

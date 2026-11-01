@@ -2,22 +2,18 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\AppendOnly;
 use Illuminate\Database\Eloquent\Model;
-use LogicException;
 
 // SCRUM-340: the audit trail of an admin reading confidential messages for a report. Append-only:
 // a row can be created, never changed or deleted through the model.
 class ConfidentialMessageAccess extends Model
 {
+    use AppendOnly;
+
     public const UPDATED_AT = null;
 
     protected $guarded = ['id'];
-
-    protected static function booted(): void
-    {
-        static::updating(fn () => throw new LogicException('Confidential message access records are append-only.'));
-        static::deleting(fn () => throw new LogicException('Confidential message access records are append-only.'));
-    }
 
     // The one way rows are written (architect review). $messageIds: one row each (none = the
     // session-open row only). Inserted together, inside the caller's transaction.

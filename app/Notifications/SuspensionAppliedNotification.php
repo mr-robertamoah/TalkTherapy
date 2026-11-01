@@ -38,6 +38,8 @@ class SuspensionAppliedNotification extends Notification implements ShouldQueue
                 : 'Following a review, your counsellor role on TalkTherapy has been suspended. You can still use TalkTherapy as a client, but you cannot work as a counsellor while it lasts.')
             ->line('Ends: '.self::until($this->suspension))
             ->line('Reason: '.$this->suspension->public_reason)
+            ->lineIf((bool) $notifiable->counsellor, 'Your payouts are on hold until the suspension ends. Nothing you have earned is lost; you can withdraw it once it ends.')
+            ->line('You can\'t delete your account while you are suspended.')
             ->action('Read about your suspension or appeal', route('suspended.show'))
             ->line('You can appeal once. A different administrator will look at it.');
     }
