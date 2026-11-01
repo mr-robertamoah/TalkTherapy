@@ -51,6 +51,8 @@ class ReportNotification extends Notification implements ShouldQueue
             ->line('A report has been submitted. Please do have a look at it.')
             ->line("The report is about a {$type}.")
             ->line("It was submitted by {$reporterType} with name {$reporterName}.")
+            // SCRUM-340: straight to the admin review page.
+            ->action('Review the report', route('administrator.reports.show', ['report' => $this->report->id]))
             ->line('Thank you!');
     }
 

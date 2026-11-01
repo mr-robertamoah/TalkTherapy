@@ -5,6 +5,7 @@ use App\Http\Controllers\AdministratorController;
 use App\Http\Controllers\AdminOrganizationBillingController;
 use App\Http\Controllers\AdminPayoutController;
 use App\Http\Controllers\AdminRefundRequestController;
+use App\Http\Controllers\AdminReportController;
 use App\Http\Controllers\CounsellorController;
 use App\Http\Controllers\CounsellorPricingController;
 use App\Http\Controllers\DiscussionController;
@@ -108,6 +109,13 @@ Route::middleware('auth')->group(function () {
     // TT-7.7c/SCRUM-251: read-only list page -- approve/reject post directly to the existing
     // generic requests.respond endpoint (routes/api.php), not a route here.
     Route::get('/administrator/refund-requests', [AdminRefundRequestController::class, 'index'])->name('administrator.refund_requests');
+
+    // SCRUM-340: the complaint-review queue and per-report page. Status/party changes are Inertia
+    // form posts; reading the reported conversation is a JSON route in routes/api.php.
+    Route::get('/administrator/reports', [AdminReportController::class, 'index'])->name('administrator.reports');
+    Route::get('/administrator/reports/{report}', [AdminReportController::class, 'show'])->name('administrator.reports.show')->whereNumber('report');
+    Route::post('/administrator/reports/{report}/status', [AdminReportController::class, 'transition'])->name('admin.reports.status')->whereNumber('report')->middleware('throttle:30,1');
+    Route::post('/administrator/reports/{report}/party', [AdminReportController::class, 'recordParty'])->name('admin.reports.party')->whereNumber('report')->middleware('throttle:30,1');
 
     Route::get('/therapies', [TherapyController::class, 'show'])->name('therapies');
     Route::get('/therapies/{therapyId}/chat', [TherapyController::class, 'chat'])->name('therapies.chat');

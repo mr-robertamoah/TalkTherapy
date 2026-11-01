@@ -8703,3 +8703,92 @@ The user asked for the three follow-ups in one PR.
     - Creating a group validates `counsellorIds.*` (they must exist, at most 50).
     - A re-joining counsellor keeps their previous role.
     - A counsellor-created group's invite gets group wording, and its database notification uses `group_therapy_id`.
+
+## SCRUM-340 + SCRUM-338: complaint review with confidential access, license document retention — 2026-11-01
+
+One PR, as the user asked. The product decisions were made in the `/start-feature` round:
+disclose and notify at close; show deleted-for-everyone messages, labelled; delete the ID scan but
+keep the license; any admin may unlock with a reason, except one who is part of the report.
+
+- **Report lifecycle:** `open` → `under_review` → `resolved` (outcome + note required) or
+  `dismissed` (note required); a closed report can only be reopened to `under_review`. Every step
+  is a `report_status_histories` row. Recording an outcome takes no action by itself; suspension
+  is SCRUM-359.
+- **Reporter lock:** once a report leaves `open`, the reporter can no longer edit or delete it
+  (422). Otherwise they could change what is being reviewed, and whose messages can be unlocked.
+- **Who is "part of the report":** the reporter, the reported person, the author of a reported
+  post, or a participant of the reported therapy/group, past group counsellors included
+  (`Report::involves()`). Such an admin can't change the report or open the conversation (403 with a
+  clear message; non-admins get the uniform 404). After the security review they also don't get the
+  report page or its evidence, and see only "you are part of this report" in the queue. Otherwise a
+  reported admin would learn who reported them and which admins reviewed it.
+- **One answer to "who is this report about"** (`Report::reportedParty()`, review finding): the scope,
+  `involves()`, the admin page and the close notifications all use it. It is whoever
+  `data.userId`/`data.counsellorId` names, **minus the reporter** (reports from before SCRUM-347 had
+  to name both parties). If that isn't exactly one person, it's treated as nobody, and an admin
+  records who it is.
+- **Recording the reported person starts the review** (security review): it moves an open report
+  to `under_review`, so the reporter can't then re-point or delete the report and wipe the admin's
+  choice. `report_status_histories` is `restrictOnDelete`, so review history never goes with its report.
+- **Deleted-for-everyone messages follow the confidential rule:** their content shows only when the
+  reported person sent or received them, and each one shown is recorded (review finding, M3).
+- **Everything in an unlock is decided from the locked report row**, so a concurrent close, re-point
+  or edit can't leave a read made under a stale scope.
+- **Unlock scope** (`ResolveReportUnlockScopeAction`, the single place this is decided): nothing
+  unless the report is open/under review **and** names a reported person. Then the reported session,
+  or every session of the reported therapy/group. Inside those, a confidential message is shown
+  only when the reported person sent or received it. A person is matched as their User **and** their
+  Counsellor profile, since counsellors write as the Counsellor. Posts and discussions unlock nothing.
+- **Group reports name nobody** (reporters can't name members by id, SCRUM-347), so an admin records
+  the reported person (`RecordReportedPartyAction`): a current participant, not the reporter, only
+  while the report is active. Recorded in the history.
+- **Non-confidential messages** of an unlocked session are shown too, for context. They're already
+  visible to every participant; auditing admin reads of them is SCRUM-360.
+- **Audit:** `confidential_message_accesses` gets one row per unlock (the session, with the reason,
+  IP and user agent), one per confidential message revealed, and one per confidential attachment
+  opened. No foreign keys and no update/delete through the model, so deleting anything else never
+  rewrites the trail. Kept indefinitely.
+- **The first unlock moves an open report to `under_review`**, under the same row lock.
+- **People appear by role in the conversation** ("Reported person", "Reporter", "Counsellor",
+  "Client"), never by name or id. The admin already sees the names on the report itself.
+- **Close notifications** (`ReportClosedNotification`) go to the reporter and the reported person.
+  They never name the reviewing admin and never tell the reported person who reported them. When a
+  confidential message was read, both are told so.
+- **Deviation: where the standing disclosure lives.** The plan put it on the chat's confidential
+  toggle and in the privacy text. Neither exists: there is no confidential toggle in the chat UI
+  (messages only become confidential through the API) and the footer's Privacy Policy link is a
+  placeholder. The disclosure is in the report form instead (therapy and group reports), and the
+  close notification covers the people involved. Adding it to the toggle and privacy policy once
+  they exist is SCRUM-361. Review items left for later (the JSON report list for involved admins,
+  former group members and guardians in `involves()`, database-level append-only, abandoned-upload
+  licenses, a shared file-deletion action) are SCRUM-362.
+- **SCRUM-338, the bug:** `RespondToCounsellorVerificationRequestAction` validated both licenses
+  (and a not-yet-validated licensing authority) before reading the response, so a rejection left
+  them validated. Now only an accept validates.
+  `licenses:repair-rejected-validations {--dry-run}` un-validates licenses that only ever appeared
+  on rejected requests. Licensing authorities are only listed, not changed: another accepted
+  request or an admin may have validated them legitimately.
+- **SCRUM-338, retention** (`LicenseService::applyDocumentRetention`, daily at 04:15, plus
+  `licenses:apply-retention {--dry-run}` to apply it to existing data now):
+  - every request citing a license was rejected, the newest more than
+    `COUNSELLOR_LICENSE_REJECTED_RETENTION_DAYS` (30) ago: delete its documents;
+  - accepted: only the national ID loses its scan, after `COUNSELLOR_NATIONAL_ID_RETENTION_DAYS`
+    (30); the professional license stays as the record of what verified the counsellor;
+  - cited by a pending request: never touched;
+  - a national ID's **number** is cleared along with its scan (accepted or rejected), since the
+    number is itself identity data. The License row and its `validated` flag stay, so
+    `hasNationalIdentification()` still holds for a verified counsellor.
+  - A purged soft-deleted counsellor's license documents are deleted first. One counsellor failing
+    is logged and skipped rather than stopping the rest.
+  - "National ID" is decided one way everywhere: by the license's licensing authority
+    (`License::isNationalId()`, the same rule as `hasNationalIdentification()`).
+  - Every deletion is written to the log, since the files can't be restored.
+  - Accepting a verification request whose licenses no longer exist is now refused. It used to be
+    accepted with nothing validated.
+  - **Before the first run against real data:** run `licenses:apply-retention --dry-run` and check
+    the list. Run `licenses:repair-rejected-validations` by hand after deploy, keeping its
+    `--dry-run` output, because it logs only the ids.
+- **Supersedes SCRUM-134's "never hard-delete licenses or verification documents":** the License
+  *records* are still never deleted; their uploaded *files* now are, under this policy.
+  `licenses.documents_removed_at` says when, and the admin license card says so.
+

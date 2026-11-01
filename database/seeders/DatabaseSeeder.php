@@ -16,17 +16,21 @@ use App\Enums\OrganizationInvoiceStatusEnum;
 use App\Enums\OrganizationMemberBillingModeEnum;
 use App\Enums\OrganizationMemberStatusEnum;
 use App\Enums\RefundStatusEnum;
+use App\Enums\ReportStatusEnum;
 use App\Enums\RequestStatusEnum;
 use App\Enums\RequestTypeEnum;
 use App\Enums\TransactionStatusEnum;
 use App\Models\CounsellorEarning;
 use App\Models\CounsellorPayout;
 use App\Models\Guardianship;
+use App\Models\Message;
 use App\Models\Organization;
 use App\Models\OrganizationInvoice;
 use App\Models\OrganizationInvoiceLine;
 use App\Models\OrganizationPaymentInstrument;
 use App\Models\Refund;
+use App\Models\Report;
+use App\Models\ReportStatusHistory;
 use App\Models\Request;
 use App\Models\Session;
 use App\Models\Therapy;
@@ -165,6 +169,10 @@ class DatabaseSeeder extends Seeder
         // therapy+session for simply trying the base "join video" flow itself.
         $this->createVideoCallDemoData();
         $this->createGroupVideoCallDemoData();
+
+        // SCRUM-340: reports at each review stage, on a group whose session holds confidential
+        // messages, so /administrator/reports can be tried end to end (log in as the super admin).
+        $this->createReportReviewDemoData($superAdmin);
     }
 
     private function createLanguages($user)
@@ -2247,5 +2255,97 @@ class DatabaseSeeder extends Seeder
         ]);
 
         $organization->suspendBilling("Retainer invoice settlement failed for the period starting {$invoice->period_start->toDateString()}.");
+    }
+
+    // SCRUM-340: "Report Demo Group Therapy" (maria_garcia's, counselled by emma_williams, with
+    // amy_taylor and robert_miller as anonymous members) and one finished session holding public and
+    // confidential messages. Three reports by maria_garcia on that group:
+    //  - "naming amy_taylor": open, reported person recorded -- its conversation can be read; only
+    //    amy_taylor's confidential messages show, robert_miller's stays hidden;
+    //  - "nobody named yet": open, no reported person -- the page asks you to record one first;
+    //  - "already dismissed": closed, with history -- shows reopen, and nothing can be unlocked.
+    private function createReportReviewDemoData(User $superAdmin): void
+    {
+        $maria = User::where('username', 'maria_garcia')->firstOrFail();
+        $amy = User::where('username', 'amy_taylor')->firstOrFail();
+        $robert = User::where('username', 'robert_miller')->firstOrFail();
+        $emma = User::where('username', 'emma_williams')->firstOrFail()->counsellor;
+        throw_if(! $emma, new RuntimeException('Report demo seeder: expected emma_williams to be a counsellor.'));
+
+        $group = $maria->addedGroupTherapies()->create([
+            'name' => 'Report Demo Group Therapy',
+            'about' => 'Seeded group with confidential messages and reports, for trying the admin report review (SCRUM-340).',
+            'session_type' => 'Once',
+            'payment_type' => 'FREE',
+            'max_users' => 10,
+            'allow_anyone' => false,
+            'anonymous' => false,
+            'public' => false,
+            'status' => 'in_session',
+        ]);
+        $group->users()->attach($maria->id, ['anonymous' => false]);
+        $group->users()->attach($amy->id, ['anonymous' => true]);
+        $group->users()->attach($robert->id, ['anonymous' => true]);
+        $group->counsellors()->attach($emma->id, ['state' => 'ACTIVE']);
+
+        // for_* aren't fillable on Session, so the group is associated explicitly.
+        $session = $emma->addedSessions()->make([
+            'name' => 'Report Demo Session',
+            'about' => 'Seeded finished session whose messages are reviewed in the report demo.',
+            'start_time' => now()->subDays(2),
+            'end_time' => now()->subDays(2)->addHour(),
+            'type' => 'online',
+            'status' => 'HELD',
+        ]);
+        $session->for()->associate($group);
+        $session->save();
+
+        $message = function ($from, $to, string $content, bool $confidential, int $minutes) use ($session) {
+            $message = new Message(['content' => $content, 'type' => 'NORMAL', 'status' => 'SENT', 'confidential' => $confidential]);
+            $message->from()->associate($from);
+            if ($to) {
+                $message->to()->associate($to);
+            }
+            $message->for()->associate($session);
+            $message->created_at = $session->start_time->copy()->addMinutes($minutes);
+            $message->save();
+
+            return $message;
+        };
+
+        $message($emma, null, 'Welcome, everyone. Let us start by sharing how the week went.', false, 1);
+        $message($amy, null, 'Honestly, some people here should keep their opinions to themselves.', false, 3);
+        $message($amy, $emma, '[Report demo] Confidential from amy_taylor: I am going to make the creator regret posting.', true, 5);
+        $message($robert, $emma, '[Report demo] Confidential from robert_miller: I am struggling to sleep. This one must stay hidden.', true, 6);
+        $message($emma, $amy, '[Report demo] Confidential reply to amy_taylor: Please keep the group respectful.', true, 8);
+        $message($amy, $emma, '[Report demo] Confidential from amy_taylor, later deleted for everyone.', true, 9)->delete();
+
+        $report = function (string $description, array $data) use ($maria, $group) {
+            $report = new Report(['description' => $description, 'data' => $data]);
+            $report->addedby()->associate($maria);
+            $report->reportable()->associate($group);
+            $report->save();
+
+            return $report;
+        };
+
+        $report('[Report demo: naming amy_taylor] A member has been hostile to me in the group and I think in private messages too.', ['userId' => $amy->id]);
+        $report('[Report demo: nobody named yet] Someone in this group is making me uncomfortable.', []);
+
+        $dismissed = $report('[Report demo: already dismissed] The counsellor ended the session early.', ['counsellorId' => $emma->id]);
+        $dismissed->forceFill([
+            'status' => ReportStatusEnum::dismissed,
+            'resolution_note' => 'The session ended on time; no breach found.',
+            'resolved_at' => now()->subDay(),
+            'resolved_by' => $superAdmin->id,
+        ])->save();
+        ReportStatusHistory::create([
+            'report_id' => $dismissed->id,
+            'user_id' => $superAdmin->id,
+            'event' => ReportStatusHistory::EVENT_STATUS_CHANGE,
+            'from_status' => 'open',
+            'to_status' => 'dismissed',
+            'note' => 'The session ended on time; no breach found.',
+        ]);
     }
 }

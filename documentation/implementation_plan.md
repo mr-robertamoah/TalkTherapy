@@ -107,6 +107,12 @@ broadcast — filed separately as SCRUM-195, not folded into this ticket's scope
 | TT-4.8 | Audit per-user group-therapy anonymity (`group_therapy_user.anonymous`) once it's actually read anywhere | Task | Low | — | New (SCRUM-18 follow-up) | — |
 | TT-4.9 | Add regression tests asserting anonymous-therapy notifications never leak real names | Task | Medium | — | New (SCRUM-18 follow-up) | — |
 | TT-4.10 | Prevent self-editable `dob` from bypassing minor-detection safeguards | Story | High | ~39 (floor) | New (SCRUM-283 follow-up) | — |
+| TT-4.12 | Admin complaint review: report lifecycle, review queue, confidential messages unlocked only for an open report (SCRUM-340) | Story | High | 13 | New (SCRUM-335 decision) | — |
+| TT-4.13 | Counsellor verification documents: a rejection no longer validates licenses; retention deletes ID scans and rejected documents (SCRUM-338) | Story | High | 5 | New | — |
+
+TT-4.12 and TT-4.13 shipped together in one PR (user's choice, 2026-11-01). TT-4.11 is the
+identity-verification document work (SCRUM-302) already referenced in code. Follow-ups: account
+suspension as a report outcome (SCRUM-359) and auditing admins' non-confidential reads (SCRUM-360).
 
 TT-4.10 split into 6 sub-tickets (a-f, SCRUM-290–295) after its own `/start-feature` pass
 (2026-09-12) — a data-model snapshot (a), migrating all 13 `isAdult()` call sites to it (b), a

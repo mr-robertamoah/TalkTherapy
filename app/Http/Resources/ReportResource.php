@@ -22,6 +22,9 @@ class ReportResource extends JsonResource
         return [
             'id' => $this->id,
             'description' => $this->description,
+            // SCRUM-340: the reporter can see whether their report is being looked at (and can no
+            // longer edit it once it isn't open). Outcome notes are for admins only.
+            'status' => $this->status?->value,
             'data' => $this->presentedData($request->user()),
             'addedbyType' => $this->addedby_type ? class_basename($this->addedby_type) : null,
             'addedbyId' => $this->addedby_id,
