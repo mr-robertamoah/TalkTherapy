@@ -75,6 +75,8 @@ exercising the dedicated chat pages (see `documentation/features/scrum-20-live-c
 `Chat Demo Individual Therapy` and `Chat Demo Group Therapy` (both `IN_SESSION` with a live
 session, client `maria_garcia` / counsellor `sarah_johnson`), and a `Chat Demo Discussion`
 (`IN_SESSION`, between `sarah_johnson` and `michael_chen`, with existing messages).
+The demo sessions and the demo discussion are live for **one hour after seeding**. After that their end time has passed, and the chat pages have nothing to send into. To make them live again without reseeding, run `docker compose exec php php artisan demo:refresh-chat`.
+
 `Chat Demo Group Therapy`'s live session has **two** active counsellors (`sarah_johnson` and
 `michael_chen`) specifically so cross-counsellor session-notes isolation (see
 `documentation/features/scrum-21-session-notes.md`) is browser-verifiable, not just Pest-covered:

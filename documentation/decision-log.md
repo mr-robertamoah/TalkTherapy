@@ -8629,3 +8629,26 @@ The user asked for likes and comments on public individual and group therapies, 
     - The CommentsModal delete removed the first comment, not the deleted one (an existing bug, reachable now).
   - **Dead code removed:** the unreachable `createMultipleLinks` controller and service methods, and their test.
   - **Follow-up:** **SCRUM-355**. Post and counsellor likes still list who liked them publicly.
+
+## SCRUM-352 + SCRUM-353 + SCRUM-355: chat send, discussion sessions, alerts, post likes — 2026-11-01
+
+The user asked for the three follow-ups in one PR.
+
+- **SCRUM-353, chat send: no code change needed beyond what's already merged.**
+  - In the browser, a freshly loaded `/therapies/{id}/chat` sends reliably, once a session is actually current. The counsellor and the client each sent on an anonymous therapy, and the server picked the right recipient (confirming SCRUM-348 in the browser).
+  - The real fix was the `TherapyChat.vue` activeSession unwrap merged in #267. My earlier failed checks were down to the demo session having expired.
+  - The ticket was wrong that the seed uses fixed past times: it seeds the demo sessions live, but only for an hour.
+  - Added a local `php artisan demo:refresh-chat` command, documented in `seeded-data.md`. It makes the demo sessions and discussion live again without a reseed. It runs **only in `local`**, and only on records belonging to the seeded demo therapy and group, never on anything matched by name alone (security review).
+  - **Live delivery checked:** two browser sessions, the counsellor and the client, on the same chat page. Messages arrived over Reverb in both directions without a reload, on both a normal and an anonymous therapy, and the counsellor never saw the client's name on the anonymous one.
+- **SCRUM-352:**
+  - A discussion's session must belong to its own therapy. Both `for_type` and `for_id` are checked, so a group session with the same id is refused too. Adding a session to a discussion that had none used to 500; the update is now null-safe.
+  - Waiting for a therapy's alerts now needs participation. A stranger gets the same answer as for a missing therapy.
+- **SCRUM-355:**
+  - Posts and counsellors now follow the therapy rule: likes are `{count, liked}` from the API, and `likesCount`/`isLiked` on `PostResource`, never who liked.
+  - `PostComponent.vue` uses the server's `isLiked`, with optimistic count updates.
+- **From the reviews:**
+  - **Existing bad links:** migration `2026_11_01_100000` unlinks discussions already tied to another therapy's session. The discussion stays; each unlink is logged. Dev's random seed data had one.
+  - **Alerts:** the endpoint narrows the model lookup to Therapy and GroupTherapy, so other model types get the same 422.
+  - `Therapy::isParticipant` is null-safe, now that it's on every alert request.
+  - The comment and docs no longer blame `failUnheldSessions()`, which never touches `in_session` records.
+  - **Not done here:** the post feed loads every like row per post just to count them. That predates this PR, so it's noted rather than changed.

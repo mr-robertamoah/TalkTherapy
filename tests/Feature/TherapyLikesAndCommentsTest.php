@@ -3,6 +3,7 @@
 use App\Actions\Comment\EnsureCommentableExistsAction;
 use App\Actions\Like\EnsureLikeableExistsAction;
 use App\Enums\ConstantsEnum;
+use App\Http\Resources\PostResource;
 use App\Http\Resources\TherapyResource;
 use App\Models\Comment;
 use App\Models\Counsellor;
@@ -152,13 +153,29 @@ test('you can still remove your like after a therapy turns private', function ()
     expect($therapy->likes()->count())->toBe(0);
 });
 
-test('post likes keep their list shape; a guest\'s therapy like state is false', function () {
+test('a guest\'s like state is false', function () {
     $post = Post::query()->forceCreate(['content' => 'Hi', 'addedby_type' => User::class, 'addedby_id' => User::factory()->create()->id]);
     $fan = User::factory()->create();
     $this->actingAs($fan)->postJson(route('api.likes.create'), ['likeableType' => 'Post', 'likeableId' => $post->id])->assertSuccessful();
-    expect($this->getJson(route('api.likes', ['likeableType' => 'Post', 'likeableId' => $post->id]))->json())->toBe([['user_id' => $fan->id]]);
+    $this->app['auth']->forgetGuards();
+    expect($this->getJson(route('api.likes', ['likeableType' => 'Post', 'likeableId' => $post->id]))->json())->toBe(['count' => 1, 'liked' => false]);
 
     [$therapy] = aTherapyFor354();
     $this->app['auth']->forgetGuards();
     expect($this->getJson(route('api.likes', ['likeableType' => 'Therapy', 'likeableId' => $therapy->id]))->json())->toBe(['count' => 0, 'liked' => false]);
+});
+
+test('SCRUM-355: post and counsellor likes are a count and your own like too, never who', function () {
+    $post = Post::query()->forceCreate(['content' => 'Hello', 'addedby_type' => User::class, 'addedby_id' => User::factory()->create()->id]);
+    $counsellor = Counsellor::factory()->create(['user_id' => User::factory()->create()->id]);
+    $fan = User::factory()->create();
+    $this->actingAs($fan)->postJson(route('api.likes.create'), ['likeableType' => 'Post', 'likeableId' => $post->id])->assertSuccessful();
+    $this->actingAs($fan)->postJson(route('api.likes.create'), ['likeableType' => 'Counsellor', 'likeableId' => $counsellor->id])->assertSuccessful();
+
+    expect($this->actingAs($fan)->getJson(route('api.likes', ['likeableType' => 'Post', 'likeableId' => $post->id]))->json())->toBe(['count' => 1, 'liked' => true])
+        ->and($this->actingAs($fan)->getJson(route('api.likes', ['likeableType' => 'Counsellor', 'likeableId' => $counsellor->id]))->json())->toBe(['count' => 1, 'liked' => true]);
+
+    $asFan = (new PostResource($post->fresh()))->resolve(Request::create('/')->setUserResolver(fn () => $fan));
+    expect($asFan)->toMatchArray(['likesCount' => 1, 'isLiked' => true])->not->toHaveKey('likes');
+    expect((new PostResource($post->fresh()))->resolve(Request::create('/'))['isLiked'])->toBeFalse();
 });

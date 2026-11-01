@@ -86,7 +86,7 @@
                         title="unlike post" v-if="computedHasLiked" class="w-5 h-5 text-blue-600"/>
                     <LikeIcon
                         :title="$page.props.auth.user ? 'like post' : ''" v-else class="w-5 h-5 text-gray-500 hover:text-blue-600 transition-colors"/>
-                    <span class="text-sm font-medium text-gray-700">{{ post.likes?.length || 0 }}</span>
+                    <span class="text-sm font-medium text-gray-700">{{ post.likesCount || 0 }}</span>
                     <span class="text-sm text-gray-500">likes</span>
                 </div>
                 <div class="flex items-center space-x-2 px-4 py-2 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
@@ -257,15 +257,8 @@ watchEffect(() => {
         id.value = props.post.id
 })
 
-const computedHasLiked = computed(() => {
-    const user = usePage().props.auth.user
-
-    if (!user || !props.post?.likes?.length) return false
-
-    if (props.post.likes.find((userId) => userId == user.id)) return true
-
-    return false
-})
+// SCRUM-355: the server says whether you liked it; it never sends who did.
+const computedHasLiked = computed(() => !!usePage().props.auth.user && !!props.post?.isLiked)
 
 const computedIsAddedby = computed(() => {
     const user = usePage().props.auth.user
@@ -348,10 +341,8 @@ async function clickedDislike() {
     
     liking.value = true
 
-    let likes = [...props.post.likes]
-    likes.splice(props.post.likes.indexOf(user.id), 1)
-    console.log(likes)
-    emits('updated', {...props.post, likes})
+    const likesCount = props.post.likesCount || 0
+    emits('updated', {...props.post, isLiked: false, likesCount: Math.max(0, likesCount - 1)})
     await axios
         .post(route('api.likes.delete'), {
             likeableType: 'Post',
@@ -364,7 +355,7 @@ async function clickedDislike() {
             console.log(err)
             goToLogin(err)
             
-            emits('updated', {...props.post, likes: [user.id, ...likes]})
+            emits('updated', {...props.post, isLiked: true, likesCount})
             
             if (err.response?.data?.message) {
                 setFailedAlertData({
@@ -390,8 +381,8 @@ async function clickedLike() {
     
     liking.value = true
 
-    let likes = [user.id, ...props.post.likes]
-    emits('updated', {...props.post, likes})
+    const likesCount = props.post.likesCount || 0
+    emits('updated', {...props.post, isLiked: true, likesCount: likesCount + 1})
     await axios
         .post(route('api.likes.create'), {
             likeableType: 'Post',
@@ -404,8 +395,7 @@ async function clickedLike() {
             console.log(err)
             goToLogin(err)
             
-            likes.splice(likes.indexOf(user.id), 1)
-            emits('updated', {...props.post, likes})
+            emits('updated', {...props.post, isLiked: false, likesCount})
             
             if (err.response?.data?.message) {
                 setFailedAlertData({
