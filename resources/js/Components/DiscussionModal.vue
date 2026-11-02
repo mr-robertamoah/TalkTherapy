@@ -167,8 +167,8 @@
             :disabled="
               !(
                 DiscussionStatusEnum.pending == discussion?.status &&
-                timer.beforeEnd > 10 &&
-                timer.beforeStart <= 0
+                computedTimer.beforeEnd > 10 &&
+                computedTimer.beforeStart <= 0
               )
             "
             @click="clickedStartSession"
@@ -185,7 +185,7 @@
                 [DiscussionStatusEnum.pending, DiscussionStatusEnum.inSession].includes(
                   discussion?.status
                 ) &&
-                timer.beforeEnd > 0 &&
+                computedTimer.beforeEnd > 0 &&
                 computedIsInSession
               )
             "
@@ -198,7 +198,7 @@
             its end time has not elapsed.
           </div>
           <PrimaryButton
-            :disabled="!(computedIsInSession && timer.beforeEnd < 0)"
+            :disabled="!(computedIsInSession && computedTimer.beforeEnd < 0)"
             @click="clickedEndDiscussion"
             class="w-fit mx-auto"
             >end discussion</PrimaryButton
@@ -559,6 +559,7 @@ import StyledLink from "./StyledLink.vue";
 import useUtilities from "@/Composables/useUtilities";
 import useLoader from "@/Composables/useLoader";
 import useEnums from "@/Composables/useEnums";
+import { minutesUntilWindow } from "@/Composables/countdown";
 
 const { loader, showLoader, hideLoader } = useLoader();
 const { alertData, clearAlertData, setSuccessAlertData, setFailedAlertData } = useAlert();
@@ -576,16 +577,32 @@ const props = defineProps({
   discussion: {
     default: null,
   },
-  timer: {
-    default: {
-      beforeStart: 0,
-      beforeEnd: 0,
-      set: false,
-    },
-  },
 });
 
 const { DiscussionStatusEnum } = useEnums();
+
+// SCRUM-369: the modal counts down from the discussion's own times. Opened from a discussion card
+// nobody passed a timer, so every status button was disabled; the page's header timer follows the
+// active *session* when there is one, so it can't be used either.
+const now = ref(Date.now());
+let nowInterval = null;
+onBeforeUnmount(() => clearInterval(nowInterval));
+watch(
+  () => props.show,
+  (show) => {
+    clearInterval(nowInterval);
+    if (!show) return;
+    now.value = Date.now();
+    nowInterval = setInterval(() => (now.value = Date.now()), 30000);
+  },
+  { immediate: true }
+);
+const computedTimer = computed(() => {
+  if (!props.discussion?.startTime || !props.discussion?.endTime)
+    return { beforeStart: 0, beforeEnd: 0, set: false };
+
+  return { ...minutesUntilWindow(props.discussion.startTime, props.discussion.endTime, new Date(now.value)), set: true };
+});
 const getting = ref({ show: false, type: "" });
 const requestData = ref({
   counsellorId: [],
@@ -679,7 +696,7 @@ const computedIsInSession = computed(() => {
   return (
     DiscussionStatusEnum.inSession == props.discussion?.status ||
     (props.discussion?.status == DiscussionStatusEnum.pending &&
-      props.timer.beforeStart < 5)
+      computedTimer.value.beforeStart < 5)
   );
 });
 

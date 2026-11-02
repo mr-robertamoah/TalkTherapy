@@ -113,7 +113,7 @@
             ? 'bg-red-300'
             : 'bg-green-300',
         ]"
-        @dblclick="$emit('clicked-active-session')"
+        @dblclick="$emit('clicked-active-discussion')"
       >
         <div
           class="flex justify-end items-center text-sm space-x-2 font-bold"
@@ -177,5 +177,7 @@ defineProps({
   onlineParticipants: { default: () => [] },
 })
 
-defineEmits(['clicked-show-all', 'clicked-active-session'])
+// SCRUM-369: the discussion header has its own event -- it used to open the session's modal
+// whenever a session was active too.
+defineEmits(['clicked-show-all', 'clicked-active-session', 'clicked-active-discussion'])
 </script>

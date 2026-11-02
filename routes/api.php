@@ -230,9 +230,9 @@ Route::middleware('auth:sanctum')->group(function () {
     // counter-offer needs its own endpoint, mirroring requests.compensation_counter_offer.
     Route::post('/requests/{requestId}/schedule-counter-offer', [SessionScheduleProposalController::class, 'counterOffer'])->name('api.session_schedule_proposals.counter_offer')->middleware('throttle:30,1,api.session_schedule_proposals.counter_offer');
 
-    // SCRUM-198/TT-2.2c: fetched/mutated via axios from the counsellor's already-loaded therapy
-    // chat page (TherapyComponent.vue), same pattern as api.session.messages.get below -- never
-    // broadcast, never reaches the client/participant side of the therapy.
+    // SCRUM-197/198 (TT-2.2b/c): a counsellor's own private notes on a session, fetched/mutated via
+    // axios from the therapy page -- never broadcast, never reaches the client/participant side.
+    // SCRUM-200: these are the only routes; the unused web.php duplicates were removed.
     Route::get('/sessions/{sessionId}/notes', [SessionNoteController::class, 'index'])->name('api.session.notes.index');
     Route::post('/sessions/{sessionId}/notes', [SessionNoteController::class, 'store'])->name('api.session.notes.store')->middleware('throttle:30,1,session-actions');
     Route::patch('/sessions/notes/{noteId}', [SessionNoteController::class, 'update'])->name('api.session.notes.update')->middleware('throttle:30,1,session-actions');
@@ -266,9 +266,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // SCRUM-202/TT-2.3a: a counsellor's own private note on one specific chat Message -- never
     // exposed to the client/other participants, see MessageNoteController's own comment on how
     // counsellor_id is always derived server-side, never accepted as input. Registered only here
-    // (not also in web.php) -- the analogous SessionNote web.php registration turned out to be an
-    // orphaned duplicate never actually used by the frontend (tracked as SCRUM-200); this avoids
-    // repeating that mistake.
+    // (not also in web.php), like session notes (SCRUM-200).
     Route::get('/messages/{messageId}/notes', [MessageNoteController::class, 'index'])->name('api.message.notes.index');
     Route::post('/messages/{messageId}/notes', [MessageNoteController::class, 'store'])->name('api.message.notes.store')->middleware('throttle:messages');
     Route::patch('/messages/notes/{noteId}', [MessageNoteController::class, 'update'])->name('api.message.notes.update')->middleware('throttle:messages');

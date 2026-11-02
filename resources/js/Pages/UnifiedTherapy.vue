@@ -246,6 +246,10 @@ function clickedActiveSession() {
   showModal("have discussion")
 }
 
+function clickedActiveDiscussion() {
+  if (activeDiscussion.value) showModal("have discussion")
+}
+
 function clickedGoToChat() {
   const routeName = props.therapyType === 'individual' ? 'therapies.chat' : 'group.therapies.chat'
   const paramName = props.therapyType === 'individual' ? 'therapyId' : 'groupTherapyId'
@@ -920,6 +924,7 @@ function reportCreated(report) {
     :schedule-proposal-request="scheduleProposalRequest"
     @clicked-show-all="clickedShowAll"
     @clicked-active-session="clickedActiveSession"
+    @clicked-active-discussion="clickedActiveDiscussion"
     @handle-session-topic-update="handleSessionTopicUpdate"
     @handle-session-topic-delete="handleSessionTopicDelete"
     @get-discussions="getDiscussions"
@@ -1339,7 +1344,6 @@ function reportCreated(report) {
       <!-- Discussion Modal -->
       <DiscussionModal
         :discussion="activeDiscussion"
-        :timer="timer"
         :show="modalData.type == 'have discussion' && modalData.show"
         @close="closeModal"
         @changeStatus="(status) => (activeDiscussion.status = status)"

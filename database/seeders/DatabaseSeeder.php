@@ -195,7 +195,7 @@ class DatabaseSeeder extends Seeder
     private function createClosedAccountDemoData(): void
     {
         foreach ([
-            ['closed_account_demo_old', 'ClosedOld', config('accounts.closed_account_retention_days') + 1],
+            ['closed_account_demo_old', 'ClosedOld', config('user.closed_account_retention_days') + 1],
             ['closed_account_demo_recent', 'ClosedRecent', 1],
         ] as [$username, $firstName, $daysAgo]) {
             $user = User::factory()->create([
@@ -1143,6 +1143,31 @@ class DatabaseSeeder extends Seeder
             'currency' => 'USD',
             'reason' => 'Seeded already-successful refund.',
             'status' => RefundStatusEnum::success->value,
+        ]);
+
+        // SCRUM-368: a PUBLIC paid therapy -- its "Paid" status shows to refund_demo_client,
+        // refund_demo_counsellor and admins, never to anyone else browsing it.
+        $publicTherapy = $client->addedTherapies()->create([
+            'name' => 'Refund Demo Therapy (Public)',
+            'background_story' => 'Seeded PUBLIC, PAID, PER_THERAPY therapy with a SUCCESS transaction (SCRUM-368).',
+            'counsellor_id' => $counsellor->id,
+            'session_type' => 'Once',
+            'payment_type' => 'PAID',
+            'allow_in_person' => false,
+            'anonymous' => false,
+            'public' => true,
+            'status' => 'in_session',
+            'payment_data' => ['amount' => 50, 'currency' => 'USD', 'per' => 'PER_THERAPY'],
+        ]);
+
+        Transaction::query()->create([
+            'for_type' => $publicTherapy::class,
+            'for_id' => $publicTherapy->id,
+            'user_id' => $client->id,
+            'reference' => 'refund_demo_'.fake()->unique()->uuid(),
+            'amount' => 5000,
+            'currency' => 'USD',
+            'status' => TransactionStatusEnum::success->value,
         ]);
     }
 

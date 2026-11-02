@@ -22,20 +22,20 @@ use Illuminate\Database\Eloquent\Relations\MorphToMany;
 
 trait TherapyTrait
 {
+    // SCRUM-369: the session that is on now (or starts within five minutes) -- Session::whereActive,
+    // the same rule getActiveSession() uses for the page. Through the sessions() relation, so a group
+    // gets its own sessions: this used to filter on for_type = Therapy, so a group looked up
+    // whichever individual therapy shared its id.
     public function getActiveSessionAttribute()
     {
-        return Session::query()
-            ->whereTherapyId($this->id)
-            ->whereInSession()
-            ->orWhere(function ($query) {
-                $query->whereTherapyId($this->id);
-                $query->whereFiveOrLessMinutesToStart();
-            })
-            ->orWhere(function ($query) {
-                $query->whereTherapyId($this->id);
-                $query->whereIsOngoing();
-            })
-            ->first();
+        return $this->sessions()->whereActive()->first();
+    }
+
+    // SCRUM-369: the same for case discussions -- read by the scheduler's discussion.started
+    // broadcast, which used to ask for this attribute when it didn't exist (always null).
+    public function getActiveDiscussionAttribute()
+    {
+        return $this->discussions()->whereActive()->first();
     }
 
     // Memoized (SCRUM-212): Eloquent's morphTo eager loading shares one model instance across
@@ -81,7 +81,7 @@ trait TherapyTrait
             ->where(function ($query) use ($counsellor) {
                 $query
                     ->whereIsParticipant($counsellor)
-                    ->whereIsOngoing();
+                    ->whereActive();
             })
             ->first();
     }
@@ -93,7 +93,7 @@ trait TherapyTrait
                 $query
                     ->whereIsParticipant($user)
                     ->whereIsNotUserWhoConfirmedHeld($user)
-                    ->whereIsOngoing();
+                    ->whereActive();
             })
             ->first();
     }

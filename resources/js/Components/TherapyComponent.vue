@@ -367,7 +367,7 @@ import MiniModal from './MiniModal.vue';
 import useConnectionStatus from '@/Composables/useConnectionStatus';
 import SessionNotesPanel from './SessionNotesPanel.vue';
 import VideoCallPanel from './VideoCallPanel.vue';
-import { createBroadcastMessageQueue } from '@/Composables/resolveBroadcastMessage';
+import { createAnnouncementQueue } from '@/Composables/announcements';
 
 const { goToLogin } = useAuth()
 const {
@@ -752,7 +752,7 @@ function listenToMessages() {
     if (listening.value) return
 
     listening.value = true
-    const enqueueMessage = createBroadcastMessageQueue()
+    const enqueueMessage = createAnnouncementQueue()
     const channel = Echo
         .private(`sessions.${props.activeSession.id}`)
         .listen('.message.created', (data) => {

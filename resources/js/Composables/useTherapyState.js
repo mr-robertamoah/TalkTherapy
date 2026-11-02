@@ -1,9 +1,10 @@
 import { ref, computed, watch, watchEffect, onBeforeUnmount } from 'vue'
 import { usePage } from '@inertiajs/vue3'
-import { differenceInMinutes, parseISO } from 'date-fns'
 import useAlert from '@/Composables/useAlert'
 import useEnums from '@/Composables/useEnums'
-import { createBroadcastMessageQueue, resolveBroadcastSession } from '@/Composables/resolveBroadcastMessage'
+import { createAnnouncementQueue, resolveAnnouncedSession } from '@/Composables/announcements'
+import { acquireCounsellorChannel } from '@/Composables/sharedChannel'
+import { minutesUntilWindow } from '@/Composables/countdown'
 
 export default function useTherapyState(therapy, therapyType = 'individual') {
     const { SessionStatusEnum, DiscussionStatusEnum } = useEnums()
@@ -73,15 +74,33 @@ export default function useTherapyState(therapy, therapyType = 'individual') {
     })
     
     // Timer functions
-    function setTimers() {
-        let now = new Date()
-        let offset = now.getTimezoneOffset()
-        let value = activeSession.value ? activeSession.value : activeDiscussion.value
-        
-        timer.value.beforeStart = differenceInMinutes(parseISO(value.startTime), now) + offset
-        timer.value.beforeEnd = differenceInMinutes(parseISO(value.endTime), now) + offset
-        timer.value.set = true
+    // The header counts down to the active session, or to the active discussion when there is no
+    // session still running.
+    function timedItem() {
+        const finished = [SessionStatusEnum.failed, SessionStatusEnum.abandoned, SessionStatusEnum.held]
+        const session = activeSession.value && !finished.includes(activeSession.value.status) ? activeSession.value : null
+
+        return session ?? activeDiscussion.value
     }
+
+    function setTimers() {
+        const value = timedItem()
+        if (!value) return
+
+        Object.assign(timer.value, minutesUntilWindow(value.startTime, value.endTime), { set: true })
+    }
+
+    // SCRUM-369: now that sessions and discussions change live, recount when the item being timed
+    // changes -- e.g. the discussion header kept the session's countdown after the session ended.
+    watch(
+        () => [timedItem()?.id, timedItem() === activeSession.value],
+        (now, before) => {
+            if (!timer.value.set || (now[0] == before?.[0] && now[1] == before?.[1])) return
+            clearInterval(interval.value)
+            timer.value.set = false
+            if (timedItem()) startTimer()
+        }
+    )
     
     function resetTimer() {
         timer.value.beforeEnd = 0
@@ -101,6 +120,8 @@ export default function useTherapyState(therapy, therapyType = 'individual') {
     }
     
     // WebSocket listening
+    let counsellorChannel = null
+
     function listenToTherapy(currentTherapy) {
         const channelName = therapyType === 'group' 
             ? `groupTherapies.${currentTherapy.id}`
@@ -148,11 +169,12 @@ export default function useTherapyState(therapy, therapyType = 'individual') {
             .listen(`.session.started`, (data) => {
                 enqueueSession(data.sessionId, (session) => {
                     activeSession.value = session
+                    updateSessionOrTopic(session)
                     startTimer()
                 })
             })
-            .listen(`.session.updated`, (data) => refreshActiveSession(data.sessionId))
-            .listen(`.session.topic.set`, (data) => refreshActiveSession(data.sessionId))
+            .listen(`.session.updated`, (data) => refreshSession(data.sessionId))
+            .listen(`.session.topic.set`, (data) => refreshSession(data.sessionId))
             .listen(`.session.topic.unset`, () => {
                 if (activeSession.value) {
                     activeSession.value.currentTopic = null
@@ -160,26 +182,26 @@ export default function useTherapyState(therapy, therapyType = 'individual') {
             })
 
         // SCRUM-367: discussions are counsellors-only, so they arrive on this counsellor's own
-        // channel (which AuthenticatedLayout also uses), never the therapy's -- only those about
-        // this therapy are handled here.
-        const counsellorId = usePage().props.auth.user?.counsellor?.id
-        if (counsellorId) {
-            counsellorChannelName = `counsellors.${counsellorId}`
-            Echo.private(counsellorChannelName)
-                .listen('.discussion.started', onDiscussionStarted)
-                .listen('.discussion.updated', onDiscussionUpdated)
-        }
+        // channel, never the therapy's -- only those about this therapy are handled here. The
+        // channel is shared with AuthenticatedLayout (SCRUM-368: see sharedChannel.js).
+        counsellorChannel?.release()
+        counsellorChannel = acquireCounsellorChannel(usePage().props.auth.user?.counsellor?.id)
+        counsellorChannel
+            ?.listen('.discussion.started', onDiscussionStarted)
+            .listen('.discussion.updated', onDiscussionUpdated)
     }
 
-    const enqueueSession = createBroadcastMessageQueue(resolveBroadcastSession)
+    const enqueueSession = createAnnouncementQueue(resolveAnnouncedSession)
 
-    function refreshActiveSession(sessionId) {
-        if (!sessionId || activeSession.value?.id != sessionId) return
-        enqueueSession(sessionId, (session) => {
-            if (activeSession.value?.id == session.id) activeSession.value = session
-        })
+    // SCRUM-369: a session shown on this page -- the active one, or a card in "Most Recent
+    // Sessions" -- is refetched when it changes, and every place showing it is updated, so the
+    // card no longer says "in session" after the session was abandoned.
+    function refreshSession(sessionId) {
+        if (!sessionId) return
+        const shown = activeSession.value?.id == sessionId || recentSessions.value.some((s) => s.id == sessionId)
+        if (!shown) return
+        enqueueSession(sessionId, (session) => updateSessionOrTopic(session))
     }
-    let counsellorChannelName = null
 
     function isAboutThisTherapy(discussion) {
         const forType = therapyType === 'group' ? 'GroupTherapy' : 'Therapy'
@@ -263,12 +285,8 @@ export default function useTherapyState(therapy, therapyType = 'individual') {
             
         Echo.leave(channelName)
 
-        // Not left: AuthenticatedLayout listens on the same counsellor channel.
-        if (counsellorChannelName) {
-            Echo.private(counsellorChannelName)
-                .stopListening('.discussion.started', onDiscussionStarted)
-                .stopListening('.discussion.updated', onDiscussionUpdated)
-        }
+        counsellorChannel?.release()
+        counsellorChannel = null
     })
     
     return {

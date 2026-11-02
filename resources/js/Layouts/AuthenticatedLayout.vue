@@ -14,6 +14,7 @@ import CreateTherapyButton from "@/Components/CreateTherapyButton.vue";
 import Footer from "@/Components/Footer.vue";
 import useModal from '@/Composables/useModal';
 import ContactUsModal from '@/Components/ContactUsModal.vue';
+import { acquireCounsellorChannel } from '@/Composables/sharedChannel';
 
 const { modalData, showModal, closeModal } = useModal()
 
@@ -29,9 +30,11 @@ onBeforeUnmount(() => {
   if (page.props.auth.user?.id) 
     Echo.leave(`users.${page.props.auth.user?.id}`);
   
-  if (page.props.auth.user?.counsellor?.id) 
-    Echo.leave(`counsellors.${page.props.auth.user?.counsellor?.id}`);
+  // SCRUM-368: shared with the therapy page -- released, not left (see sharedChannel.js).
+  counsellorChannel?.release();
 });
+
+let counsellorChannel = null;
 
 watchEffect(() => {
   if (page.props.errorMessage?.length) {
@@ -105,7 +108,8 @@ watchEffect(() => {
     );
 
     if (page.props.auth.user.counsellor) {
-      Echo.private(`counsellors.${page.props.auth.user.counsellor.id}`)
+      counsellorChannel = acquireCounsellorChannel(page.props.auth.user.counsellor.id);
+      counsellorChannel
         .notification((notification) => {
           console.log(notification, "notification");
 

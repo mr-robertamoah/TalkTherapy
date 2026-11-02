@@ -22,6 +22,14 @@ class User extends Authenticatable implements MustVerifyEmailContract
 {
     use HasApiTokens, HasFactory, MustVerifyEmail, Notifiable, SoftDeletes;
 
+    // SCRUM-367/368: the columns cleared from a closed account once its retention period has passed
+    // (AnonymiseClosedAccountAction) -- its personal details plus what would still tie the row to
+    // them. /privacy's "How long we keep it" describes the same list in words; keep the two in step.
+    public const ANONYMISED_ATTRIBUTES = [
+        'firstName', 'lastName', 'otherNames', 'username', 'email', 'email_verified_at',
+        'dob', 'dob_verified_at', 'gender', 'country', 'settings', 'remember_token',
+    ];
+
     /**
      * The attributes that are mass assignable.
      *

@@ -148,6 +148,19 @@ class Discussion extends Model
         });
     }
 
+    // SCRUM-369: see Session::scopeWhereActive -- only a PENDING discussion can be about to start or
+    // inside its window; held, abandoned and failed ones are over.
+    public function scopeWhereActive($query)
+    {
+        return $query->where(fn ($query) => $query
+            ->whereInSession()
+            ->orWhere(fn ($query) => $query
+                ->whereStatusIn([DiscussionStatusEnum::pending->value])
+                ->where(fn ($query) => $query
+                    ->whereFiveOrLessMinutesToStart()
+                    ->orWhere(fn ($query) => $query->whereHasStartedAndNotEnded()))));
+    }
+
     public function scopeWhereInSession($query)
     {
         return $query

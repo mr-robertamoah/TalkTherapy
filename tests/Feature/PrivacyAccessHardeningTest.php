@@ -274,7 +274,7 @@ test('a closed account is anonymised after the retention period; its messages st
         'content' => 'still here', 'confidential' => false, 'type' => 'NORMAL',
     ]);
     $user->delete();
-    $this->travel(config('accounts.closed_account_retention_days') + 1)->days();
+    $this->travel(config('user.closed_account_retention_days') + 1)->days();
 
     AppService::new()->anonymiseClosedAccounts();
 
@@ -306,7 +306,7 @@ test('anonymising also clears date-of-birth requests, identity scans, tokens, no
     DB::table('password_reset_tokens')->insert(['email' => $user->email, 'token' => 'x', 'created_at' => now()]);
     $counsellor->delete();
     $user->delete();
-    $this->travel(config('accounts.closed_account_retention_days') + 1)->days();
+    $this->travel(config('user.closed_account_retention_days') + 1)->days();
 
     AppService::new()->anonymiseClosedAccounts();
 
@@ -328,7 +328,7 @@ test('a closed account with an open report about it is held back', function () {
     $report->addedby()->associate($reporter);
     $report->save();
     $user->delete();
-    $this->travel(config('accounts.closed_account_retention_days') + 1)->days();
+    $this->travel(config('user.closed_account_retention_days') + 1)->days();
 
     AppService::new()->anonymiseClosedAccounts();
     expect(User::withTrashed()->find($user->id)->anonymised_at)->toBeNull();
@@ -343,7 +343,7 @@ test('an open, a recently closed, or a suspended closed account is not anonymise
     $suspended = User::factory()->create(['firstName' => 'Suspended']);
     pahSuspend($suspended, $open);
     $suspended->delete();
-    $this->travel(config('accounts.closed_account_retention_days') + 1)->days();
+    $this->travel(config('user.closed_account_retention_days') + 1)->days();
     $recent = User::factory()->create(['firstName' => 'Recent']);
     $recent->delete();
 
