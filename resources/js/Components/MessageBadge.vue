@@ -303,7 +303,7 @@ import FilePreview from "./FilePreview.vue";
 import FileModal from "./FileModal.vue";
 import TextBox from "./TextBox.vue";
 import InputError from "./InputError.vue";
-import { createBroadcastMessageQueue } from "@/Composables/resolveBroadcastMessage";
+import { createAnnouncementQueue } from "@/Composables/announcements";
 
 
 const { goToLogin } = useAuth()
@@ -395,7 +395,7 @@ watchEffect(() => {
 
     if (listening.value) return
     listening.value = true
-    const enqueueUpdate = createBroadcastMessageQueue()
+    const enqueueUpdate = createAnnouncementQueue()
 
     Echo
         .private(`messages.${props.msg?.id}`)

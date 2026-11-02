@@ -128,15 +128,19 @@ class Session extends Model
         return $this->transactions()->where('user_id', $user->id)->latest('created_at')->first();
     }
 
-    // SCRUM-263: see GroupTherapy::showsGroupPaymentStatusTo(). Only called for a group's session;
-    // the cheap checks come first, so a plain member's session list never loads the group.
-    public function showsGroupPaymentStatusTo(?User $user): bool
+    // SCRUM-263/368: see Therapy:: and GroupTherapy::showsPaymentStatusTo(). For a group, the cheap
+    // checks come first, so a plain member's session list never loads the group.
+    public function showsPaymentStatusTo(?User $user): bool
     {
-        if (! $user || (! $user->counsellor && ! $user->isAdmin())) {
+        if (! $user) {
             return false;
         }
 
-        return $this->for instanceof GroupTherapy && $this->for->showsGroupPaymentStatusTo($user);
+        if ($this->for_type === GroupTherapy::class && ! $user->counsellor && ! $user->isAdmin()) {
+            return false;
+        }
+
+        return (bool) $this->for?->showsPaymentStatusTo($user);
     }
 
     public function addedby()
@@ -177,6 +181,21 @@ class Session extends Model
                 SessionStatusEnum::in_session->value,
                 SessionStatusEnum::in_session_confirmation->value,
             ]);
+    }
+
+    // SCRUM-369: the one definition of "active" -- in session, or not finished and either starting
+    // within five minutes or inside its time window. Used both by the page (getActiveSession) and by
+    // the scheduler's session.started announcement (TherapyTrait::activeSession), so a page loaded
+    // after the one announcement already shows what was announced.
+    public function scopeWhereActive($query)
+    {
+        return $query->where(fn ($query) => $query
+            ->whereInSession()
+            ->orWhere(fn ($query) => $query
+                ->whereStatusNotIn(SessionStatusEnum::finished())
+                ->where(fn ($query) => $query
+                    ->whereFiveOrLessMinutesToStart()
+                    ->orWhere(fn ($query) => $query->whereHasStartedAndNotEnded()))));
     }
 
     public function scopeWhereIsNotUserWhoConfirmedHeld($query, User|Counsellor $model)

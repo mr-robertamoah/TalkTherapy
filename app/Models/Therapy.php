@@ -76,6 +76,21 @@ class Therapy extends Model
         return $this->counsellor->user->is($user);
     }
 
+    // SCRUM-368: an individual therapy's payment and refund status is the client's own payment --
+    // shown to the client, the therapy's counsellor and administrators, never to someone browsing
+    // a public therapy (GroupTherapy::showsPaymentStatusTo is the group counterpart).
+    // Remembered per viewer on this instance: a session list shares one parent therapy.
+    private array $showsPaymentStatusCache = [];
+
+    public function showsPaymentStatusTo(?User $user): bool
+    {
+        if (! $user) {
+            return false;
+        }
+
+        return $this->showsPaymentStatusCache[$user->id] ??= $this->isParticipant($user) || $user->isAdmin();
+    }
+
     public function isNotParticipant(User $user)
     {
         return ! $this->isParticipant($user);

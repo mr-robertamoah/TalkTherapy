@@ -244,7 +244,8 @@ class TherapyController extends Controller
                 // SessionResource's refundStatus field reads it for every individual-Therapy
                 // session in this bulk render (GroupTherapy sessions never touch it, so
                 // GroupTherapyController's own identical query doesn't need this).
-                'recentSessions' => SessionResource::collection($therapy->sessions()->with('latestTransaction.successfulRefund')->latest()->take(5)->get()),
+                // SCRUM-368: each session's `for` is this therapy -- set, not queried per session.
+                'recentSessions' => SessionResource::collection($therapy->sessions()->with('latestTransaction.successfulRefund')->latest()->take(5)->get()->each->setRelation('for', $therapy)),
                 'recentTopics' => TherapyTopicResource::collection($therapy->topics()->latest()->take(5)->get()),
             ]);
         } catch (PaymentRequiredException $th) {

@@ -21,7 +21,6 @@ use App\Events\SessionStartedEvent;
 use App\Models\Alert;
 use App\Models\Counsellor;
 use App\Models\Discussion;
-use App\Models\GroupTherapy;
 use App\Models\License;
 use App\Models\Organization;
 use App\Models\OrganizationInvoice;
@@ -47,6 +46,7 @@ use App\Notifications\VisitorsStatusNotification;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Queue\Events\JobFailed;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Notification;
@@ -139,7 +139,7 @@ class AppService extends Service
     }
 
     // SCRUM-367: erases the personal details of accounts closed longer than the retention period
-    // (config accounts.closed_account_retention_days). An account still answerable for something
+    // (config user.closed_account_retention_days). An account still answerable for something
     // is left until that's over: a suspension that hasn't ended (or hasn't started yet), or a
     // report about it that is still open -- otherwise the person could sign up again with the same
     // email meanwhile. One account failing doesn't stop the rest; it is retried on the next run.
@@ -149,7 +149,7 @@ class AppService extends Service
 
         User::onlyTrashed()
             ->whereNull('anonymised_at')
-            ->where('deleted_at', '<=', now()->subDays(config('accounts.closed_account_retention_days')))
+            ->where('deleted_at', '<=', now()->subDays(config('user.closed_account_retention_days')))
             ->lazyById()
             ->each(function (User $user) use (&$counts) {
                 if ($this->closedAccountIsOnHold($user)) {
@@ -240,32 +240,48 @@ class AppService extends Service
 
     }
 
+    // Each minute, for every therapy someone is waiting on (an Alert), tell its open pages that its
+    // session or discussion has started. SCRUM-369:
+    //  - one pass per therapy, not per waiting person -- several participants used to mean the same
+    //    broadcast several times in the same second;
+    //  - each session and discussion is announced once (Cache::add, until it ends), not every minute
+    //    someone is waiting -- a page loaded after that already has it;
+    //  - a finished session (abandoned, held) is not active any more (TherapyTrait).
     public function broadcastStartedSessionsAndDiscussions()
     {
-        $alerts = Alert::query()
+        Alert::query()
             ->whereWaiting()
-            ->with(['alertable' => function (MorphTo $query) {
-                $query->morphWith([
-                    Therapy::class => ['sessions.addedby', 'sessions.addedby.user', 'discussions.addedby'],
-                    GroupTherapy::class => ['sessions.addedby', 'discussions.addedby'],
-                ]);
-            }, 'user'])
-            ->get();
+            ->with('alertable')
+            ->get()
+            ->groupBy(fn (Alert $alert) => "{$alert->alertable_type}:{$alert->alertable_id}")
+            ->each(function ($alerts) {
+                $alertable = $alerts->first()->alertable;
 
-        $alerts->each(function ($alert) {
-            $activeSession = $alert->alertable?->activeSession;
+                $activeSession = $alertable?->activeSession;
+                if ($activeSession && $this->firstAnnouncement('session', $activeSession)) {
+                    SessionStartedEvent::broadcast($activeSession);
+                }
 
-            if ($activeSession) {
-                SessionStartedEvent::broadcast($activeSession);
-            }
+                $activeDiscussion = $alertable?->activeDiscussion;
+                if ($activeDiscussion && $this->firstAnnouncement('discussion', $activeDiscussion)) {
+                    DiscussionStartedEvent::broadcast($activeDiscussion);
+                }
 
-            $activeDiscussion = $alert->alertable?->activeDiscussion;
+                Alert::query()->whereKey($alerts->modelKeys())->delete();
+            });
+    }
 
-            if ($activeDiscussion) {
-                DiscussionStartedEvent::broadcast($activeDiscussion);
-            }
-            $alert->delete();
-        });
+    private function firstAnnouncement(string $kind, Session|Discussion $model): bool
+    {
+        // Discussion doesn't cast end_time, so it may be a string.
+        $endTime = $model->end_time ? Carbon::parse($model->end_time) : null;
+        $until = $endTime?->isFuture() ? $endTime->addHour() : now()->addHour();
+
+        // The start time is part of the key: a session rescheduled after its first announcement is
+        // announced again when it really starts.
+        $startedAt = $model->start_time ? Carbon::parse($model->start_time)->timestamp : 0;
+
+        return Cache::add("started-broadcast:{$kind}:{$model->id}:{$startedAt}", true, $until);
     }
 
     public function failUnheldSessions()

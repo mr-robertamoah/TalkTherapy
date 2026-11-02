@@ -42,7 +42,7 @@ class CounsellorController extends Controller
             $status = $this->statusFor($th);
             $message = $this->messageFor($th, $status);
 
-            return redirect()->route('counsellor.show', ['counsellorId' => $request->route('counsellorId')])->withErrors('message', $message);
+            return redirect()->route('counsellor.show', ['counsellorId' => $request->route('counsellorId')])->withErrors(['alert' => $message]);
         }
     }
 

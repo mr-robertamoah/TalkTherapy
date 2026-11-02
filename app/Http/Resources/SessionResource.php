@@ -38,6 +38,10 @@ class SessionResource extends JsonResource
         $viewerTransaction = $this->payment_type === 'PAID' && $request->user()
             ? $this->latestTransactionFor($request->user())
             : null;
+        // SCRUM-263/368: the session's own payment status (whoever paid) only for those it is about --
+        // see Session::showsPaymentStatusTo().
+        // Only asked when there is a status to show (most sessions are free, with no transaction).
+        $showsPaymentStatus = $this->latestTransaction && $this->showsPaymentStatusTo($request->user());
 
         return [
             'id' => $this->id,
@@ -55,11 +59,10 @@ class SessionResource extends JsonResource
             'startTime' => $this->start_time,
             'endTime' => $this->end_time,
             'paymentType' => $this->payment_type,
-            // SCRUM-263: a group session's status is "some member's latest transaction" -- null for
-            // anyone but that group's counsellors and administrators (members use viewerPaymentStatus).
-            'paymentStatus' => $isIndividualTherapy || $this->showsGroupPaymentStatusTo($request->user())
-                ? $this->latestTransaction?->status
-                : null,
+            // SCRUM-263/368: null for anyone the payment isn't about -- for a group, anyone but its
+            // counsellors and administrators (members use viewerPaymentStatus); for an individual
+            // therapy, anyone but the client, the counsellor and administrators.
+            'paymentStatus' => $showsPaymentStatus ? $this->latestTransaction?->status : null,
             // TT-7.4d-b/SCRUM-259: `paymentStatus` above is unscoped (see `viewerTransaction`'s own
             // comment) -- safe as the sole status field for an individual-Therapy session (exactly
             // one payer, so it already reads as "did I pay"), but wrong for a GroupTherapy session
@@ -84,7 +87,7 @@ class SessionResource extends JsonResource
             // null for the counsellor (never the payer, never has a $viewerTransaction) and for a
             // co-member who isn't the one who was refunded.
             'refundStatus' => $isIndividualTherapy
-                ? $this->latestTransaction?->successfulRefund?->status
+                ? ($showsPaymentStatus ? $this->latestTransaction?->successfulRefund?->status : null)
                 : $viewerTransaction?->successfulRefund?->status,
             // TT-7.7b/SCRUM-250
             'transactionId' => $viewerTransaction?->id,

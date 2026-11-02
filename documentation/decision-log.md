@@ -9049,3 +9049,69 @@ payment status goes only to its counsellors and admins.
   `Exception` directly, and a base class can't be implemented by accident outside the app.
 - **Deferred to SCRUM-368:** an individual public therapy's payment status visible to viewers,
   counsellor-channel ownership, retention periods on /privacy from config, naming.
+
+## SCRUM-368 + 369 + 211 + 201 + 142 + 143 + 97 + 200: review follow-ups, live session updates, cleanups — 2026-11-02
+
+The user chose the group (2026-11-02, "Recommended + 97 + 200") and closed SCRUM-174 (clients
+seeing discussions) as won't do, since discussions are counsellors-only (SCRUM-367).
+
+- **Individual payment status** goes to the client, the therapy's counsellor and admins. One
+  `showsPaymentStatusTo()` on Therapy, GroupTherapy and Session (renamed from the group-only
+  method). Free sessions are not exempt from the check: some have transactions in existing data.
+- **Payment status, guardians:** a guardian isn't a participant, so they no longer get the ward's
+  individual-therapy payment status. That is deliberate: only participants can pay, and the guardian
+  is not the payer (security review, F4).
+- **Shared channels:** `sharedChannel.js` is a ref-counted module (`acquireChannel(name)`, with an
+  `acquireCounsellorChannel(id)` wrapper), not a `use*` composable. Both callers acquire the channel
+  once the user is known (in a watcher, or in a function the page calls later), so a setup-time
+  `onBeforeUnmount` wrapper would never be used. Each handle removes only its own handlers; the
+  channel is left when the last handle is released. It is generic because `sessions.{id}` and
+  `discussions.{id}` have the same several-owners problem (architecture review). Moving them onto it
+  is ticketed rather than done here.
+- **/privacy periods** come from an invokable `PrivacyController`, read on each request. The first
+  version used `Route::inertia` props, which `route:cache` would freeze separately from config.
+- **Renames:** `resolveBroadcastMessage.js` → `announcements.js` (`createAnnouncementQueue`,
+  `resolveAnnouncedMessage`, `resolveAnnouncedSession`); `config/accounts.php` → `config/user.php`.
+  The erased-columns list is `User::ANONYMISED_ATTRIBUTES`: it includes `remember_token` and
+  `email_verified_at`, which aren't "personal details".
+- **Active session (SCRUM-369):** `TherapyTrait::getActiveSessionAttribute` filtered on
+  `for_type = Therapy`, so a group looked up the individual therapy with the same id (its
+  `session.started` was announced on the group's channel, though the fetch refused outsiders). It
+  now uses the `sessions()` relation, and a session that has finished (held, abandoned, failed)
+  inside its window no longer counts. The new `activeDiscussion` accessor is what the scheduler
+  had been asking for; it never existed, so `discussion.started` never fired.
+- **One definition of "active"** (`Session::whereActive`, `Discussion::whereActive`), used by both
+  the page (`getActiveSession`/`getActiveDiscussion`) and the scheduler's accessors:
+  - **active** means in session, or not finished and starting within five minutes or inside its
+    window;
+  - for sessions, "finished" (`SessionStatusEnum::finished()`) is failed, abandoned or held;
+  - **HELD_CONFIRMATION stays active** for the party who still has to confirm.
+
+  The page's old `whereIsOngoing` had no five-minute window and ignored status. That made the
+  once-only announcement unsafe: someone opening the page in the five minutes before the start would
+  get neither (architecture review). `whereIsOngoing` was then unused and was removed.
+- **Started broadcasts:** grouped per therapy, and each session or discussion is announced once.
+  The `Cache::add` key includes the start time, so a rescheduled session is announced again, and it
+  lasts until an hour after the end. A page loaded later already has it. Alerts are still deleted on
+  every run, as before.
+- **Recent-session cards** are refreshed from the therapy channel's session events, not by giving
+  each card its own `sessions.{id}` subscription. That would be a second subscriber on a channel
+  the header badge leaves on unmount.
+- **Discussion modal** always counts down from the discussion's own times, through one helper
+  (`countdown.js`) shared with the header's timer. It no longer takes the page's timer, which
+  follows the active *session* when there is one (review).
+- **Double booking (SCRUM-211):** "within 30 minutes of another session" is now an interval overlap
+  with the range widened by 30 minutes on each side. The inclusive bounds are kept, so an exact
+  30-minute gap is still refused, as before.
+- **Link failures (SCRUM-97):** found while writing the tests. A non-422 failure went to
+  `returnFailure`, whose `acceptsJson()` is true for a browser's `*/*` Accept, so a person opening
+  a link got a raw JSON page. Browser visits now always go home with the alert; JSON only for XHR.
+  The alert is now flashed: it was `put` into the session, so it showed on every later visit home.
+  The same `acceptsJson()` pattern in about 23 other controllers' `returnFailure` is ticketed.
+- **SCRUM-142:** the four duplicated per-branch status filters and the trailing no-op became one
+  grouped OR block, with the status applied once outside it.
+- **SCRUM-200:** the unused `web.php` session-notes routes were removed; the `api.php` routes, with
+  their throttles, are the only surface.
+- **Follow-ups filed:** SCRUM-370 (session and discussion channels onto `sharedChannel.js`),
+  SCRUM-371 (`returnFailure` with `expectsJson` in the base controller), SCRUM-372
+  (`discussion.request.response` dot, Discussion casts, per-viewer resources in notifications).

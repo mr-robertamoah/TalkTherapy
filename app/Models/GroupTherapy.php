@@ -126,19 +126,20 @@ class GroupTherapy extends Model
     }
 
     // SCRUM-263: the group-wide payment status ("some member's latest transaction") is only for
-    // the group's own counsellors and administrators. A member sees only their own status
+    // the group's own counsellors and administrators (Therapy::showsPaymentStatusTo is the
+    // individual-therapy counterpart, SCRUM-368). A member sees only their own status
     // (viewerPaymentStatus): next to it, the group-wide one would tell them whether a specific
     // co-member has paid, failed or been refunded.
     // Remembered per viewer on this instance: a session list shares one eager-loaded group.
-    private array $showsGroupPaymentStatusCache = [];
+    private array $showsPaymentStatusCache = [];
 
-    public function showsGroupPaymentStatusTo(?User $user): bool
+    public function showsPaymentStatusTo(?User $user): bool
     {
         if (! $user) {
             return false;
         }
 
-        return $this->showsGroupPaymentStatusCache[$user->id] ??= $this->isCounsellorUser($user) || $user->isAdmin();
+        return $this->showsPaymentStatusCache[$user->id] ??= $this->isCounsellorUser($user) || $user->isAdmin();
     }
 
     // TT-3.2f-f/SCRUM-323: an ordinary member (not an active counsellor, not the creator) only

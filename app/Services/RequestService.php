@@ -26,111 +26,47 @@ class RequestService extends Service
 {
     public function getRequests(string $status, User $user)
     {
-        $query = Request::query();
-
-        $query->where(function ($query) use ($status, $user) {
-            $query->whereFrom($user);
-            if ($status) {
-                $query->where('status', $status);
-            }
-        });
-
-        $query->orWhere(function ($query) use ($status, $user) {
-            $query->whereTo($user);
-            if ($status) {
-                $query->where('status', $status);
-            }
-        });
-
         $counsellor = $user->counsellor;
-        $query->when($counsellor, function ($query) use ($counsellor, $status) {
-
-            $query->orWhere(function ($query) use ($status, $counsellor) {
-                $query->whereFrom($counsellor);
-                if ($status) {
-                    $query->where('status', $status);
-                }
-            });
-            $query->orWhere(function ($query) use ($status, $counsellor) {
-                $query->whereTo($counsellor);
-                if ($status) {
-                    $query->where('status', $status);
-                }
-            });
-        });
-
         // TT-6.6d (SCRUM-162): org-directed requests (counsellor applications, member
-        // applications, invites) address to/from as the Organization itself, not the admin --
-        // an org admin has no way to list "pending for my org" without this. Additive to the
-        // listing query only, mirroring the $counsellor block above but matching any one of the
-        // admin's organizations rather than a single model instance.
+        // applications, invites) address to/from as the Organization itself, not the admin.
         $administeredOrganizationIds = $user->administeredOrganizations()->pluck('organizations.id');
-        $query->when($administeredOrganizationIds->isNotEmpty(), function ($query) use ($administeredOrganizationIds, $status) {
-
-            $query->orWhere(function ($query) use ($status, $administeredOrganizationIds) {
-                $query->where('from_type', Organization::class)->whereIn('from_id', $administeredOrganizationIds);
-                if ($status) {
-                    $query->where('status', $status);
-                }
-            });
-            $query->orWhere(function ($query) use ($status, $administeredOrganizationIds) {
-                $query->where('to_type', Organization::class)->whereIn('to_id', $administeredOrganizationIds);
-                if ($status) {
-                    $query->where('status', $status);
-                }
-            });
-        });
-
-        // TT-4.10f/SCRUM-295 QA finding: EnsureUserCanRespondToRequestAction authorizes ANY of a
-        // ward's guardians to respond to a dobChange request, not just the one `to` happens to be
-        // fixed to at creation time (mirroring GrantVideoConsentAction's own "any one guardian"
-        // precedent) -- but without this branch, a ward's OTHER guardian had no way to ever
-        // discover the request existed in the first place, since only whereTo($user) matched it.
-        // Additive, mirrors the $counsellor/$administeredOrganizationIds blocks above.
+        // TT-4.10f/SCRUM-295: ANY of a ward's guardians may respond to a dobChange request, not
+        // just the one `to` was fixed to at creation, so every guardian must be able to list it.
         $wardIds = $user->wards()->pluck('ward_id');
-        $query->when($wardIds->isNotEmpty(), function ($query) use ($wardIds, $status) {
-            $query->orWhere(function ($query) use ($status, $wardIds) {
-                $query->where('type', RequestTypeEnum::dobChange->value)
+        $isAdmin = $user->isAdmin();
+
+        // SCRUM-142: every "may see this request" branch sits inside one group, and the status
+        // filter is applied once, outside it -- AND binds tighter than OR, so a status filter
+        // added after a bare chain of orWhere()s would only attach to the last branch.
+        $query = Request::query()->where(function ($query) use ($user, $counsellor, $administeredOrganizationIds, $wardIds, $isAdmin) {
+            $query->whereFrom($user)->orWhere(fn ($query) => $query->whereTo($user));
+
+            if ($counsellor) {
+                $query->orWhere(fn ($query) => $query->whereFrom($counsellor))
+                    ->orWhere(fn ($query) => $query->whereTo($counsellor));
+            }
+
+            if ($administeredOrganizationIds->isNotEmpty()) {
+                $query->orWhere(fn ($query) => $query->where('from_type', Organization::class)->whereIn('from_id', $administeredOrganizationIds))
+                    ->orWhere(fn ($query) => $query->where('to_type', Organization::class)->whereIn('to_id', $administeredOrganizationIds));
+            }
+
+            if ($wardIds->isNotEmpty()) {
+                $query->orWhere(fn ($query) => $query->where('type', RequestTypeEnum::dobChange->value)
                     ->where('for_type', User::class)
-                    ->whereIn('for_id', $wardIds);
-                if ($status) {
-                    $query->where('status', $status);
-                }
-            });
+                    ->whereIn('for_id', $wardIds));
+            }
+
+            // TT-4.10e/SCRUM-294 and TT-4.11d/SCRUM-305: a null-`to` dobChange or ageVerification
+            // request ("any admin may respond") would otherwise appear in no one's listing.
+            if ($isAdmin) {
+                $query->orWhere(fn ($query) => $query
+                    ->whereIn('type', [RequestTypeEnum::dobChange->value, RequestTypeEnum::ageVerification->value])
+                    ->whereNull('to_id'));
+            }
         });
 
-        // TT-4.10e/SCRUM-294: a null-`to` dobChange request ("any admin may respond," mirroring
-        // refund's own null-`to` shape) would otherwise never appear in ANY user's personal
-        // requests listing above -- unlike refund, which surfaces its own null-`to` case via a
-        // completely separate admin-only page (AdminRefundRequestController/RefundRequests.vue),
-        // this ticket's own scope explicitly asks to reuse this generic list/modal UI rather than
-        // build a new page, so this additive branch surfaces it to any admin here instead.
-        $query->when($user->isAdmin(), function ($query) use ($status) {
-            $query->orWhere(function ($query) use ($status) {
-                $query->where('type', RequestTypeEnum::dobChange->value)->whereNull('to_id');
-                if ($status) {
-                    $query->where('status', $status);
-                }
-            });
-
-            // TT-4.11d/SCRUM-305: an ageVerification request is ALWAYS null-`to` (admin-only by
-            // design, no guardian counterpart) -- mirrors the dobChange branch immediately above
-            // exactly, for the identical reason (otherwise never appears in any admin's listing).
-            $query->orWhere(function ($query) use ($status) {
-                $query->where('type', RequestTypeEnum::ageVerification->value)->whereNull('to_id');
-                if ($status) {
-                    $query->where('status', $status);
-                }
-            });
-        });
-
-        // Not the actual enforcement -- SQL AND-binds-tighter-than-OR precedence means this only
-        // attaches to the last orWhere'd branch above. Each branch already applies its own
-        // internal `if ($status)` filter (required, not redundant); this is just a no-op safety
-        // net, reviewed and confirmed correct during SCRUM-162.
-        if ($status) {
-            $query->where('status', $status);
-        }
+        $query->when($status, fn ($query) => $query->where('status', $status));
 
         return RequestResource::collection($query->latest()->paginate(
             PaginationEnum::preferencesPagination->value

@@ -75,19 +75,8 @@ class AnonymiseClosedAccountAction extends Action
             DB::table('visitors')->where('user_id', $user->id)->update(['user_id' => null]);
 
             $user->forceFill([
-                'firstName' => null,
-                'lastName' => null,
-                'otherNames' => null,
-                'username' => null,
-                'email' => null,
-                'email_verified_at' => null,
-                'dob' => null,
-                'dob_verified_at' => null,
-                'gender' => null,
-                'country' => null,
-                'settings' => null,
+                ...array_fill_keys(User::ANONYMISED_ATTRIBUTES, null),
                 'password' => Str::random(64),
-                'remember_token' => null,
                 'anonymised_at' => now(),
             ])->saveQuietly();
         });

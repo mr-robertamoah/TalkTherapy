@@ -101,13 +101,16 @@ class LinkController extends Controller
             $status = $this->statusFor($th);
             $message = $this->messageFor($th, $status);
 
-            session()->put('alert', $message);
-
-            if ($status == 422) {
-                return Redirect::route('home');
+            // SCRUM-97: a link is opened by navigating to it (often from an email), so a browser
+            // always lands on home with the alert -- returnFailure's acceptsJson() is true for a
+            // browser's `*/*` Accept header and used to show it a raw JSON error page.
+            if ($request->expectsJson()) {
+                return response()->json(['message' => $message], $status);
             }
 
-            return $this->returnFailure($request, $th);
+            session()->flash('alert', $message);
+
+            return Redirect::route('home');
         }
     }
 

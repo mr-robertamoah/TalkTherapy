@@ -1,5 +1,8 @@
 import axios from 'axios'
 
+// SCRUM-368: "announce, then fetch" broadcasts (was resolveBroadcastMessage.js, from when only
+// messages worked this way).
+
 // SCRUM-366/SCRUM-271: message broadcasts only announce a message -- its id and (masked) sender id,
 // never its content (see MessageBroadcastTrait). Each page fetches the message itself from
 // api.messages.show, which applies the same per-viewer rules as a page load: confidential redaction,
@@ -28,7 +31,7 @@ export async function fetchAnnounced(url) {
     }
 }
 
-export default async function resolveBroadcastMessage(message) {
+export async function resolveAnnouncedMessage(message) {
     if (!message?.withheld) return message ?? null
 
     return fetchAnnounced(route('api.messages.show', message.id))
@@ -36,17 +39,17 @@ export default async function resolveBroadcastMessage(message) {
 
 // SCRUM-367: session broadcasts carry only the session's id ({ sessionId }) -- fetched like a
 // message, so a viewer who has lost access (suspended, unpaid) gets null.
-export function resolveBroadcastSession(sessionId) {
+export function resolveAnnouncedSession(sessionId) {
     return sessionId ? fetchAnnounced(route('api.sessions.show', sessionId)) : Promise.resolve(null)
 }
 
 // Handles one channel's broadcasts strictly in arrival order, even though each waits on a fetch --
 // otherwise a later message could overtake an earlier one and be inserted above it. A message the
-// viewer may not see is dropped. Usage: const enqueue = createBroadcastMessageQueue();
+// viewer may not see is dropped. Usage: const enqueue = createAnnouncementQueue();
 //                                       enqueue(data.message, (message) => addMessage(message))
-// Pass another resolver for other announcements, e.g. createBroadcastMessageQueue(resolveBroadcastSession)
+// Pass another resolver for other announcements, e.g. createAnnouncementQueue(resolveAnnouncedSession)
 // and enqueue(sessionId, ...).
-export function createBroadcastMessageQueue(resolve = resolveBroadcastMessage) {
+export function createAnnouncementQueue(resolve = resolveAnnouncedMessage) {
     let chain = Promise.resolve()
 
     return (message, handle) => {

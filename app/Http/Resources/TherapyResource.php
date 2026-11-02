@@ -44,6 +44,8 @@ class TherapyResource extends JsonResource
             ? $this->transactions()->where('user_id', $user->id)->latest('created_at')->first()
             : null;
 
+        $showsPaymentStatus = $this->showsPaymentStatusTo($user);
+
         return [
             'id' => $this->id,
             'name' => $this->name,
@@ -70,12 +72,14 @@ class TherapyResource extends JsonResource
             'sessionsHeld' => $this->sessionsHeld,
             'status' => $this->getStatus(),
             'paymentData' => $this->payment_data,
-            'paymentStatus' => $this->latestTransaction?->status,
+            // SCRUM-368: the client's own payment -- only for the client, the counsellor and
+            // administrators, never for someone browsing a public therapy.
+            'paymentStatus' => $showsPaymentStatus ? $this->latestTransaction?->status : null,
             // TT-7.7e/SCRUM-253: unlike refundRequestStatus below (deliberately viewer-scoped --
             // it discloses a specific client's own pending/rejected ask), "has this transaction
             // actually been refunded" is a coarse, non-identifying fact about the same
-            // latestTransaction paymentStatus already exposes to every viewer above -- so it's
-            // exposed the same, unscoped way. Safe specifically BECAUSE an individual Therapy has
+            // latestTransaction paymentStatus already exposes above -- so it's
+            // exposed the same way (to the same viewers since SCRUM-368). Safe specifically BECAUSE an individual Therapy has
             // exactly one payer -- GroupTherapy (multiple payers) uses its own separate
             // GroupTherapyResource, not this one, and deliberately does NOT get this field (see
             // SessionResource's identical field for why its own shared, multi-payer-capable
@@ -83,7 +87,7 @@ class TherapyResource extends JsonResource
             // client/counsellor UI shows "Refunded" instead of a now-stale "Paid" (paymentStatus
             // itself never changes on refund -- see
             // TT-7.7a's own decision-log entry on why refunds live in their own table).
-            'refundStatus' => $this->latestTransaction?->successfulRefund?->status,
+            'refundStatus' => $showsPaymentStatus ? $this->latestTransaction?->successfulRefund?->status : null,
             // TT-7.7b/SCRUM-250
             'transactionId' => $viewerTransaction?->id,
             'refundRequestStatus' => $viewerTransaction?->latestRefundRequest?->status,

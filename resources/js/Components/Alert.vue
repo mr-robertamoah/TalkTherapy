@@ -28,16 +28,15 @@ function clickedClose() {
 
 <template>
     <Teleport to="body">
+        <!-- SCRUM-201: the full-width wrapper only positions the message; it lets clicks through to
+             the navbar under it. Only the message box itself takes clicks. -->
         <div
-            class="transition duration-100 cursor-pointer ease-in-out w-full mt-12 fixed top-0 z-[1000] flex justify-center items-center p-4   "
+            class="transition duration-100 ease-in-out w-full mt-12 fixed top-0 z-[1000] flex justify-center items-center p-4 pointer-events-none"
             :class="[show ? 'opacity-100 translate-y-0 visible' : 'translate-y-5 opacity-25 invisible']"
-            @click.self="() => {
-                emits('clicked', clickedData)
-            }"
         >
             <div
-                class="flex justify-center relative items-center min-w-[300px] sm:w-[80%] md:w-[60%] mx-auto rounded-lg min-h-[50px] p-2"
-                :class="[type == 'failed' ? 'bg-red-600 text-red-200' : 'bg-green-600 text-green-200']"
+                class="flex justify-center relative items-center min-w-[300px] sm:w-[80%] md:w-[60%] mx-auto rounded-lg min-h-[50px] p-2 cursor-pointer"
+                :class="[show ? 'pointer-events-auto' : 'pointer-events-none', type == 'failed' ? 'bg-red-600 text-red-200' : 'bg-green-600 text-green-200']"
             >
                 <div 
                     @click.self="() => {

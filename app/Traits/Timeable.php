@@ -24,20 +24,6 @@ trait Timeable
             ->where('end_time', '>=', $date);
     }
 
-    public function scopeWhereIsOngoing($query)
-    {
-        return $query
-            ->where(function ($query) {
-                $query
-                    ->whereHasStartedAndNotEnded();
-            })
-            ->orWhere(function ($query) {
-                $query
-                    ->wherePastEndTime()
-                    ->whereInSession();
-            });
-    }
-
     public function scopeWhereAboutToStart($query)
     {
         return $query
@@ -57,25 +43,18 @@ trait Timeable
             ->whereBetween('start_time', [now(), now()->addMinutes(5)]);
     }
 
+    // A row is "within 30 minutes" of [$startDate, $endDate] if it overlaps that range widened by
+    // 30 minutes on each side. SCRUM-211: this used to test only two points of the new range
+    // (start - 30, end + 30) against each row, so a new range that fully contained a shorter row
+    // (10:00-11:00 around 10:10-10:40) was never caught. Bounds stay inclusive, as before.
+    //
+    // ->copy(): Carbon instances are mutable, and callers reuse $startDate/$endDate in later checks.
     public function scopeWhereIsThirtyMinituesBeforeOrAfter($query, $startDate = null, $endDate = null)
     {
-        // ->copy() below: Carbon instances are mutable, and $startDate/$endDate are often the
-        // same objects the caller reuses in later checks (see EnsureSessionDataIsValidAction /
-        // EnsureDiscussionDataIsValidAction). Mutating them in place here would shift the
-        // caller's notion of the proposed start/end time on every subsequent call.
-        return $query
-            ->when($startDate, function ($query) use ($startDate) {
-                $query
-                    ->where(function ($query) use ($startDate) {
-                        $query->whereDateIsBetweenStartAndEndTimes($startDate->copy()->subMinutes(30));
-                    });
-            })
-            ->when($endDate, function ($query) use ($endDate) {
-                $query
-                    ->orWhere(function ($query) use ($endDate) {
-                        $query->whereDateIsBetweenStartAndEndTimes($endDate->copy()->addMinutes(30));
-                    });
-            });
+        $from = ($startDate ?? $endDate)?->copy()->subMinutes(30);
+        $to = ($endDate ?? $startDate)?->copy()->addMinutes(30);
+
+        return $query->when($from && $to, fn ($query) => $query->whereWithinRange($from, $to));
     }
 
     // A row overlaps [$start, $end] if it starts before the range ends AND ends after the range

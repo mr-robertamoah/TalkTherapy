@@ -17,7 +17,7 @@ import useAlert from "@/Composables/useAlert";
 import useAuth from "@/Composables/useAuth";
 import useEnums from "@/Composables/useEnums";
 import useConnectionStatus from "@/Composables/useConnectionStatus";
-import { createBroadcastMessageQueue } from "@/Composables/resolveBroadcastMessage";
+import { createAnnouncementQueue } from "@/Composables/announcements";
 
 const { DiscussionStatusEnum } = useEnums();
 const { goToLogin } = useAuth();
@@ -132,7 +132,7 @@ function listenToMessages() {
 
   listening.value = true;
   let userId = computedUser.value?.id;
-  const enqueueMessage = createBroadcastMessageQueue();
+  const enqueueMessage = createAnnouncementQueue();
 
   // Independent join from DiscussionModal.vue's own presence join for this same channel --
   // this page has its own lifecycle, so it listens for `.message.created` on its own rather

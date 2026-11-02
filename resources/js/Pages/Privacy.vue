@@ -8,6 +8,11 @@ const contactEmail = 'robertamoah.dev@gmail.com'
 // SCRUM-361/364: TalkTherapy's privacy policy, written to match what the app actually does
 // (SCRUM-338/340/359/360). The controller and contact details are the user's (2026-11-01). A plain layout, not AuthenticatedLayout: it must be readable by
 // anyone, including a suspended account. Not yet reviewed by a lawyer -- see the notice below.
+
+// SCRUM-368: from config (routes/web.php), so the policy can't drift from what the app does.
+defineProps({
+    retentionDays: { type: Object, required: true },
+})
 </script>
 
 <template>
@@ -144,7 +149,7 @@ const contactEmail = 'robertamoah.dev@gmail.com'
                     <ul class="list-disc pl-5 space-y-1">
                         <li>Your account, preferences and therapy content are kept while your account is open.</li>
                         <li>
-                            Deleting your account closes it: it can no longer be used or seen by others. 30 days after it
+                            Deleting your account closes it: it can no longer be used or seen by others. {{ retentionDays.closedAccount }} days after it
                             is closed, your personal details are erased: your name, username, email address, date of birth,
                             gender, country, preferences and profile photo, along with your notifications, any identity document
                             still waiting for a check, and your counsellor profile's contact details. If your account is suspended,
@@ -157,7 +162,7 @@ const contactEmail = 'robertamoah.dev@gmail.com'
                             below, which we keep to account for what happened.
                         </li>
                         <li>
-                            A counsellor profile is removed permanently 60 days after it is deleted, with its uploaded
+                            A counsellor profile is removed permanently {{ retentionDays.counsellorProfile }} days after it is deleted, with its uploaded
                             verification documents. A record that a licence was verified (its issuer and number) is kept.
                         </li>
                         <li>Payment records, complaint and suspension records, and records of administrators' access are kept even after an account is closed.</li>
@@ -169,10 +174,10 @@ const contactEmail = 'robertamoah.dev@gmail.com'
                 <section id="documents" class="space-y-2">
                     <h2 class="text-lg font-semibold text-gray-900">Verification documents</h2>
                     <ul class="list-disc pl-5 space-y-1">
-                        <li>Identity documents for age or identity checks are deleted 30 days after the check is decided.</li>
-                        <li>When a counsellor's verification is turned down, their documents are deleted 30 days later.</li>
-                        <li>When it is accepted, the national ID scan and number are deleted 30 days later. The professional licence is kept as the record of what verified them.</li>
-                        <li>Documents uploaded but never sent for verification are deleted 30 days after upload.</li>
+                        <li>Identity documents for age or identity checks are deleted {{ retentionDays.identityDocument }} days after the check is decided.</li>
+                        <li>When a counsellor's verification is turned down, their documents are deleted {{ retentionDays.licenseRejected }} days later.</li>
+                        <li>When it is accepted, the national ID scan and number are deleted {{ retentionDays.nationalId }} days later. The professional licence is kept as the record of what verified them.</li>
+                        <li>Documents uploaded but never sent for verification are deleted {{ retentionDays.licenseAbandoned }} days after upload.</li>
                     </ul>
                     <p>A record that the document existed is kept, but the file itself is gone.</p>
                 </section>

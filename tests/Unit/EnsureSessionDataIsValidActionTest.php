@@ -154,3 +154,47 @@ test('creating a session does not conflict with an unrelated session on a therap
     expect(fn () => EnsureSessionDataIsValidAction::new()->execute($dto))
         ->not->toThrow(SessionException::class);
 });
+
+// SCRUM-211: a new session that fully contains a shorter existing one used to slip past every
+// check, because only points of the NEW range were tested against existing sessions.
+
+function esdvContainmentDto(Therapy $therapy, User $user, string $start, string $end): CreateSessionDTO
+{
+    return CreateSessionDTO::new()->fromArray([
+        'user' => $user, 'for' => $therapy, 'startTime' => $start, 'endTime' => $end,
+        'type' => SessionTypeEnum::online->value, 'paymentType' => $therapy->payment_type,
+    ]);
+}
+
+test('a new session that fully contains a shorter session of the same therapy is a conflict', function () {
+    $owner = User::factory()->create();
+    $counsellor = Counsellor::factory()->create(['user_id' => User::factory()->create()->id]);
+    $therapy = Therapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => $owner->id, 'counsellor_id' => $counsellor->id, 'max_sessions' => 10]);
+    Session::factory()->create(['for_id' => $therapy->id, 'for_type' => Therapy::class, 'start_time' => Carbon::parse('2025-06-01 10:10:00'), 'end_time' => Carbon::parse('2025-06-01 10:40:00')]);
+
+    expect(fn () => EnsureSessionDataIsValidAction::new()->execute(esdvContainmentDto($therapy, $owner, '2025-06-01 10:00:00', '2025-06-01 11:00:00')))
+        ->toThrow(SessionException::class, 'The session must start at least 30 minutes before or after other sessions of this therapy.');
+});
+
+test('a new session that fully contains the counsellor\'s shorter session on another therapy is a conflict', function () {
+    $counsellor = Counsellor::factory()->create(['user_id' => User::factory()->create()->id]);
+    $owner = User::factory()->create();
+    $therapy = Therapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => $owner->id, 'counsellor_id' => $counsellor->id, 'max_sessions' => 10]);
+    $other = Therapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => User::factory(), 'counsellor_id' => $counsellor->id, 'max_sessions' => 10]);
+    Session::factory()->create(['for_id' => $other->id, 'for_type' => Therapy::class, 'start_time' => Carbon::parse('2025-06-01 10:10:00'), 'end_time' => Carbon::parse('2025-06-01 10:40:00')]);
+
+    expect(fn () => EnsureSessionDataIsValidAction::new()->execute(esdvContainmentDto($therapy, $owner, '2025-06-01 10:00:00', '2025-06-01 11:00:00')))
+        ->toThrow(SessionException::class, 'Counsellor for this therapy has sessions that are less than 30 minutes before or after the time for this session.');
+});
+
+test('a session more than 30 minutes clear of another on either side is still allowed', function () {
+    $owner = User::factory()->create();
+    $counsellor = Counsellor::factory()->create(['user_id' => User::factory()->create()->id]);
+    $therapy = Therapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => $owner->id, 'counsellor_id' => $counsellor->id, 'max_sessions' => 10]);
+    Session::factory()->create(['for_id' => $therapy->id, 'for_type' => Therapy::class, 'start_time' => Carbon::parse('2025-06-01 10:00:00'), 'end_time' => Carbon::parse('2025-06-01 11:00:00')]);
+
+    expect(fn () => EnsureSessionDataIsValidAction::new()->execute(esdvContainmentDto($therapy, $owner, '2025-06-01 11:31:00', '2025-06-01 12:30:00')))
+        ->not->toThrow(SessionException::class)
+        ->and(fn () => EnsureSessionDataIsValidAction::new()->execute(esdvContainmentDto($therapy, $owner, '2025-06-01 08:30:00', '2025-06-01 09:29:00')))
+        ->not->toThrow(SessionException::class);
+});

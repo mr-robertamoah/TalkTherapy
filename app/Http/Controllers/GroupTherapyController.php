@@ -257,7 +257,7 @@ class GroupTherapyController extends Controller
                 'transactionStatus' => session('transactionStatus'),
                 'pendingRequest' => $pendingRequest ? new RequestResource($pendingRequest) : null,
                 'pendingMembershipRequest' => $pendingMembershipRequest ? new RequestResource($pendingMembershipRequest) : null,
-                'recentSessions' => SessionResource::collection($therapy->sessions()->with('latestTransaction')->latest()->take(5)->get()),
+                'recentSessions' => SessionResource::collection($therapy->sessions()->with('latestTransaction')->latest()->take(5)->get()->each->setRelation('for', $therapy)),
                 'recentTopics' => TherapyTopicResource::collection($therapy->topics()->latest()->take(5)->get()),
             ]);
         } catch (PaymentRequiredException $th) {

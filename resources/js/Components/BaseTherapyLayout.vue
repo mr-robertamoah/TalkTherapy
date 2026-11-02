@@ -29,6 +29,7 @@
       :session-action-running="sessionActionRunning"
       @clicked-show-all="$emit('clicked-show-all')"
       @clicked-active-session="$emit('clicked-active-session')"
+      @clicked-active-discussion="$emit('clicked-active-discussion')"
     />
 
     <!-- Pending Session Schedule Proposal (SCRUM-208/TT-2.5c, individual therapy only) -->
@@ -187,6 +188,7 @@ defineProps({
 defineEmits([
   'clicked-show-all',
   'clicked-active-session',
+  'clicked-active-discussion',
   'handle-session-topic-update',
   'handle-session-topic-delete',
   'get-discussions',

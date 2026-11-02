@@ -25,9 +25,9 @@ use App\Http\Controllers\OrganizationReconciliationController;
 use App\Http\Controllers\PayoutController;
 use App\Http\Controllers\PostController;
 use App\Http\Controllers\PreferenceController;
+use App\Http\Controllers\PrivacyController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\SessionController;
-use App\Http\Controllers\SessionNoteController;
 use App\Http\Controllers\SuspensionController;
 use App\Http\Controllers\TherapyController;
 use App\Http\Controllers\TransactionController;
@@ -70,7 +70,7 @@ Route::get('/', [HomeController::class, 'goHome'])
 Route::get('/about', AboutController::class)
     ->name('about');
 // SCRUM-361
-Route::inertia('/privacy', 'Privacy')->name('privacy');
+Route::get('/privacy', PrivacyController::class)->name('privacy');
 Route::get('/public-therapies', function () {
     return Inertia::render('PublicTherapies');
 })->name('public.therapies');
@@ -200,14 +200,6 @@ Route::middleware('auth')->group(function () {
     // TT-3.2f-h/SCRUM-325: a periodic background ping -- its own named limiter so it never eats
     // into the per-user `throttle:N,1` bucket join/raise/grant share (SCRUM-323 security F6).
     Route::post('/sessions/{sessionId}/video/speaking-activity', [VideoSessionController::class, 'speakingActivity'])->name('sessions.video.speaking_activity')->middleware('throttle:video-speaking-activity');
-
-    // SCRUM-197/TT-2.2b: a counsellor's own private notes on a session -- never exposed to the
-    // client/participant side, see SessionNoteController's own comment on how counsellor_id is
-    // always derived server-side, never accepted as input.
-    Route::get('/sessions/{sessionId}/notes', [SessionNoteController::class, 'index'])->name('session.notes.index');
-    Route::post('/sessions/{sessionId}/notes', [SessionNoteController::class, 'store'])->name('session.notes.store');
-    Route::patch('/sessions/notes/{noteId}', [SessionNoteController::class, 'update'])->name('session.notes.update');
-    Route::delete('/sessions/notes/{noteId}', [SessionNoteController::class, 'destroy'])->name('session.notes.destroy');
 
     // throttle: this calls out to Paystack's own API per request, on top of being a real
     // money-initiation endpoint -- unlike most routes here, an unthrottled version is a genuine

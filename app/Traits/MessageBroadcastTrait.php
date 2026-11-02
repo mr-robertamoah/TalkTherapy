@@ -20,7 +20,7 @@ trait MessageBroadcastTrait
     // SCRUM-366/SCRUM-271: a new or edited message is announced, never delivered -- the payload is
     // just its id and the (already masked, SCRUM-195) sender id, so each page can skip its own
     // messages. Every page then fetches the message from api.messages.show
-    // (resolveBroadcastMessage.js), which applies all the per-viewer rules of a page load: a
+    // (announcements.js), which applies all the per-viewer rules of a page load: a
     // suspended account (403), a participant who hasn't paid a strict-gated therapy, or anyone who
     // may no longer see it gets nothing. A websocket subscription that outlives someone's access
     // therefore learns only that a message arrived, never what it says.

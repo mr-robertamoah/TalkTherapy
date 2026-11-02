@@ -68,9 +68,11 @@ class SessionService extends Service
             $query->whereNameLike($getSessionsDTO->name);
         });
 
-        return SessionResource::collection($query->latest()->paginate(
-            PaginationEnum::preferencesPagination->value
-        ));
+        $sessions = $query->latest()->paginate(PaginationEnum::preferencesPagination->value);
+        // SCRUM-368: SessionResource asks each session's `for` who may see its payment status.
+        $sessions->getCollection()->each->setRelation('for', $therapy);
+
+        return SessionResource::collection($sessions);
     }
 
     // Aggregates a counsellor's own sessions across every Therapy/GroupTherapy they're currently

@@ -17,6 +17,7 @@ use App\Models\Therapy;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Route;
 
 // SCRUM-197/TT-2.2b: authorization + CRUD for a counsellor's private session notes. AC7 (cross-
 // counsellor isolation on a shared GroupTherapy session) is the single most important test case
@@ -64,7 +65,7 @@ test('a counsellor can create a note on their own in-session therapy session', f
 
     $response = $this
         ->actingAs($counsellor->user)
-        ->post(route('session.notes.store', ['sessionId' => $session->id]), [
+        ->post(route('api.session.notes.store', ['sessionId' => $session->id]), [
             'content' => 'Client presented as withdrawn today.',
         ]);
 
@@ -88,7 +89,7 @@ test('a counsellor can list only their own notes for a session', function () {
 
     $response = $this
         ->actingAs($counsellor->user)
-        ->get(route('session.notes.index', ['sessionId' => $session->id]));
+        ->get(route('api.session.notes.index', ['sessionId' => $session->id]));
 
     $response->assertOk();
     expect($response->json('notes'))->toHaveCount(2);
@@ -106,14 +107,14 @@ test('a counsellor cannot see another counsellor notes on a shared group therapy
 
     $listResponse = $this
         ->actingAs($counsellorB->user)
-        ->get(route('session.notes.index', ['sessionId' => $session->id]));
+        ->get(route('api.session.notes.index', ['sessionId' => $session->id]));
 
     $listResponse->assertOk();
     expect($listResponse->json('notes'))->toHaveCount(0);
 
     $updateResponse = $this
         ->actingAs($counsellorB->user)
-        ->patch(route('session.notes.update', ['noteId' => $noteA->id]), [
+        ->patch(route('api.session.notes.update', ['noteId' => $noteA->id]), [
             'content' => 'attempted takeover',
         ]);
 
@@ -122,7 +123,7 @@ test('a counsellor cannot see another counsellor notes on a shared group therapy
 
     $deleteResponse = $this
         ->actingAs($counsellorB->user)
-        ->delete(route('session.notes.destroy', ['noteId' => $noteA->id]));
+        ->delete(route('api.session.notes.destroy', ['noteId' => $noteA->id]));
 
     $deleteResponse->assertStatus(422);
     $this->assertDatabaseHas('session_notes', ['id' => $noteA->id, 'deleted_at' => null]);
@@ -134,11 +135,11 @@ test('a counsellor not assigned to the session is rejected on every operation', 
     $session = aSessionForSessionNotesRoute($assignedCounsellor);
 
     $this->actingAs($outsiderCounsellor->user)
-        ->post(route('session.notes.store', ['sessionId' => $session->id]), ['content' => 'x'])
+        ->post(route('api.session.notes.store', ['sessionId' => $session->id]), ['content' => 'x'])
         ->assertStatus(422);
 
     $this->actingAs($outsiderCounsellor->user)
-        ->get(route('session.notes.index', ['sessionId' => $session->id]))
+        ->get(route('api.session.notes.index', ['sessionId' => $session->id]))
         ->assertStatus(422);
 });
 
@@ -154,19 +155,19 @@ test('the client on the therapy can never create, list, update, or delete a sess
     $note = SessionNote::factory()->create(['session_id' => $session->id, 'counsellor_id' => $counsellor->id]);
 
     $this->actingAs($client)
-        ->post(route('session.notes.store', ['sessionId' => $session->id]), ['content' => 'x'])
+        ->post(route('api.session.notes.store', ['sessionId' => $session->id]), ['content' => 'x'])
         ->assertStatus(422);
 
     $this->actingAs($client)
-        ->get(route('session.notes.index', ['sessionId' => $session->id]))
+        ->get(route('api.session.notes.index', ['sessionId' => $session->id]))
         ->assertStatus(422);
 
     $this->actingAs($client)
-        ->patch(route('session.notes.update', ['noteId' => $note->id]), ['content' => 'x'])
+        ->patch(route('api.session.notes.update', ['noteId' => $note->id]), ['content' => 'x'])
         ->assertStatus(422);
 
     $this->actingAs($client)
-        ->delete(route('session.notes.destroy', ['noteId' => $note->id]))
+        ->delete(route('api.session.notes.destroy', ['noteId' => $note->id]))
         ->assertStatus(422);
 });
 
@@ -176,7 +177,7 @@ test('creating a note is rejected when the session is not in progress', function
 
     $response = $this
         ->actingAs($counsellor->user)
-        ->post(route('session.notes.store', ['sessionId' => $session->id]), ['content' => 'x']);
+        ->post(route('api.session.notes.store', ['sessionId' => $session->id]), ['content' => 'x']);
 
     $response->assertStatus(422);
     $this->assertDatabaseMissing('session_notes', ['session_id' => $session->id]);
@@ -188,12 +189,12 @@ test('the author can update and delete their own note while the session is live'
     $note = SessionNote::factory()->create(['session_id' => $session->id, 'counsellor_id' => $counsellor->id]);
 
     $this->actingAs($counsellor->user)
-        ->patch(route('session.notes.update', ['noteId' => $note->id]), ['content' => 'updated'])
+        ->patch(route('api.session.notes.update', ['noteId' => $note->id]), ['content' => 'updated'])
         ->assertOk()
         ->assertJsonPath('note.content', 'updated');
 
     $this->actingAs($counsellor->user)
-        ->delete(route('session.notes.destroy', ['noteId' => $note->id]))
+        ->delete(route('api.session.notes.destroy', ['noteId' => $note->id]))
         ->assertOk();
 
     $this->assertSoftDeleted('session_notes', ['id' => $note->id]);
@@ -207,7 +208,7 @@ test('the author can still edit their note within the configurable grace window 
 
     $response = $this
         ->actingAs($counsellor->user)
-        ->patch(route('session.notes.update', ['noteId' => $note->id]), ['content' => 'still within grace window']);
+        ->patch(route('api.session.notes.update', ['noteId' => $note->id]), ['content' => 'still within grace window']);
 
     $response->assertOk();
 });
@@ -221,11 +222,11 @@ test('the author can no longer edit or delete their note once the grace window h
     $note = SessionNote::factory()->create(['session_id' => $session->id, 'counsellor_id' => $counsellor->id]);
 
     $this->actingAs($counsellor->user)
-        ->patch(route('session.notes.update', ['noteId' => $note->id]), ['content' => 'too late'])
+        ->patch(route('api.session.notes.update', ['noteId' => $note->id]), ['content' => 'too late'])
         ->assertStatus(422);
 
     $this->actingAs($counsellor->user)
-        ->delete(route('session.notes.destroy', ['noteId' => $note->id]))
+        ->delete(route('api.session.notes.destroy', ['noteId' => $note->id]))
         ->assertStatus(422);
 
     $this->assertDatabaseHas('session_notes', ['id' => $note->id, 'content' => $note->content, 'deleted_at' => null]);
@@ -261,7 +262,7 @@ test('replaying a session status-transition endpoint does not reset or extend th
     expect($session->fresh()->ended_at->toDateTimeString())->toBe($backdatedEndedAt->toDateTimeString());
 
     $this->actingAs($counsellor->user)
-        ->patch(route('session.notes.update', ['noteId' => $note->id]), ['content' => 'sneaking an edit in via replay'])
+        ->patch(route('api.session.notes.update', ['noteId' => $note->id]), ['content' => 'sneaking an edit in via replay'])
         ->assertStatus(422);
 });
 
@@ -275,7 +276,7 @@ test('a note remains listable by its author indefinitely, even once no longer ed
 
     $response = $this
         ->actingAs($counsellor->user)
-        ->get(route('session.notes.index', ['sessionId' => $session->id]));
+        ->get(route('api.session.notes.index', ['sessionId' => $session->id]));
 
     $response->assertOk();
     expect($response->json('notes'))->toHaveCount(1);
@@ -286,16 +287,16 @@ test('an unauthenticated request cannot reach any session note endpoint', functi
     $session = aSessionForSessionNotesRoute($counsellor);
     $note = SessionNote::factory()->create(['session_id' => $session->id, 'counsellor_id' => $counsellor->id]);
 
-    $this->post(route('session.notes.store', ['sessionId' => $session->id]), ['content' => 'x'])
+    $this->post(route('api.session.notes.store', ['sessionId' => $session->id]), ['content' => 'x'])
         ->assertRedirect(route('login'));
 
-    $this->get(route('session.notes.index', ['sessionId' => $session->id]))
+    $this->get(route('api.session.notes.index', ['sessionId' => $session->id]))
         ->assertRedirect(route('login'));
 
-    $this->patch(route('session.notes.update', ['noteId' => $note->id]), ['content' => 'x'])
+    $this->patch(route('api.session.notes.update', ['noteId' => $note->id]), ['content' => 'x'])
         ->assertRedirect(route('login'));
 
-    $this->delete(route('session.notes.destroy', ['noteId' => $note->id]))
+    $this->delete(route('api.session.notes.destroy', ['noteId' => $note->id]))
         ->assertRedirect(route('login'));
 });
 
@@ -310,15 +311,15 @@ test('creating, updating, and deleting a session note broadcasts no events at al
     $session = aSessionForSessionNotesRoute($counsellor);
 
     $this->actingAs($counsellor->user)
-        ->post(route('session.notes.store', ['sessionId' => $session->id]), ['content' => 'private observation']);
+        ->post(route('api.session.notes.store', ['sessionId' => $session->id]), ['content' => 'private observation']);
 
     $note = SessionNote::first();
 
     $this->actingAs($counsellor->user)
-        ->patch(route('session.notes.update', ['noteId' => $note->id]), ['content' => 'updated observation']);
+        ->patch(route('api.session.notes.update', ['noteId' => $note->id]), ['content' => 'updated observation']);
 
     $this->actingAs($counsellor->user)
-        ->delete(route('session.notes.destroy', ['noteId' => $note->id]));
+        ->delete(route('api.session.notes.destroy', ['noteId' => $note->id]));
 
     Event::assertNotDispatched(SessionUpdatedEvent::class);
     Event::assertNotDispatched(SessionStartedEvent::class);
@@ -358,26 +359,17 @@ test('a listed note reports isEditable matching the actual edit-window state', f
     SessionNote::factory()->create(['session_id' => $endedSession->id, 'counsellor_id' => $counsellor->id]);
 
     $liveResponse = $this->actingAs($counsellor->user)
-        ->get(route('session.notes.index', ['sessionId' => $liveSession->id]));
+        ->get(route('api.session.notes.index', ['sessionId' => $liveSession->id]));
     expect($liveResponse->json('notes')[0]['isEditable'])->toBeTrue();
 
     $endedResponse = $this->actingAs($counsellor->user)
-        ->get(route('session.notes.index', ['sessionId' => $endedSession->id]));
+        ->get(route('api.session.notes.index', ['sessionId' => $endedSession->id]));
     expect($endedResponse->json('notes')[0]['isEditable'])->toBeFalse();
 });
 
-test('the api.php session notes routes are wired to the same authorized create/list flow', function () {
-    $counsellor = aCounsellorForSessionNotesRoute();
-    $session = aSessionForSessionNotesRoute($counsellor);
-
-    $this->actingAs($counsellor->user)
-        ->post(route('api.session.notes.store', ['sessionId' => $session->id]), ['content' => 'via api route'])
-        ->assertOk()
-        ->assertJsonPath('note.content', 'via api route');
-
-    $response = $this->actingAs($counsellor->user)
-        ->get(route('api.session.notes.index', ['sessionId' => $session->id]));
-
-    $response->assertOk();
-    expect($response->json('notes'))->toHaveCount(1);
+test('session notes are served only by the api routes, not a duplicate web surface (SCRUM-200)', function () {
+    foreach (['index', 'store', 'update', 'destroy'] as $action) {
+        expect(Route::has("session.notes.{$action}"))->toBeFalse()
+            ->and(Route::has("api.session.notes.{$action}"))->toBeTrue();
+    }
 });
