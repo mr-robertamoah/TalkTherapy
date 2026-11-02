@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 /*
@@ -14,7 +15,11 @@ use Tests\TestCase;
 |
 */
 
-uses(TestCase::class, RefreshDatabase::class)->in('Feature', 'Unit');
+// No test may reach the network: an unfaked HTTP call (e.g. Paystack, from a job the sync test
+// queue runs inline) fails whenever the network does. Fake it with Http::fake() instead.
+uses(TestCase::class, RefreshDatabase::class)
+    ->beforeEach(fn () => Http::preventStrayRequests())
+    ->in('Feature', 'Unit');
 
 /*
 |--------------------------------------------------------------------------

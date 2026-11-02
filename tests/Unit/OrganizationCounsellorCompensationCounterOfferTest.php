@@ -347,3 +347,28 @@ test('a counter-offer can override the default negotiation expiry', function () 
 
     expect(now()->addDays(14)->diffInMinutes($counterOffer->expires_at, true))->toBeLessThan(1);
 });
+
+// SCRUM-151: a counterparty who is gone (soft-deleted counsellor) no longer fails the counter-offer.
+test('countering a counsellor who has since been deleted still records the counter-offer, unnotified', function () {
+    Notification::fake();
+    [$request, , , $owner, $counsellor, $counsellorUser] = pendingCompensationNegotiation();
+
+    $counsellorCounter = OrganizationCounsellorCompensationService::new()->counterOffer(
+        OrganizationCounsellorCompensationDTO::new()->fromArray([
+            'user' => $counsellorUser, 'request' => $request,
+            'type' => OrganizationCounsellorCompensationTypeEnum::fixed->value, 'amount' => 7500, 'currency' => 'GHS',
+        ])
+    );
+    $counsellor->delete();
+
+    $orgCounter = OrganizationCounsellorCompensationService::new()->counterOffer(
+        OrganizationCounsellorCompensationDTO::new()->fromArray([
+            'user' => $owner, 'request' => $counsellorCounter->fresh(),
+            'type' => OrganizationCounsellorCompensationTypeEnum::fixed->value, 'amount' => 6000, 'currency' => 'GHS',
+        ])
+    );
+
+    expect($orgCounter->status)->toBe(RequestStatusEnum::pending->value)
+        ->and($orgCounter->round)->toBe(3);
+    Notification::assertNotSentTo($counsellorUser, OrganizationCounsellorCompensationChangeProposedNotification::class);
+});

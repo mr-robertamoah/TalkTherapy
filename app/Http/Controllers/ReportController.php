@@ -133,18 +133,6 @@ class ReportController extends Controller
         return Redirect::back()->with(['report' => $report]);
     }
 
-    private function returnFailure(Request $request, Throwable $th)
-    {
-        $status = $this->statusFor($th);
-        $message = $this->messageFor($th, $status);
-
-        if ($request->acceptsJson()) {
-            return response()->json(['message' => $message], $status);
-        }
-
-        return Redirect::back()->withErrors(['alert' => $message]);
-    }
-
     private function reportable(Request $request): ?Model
     {
         return GetModelWithModelNameAndIdAction::new()->execute($request->reportableType, $request->reportableId);

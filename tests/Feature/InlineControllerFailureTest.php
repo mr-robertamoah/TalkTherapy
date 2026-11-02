@@ -4,6 +4,7 @@ use App\Enums\LinkStateEnum;
 use App\Enums\LinkTypeEnum;
 use App\Models\Counsellor;
 use App\Models\Link;
+use App\Models\Organization;
 use App\Models\Report;
 use App\Models\Suspension;
 use App\Models\Therapy;
@@ -131,4 +132,63 @@ test('performAction sends any other failure home too, and answers XHR with JSON'
         ->assertJsonStructure(['message']);
 
     expect($therapy->fresh()->counsellor_id)->toBeNull();
+});
+
+// --- SCRUM-371: the one returnFailure (base Controller) --------------------------------------
+
+test('a failure answers a script with JSON, and an Inertia visit or a browser navigation with the alert', function () {
+    $user = User::factory()->adult()->create();
+    $counsellor = icfCounsellor();
+    $url = route('admin.counsellors.delete', ['counsellorId' => $counsellor->id]);
+    $message = 'You are either not authorized to delete this counsellor account or there are some sessions to finish.';
+
+    // axios: Accept application/json, text/plain, */* and X-Requested-With.
+    $this->actingAs($user)->withHeaders(['Accept' => 'application/json, text/plain, */*', 'X-Requested-With' => 'XMLHttpRequest'])
+        ->delete($url)->assertStatus(422)->assertJsonPath('message', $message);
+
+    // An Inertia visit also sends X-Requested-With, but must never get plain JSON.
+    $this->flushHeaders()->actingAs($user)->from('/home')
+        ->withHeaders(['X-Inertia' => 'true', 'X-Requested-With' => 'XMLHttpRequest', 'Accept' => 'text/html, application/xhtml+xml'])
+        ->delete($url)->assertRedirect('/home')->assertSessionHasErrors(['alert' => $message]);
+
+    // A browser navigation (Accept text/html,…,*/*) used to get a raw JSON page.
+    $this->flushHeaders()->actingAs($user)->from('/home')
+        ->withHeader('Accept', 'text/html,application/xhtml+xml,*/*;q=0.8')
+        ->delete($url)->assertRedirect('/home')->assertSessionHasErrors(['alert' => $message]);
+
+    expect($counsellor->fresh()->deleted_at)->toBeNull();
+});
+
+test('no controller keeps its own returnFailure copy', function () {
+    $copies = collect(glob(app_path('Http/Controllers/*.php')))
+        ->reject(fn (string $path) => basename($path) === 'Controller.php')
+        ->filter(fn (string $path) => str_contains(file_get_contents($path), 'function returnFailure('))
+        ->map(fn (string $path) => basename($path))
+        ->values()
+        ->all();
+
+    expect($copies)->toBe([]);
+});
+
+test('a failed page visit (GET) also flashes the alert for the layout; a form submission does not', function () {
+    $user = User::factory()->adult()->create();
+    $organization = Organization::factory()->create();
+
+    // A form submission (Inertia DELETE): only errors.alert, which the form's own onError shows.
+    $this->actingAs($user)->from('/home')
+        ->withHeaders(['X-Inertia' => 'true', 'Accept' => 'text/html, application/xhtml+xml'])
+        ->delete(route('admin.counsellors.delete', ['counsellorId' => icfCounsellor()->id]))
+        ->assertRedirect('/home')
+        ->assertSessionHasErrors('alert')
+        ->assertSessionMissing('failureAlert');
+
+    // A page visit (GET): the members page of an organisation this user doesn't administer.
+    $this->flushHeaders()->actingAs($user)->from('/home')
+        ->withHeader('Accept', 'text/html,application/xhtml+xml,*/*;q=0.8')
+        ->get(route('organizations.members.index', ['organizationId' => $organization->id]))
+        ->assertRedirect('/home')
+        ->assertSessionHas('failureAlert');
+
+    // ...and the page it lands on receives it as a shared prop (through the registered middleware).
+    $this->get(route('home'))->assertInertia(fn ($page) => $page->where('failureAlert', 'You are not authorized to manage this organization.'));
 });

@@ -5,6 +5,7 @@ namespace App\Notifications;
 use App\Http\Resources\DiscussionResource;
 use App\Models\Counsellor;
 use App\Models\Discussion;
+use App\Notifications\Concerns\ResolvesResourceForRecipient;
 use Carbon\Carbon;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -14,7 +15,7 @@ use Illuminate\Notifications\Notification;
 
 class DiscussionUpdatedNotification extends Notification implements ShouldQueue
 {
-    use Queueable;
+    use Queueable, ResolvesResourceForRecipient;
 
     /**
      * Create a new notification instance.
@@ -33,9 +34,10 @@ class DiscussionUpdatedNotification extends Notification implements ShouldQueue
     {
         $via = ['database', 'broadcast'];
 
-        if ($notifiable->email_verified_at)
+        if ($notifiable->email_verified_at) {
             $via[] = 'mail';
-        
+        }
+
         return $via;
     }
 
@@ -49,7 +51,7 @@ class DiscussionUpdatedNotification extends Notification implements ShouldQueue
         $duration = $start->diffInMinutes(new Carbon($this->discussion->end_time));
         [$type, $url] = $this->discussion->getNotificationActionData();
         $name = $notifiable::class == Counsellor::class ? $notifiable->getName() : $notifiable->name;
-        
+
         return (new MailMessage)
             ->success()
             ->subject("'{$this->discussion->name}' Discussion")
@@ -57,7 +59,7 @@ class DiscussionUpdatedNotification extends Notification implements ShouldQueue
             ->line("The discussion with name: '{$this->discussion->name}' has been updated.")
             ->line("This discussion will start on {$startTime}. The discussion will last {$duration} minutes. Please take notice.")
             ->action("Visit {$type} Page", $url)
-            ->line("You may receive other reminders before the starting time.")
+            ->line('You may receive other reminders before the starting time.')
             ->line("Thank you for choosing to 'TalkTherapy'.");
     }
 
@@ -72,12 +74,12 @@ class DiscussionUpdatedNotification extends Notification implements ShouldQueue
             'discussion_id' => $this->discussion->id,
         ];
     }
-    
+
     public function toBroadcast(object $notifiable): BroadcastMessage
     {
-        return (new BroadcastMessage([
-            'discussion' => new DiscussionResource($this->discussion)
-        ]));
+        return new BroadcastMessage([
+            'discussion' => $this->resolveFor(new DiscussionResource($this->discussion), $notifiable),
+        ]);
     }
 
     public function broadcastType(): string

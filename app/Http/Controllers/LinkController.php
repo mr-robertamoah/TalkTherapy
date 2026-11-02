@@ -101,10 +101,9 @@ class LinkController extends Controller
             $status = $this->statusFor($th);
             $message = $this->messageFor($th, $status);
 
-            // SCRUM-97: a link is opened by navigating to it (often from an email), so a browser
-            // always lands on home with the alert -- returnFailure's acceptsJson() is true for a
-            // browser's `*/*` Accept header and used to show it a raw JSON error page.
-            if ($request->expectsJson()) {
+            // SCRUM-97: a link is opened by navigating to it (often from an email), so it always
+            // lands on home with the alert; only a script gets JSON (see Controller).
+            if ($this->wantsJsonFailure($request)) {
                 return response()->json(['message' => $message], $status);
             }
 
@@ -173,17 +172,5 @@ class LinkController extends Controller
         }
 
         return Redirect::back()->with(['link' => $link]);
-    }
-
-    private function returnFailure(Request $request, Throwable $th)
-    {
-        $status = $this->statusFor($th);
-        $message = $this->messageFor($th, $status);
-
-        if ($request->acceptsJson()) {
-            return response()->json(['message' => $message], $status);
-        }
-
-        return Redirect::back()->withErrors(['alert' => $message]);
     }
 }

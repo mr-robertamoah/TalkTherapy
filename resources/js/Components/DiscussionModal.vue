@@ -560,6 +560,7 @@ import useUtilities from "@/Composables/useUtilities";
 import useLoader from "@/Composables/useLoader";
 import useEnums from "@/Composables/useEnums";
 import { minutesUntilWindow } from "@/Composables/countdown";
+import { acquireChannel } from "@/Composables/sharedChannel";
 
 const { loader, showLoader, hideLoader } = useLoader();
 const { alertData, clearAlertData, setSuccessAlertData, setFailedAlertData } = useAlert();
@@ -593,7 +594,7 @@ watch(
     clearInterval(nowInterval);
     if (!show) return;
     now.value = Date.now();
-    nowInterval = setInterval(() => (now.value = Date.now()), 30000);
+    nowInterval = setInterval(() => (now.value = Date.now()), 10000);
   },
   { immediate: true }
 );
@@ -627,10 +628,10 @@ const sessionsInitialized = ref(false);
 const view = ref("details");
 const options = ref(["details", "counsellors", "sessions"]);
 
-onBeforeUnmount(() => {
-  if (listening.value && computedIsInSession.value)
-    Echo.leave(`discussions.${props.discussion.id}`);
-});
+// SCRUM-370: each discussion card mounts its own modal, and the chat page joins the same channel,
+// so a modal releases its own handle -- never Echo.leave(), which silenced the others.
+let discussionChannel = null;
+onBeforeUnmount(() => discussionChannel?.release());
 
 // TODO: add counsellor cards on the chat for online counsellors
 
@@ -761,11 +762,13 @@ function listenToMessages() {
 
   listening.value = true;
   let userId = usePage().props.auth?.user?.id
-  Echo.join(`discussions.${props.discussion.id}`)
+  discussionChannel = acquireChannel(`discussions.${props.discussion.id}`, { presence: true });
+  discussionChannel
     .here((counsellors) => {
       onlineParticipants.value = [...counsellors];
 
-      let others = counsellors.filter((u) => userId !== u.id);
+      // Members are counsellors: compare with their userId (their id is the counsellor id).
+      let others = counsellors.filter((u) => userId != u.userId);
       if (!others.length) return;
 
       setSuccessAlertData({
@@ -790,11 +793,9 @@ function listenToMessages() {
       });
     })
     .leaving((counsellor) => {
-      onlineParticipants.value.splice(
-        onlineParticipants.value.findIndex((u) => u.id == counsellor.id),
-        1,
-        counsellor
-      );
+      // SCRUM-372: remove them -- this used to put them back in place, and drop the last entry
+      // when they weren't listed (findIndex -1).
+      onlineParticipants.value = onlineParticipants.value.filter((u) => u.id != counsellor.id);
 
       setSuccessAlertData({
         message: `${counsellor.name} just went offline.`,

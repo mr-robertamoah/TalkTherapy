@@ -18,6 +18,9 @@ import useAuth from "@/Composables/useAuth";
 import useEnums from "@/Composables/useEnums";
 import useConnectionStatus from "@/Composables/useConnectionStatus";
 import { createAnnouncementQueue } from "@/Composables/announcements";
+import { acquireChannel } from "@/Composables/sharedChannel";
+
+let discussionChannel = null;
 
 const { DiscussionStatusEnum } = useEnums();
 const { goToLogin } = useAuth();
@@ -73,7 +76,8 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
-  if (listening.value) Echo.leave(`discussions.${props.discussion.id}`);
+  // SCRUM-370: shared with any DiscussionModal for the same discussion -- release, never leave.
+  discussionChannel?.release();
   unbindConnectionStatus();
 });
 
@@ -134,10 +138,8 @@ function listenToMessages() {
   let userId = computedUser.value?.id;
   const enqueueMessage = createAnnouncementQueue();
 
-  // Independent join from DiscussionModal.vue's own presence join for this same channel --
-  // this page has its own lifecycle, so it listens for `.message.created` on its own rather
-  // than trying to share the connection with the modal.
-  Echo.join(`discussions.${props.discussion.id}`).listen(".message.created", (data) => {
+  discussionChannel = acquireChannel(`discussions.${props.discussion.id}`, { presence: true });
+  discussionChannel.listen(".message.created", (data) => {
     console.log(data, "message created");
     if (data.message?.fromUserId == userId) return;
 

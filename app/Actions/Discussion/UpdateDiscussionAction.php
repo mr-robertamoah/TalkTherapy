@@ -57,14 +57,22 @@ class UpdateDiscussionAction extends Action
     ) {
         $objectKey = $objectKey ?: $dataKey;
 
-        if (
-            ! is_null($createDiscussionDTO->$objectKey) &&
-            $createDiscussionDTO->$objectKey !== $createDiscussionDTO->discussion->$dataKey
-        ) {
-            if (in_array($dataKey, ['start_time', 'end_time'])) {
-                return $this->data[$dataKey] = (new Carbon($createDiscussionDTO->$objectKey))->utc();
+        if (is_null($createDiscussionDTO->$objectKey)) {
+            return;
+        }
+
+        // SCRUM-372: times are Carbon now (Discussion casts them), so they're compared as instants.
+        if (in_array($dataKey, ['start_time', 'end_time'])) {
+            $time = (new Carbon($createDiscussionDTO->$objectKey))->utc();
+
+            if (! $createDiscussionDTO->discussion->$dataKey?->equalTo($time)) {
+                $this->data[$dataKey] = $time;
             }
 
+            return;
+        }
+
+        if ($createDiscussionDTO->$objectKey !== $createDiscussionDTO->discussion->$dataKey) {
             $this->data[$dataKey] = $createDiscussionDTO->$objectKey;
         }
     }

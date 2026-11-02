@@ -18,6 +18,13 @@ class Discussion extends Model
 
     protected $fillable = ['name', 'description', 'start_time', 'end_time', 'status', 'session_id', 'max_counsellors'];
 
+    // SCRUM-372: like Session's, so the two reach the browser in the same format (ISO, UTC) and
+    // callers get Carbon, not a string they each have to parse.
+    protected $casts = [
+        'start_time' => 'datetime',
+        'end_time' => 'datetime',
+    ];
+
     public function addedby()
     {
         // withTrashed: see Therapy::counsellor() -- addedby (User or Counsellor) may have

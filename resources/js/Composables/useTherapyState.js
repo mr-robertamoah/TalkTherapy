@@ -121,65 +121,71 @@ export default function useTherapyState(therapy, therapyType = 'individual') {
     
     // WebSocket listening
     let counsellorChannel = null
+    let joinedTherapyChannel = false
 
     function listenToTherapy(currentTherapy) {
         const channelName = therapyType === 'group' 
             ? `groupTherapies.${currentTherapy.id}`
             : `therapies.${currentTherapy.id}`
             
-        // SCRUM-357: members are listed by a per-channel key, never a user id -- this browser's own
-        // key is the channel's `members.me`, so each entry is marked with whether it's us.
-        const presence = Echo.join(channelName)
-        const ownPresenceId = () => presence.subscription?.members?.me?.id
+        // SCRUM-372: only participants may join the therapy's presence channel (routes/channels.php);
+        // anyone else browsing a public therapy got a 403 from /broadcasting/auth on every visit.
+        joinedTherapyChannel = computedIsParticipant.value
+        if (joinedTherapyChannel) {
+            // SCRUM-357: members are listed by a per-channel key, never a user id -- this browser's own
+            // key is the channel's `members.me`, so each entry is marked with whether it's us.
+            const presence = Echo.join(channelName)
+            const ownPresenceId = () => presence.subscription?.members?.me?.id
 
-        presence
-            .here((users) => {
-                onlineParticipants.value = users.map((u) => ({ ...u, isMe: u.id === ownPresenceId() }))
+            presence
+                .here((users) => {
+                    onlineParticipants.value = users.map((u) => ({ ...u, isMe: u.id === ownPresenceId() }))
                 
-                let otherUser = onlineParticipants.value.find((u) => !u.isMe)
-                if (!otherUser) return
+                    let otherUser = onlineParticipants.value.find((u) => !u.isMe)
+                    if (!otherUser) return
                 
-                setSuccessAlertData({
-                    message: `${otherUser.name} is already online.`,
-                    time: 4000,
+                    setSuccessAlertData({
+                        message: `${otherUser.name} is already online.`,
+                        time: 4000,
+                    })
                 })
-            })
-            .joining((user) => {
-                let found = onlineParticipants.value.find((u) => u.id == user.id)
-                if (found) return
+                .joining((user) => {
+                    let found = onlineParticipants.value.find((u) => u.id == user.id)
+                    if (found) return
                 
-                onlineParticipants.value.push({ ...user, isMe: false })
-                setSuccessAlertData({
-                    message: `${user.name} just came online.`,
-                    time: 4000,
+                    onlineParticipants.value.push({ ...user, isMe: false })
+                    setSuccessAlertData({
+                        message: `${user.name} just came online.`,
+                        time: 4000,
+                    })
                 })
-            })
-            .leaving((user) => {
-                onlineParticipants.value.splice(
-                    onlineParticipants.value.findIndex((u) => u.id == user.id),
-                    1
-                )
-                setSuccessAlertData({
-                    message: `${user.name} just went offline.`,
-                    time: 4000,
+                .leaving((user) => {
+                    onlineParticipants.value.splice(
+                        onlineParticipants.value.findIndex((u) => u.id == user.id),
+                        1
+                    )
+                    setSuccessAlertData({
+                        message: `${user.name} just went offline.`,
+                        time: 4000,
+                    })
                 })
-            })
-            // SCRUM-367: session broadcasts carry only the session's id ({ sessionId }); it is
-            // fetched (and dropped if this viewer may no longer see it), in arrival order.
-            .listen(`.session.started`, (data) => {
-                enqueueSession(data.sessionId, (session) => {
-                    activeSession.value = session
-                    updateSessionOrTopic(session)
-                    startTimer()
+                // SCRUM-367: session broadcasts carry only the session's id ({ sessionId }); it is
+                // fetched (and dropped if this viewer may no longer see it), in arrival order.
+                .listen(`.session.started`, (data) => {
+                    enqueueSession(data.sessionId, (session) => {
+                        activeSession.value = session
+                        updateSessionOrTopic(session)
+                        startTimer()
+                    })
                 })
-            })
-            .listen(`.session.updated`, (data) => refreshSession(data.sessionId))
-            .listen(`.session.topic.set`, (data) => refreshSession(data.sessionId))
-            .listen(`.session.topic.unset`, () => {
-                if (activeSession.value) {
-                    activeSession.value.currentTopic = null
-                }
-            })
+                .listen(`.session.updated`, (data) => refreshSession(data.sessionId))
+                .listen(`.session.topic.set`, (data) => refreshSession(data.sessionId))
+                .listen(`.session.topic.unset`, () => {
+                    if (activeSession.value) {
+                        activeSession.value.currentTopic = null
+                    }
+                })
+        }
 
         // SCRUM-367: discussions are counsellors-only, so they arrive on this counsellor's own
         // channel, never the therapy's -- only those about this therapy are handled here. The
@@ -283,7 +289,7 @@ export default function useTherapyState(therapy, therapyType = 'individual') {
             ? `groupTherapies.${currentTherapy.id}`
             : `therapies.${currentTherapy.id}`
             
-        Echo.leave(channelName)
+        if (joinedTherapyChannel) Echo.leave(channelName)
 
         counsellorChannel?.release()
         counsellorChannel = null

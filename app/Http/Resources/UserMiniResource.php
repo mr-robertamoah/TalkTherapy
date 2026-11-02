@@ -34,13 +34,20 @@ class UserMiniResource extends JsonResource
         ];
     }
 
-    // Once per request, not per row -- isAdmin() is a query, and this resource renders lists.
+    // Once per request and viewer, not per row -- isAdmin() is a query, and this resource renders
+    // lists. Keyed by the viewer (SCRUM-372) so a request reused for another viewer can't carry it.
     private static function viewerIsAdmin(Request $request): bool
     {
-        if (! $request->attributes->has('viewerIsAdmin')) {
-            $request->attributes->set('viewerIsAdmin', (bool) $request->user()?->isAdmin());
+        $viewer = $request->user();
+        if (! $viewer) {
+            return false;
         }
 
-        return $request->attributes->get('viewerIsAdmin');
+        $key = "viewerIsAdmin:{$viewer->id}";
+        if (! $request->attributes->has($key)) {
+            $request->attributes->set($key, (bool) $viewer->isAdmin());
+        }
+
+        return $request->attributes->get($key);
     }
 }

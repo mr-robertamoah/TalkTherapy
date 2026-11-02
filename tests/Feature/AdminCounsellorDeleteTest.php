@@ -27,7 +27,7 @@ test('a non-super admin cannot delete a counsellor account', function () {
     $counsellor = Counsellor::factory()->create(['user_id' => User::factory()]);
 
     $this->actingAs($normalAdmin)
-        ->delete(route('admin.counsellors.delete', ['counsellorId' => $counsellor->id]))
+        ->deleteJson(route('admin.counsellors.delete', ['counsellorId' => $counsellor->id]))
         ->assertStatus(422);
 
     expect($counsellor->fresh()->deleted_at)->toBeNull();
@@ -38,7 +38,7 @@ test('a regular user cannot delete a counsellor account via the admin route', fu
     $counsellor = Counsellor::factory()->create(['user_id' => User::factory()]);
 
     $this->actingAs($user)
-        ->delete(route('admin.counsellors.delete', ['counsellorId' => $counsellor->id]))
+        ->deleteJson(route('admin.counsellors.delete', ['counsellorId' => $counsellor->id]))
         ->assertStatus(422);
 
     expect($counsellor->fresh()->deleted_at)->toBeNull();

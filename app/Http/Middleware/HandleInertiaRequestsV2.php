@@ -59,6 +59,8 @@ class HandleInertiaRequestsV2 extends Middleware
             // not per-therapy/session, so it's shared globally like supportedCurrencies above
             // rather than threaded through as a page prop.
             'videoProvider' => config('video.provider'),
+            // SCRUM-371: a failed page visit's message (Controller::returnFailure), shown by the layout.
+            'failureAlert' => fn () => $request->hasSession() ? $request->session()->get('failureAlert') : null,
         ];
     }
 }

@@ -4,6 +4,7 @@ namespace App\Notifications;
 
 use App\Http\Resources\UserMiniResource;
 use App\Models\User;
+use App\Notifications\Concerns\ResolvesResourceForRecipient;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\BroadcastMessage;
@@ -12,7 +13,7 @@ use Illuminate\Notifications\Notification;
 
 class GuardianshipRequestNotification extends Notification implements ShouldQueue
 {
-    use Queueable;
+    use Queueable, ResolvesResourceForRecipient;
 
     /**
      * Create a new notification instance.
@@ -31,9 +32,10 @@ class GuardianshipRequestNotification extends Notification implements ShouldQueu
     {
         $via = ['database'];
 
-        if ($notifiable->email_verified_at)
+        if ($notifiable->email_verified_at) {
             $via[] = 'mail';
-        
+        }
+
         return $via;
     }
 
@@ -44,12 +46,12 @@ class GuardianshipRequestNotification extends Notification implements ShouldQueu
     {
         return (new MailMessage)
             ->success()
-            ->subject("Guardianship Request")
+            ->subject('Guardianship Request')
             ->greeting("Hello {$notifiable->name}!")
             ->line("A user with name: '{$this->user->name}' and username: '{$this->user->username}', has sent you a request seeking to be your ward on TalkTherapy app.")
-            ->line("Click on the link below to go to the home page of TalkTherapy, if you are not already on the app.")
-            ->action("Go Home", url(''))
-            ->line("Please make sure to you check your pending requests in other to respond to this request.")
+            ->line('Click on the link below to go to the home page of TalkTherapy, if you are not already on the app.')
+            ->action('Go Home', url(''))
+            ->line('Please make sure to you check your pending requests in other to respond to this request.')
             ->line("Thank you for choosing to 'TalkTherapy'.");
     }
 
@@ -64,12 +66,12 @@ class GuardianshipRequestNotification extends Notification implements ShouldQueu
             'userId' => $this->user->id,
         ];
     }
-    
+
     public function toBroadcast(object $notifiable): BroadcastMessage
     {
-        return (new BroadcastMessage([
-            'user' => new UserMiniResource($this->user)
-        ]));
+        return new BroadcastMessage([
+            'user' => $this->resolveFor(new UserMiniResource($this->user), $notifiable),
+        ]);
     }
 
     public function broadcastType(): string

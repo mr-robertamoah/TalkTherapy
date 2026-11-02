@@ -1,6 +1,9 @@
 export default function useErrorHandler() {
 
     function setErrorData(formErrors, errors, keys) {
+        // A refusal can be a 422 with only a message and no field errors.
+        if (!errors) return
+
         keys.forEach(key => {
             if (!errors.hasOwnProperty(key)) return
 

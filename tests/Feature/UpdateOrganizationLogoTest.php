@@ -126,10 +126,14 @@ test('a non-admin cannot upload a logo for an organization they do not administe
     $outsider = User::factory()->create();
     $this->actingAs($outsider);
 
-    $response = $this->patch("/organizations/{$organization->id}", [
-        'logo' => UploadedFile::fake()->image('logo.jpg'),
-    ]);
+    // SCRUM-371: the real caller is an Inertia form, so a refusal comes back as the alert (it used
+    // to be plain JSON, which an Inertia visit can't show).
+    $this->withHeader('X-Inertia', 'true')->from('/organizations')
+        ->patch("/organizations/{$organization->id}", ['logo' => UploadedFile::fake()->image('logo.jpg')])
+        ->assertRedirect('/organizations')
+        ->assertSessionHasErrors(['alert' => 'You are not authorized to manage this organization.']);
 
-    $response->assertStatus(403);
+    $this->flushHeaders()->patchJson("/organizations/{$organization->id}", ['logo' => UploadedFile::fake()->image('logo.jpg')])
+        ->assertStatus(403);
     expect($organization->fresh()->logo)->toBeNull();
 });

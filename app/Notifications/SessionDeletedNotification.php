@@ -5,6 +5,7 @@ namespace App\Notifications;
 use App\Http\Resources\SessionResource;
 use App\Models\Counsellor;
 use App\Models\Session;
+use App\Notifications\Concerns\ResolvesResourceForRecipient;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\BroadcastMessage;
@@ -13,7 +14,7 @@ use Illuminate\Notifications\Notification;
 
 class SessionDeletedNotification extends Notification implements ShouldQueue
 {
-    use Queueable;
+    use Queueable, ResolvesResourceForRecipient;
 
     /**
      * Create a new notification instance.
@@ -32,9 +33,10 @@ class SessionDeletedNotification extends Notification implements ShouldQueue
     {
         $via = ['database', 'broadcast'];
 
-        if ($notifiable->email_verified_at)
+        if ($notifiable->email_verified_at) {
             $via[] = 'mail';
-        
+        }
+
         return $via;
     }
 
@@ -49,7 +51,7 @@ class SessionDeletedNotification extends Notification implements ShouldQueue
         return (new MailMessage)
             ->subject("'{$this->session->name}' Session")
             ->greeting("Hello {$name}!")
-            ->line("The session with name: '{$this->session->name}' for '{$this->session->for->name}' " . ($this->session->for->isTherapy ? "Therapy" : "Group Therapy") . " has been deleted.")
+            ->line("The session with name: '{$this->session->name}' for '{$this->session->for->name}' ".($this->session->for->isTherapy ? 'Therapy' : 'Group Therapy').' has been deleted.')
             ->action("Visit {$type} Page", $url)
             ->line("Thank you for choosing to 'TalkTherapy'.");
     }
@@ -65,12 +67,12 @@ class SessionDeletedNotification extends Notification implements ShouldQueue
             'session_id' => $this->session->id,
         ];
     }
-    
+
     public function toBroadcast(object $notifiable): BroadcastMessage
     {
-        return (new BroadcastMessage([
-            'session' => new SessionResource($this->session)
-        ]));
+        return new BroadcastMessage([
+            'session' => $this->resolveFor(new SessionResource($this->session), $notifiable),
+        ]);
     }
 
     public function broadcastType(): string

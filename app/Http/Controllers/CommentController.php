@@ -80,16 +80,4 @@ class CommentController extends Controller
 
         return Redirect::back()->with(['comment' => $comment]);
     }
-
-    private function returnFailure(Request $request, Throwable $th)
-    {
-        $status = $this->statusFor($th);
-        $message = $this->messageFor($th, $status);
-
-        if ($request->acceptsJson()) {
-            return response()->json(['message' => $message], $status);
-        }
-
-        return Redirect::back()->withErrors(['alert' => $message]);
-    }
 }

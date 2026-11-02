@@ -1,6 +1,7 @@
 import { computed, ref } from 'vue'
 import { usePage } from '@inertiajs/vue3'
 import axios from 'axios'
+import { acquireChannel } from '@/Composables/sharedChannel'
 
 // TT-3.1c/SCRUM-276: one composable, two interchangeable provider clients (Video/DailyVideoClient.js,
 // Video/ChimeVideoClient.js) -- which one loads is decided entirely by the `videoProvider` Inertia
@@ -114,7 +115,7 @@ export default function useVideoSession(session) {
     const mediaError = ref('')
 
     let client = null
-    let channelName = null
+    let sessionChannel = null
     // SCRUM-357: everyone in a call is identified by a per-session PARTICIPANT KEY, never their
     // user id -- the provider's participant identity, the hand/speaking/removal broadcasts, the
     // join snapshot and the moderation routes all carry it (see App\Support\VideoParticipantKey).
@@ -622,10 +623,12 @@ export default function useVideoSession(session) {
     function listenForStatusChanges() {
         // A reconnect deliberately keeps the listeners from the first join (see
         // handleDisconnected()) -- subscribing again would stack a second copy of every handler.
-        if (channelName) return
+        if (sessionChannel || !window.Echo) return
 
-        channelName = `sessions.${session.value.id}`
-        window.Echo?.private(channelName).listen('.video-session.status-changed', (data) => {
+        // SCRUM-370: the session channel is shared with the chat and session badges -- this
+        // handle adds and later removes only the call's own listeners (see sharedChannel.js).
+        sessionChannel = acquireChannel(`sessions.${session.value.id}`)
+        sessionChannel.listen('.video-session.status-changed', (data) => {
             // The room ended for everyone (e.g. the other participant ended it) -- react locally
             // even though we didn't call end() ourselves. Deliberately does NOT re-issue the
             // sessions.video.end HTTP call -- that's the ender's own action, already done.
@@ -652,7 +655,7 @@ export default function useVideoSession(session) {
         // participant-left callback once the eject/DeleteAttendee call takes effect. Deliberately
         // its own `status.value = 'removed'`, never 'ended' -- see this composable's own top-of-
         // file status comment for why being removed must never look like the room simply ending.
-        window.Echo?.private(channelName).listen('.video-session.participant-removed', (data) => {
+        sessionChannel.listen('.video-session.participant-removed', (data) => {
             if (data.removedParticipantKey !== ownUserId || status.value === 'ended' || status.value === 'removed') return
 
             joinToken++
@@ -664,21 +667,21 @@ export default function useVideoSession(session) {
         // TT-3.2f-j/SCRUM-327: hand-raise and speaking broadcasts carry ids only (anonymity-safe);
         // counsellors resolve names from the call's own tiles. Each viewer also watches for its
         // OWN id, to follow its hand and speaking state.
-        window.Echo?.private(channelName).listen('.video-session.hand-raised', (data) => {
+        sessionChannel.listen('.video-session.hand-raised', (data) => {
             if (data.participantKey === ownUserId) handRaised.value = true
             if (capabilities.value.canModerate && !raisedHandUserIds.value.includes(data.participantKey)) {
                 raisedHandUserIds.value = [...raisedHandUserIds.value, data.participantKey]
             }
         })
 
-        window.Echo?.private(channelName).listen('.video-session.hand-lowered', (data) => {
+        sessionChannel.listen('.video-session.hand-lowered', (data) => {
             if (data.participantKey === ownUserId) handRaised.value = false
             if (capabilities.value.canModerate) {
                 raisedHandUserIds.value = raisedHandUserIds.value.filter((uid) => uid !== data.participantKey)
             }
         })
 
-        window.Echo?.private(channelName).listen('.video-session.speaking-permission-changed', (data) => {
+        sessionChannel.listen('.video-session.speaking-permission-changed', (data) => {
             if (data.participantKey === ownUserId) applyOwnSpeakingPermission(data)
 
             if (!capabilities.value.canModerate) return
@@ -688,18 +691,8 @@ export default function useVideoSession(session) {
     }
 
     function stopListeningForStatusChanges() {
-        if (!channelName) return
-
-        // Deliberately .stopListening(), NOT Echo.leave() -- TherapyComponent.vue already owns
-        // this same sessions.{id} channel's lifecycle for message events and calls Echo.leave()
-        // itself in its own onBeforeUnmount; an independent Echo.leave() here would risk tearing
-        // the channel down out from under that listener if unmount ordering differs.
-        window.Echo?.private(channelName).stopListening('.video-session.status-changed')
-        window.Echo?.private(channelName).stopListening('.video-session.participant-removed')
-        window.Echo?.private(channelName).stopListening('.video-session.hand-raised')
-        window.Echo?.private(channelName).stopListening('.video-session.hand-lowered')
-        window.Echo?.private(channelName).stopListening('.video-session.speaking-permission-changed')
-        channelName = null
+        sessionChannel?.release()
+        sessionChannel = null
     }
 
     return {
