@@ -14,6 +14,7 @@ use App\Models\OrganizationCounsellor;
 use App\Models\Request;
 use App\Notifications\OrganizationCounsellorCompensationChangeProposedNotification;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Notification;
 
 class CounterOfferOrganizationCounsellorCompensationChangeAction extends Action
@@ -80,8 +81,30 @@ class CounterOfferOrganizationCounsellorCompensationChangeAction extends Action
             $counterOffer->data
         );
 
+        // SCRUM-151: the counterparty can be gone (a counsellor soft-deleted mid-negotiation, an
+        // organization with no admins left). The counter-offer still stands; nobody is notified,
+        // mirroring AppService::notifyCompensationRequestRecipient (SCRUM-149).
+        if (is_null($counterOffer->to)) {
+            Log::warning('Compensation counter-offer has no resolvable recipient to notify.', [
+                'requestId' => $counterOffer->id,
+            ]);
+
+            return;
+        }
+
         if ($counterOffer->to instanceof Organization) {
-            Notification::send($organizationCounsellor->organization->admins, $notification);
+            $admins = $organizationCounsellor->organization->admins;
+
+            if ($admins->isEmpty()) {
+                Log::warning('Compensation counter-offer\'s organization has no admins to notify.', [
+                    'requestId' => $counterOffer->id,
+                    'organizationId' => $organizationCounsellor->organization->id,
+                ]);
+
+                return;
+            }
+
+            Notification::send($admins, $notification);
 
             return;
         }

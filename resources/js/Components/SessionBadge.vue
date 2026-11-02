@@ -113,6 +113,7 @@ import Alert from './Alert.vue';
 import useShowMore from '@/Composables/useShowMore';
 import useUtilities from '@/Composables/useUtilities';
 import { createAnnouncementQueue, resolveAnnouncedSession } from '@/Composables/announcements';
+import { acquireChannel } from '@/Composables/sharedChannel';
 
 const { modalData, closeModal, showModal } = useModal()
 const { toDiffForHumans } = useLocalDateTime()
@@ -175,11 +176,11 @@ const loading = ref(false)
 // it (DiscussionModal's badges don't), and subscribe to a session's channel once.
 const hasMessageListener = !!getCurrentInstance()?.vnode.props?.onOnMessageCreated
 let subscribedSessionId = null
+// SCRUM-370: the session channel is shared with the chat, its video call and other badges, so a
+// badge releases its own handle -- never Echo.leave(), which silenced the open chat.
+let sessionChannel = null
 
-onBeforeUnmount(() => {
-    if (props.listen)
-        Echo.leave(`sessions.${props.session.id}`)
-})
+onBeforeUnmount(() => sessionChannel?.release())
 
 watchEffect(() => {
     const user = usePage().props.auth.user
@@ -192,8 +193,9 @@ watchEffect(() => {
     const enqueueMessage = createAnnouncementQueue()
     const enqueueSession = createAnnouncementQueue(resolveAnnouncedSession)
 
-    Echo
-        .private(`sessions.${props.session.id}`)
+    sessionChannel?.release()
+    sessionChannel = acquireChannel(`sessions.${props.session.id}`)
+    sessionChannel
         .listen('.message.created', (data) => {
             console.log(data, 'message created');
             if (!hasMessageListener || data.message?.fromUserId == user?.id)

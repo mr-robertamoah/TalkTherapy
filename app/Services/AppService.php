@@ -231,7 +231,13 @@ class AppService extends Service
             }])
             ->get();
 
+        // SCRUM-372: once per session. The sweep runs every five minutes over a 30-minute window,
+        // so each participant used to get the reminder (and its email) up to six times.
         $sessions->each(function ($session) {
+            if (! $this->firstTime('session-due', $session)) {
+                return;
+            }
+
             Notification::send(
                 $session->users,
                 new SessionDueNotification($session)
@@ -258,12 +264,12 @@ class AppService extends Service
                 $alertable = $alerts->first()->alertable;
 
                 $activeSession = $alertable?->activeSession;
-                if ($activeSession && $this->firstAnnouncement('session', $activeSession)) {
+                if ($activeSession && $this->firstTime('session-started', $activeSession)) {
                     SessionStartedEvent::broadcast($activeSession);
                 }
 
                 $activeDiscussion = $alertable?->activeDiscussion;
-                if ($activeDiscussion && $this->firstAnnouncement('discussion', $activeDiscussion)) {
+                if ($activeDiscussion && $this->firstTime('discussion-started', $activeDiscussion)) {
                     DiscussionStartedEvent::broadcast($activeDiscussion);
                 }
 
@@ -271,17 +277,22 @@ class AppService extends Service
             });
     }
 
-    private function firstAnnouncement(string $kind, Session|Discussion $model): bool
+    // Everyone taking part in a discussion: its creator (as a counsellor) and the added counsellors.
+    private function discussionCounsellors(Discussion $discussion)
     {
-        // Discussion doesn't cast end_time, so it may be a string.
-        $endTime = $model->end_time ? Carbon::parse($model->end_time) : null;
-        $until = $endTime?->isFuture() ? $endTime->addHour() : now()->addHour();
+        return Counsellor::query()->whereKey($discussion->participantCounsellorIds())->get();
+    }
 
+    // True the first time it's asked for this kind of notice about this session or discussion --
+    // the scheduled sweeps run repeatedly over the same window.
+    private function firstTime(string $kind, Session|Discussion $model): bool
+    {
+        $until = $model->end_time?->isFuture() ? $model->end_time->copy()->addHour() : now()->addHour();
         // The start time is part of the key: a session rescheduled after its first announcement is
         // announced again when it really starts.
-        $startedAt = $model->start_time ? Carbon::parse($model->start_time)->timestamp : 0;
+        $startedAt = $model->start_time?->timestamp ?? 0;
 
-        return Cache::add("started-broadcast:{$kind}:{$model->id}:{$startedAt}", true, $until);
+        return Cache::add("scheduler-once:{$kind}:{$model->id}:{$startedAt}", true, $until);
     }
 
     public function failUnheldSessions()
@@ -321,9 +332,15 @@ class AppService extends Service
             }])
             ->get();
 
+        // SCRUM-372: once per discussion (this runs every minute over a 30-minute window), and to
+        // its creator too -- the creator isn't in the counsellors pivot, so never got it.
         $discussions->each(function ($discussion) {
+            if (! $this->firstTime('discussion-due', $discussion)) {
+                return;
+            }
+
             Notification::send(
-                $discussion->counsellors,
+                $this->discussionCounsellors($discussion),
                 new DiscussionDueNotification($discussion)
             );
         });
@@ -341,7 +358,7 @@ class AppService extends Service
 
         $discussions->each(function ($discussion) {
             Notification::send(
-                $discussion->counsellors,
+                $this->discussionCounsellors($discussion),
                 new DiscussionFailedNotification($discussion)
             );
 

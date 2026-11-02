@@ -45,6 +45,15 @@ watchEffect(() => {
     });
   }
 
+  // SCRUM-371: a page visit that failed and was sent back here.
+  if (page.props.failureAlert?.length) {
+    setAlertData({
+      show: true,
+      type: "failed",
+      message: page.props.failureAlert,
+    });
+  }
+
   if (page.props.message?.length) {
     setAlertData({
       show: true,
@@ -129,15 +138,12 @@ watchEffect(() => {
             });
           }
         })
-        .listen("discussion.request.response", (data) => {
+        .listen(".discussion.request.response", (data) => {
           const key = data.forType == "Therapy" ? "therapyId" : "groupTherapyId";
 
           setSuccessAlertData({
-            message: `${
-              data.forName
-            } (counsellor) has ${data.status.toLowerCase()} your request inviting him/her to join discussion regarding ${
-              data.forName
-            } (${data.forType}). Visit the ${data.forType} page by click this alert.`,
+            // SCRUM-372: this listener lacked its leading dot, so it never fired.
+            message: `${data.counsellorName ?? "A counsellor"} has ${data.status.toLowerCase()} your invitation to join the discussion "${data.forName}". Click this alert to visit the ${data.forType == "Therapy" ? "therapy" : "group therapy"}.`,
             time: 20000,
             data: {
               [key]: data.forId,

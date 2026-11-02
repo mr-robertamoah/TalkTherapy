@@ -152,7 +152,7 @@ test('a public anonymous therapy does not disclose org coverage to an unauthenti
 
     $response = $this->get(route('therapies.get', ['therapyId' => $therapy->id]));
 
-    // Unauthenticated requests skip HandleInertiaRequests' auth-only withoutWrapping() call, so
+    // Unauthenticated requests skip HandleInertiaRequestsV2's auth-only withoutWrapping() call, so
     // JsonResource's default wrap('data') behavior still applies here -- 'therapy.data.*', not
     // 'therapy.*', unlike every other (authenticated) test in this file.
     $response->assertOk()->assertInertia(fn ($page) => $page

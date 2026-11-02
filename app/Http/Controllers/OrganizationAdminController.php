@@ -73,12 +73,4 @@ class OrganizationAdminController extends Controller
     {
         return response()->json(['admins' => OrganizationAdminResource::collection($organization->admins)]);
     }
-
-    private function returnFailure(Request $request, Throwable $th)
-    {
-        $status = $this->statusFor($th);
-        $message = $this->messageFor($th, $status);
-
-        return response()->json(['message' => $message], $status);
-    }
 }

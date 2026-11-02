@@ -9,9 +9,16 @@ use App\Models\Request;
 use App\Models\Therapy;
 use App\Models\Transaction;
 use App\Models\User;
+use Illuminate\Support\Facades\Http;
 
 // TT-7.7c/SCRUM-251: platform-admin-only review queue -- mirrors
 // AdminOrganizationBillingController's own coverage shape.
+
+// Approving a refund dispatches ProcessRefundJob, which tests run synchronously -- without this it
+// called Paystack for real and failed whenever the network did (seen twice on 2026-11-02).
+beforeEach(function () {
+    Http::fake(['*' => Http::response(['status' => true, 'message' => 'Refund has been queued for processing', 'data' => ['status' => 'pending']], 200)]);
+});
 
 function aPendingRefundRequestForAdminQueue(): array
 {

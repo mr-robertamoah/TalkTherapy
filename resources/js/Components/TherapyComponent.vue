@@ -368,6 +368,7 @@ import useConnectionStatus from '@/Composables/useConnectionStatus';
 import SessionNotesPanel from './SessionNotesPanel.vue';
 import VideoCallPanel from './VideoCallPanel.vue';
 import { createAnnouncementQueue } from '@/Composables/announcements';
+import { acquireChannel } from '@/Composables/sharedChannel';
 
 const { goToLogin } = useAuth()
 const {
@@ -485,6 +486,9 @@ const filters = ref({
     topics: false
 })
 
+// SCRUM-370: declared before the watchers below -- they call listenToMessages() during setup.
+let sessionChannel = null
+
 watchEffect(() => {
     if (props.showSessions) return
 
@@ -597,8 +601,8 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
-    if (listening.value && props.activeSession)
-        Echo.leave(`sessions.${props.activeSession.id}`)
+    // SCRUM-370: shared with the video call and session badges -- release, never leave.
+    sessionChannel?.release()
 
     clearTypingIdleTimer()
     emitTypingWhisper.cancel()
@@ -753,8 +757,8 @@ function listenToMessages() {
 
     listening.value = true
     const enqueueMessage = createAnnouncementQueue()
-    const channel = Echo
-        .private(`sessions.${props.activeSession.id}`)
+    sessionChannel = acquireChannel(`sessions.${props.activeSession.id}`)
+    const channel = sessionChannel
         .listen('.message.created', (data) => {
             console.log(data, 'message created');
             if (data.message?.fromUserId == userId)
@@ -793,7 +797,7 @@ const emitTypingWhisper = _.throttle(() => {
 
     // SCRUM-366 (security review): a random per-page token, not the user id -- in an anonymous
     // therapy the other party must never receive the client's real id (SCRUM-357).
-    Echo.private(`sessions.${props.activeSession.id}`).whisper('typing', { token: typingToken })
+    sessionChannel?.whisper('typing', { token: typingToken })
 }, 2000, { leading: true, trailing: true })
 
 function resetTypingIdleTimer() {

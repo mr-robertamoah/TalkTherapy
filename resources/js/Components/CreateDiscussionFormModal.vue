@@ -183,7 +183,9 @@ async function createDiscussion() {
     })
     .catch((err) => {
         console.log(err)
-        if (err.response?.status == 422) {
+        // A 422 is either field errors or a refusal with only a message (e.g. a clash with another
+        // session) -- the latter falls through to the alert below (SCRUM-372 QA).
+        if (err.response?.status == 422 && err.response.data?.errors) {
             setErrorData(discussionErrors, err.response.data.errors, ['name', 'description', 'startTime', 'sessionId', 'endTime'])
             return
         }

@@ -9115,3 +9115,99 @@ seeing discussions) as won't do, since discussions are counsellors-only (SCRUM-3
 - **Follow-ups filed:** SCRUM-370 (session and discussion channels onto `sharedChannel.js`),
   SCRUM-371 (`returnFailure` with `expectsJson` in the base controller), SCRUM-372
   (`discussion.request.response` dot, Discussion casts, per-viewer resources in notifications).
+
+## SCRUM-370 + 371 + 372 + 145 + 151: shared channels, one failure response, realtime leftovers — 2026-11-02
+
+The user asked for the next group, to include the three follow-ups. I added SCRUM-145 and SCRUM-151
+(small, already-scoped fixes in the same areas). The video tickets (SCRUM-330, 315, 334) were left
+out: each still needs a scoping decision.
+
+- **Shared channels (SCRUM-370):** `sessions.{id}` and the `discussions.{id}` presence channel now go
+  through `sharedChannel.js`, like `counsellors.{id}`. The module gained:
+  - presence support: `here`, `joining` and `leaving`, bound to the Pusher subscription so each
+    holder can unbind its own;
+  - a `here()` registered after the channel has already subscribed is called straight away with the
+    current members (Echo's own `here` would never fire for a second holder, and every discussion
+    card mounts its own DiscussionModal);
+  - whispers;
+  - leaving by full channel name (`Echo.leaveChannel`), so a private and a presence channel with the
+    same base name can't take each other down.
+- **One `returnFailure` (SCRUM-371):** it is now on the base `Controller`, and the 23 copies are
+  gone. JSON goes to every request **except** an Inertia visit and a request whose Accept asks for
+  HTML (a browser navigation); those get back-with-alert.
+  - Not `expectsJson()`, as the ticket suggested: Inertia sends `X-Requested-With`, so it would have
+    sent JSON to Inertia visits. The SCRUM-97 LinkController change had that gap too (harmless,
+    since nothing visits `/links/` through Inertia); it now uses the same rule.
+  - A request with no Accept header keeps its JSON.
+  - Behaviour changes:
+    - The four controllers that always answered JSON (organisation admin, member, counsellor, and
+      message notes) now redirect Inertia visits too. The organisation update form is an Inertia
+      form, so a refused update used to come back as plain JSON, which Inertia can't show.
+    - Tests that called axios-only endpoints with the test client's browser-like Accept were
+      asserting the old bug; they now send JSON, as their real callers do.
+- **Realtime leftovers (SCRUM-372):**
+  - `.discussion.request.response` now has its leading dot. Fixing it exposed a misrouting: the event
+    addressed `counsellors.{addedby->id}`, which is a *user* id when a counsellor created the
+    discussion as their account. It now goes to the creator's counsellor id, and the alert names the
+    counsellor rather than repeating the discussion's name.
+  - Discussion `start_time`/`end_time` are cast to datetime, like Session's, so both reach the
+    browser in the same ISO/UTC form.
+  - Notification resources are resolved as their **recipient**, using a **fresh** request (built from
+    APP_URL) that is bound in the container while the payload is encoded, then put back. Nested
+    resources serialise through the container request.
+    - Why fresh rather than swapping the user on the current request (security and architecture
+      review): resources cache viewer facts on the request. `UserMiniResource`'s `viewerIsAdmin`
+      decides whether `dob` is shown, and a queue worker keeps one request for its whole life. So the
+      first recipient's admin flag reached every later recipient. The cache is now also keyed by
+      viewer.
+    - Why APP_URL rather than `/`: binding a request re-roots the URL generator, and `/` made every
+      asset URL in the payload `http://localhost`.
+    - Applies to the session and discussion notifications and the three guardianship notifications
+      (which carried the acting user's `dob` under a sync queue).
+    - Chosen over id-only payloads because the layout's alerts read names from them; small
+      purpose-built payloads are ticketed (SCRUM-374).
+  - Unexpected failures (500) are now `report()`ed in the one `returnFailure`; before, they were only
+    turned into a generic message.
+  - **Deploy:** `cache:clear` (scripts/deploy.sh) wipes the `scheduler-once:*` keys, so a deploy inside
+    a 30-minute window sends one more reminder. That is ticketed with the other ops gaps (SCRUM-373).
+    Discussion times now display shifted for non-UTC viewers: they are correct now, but this is not a
+    regression.
+  - Non-participants no longer join a therapy's presence channel (the 403 on public therapies).
+  - An open dropdown sits above a flash alert.
+  - The countdown rounds "to start" up and "to end" down, so a button is never enabled up to 59
+    seconds early.
+  - **"Due" reminders once.** Found while including the discussion's creator: the session sweep (every
+    five minutes) and the discussion sweep (every minute) both match anything starting in the next 30
+    minutes. Each participant got the reminder, and its email, up to 6 and 30 times. Both are now
+    sent once per session or discussion (the same `Cache::add` guard as the start announcements,
+    keys now `scheduler-once:*`). The discussion's due and failed notices also go to its creator.
+- **FormLoader (SCRUM-145):** the audit found the strip still took clicks while shown, covering a
+  full-width band along the bottom of the screen during loading. It is now always click-through; it
+  is a status line, never a target.
+- **SCRUM-151:** a counter-offer whose counterparty is gone (counsellor soft-deleted, organisation
+  with no admins) is recorded and logged, not failed, as in `AppService` since SCRUM-149.
+- **Browser QA fixes:**
+  - **Chat crash.** `TherapyComponent` declared its shared-channel handle below the watcher that
+    calls `listenToMessages()` during setup, so the chat crashed whenever a session was active (a
+    temporal dead zone error). It is now declared first.
+  - **Failed page visits now show their alert.** `returnFailure` redirected back with
+    `errors.alert`, which only forms display. A failed GET also flashes `failureAlert` (a shared
+    Inertia prop), and the layout shows it. GET only, because a form submission's own `onError`
+    already shows the alert and two alerts would stack.
+  - **Create-discussion form** no longer locks up on a 422 that carries only a message.
+    `useErrorHandler.setErrorData` now ignores missing errors.
+  - **"Already online"** in the discussion modal no longer counts the viewer: it compares the
+    viewer's user id with `userId`, not the counsellor id.
+  - **Discussion modal clock** ticks every 10 seconds, not 30, so "start" enables within about 10
+    seconds of the start time.
+- **Tests never reach the network** (`Http::preventStrayRequests()` for every test in
+  `tests/Pest.php`). `AdminRefundRequestControllerTest` failed intermittently: approving a refund runs
+  `ProcessRefundJob` inline under the sync test queue, which called Paystack for real. It now fakes
+  HTTP, and no other test was making real calls.
+- **The unused `HandleInertiaRequests` middleware was deleted.** `bootstrap/app.php` registers
+  `HandleInertiaRequestsV2`. The `failureAlert` prop first went into the old file, so it never reached
+  the browser (caught by the second browser QA pass). An end-to-end test now checks the prop on the
+  landing page.
+- **Known minor issue, left as is:** on a therapy page, the page-level DiscussionModal and the
+  discussion card's modal both join the presence channel, so the "already online" alert can show
+  twice, stacked. Before, the second modal's `here()` never fired.

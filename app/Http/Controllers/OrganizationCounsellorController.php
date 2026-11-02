@@ -67,12 +67,4 @@ class OrganizationCounsellorController extends Controller
             return $this->returnFailure($request, $th);
         }
     }
-
-    private function returnFailure(Request $request, Throwable $th)
-    {
-        $status = $this->statusFor($th);
-        $message = $this->messageFor($th, $status);
-
-        return response()->json(['message' => $message], $status);
-    }
 }

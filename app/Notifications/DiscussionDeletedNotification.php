@@ -5,6 +5,7 @@ namespace App\Notifications;
 use App\Http\Resources\DiscussionResource;
 use App\Models\Counsellor;
 use App\Models\Discussion;
+use App\Notifications\Concerns\ResolvesResourceForRecipient;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\BroadcastMessage;
@@ -13,7 +14,7 @@ use Illuminate\Notifications\Notification;
 
 class DiscussionDeletedNotification extends Notification implements ShouldQueue
 {
-    use Queueable;
+    use Queueable, ResolvesResourceForRecipient;
 
     /**
      * Create a new notification instance.
@@ -32,9 +33,10 @@ class DiscussionDeletedNotification extends Notification implements ShouldQueue
     {
         $via = ['database', 'broadcast'];
 
-        if ($notifiable->email_verified_at)
+        if ($notifiable->email_verified_at) {
             $via[] = 'mail';
-        
+        }
+
         return $via;
     }
 
@@ -52,7 +54,7 @@ class DiscussionDeletedNotification extends Notification implements ShouldQueue
             ->line("The discussion with name: '{$this->discussion->name}' for '{$this->discussion->for->name}' {$type} has been deleted.")
             ->action("Visit {$type} Page", $url)
             ->line("Thank you for choosing to 'TalkTherapy'.");
-    
+
     }
 
     /**
@@ -66,12 +68,12 @@ class DiscussionDeletedNotification extends Notification implements ShouldQueue
             'discussion_id' => $this->discussion->id,
         ];
     }
-    
+
     public function toBroadcast(object $notifiable): BroadcastMessage
     {
-        return (new BroadcastMessage([
-            'discussion' => new DiscussionResource($this->discussion)
-        ]));
+        return new BroadcastMessage([
+            'discussion' => $this->resolveFor(new DiscussionResource($this->discussion), $notifiable),
+        ]);
     }
 
     public function broadcastType(): string

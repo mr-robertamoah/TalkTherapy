@@ -1,5 +1,7 @@
 <?php
 
+// SCRUM-371: called by axios, so requests here are JSON (Json helpers), as the real caller sends.
+
 use App\Enums\SessionStatusEnum;
 use App\Events\MessageDeletedEvent;
 use App\Events\MessageSentEvent;
@@ -91,7 +93,7 @@ test('a counsellor can create a note on a message from their own therapy session
 
     $response = $this
         ->actingAs($counsellor->user)
-        ->post(route('api.message.notes.store', ['messageId' => $message->id]), [
+        ->postJson(route('api.message.notes.store', ['messageId' => $message->id]), [
             'content' => 'Client hesitated before answering this.',
         ]);
 
@@ -110,7 +112,7 @@ test('a counsellor can create a note on a message from a shared group therapy se
     $message = aMessageForMessageNotesRoute($session);
 
     $this->actingAs($counsellor->user)
-        ->post(route('api.message.notes.store', ['messageId' => $message->id]), ['content' => 'group note'])
+        ->postJson(route('api.message.notes.store', ['messageId' => $message->id]), ['content' => 'group note'])
         ->assertOk()
         ->assertJsonPath('note.content', 'group note');
 });
@@ -121,7 +123,7 @@ test('a counsellor can create a note on a message from a discussion they partici
     $message = aMessageForMessageNotesRoute($discussion);
 
     $this->actingAs($counsellor->user)
-        ->post(route('api.message.notes.store', ['messageId' => $message->id]), ['content' => 'discussion note'])
+        ->postJson(route('api.message.notes.store', ['messageId' => $message->id]), ['content' => 'discussion note'])
         ->assertOk()
         ->assertJsonPath('note.content', 'discussion note');
 });
@@ -132,14 +134,14 @@ test('a counsellor can fetch their own note for a message, or null if none exist
     $message = aMessageForMessageNotesRoute($session);
 
     $emptyResponse = $this->actingAs($counsellor->user)
-        ->get(route('api.message.notes.index', ['messageId' => $message->id]));
+        ->getJson(route('api.message.notes.index', ['messageId' => $message->id]));
     $emptyResponse->assertOk();
     expect($emptyResponse->json('note'))->toBeNull();
 
     MessageNote::factory()->create(['message_id' => $message->id, 'counsellor_id' => $counsellor->id]);
 
     $response = $this->actingAs($counsellor->user)
-        ->get(route('api.message.notes.index', ['messageId' => $message->id]));
+        ->getJson(route('api.message.notes.index', ['messageId' => $message->id]));
     $response->assertOk();
     expect($response->json('note.id'))->not->toBeNull();
 });
@@ -152,17 +154,17 @@ test('a counsellor cannot see another counsellor note on a shared group therapy 
     $noteA = MessageNote::factory()->create(['message_id' => $message->id, 'counsellor_id' => $counsellorA->id]);
 
     $indexResponse = $this->actingAs($counsellorB->user)
-        ->get(route('api.message.notes.index', ['messageId' => $message->id]));
+        ->getJson(route('api.message.notes.index', ['messageId' => $message->id]));
     $indexResponse->assertOk();
     expect($indexResponse->json('note'))->toBeNull();
 
     $this->actingAs($counsellorB->user)
-        ->patch(route('api.message.notes.update', ['noteId' => $noteA->id]), ['content' => 'attempted takeover'])
+        ->patchJson(route('api.message.notes.update', ['noteId' => $noteA->id]), ['content' => 'attempted takeover'])
         ->assertStatus(422);
     $this->assertDatabaseHas('message_notes', ['id' => $noteA->id, 'content' => $noteA->content]);
 
     $this->actingAs($counsellorB->user)
-        ->delete(route('api.message.notes.destroy', ['noteId' => $noteA->id]))
+        ->deleteJson(route('api.message.notes.destroy', ['noteId' => $noteA->id]))
         ->assertStatus(422);
     $this->assertDatabaseHas('message_notes', ['id' => $noteA->id, 'deleted_at' => null]);
 });
@@ -175,7 +177,7 @@ test('a counsellor cannot see another counsellor note on a shared discussion mes
     MessageNote::factory()->create(['message_id' => $message->id, 'counsellor_id' => $counsellorA->id]);
 
     $indexResponse = $this->actingAs($counsellorB->user)
-        ->get(route('api.message.notes.index', ['messageId' => $message->id]));
+        ->getJson(route('api.message.notes.index', ['messageId' => $message->id]));
     $indexResponse->assertOk();
     expect($indexResponse->json('note'))->toBeNull();
 });
@@ -191,12 +193,12 @@ test('a counsellor can add a new note after deleting their previous one on the s
     $original = MessageNote::factory()->create(['message_id' => $message->id, 'counsellor_id' => $counsellor->id, 'content' => 'original']);
 
     $this->actingAs($counsellor->user)
-        ->delete(route('api.message.notes.destroy', ['noteId' => $original->id]))
+        ->deleteJson(route('api.message.notes.destroy', ['noteId' => $original->id]))
         ->assertOk();
     $this->assertSoftDeleted('message_notes', ['id' => $original->id]);
 
     $response = $this->actingAs($counsellor->user)
-        ->post(route('api.message.notes.store', ['messageId' => $message->id]), ['content' => 'a fresh note']);
+        ->postJson(route('api.message.notes.store', ['messageId' => $message->id]), ['content' => 'a fresh note']);
 
     $response->assertOk();
     $response->assertJsonPath('note.content', 'a fresh note');
@@ -212,12 +214,12 @@ test('a co-counsellor cannot update or delete another counsellor note by guessin
     $noteA = MessageNote::factory()->create(['message_id' => $message->id, 'counsellor_id' => $counsellorA->id]);
 
     $this->actingAs($counsellorB->user)
-        ->patch(route('api.message.notes.update', ['noteId' => $noteA->id]), ['content' => 'idor attempt'])
+        ->patchJson(route('api.message.notes.update', ['noteId' => $noteA->id]), ['content' => 'idor attempt'])
         ->assertStatus(422);
     $this->assertDatabaseHas('message_notes', ['id' => $noteA->id, 'content' => $noteA->content]);
 
     $this->actingAs($counsellorB->user)
-        ->delete(route('api.message.notes.destroy', ['noteId' => $noteA->id]))
+        ->deleteJson(route('api.message.notes.destroy', ['noteId' => $noteA->id]))
         ->assertStatus(422);
     $this->assertDatabaseHas('message_notes', ['id' => $noteA->id, 'deleted_at' => null]);
 });
@@ -229,7 +231,7 @@ test('a counsellor cannot add a second note to the same message', function () {
     MessageNote::factory()->create(['message_id' => $message->id, 'counsellor_id' => $counsellor->id]);
 
     $response = $this->actingAs($counsellor->user)
-        ->post(route('api.message.notes.store', ['messageId' => $message->id]), ['content' => 'second note']);
+        ->postJson(route('api.message.notes.store', ['messageId' => $message->id]), ['content' => 'second note']);
 
     $response->assertStatus(422);
     expect(MessageNote::where('message_id', $message->id)->where('counsellor_id', $counsellor->id)->count())->toBe(1);
@@ -242,11 +244,11 @@ test('a counsellor not participating in the message context is rejected on every
     $message = aMessageForMessageNotesRoute($session);
 
     $this->actingAs($outsiderCounsellor->user)
-        ->post(route('api.message.notes.store', ['messageId' => $message->id]), ['content' => 'x'])
+        ->postJson(route('api.message.notes.store', ['messageId' => $message->id]), ['content' => 'x'])
         ->assertStatus(422);
 
     $this->actingAs($outsiderCounsellor->user)
-        ->get(route('api.message.notes.index', ['messageId' => $message->id]))
+        ->getJson(route('api.message.notes.index', ['messageId' => $message->id]))
         ->assertStatus(422);
 });
 
@@ -263,19 +265,19 @@ test('the client on the therapy can never create, view, update, or delete a mess
     $note = MessageNote::factory()->create(['message_id' => $message->id, 'counsellor_id' => $counsellor->id]);
 
     $this->actingAs($client)
-        ->post(route('api.message.notes.store', ['messageId' => $message->id]), ['content' => 'x'])
+        ->postJson(route('api.message.notes.store', ['messageId' => $message->id]), ['content' => 'x'])
         ->assertStatus(422);
 
     $this->actingAs($client)
-        ->get(route('api.message.notes.index', ['messageId' => $message->id]))
+        ->getJson(route('api.message.notes.index', ['messageId' => $message->id]))
         ->assertStatus(422);
 
     $this->actingAs($client)
-        ->patch(route('api.message.notes.update', ['noteId' => $note->id]), ['content' => 'x'])
+        ->patchJson(route('api.message.notes.update', ['noteId' => $note->id]), ['content' => 'x'])
         ->assertStatus(422);
 
     $this->actingAs($client)
-        ->delete(route('api.message.notes.destroy', ['noteId' => $note->id]))
+        ->deleteJson(route('api.message.notes.destroy', ['noteId' => $note->id]))
         ->assertStatus(422);
 });
 
@@ -286,12 +288,12 @@ test('the author can update and delete their own note', function () {
     $note = MessageNote::factory()->create(['message_id' => $message->id, 'counsellor_id' => $counsellor->id]);
 
     $this->actingAs($counsellor->user)
-        ->patch(route('api.message.notes.update', ['noteId' => $note->id]), ['content' => 'updated'])
+        ->patchJson(route('api.message.notes.update', ['noteId' => $note->id]), ['content' => 'updated'])
         ->assertOk()
         ->assertJsonPath('note.content', 'updated');
 
     $this->actingAs($counsellor->user)
-        ->delete(route('api.message.notes.destroy', ['noteId' => $note->id]))
+        ->deleteJson(route('api.message.notes.destroy', ['noteId' => $note->id]))
         ->assertOk();
 
     $this->assertSoftDeleted('message_notes', ['id' => $note->id]);
@@ -312,7 +314,7 @@ test('the author can still edit their note long after the session has ended, unl
     $note = MessageNote::factory()->create(['message_id' => $message->id, 'counsellor_id' => $counsellor->id]);
 
     $this->actingAs($counsellor->user)
-        ->patch(route('api.message.notes.update', ['noteId' => $note->id]), ['content' => 'still editable'])
+        ->patchJson(route('api.message.notes.update', ['noteId' => $note->id]), ['content' => 'still editable'])
         ->assertOk()
         ->assertJsonPath('note.content', 'still editable');
 });
@@ -344,15 +346,15 @@ test('creating, updating, and deleting a message note broadcasts no events at al
     $message = aMessageForMessageNotesRoute($session);
 
     $this->actingAs($counsellor->user)
-        ->post(route('api.message.notes.store', ['messageId' => $message->id]), ['content' => 'private observation']);
+        ->postJson(route('api.message.notes.store', ['messageId' => $message->id]), ['content' => 'private observation']);
 
     $note = MessageNote::first();
 
     $this->actingAs($counsellor->user)
-        ->patch(route('api.message.notes.update', ['noteId' => $note->id]), ['content' => 'updated observation']);
+        ->patchJson(route('api.message.notes.update', ['noteId' => $note->id]), ['content' => 'updated observation']);
 
     $this->actingAs($counsellor->user)
-        ->delete(route('api.message.notes.destroy', ['noteId' => $note->id]));
+        ->deleteJson(route('api.message.notes.destroy', ['noteId' => $note->id]));
 
     Event::assertNotDispatched(SessionUpdatedEvent::class);
     Event::assertNotDispatched(SessionStartedEvent::class);

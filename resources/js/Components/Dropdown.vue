@@ -61,9 +61,10 @@ const open = ref(false);
             leave-from-class="opacity-100 scale-100"
             leave-to-class="opacity-0 scale-95"
         >
+            <!-- SCRUM-372: above a flash alert (z-[1000]), so the alert's "x" never covers an open menu. -->
             <div
                 v-show="open"
-                class="absolute z-50 mt-2 rounded-md shadow-lg"
+                class="absolute z-[1001] mt-2 rounded-md shadow-lg"
                 :class="[widthClass, alignmentClasses]"
                 style="display: none"
                 @click="open = false"
