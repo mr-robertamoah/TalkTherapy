@@ -125,6 +125,22 @@ class GroupTherapy extends Model
         return (bool) ($user->counsellor && $this->isCounsellor($user->counsellor));
     }
 
+    // SCRUM-263: the group-wide payment status ("some member's latest transaction") is only for
+    // the group's own counsellors and administrators. A member sees only their own status
+    // (viewerPaymentStatus): next to it, the group-wide one would tell them whether a specific
+    // co-member has paid, failed or been refunded.
+    // Remembered per viewer on this instance: a session list shares one eager-loaded group.
+    private array $showsGroupPaymentStatusCache = [];
+
+    public function showsGroupPaymentStatusTo(?User $user): bool
+    {
+        if (! $user) {
+            return false;
+        }
+
+        return $this->showsGroupPaymentStatusCache[$user->id] ??= $this->isCounsellorUser($user) || $user->isAdmin();
+    }
+
     // TT-3.2f-f/SCRUM-323: an ordinary member (not an active counsellor, not the creator) only
     // ever joins this group's video receive-only, and is the only kind of participant hand-raise
     // and grant/revoke apply to -- moved here from JoinVideoSessionAction's own private
@@ -212,30 +228,10 @@ class GroupTherapy extends Model
     // whereHasMorph('for', '*', ...) falls back to a bare `where('is_participant', ...)` column
     // lookup for the GroupTherapy branch (since there's no matching local scope), which throws a
     // SQL error for *every* Session lookup as soon as any GroupTherapy-type session exists at all.
+    // SCRUM-144: one definition of "participant" -- this delegates to scopeWhereParticipant().
     public function scopeWhereIsParticipant($query, User $user)
     {
-        return $query
-            ->where(function ($query) use ($user) {
-                $query
-                    ->where('addedby_type', User::class)
-                    ->where('addedby_id', $user->id);
-            })
-            ->orWhere(function ($query) use ($user) {
-                $query->whereHas('users', function ($query) use ($user) {
-                    $query->where('user_id', $user->id);
-                });
-            })
-            ->when($user->counsellor, function ($query) use ($user) {
-                $query
-                    ->orWhere(function ($query) use ($user) {
-                        $query
-                            ->where('addedby_type', Counsellor::class)
-                            ->where('addedby_id', $user->counsellor->id);
-                    })
-                    ->orWhereHas('counsellors', function ($query) use ($user) {
-                        $query->where('counsellor_id', $user->counsellor->id);
-                    });
-            });
+        return $query->whereParticipant($user);
     }
 
     public function getUsers()
@@ -364,17 +360,17 @@ class GroupTherapy extends Model
 
     public function scopeWhereCounsellor($query, Counsellor $counsellor)
     {
-        return $query
-            ->where(function ($query) use ($counsellor) {
-                $query
-                    ->where('addedby_id', $counsellor->id)
-                    ->where('addedby_type', Counsellor::class);
-            })->orWhere(function ($query) use ($counsellor) {
-                $query
-                    ->whereHas('counsellors', function ($query) use ($counsellor) {
-                        $query->where('counsellor_id', $counsellor->id);
-                    });
-            });
+        return $query->where(function ($query) use ($counsellor) {
+            $query
+                ->where(function ($query) use ($counsellor) {
+                    $query
+                        ->where('addedby_id', $counsellor->id)
+                        ->where('addedby_type', Counsellor::class);
+                })
+                ->orWhereHas('counsellors', function ($query) use ($counsellor) {
+                    $query->where('counsellor_id', $counsellor->id);
+                });
+        });
     }
 
     public function scopeWhereHasNoCounsellor($query)
@@ -403,26 +399,19 @@ class GroupTherapy extends Model
         });
     }
 
-    public function scopeWhereNotUser($query, User $user)
+    // SCRUM-144: the single definition of "is this user a participant": they created the group
+    // (as themselves or as their counsellor profile), or are on its member or counsellor list.
+    // Grouped in one where() so it can't widen a caller's other conditions.
+    public function scopeWhereParticipant($query, User $user)
     {
         return $query->where(function ($query) use ($user) {
             $query
-                ->whereDoesntHave('users', function ($query) use ($user) {
-                    $query->where('user_id', $user->id);
+                ->whereUser($user)
+                ->when($user->counsellor, function ($query) use ($user) {
+                    $query->orWhere(function ($query) use ($user) {
+                        $query->whereCounsellor($user->counsellor);
+                    });
                 });
         });
-    }
-
-    public function scopeWhereParticipant($query, User $user)
-    {
-        return $query
-            ->where(function ($query) use ($user) {
-                $query->whereUser($user);
-            })
-            ->when($user->counsellor, function ($query) use ($user) {
-                $query->orWhere(function ($query) use ($user) {
-                    $query->whereCounsellor($user->counsellor);
-                });
-            });
     }
 }

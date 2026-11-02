@@ -2,9 +2,7 @@
 
 namespace App\Exceptions;
 
-use Exception;
-
-class ReportEvidenceAccessDeniedException extends Exception
+class ReportEvidenceAccessDeniedException extends AppException
 {
     //
 }

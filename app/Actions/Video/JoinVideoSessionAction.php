@@ -8,6 +8,7 @@ use App\Actions\Suspension\EnsureTherapyCounsellorIsAvailableAction;
 use App\Contracts\VideoProviderInterface;
 use App\Enums\ConstantsEnum;
 use App\Events\VideoSessionStatusChangedEvent;
+use App\Exceptions\AppException;
 use App\Exceptions\VideoException;
 use App\Models\GroupTherapy;
 use App\Models\Session;
@@ -51,7 +52,7 @@ class JoinVideoSessionAction extends Action
         // never taking constructor dependencies.
         $provider = app(VideoProviderInterface::class);
 
-        $videoSession = $this->currentOrNewVideoSessionAndJoin($session, $user, $provider);
+        [$videoSession, $participantRow] = $this->currentOrNewVideoSessionAndJoin($session, $user, $provider);
 
         // SCRUM-331: never an owner in a GroupTherapy call -- a Daily owner's browser can change ANY
         // participant's permissions client-side, bypassing the server-enforced minor/anonymity
@@ -64,14 +65,33 @@ class JoinVideoSessionAction extends Action
         $receiveOnly = $this->isReceiveOnly($session, $user);
         $isMasked = $this->isMaskedGroupParticipant($session, $user);
 
-        $credentials = $provider->createParticipantCredentials(
-            $videoSession,
-            $user,
-            $this->displayNameFor($session, $user),
-            isOwner: $isOwner,
-            receiveOnly: $receiveOnly,
-            canSendVideo: ! $isMasked,
-        );
+        // SCRUM-335: guarded like createRoom() below -- an HTTP client error's code is the upstream
+        // status and its message the provider's response body, neither of which may reach the user.
+        // The participant row opened above is closed again: this person never joined, so they must
+        // not count toward the call's capacity or look "in the call" to moderation.
+        try {
+            $credentials = $provider->createParticipantCredentials(
+                $videoSession,
+                $user,
+                $this->displayNameFor($session, $user),
+                isOwner: $isOwner,
+                receiveOnly: $receiveOnly,
+                canSendVideo: ! $isMasked,
+            );
+        } catch (Throwable $exception) {
+            $participantRow->update(['left_at' => now()]);
+
+            if ($exception instanceof AppException) {
+                throw $exception;
+            }
+
+            Log::warning('Video provider failed to create participant credentials for a session.', [
+                'session_id' => $session->id,
+                'exception' => $exception->getMessage(),
+            ]);
+
+            throw new VideoException('Unable to start the video call right now. Please try again shortly.', 502);
+        }
 
         return [
             ...$credentials,
@@ -218,7 +238,8 @@ class JoinVideoSessionAction extends Action
     // same transaction (it used to happen after this method returned) is what actually closes the
     // race: two near-simultaneous joins against an already-full room could otherwise both read
     // "N active, room for one more" before either's insert committed.
-    private function currentOrNewVideoSessionAndJoin(Session $session, User $user, VideoProviderInterface $provider): VideoSession
+    // Returns the video session and the participant row opened for this join.
+    private function currentOrNewVideoSessionAndJoin(Session $session, User $user, VideoProviderInterface $provider): array
     {
         // wasNewlyCreated tracked outside the transaction closure deliberately -- this app's
         // queue connections all have after_commit=false (config/queue.php), so a ShouldBroadcast
@@ -227,7 +248,9 @@ class JoinVideoSessionAction extends Action
         // returns guarantees the row is visible to whatever reads it back when the job runs.
         $wasNewlyCreated = false;
 
-        $videoSession = DB::transaction(function () use ($session, $user, $provider, &$wasNewlyCreated) {
+        $participantRow = null;
+
+        $videoSession = DB::transaction(function () use ($session, $user, $provider, &$wasNewlyCreated, &$participantRow) {
             Session::query()->lockForUpdate()->find($session->id);
 
             $videoSession = VideoSession::query()
@@ -274,7 +297,7 @@ class JoinVideoSessionAction extends Action
 
             $this->ensureChimeGroupTherapyCapacity($session, $videoSession);
 
-            VideoSessionParticipant::query()->create([
+            $participantRow = VideoSessionParticipant::query()->create([
                 'video_session_id' => $videoSession->id,
                 'participant_type' => User::class,
                 'participant_id' => $user->id,
@@ -288,7 +311,7 @@ class JoinVideoSessionAction extends Action
             VideoSessionStatusChangedEvent::dispatch($videoSession, 'started');
         }
 
-        return $videoSession;
+        return [$videoSession, $participantRow];
     }
 
     // TT-3.2f-d/SCRUM-321: Daily gets its own room-size ceiling for free via `max_participants`

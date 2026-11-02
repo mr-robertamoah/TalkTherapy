@@ -99,7 +99,8 @@ class GroupTherapyResource extends JsonResource
             'sessionsHeld' => $this->sessionsHeld,
             'status' => $this->getStatus(),
             'paymentData' => $this->payment_data,
-            'paymentStatus' => $this->latestTransaction?->status,
+            // SCRUM-263: null for anyone but this group's counsellors and administrators.
+            'paymentStatus' => $this->showsGroupPaymentStatusTo($user) ? $this->latestTransaction?->status : null,
             // TT-7.4d-a/SCRUM-258: viewer-scoped counterparts to the model-wide `paymentStatus`
             // above, additive so TT-7.4c's existing counsellor consumer of `paymentStatus` is
             // unaffected -- mirrors TherapyResource/SessionResource's own `transactionId`/

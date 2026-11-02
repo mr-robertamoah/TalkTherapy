@@ -2,15 +2,21 @@
 
 namespace App\Traits;
 
+use App\Exceptions\AppException;
 use Throwable;
 
 trait ResolvesExceptionResponse
 {
-    // A thrown exception's own getCode() is only trustworthy as an HTTP status when it falls
-    // within the real 400-599 range -- anything else (most commonly the default code 0) means
-    // "unexpected", and must map to a generic 500 rather than being echoed back verbatim.
+    // A thrown exception's own getCode() is only trustworthy as an HTTP status when it is one of
+    // the app's own refusals (SCRUM-95: an AppException) AND falls within the real 400-599 range.
+    // Anything else -- the default code 0, or a third-party exception whose code happens to be an
+    // upstream HTTP status (an HTTP client's RequestException) -- maps to a generic 500.
     protected function statusFor(Throwable $th): int
     {
+        if (! $th instanceof AppException) {
+            return 500;
+        }
+
         return ($th->getCode() >= 400 && $th->getCode() < 600) ? $th->getCode() : 500;
     }
 

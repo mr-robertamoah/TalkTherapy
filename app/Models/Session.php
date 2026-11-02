@@ -128,6 +128,17 @@ class Session extends Model
         return $this->transactions()->where('user_id', $user->id)->latest('created_at')->first();
     }
 
+    // SCRUM-263: see GroupTherapy::showsGroupPaymentStatusTo(). Only called for a group's session;
+    // the cheap checks come first, so a plain member's session list never loads the group.
+    public function showsGroupPaymentStatusTo(?User $user): bool
+    {
+        if (! $user || (! $user->counsellor && ! $user->isAdmin())) {
+            return false;
+        }
+
+        return $this->for instanceof GroupTherapy && $this->for->showsGroupPaymentStatusTo($user);
+    }
+
     public function addedby()
     {
         return $this->morphTo('addedby');

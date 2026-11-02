@@ -2,9 +2,7 @@
 
 namespace App\Exceptions;
 
-use Exception;
-
-class TherapyNotFoundException extends Exception
+class TherapyNotFoundException extends AppException
 {
     //
 }

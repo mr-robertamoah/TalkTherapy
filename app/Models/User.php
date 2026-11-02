@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\ConstantsEnum;
 use App\Enums\SuspensionScopeEnum;
 use App\Notifications\VerifyEmailNotification;
 use Carbon\Carbon;
@@ -62,6 +63,7 @@ class User extends Authenticatable implements MustVerifyEmailContract
         'dob_verified_at' => 'datetime',
         'password' => 'hashed',
         'settings' => 'array',
+        'anonymised_at' => 'datetime',
     ];
 
     public function getAgeAttribute()
@@ -85,6 +87,11 @@ class User extends Authenticatable implements MustVerifyEmailContract
 
     public function getNameAttribute()
     {
+        // SCRUM-367: an erased closed account (AnonymiseClosedAccountAction) has no name left.
+        if ($this->anonymised_at) {
+            return ConstantsEnum::deletedUserLabel->value;
+        }
+
         return constructName(
             $this->firstName,
             $this->lastName,

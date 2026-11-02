@@ -6,7 +6,7 @@ use App\Http\Resources\DiscussionResource;
 use App\Models\Discussion;
 use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
-use Illuminate\Broadcasting\PresenceChannel;
+use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
@@ -28,17 +28,14 @@ class DiscussionUpdatedEvent implements ShouldBroadcast
      *
      * @return array<int, Channel>
      */
-    // SCRUM-59/TT-1.10: the PrivateChannel("discussions.{id}") broadcast this event used to also
-    // send was dead code -- the only frontend listener for .discussion.updated
-    // (useTherapyState.js) is chained off Echo.join(), i.e. the PresenceChannel below, never a
-    // private-channel subscription to this discussion. Removed rather than kept "just in case",
-    // unlike SessionUpdatedEvent's own PrivateChannel broadcast, which SessionBadge.vue genuinely
-    // consumes standalone (SCRUM-15).
     public function broadcastOn(): array
     {
-        return [
-            new PresenceChannel($this->discussion->getForChannelName()),
-        ];
+        // SCRUM-367: counsellors-only -- never the therapy's channel, which its client and group
+        // members also join. useTherapyState.js listens for it on the counsellor's own channel.
+        return array_map(
+            fn (int $counsellorId) => new PrivateChannel("counsellors.{$counsellorId}"),
+            $this->discussion->participantCounsellorIds()
+        );
     }
 
     public function broadcastAs(): string

@@ -2,9 +2,7 @@
 
 namespace App\Exceptions;
 
-use Exception;
-
-class UserCanCreateCaseException extends Exception
+class UserCanCreateCaseException extends AppException
 {
     //
 }

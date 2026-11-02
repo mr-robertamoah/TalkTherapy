@@ -2,9 +2,7 @@
 
 namespace App\Exceptions;
 
-use Exception;
-
-class CommentException extends Exception
+class CommentException extends AppException
 {
     //
 }

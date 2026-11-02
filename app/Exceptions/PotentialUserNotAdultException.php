@@ -2,9 +2,7 @@
 
 namespace App\Exceptions;
 
-use Exception;
-
-class PotentialUserNotAdultException extends Exception
+class PotentialUserNotAdultException extends AppException
 {
     //
 }

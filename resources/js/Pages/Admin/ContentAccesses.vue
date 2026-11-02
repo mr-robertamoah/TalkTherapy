@@ -15,6 +15,7 @@ const props = defineProps({
 
 const labels = {
     therapy: 'therapy page',
+    session: 'session details',
     session_messages: 'session messages',
     topic_messages: 'topic messages',
     message: 'a message',

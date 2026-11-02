@@ -2,9 +2,7 @@
 
 namespace App\Exceptions;
 
-use Exception;
-
-class CounsellorDoesNotHavePendingVerificationRequestException extends Exception
+class CounsellorDoesNotHavePendingVerificationRequestException extends AppException
 {
     //
 }

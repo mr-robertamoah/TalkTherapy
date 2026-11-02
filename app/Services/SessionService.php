@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Actions\Admin\RecordAdminContentReadAction;
+use App\Actions\Message\EnsureUserCanAccessTherapyContentAction;
 use App\Actions\Session\AfterSessionCreatedAction;
 use App\Actions\Session\ChangeSessionStatusAction;
 use App\Actions\Session\CreateSessionAction;
@@ -31,9 +33,13 @@ use App\Events\SessionTopicSetEvent;
 use App\Events\SessionTopicUnsetEvent;
 use App\Events\SessionUpdatedEvent;
 use App\Http\Resources\SessionResource;
+use App\Models\AdminContentAccess;
+use App\Models\Session;
+use App\Models\User;
 use App\Notifications\SessionDeletedNotification;
 use App\Notifications\SessionStatusChangedNotification;
 use App\Notifications\SessionUpdatedNotification;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Notification;
 
 class SessionService extends Service
@@ -114,6 +120,27 @@ class SessionService extends Service
         );
 
         return $session;
+    }
+
+    // SCRUM-367: session broadcasts only announce a session (its id); each open page fetches it
+    // here, so the same rules as its messages apply -- participants (or anyone, for a public
+    // therapy), the strict payment gate, suspension (middleware). Null means "not yours to see".
+    public function getSession(?Session $session, ?User $user): ?SessionResource
+    {
+        if (! $session || ! $user || ! EnsureUserCanAccessTherapyContentAction::new()->execute($session->for, $user, $session, $session->start_time)) {
+            return null;
+        }
+
+        // SCRUM-360: once per admin per session per ten minutes -- an open page refetches on every
+        // live update.
+        if (Cache::add("admin-session-read:{$user->id}:{$session->id}", 1, 600)) {
+            RecordAdminContentReadAction::new()->execute($user, AdminContentAccess::SESSION, $session, $session->for);
+        }
+
+        // Every open page fetches here on each live update: load what SessionResource reads at once.
+        $session->loadMissing(['topics', 'cases', 'addedby', 'updatedby', 'latestTransaction']);
+
+        return new SessionResource($session);
     }
 
     public function endSession(CreateSessionDTO $createSessionDTO)

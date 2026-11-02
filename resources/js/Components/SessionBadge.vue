@@ -112,7 +112,7 @@ import useLocalDateTime from '@/Composables/useLocalDateTime';
 import Alert from './Alert.vue';
 import useShowMore from '@/Composables/useShowMore';
 import useUtilities from '@/Composables/useUtilities';
-import { createBroadcastMessageQueue } from '@/Composables/resolveBroadcastMessage';
+import { createBroadcastMessageQueue, resolveBroadcastSession } from '@/Composables/resolveBroadcastMessage';
 
 const { modalData, closeModal, showModal } = useModal()
 const { toDiffForHumans } = useLocalDateTime()
@@ -190,6 +190,7 @@ watchEffect(() => {
     if (subscribedSessionId === props.session.id) return
     subscribedSessionId = props.session.id
     const enqueueMessage = createBroadcastMessageQueue()
+    const enqueueSession = createBroadcastMessageQueue(resolveBroadcastSession)
 
     Echo
         .private(`sessions.${props.session.id}`)
@@ -200,8 +201,9 @@ watchEffect(() => {
 
             enqueueMessage(data.message, (message) => emits('onMessageCreated', message))
         })
+        // SCRUM-367: only the session's id arrives; it is fetched (null if no longer ours to see).
         .listen('.session.updated', (data) => {
-            emits('onUpdate', data.session)
+            enqueueSession(data.sessionId, (session) => emits('onUpdate', session))
         })
 })
 

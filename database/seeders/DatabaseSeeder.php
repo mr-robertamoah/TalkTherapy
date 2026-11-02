@@ -186,6 +186,29 @@ class DatabaseSeeder extends Seeder
 
         // SCRUM-360: a few admin read-log entries, so /administrator/content-accesses isn't empty.
         $this->createAdminReadLogDemoData($superAdmin);
+
+        // SCRUM-367: two closed accounts, one past the retention period (erased by the next run of
+        // the daily job, or `php artisan schedule:test`) and one closed yesterday (kept).
+        $this->createClosedAccountDemoData();
+    }
+
+    private function createClosedAccountDemoData(): void
+    {
+        foreach ([
+            ['closed_account_demo_old', 'ClosedOld', config('accounts.closed_account_retention_days') + 1],
+            ['closed_account_demo_recent', 'ClosedRecent', 1],
+        ] as [$username, $firstName, $daysAgo]) {
+            $user = User::factory()->create([
+                'firstName' => $firstName,
+                'lastName' => 'Demo',
+                'username' => $username,
+                'email' => "{$username}@example.com",
+                'password' => Hash::make('password'),
+                'email_verified_at' => now(),
+            ]);
+            $user->delete();
+            $user->forceFill(['deleted_at' => now()->subDays($daysAgo)])->saveQuietly();
+        }
     }
 
     private function createLanguages($user)

@@ -196,6 +196,44 @@ test('a provider room-creation failure surfaces a safe, generic message, never t
     $this->assertDatabaseCount('video_sessions', 0);
 });
 
+// SCRUM-335: the same leak through token minting, plus the participant row opened for a join that
+// never happened.
+test('a provider credential failure surfaces a generic 502 and closes the participant row it opened', function () {
+    Log::shouldReceive('warning')->once();
+    $session = onlineInSessionTherapySessionForJoin();
+    $client = $session->for->addedby;
+    app()->instance(VideoProviderInterface::class, new class implements VideoProviderInterface
+    {
+        public function createRoom(VideoSession $videoSession): array
+        {
+            return ['room_id' => 'room-'.$videoSession->id, 'meta' => []];
+        }
+
+        public function createParticipantCredentials(VideoSession $videoSession, User $user, string $displayName, bool $isOwner = false, bool $receiveOnly = false, bool $canSendVideo = true): array
+        {
+            throw new RuntimeException('{"error":"authorization-header-error","info":"invalid authorization header"}', 400);
+        }
+
+        public function endRoom(VideoSession $videoSession): void {}
+
+        public function removeParticipant(VideoSession $videoSession, User $user): void {}
+
+        public function updateParticipantCapabilities(VideoSession $videoSession, User $user, bool $canSendAudio, bool $canSendVideo): void {}
+    });
+
+    try {
+        JoinVideoSessionAction::new()->execute($session, $client);
+        $this->fail('Expected a VideoException to be thrown.');
+    } catch (VideoException $exception) {
+        expect($exception->getCode())->toBe(502)
+            ->and($exception->getMessage())->not->toContain('authorization-header-error');
+    }
+
+    $rows = VideoSessionParticipant::query()->where('participant_id', $client->id)->get();
+    expect($rows)->toHaveCount(1)
+        ->and($rows->first()->left_at)->not->toBeNull();
+});
+
 // A room that has already ended (e.g. a prior call was explicitly ended) must not be silently
 // rejoined -- a fresh join after an end should start a genuinely new epoch/room.
 test('joining after the video session has ended creates a fresh VideoSession, not the ended one', function () {

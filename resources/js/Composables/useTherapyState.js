@@ -3,6 +3,7 @@ import { usePage } from '@inertiajs/vue3'
 import { differenceInMinutes, parseISO } from 'date-fns'
 import useAlert from '@/Composables/useAlert'
 import useEnums from '@/Composables/useEnums'
+import { createBroadcastMessageQueue, resolveBroadcastSession } from '@/Composables/resolveBroadcastMessage'
 
 export default function useTherapyState(therapy, therapyType = 'individual') {
     const { SessionStatusEnum, DiscussionStatusEnum } = useEnums()
@@ -142,40 +143,63 @@ export default function useTherapyState(therapy, therapyType = 'individual') {
                     time: 4000,
                 })
             })
+            // SCRUM-367: session broadcasts carry only the session's id ({ sessionId }); it is
+            // fetched (and dropped if this viewer may no longer see it), in arrival order.
             .listen(`.session.started`, (data) => {
-                activeSession.value = data.session
-                startTimer()
+                enqueueSession(data.sessionId, (session) => {
+                    activeSession.value = session
+                    startTimer()
+                })
             })
-            .listen(`.session.updated`, (data) => {
-                if (activeSession.value?.id == data.session.id) {
-                    activeSession.value = data.session
-                }
-            })
-            .listen(`.session.topic.set`, (data) => {
-                if (activeSession.value) {
-                    activeSession.value.currentTopic = data.topic
-                }
-            })
-            .listen(`.session.topic.unset`, (data) => {
+            .listen(`.session.updated`, (data) => refreshActiveSession(data.sessionId))
+            .listen(`.session.topic.set`, (data) => refreshActiveSession(data.sessionId))
+            .listen(`.session.topic.unset`, () => {
                 if (activeSession.value) {
                     activeSession.value.currentTopic = null
                 }
             })
-            .listen(`.discussion.started`, (data) => {
-                activeDiscussion.value = data.discussion
-                startTimer()
-            })
-            .listen(`.discussion.updated`, (data) => {
-                discussions.value.data.splice(
-                    discussions.value.data.findIndex((d) => d.id == data.discussion.id),
-                    1,
-                    data.discussion
-                )
-                
-                if (activeDiscussion.value?.id == data.discussion.id) {
-                    activeDiscussion.value.status = data.discussion.status
-                }
-            })
+
+        // SCRUM-367: discussions are counsellors-only, so they arrive on this counsellor's own
+        // channel (which AuthenticatedLayout also uses), never the therapy's -- only those about
+        // this therapy are handled here.
+        const counsellorId = usePage().props.auth.user?.counsellor?.id
+        if (counsellorId) {
+            counsellorChannelName = `counsellors.${counsellorId}`
+            Echo.private(counsellorChannelName)
+                .listen('.discussion.started', onDiscussionStarted)
+                .listen('.discussion.updated', onDiscussionUpdated)
+        }
+    }
+
+    const enqueueSession = createBroadcastMessageQueue(resolveBroadcastSession)
+
+    function refreshActiveSession(sessionId) {
+        if (!sessionId || activeSession.value?.id != sessionId) return
+        enqueueSession(sessionId, (session) => {
+            if (activeSession.value?.id == session.id) activeSession.value = session
+        })
+    }
+    let counsellorChannelName = null
+
+    function isAboutThisTherapy(discussion) {
+        const forType = therapyType === 'group' ? 'GroupTherapy' : 'Therapy'
+        return discussion?.forType === forType && discussion?.forId == computedTherapy.value?.id
+    }
+
+    function onDiscussionStarted(data) {
+        if (!isAboutThisTherapy(data.discussion)) return
+        activeDiscussion.value = data.discussion
+        startTimer()
+    }
+
+    function onDiscussionUpdated(data) {
+        if (!isAboutThisTherapy(data.discussion)) return
+        const index = discussions.value.data.findIndex((d) => d.id == data.discussion.id)
+        if (index !== -1) discussions.value.data.splice(index, 1, data.discussion)
+
+        if (activeDiscussion.value?.id == data.discussion.id) {
+            activeDiscussion.value.status = data.discussion.status
+        }
     }
     
     // Session/Topic management
@@ -238,6 +262,13 @@ export default function useTherapyState(therapy, therapyType = 'individual') {
             : `therapies.${currentTherapy.id}`
             
         Echo.leave(channelName)
+
+        // Not left: AuthenticatedLayout listens on the same counsellor channel.
+        if (counsellorChannelName) {
+            Echo.private(counsellorChannelName)
+                .stopListening('.discussion.started', onDiscussionStarted)
+                .stopListening('.discussion.updated', onDiscussionUpdated)
+        }
     })
     
     return {

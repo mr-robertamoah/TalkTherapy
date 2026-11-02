@@ -119,6 +119,8 @@ broadcast — filed separately as SCRUM-195, not folded into this ticket's scope
 | TT-4.21 | Live chat broadcasts carry no content (each page fetches the message), closing live leaks to suspended and unpaid participants (SCRUM-366, SCRUM-271) | Task | High | 5 | New (SCRUM-363 follow-up) | TT-4.18 |
 | TT-4.22 | Messaging/realtime hardening: broken message groupBy removed, dead broadcast provider, admins off messages.{id}, literal search everywhere, mail block-formatting stripped, read-log subject filter and access history, topic session filter, message-list eager loads, rate limits (SCRUM-365, 366, 209, 205, 199, 192) | Task | Medium | 8 | New (review follow-ups) | TT-4.16 |
 | TT-4.23 | Full privacy policy draft (TalkTherapy GH, Ghana, Act 843); legal review still open (SCRUM-364) | Task | High | 3 | New (SCRUM-361 follow-up) | TT-4.17 |
+| TT-4.24 | Privacy and access hardening: per-route rate limits, counsellor-only discussion broadcasts, id-only session broadcasts + session fetch, closed accounts erased after 30 days, group payment status for counsellors/admins only, video token errors, app-only exception messages, group participant scopes, card counsellor name (SCRUM-367, 263, 273, 335, 95, 144, 307) | Task | High | 8 | New (review follow-ups) | TT-4.21 |
+| TT-4.25 | Review follow-ups: public therapy payment status, counsellor channel ownership, retention periods from config on /privacy, naming (SCRUM-368) | Task | Low | 3 | New (TT-4.24 follow-up) | TT-4.24 |
 
 TT-4.12 and TT-4.13 shipped together in one PR (user's choice, 2026-11-01), as did TT-4.14 and
 TT-4.15, and TT-4.16–TT-4.20 (user's choices, 2026-11-01). The /privacy page from TT-4.17 needs

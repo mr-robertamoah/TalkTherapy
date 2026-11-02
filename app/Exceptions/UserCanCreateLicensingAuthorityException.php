@@ -2,9 +2,7 @@
 
 namespace App\Exceptions;
 
-use Exception;
-
-class UserCanCreateLicensingAuthorityException extends Exception
+class UserCanCreateLicensingAuthorityException extends AppException
 {
     //
 }

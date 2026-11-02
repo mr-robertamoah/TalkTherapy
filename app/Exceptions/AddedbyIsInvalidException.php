@@ -2,9 +2,7 @@
 
 namespace App\Exceptions;
 
-use Exception;
-
-class AddedbyIsInvalidException extends Exception
+class AddedbyIsInvalidException extends AppException
 {
     //
 }

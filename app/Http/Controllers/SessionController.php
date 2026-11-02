@@ -139,6 +139,16 @@ class SessionController extends Controller
         }
     }
 
+    // SCRUM-367: how an open page fetches a session after a live update announces it. A 404 for
+    // both "no such session" and "not yours to see".
+    public function getSession(Request $request)
+    {
+        return SessionService::new()->getSession(
+            Session::find($request->route('sessionId')),
+            $request->user()
+        ) ?? response()->json(['message' => 'Session not found.'], 404);
+    }
+
     public function getSessions(Request $request)
     {
         return SessionService::new()->getSessions(

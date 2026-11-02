@@ -10,6 +10,8 @@ enum ConstantsEnum: string
 
     case nationalId = 'National Identification Authority';
     case anonymousUserLabel = 'Client (Anonymous User)';
+    // SCRUM-367: a closed account whose personal details have been erased.
+    case deletedUserLabel = 'Deleted user';
     // SCRUM-356: how notifications refer to someone they must not name.
     case anonymousPersonPhrase = 'an anonymous user';
 
