@@ -11,7 +11,7 @@ import useUtilities from "@/Composables/useUtilities";
 
 const { goToLogin } = useAuth();
 const { getReadableStatus } = useUtilities();
-const { alertData, clearAlertData, setFailedAlertData } = useAlert();
+const { alertData, clearAlertData, setFailedAlertData, setSuccessAlertData } = useAlert();
 
 const props = defineProps({
   therapy: { default: null },
@@ -36,7 +36,7 @@ const {
   updateSessionOrTopic,
   deleteSessionOrTopic,
   addSessionOrTopic,
-} = useTherapyState(therapyRef, props.therapyType);
+} = useTherapyState(therapyRef, props.therapyType, { setSuccessAlertData });
 
 const newSession = ref(null);
 const sessionActionRunning = ref("");

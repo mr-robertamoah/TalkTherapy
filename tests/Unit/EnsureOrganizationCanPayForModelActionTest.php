@@ -364,3 +364,55 @@ test('a GroupTherapy created by a since-deleted counsellor does not require that
 
     expect($result['transaction']->organization_id)->toBe($organization->id);
 });
+
+// SCRUM-248/272 (security review): an org charge that timed out may still have gone through, so
+// charging again with a new reference could take the money twice.
+function orgPayerChargeSetupForRetry(): array
+{
+    [$organization, $payer, $counsellor] = anEligibleOrgPayerSetup();
+    OrganizationPaymentInstrument::factory()->create(['organization_id' => $organization->id]);
+    OrganizationCounsellorCompensation::factory()->create([
+        'organization_counsellor_id' => OrganizationCounsellor::query()
+            ->where('organization_id', $organization->id)->where('counsellor_id', $counsellor->id)->first()->id,
+        'type' => OrganizationCounsellorCompensationTypeEnum::free->value,
+    ]);
+    $therapy = aPaidTherapyForOrgPayer($counsellor, ['addedby_id' => $payer->id]);
+
+    return [$organization, $payer, $therapy];
+}
+
+test('a new org charge is refused while a recent one for the same therapy is still being confirmed', function () {
+    Http::fake();
+    [$organization, $payer, $therapy] = orgPayerChargeSetupForRetry();
+    Transaction::factory()->create([
+        'for_type' => Therapy::class, 'for_id' => $therapy->id, 'user_id' => $payer->id, 'organization_id' => $organization->id,
+        'reference' => 'org_charge_earlier', 'status' => 'PENDING', 'created_at' => now()->subMinutes(2),
+    ]);
+
+    expect(fn () => TransactionService::new()->initiateCharge(
+        TransactionDTO::new()->fromArray(['user' => $payer, 'for' => $therapy, 'organizationId' => $organization->id, 'organization' => $organization])
+    ))->toThrow(TransactionException::class, 'A previous charge for this is still being confirmed.');
+
+    Http::assertNothingSent();
+});
+
+test('an old pending org charge Paystack never received is failed first, then a new charge goes ahead', function () {
+    Http::fake([
+        '*/transaction/verify/*' => Http::response(['status' => false, 'message' => 'Transaction reference not found'], 400),
+        '*/transaction/charge_authorization' => Http::response(['status' => true, 'data' => [
+            'reference' => 'x', 'status' => 'success', 'amount' => 1500, 'currency' => 'GHS', 'gateway_response' => 'Approved',
+        ]], 200),
+    ]);
+    [$organization, $payer, $therapy] = orgPayerChargeSetupForRetry();
+    $earlier = Transaction::factory()->create([
+        'for_type' => Therapy::class, 'for_id' => $therapy->id, 'user_id' => $payer->id, 'organization_id' => $organization->id,
+        'reference' => 'org_charge_earlier', 'status' => 'PENDING', 'created_at' => now()->subHour(),
+    ]);
+
+    $result = TransactionService::new()->initiateCharge(
+        TransactionDTO::new()->fromArray(['user' => $payer, 'for' => $therapy, 'organizationId' => $organization->id, 'organization' => $organization])
+    );
+
+    expect($earlier->fresh()->status)->toBe('FAILED')
+        ->and($result['transaction']->id)->not->toBe($earlier->id);
+});

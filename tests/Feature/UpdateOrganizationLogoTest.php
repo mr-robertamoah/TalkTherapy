@@ -25,7 +25,8 @@ test('an org admin can upload a logo for the first time', function () {
     [$organization, $admin] = anOrganizationWithAdminForLogoRoute();
     $this->actingAs($admin);
 
-    $response = $this->patch("/organizations/{$organization->id}", [
+    // A script's request (Accept: application/json) gets the JSON success; multipart keeps the file.
+    $response = $this->withHeader('Accept', 'application/json')->patch("/organizations/{$organization->id}", [
         'logo' => UploadedFile::fake()->image('logo.jpg'),
     ]);
 
@@ -83,7 +84,7 @@ test('an org admin can delete the organization logo', function () {
     $logo = $organization->logo;
     $path = $logo->path.'/'.$logo->name;
 
-    $response = $this->patch("/organizations/{$organization->id}", [
+    $response = $this->withHeader('Accept', 'application/json')->patch("/organizations/{$organization->id}", [
         'deleteLogo' => true,
     ]);
 

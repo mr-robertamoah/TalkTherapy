@@ -1,5 +1,6 @@
 <script setup>
 import { computed, onBeforeMount, ref, watch, watchEffect } from 'vue';
+import { toLocalInputValue } from '@/Composables/countdown'
 import TextInput from '@/Components/TextInput.vue';
 import InputLabel from '@/Components/InputLabel.vue';
 import InputError from '@/Components/InputError.vue';
@@ -9,7 +10,7 @@ import Modal from '@/Components/Modal.vue';
 import useAlert from "@/Composables/useAlert";
 import Alert from "./Alert.vue";
 import PrimaryButton from "./PrimaryButton.vue";
-import { addMinutes, format, differenceInMinutes } from 'date-fns';
+import { addMinutes, differenceInMinutes } from 'date-fns';
 import useErrorHandler from '@/Composables/useErrorHandler';
 import SessionBadge from './SessionBadge.vue';
 import useAuth from '@/Composables/useAuth';
@@ -93,13 +94,13 @@ watch(() => endTime.value, () => {
 })
 
 const computedStartTime = computed(() => {
-    return new Date(startTime.value).toGMTString()
+    return new Date(startTime.value).toLocaleString()
 })
 const computedEndTime = computed(() => {
-    return new Date(endTime.value).toGMTString()
+    return new Date(endTime.value).toLocaleString()
 })
 const computedNow = computed(() => {
-    return new Date().toISOString().slice(0, 16)
+    return toLocalInputValue(new Date())
 })
 const computedDuration = computed(() => {
     return (endTime.value && startTime.value) ? differenceInMinutes(new Date(endTime.value), new Date(startTime.value)) : ''
@@ -115,8 +116,8 @@ function setDiscussionFormData() {
     discussionData.value.name = props.discussion.name
     discussionData.value.description = props.discussion.description
     discussionData.value.startTime = props.discussion.startTime
-    startTime.value = formatDateTimeForFrontend(props.discussion.startTime)
-    endTime.value = formatDateTimeForFrontend(props.discussion.endTime)
+    startTime.value = toLocalInputValue(props.discussion.startTime)
+    endTime.value = toLocalInputValue(props.discussion.endTime)
     discussionData.value.endTime = props.discussion.endTime
     discussionData.value.sessionId = ''
     discussionData.value.deletedSessionId = null
@@ -132,17 +133,14 @@ function isMinutesBefore({firstTime, secondTime = null, minutes}) {
 
 function getDefaultTime(minutes) {
     const now = new Date()
-    let time = addMinutes(now, minutes).toISOString().slice(0, 16)
+    let time = toLocalInputValue(addMinutes(now, minutes))
     return time
 }
 
-function formatDateTimeForFrontend(dateTime) {
-    return format(dateTime, "yyyy-MM-dd'T'HH:mm")
-}
 
 function addMinitesToDate(time, minutes) {
     if (!time) return null
-    const newTime = formatDateTimeForFrontend(addMinutes(time, minutes))
+    const newTime = toLocalInputValue(addMinutes(time, minutes))
     
     return newTime
 }

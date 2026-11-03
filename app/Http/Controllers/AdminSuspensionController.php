@@ -14,7 +14,6 @@ use App\Models\Counsellor;
 use App\Models\Report;
 use App\Models\Session;
 use App\Models\Suspension;
-use App\Traits\ResolvesExceptionResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Redirect;
 use Illuminate\Validation\Rule;
@@ -27,8 +26,6 @@ use Throwable;
 // the right gets the same answer whatever they send.
 class AdminSuspensionController extends Controller
 {
-    use ResolvesExceptionResponse;
-
     public function index(Request $request)
     {
         if ($request->user()?->isNotAdmin() ?? true) {

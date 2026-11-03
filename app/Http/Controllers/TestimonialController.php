@@ -112,7 +112,7 @@ class TestimonialController extends Controller
     {
         $testimonial = new TestimonialResource($testimonial);
 
-        if ($request->acceptsJson()) {
+        if ($request->wantsJsonResponse()) {
             return response()->json(['testimonial' => $testimonial]);
         }
 

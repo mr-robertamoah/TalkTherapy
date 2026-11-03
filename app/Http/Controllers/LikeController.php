@@ -74,7 +74,7 @@ class LikeController extends Controller
     {
         $like = new LikeResource($like);
 
-        if ($request->acceptsJson()) {
+        if ($request->wantsJsonResponse()) {
             return response()->json(['like' => $like]);
         }
 

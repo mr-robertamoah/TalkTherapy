@@ -2,10 +2,8 @@
 
 namespace App\Notifications;
 
-use App\Http\Resources\SessionResource;
 use App\Models\Counsellor;
 use App\Models\Session;
-use App\Notifications\Concerns\ResolvesResourceForRecipient;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\BroadcastMessage;
@@ -14,7 +12,7 @@ use Illuminate\Notifications\Notification;
 
 class SessionDeletedNotification extends Notification implements ShouldQueue
 {
-    use Queueable, ResolvesResourceForRecipient;
+    use Queueable;
 
     /**
      * Create a new notification instance.
@@ -70,8 +68,16 @@ class SessionDeletedNotification extends Notification implements ShouldQueue
 
     public function toBroadcast(object $notifiable): BroadcastMessage
     {
+        // SCRUM-374: a small fixed summary -- the same for every recipient, never a per-viewer
+        // resource (payment status, dob) built for whoever happened to be signed in.
         return new BroadcastMessage([
-            'session' => $this->resolveFor(new SessionResource($this->session), $notifiable),
+            'session' => [
+                'id' => $this->session->id,
+                'name' => $this->session->name,
+                'startTime' => $this->session->start_time,
+                'endTime' => $this->session->end_time,
+                'status' => $this->session->status,
+            ],
         ]);
     }
 

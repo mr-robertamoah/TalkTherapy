@@ -1,5 +1,6 @@
 <script setup>
 import { computed, ref, unref, watch, watchEffect } from 'vue';
+import { toLocalInputValue } from '@/Composables/countdown'
 import TextInput from '@/Components/TextInput.vue';
 import InputLabel from '@/Components/InputLabel.vue';
 import InputError from '@/Components/InputError.vue';
@@ -13,7 +14,7 @@ import Alert from "./Alert.vue";
 import PrimaryButton from "./PrimaryButton.vue";
 import TopicSection from "./TopicSection.vue";
 import Select from "./Select.vue";
-import { addMinutes, format } from 'date-fns';
+import { addMinutes } from 'date-fns';
 import useErrorHandler from '@/Composables/useErrorHandler';
 import PreferenceItem from './PreferenceItem.vue';
 
@@ -130,13 +131,13 @@ watch(() => endTime.value, () => {
 })
 
 const computedStartTime = computed(() => {
-    return new Date(startTime.value).toGMTString()
+    return new Date(startTime.value).toLocaleString()
 })
 const computedEndTime = computed(() => {
-    return new Date(endTime.value).toGMTString()
+    return new Date(endTime.value).toLocaleString()
 })
 const computedNow = computed(() => {
-    return new Date().toISOString().slice(0, 16)
+    return toLocalInputValue(new Date())
 })
 
 function isMinutesBefore({firstTime, secondTime = null, minutes}) {
@@ -147,13 +148,10 @@ function isMinutesBefore({firstTime, secondTime = null, minutes}) {
     return new Date(firstTime) >= comparisonDate
 }
 
-function formatDateTimeForFrontend(dateTime) {
-    return format(dateTime, "yyyy-MM-dd'T'HH:mm")
-}
 
 function addMinitesToDate(time, minutes) {
     if (!time) return null
-    const newTime = formatDateTimeForFrontend(addMinutes(time, minutes))
+    const newTime = toLocalInputValue(addMinutes(time, minutes))
     
     return newTime
 }
@@ -257,8 +255,8 @@ function setSessionFormData() {
     sessionData.value.about = props.session.about
     sessionData.value.paymentType = props.session.paymentType
     sessionData.value.startTime = props.session.startTime
-    startTime.value = formatDateTimeForFrontend(props.session.startTime)
-    endTime.value = formatDateTimeForFrontend(props.session.endTime)
+    startTime.value = toLocalInputValue(props.session.startTime)
+    endTime.value = toLocalInputValue(props.session.endTime)
     sessionData.value.endTime = props.session.endTime
     sessionData.value.type = props.session.type
     sessionData.value.lng = props.session.longitude

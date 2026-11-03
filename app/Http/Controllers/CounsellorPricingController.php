@@ -26,7 +26,7 @@ class CounsellorPricingController extends Controller
 
             $resource = CounsellorPricingResource::collection($pricings);
 
-            if ($request->acceptsJson()) {
+            if ($request->wantsJsonResponse()) {
                 return response()->json(['pricings' => $resource]);
             }
 
@@ -35,7 +35,7 @@ class CounsellorPricingController extends Controller
             $status = $this->statusFor($th);
             $message = $this->messageFor($th, $status);
 
-            if ($request->acceptsJson()) {
+            if ($request->wantsJsonResponse()) {
                 return response()->json(['message' => $message], $status);
             }
 
@@ -55,7 +55,7 @@ class CounsellorPricingController extends Controller
                 ])
             );
 
-            if ($request->acceptsJson()) {
+            if ($request->wantsJsonResponse()) {
                 return response()->json(['pricings' => []]);
             }
 
@@ -64,7 +64,7 @@ class CounsellorPricingController extends Controller
             $status = $this->statusFor($th);
             $message = $this->messageFor($th, $status);
 
-            if ($request->acceptsJson()) {
+            if ($request->wantsJsonResponse()) {
                 return response()->json(['message' => $message], $status);
             }
 

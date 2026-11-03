@@ -36,15 +36,38 @@ if [ -z "$APP_KEY" ]; then
   php artisan key:generate
 fi
 
-# Run migrations and seed only if not already done
-if [ ! -f /var/www/.seeded ]; then
-  echo "Running migrations and seeding..."
-  php artisan migrate --force
-  php artisan db:seed --force
-  touch /var/www/.seeded
-else
-  echo "App already seeded. Skipping..."
-fi
+# Migrations on every boot (idempotent); the seed only once (SCRUM-373). The marker lives on the
+# bind-mounted storage/ (it used to be /var/www/.seeded, inside each container, so every recreate
+# re-seeded), and flock makes the php and queue containers -- which both run this script -- take turns.
+# An existing database that already has users is never seeded again, marker or not.
+# Remove storage/framework/.seeded (and empty the database) to seed again.
+SEED_MARKER=/var/www/html/storage/framework/.seeded
+(
+  flock 9
+  if ! php artisan migrate --force; then
+    echo "Migrations failed: not seeding." >&2
+    exit 0
+  fi
+  # Never seed production: the seed creates demo accounts with known passwords (security review).
+  if [ "$APP_ENV" = "production" ]; then
+    echo "APP_ENV=production: not seeding."
+  elif [ ! -f "$SEED_MARKER" ]; then
+    # 0 = the database already has users, 3 = empty, anything else = couldn't tell (don't seed).
+    php -r 'require "vendor/autoload.php"; $app = require "bootstrap/app.php"; $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap(); exit(Illuminate\Support\Facades\DB::table("users")->exists() ? 0 : 3);'
+    PROBE=$?
+    if [ "$PROBE" -eq 0 ]; then
+      echo "Database already has users. Not seeding; writing the marker."
+      touch "$SEED_MARKER"
+    elif [ "$PROBE" -eq 3 ]; then
+      echo "Seeding..."
+      php artisan db:seed --force && touch "$SEED_MARKER"
+    else
+      echo "Could not check the database: not seeding this boot." >&2
+    fi
+  else
+    echo "App already seeded. Skipping seed."
+  fi
+) 9>/var/www/html/storage/framework/.setup.lock
 
 # Re-link public/storage on every boot (--force overwrites safely). config/filesystems.php's
 # 'links' resolve via public_path()/storage_path(), which are absolute to wherever the app is

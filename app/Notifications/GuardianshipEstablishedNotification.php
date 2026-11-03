@@ -2,9 +2,7 @@
 
 namespace App\Notifications;
 
-use App\Http\Resources\UserMiniResource;
 use App\Models\User;
-use App\Notifications\Concerns\ResolvesResourceForRecipient;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\BroadcastMessage;
@@ -13,7 +11,7 @@ use Illuminate\Notifications\Notification;
 
 class GuardianshipEstablishedNotification extends Notification implements ShouldQueue
 {
-    use Queueable, ResolvesResourceForRecipient;
+    use Queueable;
 
     /**
      * Create a new notification instance.
@@ -68,8 +66,13 @@ class GuardianshipEstablishedNotification extends Notification implements Should
 
     public function toBroadcast(object $notifiable): BroadcastMessage
     {
+        // SCRUM-374: a small fixed summary -- the same for every recipient, never a per-viewer
+        // resource (payment status, dob) built for whoever happened to be signed in.
         return new BroadcastMessage([
-            'user' => $this->resolveFor(new UserMiniResource($this->user), $notifiable),
+            'user' => [
+                'id' => $this->user->id,
+                'name' => $this->user->name,
+            ],
         ]);
     }
 

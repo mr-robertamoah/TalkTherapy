@@ -4,7 +4,6 @@ namespace App\Http\Controllers;
 
 use App\Actions\Suspension\SubmitSuspensionAppealAction;
 use App\Models\Suspension;
-use App\Traits\ResolvesExceptionResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Redirect;
 use Illuminate\Validation\ValidationException;
@@ -15,8 +14,6 @@ use Throwable;
 // written for them, and their one appeal. Reachable while the account is suspended.
 class SuspensionController extends Controller
 {
-    use ResolvesExceptionResponse;
-
     public function show(Request $request)
     {
         $suspension = $request->user()->anyActiveSuspension();

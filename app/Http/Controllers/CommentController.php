@@ -74,7 +74,7 @@ class CommentController extends Controller
     {
         $comment = new CommentResource($comment);
 
-        if ($request->acceptsJson()) {
+        if ($request->wantsJsonResponse()) {
             return response()->json(['comment' => $comment]);
         }
 

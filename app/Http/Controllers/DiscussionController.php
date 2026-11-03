@@ -240,7 +240,7 @@ class DiscussionController extends Controller
     {
         $discussion = new DiscussionResource($discussion);
 
-        if ($request->acceptsJson()) {
+        if ($request->wantsJsonResponse()) {
             return response()->json(['discussion' => $discussion]);
         }
 

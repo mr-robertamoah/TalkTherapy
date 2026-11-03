@@ -2,10 +2,8 @@
 
 namespace App\Notifications;
 
-use App\Http\Resources\DiscussionResource;
 use App\Models\Counsellor;
 use App\Models\Discussion;
-use App\Notifications\Concerns\ResolvesResourceForRecipient;
 use Carbon\Carbon;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -15,7 +13,7 @@ use Illuminate\Notifications\Notification;
 
 class DiscussionUpdatedNotification extends Notification implements ShouldQueue
 {
-    use Queueable, ResolvesResourceForRecipient;
+    use Queueable;
 
     /**
      * Create a new notification instance.
@@ -77,8 +75,16 @@ class DiscussionUpdatedNotification extends Notification implements ShouldQueue
 
     public function toBroadcast(object $notifiable): BroadcastMessage
     {
+        // SCRUM-374: a small fixed summary -- the same for every recipient, never a per-viewer
+        // resource (payment status, dob) built for whoever happened to be signed in.
         return new BroadcastMessage([
-            'discussion' => $this->resolveFor(new DiscussionResource($this->discussion), $notifiable),
+            'discussion' => [
+                'id' => $this->discussion->id,
+                'name' => $this->discussion->name,
+                'startTime' => $this->discussion->start_time,
+                'endTime' => $this->discussion->end_time,
+                'status' => $this->discussion->status,
+            ],
         ]);
     }
 

@@ -9211,3 +9211,110 @@ out: each still needs a scoping decision.
 - **Known minor issue, left as is:** on a therapy page, the page-level DiscussionModal and the
   discussion card's modal both join the presence channel, so the "already online" alert can show
   twice, stacked. Before, the second modal's `here()` never fired.
+
+## SCRUM-373 + 374 + 375 + 272 + 248 + 193: ops and architecture follow-ups, Paystack resilience — 2026-11-02
+
+The user asked for the next set of follow-ups, grouped with existing tickets. I added SCRUM-272 and
+SCRUM-248 (Paystack resilience, and a new scheduled sweep beside the ones being moved) and SCRUM-193
+(small). SCRUM-138 (TrustProxies) was left out: its own ticket says to configure it only once a real
+proxy sits in front of the app. The user also approved reseeding the local database, which restored
+therapy 18 after the last QA pass.
+
+- **SCRUM-375, timezones.** The server stores true UTC: the forms send `toISOString()` of the picked
+  local time, and the app timezone is UTC. So the countdown's `+ getTimezoneOffset()` was simply
+  wrong. It was hidden in Ghana (UTC+0) and hours out elsewhere, and is removed. The forms also
+  filled `<input type="datetime-local">` (which is local) with a UTC string, which shifted the
+  default and minimum times outside UTC; `toLocalInputValue()` (date-fns `format`) replaces it.
+- **SCRUM-375, a discussion's therapy.** A discussion's therapy can't change: the update always
+  passed the discussion's own `for`, and the `associate()` was never saved. The dead
+  re-association was removed rather than made to save. Moving a discussion would carry its
+  counsellors and sessions into another client's therapy.
+- **SCRUM-373, ops:**
+  - **Restart policies.** `restart: unless-stopped` on `vite`, `web` and `queue`.
+  - **Heartbeat.** A one-minute scheduler task, plus `/api/health/scheduler` (200 or 503, the last-run
+    time only, throttled) for an uptime monitor.
+  - **Scheduler cache store.** A dedicated file store (`cache.scheduler_store`) holds the heartbeat
+    and the once-only keys. The deploy's `cache:clear` clears only the default store, so it no
+    longer re-sends reminders. Tests use `array` (phpunit).
+  - **Seed marker.** It moved to the bind-mounted `storage/framework/.seeded`, and `flock` makes the
+    php and queue containers take turns. Reverb's entrypoint no longer migrates or seeds.
+- **SCRUM-374, architecture:**
+  - **One rule.** `Request::wantsJsonResponse()` (an AppServiceProvider macro) is used by every
+    success path (27 `acceptsJson()` calls), by the base `returnFailure`, and by a new
+    `AppException` renderer in `bootstrap/app.php`, for refusals thrown outside a controller's
+    catch. Both use one `App\Support\FailureResponse` (status, message, JSON or redirect, report
+    on 500), so they can't drift (architecture review). A 4xx AppException in a web request is not
+    reported, since it is an expected refusal. One in a queued job or scheduled task still is, and a
+    5xx or uncoded one always is. The controllers' try/catch
+    blocks stay, to be removed as each one is touched, as the ticket says.
+  - **Sweeps.** The session and discussion due, started and failed sweeps moved into
+    `app/Actions/{Session,Discussion,Alert}`. `firstTime` became `App\Support\SchedulerOnce`, and
+    `Discussion::participantCounsellors()` replaces AppService's private helper.
+  - **Therapy presence channel.** It is now on `sharedChannel.js` (with a new `me()`). Only
+    `users.{id}` and `messages.{id}` remain direct, each with a single owner. The suggested ESLint
+    rule doesn't apply: the repo has no ESLint.
+  - **Notification payloads.** The session, discussion and guardianship notifications now carry small
+    fixed summaries (id, name, times, status; or id, name). Nothing in the frontend read the old
+    resources. `ResolvesResourceForRecipient` is deleted: a payload with no per-viewer fields has
+    nothing to resolve.
+  - **Cleanup.** Redundant `use ResolvesExceptionResponse` removed from 8 controllers.
+- **SCRUM-272, Paystack.**
+  - Timeouts: connect 5s and total 15s (`PAYSTACK_CONNECT_TIMEOUT`, `PAYSTACK_TIMEOUT`).
+  - The synchronous call sites catch `HttpClientException`, the parent of `ConnectionException`
+    (unreachable or timed out), so those get the "try again" message instead of a generic error.
+  - Account resolution tells "Paystack unreachable" (502) apart from "bad account number" (422).
+  - The three queued jobs are unchanged: they rethrow on purpose, so the queue retries the same
+    reference.
+- **SCRUM-248, reconciliation.**
+  - Every 15 minutes (`withoutOverlapping`, `onOneServer`), org-financed pay-per-use charges pending
+    for more than 30 minutes are verified with Paystack through `ResolveTransactionWithPaystackAction`.
+    That action was extracted from the browser-callback verify, so both resolve a charge the same
+    way.
+  - The status history records `RECONCILE`, which needed a migration to re-apply the native enum.
+  - One row's failure never stops the others.
+  - A charge still unresolved after 24 hours is logged for manual follow-up on every run.
+- **SCRUM-193:** `AdminUserResource.avatar`, with `avatarFile` eager-loaded in the admin list.
+- **Tests.** Tests that sent a browser-style Accept header to axios-only success endpoints now send
+  JSON, as their real callers do. The recipient-resolution tests became "every recipient gets the same
+  summary".
+- **Review fixes:**
+  - **Boot steps.** Migrations run on every boot (a persisted marker had stopped them). Seeding needs
+    no marker, an empty database (a probe), and `APP_ENV` other than production, because the seed
+    creates known passwords.
+  - **Health route.** It moved to `/api/health/scheduler`, so a poll starts no session, and visit
+    tracking skips it.
+  - **Reconcile.** It became an artisan command (`payments:reconcile-stale-org-charges`, runnable by
+    hand), scheduled `runInBackground()->withoutOverlapping(30)`, with scheduler locks in its own
+    store (`Schedule::useCache`).
+  - **Double charges (security review M1).** A new org charge is refused (409) while an earlier one
+    for the same thing is still pending. Once that one is past the grace period, Paystack is asked
+    first, and only a definite failure lets a new charge go ahead. The timeout message no longer
+    invites a retry.
+  - **Never-received charges (M2).** For org charges only, "reference not found" after the grace
+    period and `abandoned` both mean failed, since no money moved. The 24-hour alert also fires when
+    the check itself fails.
+  - **Sweep scope (L2).** Only real org charges (`org_charge_` references), not a member's own card
+    checkout.
+  - **Stale writes.** `RecordTransactionStatusAction` re-reads the row under a lock and re-checks it,
+    so no stale writer re-applies a terminal status.
+  - **Job retries (M3).** A Paystack 4xx on a retry is ambiguous, not a definite failure: the earlier
+    attempt may have gone through. It is rethrown instead of recording failed, which would invite a
+    second payout or charge.
+  - **Redirect loops.** A GET failure whose "back" is the same URL goes home instead of looping.
+  - **Tidying.** `app/Exceptions/Handler.php` (unused since Laravel 11) was deleted. The time
+    previews show local time, and the modals use the shared `toLocalInputValue`.
+- **Follow-ups (SCRUM-376):**
+  - move the remaining AppService sweeps;
+  - look a payout, settlement or refund up by reference on a retry, rather than only rethrowing;
+  - the `chmod -R 777 storage` in docker-compose.
+- **Browser QA fixes:**
+  - **Admin avatars.** The admin users list renders `AdminUserComponent`, not `UserComponent`, so
+    the avatar now shows beside the username there.
+  - **Presence alerts.** "Already online", "came online" and "went offline" never showed (an older
+    bug): `useTherapyState` used its own `useAlert()` that no page rendered. Pages now pass in their
+    own alert setter.
+  - **Lost failure alert.** A failed GET's alert is `put` in the session and pulled by the first page
+    that renders (not flashed), so a "back" that itself redirects (e.g. `/login` right after signing
+    in) no longer loses it.
+  - **Older bugs filed as SCRUM-377:** the create-session default start fails the 30-minute rule;
+    the `prohibited_if` message key never matches; a country-flag 404 on the profile page.

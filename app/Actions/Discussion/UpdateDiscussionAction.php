@@ -14,13 +14,10 @@ class UpdateDiscussionAction extends Action
     {
         $this->setData($createDiscussionDTO);
 
+        // SCRUM-375: a discussion never moves to another therapy -- its participants and its sessions
+        // belong to that therapy. The update always passed the discussion's own `for`, and an
+        // associate() here was never saved anyway, so the dead re-association was removed.
         $createDiscussionDTO->discussion->update($this->data);
-
-        if ($createDiscussionDTO->for) {
-
-            $createDiscussionDTO->discussion->for()->disassociate();
-            $createDiscussionDTO->discussion->for()->associate($createDiscussionDTO->for);
-        }
 
         return $createDiscussionDTO->discussion->refresh();
     }

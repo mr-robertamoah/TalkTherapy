@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\DiscussionStatusEnum;
 use App\Traits\Starreable;
 use App\Traits\Timeable;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -75,6 +76,13 @@ class Discussion extends Model
     public function isParticipant(?Counsellor $counsellor)
     {
         return $counsellor && in_array($counsellor->id, $this->participantCounsellorIds());
+    }
+
+    // Everyone taking part, as Counsellor models (soft-deleted ones excluded) -- who the due and
+    // failed notices go to (SCRUM-372).
+    public function participantCounsellors(): Collection
+    {
+        return Counsellor::query()->whereKey($this->participantCounsellorIds())->get();
     }
 
     // SCRUM-367: the counsellor profiles taking part -- its creator and every added counsellor.

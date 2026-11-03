@@ -100,7 +100,7 @@ class ContactController extends Controller
     {
         $contact = new ContactResource($contact);
 
-        if ($request->acceptsJson()) {
+        if ($request->wantsJsonResponse()) {
             return response()->json(['contact' => $contact]);
         }
 

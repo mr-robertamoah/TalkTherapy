@@ -56,6 +56,16 @@ class RecordTransactionStatusAction extends Action
         // back too (by throwing out of this DB::transaction()) keeps the transaction in a
         // genuinely retriable non-terminal state instead.
         return DB::transaction(function () use ($transaction, $status, $source, $message, $gatewayData) {
+            // SCRUM-248 (architecture review): the checks above read the caller's copy, which can be
+            // minutes old (the reconciliation sweep waits on Paystack per row) while a webhook lands.
+            // Re-read under a row lock and re-check, so a second writer can never re-apply a
+            // terminal status, duplicate its history or re-run the success hooks.
+            $current = Transaction::query()->lockForUpdate()->findOrFail($transaction->id);
+            if ($current->status === $status || in_array($current->status, self::TERMINAL_STATUSES, true)) {
+                return $current;
+            }
+            $transaction = $current;
+
             $transaction->update(['status' => $status]);
 
             $transaction->statusHistories()->create([

@@ -16,6 +16,8 @@ services:
       - mailpit
 
   vite:
+    # SCRUM-373: back after a host restart; the scheduler lives in queue and stopped silently.
+    restart: unless-stopped
     image: node:20
     container_name: talktherapy-vite
     volumes:
@@ -29,6 +31,8 @@ services:
       - php
 
   web:
+    # SCRUM-373: back after a host restart; the scheduler lives in queue and stopped silently.
+    restart: unless-stopped
     image: nginx:alpine
     container_name: talktherapy-nginx
     ports:
@@ -72,6 +76,8 @@ services:
       - talktherapy_db:/var/lib/mysql
 
   queue:
+    # SCRUM-373: back after a host restart; the scheduler lives in queue and stopped silently.
+    restart: unless-stopped
     build:
       context: .
       dockerfile: docker/php/Dockerfile

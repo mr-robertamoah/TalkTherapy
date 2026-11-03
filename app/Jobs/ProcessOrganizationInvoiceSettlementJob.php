@@ -71,6 +71,14 @@ class ProcessOrganizationInvoiceSettlementJob implements ShouldQueue
                 throw $exception;
             }
 
+            // SCRUM-272 (security review): on a RETRY, a 4xx isn't a definite rejection either -- the
+            // earlier attempt may have timed out AFTER Paystack processed it, and the retry is then
+            // refused as a duplicate. Recording "failed" would invite a second, new transfer/charge.
+            // Rethrow and leave the record as it is for follow-up instead.
+            if ($this->attempts() > 1) {
+                throw $exception;
+            }
+
             RecordTransactionStatusAction::new()->execute(
                 $transaction,
                 TransactionStatusEnum::failed->value,

@@ -14,7 +14,6 @@ use App\Models\Message;
 use App\Models\Report;
 use App\Models\Session;
 use App\Services\ReportService;
-use App\Traits\ResolvesExceptionResponse;
 use App\Traits\StreamsPrivateDocuments;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Redirect;
@@ -30,7 +29,7 @@ use Throwable;
 // so a non-admin always gets the same 404.
 class AdminReportController extends Controller
 {
-    use ResolvesExceptionResponse, StreamsPrivateDocuments;
+    use StreamsPrivateDocuments;
 
     public function index(Request $request)
     {

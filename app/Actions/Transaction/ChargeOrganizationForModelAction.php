@@ -14,7 +14,7 @@ use App\Models\OrganizationCounsellor;
 use App\Models\OrganizationPaymentInstrument;
 use App\Models\Transaction;
 use App\Services\Paystack\PaystackClient;
-use Illuminate\Http\Client\RequestException;
+use Illuminate\Http\Client\HttpClientException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -52,6 +52,9 @@ use Illuminate\Support\Str;
 // different, org compensation terms, and "the actual cost" has no defined meaning here yet.
 class ChargeOrganizationForModelAction extends Action
 {
+    // SCRUM-248: every org charge's reference starts with this (the reconcile sweep selects by it).
+    public const REFERENCE_PREFIX = 'org_charge_';
+
     public function execute(TransactionDTO $dto): Transaction
     {
         if (is_null($dto->organization)) {
@@ -118,6 +121,8 @@ class ChargeOrganizationForModelAction extends Action
             throw new TransactionException('This has already been paid for.', 422);
         }
 
+        $this->ensureNoChargeIsStillBeingConfirmed($dto);
+
         $currency = GetPayableAmountAction::new()->execute($dto->for)['currency'];
         // Minor units -- the counsellor's own listed rate for this specific engagement, used both
         // as ComputeCounsellorCompensationShareAction's COUNSELLOR_RATE basis AND as the platform
@@ -145,7 +150,7 @@ class ChargeOrganizationForModelAction extends Action
         // attempted -- instead of the previous ordering, where a failure creating the row AFTER a
         // successful Paystack charge (a DB outage, a constraint violation) would have silently
         // moved real money with no local record left to reconcile against.
-        $reference = 'org_charge_'.Str::uuid();
+        $reference = self::REFERENCE_PREFIX.Str::uuid();
 
         $transaction = Transaction::query()->create([
             'for_type' => $dto->for::class,
@@ -172,7 +177,7 @@ class ChargeOrganizationForModelAction extends Action
                 'currency' => $currency,
                 'reference' => $reference,
             ]);
-        } catch (RequestException $exception) {
+        } catch (HttpClientException $exception) { // SCRUM-272: an error response or no response at all
             // Left pending, not marked failed -- a webhook still arrives for every charge
             // regardless of how it started (this action's own comment below), so an ambiguous
             // HTTP-level failure here (was the charge actually received before the connection
@@ -180,7 +185,9 @@ class ChargeOrganizationForModelAction extends Action
             // existing handling of an unrecognized Paystack response status a few lines down.
             // Marking this failed outright here risks RecordTransactionStatusAction's own
             // terminal-status guard permanently blocking a later, genuine success webhook.
-            throw new TransactionException('Unable to charge the organization right now. Please try again shortly.', 502);
+            // SCRUM-248 (security review): not "try again" -- the charge may have gone through; it is
+            // confirmed automatically, and a retry meanwhile is refused (ensureNoChargeIsStillBeingConfirmed).
+            throw new TransactionException('We could not confirm the charge with the payment provider. It will be checked automatically.', 502, $exception);
         }
 
         // Unlike the checkout-redirect flow, chargeAuthorization() already returns a definitive
@@ -228,5 +235,40 @@ class ChargeOrganizationForModelAction extends Action
             $response['data']['gateway_response'] ?? null,
             $response['data'] ?? null
         );
+    }
+
+    // SCRUM-248/272 (security review): a charge that timed out may still have gone through. Charging
+    // again with a new reference could take the money twice, so an earlier charge still pending for
+    // the same thing is settled first: while it is younger than the reconcile grace period Paystack
+    // may simply not have it yet, so this refuses; once older, Paystack is asked, and only a definite
+    // failure lets a new charge go ahead.
+    private function ensureNoChargeIsStillBeingConfirmed(TransactionDTO $dto): void
+    {
+        $pending = $dto->for->transactions()
+            ->where('status', TransactionStatusEnum::pending->value)
+            ->where('reference', 'like', self::REFERENCE_PREFIX.'%')
+            ->get();
+
+        foreach ($pending as $transaction) {
+            $stillConfirming = new TransactionException('A previous charge for this is still being confirmed. It is checked automatically; please try again later.', 409);
+
+            if ($transaction->created_at->gt(now()->subMinutes(config('organization.stale_charge_reconcile_after_minutes')))) {
+                throw $stillConfirming;
+            }
+
+            try {
+                $resolved = ResolveTransactionWithPaystackAction::new()->execute($transaction, TransactionStatusSourceEnum::reconcile->value, serverCharge: true);
+            } catch (HttpClientException $exception) {
+                throw $stillConfirming;
+            }
+
+            if ($resolved->status === TransactionStatusEnum::success->value) {
+                throw new TransactionException('This has already been paid for.', 422);
+            }
+
+            if ($resolved->status !== TransactionStatusEnum::failed->value) {
+                throw $stillConfirming;
+            }
+        }
     }
 }

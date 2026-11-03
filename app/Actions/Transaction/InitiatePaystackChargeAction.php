@@ -9,7 +9,7 @@ use App\Enums\TransactionStatusSourceEnum;
 use App\Exceptions\TransactionException;
 use App\Models\Transaction;
 use App\Services\Paystack\PaystackClient;
-use Illuminate\Http\Client\RequestException;
+use Illuminate\Http\Client\HttpClientException;
 
 // TT-7.3b-c/SCRUM-234: TransactionService::initiateCharge() now routes most org-financed charges
 // through ChargeOrganizationForModelAction instead (the org's own saved instrument, at actual
@@ -36,8 +36,8 @@ class InitiatePaystackChargeAction extends Action
                 'currency' => $payable['currency'],
                 'callback_url' => $dto->callbackUrl,
             ]);
-        } catch (RequestException $exception) {
-            throw new TransactionException('Unable to start the payment right now. Please try again shortly.', 502);
+        } catch (HttpClientException $exception) { // SCRUM-272: an error response or no response at all
+            throw new TransactionException('Unable to start the payment right now. Please try again shortly.', 502, $exception);
         }
 
         $transaction = Transaction::query()->create([

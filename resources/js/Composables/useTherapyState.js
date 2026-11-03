@@ -3,12 +3,15 @@ import { usePage } from '@inertiajs/vue3'
 import useAlert from '@/Composables/useAlert'
 import useEnums from '@/Composables/useEnums'
 import { createAnnouncementQueue, resolveAnnouncedSession } from '@/Composables/announcements'
-import { acquireCounsellorChannel } from '@/Composables/sharedChannel'
+import { acquireChannel, acquireCounsellorChannel } from '@/Composables/sharedChannel'
 import { minutesUntilWindow } from '@/Composables/countdown'
 
-export default function useTherapyState(therapy, therapyType = 'individual') {
+// SCRUM-374 QA: `alerts` is the page's own useAlert() -- the presence alerts ("X is already online",
+// "just came online", "just went offline") used to go to a private useAlert() instance nothing
+// rendered, so they never showed.
+export default function useTherapyState(therapy, therapyType = 'individual', alerts = null) {
     const { SessionStatusEnum, DiscussionStatusEnum } = useEnums()
-    const { setSuccessAlertData } = useAlert()
+    const { setSuccessAlertData } = alerts ?? useAlert()
     
     // Reactive state
     const activeSession = ref(null)
@@ -121,7 +124,7 @@ export default function useTherapyState(therapy, therapyType = 'individual') {
     
     // WebSocket listening
     let counsellorChannel = null
-    let joinedTherapyChannel = false
+    let therapyChannel = null
 
     function listenToTherapy(currentTherapy) {
         const channelName = therapyType === 'group' 
@@ -130,14 +133,18 @@ export default function useTherapyState(therapy, therapyType = 'individual') {
             
         // SCRUM-372: only participants may join the therapy's presence channel (routes/channels.php);
         // anyone else browsing a public therapy got a 403 from /broadcasting/auth on every visit.
-        joinedTherapyChannel = computedIsParticipant.value
-        if (joinedTherapyChannel) {
+        therapyChannel?.release()
+        therapyChannel = null
+        if (computedIsParticipant.value) {
             // SCRUM-357: members are listed by a per-channel key, never a user id -- this browser's own
             // key is the channel's `members.me`, so each entry is marked with whether it's us.
-            const presence = Echo.join(channelName)
-            const ownPresenceId = () => presence.subscription?.members?.me?.id
+            // SCRUM-374: through sharedChannel.js like the other shared channels -- released, never
+            // left, so another holder of the same therapy channel keeps it.
+            const channel = acquireChannel(channelName, { presence: true })
+            therapyChannel = channel
+            const ownPresenceId = () => channel.me()
 
-            presence
+            channel
                 .here((users) => {
                     onlineParticipants.value = users.map((u) => ({ ...u, isMe: u.id === ownPresenceId() }))
                 
@@ -282,14 +289,9 @@ export default function useTherapyState(therapy, therapyType = 'individual') {
             clearInterval(interval.value)
         }
         
-        let currentTherapy = computedTherapy.value
-        if (!userId.value || !currentTherapy.id) return
-        
-        const channelName = therapyType === 'group' 
-            ? `groupTherapies.${currentTherapy.id}`
-            : `therapies.${currentTherapy.id}`
-            
-        if (joinedTherapyChannel) Echo.leave(channelName)
+        // Each handle knows its own channel; released whatever the page state.
+        therapyChannel?.release()
+        therapyChannel = null
 
         counsellorChannel?.release()
         counsellorChannel = null

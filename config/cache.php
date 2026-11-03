@@ -34,7 +34,18 @@ return [
     |
     */
 
+    // SCRUM-373: the scheduler's own store -- its once-only keys (reminders sent, sessions announced)
+    // and its heartbeat. Separate from the default store so the deploy's `cache:clear` (which only
+    // clears the default store) doesn't make every reminder due in the next 30 minutes go out again.
+    'scheduler_store' => env('SCHEDULER_CACHE_STORE', 'scheduler'),
+
     'stores' => [
+
+        'scheduler' => [
+            'driver' => 'file',
+            'path' => storage_path('framework/cache/scheduler'),
+            'lock_path' => storage_path('framework/cache/scheduler'),
+        ],
 
         'apc' => [
             'driver' => 'apc',

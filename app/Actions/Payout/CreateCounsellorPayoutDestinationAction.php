@@ -8,6 +8,8 @@ use App\Exceptions\PayoutException;
 use App\Models\CounsellorPayoutAccount;
 use App\Notifications\PayoutDestinationChangedNotification;
 use App\Services\Paystack\PaystackClient;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\HttpClientException;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Str;
 
@@ -31,6 +33,9 @@ class CreateCounsellorPayoutDestinationAction extends Action
             $resolved = PaystackClient::new()->resolveAccountNumber($dto->accountNumber, $dto->bankCode);
         } catch (RequestException $exception) {
             throw new PayoutException('Could not verify that account number. Please double-check the details and try again.', 422);
+        } catch (ConnectionException $exception) {
+            // SCRUM-272: Paystack unreachable -- not a bad account number.
+            throw new PayoutException('Unable to verify that account right now. Please try again shortly.', 502, $exception);
         }
 
         $accountName = $resolved['data']['account_name'] ?? null;
@@ -47,8 +52,8 @@ class CreateCounsellorPayoutDestinationAction extends Action
                 'bank_code' => $dto->bankCode,
                 'currency' => $dto->currency,
             ]);
-        } catch (RequestException $exception) {
-            throw new PayoutException('Unable to set up this payout destination right now. Please try again shortly.', 502);
+        } catch (HttpClientException $exception) { // SCRUM-272: an error response or no response at all
+            throw new PayoutException('Unable to set up this payout destination right now. Please try again shortly.', 502, $exception);
         }
 
         $recipientCode = $recipient['data']['recipient_code'] ?? null;

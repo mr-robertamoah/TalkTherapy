@@ -35,6 +35,9 @@ return [
         'secret_key' => env('PAYSTACK_SECRET_KEY'),
         'public_key' => env('PAYSTACK_PUBLIC_KEY'),
         'base_url' => env('PAYSTACK_BASE_URL', 'https://api.paystack.co'),
+        // SCRUM-272: seconds. Fail fast when Paystack is unreachable or slow.
+        'connect_timeout' => (int) env('PAYSTACK_CONNECT_TIMEOUT', 5),
+        'timeout' => (int) env('PAYSTACK_TIMEOUT', 15),
     ],
 
     // TT-3.1a/SCRUM-274: Daily.co's REST API for room creation/meeting tokens.

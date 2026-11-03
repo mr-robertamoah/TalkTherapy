@@ -1,7 +1,6 @@
 <?php
 
 use App\Exceptions\AppException;
-use App\Exceptions\Handler;
 use App\Exceptions\TherapyException;
 use App\Traits\ResolvesExceptionResponse;
 use GuzzleHttp\Psr7\Response as Psr7Response;
@@ -54,7 +53,7 @@ arch('every exception the app throws for people to read extends AppException')
     ->expect('App\\Exceptions')
     ->classes()
     ->toExtend(AppException::class)
-    ->ignoring([AppException::class, Handler::class]);
+    ->ignoring([AppException::class]);
 
 test('an uncoded exception (getCode() 0) resolves to 500', function () {
     $subject = resolvesExceptionResponseInstance();

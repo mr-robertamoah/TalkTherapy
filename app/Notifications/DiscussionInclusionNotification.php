@@ -2,13 +2,10 @@
 
 namespace App\Notifications;
 
-use App\Http\Resources\UserMiniResource;
 use App\Models\Counsellor;
 use App\Models\Discussion;
-use App\Models\User;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
-use Illuminate\Notifications\Messages\BroadcastMessage;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
@@ -33,9 +30,10 @@ class DiscussionInclusionNotification extends Notification implements ShouldQueu
     {
         $via = ['database'];
 
-        if ($notifiable->email_verified_at)
+        if ($notifiable->email_verified_at) {
             $via[] = 'mail';
-        
+        }
+
         return $via;
     }
 
@@ -48,7 +46,7 @@ class DiscussionInclusionNotification extends Notification implements ShouldQueu
 
         return (new MailMessage)
             ->success()
-            ->subject("Discussion Request")
+            ->subject('Discussion Request')
             ->greeting("Hello {$notifiable->getName()}!")
             ->line("Counsellor with name: '{$this->counsellor->getName()}' has accepted your request to take part in the discussion with name: '{$this->discussion->name}' on TalkTherapy app.")
             ->line("Click on the link below to go the {$type}.")

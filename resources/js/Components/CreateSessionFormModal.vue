@@ -1,5 +1,6 @@
 <script setup>
 import { computed, onBeforeMount, ref, unref, watch, watchEffect } from 'vue';
+import { toLocalInputValue } from '@/Composables/countdown'
 import TextInput from '@/Components/TextInput.vue';
 import InputLabel from '@/Components/InputLabel.vue';
 import InputError from '@/Components/InputError.vue';
@@ -13,7 +14,7 @@ import Alert from "./Alert.vue";
 import PrimaryButton from "./PrimaryButton.vue";
 import Select from "./Select.vue";
 import { useForm } from '@inertiajs/vue3';
-import { addMinutes, format, differenceInMinutes } from 'date-fns';
+import { addMinutes, differenceInMinutes } from 'date-fns';
 import PreferenceItem from './PreferenceItem.vue';
 
 const { alertData, clearAlertData, setAlertData, setFailedAlertData } = useAlert()
@@ -104,13 +105,13 @@ watch(() => endTime.value, () => {
 })
 
 const computedStartTime = computed(() => {
-    return new Date(startTime.value).toGMTString()
+    return new Date(startTime.value).toLocaleString()
 })
 const computedEndTime = computed(() => {
-    return new Date(endTime.value).toGMTString()
+    return new Date(endTime.value).toLocaleString()
 })
 const computedNow = computed(() => {
-    return new Date().toISOString().slice(0, 16)
+    return toLocalInputValue(new Date())
 })
 const computedDuration = computed(() => {
     return (endTime.value && startTime.value) ? differenceInMinutes(new Date(endTime.value), new Date(startTime.value)) : ''
@@ -126,17 +127,14 @@ function isMinutesBefore({firstTime, secondTime = null, minutes}) {
 
 function getDefaultTime(minutes) {
     const now = new Date()
-    let time = addMinutes(now, minutes).toISOString().slice(0, 16)
+    let time = toLocalInputValue(addMinutes(now, minutes))
     return time
 }
 
-function formatDateTimeForFrontend(dateTime) {
-    return format(dateTime, "yyyy-MM-dd'T'HH:mm")
-}
 
 function addMinitesToDate(time, minutes) {
     if (!time) return null
-    const newTime = formatDateTimeForFrontend(addMinutes(time, minutes))
+    const newTime = toLocalInputValue(addMinutes(time, minutes))
     
     return newTime
 }

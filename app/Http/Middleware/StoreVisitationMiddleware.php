@@ -16,7 +16,8 @@ class StoreVisitationMiddleware
      */
     public function handle(Request $request, Closure $next): Response
     {
-        if ($request->getPathInfo() !== '/login') {
+        // SCRUM-373: health checks are a monitor polling every minute, not visits.
+        if ($request->getPathInfo() !== '/login' && ! $request->is('up', 'api/health/*')) {
             StoreVisitationJob::dispatch($request->user(), $request->ip());
         }
 

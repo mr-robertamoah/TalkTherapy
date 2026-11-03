@@ -29,6 +29,8 @@ class AdminUserResource extends JsonResource
             'createdAt' => $this->created_at,
             // SCRUM-366: links an administrator to their read log. Only when loaded (no query per row).
             'isAdmin' => $this->relationLoaded('administrator') ? (bool) $this->administrator : null,
+            // SCRUM-193: AdminUserComponent shows it beside the username in the admin users list.
+            'avatar' => $this->avatar?->url,
         ];
     }
 }

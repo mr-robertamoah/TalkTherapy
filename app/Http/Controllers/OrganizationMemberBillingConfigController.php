@@ -31,7 +31,7 @@ class OrganizationMemberBillingConfigController extends Controller
 
             $resource = new OrganizationMemberBillingConfigResource($config);
 
-            if ($request->acceptsJson()) {
+            if ($request->wantsJsonResponse()) {
                 return response()->json(['billingConfig' => $resource]);
             }
 
@@ -40,7 +40,7 @@ class OrganizationMemberBillingConfigController extends Controller
             $status = $this->statusFor($th);
             $message = $this->messageFor($th, $status);
 
-            if ($request->acceptsJson()) {
+            if ($request->wantsJsonResponse()) {
                 return response()->json(['message' => $message], $status);
             }
 

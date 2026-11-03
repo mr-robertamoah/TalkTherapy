@@ -299,7 +299,7 @@ class OrganizationController extends Controller
     {
         $resource = new OrganizationResource($organization);
 
-        if ($request->acceptsJson()) {
+        if ($request->wantsJsonResponse()) {
             return response()->json(['organization' => $resource]);
         }
 

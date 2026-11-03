@@ -291,7 +291,7 @@ class SessionController extends Controller
     {
         $session = new SessionResource($session);
 
-        if ($request->acceptsJson()) {
+        if ($request->wantsJsonResponse()) {
             return response()->json(['session' => $session]);
         }
 
