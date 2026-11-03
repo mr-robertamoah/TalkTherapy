@@ -76,6 +76,7 @@ class ProcessCounsellorPayoutJob implements ShouldQueue
         }
 
         $payoutAccount = $counsellor->payoutAccount;
+        $source = CounsellorPayoutStatusSourceEnum::initiate->value;
 
         try {
             $response = PaystackClient::new()->initiateTransfer([
@@ -110,6 +111,7 @@ class ProcessCounsellorPayoutJob implements ShouldQueue
             // it is for follow-up and the failed-job alert) when the answer isn't final.
             if ($this->attempts() > 1) {
                 $response = $this->finalOutcomeOrRethrow($payout, $exception);
+                $source = CounsellorPayoutStatusSourceEnum::retryLookup->value;
             } else {
                 RecordCounsellorPayoutStatusAction::new()->execute(
                     $payout,
@@ -144,7 +146,7 @@ class ProcessCounsellorPayoutJob implements ShouldQueue
         RecordCounsellorPayoutStatusAction::new()->execute(
             $payout->fresh(),
             $status,
-            CounsellorPayoutStatusSourceEnum::initiate->value,
+            $source,
             $response['data']['reason'] ?? null
         );
     }

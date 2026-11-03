@@ -5,17 +5,20 @@ namespace App\Actions\GroupTherapy;
 use App\Actions\Action;
 use App\Exceptions\TherapyException;
 use App\Models\GroupTherapy;
+use App\Models\Therapy;
 use App\Models\VideoSession;
 
 // SCRUM-332: refuses switching a group to anonymous while one of its video calls is live. Everyone
 // in that call has already seen the members' real names (and, for speakers, faces) -- downgrading
 // capabilities mid-call couldn't honestly undo that, so the change waits for the call to end, after
 // which every new join is masked and audio-only (JoinVideoSessionAction / GrantSpeakingPermissionAction).
-// Turning anonymity OFF, or leaving it unchanged, is always allowed. Not atomic with the update
-// itself -- a join landing in between gets one unmasked token; accepted at this traffic level.
+// Turning anonymity OFF, or leaving it unchanged, is always allowed. Atomic with the update
+// itself: GroupTherapyService runs this and the update under a lock on the group's Session rows,
+// which JoinVideoSessionAction also takes (SCRUM-334). Also used for a 1:1 Therapy (security review:
+// it had no guard at all, and the counsellor has already seen the client's name in a live call).
 class EnsureGroupTherapyCanBecomeAnonymousAction extends Action
 {
-    public function execute(GroupTherapy $groupTherapy, ?bool $requestedAnonymous): void
+    public function execute(Therapy|GroupTherapy $groupTherapy, ?bool $requestedAnonymous): void
     {
         if (! $requestedAnonymous || $groupTherapy->anonymous) {
             return;
@@ -31,7 +34,9 @@ class EnsureGroupTherapyCanBecomeAnonymousAction extends Action
             ->exists();
 
         if ($hasLiveVideoCall) {
-            throw new TherapyException('End the current video call before making this group anonymous.', 422);
+            $what = $groupTherapy instanceof GroupTherapy ? 'group' : 'therapy';
+
+            throw new TherapyException("End the current video call before making this {$what} anonymous.", 422);
         }
     }
 }

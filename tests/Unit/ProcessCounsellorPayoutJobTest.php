@@ -2,6 +2,7 @@
 
 use App\Enums\CounsellorEarningStatusEnum;
 use App\Enums\CounsellorPayoutStatusEnum;
+use App\Enums\CounsellorPayoutStatusSourceEnum;
 use App\Jobs\ProcessCounsellorPayoutJob;
 use App\Models\Counsellor;
 use App\Models\CounsellorEarning;
@@ -241,4 +242,31 @@ test('a first attempt refused with a 4xx is still a definite failure, with no lo
 
     expect($payout->fresh()->status)->toBe(CounsellorPayoutStatusEnum::failed->value);
     Http::assertSentCount(1);
+});
+
+// SCRUM-378: a status recorded from the lookup is audited as such, not as the transfer call's own answer.
+test('a status recorded from a retry lookup has its own status-history source', function () {
+    [$payout] = aPendingPayoutWithClaimedEarning();
+    Http::fake([
+        '*/transfer/verify/*' => Http::response([
+            'status' => true,
+            'data' => ['reference' => $payout->reference, 'amount' => $payout->amount, 'currency' => $payout->currency, 'status' => 'success'],
+        ], 200),
+        '*/transfer' => Http::response(['status' => false, 'message' => 'Duplicate Transfer Reference'], 400),
+    ]);
+
+    payoutJobRunAsRetry($payout->id);
+
+    expect($payout->fresh()->statusHistories()->latest('id')->first()->source)
+        ->toBe(CounsellorPayoutStatusSourceEnum::retryLookup->value);
+});
+
+test('a status recorded from the transfer call itself is still sourced as initiate', function () {
+    [$payout] = aPendingPayoutWithClaimedEarning();
+    Http::fake(['*/transfer' => Http::response(['status' => true, 'data' => ['status' => 'success']], 200)]);
+
+    ProcessCounsellorPayoutJob::dispatchSync($payout->id);
+
+    expect($payout->fresh()->statusHistories()->latest('id')->first()->source)
+        ->toBe(CounsellorPayoutStatusSourceEnum::initiate->value);
 });

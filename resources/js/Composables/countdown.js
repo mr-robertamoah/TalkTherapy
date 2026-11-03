@@ -1,4 +1,4 @@
-import { differenceInSeconds, format, parseISO } from 'date-fns'
+import { addMinutes, differenceInSeconds, format, parseISO } from 'date-fns'
 
 // SCRUM-369: minutes from `now` until a session's or discussion's start and end -- the one copy of
 // this maths (useTherapyState's header timer and DiscussionModal).
@@ -32,4 +32,19 @@ export function defaultFormTime(minutes, now = new Date()) {
     const earliest = now.getTime() + (minutes + 1) * 60 * 1000
 
     return toLocalInputValue(new Date(Math.ceil(earliest / FIVE_MINUTES) * FIVE_MINUTES))
+}
+
+// SCRUM-378: the form helpers the four session/discussion modals each had a copy of.
+// Whether `firstTime` is at least `minutes` after `secondTime` (default: now). null when there's no time yet.
+export function isMinutesBefore({ firstTime, secondTime = null, minutes }) {
+    if (!firstTime) return null
+
+    return new Date(firstTime) >= addMinutes(secondTime ? new Date(secondTime) : new Date(), minutes)
+}
+
+// A datetime-local value `minutes` after `time` (a datetime-local value). null when there's no time.
+export function addMinutesToInputValue(time, minutes) {
+    if (!time) return null
+
+    return toLocalInputValue(addMinutes(time, minutes))
 }

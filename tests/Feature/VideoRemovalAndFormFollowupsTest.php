@@ -13,6 +13,9 @@ use App\Models\User;
 use App\Models\VideoSession;
 use App\Models\VideoSessionParticipant;
 use App\Support\VideoParticipantKey;
+use Illuminate\Contracts\Cache\LockTimeoutException;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Validator;
@@ -196,4 +199,22 @@ test('the daily visitors status logs instead of crashing when there is no super 
     SendVisitorsStatusToSuperAdminAction::new()->execute();
 
     Log::shouldHaveReceived('warning')->withArgs(fn ($message) => str_contains($message, 'No super admin'));
+});
+
+test('SCRUM-378: the removal retry waits for the person\'s join, and tries again later if it can\'t', function () {
+    Config::set('video.join_lock_wait_seconds', 0);
+    $removed = [];
+    app()->instance(VideoProviderInterface::class, vrfProvider($removed));
+    $call = vrfGroupCall();
+    $call['participant']->update(['left_at' => now()]);
+    $joining = Cache::store(config('cache.scheduler_store'))->lock("video-join:{$call['session']->id}:{$call['member']->id}", 30);
+    $joining->get();
+
+    expect(fn () => (new RetryVideoParticipantRemovalJob($call['videoSession']->id, $call['member']->id))->handle(app(VideoProviderInterface::class)))
+        ->toThrow(LockTimeoutException::class);
+    expect($removed)->toBe([]);
+
+    $joining->release();
+    (new RetryVideoParticipantRemovalJob($call['videoSession']->id, $call['member']->id))->handle(app(VideoProviderInterface::class));
+    expect($removed)->toBe([$call['member']->id]);
 });

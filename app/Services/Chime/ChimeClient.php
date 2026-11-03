@@ -18,6 +18,10 @@ class ChimeClient extends Service
         $this->client = new ChimeSDKMeetingsClient([
             'version' => 'latest',
             'region' => config('services.chime.region'),
+            // Security review: the SDK's own default has no timeout, so a stalled call could outlive the
+            // per-person join lock (App\Support\VideoJoinLock) and hold a Session row lock. Matches
+            // DailyClient's 5s connect / 10s request.
+            'http' => ['connect_timeout' => 5, 'timeout' => 10],
             'credentials' => [
                 'key' => config('services.chime.key'),
                 'secret' => config('services.chime.secret'),

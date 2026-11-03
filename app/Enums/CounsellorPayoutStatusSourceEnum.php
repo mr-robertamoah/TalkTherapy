@@ -13,4 +13,8 @@ enum CounsellorPayoutStatusSourceEnum: string
 
     case initiate = 'INITIATE';
     case webhook = 'WEBHOOK';
+
+    // SCRUM-378: recorded from a retry's GET /transfer/verify lookup after Paystack refused the
+    // retried transfer (ProcessCounsellorPayoutJob) -- not from the transfer call itself.
+    case retryLookup = 'RETRY_LOOKUP';
 }

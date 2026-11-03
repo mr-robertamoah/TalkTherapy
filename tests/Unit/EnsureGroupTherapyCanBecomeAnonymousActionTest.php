@@ -5,6 +5,7 @@ use App\DTOs\GroupTherapyDTO;
 use App\Exceptions\TherapyException;
 use App\Models\GroupTherapy;
 use App\Models\Session;
+use App\Models\Therapy;
 use App\Models\User;
 use App\Models\VideoSession;
 use App\Models\VideoSessionParticipant;
@@ -106,3 +107,25 @@ test('an open call that everyone has left does not block making the group anonym
 
     EnsureGroupTherapyCanBecomeAnonymousAction::new()->execute($data['groupTherapy'], true);
 })->throwsNoExceptions();
+
+test('security review: a 1:1 therapy can\'t be made anonymous during a live video call either', function () {
+    $therapy = Therapy::factory()->create(['anonymous' => false, 'addedby_type' => User::class, 'addedby_id' => User::factory()->adult()->create()->id]);
+    $session = Session::factory()->create(['for_id' => $therapy->id, 'for_type' => Therapy::class]);
+    liveCallForAnonymityGuard($session);
+
+    expect(fn () => EnsureGroupTherapyCanBecomeAnonymousAction::new()->execute($therapy, true))
+        ->toThrow(TherapyException::class, 'End the current video call before making this therapy anonymous.');
+});
+
+test('security review: the therapy update applies the guard, under the session lock', function () {
+    $client = User::factory()->adult()->create();
+    $therapy = Therapy::factory()->create(['anonymous' => false, 'addedby_type' => User::class, 'addedby_id' => $client->id]);
+    $session = Session::factory()->create(['for_id' => $therapy->id, 'for_type' => Therapy::class]);
+    liveCallForAnonymityGuard($session);
+
+    $response = $this->actingAs($client)->patchJson(route('api.therapies.update', ['therapyId' => $therapy->id]), ['anonymous' => true]);
+
+    $response->assertSessionHasErrors(['alert' => 'End the current video call before making this therapy anonymous.']);
+
+    expect($therapy->fresh()->anonymous)->toBeFalsy();
+});

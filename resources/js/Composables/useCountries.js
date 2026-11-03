@@ -17,11 +17,20 @@ function countriesApi() {
     return /^https?:\/\//i.test(base) ? base.replace(/\/+$/, '') : null
 }
 
+// SCRUM-378: stored as JSON (comma-joined broke names like "Korea, Republic of"). A list saved in
+// the old comma format is still read once, then replaced on the next successful fetch.
 function cached() {
     try {
         const stored = localStorage.getItem(STORAGE_KEY)
+        if (!stored) return null
 
-        return stored ? stored.split(',').filter(Boolean) : null
+        if (stored.startsWith('[')) {
+            const names = JSON.parse(stored)
+
+            return Array.isArray(names) ? names.filter(name => typeof name === 'string' && name) : null
+        }
+
+        return stored.split(',').filter(Boolean)
     } catch {
         return null
     }
@@ -39,7 +48,7 @@ function fetchCountries() {
             if (!names.length) return null
 
             try {
-                localStorage.setItem(STORAGE_KEY, names.toString())
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(names))
             } catch {
                 // storage full or blocked: the list still works for this page
             }

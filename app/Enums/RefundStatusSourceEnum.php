@@ -18,4 +18,8 @@ enum RefundStatusSourceEnum: string
     // CounsellorPayoutStatusSourceEnum::initiate's own identical distinction.
     case initiate = 'INITIATE';
     case webhook = 'WEBHOOK';
+
+    // SCRUM-378: recorded from a retry's GET /refund/{id} lookup after Paystack refused the retried
+    // refund (ProcessRefundJob) -- not from the refund call itself.
+    case retryLookup = 'RETRY_LOOKUP';
 }

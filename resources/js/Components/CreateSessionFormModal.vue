@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onBeforeMount, ref, unref, watch, watchEffect } from 'vue';
-import { defaultFormTime, toLocalInputValue } from '@/Composables/countdown'
+import { addMinutesToInputValue, defaultFormTime, isMinutesBefore, toLocalInputValue } from '@/Composables/countdown'
 import TextInput from '@/Components/TextInput.vue';
 import InputLabel from '@/Components/InputLabel.vue';
 import InputError from '@/Components/InputError.vue';
@@ -14,7 +14,7 @@ import Alert from "./Alert.vue";
 import PrimaryButton from "./PrimaryButton.vue";
 import Select from "./Select.vue";
 import { useForm } from '@inertiajs/vue3';
-import { addMinutes, differenceInMinutes } from 'date-fns';
+import { differenceInMinutes } from 'date-fns';
 import PreferenceItem from './PreferenceItem.vue';
 
 const { alertData, clearAlertData, setAlertData, setFailedAlertData } = useAlert()
@@ -62,8 +62,8 @@ watch(() => props.show, () => {
 function setDefaultTimes() {
     if (startTime.value && isMinutesBefore({ firstTime: startTime.value, minutes: 30 })) return
 
-    startTime.value = getDefaultTime(30)
-    endTime.value = addMinitesToDate(startTime.value, 40)
+    startTime.value = defaultFormTime(30)
+    endTime.value = addMinutesToInputValue(startTime.value, 40)
 }
 
 watchEffect(() => {
@@ -102,7 +102,7 @@ watch(() => startTime.value, () => {
             secondTime: startTime.value, 
             minutes: 30
         })
-    ) endTime.value = addMinitesToDate(startTime.value, 30)
+    ) endTime.value = addMinutesToInputValue(startTime.value, 30)
 })
 watch(() => endTime.value, () => {
     if (
@@ -111,7 +111,7 @@ watch(() => endTime.value, () => {
             secondTime: startTime.value, 
             minutes: 30
         })
-    ) endTime.value = addMinitesToDate(startTime.value, 30)
+    ) endTime.value = addMinutesToInputValue(startTime.value, 30)
 })
 
 const computedStartTime = computed(() => {
@@ -126,26 +126,6 @@ const computedNow = computed(() => {
 const computedDuration = computed(() => {
     return (endTime.value && startTime.value) ? differenceInMinutes(new Date(endTime.value), new Date(startTime.value)) : ''
 })
-
-function isMinutesBefore({firstTime, secondTime = null, minutes}) {
-    if (!firstTime) return null
-
-    const comparisonDate = addMinutes(secondTime ? new Date(secondTime) : new Date(), minutes)
-
-    return new Date(firstTime) >= comparisonDate
-}
-
-function getDefaultTime(minutes) {
-    return defaultFormTime(minutes)
-}
-
-
-function addMinitesToDate(time, minutes) {
-    if (!time) return null
-    const newTime = toLocalInputValue(addMinutes(time, minutes))
-    
-    return newTime
-}
 
 async function createSession() {
     if (!sessionForm.name) {

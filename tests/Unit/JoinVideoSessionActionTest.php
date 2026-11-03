@@ -14,6 +14,7 @@ use App\Models\VideoSession;
 use App\Models\VideoSessionParticipant;
 use App\Models\VideoSessionSpeakingGrant;
 use App\Support\VideoParticipantKey;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Log;
@@ -633,4 +634,81 @@ test('the counsellor snapshot ignores a hand left on a stale join row the member
     $state = JoinVideoSessionAction::new()->execute($data['session'], $data['counsellorUser'])['participant'];
 
     expect($state['raisedHandKeys'])->toBe([]);
+});
+
+// --- SCRUM-330: the Chime cap counts people, not join rows ------------------------------------
+
+test('Chime: stale join rows of the same few people never fill the call', function () {
+    Config::set('video.provider', 'chime');
+    $data = onlineInSessionGroupTherapySessionForJoin();
+    app()->instance(VideoProviderInterface::class, fakeVideoProvider());
+    $videoSession = VideoSession::factory()->create(['session_id' => $data['session']->id, 'provider' => 'chime']);
+    // One person who reconnected over and over: more open rows than the cap, but one person.
+    VideoSessionParticipant::factory()->count((int) ConstantsEnum::groupTherapyVideoMaxParticipants->value + 3)->create([
+        'video_session_id' => $videoSession->id,
+        'participant_type' => User::class,
+        'participant_id' => $data['counsellorUser']->id,
+        'left_at' => null,
+    ]);
+
+    JoinVideoSessionAction::new()->execute($data['session'], $data['member']);
+
+    expect($videoSession->activeParticipantFor($data['member']->id))->not->toBeNull();
+});
+
+test('Chime: someone already in a full call can reconnect', function () {
+    Config::set('video.provider', 'chime');
+    $data = onlineInSessionGroupTherapySessionForJoin();
+    app()->instance(VideoProviderInterface::class, fakeVideoProvider());
+    $videoSession = VideoSession::factory()->create(['session_id' => $data['session']->id, 'provider' => 'chime']);
+    VideoSessionParticipant::factory()->count((int) ConstantsEnum::groupTherapyVideoMaxParticipants->value - 1)->create([
+        'video_session_id' => $videoSession->id,
+        'left_at' => null,
+    ]);
+    VideoSessionParticipant::factory()->create([
+        'video_session_id' => $videoSession->id, 'participant_type' => User::class,
+        'participant_id' => $data['member']->id, 'left_at' => null,
+    ]);
+
+    JoinVideoSessionAction::new()->execute($data['session'], $data['member']);
+
+    expect(fn () => JoinVideoSessionAction::new()->execute($data['session'], $data['creator']))
+        ->toThrow(VideoException::class, 'This video call has reached its maximum number of participants.');
+});
+
+// --- SCRUM-334: masking is decided from the group as it is under the join lock -----------------
+
+test('a join reads the group\'s anonymity fresh, not from an already-loaded copy', function () {
+    $data = onlineInSessionGroupTherapySessionForJoin();
+    $fakeProvider = fakeVideoProvider();
+    app()->instance(VideoProviderInterface::class, $fakeProvider);
+    $data['groupTherapy']->update(['anonymous' => false]);
+    $session = $data['session']->fresh()->load('for');
+    expect($session->for->anonymous)->toBeFalsy();
+
+    // The group becomes anonymous after the join's request loaded it.
+    GroupTherapy::query()->whereKey($data['groupTherapy']->id)->update(['anonymous' => true]);
+
+    JoinVideoSessionAction::new()->execute($session, $data['creator']);
+
+    [, , $displayName, , , $canSendVideo] = $fakeProvider->createParticipantCredentialsCalls[0];
+    expect($displayName)->toBe(ConstantsEnum::anonymousUserLabel->value)
+        ->and($canSendVideo)->toBeFalse();
+});
+
+// --- SCRUM-378: a join and a removal retry for the same person never interleave ---------------
+
+test('a join waits for the same person\'s removal retry, and says so if it can\'t', function () {
+    Config::set('video.join_lock_wait_seconds', 0);
+    $data = onlineInSessionGroupTherapySessionForJoin();
+    app()->instance(VideoProviderInterface::class, fakeVideoProvider());
+    $held = Cache::store(config('cache.scheduler_store'))->lock("video-join:{$data['session']->id}:{$data['member']->id}", 30);
+    $held->get();
+
+    expect(fn () => JoinVideoSessionAction::new()->execute($data['session'], $data['member']))
+        ->toThrow(VideoException::class, 'Still joining you to the video call.');
+
+    $held->release();
+    JoinVideoSessionAction::new()->execute($data['session'], $data['member']);
+    expect(VideoSessionParticipant::query()->where('participant_id', $data['member']->id)->whereNull('left_at')->count())->toBe(1);
 });

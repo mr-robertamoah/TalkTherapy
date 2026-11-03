@@ -8,7 +8,7 @@ use App\Enums\TransactionStatusSourceEnum;
 use App\Models\Session;
 use App\Models\Therapy;
 use App\Models\Transaction;
-use Illuminate\Support\Facades\Cache;
+use App\Support\SchedulerOnce;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
@@ -74,8 +74,7 @@ class ReconcileStalePendingOrganizationChargesAction extends Action
     // deploy's cache:clear leaves alone.
     private function alertIfOld(Transaction $transaction, $alertBefore): void
     {
-        $firstToday = fn () => Cache::store(config('cache.scheduler_store'))
-            ->add("stale-org-charge-alert:{$transaction->id}:".now()->toDateString(), true, now()->addDay());
+        $firstToday = fn () => SchedulerOnce::key("stale-org-charge-alert:{$transaction->id}:".now()->toDateString(), now()->addDay());
 
         if ($transaction->created_at->lte($alertBefore) && $firstToday()) {
             Log::warning('An organization charge is still unresolved after the alert period; follow up by hand.', [

@@ -14,11 +14,10 @@ echo "Database should be ready now"
 # SCRUM-373: no migrating or seeding here -- the php container does it (docker/php/entrypoint.sh).
 # Three containers doing it at once logged duplicate-key errors on every recreate.
 
-# Create log directory. SCRUM-376: storage permissions from the shared script (Reverb runs as
-# www-data, see docker/reverb/supervisord.conf), not `chmod -R 777`, which made private uploads
-# world-writable.
+# Create log directory. Storage permissions are set by the php container
+# (docker/php/storage-permissions.sh, SCRUM-376/378), which this one depends on; Reverb runs as
+# www-data (docker/reverb/supervisord.conf), which owns storage there.
 mkdir -p /var/log
-bash /var/www/html/docker/php/storage-permissions.sh
 
 # Start supervisor (which will start Reverb)
 echo "Starting Laravel Reverb via Supervisor..."

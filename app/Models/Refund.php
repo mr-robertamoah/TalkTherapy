@@ -11,7 +11,7 @@ class Refund extends Model
     use HasFactory;
 
     protected $fillable = [
-        'transaction_id', 'request_id', 'requested_by_id', 'reference', 'amount', 'currency', 'reason', 'status',
+        'transaction_id', 'request_id', 'requested_by_id', 'reference', 'paystack_refund_id', 'amount', 'currency', 'reason', 'status',
     ];
 
     protected $casts = [

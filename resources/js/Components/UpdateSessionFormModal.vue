@@ -1,6 +1,6 @@
 <script setup>
 import { computed, ref, unref, watch, watchEffect } from 'vue';
-import { toLocalInputValue } from '@/Composables/countdown'
+import { addMinutesToInputValue, isMinutesBefore, toLocalInputValue } from '@/Composables/countdown'
 import TextInput from '@/Components/TextInput.vue';
 import InputLabel from '@/Components/InputLabel.vue';
 import InputError from '@/Components/InputError.vue';
@@ -14,7 +14,6 @@ import Alert from "./Alert.vue";
 import PrimaryButton from "./PrimaryButton.vue";
 import TopicSection from "./TopicSection.vue";
 import Select from "./Select.vue";
-import { addMinutes } from 'date-fns';
 import useErrorHandler from '@/Composables/useErrorHandler';
 import PreferenceItem from './PreferenceItem.vue';
 
@@ -118,7 +117,7 @@ watch(() => startTime.value, () => {
             secondTime: startTime.value, 
             minutes: 30
         })
-    ) endTime.value = addMinitesToDate(startTime.value, 30)
+    ) endTime.value = addMinutesToInputValue(startTime.value, 30)
 })
 watch(() => endTime.value, () => {
     if (
@@ -127,7 +126,7 @@ watch(() => endTime.value, () => {
             secondTime: startTime.value, 
             minutes: 30
         })
-    ) endTime.value = addMinitesToDate(startTime.value, 30)
+    ) endTime.value = addMinutesToInputValue(startTime.value, 30)
 })
 
 const computedStartTime = computed(() => {
@@ -139,22 +138,6 @@ const computedEndTime = computed(() => {
 const computedNow = computed(() => {
     return toLocalInputValue(new Date())
 })
-
-function isMinutesBefore({firstTime, secondTime = null, minutes}) {
-    if (!firstTime) return null
-
-    const comparisonDate = addMinutes(secondTime ? new Date(secondTime) : new Date(), minutes)
-
-    return new Date(firstTime) >= comparisonDate
-}
-
-
-function addMinitesToDate(time, minutes) {
-    if (!time) return null
-    const newTime = toLocalInputValue(addMinutes(time, minutes))
-    
-    return newTime
-}
 
 async function updateSession() {
     if (!sessionData.value.name) {

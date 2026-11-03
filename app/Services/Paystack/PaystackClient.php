@@ -106,6 +106,18 @@ class PaystackClient extends Service
             ->json();
     }
 
+    // SCRUM-378: Paystack's Fetch Refund (GET /refund/{id}, operationId refund_fetch in its published
+    // OpenAPI spec), keyed by Paystack's OWN refund id -- `data.id` of refundTransaction()'s response,
+    // stored on refunds.paystack_refund_id. Used by ProcessRefundJob when a retry is refused (4xx).
+    // Response data carries status, amount, currency and transaction_reference.
+    public function fetchRefund(int|string $id): array
+    {
+        return $this->request()
+            ->get('/refund/'.rawurlencode((string) $id))
+            ->throw()
+            ->json();
+    }
+
     private function request(): PendingRequest
     {
         // SCRUM-272: short timeouts, so an unreachable Paystack fails within seconds with the

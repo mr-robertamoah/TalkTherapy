@@ -24,10 +24,31 @@ class DailyVideoProvider implements VideoProviderInterface
         $room = $this->client->createRoom([
             'name' => $name,
             'privacy' => 'private',
+            // SCRUM-334: set explicitly rather than inherited from the Daily domain's defaults, so a
+            // dashboard change can't quietly widen what a therapy call allows. Each is a documented
+            // room property (https://docs.daily.co/reference/rest-api/rooms/create-room).
+            //
+            // Recording deliberately has NO property here: Daily's `enable_recording` only accepts
+            // the recording types to turn ON ("cloud", "cloud-audio-only", "local", "raw-tracks"),
+            // has no documented "off" value, isn't a domain-level setting, and recording must be
+            // enabled on the room or token before startRecording() works
+            // (https://docs.daily.co/docs/daily-js/features/recording). Leaving it unset on both the
+            // room and every token (createParticipantCredentials()) IS "off" -- and must stay so
+            // until a recording-consent flow exists (SCRUM-29). DailyVideoProviderTest pins that.
             'properties' => [
                 'exp' => $this->expiresAt($videoSession)->getTimestamp(),
+                // Security review: `exp` alone only stops NEW joins; this also ends the call for anyone
+                // still in it when the room expires (Daily room property `eject_at_room_exp`).
+                'eject_at_room_exp' => true,
                 'enable_chat' => false, // this app's own text chat already covers this
                 'max_participants' => $this->maxParticipantsFor($videoSession),
+                // The call UI offers no screen sharing, and a shared screen in a therapy call could
+                // expose anything on it. Can't be changed once a session starts.
+                'enable_screenshare' => false,
+                // No lobby: a private room's "knock" lets someone WITHOUT one of our tokens ask a
+                // meeting owner (a 1:1 counsellor) to admit them, bypassing every check
+                // JoinVideoSessionAction makes. Our tokens are the only way in.
+                'enable_knocking' => false,
             ],
         ]);
 
@@ -42,12 +63,25 @@ class DailyVideoProvider implements VideoProviderInterface
         $properties = [
             'room_name' => $videoSession->provider_room_id,
             // Deliberately $displayName, NOT $user->name -- see VideoProviderInterface's own
-            // comment. This is the label every OTHER participant in the room sees.
+            // comment. Only the INITIAL label: Daily lets a participant change their own
+            // (setUserName()) and no token/room property prevents it, so our call UI never displays
+            // it -- it asks our server by `user_id` instead (SCRUM-334,
+            // GetVideoParticipantDisplayNameAction). Still masked, since Daily keeps it in its logs.
             'user_name' => $displayName,
             // SCRUM-357: every client in the room can read this -- never the real user id.
+            // SCRUM-334: and none can change it -- Daily sets user_id only from the meeting token
+            // (https://docs.daily.co/reference/daily-js/types/daily-participant), which is why the
+            // call UI keys its server-resolved names on it.
             'user_id' => $videoSession->participantKeyFor($user->id),
             'is_owner' => $isOwner,
             'exp' => $this->expiresAt($videoSession)->getTimestamp(),
+            // Security review: and removes this participant when their token expires, rather than
+            // letting an already-joined browser stay on past it (`eject_at_token_exp`).
+            'eject_at_token_exp' => true,
+            // SCRUM-334: mirrors the room's own enable_screenshare (createRoom()) per participant, so
+            // the token's own default (true) can never be what decides it
+            // (https://docs.daily.co/reference/rest-api/meeting-tokens/create-meeting-token).
+            'enable_screenshare' => false,
         ];
 
         // TT-3.2f-d/SCRUM-321: server-enforced by Daily itself at the token level -- this
