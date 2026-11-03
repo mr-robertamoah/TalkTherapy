@@ -3,10 +3,10 @@
 namespace App\Actions\Video;
 
 use App\Actions\Action;
-use App\Models\GroupTherapy;
 use App\Enums\ConstantsEnum;
 use App\Exceptions\AppException;
 use App\Exceptions\VideoException;
+use App\Models\GroupTherapy;
 use App\Models\Session;
 use App\Models\User;
 use App\Models\VideoSession;

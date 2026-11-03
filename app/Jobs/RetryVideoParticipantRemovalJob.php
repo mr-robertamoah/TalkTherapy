@@ -59,9 +59,9 @@ class RetryVideoParticipantRemovalJob implements ShouldQueue
         Log::error($exception instanceof LockTimeoutException
             ? 'A participant removal retry kept waiting on that person\'s join and gave up; they may still be in the call.'
             : 'The video provider never confirmed a participant removal; they may still be in the call.', [
-            'video_session_id' => $this->videoSessionId,
-            'removed_user_id' => $this->userId,
-            'exception' => $exception->getMessage(),
-        ]);
+                'video_session_id' => $this->videoSessionId,
+                'removed_user_id' => $this->userId,
+                'exception' => $exception->getMessage(),
+            ]);
     }
 }
