@@ -61,6 +61,10 @@ watch(() => data.value.file, () => {
 })
 watch(() => selectedAuthority.value, () => {
     data.value.licensingAuthorityId = selectedAuthority.value?.id
+    // SCRUM-301: what this authority's licence consists of (FILE, NUMBER or BOTH), so the form can
+    // check for exactly the parts it asks for.
+    data.value.licenseType = selectedAuthority.value?.licenseType ?? null
+    emits('onData', data.value)
 
     if (!selectedAuthority.value) {
         data.value.number = ''
@@ -186,7 +190,7 @@ async function getOtherLicensingAuthorities() {
                         <div>
 
                             <div class="w-full mt-4 mx-auto max-w-[400px]">
-                                <input @change="changeFile" accept="image/*,application/pdf,application/docx" type="file" name="national_id" id="national_id" class="hidden" ref="inputFile">
+                                <input @change="changeFile" accept=".jpg,.jpeg,.png,.pdf" type="file" name="national_id" id="national_id" class="hidden" ref="inputFile">
                                 <InputLabel  for="number" value="Licensing Number" />
 
                                 <TextInput

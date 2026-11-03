@@ -2,11 +2,12 @@
 
 namespace Database\Seeders;
 
+use App\Enums\AdministratorTypeEnum;
 // use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 
-use App\Enums\AdministratorTypeEnum;
 use App\Enums\CounsellorEarningStatusEnum;
 use App\Enums\CounsellorPayoutStatusEnum;
+use App\Enums\DiscussionStatusEnum;
 use App\Enums\GenderEnum;
 use App\Enums\LicensingTypeEnum;
 use App\Enums\OrganizationAdminRoleEnum;
@@ -101,6 +102,7 @@ class DatabaseSeeder extends Seeder
         // from the 6 main demo counsellors above since those are woven into therapies/group
         // therapies/discussions/chat demo data used by many other features.
         $this->createCounsellorDeletionDemoData();
+        $this->createUnverifiedCounsellorDemoData();
 
         // SCRUM-157/158: dedicated PAID therapies (one PER_THERAPY, one PER_SESSION) for testing
         // the payment UI -- the random demo therapies above only *might* land on PAID, and never
@@ -668,6 +670,22 @@ class DatabaseSeeder extends Seeder
         $discussion->counsellors()->attach($secondCounsellor->id);
 
         $this->createDiscussionMessages($discussion, collect([$counsellor, $secondCounsellor]));
+
+        // SCRUM-379: a PENDING discussion its owner (sarah_johnson) can reach and edit through the UI,
+        // on the same Chat Demo therapy -- the random seeded discussions sit on therapies their owner
+        // may not counsel, so none could be updated by hand. Three days out, so the 30-minute start rule
+        // and the "about to start" sweeps never get in the way.
+        $editable = $counsellor->addedDiscussions()->create([
+            'name' => 'Editable Demo Discussion',
+            'description' => 'Seeded PENDING discussion for trying the update-discussion form.',
+            'for_id' => $therapy->id,
+            'for_type' => $therapy::class,
+            'start_time' => now()->addDays(3)->setTime(10, 0),
+            'end_time' => now()->addDays(3)->setTime(10, 40),
+            'status' => DiscussionStatusEnum::pending->value,
+        ]);
+
+        $editable->counsellors()->attach($secondCounsellor->id);
     }
 
     // SCRUM-72: a group therapy with `allow_anyone = false` and a deterministic PENDING
@@ -808,6 +826,35 @@ class DatabaseSeeder extends Seeder
         }
 
         return $contentMap['default'];
+    }
+
+    // SCRUM-301: a counsellor who hasn't been verified yet, with everything the verification form
+    // checks first (an adult with a gender, a counsellor email and phone, the email verified), so its
+    // "request verification" form -- now requiring the licence document -- can be tried. Every other
+    // seeded counsellor is already verified, so none of them shows that form.
+    private function createUnverifiedCounsellorDemoData(): void
+    {
+        $user = User::factory()->create([
+            'firstName' => 'Unverified',
+            'lastName' => 'Counsellor',
+            'email' => 'unverified.counsellor@example.com',
+            'username' => 'unverified_counsellor',
+            'password' => Hash::make('password'),
+            'email_verified_at' => now(),
+            'gender' => GenderEnum::female->value,
+            'dob' => now()->subYears(35)->toDateString(),
+        ]);
+
+        $user->counsellor()->create([
+            'name' => 'Dr. Unverified Counsellor',
+            'about' => 'Seeded counsellor awaiting verification, for trying the verification request (SCRUM-301).',
+            'email' => $user->email,
+            'phone' => fake()->phoneNumber(),
+            'verified_at' => null,
+            'email_verified_at' => now(),
+            'profession_id' => rand(1, 10),
+            'contact_visible' => true,
+        ]);
     }
 
     // SCRUM-134: two dedicated counsellor accounts for testing the account-deletion feature --

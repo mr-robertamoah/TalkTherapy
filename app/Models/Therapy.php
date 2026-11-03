@@ -103,6 +103,21 @@ class Therapy extends Model
         return (bool) $this->anonymous;
     }
 
+    // SCRUM-379: the one masking rule for a 1:1 therapy (TherapyTrait::displayNameOf() and
+    // addedByUserIsMaskedFor() use it). Only the client can be anonymous; the counsellor never is.
+    // A Therapy is only ever created by its client (CreateTherapyAction), so `addedby` is a User.
+    public function isMaskedToOthers(User $subject): bool
+    {
+        return (bool) $this->anonymous && $this->addedby_type === User::class && $this->isUser($subject);
+    }
+
+    // SCRUM-332/379: an anonymous 1:1 client keeps their camera -- the counsellor is the only other
+    // person in the call. GroupTherapy::allowsCameraFor() is the rule that withholds it.
+    public function allowsCameraFor(User $user): bool
+    {
+        return true;
+    }
+
     public function scopeWhereCounsellor($query, Counsellor $counsellor)
     {
         return $query->where(function ($query) use ($counsellor) {

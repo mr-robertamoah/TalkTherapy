@@ -18,6 +18,8 @@ use App\Http\Resources\TherapyTopicResource;
 use App\Models\Counsellor;
 use App\Models\Therapy;
 use App\Services\TherapyService;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Redirect;
 use Inertia\Inertia;
@@ -127,7 +129,7 @@ class TherapyController extends Controller
     public function updateTherapy(UpdateTherapyRequest $request)
     {
         try {
-            TherapyService::new()->updateTherapy(
+            $therapy = TherapyService::new()->updateTherapy(
                 CreateTherapyDTO::new()->fromArray([
                     'user' => $request->user(),
                     'therapy' => Therapy::find($request->route('therapyId')),
@@ -148,12 +150,9 @@ class TherapyController extends Controller
                 ])
             );
 
-            return Redirect::back();
+            return $this->returnSuccess($request, Redirect::back(), ['therapy' => new TherapyMiniResource($therapy)]);
         } catch (Throwable $th) {
-            $status = $this->statusFor($th);
-            $message = $this->messageFor($th, $status);
-
-            return Redirect::back()->withErrors(['alert' => $message]);
+            return $this->returnFailure($request, $th);
         }
     }
 
@@ -174,12 +173,9 @@ class TherapyController extends Controller
                 ])
             );
 
-            return Redirect::back();
+            return $this->returnSuccess($request, Redirect::back());
         } catch (Throwable $th) {
-            $status = $this->statusFor($th);
-            $message = $this->messageFor($th, $status);
-
-            return Redirect::back()->withErrors(['alert' => $message]);
+            return $this->returnFailure($request, $th);
         }
     }
 
@@ -193,12 +189,9 @@ class TherapyController extends Controller
                 ])
             );
 
-            return Redirect::route('home');
+            return $this->returnSuccess($request, Redirect::route('home'));
         } catch (Throwable $th) {
-            $status = $this->statusFor($th);
-            $message = $this->messageFor($th, $status);
-
-            return Redirect::back()->withErrors(['alert' => $message]);
+            return $this->returnFailure($request, $th);
         }
     }
 
@@ -212,12 +205,9 @@ class TherapyController extends Controller
                 ])
             );
 
-            return Redirect::back();
+            return $this->returnSuccess($request, Redirect::back());
         } catch (Throwable $th) {
-            $status = $this->statusFor($th);
-            $message = $this->messageFor($th, $status);
-
-            return Redirect::back()->withErrors(['alert' => $message]);
+            return $this->returnFailure($request, $th);
         }
     }
 
@@ -317,6 +307,19 @@ class TherapyController extends Controller
 
             return response()->json(['message' => $message], $status);
         }
+    }
+
+    // SCRUM-379: the update/strict-gate/end/delete endpoints are reached both by Inertia forms (web
+    // routes -- they expect the redirect, and read a failure from errors.alert) and by JSON callers
+    // (the api.therapies.* routes) -- which used to get that same redirect. JSON for a script;
+    // otherwise the redirect each endpoint has always returned. Failures go through returnFailure().
+    private function returnSuccess(Request $request, RedirectResponse $redirect, array $data = []): JsonResponse|RedirectResponse
+    {
+        if ($request->wantsJsonResponse()) {
+            return response()->json(['status' => true, ...$data]);
+        }
+
+        return $redirect;
     }
 
     public function show()

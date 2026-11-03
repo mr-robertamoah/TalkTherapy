@@ -12,30 +12,32 @@ class CreateHowToAction extends Action
 {
     public function execute(CreateHowToDTO $createHowToDTO)
     {
-        DB::beginTransaction();
-        
-        $howTo = $createHowToDTO->user->addedHowTos()->create([
-            'name' => $createHowToDTO->name,
-            'description' => $createHowToDTO->description,
-            'page' => $createHowToDTO->page,
-        ]);
+        // SCRUM-379 (found by a review test): a closure, so ANY exception rolls back. The old manual
+        // beginTransaction()/commit() left the transaction open when a step failed (e.g. a step id
+        // from another how-to), so the rest of that request ran inside a transaction never committed.
+        return DB::transaction(function () use ($createHowToDTO) {
 
-        foreach ($createHowToDTO->howToSteps as $howToStepData) {
-            CreateHowToStepAction::new()->execute(
-                CreateHowToStepDTO::new()->fromArray([
-                    'howTo' => $howTo,
-                    'user' => $createHowToDTO->user,
-                    'name' => getArrayKey('name', $howToStepData),
-                    'description' => getArrayKey('description', $howToStepData),
-                    'position' => getArrayKey('position', $howToStepData),
-                    'file' => getArrayKey('file', $howToStepData),
-                    'elementId' => getArrayKey('elementId', $howToStepData),
-                ])
-            );
-        }
+            $howTo = $createHowToDTO->user->addedHowTos()->create([
+                'name' => $createHowToDTO->name,
+                'description' => $createHowToDTO->description,
+                'page' => $createHowToDTO->page,
+            ]);
 
-        DB::commit();
+            foreach ($createHowToDTO->howToSteps as $howToStepData) {
+                CreateHowToStepAction::new()->execute(
+                    CreateHowToStepDTO::new()->fromArray([
+                        'howTo' => $howTo,
+                        'user' => $createHowToDTO->user,
+                        'name' => getArrayKey('name', $howToStepData),
+                        'description' => getArrayKey('description', $howToStepData),
+                        'position' => getArrayKey('position', $howToStepData),
+                        'file' => getArrayKey('file', $howToStepData),
+                        'elementId' => getArrayKey('elementId', $howToStepData),
+                    ])
+                );
+            }
 
-        return $howTo->refresh();
+            return $howTo->refresh();
+        });
     }
 }

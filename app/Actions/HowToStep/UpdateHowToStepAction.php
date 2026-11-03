@@ -6,6 +6,7 @@ use App\Actions\Action;
 use App\DTOs\CreateHowToStepDTO;
 use App\DTOs\FileUploadDTO;
 use App\Services\FileService;
+use Illuminate\Support\Facades\DB;
 
 class UpdateHowToStepAction extends Action
 {
@@ -17,23 +18,26 @@ class UpdateHowToStepAction extends Action
 
         $createHowToStepDTO->howToStep->update($this->data);
 
-        if (!$createHowToStepDTO->file)
+        if (! $createHowToStepDTO->file) {
             return $createHowToStepDTO->howToStep->refresh();
+        }
 
         $fileService = FileService::new();
-        $fileService->deleteFile($createHowToStepDTO->howToStep->file);
+        $oldFile = $createHowToStepDTO->howToStep->file;
         $fileData = $fileService->uploadFile(
             FileUploadDTO::new()->fromArray([
                 'file' => $createHowToStepDTO->file,
-                'path' => 'others'
+                'path' => 'others',
             ])
         );
         $file = $fileService->saveFile($createHowToStepDTO->user, $fileData);
 
-        $createHowToStepDTO->howToStep->file_id = $file->id;
-        $createHowToStepDTO->howToStep->save();
+        // SCRUM-194: the pivot replaces the old file_id column; the old file goes only once the new
+        // one is in place.
+        $createHowToStepDTO->howToStep->stepFile()->sync([$file->id]);
+        DB::afterCommit(fn () => $fileService->deleteFile($oldFile));
 
-        return $createHowToStepDTO->howToStep->refresh();
+        return $createHowToStepDTO->howToStep->refresh()->load('stepFile');
     }
 
     private function setData(CreateHowToStepDTO $createHowToStepDTO)
@@ -43,19 +47,20 @@ class UpdateHowToStepAction extends Action
         $this->setValueOnData('position', $createHowToStepDTO);
         $this->setValueOnData('elementId', $createHowToStepDTO, arrayKey: 'element_id');
     }
-    
+
     private function setValueOnData(
-        String $dataKey,
+        string $dataKey,
         CreateHowToStepDTO $createHowToStepDTO,
-        String|null $objectKey = null,
-        String|null $arrayKey = null,
+        ?string $objectKey = null,
+        ?string $arrayKey = null,
     ) {
         $objectKey = $objectKey ?: $dataKey;
 
         if (
-            !is_null($createHowToStepDTO->$objectKey) &&
+            ! is_null($createHowToStepDTO->$objectKey) &&
             $createHowToStepDTO->$objectKey !== $createHowToStepDTO->howToStep->$dataKey
-        )        
+        ) {
             $this->data[$arrayKey ?: $dataKey] = $createHowToStepDTO->$objectKey;
+        }
     }
 }

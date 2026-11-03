@@ -125,7 +125,7 @@ test('security review: the therapy update applies the guard, under the session l
 
     $response = $this->actingAs($client)->patchJson(route('api.therapies.update', ['therapyId' => $therapy->id]), ['anonymous' => true]);
 
-    $response->assertSessionHasErrors(['alert' => 'End the current video call before making this therapy anonymous.']);
+    $response->assertStatus(422)->assertJson(['message' => 'End the current video call before making this therapy anonymous.']);
 
     expect($therapy->fresh()->anonymous)->toBeFalsy();
 });

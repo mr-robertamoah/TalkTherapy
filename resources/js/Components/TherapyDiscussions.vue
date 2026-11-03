@@ -20,7 +20,7 @@
             :discussion="item"
             :show-details="true"
             :show-actions="$page.props.auth.user?.id == item.addedby?.userId"
-            @onUdpate="(data) => $emit('on-update', data, idx)"
+            @onUpdate="(data) => $emit('on-update', data, idx)"
             @onDelete="(data) => $emit('on-delete', data, idx)"
             class="w-[60%] shrink-0 bg-slate-200 rounded"
           />

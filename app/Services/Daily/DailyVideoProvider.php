@@ -49,6 +49,11 @@ class DailyVideoProvider implements VideoProviderInterface
                 // meeting owner (a 1:1 counsellor) to admit them, bypassing every check
                 // JoinVideoSessionAction makes. Our tokens are the only way in.
                 'enable_knocking' => false,
+                // SCRUM-379: no phone calls out of a therapy room. A documented room boolean (default
+                // false), set explicitly like the rest. SIP and phone dial-in have no "off" value: a
+                // room only gets them when a `sip`/dial-in config is set, and none is, so none exists.
+                // https://docs.daily.co/reference/rest-api/rooms/create-room
+                'enable_dialout' => false,
             ],
         ]);
 
@@ -90,10 +95,24 @@ class DailyVideoProvider implements VideoProviderInterface
         // meeting-token `permissions.canSend` accepts `false` for "none".
         // SCRUM-332: also audio-only ($canSendVideo false) -- same canSendValueFor() shape
         // updateParticipantCapabilities() uses, so the two can't drift. $receiveOnly wins.
-        $canSend = $this->canSendValueFor(! $receiveOnly, ! $receiveOnly && $canSendVideo);
-
-        if ($canSend !== true) {
-            $properties['permissions'] = ['canSend' => $canSend];
+        //
+        // SCRUM-379: every non-owner token now names exactly what it may send (never `true`, which
+        // also allows screen and custom tracks) and grants no admin rights (`canAdmin: false`: no
+        // changing others' permissions, no live streaming, no transcription). A token's permissions
+        // outrank the room's and the domain's, so neither can widen them.
+        // https://docs.daily.co/reference/rest-api/meeting-tokens/create-meeting-token,
+        // https://docs.daily.co/reference/daily-js/types/daily-participant-permissions
+        //
+        // Not on an owner's token (the 1:1 counsellor): Daily documents `permissions` as applying to
+        // non-owners only, and an owner can still start a live stream or transcription on a paid
+        // plan. The room's enable_screenshare (and this token's) is what keeps an owner's screen out;
+        // recording stays off because nothing enables it. Making the 1:1 counsellor a non-owner, as
+        // SCRUM-331 did for groups, is a product decision left open.
+        if (! $isOwner) {
+            $properties['permissions'] = [
+                'canSend' => $this->canSendValueFor(! $receiveOnly, ! $receiveOnly && $canSendVideo),
+                'canAdmin' => false,
+            ];
         }
 
         $token = $this->client->createMeetingToken($properties);
@@ -129,21 +148,18 @@ class DailyVideoProvider implements VideoProviderInterface
         }
 
         $this->client->updateRoomPermissions($videoSession->provider_room_id, [
-            $videoSession->participantKeyFor($user->id) => ['canSend' => $this->canSendValueFor($canSendAudio, $canSendVideo)],
+            // SCRUM-379 (security review): canAdmin restated, so a live update can never leave admin
+            // rights to Daily's merge behaviour. Only ever called for group members (non-owners).
+            $videoSession->participantKeyFor($user->id) => ['canSend' => $this->canSendValueFor($canSendAudio, $canSendVideo), 'canAdmin' => false],
         ]);
     }
 
     // Daily's own `canSend` accepts `true` (all), `false` (none), or an explicit array of the
-    // specific media types allowed -- collapses to the simplest form Daily itself documents for
-    // each case, rather than always sending an array (e.g. `['audio', 'video']` instead of `true`
-    // for the both-allowed case would work identically, but doesn't match the shape Daily's own
-    // examples use for "everything").
+    // specific media types allowed. SCRUM-379: never `true` -- that also allows screen-share and
+    // custom tracks (`screenVideo`, `screenAudio`, `customVideo`, `customAudio`), which this app
+    // never offers, so "everything we allow" is the explicit ['audio', 'video'].
     private function canSendValueFor(bool $canSendAudio, bool $canSendVideo): array|bool
     {
-        if ($canSendAudio && $canSendVideo) {
-            return true;
-        }
-
         if (! $canSendAudio && ! $canSendVideo) {
             return false;
         }

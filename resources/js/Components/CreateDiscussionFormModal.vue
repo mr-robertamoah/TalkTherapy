@@ -1,6 +1,6 @@
 <script setup>
-import { computed, onBeforeMount, ref, unref, watch, watchEffect } from 'vue';
-import { addMinutesToInputValue, defaultFormTime, isMinutesBefore, toLocalInputValue } from '@/Composables/countdown'
+import { ref, watch, watchEffect } from 'vue';
+import useScheduleTimes from '@/Composables/useScheduleTimes'
 import TextInput from '@/Components/TextInput.vue';
 import InputLabel from '@/Components/InputLabel.vue';
 import InputError from '@/Components/InputError.vue';
@@ -12,7 +12,6 @@ import useLocation from "@/Composables/useLocation";
 import Alert from "./Alert.vue";
 import PrimaryButton from "./PrimaryButton.vue";
 import Select from "./Select.vue";
-import { differenceInMinutes } from 'date-fns';
 import useErrorHandler from '@/Composables/useErrorHandler';
 import SessionBadge from './SessionBadge.vue';
 import useAuth from '@/Composables/useAuth';
@@ -45,8 +44,8 @@ const loading = ref(false)
 const sessionSearch = ref('')
 const sessions = ref({data: [], page: 1})
 const getting = ref({show: '', type: ''})
-const startTime = ref('')
-const endTime = ref('')
+// SCRUM-379: shared start/end handling (resources/js/Composables/useScheduleTimes.js).
+const { startTime, endTime, clearTimes, timesError, computedStartTime, computedEndTime, computedNow, computedDuration } = useScheduleTimes({ withDefaults: true, isOpen: () => props.show })
 const discussionData = ref({
     'name': '',
     'description': '',
@@ -62,21 +61,6 @@ const discussionErrors = ref({
     'sessionId': '',
 })
 
-// SCRUM-377 (browser QA): the defaults are set each time the form opens, not once at mount. The modal
-// stays mounted on the therapy page, so a default set at page load had gone stale (under 30 minutes
-// away) a few minutes later. A start the user picked that is still far enough ahead is kept.
-onBeforeMount(() => setDefaultTimes())
-watch(() => props.show, () => {
-    if (props.show) setDefaultTimes()
-})
-
-function setDefaultTimes() {
-    if (startTime.value && isMinutesBefore({ firstTime: startTime.value, minutes: 30 })) return
-
-    startTime.value = defaultFormTime(30)
-    endTime.value = addMinutesToInputValue(startTime.value, 40)
-}
-
 watch(() => sessionSearch.value?.length, () => {
     if (sessionSearch.value?.length)
         debouncedGetSessions()
@@ -85,37 +69,7 @@ watchEffect(() => {
     if (props.loadedSessions?.length)
         sessions.value.data = [...props.loadedSessions]
 })
-watch(() => startTime.value, () => {
-    if (
-        !isMinutesBefore({
-            firstTime: endTime.value, 
-            secondTime: startTime.value, 
-            minutes: 30
-        })
-    ) endTime.value = addMinutesToInputValue(startTime.value, 30)
-})
-watch(() => endTime.value, () => {
-    if (
-        !isMinutesBefore({
-            firstTime: endTime.value, 
-            secondTime: startTime.value, 
-            minutes: 30
-        })
-    ) endTime.value = addMinutesToInputValue(startTime.value, 30)
-})
 
-const computedStartTime = computed(() => {
-    return new Date(startTime.value).toLocaleString()
-})
-const computedEndTime = computed(() => {
-    return new Date(endTime.value).toLocaleString()
-})
-const computedNow = computed(() => {
-    return toLocalInputValue(new Date())
-})
-const computedDuration = computed(() => {
-    return (endTime.value && startTime.value) ? differenceInMinutes(new Date(endTime.value), new Date(startTime.value)) : ''
-})
 
 const debouncedGetSessions = _.debounce(() => {
     sessions.value.page = 1
@@ -131,17 +85,9 @@ async function createDiscussion() {
         return
     }
 
-    if (!isMinutesBefore({ firstTime: startTime.value, minutes: 30 })) {
-        setFailedAlertData({
-            message: 'Start time must be at least 30 minutes away from current time. Please increase the start time.',
-        })
-        return
-    }
-    
-    if (!isMinutesBefore({ firstTime: endTime.value, secondTime: startTime.value, minutes: 30})) {
-        setFailedAlertData({
-            message: 'End time must be at least 30 minutes away from start time. Please increase the end time.',
-        })
+    const timeError = timesError()
+    if (timeError) {
+        setFailedAlertData({ message: timeError })
         return
     }
 
@@ -259,8 +205,7 @@ function clearData() {
     discussionData.value.name = ''
     discussionData.value.description = ''
     discussionData.value.startTime = ''
-    startTime.value = ''
-    endTime.value = ''
+    clearTimes()
     discussionData.value.endTime = ''
     discussionData.value.sessionId = ''
 }

@@ -44,6 +44,9 @@ test('a new room turns screen sharing and knocking off explicitly, keeps chat of
         ->and($room['properties']['enable_screenshare'])->toBeFalse()
         ->and($room['properties']['enable_knocking'])->toBeFalse()
         ->and($room['properties']['enable_chat'])->toBeFalse()
+        // SCRUM-379: no phone calls out of a therapy room; SIP/phone dial-in only exist when configured.
+        ->and($room['properties']['enable_dialout'])->toBeFalse()
+        ->and($room['properties'])->not->toHaveKeys(['sip', 'dialout_config', 'streaming_endpoints'])
         // Daily has no "off" value for these -- recording is off only while nothing turns it on.
         ->and($room['properties'])->not->toHaveKeys(['enable_recording', 'enable_transcription_storage', 'permissions']);
 });

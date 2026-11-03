@@ -192,3 +192,64 @@ test('verification uploads only accept image or PDF identity scans', function ()
         ->assertStatus(422)
         ->assertJsonValidationErrors('nationalIdFile');
 });
+
+// SCRUM-301 ------------------------------------------------------------------------------------
+
+function ldrAuthority(string $licenseType): int
+{
+    return LicensingAuthority::factory()->create([
+        'name' => "Board {$licenseType}",
+        'type' => LicensingAuthorityTypeEnum::values()[0],
+        'license_type' => $licenseType,
+    ])->id;
+}
+
+test('a verification request with no documentation is refused', function () {
+    $counsellor = aCounsellorForLicenseDocuments();
+
+    $this->actingAs($counsellor->user)
+        ->postJson(route('counsellor.verify', ['counsellorId' => $counsellor->id]), [])
+        ->assertStatus(422)
+        ->assertJsonValidationErrors(['licensingAuthorityId', 'nationalIdNumber', 'nationalIdFile'])
+        ->assertJsonPath('errors.licensingAuthorityId.0', 'Select the licensing authority that issued your licence.');
+});
+
+test('the licence must be given in the form its authority issues it', function (string $licenseType, bool $withFile, bool $withNumber, array $missing) {
+    $counsellor = aCounsellorForLicenseDocuments();
+    $payload = ['licensingAuthorityId' => ldrAuthority($licenseType), 'nationalIdNumber' => 'GHA-1'];
+    if ($withFile) {
+        $payload['licenseFile'] = UploadedFile::fake()->create('l.pdf', 10, 'application/pdf');
+    }
+    if ($withNumber) {
+        $payload['licenseNumber'] = 'L-1';
+    }
+
+    $response = $this->actingAs($counsellor->user)
+        ->postJson(route('counsellor.verify', ['counsellorId' => $counsellor->id]), $payload);
+
+    // Past validation the controller always redirects (no JSON), so only a 422 carries errors.
+    $errors = $response->status() === 422
+        ? array_keys(array_intersect_key($response->json('errors') ?? [], array_flip(['licenseFile', 'licenseNumber'])))
+        : [];
+    sort($missing);
+    sort($errors);
+    expect($errors)->toBe($missing);
+})->with([
+    'FILE without the file' => ['FILE', false, true, ['licenseFile']],
+    'FILE with the file, no number' => ['FILE', true, false, []],
+    'NUMBER without the number' => ['NUMBER', false, false, ['licenseNumber']],
+    'NUMBER with the number, no file' => ['NUMBER', false, true, []],
+    'BOTH with only the number' => ['BOTH', false, true, ['licenseFile']],
+    'BOTH with only the file' => ['BOTH', true, false, ['licenseNumber']],
+]);
+
+test('the national ID can be given by number or by scan', function (array $nationalId) {
+    $counsellor = aCounsellorForLicenseDocuments();
+
+    $this->actingAs($counsellor->user)
+        ->postJson(route('counsellor.verify', ['counsellorId' => $counsellor->id]), $nationalId)
+        ->assertJsonMissingValidationErrors(['nationalIdNumber', 'nationalIdFile']);
+})->with([
+    'number' => [['nationalIdNumber' => 'GHA-1']],
+    'scan' => [fn () => ['nationalIdFile' => UploadedFile::fake()->create('id.pdf', 10, 'application/pdf')]],
+]);

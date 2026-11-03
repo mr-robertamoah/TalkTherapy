@@ -2,6 +2,7 @@
 
 namespace App\Traits;
 
+use App\Enums\ConstantsEnum;
 use App\Enums\RequestTypeEnum;
 use App\Enums\SessionStatusEnum;
 use App\Enums\TherapyStatusEnum;
@@ -215,18 +216,35 @@ trait TherapyTrait
         return $isClientOrMember && $this->isAnonymousFor($user);
     }
 
+    // SCRUM-379: how $subject is labelled to everyone ELSE -- the presence channels
+    // (routes/channels.php), the name minted into a video token (JoinVideoSessionAction) and the
+    // name the call UI shows (GetVideoParticipantDisplayNameAction). The rule itself is
+    // isMaskedToOthers(), defined on each model: it used to be copied in all three places.
+    // SCRUM-379 (architect review): each model defines these; declared here so the polymorphic calls
+    // (JoinVideoSessionAction, routes/channels.php, the lookup action) rely on a contract, not luck.
+    abstract public function isMaskedToOthers(User $subject): bool;
+
+    abstract public function allowsCameraFor(User $user): bool;
+
+    // The subject's name as everyone ELSE sees it (not viewer-relative, hence "Of").
+    public function displayNameOf(User $subject): string
+    {
+        return $this->isMaskedToOthers($subject) ? ConstantsEnum::anonymousUserLabel->value : $subject->name;
+    }
+
     // Extracted from four independent copies of this same ternary (TherapyResource,
     // GroupTherapyResource, TherapyMiniResource, GroupTherapyMiniResource) -- SCRUM-212: the
     // counsellor calendar aggregate is the first place needing this outside those four resources,
     // and a fifth inline copy wasn't warranted. Anonymity only ever applies to a User (client)
     // addedby, never a Counsellor one, and never masks the addedby's own view of their own record.
+    // SCRUM-379: the creator's side of isMaskedToOthers(), the same rule every other label uses.
     public function addedByUserIsMaskedFor(?User $viewer): bool
     {
         if ($this->addedby_type !== User::class || ! $this->addedby) {
             return false;
         }
 
-        return $this->isAnonymousFor($this->addedby) && ! $this->addedby->is($viewer);
+        return ! $this->addedby->is($viewer) && $this->isMaskedToOthers($this->addedby);
     }
 
     public function scopeWhereAddedby($query, Model $model)

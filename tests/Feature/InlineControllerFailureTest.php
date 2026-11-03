@@ -1,14 +1,18 @@
 <?php
 
+use App\Enums\LicensingAuthorityTypeEnum;
+use App\Enums\LicensingTypeEnum;
 use App\Enums\LinkStateEnum;
 use App\Enums\LinkTypeEnum;
 use App\Models\Counsellor;
+use App\Models\LicensingAuthority;
 use App\Models\Link;
 use App\Models\Organization;
 use App\Models\Report;
 use App\Models\Suspension;
 use App\Models\Therapy;
 use App\Models\User;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Str;
 
@@ -74,7 +78,7 @@ test('updateCounsellor, verifyCounsellor and deleteCounsellor refuse someone els
         ->assertSessionHasErrors(['alert' => 'You are not authorized to update this counsellor.']);
 
     $this->actingAs($stranger)->from('/profile')
-        ->post(route('counsellor.verify', ['counsellorId' => $counsellor->id]), ['licenseNumber' => 'X1'])
+        ->post(route('counsellor.verify', ['counsellorId' => $counsellor->id]), icfCompleteVerification())
         ->assertRedirect('/profile')
         ->assertSessionHasErrors(['alert' => 'You are not authorized to update this counsellor.']);
 
@@ -209,3 +213,18 @@ test('a failure alert survives a "back" that itself redirects, until a page show
     $this->get(route('login'))->assertRedirect();
     $this->get(route('home'))->assertInertia(fn ($page) => $page->where('failureAlert', 'You are not authorized to manage this organization.'));
 });
+
+// SCRUM-301: a request complete enough to pass validation, so the authorization check is what refuses it.
+function icfCompleteVerification(): array
+{
+    return [
+        'licenseFile' => UploadedFile::fake()->create('licence.pdf', 10, 'application/pdf'),
+        'licenseNumber' => 'X1',
+        'licensingAuthorityId' => LicensingAuthority::factory()->create([
+            'name' => 'Counselling Board',
+            'type' => LicensingAuthorityTypeEnum::values()[0],
+            'license_type' => LicensingTypeEnum::values()[0],
+        ])->id,
+        'nationalIdNumber' => 'GHA-123',
+    ];
+}

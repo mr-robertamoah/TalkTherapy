@@ -73,8 +73,8 @@ test('createParticipantCredentials mints a token scoped to the room and this use
                 && $properties['user_name'] === 'Anonymous Display Name'
                 && $properties['user_id'] === $videoSession->participantKeyFor($user->id)
                 && $properties['is_owner'] === true
-                // TT-3.2f-d/SCRUM-321: a full (non-receive-only) participant gets no `permissions`
-                // key at all -- never present, not merely a permissive value.
+                // SCRUM-379: an owner's token carries no `permissions` -- Daily applies them to
+                // non-owners only, so they'd only suggest a limit that doesn't exist.
                 && ! array_key_exists('permissions', $properties);
         }))
         ->andReturn(['token' => 'jwt-token-value']);
@@ -102,6 +102,45 @@ test('createParticipantCredentials mints a receive-only token with canSend false
 
     (new DailyVideoProvider($client))->createParticipantCredentials($videoSession, $user, 'Some Member', false, true);
 });
+
+// SCRUM-379: a full non-owner participant (a 1:1 client, a group's counsellor or creator) may send
+// exactly audio and video -- never `true`, which also allows screen and custom tracks -- and holds no
+// admin rights (no changing others' permissions, live streaming or transcription).
+test('createParticipantCredentials gives a full non-owner participant audio and video only, and no admin rights', function () {
+    $user = User::factory()->create();
+    $videoSession = VideoSession::factory()->create([
+        'provider_room_id' => 'session-1-1',
+        'provider_meta' => ['url' => 'https://example.daily.co/room'],
+    ]);
+
+    $client = Mockery::mock(DailyClient::class);
+    $client->shouldReceive('createMeetingToken')
+        ->once()
+        ->with(Mockery::on(fn ($properties) => $properties['is_owner'] === false
+            && ($properties['permissions'] ?? null) === ['canSend' => ['audio', 'video'], 'canAdmin' => false]))
+        ->andReturn(['token' => 'jwt-token-value']);
+
+    (new DailyVideoProvider($client))->createParticipantCredentials($videoSession, $user, 'Some Client');
+});
+
+test('createParticipantCredentials gives receive-only and audio-only participants no admin rights either', function (bool $receiveOnly, bool $canSendVideo, array|bool $canSend) {
+    $user = User::factory()->create();
+    $videoSession = VideoSession::factory()->create([
+        'provider_room_id' => 'session-1-1',
+        'provider_meta' => ['url' => 'https://example.daily.co/room'],
+    ]);
+
+    $client = Mockery::mock(DailyClient::class);
+    $client->shouldReceive('createMeetingToken')
+        ->once()
+        ->with(Mockery::on(fn ($properties) => ($properties['permissions'] ?? null) === ['canSend' => $canSend, 'canAdmin' => false]))
+        ->andReturn(['token' => 'jwt-token-value']);
+
+    (new DailyVideoProvider($client))->createParticipantCredentials($videoSession, $user, 'Anonymous', false, $receiveOnly, $canSendVideo);
+})->with([
+    'receive-only' => [true, true, false],
+    'audio-only' => [false, false, ['audio']],
+]);
 
 // SCRUM-332: the creator of an anonymous group may publish audio but never video.
 test('createParticipantCredentials mints an audio-only token when video is not allowed', function () {
@@ -179,14 +218,15 @@ test('removeParticipant is a no-op when the room was never actually created', fu
 // TT-3.2f-e/SCRUM-322: changes an already-connected participant's publish capability live, keyed
 // by the per-session participant key (same identification pattern as removeParticipant() above).
 
-test('updateParticipantCapabilities sends canSend: true when both audio and video are allowed', function () {
+// SCRUM-379: never `canSend: true`, which would also allow screen-share and custom tracks.
+test('updateParticipantCapabilities sends an explicit [audio, video] array when both are allowed', function () {
     $user = User::factory()->create();
     $videoSession = VideoSession::factory()->create(['provider_room_id' => 'session-1-1']);
 
     $client = Mockery::mock(DailyClient::class);
     $client->shouldReceive('updateRoomPermissions')
         ->once()
-        ->with('session-1-1', [$videoSession->participantKeyFor($user->id) => ['canSend' => true]]);
+        ->with('session-1-1', [$videoSession->participantKeyFor($user->id) => ['canSend' => ['audio', 'video'], 'canAdmin' => false]]);
 
     (new DailyVideoProvider($client))->updateParticipantCapabilities($videoSession, $user, true, true);
 });
@@ -198,7 +238,7 @@ test('updateParticipantCapabilities sends canSend: false when both are revoked',
     $client = Mockery::mock(DailyClient::class);
     $client->shouldReceive('updateRoomPermissions')
         ->once()
-        ->with('session-1-1', [$videoSession->participantKeyFor($user->id) => ['canSend' => false]]);
+        ->with('session-1-1', [$videoSession->participantKeyFor($user->id) => ['canSend' => false, 'canAdmin' => false]]);
 
     (new DailyVideoProvider($client))->updateParticipantCapabilities($videoSession, $user, false, false);
 });
@@ -211,7 +251,7 @@ test('updateParticipantCapabilities sends an explicit [audio] array for audio-on
     $client = Mockery::mock(DailyClient::class);
     $client->shouldReceive('updateRoomPermissions')
         ->once()
-        ->with('session-1-1', [$videoSession->participantKeyFor($user->id) => ['canSend' => ['audio']]]);
+        ->with('session-1-1', [$videoSession->participantKeyFor($user->id) => ['canSend' => ['audio'], 'canAdmin' => false]]);
 
     (new DailyVideoProvider($client))->updateParticipantCapabilities($videoSession, $user, true, false);
 });
@@ -223,7 +263,7 @@ test('updateParticipantCapabilities sends an explicit [video] array for video-on
     $client = Mockery::mock(DailyClient::class);
     $client->shouldReceive('updateRoomPermissions')
         ->once()
-        ->with('session-1-1', [$videoSession->participantKeyFor($user->id) => ['canSend' => ['video']]]);
+        ->with('session-1-1', [$videoSession->participantKeyFor($user->id) => ['canSend' => ['video'], 'canAdmin' => false]]);
 
     (new DailyVideoProvider($client))->updateParticipantCapabilities($videoSession, $user, false, true);
 });

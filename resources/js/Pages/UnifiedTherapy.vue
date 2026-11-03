@@ -57,6 +57,10 @@ const props = defineProps({
 
 // Initialize therapy state
 const therapyRef = ref(props.therapy)
+// SCRUM-379: an update redirects back and Inertia hands this page a fresh `therapy` prop, but the ref
+// kept the copy from the first load, so the edit forms reopened with stale values (a group just made
+// anonymous showed "Stay anonymous" unchecked, and saving again could turn it off).
+watch(() => props.therapy, (therapy) => { therapyRef.value = therapy })
 const {
   activeSession,
   activeDiscussion,
@@ -706,11 +710,11 @@ async function deleteTherapy() {
   therapyForm.delete(route(routeName, { [paramName]: computedTherapy.value.id }), {
     onStart: () => setLoader("delete"),
     onFinish: () => endLoader(),
-    onError: (err) => {
-      console.log(err)
-      if (err.response?.data?.message) {
+    // SCRUM-379: Inertia's onError gets the errors object; the refusal reason is its `alert`.
+    onError: (errors) => {
+      if (errors?.alert) {
         setAlertData({
-          message: err.response.data.message,
+          message: errors.alert,
           type: "failed",
           show: true,
         })
@@ -744,11 +748,11 @@ async function endTherapy() {
   therapyForm.post(route(routeName, { [paramName]: computedTherapy.value.id }), {
     onStart: () => setLoader("delete"),
     onFinish: () => endLoader(),
-    onError: (err) => {
-      console.log(err)
-      if (err.response?.data?.message) {
+    // SCRUM-379: Inertia's onError gets the errors object; the refusal reason is its `alert`.
+    onError: (errors) => {
+      if (errors?.alert) {
         setAlertData({
-          message: err.response.data.message,
+          message: errors.alert,
           type: "failed",
           show: true,
         })
