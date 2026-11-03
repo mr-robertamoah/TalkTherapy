@@ -9,8 +9,8 @@ use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
 // TT-7.3b-g/SCRUM-239: sent to every admin of the org that financed $transaction, once
-// ReconcileOrgFinancedRefundAction has reconciled its earning(s) -- mirrors AppService's own
-// notifyCompensationRequestRecipient() precedent of notifying every admin of an Organization
+// ReconcileOrgFinancedRefundAction has reconciled its earning(s) -- mirrors
+// NotifyCompensationRequestRecipientAction's precedent of notifying every admin of an Organization
 // recipient, not a single one.
 class OrganizationFinancedTransactionRefundedNotification extends Notification implements ShouldQueue
 {

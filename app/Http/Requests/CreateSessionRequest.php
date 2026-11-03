@@ -7,7 +7,6 @@ use App\Enums\TherapyPaymentTypeEnum;
 use Carbon\Carbon;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 
 class CreateSessionRequest extends FormRequest
@@ -31,8 +30,6 @@ class CreateSessionRequest extends FormRequest
         $endTime = Carbon::parse($this->get('endTime'))->setTimezone(config('app.timezone'));
         $now = Carbon::now(config('app.timezone'));
 
-        Log::info('create session request', [$startTime, $endTime, $now, now()]);
-
         return [
             // SCRUM-339: a former prohibitedIf() here checked name uniqueness against a client-chosen
             // `requestId` (never sent by the app, so it never applied to real requests) -- usable
@@ -55,11 +52,13 @@ class CreateSessionRequest extends FormRequest
         ];
     }
 
+    // SCRUM-377: Rule::prohibitedIf() applies the plain `prohibited` rule, so the keys are
+    // `*.prohibited`; the old `*.prohibited_if` keys never matched and Laravel's default showed.
     public function messages()
     {
         return [
-            'startTime.prohibited_if' => 'The :attribute has to be at least 30 minutes from now.',
-            'endTime.prohibited_if' => 'The :attribute has to be at least 30 minutes from the start time.',
+            'startTime.prohibited' => 'The :attribute has to be at least 30 minutes from now.',
+            'endTime.prohibited' => 'The :attribute has to be at least 30 minutes from the start time.',
         ];
     }
 }

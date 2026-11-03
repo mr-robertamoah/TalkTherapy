@@ -7,6 +7,7 @@ use App\Contracts\VideoProviderInterface;
 use App\Enums\SpeakingPermissionRevocationReasonEnum;
 use App\Events\HandLoweredEvent;
 use App\Events\VideoParticipantRemovedEvent;
+use App\Jobs\RetryVideoParticipantRemovalJob;
 use App\Models\User;
 use App\Models\VideoSession;
 use App\Models\VideoSessionHandRaise;
@@ -20,9 +21,12 @@ use Throwable;
 // suspension (SCRUM-363) removes people the same way. $actor is the counsellor removing them, or
 // null when the system does (recorded as the revoker of any grant). It checks nothing itself:
 // callers authorize first.
+//
+// SCRUM-315: returns whether the provider confirmed the eject. When it didn't, they're still removed
+// here (left, no grants, no hand), and RetryVideoParticipantRemovalJob asks the provider again.
 class EjectVideoParticipantAction extends Action
 {
-    public function execute(VideoSession $videoSession, VideoSessionParticipant $participant, ?User $actor = null): void
+    public function execute(VideoSession $videoSession, VideoSessionParticipant $participant, ?User $actor = null): bool
     {
         $userId = (int) $participant->participant_id;
 
@@ -60,16 +64,19 @@ class EjectVideoParticipantAction extends Action
         $revoke->revokeAllFor($videoSession, $participant, SpeakingPermissionRevocationReasonEnum::participant_removed, $actor);
         $loweredHand = $this->lowerHandsFor($videoSession, $userId) || $loweredHand;
 
-        // Best-effort, matching endRoom()'s own contract -- a provider-side failure here must
-        // never block the caller from marking the participant left locally.
+        // A provider-side failure never blocks marking the participant left locally.
+        $providerConfirmed = true;
+
         try {
             app(VideoProviderInterface::class)->removeParticipant($videoSession, $targetUser);
         } catch (Throwable $exception) {
-            Log::warning('Provider-side participant removal failed; local state removes them anyway.', [
+            $providerConfirmed = false;
+            Log::warning('Provider-side participant removal failed; removed locally, retrying at the provider.', [
                 'video_session_id' => $videoSession->id,
                 'removed_user_id' => $userId,
                 'exception' => $exception->getMessage(),
             ]);
+            $this->retryAtProvider($videoSession->id, $userId);
         }
 
         if ($loweredHand) {
@@ -77,6 +84,23 @@ class EjectVideoParticipantAction extends Action
         }
 
         VideoParticipantRemovedEvent::dispatch($videoSession, $userId);
+
+        return $providerConfirmed;
+    }
+
+    // Guarded: on the sync queue the retry runs inline, and a failing provider must still not undo
+    // the local removal.
+    private function retryAtProvider(int $videoSessionId, int $userId): void
+    {
+        try {
+            RetryVideoParticipantRemovalJob::dispatch($videoSessionId, $userId)->delay(now()->addSeconds(10));
+        } catch (Throwable $exception) {
+            Log::error('Could not queue a retry of a provider-side participant removal.', [
+                'video_session_id' => $videoSessionId,
+                'removed_user_id' => $userId,
+                'exception' => $exception->getMessage(),
+            ]);
+        }
     }
 
     private function lowerHandsFor(VideoSession $videoSession, int $userId): bool

@@ -1,7 +1,9 @@
 <?php
 
 use App\Actions\Video\EnsureVideoIsAvailableForSessionAction;
+use App\Actions\VideoConsent\SendGuardianVideoConsentRemindersAction;
 use App\Contracts\VideoProviderInterface;
+use App\Enums\VideoConsentReminderWindowEnum;
 use App\Exceptions\VideoConsentRequiredException;
 use App\Exceptions\VideoException;
 use App\Models\Counsellor;
@@ -11,7 +13,6 @@ use App\Models\Therapy;
 use App\Models\User;
 use App\Models\VideoConsent;
 use App\Models\VideoSession;
-use App\Services\AppService;
 use Illuminate\Support\Facades\Notification;
 
 // TT-3.1e-g/SCRUM-286: the full regression matrix named in this ticket's own scope, exercised
@@ -214,7 +215,7 @@ test('a minor client with no guardian at all is permanently blocked from video v
 });
 
 // 7. Reminder suppression once granted -- re-verified here at the boundary between the grant
-// controller route and the reminder sweep, not just AppServiceGuardianVideoConsentRemindersTest's
+// controller route and the reminder sweep, not just SendGuardianVideoConsentRemindersActionTest's
 // own direct-Action-call coverage.
 test('no reminder fires for a session once consent has been granted through the real controller route', function () {
     Notification::fake();
@@ -225,7 +226,7 @@ test('no reminder fires for a session once consent has been granted through the 
         ->post(route('therapies.video_consent.grant', ['therapyId' => $data['therapy']->id]))
         ->assertSessionHasNoErrors();
 
-    AppService::new()->sendHourBeforeGuardianVideoConsentReminders();
+    SendGuardianVideoConsentRemindersAction::new()->execute(VideoConsentReminderWindowEnum::hour_before);
 
     Notification::assertNothingSent();
 });

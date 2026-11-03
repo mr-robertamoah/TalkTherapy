@@ -1,5 +1,6 @@
 <?php
 
+use App\Actions\Video\ExpireIdleSpeakingGrantsAction;
 use App\Actions\Video\RevokeSpeakingPermissionAction;
 use App\Contracts\VideoProviderInterface;
 use App\Enums\SpeakingPermissionRevocationReasonEnum;
@@ -10,7 +11,6 @@ use App\Models\User;
 use App\Models\VideoSession;
 use App\Models\VideoSessionParticipant;
 use App\Models\VideoSessionSpeakingGrant;
-use App\Services\AppService;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Log;
 
@@ -81,7 +81,7 @@ test('a grant with no activity past the timeout is revoked as idle_auto_expiry a
     $calls = [];
     app()->instance(VideoProviderInterface::class, fakeVideoProviderRecordingIdleSweep($calls));
 
-    AppService::new()->expireIdleSpeakingGrants();
+    ExpireIdleSpeakingGrantsAction::new()->execute();
 
     $grant = $grant->fresh();
     expect($grant->revoked_at)->not->toBeNull()
@@ -98,7 +98,7 @@ test('a grant with recent activity is left alone', function () {
     $calls = [];
     app()->instance(VideoProviderInterface::class, fakeVideoProviderRecordingIdleSweep($calls));
 
-    AppService::new()->expireIdleSpeakingGrants();
+    ExpireIdleSpeakingGrantsAction::new()->execute();
 
     expect($grant->fresh()->isActive())->toBeTrue()
         ->and($calls)->toBe([]);
@@ -110,7 +110,7 @@ test('the timeout comes from config, not a hardcoded value', function () {
     $calls = [];
     app()->instance(VideoProviderInterface::class, fakeVideoProviderRecordingIdleSweep($calls));
 
-    AppService::new()->expireIdleSpeakingGrants();
+    ExpireIdleSpeakingGrantsAction::new()->execute();
 
     expect($grant->fresh()->isActive())->toBeFalse();
 });
@@ -121,7 +121,7 @@ test('a grant with no activity timestamp at all falls back to its grant time', f
     $calls = [];
     app()->instance(VideoProviderInterface::class, fakeVideoProviderRecordingIdleSweep($calls));
 
-    AppService::new()->expireIdleSpeakingGrants();
+    ExpireIdleSpeakingGrantsAction::new()->execute();
 
     expect($stale->fresh()->isActive())->toBeFalse()
         ->and($fresh->fresh()->isActive())->toBeTrue();
@@ -133,7 +133,7 @@ test('already-revoked grants and grants in an ended call are not touched', funct
     $calls = [];
     app()->instance(VideoProviderInterface::class, fakeVideoProviderRecordingIdleSweep($calls));
 
-    AppService::new()->expireIdleSpeakingGrants();
+    ExpireIdleSpeakingGrantsAction::new()->execute();
 
     expect($revoked->fresh()->revocation_reason)->toBe(SpeakingPermissionRevocationReasonEnum::manual->value)
         ->and($inEndedCall->fresh()->isActive())->toBeTrue()
@@ -148,7 +148,7 @@ test('a provider failure leaves the grant open for the next sweep to retry', fun
     $calls = [];
     app()->instance(VideoProviderInterface::class, fakeVideoProviderRecordingIdleSweep($calls, true));
 
-    AppService::new()->expireIdleSpeakingGrants();
+    ExpireIdleSpeakingGrantsAction::new()->execute();
 
     expect($grant->fresh()->isActive())->toBeTrue();
 });
@@ -194,7 +194,7 @@ test('one grant failing does not stop the sweep from revoking the others', funct
     // proves the healthy one is still processed after it.
     Log::shouldReceive('warning')->once();
 
-    AppService::new()->expireIdleSpeakingGrants();
+    ExpireIdleSpeakingGrantsAction::new()->execute();
 
     expect($broken->fresh()->isActive())->toBeTrue()
         ->and($healthy->fresh()->isActive())->toBeFalse();
@@ -210,7 +210,7 @@ test('an unexpected error on one grant is logged with its id and the sweep conti
     app()->instance(VideoProviderInterface::class, fakeVideoProviderRecordingIdleSweep($calls));
     Log::shouldReceive('error')->once()->withArgs(fn ($message, $context) => $context['grantId'] === $broken->id);
 
-    AppService::new()->expireIdleSpeakingGrants();
+    ExpireIdleSpeakingGrantsAction::new()->execute();
 
     expect($broken->fresh()->isActive())->toBeTrue()
         ->and($healthy->fresh()->isActive())->toBeFalse();
@@ -224,7 +224,7 @@ test('a soft-deleted member\'s idle grant is still revoked', function () {
     $calls = [];
     app()->instance(VideoProviderInterface::class, fakeVideoProviderRecordingIdleSweep($calls));
 
-    AppService::new()->expireIdleSpeakingGrants();
+    ExpireIdleSpeakingGrantsAction::new()->execute();
 
     expect($grant->fresh()->isActive())->toBeFalse()
         ->and($calls)->toHaveCount(1);

@@ -109,6 +109,15 @@ class ProcessRefundJob implements ShouldQueue
             // earlier attempt may have timed out AFTER Paystack processed it, and the retry is then
             // refused as a duplicate. Recording "failed" would invite a second, new transfer/charge.
             // Rethrow and leave the record as it is for follow-up instead.
+            //
+            // SCRUM-376: unlike the payout/settlement jobs, this one can't look the real outcome up
+            // first. Paystack's only per-refund lookup is GET /refund/{id}, keyed by Paystack's OWN
+            // refund id -- returned only in a successful POST /refund response, which the timed-out
+            // first attempt never delivered (and `refunds` has no column for it anyway). Its
+            // documented List Refunds (GET /refund) filters only by page/perPage/from/to, with no
+            // documented way to filter by transaction, so matching one back would mean guessing.
+            // The refund.processed/refund.failed webhook (matched by transaction reference) and the
+            // failed-job alert remain the resolution paths.
             if ($this->attempts() > 1) {
                 throw $exception;
             }

@@ -1,5 +1,6 @@
 <?php
 
+use App\Actions\Counsellor\PurgeExpiredSoftDeletedCounsellorsAction;
 use App\Actions\File\DeleteAttachedFilesAction;
 use App\Actions\Request\CreateRequestAction;
 use App\Actions\Request\RespondToCounsellorVerificationRequestAction;
@@ -18,7 +19,6 @@ use App\Models\License;
 use App\Models\LicensingAuthority;
 use App\Models\Request;
 use App\Models\User;
-use App\Services\AppService;
 use App\Services\LicenseService;
 use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Http\UploadedFile;
@@ -249,7 +249,7 @@ test('purging a soft-deleted counsellor removes their license documents but keep
     $counsellor->delete();
     Counsellor::withTrashed()->whereKey($counsellor->id)->update(['deleted_at' => now()->subDays(61)]);
 
-    AppService::new()->purgeExpiredSoftDeletedCounsellors();
+    PurgeExpiredSoftDeletedCounsellorsAction::new()->execute();
 
     expect(Counsellor::withTrashed()->find($counsellor->id))->toBeNull()
         ->and($nationalId->fresh()->files)->toBeEmpty()

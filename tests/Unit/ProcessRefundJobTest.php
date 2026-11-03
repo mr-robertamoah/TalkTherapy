@@ -168,3 +168,19 @@ test('a 429 (rate limited) response from Paystack does not record a definite fai
 
     expect($refund->fresh()->status)->toBe(RefundStatusEnum::pending->value);
 });
+
+// SCRUM-376: unlike the payout/settlement jobs, a refund retry can't look its outcome up (Paystack
+// offers no lookup by transaction reference -- see ProcessRefundJob), so a 4xx on a retry still
+// rethrows and leaves the refund untouched for the webhook/follow-up, calling nothing else.
+test('a retry refused with a 4xx still rethrows and leaves the refund pending, with no lookup', function () {
+    Http::fake(['*/refund' => Http::response(['status' => false, 'message' => 'Transaction has been fully reversed'], 400)]);
+    $refund = aPendingRefundWithTransaction();
+
+    $job = (new ProcessRefundJob($refund->id))->withFakeQueueInteractions();
+    $job->job->attempts = 2;
+
+    expect(fn () => $job->handle())->toThrow(RequestException::class);
+
+    expect($refund->fresh()->status)->toBe(RefundStatusEnum::pending->value);
+    Http::assertSentCount(1);
+});

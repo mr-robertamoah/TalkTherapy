@@ -26,7 +26,8 @@ class RemoveParticipantFromVideoSessionAction extends Action
     // any counsellor on any single group a system-wide user-id-existence oracle. The target is
     // now resolved ONLY from this VideoSession's own live participants, so a nonexistent id and an
     // id that's simply not in this call produce the exact same outcome.
-    public function execute(Session $session, User $actingUser, int $targetUserId): void
+    // SCRUM-315: false when the provider didn't confirm the eject (see EjectVideoParticipantAction).
+    public function execute(Session $session, User $actingUser, int $targetUserId): bool
     {
         if (! $session->for instanceof GroupTherapy) {
             throw new VideoException('Removing a specific participant is only available for group therapy video calls.', 422);
@@ -43,15 +44,15 @@ class RemoveParticipantFromVideoSessionAction extends Action
         $videoSession = $session->videoSessions()->whereNull('ended_at')->first();
 
         if (! $videoSession) {
-            return;
+            return true;
         }
 
         $participant = $videoSession->activeParticipantFor($targetUserId);
 
         if (! $participant) {
-            return;
+            return true;
         }
 
-        EjectVideoParticipantAction::new()->execute($videoSession, $participant, $actingUser);
+        return EjectVideoParticipantAction::new()->execute($videoSession, $participant, $actingUser);
     }
 }

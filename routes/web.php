@@ -33,7 +33,6 @@ use App\Http\Controllers\TherapyController;
 use App\Http\Controllers\TransactionController;
 use App\Http\Controllers\VideoConsentController;
 use App\Http\Controllers\VideoSessionController;
-use App\Services\AppService;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -59,7 +58,6 @@ use Inertia\Inertia;
 
 Route::get('/testing', function () {
     try {
-        // AppService::new()->alertSuperAdminWithStatus();
         return 'done';
     } catch (Throwable $th) {
     }

@@ -1,11 +1,11 @@
 <?php
 
+use App\Actions\Request\DeleteExpiredIdentityDocumentsAction;
 use App\Enums\RequestStatusEnum;
 use App\Enums\RequestTypeEnum;
 use App\Models\File;
 use App\Models\Request;
 use App\Models\User;
-use App\Services\AppService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Storage;
 
@@ -47,7 +47,7 @@ test('a decided request older than the retention window has its document deleted
     config(['identity_verification.document_retention_days' => 30]);
     [$request, $file] = anIdentityDocumentRequest(RequestStatusEnum::accepted->value, now()->subDays(31));
 
-    AppService::new()->deleteExpiredIdentityDocuments();
+    DeleteExpiredIdentityDocumentsAction::new()->execute();
 
     Storage::disk('identity_documents')->assertMissing('doc.jpg');
     expect(File::query()->find($file->id))->toBeNull();
@@ -59,7 +59,7 @@ test('a decided request within the retention window is left untouched', function
     config(['identity_verification.document_retention_days' => 30]);
     [$request, $file] = anIdentityDocumentRequest(RequestStatusEnum::accepted->value, now()->subDays(5));
 
-    AppService::new()->deleteExpiredIdentityDocuments();
+    DeleteExpiredIdentityDocumentsAction::new()->execute();
 
     Storage::disk('identity_documents')->assertExists('doc.jpg');
     expect(File::query()->find($file->id))->not->toBeNull();
@@ -71,7 +71,7 @@ test('a still-pending request is never swept regardless of age', function () {
     config(['identity_verification.document_retention_days' => 30]);
     [$request, $file] = anIdentityDocumentRequest(RequestStatusEnum::pending->value, now()->subDays(90));
 
-    AppService::new()->deleteExpiredIdentityDocuments();
+    DeleteExpiredIdentityDocumentsAction::new()->execute();
 
     Storage::disk('identity_documents')->assertExists('doc.jpg');
     expect(File::query()->find($file->id))->not->toBeNull();
@@ -88,7 +88,7 @@ test('a shorter, non-default retention window is genuinely respected, not hardco
     [$requestJustPast, $fileJustPast] = anIdentityDocumentRequest(RequestStatusEnum::accepted->value, now()->subDays(8), 'just-past.jpg');
     [$requestNotYet, $fileNotYet] = anIdentityDocumentRequest(RequestStatusEnum::accepted->value, now()->subDays(6), 'not-yet.jpg');
 
-    AppService::new()->deleteExpiredIdentityDocuments();
+    DeleteExpiredIdentityDocumentsAction::new()->execute();
 
     Storage::disk('identity_documents')->assertMissing('just-past.jpg');
     expect(File::query()->find($fileJustPast->id))->toBeNull();
@@ -109,7 +109,7 @@ test('a decided request touched later is still swept from when it was decided', 
     $request->fresh()->forceFill(['data' => ['touched' => true]])->save();
     expect($request->fresh()->updated_at->isToday())->toBeTrue();
 
-    AppService::new()->deleteExpiredIdentityDocuments();
+    DeleteExpiredIdentityDocumentsAction::new()->execute();
 
     expect(File::query()->find($file->id))->toBeNull();
 });

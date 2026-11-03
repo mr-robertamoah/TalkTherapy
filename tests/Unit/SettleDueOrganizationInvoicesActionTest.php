@@ -1,5 +1,6 @@
 <?php
 
+use App\Actions\Organization\SettleDueOrganizationInvoicesAction;
 use App\Enums\OrganizationAdminRoleEnum;
 use App\Enums\OrganizationInvoiceStatusEnum;
 use App\Jobs\ProcessOrganizationInvoiceSettlementJob;
@@ -8,7 +9,6 @@ use App\Models\OrganizationInvoice;
 use App\Models\OrganizationInvoiceLine;
 use App\Models\OrganizationPaymentInstrument;
 use App\Models\User;
-use App\Services\AppService;
 use Illuminate\Support\Facades\Bus;
 
 // TT-7.3b-e/SCRUM-236: the periodic sweep that finds every `open` invoice whose period has closed
@@ -38,7 +38,7 @@ test('an open invoice whose period has closed gets settled', function () {
         'period_end' => now()->subDay()->toDateString(),
     ]);
 
-    AppService::new()->settleDueOrganizationInvoices();
+    SettleDueOrganizationInvoicesAction::new()->execute();
 
     expect($invoice->fresh()->status)->toBe(OrganizationInvoiceStatusEnum::pending->value);
     Bus::assertDispatched(ProcessOrganizationInvoiceSettlementJob::class);
@@ -50,7 +50,7 @@ test('an open invoice whose period has not yet closed is left alone', function (
         'period_end' => now()->addDay()->toDateString(),
     ]);
 
-    AppService::new()->settleDueOrganizationInvoices();
+    SettleDueOrganizationInvoicesAction::new()->execute();
 
     expect($invoice->fresh()->status)->toBe(OrganizationInvoiceStatusEnum::open->value);
     Bus::assertNotDispatched(ProcessOrganizationInvoiceSettlementJob::class);
@@ -62,7 +62,7 @@ test('a non-open invoice past its period is never re-claimed regardless of perio
         'period_end' => now()->subDay()->toDateString(),
     ]);
 
-    AppService::new()->settleDueOrganizationInvoices();
+    SettleDueOrganizationInvoicesAction::new()->execute();
 
     expect($invoice->fresh()->status)->toBe(OrganizationInvoiceStatusEnum::settled->value);
     Bus::assertNotDispatched(ProcessOrganizationInvoiceSettlementJob::class);
@@ -78,7 +78,7 @@ test('a failed invoice past its period is never automatically re-claimed by the 
         'period_end' => now()->subDay()->toDateString(),
     ]);
 
-    AppService::new()->settleDueOrganizationInvoices();
+    SettleDueOrganizationInvoicesAction::new()->execute();
 
     expect($invoice->fresh()->status)->toBe(OrganizationInvoiceStatusEnum::failed->value);
     Bus::assertNotDispatched(ProcessOrganizationInvoiceSettlementJob::class);
@@ -86,8 +86,8 @@ test('a failed invoice past its period is never automatically re-claimed by the 
 
 // One org's inability to settle (missing payment instrument, in this case) must never block the
 // sweep from reaching every other due invoice in the same run -- the whole reason for this
-// sweep's own per-item try/catch, mirroring the two existing compensation-request sweeps in
-// AppService.
+// sweep's own per-item try/catch, mirroring the two existing compensation-request sweeps
+// (SendCompensationRequestExpiryRemindersAction, ExpireStaleCompensationRequestsAction).
 test('one due invoice that cannot be settled does not block another due invoice in the same run', function () {
     $organizationWithNoInstrument = Organization::factory()->create();
     $organizationWithNoInstrument->admins()->attach(User::factory()->create()->id, ['role' => OrganizationAdminRoleEnum::owner->value]);
@@ -103,7 +103,7 @@ test('one due invoice that cannot be settled does not block another due invoice 
         'period_end' => now()->subDay()->toDateString(),
     ]);
 
-    AppService::new()->settleDueOrganizationInvoices();
+    SettleDueOrganizationInvoicesAction::new()->execute();
 
     expect($unsettleableInvoice->fresh()->status)->toBe(OrganizationInvoiceStatusEnum::open->value);
     expect($settleableInvoice->fresh()->status)->toBe(OrganizationInvoiceStatusEnum::pending->value);

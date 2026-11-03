@@ -1,5 +1,7 @@
 # TT-4.11: Age/Identity Verification (SCRUM-289)
 
+> **SCRUM-376:** the identity-document sweep is now `Request/DeleteExpiredIdentityDocumentsAction`; it used to be `AppService::deleteExpiredIdentityDocuments()`.
+
 TT-4.10 (SCRUM-287) closed the *self-edit-after-the-fact* bypass on `dob`, but left `dob` 100%
 self-reported at every stage — nothing actually verified a claimed date of birth was true. This
 epic adds an optional, admin-reviewed verification path: a user submits a short attestation

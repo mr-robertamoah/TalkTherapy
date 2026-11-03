@@ -7,6 +7,7 @@ use App\Events\HandLoweredEvent;
 use App\Events\SpeakingPermissionChangedEvent;
 use App\Events\VideoParticipantRemovedEvent;
 use App\Exceptions\VideoException;
+use App\Jobs\RetryVideoParticipantRemovalJob;
 use App\Models\Counsellor;
 use App\Models\GroupTherapy;
 use App\Models\Session;
@@ -18,6 +19,7 @@ use App\Models\VideoSessionSpeakingGrant;
 use App\Support\VideoParticipantKey;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Queue;
 
 // TT-3.2b/SCRUM-309: ejects one specific participant without ending the room for anyone else --
 // GroupTherapy-only, counsellor-only (mirrors TT-3.2d's own EndVideoSessionAction restriction).
@@ -204,6 +206,7 @@ test('when there is no open video session at all, removal is a safe no-op', func
 
 test('a provider-side removal failure still marks the participant left locally, matching removeParticipant()\'s best-effort contract', function () {
     Event::fake();
+    Queue::fake(); // SCRUM-315: the provider retry is queued (see the retry tests in VideoRemovalAndFormFollowupsTest)
     Log::shouldReceive('warning')->once();
     $data = onlineGroupTherapySessionForRemoveParticipantAction();
     $participant = VideoSessionParticipant::factory()->create([
@@ -215,10 +218,12 @@ test('a provider-side removal failure still marks the participant left locally, 
     $removedUserIds = [];
     app()->instance(VideoProviderInterface::class, fakeVideoProviderRecordingRemovals($removedUserIds, true));
 
-    RemoveParticipantFromVideoSessionAction::new()->execute($data['session'], $data['counsellorUser'], $data['member']->id);
+    $confirmed = RemoveParticipantFromVideoSessionAction::new()->execute($data['session'], $data['counsellorUser'], $data['member']->id);
 
-    expect($participant->fresh()->left_at)->not->toBeNull();
+    expect($participant->fresh()->left_at)->not->toBeNull()
+        ->and($confirmed)->toBeFalse();
     Event::assertDispatched(VideoParticipantRemovedEvent::class);
+    Queue::assertPushed(RetryVideoParticipantRemovalJob::class);
 });
 
 // TT-3.2f-i/SCRUM-326: removal also clears the removed member's speaking state, through the SAME

@@ -1,5 +1,7 @@
 # SCRUM-134: Counsellor account deletion
 
+> **SCRUM-376:** the purge moved out of `AppService` to `Counsellor/PurgeExpiredSoftDeletedCounsellorsAction`, and its tests are now `tests/Unit/PurgeExpiredSoftDeletedCounsellorsActionTest.php`. The names below are as they were when this was built.
+
 The counsellor account-delete button in `resources/js/Pages/Profile/Counsellor/Show.vue` called a
 `counsellor.delete` route that had never been registered — the button was entirely dead. The
 backend chain behind it (`CounsellorController::deleteCounsellor` →

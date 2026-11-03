@@ -1,5 +1,7 @@
 <?php
 
+use App\Actions\VideoConsent\SendGuardianVideoConsentRemindersAction;
+use App\Enums\VideoConsentReminderWindowEnum;
 use App\Models\Counsellor;
 use App\Models\Guardianship;
 use App\Models\Session;
@@ -8,7 +10,6 @@ use App\Models\User;
 use App\Models\VideoConsent;
 use App\Models\VideoConsentReminder;
 use App\Notifications\GuardianVideoConsentReminderNotification;
-use App\Services\AppService;
 use Illuminate\Support\Facades\Notification;
 
 // TT-3.1e-e/SCRUM-284: the day-before and hour-before sweeps -- both must fire exactly once per
@@ -46,7 +47,7 @@ test('the hour-before sweep reminds every guardian when a session starts within 
     Notification::fake();
     $data = minorTherapyWithGuardiansAndSessionForReminders(['start_time' => now()->addMinutes(30), 'end_time' => now()->addMinutes(90)]);
 
-    AppService::new()->sendHourBeforeGuardianVideoConsentReminders();
+    SendGuardianVideoConsentRemindersAction::new()->execute(VideoConsentReminderWindowEnum::hour_before);
 
     Notification::assertSentTo($data['guardianOne'], GuardianVideoConsentReminderNotification::class);
     Notification::assertSentTo($data['guardianTwo'], GuardianVideoConsentReminderNotification::class);
@@ -57,7 +58,7 @@ test('the day-before sweep reminds every guardian when a session starts within t
     Notification::fake();
     $data = minorTherapyWithGuardiansAndSessionForReminders(['start_time' => now()->addHours(20), 'end_time' => now()->addHours(21)]);
 
-    AppService::new()->sendDayBeforeGuardianVideoConsentReminders();
+    SendGuardianVideoConsentRemindersAction::new()->execute(VideoConsentReminderWindowEnum::day_before);
 
     Notification::assertSentTo($data['guardianOne'], GuardianVideoConsentReminderNotification::class);
     Notification::assertSentTo($data['guardianTwo'], GuardianVideoConsentReminderNotification::class);
@@ -68,7 +69,7 @@ test('a session more than a day away does not get the day-before reminder yet', 
     Notification::fake();
     minorTherapyWithGuardiansAndSessionForReminders(['start_time' => now()->addDays(3), 'end_time' => now()->addDays(3)->addHour()]);
 
-    AppService::new()->sendDayBeforeGuardianVideoConsentReminders();
+    SendGuardianVideoConsentRemindersAction::new()->execute(VideoConsentReminderWindowEnum::day_before);
 
     Notification::assertNothingSent();
 });
@@ -77,7 +78,7 @@ test('a session more than an hour away does not get the hour-before reminder yet
     Notification::fake();
     minorTherapyWithGuardiansAndSessionForReminders(['start_time' => now()->addHours(3), 'end_time' => now()->addHours(4)]);
 
-    AppService::new()->sendHourBeforeGuardianVideoConsentReminders();
+    SendGuardianVideoConsentRemindersAction::new()->execute(VideoConsentReminderWindowEnum::hour_before);
 
     Notification::assertNothingSent();
 });
@@ -91,7 +92,7 @@ test('no reminder fires once a valid consent grant already covers the session', 
         'consentable_id' => $data['therapy']->id,
     ]);
 
-    AppService::new()->sendHourBeforeGuardianVideoConsentReminders();
+    SendGuardianVideoConsentRemindersAction::new()->execute(VideoConsentReminderWindowEnum::hour_before);
 
     Notification::assertNothingSent();
 });
@@ -100,9 +101,9 @@ test('the hour-before reminder does not fire twice for the same session', functi
     Notification::fake();
     $data = minorTherapyWithGuardiansAndSessionForReminders(['start_time' => now()->addMinutes(30), 'end_time' => now()->addMinutes(90)]);
 
-    AppService::new()->sendHourBeforeGuardianVideoConsentReminders();
+    SendGuardianVideoConsentRemindersAction::new()->execute(VideoConsentReminderWindowEnum::hour_before);
     Notification::fake();
-    AppService::new()->sendHourBeforeGuardianVideoConsentReminders();
+    SendGuardianVideoConsentRemindersAction::new()->execute(VideoConsentReminderWindowEnum::hour_before);
 
     Notification::assertNothingSent();
 });
@@ -111,8 +112,8 @@ test('the day-before and hour-before reminders are independent -- both can fire 
     Notification::fake();
     $data = minorTherapyWithGuardiansAndSessionForReminders(['start_time' => now()->addMinutes(30), 'end_time' => now()->addMinutes(90)]);
 
-    AppService::new()->sendDayBeforeGuardianVideoConsentReminders();
-    AppService::new()->sendHourBeforeGuardianVideoConsentReminders();
+    SendGuardianVideoConsentRemindersAction::new()->execute(VideoConsentReminderWindowEnum::day_before);
+    SendGuardianVideoConsentRemindersAction::new()->execute(VideoConsentReminderWindowEnum::hour_before);
 
     $reminder = VideoConsentReminder::query()->where('session_id', $data['session']->id)->first();
     expect($reminder->day_before_sent_at)->not->toBeNull()
@@ -133,7 +134,7 @@ test('an adult client\'s upcoming session never gets a reminder', function () {
         'start_time' => now()->addMinutes(30), 'end_time' => now()->addMinutes(90),
     ]);
 
-    AppService::new()->sendHourBeforeGuardianVideoConsentReminders();
+    SendGuardianVideoConsentRemindersAction::new()->execute(VideoConsentReminderWindowEnum::hour_before);
 
     Notification::assertNothingSent();
 });

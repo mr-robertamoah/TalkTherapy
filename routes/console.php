@@ -1,16 +1,27 @@
 <?php
 
 use App\Actions\Alert\BroadcastStartedSessionsAndDiscussionsAction;
+use App\Actions\Counsellor\PurgeExpiredSoftDeletedCounsellorsAction;
 use App\Actions\Discussion\FailUnheldDiscussionsAction;
 use App\Actions\Discussion\NotifyParticipantsOfStartingDiscussionsAction;
+use App\Actions\Organization\ExpireStaleCompensationRequestsAction;
+use App\Actions\Organization\SendCompensationRequestExpiryRemindersAction;
+use App\Actions\Organization\SettleDueOrganizationInvoicesAction;
+use App\Actions\Request\DeleteExpiredIdentityDocumentsAction;
 use App\Actions\Session\FailUnheldSessionsAction;
 use App\Actions\Session\NotifyParticipantsOfStartingSessionsAction;
+use App\Actions\Therapy\FindPaidTherapiesMissingPaymentDataAction;
 use App\Actions\Transaction\ReconcileStalePendingOrganizationChargesAction;
+use App\Actions\User\AnonymiseClosedAccountsAction;
+use App\Actions\Video\ExpireIdleSpeakingGrantsAction;
+use App\Actions\VideoConsent\SendGuardianVideoConsentRemindersAction;
+use App\Actions\Visitor\ClearVisitorsAction;
+use App\Actions\Visitor\SendVisitorsStatusToSuperAdminAction;
+use App\Enums\VideoConsentReminderWindowEnum;
 use App\Models\Discussion;
 use App\Models\GroupTherapy;
 use App\Models\Session;
 use App\Models\Therapy;
-use App\Services\AppService;
 use App\Services\LicenseService;
 use App\Services\SuspensionService;
 use App\Support\SchedulerHeartbeat;
@@ -69,44 +80,44 @@ Schedule::call(function () {
 })->everyFourHours();
 
 Schedule::call(function () {
-    AppService::new()->clearVisitors();
+    ClearVisitorsAction::new()->execute();
 })->dailyAt('00:01');
 
 Schedule::call(function () {
-    AppService::new()->alertSuperAdminWithStatus();
+    SendVisitorsStatusToSuperAdminAction::new()->execute();
 })->dailyAt('0:00');
 
 Schedule::call(function () {
-    AppService::new()->purgeExpiredSoftDeletedCounsellors();
+    PurgeExpiredSoftDeletedCounsellorsAction::new()->execute();
 })->dailyAt('01:00');
 
 // SCRUM-367: closed accounts' personal details, after the retention period.
 Schedule::call(function () {
-    AppService::new()->anonymiseClosedAccounts();
+    AnonymiseClosedAccountsAction::new()->execute();
 })->name('anonymise-closed-accounts')->dailyAt('01:30')->withoutOverlapping()->onOneServer();
 
 Schedule::call(function () {
-    AppService::new()->sendCompensationRequestExpiryReminders();
+    SendCompensationRequestExpiryRemindersAction::new()->execute();
 })->dailyAt('02:00');
 
 Schedule::call(function () {
-    AppService::new()->expireStaleCompensationRequests();
+    ExpireStaleCompensationRequestsAction::new()->execute();
 })->dailyAt('02:15');
 
 Schedule::call(function () {
-    AppService::new()->settleDueOrganizationInvoices();
+    SettleDueOrganizationInvoicesAction::new()->execute();
 })->dailyAt('03:00');
 
 Schedule::call(function () {
-    AppService::new()->sendDayBeforeGuardianVideoConsentReminders();
+    SendGuardianVideoConsentRemindersAction::new()->execute(VideoConsentReminderWindowEnum::day_before);
 })->dailyAt('08:00');
 
 Schedule::call(function () {
-    AppService::new()->sendHourBeforeGuardianVideoConsentReminders();
+    SendGuardianVideoConsentRemindersAction::new()->execute(VideoConsentReminderWindowEnum::hour_before);
 })->everyFiveMinutes();
 
 Schedule::call(function () {
-    AppService::new()->deleteExpiredIdentityDocuments();
+    DeleteExpiredIdentityDocumentsAction::new()->execute();
 })->dailyAt('04:00');
 
 // SCRUM-338: counsellor verification documents past their retention window.
@@ -127,7 +138,7 @@ Schedule::call(fn () => SuspensionService::new()->endExpiredSuspensions())
 // TT-3.2f-h/SCRUM-325: every minute, not every five -- with the 5-minute default timeout, a
 // five-minute sweep would let an idle grant linger for up to ~10 minutes.
 Schedule::call(function () {
-    AppService::new()->expireIdleSpeakingGrants();
+    ExpireIdleSpeakingGrantsAction::new()->execute();
 })->name('expire-idle-speaking-grants')->everyMinute()->withoutOverlapping();
 
 // SCRUM-353: the seeded "Chat Demo" sessions and discussion are created live (now - 10 min to
@@ -160,6 +171,27 @@ Artisan::command('demo:refresh-chat', function () {
 
     return 0;
 })->purpose('Make the seeded Chat Demo sessions and discussion live again (local only)');
+
+// SCRUM-141: lists PAID therapies and group therapies whose payment settings were wiped by the
+// pre-SCRUM-140 bug, with their owners, so someone can ask them to set the price again. Changes
+// nothing. Exits 1 when it finds any. Run it by hand or as a report -- never as a deploy gate: only
+// the owners can fix the data, and deploy.sh stays in maintenance mode on a failing step.
+Artisan::command('payments:audit-paid-therapies', function () {
+    $rows = FindPaidTherapiesMissingPaymentDataAction::new()->execute();
+
+    if ($rows->isEmpty()) {
+        $this->info('No paid therapy or group therapy is missing its payment settings.');
+
+        return 0;
+    }
+
+    $this->table(['Type', 'ID', 'Name', 'Owner', 'Missing'], $rows->map(fn (array $row) => [
+        $row['type'], $row['id'], $row['name'], $row['owner'], implode(', ', $row['missing']),
+    ])->all());
+    $this->warn("{$rows->count()} record(s) need their owner to set the payment settings again.");
+
+    return 1;
+})->purpose('List paid therapies and group therapies with missing payment settings (amount, currency, per)');
 
 // SCRUM-338: applies the license document retention policy now, to everything already past its
 // window (the same rules the daily 04:15 sweep uses). --dry-run lists what would go.
