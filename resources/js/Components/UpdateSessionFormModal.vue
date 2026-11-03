@@ -1,6 +1,6 @@
 <script setup>
-import { computed, ref, unref, watch, watchEffect } from 'vue';
-import { addMinutesToInputValue, isMinutesBefore, toLocalInputValue } from '@/Composables/countdown'
+import { ref, unref, watch, watchEffect } from 'vue';
+import useScheduleTimes from '@/Composables/useScheduleTimes'
 import TextInput from '@/Components/TextInput.vue';
 import InputLabel from '@/Components/InputLabel.vue';
 import InputError from '@/Components/InputError.vue';
@@ -45,8 +45,8 @@ const emits = defineEmits(['close', 'onUpdate'])
 
 const loading = ref(false)
 const sessionUpdatingMap = ref(null)
-const startTime = ref('')
-const endTime = ref('')
+// SCRUM-379: shared start/end handling (resources/js/Composables/useScheduleTimes.js).
+const { startTime, endTime, setTimes, clearTimes, timesError, computedStartTime, computedEndTime, computedNow } = useScheduleTimes({})
 const selectedCases = ref([])
 const selectedTopics = ref([])
 const sessionData = ref({
@@ -110,34 +110,7 @@ watch(() => props.therapy.cases?.length, () => {
     if (props.therapy.cases?.length)
         sessionData.value.cases = props.therapy.cases.map((c) => c.id)
 })
-watch(() => startTime.value, () => {
-    if (
-        !isMinutesBefore({
-            firstTime: endTime.value, 
-            secondTime: startTime.value, 
-            minutes: 30
-        })
-    ) endTime.value = addMinutesToInputValue(startTime.value, 30)
-})
-watch(() => endTime.value, () => {
-    if (
-        !isMinutesBefore({
-            firstTime: endTime.value, 
-            secondTime: startTime.value, 
-            minutes: 30
-        })
-    ) endTime.value = addMinutesToInputValue(startTime.value, 30)
-})
 
-const computedStartTime = computed(() => {
-    return new Date(startTime.value).toLocaleString()
-})
-const computedEndTime = computed(() => {
-    return new Date(endTime.value).toLocaleString()
-})
-const computedNow = computed(() => {
-    return toLocalInputValue(new Date())
-})
 
 async function updateSession() {
     if (!sessionData.value.name) {
@@ -147,17 +120,9 @@ async function updateSession() {
         return
     }
 
-    if (!isMinutesBefore({ firstTime: startTime.value, minutes: 30 })) {
-        setFailedAlertData({
-            message: 'Start time must be at least 30 minutes away from current time. Please increase the start time.',
-        })
-        return
-    }
-    
-    if (!isMinutesBefore({ firstTime: endTime.value, secondTime: startTime.value, minutes: 30})) {
-        setFailedAlertData({
-            message: 'End time must be at least 30 minutes away from start time. Please increase the end time.',
-        })
+    const timeError = timesError()
+    if (timeError) {
+        setFailedAlertData({ message: timeError })
         return
     }
 
@@ -225,8 +190,7 @@ function clearData() {
     sessionData.value.lat = ''
     sessionData.value.landmark = ''
     sessionData.value.startTime = ''
-    startTime.value = ''
-    endTime.value = ''
+    clearTimes()
     sessionData.value.endTime = ''
     sessionData.value.type = ''
     sessionData.value.cases = []
@@ -238,8 +202,7 @@ function setSessionFormData() {
     sessionData.value.about = props.session.about
     sessionData.value.paymentType = props.session.paymentType
     sessionData.value.startTime = props.session.startTime
-    startTime.value = toLocalInputValue(props.session.startTime)
-    endTime.value = toLocalInputValue(props.session.endTime)
+    setTimes(props.session.startTime, props.session.endTime)
     sessionData.value.endTime = props.session.endTime
     sessionData.value.type = props.session.type
     sessionData.value.lng = props.session.longitude

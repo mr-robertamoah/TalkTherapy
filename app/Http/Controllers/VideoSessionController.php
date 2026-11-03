@@ -14,6 +14,7 @@ use App\Actions\Video\RemoveParticipantFromVideoSessionAction;
 use App\Actions\Video\RevokeSpeakingPermissionAction;
 use App\Exceptions\SessionException;
 use App\Exceptions\VideoConsentRequiredException;
+use App\Exceptions\VideoException;
 use App\Models\Session;
 use App\Support\VideoParticipantKey;
 use Illuminate\Http\Request;
@@ -67,8 +68,13 @@ class VideoSessionController extends Controller
     public function participant(Request $request)
     {
         try {
+            // SCRUM-379: an unknown session gets the same 404 as every other refusal here, not the
+            // other video routes' 422 "Session was not found." -- one response for all of them.
+            $session = Session::find($request->route('sessionId'))
+                ?? throw new VideoException(GetVideoParticipantDisplayNameAction::NOT_IN_CALL, 404);
+
             return response()->json(GetVideoParticipantDisplayNameAction::new()->execute(
-                $this->session($request),
+                $session,
                 $request->user(),
                 (string) $request->route('participantKey'),
             ));

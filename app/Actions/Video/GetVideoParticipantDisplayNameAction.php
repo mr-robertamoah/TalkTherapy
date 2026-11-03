@@ -3,14 +3,11 @@
 namespace App\Actions\Video;
 
 use App\Actions\Action;
-use App\Enums\ConstantsEnum;
 use App\Exceptions\AppException;
 use App\Exceptions\VideoException;
-use App\Models\GroupTherapy;
 use App\Models\Session;
 use App\Models\User;
 use App\Models\VideoSession;
-use App\Support\VideoDisplayName;
 use App\Support\VideoParticipantKey;
 
 // SCRUM-334: the label the call UI shows for another participant's tile. Daily lets anyone rename
@@ -23,7 +20,7 @@ class GetVideoParticipantDisplayNameAction extends Action
     // One response for every refusal -- a viewer who isn't in the call, a key that matches no one,
     // and a real person who isn't in this call all look identical (see VideoParticipantKey::resolve
     // and SCRUM-357), so this can't be used to probe who exists or who has joined.
-    private const NOT_IN_CALL = 'That participant is not in this video call.';
+    public const NOT_IN_CALL = 'That participant is not in this video call.';
 
     public function execute(Session $session, User $viewer, string $participantKey): array
     {
@@ -45,29 +42,14 @@ class GetVideoParticipantDisplayNameAction extends Action
             throw new VideoException(self::NOT_IN_CALL, 404);
         }
 
+        // SCRUM-379: the one masking rule, the same one the join minted into the token. It follows
+        // the therapy as it is now, and labels someone no longer in a group Anonymous (SCRUM-334's
+        // security review -- see GroupTherapy::isMaskedToOthers()). It reads only the target's own
+        // membership row, not the group's whole member list.
         return [
             'key' => $participantKey,
-            'displayName' => $this->belongsToTherapy($session, $target)
-                ? VideoDisplayName::for($session, $target)
-                : ConstantsEnum::anonymousUserLabel->value,
+            'displayName' => $session->for->displayNameOf($target),
         ];
-    }
-
-    // Security review: names follow the therapy as it is now, and a member's own anonymity lives on
-    // their membership row. Someone no longer a member (once members can leave or be removed) would
-    // read as "not anonymous" and show their real name, so anyone who isn't the group's counsellor,
-    // creator or a member is labelled Anonymous. A 1:1 therapy's two people never stop belonging.
-    private function belongsToTherapy(Session $session, User $target): bool
-    {
-        $therapy = $session->for;
-
-        if (! $therapy instanceof GroupTherapy) {
-            return true;
-        }
-
-        return $therapy->isCounsellorUser($target)
-            || $therapy->isUser($target)
-            || $therapy->users()->whereKey($target->id)->exists();
     }
 
     // Currently in the call (an open join row) AND still allowed into it -- someone removed from the

@@ -75,6 +75,9 @@ exercising the dedicated chat pages (see `documentation/features/scrum-20-live-c
 `Chat Demo Individual Therapy` and `Chat Demo Group Therapy` (both `IN_SESSION` with a live
 session, client `maria_garcia` / counsellor `sarah_johnson`), and a `Chat Demo Discussion`
 (`IN_SESSION`, between `sarah_johnson` and `michael_chen`, with existing messages).
+An `Editable Demo Discussion` (`PENDING`, three days out at 10:00–10:40, owned by `sarah_johnson`
+with `michael_chen`, on the `Chat Demo Individual Therapy`) is there for trying the update-discussion
+form (SCRUM-379).
 The demo sessions and the demo discussion are live for **one hour after seeding**. After that their end time has passed, and the chat pages have nothing to send into. To make them live again without reseeding, run `docker compose exec php php artisan demo:refresh-chat`.
 
 `Chat Demo Group Therapy`'s live session has **two** active counsellors (`sarah_johnson` and
@@ -105,6 +108,12 @@ foreach (\App\Models\Therapy::with('addedby','counsellor')->get() as \$t) {
     echo \$t->id.' | '.\$t->name.' | owner='.\$t->addedby->username.' | counsellor='.\$t->counsellor->name.PHP_EOL;
 }"
 ```
+
+## Counsellor verification request (SCRUM-301)
+
+| Username | Password | Purpose |
+|---|---|---|
+| `unverified_counsellor` | `password` | Dr. Unverified Counsellor — not yet verified, with a verified email, a phone and an adult date of birth. Their counsellor profile shows "request verification", which needs a licensing authority, the licence number, a copy of the licence, and a national ID number or scan. |
 
 ## Counsellor account deletion (SCRUM-134)
 

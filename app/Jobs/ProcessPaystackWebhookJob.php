@@ -3,10 +3,9 @@
 namespace App\Jobs;
 
 use App\Actions\Payout\RecordCounsellorPayoutStatusAction;
-use App\Actions\Transaction\EnsureTransactionAmountAndCurrencyMatchAction;
 use App\Actions\Transaction\FindTransactionByReferenceAction;
+use App\Actions\Transaction\RecordPaystackChargeOutcomeAction;
 use App\Actions\Transaction\RecordRefundStatusAction;
-use App\Actions\Transaction\RecordTransactionStatusAction;
 use App\Enums\CounsellorPayoutStatusEnum;
 use App\Enums\CounsellorPayoutStatusSourceEnum;
 use App\Enums\RefundStatusEnum;
@@ -82,22 +81,13 @@ class ProcessPaystackWebhookJob implements ShouldQueue
         // A mismatch here throws, which fails this job -- deliberately: AppService::
         // alertAdminsOfFailedJob() (SCRUM-82) already notifies admins on any queued-job failure,
         // so it doubles as the "flag for manual review" path this needs, without building a
-        // second one (SCRUM-117).
-        if ($status === TransactionStatusEnum::success->value) {
-            EnsureTransactionAmountAndCurrencyMatchAction::new()->execute(
-                $transaction,
-                isset($this->payload['data']['amount']) ? (int) $this->payload['data']['amount'] : null,
-                $this->payload['data']['currency'] ?? null,
-                TransactionStatusSourceEnum::webhook->value
-            );
-        }
-
-        RecordTransactionStatusAction::new()->execute(
+        // second one (SCRUM-117). SCRUM-379: the amount check + record is the one shared with the
+        // verify/charge callers; the status was already mapped above from the event name.
+        RecordPaystackChargeOutcomeAction::new()->recordOutcome(
             $transaction,
             $status,
-            TransactionStatusSourceEnum::webhook->value,
-            $this->payload['data']['gateway_response'] ?? null,
-            $this->payload['data'] ?? null
+            $this->payload['data'] ?? [],
+            TransactionStatusSourceEnum::webhook->value
         );
     }
 

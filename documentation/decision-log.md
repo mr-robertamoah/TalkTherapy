@@ -9520,3 +9520,112 @@ therapy 18 after the last QA pass.
   - a live Paystack sandbox check of the lookup fields;
   - Docker startup ordering;
   - a shared form-time composable.
+
+## SCRUM-379 + 301 + 194: follow-ups, verification documents, how-to step files — 2026-11-03
+
+- **Grouping.** The user asked for the follow-up ticket (SCRUM-379) with a group of other tickets.
+  Added two small, self-contained ones:
+  - SCRUM-301, required verification documents ("small, direct validation-tightening change");
+  - SCRUM-194, how-to step files onto the shared file pivot.
+- **Left out:** SCRUM-288 (a minor who loses their last guardian), which needs product decisions first.
+- **Not doable from here (left on SCRUM-379):**
+  - item 7, a live Paystack sandbox check, needs credentials;
+  - item 15, checking the production server's process users, needs access to the server.
+- **Webhook mapping (379.1).** `RecordPaystackChargeOutcomeAction::recordOutcome()` (amount/currency
+  check on success, then record) is now used by the webhook. Its status comes from the event name,
+  not `data.status`, and it never logs the abandoned warning. `execute()` maps `data.status` and calls
+  `recordOutcome()`.
+- **TherapyController JSON (379.5).** `updateTherapy`, `updateStrictPaymentGate`, `endTherapy` and
+  `deleteTherapy` answer JSON callers with JSON, and give Inertia and browser visits the same redirects
+  as before. Unexpected failures are now reported too.
+  - `returnSuccess` is a private method, like in the other controllers: the base Controller has only
+    `returnFailure`.
+  - `GroupTherapyController` has the same always-redirect pattern; ticketed.
+- **One masking rule for names (379.2).** `isMaskedToOthers(User)` on Therapy and GroupTherapy
+  decides anonymity, declared abstract on `TherapyTrait`. It's used by `displayNameOf()` (video labels
+  and tokens, presence channels) and by `addedByUserIsMaskedFor()` (pages, requests, notifications).
+  - **Not yet everywhere (architect review).** Message and session id masking (`MessageResource`,
+    `SessionResource`), one notification and comments still use `isAnonymousFor()` /
+    `isAnonymousParticipant()`, and the speaking-grant camera rule reads the membership row itself.
+    Those differ for leavers and counsellors. Moving them is a security-sensitive change of its own,
+    ticketed (SCRUM-380). The camera rule is a separate
+  `allowsCameraFor()`, and `App\Support\VideoDisplayName` is gone. Every existing case is
+  unchanged, except:
+  - **A group creator who is also its active counsellor** is now masked in calls when the group is
+    anonymous. Video and the channel used to check "counsellor" first and show their name, while the
+    group page masked them. The stricter side was kept, so one check order holds everywhere.
+    - **Reviewer:** in practice they now join an anonymous group's call as "Anonymous" with no
+      camera, while still able to moderate. For the product owner to confirm.
+  - **The channel's "counsellor who created a 1:1 Therapy" branch** was dropped: only clients create
+    Therapies.
+- **Lookup cost (379.3).** `GroupTherapy::membershipOf()` reads one membership row, or reuses an
+  eager-loaded member list. With the group flag set, no membership query runs. A test pins the same
+  query count for 2 and for 17 members.
+- **Daily permissions (379.4).** Every non-owner token sends an explicit `canSend`, never `true`
+  (which also allows screen and custom tracks): `['audio','video']`, `['audio']` or `false`. It also
+  sends `canAdmin: false` (no changing others' permissions, no streaming, no transcription).
+  - Live grants send the explicit value too, and also `canAdmin: false` (security review). That way
+    an update never relies on how Daily merges permissions. Rooms also send
+  `enable_dialout: false`; SIP and dial-in exist only when configured, so they stay unset.
+  - **Open question:** the 1:1 counsellor is still a Daily *owner*. Daily's permissions don't apply
+    to owners, so on a paid plan they could start a live stream or transcription. The UI uses no
+    owner powers, so ending ownership for 1:1 (as SCRUM-331 did for groups) would close it. 1:1 was
+    left as the user decided earlier, and the question is raised with them.
+- **Unknown session (379.6).** The participant lookup answers an unknown session id with the same 404
+  as its other refusals. The other video routes keep their 422.
+- **Verification documents (301).** The server now requires the licensing authority, a national ID
+  number or scan, and the licence **in the form its authority issues it** (`license_type`): a copy of
+  the document for FILE, the number for NUMBER, both for BOTH. These are the same parts the form shows
+  for that authority, and the form now checks them too.
+  - **First version wrong.** It required the number *and* the file for every authority. The browser
+    check found that all four seeded authorities are FILE-only, and their form has no number field,
+    so every real request would have been refused.
+  - **Messages:** `Rule::requiredIf()` reports as plain `required`, so that's the message key.
+  - **Seed:** `unverified_counsellor` added, since no seeded counsellor could reach the form.
+  - Pickers accept `.jpg,.jpeg,.png,.pdf` (the server's types; it used to suggest `.docx`).
+  - `verifyCounsellor` always redirects, even for JSON callers; ticketed with the GroupTherapyController
+    parity.
+- **How-to actions (security and review tests).**
+  - Editing a how-to looks its steps up within that how-to (`howToSteps()->findOrFail`). Before, any
+    step id worked, so an admin editing one how-to could replace or delete another's step files.
+  - A test of that refusal found that `CreateHowToAction` and `UpdateHowToAction` used a hand-rolled
+    `beginTransaction()`/`commit()`. An exception left the transaction open for the rest of the
+    request. Both now use `DB::transaction()`.
+  - A step's stored file, deleted or replaced, is removed only after commit (`DB::afterCommit`), and
+    a failed delete is logged.
+- **How-to step files (194). `HowToStep::stepFile()` is a tagged (`step`) `fileables` relation, and
+  `$step->file` still returns File|null.
+  - The migration copies every `file_id` into the pivot before dropping the column, and `down()`
+    copies them back. Checked locally up, down and up with a real row.
+  - The how-to list eager-loads the files (one query, not one per step).
+- **Group/1:1 edit forms (379.10, 11).**
+  - Inertia's `onError` gets the errors object, so the refusal reason is `errors.alert`. The update
+    forms and the therapy page's delete/end read it now, instead of always showing "Something
+    unfortunate happened".
+  - The therapy page now follows Inertia's refreshed `therapy` prop, so reopening the edit form shows
+    what was just saved.
+- **Topics on group pages (379.13).** Topics exist for 1:1 therapies only. The group chat page asked
+  `api.topics.get` for the 1:1 therapy sharing the group's id, so it no longer asks. The page key was
+  also wrong (`session` for `topic`).
+- **Form times (379.9, 12).** `useScheduleTimes` is now the one copy of the four modals' start/end
+  handling: defaults when opening, the end following the start, the submit check, the time previews.
+  - Editing the end is no longer snapped back to start + 30. That snap left the input showing the
+    typed value while the summary showed another, and the end-time message could never be reached.
+    A short end is now refused on submit.
+  - `countdown.js` and `isMinutesBefore` keep their names, to avoid churn in places this didn't touch.
+- **Seed gap (379.14).** `Editable Demo Discussion`: PENDING, three days out, owned by sarah_johnson,
+  on the Chat Demo therapy. Also added to the local database, since a reseed needs the user's say-so.
+- **Docker startup (379.8).** The php entrypoint touches `/tmp/talktherapy-entrypoint-ready` when it
+  finishes (after removing it at the start). php's healthcheck tests for it, and queue and reverb
+  `depends_on: php: service_healthy`, so migrations, the seed and storage permissions finish first.
+- **CLAUDE.md:** `tinker` as www-data also needs `-e HOME=/tmp` (its config directory isn't writable
+  otherwise). Found while checking the how-to migration.
+- **Follow-ups (SCRUM-380):**
+  - for the user to decide: the 1:1 counsellor as a Daily owner;
+  - the remaining `isAnonymousFor` callers and the speaking-grant camera rule;
+  - JSON responses in GroupTherapyController and `verifyCounsellor`;
+  - one shared success response;
+  - the unknown-session response on the other video routes;
+  - `useScheduleTimes` polish and a `FileTagEnum`;
+  - skipping migrate/seed outside the php container;
+  - small UI leftovers.

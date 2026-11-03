@@ -14,6 +14,18 @@ services:
     depends_on:
       - db
       - mailpit
+    # SCRUM-379: healthy once docker/php/entrypoint.sh has finished (it touches the marker last): storage
+    # permissions set, migrations and the seed attempted. A FAILED migrate still finishes the entrypoint
+    # and so still counts as healthy -- deliberately, so queue/reverb aren't blocked behind a hidden
+    # error; check the php logs. queue and reverb wait for this instead of merely for the container to
+    # start. The entrypoint waits ~10s+ for MySQL, and a first boot with no vendor/ runs composer install,
+    # so failures in the first 5 minutes don't count.
+    healthcheck:
+      test: ["CMD", "test", "-f", "/tmp/talktherapy-entrypoint-ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 60
+      start_period: 300s
 
   vite:
     # SCRUM-373: back after a host restart; the scheduler lives in queue and stopped silently.
@@ -94,9 +106,12 @@ services:
     # supervisord itself runs as root and writes its own log.
     command: bash -c "touch /var/www/html/supervisord.log && supervisord -c /etc/supervisord.conf"
     depends_on:
-      - php
-      - db
-      - mailpit
+      php:
+        condition: service_healthy
+      db:
+        condition: service_started
+      mailpit:
+        condition: service_started
 
   reverb:
     build:
@@ -116,8 +131,10 @@ services:
     ports:
       - "8081:8081"  # remapped from Reverb's default 8080 (conflicts with another local project)
     depends_on:
-      - php
-      - db
+      php:
+        condition: service_healthy
+      db:
+        condition: service_started
     restart: unless-stopped
 
 volumes:

@@ -11,6 +11,7 @@ use App\Traits\Starreable;
 use App\Traits\TherapyTrait;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\Pivot;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class GroupTherapy extends Model
@@ -223,6 +224,54 @@ class GroupTherapy extends Model
         }
 
         return (bool) $this->users->firstWhere('id', $sender->id)?->pivot->anonymous;
+    }
+
+    // SCRUM-379: the one masking rule for a group -- whether $subject is shown as Anonymous to
+    // everyone else (TherapyTrait::displayNameOf(), addedByUserIsMaskedFor(), the presence channel,
+    // and both video names). In order:
+    // - the creator: masked by the group flag (or their own membership row's flag, if they have one);
+    // - a counsellor of the group: never masked;
+    // - a member: masked by the group flag OR their own membership row's flag;
+    // - anyone else (no longer a member -- SCRUM-334's security review): always masked, so their
+    //   real name can't surface just because the row that held their anonymity is gone.
+    // Reads only $subject's own membership row, never the whole `users` relation (unless it's
+    // already loaded) -- a call UI looks up every participant's label (SCRUM-379).
+    public function isMaskedToOthers(User $subject): bool
+    {
+        $isCreator = $this->isUser($subject);
+
+        if (! $isCreator && $this->isCounsellorUser($subject)) {
+            return false;
+        }
+
+        if ($this->anonymous) {
+            return true;
+        }
+
+        $membership = $this->membershipOf($subject);
+
+        return $membership ? (bool) $membership->anonymous : ! $isCreator;
+    }
+
+    // SCRUM-332: an anonymous participant (anyone isMaskedToOthers() hides) never gets a camera --
+    // the creator of an anonymous group joins audio-only, matching the audio-only rule SCRUM-324
+    // applies to anonymous members' speaking grants (GrantSpeakingPermissionAction). Ordinary members
+    // join receive-only anyway. Decided per join: turning anonymity OFF mid-call leaves the creator
+    // audio-only until they rejoin -- the safe direction.
+    public function allowsCameraFor(User $user): bool
+    {
+        return ! $this->isMaskedToOthers($user);
+    }
+
+    // $user's own group_therapy_user row (null if they have none): from the `users` relation when a
+    // caller has eager-loaded it for a list, otherwise one single-row query.
+    public function membershipOf(User $user): ?Pivot
+    {
+        $member = $this->relationLoaded('users')
+            ? $this->users->firstWhere('id', $user->id)
+            : $this->users()->whereKey($user->id)->first();
+
+        return $member?->pivot;
     }
 
     // Mirrors Therapy::scopeWhereIsParticipant() -- without this, Session::scopeWhereIsParticipant()'s

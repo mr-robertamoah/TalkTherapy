@@ -1,13 +1,10 @@
 <?php
 
-use App\Enums\ConstantsEnum;
-use App\Models\Counsellor;
 use App\Models\Discussion;
 use App\Models\GroupTherapy;
 use App\Models\Message;
 use App\Models\Session;
 use App\Models\Therapy;
-use App\Models\User;
 use App\Services\MessageService;
 use App\Support\AdminBypass;
 use Illuminate\Support\Facades\Broadcast;
@@ -48,17 +45,9 @@ Broadcast::channel('therapies.{therapyId}', function ($user, $therapyId) {
         return false;
     }
 
-    $isUser = ($therapy->addedby_type == User::class && $therapy->addedby_id == $user->id) ||
-        ($therapy->addedby_type == Counsellor::class && $therapy->addedby->user_id == $user->id);
-
-    $name = $user->name;
-
-    if ($isUser && $therapy->isAnonymousFor($user)) {
-        $name = ConstantsEnum::anonymousUserLabel->value;
-    }
-
-    // SCRUM-357: this channel's key for the user, never their id (User::getAuthIdentifierForBroadcasting).
-    return ['id' => $user->getAuthIdentifierForBroadcasting(), 'name' => $name];
+    // SCRUM-379: the one masking rule (Therapy::isMaskedToOthers()) -- the same name the video call
+    // shows. SCRUM-357: this channel's key for the user, never their id (User::getAuthIdentifierForBroadcasting).
+    return ['id' => $user->getAuthIdentifierForBroadcasting(), 'name' => $therapy->displayNameOf($user)];
 });
 
 Broadcast::channel('groupTherapies.{groupTherapyId}', function ($user, $groupTherapyId) {
@@ -74,21 +63,10 @@ Broadcast::channel('groupTherapies.{groupTherapyId}', function ($user, $groupThe
         return false;
     }
 
-    $counsellor = $user->counsellor;
-
-    $name = $user->name;
-
-    // Never mask a counsellor's own name -- anonymity only ever applies to a client/User
-    // member. isAnonymousFor() itself implements the OR logic (group-level flag OR this
-    // member's own group_therapy_user pivot flag).
-    $isCounsellorForGroup = $counsellor && $therapy->isCounsellor($counsellor);
-
-    if (! $isCounsellorForGroup && $therapy->isAnonymousFor($user)) {
-        $name = ConstantsEnum::anonymousUserLabel->value;
-    }
-
-    // SCRUM-357: this channel's key for the user, never their id (User::getAuthIdentifierForBroadcasting).
-    return ['id' => $user->getAuthIdentifierForBroadcasting(), 'name' => $name];
+    // SCRUM-379: the one masking rule (GroupTherapy::isMaskedToOthers()) -- never a counsellor, and
+    // a member by the group flag OR their own membership row's flag. SCRUM-357: this channel's key
+    // for the user, never their id (User::getAuthIdentifierForBroadcasting).
+    return ['id' => $user->getAuthIdentifierForBroadcasting(), 'name' => $therapy->displayNameOf($user)];
 });
 
 Broadcast::channel('discussions.{discussionId}', function ($user, $discussionId) {

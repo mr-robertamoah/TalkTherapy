@@ -1,5 +1,11 @@
 #!/bin/bash
 
+# SCRUM-379: readiness marker for the php service's healthcheck (docker-compose.yml). queue and reverb
+# wait for it, so migrations, the seed and storage permissions are done before they start writing.
+# Removed first, so a restart isn't reported ready before this run has finished.
+READY_MARKER=/tmp/talktherapy-entrypoint-ready
+rm -f "$READY_MARKER"
+
 # Wait for MySQL to be ready
 echo "Waiting for the database..."
 until nc -z db 3306; do
@@ -74,6 +80,8 @@ SEED_MARKER=/var/www/html/storage/framework/.seeded
 # they just 404 when displayed). Re-running this on every boot keeps it self-healing.
 echo "Linking storage..."
 php artisan storage:link --force
+
+touch "$READY_MARKER"
 
 # Finally, run whatever command was passed to the container (defaults to the Dockerfile's
 # CMD ["php-fpm"], but must be respected so services like `queue` can override it via

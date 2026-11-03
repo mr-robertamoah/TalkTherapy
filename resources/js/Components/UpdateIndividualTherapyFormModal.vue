@@ -126,11 +126,13 @@ async function updateTherapy() {
         onFinish: () => {
             loading.value = false
         },
-        onError: (err) => {
-            console.log(err)
-            if (err.response?.data?.message) {
+        // SCRUM-379: Inertia passes the server's errors object here (the refusal reason arrives as
+        // `alert`), never an axios response, so the old check always fell through to the generic
+        // message. Field errors show beside their fields (therapyForm.errors).
+        onError: (errors) => {
+            if (errors?.alert) {
                 setFailedAlertData({
-                    message: err.response.data.message,
+                    message: errors.alert,
                     time: 10000,
                 })
                 return

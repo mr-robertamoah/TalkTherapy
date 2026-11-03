@@ -15,7 +15,6 @@ use App\Models\Session;
 use App\Models\User;
 use App\Models\VideoSession;
 use App\Models\VideoSessionParticipant;
-use App\Support\VideoDisplayName;
 use App\Support\VideoJoinLock;
 use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Support\Facades\DB;
@@ -78,7 +77,8 @@ class JoinVideoSessionAction extends Action
             && (bool) ($user->counsellor && $session->for->isCounsellor($user->counsellor));
 
         $receiveOnly = $this->isReceiveOnly($session, $user);
-        $isMasked = VideoDisplayName::isMaskedGroupParticipant($session, $user);
+        // SCRUM-332/379: the camera rule lives on the therapy (GroupTherapy::allowsCameraFor()).
+        $withholdsCamera = ! $session->for->allowsCameraFor($user);
 
         // SCRUM-335: guarded like createRoom() below -- an HTTP client error's code is the upstream
         // status and its message the provider's response body, neither of which may reach the user.
@@ -88,10 +88,10 @@ class JoinVideoSessionAction extends Action
             $credentials = $provider->createParticipantCredentials(
                 $videoSession,
                 $user,
-                VideoDisplayName::for($session, $user),
+                $session->for->displayNameOf($user),
                 isOwner: $isOwner,
                 receiveOnly: $receiveOnly,
-                canSendVideo: ! $isMasked,
+                canSendVideo: ! $withholdsCamera,
             );
         } catch (Throwable $exception) {
             $participantRow->update(['left_at' => now()]);
@@ -110,7 +110,7 @@ class JoinVideoSessionAction extends Action
 
         return [
             ...$credentials,
-            'participant' => $this->participantStateFor($session, $user, $videoSession, $receiveOnly, $isMasked),
+            'participant' => $this->participantStateFor($session, $user, $videoSession, $receiveOnly, $withholdsCamera),
         ];
     }
 
@@ -119,7 +119,7 @@ class JoinVideoSessionAction extends Action
     // the call UI start in the right state (receive-only member, audio-only anonymous creator) and
     // lets a counsellor who joins mid-call see the hands and speakers that already exist, since the
     // broadcasts that built them were sent before they subscribed.
-    private function participantStateFor(Session $session, User $user, VideoSession $videoSession, bool $receiveOnly, bool $isMasked): array
+    private function participantStateFor(Session $session, User $user, VideoSession $videoSession, bool $receiveOnly, bool $withholdsCamera): array
     {
         $isGroup = $session->for instanceof GroupTherapy;
         $canModerate = $isGroup && $session->for->isCounsellorUser($user);
@@ -129,8 +129,8 @@ class JoinVideoSessionAction extends Action
         return [
             'receiveOnly' => $receiveOnly,
             'canSendAudio' => ! $receiveOnly,
-            'canSendVideo' => ! $receiveOnly && ! $isMasked,
-            'isAnonymous' => $isMasked,
+            'canSendVideo' => ! $receiveOnly && ! $withholdsCamera,
+            'isAnonymous' => $withholdsCamera,
             // Mirrors RaiseHandAction's own refusal for a minor (SCRUM-324) -- a hand that could
             // never be granted is never offered. isMinorMember is the reason, for the UI's copy;
             // it describes only the joiner themselves.

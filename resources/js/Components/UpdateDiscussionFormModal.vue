@@ -1,6 +1,6 @@
 <script setup>
-import { computed, onBeforeMount, ref, watch, watchEffect } from 'vue';
-import { addMinutesToInputValue, defaultFormTime, isMinutesBefore, toLocalInputValue } from '@/Composables/countdown'
+import { ref, watch, watchEffect } from 'vue';
+import useScheduleTimes from '@/Composables/useScheduleTimes'
 import TextInput from '@/Components/TextInput.vue';
 import InputLabel from '@/Components/InputLabel.vue';
 import InputError from '@/Components/InputError.vue';
@@ -10,7 +10,6 @@ import Modal from '@/Components/Modal.vue';
 import useAlert from "@/Composables/useAlert";
 import Alert from "./Alert.vue";
 import PrimaryButton from "./PrimaryButton.vue";
-import { differenceInMinutes } from 'date-fns';
 import useErrorHandler from '@/Composables/useErrorHandler';
 import SessionBadge from './SessionBadge.vue';
 import useAuth from '@/Composables/useAuth';
@@ -37,8 +36,8 @@ const loading = ref(false)
 const sessionSearch = ref('')
 const sessions = ref({data: [], page: 1})
 const getting = ref({show: '', type: ''})
-const startTime = ref('')
-const endTime = ref('')
+// SCRUM-379: shared start/end handling (resources/js/Composables/useScheduleTimes.js).
+const { startTime, endTime, setTimes, clearTimes, timesError, computedStartTime, computedEndTime, computedNow, computedDuration } = useScheduleTimes({})
 const discussionData = ref({
     'name': '',
     'description': '',
@@ -56,11 +55,6 @@ const discussionErrors = ref({
     'sessionId': '',
 })
 
-onBeforeMount(() => {
-    startTime.value = defaultFormTime(30)
-    endTime.value = addMinutesToInputValue(startTime.value, 40)
-})
-
 watch(() => props.show, () => {
     if (!props.show) return
 
@@ -74,37 +68,7 @@ watchEffect(() => {
     if (props.loadedSessions?.length)
         sessions.value.data = [...props.loadedSessions]
 })
-watch(() => startTime.value, () => {
-    if (
-        !isMinutesBefore({
-            firstTime: endTime.value, 
-            secondTime: startTime.value, 
-            minutes: 30
-        })
-    ) endTime.value = addMinutesToInputValue(startTime.value, 30)
-})
-watch(() => endTime.value, () => {
-    if (
-        !isMinutesBefore({
-            firstTime: endTime.value, 
-            secondTime: startTime.value, 
-            minutes: 30
-        })
-    ) endTime.value = addMinutesToInputValue(startTime.value, 30)
-})
 
-const computedStartTime = computed(() => {
-    return new Date(startTime.value).toLocaleString()
-})
-const computedEndTime = computed(() => {
-    return new Date(endTime.value).toLocaleString()
-})
-const computedNow = computed(() => {
-    return toLocalInputValue(new Date())
-})
-const computedDuration = computed(() => {
-    return (endTime.value && startTime.value) ? differenceInMinutes(new Date(endTime.value), new Date(startTime.value)) : ''
-})
 
 const debouncedGetSessions = _.debounce(() => {
     sessions.value.page = 1
@@ -116,8 +80,7 @@ function setDiscussionFormData() {
     discussionData.value.name = props.discussion.name
     discussionData.value.description = props.discussion.description
     discussionData.value.startTime = props.discussion.startTime
-    startTime.value = toLocalInputValue(props.discussion.startTime)
-    endTime.value = toLocalInputValue(props.discussion.endTime)
+    setTimes(props.discussion.startTime, props.discussion.endTime)
     discussionData.value.endTime = props.discussion.endTime
     discussionData.value.sessionId = ''
     discussionData.value.deletedSessionId = null
@@ -131,17 +94,9 @@ async function updateDiscussion() {
         return
     }
 
-    if (!isMinutesBefore({ firstTime: startTime.value, minutes: 30 })) {
-        setFailedAlertData({
-            message: 'Start time must be at least 30 minutes away from current time. Please increase the start time.',
-        })
-        return
-    }
-    
-    if (!isMinutesBefore({ firstTime: endTime.value, secondTime: startTime.value, minutes: 30})) {
-        setFailedAlertData({
-            message: 'End time must be at least 30 minutes away from start time. Please increase the end time.',
-        })
+    const timeError = timesError()
+    if (timeError) {
+        setFailedAlertData({ message: timeError })
         return
     }
 
@@ -254,8 +209,7 @@ function clearData() {
     discussionData.value.name = ''
     discussionData.value.description = ''
     discussionData.value.startTime = ''
-    startTime.value = ''
-    endTime.value = ''
+    clearTimes()
     discussionData.value.endTime = ''
     discussionData.value.sessionId = ''
     discussionData.value.deletedSessionId = ''

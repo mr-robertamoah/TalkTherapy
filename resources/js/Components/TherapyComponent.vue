@@ -1416,19 +1416,23 @@ async function getSessions() {
 }
 
 async function getTopics() {
+    // SCRUM-379: topics belong to 1:1 therapies only (api.topics.get resolves a Therapy by id). On a
+    // group page this asked for the topics of whichever 1:1 therapy shared the group's id, which
+    // failed and logged "res.data.data is not iterable".
+    if (props.therapyType === 'group') return
+
     loading.value = true
 
     await axios
         .get(route('api.topics.get', {
             therapyId: props.therapy?.id,
-            page: pages.value.session
+            page: pages.value.topic, // SCRUM-379: was pages.value.session
         }))
         .then((res) => {
-            console.log(res)
             if (pages.value.topic == 1)
             topics.value = []
-        
-            topics.value = [...topics.value, ...res.data.data]
+
+            topics.value = [...topics.value, ...(res.data?.data ?? [])]
             updatePage(res, 'topic')
         })
         .catch((err) => {

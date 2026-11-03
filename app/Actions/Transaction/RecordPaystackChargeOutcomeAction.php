@@ -10,9 +10,10 @@ use Illuminate\Support\Facades\Log;
 // SCRUM-378: maps a Paystack charge/verify RESPONSE (`data.status`/amount/currency/gateway_response --
 // chargeAuthorization() and verifyTransaction() share that shape) to our transaction status, shared by
 // ResolveTransactionWithPaystackAction, ChargeOrganizationForModelAction and
-// ProcessOrganizationInvoiceSettlementJob. (ProcessPaystackWebhookJob still has its own copy of the
-// "check amount on success, then record" half, keyed by the event name rather than data.status --
-// ticketed, SCRUM-379.) Only 'success'/'failed'/'abandoned' are terminal on
+// ProcessOrganizationInvoiceSettlementJob. SCRUM-379: ProcessPaystackWebhookJob shares the
+// "check amount on success, then record" half via recordOutcome() -- its status comes from the event
+// name (charge.success/charge.failed), not data.status, so it maps that itself. Only
+// 'success'/'failed'/'abandoned' are terminal on
 // Paystack's side; anything else ("processing", "queued", "ongoing", ...) leaves the transaction as it
 // is, so a later webhook or verify can still resolve it. Returns the transaction unchanged then.
 //
@@ -44,8 +45,14 @@ class RecordPaystackChargeOutcomeAction extends Action
             ]);
         }
 
-        // A mismatch here throws (SCRUM-117) instead of silently marking a partial or wrong-currency
-        // payment as a full success.
+        return $this->recordOutcome($transaction, $status, $data, $source);
+    }
+
+    // $status is already one of ours (TransactionStatusEnum). A mismatch here throws (SCRUM-117)
+    // instead of silently marking a partial or wrong-currency payment as a full success -- for a
+    // queued caller (the webhook) that fails the job, which is what alerts admins.
+    public function recordOutcome(Transaction $transaction, string $status, array $data, string $source): Transaction
+    {
         if ($status === TransactionStatusEnum::success->value) {
             EnsureTransactionAmountAndCurrencyMatchAction::new()->execute(
                 $transaction,

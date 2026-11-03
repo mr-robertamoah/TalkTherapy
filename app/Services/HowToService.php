@@ -20,7 +20,8 @@ class HowToService extends Service
 {
     public function getHowTos(GetHowToDTO $getHowToDTO)
     {
-        $query = HowTo::query();
+        // SCRUM-194: each step's file comes through the pivot, so load it up front (no query per step).
+        $query = HowTo::query()->with('howToSteps.stepFile');
 
         $query->whereNameLike($getHowToDTO->name);
 
@@ -47,7 +48,7 @@ class HowToService extends Service
     public function updateHowTo(CreateHowToDTO $createHowToDTO)
     {
         EnsureIsAdminAction::new()->execute($createHowToDTO);
-        
+
         EnsureHowToExistsAction::new()->execute($createHowToDTO);
 
         EnsureHowToDataIsValidAction::new()->execute($createHowToDTO, 'update');

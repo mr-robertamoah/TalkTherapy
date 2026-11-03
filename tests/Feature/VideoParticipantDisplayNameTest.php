@@ -233,3 +233,56 @@ test('the group\'s creator is still named (they belong to the group without a me
         ->assertOk()
         ->assertJson(['displayName' => $data['creator']->name]);
 });
+
+// SCRUM-379: an unknown session answers exactly like every other refusal on this route (the other
+// video routes keep their 422 "Session was not found.").
+test('an unknown session gets the same 404 as any other refusal', function () {
+    $data = vpdnTherapySession(anonymous: false);
+    vpdnJoin($this, $data['client'], $data['session']);
+    $refusal = vpdnLookup($this, $data['client'], $data['session'], 'not-a-real-participant-key')->assertNotFound();
+
+    $response = $this->actingAs($data['client'])->getJson(route('sessions.video.participants.show', [
+        'sessionId' => Session::max('id') + 1000,
+        'participantKey' => VideoParticipantKey::for($data['session']->id, $data['counsellorUser']->id),
+    ]));
+
+    $response->assertNotFound();
+    expect($response->json())->toBe($refusal->json());
+});
+
+// SCRUM-379: the call UI looks up every other participant's label as they appear (up to 24 in a full
+// group call), so one lookup must not load the group's whole member list -- only the rows for the
+// people it's about -- and its cost must not grow with the size of the group.
+test('a lookup reads only the people it is about, not the whole member list, whatever the group size', function () {
+    $data = vpdnGroupSession(memberAnonymous: true);
+    $groupTherapy = GroupTherapy::find($data['session']->for_id);
+    vpdnJoin($this, $data['counsellorUser'], $data['session']);
+    vpdnJoin($this, $data['member'], $data['session']);
+    $memberKey = VideoParticipantKey::for($data['session']->id, $data['member']->id);
+
+    $lookupQueries = function () use ($data, $memberKey) {
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        vpdnLookup($this, $data['counsellorUser'], $data['session'], $memberKey)
+            ->assertOk()
+            ->assertJson(['displayName' => ConstantsEnum::anonymousUserLabel->value]);
+        $queries = collect(DB::getQueryLog())->pluck('query');
+        DB::disableQueryLog();
+
+        return $queries;
+    };
+
+    $small = $lookupQueries();
+
+    foreach (range(1, 15) as $i) {
+        $groupTherapy->users()->attach(User::factory()->adult()->create()->id, ['anonymous' => false]);
+    }
+
+    $large = $lookupQueries();
+
+    $memberQueries = $large->filter(fn ($sql) => str_contains($sql, 'group_therapy_user'));
+
+    expect($memberQueries)->not->toBeEmpty()
+        ->and($memberQueries->every(fn ($sql) => str_contains($sql, '"users"."id" = ?')))->toBeTrue()
+        ->and($large->count())->toBe($small->count());
+});

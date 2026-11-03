@@ -76,6 +76,8 @@ const deletePasswordInput = ref(null)
 const emailVerificationForm = useForm({})
 
 const nationalIdFile = ref(null)
+// SCRUM-301: the selected licensing authority's licence type (FILE, NUMBER or BOTH).
+const licenseType = ref(null)
 const formDataChanged = ref(false)
 const loading = ref(false)
 const accountStatuses = ref([
@@ -306,13 +308,21 @@ function verifyCounsellor() {
         return
     }
     
+    // SCRUM-301: exactly what the selected authority's licence consists of -- a copy of the document
+    // (FILE), its number (NUMBER), or both (BOTH). The server checks the same.
+    const needsFile = ['FILE', 'BOTH'].includes(licenseType.value)
+    const needsNumber = ['NUMBER', 'BOTH'].includes(licenseType.value)
     if (
-        !(verifyForm.licenseFile) &&
-        !(verifyForm.licenseNumber)
+        (needsFile && !verifyForm.licenseFile) ||
+        (needsNumber && !verifyForm.licenseNumber)
     ) {
         setAlertData({
             show: true,
-            message: 'You are required to provide a valid ID number or a file/image of the ID//authorization for the Licensing Authority selected.',
+            message: needsFile && needsNumber
+                ? 'Provide your licence number and upload a copy of the licence (an image or a PDF).'
+                : needsFile
+                    ? 'Upload a copy of your licence (an image or a PDF).'
+                    : 'Enter your licence number.',
             type: 'failed',
         })
         return
@@ -910,7 +920,7 @@ function closeModal() {
                         <div class="p-2 mt-2 mb-4 flex flex-col justify-center items-start bg-gray-200 rounded">
                             <div class="text-sm text-gray-600 mt-1">National Identification</div>
                             <div class="w-full mt-4 mx-auto max-w-[400px]">
-                                <input @change="changeFile" accept="image/*,application/pdf,application/docx" type="file" name="national_id" id="national_id" class="hidden" ref="nationalIdFile">
+                                <input @change="changeFile" accept=".jpg,.jpeg,.png,.pdf" type="file" name="national_id" id="national_id" class="hidden" ref="nationalIdFile">
                                 <InputLabel for="nationalIdNumber" value="National Id Number" />
 
                                 <TextInput
@@ -944,6 +954,7 @@ function closeModal() {
                                     verifyForm.licensingAuthorityId = data.licensingAuthorityId
                                     verifyForm.licenseNumber = data.number
                                     verifyForm.licenseFile = data.file
+                                    licenseType = data.licenseType
                                 }"
                                 :addedby="{
                                     type: 'Counsellor',
