@@ -33,6 +33,8 @@ const videoElements = ref({})
 // nothing on failure (e.g. the target already left, or a transient network error).
 const removingParticipantId = ref(null)
 const removeError = ref('')
+// SCRUM-315: removed here, but the video service hasn't confirmed it yet (the server keeps retrying).
+const removeNotice = ref('')
 
 function setVideoElement(participantId, element) {
   if (!element) {
@@ -86,10 +88,12 @@ function toggleFocus(participant) {
 
 async function clickedRemove(participant) {
   removeError.value = ''
+  removeNotice.value = ''
   removingParticipantId.value = participant.userId
 
   try {
-    await removeParticipant(participant.userId)
+    const result = await removeParticipant(participant.userId)
+    if (result?.providerConfirmed === false) removeNotice.value = result.message
   } catch (err) {
     removeError.value = err.response?.data?.message || 'Could not remove this participant. Please try again.'
   } finally {
@@ -295,6 +299,7 @@ onBeforeUnmount(() => {
       </div>
 
       <div v-if="removeError" class="text-sm text-red-600 mb-3">{{ removeError }}</div>
+      <div v-if="removeNotice" class="text-sm text-amber-700 mb-3" role="status">{{ removeNotice }}</div>
 
       <!-- TT-3.2f-j/SCRUM-327: a receive-only member's own speaking state. -->
       <div

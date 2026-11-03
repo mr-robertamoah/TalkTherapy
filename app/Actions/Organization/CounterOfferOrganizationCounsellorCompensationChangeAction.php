@@ -9,13 +9,9 @@ use App\DTOs\OrganizationCounsellorCompensationDTO;
 use App\Enums\RequestStatusEnum;
 use App\Enums\RequestTypeEnum;
 use App\Exceptions\OrganizationException;
-use App\Models\Organization;
-use App\Models\OrganizationCounsellor;
 use App\Models\Request;
 use App\Notifications\OrganizationCounsellorCompensationChangeProposedNotification;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Notification;
 
 class CounterOfferOrganizationCounsellorCompensationChangeAction extends Action
 {
@@ -65,50 +61,17 @@ class CounterOfferOrganizationCounsellorCompensationChangeAction extends Action
                 ])
             );
 
-            $this->notifyNewRecipient($counterOffer, $organizationCounsellor);
+            // SCRUM-151: the counterparty can be gone (a counsellor soft-deleted mid-negotiation, an
+            // organization with no admins left). The counter-offer still stands; nobody is notified.
+            NotifyCompensationRequestRecipientAction::new()->execute(
+                $counterOffer,
+                new OrganizationCounsellorCompensationChangeProposedNotification(
+                    $organizationCounsellor->organization,
+                    $counterOffer->data
+                )
+            );
 
             return $counterOffer;
         });
-    }
-
-    // The new recipient (`to`) alternates between a Counsellor (the org's turn) and the
-    // Organization itself (the counsellor's turn) -- Organization isn't Notifiable, so every one
-    // of its admins is notified individually instead of a single notify() call.
-    private function notifyNewRecipient(Request $counterOffer, OrganizationCounsellor $organizationCounsellor): void
-    {
-        $notification = new OrganizationCounsellorCompensationChangeProposedNotification(
-            $organizationCounsellor->organization,
-            $counterOffer->data
-        );
-
-        // SCRUM-151: the counterparty can be gone (a counsellor soft-deleted mid-negotiation, an
-        // organization with no admins left). The counter-offer still stands; nobody is notified,
-        // mirroring AppService::notifyCompensationRequestRecipient (SCRUM-149).
-        if (is_null($counterOffer->to)) {
-            Log::warning('Compensation counter-offer has no resolvable recipient to notify.', [
-                'requestId' => $counterOffer->id,
-            ]);
-
-            return;
-        }
-
-        if ($counterOffer->to instanceof Organization) {
-            $admins = $organizationCounsellor->organization->admins;
-
-            if ($admins->isEmpty()) {
-                Log::warning('Compensation counter-offer\'s organization has no admins to notify.', [
-                    'requestId' => $counterOffer->id,
-                    'organizationId' => $organizationCounsellor->organization->id,
-                ]);
-
-                return;
-            }
-
-            Notification::send($admins, $notification);
-
-            return;
-        }
-
-        $counterOffer->to->notify($notification);
     }
 }

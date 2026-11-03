@@ -68,9 +68,15 @@ class VideoSessionController extends Controller
     public function removeParticipant(Request $request)
     {
         try {
-            RemoveParticipantFromVideoSessionAction::new()->execute($session = $this->session($request), $request->user(), $this->targetUserId($request, $session));
+            $confirmed = RemoveParticipantFromVideoSessionAction::new()->execute($session = $this->session($request), $request->user(), $this->targetUserId($request, $session));
 
-            return response()->json(['message' => 'Participant removed from the video call.']);
+            // SCRUM-315: tells the counsellor when the video service hasn't confirmed it yet.
+            return response()->json([
+                'message' => $confirmed
+                    ? 'Participant removed from the video call.'
+                    : 'Participant removed here, but the video service has not confirmed it yet. Retrying -- they may stay visible for a short while.',
+                'providerConfirmed' => $confirmed,
+            ]);
         } catch (Throwable $th) {
             return $this->failure($th);
         }

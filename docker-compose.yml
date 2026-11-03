@@ -88,7 +88,11 @@ services:
       - .:/var/www/html
       - ./storage:/var/www/html/storage
       - ./docker/queue/supervisord.conf:/etc/supervisord.conf
-    command: bash -c "mkdir -p /var/www/html/storage/logs && chmod -R 777 /var/www/html/storage && touch /var/www/html/supervisord.log && chmod 777 /var/www/html/supervisord.log && supervisord -c /etc/supervisord.conf"
+    # SCRUM-376: no `chmod -R 777 storage` -- it made private uploads (identity, licence and report-evidence
+    # documents) world-writable. The entrypoint (docker/php/entrypoint.sh -> storage-permissions.sh) sets
+    # storage up for www-data, which the worker and scheduler run as (docker/queue/supervisord.conf);
+    # supervisord itself runs as root and writes its own log.
+    command: bash -c "touch /var/www/html/supervisord.log && supervisord -c /etc/supervisord.conf"
     depends_on:
       - php
       - db
@@ -106,7 +110,9 @@ services:
       - ./storage:/var/www/html/storage
       - ./docker/reverb/supervisord.conf:/etc/supervisord.conf
       - ./docker/reverb/entrypoint.sh:/usr/local/bin/reverb-entrypoint.sh
-    entrypoint: ["/usr/local/bin/reverb-entrypoint.sh"]
+    # Through bash: the script is bind-mounted from the checkout, and git stores it without the
+    # execute bit, so running it directly failed with "permission denied" on a fresh recreate.
+    entrypoint: ["bash", "/usr/local/bin/reverb-entrypoint.sh"]
     ports:
       - "8081:8081"  # remapped from Reverb's default 8080 (conflicts with another local project)
     depends_on:

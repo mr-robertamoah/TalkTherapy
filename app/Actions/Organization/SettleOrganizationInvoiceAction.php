@@ -30,7 +30,7 @@ use Illuminate\Support\Str;
 //
 // TT-7.3b-followup/SCRUM-245: also claims a `failed` invoice, not just `open` -- the only caller
 // that ever reaches this action with a `failed` invoice is RetryOrganizationInvoiceSettlementAction
-// (admin-triggered only); the periodic sweep's own query (`AppService::settleDueOrganizationInvoices()`)
+// (admin-triggered only); the periodic sweep's own query (`SettleDueOrganizationInvoicesAction`)
 // filters to `status = OPEN` before this action is ever called, so a `failed` invoice can never be
 // picked up automatically -- this relaxed guard only ever fires from that one deliberate, manual
 // entry point.
@@ -55,7 +55,7 @@ class SettleOrganizationInvoiceAction extends Action
             // have fully closed first makes that structurally impossible: once period_end has
             // passed, no future `held` session can ever compute this same period_start again.
             //
-            // Mirrors AppService::settleDueOrganizationInvoices()'s own `< today` boundary exactly
+            // Mirrors SettleDueOrganizationInvoicesAction's own `< today` boundary exactly
             // -- period_end is a bare date (the whole day it names still belongs to the period),
             // so a plain isFuture() check on a date read back at midnight would already read as
             // "past" partway through period_end's own day, wrongly allowing same-day settlement.

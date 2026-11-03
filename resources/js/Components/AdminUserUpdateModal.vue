@@ -142,6 +142,7 @@
 </template>
 
 <script setup>
+import useCountries from '@/Composables/useCountries';
 import useAlert from "@/Composables/useAlert"
 import useAuth from "@/Composables/useAuth"
 import useModal from "@/Composables/useModal"
@@ -196,18 +197,13 @@ const userErrors = ref({
     dob: '',
 })
 
-const countries = ref([
-    'Ghana',
-    'Nigeria',
-    'Uganda',
-    'Rwanda'
-])
+const { countries, loadCountries } = useCountries()
 
 watch(() => props.show, () => {
     if (!props.show) return
 
     setUserData()
-    getCountries()
+    loadCountries()
 })
 
 const computedFormCountry = computed(() => {
@@ -291,23 +287,6 @@ function setUserData() {
     userData.value.country = props.user.country
     userData.value.dob = props.user.dob ? getDate(props.user.dob) : ''
     userData.value.emailVerified = props.user.emailVerified
-}
-
-async function getCountries() {
-    await new axios.Axios({
-        baseURL: `${import.meta.env.VITE_COUNTRIES_API}`,
-    })
-    .get('/countries/flag/images')
-    .then(res => {
-
-        const retrievedCountries = JSON.parse(res.data).data
-
-       countries.value = retrievedCountries.map(c => c.name)
-       localStorage.setItem('countries', [...countries.value].toString())
-    })
-    .catch(err => {
-        console.log(err)
-    })
 }
 
 </script>

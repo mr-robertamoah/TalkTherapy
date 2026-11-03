@@ -436,10 +436,13 @@ export default function useVideoSession(session) {
     async function removeParticipant(targetUserId) {
         if (!session.value?.id) return
 
-        await axios.post(route('sessions.video.participants.remove', {
+        // SCRUM-315: the response says whether the video service confirmed the eject.
+        const res = await axios.post(route('sessions.video.participants.remove', {
             sessionId: session.value.id,
             participantKey: targetUserId,
         }))
+
+        return res.data
     }
 
     // TT-3.2f-j/SCRUM-327: every join starts fresh (a reconnect included -- the backend mints a new,

@@ -10,6 +10,7 @@ use App\Services\Paystack\PaystackClient;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
+use Illuminate\Http\Client\HttpClientException;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
@@ -104,19 +105,21 @@ class ProcessCounsellorPayoutJob implements ShouldQueue
             // SCRUM-272 (security review): on a RETRY, a 4xx isn't a definite rejection either -- the
             // earlier attempt may have timed out AFTER Paystack processed it, and the retry is then
             // refused as a duplicate. Recording "failed" would invite a second, new transfer/charge.
-            // Rethrow and leave the record as it is for follow-up instead.
+            // SCRUM-376: so ask Paystack what actually became of this reference instead, and record
+            // that below exactly as if the first attempt had answered -- or rethrow (record left as
+            // it is for follow-up and the failed-job alert) when the answer isn't final.
             if ($this->attempts() > 1) {
-                throw $exception;
+                $response = $this->finalOutcomeOrRethrow($payout, $exception);
+            } else {
+                RecordCounsellorPayoutStatusAction::new()->execute(
+                    $payout,
+                    CounsellorPayoutStatusEnum::failed->value,
+                    CounsellorPayoutStatusSourceEnum::initiate->value,
+                    'Paystack could not initiate this transfer.'
+                );
+
+                return;
             }
-
-            RecordCounsellorPayoutStatusAction::new()->execute(
-                $payout,
-                CounsellorPayoutStatusEnum::failed->value,
-                CounsellorPayoutStatusSourceEnum::initiate->value,
-                'Paystack could not initiate this transfer.'
-            );
-
-            return;
         }
 
         $transferCode = $response['data']['transfer_code'] ?? null;
@@ -144,5 +147,42 @@ class ProcessCounsellorPayoutJob implements ShouldQueue
             CounsellorPayoutStatusSourceEnum::initiate->value,
             $response['data']['reason'] ?? null
         );
+    }
+
+    // SCRUM-376: only a definite answer comes back -- success, or failed/reversed (money never
+    // left, or came back). Anything else (no record of the reference yet, still pending/otp/
+    // processing, Paystack unreachable) is ambiguous, so the original 4xx is rethrown: never a
+    // failure guessed from an inconclusive lookup, never a success Paystack didn't state.
+    private function finalOutcomeOrRethrow(CounsellorPayout $payout, RequestException $exception): array
+    {
+        try {
+            $response = PaystackClient::new()->verifyTransfer($payout->reference);
+        } catch (HttpClientException) {
+            throw $exception;
+        }
+
+        if (! in_array($response['data']['status'] ?? null, ['success', 'failed', 'reversed'], true)) {
+            throw $exception;
+        }
+
+        // Security review: a new source of data on the money path, so it has to be this payout's own
+        // transfer. Anything that doesn't match stays pending for someone to check by hand.
+        $data = $response['data'];
+        if (($data['reference'] ?? null) !== $payout->reference
+            || (int) ($data['amount'] ?? -1) !== $payout->amount
+            || strtoupper((string) ($data['currency'] ?? '')) !== strtoupper((string) $payout->currency)) {
+            Log::warning('A payout lookup returned a transfer that does not match the payout; left for manual follow-up.', [
+                'payout' => $payout->id,
+            ]);
+
+            throw $exception;
+        }
+
+        Log::info('A retried payout was refused by Paystack; recorded the outcome Paystack reports for its reference instead.', [
+            'payout' => $payout->id,
+            'status' => $response['data']['status'],
+        ]);
+
+        return $response;
     }
 }

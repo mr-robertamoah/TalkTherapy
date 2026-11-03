@@ -1,5 +1,6 @@
 <?php
 
+use App\Actions\Video\ExpireIdleSpeakingGrantsAction;
 use App\Enums\ConstantsEnum;
 use App\Enums\SpeakingPermissionRevocationReasonEnum;
 use App\Models\Counsellor;
@@ -7,7 +8,6 @@ use App\Models\GroupTherapy;
 use App\Models\Session;
 use App\Models\User;
 use App\Models\VideoSession;
-use App\Services\AppService;
 use App\Services\Chime\ChimeClient;
 use App\Support\VideoParticipantKey;
 use Illuminate\Http\Client\Request;
@@ -362,7 +362,7 @@ test('an unused grant is reverted at the provider by the idle sweep, while an ac
     // Only the anonymous member's client reports activity.
     gvrPost($this, 'sessions.video.speaking_activity', $data['session'], $data['anonymousMember'])->assertOk();
 
-    AppService::new()->expireIdleSpeakingGrants();
+    ExpireIdleSpeakingGrantsAction::new()->execute();
 
     $videoSession = VideoSession::query()->where('session_id', $data['session']->id)->first();
     $idleGrant = $videoSession->activeParticipantFor($data['member']->id)->speakingGrants()->latest('id')->first();

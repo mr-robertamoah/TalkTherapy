@@ -1,5 +1,6 @@
 <?php
 
+use App\Actions\Organization\ExpireStaleCompensationRequestsAction;
 use App\DTOs\OrganizationCounsellorCompensationDTO;
 use App\DTOs\RequestResponseDTO;
 use App\Enums\OrganizationAdminRoleEnum;
@@ -11,7 +12,6 @@ use App\Models\Counsellor;
 use App\Models\Organization;
 use App\Models\OrganizationCounsellor;
 use App\Models\User;
-use App\Services\AppService;
 use App\Services\OrganizationCounsellorCompensationService;
 use App\Services\RequestService;
 
@@ -150,7 +150,7 @@ test('an expired negotiation is reported distinguishably from a manual reject', 
         ])
     );
     $expiredRequest->update(['expires_at' => now()->subDay()]);
-    AppService::new()->expireStaleCompensationRequests();
+    ExpireStaleCompensationRequestsAction::new()->execute();
 
     $state = OrganizationCounsellorCompensationService::new()->getNegotiationState(
         OrganizationCounsellorCompensationDTO::new()->fromArray([
@@ -410,7 +410,7 @@ test('the resource distinguishes an expired resolution from a manual reject', fu
         ])
     );
     $request->update(['expires_at' => now()->subDay()]);
-    AppService::new()->expireStaleCompensationRequests();
+    ExpireStaleCompensationRequestsAction::new()->execute();
 
     $resource = (new OrganizationCounsellorCompensationNegotiationStateResource($request->fresh()))->toArray(request());
 

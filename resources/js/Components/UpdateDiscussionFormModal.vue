@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onBeforeMount, ref, watch, watchEffect } from 'vue';
-import { toLocalInputValue } from '@/Composables/countdown'
+import { defaultFormTime, toLocalInputValue } from '@/Composables/countdown'
 import TextInput from '@/Components/TextInput.vue';
 import InputLabel from '@/Components/InputLabel.vue';
 import InputError from '@/Components/InputError.vue';
@@ -58,7 +58,7 @@ const discussionErrors = ref({
 
 onBeforeMount(() => {
     startTime.value = getDefaultTime(30)
-    endTime.value = getDefaultTime(70)
+    endTime.value = addMinitesToDate(startTime.value, 40)
 })
 
 watch(() => props.show, () => {
@@ -132,9 +132,7 @@ function isMinutesBefore({firstTime, secondTime = null, minutes}) {
 }
 
 function getDefaultTime(minutes) {
-    const now = new Date()
-    let time = toLocalInputValue(addMinutes(now, minutes))
-    return time
+    return defaultFormTime(minutes)
 }
 
 

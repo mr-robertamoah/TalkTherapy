@@ -9318,3 +9318,93 @@ therapy 18 after the last QA pass.
     in) no longer loses it.
   - **Older bugs filed as SCRUM-377:** the create-session default start fails the 30-minute rule;
     the `prohibited_if` message key never matches; a country-flag 404 on the profile page.
+
+## SCRUM-376 + 377 + 141 + 315: sweeps out of AppService, Paystack retry lookups, storage permissions, form fixes, payment-data audit, video removal retries — 2026-11-03
+
+- **Grouping.** The user asked for the next group of work to include the two follow-ups (SCRUM-376, 377).
+  Added SCRUM-141 (payments clean-up, like 376's Paystack item) and SCRUM-315 (a provider call that
+  fails silently, like 376's retry item).
+  - **SCRUM-52 left out.** Its "Get Started" button in the HowTo step modal can't be reached:
+    `HowToModal` only opens from `HowToComponent` with `useModal`, and its one caller (`HelpModal`)
+    passes `useModal=false`. Picking a guided tour already closes the help modal and starts the tour.
+    Left for the user to decide whether it's obsolete.
+  - **SCRUM-138 and 181 left out.** 138 is "only once a real proxy exists"; 181 needs a product decision.
+- **Sweeps (376.1).** Every scheduled sweep left in `AppService` now has its own Action under
+  `app/Actions/<Domain>`; AppService keeps only `alertAdminWithReport`, `alertAdminsOfFailedJob` and
+  `getStats`. Same queries, locks and per-row isolation; same schedule (`schedule:list` checked).
+  - The guardian video-consent reminders are one Action, taking a `VideoConsentReminderWindowEnum`
+    that carries each window's column and look-ahead (architect review).
+  - The daily visitors status became `Visitor/SendVisitorsStatusToSuperAdminAction` (not `Alert/`,
+    which is the Alert model's domain). It logs instead of crashing when there's no super admin.
+  - The counter-offer action's copy of "notify the request's recipient" was the same logic as the
+    sweeps', so both now use `NotifyCompensationRequestRecipientAction`. Its warning text changed from
+    "counter-offer" to "compensation-change request".
+- **Paystack retry lookups (376.2).** On a retry, a 4xx from Paystack is checked by reference:
+  `GET /transfer/verify/{ref}` for payouts, `GET /transaction/verify/{ref}` for retainer settlements.
+  Only a definite answer is recorded, through each job's existing path (`success`, `failed`, and
+  `reversed` for transfers). Anything else (not found, pending, unreachable) rethrows as before.
+  - **Security review.** A payout lookup must match the payout's own reference, amount and currency,
+    or it's left for manual follow-up. A settlement lookup must match the transaction's reference (a
+    success's amount and currency are already checked). A settlement lookup that says `abandoned` isn't final:
+    Paystack also reports a charge that hasn't been attempted yet that way, and a failed invoice
+    suspends the org with no way back. Both verify calls URL-encode the reference.
+  - **Not `ResolveTransactionWithPaystackAction`.** Its server-charge mode records "reference not found"
+    as failed, which is the ambiguous case here (the timed-out first call may not be registered yet).
+    Its other mode records `abandoned` as abandoned, which would bring back SCRUM-244.
+  - **Refunds unchanged.** `GET /refund/{id}` needs Paystack's refund id, which isn't stored, and the
+    published API documents no "refunds for this transaction" filter. The refund webhook still resolves
+    them. Ticketed.
+- **Storage permissions (376.3).** No more `chmod -R 777 storage` in the queue command or the reverb
+  entrypoint. One script, `docker/php/storage-permissions.sh`, now run by the php, queue and reverb
+  entrypoints, sets storage and `bootstrap/cache` to:
+  - owner www-data, which every PHP process runs as;
+  - group = the host user's group (read from the bind-mounted project directory), group-writable
+    with setgid, so the host user keeps write access (devops review: without it, git and host-side
+    artisan broke once 777 was gone);
+  - never world-writable; `storage/app/private` and `storage/logs` not world-readable (security
+    review: the old `chmod -R 755` made identity, licence and report-evidence files readable by
+    anyone, and +x; reviewer: logs carry user ids and emails).
+- **Alert noise (376.4).** The "follow up by hand" warning for a stuck org charge logs once a day per
+  charge (a key in the scheduler store), not every 15 minutes.
+- **Form times (377.1).** Defaults are "now + minutes + 1", rounded up to the next 5-minute mark, with
+  the end 40 minutes after the start. The input drops seconds, so "now + 30" was under the rule as
+  soon as it was shown. The session forms' own check is now 30 minutes, the server's rule (it was 25).
+  Discussions have no server rule for this, so their check stays at 25.
+- **Message keys (377.2).** `Rule::prohibitedIf()` adds the plain `prohibited` rule, so the keys are
+  `startTime.prohibited` / `endTime.prohibited`. The leftover `Log::info` of every create-session
+  request was removed.
+- **Countries (377.3).** One `useCountries` composable replaces three copies of the fetch. It only
+  calls `VITE_COUNTRIES_API` when that's an http(s) URL (`.env` ships the placeholder `123`). It uses
+  `fetch` with JSON parsing, no app headers, no cookies and no Referer (security review), and caches
+  the list in localStorage behind try/catch.
+- **Payment-data audit (141).** `php artisan payments:audit-paid-therapies` (a closure in
+  `routes/console.php`, like the other commands: architect review) lists PAID therapies and
+  group therapies missing `amount`, `currency` or `per` (what `EnsureTherapyDataIsValidAction` falls
+  back to), with their owners. It's read-only and exits 1 when it finds any. Fixing the data stays
+  manual (contact the owner), as the ticket asks.
+- **Video removal (315).** A removal is still local-first: the person is marked left with no grants or
+  hands, and broadcast as removed, whatever the provider says. Now, when the provider's eject fails:
+  - the counsellor's response says `providerConfirmed: false`, and the call panel shows an amber notice;
+  - `RetryVideoParticipantRemovalJob` asks again (4 tries, 10/30/90s backoff), then the failed-job
+    alert tells the admins.
+  - The retry is skipped once the call has ended, or when the person has an open join row again (the
+    removal closed all of theirs, so an open row means they were let back in).
+  - Suspension removals use the same path, so they get the retry too.
+- **Browser QA fixes:**
+  - **Stale defaults.** The create modals stay mounted on the therapy page, so defaults set at mount were
+    under 30 minutes away a few minutes later. They're now set each time the form opens, keeping a
+    start the user picked if it's still far enough ahead.
+  - **Update-session crash (older bug).** `UpdateSessionFormModal`'s in-person watcher read an undefined
+    `sessionForm`, which threw on open and broke the page until reload. It reads `sessionData` now.
+  - **Reverb wouldn't start after a recreate (older bug).** Its entrypoint is bind-mounted and git
+    stores it without the execute bit. Compose now runs it through `bash`, and the scripts are marked
+    executable in git.
+- **Follow-ups (SCRUM-378):**
+  - a refund lookup on retry (store Paystack's refund id first);
+  - a lock against the video retry/rejoin race;
+  - one Paystack charge-outcome mapping, and its own status source for lookup outcomes;
+  - the form helpers in `countdown.js`;
+  - a JSON or server-side country list;
+  - deleting `app/Console/Kernel.php`, and the `routes/console.php` style;
+  - a generic `SchedulerOnce` key;
+  - running the storage script once, and documenting `exec -u www-data`.

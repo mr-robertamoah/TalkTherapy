@@ -1,4 +1,5 @@
 <script setup>
+import useCountries from '@/Composables/useCountries';
 import { ref, watch } from 'vue';
 import FormLoader from './FormLoader.vue';
 import InputError from './InputError.vue';
@@ -34,9 +35,7 @@ const props = defineProps({
 const emits = defineEmits(['closeModal', 'afterCreating'])
 
 onBeforeMount(() => {
-    const c = localStorage.getItem('countries')
-    if (c) countries.value = c.split(',')
-    getCountries()
+    loadCountries()
 })
 
 const backendPhone = ref('')
@@ -63,12 +62,7 @@ const licensingAuthorityErrors = ref({
     other: '',
     email: '',
 })
-const countries = ref([
-    'Ghana',
-    'Nigeria',
-    'Uganda',
-    'Rwanda'
-])
+const { countries, loadCountries } = useCountries()
 
 watch(() => licensingAuthorityData.value.name, () => {
     if (
@@ -92,23 +86,6 @@ watch(
         clearError(licensingAuthorityErrors, 'phone')
     }
 )
-
-async function getCountries() {
-    await new axios.Axios({
-        baseURL: `${import.meta.env.VITE_COUNTRIES_API}`,
-    })
-    .get('/countries/flag/images')
-    .then(res => {
-
-        const retrievedCountries = JSON.parse(res.data).data
-
-       countries.value = retrievedCountries.map(c => c.name)
-       localStorage.setItem('countries', [...countries.value].toString())
-    })
-    .catch(err => {
-        console.log(err)
-    })
-}
 
 function setBackEndPhoneNumber() {
     backendPhone.value = `${code.value}${phoneNumber.value}`

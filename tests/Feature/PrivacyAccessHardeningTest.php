@@ -1,5 +1,6 @@
 <?php
 
+use App\Actions\User\AnonymiseClosedAccountsAction;
 use App\Enums\CounsellorGroupTherapyStateEnum;
 use App\Enums\RequestStatusEnum;
 use App\Enums\RequestTypeEnum;
@@ -28,7 +29,6 @@ use App\Models\Therapy;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Notifications\SessionUpdatedNotification;
-use App\Services\AppService;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\DB;
@@ -276,7 +276,7 @@ test('a closed account is anonymised after the retention period; its messages st
     $user->delete();
     $this->travel(config('user.closed_account_retention_days') + 1)->days();
 
-    AppService::new()->anonymiseClosedAccounts();
+    AnonymiseClosedAccountsAction::new()->execute();
 
     $user = User::withTrashed()->find($user->id);
     expect($user->anonymised_at)->not->toBeNull()
@@ -308,7 +308,7 @@ test('anonymising also clears date-of-birth requests, identity scans, tokens, no
     $user->delete();
     $this->travel(config('user.closed_account_retention_days') + 1)->days();
 
-    AppService::new()->anonymiseClosedAccounts();
+    AnonymiseClosedAccountsAction::new()->execute();
 
     $request->refresh();
     expect($request->data)->toBe(['note' => 'kept'])
@@ -330,11 +330,11 @@ test('a closed account with an open report about it is held back', function () {
     $user->delete();
     $this->travel(config('user.closed_account_retention_days') + 1)->days();
 
-    AppService::new()->anonymiseClosedAccounts();
+    AnonymiseClosedAccountsAction::new()->execute();
     expect(User::withTrashed()->find($user->id)->anonymised_at)->toBeNull();
 
     $report->forceFill(['status' => 'dismissed'])->save();
-    AppService::new()->anonymiseClosedAccounts();
+    AnonymiseClosedAccountsAction::new()->execute();
     expect(User::withTrashed()->find($user->id)->anonymised_at)->not->toBeNull();
 });
 
@@ -347,7 +347,7 @@ test('an open, a recently closed, or a suspended closed account is not anonymise
     $recent = User::factory()->create(['firstName' => 'Recent']);
     $recent->delete();
 
-    AppService::new()->anonymiseClosedAccounts();
+    AnonymiseClosedAccountsAction::new()->execute();
 
     expect(User::withTrashed()->find($open->id)->firstName)->toBe('Open')
         ->and(User::withTrashed()->find($recent->id)->firstName)->toBe('Recent')

@@ -8,6 +8,7 @@ use App\Enums\TransactionStatusSourceEnum;
 use App\Models\Session;
 use App\Models\Therapy;
 use App\Models\Transaction;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
@@ -68,10 +69,15 @@ class ReconcileStalePendingOrganizationChargesAction extends Action
         return $counts;
     }
 
-    // Logged on every run (every 15 minutes) until someone resolves it -- the signal to follow up.
+    // The signal to follow up by hand. SCRUM-376: once a day per charge, not on every 15-minute run,
+    // so a few stuck rows don't fill the log. The key lives in the scheduler's store, which the
+    // deploy's cache:clear leaves alone.
     private function alertIfOld(Transaction $transaction, $alertBefore): void
     {
-        if ($transaction->created_at->lte($alertBefore)) {
+        $firstToday = fn () => Cache::store(config('cache.scheduler_store'))
+            ->add("stale-org-charge-alert:{$transaction->id}:".now()->toDateString(), true, now()->addDay());
+
+        if ($transaction->created_at->lte($alertBefore) && $firstToday()) {
             Log::warning('An organization charge is still unresolved after the alert period; follow up by hand.', [
                 'transactionId' => $transaction->id,
                 'reference' => $transaction->reference,

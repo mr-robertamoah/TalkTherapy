@@ -1,5 +1,7 @@
 # SCRUM-149 (TT-6.4c, 4/5): Compensation-change reminder + expiry
 
+> **SCRUM-376:** these sweeps moved out of `AppService`. They are now `Organization/SendCompensationRequestExpiryRemindersAction` and `Organization/ExpireStaleCompensationRequestsAction`, sharing `Organization/NotifyCompensationRequestRecipientAction`. The method names below are as they were when this was built.
+
 Fourth of 5 sub-tickets (see `documentation/features/scrum-146-compensation-negotiation-proposal.md`
 for the negotiation's overall shape). Ensures silence is never a valid stalling strategy in
 either direction: every pending proposal or counter-offer auto-resolves within its window, with a
@@ -49,11 +51,11 @@ via tinker:
 ```php
 // Fast-forward a pending request close to expiry, then run the sweep:
 $request->update(['expires_at' => now()->addHours(6)]);
-App\Services\AppService::new()->sendCompensationRequestExpiryReminders();
+App\Actions\Organization\SendCompensationRequestExpiryRemindersAction::new()->execute();
 
 // Or past it, to see auto-expiry:
 $request->update(['expires_at' => now()->subDay()]);
-App\Services\AppService::new()->expireStaleCompensationRequests();
+App\Actions\Organization\ExpireStaleCompensationRequestsAction::new()->execute();
 ```
 
 Confirm: `$request->fresh()->status` is `REJECTED`, `$request->fresh()->data['resolvedBy']` is

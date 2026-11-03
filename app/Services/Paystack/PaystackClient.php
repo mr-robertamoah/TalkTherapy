@@ -24,7 +24,7 @@ class PaystackClient extends Service
     public function verifyTransaction(string $reference): array
     {
         return $this->request()
-            ->get("/transaction/verify/{$reference}")
+            ->get('/transaction/verify/'.rawurlencode($reference))
             ->throw()
             ->json();
     }
@@ -59,6 +59,19 @@ class PaystackClient extends Service
     {
         return $this->request()
             ->post('/transfer', $data)
+            ->throw()
+            ->json();
+    }
+
+    // SCRUM-376: asks Paystack what became of a transfer by the SAME caller-supplied reference
+    // initiateTransfer() sent -- used by ProcessCounsellorPayoutJob when a retry is refused (4xx),
+    // to find out whether the earlier attempt actually went through. Paystack answers a 404 for a
+    // reference it never saw. Response data carries status/reason/transfer_code like
+    // initiateTransfer()'s own.
+    public function verifyTransfer(string $reference): array
+    {
+        return $this->request()
+            ->get('/transfer/verify/'.rawurlencode($reference))
             ->throw()
             ->json();
     }

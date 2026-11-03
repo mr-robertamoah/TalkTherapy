@@ -9,6 +9,7 @@ use App\Models\OrganizationInvoice;
 use App\Models\OrganizationPaymentInstrument;
 use App\Models\Transaction;
 use App\Models\User;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Http;
 
@@ -142,4 +143,94 @@ test('an organization with no payment instrument by the time the job runs record
 
     expect($transaction->fresh()->status)->toBe(TransactionStatusEnum::failed->value);
     Http::assertNothingSent();
+});
+
+// SCRUM-376: a retry refused with a 4xx (typically "duplicate reference" because the earlier,
+// timed-out charge actually went through) looks the real outcome up by the same reference.
+// handle() is called directly on a fake-queue job so attempts() can be set above 1.
+function settlementJobRunAsRetry(int $transactionId): void
+{
+    $job = (new ProcessOrganizationInvoiceSettlementJob($transactionId))->withFakeQueueInteractions();
+    $job->job->attempts = 2;
+
+    $job->handle();
+}
+
+test('a retry refused with a 4xx records success when Paystack verifies the charge by that reference succeeded', function () {
+    [$transaction, $invoice] = aPendingSettlementTransaction();
+    Http::fake([
+        '*/transaction/verify/*' => Http::response([
+            'status' => true,
+            'data' => ['reference' => $transaction->reference, 'status' => 'success', 'amount' => 7300, 'currency' => 'GHS', 'gateway_response' => 'Approved'],
+        ], 200),
+        '*/transaction/charge_authorization' => Http::response(['status' => false, 'message' => 'Duplicate Transaction Reference'], 400),
+    ]);
+
+    settlementJobRunAsRetry($transaction->id);
+
+    expect($transaction->fresh()->status)->toBe(TransactionStatusEnum::success->value);
+    expect($invoice->fresh()->status)->toBe(OrganizationInvoiceStatusEnum::settled->value);
+    expect($invoice->organization->fresh()->isBillingSuspended())->toBeFalse();
+    Http::assertSent(fn ($request) => str_ends_with($request->url(), '/transaction/verify/'.$transaction->reference));
+});
+
+test('a retry refused with a 4xx still checks the verified amount before recording success', function () {
+    [$transaction] = aPendingSettlementTransaction();
+    Http::fake([
+        '*/transaction/verify/*' => Http::response([
+            'status' => true,
+            'data' => ['reference' => $transaction->reference, 'status' => 'success', 'amount' => 1, 'currency' => 'GHS'],
+        ], 200),
+        '*/transaction/charge_authorization' => Http::response(['status' => false, 'message' => 'Duplicate Transaction Reference'], 400),
+    ]);
+
+    expect(fn () => settlementJobRunAsRetry($transaction->id))->toThrow(TransactionException::class);
+});
+
+test('a retry refused with a 4xx records failure when Paystack verifies the charge by that reference failed', function (string $paystackStatus) {
+    [$transaction, $invoice] = aPendingSettlementTransaction();
+    Http::fake([
+        '*/transaction/verify/*' => Http::response([
+            'status' => true,
+            'data' => ['reference' => $transaction->reference, 'status' => $paystackStatus, 'gateway_response' => 'Declined'],
+        ], 200),
+        '*/transaction/charge_authorization' => Http::response(['status' => false, 'message' => 'Duplicate Transaction Reference'], 400),
+    ]);
+
+    settlementJobRunAsRetry($transaction->id);
+
+    expect($transaction->fresh()->status)->toBe(TransactionStatusEnum::failed->value);
+    expect($invoice->fresh()->status)->toBe(OrganizationInvoiceStatusEnum::failed->value);
+    expect($invoice->organization->fresh()->isBillingSuspended())->toBeTrue();
+})->with(['failed']);
+
+test('a retry refused with a 4xx rethrows and leaves the settlement untouched when the lookup is inconclusive', function (Closure $verifyResponse) {
+    [$transaction, $invoice] = aPendingSettlementTransaction();
+    Http::fake([
+        '*/transaction/verify/*' => $verifyResponse,
+        '*/transaction/charge_authorization' => Http::response(['status' => false, 'message' => 'Duplicate Transaction Reference'], 400),
+    ]);
+
+    expect(fn () => settlementJobRunAsRetry($transaction->id))->toThrow(RequestException::class);
+
+    expect($transaction->fresh()->status)->toBe(TransactionStatusEnum::pending->value);
+    expect($invoice->fresh()->status)->toBe(OrganizationInvoiceStatusEnum::pending->value);
+})->with([
+    'reference not found' => fn () => fn () => Http::response(['status' => false, 'message' => 'Transaction reference not found'], 400),
+    'still processing' => fn () => fn () => Http::response(['status' => true, 'data' => ['status' => 'ongoing']], 200),
+    // Security review: "abandoned" is also how Paystack reports a charge not attempted yet.
+    'abandoned' => fn () => fn () => Http::response(['status' => true, 'data' => ['status' => 'abandoned']], 200),
+    'another reference' => fn () => fn () => Http::response(['status' => true, 'data' => ['reference' => 'org_settlement_other', 'status' => 'failed']], 200),
+    'Paystack unreachable' => fn () => fn () => throw new ConnectionException('timed out'),
+]);
+
+test('a first attempt refused with a 4xx is still a definite failure, with no lookup', function () {
+    [$transaction] = aPendingSettlementTransaction();
+    Http::fake(['*/transaction/charge_authorization' => Http::response(['status' => false, 'message' => 'Declined'], 400)]);
+
+    $job = (new ProcessOrganizationInvoiceSettlementJob($transaction->id))->withFakeQueueInteractions();
+    $job->handle();
+
+    expect($transaction->fresh()->status)->toBe(TransactionStatusEnum::failed->value);
+    Http::assertSentCount(1);
 });

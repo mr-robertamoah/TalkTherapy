@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onBeforeMount, ref, unref, watch, watchEffect } from 'vue';
-import { toLocalInputValue } from '@/Composables/countdown'
+import { defaultFormTime, toLocalInputValue } from '@/Composables/countdown'
 import TextInput from '@/Components/TextInput.vue';
 import InputLabel from '@/Components/InputLabel.vue';
 import InputError from '@/Components/InputError.vue';
@@ -51,10 +51,20 @@ const sessionForm = useForm({
     'cases': []
 })
 
-onBeforeMount(() => {
-    startTime.value = getDefaultTime(30)
-    endTime.value = getDefaultTime(70)
+// SCRUM-377 (browser QA): the defaults are set each time the form opens, not once at mount. The modal
+// stays mounted on the therapy page, so a default set at page load had gone stale (under 30 minutes
+// away) a few minutes later. A start the user picked that is still far enough ahead is kept.
+onBeforeMount(() => setDefaultTimes())
+watch(() => props.show, () => {
+    if (props.show) setDefaultTimes()
 })
+
+function setDefaultTimes() {
+    if (startTime.value && isMinutesBefore({ firstTime: startTime.value, minutes: 30 })) return
+
+    startTime.value = getDefaultTime(30)
+    endTime.value = addMinitesToDate(startTime.value, 40)
+}
 
 watchEffect(() => {
     if (
@@ -126,9 +136,7 @@ function isMinutesBefore({firstTime, secondTime = null, minutes}) {
 }
 
 function getDefaultTime(minutes) {
-    const now = new Date()
-    let time = toLocalInputValue(addMinutes(now, minutes))
-    return time
+    return defaultFormTime(minutes)
 }
 
 
@@ -150,9 +158,9 @@ async function createSession() {
     }
 
     // start cannot be before 30 mins from now, end cannot be 30 mins before start
-    if (!isMinutesBefore({ firstTime: startTime.value, minutes: 25 })) {
+    if (!isMinutesBefore({ firstTime: startTime.value, minutes: 30 })) {
         setFailedAlertData({
-            message: 'Start time must be at least 25 minutes away from current time. Please increase the start time.',
+            message: 'Start time must be at least 30 minutes away from current time. Please increase the start time.',
         })
         return
     }

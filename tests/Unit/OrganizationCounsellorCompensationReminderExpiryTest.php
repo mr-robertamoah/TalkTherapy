@@ -1,6 +1,8 @@
 <?php
 
 use App\Actions\Organization\CreateOrganizationCounsellorCompensationAction;
+use App\Actions\Organization\ExpireStaleCompensationRequestsAction;
+use App\Actions\Organization\SendCompensationRequestExpiryRemindersAction;
 use App\DTOs\OrganizationCounsellorCompensationDTO;
 use App\Enums\OrganizationAdminRoleEnum;
 use App\Enums\OrganizationCounsellorCompensationTypeEnum;
@@ -12,7 +14,6 @@ use App\Models\OrganizationCounsellor;
 use App\Models\User;
 use App\Notifications\OrganizationCounsellorCompensationChangeExpiredNotification;
 use App\Notifications\OrganizationCounsellorCompensationChangeExpiryReminderNotification;
-use App\Services\AppService;
 use App\Services\OrganizationCounsellorCompensationService;
 use Illuminate\Support\Facades\Notification;
 
@@ -58,13 +59,13 @@ test('a request 2 days from expiry, with a window of at least 3 days, gets exact
     Notification::fake();
     [$request, , , , $counsellor] = negotiationExpiring(daysUntilExpiry: 2, windowDays: 7);
 
-    AppService::new()->sendCompensationRequestExpiryReminders();
+    SendCompensationRequestExpiryRemindersAction::new()->execute();
 
     expect($request->refresh()->reminder_sent_at)->not->toBeNull();
     Notification::assertSentToTimes($counsellor, OrganizationCounsellorCompensationChangeExpiryReminderNotification::class, 1);
 
     // Running the sweep again must not send a second reminder.
-    AppService::new()->sendCompensationRequestExpiryReminders();
+    SendCompensationRequestExpiryRemindersAction::new()->execute();
     Notification::assertSentToTimes($counsellor, OrganizationCounsellorCompensationChangeExpiryReminderNotification::class, 1);
 });
 
@@ -72,7 +73,7 @@ test('a request whose whole window was under 3 days never gets a reminder', func
     Notification::fake();
     [$request, , , , $counsellor] = negotiationExpiring(daysUntilExpiry: 1, windowDays: 2);
 
-    AppService::new()->sendCompensationRequestExpiryReminders();
+    SendCompensationRequestExpiryRemindersAction::new()->execute();
 
     expect($request->refresh()->reminder_sent_at)->toBeNull();
     Notification::assertNotSentTo($counsellor, OrganizationCounsellorCompensationChangeExpiryReminderNotification::class);
@@ -82,7 +83,7 @@ test('a request more than 2 days from expiry gets no reminder yet', function () 
     Notification::fake();
     [$request, , , , $counsellor] = negotiationExpiring(daysUntilExpiry: 5, windowDays: 10);
 
-    AppService::new()->sendCompensationRequestExpiryReminders();
+    SendCompensationRequestExpiryRemindersAction::new()->execute();
 
     expect($request->refresh()->reminder_sent_at)->toBeNull();
     Notification::assertNotSentTo($counsellor, OrganizationCounsellorCompensationChangeExpiryReminderNotification::class);
@@ -92,7 +93,7 @@ test('a request past its expiry is auto-resolved to rejected with no compensatio
     Notification::fake();
     [$request, $affiliation, , , $counsellor] = negotiationExpiring(daysUntilExpiry: -1, windowDays: 7);
 
-    AppService::new()->expireStaleCompensationRequests();
+    ExpireStaleCompensationRequestsAction::new()->execute();
 
     expect($request->refresh()->status)->toBe(RequestStatusEnum::rejected->value);
     expect($request->data['resolvedBy'])->toBe('expiry');
@@ -118,7 +119,7 @@ test('expiring a renegotiation request never changes the affiliation status or i
         ])
     );
 
-    AppService::new()->expireStaleCompensationRequests();
+    ExpireStaleCompensationRequestsAction::new()->execute();
 
     expect($affiliation->refresh()->status)->toBe(OrganizationCounsellorStatusEnum::active->value);
     expect($affiliation->currentCompensation()->id)->toBe($existing->id);
@@ -128,7 +129,7 @@ test('expiring a renegotiation request never changes the affiliation status or i
 test('a request not yet expired is left untouched by the expiry sweep', function () {
     [$request] = negotiationExpiring(daysUntilExpiry: 1, windowDays: 7);
 
-    AppService::new()->expireStaleCompensationRequests();
+    ExpireStaleCompensationRequestsAction::new()->execute();
 
     expect($request->refresh()->status)->toBe(RequestStatusEnum::pending->value);
 });
@@ -138,8 +139,8 @@ test('an already-resolved request is left untouched by both sweeps', function ()
     [$request, , , , $counsellor] = negotiationExpiring(daysUntilExpiry: -1, windowDays: 7);
     $request->update(['status' => RequestStatusEnum::accepted->value]);
 
-    AppService::new()->expireStaleCompensationRequests();
-    AppService::new()->sendCompensationRequestExpiryReminders();
+    ExpireStaleCompensationRequestsAction::new()->execute();
+    SendCompensationRequestExpiryRemindersAction::new()->execute();
 
     expect($request->refresh()->status)->toBe(RequestStatusEnum::accepted->value);
     expect($request->data)->not->toHaveKey('resolvedBy');
@@ -161,7 +162,7 @@ test('every admin of the organization is notified when it is the current recipie
     $request->to_id = $organization->id;
     $request->save();
 
-    AppService::new()->expireStaleCompensationRequests();
+    ExpireStaleCompensationRequestsAction::new()->execute();
 
     Notification::assertSentTo($organization->admins()->get(), OrganizationCounsellorCompensationChangeExpiredNotification::class);
 });
@@ -173,8 +174,8 @@ test('running the expiry sweep twice back to back only resolves and notifies onc
     Notification::fake();
     [$request, , , , $counsellor] = negotiationExpiring(daysUntilExpiry: -1, windowDays: 7);
 
-    AppService::new()->expireStaleCompensationRequests();
-    AppService::new()->expireStaleCompensationRequests();
+    ExpireStaleCompensationRequestsAction::new()->execute();
+    ExpireStaleCompensationRequestsAction::new()->execute();
 
     expect($request->refresh()->status)->toBe(RequestStatusEnum::rejected->value);
     Notification::assertSentToTimes($counsellor, OrganizationCounsellorCompensationChangeExpiredNotification::class, 1);
@@ -190,7 +191,7 @@ test('a request whose recipient no longer exists is still resolved, and does not
 
     $counsellorA->delete();
 
-    AppService::new()->expireStaleCompensationRequests();
+    ExpireStaleCompensationRequestsAction::new()->execute();
 
     expect($requestA->refresh()->status)->toBe(RequestStatusEnum::rejected->value);
     expect($requestA->data['resolvedBy'])->toBe('expiry');
@@ -211,7 +212,7 @@ test('a request addressed to an organization with no admins is still resolved wi
     $request->to_id = $adminlessOrg->id;
     $request->save();
 
-    AppService::new()->expireStaleCompensationRequests();
+    ExpireStaleCompensationRequestsAction::new()->execute();
 
     expect($request->refresh()->status)->toBe(RequestStatusEnum::rejected->value);
     expect($affiliation->refresh()->status)->toBe(OrganizationCounsellorStatusEnum::pending->value);
@@ -225,7 +226,7 @@ test('a request with a malformed expires_at at or before created_at never gets a
     [$request, , , , $counsellor] = negotiationExpiring(daysUntilExpiry: 1, windowDays: 7);
     $request->update(['expires_at' => $request->created_at->copy()->subDay()]);
 
-    AppService::new()->sendCompensationRequestExpiryReminders();
+    SendCompensationRequestExpiryRemindersAction::new()->execute();
 
     expect($request->refresh()->reminder_sent_at)->toBeNull();
     Notification::assertNotSentTo($counsellor, OrganizationCounsellorCompensationChangeExpiryReminderNotification::class);
@@ -236,7 +237,7 @@ test('a request with a malformed expires_at at or before created_at never gets a
 test('expiry preserves the original proposed terms in data, not just the resolvedBy marker', function () {
     [$request] = negotiationExpiring(daysUntilExpiry: -1, windowDays: 7);
 
-    AppService::new()->expireStaleCompensationRequests();
+    ExpireStaleCompensationRequestsAction::new()->execute();
 
     $data = $request->refresh()->data;
     expect($data['type'])->toBe('FIXED');

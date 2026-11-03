@@ -1,4 +1,5 @@
 <script setup>
+import useCountries from '@/Composables/useCountries';
 import InputError from '@/Components/InputError.vue';
 import InputLabel from '@/Components/InputLabel.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
@@ -30,19 +31,12 @@ const form = useForm({
     country: user.country ?? '',
 });
 
-const countries = ref([
-    'Ghana',
-    'Nigeria',
-    'Uganda',
-    'Rwanda'
-])
+const { countries, loadCountries } = useCountries()
 
 const update = ref(false)
 
 onBeforeMount(() => {
-    const c = localStorage.getItem('countries')
-    if (c) countries.value = c.split(',')
-    getCountries()
+    loadCountries()
 })
 
 const computedGender = computed(() => {
@@ -66,23 +60,6 @@ function getDate(dob) {
     if (dateSplit.length) return dateSplit[0]
 
     return ''
-}
-
-async function getCountries() {
-    await new axios.Axios({
-        baseURL: `${import.meta.env.VITE_COUNTRIES_API}`,
-    })
-    .get('/countries/flag/images')
-    .then(res => {
-
-        const retrievedCountries = JSON.parse(res.data).data
-
-       countries.value = retrievedCountries.map(c => c.name)
-       localStorage.setItem('countries', [...countries.value].toString())
-    })
-    .catch(err => {
-        console.log(err)
-    })
 }
 
 function updateProfileInformation() {

@@ -7,7 +7,7 @@ use App\Models\Session;
 use App\Models\User;
 
 // TT-3.2f-h/SCRUM-325: the granted member's own client reports real mic/camera activity while
-// their permission is open, keeping the idle sweep (AppService::expireIdleSpeakingGrants()) from
+// their permission is open, keeping the idle sweep (ExpireIdleSpeakingGrantsAction) from
 // reverting them. Self-service only, and only ever touches the caller's OWN open grant on their
 // live join. Anything else -- no call, not in it, no open grant -- is a silent no-op: a ping can
 // only delay losing a permission the caller already holds, never create or extend anyone else's.

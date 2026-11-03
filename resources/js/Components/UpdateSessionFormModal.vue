@@ -86,7 +86,7 @@ watchEffect(() => {
     if (
         !props.show ||
         !props.therapy.allowInPerson || 
-        sessionForm.type !== 'IN_PERSON'
+        sessionData.value.type !== 'IN_PERSON' // SCRUM-377 (browser QA): was an undefined `sessionForm`, which threw on open
     ) return
 
     initMap()
@@ -164,9 +164,9 @@ async function updateSession() {
         return
     }
 
-    if (!isMinutesBefore({ firstTime: startTime.value, minutes: 25 })) {
+    if (!isMinutesBefore({ firstTime: startTime.value, minutes: 30 })) {
         setFailedAlertData({
-            message: 'Start time must be at least 25 minutes away from current time. Please increase the start time.',
+            message: 'Start time must be at least 30 minutes away from current time. Please increase the start time.',
         })
         return
     }

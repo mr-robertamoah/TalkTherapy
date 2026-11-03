@@ -21,3 +21,15 @@ export function minutesUntilWindow(startTime, endTime, now = new Date()) {
 export function toLocalInputValue(date) {
     return format(typeof date === 'string' ? parseISO(date) : date, "yyyy-MM-dd'T'HH:mm")
 }
+
+// SCRUM-377: a form's default time, at least `minutes` from now, rounded UP to the next 5-minute mark.
+// The input drops seconds, so "now + 30" truncated to the minute was already under the server's
+// 30-minute rule the moment it was shown, and submitting the default was refused. The extra minute and
+// the rounding leave a short margin for filling in the form.
+const FIVE_MINUTES = 5 * 60 * 1000
+
+export function defaultFormTime(minutes, now = new Date()) {
+    const earliest = now.getTime() + (minutes + 1) * 60 * 1000
+
+    return toLocalInputValue(new Date(Math.ceil(earliest / FIVE_MINUTES) * FIVE_MINUTES))
+}

@@ -1,5 +1,7 @@
 # Privacy and access hardening (SCRUM-367, 263, 273, 335, 95, 144, 307)
 
+> **SCRUM-376:** the anonymisation sweep is now `User/AnonymiseClosedAccountsAction`; it used to be `AppService::anonymiseClosedAccounts()`.
+
 One PR, as the user asked ("group the next set of work … into one PR"). The user's decisions
 (2026-11-01, "go with the recommendations"):
 
@@ -108,7 +110,7 @@ See `documentation/seeded-data.md` ("Closed accounts" and "Group payment demo").
 1. Reseed (`docker compose exec php php artisan migrate:fresh --seed`, destructive). Two closed
    accounts exist: `closed_account_demo_old` (closed 31 days ago) and `closed_account_demo_recent`
    (closed yesterday).
-2. Run the job: `docker compose exec php php artisan tinker --execute="App\Services\AppService::new()->anonymiseClosedAccounts();"`.
+2. Run the job: `docker compose exec php php artisan tinker --execute="App\Actions\User\AnonymiseClosedAccountsAction::new()->execute();"`.
 3. The old account's names, username and email are now empty and it shows as "Deleted user". The
    recent one is unchanged. `storage/logs/laravel.log` has a "Closed accounts anonymisation run." line.
 

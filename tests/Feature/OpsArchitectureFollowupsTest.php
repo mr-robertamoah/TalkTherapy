@@ -185,3 +185,18 @@ test('a charge still unresolved after the alert period is logged for manual foll
     Log::shouldHaveReceived('warning')
         ->withArgs(fn ($message, $context) => str_contains($message, 'follow up by hand') && $context['transactionId'] === $old->id);
 });
+
+test('SCRUM-376: the follow-up warning for a stuck charge is logged once a day, not on every run', function () {
+    Log::spy();
+    $old = oafStalePendingOrgCharge(['created_at' => now()->subHours(config('organization.stale_charge_alert_after_hours') + 1)]);
+    Http::fake(['*/transaction/verify/*' => Http::response(['status' => true, 'data' => ['status' => 'ongoing']])]);
+
+    ReconcileStalePendingOrganizationChargesAction::new()->execute();
+    ReconcileStalePendingOrganizationChargesAction::new()->execute();
+    $this->travel(1)->days();
+    ReconcileStalePendingOrganizationChargesAction::new()->execute();
+
+    Log::shouldHaveReceived('warning')
+        ->withArgs(fn ($message, $context) => str_contains($message, 'follow up by hand') && $context['transactionId'] === $old->id)
+        ->twice();
+});
