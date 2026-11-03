@@ -14,7 +14,7 @@ test('a super admin can delete an eligible counsellor account', function () {
     $counsellor = Counsellor::factory()->create(['user_id' => User::factory()]);
 
     $this->actingAs($superAdmin)
-        ->delete(route('admin.counsellors.delete', ['counsellorId' => $counsellor->id]))
+        ->deleteJson(route('admin.counsellors.delete', ['counsellorId' => $counsellor->id]))
         ->assertOk();
 
     expect($counsellor->fresh()->deleted_at)->not->toBeNull();

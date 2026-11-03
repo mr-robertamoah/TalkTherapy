@@ -77,7 +77,7 @@ const {
   updateSessionOrTopic,
   deleteSessionOrTopic,
   addSessionOrTopic,
-} = useTherapyState(therapyRef, props.therapyType)
+} = useTherapyState(therapyRef, props.therapyType, { setSuccessAlertData })
 
 const {
   initiating: payInitiating,

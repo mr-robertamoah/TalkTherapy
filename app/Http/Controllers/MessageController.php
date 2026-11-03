@@ -179,7 +179,7 @@ class MessageController extends Controller
     {
         $message = new MessageResource($message);
 
-        if ($request->acceptsJson()) {
+        if ($request->wantsJsonResponse()) {
             return response()->json(['message' => $message]);
         }
 

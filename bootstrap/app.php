@@ -1,12 +1,15 @@
 <?php
 
+use App\Exceptions\AppException;
 use App\Http\Middleware\EnsureAccountIsNotSuspended;
 use App\Http\Middleware\HandleInertiaRequestsV2;
 use App\Http\Middleware\StoreVisitationMiddleware;
+use App\Support\FailureResponse;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets;
+use Illuminate\Http\Request;
 use Illuminate\Routing\Middleware\SubstituteBindings;
 use Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful;
 
@@ -37,5 +40,14 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->append(StoreVisitationMiddleware::class);
     })
     ->withExceptions(function (Exceptions $exceptions) {
-        //
+        // SCRUM-374: the app's own refusals (AppException) answer the same way wherever they are
+        // thrown -- the base Controller's returnFailure() for the controllers that catch them, this
+        // for anything that doesn't (middleware, a controller with no try/catch). Both are
+        // App\Support\FailureResponse. A real refusal (4xx) is expected and not reported; an
+        // uncoded or 5xx one is a bug and still is (FailureResponse reports a 500).
+        // Only for web requests: in a queued job or scheduled task a refusal is unexpected, and its
+        // trace is the only record of why the job died.
+        $exceptions->dontReportWhen(fn (Throwable $e) => $e instanceof AppException && FailureResponse::status($e) < 500 && ! app()->runningInConsole());
+        $exceptions->dontReportDuplicates();
+        $exceptions->render(fn (AppException $exception, Request $request) => FailureResponse::make($request, $exception));
     })->create();

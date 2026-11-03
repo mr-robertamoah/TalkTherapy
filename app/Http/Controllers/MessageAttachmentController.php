@@ -7,14 +7,13 @@ use App\Actions\Message\EnsureUserCanViewMessageAttachmentAction;
 use App\Models\AdminContentAccess;
 use App\Models\File;
 use App\Models\Message;
-use App\Traits\ResolvesExceptionResponse;
 use App\Traits\StreamsPrivateDocuments;
 use Illuminate\Http\Request;
 
 // SCRUM-336: the ONLY retrieval path for a chat attachment -- never a public asset() URL.
 class MessageAttachmentController extends Controller
 {
-    use ResolvesExceptionResponse, StreamsPrivateDocuments;
+    use StreamsPrivateDocuments;
 
     public function show(Request $httpRequest, Message $message, File $file)
     {

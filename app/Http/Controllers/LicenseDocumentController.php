@@ -8,7 +8,6 @@ use App\Models\AdminContentAccess;
 use App\Models\Counsellor;
 use App\Models\File;
 use App\Models\License;
-use App\Traits\ResolvesExceptionResponse;
 use App\Traits\StreamsPrivateDocuments;
 use Illuminate\Http\Request;
 
@@ -16,7 +15,7 @@ use Illuminate\Http\Request;
 // file's own private disk, never a public asset() URL. Mirrors IdentityDocumentController.
 class LicenseDocumentController extends Controller
 {
-    use ResolvesExceptionResponse, StreamsPrivateDocuments;
+    use StreamsPrivateDocuments;
 
     public function show(Request $httpRequest, License $license, File $file)
     {

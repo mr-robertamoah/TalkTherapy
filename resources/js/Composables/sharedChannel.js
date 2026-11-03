@@ -59,6 +59,13 @@ export function acquireChannel(name, { presence = false } = {}) {
             if (subscription?.subscribed) callback(membersOf(subscription))
             return handle
         },
+        // Presence only: this browser's own member id on the channel (SCRUM-357: a per-channel key,
+        // never a user id). Null until the subscription has succeeded.
+        me() {
+            // Not after release: channel() would subscribe again with nobody left to leave it.
+            if (released || !presence) return null
+            return channel().subscription?.members?.me?.id ?? null
+        },
         joining(callback) {
             if (!released && presence) bind('pusher:member_added', (member) => callback(member.info))
             return handle

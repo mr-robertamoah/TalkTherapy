@@ -95,8 +95,13 @@ class PaystackClient extends Service
 
     private function request(): PendingRequest
     {
+        // SCRUM-272: short timeouts, so an unreachable Paystack fails within seconds with the
+        // caller's "try again" message instead of hanging until the gateway gives up (a 502). A
+        // timeout throws ConnectionException -- callers catch HttpClientException, its parent.
         return Http::baseUrl(config('services.paystack.base_url'))
             ->withToken(config('services.paystack.secret_key'))
+            ->connectTimeout(config('services.paystack.connect_timeout'))
+            ->timeout(config('services.paystack.timeout'))
             ->acceptJson();
     }
 }

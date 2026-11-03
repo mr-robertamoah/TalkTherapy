@@ -126,7 +126,7 @@ class ReportController extends Controller
     {
         $report = new ReportResource($report);
 
-        if ($request->acceptsJson()) {
+        if ($request->wantsJsonResponse()) {
             return response()->json(['report' => $report]);
         }
 

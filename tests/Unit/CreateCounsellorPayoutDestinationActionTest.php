@@ -8,6 +8,7 @@ use App\Models\CounsellorPayoutAccount;
 use App\Models\User;
 use App\Notifications\PayoutDestinationChangedNotification;
 use App\Services\PayoutService;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Notification;
 
@@ -193,4 +194,17 @@ test('replacing an existing payout destination sends a destination-changed notif
     Notification::assertSentTo($counsellor, PayoutDestinationChangedNotification::class);
     $this->assertDatabaseCount('counsellor_payout_accounts', 1);
     expect(CounsellorPayoutAccount::first()->recipient_code)->toBe('RCP_second');
+});
+
+// SCRUM-272: Paystack unreachable is not a bad account number.
+test('an unreachable Paystack while checking an account asks to try again, not to fix the number', function () {
+    Http::fake(['*/bank/resolve*' => fn () => throw new ConnectionException('timed out')]);
+    [$counsellorUser] = aVerifiedCounsellorUser();
+
+    expect(fn () => PayoutService::new()->onboardDestination(PayoutDestinationDTO::new()->fromArray([
+        'user' => $counsellorUser, 'type' => PayoutDestinationTypeEnum::nuban,
+        'accountNumber' => '0123456789', 'bankCode' => '057', 'currency' => 'GHS',
+    ])))->toThrow(PayoutException::class, 'Unable to verify that account right now. Please try again shortly.');
+
+    $this->assertDatabaseCount('counsellor_payout_accounts', 0);
 });

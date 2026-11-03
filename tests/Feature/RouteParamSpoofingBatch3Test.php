@@ -88,7 +88,7 @@ test('LinkController::changeLinkStatus applies to the URL\'s link, not a spoofed
 
     $response = $this
         ->actingAs($admin)
-        ->post("/api/links/{$ownedLink->id}/status", ['linkId' => $unrelatedLink->id]);
+        ->postJson("/api/links/{$ownedLink->id}/status", ['linkId' => $unrelatedLink->id]);
 
     $response->assertOk();
     expect($ownedLink->fresh()->state)->toBe(LinkStateEnum::inactive->value);

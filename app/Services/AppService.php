@@ -9,18 +9,13 @@ use App\Actions\User\AnonymiseClosedAccountAction;
 use App\Actions\Video\RevokeSpeakingPermissionAction;
 use App\Actions\VideoConsent\GetWardForVideoConsentableAction;
 use App\Actions\VideoConsent\IsVideoConsentOutstandingForSessionAction;
-use App\Enums\DiscussionStatusEnum;
 use App\Enums\OrganizationInvoiceStatusEnum;
 use App\Enums\ReportStatusEnum;
 use App\Enums\RequestStatusEnum;
 use App\Enums\RequestTypeEnum;
 use App\Enums\SessionStatusEnum;
 use App\Enums\SpeakingPermissionRevocationReasonEnum;
-use App\Events\DiscussionStartedEvent;
-use App\Events\SessionStartedEvent;
-use App\Models\Alert;
 use App\Models\Counsellor;
-use App\Models\Discussion;
 use App\Models\License;
 use App\Models\Organization;
 use App\Models\OrganizationInvoice;
@@ -33,20 +28,14 @@ use App\Models\User;
 use App\Models\VideoConsentReminder;
 use App\Models\VideoSessionSpeakingGrant;
 use App\Models\Visitor;
-use App\Notifications\DiscussionDueNotification;
-use App\Notifications\DiscussionFailedNotification;
 use App\Notifications\GuardianVideoConsentReminderNotification;
 use App\Notifications\OrganizationCounsellorCompensationChangeExpiredNotification;
 use App\Notifications\OrganizationCounsellorCompensationChangeExpiryReminderNotification;
 use App\Notifications\QueueJobFailedNotification;
 use App\Notifications\ReportNotification;
-use App\Notifications\SessionDueNotification;
-use App\Notifications\SessionFailedNotification;
 use App\Notifications\VisitorsStatusNotification;
 use Carbon\Carbon;
-use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Queue\Events\JobFailed;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Notification;
@@ -215,158 +204,6 @@ class AppService extends Service
             ->each(fn (Request $request) => DeleteAttachedFilesAction::new()->execute($request, 'identity document retention'));
     }
 
-    public function notifyParticipantsOfStartingSessions()
-    {
-        $this->alertSessionParticipants();
-    }
-
-    private function alertSessionParticipants()
-    {
-        $sessions = Session::query()
-            ->whereAboutToStart()
-            ->with(['for' => function (MorphTo $morphTo) {
-                $morphTo->morphWith([
-                    Therapy::class => ['addedby', 'counsellor.user'],
-                ]);
-            }])
-            ->get();
-
-        // SCRUM-372: once per session. The sweep runs every five minutes over a 30-minute window,
-        // so each participant used to get the reminder (and its email) up to six times.
-        $sessions->each(function ($session) {
-            if (! $this->firstTime('session-due', $session)) {
-                return;
-            }
-
-            Notification::send(
-                $session->users,
-                new SessionDueNotification($session)
-            );
-        });
-
-    }
-
-    // Each minute, for every therapy someone is waiting on (an Alert), tell its open pages that its
-    // session or discussion has started. SCRUM-369:
-    //  - one pass per therapy, not per waiting person -- several participants used to mean the same
-    //    broadcast several times in the same second;
-    //  - each session and discussion is announced once (Cache::add, until it ends), not every minute
-    //    someone is waiting -- a page loaded after that already has it;
-    //  - a finished session (abandoned, held) is not active any more (TherapyTrait).
-    public function broadcastStartedSessionsAndDiscussions()
-    {
-        Alert::query()
-            ->whereWaiting()
-            ->with('alertable')
-            ->get()
-            ->groupBy(fn (Alert $alert) => "{$alert->alertable_type}:{$alert->alertable_id}")
-            ->each(function ($alerts) {
-                $alertable = $alerts->first()->alertable;
-
-                $activeSession = $alertable?->activeSession;
-                if ($activeSession && $this->firstTime('session-started', $activeSession)) {
-                    SessionStartedEvent::broadcast($activeSession);
-                }
-
-                $activeDiscussion = $alertable?->activeDiscussion;
-                if ($activeDiscussion && $this->firstTime('discussion-started', $activeDiscussion)) {
-                    DiscussionStartedEvent::broadcast($activeDiscussion);
-                }
-
-                Alert::query()->whereKey($alerts->modelKeys())->delete();
-            });
-    }
-
-    // Everyone taking part in a discussion: its creator (as a counsellor) and the added counsellors.
-    private function discussionCounsellors(Discussion $discussion)
-    {
-        return Counsellor::query()->whereKey($discussion->participantCounsellorIds())->get();
-    }
-
-    // True the first time it's asked for this kind of notice about this session or discussion --
-    // the scheduled sweeps run repeatedly over the same window.
-    private function firstTime(string $kind, Session|Discussion $model): bool
-    {
-        $until = $model->end_time?->isFuture() ? $model->end_time->copy()->addHour() : now()->addHour();
-        // The start time is part of the key: a session rescheduled after its first announcement is
-        // announced again when it really starts.
-        $startedAt = $model->start_time?->timestamp ?? 0;
-
-        return Cache::add("scheduler-once:{$kind}:{$model->id}:{$startedAt}", true, $until);
-    }
-
-    public function failUnheldSessions()
-    {
-        $sessions = Session::query()
-            ->whereStatusIn([
-                SessionStatusEnum::pending->value,
-                SessionStatusEnum::in_session_confirmation->value,
-            ])
-            ->wherePastEndTime()
-            ->get();
-
-        $sessions->each(function ($session) {
-            Notification::send(
-                $session->users,
-                new SessionFailedNotification($session)
-            );
-
-            $session->status = SessionStatusEnum::failed->value;
-            $session->save();
-        });
-    }
-
-    public function notifyParticipantsOfStartingDiscussions()
-    {
-        $this->alertDiscussionParticipants();
-    }
-
-    private function alertDiscussionParticipants()
-    {
-        $discussions = Discussion::query()
-            ->whereAboutToStart()
-            ->with(['for' => function (MorphTo $morphTo) {
-                $morphTo->morphWith([
-                    Therapy::class => ['addedby', 'counsellor.user'], // TODO auto load group therapy
-                ]);
-            }])
-            ->get();
-
-        // SCRUM-372: once per discussion (this runs every minute over a 30-minute window), and to
-        // its creator too -- the creator isn't in the counsellors pivot, so never got it.
-        $discussions->each(function ($discussion) {
-            if (! $this->firstTime('discussion-due', $discussion)) {
-                return;
-            }
-
-            Notification::send(
-                $this->discussionCounsellors($discussion),
-                new DiscussionDueNotification($discussion)
-            );
-        });
-
-    }
-
-    public function failUnheldDiscussions()
-    {
-        $discussions = Discussion::query()
-            ->whereStatusIn([
-                DiscussionStatusEnum::pending->value,
-            ])
-            ->wherePastEndTime()
-            ->get();
-
-        $discussions->each(function ($discussion) {
-            Notification::send(
-                $this->discussionCounsellors($discussion),
-                new DiscussionFailedNotification($discussion)
-            );
-
-            $discussion->status = DiscussionStatusEnum::failed->value;
-            $discussion->save();
-        });
-    }
-
     // SCRUM-149 (TT-6.4c): sent once, ~2 days before a pending compensation-change request's
     // expires_at -- reminder_sent_at (not day-arithmetic alone) makes this exactly-once
     // regardless of how many times or how imprecisely this daily sweep actually runs.
@@ -437,7 +274,7 @@ class AppService extends Service
 
     // TT-3.1e-e/SCRUM-284: fires once, ~an hour before a still-outstanding session's start_time.
     // Runs everyFiveMinutes() (see routes/console.php), the same cadence
-    // notifyParticipantsOfStartingSessions() already uses for its own "about to start" window.
+    // NotifyParticipantsOfStartingSessionsAction already uses for its own "about to start" window.
     public function sendHourBeforeGuardianVideoConsentReminders(): void
     {
         $this->sendGuardianVideoConsentReminders('hour_before', 'hour_before_sent_at', now()->addHour());

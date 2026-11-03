@@ -1,5 +1,7 @@
 <?php
 
+use App\Actions\Discussion\NotifyParticipantsOfStartingDiscussionsAction;
+use App\Actions\Session\NotifyParticipantsOfStartingSessionsAction;
 use App\Enums\CounsellorGroupTherapyStateEnum;
 use App\Enums\RequestStatusEnum;
 use App\Enums\RequestTypeEnum;
@@ -19,11 +21,9 @@ use App\Notifications\DiscussionUpdatedNotification;
 use App\Notifications\GuardianshipRemovedNotification;
 use App\Notifications\SessionCreatedNotification;
 use App\Notifications\SessionDueNotification;
-use App\Services\AppService;
 use Carbon\CarbonInterface;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Support\Facades\Notification;
-use Illuminate\Support\Str;
 
 // SCRUM-372: realtime leftovers (SCRUM-370 and 371 are covered by their own tests).
 
@@ -40,20 +40,6 @@ function cfcGroupWithPaidSession(): array
 
     return compact('creator', 'member', 'counsellor', 'group', 'session');
 }
-
-test('a session notification is built as its recipient, never as whoever is signed in', function () {
-    $g = cfcGroupWithPaidSession();
-    // The group's counsellor is the one acting (and allowed to see the group's payment status)...
-    $this->actingAs($g['counsellor']->user);
-    request()->setUserResolver(fn () => $g['counsellor']->user);
-
-    $notification = new SessionCreatedNotification($g['session']->fresh());
-
-    // ...but a member it is sent to gets their own view, and the counsellor theirs.
-    expect($notification->toBroadcast($g['member'])->data['session']['paymentStatus'])->toBeNull()
-        ->and($notification->toBroadcast($g['counsellor']->user)->data['session']['paymentStatus'])->toBe(TransactionStatusEnum::success->value)
-        ->and(request()->user()->id)->toBe($g['counsellor']->user->id);
-});
 
 test('a discussion invitation answer goes to the creator\'s counsellor channel, also when the creator is their user account', function () {
     $creatorCounsellor = Counsellor::factory()->create(['user_id' => User::factory()->adult()->create()->id]);
@@ -98,30 +84,13 @@ test('the "due" reminders go out once per session and discussion, the discussion
     $discussion->counsellors()->attach($invited->id);
 
     foreach (range(1, 3) as $run) {
-        AppService::new()->notifyParticipantsOfStartingSessions();
-        AppService::new()->notifyParticipantsOfStartingDiscussions();
+        NotifyParticipantsOfStartingSessionsAction::new()->execute();
+        NotifyParticipantsOfStartingDiscussionsAction::new()->execute();
     }
 
     Notification::assertSentToTimes($client, SessionDueNotification::class, 1);
     Notification::assertSentToTimes($creator, DiscussionDueNotification::class, 1);
     Notification::assertSentToTimes($invited, DiscussionDueNotification::class, 1);
-});
-
-test('one recipient\'s view never carries over to the next (an admin first, then a counsellor)', function () {
-    $creatorUser = User::factory()->adult()->create();
-    $creatorUser->counsellor()->save(Counsellor::factory()->make());
-    $therapy = Therapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => User::factory()->adult()->create()->id]);
-    // Created by the counsellor's user account, so DiscussionResource nests UserMiniResource (with its dob rule).
-    $discussion = Discussion::factory()->create(['for_id' => $therapy->id, 'for_type' => Therapy::class, 'addedby_type' => User::class, 'addedby_id' => $creatorUser->id]);
-    $admin = User::factory()->has(Administrator::factory())->create();
-    $otherCounsellor = Counsellor::factory()->create(['user_id' => User::factory()->adult()->create()->id]);
-    $notification = new DiscussionUpdatedNotification($discussion->fresh());
-
-    $forAdmin = $notification->toBroadcast($admin)->data['discussion'];
-    $forCounsellor = $notification->toBroadcast($otherCounsellor)->data['discussion'];
-
-    expect(json_encode($forAdmin))->toContain('"dob"')
-        ->and(json_encode($forCounsellor))->not->toContain('"dob"');
 });
 
 test('a guardianship notification never carries the acting user\'s date of birth to the other party', function () {
@@ -135,14 +104,24 @@ test('a guardianship notification never carries the acting user\'s date of birth
     expect($payload)->not->toHaveKey('dob');
 });
 
-test('urls inside a notification payload keep the app\'s host', function () {
-    $counsellor = Counsellor::factory()->create(['user_id' => User::factory()->adult()->create()->id]);
+// SCRUM-374: notification payloads are small fixed summaries -- identical for every recipient, with
+// no per-viewer field (payment status, dob) that could carry one person's view to another.
+test('session and discussion notifications carry the same small summary to every recipient', function () {
+    $g = cfcGroupWithPaidSession();
+    $this->actingAs($g['counsellor']->user);
     $therapy = Therapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => User::factory()->adult()->create()->id]);
-    $discussion = Discussion::factory()->create(['for_id' => $therapy->id, 'for_type' => Therapy::class, 'addedby_type' => Counsellor::class, 'addedby_id' => $counsellor->id]);
-    $before = url('/x');
+    $creatorUser = User::factory()->adult()->create();
+    $creatorUser->counsellor()->save(Counsellor::factory()->make());
+    $discussion = Discussion::factory()->create(['for_id' => $therapy->id, 'for_type' => Therapy::class, 'addedby_type' => User::class, 'addedby_id' => $creatorUser->id]);
+    $admin = User::factory()->has(Administrator::factory())->create();
 
-    (new DiscussionUpdatedNotification($discussion->fresh()))->toBroadcast($counsellor);
+    $session = (new SessionCreatedNotification($g['session']->fresh()));
+    $forMember = $session->toBroadcast($g['member'])->data['session'];
+    $forCounsellor = $session->toBroadcast($g['counsellor']->user)->data['session'];
 
-    expect(url('/x'))->toBe($before)
-        ->and(Str::startsWith(app('url')->to('/'), config('app.url')))->toBeTrue();
+    $discussionPayload = (new DiscussionUpdatedNotification($discussion->fresh()))->toBroadcast($admin)->data['discussion'];
+
+    expect(array_keys($forMember))->toBe(['id', 'name', 'startTime', 'endTime', 'status'])
+        ->and($forMember)->toEqual($forCounsellor)
+        ->and(array_keys($discussionPayload))->toBe(['id', 'name', 'startTime', 'endTime', 'status']);
 });

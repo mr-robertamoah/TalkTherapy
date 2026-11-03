@@ -91,7 +91,7 @@ class HowToController extends Controller
     {
         $howTo = new HowToResource($howTo);
 
-        if ($request->acceptsJson()) {
+        if ($request->wantsJsonResponse()) {
             return response()->json(['howTo' => $howTo]);
         }
 

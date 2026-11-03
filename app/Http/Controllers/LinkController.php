@@ -103,7 +103,7 @@ class LinkController extends Controller
 
             // SCRUM-97: a link is opened by navigating to it (often from an email), so it always
             // lands on home with the alert; only a script gets JSON (see Controller).
-            if ($this->wantsJsonFailure($request)) {
+            if ($request->wantsJsonResponse()) {
                 return response()->json(['message' => $message], $status);
             }
 
@@ -167,7 +167,7 @@ class LinkController extends Controller
     {
         $link = new LinkResource($link);
 
-        if ($request->acceptsJson()) {
+        if ($request->wantsJsonResponse()) {
             return response()->json(['link' => $link]);
         }
 

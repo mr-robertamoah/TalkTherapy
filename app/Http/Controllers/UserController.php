@@ -102,7 +102,7 @@ class UserController extends Controller
     {
         $user = new UserMiniResource($user);
 
-        if ($request->acceptsJson()) {
+        if ($request->wantsJsonResponse()) {
             return response()->json(['user' => $user]);
         }
 

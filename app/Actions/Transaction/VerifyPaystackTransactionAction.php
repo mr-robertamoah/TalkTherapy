@@ -4,12 +4,10 @@ namespace App\Actions\Transaction;
 
 use App\Actions\Action;
 use App\DTOs\TransactionDTO;
-use App\Enums\TransactionStatusEnum;
 use App\Enums\TransactionStatusSourceEnum;
 use App\Exceptions\TransactionException;
 use App\Models\Transaction;
-use App\Services\Paystack\PaystackClient;
-use Illuminate\Http\Client\RequestException;
+use Illuminate\Http\Client\HttpClientException;
 
 class VerifyPaystackTransactionAction extends Action
 {
@@ -31,43 +29,9 @@ class VerifyPaystackTransactionAction extends Action
         }
 
         try {
-            $response = PaystackClient::new()->verifyTransaction($dto->reference);
-        } catch (RequestException $exception) {
-            throw new TransactionException('Unable to verify the payment right now. Please try again shortly.', 502);
+            return ResolveTransactionWithPaystackAction::new()->execute($transaction, TransactionStatusSourceEnum::verify->value);
+        } catch (HttpClientException $exception) { // SCRUM-272: an error response or no response at all
+            throw new TransactionException('Unable to verify the payment right now. Please try again shortly.', 502, $exception);
         }
-
-        // Paystack's real API returns several non-terminal statuses too (e.g. "processing",
-        // "queued", "ongoing") -- only 'success'/'failed'/'abandoned' are actually terminal.
-        // Collapsing anything else into one of those would prematurely finalize a transaction
-        // that a later webhook (or a later verify call) still needs to be able to resolve.
-        $status = match ($response['data']['status'] ?? null) {
-            'success' => TransactionStatusEnum::success->value,
-            'failed' => TransactionStatusEnum::failed->value,
-            'abandoned' => TransactionStatusEnum::abandoned->value,
-            default => null,
-        };
-
-        if (is_null($status)) {
-            return $transaction;
-        }
-
-        // A mismatch here throws (SCRUM-117), surfacing as an error to the browser callback
-        // instead of silently marking a partial/wrong-currency payment as a full success.
-        if ($status === TransactionStatusEnum::success->value) {
-            EnsureTransactionAmountAndCurrencyMatchAction::new()->execute(
-                $transaction,
-                isset($response['data']['amount']) ? (int) $response['data']['amount'] : null,
-                $response['data']['currency'] ?? null,
-                TransactionStatusSourceEnum::verify->value
-            );
-        }
-
-        return RecordTransactionStatusAction::new()->execute(
-            $transaction,
-            $status,
-            TransactionStatusSourceEnum::verify->value,
-            $response['data']['gateway_response'] ?? null,
-            $response['data'] ?? null
-        );
     }
 }

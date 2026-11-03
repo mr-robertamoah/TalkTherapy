@@ -5,14 +5,13 @@ namespace App\Http\Controllers;
 use App\Actions\Report\EnsureUserCanViewReportEvidenceAction;
 use App\Models\File;
 use App\Models\Report;
-use App\Traits\ResolvesExceptionResponse;
 use App\Traits\StreamsPrivateDocuments;
 use Illuminate\Http\Request;
 
 // SCRUM-337: the ONLY retrieval path for report evidence -- never a public asset() URL.
 class ReportEvidenceController extends Controller
 {
-    use ResolvesExceptionResponse, StreamsPrivateDocuments;
+    use StreamsPrivateDocuments;
 
     public function show(Request $httpRequest, Report $report, File $file)
     {

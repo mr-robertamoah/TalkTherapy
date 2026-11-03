@@ -10,7 +10,7 @@ use App\Exceptions\OrganizationException;
 use App\Models\Transaction;
 use App\Services\Paystack\PaystackClient;
 use App\Services\SettingsService;
-use Illuminate\Http\Client\RequestException;
+use Illuminate\Http\Client\HttpClientException;
 
 // TT-7.3b-a/SCRUM-231: Paystack has no "just verify this card" call -- registering a reusable
 // payment instrument means actually running one small, nominal charge through it via the SAME
@@ -42,8 +42,8 @@ class InitiateOrganizationPaymentInstrumentRegistrationAction extends Action
                 'currency' => $currency,
                 'callback_url' => $dto->callbackUrl,
             ]);
-        } catch (RequestException $exception) {
-            throw new OrganizationException('Unable to start payment-method verification right now. Please try again shortly.', 502);
+        } catch (HttpClientException $exception) { // SCRUM-272: an error response or no response at all
+            throw new OrganizationException('Unable to start payment-method verification right now. Please try again shortly.', 502, $exception);
         }
 
         $transaction = Transaction::query()->create([

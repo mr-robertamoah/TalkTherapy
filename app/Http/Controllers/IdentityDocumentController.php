@@ -8,7 +8,6 @@ use App\Models\AdminContentAccess;
 use App\Models\File;
 use App\Models\Request as ModelsRequest;
 use App\Models\User;
-use App\Traits\ResolvesExceptionResponse;
 use App\Traits\StreamsPrivateDocuments;
 use Illuminate\Http\Request;
 
@@ -17,7 +16,7 @@ use Illuminate\Http\Request;
 // config/filesystems.php comment, and the pre-existing gap this deliberately avoids, SCRUM-300).
 class IdentityDocumentController extends Controller
 {
-    use ResolvesExceptionResponse, StreamsPrivateDocuments;
+    use StreamsPrivateDocuments;
 
     public function show(Request $httpRequest, ModelsRequest $request, File $file)
     {

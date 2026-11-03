@@ -11,15 +11,8 @@ done
 sleep 10
 echo "Database should be ready now"
 
-# Run migrations and seed only if not already done
-if [ ! -f /var/www/.seeded ]; then
-  echo "Running migrations and seeding..."
-  php artisan migrate --force
-  php artisan db:seed --force
-  touch /var/www/.seeded
-else
-  echo "App already seeded. Skipping..."
-fi
+# SCRUM-373: no migrating or seeding here -- the php container does it (docker/php/entrypoint.sh).
+# Three containers doing it at once logged duplicate-key errors on every recreate.
 
 # Create log directory and set permissions
 mkdir -p /var/log

@@ -111,7 +111,7 @@ class PostController extends Controller
     {
         $post = new PostResource($post);
 
-        if ($request->acceptsJson()) {
+        if ($request->wantsJsonResponse()) {
             return response()->json(['post' => $post]);
         }
 

@@ -244,7 +244,7 @@ test('replaying a session status-transition endpoint does not reset or extend th
     $session = aSessionForSessionNotesRoute($counsellor);
 
     $this->actingAs($counsellor->user)
-        ->post(route('sessions.abandon', ['sessionId' => $session->id]))
+        ->postJson(route('sessions.abandon', ['sessionId' => $session->id]))
         ->assertOk();
 
     $session->refresh();
@@ -258,7 +258,7 @@ test('replaying a session status-transition endpoint does not reset or extend th
 
     // Replay the same endpoint on the already-abandoned session -- must not move ended_at.
     $this->actingAs($counsellor->user)
-        ->post(route('sessions.abandon', ['sessionId' => $session->id]))
+        ->postJson(route('sessions.abandon', ['sessionId' => $session->id]))
         ->assertOk();
 
     expect($session->fresh()->ended_at->toDateTimeString())->toBe($backdatedEndedAt->toDateTimeString());

@@ -6,6 +6,7 @@ use App\Listeners\FailHealthCheckOnPendingMigrations;
 use App\Services\AppService;
 use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Foundation\Events\DiagnosingHealth;
+use Illuminate\Http\Request;
 use Illuminate\Mail\Markdown;
 use Illuminate\Queue\Events\JobFailed;
 use Illuminate\Support\Facades\Event;
@@ -27,6 +28,16 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // SCRUM-371/374: the one rule for "answer with JSON or redirect back" -- success and failure
+        // alike. JSON for every request except an Inertia visit (which must get a redirect, never
+        // plain JSON) and a browser navigation, which asks for HTML. Not acceptsJson(), which is true
+        // for a browser's `*/*`, nor expectsJson() alone: Inertia sends X-Requested-With, and a
+        // request with no Accept header must keep getting JSON.
+        Request::macro('wantsJsonResponse', function (): bool {
+            /** @var Request $this */
+            return ! $this->header('X-Inertia') && ! str_contains((string) $this->header('Accept'), 'text/html');
+        });
+
         // SCRUM-254: user-written text (names, reasons, notes) goes into mail lines and greetings,
         // which are rendered as Markdown -- "[click](https://evil)" would become a real link. This
         // escapes "[" and "<" in every {{ }} echo of the HTML mail, so nothing a user typed can

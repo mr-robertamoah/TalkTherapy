@@ -80,7 +80,7 @@ class OrganizationCounsellorCompensationController extends Controller
 
             $resource = GetRequestResourceAction::new()->execute($proposal);
 
-            if ($request->acceptsJson()) {
+            if ($request->wantsJsonResponse()) {
                 return response()->json(['proposal' => $resource]);
             }
 
@@ -89,7 +89,7 @@ class OrganizationCounsellorCompensationController extends Controller
             $status = $this->statusFor($th);
             $message = $this->messageFor($th, $status);
 
-            if ($request->acceptsJson()) {
+            if ($request->wantsJsonResponse()) {
                 return response()->json(['message' => $message], $status);
             }
 
@@ -119,7 +119,7 @@ class OrganizationCounsellorCompensationController extends Controller
 
             $resource = GetRequestResourceAction::new()->execute($counterOffer);
 
-            if ($request->acceptsJson()) {
+            if ($request->wantsJsonResponse()) {
                 return response()->json(['proposal' => $resource]);
             }
 
@@ -128,7 +128,7 @@ class OrganizationCounsellorCompensationController extends Controller
             $status = $this->statusFor($th);
             $message = $this->messageFor($th, $status);
 
-            if ($request->acceptsJson()) {
+            if ($request->wantsJsonResponse()) {
                 return response()->json(['message' => $message], $status);
             }
 

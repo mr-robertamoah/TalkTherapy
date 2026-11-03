@@ -151,7 +151,7 @@ class AdministratorController extends Controller
     {
         $user = new AdminUserResource($user);
 
-        if ($request->acceptsJson()) {
+        if ($request->wantsJsonResponse()) {
             return response()->json(['user' => $user]);
         }
 
@@ -162,7 +162,7 @@ class AdministratorController extends Controller
     {
         $counsellor = new AdminCounsellorResource($counsellor);
 
-        if ($request->acceptsJson()) {
+        if ($request->wantsJsonResponse()) {
             return response()->json(['counsellor' => $counsellor]);
         }
 

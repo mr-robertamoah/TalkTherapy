@@ -191,4 +191,21 @@ test('a failed page visit (GET) also flashes the alert for the layout; a form su
 
     // ...and the page it lands on receives it as a shared prop (through the registered middleware).
     $this->get(route('home'))->assertInertia(fn ($page) => $page->where('failureAlert', 'You are not authorized to manage this organization.'));
+
+    // Shown once: the next page doesn't repeat it.
+    $this->get(route('home'))->assertInertia(fn ($page) => $page->where('failureAlert', null));
+});
+
+test('a failure alert survives a "back" that itself redirects, until a page shows it', function () {
+    $user = User::factory()->adult()->create();
+    $organization = Organization::factory()->create();
+
+    // "Back" is the login page, which sends a signed-in user on to home.
+    $this->actingAs($user)->from(route('login'))
+        ->withHeader('Accept', 'text/html,application/xhtml+xml,*/*;q=0.8')
+        ->get(route('organizations.members.index', ['organizationId' => $organization->id]))
+        ->assertRedirect(route('login'));
+
+    $this->get(route('login'))->assertRedirect();
+    $this->get(route('home'))->assertInertia(fn ($page) => $page->where('failureAlert', 'You are not authorized to manage this organization.'));
 });

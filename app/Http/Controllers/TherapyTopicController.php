@@ -103,7 +103,7 @@ class TherapyTopicController extends Controller
     {
         $topic = new TherapyTopicResource($topic);
 
-        if ($request->acceptsJson()) {
+        if ($request->wantsJsonResponse()) {
             return response()->json(['topic' => $topic]);
         }
 

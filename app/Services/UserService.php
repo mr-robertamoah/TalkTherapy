@@ -105,7 +105,8 @@ class UserService extends Service
             return [];
         }
 
-        $query = User::query()->with('administrator');
+        // SCRUM-193: avatarFile eager-loaded -- AdminUserResource shows each user's avatar.
+        $query = User::query()->with(['administrator', 'avatarFile']);
 
         $query->whereNot('id', $getModelsForAdminDTO->user->id);
 

@@ -1,5 +1,6 @@
 <?php
 
+use App\Actions\Alert\BroadcastStartedSessionsAndDiscussionsAction;
 use App\Enums\AlertStatusEnum;
 use App\Enums\RequestTypeEnum;
 use App\Enums\SessionStatusEnum;
@@ -17,7 +18,6 @@ use App\Models\Session;
 use App\Models\Therapy;
 use App\Models\Transaction;
 use App\Models\User;
-use App\Services\AppService;
 use App\Services\RequestService;
 use Illuminate\Support\Facades\Event;
 
@@ -123,10 +123,10 @@ test('session.started is broadcast once per session, however many people wait or
 
     srfWait($t['client'], $t['therapy']);
     srfWait($t['counsellor']->user, $t['therapy']);
-    AppService::new()->broadcastStartedSessionsAndDiscussions();
+    BroadcastStartedSessionsAndDiscussionsAction::new()->execute();
 
     srfWait($t['client'], $t['therapy']);
-    AppService::new()->broadcastStartedSessionsAndDiscussions();
+    BroadcastStartedSessionsAndDiscussionsAction::new()->execute();
 
     Event::assertDispatchedTimes(SessionStartedEvent::class, 1);
     expect($t['client']->alerts()->count() + $t['counsellor']->user->alerts()->count())->toBe(0);
@@ -142,7 +142,7 @@ test('discussion.started is broadcast for a therapy\'s discussion that has start
     ]);
 
     srfWait($t['counsellor']->user, $t['therapy']);
-    AppService::new()->broadcastStartedSessionsAndDiscussions();
+    BroadcastStartedSessionsAndDiscussionsAction::new()->execute();
 
     Event::assertDispatchedTimes(DiscussionStartedEvent::class, 1);
     Event::assertNotDispatched(SessionStartedEvent::class);

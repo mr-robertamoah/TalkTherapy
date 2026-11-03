@@ -23,4 +23,7 @@ enum TransactionStatusSourceEnum: string
     // only so the status-history audit trail can tell a per-session pay-per-use charge apart from
     // an aggregated invoice settlement.
     case orgSettlement = 'ORG_SETTLEMENT';
+
+    // SCRUM-248: resolved by the scheduled sweep for org charges whose webhook never arrived.
+    case reconcile = 'RECONCILE';
 }

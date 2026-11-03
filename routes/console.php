@@ -1,5 +1,11 @@
 <?php
 
+use App\Actions\Alert\BroadcastStartedSessionsAndDiscussionsAction;
+use App\Actions\Discussion\FailUnheldDiscussionsAction;
+use App\Actions\Discussion\NotifyParticipantsOfStartingDiscussionsAction;
+use App\Actions\Session\FailUnheldSessionsAction;
+use App\Actions\Session\NotifyParticipantsOfStartingSessionsAction;
+use App\Actions\Transaction\ReconcileStalePendingOrganizationChargesAction;
 use App\Models\Discussion;
 use App\Models\GroupTherapy;
 use App\Models\Session;
@@ -7,6 +13,7 @@ use App\Models\Therapy;
 use App\Services\AppService;
 use App\Services\LicenseService;
 use App\Services\SuspensionService;
+use App\Support\SchedulerHeartbeat;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schedule;
@@ -22,24 +29,43 @@ use Illuminate\Support\Facades\Schedule;
 |
 */
 
+// SCRUM-373 (architecture review): the scheduler's own locks (withoutOverlapping/onOneServer) live in
+// its store too, which the deploy's cache:clear leaves alone.
+Schedule::useCache(config('cache.scheduler_store'));
+
+// SCRUM-248: resolve org charges whose Paystack webhook never arrived. A command (not a closure) so it
+// can run in the background: each Paystack call can take up to PAYSTACK_TIMEOUT, and a slow run must
+// not hold up the every-minute sweeps or the heartbeat. A 30-minute lock, not the default 24 hours, so
+// a run killed mid-way doesn't lock the sweep out for a day. Also runnable by hand.
+Artisan::command('payments:reconcile-stale-org-charges', function () {
+    $this->info(json_encode(ReconcileStalePendingOrganizationChargesAction::new()->execute()));
+})->purpose('Check org charges stuck in pending with Paystack and record the answer');
+
+Schedule::command('payments:reconcile-stale-org-charges')
+    ->name('reconcile-stale-org-charges')->everyFifteenMinutes()
+    ->runInBackground()->withoutOverlapping(30)->onOneServer();
+
+// SCRUM-373: proof of life for /health/scheduler (SchedulerHealthController).
+Schedule::call(fn () => SchedulerHeartbeat::beat())->name('scheduler-heartbeat')->everyMinute();
+
 Schedule::call(function () {
-    AppService::new()->notifyParticipantsOfStartingSessions();
+    NotifyParticipantsOfStartingSessionsAction::new()->execute();
 })->everyFiveMinutes();
 
 Schedule::call(function () {
-    AppService::new()->failUnheldSessions();
+    FailUnheldSessionsAction::new()->execute();
 })->everyFourHours();
 
 Schedule::call(function () {
-    AppService::new()->broadcastStartedSessionsAndDiscussions();
+    BroadcastStartedSessionsAndDiscussionsAction::new()->execute();
 })->everyMinute();
 
 Schedule::call(function () {
-    AppService::new()->notifyParticipantsOfStartingDiscussions();
+    NotifyParticipantsOfStartingDiscussionsAction::new()->execute();
 })->everyMinute();
 
 Schedule::call(function () {
-    AppService::new()->failUnheldDiscussions();
+    FailUnheldDiscussionsAction::new()->execute();
 })->everyFourHours();
 
 Schedule::call(function () {

@@ -26,6 +26,7 @@ use App\Http\Controllers\ReligionController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\ReportEvidenceController;
 use App\Http\Controllers\RequestController;
+use App\Http\Controllers\SchedulerHealthController;
 use App\Http\Controllers\SessionController;
 use App\Http\Controllers\SessionNoteController;
 use App\Http\Controllers\SessionScheduleProposalController;
@@ -59,6 +60,9 @@ Route::get('/therapies/{therapyId}/sessions', [SessionController::class, 'getSes
 Route::get('/therapies/random', [TherapyController::class, 'getRandomTherapies'])->name('api.therapies.random');
 Route::get('/therapies/public', [TherapyController::class, 'getPublicTherapies'])->name('api.therapies.public');
 Route::get('/group-therapies/random', [GroupTherapyController::class, 'getRandomGroupTherapies'])->name('api.group.therapies.random');
+// SCRUM-373: for an uptime monitor -- 503 when the scheduler hasn't run in 5 minutes. In api.php so a
+// monitor's poll (no Referer) starts no session; StoreVisitationMiddleware skips it too.
+Route::get('/health/scheduler', SchedulerHealthController::class)->name('health.scheduler')->middleware('throttle:60,1,health.scheduler');
 Route::get('/counsellors/random', [CounsellorController::class, 'getRandomCounsellors'])->name('api.counsellors.random');
 // SCRUM-177: the general 'api' RateLimiter is disabled (see RouteServiceProvider/bootstrap/app.php),
 // so this search endpoint had no rate limiting despite gaining more UI call sites (SCRUM-172) --

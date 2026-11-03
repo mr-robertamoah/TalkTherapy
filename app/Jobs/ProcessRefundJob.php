@@ -54,8 +54,8 @@ class ProcessRefundJob implements ShouldQueue
     // at the same instant and both call Paystack. Deliberately a belt-and-braces addition to (not
     // a replacement for) that check -- see its own comment for why the status check alone is what
     // actually closes the ticket's named gap. expireAfter comfortably covers a slow Paystack
-    // response (no explicit HTTP client timeout is set on PaystackClient, so Laravel's 30s
-    // default applies) without leaving a crashed worker's lock stuck indefinitely.
+    // response (PaystackClient sets a 5s connect / 15s total timeout since SCRUM-272, well inside this)
+    // without leaving a crashed worker's lock stuck indefinitely.
     public function middleware(): array
     {
         return [(new WithoutOverlapping($this->refundId))->releaseAfter(5)->expireAfter(120)];
@@ -102,6 +102,14 @@ class ProcessRefundJob implements ShouldQueue
             // the original call did in fact succeed. Only a genuine, non-429 4xx (Paystack
             // rejecting the request outright) is a real, definite failure.
             if ($exception->response->serverError() || $exception->response->status() === 429) {
+                throw $exception;
+            }
+
+            // SCRUM-272 (security review): on a RETRY, a 4xx isn't a definite rejection either -- the
+            // earlier attempt may have timed out AFTER Paystack processed it, and the retry is then
+            // refused as a duplicate. Recording "failed" would invite a second, new transfer/charge.
+            // Rethrow and leave the record as it is for follow-up instead.
+            if ($this->attempts() > 1) {
                 throw $exception;
             }
 

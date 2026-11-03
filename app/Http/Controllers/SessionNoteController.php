@@ -101,7 +101,7 @@ class SessionNoteController extends Controller
     {
         $note = new SessionNoteResource($note);
 
-        if ($request->acceptsJson()) {
+        if ($request->wantsJsonResponse()) {
             return response()->json(['note' => $note]);
         }
 
