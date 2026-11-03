@@ -5,7 +5,9 @@ namespace App\Jobs;
 use App\Contracts\VideoProviderInterface;
 use App\Models\User;
 use App\Models\VideoSession;
+use App\Support\VideoJoinLock;
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
@@ -40,20 +42,26 @@ class RetryVideoParticipantRemovalJob implements ShouldQueue
             return;
         }
 
-        // The removal closed every open row of theirs, so an open row now is a later join.
-        if ($videoSession->activeParticipantFor($this->userId)) {
-            return;
-        }
+        // SCRUM-378: under the person's join lock (VideoJoinLock), so a rejoin can't land between the
+        // check and the eject. If the lock can't be had in time, the throw makes the queue try again.
+        VideoJoinLock::run($videoSession->session_id, $this->userId, function () use ($videoSession, $user, $provider) {
+            // The removal closed every open row of theirs, so an open row now is a later join.
+            if ($videoSession->activeParticipantFor($this->userId)) {
+                return;
+            }
 
-        $provider->removeParticipant($videoSession, $user);
+            $provider->removeParticipant($videoSession, $user);
+        });
     }
 
     public function failed(Throwable $exception): void
     {
-        Log::error('The video provider never confirmed a participant removal; they may still be in the call.', [
-            'video_session_id' => $this->videoSessionId,
-            'removed_user_id' => $this->userId,
-            'exception' => $exception->getMessage(),
-        ]);
+        Log::error($exception instanceof LockTimeoutException
+            ? 'A participant removal retry kept waiting on that person\'s join and gave up; they may still be in the call.'
+            : 'The video provider never confirmed a participant removal; they may still be in the call.', [
+                'video_session_id' => $this->videoSessionId,
+                'removed_user_id' => $this->userId,
+                'exception' => $exception->getMessage(),
+            ]);
     }
 }

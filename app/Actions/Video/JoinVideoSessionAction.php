@@ -15,6 +15,9 @@ use App\Models\Session;
 use App\Models\User;
 use App\Models\VideoSession;
 use App\Models\VideoSessionParticipant;
+use App\Support\VideoDisplayName;
+use App\Support\VideoJoinLock;
+use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -52,6 +55,18 @@ class JoinVideoSessionAction extends Action
         // never taking constructor dependencies.
         $provider = app(VideoProviderInterface::class);
 
+        // SCRUM-378: held from opening the join row through minting the token, so the removal retry
+        // (RetryVideoParticipantRemovalJob) can't eject this person between its "rejoined?" check and
+        // its provider call.
+        try {
+            return VideoJoinLock::run($session->id, $user->id, fn () => $this->join($session, $user, $provider));
+        } catch (LockTimeoutException) {
+            throw new VideoException('Still joining you to the video call. Please try again in a moment.', 409);
+        }
+    }
+
+    private function join(Session $session, User $user, VideoProviderInterface $provider): array
+    {
         [$videoSession, $participantRow] = $this->currentOrNewVideoSessionAndJoin($session, $user, $provider);
 
         // SCRUM-331: never an owner in a GroupTherapy call -- a Daily owner's browser can change ANY
@@ -63,7 +78,7 @@ class JoinVideoSessionAction extends Action
             && (bool) ($user->counsellor && $session->for->isCounsellor($user->counsellor));
 
         $receiveOnly = $this->isReceiveOnly($session, $user);
-        $isMasked = $this->isMaskedGroupParticipant($session, $user);
+        $isMasked = VideoDisplayName::isMaskedGroupParticipant($session, $user);
 
         // SCRUM-335: guarded like createRoom() below -- an HTTP client error's code is the upstream
         // status and its message the provider's response body, neither of which may reach the user.
@@ -73,7 +88,7 @@ class JoinVideoSessionAction extends Action
             $credentials = $provider->createParticipantCredentials(
                 $videoSession,
                 $user,
-                $this->displayNameFor($session, $user),
+                VideoDisplayName::for($session, $user),
                 isOwner: $isOwner,
                 receiveOnly: $receiveOnly,
                 canSendVideo: ! $isMasked,
@@ -166,50 +181,6 @@ class JoinVideoSessionAction extends Action
         return $session->for->isReceiveOnlyVideoParticipant($user);
     }
 
-    // Security-review finding (2026-09-11): DailyVideoProvider was sending $user->name straight
-    // to Daily's API as the on-screen label every OTHER participant sees -- for an anonymous
-    // individual Therapy, that leaked the client's real name to the counsellor over video, exactly
-    // the class of bug TT-4.9 already tracks for notifications. Resolving the display identity
-    // HERE (not inside each provider adapter) means DailyVideoProvider/ChimeVideoProvider never
-    // need to know about Therapy's own anonymity rules at all -- they just receive a name to use.
-    // Mirrors TherapyTrait::addedByUserIsMaskedFor()'s own logic (anonymity only ever applies to a
-    // User addedby/client, never a counsellor, and never masks someone's view of their own name --
-    // moot here since the label is for OTHER participants, never the user themselves).
-    //
-    // TT-3.2f-g/SCRUM-324 review finding: for a GroupTherapy this used to mask only the creator, so
-    // an ordinary member who is anonymous (group flag OR their own pivot flag) joined under their
-    // REAL name -- shown to every other participant, and sent to the provider. Now mirrors
-    // routes/channels.php's own group masking exactly: any non-counsellor anonymous participant.
-    private function displayNameFor(Session $session, User $user): string
-    {
-        $therapy = $session->for;
-
-        if ($therapy instanceof GroupTherapy) {
-            return $this->isMaskedGroupParticipant($session, $user)
-                ? ConstantsEnum::anonymousUserLabel->value
-                : $user->name;
-        }
-
-        $isAnonymousAddedbyUser = $therapy->addedby_type === User::class
-            && $therapy->addedby->is($user)
-            && $therapy->isAnonymousFor($user);
-
-        return $isAnonymousAddedbyUser ? ConstantsEnum::anonymousUserLabel->value : $user->name;
-    }
-
-    // Any non-counsellor anonymous participant of a GroupTherapy (group flag OR their own pivot
-    // flag) -- masked by name (displayNameFor() above) AND, per SCRUM-332, never given a camera:
-    // the creator of an anonymous group joins audio-only, matching the audio-only rule SCRUM-324
-    // applies to anonymous members' speaking grants. (Ordinary members join receive-only anyway.)
-    // Decided per join: turning a group's anonymity OFF mid-call leaves the creator audio-only
-    // until they rejoin -- the safe direction.
-    private function isMaskedGroupParticipant(Session $session, User $user): bool
-    {
-        return $session->for instanceof GroupTherapy
-            && ! $session->for->isCounsellorUser($user)
-            && $session->for->isAnonymousFor($user);
-    }
-
     // A VideoSession that hasn't ended yet is the current epoch to join -- there is at most one
     // such row per Session at a time.
     //
@@ -251,7 +222,15 @@ class JoinVideoSessionAction extends Action
         $participantRow = null;
 
         $videoSession = DB::transaction(function () use ($session, $user, $provider, &$wasNewlyCreated, &$participantRow) {
-            Session::query()->lockForUpdate()->find($session->id);
+            VideoJoinLock::lockSessionRows($session);
+
+            // SCRUM-334: re-read the therapy under the lock. Making a group anonymous takes the same
+            // lock (GroupTherapyService::updateGroupTherapy), so the masking decided after this
+            // matches what that change saw: it refuses while this join's row exists, or this join
+            // sees the group as anonymous.
+            // A plain re-fetch: refresh() would also reload every relation already loaded on it (a
+            // group's whole member list) while holding the lock.
+            $session->setRelation('for', $session->for->fresh());
 
             $videoSession = VideoSession::query()
                 ->where('session_id', $session->id)
@@ -295,7 +274,7 @@ class JoinVideoSessionAction extends Action
                 $wasNewlyCreated = true;
             }
 
-            $this->ensureChimeGroupTherapyCapacity($session, $videoSession);
+            $this->ensureChimeGroupTherapyCapacity($session, $videoSession, $user);
 
             $participantRow = VideoSessionParticipant::query()->create([
                 'video_session_id' => $videoSession->id,
@@ -323,15 +302,11 @@ class JoinVideoSessionAction extends Action
     // own allow-list, never reaches a size where this matters) and for Daily (already capped
     // provider-side, checking again here would just duplicate that ceiling).
     //
-    // Review finding, filed as SCRUM-330 (not fixed here): this counts VideoSessionParticipant
-    // AUDIT ROWS (whereNull('left_at')), not distinct users -- a person who disconnects without
-    // an explicit leave (refresh, crash, network drop) leaves a stale row still counted as
-    // "active" until something marks it left_at, and a reconnect via the frontend's own
-    // handleDisconnected() just creates ANOTHER row via a fresh join() call (TT-3.1d's own
-    // design) rather than reconciling the old one. A real cap-slot-leak risk over a long-running
-    // group call with several reconnects -- accepted as a known, tracked gap, not silently
-    // papered over.
-    private function ensureChimeGroupTherapyCapacity(Session $session, VideoSession $videoSession): void
+    // SCRUM-330: counts PEOPLE, not join rows. A disconnect without an explicit leave (refresh, crash,
+    // network drop) leaves its row open, and the reconnect opens another (TT-3.1d), so counting rows
+    // filled the 25 places with the same few people over a long call. The joiner themselves isn't
+    // counted either: someone reconnecting already holds a place and is never turned away from it.
+    private function ensureChimeGroupTherapyCapacity(Session $session, VideoSession $videoSession, User $user): void
     {
         if (! $session->for instanceof GroupTherapy || config('video.provider') !== 'chime') {
             return;
@@ -339,8 +314,11 @@ class JoinVideoSessionAction extends Action
 
         $activeCount = VideoSessionParticipant::query()
             ->where('video_session_id', $videoSession->id)
+            ->where('participant_type', User::class)
             ->whereNull('left_at')
-            ->count();
+            ->where('participant_id', '!=', $user->id)
+            ->distinct()
+            ->count('participant_id');
 
         if ($activeCount >= (int) ConstantsEnum::groupTherapyVideoMaxParticipants->value) {
             throw new VideoException('This video call has reached its maximum number of participants.', 422);

@@ -26,4 +26,8 @@ enum TransactionStatusSourceEnum: string
 
     // SCRUM-248: resolved by the scheduled sweep for org charges whose webhook never arrived.
     case reconcile = 'RECONCILE';
+
+    // SCRUM-378: recorded from a retry's lookup by reference, after Paystack refused the retried call
+    // (ProcessOrganizationInvoiceSettlementJob) -- not from the call itself.
+    case retryLookup = 'RETRY_LOOKUP';
 }

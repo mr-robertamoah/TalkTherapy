@@ -37,38 +37,13 @@ class ResolveTransactionWithPaystackAction extends Action
             );
         }
 
-        // Paystack's real API returns several non-terminal statuses too (e.g. "processing",
-        // "queued", "ongoing") -- only 'success'/'failed'/'abandoned' are actually terminal.
-        // Collapsing anything else into one of those would prematurely finalize a transaction
-        // that a later webhook (or a later verify call) still needs to be able to resolve.
-        $status = match ($response['data']['status'] ?? null) {
-            'success' => TransactionStatusEnum::success->value,
-            'failed' => TransactionStatusEnum::failed->value,
-            'abandoned' => $serverCharge ? TransactionStatusEnum::failed->value : TransactionStatusEnum::abandoned->value,
-            default => null,
-        };
-
-        if (is_null($status)) {
-            return $transaction;
-        }
-
-        // A mismatch here throws (SCRUM-117) instead of silently marking a partial or
-        // wrong-currency payment as a full success.
-        if ($status === TransactionStatusEnum::success->value) {
-            EnsureTransactionAmountAndCurrencyMatchAction::new()->execute(
-                $transaction,
-                isset($response['data']['amount']) ? (int) $response['data']['amount'] : null,
-                $response['data']['currency'] ?? null,
-                $source
-            );
-        }
-
-        return RecordTransactionStatusAction::new()->execute(
+        // SCRUM-378: the status mapping, amount/currency check and recording are shared with the
+        // org-charge and settlement paths. 'abandoned' only means failed for a server charge.
+        return RecordPaystackChargeOutcomeAction::new()->execute(
             $transaction,
-            $status,
+            $response['data'] ?? [],
             $source,
-            $response['data']['gateway_response'] ?? null,
-            $response['data'] ?? null
+            abandonedIsFailure: $serverCharge
         );
     }
 

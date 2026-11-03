@@ -10,12 +10,11 @@ import {
 // DailyVideoClient.js for the Daily.co counterpart and the factory shape both must implement
 // (documented at the top of useVideoSession.js).
 //
-// Known limitation (2026-09, accepted for this ticket): unlike Daily's `user_name` field, Chime's
-// CreateAttendee API has no display-name concept at all -- ChimeVideoProvider::createParticipantCredentials()
-// (TT-3.1a) only ever sends ExternalUserId (the raw numeric User id). A Chime-deployment
-// participant tile therefore has no human-readable name to show, only its raw attendee id --
-// VideoCallPanel.vue falls back to a generic "Participant" label for it. Daily is this app's
-// default VIDEO_PROVIDER; revisit if a Chime-configured deployment needs proper names later.
+// Chime's CreateAttendee API has no display-name concept at all -- ChimeVideoProvider only sends
+// ExternalUserId (the participant key, SCRUM-357), set server-side when the attendee is created and
+// not changeable from the browser. So there is no provider-side name to trust or distrust here:
+// useVideoSession.js resolves every label from our server by that key (SCRUM-334), exactly as it
+// does for Daily.
 export default function createChimeVideoClient(callbacks) {
     let meetingSession = null
     let videoEnabled = false
@@ -96,7 +95,7 @@ export default function createChimeVideoClient(callbacks) {
             // logic never mistakes it for a real key.
             const userId = externalUserId ?? null
 
-            if (present) callbacks.onParticipantJoined?.({ id: attendeeId, isLocal: false, name: null, userId })
+            if (present) callbacks.onParticipantJoined?.({ id: attendeeId, isLocal: false, userId })
             else callbacks.onParticipantLeft?.(attendeeId)
         }
         meetingSession.audioVideo.realtimeSubscribeToAttendeeIdPresence(presenceCallback)
@@ -116,7 +115,6 @@ export default function createChimeVideoClient(callbacks) {
         callbacks.onParticipantJoined?.({
             id: 'local',
             isLocal: true,
-            name: null,
             userId: localExternalUserId ?? null,
         })
     }

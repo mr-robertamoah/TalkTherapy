@@ -21,7 +21,12 @@ fi
 # process (or a root `docker compose exec`) keeps that ownership, and www-data (php-fpm's user, see
 # docker/php/www.conf) can be left unable to write it -- confirmed via TT-4.11b/SCRUM-303, where
 # identity-document uploads 500'd. SCRUM-376: the rules live in one script shared with queue and reverb.
-bash /var/www/html/docker/php/storage-permissions.sh
+# SCRUM-378: only the php-fpm container runs it. The queue (same image and entrypoint, other command)
+# and reverb (depends_on php) share the same bind mount, so a second and third recursive pass at the
+# same moment only repeated the work.
+if [ "$1" = "php-fpm" ]; then
+  bash /var/www/html/docker/php/storage-permissions.sh
+fi
 
 # Generate key if not exists
 if [ -z "$APP_KEY" ]; then

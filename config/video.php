@@ -15,4 +15,8 @@ return [
     // Floored at 30s so a blank/zero env value can't revoke every open grant on the next sweep.
     'speaking_grant_idle_timeout' => max(30, (int) env('VIDEO_SPEAKING_GRANT_IDLE_TIMEOUT', 300)),
 
+    // SCRUM-378: how long a join, or a removal retry, waits for the same person's other one to
+    // finish (App\Support\VideoJoinLock). Not an env setting: tests set it to 0.
+    'join_lock_wait_seconds' => 10,
+
 ];

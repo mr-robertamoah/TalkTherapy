@@ -33,12 +33,13 @@ export default function createDailyVideoClient(callbacks) {
         callbacks.onParticipantJoined?.({
             id,
             isLocal: !!participant.local,
-            // The on-screen label a real Daily UI would show -- exactly the anonymity-aware
-            // display name JoinVideoSessionAction::displayNameFor() already resolved server-side
-            // (see DailyVideoProvider::createParticipantCredentials()'s own `user_name` field).
-            name: participant.user_name || null,
+            // SCRUM-334: deliberately NOT participant.user_name -- Daily lets every participant
+            // change their own (setUserName()) and no token/room property prevents it, so a masked
+            // participant could relabel themselves as a counsellor. useVideoSession.js resolves
+            // every label from our server by userId instead.
             // TT-3.2c/SCRUM-310, SCRUM-357: the participant key DailyVideoProvider sent as `user_id`
-            // when minting this participant's token (never a user id) -- distinct from `id` above
+            // when minting this participant's token (never a user id; settable only via the token,
+            // so the participant can't change it -- SCRUM-334) -- distinct from `id` above
             // (Daily's own tile/session_id), so a counsellor's "remove" click names the right
             // participant rather than a Daily-internal id the backend has never seen.
             userId: participant.user_id ?? null,

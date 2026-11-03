@@ -9408,3 +9408,115 @@ therapy 18 after the last QA pass.
   - deleting `app/Console/Kernel.php`, and the `routes/console.php` style;
   - a generic `SchedulerOnce` key;
   - running the storage script once, and documenting `exec -u www-data`.
+
+## SCRUM-378 + 330 + 334: refund retry lookup, one Paystack outcome mapping, video join locking and hardening, tidy-ups — 2026-11-03
+
+- **Grouping.** The user asked for the next group of work to include the follow-up (SCRUM-378). Its
+  video item (a lock against the removal-retry/rejoin race) is about how joins are serialised, so
+  SCRUM-330 (the Chime cap counting join rows) and SCRUM-334 (group video hardening, including the
+  anonymity/join race) came with it. SCRUM-52 was closed as won't do (user's decision).
+- **Refund retry lookup (378.1).** The refund id from `POST /refund` is stored (`refunds.paystack_refund_id`)
+  before the outcome is recorded, so a rollback still leaves it. A refused retry with a stored id
+  calls `GET /refund/{id}` and records only `processed` or `failed`, and only if it matches the
+  refund's own id, transaction reference, amount and currency. Anything else rethrows.
+  - **Still not looked up:** a first attempt that timed out before any response has no id, and
+    Paystack documents no "refunds for a transaction" filter. The refund webhook and the failed-job
+    alert remain the way that case is resolved.
+  - **Security review:** once an id is stored, the job looks the refund up and never sends a second
+    refund request. An unclear answer throws, so the queue checks again later.
+  - **Unverified:** the response fields the match relies on (`transaction_reference`, `amount`) come
+    from Paystack's OpenAPI spec and haven't been checked against a live sandbox. A different shape
+    fails safe: the job rethrows rather than recording anything.
+- **One mapping for Paystack responses (378.3).** `RecordPaystackChargeOutcomeAction` (maps the status,
+  checks amount and currency on success, records) is used by `ResolveTransactionWithPaystackAction`,
+  the retainer settlement job, and `ChargeOrganizationForModelAction` (a third copy, folded in too).
+  - The webhook job still has its own "check amount, then record" half (keyed by event name), so this
+    is the one mapping for charge and verify responses, not for webhooks (architect review; ticketed).
+  - The SCRUM-244 "abandoned treated as a failure" warning now lives in the action. Its wording is
+    generic, with the source in its context, and it also fires for the reconcile sweep's server
+    charges. No alert matched on the old wording.
+  `abandonedIsFailure` is its one option. "Reference not found means failed" stays in Resolve's catch
+  block, since it comes from an exception rather than a response. The settlement retry lookup still
+  treats `abandoned` and "not found" as unclear.
+- **Own status source (378.4).** Outcomes found by a retry lookup are recorded as `RETRY_LOOKUP` on
+  transactions, payouts and refunds (DB enums re-applied on MySQL; the down migration is a no-op, like
+  the earlier enum additions).
+- **Join lock (378.2).** `VideoJoinLock` (a cache lock per session and person) covers a join, from
+  opening the row to minting the token, and the removal retry's check-and-eject. A join that can't get
+  it in 10s gets a 409 "Still joining you…"; a retry that can't throws and is retried by the queue.
+  - **Architect and reviewer.** It's held for 90s, since a slow first join (two Daily calls of up to
+    15s each, plus waiting on another join's room creation) could outlive 30s.
+  - **Store.** It lives in the scheduler store, which the deploy's `cache:clear` doesn't flush.
+    php-fpm, the queue worker and cron now all write there, so on a server they must run as one user
+    (as in Docker, where all are www-data), or share a group with a 002 umask.
+  - **Not `permission` 0664.** It was tried at the devops review's suggestion. Laravel's file store
+    applies that mode to new folders too, which then can't be entered, and browser QA caught every
+    once-only scheduler key failing. It was removed and the broken folders repaired.
+  - **One host only.** Several app hosts would need `SCHEDULER_CACHE_STORE` on redis or the database.
+  - **Chime timeouts.** Chime calls now time out (5s connect, 10s request), like Daily's. The SDK
+    default had none, so a stall could outlive the lock.
+  - **Not covered.** The first eject (`EjectVideoParticipantAction`) isn't under the lock; only the
+    retry is. Its window is the eject call itself, much narrower than the retry's delay.
+- **Chime cap (330).** It counts distinct people with an open row, not open rows, and never counts the
+  joiner. A reconnect no longer uses up a place, and someone already in a full call can rejoin.
+  - **Not changed:** someone who dropped without leaving and never came back still holds their place
+    until the call ends. That's the safe side for a cap, and closing stale rows would interfere with
+    the speaking-grant cleanup that relies on them (SCRUM-326).
+- **Mask race (334.4).** Making a group anonymous now checks "no one in a call" and saves the change
+  inside one transaction that locks the group's Session rows (`VideoJoinLock::lockSessionRows`, the
+  same method the join uses, so the two can't drift). Security review:
+  - The "becoming anonymous" decision is made after the lock and a refresh, not from the copy loaded
+    beforehand.
+  - A **1:1 therapy** gets the same guard and lock. It had none, and its counsellor has already seen
+    the client's name in a live call.
+  - Accepted: "in a call" means an open join row, which the client closes by leaving. Someone who
+    leaves but stays connected on a still-valid token isn't counted. A join locks its Session row and then
+  re-reads the therapy before deciding the masking. Either the join's row exists and the change is
+  refused, or the join sees the group as anonymous.
+- **Renaming in Daily (334.1).** Daily has no room or token setting that stops `setUserName()` (its
+  permissions are only `hasPresence`, `canSend`, `canReceive`, `canAdmin`). So the call UI no longer
+  shows the provider's name. Each tile's label comes from `GET sessions/{id}/video/participants/{key}`,
+  keyed by the token's `user_id` (set by us, not changeable in the browser):
+  - only someone in the current call can ask, and gets `{key, displayName}`, never a user id;
+  - someone who is no longer the group's counsellor, creator or a member is labelled Anonymous.
+    Security review: once members can leave, a missing membership row would otherwise have read as
+    "not anonymous" and shown their real name;
+  - names follow the therapy's current anonymity, like chat does (`routes/channels.php`). Turning a
+    group's anonymity off mid-call shows real names to anyone who joins after that;
+  - a forged key, an outsider and a past participant all get the same 404;
+  - names are decided in one place, `App\Support\VideoDisplayName`, shared with the join action.
+  - **Chime:** names were never provider-side there, and tiles now get real labels from the same lookup.
+- **Room defaults (334.3).** Daily rooms set `eject_at_room_exp` and tokens `eject_at_token_exp`
+  (security review: `exp` alone only stops new joins), `enable_screenshare: false` (nothing in the UI
+  shares a screen; tokens say so too), `enable_knocking: false` (a lobby would let someone without our token ask
+  a 1:1 owner to admit them), and `enable_chat: false` as before.
+  - **Recording:** `enable_recording` has no "off" value, and recording only works when a room or token
+    enables it, so it's never sent. A test fails if it ever is.
+- **334.2 already done.** Real user ids in calls were replaced by SCRUM-357's per-session participant key.
+- **Tidy-ups (378.5–8):**
+  - `isMinutesBefore` and `addMinutesToInputValue` live in `countdown.js`, and the modals' copies and
+    wrappers are gone. Discussions now check 30 minutes on the client too, matching sessions. This
+    tightens the check: a discussion start 25–30 minutes away, including when editing one, is now
+    refused before it's sent. The server has no "minutes from now" rule for discussions.
+  - The country list is cached as JSON (an old comma-joined value is still read once). It is not
+    moved server-side: no request carries user data, and cookies and the Referer are already off
+    (SCRUM-376).
+  - `app/Console/Kernel.php` is deleted (not booted since Laravel 11).
+  - Every schedule in `routes/console.php` is named, and one-liners use `fn () =>`.
+  - `SchedulerOnce::key()` is the general once-only guard, used for the stuck-charge alert. Its key
+    changed, so one extra alert may go out on deploy day.
+  - The storage permissions script runs in the php container only. CLAUDE.md now says to use
+    `exec -u www-data` for artisan commands that write to storage.
+  - **Rebuild needed.** The php entrypoint is copied into the image at build time, so this needs
+    `docker compose build php queue reverb`. Recreating alone kept the old entrypoint, which reset
+    storage to `www-data:www-data 755` and locked the host user out; found while checking locally.
+- **Follow-ups (SCRUM-379):**
+  - the webhook's own charge-outcome copy;
+  - one masking rule across video, chat and notifications;
+  - a cheaper label lookup or a roster;
+  - Daily `canSend`, `canAdmin` and dial-out checks;
+  - `TherapyController::updateTherapy` always redirecting;
+  - the video session-not-found response;
+  - a live Paystack sandbox check of the lookup fields;
+  - Docker startup ordering;
+  - a shared form-time composable.

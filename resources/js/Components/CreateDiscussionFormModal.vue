@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onBeforeMount, ref, unref, watch, watchEffect } from 'vue';
-import { defaultFormTime, toLocalInputValue } from '@/Composables/countdown'
+import { addMinutesToInputValue, defaultFormTime, isMinutesBefore, toLocalInputValue } from '@/Composables/countdown'
 import TextInput from '@/Components/TextInput.vue';
 import InputLabel from '@/Components/InputLabel.vue';
 import InputError from '@/Components/InputError.vue';
@@ -12,7 +12,7 @@ import useLocation from "@/Composables/useLocation";
 import Alert from "./Alert.vue";
 import PrimaryButton from "./PrimaryButton.vue";
 import Select from "./Select.vue";
-import { addMinutes, differenceInMinutes } from 'date-fns';
+import { differenceInMinutes } from 'date-fns';
 import useErrorHandler from '@/Composables/useErrorHandler';
 import SessionBadge from './SessionBadge.vue';
 import useAuth from '@/Composables/useAuth';
@@ -73,8 +73,8 @@ watch(() => props.show, () => {
 function setDefaultTimes() {
     if (startTime.value && isMinutesBefore({ firstTime: startTime.value, minutes: 30 })) return
 
-    startTime.value = getDefaultTime(30)
-    endTime.value = addMinitesToDate(startTime.value, 40)
+    startTime.value = defaultFormTime(30)
+    endTime.value = addMinutesToInputValue(startTime.value, 40)
 }
 
 watch(() => sessionSearch.value?.length, () => {
@@ -92,7 +92,7 @@ watch(() => startTime.value, () => {
             secondTime: startTime.value, 
             minutes: 30
         })
-    ) endTime.value = addMinitesToDate(startTime.value, 30)
+    ) endTime.value = addMinutesToInputValue(startTime.value, 30)
 })
 watch(() => endTime.value, () => {
     if (
@@ -101,7 +101,7 @@ watch(() => endTime.value, () => {
             secondTime: startTime.value, 
             minutes: 30
         })
-    ) endTime.value = addMinitesToDate(startTime.value, 30)
+    ) endTime.value = addMinutesToInputValue(startTime.value, 30)
 })
 
 const computedStartTime = computed(() => {
@@ -123,26 +123,6 @@ const debouncedGetSessions = _.debounce(() => {
     getSessions()
 }, 500)
 
-function isMinutesBefore({firstTime, secondTime = null, minutes}) {
-    if (!firstTime) return null
-
-    const comparisonDate = addMinutes(secondTime ? new Date(secondTime) : new Date(), minutes)
-
-    return new Date(firstTime) >= comparisonDate
-}
-
-function getDefaultTime(minutes) {
-    return defaultFormTime(minutes)
-}
-
-
-function addMinitesToDate(time, minutes) {
-    if (!time) return null
-    const newTime = toLocalInputValue(addMinutes(time, minutes))
-    
-    return newTime
-}
-
 async function createDiscussion() {
     if (!discussionData.value.name) {
         setFailedAlertData({
@@ -151,9 +131,9 @@ async function createDiscussion() {
         return
     }
 
-    if (!isMinutesBefore({ firstTime: startTime.value, minutes: 25 })) {
+    if (!isMinutesBefore({ firstTime: startTime.value, minutes: 30 })) {
         setFailedAlertData({
-            message: 'Start time must be at least 25 minutes away from current time. Please increase the start time.',
+            message: 'Start time must be at least 30 minutes away from current time. Please increase the start time.',
         })
         return
     }

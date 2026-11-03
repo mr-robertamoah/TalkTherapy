@@ -16,7 +16,6 @@ use App\Models\Transaction;
 use App\Services\Paystack\PaystackClient;
 use Illuminate\Http\Client\HttpClientException;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 // TT-7.3b-b/SCRUM-233: charges an organization the actual cost of a SINGLE Therapy/Session
@@ -194,46 +193,13 @@ class ChargeOrganizationForModelAction extends Action
         // status in this same response -- a webhook may still arrive afterward too (Paystack fires
         // one for every charge regardless of how it started), but RecordTransactionStatusAction's
         // own terminal-status guard makes that a safe, idempotent no-op replay.
-        $paystackStatus = $response['data']['status'] ?? null;
-
-        // SCRUM-244: 'abandoned' means Paystack is waiting on a further interactive step (e.g. an
-        // OTP challenge) -- meaningful for the checkout-redirect flow (VerifyPaystackTransactionAction
-        // leaves it non-terminal there, since the customer can still complete it via a fresh
-        // checkout link), but this is a server-to-server charge with no human present at all to
-        // ever complete one. Treated as a real failure here, not left non-terminal forever --
-        // logged distinctly so it stays distinguishable from a genuine Paystack decline.
-        if ($paystackStatus === 'abandoned') {
-            Log::warning('An org-financed charge was abandoned by Paystack -- treated as a failure since no human is present to complete an interactive step on a server-to-server charge.', [
-                'transaction_id' => $transaction->id,
-                'reference' => $transaction->reference,
-            ]);
-        }
-
-        $status = match ($paystackStatus) {
-            'success' => TransactionStatusEnum::success->value,
-            'failed', 'abandoned' => TransactionStatusEnum::failed->value,
-            default => null,
-        };
-
-        if (is_null($status)) {
-            return $transaction;
-        }
-
-        if ($status === TransactionStatusEnum::success->value) {
-            EnsureTransactionAmountAndCurrencyMatchAction::new()->execute(
-                $transaction,
-                isset($response['data']['amount']) ? (int) $response['data']['amount'] : null,
-                $response['data']['currency'] ?? null,
-                TransactionStatusSourceEnum::orgCharge->value
-            );
-        }
-
-        return RecordTransactionStatusAction::new()->execute(
+        // SCRUM-244: 'abandoned' counts as failed here (no human present on a server-to-server
+        // charge); RecordPaystackChargeOutcomeAction logs it distinctly.
+        return RecordPaystackChargeOutcomeAction::new()->execute(
             $transaction,
-            $status,
+            $response['data'] ?? [],
             TransactionStatusSourceEnum::orgCharge->value,
-            $response['data']['gateway_response'] ?? null,
-            $response['data'] ?? null
+            abandonedIsFailure: true
         );
     }
 

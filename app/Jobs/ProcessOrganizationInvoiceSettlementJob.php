@@ -2,7 +2,7 @@
 
 namespace App\Jobs;
 
-use App\Actions\Transaction\EnsureTransactionAmountAndCurrencyMatchAction;
+use App\Actions\Transaction\RecordPaystackChargeOutcomeAction;
 use App\Actions\Transaction\RecordTransactionStatusAction;
 use App\Enums\TransactionStatusEnum;
 use App\Enums\TransactionStatusSourceEnum;
@@ -56,6 +56,8 @@ class ProcessOrganizationInvoiceSettlementJob implements ShouldQueue
             return;
         }
 
+        $source = TransactionStatusSourceEnum::orgSettlement->value;
+
         try {
             $response = PaystackClient::new()->chargeAuthorization([
                 'authorization_code' => $instrument->authorization_code,
@@ -80,6 +82,7 @@ class ProcessOrganizationInvoiceSettlementJob implements ShouldQueue
             // it is for follow-up and the failed-job alert) when the answer isn't final.
             if ($this->attempts() > 1) {
                 $response = $this->finalOutcomeOrRethrow($transaction, $exception);
+                $source = TransactionStatusSourceEnum::retryLookup->value;
             } else {
                 RecordTransactionStatusAction::new()->execute(
                     $transaction,
@@ -92,57 +95,25 @@ class ProcessOrganizationInvoiceSettlementJob implements ShouldQueue
             }
         }
 
-        $paystackStatus = $response['data']['status'] ?? null;
-
-        // SCRUM-244: 'abandoned' left this invoice's own settlement Transaction non-terminal
-        // forever -- UpdateOrganizationInvoiceStatusAction's own match() only maps success/failed,
-        // so the invoice stayed `pending` permanently (the periodic sweep only re-claims `open`
-        // ones), the org was never billed, and its counsellors never got paid for that period,
-        // silently. There is no human present on this server-to-server charge to ever complete
-        // whatever interactive step Paystack was waiting on, so this is treated as a real failure
-        // -- reusing UpdateOrganizationInvoiceStatusAction's EXISTING failed-handling path (invoice
-        // -> failed, org -> suspended) rather than adding a third branch there. Logged distinctly
-        // so it stays distinguishable from a genuine Paystack decline.
-        if ($paystackStatus === 'abandoned') {
-            Log::warning('A retainer invoice settlement charge was abandoned by Paystack -- treated as a failure since no human is present to complete an interactive step on a server-to-server charge.', [
-                'transaction_id' => $transaction->id,
-                'reference' => $transaction->reference,
-            ]);
-        }
-
-        $status = match ($paystackStatus) {
-            'success' => TransactionStatusEnum::success->value,
-            'failed', 'abandoned' => TransactionStatusEnum::failed->value,
-            default => null,
-        };
-
-        if (is_null($status)) {
-            return;
-        }
-
-        if ($status === TransactionStatusEnum::success->value) {
-            EnsureTransactionAmountAndCurrencyMatchAction::new()->execute(
-                $transaction,
-                isset($response['data']['amount']) ? (int) $response['data']['amount'] : null,
-                $response['data']['currency'] ?? null,
-                TransactionStatusSourceEnum::orgSettlement->value
-            );
-        }
-
-        RecordTransactionStatusAction::new()->execute(
+        // SCRUM-244: 'abandoned' counts as failed here (no human present on a server-to-server
+        // charge); RecordPaystackChargeOutcomeAction logs it distinctly.
+        // SCRUM-378: the shared Paystack charge mapping. A retry lookup never gets here with
+        // 'abandoned' (finalOutcomeOrRethrow() rethrows on it), so abandoned => failed only ever
+        // applies to the charge's own response.
+        RecordPaystackChargeOutcomeAction::new()->execute(
             $transaction->fresh(),
-            $status,
-            TransactionStatusSourceEnum::orgSettlement->value,
-            $response['data']['gateway_response'] ?? null,
-            $response['data'] ?? null
+            $response['data'] ?? [],
+            $source,
+            abandonedIsFailure: true
         );
     }
 
     // SCRUM-376: only a definite answer comes back -- verifyTransaction()'s response has the same
     // data.status/amount/currency shape as chargeAuthorization()'s, so handle() maps it with the
-    // same code (abandoned => failed, amount/currency check on success). Anything else (no record
-    // of the reference -- which could just mean the earlier attempt isn't registered yet -- a
-    // non-terminal status, Paystack unreachable) is ambiguous, so the original 4xx is rethrown.
+    // same code (RecordPaystackChargeOutcomeAction, amount/currency check on success). Anything
+    // else (no record of the reference -- which could just mean the earlier attempt isn't
+    // registered yet -- a non-terminal status, Paystack unreachable) is ambiguous, so the original
+    // 4xx is rethrown.
     // Deliberately not ResolveTransactionWithPaystackAction: its server-charge mode records
     // "reference not found" as failed, which is exactly the ambiguous case here.
     private function finalOutcomeOrRethrow(Transaction $transaction, RequestException $exception): array

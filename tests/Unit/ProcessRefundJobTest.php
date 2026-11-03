@@ -1,12 +1,14 @@
 <?php
 
 use App\Enums\RefundStatusEnum;
+use App\Enums\RefundStatusSourceEnum;
 use App\Jobs\ProcessRefundJob;
 use App\Models\PaymentAccessGrant;
 use App\Models\Refund;
 use App\Models\Therapy;
 use App\Models\Transaction;
 use App\Models\User;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -169,9 +171,9 @@ test('a 429 (rate limited) response from Paystack does not record a definite fai
     expect($refund->fresh()->status)->toBe(RefundStatusEnum::pending->value);
 });
 
-// SCRUM-376: unlike the payout/settlement jobs, a refund retry can't look its outcome up (Paystack
-// offers no lookup by transaction reference -- see ProcessRefundJob), so a 4xx on a retry still
-// rethrows and leaves the refund untouched for the webhook/follow-up, calling nothing else.
+// SCRUM-376/378: a refund can only be looked up by Paystack's own refund id. With none stored (the
+// earlier attempt never got a response -- see ProcessRefundJob), a 4xx on a retry still rethrows and
+// leaves the refund untouched for the webhook/follow-up, calling nothing else.
 test('a retry refused with a 4xx still rethrows and leaves the refund pending, with no lookup', function () {
     Http::fake(['*/refund' => Http::response(['status' => false, 'message' => 'Transaction has been fully reversed'], 400)]);
     $refund = aPendingRefundWithTransaction();
@@ -183,4 +185,106 @@ test('a retry refused with a 4xx still rethrows and leaves the refund pending, w
 
     expect($refund->fresh()->status)->toBe(RefundStatusEnum::pending->value);
     Http::assertSentCount(1);
+});
+
+// SCRUM-378: Paystack's refund id from the POST /refund response is what a retry's lookup needs.
+test('the refund id Paystack returns is stored on the refund', function () {
+    Http::fake(['*/refund' => Http::response(['status' => true, 'data' => ['id' => 3018284, 'status' => 'pending']], 200)]);
+    $refund = aPendingRefundWithTransaction();
+
+    ProcessRefundJob::dispatchSync($refund->id);
+
+    expect($refund->fresh()->paystack_refund_id)->toBe('3018284');
+    expect($refund->fresh()->statusHistories()->latest('id')->first()->source)->toBe(RefundStatusSourceEnum::initiate->value);
+});
+
+// A pending refund that already carries Paystack's id -- the earlier attempt's POST answered, but
+// recording its outcome failed, so the job is retrying from `pending`.
+function refundJobPendingWithPaystackId(): Refund
+{
+    $refund = aPendingRefundWithTransaction();
+    $refund->transaction->update(['amount' => 5000, 'currency' => 'GHS']);
+    $refund->update(['amount' => 5000, 'currency' => 'GHS', 'paystack_refund_id' => '3018284']);
+
+    return $refund->fresh();
+}
+
+function refundJobFetchedRefund(array $overrides = []): array
+{
+    return ['status' => true, 'data' => array_merge([
+        'id' => 3018284,
+        'transaction_reference' => 'refund_job_txn_ref',
+        'amount' => 5000,
+        'currency' => 'GHS',
+        'status' => 'processed',
+    ], $overrides)];
+}
+
+function refundJobRunAsRetry(int $refundId): void
+{
+    $job = (new ProcessRefundJob($refundId))->withFakeQueueInteractions();
+    $job->job->attempts = 2;
+
+    $job->handle();
+}
+
+test('with a stored refund id, the retry looks the refund up instead of sending it again', function (string $paystackStatus, string $expected) {
+    $refund = refundJobPendingWithPaystackId();
+    Http::fake([
+        '*/refund/*' => Http::response(refundJobFetchedRefund(['status' => $paystackStatus]), 200),
+        '*/refund' => Http::response(['status' => false, 'message' => 'Transaction has been fully reversed'], 400),
+    ]);
+
+    refundJobRunAsRetry($refund->id);
+
+    expect($refund->fresh()->status)->toBe($expected);
+    expect($refund->fresh()->statusHistories()->latest('id')->first()->source)->toBe(RefundStatusSourceEnum::retryLookup->value);
+    Http::assertSent(fn ($request) => $request->method() === 'GET' && str_ends_with($request->url(), '/refund/3018284'));
+    Http::assertNotSent(fn ($request) => $request->method() === 'POST');
+})->with([
+    'processed' => ['processed', RefundStatusEnum::success->value],
+    'failed' => ['failed', RefundStatusEnum::failed->value],
+]);
+
+test('with a stored refund id, an inconclusive lookup throws for a later retry and leaves the refund untouched', function (Closure $fetchResponse) {
+    $refund = refundJobPendingWithPaystackId();
+    Http::fake([
+        '*/refund/*' => $fetchResponse,
+        '*/refund' => Http::response(['status' => false, 'message' => 'Transaction has been fully reversed'], 400),
+    ]);
+
+    expect(fn () => refundJobRunAsRetry($refund->id))->toThrow(RuntimeException::class);
+
+    expect($refund->fresh()->status)->toBe(RefundStatusEnum::pending->value);
+    expect($refund->fresh()->statusHistories()->count())->toBe(0);
+    Http::assertNotSent(fn ($request) => $request->method() === 'POST');
+})->with([
+    'still pending' => fn () => fn () => Http::response(refundJobFetchedRefund(['status' => 'pending']), 200),
+    'still processing' => fn () => fn () => Http::response(refundJobFetchedRefund(['status' => 'processing']), 200),
+    'needs attention' => fn () => fn () => Http::response(refundJobFetchedRefund(['status' => 'needs-attention']), 200),
+    'no status' => fn () => fn () => Http::response(['status' => true, 'data' => []], 200),
+    'not found' => fn () => fn () => Http::response(['status' => false, 'message' => 'Refund not found'], 404),
+    'Paystack error' => fn () => fn () => Http::response(['status' => false, 'message' => 'Internal server error'], 500),
+    'Paystack unreachable' => fn () => fn () => throw new ConnectionException('timed out'),
+    // Security review rule carried over from the payout lookup: only this refund's own record counts.
+    'another refund id' => fn () => fn () => Http::response(refundJobFetchedRefund(['id' => 999]), 200),
+    'another transaction' => fn () => fn () => Http::response(refundJobFetchedRefund(['transaction_reference' => 'other_ref']), 200),
+    'no transaction reference' => fn () => fn () => Http::response(refundJobFetchedRefund(['transaction_reference' => null]), 200),
+    'another amount' => fn () => fn () => Http::response(refundJobFetchedRefund(['amount' => 4000]), 200),
+    'another currency' => fn () => fn () => Http::response(refundJobFetchedRefund(['currency' => 'NGN']), 200),
+    'a mismatched failure' => fn () => fn () => Http::response(refundJobFetchedRefund(['status' => 'failed', 'amount' => 1]), 200),
+]);
+
+test('security review: a job that finds a stored refund id never sends a second refund request', function () {
+    $refund = refundJobPendingWithPaystackId();
+    Http::fake([
+        '*/refund/*' => Http::response(refundJobFetchedRefund(['status' => 'processed']), 200),
+        '*/refund' => Http::response(['status' => true, 'data' => ['id' => 1, 'status' => 'pending']], 200),
+    ]);
+
+    ProcessRefundJob::dispatchSync($refund->id);
+
+    expect($refund->fresh()->status)->toBe(RefundStatusEnum::success->value);
+    Http::assertSentCount(1);
+    Http::assertNotSent(fn ($request) => $request->method() === 'POST');
 });

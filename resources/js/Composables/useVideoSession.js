@@ -45,9 +45,11 @@ import { acquireChannel } from '@/Composables/sharedChannel'
 //   }
 //
 //   callbacks passed into the factory:
-//     onParticipantJoined({ id, isLocal, name, userId })  -- name may be null (Chime has no
-//                                                     display-name field at all -- see
-//                                                     ChimeVideoClient.js). userId (TT-3.2c/
+//     onParticipantJoined({ id, isLocal, userId })  -- deliberately no provider-side name (SCRUM-334:
+//                                                     a Daily participant can rename themselves
+//                                                     from their own browser; Chime has none) --
+//                                                     every label comes from our server, by userId
+//                                                     (see resolveDisplayName() below). userId (TT-3.2c/
 //                                                     SCRUM-310, SCRUM-357) is the participant KEY
 //                                                     the backend minted (never a user id), never
 //                                                     the provider's own tile/attendee id (`id`) --
@@ -140,27 +142,58 @@ export default function useVideoSession(session) {
     // sweep can ever affect (counsellors and the creator never hold grants).
     const holdsSpeakingGrant = computed(() => capabilities.value.receiveOnly && capabilities.value.canSendAudio)
 
-    function upsertParticipant({ id, isLocal, name, userId }) {
+    // SCRUM-334: participant key -> Promise of the server-resolved label (null when the server
+    // wouldn't say). One lookup per key per join -- every tile of the same person shares it.
+    let displayNames = new Map()
+
+    function upsertParticipant({ id, isLocal, userId }) {
         const existingIndex = participants.value.findIndex((p) => p.id === id)
 
-        // Daily's 'participant-joined' can fire before user_name is populated on the participant
-        // object, with the real name only arriving on a later 'participant-updated' -- patch it
-        // in rather than no-op entirely, or the tile stays stuck on the "Participant" fallback
-        // for the whole call (review finding, 2026-09-11). TT-3.2c/SCRUM-310: userId is patched in
-        // the same way for the same reason -- Chime's own presence callback can report a null
-        // externalUserId on an early update before patching in the real one on a later call.
+        // TT-3.2c/SCRUM-310: userId is patched in rather than no-op'd -- Chime's own presence
+        // callback can report a null externalUserId on an early update before patching in the real
+        // one on a later call.
         if (existingIndex !== -1) {
-            const patch = {}
-            if (name && !participants.value[existingIndex].name) patch.name = name
-            if (userId != null && participants.value[existingIndex].userId == null) patch.userId = userId
-
-            if (Object.keys(patch).length) {
-                participants.value.splice(existingIndex, 1, { ...participants.value[existingIndex], ...patch })
+            if (userId != null && participants.value[existingIndex].userId == null) {
+                participants.value.splice(existingIndex, 1, { ...participants.value[existingIndex], userId })
+                resolveDisplayName(userId)
             }
             return
         }
 
-        participants.value = [...participants.value, { id, isLocal, name, userId: userId ?? null }]
+        participants.value = [...participants.value, { id, isLocal, name: null, userId: userId ?? null }]
+        if (userId != null) resolveDisplayName(userId)
+    }
+
+    // SCRUM-334: a tile's label comes from our server, keyed by the participant key the server
+    // minted into that participant's token -- never the provider-side name, which a Daily
+    // participant can change from their own browser (so an "Anonymous" member could otherwise label
+    // themselves as a counsellor). The local tile is always "You" (VideoCallPanel.vue), so never
+    // looked up. A tile stays on the "Participant" fallback until this resolves, or if it can't.
+    function resolveDisplayName(key) {
+        if (key === ownUserId) return
+
+        let lookup = displayNames.get(key)
+        if (!lookup) {
+            lookup = axios.get(route('sessions.video.participants.show', {
+                sessionId: session.value.id,
+                participantKey: key,
+            }))
+                .then((res) => res.data?.displayName ?? null)
+                .catch((err) => {
+                    // A transient failure is retried by this person's next tile (e.g. a reconnect);
+                    // a refusal stands until the next join.
+                    if (!err.response || err.response.status >= 500 || err.response.status === 429) {
+                        if (displayNames.get(key) === lookup) displayNames.delete(key)
+                    }
+                    return null
+                })
+            displayNames.set(key, lookup)
+        }
+
+        lookup.then((name) => {
+            if (!name || displayNames.get(key) !== lookup) return
+            participants.value = participants.value.map((p) => (p.userId === key && !p.isLocal ? { ...p, name } : p))
+        })
     }
 
     // Local-only: drops a tile once the provider's own SDK reports that participant gone (a normal
@@ -222,6 +255,8 @@ export default function useVideoSession(session) {
         const token = ++joinToken
         status.value = 'connecting'
         lastError.value = ''
+        // Fresh labels on every (re)join -- e.g. a group made anonymous since the last one.
+        displayNames = new Map()
 
         let credentials
         try {

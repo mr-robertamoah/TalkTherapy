@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Actions\Admin\RecordAdminContentReadAction;
+use App\Actions\GroupTherapy\EnsureGroupTherapyCanBecomeAnonymousAction;
 use App\Actions\Request\SendTherapyAssistanceRequestAction;
 use App\Actions\Star\CreateStarAction;
 use App\Actions\Suspension\EnsureCanActAsCounsellorAction;
@@ -38,7 +39,9 @@ use App\Models\GroupTherapy;
 use App\Models\Therapy;
 use App\Models\User;
 use App\Notifications\TherapyCreatedNotification;
+use App\Support\VideoJoinLock;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\DB;
 
 class TherapyService extends Service
 {
@@ -95,6 +98,19 @@ class TherapyService extends Service
         EnsureCanSetStrictPaymentGateAction::new()->execute($createTherapyDTO);
 
         EnsureTherapyDataIsValidAction::new()->execute($createTherapyDTO);
+
+        // SCRUM-334 (security review): the same rule and lock as a group -- no turning anonymity on while
+        // a video call is live, decided under the Session-row lock a join takes (see
+        // GroupTherapyService::updateGroupTherapy).
+        if ($createTherapyDTO->anonymous) {
+            return DB::transaction(function () use ($createTherapyDTO) {
+                VideoJoinLock::lockSessionRows($createTherapyDTO->therapy);
+
+                EnsureGroupTherapyCanBecomeAnonymousAction::new()->execute($createTherapyDTO->therapy->refresh(), $createTherapyDTO->anonymous);
+
+                return UpdateTherapyAction::new()->execute($createTherapyDTO);
+            });
+        }
 
         return UpdateTherapyAction::new()->execute($createTherapyDTO);
     }

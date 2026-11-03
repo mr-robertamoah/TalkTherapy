@@ -2,6 +2,7 @@
 
 use App\Enums\OrganizationInvoiceStatusEnum;
 use App\Enums\TransactionStatusEnum;
+use App\Enums\TransactionStatusSourceEnum;
 use App\Exceptions\TransactionException;
 use App\Jobs\ProcessOrganizationInvoiceSettlementJob;
 use App\Models\Organization;
@@ -233,4 +234,34 @@ test('a first attempt refused with a 4xx is still a definite failure, with no lo
 
     expect($transaction->fresh()->status)->toBe(TransactionStatusEnum::failed->value);
     Http::assertSentCount(1);
+});
+
+// SCRUM-378: a status recorded from the lookup is audited as such, not as the settlement charge's own answer.
+test('a status recorded from a retry lookup has its own status-history source', function (string $paystackStatus) {
+    [$transaction] = aPendingSettlementTransaction();
+    Http::fake([
+        '*/transaction/verify/*' => Http::response([
+            'status' => true,
+            'data' => ['reference' => $transaction->reference, 'status' => $paystackStatus, 'amount' => 7300, 'currency' => 'GHS'],
+        ], 200),
+        '*/transaction/charge_authorization' => Http::response(['status' => false, 'message' => 'Duplicate Transaction Reference'], 400),
+    ]);
+
+    settlementJobRunAsRetry($transaction->id);
+
+    expect($transaction->fresh()->statusHistories()->latest('id')->first()->source)
+        ->toBe(TransactionStatusSourceEnum::retryLookup->value);
+})->with(['success', 'failed']);
+
+test('a status recorded from the settlement charge itself is still sourced as org settlement', function () {
+    [$transaction] = aPendingSettlementTransaction();
+    Http::fake(['*/transaction/charge_authorization' => Http::response([
+        'status' => true,
+        'data' => ['status' => 'success', 'amount' => 7300, 'currency' => 'GHS'],
+    ], 200)]);
+
+    ProcessOrganizationInvoiceSettlementJob::dispatchSync($transaction->id);
+
+    expect($transaction->fresh()->statusHistories()->latest('id')->first()->source)
+        ->toBe(TransactionStatusSourceEnum::orgSettlement->value);
 });

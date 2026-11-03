@@ -42,6 +42,9 @@ use Illuminate\Support\Facades\Schedule;
 
 // SCRUM-373 (architecture review): the scheduler's own locks (withoutOverlapping/onOneServer) live in
 // its store too, which the deploy's cache:clear leaves alone.
+//
+// SCRUM-378: every schedule has a name, so it can take withoutOverlapping()/onOneServer() later
+// without first changing its lock key, and so `schedule:list` reads as a list of jobs.
 Schedule::useCache(config('cache.scheduler_store'));
 
 // SCRUM-248: resolve org charges whose Paystack webhook never arrived. A command (not a closure) so it
@@ -59,66 +62,36 @@ Schedule::command('payments:reconcile-stale-org-charges')
 // SCRUM-373: proof of life for /health/scheduler (SchedulerHealthController).
 Schedule::call(fn () => SchedulerHeartbeat::beat())->name('scheduler-heartbeat')->everyMinute();
 
-Schedule::call(function () {
-    NotifyParticipantsOfStartingSessionsAction::new()->execute();
-})->everyFiveMinutes();
+Schedule::call(fn () => NotifyParticipantsOfStartingSessionsAction::new()->execute())->name('notify-starting-sessions')->everyFiveMinutes();
 
-Schedule::call(function () {
-    FailUnheldSessionsAction::new()->execute();
-})->everyFourHours();
+Schedule::call(fn () => FailUnheldSessionsAction::new()->execute())->name('fail-unheld-sessions')->everyFourHours();
 
-Schedule::call(function () {
-    BroadcastStartedSessionsAndDiscussionsAction::new()->execute();
-})->everyMinute();
+Schedule::call(fn () => BroadcastStartedSessionsAndDiscussionsAction::new()->execute())->name('broadcast-started-sessions-and-discussions')->everyMinute();
 
-Schedule::call(function () {
-    NotifyParticipantsOfStartingDiscussionsAction::new()->execute();
-})->everyMinute();
+Schedule::call(fn () => NotifyParticipantsOfStartingDiscussionsAction::new()->execute())->name('notify-starting-discussions')->everyMinute();
 
-Schedule::call(function () {
-    FailUnheldDiscussionsAction::new()->execute();
-})->everyFourHours();
+Schedule::call(fn () => FailUnheldDiscussionsAction::new()->execute())->name('fail-unheld-discussions')->everyFourHours();
 
-Schedule::call(function () {
-    ClearVisitorsAction::new()->execute();
-})->dailyAt('00:01');
+Schedule::call(fn () => ClearVisitorsAction::new()->execute())->name('clear-visitors')->dailyAt('00:01');
 
-Schedule::call(function () {
-    SendVisitorsStatusToSuperAdminAction::new()->execute();
-})->dailyAt('0:00');
+Schedule::call(fn () => SendVisitorsStatusToSuperAdminAction::new()->execute())->name('send-visitors-status')->dailyAt('0:00');
 
-Schedule::call(function () {
-    PurgeExpiredSoftDeletedCounsellorsAction::new()->execute();
-})->dailyAt('01:00');
+Schedule::call(fn () => PurgeExpiredSoftDeletedCounsellorsAction::new()->execute())->name('purge-deleted-counsellors')->dailyAt('01:00');
 
 // SCRUM-367: closed accounts' personal details, after the retention period.
-Schedule::call(function () {
-    AnonymiseClosedAccountsAction::new()->execute();
-})->name('anonymise-closed-accounts')->dailyAt('01:30')->withoutOverlapping()->onOneServer();
+Schedule::call(fn () => AnonymiseClosedAccountsAction::new()->execute())->name('anonymise-closed-accounts')->dailyAt('01:30')->withoutOverlapping()->onOneServer();
 
-Schedule::call(function () {
-    SendCompensationRequestExpiryRemindersAction::new()->execute();
-})->dailyAt('02:00');
+Schedule::call(fn () => SendCompensationRequestExpiryRemindersAction::new()->execute())->name('compensation-request-expiry-reminders')->dailyAt('02:00');
 
-Schedule::call(function () {
-    ExpireStaleCompensationRequestsAction::new()->execute();
-})->dailyAt('02:15');
+Schedule::call(fn () => ExpireStaleCompensationRequestsAction::new()->execute())->name('expire-stale-compensation-requests')->dailyAt('02:15');
 
-Schedule::call(function () {
-    SettleDueOrganizationInvoicesAction::new()->execute();
-})->dailyAt('03:00');
+Schedule::call(fn () => SettleDueOrganizationInvoicesAction::new()->execute())->name('settle-due-organization-invoices')->dailyAt('03:00');
 
-Schedule::call(function () {
-    SendGuardianVideoConsentRemindersAction::new()->execute(VideoConsentReminderWindowEnum::day_before);
-})->dailyAt('08:00');
+Schedule::call(fn () => SendGuardianVideoConsentRemindersAction::new()->execute(VideoConsentReminderWindowEnum::day_before))->name('guardian-video-consent-day-before')->dailyAt('08:00');
 
-Schedule::call(function () {
-    SendGuardianVideoConsentRemindersAction::new()->execute(VideoConsentReminderWindowEnum::hour_before);
-})->everyFiveMinutes();
+Schedule::call(fn () => SendGuardianVideoConsentRemindersAction::new()->execute(VideoConsentReminderWindowEnum::hour_before))->name('guardian-video-consent-hour-before')->everyFiveMinutes();
 
-Schedule::call(function () {
-    DeleteExpiredIdentityDocumentsAction::new()->execute();
-})->dailyAt('04:00');
+Schedule::call(fn () => DeleteExpiredIdentityDocumentsAction::new()->execute())->name('delete-expired-identity-documents')->dailyAt('04:00');
 
 // SCRUM-338: counsellor verification documents past their retention window.
 // Each deletion is logged (devops review): the files can't be restored, so the log is the trail.
@@ -137,9 +110,7 @@ Schedule::call(fn () => SuspensionService::new()->endExpiredSuspensions())
 
 // TT-3.2f-h/SCRUM-325: every minute, not every five -- with the 5-minute default timeout, a
 // five-minute sweep would let an idle grant linger for up to ~10 minutes.
-Schedule::call(function () {
-    ExpireIdleSpeakingGrantsAction::new()->execute();
-})->name('expire-idle-speaking-grants')->everyMinute()->withoutOverlapping();
+Schedule::call(fn () => ExpireIdleSpeakingGrantsAction::new()->execute())->name('expire-idle-speaking-grants')->everyMinute()->withoutOverlapping();
 
 // SCRUM-353: the seeded "Chat Demo" sessions and discussion are created live (now - 10 min to
 // now + 1 hour), so an hour after seeding their end time has passed and the demo chat pages have

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Actions\Video\EndVideoSessionAction;
+use App\Actions\Video\GetVideoParticipantDisplayNameAction;
 use App\Actions\Video\GrantSpeakingPermissionAction;
 use App\Actions\Video\JoinVideoSessionAction;
 use App\Actions\Video\LeaveVideoSessionAction;
@@ -55,6 +56,22 @@ class VideoSessionController extends Controller
             EndVideoSessionAction::new()->execute($this->session($request), $request->user());
 
             return response()->json(['message' => 'Video call ended.']);
+        } catch (Throwable $th) {
+            return $this->failure($th);
+        }
+    }
+
+    // SCRUM-334: the name the call UI shows for another participant's tile, by their participant key
+    // -- never the provider-side name, which that participant can change from their own browser. See
+    // GetVideoParticipantDisplayNameAction for who may ask and why every refusal looks the same.
+    public function participant(Request $request)
+    {
+        try {
+            return response()->json(GetVideoParticipantDisplayNameAction::new()->execute(
+                $this->session($request),
+                $request->user(),
+                (string) $request->route('participantKey'),
+            ));
         } catch (Throwable $th) {
             return $this->failure($th);
         }

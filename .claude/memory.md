@@ -60,11 +60,11 @@ See "Common commands" in `CLAUDE.md`.
   `UpdateIndividualTherapyFormModal.vue`/`UpdateGroupTherapyFormModal.vue` validation-logic
   duplication identified in the same scoping pass was also resolved (SCRUM-67 — extracted into
   `resources/js/Composables/useTherapyFormValidation.js`). TT-1.1 has no known outstanding pieces.
-- Two independent `migrate --force && db:seed --force` runs (in `docker/php/entrypoint.sh` and
-  `docker/reverb/entrypoint.sh`) share one MySQL volume but track "already seeded" with a
-  container-local marker file that doesn't survive container recreation — expect a harmless
-  duplicate-key seeder error in logs on most restarts. Not a real bug worth fixing urgently, but
-  don't mistake it for a live failure when debugging something else.
+- Only the php container migrates and seeds (`docker/php/entrypoint.sh`, under a `flock`), and seeds
+  once: the marker is `storage/framework/.seeded` on the bind mount (SCRUM-373). It also sets storage
+  permissions (`docker/php/storage-permissions.sh`, SCRUM-376/378). That entrypoint is copied into
+  the image at build time, so changing it needs `docker compose build php queue reverb` before a
+  recreate.
 - `.env` (host) and `.env.docker` (container, via `env_file:`) are two separate files that drift
   — always check which one actually applies before trusting a config value.
 - `phpunit.xml` routes test runs to an isolated sqlite DB via matching `<env>`/`<server>` entries

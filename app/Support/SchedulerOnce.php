@@ -4,6 +4,7 @@ namespace App\Support;
 
 use App\Models\Discussion;
 use App\Models\Session;
+use DateTimeInterface;
 use Illuminate\Support\Facades\Cache;
 
 // SCRUM-372/374: true the first time a scheduled sweep asks for a kind of notice about a session
@@ -19,7 +20,13 @@ class SchedulerOnce
         $until = $model->end_time?->isFuture() ? $model->end_time->copy()->addHour() : now()->addHour();
         $startedAt = $model->start_time?->timestamp ?? 0;
 
-        return Cache::store(config('cache.scheduler_store'))
-            ->add("scheduler-once:{$kind}:{$model->id}:{$startedAt}", true, $until);
+        return self::key("{$kind}:{$model->id}:{$startedAt}", $until);
+    }
+
+    // SCRUM-378: the same once-only guard for anything else a scheduled job should do at most once
+    // per key (e.g. the stuck org-charge alert, once a day per charge).
+    public static function key(string $key, DateTimeInterface|int $until): bool
+    {
+        return Cache::store(config('cache.scheduler_store'))->add("scheduler-once:{$key}", true, $until);
     }
 }

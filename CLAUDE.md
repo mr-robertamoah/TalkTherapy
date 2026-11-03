@@ -32,6 +32,15 @@ docker compose exec vite npm run build                    # production frontend 
 Emails sent in the Docker environment are caught by Mailpit, not actually delivered — view them
 at http://localhost:8027.
 
+`docker compose exec php ...` runs as root, so any file it creates under `storage/` (a new day's log,
+a cache directory) is root-owned, and the app (www-data) can't write it until the php container
+restarts. For one-off artisan commands that write there (`cache:clear`, `tinker`, scheduler runs),
+add `-u www-data`: `docker compose exec -u www-data php php artisan ...`.
+
+`docker/php/entrypoint.sh` is copied into the php image at build time (the queue and reverb
+containers use the same image), so after changing it run `docker compose build php queue reverb`
+before `docker compose up -d --force-recreate php queue reverb`. Recreating alone keeps the old one.
+
 ## Branching & releases
 
 Branch flow: `feature/*` / `bugfix/*` / `hotfix/*` → PR into `develop` → promote `develop` → `testing` →

@@ -34,6 +34,8 @@ use App\Models\Counsellor;
 use App\Models\GroupTherapy;
 use App\Models\User;
 use App\Notifications\TherapyCreatedNotification;
+use App\Support\VideoJoinLock;
+use Illuminate\Support\Facades\DB;
 
 class GroupTherapyService extends Service
 {
@@ -111,7 +113,22 @@ class GroupTherapyService extends Service
 
         EnsureTherapyDataIsValidAction::new()->execute($groupTherapyDTO);
 
-        EnsureGroupTherapyCanBecomeAnonymousAction::new()->execute($groupTherapyDTO->groupTherapy, $groupTherapyDTO->anonymous);
+        // SCRUM-334: becoming anonymous is checked and saved under a lock on the group's Session rows,
+        // the same rows JoinVideoSessionAction locks before opening a join row and reading the group's
+        // anonymity. Either the join lands first (and the check sees someone in the call and refuses),
+        // or the change does (and the join reads the group as anonymous). Before, a join in between got
+        // one unmasked, full-video token.
+        // Decided under the lock, after the refresh (security review: deciding "already anonymous" from the
+        // copy loaded before the lock could skip the check).
+        if ($groupTherapyDTO->anonymous) {
+            return DB::transaction(function () use ($groupTherapyDTO) {
+                VideoJoinLock::lockSessionRows($groupTherapyDTO->groupTherapy);
+
+                EnsureGroupTherapyCanBecomeAnonymousAction::new()->execute($groupTherapyDTO->groupTherapy->refresh(), $groupTherapyDTO->anonymous);
+
+                return UpdateGroupTherapyAction::new()->execute($groupTherapyDTO);
+            });
+        }
 
         return UpdateGroupTherapyAction::new()->execute($groupTherapyDTO);
     }

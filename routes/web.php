@@ -186,6 +186,8 @@ Route::middleware('auth')->group(function () {
     Route::post('/sessions/{sessionId}/video/join', [VideoSessionController::class, 'join'])->name('sessions.video.join')->middleware('throttle:20,1,video-provider');
     Route::post('/sessions/{sessionId}/video/leave', [VideoSessionController::class, 'leave'])->name('sessions.video.leave');
     Route::post('/sessions/{sessionId}/video/end', [VideoSessionController::class, 'end'])->name('sessions.video.end')->middleware('throttle:20,1,video-provider');
+    // SCRUM-334: no provider call, so its own counter -- a group call looks up each tile's name once.
+    Route::get('/sessions/{sessionId}/video/participants/{participantKey}', [VideoSessionController::class, 'participant'])->name('sessions.video.participants.show')->middleware('throttle:120,1,sessions.video.participants.show');
     // TT-3.2b/SCRUM-309: ejects one participant via the provider's own API (like join/end above,
     // a real external-API call, not just DB noise) -- same throttle tier as those.
     Route::post('/sessions/{sessionId}/video/participants/{participantKey}/remove', [VideoSessionController::class, 'removeParticipant'])->name('sessions.video.participants.remove')->middleware('throttle:20,1,video-provider');
