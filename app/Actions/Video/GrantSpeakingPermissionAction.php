@@ -115,20 +115,28 @@ class GrantSpeakingPermissionAction extends Action
         return $grant;
     }
 
-    // TT-3.2f-g/SCRUM-324: an anonymous member (group-wide flag OR their own pivot flag -- the same
-    // rule isAnonymousFor() applies when masking their name) gets audio-only, forever: their camera
-    // capability is never enabled at the PROVIDER, so no client can turn it on. Everyone else gets
-    // audio + video; the frontend (TT-3.2f-j) shows a one-time "speaking reveals your voice/face"
-    // warning, keyed off the canSendVideo flag SpeakingPermissionChangedEvent carries.
+    // TT-3.2f-g/SCRUM-324: an anonymous member (group-wide flag OR their own membership row's flag)
+    // gets audio-only, forever: their camera capability is never enabled at the PROVIDER, so no
+    // client can turn it on. Everyone else gets audio + video; the frontend (TT-3.2f-j) shows a
+    // one-time "speaking reveals your voice/face" warning, keyed off the canSendVideo flag
+    // SpeakingPermissionChangedEvent carries.
     //
-    // Security-review hardening: read straight from the membership row rather than via
-    // isAnonymousFor(), which reads a possibly-cached `users` relation and treats a non-member as
-    // NOT anonymous. Here, video is only ever enabled for a positively-confirmed, non-anonymous
-    // member of a non-anonymous group -- anything else fails closed to audio-only.
+    // SCRUM-380: the rule is GroupTherapy::allowsCameraFor() (not masked to others), the one the join
+    // uses. For the only people who reach here -- members who are neither the creator nor a
+    // counsellor (checked above) -- it is exactly the old rule: video only for a member with a
+    // non-anonymous row in a non-anonymous group, audio-only for an anonymous row, an anonymous
+    // group, or no row at all.
+    //
+    // Security-review hardening, kept: decided from a FRESH read, never a possibly-cached `users`
+    // relation or anonymity flag on the instance the caller loaded. fresh() is a new instance with
+    // no relations loaded, so membershipOf() takes its single-row query, and the group's own flag is
+    // re-read too (the old code read that one from the loaded instance). membershipOf() itself keeps
+    // reusing a loaded relation: lists rely on that, and this is the one caller that must not.
+    // A group that can no longer be read fails closed to audio-only.
     private function capabilitiesFor(GroupTherapy $groupTherapy, User $targetUser): array
     {
-        $membership = $groupTherapy->users()->where('users.id', $targetUser->id)->first();
+        $fresh = $groupTherapy->fresh();
 
-        return [true, ! $groupTherapy->anonymous && $membership && ! $membership->pivot->anonymous];
+        return [true, (bool) $fresh?->allowsCameraFor($targetUser)];
     }
 }

@@ -3,6 +3,7 @@
 namespace App\Actions\Request;
 
 use App\Actions\Action;
+use App\Actions\Guardianship\EnsureMinorHasActiveGuardianAction;
 use App\Actions\User\AlertGuardianAction;
 use App\DTOs\GuardianAlertDTO;
 use App\DTOs\RequestResponseDTO;
@@ -48,6 +49,15 @@ class RespondToTherapyAssistanceRequestAction extends Action
 
             if ($therapy->counsellor) {
                 $response = RequestStatusEnum::rejected->value;
+            }
+
+            // SCRUM-288: a counsellor can't take on an individual therapy while it is paused for its
+            // minor client's missing guardian. Re-read under the therapy lock; declining stays allowed.
+            // Checks the client whoever accepts (actsAsCounsellor: the counsellor taking it on, or the
+            // client accepting a counsellor's offer -- the client is then checked as the actor).
+            if ($response == RequestStatusEnum::accepted->value) {
+                $acceptedByClient = $therapy->addedby instanceof User && $therapy->addedby->is($requestResponseDTO->user);
+                EnsureMinorHasActiveGuardianAction::new()->execute($requestResponseDTO->user, $therapy, fresh: true, actsAsCounsellor: ! $acceptedByClient);
             }
 
             $request->update(['status' => $response]);

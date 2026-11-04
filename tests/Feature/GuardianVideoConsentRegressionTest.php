@@ -29,7 +29,7 @@ function fakeVideoProviderForRegression(): VideoProviderInterface
             return [];
         }
 
-        public function createParticipantCredentials(VideoSession $videoSession, User $user, string $displayName, bool $isOwner = false, bool $receiveOnly = false, bool $canSendVideo = true): array
+        public function createParticipantCredentials(VideoSession $videoSession, User $user, string $displayName, bool $receiveOnly = false, bool $canSendVideo = true): array
         {
             return [];
         }
@@ -45,9 +45,9 @@ function fakeVideoProviderForRegression(): VideoProviderInterface
 function minorTherapyWithGuardianAndSessionForRegression(array $therapyOverrides = []): array
 {
     $minor = User::factory()->create();
-    $counsellorUser = User::factory()->create();
+    $counsellorUser = User::factory()->adult()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
-    $guardian = User::factory()->create();
+    $guardian = User::factory()->adult()->create();
     Guardianship::query()->create(['guardian_id' => $guardian->id, 'ward_id' => $minor->id]);
     $therapy = Therapy::factory()->create(array_merge([
         'addedby_type' => User::class,
@@ -148,7 +148,7 @@ test('deleting a guardianship through the real HTTP route lapses consent and end
 // controller routes for both the acting guardian and the observing co-guardian.
 test('any one guardian can grant/revoke, and every co-guardian sees the full attributed audit trail', function () {
     $data = minorTherapyWithGuardianAndSessionForRegression(['video_consent_mode' => 'PER_THERAPY']);
-    $coGuardian = User::factory()->create();
+    $coGuardian = User::factory()->adult()->create();
     Guardianship::query()->create(['guardian_id' => $coGuardian->id, 'ward_id' => $data['minor']->id]);
 
     $this->actingAs($data['guardian'])
@@ -190,7 +190,7 @@ test('a grant made under one mode still unlocks joining after the mode later swi
 // construction (there is no one who could ever grant on their behalf).
 test('a minor client with no guardian at all is permanently blocked from video via this flow', function () {
     $minorWithNoGuardian = User::factory()->create();
-    $counsellorUser = User::factory()->create();
+    $counsellorUser = User::factory()->adult()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
     $therapy = Therapy::factory()->create([
         'addedby_type' => User::class, 'addedby_id' => $minorWithNoGuardian->id, 'counsellor_id' => $counsellor->id,
@@ -203,7 +203,7 @@ test('a minor client with no guardian at all is permanently blocked from video v
 
     // No one can even attempt to grant -- an unrelated user (standing in for "nobody is this
     // minor's guardian") is rejected the same as any other non-guardian caller.
-    $anyUser = User::factory()->create();
+    $anyUser = User::factory()->adult()->create();
     $this->actingAs($anyUser)
         ->post(route('therapies.video_consent.grant', ['therapyId' => $therapy->id]))
         ->assertSessionHasErrors('alert');

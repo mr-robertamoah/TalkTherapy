@@ -14,6 +14,10 @@ use Throwable;
 
 class MessageNoteController extends Controller
 {
+    // SCRUM-380: every answer here is JSON, whoever asks (api.message.notes.* only, called by axios
+    // from MessageBadge) -- deliberately not the shared successResponse(), which would redirect a
+    // caller whose Accept prefers HTML.
+    //
     // counsellor_id is fillable on MessageNote (see the model's own comment), so it is always
     // derived here from the authenticated user's own counsellor profile -- never accepted as
     // client input on any of these endpoints. A caller with no counsellor profile at all simply
@@ -51,7 +55,7 @@ class MessageNoteController extends Controller
                 ])
             );
 
-            return $this->returnSuccess($request, $note);
+            return response()->json(['note' => new MessageNoteResource($note)]);
         } catch (Throwable $th) {
             return $this->returnFailure($request, $th);
         }
@@ -69,7 +73,7 @@ class MessageNoteController extends Controller
                 ])
             );
 
-            return $this->returnSuccess($request, $note);
+            return response()->json(['note' => new MessageNoteResource($note)]);
         } catch (Throwable $th) {
             return $this->returnFailure($request, $th);
         }
@@ -86,14 +90,9 @@ class MessageNoteController extends Controller
                 ])
             );
 
-            return $this->returnSuccess($request, $note);
+            return response()->json(['note' => new MessageNoteResource($note)]);
         } catch (Throwable $th) {
             return $this->returnFailure($request, $th);
         }
-    }
-
-    private function returnSuccess(Request $request, MessageNote $note)
-    {
-        return response()->json(['note' => new MessageNoteResource($note)]);
     }
 }

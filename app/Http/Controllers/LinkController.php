@@ -28,7 +28,7 @@ class LinkController extends Controller
                 ])
             );
 
-            return $this->returnSuccess($request, $link);
+            return $this->successResponse($request, ['link' => new LinkResource($link)]);
         } catch (Throwable $th) {
             return $this->returnFailure($request, $th);
         }
@@ -46,7 +46,7 @@ class LinkController extends Controller
                 ])
             );
 
-            return $this->returnSuccess($request, $link);
+            return $this->successResponse($request, ['link' => new LinkResource($link)]);
         } catch (Throwable $th) {
             return $this->returnFailure($request, $th);
         }
@@ -82,7 +82,7 @@ class LinkController extends Controller
                 ])
             );
 
-            return $this->returnSuccess($request, $link);
+            return $this->successResponse($request, ['link' => new LinkResource($link)]);
         } catch (Throwable $th) {
             return $this->returnFailure($request, $th);
         }
@@ -161,16 +161,5 @@ class LinkController extends Controller
         } catch (Throwable $th) {
             return $this->returnFailure($request, $th);
         }
-    }
-
-    private function returnSuccess(Request $request, Link $link)
-    {
-        $link = new LinkResource($link);
-
-        if ($request->wantsJsonResponse()) {
-            return response()->json(['link' => $link]);
-        }
-
-        return Redirect::back()->with(['link' => $link]);
     }
 }

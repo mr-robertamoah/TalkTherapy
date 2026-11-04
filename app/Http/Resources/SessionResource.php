@@ -119,6 +119,7 @@ class SessionResource extends JsonResource
             return null;
         }
 
-        return $this->isAnonymousFor($user) && ! $user->is($viewer) ? null : $user->id;
+        // SCRUM-380: TherapyTrait::hidesIdentityOf() via Session::hidesIdentityOf().
+        return $this->hidesIdentityOf($user) && ! $user->is($viewer) ? null : $user->id;
     }
 }

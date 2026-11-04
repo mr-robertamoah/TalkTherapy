@@ -33,7 +33,7 @@ use Illuminate\Support\Facades\Notification;
 test('TherapyService::createTherapy alerts the client\'s own guardian, snapshot-based', function () {
     Notification::fake();
     $minorClient = User::factory()->create(['dob' => now()->subYears(15)->toDateString()]);
-    $guardian = User::factory()->create();
+    $guardian = User::factory()->adult()->create();
     Guardianship::query()->create(['guardian_id' => $guardian->id, 'ward_id' => $minorClient->id]);
 
     TherapyService::new()->createTherapy(CreateTherapyDTO::new()->fromArray([
@@ -54,7 +54,7 @@ test('TherapyService::createTherapy alerts the client\'s own guardian, snapshot-
 test('GroupTherapyService::createGroupTherapy alerts the client\'s own guardian when created as a user', function () {
     Notification::fake();
     $minorClient = User::factory()->create(['dob' => now()->subYears(15)->toDateString()]);
-    $guardian = User::factory()->create();
+    $guardian = User::factory()->adult()->create();
     Guardianship::query()->create(['guardian_id' => $guardian->id, 'ward_id' => $minorClient->id]);
 
     GroupTherapyService::new()->createGroupTherapy(GroupTherapyDTO::new()->fromArray([
@@ -82,7 +82,7 @@ test('GroupTherapyService::createGroupTherapy still alerts the guardian of a min
     Notification::fake();
     $minorCounsellorUser = User::factory()->create(['dob' => now()->subYears(15)->toDateString()]);
     $counsellor = Counsellor::factory()->create(['user_id' => $minorCounsellorUser->id]);
-    $guardian = User::factory()->create();
+    $guardian = User::factory()->adult()->create();
     Guardianship::query()->create(['guardian_id' => $guardian->id, 'ward_id' => $minorCounsellorUser->id]);
 
     GroupTherapyService::new()->createGroupTherapy(GroupTherapyDTO::new()->fromArray([
@@ -129,11 +129,11 @@ function guardianWiringCounsellorOfferAcceptedFor(User $client, Therapy $therapy
 test('RespondToTherapyAssistanceRequestAction alerts the minor client\'s guardian, never the offering counsellor\'s own guardian', function () {
     Notification::fake();
     $minorClient = User::factory()->create(['dob' => now()->subYears(15)->toDateString()]);
-    $clientGuardian = User::factory()->create();
+    $clientGuardian = User::factory()->adult()->create();
     Guardianship::query()->create(['guardian_id' => $clientGuardian->id, 'ward_id' => $minorClient->id]);
     $minorCounsellorUser = User::factory()->create(['dob' => now()->subYears(15)->toDateString()]);
     $counsellor = Counsellor::factory()->create(['user_id' => $minorCounsellorUser->id]);
-    $counsellorGuardian = User::factory()->create();
+    $counsellorGuardian = User::factory()->adult()->create();
     Guardianship::query()->create(['guardian_id' => $counsellorGuardian->id, 'ward_id' => $minorCounsellorUser->id]);
     $therapy = Therapy::factory()->create([
         'addedby_type' => User::class,
@@ -153,7 +153,7 @@ test('RespondToTherapyAssistanceRequestAction alerts nobody when the therapy\'s 
     $adultClient = User::factory()->adult()->create();
     $minorCounsellorUser = User::factory()->create(['dob' => now()->subYears(15)->toDateString()]);
     $counsellor = Counsellor::factory()->create(['user_id' => $minorCounsellorUser->id]);
-    $counsellorGuardian = User::factory()->create();
+    $counsellorGuardian = User::factory()->adult()->create();
     Guardianship::query()->create(['guardian_id' => $counsellorGuardian->id, 'ward_id' => $minorCounsellorUser->id]);
     $therapy = Therapy::factory()->create([
         'addedby_type' => User::class,
@@ -176,7 +176,7 @@ test('RespondToTherapyAssistanceRequestAction alerts nobody when the therapy\'s 
 test('RespondToGroupTherapyMembershipRequestAction alerts based on the JOINING MEMBER\'s own status, never the group creator\'s', function () {
     Notification::fake();
     $minorCreator = User::factory()->create(['dob' => now()->subYears(15)->toDateString()]);
-    $creatorGuardian = User::factory()->create();
+    $creatorGuardian = User::factory()->adult()->create();
     Guardianship::query()->create(['guardian_id' => $creatorGuardian->id, 'ward_id' => $minorCreator->id]);
     $groupTherapy = GroupTherapy::factory()->create([
         'addedby_type' => User::class,

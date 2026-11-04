@@ -11,6 +11,7 @@ use App\Models\Session;
 use App\Models\Therapy;
 use App\Models\Transaction;
 use App\Services\TransactionService;
+use App\Support\FailureResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Redirect;
 use Throwable;
@@ -51,10 +52,8 @@ class TransactionController extends Controller
                 'authorizationUrl' => $result['authorizationUrl'],
             ]);
         } catch (Throwable $th) {
-            $status = $this->statusFor($th);
-            $message = $this->messageFor($th, $status);
-
-            return response()->json(['message' => $message], $status);
+            // SCRUM-288: with the code (e.g. guardian_required) when the refusal has one.
+            return FailureResponse::json($th);
         }
     }
 

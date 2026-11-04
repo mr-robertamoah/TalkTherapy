@@ -96,13 +96,6 @@ class Therapy extends Model
         return ! $this->isParticipant($user);
     }
 
-    // Individual therapy has a single, therapy-wide anonymity flag -- who the given sender
-    // actually is doesn't change whether it applies, unlike GroupTherapy's per-member pivot.
-    public function isAnonymousFor(User $sender): bool
-    {
-        return (bool) $this->anonymous;
-    }
-
     // SCRUM-379: the one masking rule for a 1:1 therapy (TherapyTrait::displayNameOf() and
     // addedByUserIsMaskedFor() use it). Only the client can be anonymous; the counsellor never is.
     // A Therapy is only ever created by its client (CreateTherapyAction), so `addedby` is a User.

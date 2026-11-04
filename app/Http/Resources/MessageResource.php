@@ -31,16 +31,16 @@ class MessageResource extends JsonResource
 
         $fromId = $fromCounsellor ? $message->from?->user?->id : $message->from_id;
 
-        // Anonymity only ever applies to a client/User sender (never a counsellor -- confirmed
-        // Discussion messages can *only* ever come from a counsellor, so `$message->for instanceof
-        // Session` also naturally excludes Discussion without needing an extra type check), is
-        // computed live from the current Therapy/GroupTherapy anonymity flag(s) rather than a
-        // stored snapshot, and never applies when the viewer is the sender themselves (mirrors
-        // TherapyResource's `$this->addedby?->is($user) || ! $this->anonymous` precedent).
+        // Anonymity only ever applies to a User sender (a message sent as a Counsellor profile is
+        // never masked -- confirmed Discussion messages can *only* ever come from a counsellor, so
+        // `$message->for instanceof Session` also naturally excludes Discussion without needing an
+        // extra type check), is computed live from the therapy (SCRUM-380:
+        // TherapyTrait::hidesIdentityOf(), so someone who has left the group is masked too) rather
+        // than a stored snapshot, and never applies when the viewer is the sender themselves.
         $fromUser = $fromCounsellor ? null : $message->from;
         $isAnonymousSender = $fromUser
             && $message->for instanceof Session
-            && $message->for->isAnonymousFor($fromUser)
+            && $message->for->hidesIdentityOf($fromUser)
             && ! $fromUser->is($viewer);
 
         // fromUserId is never displayed as a name in the frontend -- it only drives equality
@@ -55,7 +55,7 @@ class MessageResource extends JsonResource
         $toUser = $message->to_type === User::class ? $message->to : null;
         $isAnonymousRecipient = $toUser
             && $message->for instanceof Session
-            && $message->for->isAnonymousFor($toUser)
+            && $message->for->hidesIdentityOf($toUser)
             && ! $toUser->is($viewer);
         $toId = $isAnonymousRecipient ? null : $message->recipientUserId();
         $recipient = $isAnonymousRecipient

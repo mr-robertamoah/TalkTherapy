@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\FileTagEnum;
 use App\Enums\OrganizationInvoiceStatusEnum;
 use App\Enums\RequestStatusEnum;
 use App\Enums\RequestTypeEnum;
@@ -90,7 +91,7 @@ class Organization extends Model
     public function logoFile(): MorphToMany
     {
         return $this->morphToMany(File::class, 'fileable', 'fileables')
-            ->withPivotValue('tag', 'logo')
+            ->withPivotValue('tag', FileTagEnum::logo->value)
             ->withTimestamps();
     }
 

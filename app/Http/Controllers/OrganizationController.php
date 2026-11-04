@@ -65,7 +65,7 @@ class OrganizationController extends Controller
                 ])
             );
 
-            return $this->returnSuccess($request, $organization);
+            return $this->successResponse($request, ['organization' => new OrganizationResource($organization)]);
         } catch (Throwable $th) {
             return $this->returnFailure($request, $th);
         }
@@ -95,7 +95,7 @@ class OrganizationController extends Controller
                 ])
             );
 
-            return $this->returnSuccess($request, $organization);
+            return $this->successResponse($request, ['organization' => new OrganizationResource($organization)]);
         } catch (Throwable $th) {
             return $this->returnFailure($request, $th);
         }
@@ -293,16 +293,5 @@ class OrganizationController extends Controller
     private function paginatedResource(AnonymousResourceCollection $resource): array
     {
         return $resource->response()->getData(true);
-    }
-
-    private function returnSuccess(Request $request, Organization $organization)
-    {
-        $resource = new OrganizationResource($organization);
-
-        if ($request->wantsJsonResponse()) {
-            return response()->json(['organization' => $resource]);
-        }
-
-        return Redirect::back()->with(['organization' => $resource]);
     }
 }

@@ -234,9 +234,11 @@ class Session extends Model
         return ! $this->isParticipant($user);
     }
 
-    public function isAnonymousFor(User $sender): bool
+    // SCRUM-380: TherapyTrait::hidesIdentityOf() of this session's therapy. Fails closed: a session
+    // whose therapy can't be resolved hides everyone (the old isAnonymousFor() showed everyone).
+    public function hidesIdentityOf(User $subject): bool
     {
-        return (bool) $this->for?->isAnonymousFor($sender);
+        return ! $this->for || $this->for->hidesIdentityOf($subject);
     }
 
     public function scopeWhereIsParticipant($query, User $user)

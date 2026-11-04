@@ -45,7 +45,7 @@ const sessionSearch = ref('')
 const sessions = ref({data: [], page: 1})
 const getting = ref({show: '', type: ''})
 // SCRUM-379: shared start/end handling (resources/js/Composables/useScheduleTimes.js).
-const { startTime, endTime, clearTimes, timesError, computedStartTime, computedEndTime, computedNow, computedDuration } = useScheduleTimes({ withDefaults: true, isOpen: () => props.show })
+const { startTime, endTime, clearTimes, timesError, computedStartTime, computedEndTime, computedNow, computedDuration } = useScheduleTimes({ defaultsWhen: () => props.show })
 const discussionData = ref({
     'name': '',
     'description': '',

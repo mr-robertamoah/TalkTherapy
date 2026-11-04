@@ -232,12 +232,10 @@ class CounsellorController extends Controller
                 ])
             );
 
-            return Redirect::back();
+            // SCRUM-380: JSON for a script; the Inertia form (Profile/Counsellor/Show) still gets the redirect.
+            return $this->successResponse($request, ['status' => true], Redirect::back());
         } catch (Throwable $th) {
-            $status = $this->statusFor($th);
-            $message = $this->messageFor($th, $status);
-
-            return Redirect::back()->withErrors(['alert' => $message]);
+            return $this->returnFailure($request, $th);
         }
     }
 }

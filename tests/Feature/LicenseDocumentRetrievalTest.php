@@ -227,7 +227,7 @@ test('the licence must be given in the form its authority issues it', function (
     $response = $this->actingAs($counsellor->user)
         ->postJson(route('counsellor.verify', ['counsellorId' => $counsellor->id]), $payload);
 
-    // Past validation the controller always redirects (no JSON), so only a 422 carries errors.
+    // Past validation a JSON caller gets 200 or a 422 {message} with no errors, so only a validation 422 carries them.
     $errors = $response->status() === 422
         ? array_keys(array_intersect_key($response->json('errors') ?? [], array_flip(['licenseFile', 'licenseNumber'])))
         : [];

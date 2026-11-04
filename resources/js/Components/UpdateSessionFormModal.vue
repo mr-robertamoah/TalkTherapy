@@ -46,7 +46,7 @@ const emits = defineEmits(['close', 'onUpdate'])
 const loading = ref(false)
 const sessionUpdatingMap = ref(null)
 // SCRUM-379: shared start/end handling (resources/js/Composables/useScheduleTimes.js).
-const { startTime, endTime, setTimes, clearTimes, timesError, computedStartTime, computedEndTime, computedNow } = useScheduleTimes({})
+const { startTime, endTime, setTimes, clearTimes, timesError, computedStartTime, computedEndTime, computedNow } = useScheduleTimes({ isOpen: () => props.show })
 const selectedCases = ref([])
 const selectedTopics = ref([])
 const sessionData = ref({
@@ -136,7 +136,6 @@ async function updateSession() {
 
     await axios.patch(route(`api.sessions.update`, { sessionId: props.session.id }), {...sessionData.value})
         .then((res) => {
-            console.log(res)
             
             setAlertData({
                 message: 'Your session has been successfully updated.',

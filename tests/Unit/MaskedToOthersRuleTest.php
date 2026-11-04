@@ -12,7 +12,8 @@ use Illuminate\Support\Facades\DB;
 // everyone else" for video names and tokens, presence channels, and creator masking on pages, requests
 // and notifications. It replaced three copies (VideoDisplayName, the presence channels in
 // routes/channels.php, and addedByUserIsMaskedFor()'s own isAnonymousFor() call). Message and session
-// id masking and comments still use isAnonymousFor()/isAnonymousParticipant() -- SCRUM-380. Each case below is
+// id masking, a notification and comments use hidesIdentityOf(), built on it -- SCRUM-380,
+// HidesIdentityCallersTest. Each case below is
 // one the old copies decided, checked through the rule, the name it gives, and -- where the case can
 // reach them -- the presence channel and the creator-masking used by the resources.
 

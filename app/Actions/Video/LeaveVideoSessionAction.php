@@ -13,6 +13,8 @@ use App\Models\User;
 // is EndVideoSessionAction's own, separate job.
 class LeaveVideoSessionAction extends Action
 {
+    public const NOT_ALLOWED = 'You are not allowed to leave this session\'s video call.';
+
     // TT-3.1b/SCRUM-275: security-review finding on TT-3.1a -- this action performed no
     // authorization check of its own, safe only because nothing called it yet. Now that
     // VideoSessionController derives $user from auth()->user() and calls this directly, a
@@ -21,7 +23,7 @@ class LeaveVideoSessionAction extends Action
     public function execute(Session $session, User $user): void
     {
         if ($session->isNotParticipant($user)) {
-            throw new VideoException('You are not allowed to leave this session\'s video call.', 422);
+            throw new VideoException(self::NOT_ALLOWED, 422);
         }
 
         $videoSession = $session->videoSessions()->whereNull('ended_at')->first();

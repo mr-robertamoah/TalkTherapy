@@ -10,7 +10,6 @@ use App\Models\Session;
 use App\Models\SessionNote;
 use App\Services\SessionNoteService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Redirect;
 use Throwable;
 
 class SessionNoteController extends Controller
@@ -56,7 +55,7 @@ class SessionNoteController extends Controller
                 ])
             );
 
-            return $this->returnSuccess($request, $note);
+            return $this->successResponse($request, ['note' => new SessionNoteResource($note)]);
         } catch (Throwable $th) {
             return $this->returnFailure($request, $th);
         }
@@ -74,7 +73,7 @@ class SessionNoteController extends Controller
                 ])
             );
 
-            return $this->returnSuccess($request, $note);
+            return $this->successResponse($request, ['note' => new SessionNoteResource($note)]);
         } catch (Throwable $th) {
             return $this->returnFailure($request, $th);
         }
@@ -91,20 +90,9 @@ class SessionNoteController extends Controller
                 ])
             );
 
-            return $this->returnSuccess($request, $note);
+            return $this->successResponse($request, ['note' => new SessionNoteResource($note)]);
         } catch (Throwable $th) {
             return $this->returnFailure($request, $th);
         }
-    }
-
-    private function returnSuccess(Request $request, SessionNote $note)
-    {
-        $note = new SessionNoteResource($note);
-
-        if ($request->wantsJsonResponse()) {
-            return response()->json(['note' => $note]);
-        }
-
-        return Redirect::back()->with(['note' => $note]);
     }
 }

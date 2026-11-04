@@ -16,7 +16,7 @@ use Illuminate\Support\Facades\DB;
 
 function aCounsellorForCalendarRoute(): Counsellor
 {
-    return Counsellor::factory()->create(['user_id' => User::factory()]);
+    return Counsellor::factory()->create(['user_id' => User::factory()->adult()]);
 }
 
 function aTherapyForCalendarRoute(Counsellor $counsellor, User $client, array $attributes = []): Therapy
@@ -49,7 +49,7 @@ function calendarRangeQuery(): array
 
 test('a counsellor sees sessions from an individual therapy they are assigned to', function () {
     $counsellor = aCounsellorForCalendarRoute();
-    $client = User::factory()->create();
+    $client = User::factory()->adult()->create();
     $therapy = aTherapyForCalendarRoute($counsellor, $client);
     $session = aSessionForCalendarRoute($therapy, ['addedby_type' => Counsellor::class, 'addedby_id' => $counsellor->id]);
 
@@ -61,7 +61,7 @@ test('a counsellor sees sessions from an individual therapy they are assigned to
 
 test('a counsellor sees sessions from a group therapy they are attached to via the pivot', function () {
     $counsellor = aCounsellorForCalendarRoute();
-    $creator = User::factory()->create();
+    $creator = User::factory()->adult()->create();
     $groupTherapy = GroupTherapy::factory()->create([
         'addedby_type' => User::class,
         'addedby_id' => $creator->id,
@@ -92,7 +92,7 @@ test('a counsellor sees group therapy sessions for a group therapy they created 
 test('two counsellors sharing a group therapy each independently see its sessions', function () {
     $counsellorOne = aCounsellorForCalendarRoute();
     $counsellorTwo = aCounsellorForCalendarRoute();
-    $creator = User::factory()->create();
+    $creator = User::factory()->adult()->create();
     $groupTherapy = GroupTherapy::factory()->create([
         'addedby_type' => User::class,
         'addedby_id' => $creator->id,
@@ -114,7 +114,7 @@ test('two counsellors sharing a group therapy each independently see its session
 test('a counsellor never sees another counsellor\'s sessions', function () {
     $counsellorA = aCounsellorForCalendarRoute();
     $counsellorB = aCounsellorForCalendarRoute();
-    $client = User::factory()->create();
+    $client = User::factory()->adult()->create();
     $therapy = aTherapyForCalendarRoute($counsellorB, $client);
     aSessionForCalendarRoute($therapy, ['addedby_type' => Counsellor::class, 'addedby_id' => $counsellorB->id]);
 
@@ -126,7 +126,7 @@ test('a counsellor never sees another counsellor\'s sessions', function () {
 
 test('a counsellor with an inactive pivot state on a group therapy does not see its sessions', function () {
     $counsellor = aCounsellorForCalendarRoute();
-    $creator = User::factory()->create();
+    $creator = User::factory()->adult()->create();
     $groupTherapy = GroupTherapy::factory()->create([
         'addedby_type' => User::class,
         'addedby_id' => $creator->id,
@@ -142,7 +142,7 @@ test('a counsellor with an inactive pivot state on a group therapy does not see 
 
 test('a session outside the requested date range is not returned', function () {
     $counsellor = aCounsellorForCalendarRoute();
-    $client = User::factory()->create();
+    $client = User::factory()->adult()->create();
     $therapy = aTherapyForCalendarRoute($counsellor, $client);
     aSessionForCalendarRoute($therapy, [
         'start_time' => now()->addMonths(3),
@@ -157,7 +157,7 @@ test('a session outside the requested date range is not returned', function () {
 
 test('a session that spans into the requested range from before it is still returned', function () {
     $counsellor = aCounsellorForCalendarRoute();
-    $client = User::factory()->create();
+    $client = User::factory()->adult()->create();
     $therapy = aTherapyForCalendarRoute($counsellor, $client);
     $rangeStart = now()->startOfWeek();
     $session = aSessionForCalendarRoute($therapy, [
@@ -172,7 +172,7 @@ test('a session that spans into the requested range from before it is still retu
 });
 
 test('a non-counsellor cannot view a session calendar', function () {
-    $user = User::factory()->create();
+    $user = User::factory()->adult()->create();
 
     $this->actingAs($user)
         ->getJson(route('api.sessions.calendar', calendarRangeQuery()))
@@ -207,7 +207,7 @@ test('the date range cannot span more than 93 days', function () {
 
 test('a session for an anonymous therapy masks the client\'s identity on the calendar', function () {
     $counsellor = aCounsellorForCalendarRoute();
-    $client = User::factory()->create();
+    $client = User::factory()->adult()->create();
     $therapy = aTherapyForCalendarRoute($counsellor, $client, ['anonymous' => true]);
     aSessionForCalendarRoute($therapy, ['addedby_type' => Counsellor::class, 'addedby_id' => $counsellor->id]);
 
@@ -223,7 +223,7 @@ test('a session for an anonymous group therapy masks the addedby user\'s identit
     // The two union legs are rendered through different mini resources (TherapyMiniResource vs.
     // GroupTherapyMiniResource) -- the individual-therapy case above doesn't exercise this one.
     $counsellor = aCounsellorForCalendarRoute();
-    $creator = User::factory()->create();
+    $creator = User::factory()->adult()->create();
     $groupTherapy = GroupTherapy::factory()->create([
         'addedby_type' => User::class,
         'addedby_id' => $creator->id,
@@ -242,7 +242,7 @@ test('a session for an anonymous group therapy masks the addedby user\'s identit
 
 test('the calendar response labels individual vs group therapy sessions', function () {
     $counsellor = aCounsellorForCalendarRoute();
-    $client = User::factory()->create();
+    $client = User::factory()->adult()->create();
     $therapy = aTherapyForCalendarRoute($counsellor, $client);
     aSessionForCalendarRoute($therapy, ['addedby_type' => Counsellor::class, 'addedby_id' => $counsellor->id, 'name' => 'Individual Slot']);
 
@@ -275,7 +275,7 @@ test('the calendar aggregation is not N+1 across a growing number of sessions', 
     // the shared Therapy/GroupTherapy instance Eloquent's morphTo hydration already reuses across
     // every sibling session (confirmed: $session1->for === $session2->for for the same parent).
     $counsellor = aCounsellorForCalendarRoute();
-    $client = User::factory()->create();
+    $client = User::factory()->adult()->create();
     $therapy = aTherapyForCalendarRoute($counsellor, $client);
     $groupTherapy = GroupTherapy::factory()->create([
         'addedby_type' => Counsellor::class,
@@ -341,7 +341,7 @@ test('a counsellor can view the calendar page', function () {
 });
 
 test('a non-counsellor is redirected away from the calendar page', function () {
-    $user = User::factory()->create();
+    $user = User::factory()->adult()->create();
 
     $this->actingAs($user)
         ->get(route('counsellor.calendar'))

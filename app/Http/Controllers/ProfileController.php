@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Actions\Counsellor\EnsureCanDeleteCounsellorAction;
 use App\Actions\EnsureNameStaysRetrievableAction;
+use App\Actions\Guardianship\RemoveGuardianFromWardAction;
 use App\Actions\Suspension\EnsureCanDeleteOwnAccountWhileSuspendedAction;
 use App\Actions\User\EnsureDobChangeIsAllowedAction;
 use App\Actions\User\GetCounsellorCreationStepOfUserAction;
@@ -188,6 +189,10 @@ class ProfileController extends Controller
             // counsellor listings, a therapy's assigned counsellor, etc.) crashes trying to read
             // properties off the now-missing user relationship.
             $user->counsellor?->delete();
+
+            // SCRUM-288: before the account goes -- each ward this leaves with no active guardian
+            // is paused, and this guardian's video consents for them lapse.
+            RemoveGuardianFromWardAction::new()->forAllWardsOf($user, RemoveGuardianFromWardAction::GUARDIAN_DELETED);
 
             $user->delete();
         });

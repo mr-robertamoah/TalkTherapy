@@ -23,9 +23,9 @@ use Illuminate\Support\Facades\Notification;
 test('using a therapy-counsellor link assigns the counsellor and notifies the link creator', function () {
     Notification::fake();
 
-    $therapyOwner = User::factory()->create();
+    $therapyOwner = User::factory()->adult()->create();
     $therapy = Therapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => $therapyOwner->id]);
-    $counsellorUser = User::factory()->create();
+    $counsellorUser = User::factory()->adult()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
 
     $link = CreateLinkAction::new()->execute(
@@ -50,9 +50,9 @@ test('using a therapy-counsellor link assigns the counsellor and notifies the li
 test('using a therapy-counsellor link deactivates it so it cannot be replayed (SCRUM-101)', function () {
     Notification::fake();
 
-    $therapyOwner = User::factory()->create();
+    $therapyOwner = User::factory()->adult()->create();
     $therapy = Therapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => $therapyOwner->id]);
-    $counsellorUser = User::factory()->create();
+    $counsellorUser = User::factory()->adult()->create();
     Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
 
     $link = CreateLinkAction::new()->execute(
@@ -74,9 +74,9 @@ test('using a therapy-counsellor link deactivates it so it cannot be replayed (S
 });
 
 test('a non-counsellor user reaching this action gets a clean exception instead of an uncaught Error (SCRUM-101)', function () {
-    $therapyOwner = User::factory()->create();
+    $therapyOwner = User::factory()->adult()->create();
     $therapy = Therapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => $therapyOwner->id]);
-    $nonCounsellorUser = User::factory()->create();
+    $nonCounsellorUser = User::factory()->adult()->create();
 
     $link = CreateLinkAction::new()->execute(
         CreateLinkDTO::new()->fromArray([
@@ -97,11 +97,11 @@ test('a non-counsellor user reaching this action gets a clean exception instead 
 test('a therapy-counsellor link cannot be replayed through LinkService::performAction once used (SCRUM-101)', function () {
     Notification::fake();
 
-    $therapyOwner = User::factory()->create();
+    $therapyOwner = User::factory()->adult()->create();
     $therapy = Therapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => $therapyOwner->id]);
-    $firstCounsellorUser = User::factory()->create();
+    $firstCounsellorUser = User::factory()->adult()->create();
     Counsellor::factory()->create(['user_id' => $firstCounsellorUser->id]);
-    $secondCounsellorUser = User::factory()->create();
+    $secondCounsellorUser = User::factory()->adult()->create();
     Counsellor::factory()->create(['user_id' => $secondCounsellorUser->id]);
 
     $link = CreateLinkAction::new()->execute(
@@ -134,12 +134,12 @@ test('using a therapy-counsellor link once the therapy was concurrently assigned
     // still counsellor-less, then applying the "other" assignment directly, reproduces exactly
     // that race window -- the fix is only proven if it re-reads the therapy fresh under a lock
     // rather than trusting that stale, cached relation.
-    $therapyOwner = User::factory()->create();
+    $therapyOwner = User::factory()->adult()->create();
     $therapy = Therapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => $therapyOwner->id]);
 
-    $firstCounsellor = Counsellor::factory()->create(['user_id' => User::factory()->create()->id]);
+    $firstCounsellor = Counsellor::factory()->create(['user_id' => User::factory()->adult()->create()->id]);
 
-    $secondCounsellorUser = User::factory()->create();
+    $secondCounsellorUser = User::factory()->adult()->create();
     Counsellor::factory()->create(['user_id' => $secondCounsellorUser->id]);
 
     $link = CreateLinkAction::new()->execute(
@@ -172,14 +172,14 @@ test('using a therapy-counsellor link alerts the client\'s guardian even if thei
     Notification::fake();
 
     $therapyOwner = User::factory()->adult()->create();
-    $guardian = User::factory()->create();
+    $guardian = User::factory()->adult()->create();
     Guardianship::query()->create(['guardian_id' => $guardian->id, 'ward_id' => $therapyOwner->id]);
     $therapy = Therapy::factory()->create([
         'addedby_type' => User::class,
         'addedby_id' => $therapyOwner->id,
         'client_was_minor_at_creation' => true,
     ]);
-    $counsellorUser = User::factory()->create();
+    $counsellorUser = User::factory()->adult()->create();
     Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
 
     $link = CreateLinkAction::new()->execute(
@@ -205,7 +205,7 @@ test('alerts the therapy client\'s guardians, not the link creator\'s, when the 
     Notification::fake();
 
     $therapyOwner = User::factory()->create(['dob' => now()->subYears(15)->toDateString()]);
-    $therapyOwnerGuardian = User::factory()->create();
+    $therapyOwnerGuardian = User::factory()->adult()->create();
     Guardianship::query()->create(['guardian_id' => $therapyOwnerGuardian->id, 'ward_id' => $therapyOwner->id]);
     $therapy = Therapy::factory()->create([
         'addedby_type' => User::class,
@@ -214,9 +214,9 @@ test('alerts the therapy client\'s guardians, not the link creator\'s, when the 
     ]);
 
     $linkCreator = User::factory()->adult()->create();
-    $linkCreatorGuardian = User::factory()->create();
+    $linkCreatorGuardian = User::factory()->adult()->create();
     Guardianship::query()->create(['guardian_id' => $linkCreatorGuardian->id, 'ward_id' => $linkCreator->id]);
-    $counsellorUser = User::factory()->create();
+    $counsellorUser = User::factory()->adult()->create();
     Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
 
     $link = CreateLinkAction::new()->execute(

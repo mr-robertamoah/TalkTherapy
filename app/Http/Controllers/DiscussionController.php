@@ -14,7 +14,6 @@ use App\Models\Discussion;
 use App\Models\Session;
 use App\Services\DiscussionService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Redirect;
 use Inertia\Inertia;
 use Throwable;
 
@@ -60,7 +59,7 @@ class DiscussionController extends Controller
                 ])
             );
 
-            return $this->returnSuccess($request, $discussion);
+            return $this->successResponse($request, ['discussion' => new DiscussionResource($discussion)]);
         } catch (Throwable $th) {
 
             return $this->returnFailure($request, $th);
@@ -88,7 +87,7 @@ class DiscussionController extends Controller
                 ])
             );
 
-            return $this->returnSuccess($request, $discussion);
+            return $this->successResponse($request, ['discussion' => new DiscussionResource($discussion)]);
         } catch (Throwable $th) {
 
             return $this->returnFailure($request, $th);
@@ -105,7 +104,7 @@ class DiscussionController extends Controller
                 ])
             );
 
-            return $this->returnSuccess($request, $discussion);
+            return $this->successResponse($request, ['discussion' => new DiscussionResource($discussion)]);
         } catch (Throwable $th) {
 
             return $this->returnFailure($request, $th);
@@ -191,7 +190,7 @@ class DiscussionController extends Controller
                 ])
             );
 
-            return $this->returnSuccess($request, $discussion);
+            return $this->successResponse($request, ['discussion' => new DiscussionResource($discussion)]);
         } catch (Throwable $th) {
 
             return $this->returnFailure($request, $th);
@@ -210,7 +209,7 @@ class DiscussionController extends Controller
                 ])
             );
 
-            return $this->returnSuccess($request, $discussion);
+            return $this->successResponse($request, ['discussion' => new DiscussionResource($discussion)]);
         } catch (Throwable $th) {
 
             return $this->returnFailure($request, $th);
@@ -229,21 +228,10 @@ class DiscussionController extends Controller
                 ])
             );
 
-            return $this->returnSuccess($request, $discussion);
+            return $this->successResponse($request, ['discussion' => new DiscussionResource($discussion)]);
         } catch (Throwable $th) {
 
             return $this->returnFailure($request, $th);
         }
-    }
-
-    private function returnSuccess(Request $request, Discussion $discussion)
-    {
-        $discussion = new DiscussionResource($discussion);
-
-        if ($request->wantsJsonResponse()) {
-            return response()->json(['discussion' => $discussion]);
-        }
-
-        return Redirect::back()->with(['discussion' => $discussion]);
     }
 }

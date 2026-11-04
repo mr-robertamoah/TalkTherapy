@@ -11,7 +11,6 @@ use App\Models\Post;
 use App\Models\Therapy;
 use App\Services\CommentService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Redirect;
 use Throwable;
 
 class CommentController extends Controller
@@ -30,7 +29,7 @@ class CommentController extends Controller
                 ])
             );
 
-            return $this->returnSuccess($request, $comment);
+            return $this->successResponse($request, ['comment' => new CommentResource($comment)]);
         } catch (Throwable $th) {
 
             return $this->returnFailure($request, $th);
@@ -49,7 +48,7 @@ class CommentController extends Controller
                 ])
             );
 
-            return $this->returnSuccess($request, $comment);
+            return $this->successResponse($request, ['comment' => new CommentResource($comment)]);
         } catch (Throwable $th) {
 
             return $this->returnFailure($request, $th);
@@ -68,16 +67,5 @@ class CommentController extends Controller
 
             return $this->returnFailure($request, $th);
         }
-    }
-
-    private function returnSuccess(Request $request, Comment $comment)
-    {
-        $comment = new CommentResource($comment);
-
-        if ($request->wantsJsonResponse()) {
-            return response()->json(['comment' => $comment]);
-        }
-
-        return Redirect::back()->with(['comment' => $comment]);
     }
 }

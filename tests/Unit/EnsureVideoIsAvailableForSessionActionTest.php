@@ -15,7 +15,7 @@ use App\Models\VideoConsent;
 function onlineInSessionTherapySession(array $overrides = []): Session
 {
     $client = User::factory()->adult()->create();
-    $counsellorUser = User::factory()->create();
+    $counsellorUser = User::factory()->adult()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
     $therapy = Therapy::factory()->create([
         'addedby_type' => User::class,
@@ -74,7 +74,7 @@ test('an IN_PERSON session is never available for video regardless of status', f
 
 test('a non-participant cannot join video even on an otherwise-available session', function () {
     $session = onlineInSessionTherapySession();
-    $unrelatedUser = User::factory()->create();
+    $unrelatedUser = User::factory()->adult()->create();
 
     expect(fn () => EnsureVideoIsAvailableForSessionAction::new()->execute($session, $unrelatedUser))
         ->toThrow(VideoException::class);
@@ -99,7 +99,7 @@ test('a non-participant gets the same generic denial regardless of the session\'
         'status' => 'IN_SESSION',
         'start_time' => now(),
     ]);
-    $unrelatedUser = User::factory()->create();
+    $unrelatedUser = User::factory()->adult()->create();
 
     expect(fn () => EnsureVideoIsAvailableForSessionAction::new()->execute($session, $unrelatedUser))
         ->toThrow(VideoException::class, 'You are not allowed to join this session.');
@@ -120,7 +120,7 @@ test('the assigned counsellor is a valid participant for video', function () {
 function minorClientOnlineInSessionTherapySession(array $sessionOverrides = []): array
 {
     $minorClient = User::factory()->create();
-    $counsellorUser = User::factory()->create();
+    $counsellorUser = User::factory()->adult()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
     $therapy = Therapy::factory()->create([
         'addedby_type' => User::class,
@@ -226,9 +226,12 @@ test('a grant made under a prior video consent mode still unlocks joining after 
 // TT-4.10b/SCRUM-291: the minor-client gate must follow the stable client_was_minor_at_creation
 // snapshot, not a live re-check of the joining client's (self-editable) dob.
 
-test('a client who edited their dob to look adult AFTER creation is still gated on consent, per the stable snapshot', function () {
+// SCRUM-288 (the user's decision, Q6): turning 18 drops the consent requirement -- the snapshot
+// must say minor AND the live dob must still say minor. A dob change across 18 needs approval
+// (SCRUM-292), so the live dob can't simply be edited past it any more.
+test('a client whose dob is now adult (e.g. they turned 18) is no longer gated on consent, though the snapshot says minor', function () {
     $client = User::factory()->adult()->create();
-    $counsellorUser = User::factory()->create();
+    $counsellorUser = User::factory()->adult()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
     $therapy = Therapy::factory()->create([
         'addedby_type' => User::class,
@@ -242,12 +245,12 @@ test('a client who edited their dob to look adult AFTER creation is still gated 
     ]);
 
     expect(fn () => EnsureVideoIsAvailableForSessionAction::new()->execute($session, $client))
-        ->toThrow(VideoConsentRequiredException::class);
+        ->not->toThrow(VideoConsentRequiredException::class);
 });
 
 test('a client whose live dob still reads as a minor joins freely once the snapshot says adult', function () {
-    $client = User::factory()->create();
-    $counsellorUser = User::factory()->create();
+    $client = User::factory()->adult()->create();
+    $counsellorUser = User::factory()->adult()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
     $therapy = Therapy::factory()->create([
         'addedby_type' => User::class,
@@ -280,7 +283,7 @@ function onlineInSessionGroupTherapySession(array $groupOverrides = [], array $s
         'addedby_id' => $creator->id,
         'public' => true,
     ], $groupOverrides));
-    $counsellorUser = User::factory()->create();
+    $counsellorUser = User::factory()->adult()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
     $groupTherapy->counsellors()->attach($counsellor->id, ['state' => 'ACTIVE', 'role' => 'NORMAL']);
     $session = Session::factory()->create(array_merge([
@@ -296,7 +299,7 @@ function onlineInSessionGroupTherapySession(array $groupOverrides = [], array $s
 
 test('an ordinary GroupTherapy member (not a counsellor, not the creator) can now join video (receive-only, per TT-3.2f)', function () {
     $data = onlineInSessionGroupTherapySession();
-    $member = User::factory()->create();
+    $member = User::factory()->adult()->create();
     $data['groupTherapy']->users()->attach($member->id, ['anonymous' => false]);
 
     expect(fn () => EnsureVideoIsAvailableForSessionAction::new()->execute($data['session'], $member))
@@ -347,7 +350,7 @@ test('a counsellor can still join group video even when the group\'s own creator
 });
 
 test('a counsellor-created GroupTherapy has no "creator client" concept -- its counsellors get full access, its ordinary members receive-only', function () {
-    $creatorCounsellorUser = User::factory()->create();
+    $creatorCounsellorUser = User::factory()->adult()->create();
     $creatorCounsellor = Counsellor::factory()->create(['user_id' => $creatorCounsellorUser->id]);
     $groupTherapy = GroupTherapy::factory()->create([
         'addedby_type' => Counsellor::class,
@@ -361,7 +364,7 @@ test('a counsellor-created GroupTherapy has no "creator client" concept -- its c
         'status' => 'IN_SESSION',
         'start_time' => now(),
     ]);
-    $member = User::factory()->create();
+    $member = User::factory()->adult()->create();
     $groupTherapy->users()->attach($member->id, ['anonymous' => false]);
 
     expect(fn () => EnsureVideoIsAvailableForSessionAction::new()->execute($session, $creatorCounsellorUser))

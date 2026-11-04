@@ -5,6 +5,7 @@ namespace App\Actions\Link;
 use App\Actions\Action;
 use App\DTOs\CreateLinkDTO;
 use App\Enums\LinkTypeEnum;
+use App\Exceptions\GuardianRequiredException;
 use App\Exceptions\LinkException;
 use App\Models\Counsellor;
 use App\Models\Discussion;
@@ -39,6 +40,12 @@ class EnsureUserCanCreateLinkForAction extends Action
 
         if (! $isOwnAccount || ! $this->mayCreate($createLinkDTO->user, $createLinkDTO->type, $createLinkDTO->for)) {
             throw new LinkException(self::NOT_ALLOWED, 403);
+        }
+
+        // SCRUM-288: a paused minor can't invite a counsellor into their therapy (using the link is
+        // refused too, PerformTherapyCounsellorLinkAction).
+        if ($createLinkDTO->type === LinkTypeEnum::therapyCounsellor->value && $createLinkDTO->user->isPausedForMissingGuardian()) {
+            throw GuardianRequiredException::forViewer();
         }
     }
 

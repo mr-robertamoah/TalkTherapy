@@ -23,6 +23,7 @@
             class="shrink-0"
             v-if="
               computedIsCounsellor &&
+              !computedAccessPaused &&
               therapy.maxSessions > therapy.sessionsHeld
             "
             >create session</PrimaryButton
@@ -34,6 +35,7 @@
             v-if="
               therapyType === 'individual' &&
               computedIsParticipant &&
+              !computedAccessPaused &&
               !activeSession &&
               !pendingSessionScheduleProposal &&
               therapy.maxSessions > therapy.sessionsHeld
@@ -61,7 +63,7 @@
             >
             
             <template v-if="computedIsUser">
-              <PrimaryButton @click="$emit('clicked-update')" class="shrink-0"
+              <PrimaryButton v-if="!computedAccessPaused" @click="$emit('clicked-update')" class="shrink-0"
                 >update {{ therapyType === 'group' ? 'group therapy' : 'therapy' }}</PrimaryButton
               >
               <DangerButton @click="$emit('clicked-delete')" class="shrink-0"
@@ -78,8 +80,9 @@
 <script setup>
 import PrimaryButton from '@/Components/PrimaryButton.vue'
 import DangerButton from '@/Components/DangerButton.vue'
+import { computed } from 'vue'
 
-defineProps({
+const props = defineProps({
   therapy: { default: null },
   therapyType: { type: String, default: 'individual' },
   computedIsUser: { type: Boolean, default: false },
@@ -89,6 +92,10 @@ defineProps({
   activeSession: { default: null },
   pendingSessionScheduleProposal: { default: null },
 })
+
+// SCRUM-288: no new sessions, proposals or settings changes while the therapy is paused for a missing
+// guardian (the viewer's own, or this 1:1's client). Report, end and delete stay available.
+const computedAccessPaused = computed(() => !!(props.therapy?.viewerAccessPaused || props.therapy?.clientAccessPaused))
 
 defineEmits([
   'clicked-report',

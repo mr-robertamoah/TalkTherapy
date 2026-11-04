@@ -14,6 +14,8 @@ use App\Models\User;
 // the target as a bare id and never resolves it here -- see VideoSession::activeParticipantFor().
 class EnsureCanModerateSpeakingPermissionAction extends Action
 {
+    public const COUNSELLOR_ONLY = 'Only a counsellor may change who can speak in this group video call.';
+
     public function execute(Session $session, User $actingUser, int $targetUserId): void
     {
         if (! $session->for instanceof GroupTherapy) {
@@ -21,7 +23,7 @@ class EnsureCanModerateSpeakingPermissionAction extends Action
         }
 
         if (! $session->for->isCounsellorUser($actingUser)) {
-            throw new VideoException('Only a counsellor may change who can speak in this group video call.', 422);
+            throw new VideoException(self::COUNSELLOR_ONLY, 422);
         }
 
         if ($actingUser->id === $targetUserId) {

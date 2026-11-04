@@ -20,8 +20,8 @@ use App\Services\TherapyService;
 
 function aTherapyForLeak344(bool $public = false, bool $withCounsellor = false): array
 {
-    $client = User::factory()->create();
-    $counsellor = Counsellor::factory()->create(['user_id' => User::factory()->create()->id, 'name' => 'Dr Secret Counsellor']);
+    $client = User::factory()->adult()->create();
+    $counsellor = Counsellor::factory()->create(['user_id' => User::factory()->adult()->create()->id, 'name' => 'Dr Secret Counsellor']);
     $therapy = Therapy::factory()->create([
         'addedby_type' => User::class,
         'addedby_id' => $client->id,
@@ -48,7 +48,7 @@ test('an outsider asking to assist is refused before anything about the therapy 
     [$therapy] = aTherapyForLeak344(withCounsellor: true);
 
     $message = messageForLeak344(fn () => TherapyService::new()->sendAssistanceRequest(
-        AssistTherapyDTO::new()->fromArray(['user' => User::factory()->create(), 'therapy' => $therapy])
+        AssistTherapyDTO::new()->fromArray(['user' => User::factory()->adult()->create(), 'therapy' => $therapy])
     ));
 
     expect($message)->toBe('You are not allowed to do that with this therapy.')
@@ -58,7 +58,7 @@ test('an outsider asking to assist is refused before anything about the therapy 
 test('a counsellor may only offer to assist a public therapy', function () {
     [$private] = aTherapyForLeak344();
     [$public] = aTherapyForLeak344(public: true);
-    $offering = Counsellor::factory()->create(['user_id' => User::factory()->create()->id]);
+    $offering = Counsellor::factory()->create(['user_id' => User::factory()->adult()->create()->id]);
 
     expect(messageForLeak344(fn () => EnsureCanSendTherapyAssistanceRequestAction::new()->execute(
         AssistTherapyDTO::new()->fromArray(['user' => $offering->user, 'therapy' => $private])
@@ -86,7 +86,7 @@ test('an already-assisted therapy never names its counsellor', function () {
 
 test('creating a topic for someone else\'s therapy is refused without naming it', function () {
     [$therapy] = aTherapyForLeak344(withCounsellor: true);
-    $other = Counsellor::factory()->create(['user_id' => User::factory()->create()->id]);
+    $other = Counsellor::factory()->create(['user_id' => User::factory()->adult()->create()->id]);
 
     $message = messageForLeak344(fn () => EnsureCanCreateTherapyTopicAction::new()->execute(
         CreateTherapyTopicDTO::new()->fromArray(['user' => $other->user, 'therapy' => $therapy])
@@ -105,7 +105,7 @@ test('updating someone else\'s topic, or a missing one, gets the same refusal', 
         'topicable_type' => Therapy::class,
         'name' => 'Childhood abuse',
     ]);
-    $outsider = User::factory()->create();
+    $outsider = User::factory()->adult()->create();
 
     $refused = messageForLeak344(fn () => EnsureCanUpdateTherapyTopicAction::new()->execute(
         CreateTherapyTopicDTO::new()->fromArray(['user' => $outsider, 'therapyTopic' => $topic])
@@ -120,7 +120,7 @@ test('updating someone else\'s topic, or a missing one, gets the same refusal', 
 });
 
 test('a discussion request for a missing discussion gets the same refusal as a forbidden one', function () {
-    $counsellor = Counsellor::factory()->create(['user_id' => User::factory()->create()->id]);
+    $counsellor = Counsellor::factory()->create(['user_id' => User::factory()->adult()->create()->id]);
 
     expect(messageForLeak344(fn () => DiscussionService::new()->sendCounsellorRequest(
         CreateRequestDTO::new()->fromArray(['from' => $counsellor, 'to' => null, 'for' => null])
@@ -130,7 +130,7 @@ test('a discussion request for a missing discussion gets the same refusal as a f
 // The most realistic leak before the fix: any counsellor POSTing any therapy id.
 test('a counsellor probing a private, already-assisted therapy learns nothing', function () {
     [$therapy] = aTherapyForLeak344(withCounsellor: true);
-    $prober = Counsellor::factory()->create(['user_id' => User::factory()->create()->id]);
+    $prober = Counsellor::factory()->create(['user_id' => User::factory()->adult()->create()->id]);
 
     $message = messageForLeak344(fn () => TherapyService::new()->sendAssistanceRequest(
         AssistTherapyDTO::new()->fromArray(['user' => $prober->user, 'therapy' => $therapy])
@@ -142,7 +142,7 @@ test('a counsellor probing a private, already-assisted therapy learns nothing', 
 
 test('a counsellor offering on a public, unassisted therapy still sends the request', function () {
     [$therapy, $client] = aTherapyForLeak344(public: true);
-    $offering = Counsellor::factory()->create(['user_id' => User::factory()->create()->id]);
+    $offering = Counsellor::factory()->create(['user_id' => User::factory()->adult()->create()->id]);
 
     TherapyService::new()->sendAssistanceRequest(
         AssistTherapyDTO::new()->fromArray(['user' => $offering->user, 'therapy' => $therapy])

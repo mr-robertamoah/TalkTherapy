@@ -22,7 +22,7 @@ use App\Actions\Session\GetCounsellorCalendarSessionsAction;
 use App\Actions\Session\SetCurrentTopicOfSessionAction;
 use App\Actions\Session\UnsetCurrentTopicOfSessionAction;
 use App\Actions\Session\UpdateSessionAction;
-use App\Actions\Suspension\EnsureTherapyCounsellorIsAvailableAction;
+use App\Actions\Therapy\EnsureTherapyCanProceedAction;
 use App\Actions\TherapyTopic\EnsureTherapyTopicExistsAction;
 use App\DTOs\CreateSessionDTO;
 use App\DTOs\GetCounsellorCalendarSessionsDTO;
@@ -93,7 +93,7 @@ class SessionService extends Service
 
         EnsureCanCreateSessionAction::new()->execute($createSessionDTO);
 
-        EnsureTherapyCounsellorIsAvailableAction::new()->execute($createSessionDTO->user, $createSessionDTO->for);
+        EnsureTherapyCanProceedAction::new()->execute($createSessionDTO->user, $createSessionDTO->for);
 
         EnsureSessionDataIsValidAction::new()->execute($createSessionDTO);
 
@@ -110,7 +110,7 @@ class SessionService extends Service
 
         EnsureCanUpdateSessionAction::new()->execute($createSessionDTO);
 
-        EnsureTherapyCounsellorIsAvailableAction::new()->execute($createSessionDTO->user, $createSessionDTO->session->for);
+        EnsureTherapyCanProceedAction::new()->execute($createSessionDTO->user, $createSessionDTO->session->for);
 
         EnsureSessionDataIsValidAction::new()->execute($createSessionDTO);
 
@@ -169,7 +169,7 @@ class SessionService extends Service
 
         EnsureCanUpdateSessionStatusAction::new()->execute($createSessionDTO);
 
-        EnsureTherapyCounsellorIsAvailableAction::new()->execute($createSessionDTO->user, $createSessionDTO->session->for);
+        EnsureTherapyCanProceedAction::new()->execute($createSessionDTO->user, $createSessionDTO->session->for);
 
         $session = ChangeSessionStatusAction::new()->execute($createSessionDTO, SessionStatusEnum::in_session->value);
 
@@ -241,7 +241,7 @@ class SessionService extends Service
         EnsureCanChangeSessionTopicAction::new()->execute($createSessionDTO);
 
         // SCRUM-363: running a session's topics is counsellor work.
-        EnsureTherapyCounsellorIsAvailableAction::new()->execute($createSessionDTO->user, $createSessionDTO->session->for, includeTarget: false);
+        EnsureTherapyCanProceedAction::new()->execute($createSessionDTO->user, $createSessionDTO->session->for, includeTarget: false);
 
         EnsureTherapyTopicExistsAction::new()->execute($createSessionDTO);
 
@@ -259,7 +259,7 @@ class SessionService extends Service
         // SCRUM-339: authorize before the topic lookup, so a refused caller can't probe topic ids.
         EnsureCanChangeSessionTopicAction::new()->execute($createSessionDTO);
 
-        EnsureTherapyCounsellorIsAvailableAction::new()->execute($createSessionDTO->user, $createSessionDTO->session->for, includeTarget: false);
+        EnsureTherapyCanProceedAction::new()->execute($createSessionDTO->user, $createSessionDTO->session->for, includeTarget: false);
 
         EnsureTherapyTopicExistsAction::new()->execute($createSessionDTO);
 

@@ -26,8 +26,8 @@ describe('create message tests', function () {
         'fail message creation when message is not from user or counsellor accounts of the current user.',
         function () {
 
-            $actingUser = User::factory()->create();
-            $fromUser = User::factory()->create();
+            $actingUser = User::factory()->adult()->create();
+            $fromUser = User::factory()->adult()->create();
 
             $this->expectException(MessageException::class);
             $this->expectExceptionMessage('There is either no sender or you are not the sender of the message.');
@@ -44,7 +44,7 @@ describe('create message tests', function () {
         'fail message creation when message when no discussion or session is provided.',
         function () {
 
-            $actingUser = User::factory()->create();
+            $actingUser = User::factory()->adult()->create();
 
             $this->expectException(MessageException::class);
             $this->expectExceptionMessage('A message has to be created for a discussion or session.');
@@ -61,7 +61,7 @@ describe('create message tests', function () {
         "fail message creation when session's status does not accept messages.",
         function () {
 
-            $actingUser = User::factory()->create();
+            $actingUser = User::factory()->adult()->create();
             $therapy = Therapy::factory()->create([
                 'addedby_id' => $actingUser->id,
                 'addedby_type' => $actingUser::class,
@@ -90,7 +90,7 @@ describe('create message tests', function () {
     //     "fail message creation when discussion's status does not accept messages.",
     //     function () {
 
-    //     $actingUser = User::factory()->create();
+    //     $actingUser = User::factory()->adult()->create();
     //     $therapy = Therapy::factory()->create([
     //         'addedby_id' => $actingUser->id,
     //         'addedby_type' => $actingUser::class,
@@ -118,9 +118,9 @@ describe('create message tests', function () {
         "fail message creation when user/counsellor accounts of current user is not participating in session's therapy.",
         function () {
 
-            $actingUser = User::factory()->create();
-            $therapyOwner = User::factory()->create();
-            $counsellorUser = User::factory()->create();
+            $actingUser = User::factory()->adult()->create();
+            $therapyOwner = User::factory()->adult()->create();
+            $counsellorUser = User::factory()->adult()->create();
             $counsellor = Counsellor::factory()->create([
                 'user_id' => $counsellorUser->id,
             ]);
@@ -153,9 +153,9 @@ describe('create message tests', function () {
     //     "fail message creation when counsellor account of current user is not participating in discussion.",
     //     function () {
 
-    //     $actingUser = User::factory()->create();
-    //     $therapyOwner = User::factory()->create();
-    //     $counsellorUser = User::factory()->create();
+    //     $actingUser = User::factory()->adult()->create();
+    //     $therapyOwner = User::factory()->adult()->create();
+    //     $counsellorUser = User::factory()->adult()->create();
     //     $counsellor = Counsellor::factory()->create([
     //         'user_id' => $counsellorUser->id,
     //     ]);
@@ -188,8 +188,8 @@ describe('create message tests', function () {
         'an individual therapy session message without a recipient goes to the other party.',
         function () {
 
-            $therapyOwner = User::factory()->create();
-            $counsellorUser = User::factory()->create();
+            $therapyOwner = User::factory()->adult()->create();
+            $counsellorUser = User::factory()->adult()->create();
             $counsellor = Counsellor::factory()->create([
                 'user_id' => $counsellorUser->id,
             ]);
@@ -224,9 +224,9 @@ describe('create message tests', function () {
         'an individual therapy session message to a non-participant goes to the other party instead.',
         function () {
 
-            $otherUser = User::factory()->create();
-            $therapyOwner = User::factory()->create();
-            $counsellorUser = User::factory()->create();
+            $otherUser = User::factory()->adult()->create();
+            $therapyOwner = User::factory()->adult()->create();
+            $counsellorUser = User::factory()->adult()->create();
             $counsellor = Counsellor::factory()->create([
                 'user_id' => $counsellorUser->id,
             ]);
@@ -262,8 +262,8 @@ describe('create message tests', function () {
         'fail message creation when no text or files are sent.',
         function () {
 
-            $therapyOwner = User::factory()->create();
-            $counsellorUser = User::factory()->create();
+            $therapyOwner = User::factory()->adult()->create();
+            $counsellorUser = User::factory()->adult()->create();
             $counsellor = Counsellor::factory()->create([
                 'user_id' => $counsellorUser->id,
             ]);
@@ -302,14 +302,14 @@ describe('create message tests', function () {
             // with a TypeError when `to` was null -- a real scenario for group therapy sessions
             // with more than one assigned counsellor, where the frontend deliberately leaves
             // `to` blank rather than guessing a recipient.
-            $therapyOwner = User::factory()->create();
+            $therapyOwner = User::factory()->adult()->create();
             $groupTherapy = GroupTherapy::factory()->create([
                 'addedby_id' => $therapyOwner->id,
                 'addedby_type' => $therapyOwner::class,
             ]);
-            $counsellorUserOne = User::factory()->create();
+            $counsellorUserOne = User::factory()->adult()->create();
             $counsellorOne = Counsellor::factory()->create(['user_id' => $counsellorUserOne->id]);
-            $counsellorUserTwo = User::factory()->create();
+            $counsellorUserTwo = User::factory()->adult()->create();
             $counsellorTwo = Counsellor::factory()->create(['user_id' => $counsellorUserTwo->id]);
             $groupTherapy->counsellors()->attach([$counsellorOne->id, $counsellorTwo->id], ['state' => 'ACTIVE', 'role' => 'NORMAL']);
             $session = Session::factory()->create([
@@ -342,8 +342,8 @@ describe('create message tests', function () {
         'successful message creation with the right from, to, for and content.',
         function () {
 
-            $therapyOwner = User::factory()->create();
-            $counsellorUser = User::factory()->create();
+            $therapyOwner = User::factory()->adult()->create();
+            $counsellorUser = User::factory()->adult()->create();
             $counsellor = Counsellor::factory()->create([
                 'user_id' => $counsellorUser->id,
             ]);
@@ -388,8 +388,8 @@ describe('create message tests', function () {
             Storage::fake('local');
             Event::fake();
 
-            $therapyOwner = User::factory()->create();
-            $counsellorUser = User::factory()->create();
+            $therapyOwner = User::factory()->adult()->create();
+            $counsellorUser = User::factory()->adult()->create();
             $counsellor = Counsellor::factory()->create([
                 'user_id' => $counsellorUser->id,
             ]);
@@ -453,8 +453,8 @@ describe('update message tests', function () {
 
     test("fails message update when message was not created by current user's user/counsellor account.", function () {
 
-        $actingUser = User::factory()->create();
-        $fromUser = User::factory()->create();
+        $actingUser = User::factory()->adult()->create();
+        $fromUser = User::factory()->adult()->create();
         $session = Session::factory()->create();
         $message = Message::factory()->create([
             'from_id' => $fromUser->id,
@@ -476,7 +476,7 @@ describe('update message tests', function () {
 
     test('fails message update when no content, files or deleted files are provided.', function () {
 
-        $fromUser = User::factory()->create();
+        $fromUser = User::factory()->adult()->create();
         $session = Session::factory()->create();
         $message = Message::factory()->create([
             'from_id' => $fromUser->id,
@@ -500,7 +500,7 @@ describe('update message tests', function () {
 
         Event::fake();
 
-        $fromUser = User::factory()->create();
+        $fromUser = User::factory()->adult()->create();
         $session = Session::factory()->create();
         $message = Message::factory()->create([
             'from_id' => $fromUser->id,
@@ -527,7 +527,7 @@ describe('update message tests', function () {
         Event::fake();
         Storage::fake('local');
 
-        $fromUser = User::factory()->create();
+        $fromUser = User::factory()->adult()->create();
         $session = Session::factory()->create();
         $message = Message::factory()->create([
             'from_id' => $fromUser->id,
@@ -571,8 +571,8 @@ describe('update message tests', function () {
             UploadedFile::fake()->image('photo2.jpg'),
         ];
 
-        $fromUser = User::factory()->create();
-        $counsellorUser = User::factory()->create();
+        $fromUser = User::factory()->adult()->create();
+        $counsellorUser = User::factory()->adult()->create();
         $counsellor = Counsellor::factory()->create([
             'user_id' => $counsellorUser->id,
         ]);
@@ -640,8 +640,8 @@ describe('delete message tests', function () {
 
     test("fails message deletion when message was not created by current user's user/counsellor account.", function () {
 
-        $actingUser = User::factory()->create();
-        $fromUser = User::factory()->create();
+        $actingUser = User::factory()->adult()->create();
+        $fromUser = User::factory()->adult()->create();
         $session = Session::factory()->create();
         $message = Message::factory()->create([
             'from_id' => $fromUser->id,
@@ -666,7 +666,7 @@ describe('delete message tests', function () {
         Event::fake();
         Storage::fake('local');
 
-        $fromUser = User::factory()->create();
+        $fromUser = User::factory()->adult()->create();
         $session = Session::factory()->create();
         $message = Message::factory()->create([
             'from_id' => $fromUser->id,
@@ -730,7 +730,7 @@ describe('delete message for me tests', function () {
 
     test('fails message deletion for self when the acting user is not a participant of the message.', function () {
 
-        $therapyOwner = User::factory()->create();
+        $therapyOwner = User::factory()->adult()->create();
         $therapy = Therapy::factory()->create([
             'addedby_id' => $therapyOwner->id,
             'addedby_type' => $therapyOwner::class,
@@ -746,7 +746,7 @@ describe('delete message for me tests', function () {
             'for_type' => $session::class,
         ]);
 
-        $outsider = User::factory()->create();
+        $outsider = User::factory()->adult()->create();
 
         $this->expectException(MessageException::class);
         $this->expectExceptionMessage('You cannot delete the message for yourself since you are not a participant.');
@@ -761,7 +761,7 @@ describe('delete message for me tests', function () {
 
     test('successfully records the participant deleting the message for themself, without deleting it for anyone else.', function () {
 
-        $therapyOwner = User::factory()->create();
+        $therapyOwner = User::factory()->adult()->create();
         $therapy = Therapy::factory()->create([
             'addedby_id' => $therapyOwner->id,
             'addedby_type' => $therapyOwner::class,
@@ -797,8 +797,8 @@ describe('delete message for me tests', function () {
 
     test('accumulates each participant who deletes the message for themself, comma-separated.', function () {
 
-        $therapyOwner = User::factory()->create();
-        $counsellorUser = User::factory()->create();
+        $therapyOwner = User::factory()->adult()->create();
+        $counsellorUser = User::factory()->adult()->create();
         $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
         $therapy = Therapy::factory()->create([
             'addedby_id' => $therapyOwner->id,
@@ -835,7 +835,7 @@ describe('delete message for me tests', function () {
 
     test('fails when the acting user attempts to delete the same message for themself a second time.', function () {
 
-        $therapyOwner = User::factory()->create();
+        $therapyOwner = User::factory()->adult()->create();
         $therapy = Therapy::factory()->create([
             'addedby_id' => $therapyOwner->id,
             'addedby_type' => $therapyOwner::class,

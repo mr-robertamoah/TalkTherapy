@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\ConstantsEnum;
+use App\Enums\FileTagEnum;
 use App\Enums\RequestStatusEnum;
 use App\Enums\RequestTypeEnum;
 use App\Enums\TherapyPaymentTypeEnum;
@@ -392,14 +393,14 @@ class Counsellor extends Model
     public function avatarFile(): MorphToMany
     {
         return $this->morphToMany(File::class, 'fileable', 'fileables')
-            ->withPivotValue('tag', 'avatar')
+            ->withPivotValue('tag', FileTagEnum::avatar->value)
             ->withTimestamps();
     }
 
     public function coverFile(): MorphToMany
     {
         return $this->morphToMany(File::class, 'fileable', 'fileables')
-            ->withPivotValue('tag', 'cover')
+            ->withPivotValue('tag', FileTagEnum::cover->value)
             ->withTimestamps();
     }
 

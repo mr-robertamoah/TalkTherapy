@@ -9,6 +9,7 @@ use App\DTOs\CreateLinkDTO;
 use App\DTOs\GuardianAlertDTO;
 use App\DTOs\UpdateCounsellorDTO;
 use App\Enums\RequestStatusEnum;
+use App\Exceptions\GuardianRequiredException;
 use App\Exceptions\LinkException;
 use App\Models\Request;
 use App\Models\Therapy;
@@ -43,6 +44,12 @@ class PerformTherapyCounsellorLinkAction extends Action
 
             if ($therapy->counsellor) {
                 throw new LinkException('Sorry, link cannot be used because therapy already has a counsellor', 422);
+            }
+
+            // SCRUM-288: no counsellor is taken on while the therapy is paused for its minor client's
+            // missing guardian -- re-read under the therapy lock.
+            if ($therapy->addedby instanceof User && $therapy->addedby->isPausedForMissingGuardian(fresh: true)) {
+                throw GuardianRequiredException::forClient();
             }
 
             $therapy->update([

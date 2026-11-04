@@ -283,7 +283,6 @@ async function waitForAlert() {
       alertableId: props.therapy?.id,
     })
     .then((res) => {
-      console.log(res)
     })
     .catch((err) => {
       console.log(err)
@@ -327,7 +326,6 @@ async function getDiscussions(therapy) {
       })
     )
     .then((res) => {
-      console.log(res)
 
       if (discussions.value.page == 1) discussions.value.data = []
 
@@ -367,7 +365,6 @@ async function getCounsellors() {
       route("counsellors.request.get", { name: counsellorSearch.value, page: page.value })
     )
     .then((res) => {
-      console.log(res)
       if (page.value > 1) {
         searchedCounsellors.value = [...searchedCounsellors.value, ...res.data.data]
         updatePage(res)
@@ -455,7 +452,6 @@ async function clickedResponse(response) {
   await axios
     .post(route("requests.respond", { requestId: props.pendingRequest.id }), { response })
     .then((res) => {
-      console.log(res)
 
       request.value.status = res.data.request.status
       if (res.data.request?.status !== response.toUpperCase() && response == "accepted") {
@@ -507,7 +503,6 @@ async function joinGroupTherapy() {
       anonymous: computedTherapy.value?.anonymous ? true : joinAnonymous.value,
     })
     .then((res) => {
-      console.log(res)
 
       const sentAsRequest = res.data.result?.type === RequestTypeEnum.groupTherapyMembership
 
@@ -541,7 +536,6 @@ async function clickedMembershipResponse(response) {
   await axios
     .post(route("requests.respond", { requestId: props.pendingMembershipRequest.id }), { response })
     .then((res) => {
-      console.log(res)
 
       membershipRequest.value.status = res.data.request.status
 
@@ -578,7 +572,6 @@ async function clickedScheduleResponse(response, reason) {
       reason ? { response, reason } : { response }
     )
     .then((res) => {
-      console.log(res)
 
       setSuccessAlertData({
         time: 5000,
@@ -679,7 +672,6 @@ async function sendAssistanceRequest() {
       counsellorIds: selectedCounsellors.value.map((c) => c.id),
     })
     .then((res) => {
-      console.log(res)
       setSuccessAlertData({
         message: computedIsUser.value
           ? "You have successfully requested for assistance for this therapy."
@@ -728,7 +720,6 @@ async function deleteTherapy() {
       })
     },
     onSuccess: (res) => {
-      console.log(res)
 
       setAlertData({
         message: "Your therapy has been successfully deleted.",
@@ -766,7 +757,6 @@ async function endTherapy() {
       })
     },
     onSuccess: (res) => {
-      console.log(res)
 
       setAlertData({
         message: "Your therapy has been successfully ended.",

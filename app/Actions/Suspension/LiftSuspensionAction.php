@@ -3,9 +3,12 @@
 namespace App\Actions\Suspension;
 
 use App\Actions\Action;
+use App\Actions\Guardianship\HandleGuardianRestoredAction;
 use App\Actions\Payout\ResumeHeldPayoutsAction;
 use App\Enums\SuspensionAppealDecisionEnum;
+use App\Enums\SuspensionScopeEnum;
 use App\Exceptions\SuspensionException;
+use App\Models\Guardianship;
 use App\Models\ReportStatusHistory;
 use App\Models\Suspension;
 use App\Models\User;
@@ -46,11 +49,16 @@ class LiftSuspensionAction extends Action
 
         $appealWaiting = $suspension->appealIsPending();
 
-        $suspension->forceFill([
+        // SCRUM-288 (Q3): an account suspension's guardian counts again once it is lifted -- each of
+        // their wards it had paused is told, once it commits (HandleGuardianRestoredAction::around()).
+        $guardian = $suspension->user;
+        $wards = $suspension->scope == SuspensionScopeEnum::account && $guardian ? Guardianship::lockedWardsOf($guardian) : collect();
+
+        HandleGuardianRestoredAction::new()->around($wards, HandleGuardianRestoredAction::SUSPENSION_LIFTED, fn () => $suspension->forceFill([
             'lifted_at' => now(),
             'lifted_by' => $admin->id,
             'lift_reason' => $reason,
-        ])->save();
+        ])->save());
 
         // Lifted with an appeal waiting: that answers the appeal too.
         if ($appealWaiting && $event == ReportStatusHistory::EVENT_SUSPENSION_LIFTED) {

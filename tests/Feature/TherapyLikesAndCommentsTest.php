@@ -19,10 +19,10 @@ use Illuminate\Support\Collection;
 
 function aTherapyFor354(bool $public = true, bool $anonymous = false): array
 {
-    $client = User::factory()->create();
+    $client = User::factory()->adult()->create();
     $therapy = Therapy::factory()->create([
         'addedby_type' => User::class, 'addedby_id' => $client->id,
-        'counsellor_id' => Counsellor::factory()->create(['user_id' => User::factory()->create()->id])->id,
+        'counsellor_id' => Counsellor::factory()->create(['user_id' => User::factory()->adult()->create()->id])->id,
         'public' => $public, 'anonymous' => $anonymous,
     ]);
 
@@ -31,7 +31,7 @@ function aTherapyFor354(bool $public = true, bool $anonymous = false): array
 
 test('anyone signed in can like and comment on a public therapy, and guests can read the comments', function () {
     [$therapy] = aTherapyFor354();
-    $fan = User::factory()->create();
+    $fan = User::factory()->adult()->create();
 
     $this->actingAs($fan)->postJson(route('api.likes.create'), ['likeableType' => 'Therapy', 'likeableId' => $therapy->id])->assertSuccessful();
     $this->actingAs($fan)->postJson(route('api.comments.create'), ['commentableType' => 'Therapy', 'commentableId' => $therapy->id, 'content' => 'Wishing you well'])->assertSuccessful();
@@ -43,8 +43,8 @@ test('anyone signed in can like and comment on a public therapy, and guests can 
 
 test('a private therapy can\'t be liked or commented on, and its comments can\'t be read -- like a missing one', function () {
     [$therapy] = aTherapyFor354(public: false);
-    Comment::query()->forceCreate(['user_id' => User::factory()->create()->id, 'commentable_type' => Therapy::class, 'commentable_id' => $therapy->id, 'content' => 'Old private comment']);
-    $user = User::factory()->create();
+    Comment::query()->forceCreate(['user_id' => User::factory()->adult()->create()->id, 'commentable_type' => Therapy::class, 'commentable_id' => $therapy->id, 'content' => 'Old private comment']);
+    $user = User::factory()->adult()->create();
 
     foreach ([$therapy->id, 999999] as $id) {
         $this->actingAs($user)->postJson(route('api.likes.create'), ['likeableType' => 'Therapy', 'likeableId' => $id])
@@ -58,7 +58,7 @@ test('a private therapy can\'t be liked or commented on, and its comments can\'t
 
 test('public groups can be liked and commented on too', function () {
     $group = GroupTherapy::factory()->create(['public' => true]);
-    $user = User::factory()->create();
+    $user = User::factory()->adult()->create();
 
     $this->actingAs($user)->postJson(route('api.likes.create'), ['likeableType' => 'GroupTherapy', 'likeableId' => $group->id])->assertSuccessful();
     $this->actingAs($user)->postJson(route('api.comments.create'), ['commentableType' => 'GroupTherapy', 'commentableId' => $group->id, 'content' => 'Great group'])->assertSuccessful();
@@ -69,7 +69,7 @@ test('public groups can be liked and commented on too', function () {
 
 test('an anonymous client\'s comment on their own therapy never names them -- except to themselves', function () {
     [$therapy, $client] = aTherapyFor354(anonymous: true);
-    $outsider = User::factory()->create();
+    $outsider = User::factory()->adult()->create();
 
     $this->actingAs($client)->postJson(route('api.comments.create'), ['commentableType' => 'Therapy', 'commentableId' => $therapy->id, 'content' => 'Thank you all'])->assertSuccessful();
     $this->actingAs($outsider)->postJson(route('api.comments.create'), ['commentableType' => 'Therapy', 'commentableId' => $therapy->id, 'content' => 'Hang in there'])->assertSuccessful();
@@ -86,7 +86,7 @@ test('an anonymous client\'s comment on their own therapy never names them -- ex
 
 test('therapy likes are a count and your own like, never a list of who liked it', function () {
     [$therapy] = aTherapyFor354();
-    $fan = User::factory()->create();
+    $fan = User::factory()->adult()->create();
     $this->actingAs($fan)->postJson(route('api.likes.create'), ['likeableType' => 'Therapy', 'likeableId' => $therapy->id])->assertSuccessful();
 
     $likes = $this->actingAs($fan)->getJson(route('api.likes', ['likeableType' => 'Therapy', 'likeableId' => $therapy->id]))->assertOk();
@@ -106,14 +106,14 @@ function commentsAsFor354($test, User $viewer, string $type, int $id): Collectio
 }
 
 test('in a group, anonymous members and an anonymous group\'s creator are masked; counsellors and outsiders never', function () {
-    $creator = User::factory()->create();
-    $anonMember = User::factory()->create();
-    $namedMember = User::factory()->create();
-    $counsellor = Counsellor::factory()->create(['user_id' => User::factory()->create()->id]);
+    $creator = User::factory()->adult()->create();
+    $anonMember = User::factory()->adult()->create();
+    $namedMember = User::factory()->adult()->create();
+    $counsellor = Counsellor::factory()->create(['user_id' => User::factory()->adult()->create()->id]);
     $group = GroupTherapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => $creator->id, 'public' => true, 'anonymous' => false]);
     $group->users()->attach([$anonMember->id => ['anonymous' => true], $namedMember->id => ['anonymous' => false]]);
     $group->counsellors()->attach($counsellor->id, ['state' => 'ACTIVE', 'role' => 'NORMAL']);
-    $outsider = User::factory()->create();
+    $outsider = User::factory()->adult()->create();
 
     foreach ([[$anonMember, 'anon member'], [$namedMember, 'named member'], [$counsellor->user, 'counsellor']] as [$author, $text]) {
         $this->actingAs($author)->postJson(route('api.comments.create'), ['commentableType' => 'GroupTherapy', 'commentableId' => $group->id, 'content' => $text])->assertSuccessful();
@@ -145,7 +145,7 @@ test('a comment stays masked after the therapy stops being anonymous', function 
 
 test('you can still remove your like after a therapy turns private', function () {
     [$therapy] = aTherapyFor354();
-    $fan = User::factory()->create();
+    $fan = User::factory()->adult()->create();
     $this->actingAs($fan)->postJson(route('api.likes.create'), ['likeableType' => 'Therapy', 'likeableId' => $therapy->id])->assertSuccessful();
     $therapy->update(['public' => false]);
 
@@ -154,8 +154,8 @@ test('you can still remove your like after a therapy turns private', function ()
 });
 
 test('a guest\'s like state is false', function () {
-    $post = Post::query()->forceCreate(['content' => 'Hi', 'addedby_type' => User::class, 'addedby_id' => User::factory()->create()->id]);
-    $fan = User::factory()->create();
+    $post = Post::query()->forceCreate(['content' => 'Hi', 'addedby_type' => User::class, 'addedby_id' => User::factory()->adult()->create()->id]);
+    $fan = User::factory()->adult()->create();
     $this->actingAs($fan)->postJson(route('api.likes.create'), ['likeableType' => 'Post', 'likeableId' => $post->id])->assertSuccessful();
     $this->app['auth']->forgetGuards();
     expect($this->getJson(route('api.likes', ['likeableType' => 'Post', 'likeableId' => $post->id]))->json())->toBe(['count' => 1, 'liked' => false]);
@@ -166,9 +166,9 @@ test('a guest\'s like state is false', function () {
 });
 
 test('SCRUM-355: post and counsellor likes are a count and your own like too, never who', function () {
-    $post = Post::query()->forceCreate(['content' => 'Hello', 'addedby_type' => User::class, 'addedby_id' => User::factory()->create()->id]);
-    $counsellor = Counsellor::factory()->create(['user_id' => User::factory()->create()->id]);
-    $fan = User::factory()->create();
+    $post = Post::query()->forceCreate(['content' => 'Hello', 'addedby_type' => User::class, 'addedby_id' => User::factory()->adult()->create()->id]);
+    $counsellor = Counsellor::factory()->create(['user_id' => User::factory()->adult()->create()->id]);
+    $fan = User::factory()->adult()->create();
     $this->actingAs($fan)->postJson(route('api.likes.create'), ['likeableType' => 'Post', 'likeableId' => $post->id])->assertSuccessful();
     $this->actingAs($fan)->postJson(route('api.likes.create'), ['likeableType' => 'Counsellor', 'likeableId' => $counsellor->id])->assertSuccessful();
 

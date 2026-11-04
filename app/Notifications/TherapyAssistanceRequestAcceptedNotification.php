@@ -116,9 +116,11 @@ class TherapyAssistanceRequestAcceptedNotification extends Notification implemen
         return 'therapy.assistance';
     }
 
-    // SCRUM-56: masked by the therapy's anonymity *for that user* (isAnonymousFor), so a group
-    // member's own anonymity choice counts, not just the group-level flag. Only ever a User here --
-    // a counsellor is never masked.
+    // SCRUM-56: masked by the therapy's anonymity *for that user*, so a group member's own
+    // anonymity choice counts, not just the group-level flag. Only ever a User here -- a counsellor
+    // is never masked. SCRUM-380: TherapyTrait::hidesIdentityOf(). In practice the User is always
+    // the 1:1 client (a counsellor's offer goes to the therapy's addedby; group invites go to a
+    // Counsellor), for whom it gives exactly the old answer.
     private function acceptedByName(): string
     {
         $user = $this->request->to;
@@ -129,7 +131,7 @@ class TherapyAssistanceRequestAcceptedNotification extends Notification implemen
             return ConstantsEnum::anonymousPersonPhrase->value;
         }
 
-        return $this->request->for->isAnonymousFor($user) ? ConstantsEnum::anonymousPersonPhrase->value : $user->name;
+        return $this->request->for->hidesIdentityOf($user) ? ConstantsEnum::anonymousPersonPhrase->value : $user->name;
     }
 
     private function acceptedByPhrase(): string

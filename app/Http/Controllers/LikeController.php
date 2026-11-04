@@ -7,12 +7,10 @@ use App\DTOs\CreateLikeDTO;
 use App\Http\Resources\LikeResource;
 use App\Models\Counsellor;
 use App\Models\GroupTherapy;
-use App\Models\Like;
 use App\Models\Post;
 use App\Models\Therapy;
 use App\Services\LikeService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Redirect;
 use Throwable;
 
 class LikeController extends Controller
@@ -30,7 +28,7 @@ class LikeController extends Controller
                 ])
             );
 
-            return $this->returnSuccess($request, $like);
+            return $this->successResponse($request, ['like' => new LikeResource($like)]);
         } catch (Throwable $th) {
 
             return $this->returnFailure($request, $th);
@@ -47,7 +45,7 @@ class LikeController extends Controller
                 ])
             );
 
-            return $this->returnSuccess($request, $like);
+            return $this->successResponse($request, ['like' => new LikeResource($like)]);
         } catch (Throwable $th) {
 
             return $this->returnFailure($request, $th);
@@ -68,16 +66,5 @@ class LikeController extends Controller
 
             return $this->returnFailure($request, $th);
         }
-    }
-
-    private function returnSuccess(Request $request, Like $like)
-    {
-        $like = new LikeResource($like);
-
-        if ($request->wantsJsonResponse()) {
-            return response()->json(['like' => $like]);
-        }
-
-        return Redirect::back()->with(['like' => $like]);
     }
 }

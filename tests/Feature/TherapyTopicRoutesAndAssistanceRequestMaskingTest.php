@@ -17,8 +17,8 @@ use Illuminate\Http\Request;
 
 function counselledTherapyForTopics344(bool $anonymous = false): array
 {
-    $client = User::factory()->create();
-    $counsellor = Counsellor::factory()->create(['user_id' => User::factory()->create()->id]);
+    $client = User::factory()->adult()->create();
+    $counsellor = Counsellor::factory()->create(['user_id' => User::factory()->adult()->create()->id]);
     $therapy = Therapy::factory()->create([
         'addedby_type' => User::class,
         'addedby_id' => $client->id,
@@ -48,7 +48,7 @@ test('the therapy\'s counsellor can create and then update a topic over HTTP', f
 
 test('an outsider creating a topic on someone else\'s therapy is refused without a name', function () {
     [$therapy] = counselledTherapyForTopics344();
-    $outsider = Counsellor::factory()->create(['user_id' => User::factory()->create()->id]);
+    $outsider = Counsellor::factory()->create(['user_id' => User::factory()->adult()->create()->id]);
 
     $response = $this->actingAs($outsider->user)
         ->postJson(route('api.topics.create', ['therapyId' => $therapy->id]), ['name' => 'Sleep', 'description' => 'x']);
@@ -85,7 +85,7 @@ test('an assistance request never names an anonymous client to the counsellor', 
 });
 
 test('a group therapy topic can be updated by its counsellor', function () {
-    $counsellor = Counsellor::factory()->create(['user_id' => User::factory()->create()->id]);
+    $counsellor = Counsellor::factory()->create(['user_id' => User::factory()->adult()->create()->id]);
     $group = GroupTherapy::factory()->create();
     $topic = TherapyTopic::query()->forceCreate([
         'counsellor_id' => $counsellor->id,

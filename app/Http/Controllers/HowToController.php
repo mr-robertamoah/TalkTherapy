@@ -9,7 +9,6 @@ use App\Http\Resources\HowToResource;
 use App\Models\HowTo;
 use App\Services\HowToService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Redirect;
 use Throwable;
 
 class HowToController extends Controller
@@ -38,7 +37,7 @@ class HowToController extends Controller
                 ])
             );
 
-            return $this->returnSuccess($request, $howTo);
+            return $this->successResponse($request, ['howTo' => new HowToResource($howTo)]);
         } catch (Throwable $th) {
 
             return $this->returnFailure($request, $th);
@@ -63,7 +62,7 @@ class HowToController extends Controller
                 ])
             );
 
-            return $this->returnSuccess($request, $howTo);
+            return $this->successResponse($request, ['howTo' => new HowToResource($howTo)]);
         } catch (Throwable $th) {
 
             return $this->returnFailure($request, $th);
@@ -80,21 +79,10 @@ class HowToController extends Controller
                 ])
             );
 
-            return $this->returnSuccess($request, $howTo);
+            return $this->successResponse($request, ['howTo' => new HowToResource($howTo)]);
         } catch (Throwable $th) {
 
             return $this->returnFailure($request, $th);
         }
-    }
-
-    private function returnSuccess(Request $request, HowTo $howTo)
-    {
-        $howTo = new HowToResource($howTo);
-
-        if ($request->wantsJsonResponse()) {
-            return response()->json(['howTo' => $howTo]);
-        }
-
-        return Redirect::back()->with(['howTo' => $howTo]);
     }
 }

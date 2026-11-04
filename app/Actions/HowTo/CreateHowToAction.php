@@ -37,7 +37,7 @@ class CreateHowToAction extends Action
                 );
             }
 
-            return $howTo->refresh();
+            return $howTo->refresh()->load('howToSteps.stepFile'); // SCRUM-380: no lazy load per step in the response
         });
     }
 }

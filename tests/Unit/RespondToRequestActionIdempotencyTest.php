@@ -230,6 +230,8 @@ test('responding to an already-accepted therapy assistance request a second time
     Notification::fake();
 
     $client = User::factory()->create();
+    // SCRUM-288: a minor with a guardian -- one without is paused, and can't be taken on.
+    Guardianship::query()->create(['guardian_id' => User::factory()->adult()->create()->id, 'ward_id' => $client->id]);
     $therapy = Therapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => $client->id]);
     $counsellor = Counsellor::factory()->create(['user_id' => User::factory()->create()->id]);
     $respondingUser = User::factory()->create();
@@ -285,7 +287,7 @@ test('accepting one of two pending therapy assistance requests rejects the other
     // request is still PENDING but the therapy already has a counsellor. The fix is only
     // proven if it re-reads the therapy fresh under a lock rather than trusting a stale,
     // cached relation or a stale PENDING read.
-    $client = User::factory()->create();
+    $client = User::factory()->adult()->create();
     $therapy = Therapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => $client->id]);
     $firstCounsellorUser = User::factory()->create();
     $firstCounsellor = Counsellor::factory()->create(['user_id' => $firstCounsellorUser->id]);

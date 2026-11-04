@@ -118,8 +118,8 @@ test('a refused JSON end or delete gets the 422 JSON message', function (string 
 ]);
 
 test('the strict payment gate answers JSON callers with JSON and Inertia with the redirect', function () {
-    $client = User::factory()->create();
-    $counsellorUser = User::factory()->create();
+    $client = User::factory()->adult()->create();
+    $counsellorUser = User::factory()->adult()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
     $therapy = Therapy::factory()->create([
         'addedby_type' => User::class, 'addedby_id' => $client->id, 'counsellor_id' => $counsellor->id,

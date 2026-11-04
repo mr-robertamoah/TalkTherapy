@@ -17,7 +17,7 @@ use Illuminate\Support\Facades\DB;
 // treatment so that race surfaces as the existing graceful LinkException, not an uncaught 500.
 
 test('using a guardianship link establishes the relationship', function () {
-    $guardian = User::factory()->create();
+    $guardian = User::factory()->adult()->create();
     $ward = User::factory()->create();
 
     $link = CreateLinkAction::new()->execute(
@@ -39,7 +39,7 @@ test('using a guardianship link establishes the relationship', function () {
 });
 
 test('using a guardianship link deactivates it so it cannot be replayed (SCRUM-101)', function () {
-    $guardian = User::factory()->create();
+    $guardian = User::factory()->adult()->create();
     $ward = User::factory()->create();
 
     $link = CreateLinkAction::new()->execute(
@@ -66,7 +66,7 @@ test('using a guardianship link a second time (even by the same user) throws ins
     // repeat use of the SAME link hits the new "no longer active" gate first, before that
     // domain check is ever reached -- the link is single-use, full stop, regardless of who
     // reuses it.
-    $guardian = User::factory()->create();
+    $guardian = User::factory()->adult()->create();
     $ward = User::factory()->create();
 
     $link = CreateLinkAction::new()->execute(
@@ -100,8 +100,8 @@ test('a second, different user cannot also use a general guardianship link once 
     // same link. Loading $secondDTO->link BEFORE the first use commits, then only performing
     // the first use afterwards, proves the second use's active-state check re-reads the link
     // fresh under lock rather than trusting this stale, already-loaded model.
-    $firstGuardian = User::factory()->create();
-    $secondGuardian = User::factory()->create();
+    $firstGuardian = User::factory()->adult()->create();
+    $secondGuardian = User::factory()->adult()->create();
     $ward = User::factory()->create();
 
     $link = CreateLinkAction::new()->execute(
@@ -132,7 +132,7 @@ test('a second, different user cannot also use a general guardianship link once 
 });
 
 test('the DB enforces a unique (guardian_id, ward_id) pair on guardianship', function () {
-    $guardian = User::factory()->create();
+    $guardian = User::factory()->adult()->create();
     $ward = User::factory()->create();
 
     DB::table('guardianship')->insert([

@@ -4,6 +4,7 @@ use App\Actions\User\EnsureDobChangeIsAllowedAction;
 use App\DTOs\EnsureDobChangeIsAllowedDTO;
 use App\Enums\RequestTypeEnum;
 use App\Exceptions\DobChangeRequiresApprovalException;
+use App\Models\Administrator;
 use App\Models\Counsellor;
 use App\Models\GroupTherapy;
 use App\Models\Guardianship;
@@ -25,8 +26,20 @@ function executeDobChangeGate(User $user, ?string $newDob, ?User $actor = null):
     ]));
 }
 
+// SCRUM-288: a known minor with no guardian is paused, which now qualifies on their own edit (next
+// test); a first date of birth with no relationship (signing up) stays free.
+test('a known minor with no guardian (paused) needs approval to edit their dob to adult, but not when an admin edits it', function () {
+    $minor = User::factory()->create(['dob' => now()->subYears(17)->toDateString()]);
+    $admin = User::factory()->adult()->has(Administrator::factory())->create();
+
+    expect(fn () => executeDobChangeGate($minor, now()->subYears(30)->toDateString()))
+        ->toThrow(DobChangeRequiresApprovalException::class)
+        ->and(fn () => executeDobChangeGate($minor, now()->subYears(30)->toDateString(), $admin))
+        ->not->toThrow(DobChangeRequiresApprovalException::class);
+});
+
 test('a user with no qualifying relationship can freely cross the minor/adult boundary', function () {
-    $user = User::factory()->create(['dob' => now()->subYears(17)->toDateString()]);
+    $user = User::factory()->create(['dob' => null]);
 
     expect(fn () => executeDobChangeGate($user, now()->subYears(30)->toDateString()))
         ->not->toThrow(DobChangeRequiresApprovalException::class);
@@ -36,7 +49,7 @@ test('a user with no qualifying relationship can freely cross the minor/adult bo
 
 test('a qualifying user (has a guardian) whose edit does NOT cross the boundary is unrestricted', function () {
     $adult = User::factory()->create(['dob' => now()->subYears(25)->toDateString()]);
-    $guardian = User::factory()->create();
+    $guardian = User::factory()->adult()->create();
     Guardianship::query()->create(['guardian_id' => $guardian->id, 'ward_id' => $adult->id]);
 
     expect(fn () => executeDobChangeGate($adult, now()->subYears(30)->toDateString()))
@@ -47,7 +60,7 @@ test('a qualifying user (has a guardian) whose edit does NOT cross the boundary 
 
 test('a qualifying user (has a guardian) crossing minor-to-adult is blocked and a request is created with the guardian as `to`', function () {
     $minor = User::factory()->create(['dob' => now()->subYears(17)->toDateString()]);
-    $guardian = User::factory()->create();
+    $guardian = User::factory()->adult()->create();
     Guardianship::query()->create(['guardian_id' => $guardian->id, 'ward_id' => $minor->id]);
 
     expect(fn () => executeDobChangeGate($minor, now()->subYears(30)->toDateString(), $minor))
@@ -64,7 +77,7 @@ test('a qualifying user (has a guardian) crossing minor-to-adult is blocked and 
 
 test('a qualifying user crossing adult-to-minor (the reverse direction) is also blocked', function () {
     $adult = User::factory()->create(['dob' => now()->subYears(30)->toDateString()]);
-    $guardian = User::factory()->create();
+    $guardian = User::factory()->adult()->create();
     Guardianship::query()->create(['guardian_id' => $guardian->id, 'ward_id' => $adult->id]);
 
     expect(fn () => executeDobChangeGate($adult, now()->subYears(10)->toDateString(), $adult))
@@ -75,7 +88,7 @@ test('a qualifying user crossing adult-to-minor (the reverse direction) is also 
 
 test('clearing dob entirely counts as becoming a minor for an adult with a qualifying relationship', function () {
     $adult = User::factory()->create(['dob' => now()->subYears(30)->toDateString()]);
-    $guardian = User::factory()->create();
+    $guardian = User::factory()->adult()->create();
     Guardianship::query()->create(['guardian_id' => $guardian->id, 'ward_id' => $adult->id]);
 
     expect(fn () => executeDobChangeGate($adult, null, $adult))
@@ -103,17 +116,19 @@ test('a qualifying relationship via a GroupTherapy client record (User addedby) 
 });
 
 test('a Counsellor-created GroupTherapy does not itself count as a qualifying relationship for the counsellor', function () {
-    $counsellorUser = User::factory()->create(['dob' => now()->subYears(17)->toDateString()]);
+    // SCRUM-288: an adult crossing down, so their own pause (a known minor with no guardian) isn't
+    // what is tested here.
+    $counsellorUser = User::factory()->create(['dob' => now()->subYears(30)->toDateString()]);
     $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
     GroupTherapy::factory()->create(['addedby_type' => Counsellor::class, 'addedby_id' => $counsellor->id]);
 
-    expect(fn () => executeDobChangeGate($counsellorUser, now()->subYears(30)->toDateString()))
+    expect(fn () => executeDobChangeGate($counsellorUser, now()->subYears(17)->toDateString()))
         ->not->toThrow(DobChangeRequiresApprovalException::class);
 });
 
 test('an unrelated field-only resubmission of the SAME dob is never gated, even for a qualifying user', function () {
     $minor = User::factory()->create(['dob' => now()->subYears(17)->toDateString()]);
-    $guardian = User::factory()->create();
+    $guardian = User::factory()->adult()->create();
     Guardianship::query()->create(['guardian_id' => $guardian->id, 'ward_id' => $minor->id]);
 
     expect(fn () => executeDobChangeGate($minor, $minor->dob->toDateString()))
@@ -124,7 +139,7 @@ test('an unrelated field-only resubmission of the SAME dob is never gated, even 
 
 test('a second gated attempt reuses the already-outstanding pending request instead of creating a duplicate, refreshing its proposed newDob', function () {
     $minor = User::factory()->create(['dob' => now()->subYears(17)->toDateString()]);
-    $guardian = User::factory()->create();
+    $guardian = User::factory()->adult()->create();
     Guardianship::query()->create(['guardian_id' => $guardian->id, 'ward_id' => $minor->id]);
 
     expect(fn () => executeDobChangeGate($minor, now()->subYears(30)->toDateString(), $minor))

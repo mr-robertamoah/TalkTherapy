@@ -3,6 +3,7 @@
 use App\Contracts\VideoProviderInterface;
 use App\Models\Counsellor;
 use App\Models\GroupTherapy;
+use App\Models\Guardianship;
 use App\Models\Session;
 use App\Models\Therapy;
 use App\Models\User;
@@ -22,7 +23,7 @@ function fakeVideoProviderForRouteTest(): VideoProviderInterface
             return ['room_id' => "fake-room-{$videoSession->id}", 'meta' => ['fake' => true]];
         }
 
-        public function createParticipantCredentials(VideoSession $videoSession, User $user, string $displayName, bool $isOwner = false, bool $receiveOnly = false, bool $canSendVideo = true): array
+        public function createParticipantCredentials(VideoSession $videoSession, User $user, string $displayName, bool $receiveOnly = false, bool $canSendVideo = true): array
         {
             return ['token' => "fake-token-{$user->id}"];
         }
@@ -38,7 +39,7 @@ function fakeVideoProviderForRouteTest(): VideoProviderInterface
 function onlineInSessionTherapySessionForVideoRoute(array $therapyOverrides = []): array
 {
     $client = User::factory()->adult()->create();
-    $counsellorUser = User::factory()->create();
+    $counsellorUser = User::factory()->adult()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
     $therapy = Therapy::factory()->create(array_merge([
         'addedby_type' => User::class,
@@ -78,7 +79,7 @@ test('a participant can join video and receives the provider\'s credentials', fu
 test('a non-participant cannot join video', function () {
     app()->instance(VideoProviderInterface::class, fakeVideoProviderForRouteTest());
     $data = onlineInSessionTherapySessionForVideoRoute();
-    $outsider = User::factory()->create();
+    $outsider = User::factory()->adult()->create();
 
     $response = $this
         ->actingAs($outsider)
@@ -110,7 +111,7 @@ test('a client blocked by the strict payment gate cannot join video over the rou
 test('a strict-gated GroupTherapy\'s own creator cannot join video without having paid, over the route', function () {
     app()->instance(VideoProviderInterface::class, fakeVideoProviderForRouteTest());
     $creator = User::factory()->adult()->create();
-    $counsellorUser = User::factory()->create();
+    $counsellorUser = User::factory()->adult()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
     $groupTherapy = GroupTherapy::factory()->create([
         'addedby_type' => User::class,
@@ -142,7 +143,9 @@ test('a strict-gated GroupTherapy\'s own creator cannot join video without havin
 test('joining as a minor client with no video consent returns videoConsentRequired: true', function () {
     app()->instance(VideoProviderInterface::class, fakeVideoProviderForRouteTest());
     $minorClient = User::factory()->create();
-    $counsellorUser = User::factory()->create();
+    // SCRUM-288: with a guardian -- without one the therapy is paused, which is answered first.
+    Guardianship::query()->create(['guardian_id' => User::factory()->adult()->create()->id, 'ward_id' => $minorClient->id]);
+    $counsellorUser = User::factory()->adult()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
     $therapy = Therapy::factory()->create([
         'addedby_type' => User::class,
@@ -169,7 +172,7 @@ test('joining as a minor client with no video consent returns videoConsentRequir
 
 test('a non-participant\'s denial does not set videoConsentRequired', function () {
     $data = onlineInSessionTherapySessionForVideoRoute();
-    $unrelatedUser = User::factory()->create();
+    $unrelatedUser = User::factory()->adult()->create();
 
     $response = $this
         ->actingAs($unrelatedUser)
@@ -200,7 +203,7 @@ test('a participant can leave the video call over the route', function () {
 
 test('a non-participant cannot leave the video call over the route', function () {
     $data = onlineInSessionTherapySessionForVideoRoute();
-    $outsider = User::factory()->create();
+    $outsider = User::factory()->adult()->create();
 
     $response = $this
         ->actingAs($outsider)
@@ -226,7 +229,7 @@ test('a non-participant cannot end the video call over the route', function () {
     app()->instance(VideoProviderInterface::class, fakeVideoProviderForRouteTest());
     $data = onlineInSessionTherapySessionForVideoRoute();
     $this->actingAs($data['client'])->postJson(route('sessions.video.join', ['sessionId' => $data['session']->id]));
-    $outsider = User::factory()->create();
+    $outsider = User::factory()->adult()->create();
 
     $response = $this
         ->actingAs($outsider)
@@ -243,7 +246,7 @@ test('a non-participant cannot end the video call over the route', function () {
 test('an ordinary GroupTherapy member cannot end the group video call for everyone over the route', function () {
     app()->instance(VideoProviderInterface::class, fakeVideoProviderForRouteTest());
     $creator = User::factory()->adult()->create();
-    $counsellorUser = User::factory()->create();
+    $counsellorUser = User::factory()->adult()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
     $groupTherapy = GroupTherapy::factory()->create([
         'addedby_type' => User::class,
@@ -251,7 +254,7 @@ test('an ordinary GroupTherapy member cannot end the group video call for everyo
         'public' => true,
     ]);
     $groupTherapy->counsellors()->attach($counsellor->id, ['state' => 'ACTIVE', 'role' => 'NORMAL']);
-    $member = User::factory()->create();
+    $member = User::factory()->adult()->create();
     $groupTherapy->users()->attach($member->id, ['anonymous' => false]);
     $session = Session::factory()->create([
         'for_id' => $groupTherapy->id,
@@ -273,7 +276,7 @@ test('an ordinary GroupTherapy member cannot end the group video call for everyo
 test('an active counsellor CAN end the group video call for everyone over the route', function () {
     app()->instance(VideoProviderInterface::class, fakeVideoProviderForRouteTest());
     $creator = User::factory()->adult()->create();
-    $counsellorUser = User::factory()->create();
+    $counsellorUser = User::factory()->adult()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
     $groupTherapy = GroupTherapy::factory()->create([
         'addedby_type' => User::class,
@@ -305,7 +308,7 @@ test('an active counsellor CAN end the group video call for everyone over the ro
 test('an active counsellor can remove the group creator from the group video call over the route', function () {
     app()->instance(VideoProviderInterface::class, fakeVideoProviderForRouteTest());
     $creator = User::factory()->adult()->create();
-    $counsellorUser = User::factory()->create();
+    $counsellorUser = User::factory()->adult()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
     $groupTherapy = GroupTherapy::factory()->create([
         'addedby_type' => User::class,
@@ -335,7 +338,7 @@ test('an active counsellor can remove the group creator from the group video cal
 test('an ordinary GroupTherapy member cannot remove anyone from the group video call over the route', function () {
     app()->instance(VideoProviderInterface::class, fakeVideoProviderForRouteTest());
     $creator = User::factory()->adult()->create();
-    $counsellorUser = User::factory()->create();
+    $counsellorUser = User::factory()->adult()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
     $groupTherapy = GroupTherapy::factory()->create([
         'addedby_type' => User::class,
@@ -343,7 +346,7 @@ test('an ordinary GroupTherapy member cannot remove anyone from the group video 
         'public' => true,
     ]);
     $groupTherapy->counsellors()->attach($counsellor->id, ['state' => 'ACTIVE', 'role' => 'NORMAL']);
-    $member = User::factory()->create();
+    $member = User::factory()->adult()->create();
     $groupTherapy->users()->attach($member->id, ['anonymous' => false]);
     $session = Session::factory()->create([
         'for_id' => $groupTherapy->id,
@@ -372,7 +375,7 @@ test('an ordinary GroupTherapy member cannot remove anyone from the group video 
 test('removing a nonexistent target user id gets the identical response as removing a real but non-participant user id', function () {
     app()->instance(VideoProviderInterface::class, fakeVideoProviderForRouteTest());
     $creator = User::factory()->adult()->create();
-    $counsellorUser = User::factory()->create();
+    $counsellorUser = User::factory()->adult()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
     $groupTherapy = GroupTherapy::factory()->create([
         'addedby_type' => User::class,
@@ -380,7 +383,7 @@ test('removing a nonexistent target user id gets the identical response as remov
         'public' => true,
     ]);
     $groupTherapy->counsellors()->attach($counsellor->id, ['state' => 'ACTIVE', 'role' => 'NORMAL']);
-    $realButUnrelatedUser = User::factory()->create();
+    $realButUnrelatedUser = User::factory()->adult()->create();
     $session = Session::factory()->create([
         'for_id' => $groupTherapy->id,
         'for_type' => GroupTherapy::class,
@@ -416,7 +419,7 @@ test('removing a nonexistent target user id gets the identical response as remov
 test('a counsellor cannot remove themselves over the route -- must use leave instead', function () {
     app()->instance(VideoProviderInterface::class, fakeVideoProviderForRouteTest());
     $creator = User::factory()->adult()->create();
-    $counsellorUser = User::factory()->create();
+    $counsellorUser = User::factory()->adult()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
     $groupTherapy = GroupTherapy::factory()->create([
         'addedby_type' => User::class,
@@ -458,7 +461,7 @@ function groupVideoCallWithJoinedMemberForSpeakingRoutes($test): array
 {
     app()->instance(VideoProviderInterface::class, fakeVideoProviderForRouteTest());
     $creator = User::factory()->adult()->create();
-    $counsellorUser = User::factory()->create();
+    $counsellorUser = User::factory()->adult()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
     $groupTherapy = GroupTherapy::factory()->create([
         'addedby_type' => User::class,
@@ -519,7 +522,7 @@ test('a member cannot grant or revoke speaking permission over the routes', func
 
 test('granting a nonexistent user id gets the identical response as a real user who is not in the call', function () {
     $data = groupVideoCallWithJoinedMemberForSpeakingRoutes($this);
-    $realButUnrelatedUser = User::factory()->create();
+    $realButUnrelatedUser = User::factory()->adult()->create();
 
     $responseForNonexistentId = $this->actingAs($data['counsellorUser'])
         ->postJson(route('sessions.video.participants.grant_speaking', ['sessionId' => $data['session']->id, 'participantKey' => VideoParticipantKey::for($data['session']->id, User::max('id') + 1000)]));

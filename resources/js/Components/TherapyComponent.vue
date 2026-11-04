@@ -43,6 +43,7 @@
         @close="videoActive = false"
     />
     <div class="my-2 w-full h-1 rounded bg-stone-400"  v-if="showSessions"></div>
+    <TherapyPausedBanner v-if="computedAccessPaused && isParticipant" :viewer-paused="computedViewerPaused" class="mb-2" />
     <div v-bind="$attrs" class="min-h-[500px] relative flex flex-col items-center justify-center">
         <div v-if="therapy.status == 'PENDING' && !isParticipant"
             class="flex absolute top-0 left-0 w-full h-full bg-gray-500 justify-center items-center text-white text-sm bg-opacity-75 rounded z-[1]">
@@ -56,7 +57,8 @@
             :class="[computedFiltered ? 'opacity-100 translate-y-0' : 'opacity-20 -translate-y-5']"
             v-if="computedFiltered"
         >
-            <PrimaryButton class="shrink-0" v-if="isCounsellor" @click="clickedCreateTopic">create topic</PrimaryButton>
+            <!-- SCRUM-380: topics are 1:1-only (see getTopics()), so no "create topic" on group pages. -->
+            <PrimaryButton class="shrink-0" v-if="isCounsellor && therapyType !== 'group' && !computedAccessPaused" @click="clickedCreateTopic">create topic</PrimaryButton>
             <template v-if="computedFilteredItems.length">
                 <TherapyFilterItem
                     v-for="(item, idx) in computedFilteredItems"
@@ -367,6 +369,7 @@ import MiniModal from './MiniModal.vue';
 import useConnectionStatus from '@/Composables/useConnectionStatus';
 import SessionNotesPanel from './SessionNotesPanel.vue';
 import VideoCallPanel from './VideoCallPanel.vue';
+import TherapyPausedBanner from './TherapyPausedBanner.vue';
 import { createAnnouncementQueue } from '@/Composables/announcements';
 import { acquireChannel } from '@/Composables/sharedChannel';
 
@@ -617,8 +620,13 @@ watch(computedCanMarkConfidential, (can) => {
     if (!can) message.value.confidential = false
 })
 
+// SCRUM-288: the therapy is paused because a minor (the viewer, or this 1:1's client) has no active
+// guardian. History stays readable; every write control is off. The server refuses them regardless.
+const computedViewerPaused = computed(() => !!props.therapy?.viewerAccessPaused)
+const computedAccessPaused = computed(() => computedViewerPaused.value || !!props.therapy?.clientAccessPaused)
+
 const computedCanSendMessage = computed(() => {
-    if (!props.isParticipant) return false
+    if (!props.isParticipant || computedAccessPaused.value) return false
 
     if (
         props.activeSession?.status == 'HELD_CONFIRMATION' && 
@@ -635,7 +643,8 @@ const computedCanSendMessage = computed(() => {
         props.activeSession?.type == 'ONLINE'
 })
 const computedCanStart = computed(() => {
-    return ['PENDING', 'IN_SESSION_CONFIRMATION'].includes(props.activeSession?.status) && 
+    return !computedAccessPaused.value &&
+            ['PENDING', 'IN_SESSION_CONFIRMATION'].includes(props.activeSession?.status) && 
             userId !== props.activeSession?.updatedById && 
             props.activeSession?.status !== 'IN_SESSION' &&
             props.canStart
@@ -673,6 +682,8 @@ const computedCanAbandon = computed(() => {
 // still click "join video," and the backend's plain VideoException (no consent flow for group, per
 // this epic's own scoping) surfaces through the panel's existing generic `error` state.
 const computedCanJoinVideo = computed(() => {
+    if (computedAccessPaused.value) return false
+
     if (props.activeSession?.type !== 'ONLINE' ||
         !['IN_SESSION', 'IN_SESSION_CONFIRMATION'].includes(props.activeSession?.status)
     ) return false

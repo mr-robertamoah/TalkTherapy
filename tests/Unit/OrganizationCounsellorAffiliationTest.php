@@ -25,7 +25,7 @@ function verifiedProviderOrg(array $overrides = []): Organization
 
 function orgOwner(Organization $organization): User
 {
-    $owner = User::factory()->create();
+    $owner = User::factory()->adult()->create();
     $organization->admins()->attach($owner->id, ['role' => OrganizationAdminRoleEnum::owner->value]);
 
     return $owner;
@@ -34,7 +34,7 @@ function orgOwner(Organization $organization): User
 test('accepting an invite for a verified counsellor creates a pending affiliation with source invited', function () {
     $organization = verifiedProviderOrg();
     $owner = orgOwner($organization);
-    $counsellorUser = User::factory()->create();
+    $counsellorUser = User::factory()->adult()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id, 'verified_at' => now()]);
 
     $inviteRequest = OrganizationCounsellorRequestService::new()->inviteCounsellor(
@@ -66,7 +66,7 @@ test('accepting an invite for a verified counsellor creates a pending affiliatio
 test('accepting an application for a verified counsellor creates a pending affiliation with source applied', function () {
     $organization = verifiedProviderOrg();
     $owner = orgOwner($organization);
-    $applicantUser = User::factory()->create();
+    $applicantUser = User::factory()->adult()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $applicantUser->id, 'verified_at' => now()]);
 
     $applicationRequest = OrganizationCounsellorRequestService::new()->applyAsCounsellor(
@@ -98,7 +98,7 @@ test('accepting an application for a verified counsellor creates a pending affil
 test('accepting an invite for an unverified counsellor is rejected and creates no affiliation', function () {
     $organization = verifiedProviderOrg();
     $owner = orgOwner($organization);
-    $counsellorUser = User::factory()->create();
+    $counsellorUser = User::factory()->adult()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id, 'verified_at' => null]);
 
     $inviteRequest = OrganizationCounsellorRequestService::new()->inviteCounsellor(
@@ -126,7 +126,7 @@ test('a counsellor can hold affiliations with multiple organizations at once', f
     $organizationB = verifiedProviderOrg();
     $ownerA = orgOwner($organizationA);
     $ownerB = orgOwner($organizationB);
-    $counsellorUser = User::factory()->create();
+    $counsellorUser = User::factory()->adult()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id, 'verified_at' => now()]);
 
     foreach ([[$organizationA, $ownerA], [$organizationB, $ownerB]] as [$organization, $owner]) {
@@ -153,7 +153,7 @@ test('a counsellor can hold affiliations with multiple organizations at once', f
 test('an affiliated counsellor remains independently bookable', function () {
     $organization = verifiedProviderOrg();
     $owner = orgOwner($organization);
-    $counsellorUser = User::factory()->create();
+    $counsellorUser = User::factory()->adult()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id, 'verified_at' => now()]);
 
     $inviteRequest = OrganizationCounsellorRequestService::new()->inviteCounsellor(

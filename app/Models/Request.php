@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\FileTagEnum;
 use App\Enums\RequestStatusEnum;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -58,7 +59,7 @@ class Request extends Model
     {
         return $this
             ->morphToMany(File::class, 'fileable', 'fileables')
-            ->withPivotValue('tag', 'identity-document')
+            ->withPivotValue('tag', FileTagEnum::identityDocument->value)
             ->withTimestamps();
     }
 

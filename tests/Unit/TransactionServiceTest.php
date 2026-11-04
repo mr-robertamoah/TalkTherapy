@@ -19,7 +19,7 @@ function aPaidTherapy(array $paymentDataOverrides = [], array $overrides = []): 
 {
     return Therapy::factory()->create(array_merge([
         'addedby_type' => User::class,
-        'addedby_id' => User::factory(),
+        'addedby_id' => User::factory()->adult(),
         'session_type' => TherapySessionTypeEnum::once->value,
         'status' => TherapyStatusEnum::in_session->value,
         'payment_type' => TherapyPaymentTypeEnum::paid->value,
@@ -161,7 +161,7 @@ test('initiating a charge for a missing item is rejected', function () {
 
 test('a user with no relationship to the therapy cannot initiate a charge for it', function () {
     $therapy = aPaidTherapy();
-    $outsider = User::factory()->create();
+    $outsider = User::factory()->adult()->create();
 
     expect(fn () => TransactionService::new()->initiateCharge(
         TransactionDTO::new()->fromArray([
@@ -172,7 +172,7 @@ test('a user with no relationship to the therapy cannot initiate a charge for it
 });
 
 test('the assigned counsellor cannot initiate a charge for their own therapy', function () {
-    $counsellorUser = User::factory()->create();
+    $counsellorUser = User::factory()->adult()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
     $therapy = aPaidTherapy(overrides: ['counsellor_id' => $counsellor->id]);
 
@@ -188,7 +188,7 @@ test('a counsellor with no relationship to an unassigned therapy is cleanly reje
     // Therapy::isCounsellor() dereferences $this->counsellor with no null check of its own --
     // this proves EnsureCanPayForModelAction guards against calling it on a Therapy that has no
     // counsellor assigned yet, rather than letting that surface as an uncaught Error.
-    $counsellorUser = User::factory()->create();
+    $counsellorUser = User::factory()->adult()->create();
     Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
     $therapy = aPaidTherapy(); // no counsellor_id set
 
@@ -362,7 +362,7 @@ test('a user cannot verify a transaction that belongs to someone else', function
         'reference' => 'ref_not_mine',
     ]);
 
-    $outsider = User::factory()->create();
+    $outsider = User::factory()->adult()->create();
 
     expect(fn () => TransactionService::new()->verifyTransaction(
         TransactionDTO::new()->fromArray(['user' => $outsider, 'reference' => 'ref_not_mine'])

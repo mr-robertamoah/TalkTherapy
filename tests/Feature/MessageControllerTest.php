@@ -12,9 +12,9 @@ use App\Models\User;
 // always surfaced to the client as a 500 via Laravel's default exception handler. A rejected
 // send now needs to come back as an actual 422 response, not a 500.
 test('a non-participant sending a message to a session is rejected with a 422, not a 500', function () {
-    $actingUser = User::factory()->create();
-    $therapyOwner = User::factory()->create();
-    $counsellorUser = User::factory()->create();
+    $actingUser = User::factory()->adult()->create();
+    $therapyOwner = User::factory()->adult()->create();
+    $counsellorUser = User::factory()->adult()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
     $therapy = Therapy::factory()->create([
         'addedby_id' => $therapyOwner->id,
@@ -51,8 +51,8 @@ test('a non-participant sending a message to a session is rejected with a 422, n
 
 function aSendableSessionAndOwner(): array
 {
-    $therapyOwner = User::factory()->create();
-    $counsellorUser = User::factory()->create();
+    $therapyOwner = User::factory()->adult()->create();
+    $counsellorUser = User::factory()->adult()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
     $therapy = Therapy::factory()->create([
         'addedby_id' => $therapyOwner->id,

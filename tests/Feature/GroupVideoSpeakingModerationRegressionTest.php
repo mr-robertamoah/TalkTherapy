@@ -5,6 +5,7 @@ use App\Enums\ConstantsEnum;
 use App\Enums\SpeakingPermissionRevocationReasonEnum;
 use App\Models\Counsellor;
 use App\Models\GroupTherapy;
+use App\Models\Guardianship;
 use App\Models\Session;
 use App\Models\User;
 use App\Models\VideoSession;
@@ -218,6 +219,8 @@ function gvrGroupCall(): array
     $member = User::factory()->adult()->create();
     $groupTherapy->users()->attach($member->id, ['anonymous' => false, 'was_minor_at_join' => false]);
     $minorMember = User::factory()->create(['dob' => now()->subYears(15)->toDateString()]);
+    // SCRUM-288: with a guardian -- a minor without one is paused (can't join at all).
+    Guardianship::query()->create(['guardian_id' => User::factory()->adult()->create()->id, 'ward_id' => $minorMember->id]);
     $groupTherapy->users()->attach($minorMember->id, ['anonymous' => false, 'was_minor_at_join' => true]);
     $anonymousMember = User::factory()->adult()->create();
     $groupTherapy->users()->attach($anonymousMember->id, ['anonymous' => true, 'was_minor_at_join' => false]);

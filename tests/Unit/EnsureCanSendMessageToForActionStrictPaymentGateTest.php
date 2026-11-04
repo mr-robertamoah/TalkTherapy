@@ -26,7 +26,7 @@ function perSessionStrictGatedTherapyForCreate(array $overrides = []): Therapy
 {
     return Therapy::factory()->create(array_merge([
         'addedby_type' => User::class,
-        'addedby_id' => User::factory(),
+        'addedby_id' => User::factory()->adult(),
         'public' => false,
         'payment_type' => 'PAID',
         'payment_data' => ['per' => 'PER_SESSION', 'amount' => 50, 'currency' => 'GHS', 'inPersonAmount' => 60, 'strictPaymentGate' => true],
@@ -37,7 +37,7 @@ function perTherapyStrictGatedTherapyForCreate(array $overrides = []): Therapy
 {
     return Therapy::factory()->create(array_merge([
         'addedby_type' => User::class,
-        'addedby_id' => User::factory(),
+        'addedby_id' => User::factory()->adult(),
         'public' => false,
         'payment_type' => 'PAID',
         'payment_data' => ['per' => 'PER_THERAPY', 'amount' => 50, 'currency' => 'GHS', 'inPersonAmount' => 60, 'strictPaymentGate' => true],
@@ -56,7 +56,7 @@ function aStrictGatedSession(Therapy $therapy): Session
 }
 
 test('createMessage denies a client with no grant for a PER_SESSION-gated session', function () {
-    $client = User::factory()->create();
+    $client = User::factory()->adult()->create();
     $therapy = perSessionStrictGatedTherapyForCreate(['addedby_id' => $client->id]);
     $session = aStrictGatedSession($therapy);
 
@@ -73,8 +73,8 @@ test('createMessage denies a client with no grant for a PER_SESSION-gated sessio
 });
 
 test('createMessage allows a client once a session-level grant exists', function () {
-    $client = User::factory()->create();
-    $counsellorUser = User::factory()->create();
+    $client = User::factory()->adult()->create();
+    $counsellorUser = User::factory()->adult()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
     $therapy = perSessionStrictGatedTherapyForCreate(['addedby_id' => $client->id, 'counsellor_id' => $counsellor->id]);
     $session = aStrictGatedSession($therapy);
@@ -98,8 +98,8 @@ test('createMessage allows a client once a session-level grant exists', function
 });
 
 test('createMessage keeps access for an existing session grant even after the transaction later fails', function () {
-    $client = User::factory()->create();
-    $counsellorUser = User::factory()->create();
+    $client = User::factory()->adult()->create();
+    $counsellorUser = User::factory()->adult()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
     $therapy = perSessionStrictGatedTherapyForCreate(['addedby_id' => $client->id, 'counsellor_id' => $counsellor->id]);
     $session = aStrictGatedSession($therapy);
@@ -131,7 +131,7 @@ test('createMessage keeps access for an existing session grant even after the tr
 });
 
 test('createMessage blocks a PER_THERAPY-gated therapy\'s chat directly, closing the same still-reachable hole reading was fixed for', function () {
-    $client = User::factory()->create();
+    $client = User::factory()->adult()->create();
     $therapy = perTherapyStrictGatedTherapyForCreate(['addedby_id' => $client->id]);
     $session = aStrictGatedSession($therapy);
 
@@ -148,8 +148,8 @@ test('createMessage blocks a PER_THERAPY-gated therapy\'s chat directly, closing
 });
 
 test('createMessage allows a PER_THERAPY-gated therapy\'s chat once a therapy-level grant already exists (e.g. from page load)', function () {
-    $client = User::factory()->create();
-    $counsellorUser = User::factory()->create();
+    $client = User::factory()->adult()->create();
+    $counsellorUser = User::factory()->adult()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
     $therapy = perTherapyStrictGatedTherapyForCreate(['addedby_id' => $client->id, 'counsellor_id' => $counsellor->id]);
     $session = aStrictGatedSession($therapy);
@@ -175,8 +175,8 @@ test('createMessage allows a PER_THERAPY-gated therapy\'s chat once a therapy-le
 // TT-7.3b-f2/SCRUM-238: proves real-caller wiring for message creation too, not just reading --
 // mirrors MessageServiceStrictPaymentGateTest's identical scenario.
 test('createMessage denies a client when the retainer-covering organization is billing-suspended', function () {
-    $client = User::factory()->create();
-    $counsellorUser = User::factory()->create();
+    $client = User::factory()->adult()->create();
+    $counsellorUser = User::factory()->adult()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
     $therapy = perTherapyStrictGatedTherapyForCreate(['addedby_id' => $client->id, 'counsellor_id' => $counsellor->id]);
     $session = aStrictGatedSession($therapy);
@@ -207,7 +207,7 @@ test('createMessage denies a client when the retainer-covering organization is b
 });
 
 test('createMessage is unaffected for the counsellor of a strict-gated therapy', function () {
-    $counsellorUser = User::factory()->create();
+    $counsellorUser = User::factory()->adult()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
     $therapy = perSessionStrictGatedTherapyForCreate(['counsellor_id' => $counsellor->id]);
     $session = aStrictGatedSession($therapy);

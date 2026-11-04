@@ -136,6 +136,8 @@ class GroupTherapyResource extends JsonResource
             'createdAt' => $this->created_at,
             'activeSession' => $activeSession ? new SessionResource($activeSession) : null,
             'activeDiscussion' => $activeDiscussion ? new DiscussionResource($activeDiscussion) : null,
+            // SCRUM-288: the viewer's own state only -- never another member's.
+            'viewerAccessPaused' => (bool) $user?->isPausedForMissingGuardian(),
         ];
     }
 }

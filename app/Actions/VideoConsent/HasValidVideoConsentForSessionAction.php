@@ -44,8 +44,12 @@ class HasValidVideoConsentForSessionAction extends Action
 
         $therapy = $wardResolver->therapyFor($session);
 
+        // SCRUM-288 (security review): only a grant by a guardian who counts right now (Guardianship::
+        // scopeActive -- still their guardian, account not deleted or suspended, adult). Checked at
+        // read time, so a grant by a suspended guardian applies again once the suspension ends.
         return VideoConsent::query()
             ->where('ward_id', $ward->id)
+            ->whereIn('guardian_id', $ward->activeGuardianships()->select('guardianship.guardian_id'))
             ->where(function ($query) use ($therapy, $session) {
                 $query
                     ->where(fn ($q) => $q->whereValidFor(Therapy::class, $therapy->id))

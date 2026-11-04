@@ -215,17 +215,6 @@ class GroupTherapy extends Model
         return ! $this->isParticipant($user);
     }
 
-    // OR logic: masked if either the group itself defaults everyone to anonymous, or this
-    // specific member opted into anonymity via their own group_therapy_user pivot row.
-    public function isAnonymousFor(User $sender): bool
-    {
-        if ($this->anonymous) {
-            return true;
-        }
-
-        return (bool) $this->users->firstWhere('id', $sender->id)?->pivot->anonymous;
-    }
-
     // SCRUM-379: the one masking rule for a group -- whether $subject is shown as Anonymous to
     // everyone else (TherapyTrait::displayNameOf(), addedByUserIsMaskedFor(), the presence channel,
     // and both video names). In order:

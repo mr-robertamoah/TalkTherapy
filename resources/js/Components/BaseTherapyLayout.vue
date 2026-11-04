@@ -102,6 +102,11 @@
         </TherapyInformation>
       </div>
 
+      <!-- SCRUM-288: explain why the actions below are limited, on the overview page too. -->
+      <div v-if="computedIsParticipant && (computedTherapy.viewerAccessPaused || computedTherapy.clientAccessPaused)" class="max-w-7xl mx-auto sm:px-6 lg:px-8 mt-4">
+        <TherapyPausedBanner :viewer-paused="!!computedTherapy.viewerAccessPaused" />
+      </div>
+
       <!-- Therapy Actions -->
       <TherapyActions
         v-if="computedIsParticipant"
@@ -131,6 +136,7 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue'
 import HelpButton from '@/Components/HelpButton.vue'
+import TherapyPausedBanner from '@/Components/TherapyPausedBanner.vue'
 import TherapyActiveHeader from '@/Components/TherapyActiveHeader.vue'
 import TherapyRecentSections from '@/Components/TherapyRecentSections.vue'
 import TherapyDiscussions from '@/Components/TherapyDiscussions.vue'

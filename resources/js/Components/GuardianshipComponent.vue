@@ -16,7 +16,7 @@
             <div class="text-red-700 text-center font-bold tracking-wide">Remove Ward</div>
             <hr class="my-2">
             <FormLoader :danger="true" :show="loading && modalData.type == 'delete'" :text="'removing ward'"/>
-            <div class="text-red-700 my-4 w-[90%] mx-auto text-center">Are sure you want to remove this Ward?</div>
+            <div class="text-red-700 my-4 w-[90%] mx-auto text-center">Are you sure you want to remove this ward?</div>
             <div class="flex p-4 items-center justify-end mx-auto w-[90%] md:w-[75%]">
                 <PrimaryButton @click="closeModal">cancel</PrimaryButton>
                 <DangerButton class="ml-2" @click="removeGuardianship">remove</DangerButton>

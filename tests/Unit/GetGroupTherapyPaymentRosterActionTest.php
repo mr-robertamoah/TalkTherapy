@@ -99,7 +99,7 @@ test('a member with multiple transactions shows the most recently created one', 
 // Security review finding (user-confirmed): a member's own per-member anonymity opt-in
 // (group_therapy_user.anonymous) is independent of the group's own `anonymous` flag, and this
 // roster's approved exception only covers the latter -- deliberately NOT
-// GroupTherapy::isAnonymousFor(), which ORs in the group-level flag too and would mask everyone.
+// GroupTherapy::hidesIdentityOf(), which ORs in the group-level flag too and would mask everyone.
 test('a member who individually opted into anonymity is masked in the roster, even though their payment status still shows', function () {
     $groupTherapy = GroupTherapy::factory()->create(['anonymous' => false]);
     $anonymousMember = User::factory()->create();
