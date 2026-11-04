@@ -27,11 +27,11 @@ function aGroupInviteFor358(GroupTherapy $group, Counsellor $counsellor): AppReq
 
 function aCounsellorFor358(): Counsellor
 {
-    return Counsellor::factory()->create(['user_id' => User::factory()->create()->id]);
+    return Counsellor::factory()->create(['user_id' => User::factory()->adult()->create()->id]);
 }
 
 test('a counsellor accepting a group invite joins the group as an active counsellor, and the creator is told', function () {
-    $creator = User::factory()->create();
+    $creator = User::factory()->adult()->create();
     $group = GroupTherapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => $creator->id, 'max_counsellors' => 3]);
     $counsellor = aCounsellorFor358();
     $invite = aGroupInviteFor358($group, $counsellor);
@@ -45,7 +45,7 @@ test('a counsellor accepting a group invite joins the group as an active counsel
 });
 
 test('a full group refuses the accept with a clear message and leaves the invite pending; filling it closes the rest', function () {
-    $creator = User::factory()->create();
+    $creator = User::factory()->adult()->create();
     $group = GroupTherapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => $creator->id, 'max_counsellors' => 1]);
     [$first, $second, $third] = [aCounsellorFor358(), aCounsellorFor358(), aCounsellorFor358()];
     $firstInvite = aGroupInviteFor358($group, $first);
@@ -64,7 +64,7 @@ test('a full group refuses the accept with a clear message and leaves the invite
 });
 
 test('declining a group invite just declines it', function () {
-    $group = GroupTherapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => User::factory()->create()->id]);
+    $group = GroupTherapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => User::factory()->adult()->create()->id]);
     $counsellor = aCounsellorFor358();
     $invite = aGroupInviteFor358($group, $counsellor);
 
@@ -75,7 +75,7 @@ test('declining a group invite just declines it', function () {
 // (The guardian-alert routing is covered by GuardianAlertWiringTest.)
 
 test('only the invited, verified counsellor can accept -- not an admin for them, not the group\'s own client, not an ended group', function () {
-    $creator = User::factory()->create();
+    $creator = User::factory()->adult()->create();
     $group = GroupTherapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => $creator->id, 'max_counsellors' => 5]);
     $accept = fn (User $as, AppRequest $invite) => $this->actingAs($as)->postJson(route('requests.respond', ['requestId' => $invite->id]), ['response' => 'accepted']);
 
@@ -109,7 +109,7 @@ test('only the invited, verified counsellor can accept -- not an admin for them,
 });
 
 test('re-joining keeps a counsellor\'s existing role', function () {
-    $group = GroupTherapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => User::factory()->create()->id, 'max_counsellors' => 5]);
+    $group = GroupTherapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => User::factory()->adult()->create()->id, 'max_counsellors' => 5]);
     $counsellor = aCounsellorFor358();
     $group->counsellors()->attach($counsellor->id, ['state' => 'INACTIVE', 'role' => 'COORDINATOR']);
 

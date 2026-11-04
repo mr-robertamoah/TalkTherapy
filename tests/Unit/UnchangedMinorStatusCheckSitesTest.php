@@ -25,7 +25,7 @@ test('EnsureCanCreateTherapyAction still blocks a live-minor user without a guar
 
 test('EnsureCanCreateTherapyAction allows a live-minor user who has a guardian', function () {
     $minor = User::factory()->create();
-    $guardian = User::factory()->create();
+    $guardian = User::factory()->adult()->create();
     Guardianship::query()->create(['guardian_id' => $guardian->id, 'ward_id' => $minor->id]);
 
     expect(fn () => EnsureCanCreateTherapyAction::new()->execute($minor))->not->toThrow(CannotCreateTherapyException::class);

@@ -62,7 +62,7 @@ function fakeVideoProviderRecordingGrantCapabilities(array &$calls, bool $should
             return [];
         }
 
-        public function createParticipantCredentials(VideoSession $videoSession, User $user, string $displayName, bool $isOwner = false, bool $receiveOnly = false, bool $canSendVideo = true): array
+        public function createParticipantCredentials(VideoSession $videoSession, User $user, string $displayName, bool $receiveOnly = false, bool $canSendVideo = true): array
         {
             return [];
         }
@@ -323,6 +323,37 @@ test('every member of an anonymous group is granted audio-only', function () {
     GrantSpeakingPermissionAction::new()->execute($data['session'], $data['counsellorUser'], $data['member']->id);
 
     expect($calls)->toBe([[$data['member']->id, true, false]]);
+});
+
+// SCRUM-380: the camera rule is GroupTherapy::allowsCameraFor(), read from a fresh copy of the group --
+// never the members list or anonymity flag the caller happened to load before the member's row changed.
+test('a members list loaded before the member turned anonymous never grants video', function () {
+    Event::fake();
+    $data = groupVideoCallForGrantSpeakingAction();
+    $session = Session::query()->with('for.users')->find($data['session']->id);
+    expect($session->for->relationLoaded('users'))->toBeTrue();
+    $data['groupTherapy']->users()->updateExistingPivot($data['member']->id, ['anonymous' => true]);
+    $calls = [];
+    app()->instance(VideoProviderInterface::class, fakeVideoProviderRecordingGrantCapabilities($calls));
+
+    GrantSpeakingPermissionAction::new()->execute($session, $data['counsellorUser'], $data['member']->id);
+
+    expect($calls)->toBe([[$data['member']->id, true, false]]);
+});
+
+// SCRUM-380 (deliberate change, fail-closed): the group's own flag used to be read from the loaded copy.
+test('a group loaded before it turned anonymous never grants video', function () {
+    Event::fake();
+    $data = groupVideoCallForGrantSpeakingAction();
+    $session = Session::query()->with('for')->find($data['session']->id);
+    GroupTherapy::query()->whereKey($data['groupTherapy']->id)->update(['anonymous' => true]);
+    $calls = [];
+    app()->instance(VideoProviderInterface::class, fakeVideoProviderRecordingGrantCapabilities($calls));
+
+    GrantSpeakingPermissionAction::new()->execute($session, $data['counsellorUser'], $data['member']->id);
+
+    expect($session->for->anonymous)->toBeFalsy()
+        ->and($calls)->toBe([[$data['member']->id, true, false]]);
 });
 
 // TT-3.2f-g/SCRUM-324: interim hard-block until group-scoped guardian consent (SCRUM-313) exists.

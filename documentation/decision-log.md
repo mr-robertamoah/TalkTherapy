@@ -9629,3 +9629,156 @@ therapy 18 after the last QA pass.
   - `useScheduleTimes` polish and a `FileTagEnum`;
   - skipping migrate/seed outside the php container;
   - small UI leftovers.
+
+## SCRUM-380 + 288: follow-ups, and a minor with no guardian has their therapy paused — 2026-11-03
+
+- **Grouping.** The user asked for the next group of work to include the follow-up (SCRUM-380), and
+  chose to add SCRUM-288 through the `/start-feature` gate (product-owner, project-manager and
+  architect passes; plan approved by the user before any SCRUM-288 code).
+- **1:1 Daily ownership (380.1, the user's decision).** Nobody is a Daily meeting owner any more.
+  `$isOwner` is removed from `VideoProviderInterface`, both providers and the join. Every token sends
+  `is_owner: false` with explicit `canSend` and `canAdmin: false`, so a 1:1 counsellor can no longer
+  start a live stream or transcription from their browser. Nothing in the UI used owner powers.
+- **Remaining masking (380.2).** `TherapyTrait::hidesIdentityOf(User)` = therapy anonymous, OR
+  `isMaskedToOthers()`, OR (group) the person's own membership row is anonymous. That is the old
+  `isAnonymousFor()` rule plus `isMaskedToOthers()`'s extra masking, so it can only mask more.
+  - Used by `MessageResource`, `SessionResource::maskedUserId`, `TherapyAssistanceRequestAcceptedNotification`
+    and `Session`. `isAnonymousFor()` is removed.
+  - **Not just `isMaskedToOthers`:** that alone would have unmasked people the old rule hid (a
+    counsellor acting through their User account on an anonymous therapy). Whether to drop that is
+    a product question, left as is.
+  - **Fail-closed changes, listed:**
+    - someone with no membership row in a non-anonymous group is now masked in message and session ids;
+    - a session whose therapy is gone masks everyone;
+    - a group admin on a non-anonymous group's session `maskedUserId` is masked.
+  - **Comments (`isAnonymousParticipant`) unchanged:** non-participant commenters stay public, as
+    SCRUM-354 requires.
+  - **Speaking grants:** `GrantSpeakingPermissionAction::capabilitiesFor` uses
+    `fresh()?->allowsCameraFor()`, keeping its "read a fresh row" rule and now also re-reading the
+    group's own anonymity flag.
+- **Unknown sessions on video routes (380.5).** An unknown session answers exactly like a real one
+  the caller isn't allowed in: each route's own not-allowed message.
+  - Remove, grant, revoke and raise-hand used to answer outsiders differently for 1:1 and group calls,
+    which revealed the session's type. Every outsider now gets the group answer.
+- **Controllers (380.3, 4).**
+  - **`SuccessResponse::make($request, $json, $redirect)`**, next to `FailureResponse`, behind a base
+    `successResponse()`. Not `returnSuccess`: a protected parent method with that name would clash
+    fatally with private child copies on other branches. It replaces every controller's private copy,
+    keeping each endpoint's JSON shape and redirect.
+  - **MessageNoteController stays always-JSON** (api-only, axios caller).
+  - **`GroupTherapyController` and `verifyCounsellor`** give JSON callers JSON. The group payment
+    gate's "no setting given" is now a 422.
+  - **Bug fixed on the way:** ending a group therapy always failed, because it passed `therapy` to
+    `GroupTherapyDTO` instead of `groupTherapy`.
+- **Small items (380.6–9):**
+  - **`useScheduleTimes`** takes one option, `defaultsWhen`, plus `isOpen` for update forms, and
+    refreshes `now` (the inputs' `min`) on open.
+  - **Files:** `FileTagEnum` for the fileables tags; how-to create/update responses eager-load step files.
+  - **Docker:** only php-fpm seeds. The queue container still migrates under the flock, because after
+    a host reboot Docker ignores `depends_on`, and that keeps the worker from running ahead of
+    migrations.
+  - **Group form:** its checkbox booleans are coerced (Vue warning), and "create topic" is hidden on
+    group pages.
+  - **Seed:** random paid groups get valid payment settings (`per` was 'session'; no counsellor share,
+    so the 70% rule refused every save). The 7 local groups were fixed too.
+  - **Clean-up:** success `console.log`s removed.
+- **SCRUM-288, the user's answers (2026-11-03):**
+  - **Q1 history:** read-only. A paused minor can open and read their therapy; every write is refused.
+  - **Q2 upcoming sessions:** kept and blocked; no automatic cancellation or refund.
+  - **Q3 suspended guardian:** does NOT count. Account-scope suspension of a guardian pauses their
+    wards, and lifting or expiry resumes them.
+  - **Q4 admin override:** later, its own ticket (SCRUM-381).
+  - **Q5 counsellor in a paused 1:1:** read-only too.
+  - **Q6 turning 18:** drops the guardian video-consent requirement. The consent check also requires
+    the live `! isAdult()`. That's safe because dob changes across 18 need approval (SCRUM-292).
+  - **Q7 no date of birth:** treated as minors (the current rule), so they are paused too. The count
+    ran: 42 local accounts had no dob, and 21 had open therapies, including maria_garcia. With that in
+    hand, the user confirmed "pause them", noting there is no production deployment or data yet.
+    - **Demo seed:** the seed gives every demo adult without a dob an adult one
+      (`giveDemoAdultsADateOfBirth`), so the demos aren't paused. The 45 local accounts were
+      updated the same way, which leaves only the `paused_minor` demo paused.
+- **SCRUM-288 implementation decisions (not pinned by the plan):**
+  - **Status codes:** paused writes get 403 with code `guardian_required`, like SuspensionException.
+    Creating or joining a therapy stays 422 (its existing message), now with the same code.
+    `FailureResponse` adds `code` to JSON and `errors.alertCode` to redirects, through a
+    `HasErrorCode` interface.
+  - **Counsellors:** someone acting as the therapy's own counsellor isn't checked for their own age;
+    only their 1:1 client is.
+  - **More writes gated (Q1 "every write"):** therapy and group settings updates, payment gates,
+    assistance requests, and a counsellor accepting a paused minor's assistance request.
+  - **Accepting only:** accepting a proposal or membership is gated; rejecting stays allowed.
+  - **Guardianship requests stay allowed**, since that is how a paused minor gets access back.
+  - **Allowlist** (stop or withdraw actions): delete, delete-for-me, end, abandon, fail, video leave
+    and end, lower hand, revoke, remove. The test enumerates every write route against it.
+  - **Consent lapse:** a guardian's still-valid video consents lapse when the guardianship ends or the
+    guardian's account is deleted (reason `guardianship_removed`, so no enum migration). A suspension
+    doesn't lapse consents.
+  - **Exactly once:** the ward's row lock is taken guardian first, then wards in id order. The loss
+    handler re-checks after commit, and the expiry sweep announces one resume even when several
+    suspensions expire together.
+  - **Who is told:** notifications and broadcasts go out only when the ward has an open therapy or
+    group. The audit log has ids only.
+  - **Video:** a 1:1 room is ended for both people with the session status untouched. In a group only
+    the minor is ejected. Both happen under `VideoJoinLock`.
+  - **Q6:** only `EnsureVideoIsAvailableForSessionAction`'s consent check gained the live
+    `! isAdult()`. It reverses SCRUM-291's "an edited adult dob is still gated", which an approved dob
+    change makes safe (SCRUM-292). The consent UI may still show for a ward who turned 18.
+  - **Seed:** `group_video_call_demo_guardian` was added so the group-video demo's minors aren't
+    paused.
+
+- **SCRUM-288 review fixes:**
+  - **Faking adulthood (security H1).** A dob edit crossing 18 needs approval when the user has a
+    guardianship, an accepted guardianship request as the ward, a 1:1 therapy, a group they created or
+    **belong to**, or a dob already set while they are paused. Before, a paused group member could
+    simply edit to an adult dob.
+    - A first dob on an account with no relationship stays free (otherwise sign-up would need
+      approval).
+    - An admin editing an account with no relationship stays free, since the admin is who the request
+      would go to.
+    - The request goes to an active guardian, or to an admin if there is none.
+  - **Who counts as a guardian (M3).** An active guardian must exist, be an adult (dob set and 18+),
+    and not be account-suspended (`Guardianship::scopeActive`). The guardianship link route now runs
+    the same eligibility check as the request route.
+  - **More writes gated (M1, M4).**
+    - Therapy-counsellor links can't be created by a paused client, and can't be used on a paused
+      client's therapy.
+    - Payment can't be started while paused (Q2 means no automatic refunds).
+    - Comments are gated only on a therapy the user takes part in; posts and other public therapies
+      aren't.
+  - **Allowed for the counsellor of a paused 1:1 (my call):** private session and message notes, and
+    case discussions. They never reach the client, so Q5's "no contact" isn't affected. These sit on
+    the allowlist with that reason, along with refund requests, the Paystack webhook, the guardian's
+    own consent actions, link status changes and comment delete.
+  - **Live-call removal (M2):** if removal fails or times out on the join lock, it's retried by
+    `RemovePausedMinorFromVideoJob` (4 tries, backoff), which re-checks under the lock.
+  - **Smaller security fixes:**
+    - A consent counts only while its guardian is active (checked at read time).
+    - Message participation is checked before the pause, so a paused minor can't probe session ids.
+    - Accepting a paused requester tells the counsellor "This request can't be accepted right now."
+    - The consent-lapse callback is wrapped in `rescue()`.
+  - **Exactly once under REPEATABLE READ (reviewer).** Every pause/resume decision read is a locking
+    read (`sharedLock`, on the subqueries too). `Guardianship::lockedWardsOf()` locks the guardian,
+    then the wards in id order.
+    - A lift and an apply on the same person at the same moment could deadlock. MySQL aborts one,
+      which is accepted.
+  - **Joining video:** the pause is checked before video consent, so a paused minor is told the
+    therapy is paused rather than asked for consent.
+  - **Architect.** One `isPausedForMissingGuardian($fresh, $exceptGuardianIds)`; the composed gate
+    passes `counterparty` / `actsAsCounsellor`; `HandleGuardianRestoredAction::around()`; shared video
+    refusal constants.
+    - `hidesIdentityOf` was **not** simplified: its membership-row term covers a group counsellor who
+      is also an anonymous member. A test pins that case.
+  - **Browser QA.** The chat page now follows Inertia's reloaded `therapy` prop. Before, the live pause
+    and resume never showed there until a hard reload. The overview pages show the banner too.
+  - **Stale pages:** an axios interceptor reloads once when a write is refused with `guardian_required`.
+- **Follow-ups (SCRUM-382):**
+  - pause entry paths that skip removal (dob change to under 18, minors already without a guardian at
+    deploy);
+  - group links by a paused creator;
+  - one live-call removal action;
+  - a shared announce step;
+  - `pauseStateFor`;
+  - queued loss handling;
+  - the lift/apply lock order;
+  - tidy-ups.
+- **Admin override:** SCRUM-381.

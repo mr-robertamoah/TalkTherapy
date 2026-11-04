@@ -34,7 +34,7 @@ function vrfProvider(array &$removed, int $failures = 0): VideoProviderInterface
             return [];
         }
 
-        public function createParticipantCredentials(VideoSession $videoSession, User $user, string $displayName, bool $isOwner = false, bool $receiveOnly = false, bool $canSendVideo = true): array
+        public function createParticipantCredentials(VideoSession $videoSession, User $user, string $displayName, bool $receiveOnly = false, bool $canSendVideo = true): array
         {
             return [];
         }

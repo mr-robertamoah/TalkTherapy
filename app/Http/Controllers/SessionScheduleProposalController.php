@@ -9,6 +9,7 @@ use App\Http\Requests\CreateSessionScheduleProposalRequest;
 use App\Models\Request as ModelsRequest;
 use App\Models\Therapy;
 use App\Services\SessionScheduleProposalService;
+use App\Support\FailureResponse;
 use Throwable;
 
 class SessionScheduleProposalController extends Controller
@@ -32,10 +33,7 @@ class SessionScheduleProposalController extends Controller
 
             return response()->json(['proposal' => GetRequestResourceAction::new()->execute($proposal)]);
         } catch (Throwable $th) {
-            $status = $this->statusFor($th);
-            $message = $this->messageFor($th, $status);
-
-            return response()->json(['message' => $message], $status);
+            return FailureResponse::json($th);
         }
     }
 
@@ -60,10 +58,7 @@ class SessionScheduleProposalController extends Controller
 
             return response()->json(['proposal' => GetRequestResourceAction::new()->execute($counterOffer)]);
         } catch (Throwable $th) {
-            $status = $this->statusFor($th);
-            $message = $this->messageFor($th, $status);
-
-            return response()->json(['message' => $message], $status);
+            return FailureResponse::json($th);
         }
     }
 }

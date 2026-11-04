@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\ConstantsEnum;
+use App\Enums\FileTagEnum;
 use App\Enums\SuspensionScopeEnum;
 use App\Notifications\VerifyEmailNotification;
 use Carbon\Carbon;
@@ -120,7 +121,7 @@ class User extends Authenticatable implements MustVerifyEmailContract
     public function avatarFile(): MorphToMany
     {
         return $this->morphToMany(File::class, 'fileable', 'fileables')
-            ->withPivotValue('tag', 'avatar')
+            ->withPivotValue('tag', FileTagEnum::avatar->value)
             ->withTimestamps();
     }
 
@@ -173,11 +174,45 @@ class User extends Authenticatable implements MustVerifyEmailContract
         return $this->wards()->where('ward_id', $user->id)->exists();
     }
 
-    public function hasGuardian(): bool
+    // SCRUM-288: the ward's guardianships that count (Guardianship::scopeActive()). $exceptGuardianIds
+    // leaves those guardians out; $lock makes it a locking read (see hasActiveGuardian()).
+    public function activeGuardianships(array $exceptGuardianIds = [], bool $lock = false)
     {
-        return $this->guardians()
-            ->where('ward_id', $this->id)
-            ->exists();
+        return $this->guardians()->active($exceptGuardianIds, $lock);
+    }
+
+    private ?bool $hasActiveGuardianCache = null;
+
+    // Memoised on this model instance: every write in a therapy asks it, and a request's user is one
+    // instance. $fresh (or leaving guardians out) re-reads, as a locking read (shared), so inside a
+    // transaction it sees what other transactions have committed -- under REPEATABLE READ a plain
+    // read could still answer from the transaction's first snapshot -- and holds it until commit.
+    public function hasActiveGuardian(bool $fresh = false, array $exceptGuardianIds = []): bool
+    {
+        if ($fresh || $exceptGuardianIds) {
+            $has = $this->activeGuardianships($exceptGuardianIds, lock: true)->first(['guardianship.id']) !== null;
+
+            if (! $exceptGuardianIds) {
+                $this->hasActiveGuardianCache = $has;
+            }
+
+            return $has;
+        }
+
+        return $this->hasActiveGuardianCache ??= $this->activeGuardianships()->exists();
+    }
+
+    // SCRUM-288: the one pause rule -- a minor (no date of birth counts as one) with no active
+    // guardian can read their therapies but not act in them. Adults are answered without a query;
+    // administrators are exempt. $exceptGuardianIds: would they be paused without these guardians
+    // (asked before one stops counting, and to tell whether one coming back resumed them).
+    public function isPausedForMissingGuardian(bool $fresh = false, array $exceptGuardianIds = []): bool
+    {
+        if ($this->isAdult() || $this->isAdmin()) {
+            return false;
+        }
+
+        return ! $this->hasActiveGuardian($fresh, $exceptGuardianIds);
     }
 
     public function wards()
@@ -386,8 +421,9 @@ class User extends Authenticatable implements MustVerifyEmailContract
 
     private array $activeSuspensionCache = [];
 
-    // The suspension in force that covers $scope (an account suspension covers both), memoised for
-    // the request: the middleware and the guards ask on every request.
+    // The suspension in force that covers $scope (an account suspension covers both), memoised on
+    // this model instance (a request's user is one instance): the middleware and the guards ask on
+    // every request.
     public function activeSuspension(SuspensionScopeEnum $scope = SuspensionScopeEnum::account): ?Suspension
     {
         // Re-read if the cached one has since run out (a long-lived instance, e.g. in tests).

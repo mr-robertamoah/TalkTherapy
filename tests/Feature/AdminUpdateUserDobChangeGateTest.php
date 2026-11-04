@@ -27,7 +27,7 @@ test('an admin can freely update dob for a user with no qualifying relationship'
 // edit it didn't apply to.
 test('a direct admin dob edit clears a previously-verified dob_verified_at', function () {
     $admin = User::factory()->has(Administrator::factory())->create();
-    $target = User::factory()->create([
+    $target = User::factory()->adult()->create([
         'dob' => now()->subYears(30)->toDateString(),
         'dob_verified_at' => now(),
     ]);
@@ -44,7 +44,7 @@ test('a direct admin dob edit clears a previously-verified dob_verified_at', fun
 test('an admin\'s boundary-crossing dob edit for a qualifying user is deferred, but other submitted fields still save', function () {
     $admin = User::factory()->has(Administrator::factory())->create();
     $minor = User::factory()->create(['dob' => now()->subYears(17)->toDateString(), 'firstName' => 'Original']);
-    $guardian = User::factory()->create();
+    $guardian = User::factory()->adult()->create();
     Guardianship::query()->create(['guardian_id' => $guardian->id, 'ward_id' => $minor->id]);
 
     $response = $this->actingAs($admin)->postJson(route('admin.users.update', ['userId' => $minor->id]), [

@@ -67,7 +67,7 @@ class GetGroupTherapyPaymentRosterAction extends Action
             // member's INDEPENDENT per-member opt-in (`group_therapy_user.anonymous`, the same
             // pivot flag MessageResource/RequestResource already mask identity for, from
             // everyone including the counsellor) is a separate signal this roster must still
-            // respect -- deliberately NOT GroupTherapy::isAnonymousFor(), which ORs in the
+            // respect -- deliberately NOT GroupTherapy::hidesIdentityOf(), which ORs in the
             // group-level flag too and would incorrectly mask everyone on an anonymous group.
             $isMemberAnonymous = (bool) ($member->pivot->anonymous ?? false);
 

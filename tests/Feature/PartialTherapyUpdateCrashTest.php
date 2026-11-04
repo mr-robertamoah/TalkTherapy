@@ -15,7 +15,7 @@ use App\Models\User;
 // widening the DTO property types, not new skip logic.
 
 test('a minimal partial therapy update (just name) does not crash', function () {
-    $owner = User::factory()->create();
+    $owner = User::factory()->adult()->create();
     $therapy = Therapy::factory()->create([
         'addedby_type' => User::class,
         'addedby_id' => $owner->id,
@@ -31,7 +31,7 @@ test('a minimal partial therapy update (just name) does not crash', function () 
 });
 
 test('a minimal partial group therapy update (just name) does not crash', function () {
-    $owner = User::factory()->create();
+    $owner = User::factory()->adult()->create();
     $groupTherapy = GroupTherapy::factory()->create([
         'addedby_type' => User::class,
         'addedby_id' => $owner->id,

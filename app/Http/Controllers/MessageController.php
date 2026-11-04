@@ -16,7 +16,6 @@ use App\Models\Session;
 use App\Models\TherapyTopic;
 use App\Services\MessageService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Redirect;
 use Throwable;
 
 class MessageController extends Controller
@@ -104,7 +103,7 @@ class MessageController extends Controller
                 ])
             );
 
-            return $this->returnSuccess($request, $message);
+            return $this->successResponse($request, ['message' => new MessageResource($message)]);
         } catch (Throwable $th) {
 
             return $this->returnFailure($request, $th);
@@ -134,7 +133,7 @@ class MessageController extends Controller
                 ])
             );
 
-            return $this->returnSuccess($request, $message);
+            return $this->successResponse($request, ['message' => new MessageResource($message)]);
         } catch (Throwable $th) {
 
             return $this->returnFailure($request, $th);
@@ -151,7 +150,7 @@ class MessageController extends Controller
                 ])
             );
 
-            return $this->returnSuccess($request, $message);
+            return $this->successResponse($request, ['message' => new MessageResource($message)]);
         } catch (Throwable $th) {
 
             return $this->returnFailure($request, $th);
@@ -168,21 +167,10 @@ class MessageController extends Controller
                 ])
             );
 
-            return $this->returnSuccess($request, $message);
+            return $this->successResponse($request, ['message' => new MessageResource($message)]);
         } catch (Throwable $th) {
 
             return $this->returnFailure($request, $th);
         }
-    }
-
-    private function returnSuccess(Request $request, Message $message)
-    {
-        $message = new MessageResource($message);
-
-        if ($request->wantsJsonResponse()) {
-            return response()->json(['message' => $message]);
-        }
-
-        return Redirect::back()->with(['message' => $message]);
     }
 }

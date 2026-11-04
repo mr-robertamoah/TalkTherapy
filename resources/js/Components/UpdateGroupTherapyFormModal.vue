@@ -104,16 +104,18 @@ watch(
             therapyForm.maxSessions = props.therapy.maxSessions
             therapyForm.maxUsers = props.therapy.maxUsers
             therapyForm.maxCounsellors = props.therapy.maxCounsellors
-            therapyForm.allowAnyone = props.therapy.allowAnyone
-            therapyForm.public = props.therapy.public
-            therapyForm.allowInPerson = props.therapy.allowInPerson
-            therapyForm.anonymous = props.therapy.anonymous
+            therapyForm.allowAnyone = !!props.therapy.allowAnyone
+            therapyForm.public = !!props.therapy.public
+            therapyForm.allowInPerson = !!props.therapy.allowInPerson
+            therapyForm.anonymous = !!props.therapy.anonymous
+            // SCRUM-380: booleans the resource may leave out arrive as undefined, which the Checkbox's
+            // `checked` prop rejects (a Vue warning) -- coerced above.
             if (props.therapy.paymentData) {
                 therapyForm.inPersonAmount = props.therapy.paymentData['inPersonAmount']
                 therapyForm.amount = props.therapy.paymentData['amount']
                 therapyForm.currency = props.therapy.paymentData['currency']
                 therapyForm.per = props.therapy.paymentData['per']
-                therapyForm.shareEqually = props.therapy.paymentData['shareEqually']
+                therapyForm.shareEqually = !!props.therapy.paymentData['shareEqually']
                 therapyForm.sharePercentage = props.therapy.paymentData['sharePercentage']
             }
             therapyForm.cases = [...props.therapy.cases.map((c) => c.id)]

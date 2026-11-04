@@ -3,8 +3,9 @@
 namespace App\Actions\Video;
 
 use App\Actions\Action;
+use App\Actions\Guardianship\EnsureMinorHasActiveGuardianAction;
 use App\Actions\Message\EnsureUserCanAccessTherapyContentAction;
-use App\Actions\Suspension\EnsureTherapyCounsellorIsAvailableAction;
+use App\Actions\Therapy\EnsureTherapyCanProceedAction;
 use App\Contracts\VideoProviderInterface;
 use App\Enums\ConstantsEnum;
 use App\Events\VideoSessionStatusChangedEvent;
@@ -32,10 +33,12 @@ class JoinVideoSessionAction extends Action
     // provider's credentials use that key, and both client SDK wrappers read only their own.
     public function execute(Session $session, User $user): array
     {
-        EnsureVideoIsAvailableForSessionAction::new()->execute($session, $user);
+        // SCRUM-359, SCRUM-288: first, so a paused minor is told their therapy is paused (and how it
+        // starts again) rather than that video needs a guardian's consent. Nothing in it depends on
+        // the session being one they may join: it is about the caller and the therapy.
+        EnsureTherapyCanProceedAction::new()->execute($user, $session->for);
 
-        // SCRUM-359
-        EnsureTherapyCounsellorIsAvailableAction::new()->execute($user, $session->for);
+        EnsureVideoIsAvailableForSessionAction::new()->execute($session, $user);
 
         // TT-3.1b/SCRUM-275: the SAME shared strict-payment-gate check message creation already
         // reuses (EnsureCanSendMessageToForAction) -- deliberately not a second, independent
@@ -66,16 +69,18 @@ class JoinVideoSessionAction extends Action
 
     private function join(Session $session, User $user, VideoProviderInterface $provider): array
     {
+        // SCRUM-288: re-read under the join lock. HandleGuardianLossAction removes a minor from the
+        // call under the same lock, so a join can't slip in between a guardian's removal and that.
+        EnsureMinorHasActiveGuardianAction::new()->execute($user, $session->for, fresh: true);
+
         [$videoSession, $participantRow] = $this->currentOrNewVideoSessionAndJoin($session, $user, $provider);
 
-        // SCRUM-331: never an owner in a GroupTherapy call -- a Daily owner's browser can change ANY
-        // participant's permissions client-side, bypassing the server-enforced minor/anonymity
-        // speaking rules (SCRUM-324). Every moderation action (remove, end, grant/revoke) goes
-        // through our server with the API key, so group counsellors lose nothing they use; they
-        // all remain equal peers. Unchanged for 1:1 Therapy (two participants, no such rules).
-        $isOwner = ! $session->for instanceof GroupTherapy
-            && (bool) ($user->counsellor && $session->for->isCounsellor($user->counsellor));
-
+        // SCRUM-331/380: no one is ever a provider-side owner -- a Daily owner's browser can change
+        // ANY participant's permissions client-side (bypassing the server-enforced minor/anonymity
+        // speaking rules, SCRUM-324), and Daily's token permissions don't bind an owner (live
+        // streaming, transcription). SCRUM-331 ended it for groups; the user decided the same for
+        // the 1:1 counsellor (SCRUM-380). Every moderation action (remove, end, grant/revoke) goes
+        // through our server with the API key, and the call UI uses no owner powers.
         $receiveOnly = $this->isReceiveOnly($session, $user);
         // SCRUM-332/379: the camera rule lives on the therapy (GroupTherapy::allowsCameraFor()).
         $withholdsCamera = ! $session->for->allowsCameraFor($user);
@@ -89,7 +94,6 @@ class JoinVideoSessionAction extends Action
                 $videoSession,
                 $user,
                 $session->for->displayNameOf($user),
-                isOwner: $isOwner,
                 receiveOnly: $receiveOnly,
                 canSendVideo: ! $withholdsCamera,
             );
@@ -168,10 +172,9 @@ class JoinVideoSessionAction extends Action
     // TT-3.2f-d/SCRUM-321: an ordinary GroupTherapy member (not a counsellor, not the creator) is
     // admitted to video but only ever receive-only -- EnsureVideoIsAvailableForSessionAction's own
     // allow-list no longer excludes them entirely, so this is where the distinction actually gets
-    // decided, mirroring how $isOwner above is already computed independently of that action
-    // rather than returned from it. Always false for 1:1 Therapy (no receive-only concept there)
-    // and false for a GroupTherapy's own counsellor/creator (full access, unchanged from TT-3.2's
-    // own v1 shape).
+    // decided, computed independently of that action rather than returned from it. Always false
+    // for 1:1 Therapy (no receive-only concept there) and false for a GroupTherapy's own
+    // counsellor/creator (full access, unchanged from TT-3.2's own v1 shape).
     private function isReceiveOnly(Session $session, User $user): bool
     {
         if (! $session->for instanceof GroupTherapy) {

@@ -27,7 +27,7 @@ class PostController extends Controller
                 ])
             );
 
-            return $this->returnSuccess($request, $post);
+            return $this->successResponse($request, ['post' => new PostResource($post)]);
         } catch (Throwable $th) {
 
             return $this->returnFailure($request, $th);
@@ -50,7 +50,7 @@ class PostController extends Controller
                 ])
             );
 
-            return $this->returnSuccess($request, $post);
+            return $this->successResponse($request, ['post' => new PostResource($post)]);
         } catch (Throwable $th) {
 
             return $this->returnFailure($request, $th);
@@ -68,7 +68,7 @@ class PostController extends Controller
                 ])
             );
 
-            return $this->returnSuccess($request, $post);
+            return $this->successResponse($request, ['post' => new PostResource($post)]);
         } catch (Throwable $th) {
 
             return $this->returnFailure($request, $th);
@@ -105,16 +105,5 @@ class PostController extends Controller
 
             return $this->returnFailure($request, $th);
         }
-    }
-
-    private function returnSuccess(Request $request, Post $post)
-    {
-        $post = new PostResource($post);
-
-        if ($request->wantsJsonResponse()) {
-            return response()->json(['post' => $post]);
-        }
-
-        return Redirect::back()->with(['post' => $post]);
     }
 }

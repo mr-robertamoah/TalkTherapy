@@ -3,6 +3,7 @@
 namespace App\Actions\Request;
 
 use App\Actions\Action;
+use App\Actions\Guardianship\HandleGuardianRestoredAction;
 use App\Actions\User\EnsureUserCanBeGuardianAction;
 use App\DTOs\CreateRequestDTO;
 use App\DTOs\RequestResponseDTO;
@@ -85,21 +86,25 @@ class RespondToGuardianshipRequestAction extends Action
 
     private function createGuardianshipIfMissing(Request $request): bool
     {
-        if ($request->from->guardians()->where('guardian_id', $request->to->id)->exists()) {
-            return false;
-        }
-
+        // SCRUM-288: under the ward's lock, with locking reads (HandleGuardianRestoredAction::around()),
+        // so a paused ward is told once that their therapies have started again.
         try {
-            // TT-4.10a/SCRUM-290: captured once, here, from the ward's OWN live isAdult() at
-            // this exact moment -- the one place this snapshot is ever written for a
-            // Guardianship row. See the column's own migration for why this must be stable
-            // regardless of a later dob edit.
-            $request->from->guardians()->create([
-                'guardian_id' => $request->to->id,
-                'ward_was_minor_at_creation' => ! $request->from->isAdult(),
-            ]);
+            return HandleGuardianRestoredAction::new()->around($request->from, HandleGuardianRestoredAction::GUARDIANSHIP_CREATED, function () use ($request) {
+                if ($request->from->guardians()->where('guardian_id', $request->to->id)->sharedLock()->first(['id'])) {
+                    return false;
+                }
 
-            return true;
+                // TT-4.10a/SCRUM-290: captured once, here, from the ward's OWN live isAdult() at
+                // this exact moment -- the snapshot written for a Guardianship row (also by
+                // PerformGuardianshipLinkAction). See the column's own migration for why this must
+                // be stable regardless of a later dob edit.
+                $request->from->guardians()->create([
+                    'guardian_id' => $request->to->id,
+                    'ward_was_minor_at_creation' => ! $request->from->isAdult(),
+                ]);
+
+                return true;
+            });
         } catch (UniqueConstraintViolationException) {
             return false;
         }

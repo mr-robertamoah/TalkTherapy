@@ -3,11 +3,14 @@
 namespace App\Actions\Request;
 
 use App\Actions\Action;
+use App\Actions\Guardianship\EnsureMinorHasActiveGuardianAction;
 use App\Actions\User\AlertGuardianAction;
 use App\DTOs\GuardianAlertDTO;
 use App\DTOs\RequestResponseDTO;
 use App\Enums\RequestStatusEnum;
+use App\Exceptions\GuardianRequiredException;
 use App\Models\GroupTherapy;
+use App\Models\User;
 use App\Notifications\GroupTherapyMembershipRequestAcceptedGuardianNotification;
 use App\Notifications\GroupTherapyMembershipRequestAcceptedNotification;
 use App\Notifications\GroupTherapyMembershipRequestRejectedNotification;
@@ -19,6 +22,7 @@ class RespondToGroupTherapyMembershipRequestAction extends Action
     public function execute(RequestResponseDTO $requestResponseDTO)
     {
         $request = $requestResponseDTO->request;
+        $responder = $requestResponseDTO->user;
 
         $response = is_null($requestResponseDTO->response)
             ? RequestStatusEnum::rejected->value
@@ -34,7 +38,7 @@ class RespondToGroupTherapyMembershipRequestAction extends Action
         // Notifications are deliberately fired AFTER the transaction commits, not inside it --
         // sending them mid-transaction risks notifying about a change that then rolls back, and
         // needlessly extends how long the row lock is held.
-        [$request, $groupTherapy, $outcome] = DB::transaction(function () use ($request, $response) {
+        [$request, $groupTherapy, $outcome] = DB::transaction(function () use ($request, $response, $responder) {
             $groupTherapy = GroupTherapy::query()->lockForUpdate()->findOrFail($request->for_id);
             $request = $request->fresh();
 
@@ -51,6 +55,17 @@ class RespondToGroupTherapyMembershipRequestAction extends Action
                 ]);
 
                 return [$request->refresh(), $groupTherapy, 'rejected'];
+            }
+
+            // SCRUM-288: re-read under the lock -- the requester may have lost their last guardian
+            // since asking. Told neutrally: the group's counsellors aren't told why (the requester is
+            // not their client). The responder (a group's creator can be a minor) is checked too.
+            if ($response == RequestStatusEnum::accepted->value) {
+                if ($request->from instanceof User && $request->from->isPausedForMissingGuardian(fresh: true)) {
+                    throw GuardianRequiredException::requestUnavailable();
+                }
+
+                EnsureMinorHasActiveGuardianAction::new()->execute($responder, $groupTherapy, counterparty: false);
             }
 
             $request->update(['status' => $response]);

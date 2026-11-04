@@ -76,7 +76,7 @@ class SessionController extends Controller
                 ])
             );
 
-            return $this->returnSuccess($request, $session);
+            return $this->successResponse($request, ['session' => new SessionResource($session)]);
         } catch (Throwable $th) {
 
             return $this->returnFailure($request, $th);
@@ -112,7 +112,7 @@ class SessionController extends Controller
                 ])
             );
 
-            return $this->returnSuccess($request, $session);
+            return $this->successResponse($request, ['session' => new SessionResource($session)]);
         } catch (Throwable $th) {
 
             return $this->returnFailure($request, $th);
@@ -132,7 +132,7 @@ class SessionController extends Controller
                 ])
             );
 
-            return $this->returnSuccess($request, $session);
+            return $this->successResponse($request, ['session' => new SessionResource($session)]);
         } catch (Throwable $th) {
 
             return $this->returnFailure($request, $th);
@@ -173,7 +173,7 @@ class SessionController extends Controller
                 ])
             );
 
-            return $this->returnSuccess($request, $session);
+            return $this->successResponse($request, ['session' => new SessionResource($session)]);
         } catch (Throwable $th) {
 
             return $this->returnFailure($request, $th);
@@ -193,7 +193,7 @@ class SessionController extends Controller
                 ])
             );
 
-            return $this->returnSuccess($request, $session);
+            return $this->successResponse($request, ['session' => new SessionResource($session)]);
         } catch (Throwable $th) {
 
             return $this->returnFailure($request, $th);
@@ -213,7 +213,7 @@ class SessionController extends Controller
                 ])
             );
 
-            return $this->returnSuccess($request, $session);
+            return $this->successResponse($request, ['session' => new SessionResource($session)]);
         } catch (Throwable $th) {
 
             return $this->returnFailure($request, $th);
@@ -233,7 +233,7 @@ class SessionController extends Controller
                 ])
             );
 
-            return $this->returnSuccess($request, $session);
+            return $this->successResponse($request, ['session' => new SessionResource($session)]);
         } catch (Throwable $th) {
 
             return $this->returnFailure($request, $th);
@@ -253,7 +253,7 @@ class SessionController extends Controller
                 ])
             );
 
-            return $this->returnSuccess($request, $session);
+            return $this->successResponse($request, ['session' => new SessionResource($session)]);
         } catch (Throwable $th) {
 
             return $this->returnFailure($request, $th);
@@ -273,7 +273,7 @@ class SessionController extends Controller
                 ])
             );
 
-            return $this->returnSuccess($request, $session);
+            return $this->successResponse($request, ['session' => new SessionResource($session)]);
         } catch (Throwable $th) {
 
             return $this->returnFailure($request, $th);
@@ -285,16 +285,5 @@ class SessionController extends Controller
         return $request->route('groupTherapyId')
             ? GroupTherapy::find($request->route('groupTherapyId'))
             : Therapy::find($request->route('therapyId'));
-    }
-
-    private function returnSuccess(Request $request, Session $session)
-    {
-        $session = new SessionResource($session);
-
-        if ($request->wantsJsonResponse()) {
-            return response()->json(['session' => $session]);
-        }
-
-        return Redirect::back()->with(['session' => $session]);
     }
 }

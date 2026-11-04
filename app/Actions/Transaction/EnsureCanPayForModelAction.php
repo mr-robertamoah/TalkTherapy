@@ -3,6 +3,7 @@
 namespace App\Actions\Transaction;
 
 use App\Actions\Action;
+use App\Actions\Guardianship\EnsureMinorHasActiveGuardianAction;
 use App\DTOs\TransactionDTO;
 use App\Exceptions\TransactionException;
 use App\Models\GroupTherapy;
@@ -41,5 +42,8 @@ class EnsureCanPayForModelAction extends Action
         if (! $for->isParticipant($dto->user) || $isCounsellorForThis) {
             throw new TransactionException('You are not authorized to pay for this.', 403);
         }
+
+        // SCRUM-288: no new payment while the payer's therapy is paused for a missing guardian.
+        EnsureMinorHasActiveGuardianAction::new()->execute($dto->user, $for, counterparty: false);
     }
 }

@@ -3,7 +3,7 @@
 namespace App\Services;
 
 use App\Actions\Star\CreateStarAction;
-use App\Actions\Suspension\EnsureTherapyCounsellorIsAvailableAction;
+use App\Actions\Therapy\EnsureTherapyCanProceedAction;
 use App\Actions\Therapy\EnsureTherapyExistsAction;
 use App\Actions\TherapyTopic\CreateTherapyTopicAction;
 use App\Actions\TherapyTopic\DeleteTherapyTopicAction;
@@ -60,7 +60,7 @@ class TherapyTopicService extends Service
         EnsureCanCreateTherapyTopicAction::new()->execute($createTherapyTopicDTO);
 
         // SCRUM-363: a suspended counsellor can read topics but not change them.
-        EnsureTherapyCounsellorIsAvailableAction::new()->execute($createTherapyTopicDTO->user, $createTherapyTopicDTO->therapy, includeTarget: false);
+        EnsureTherapyCanProceedAction::new()->execute($createTherapyTopicDTO->user, $createTherapyTopicDTO->therapy, includeTarget: false);
 
         EnsureDataIsValidAction::new()->execute($createTherapyTopicDTO);
 
@@ -106,7 +106,7 @@ class TherapyTopicService extends Service
     {
         $therapy = $dto->therapyTopic?->topicable;
 
-        EnsureTherapyCounsellorIsAvailableAction::new()->execute(
+        EnsureTherapyCanProceedAction::new()->execute(
             $dto->user,
             $therapy instanceof Therapy || $therapy instanceof GroupTherapy ? $therapy : null,
             includeTarget: false,

@@ -31,6 +31,8 @@ use App\Models\User;
 // rule.
 class EnsureVideoIsAvailableForSessionAction extends Action
 {
+    public const NOT_ALLOWED_TO_JOIN = 'You are not allowed to join this session.';
+
     public function execute(Session $session, User $user): void
     {
         // TT-3.1b/SCRUM-275 security-review finding: this check now runs FIRST, not last. This
@@ -42,7 +44,7 @@ class EnsureVideoIsAvailableForSessionAction extends Action
         // Checking participation first means a non-participant always gets the exact same
         // generic denial, regardless of what the session actually is.
         if ($session->isNotParticipant($user)) {
-            throw new VideoException('You are not allowed to join this session.', 422);
+            throw new VideoException(self::NOT_ALLOWED_TO_JOIN, 422);
         }
 
         if ($session->for instanceof GroupTherapy) {
@@ -85,7 +87,11 @@ class EnsureVideoIsAvailableForSessionAction extends Action
         // Therapy only" scope for TT-3.1 means the only other participant is the counsellor), so
         // this now prefers the therapy's stable client_was_minor_at_creation snapshot over a live
         // re-check, closing the exact self-editable-dob bypass SCRUM-287 found.
-        if (! $isCounsellor && $session->for->clientIsMinor() && ! HasValidVideoConsentForSessionAction::new()->execute($session)) {
+        //
+        // SCRUM-288 (the user's decision, Q6): once the client turns 18 the consent requirement
+        // drops -- the snapshot says they were a minor, and the live dob must still say they are.
+        // Safe because a dob change across 18 needs approval (SCRUM-292).
+        if (! $isCounsellor && $session->for->clientIsMinor() && ! $user->isAdult() && ! HasValidVideoConsentForSessionAction::new()->execute($session)) {
             // TT-3.1e-f/SCRUM-285: a dedicated exception type, not plain VideoException -- lets
             // VideoSessionController surface a specific videoConsentRequired flag to the frontend
             // rather than the client having to string-match this message.

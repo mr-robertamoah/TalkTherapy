@@ -32,18 +32,17 @@ interface VideoProviderInterface
     // individual Therapy's client must never have their real name handed to a third-party
     // provider (security-review finding, 2026-09-11) -- this interface deliberately stays
     // ignorant of Therapy's own anonymity rules, receiving only the name it should actually use.
-    // $isOwner affects provider-side capabilities where the provider distinguishes a
-    // "host"/"owner" role (Daily's is_owner; Chime has no equivalent concept at the attendee
-    // level, ignored there).
+    // SCRUM-380: no participant is ever a provider-side owner/host (SCRUM-331 ended it for groups,
+    // the user decided the same for 1:1). A Daily owner's permissions aren't limited by the token,
+    // and every moderation action (end, remove, grant/revoke) goes through our server instead.
     //
     // TT-3.2f-d/SCRUM-321: $receiveOnly mints a participant who can watch/listen but never
     // publish their own audio/video -- SERVER-enforced by the provider itself (Daily's
     // `permissions.canSend`, Chime's attendee `Capabilities`), never a client-side-only
     // restriction the browser could bypass. Resolved by the caller (JoinVideoSessionAction's own
-    // isReceiveOnly()), same reasoning as $isOwner/$displayName above -- this interface stays
+    // isReceiveOnly()), same reasoning as $displayName above -- this interface stays
     // ignorant of GroupTherapy's own authorization rules, receiving only the capability it should
-    // actually mint. Mutually exclusive with $isOwner in practice (an owner is never receive-only)
-    // but not asserted as such here -- that invariant belongs to the caller, not this contract.
+    // actually mint.
     //
     // SCRUM-332: $canSendVideo = false mints a participant who may publish AUDIO but never video
     // (server-enforced the same way as $receiveOnly) -- the creator of an anonymous GroupTherapy.
@@ -51,7 +50,7 @@ interface VideoProviderInterface
     //
     // Returns a provider-specific, JSON-serializable array handed straight through to the
     // frontend's provider SDK -- never inspected or reshaped by callers of this interface.
-    public function createParticipantCredentials(VideoSession $videoSession, User $user, string $displayName, bool $isOwner = false, bool $receiveOnly = false, bool $canSendVideo = true): array;
+    public function createParticipantCredentials(VideoSession $videoSession, User $user, string $displayName, bool $receiveOnly = false, bool $canSendVideo = true): array;
 
     // Ends/tears down the room with the provider. Best-effort: providers also expire rooms
     // naturally (Daily via `exp`, Chime meetings end when empty), so a failure here should never

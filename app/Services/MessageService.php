@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Actions\Admin\RecordAdminContentReadAction;
+use App\Actions\Guardianship\EnsureMinorHasActiveGuardianAction;
 use App\Actions\Message\CreateMessageAction;
 use App\Actions\Message\DeleteMessageAction;
 use App\Actions\Message\DeleteMessageForMeAction;
@@ -20,6 +21,7 @@ use App\Actions\Message\ResolveTherapyMessageRecipientAction;
 use App\Actions\Message\UpdateMessageAction;
 use App\Actions\Suspension\EnsureCanActAsCounsellorAction;
 use App\Actions\Suspension\EnsureTherapyCounsellorIsAvailableAction;
+use App\Actions\Therapy\EnsureTherapyCanProceedAction;
 use App\DTOs\CreateMessageDTO;
 use App\DTOs\GetDiscussionMessagesDTO;
 use App\DTOs\GetSessionMessagesDTO;
@@ -205,7 +207,7 @@ class MessageService extends Service
             // (TherapyTopicController::createTherapyTopic() resolves via Therapy::find()) ever
             // creates one for a GroupTherapy, so `for.for` is a Therapy in practice today --
             // if that ever changes, this eager-load also needs GroupTherapy's `users` pivot
-            // (see Session::isAnonymousFor()) to avoid reintroducing this same N+1.
+            // (see Session::hidesIdentityOf()) to avoid reintroducing this same N+1.
             ->with(['for.for', 'from', 'to', 'files', 'replying'])
             ->when($user->counsellor, function ($query) use ($user) {
                 $query->with(['notes' => fn ($q) => $q->where('counsellor_id', $user->counsellor->id)]);
@@ -322,9 +324,13 @@ class MessageService extends Service
         // SCRUM-359: a suspended counsellor can read their conversations but not write in them --
         // judged by the role they hold in the conversation, not the identity they send as (which
         // the client picks).
-        $this->ensureNotWritingAsSuspendedCounsellor($createMessageDTO->user, $createMessageDTO->for);
+        $this->ensureCanWriteIn($createMessageDTO->user, $createMessageDTO->for, guardian: false);
 
         EnsureCanSendMessageToForAction::new()->execute($createMessageDTO);
+
+        // SCRUM-288: nor can anyone in a therapy paused for a missing guardian -- checked after
+        // participation (security review), so it can't tell an outsider anything about a session.
+        $this->ensureCanWriteIn($createMessageDTO->user, $createMessageDTO->for, suspension: false);
 
         ResolveTherapyMessageRecipientAction::new()->execute($createMessageDTO);
 
@@ -352,7 +358,7 @@ class MessageService extends Service
 
         EnsureCanUpdateMessageAction::new()->execute($createMessageDTO);
 
-        $this->ensureNotWritingAsSuspendedCounsellor($createMessageDTO->user, $createMessageDTO->message?->for);
+        $this->ensureCanWriteIn($createMessageDTO->user, $createMessageDTO->message?->for);
 
         EnsureMessageDataIsValidAction::new()->execute($createMessageDTO, true);
 
@@ -397,14 +403,24 @@ class MessageService extends Service
         return $message;
     }
 
-    private function ensureNotWritingAsSuspendedCounsellor(?User $user, mixed $for): void
+    // The two halves of EnsureTherapyCanProceedAction, which createMessage() runs either side of
+    // the participation check; updateMessage() runs both at once.
+    private function ensureCanWriteIn(?User $user, mixed $for, bool $suspension = true, bool $guardian = true): void
     {
-        if ($for instanceof Discussion) {
+        if ($for instanceof Discussion && $suspension) {
             EnsureCanActAsCounsellorAction::new()->execute($user?->counsellor);
         }
 
-        if ($for instanceof Session) {
+        if (! $for instanceof Session) {
+            return;
+        }
+
+        if ($suspension && $guardian) {
+            EnsureTherapyCanProceedAction::new()->execute($user, $for->for, includeTarget: false);
+        } elseif ($suspension) {
             EnsureTherapyCounsellorIsAvailableAction::new()->execute($user, $for->for, includeTarget: false);
+        } elseif ($guardian) {
+            EnsureMinorHasActiveGuardianAction::new()->execute($user, $for->for);
         }
     }
 }

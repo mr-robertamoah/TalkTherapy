@@ -45,9 +45,9 @@ class DailyVideoProvider implements VideoProviderInterface
                 // The call UI offers no screen sharing, and a shared screen in a therapy call could
                 // expose anything on it. Can't be changed once a session starts.
                 'enable_screenshare' => false,
-                // No lobby: a private room's "knock" lets someone WITHOUT one of our tokens ask a
-                // meeting owner (a 1:1 counsellor) to admit them, bypassing every check
-                // JoinVideoSessionAction makes. Our tokens are the only way in.
+                // No lobby: a private room's "knock" lets someone WITHOUT one of our tokens ask to be
+                // admitted, bypassing every check JoinVideoSessionAction makes. Our tokens are the
+                // only way in (and, since SCRUM-380, no one in the room is an owner who could admit).
                 'enable_knocking' => false,
                 // SCRUM-379: no phone calls out of a therapy room. A documented room boolean (default
                 // false), set explicitly like the rest. SIP and phone dial-in have no "off" value: a
@@ -63,7 +63,7 @@ class DailyVideoProvider implements VideoProviderInterface
         ];
     }
 
-    public function createParticipantCredentials(VideoSession $videoSession, User $user, string $displayName, bool $isOwner = false, bool $receiveOnly = false, bool $canSendVideo = true): array
+    public function createParticipantCredentials(VideoSession $videoSession, User $user, string $displayName, bool $receiveOnly = false, bool $canSendVideo = true): array
     {
         $properties = [
             'room_name' => $videoSession->provider_room_id,
@@ -78,7 +78,10 @@ class DailyVideoProvider implements VideoProviderInterface
             // (https://docs.daily.co/reference/daily-js/types/daily-participant), which is why the
             // call UI keys its server-resolved names on it.
             'user_id' => $videoSession->participantKeyFor($user->id),
-            'is_owner' => $isOwner,
+            // SCRUM-380: never an owner, 1:1 included (SCRUM-331 ended it for groups). Daily applies
+            // `permissions` below only to non-owners, and an owner could start a live stream or
+            // transcription. Stated rather than left to Daily's default (false).
+            'is_owner' => false,
             'exp' => $this->expiresAt($videoSession)->getTimestamp(),
             // Security review: and removes this participant when their token expires, rather than
             // letting an already-joined browser stay on past it (`eject_at_token_exp`).
@@ -96,24 +99,17 @@ class DailyVideoProvider implements VideoProviderInterface
         // SCRUM-332: also audio-only ($canSendVideo false) -- same canSendValueFor() shape
         // updateParticipantCapabilities() uses, so the two can't drift. $receiveOnly wins.
         //
-        // SCRUM-379: every non-owner token now names exactly what it may send (never `true`, which
-        // also allows screen and custom tracks) and grants no admin rights (`canAdmin: false`: no
-        // changing others' permissions, no live streaming, no transcription). A token's permissions
-        // outrank the room's and the domain's, so neither can widen them.
+        // SCRUM-379: every token names exactly what it may send (never `true`, which also allows
+        // screen and custom tracks) and grants no admin rights (`canAdmin: false`: no changing
+        // others' permissions, no live streaming, no transcription). A token's permissions outrank
+        // the room's and the domain's, so neither can widen them. SCRUM-380: since no one is an
+        // owner, this now covers the 1:1 counsellor too.
         // https://docs.daily.co/reference/rest-api/meeting-tokens/create-meeting-token,
         // https://docs.daily.co/reference/daily-js/types/daily-participant-permissions
-        //
-        // Not on an owner's token (the 1:1 counsellor): Daily documents `permissions` as applying to
-        // non-owners only, and an owner can still start a live stream or transcription on a paid
-        // plan. The room's enable_screenshare (and this token's) is what keeps an owner's screen out;
-        // recording stays off because nothing enables it. Making the 1:1 counsellor a non-owner, as
-        // SCRUM-331 did for groups, is a product decision left open.
-        if (! $isOwner) {
-            $properties['permissions'] = [
-                'canSend' => $this->canSendValueFor(! $receiveOnly, ! $receiveOnly && $canSendVideo),
-                'canAdmin' => false,
-            ];
-        }
+        $properties['permissions'] = [
+            'canSend' => $this->canSendValueFor(! $receiveOnly, ! $receiveOnly && $canSendVideo),
+            'canAdmin' => false,
+        ];
 
         $token = $this->client->createMeetingToken($properties);
 
@@ -149,7 +145,7 @@ class DailyVideoProvider implements VideoProviderInterface
 
         $this->client->updateRoomPermissions($videoSession->provider_room_id, [
             // SCRUM-379 (security review): canAdmin restated, so a live update can never leave admin
-            // rights to Daily's merge behaviour. Only ever called for group members (non-owners).
+            // rights to Daily's merge behaviour. Only ever called for group members.
             $videoSession->participantKeyFor($user->id) => ['canSend' => $this->canSendValueFor($canSendAudio, $canSendVideo), 'canAdmin' => false],
         ]);
     }

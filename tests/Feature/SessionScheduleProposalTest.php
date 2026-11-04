@@ -48,7 +48,7 @@ function aValidProposalPayload(): array
 
 test('the client can propose a session schedule for their own therapy', function () {
     $counsellor = aCounsellorForSessionScheduleProposalRoute();
-    $client = User::factory()->create();
+    $client = User::factory()->adult()->create();
     $therapy = aTherapyForSessionScheduleProposalRoute($counsellor, $client);
 
     $response = $this->actingAs($client)
@@ -69,7 +69,7 @@ test('the client can propose a session schedule for their own therapy', function
 
 test('the assigned counsellor can also propose a session schedule', function () {
     $counsellor = aCounsellorForSessionScheduleProposalRoute();
-    $client = User::factory()->create();
+    $client = User::factory()->adult()->create();
     $therapy = aTherapyForSessionScheduleProposalRoute($counsellor, $client);
 
     $response = $this->actingAs($counsellor->user)
@@ -87,9 +87,9 @@ test('the assigned counsellor can also propose a session schedule', function () 
 
 test('a non-participant cannot propose a session schedule', function () {
     $counsellor = aCounsellorForSessionScheduleProposalRoute();
-    $client = User::factory()->create();
+    $client = User::factory()->adult()->create();
     $therapy = aTherapyForSessionScheduleProposalRoute($counsellor, $client, ['name' => 'Private Anonymous Therapy']);
-    $outsider = User::factory()->create();
+    $outsider = User::factory()->adult()->create();
 
     $response = $this->actingAs($outsider)
         ->postJson(route('api.session_schedule_proposals.store', ['therapyId' => $therapy->id]), aValidProposalPayload());
@@ -106,7 +106,7 @@ test('a session schedule cannot be proposed for a therapy with no assigned couns
     // security review (SCRUM-206): without this check, `to` would resolve to null and
     // EnsureNoPendingSessionScheduleProposalAction would then permanently block any future
     // legitimate proposal for this therapy.
-    $client = User::factory()->create();
+    $client = User::factory()->adult()->create();
     $therapy = Therapy::factory()->create([
         'addedby_type' => User::class,
         'addedby_id' => $client->id,
@@ -125,7 +125,7 @@ test('a proposal for a free therapy defaults type/paymentType when omitted', fun
     // sessions.type/payment_type are both NOT NULL -- omitting them here must not persist an
     // empty/invalid value that would later crash accept-time session creation (SCRUM-208).
     $counsellor = aCounsellorForSessionScheduleProposalRoute();
-    $client = User::factory()->create();
+    $client = User::factory()->adult()->create();
     $therapy = aTherapyForSessionScheduleProposalRoute($counsellor, $client);
 
     $this->actingAs($client)
@@ -151,7 +151,7 @@ test('a proposal without a name is rejected', function () {
     // type/paymentType above -- found via a regression test that omitted it while exercising the
     // full propose-then-accept round trip (SCRUM-208).
     $counsellor = aCounsellorForSessionScheduleProposalRoute();
-    $client = User::factory()->create();
+    $client = User::factory()->adult()->create();
     $therapy = aTherapyForSessionScheduleProposalRoute($counsellor, $client);
 
     $this->actingAs($client)
@@ -170,7 +170,7 @@ test('a proposal for a paid therapy requires an explicit paymentType', function 
     // a rule keyed on the therapy's own payment_type would run before participancy is checked and
     // leak whether an arbitrary therapy is PAID via validation-error presence alone.
     $counsellor = aCounsellorForSessionScheduleProposalRoute();
-    $client = User::factory()->create();
+    $client = User::factory()->adult()->create();
     $therapy = aTherapyForSessionScheduleProposalRoute($counsellor, $client, ['payment_type' => 'PAID']);
 
     $response = $this->actingAs($client)
@@ -191,7 +191,7 @@ test('a client cannot propose a FREE session for a PAID therapy', function () {
     // create, which only trusts a counsellor/admin with paymentType) -- a self-interested client
     // must not be able to under-report the therapy's own payment type.
     $counsellor = aCounsellorForSessionScheduleProposalRoute();
-    $client = User::factory()->create();
+    $client = User::factory()->adult()->create();
     $therapy = aTherapyForSessionScheduleProposalRoute($counsellor, $client, ['payment_type' => 'PAID']);
 
     $response = $this->actingAs($client)
@@ -206,7 +206,7 @@ test('a client cannot propose a FREE session for a PAID therapy', function () {
 
 test('a proposal cannot claim PAID for a FREE therapy', function () {
     $counsellor = aCounsellorForSessionScheduleProposalRoute();
-    $client = User::factory()->create();
+    $client = User::factory()->adult()->create();
     $therapy = aTherapyForSessionScheduleProposalRoute($counsellor, $client);
 
     $response = $this->actingAs($client)
@@ -224,9 +224,9 @@ test('a non-participant cannot use the paymentType field to enumerate whether a 
     // must come from the generic participancy check, not a payment-type-specific validation error,
     // regardless of whether the therapy is actually PAID or FREE.
     $counsellor = aCounsellorForSessionScheduleProposalRoute();
-    $client = User::factory()->create();
+    $client = User::factory()->adult()->create();
     $paidTherapy = aTherapyForSessionScheduleProposalRoute($counsellor, $client, ['payment_type' => 'PAID']);
-    $outsider = User::factory()->create();
+    $outsider = User::factory()->adult()->create();
 
     $response = $this->actingAs($outsider)
         ->postJson(route('api.session_schedule_proposals.store', ['therapyId' => $paidTherapy->id]), [
@@ -243,7 +243,7 @@ test('a non-participant cannot use the paymentType field to enumerate whether a 
 
 test('a session schedule cannot be proposed for an ended therapy', function () {
     $counsellor = aCounsellorForSessionScheduleProposalRoute();
-    $client = User::factory()->create();
+    $client = User::factory()->adult()->create();
     $therapy = aTherapyForSessionScheduleProposalRoute($counsellor, $client, ['status' => TherapyStatusEnum::ended->value]);
 
     $this->actingAs($client)
@@ -253,7 +253,7 @@ test('a session schedule cannot be proposed for an ended therapy', function () {
 
 test('a session schedule cannot be proposed while the therapy already has an active session', function () {
     $counsellor = aCounsellorForSessionScheduleProposalRoute();
-    $client = User::factory()->create();
+    $client = User::factory()->adult()->create();
     $therapy = aTherapyForSessionScheduleProposalRoute($counsellor, $client);
     Session::factory()->create([
         'for_id' => $therapy->id,
@@ -270,7 +270,7 @@ test('a session schedule cannot be proposed while the therapy already has an act
 
 test('a proposal with a start time in the past is rejected', function () {
     $counsellor = aCounsellorForSessionScheduleProposalRoute();
-    $client = User::factory()->create();
+    $client = User::factory()->adult()->create();
     $therapy = aTherapyForSessionScheduleProposalRoute($counsellor, $client);
 
     $this->actingAs($client)
@@ -283,7 +283,7 @@ test('a proposal with a start time in the past is rejected', function () {
 
 test('a proposal with less than a 30 minute gap is rejected', function () {
     $counsellor = aCounsellorForSessionScheduleProposalRoute();
-    $client = User::factory()->create();
+    $client = User::factory()->adult()->create();
     $therapy = aTherapyForSessionScheduleProposalRoute($counsellor, $client);
 
     $this->actingAs($client)
@@ -296,7 +296,7 @@ test('a proposal with less than a 30 minute gap is rejected', function () {
 
 test('a second proposal cannot be created while one is already pending for the same therapy', function () {
     $counsellor = aCounsellorForSessionScheduleProposalRoute();
-    $client = User::factory()->create();
+    $client = User::factory()->adult()->create();
     $therapy = aTherapyForSessionScheduleProposalRoute($counsellor, $client);
 
     $this->actingAs($client)
@@ -312,7 +312,7 @@ test('a second proposal cannot be created while one is already pending for the s
 
 test('an unauthenticated request cannot propose a session schedule', function () {
     $counsellor = aCounsellorForSessionScheduleProposalRoute();
-    $client = User::factory()->create();
+    $client = User::factory()->adult()->create();
     $therapy = aTherapyForSessionScheduleProposalRoute($counsellor, $client);
 
     $this->postJson(route('api.session_schedule_proposals.store', ['therapyId' => $therapy->id]), aValidProposalPayload())
@@ -321,7 +321,7 @@ test('an unauthenticated request cannot propose a session schedule', function ()
 
 test('the created proposal resource exposes the therapy, from, and to correctly', function () {
     $counsellor = aCounsellorForSessionScheduleProposalRoute();
-    $client = User::factory()->create();
+    $client = User::factory()->adult()->create();
     $therapy = aTherapyForSessionScheduleProposalRoute($counsellor, $client);
 
     $response = $this->actingAs($client)

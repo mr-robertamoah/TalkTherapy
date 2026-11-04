@@ -25,7 +25,7 @@ function vpdnFakeVideoProvider(): VideoProviderInterface
             return ['room_id' => "fake-room-{$videoSession->id}", 'meta' => []];
         }
 
-        public function createParticipantCredentials(VideoSession $videoSession, User $user, string $displayName, bool $isOwner = false, bool $receiveOnly = false, bool $canSendVideo = true): array
+        public function createParticipantCredentials(VideoSession $videoSession, User $user, string $displayName, bool $receiveOnly = false, bool $canSendVideo = true): array
         {
             return ['token' => 'fake-token'];
         }
@@ -234,8 +234,8 @@ test('the group\'s creator is still named (they belong to the group without a me
         ->assertJson(['displayName' => $data['creator']->name]);
 });
 
-// SCRUM-379: an unknown session answers exactly like every other refusal on this route (the other
-// video routes keep their 422 "Session was not found.").
+// SCRUM-379: an unknown session answers exactly like every other refusal on this route (SCRUM-380
+// did the same for the other video routes -- VideoUnknownSessionTest).
 test('an unknown session gets the same 404 as any other refusal', function () {
     $data = vpdnTherapySession(anonymous: false);
     vpdnJoin($this, $data['client'], $data['session']);

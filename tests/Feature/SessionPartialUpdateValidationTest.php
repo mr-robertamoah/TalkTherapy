@@ -12,9 +12,9 @@ use App\Models\User;
 // prohibited_if 30-minutes-apart comparisons against that fabricated "now" value.
 
 test('partially updating a session without startTime/endTime does not trip the date validation', function () {
-    $counsellorUser = User::factory()->create();
+    $counsellorUser = User::factory()->adult()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
-    $therapyOwner = User::factory()->create();
+    $therapyOwner = User::factory()->adult()->create();
     $therapy = Therapy::factory()->create([
         'addedby_type' => User::class,
         'addedby_id' => $therapyOwner->id,
@@ -41,9 +41,9 @@ test('partially updating a session without startTime/endTime does not trip the d
 });
 
 test('partially updating only startTime still validates it against the session\'s existing endTime', function () {
-    $counsellorUser = User::factory()->create();
+    $counsellorUser = User::factory()->adult()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
-    $therapyOwner = User::factory()->create();
+    $therapyOwner = User::factory()->adult()->create();
     $therapy = Therapy::factory()->create([
         'addedby_type' => User::class,
         'addedby_id' => $therapyOwner->id,
@@ -73,9 +73,9 @@ test('partially updating only startTime still validates it against the session\'
 });
 
 test('a blank startTime/endTime string is treated the same as an omitted field', function () {
-    $counsellorUser = User::factory()->create();
+    $counsellorUser = User::factory()->adult()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
-    $therapyOwner = User::factory()->create();
+    $therapyOwner = User::factory()->adult()->create();
     $therapy = Therapy::factory()->create([
         'addedby_type' => User::class,
         'addedby_id' => $therapyOwner->id,

@@ -20,7 +20,7 @@ use Illuminate\Support\Facades\Http;
 // caught by Playwright QA, not a Pest test. This closes that gap.
 
 test('two different members of the same group therapy can each initiate a charge via the real HTTP route', function () {
-    $counsellorUser = User::factory()->create();
+    $counsellorUser = User::factory()->adult()->create();
     $counsellor = $counsellorUser->counsellor()->create(['email' => fake()->unique()->safeEmail(), 'about' => 'test']);
     $groupTherapy = GroupTherapy::factory()->create([
         'payment_type' => 'PAID',
@@ -28,8 +28,8 @@ test('two different members of the same group therapy can each initiate a charge
         'public' => true,
     ]);
     $groupTherapy->counsellors()->attach($counsellor->id, ['state' => CounsellorGroupTherapyStateEnum::active->value, 'role' => 'NORMAL']);
-    $memberA = User::factory()->create();
-    $memberB = User::factory()->create();
+    $memberA = User::factory()->adult()->create();
+    $memberB = User::factory()->adult()->create();
     $groupTherapy->users()->attach($memberA->id, ['anonymous' => false]);
     $groupTherapy->users()->attach($memberB->id, ['anonymous' => false]);
 
@@ -80,7 +80,7 @@ test('a GroupTherapy id posted to the individual-Therapy route never resolves th
         'payment_type' => 'PAID',
         'payment_data' => ['per' => 'PER_THERAPY', 'amount' => 100, 'currency' => 'GHS'],
     ]);
-    $member = User::factory()->create();
+    $member = User::factory()->adult()->create();
     $groupTherapy->users()->attach($member->id, ['anonymous' => false]);
 
     $response = $this->actingAs($member)

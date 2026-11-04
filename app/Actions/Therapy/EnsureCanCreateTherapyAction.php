@@ -3,20 +3,19 @@
 namespace App\Actions\Therapy;
 
 use App\Actions\Action;
-use App\Exceptions\CannotCreateTherapyException;
+use App\Exceptions\CannotCreateTherapyWithoutGuardianException;
 use App\Models\User;
 
+// Also guards joining a group (JoinGroupTherapyAction). SCRUM-288: only an active guardian counts
+// (see User::activeGuardianships()).
 class EnsureCanCreateTherapyAction extends Action
 {
     public function execute(User $user)
     {
-        if (
-            $user->isAdmin() ||
-            $user->isAdult() ||
-            $user->hasGuardian()
-            // TODO not banned from creating or suspending from the app
-        ) return;
+        if (! $user->isPausedForMissingGuardian()) {
+            return;
+        }
 
-        throw new CannotCreateTherapyException("You are not allowed to create a therapy because you seem to be a minor without a guardian.", 422);
+        throw new CannotCreateTherapyWithoutGuardianException('You are not allowed to create a therapy because you seem to be a minor without a guardian.', 422);
     }
 }

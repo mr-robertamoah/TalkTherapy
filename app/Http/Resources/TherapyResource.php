@@ -104,6 +104,14 @@ class TherapyResource extends JsonResource
             'activeDiscussion' => $activeDiscussion ? new DiscussionResource($activeDiscussion) : null,
             'orgRetainerCoverage' => $this->orgRetainerCoverage($user),
             'videoConsent' => $this->videoConsentData($user),
+            // SCRUM-288: the viewer's own state -- paused for a missing guardian (memoised on the
+            // request's user, so one query at most for a minor and none for an adult).
+            'viewerAccessPaused' => (bool) $user?->isPausedForMissingGuardian(),
+            // Only for this therapy's own counsellor: their client's state (it makes them read-only too).
+            'clientAccessPaused' => $this->when(
+                (bool) ($user?->counsellor && $this->isCounsellor($user->counsellor)),
+                fn () => $this->addedby instanceof User && $this->addedby->isPausedForMissingGuardian(),
+            ),
         ];
     }
 

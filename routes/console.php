@@ -4,6 +4,7 @@ use App\Actions\Alert\BroadcastStartedSessionsAndDiscussionsAction;
 use App\Actions\Counsellor\PurgeExpiredSoftDeletedCounsellorsAction;
 use App\Actions\Discussion\FailUnheldDiscussionsAction;
 use App\Actions\Discussion\NotifyParticipantsOfStartingDiscussionsAction;
+use App\Actions\Guardianship\FindMinorsWithoutActiveGuardianAction;
 use App\Actions\Organization\ExpireStaleCompensationRequestsAction;
 use App\Actions\Organization\SendCompensationRequestExpiryRemindersAction;
 use App\Actions\Organization\SettleDueOrganizationInvoicesAction;
@@ -163,6 +164,31 @@ Artisan::command('payments:audit-paid-therapies', function () {
 
     return 1;
 })->purpose('List paid therapies and group therapies with missing payment settings (amount, currency, per)');
+
+// SCRUM-288 (Q7): who is paused for a missing guardian right now -- minors (and accounts with no
+// date of birth, which count as minors) with no active guardian, by id, with what they have open.
+// Read-only; run before deploying so the user can decide about the no-date-of-birth accounts.
+Artisan::command('guardians:report-unguarded-minors', function () {
+    $found = FindMinorsWithoutActiveGuardianAction::new()->execute();
+    $headers = ['User ID', 'Open therapies', 'Group memberships', 'Upcoming sessions', 'Pending proposals'];
+    $toRows = fn ($rows) => $rows->map(fn (array $row) => [
+        $row['id'], $row['openTherapies'], $row['groupMemberships'], $row['upcomingSessions'], $row['pendingProposals'],
+    ])->all();
+
+    foreach ([
+        FindMinorsWithoutActiveGuardianAction::NO_DOB => 'No date of birth',
+        FindMinorsWithoutActiveGuardianAction::KNOWN_MINOR => 'Known minor (under 18)',
+    ] as $group => $label) {
+        $rows = $found[$group];
+        $this->info("{$label}: {$rows->count()} account(s), {$rows->filter(fn (array $row) => $row['openTherapies'] || $row['groupMemberships'])->count()} with an open therapy or group.");
+
+        if ($rows->isNotEmpty()) {
+            $this->table($headers, $toRows($rows));
+        }
+    }
+
+    return 0;
+})->purpose('List minors (and accounts with no date of birth) whose therapies are paused for a missing guardian. Read-only.');
 
 // SCRUM-338: applies the license document retention policy now, to everything already past its
 // window (the same rules the daily 04:15 sweep uses). --dry-run lists what would go.

@@ -8,7 +8,6 @@ use App\Http\Resources\ContactResource;
 use App\Models\Contact;
 use App\Services\ContactService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Redirect;
 use Throwable;
 
 class ContactController extends Controller
@@ -28,7 +27,7 @@ class ContactController extends Controller
                 ])
             );
 
-            return $this->returnSuccess($request, $contact);
+            return $this->successResponse($request, ['contact' => new ContactResource($contact)]);
         } catch (Throwable $th) {
 
             return $this->returnFailure($request, $th);
@@ -53,7 +52,7 @@ class ContactController extends Controller
                 ])
             );
 
-            return $this->returnSuccess($request, $contact);
+            return $this->successResponse($request, ['contact' => new ContactResource($contact)]);
         } catch (Throwable $th) {
 
             return $this->returnFailure($request, $th);
@@ -71,7 +70,7 @@ class ContactController extends Controller
                 ])
             );
 
-            return $this->returnSuccess($request, $contact);
+            return $this->successResponse($request, ['contact' => new ContactResource($contact)]);
         } catch (Throwable $th) {
 
             return $this->returnFailure($request, $th);
@@ -94,16 +93,5 @@ class ContactController extends Controller
 
             return $this->returnFailure($request, $th);
         }
-    }
-
-    private function returnSuccess(Request $request, Contact $contact)
-    {
-        $contact = new ContactResource($contact);
-
-        if ($request->wantsJsonResponse()) {
-            return response()->json(['contact' => $contact]);
-        }
-
-        return Redirect::back()->with(['contact' => $contact]);
     }
 }

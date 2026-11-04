@@ -3,6 +3,7 @@
 namespace App\Actions\Suspension;
 
 use App\Actions\Action;
+use App\Actions\Guardianship\RemoveGuardianFromWardAction;
 use App\Enums\SuspensionScopeEnum;
 use App\Events\AccountSuspendedEvent;
 use App\Events\SessionUpdatedEvent;
@@ -55,6 +56,12 @@ class ApplySuspensionAction extends Action
             $already = Suspension::query()->where('user_id', $target->id)->active()->covering($scope)->lockForUpdate()->exists();
             if ($already) {
                 throw new SuspensionException('This person is already suspended.', 422);
+            }
+
+            // SCRUM-288 (Q3): a guardian under an account suspension doesn't count -- each ward this
+            // leaves with no active guardian is paused once it commits (and resumed when it ends).
+            if ($scope == SuspensionScopeEnum::account) {
+                RemoveGuardianFromWardAction::new()->forAllWardsOf($target, RemoveGuardianFromWardAction::GUARDIAN_SUSPENDED);
             }
 
             $suspension = Suspension::create([

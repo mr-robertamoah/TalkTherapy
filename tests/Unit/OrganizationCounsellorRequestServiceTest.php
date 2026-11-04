@@ -30,7 +30,7 @@ function verifiedProviderOrganization(array $overrides = []): Organization
 
 function organizationOwner(Organization $organization): User
 {
-    $owner = User::factory()->create();
+    $owner = User::factory()->adult()->create();
     $organization->admins()->attach($owner->id, ['role' => OrganizationAdminRoleEnum::owner->value]);
 
     return $owner;
@@ -57,7 +57,7 @@ test('an org admin can invite a counsellor to a verified provider organization',
 
 test('a non-admin cannot invite a counsellor to an organization', function () {
     $organization = verifiedProviderOrganization();
-    $outsider = User::factory()->create();
+    $outsider = User::factory()->adult()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => User::factory()]);
 
     expect(fn () => OrganizationCounsellorRequestService::new()->inviteCounsellor(
@@ -99,7 +99,7 @@ test('a counsellor cannot be invited to a non-provider organization', function (
 
 test('a counsellor can apply to affiliate with a verified provider organization', function () {
     $organization = verifiedProviderOrganization();
-    $applicantUser = User::factory()->create();
+    $applicantUser = User::factory()->adult()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $applicantUser->id]);
 
     $request = OrganizationCounsellorRequestService::new()->applyAsCounsellor(
@@ -118,7 +118,7 @@ test('a counsellor can apply to affiliate with a verified provider organization'
 
 test('a user cannot apply on behalf of a counsellor profile that is not their own', function () {
     $organization = verifiedProviderOrganization();
-    $someoneElse = User::factory()->create();
+    $someoneElse = User::factory()->adult()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => User::factory()]);
 
     expect(fn () => OrganizationCounsellorRequestService::new()->applyAsCounsellor(
@@ -133,7 +133,7 @@ test('a user cannot apply on behalf of a counsellor profile that is not their ow
 test('a second pending request between the same organization and counsellor is rejected regardless of direction', function () {
     $organization = verifiedProviderOrganization();
     $owner = organizationOwner($organization);
-    $applicantUser = User::factory()->create();
+    $applicantUser = User::factory()->adult()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $applicantUser->id]);
 
     OrganizationCounsellorRequestService::new()->inviteCounsellor(
@@ -156,7 +156,7 @@ test('a second pending request between the same organization and counsellor is r
 test('an org admin can accept a counsellor application addressed to the organization itself', function () {
     $organization = verifiedProviderOrganization();
     $owner = organizationOwner($organization);
-    $applicantUser = User::factory()->create();
+    $applicantUser = User::factory()->adult()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $applicantUser->id]);
 
     $applicationRequest = OrganizationCounsellorRequestService::new()->applyAsCounsellor(
@@ -184,7 +184,7 @@ test('an org admin can accept a counsellor application addressed to the organiza
 test('an org admin cannot respond to a counsellor application that was already accepted', function () {
     $organization = verifiedProviderOrganization();
     $owner = organizationOwner($organization);
-    $applicantUser = User::factory()->create();
+    $applicantUser = User::factory()->adult()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $applicantUser->id]);
 
     $applicationRequest = OrganizationCounsellorRequestService::new()->applyAsCounsellor(
@@ -210,7 +210,7 @@ test('an org admin cannot respond to a counsellor application that was already a
 test('a user who does not administer the organization cannot respond to a counsellor application', function () {
     $organization = verifiedProviderOrganization();
     organizationOwner($organization);
-    $applicantUser = User::factory()->create();
+    $applicantUser = User::factory()->adult()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $applicantUser->id]);
 
     $applicationRequest = OrganizationCounsellorRequestService::new()->applyAsCounsellor(
@@ -221,7 +221,7 @@ test('a user who does not administer the organization cannot respond to a counse
         ])
     );
 
-    $outsider = User::factory()->create();
+    $outsider = User::factory()->adult()->create();
 
     expect(fn () => RequestService::new()->respondToRequest(
         RequestResponseDTO::new()->fromArray([
@@ -235,7 +235,7 @@ test('a user who does not administer the organization cannot respond to a counse
 test('the invited counsellor can accept an organization invite addressed to their counsellor profile', function () {
     $organization = verifiedProviderOrganization();
     $owner = organizationOwner($organization);
-    $counsellorUser = User::factory()->create();
+    $counsellorUser = User::factory()->adult()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
 
     $inviteRequest = OrganizationCounsellorRequestService::new()->inviteCounsellor(
@@ -261,7 +261,7 @@ test('the invited counsellor can accept an organization invite addressed to thei
 // SCRUM-120 review fix: previously threw an uncaught Error (calling isAdministeredBy() on
 // null) instead of a clean, catchable exception.
 test('inviting a counsellor to a non-existent organization returns a clean error, not a crash', function () {
-    $owner = User::factory()->create();
+    $owner = User::factory()->adult()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => User::factory()]);
 
     expect(fn () => OrganizationCounsellorRequestService::new()->inviteCounsellor(
@@ -278,7 +278,7 @@ test('inviting a counsellor to a non-existent organization returns a clean error
 // SCRUM-170 closed on the read-only org endpoints, closed here the same way.
 test('inviting a counsellor to a nonexistent organization and a real one the caller cannot administer fail identically', function () {
     $organization = verifiedProviderOrganization();
-    $outsider = User::factory()->create();
+    $outsider = User::factory()->adult()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => User::factory()]);
 
     $message = 'You are not authorized to invite counsellors to this organization.';
@@ -314,7 +314,7 @@ test('inviting a non-existent counsellor returns a clean error, not a crash', fu
 });
 
 test('applying to a non-existent organization returns a clean error, not a crash', function () {
-    $applicantUser = User::factory()->create();
+    $applicantUser = User::factory()->adult()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $applicantUser->id]);
 
     expect(fn () => OrganizationCounsellorRequestService::new()->applyAsCounsellor(
@@ -337,11 +337,11 @@ test('applying to an unverified, non-provider, or nonexistent organization gives
     $unverified = Organization::factory()->create(['is_provider' => true, 'verified_at' => null]);
     $nonProvider = verifiedProviderOrganization(['is_provider' => false, 'is_consumer' => true]);
 
-    $applicantUserA = User::factory()->create();
+    $applicantUserA = User::factory()->adult()->create();
     $counsellorA = Counsellor::factory()->create(['user_id' => $applicantUserA->id]);
-    $applicantUserB = User::factory()->create();
+    $applicantUserB = User::factory()->adult()->create();
     $counsellorB = Counsellor::factory()->create(['user_id' => $applicantUserB->id]);
-    $applicantUserC = User::factory()->create();
+    $applicantUserC = User::factory()->adult()->create();
     $counsellorC = Counsellor::factory()->create(['user_id' => $applicantUserC->id]);
 
     $messageFor = function (?Organization $organization, User $user, Counsellor $counsellor) {
@@ -372,7 +372,7 @@ test('applying to an unverified, non-provider, or nonexistent organization gives
 test('accepting a counsellor application for an organization that is no longer eligible is rejected', function () {
     $organization = verifiedProviderOrganization();
     $owner = organizationOwner($organization);
-    $applicantUser = User::factory()->create();
+    $applicantUser = User::factory()->adult()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $applicantUser->id]);
 
     $applicationRequest = OrganizationCounsellorRequestService::new()->applyAsCounsellor(
@@ -400,7 +400,7 @@ test('accepting a counsellor application for an organization that is no longer e
 test('rejecting a stale counsellor application still works even if the organization is no longer eligible', function () {
     $organization = verifiedProviderOrganization();
     $owner = organizationOwner($organization);
-    $applicantUser = User::factory()->create();
+    $applicantUser = User::factory()->adult()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $applicantUser->id]);
 
     $applicationRequest = OrganizationCounsellorRequestService::new()->applyAsCounsellor(
@@ -429,8 +429,8 @@ test('rejecting a stale counsellor application still works even if the organizat
 // through the real, full RequestService::respondToRequest() path (not a hand-built Action call)
 // must resolve a correct resource, not silently degrade via AdminCounsellorVerificationRequestResource.
 test('responding to an organization verification request through the real endpoint path resolves a correct resource', function () {
-    $user = User::factory()->create();
-    $superAdminUser = User::factory()->create();
+    $user = User::factory()->adult()->create();
+    $superAdminUser = User::factory()->adult()->create();
     $superAdminUser->administrator()->create(['type' => AdministratorTypeEnum::super->value]);
 
     $organization = OrganizationService::new()->createOrganization(

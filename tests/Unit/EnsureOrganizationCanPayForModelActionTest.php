@@ -43,7 +43,7 @@ function aPaidTherapyForOrgPayer(Counsellor $counsellor, array $overrides = []):
 {
     return Therapy::factory()->create(array_merge([
         'addedby_type' => User::class,
-        'addedby_id' => User::factory(),
+        'addedby_id' => User::factory()->adult(),
         'counsellor_id' => $counsellor->id,
         'session_type' => TherapySessionTypeEnum::once->value,
         'status' => TherapyStatusEnum::in_session->value,
@@ -56,7 +56,7 @@ function aPaidGroupTherapyForOrgPayer(array $overrides = []): GroupTherapy
 {
     return GroupTherapy::factory()->create(array_merge([
         'addedby_type' => User::class,
-        'addedby_id' => User::factory(),
+        'addedby_id' => User::factory()->adult(),
         'session_type' => TherapySessionTypeEnum::once->value,
         'status' => TherapyStatusEnum::in_session->value,
         'payment_type' => TherapyPaymentTypeEnum::paid->value,
@@ -75,8 +75,8 @@ function anEligibleOrgPayerSetup(array $organizationOverrides = [], array $billi
         'verified_at' => now(),
     ], $organizationOverrides));
 
-    $payer = User::factory()->create();
-    $counsellor = Counsellor::factory()->create(['user_id' => User::factory()]);
+    $payer = User::factory()->adult()->create();
+    $counsellor = Counsellor::factory()->create(['user_id' => User::factory()->adult()]);
 
     $member = OrganizationMember::factory()->create([
         'organization_id' => $organization->id,
@@ -102,7 +102,7 @@ function anEligibleOrgPayerSetup(array $organizationOverrides = [], array $billi
 test('personal-pay (no organizationId) is completely unaffected by the org-as-payer gate', function () {
     fakesPaystackForOrgPayer('personal_pay_ref');
 
-    $counsellor = Counsellor::factory()->create(['user_id' => User::factory()]);
+    $counsellor = Counsellor::factory()->create(['user_id' => User::factory()->adult()]);
     $therapy = aPaidTherapyForOrgPayer($counsellor);
 
     $result = TransactionService::new()->initiateCharge(
@@ -192,7 +192,7 @@ test('an org-paid GroupTherapy still charges the member directly, needing no pay
 });
 
 test('an organizationId that does not resolve to a real organization is rejected, not silently charged personally', function () {
-    $counsellor = Counsellor::factory()->create(['user_id' => User::factory()]);
+    $counsellor = Counsellor::factory()->create(['user_id' => User::factory()->adult()]);
     $therapy = aPaidTherapyForOrgPayer($counsellor);
 
     expect(fn () => TransactionService::new()->initiateCharge(
@@ -204,7 +204,7 @@ test('an organizationId that does not resolve to a real organization is rejected
 
 test('a member with no affiliation to the named organization is rejected', function () {
     $organization = Organization::factory()->create(['is_provider' => true, 'is_consumer' => true, 'verified_at' => now()]);
-    $counsellor = Counsellor::factory()->create(['user_id' => User::factory()]);
+    $counsellor = Counsellor::factory()->create(['user_id' => User::factory()->adult()]);
     $therapy = aPaidTherapyForOrgPayer($counsellor);
 
     expect(fn () => TransactionService::new()->initiateCharge(
@@ -279,7 +279,7 @@ test('a GroupTherapy with every active counsellor covered by the organization su
     fakesPaystackForOrgPayer('org_pay_group_all_covered_ref');
 
     [$organization, $payer, $firstCounsellor] = anEligibleOrgPayerSetup();
-    $secondCounsellor = Counsellor::factory()->create(['user_id' => User::factory()]);
+    $secondCounsellor = Counsellor::factory()->create(['user_id' => User::factory()->adult()]);
     OrganizationCounsellor::factory()->create([
         'organization_id' => $organization->id,
         'counsellor_id' => $secondCounsellor->id,
@@ -300,7 +300,7 @@ test('a GroupTherapy with every active counsellor covered by the organization su
 
 test('a GroupTherapy with one active counsellor not covered by the organization is rejected', function () {
     [$organization, $payer, $coveredCounsellor] = anEligibleOrgPayerSetup();
-    $uncoveredCounsellor = Counsellor::factory()->create(['user_id' => User::factory()]);
+    $uncoveredCounsellor = Counsellor::factory()->create(['user_id' => User::factory()->adult()]);
 
     $groupTherapy = aPaidGroupTherapyForOrgPayer(['addedby_id' => $payer->id]);
     $groupTherapy->counsellors()->attach([$coveredCounsellor->id, $uncoveredCounsellor->id], [
@@ -316,7 +316,7 @@ test('an inactive (removed) counsellor on a GroupTherapy does not need organizat
     fakesPaystackForOrgPayer('org_pay_group_inactive_counsellor_ignored_ref');
 
     [$organization, $payer, $coveredCounsellor] = anEligibleOrgPayerSetup();
-    $removedCounsellor = Counsellor::factory()->create(['user_id' => User::factory()]);
+    $removedCounsellor = Counsellor::factory()->create(['user_id' => User::factory()->adult()]);
 
     $groupTherapy = aPaidGroupTherapyForOrgPayer(['addedby_id' => $payer->id]);
     $groupTherapy->counsellors()->attach($coveredCounsellor->id, ['state' => CounsellorGroupTherapyStateEnum::active->value, 'role' => 'NORMAL']);
@@ -331,7 +331,7 @@ test('an inactive (removed) counsellor on a GroupTherapy does not need organizat
 
 test('a GroupTherapy created by a still-existing counsellor requires that counsellor to be covered too', function () {
     [$organization, $payer, $coveredCounsellor] = anEligibleOrgPayerSetup();
-    $creatorCounsellor = Counsellor::factory()->create(['user_id' => User::factory()]);
+    $creatorCounsellor = Counsellor::factory()->create(['user_id' => User::factory()->adult()]);
 
     $groupTherapy = aPaidGroupTherapyForOrgPayer(['addedby_type' => Counsellor::class, 'addedby_id' => $creatorCounsellor->id]);
     $groupTherapy->users()->attach($payer->id, ['background_story' => null, 'anonymous' => false]);
@@ -348,7 +348,7 @@ test('a GroupTherapy created by a since-deleted counsellor does not require that
     fakesPaystackForOrgPayer('org_pay_group_deleted_addedby_ref');
 
     [$organization, $payer, $coveredCounsellor] = anEligibleOrgPayerSetup();
-    $deletedCreatorCounsellor = Counsellor::factory()->create(['user_id' => User::factory()]);
+    $deletedCreatorCounsellor = Counsellor::factory()->create(['user_id' => User::factory()->adult()]);
     $deletedCreatorCounsellor->delete();
 
     $groupTherapy = aPaidGroupTherapyForOrgPayer(['addedby_type' => Counsellor::class, 'addedby_id' => $deletedCreatorCounsellor->id]);

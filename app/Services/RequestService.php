@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Actions\Guardianship\EnsureMinorHasActiveGuardianAction;
 use App\Actions\Request\EnsureRequestExistsAction;
 use App\Actions\Request\EnsureRequestIsStillPendingAction;
 use App\Actions\Request\EnsureRequestResponseIsValidAction;
@@ -18,8 +19,11 @@ use App\Enums\RequestStatusEnum;
 use App\Enums\RequestTypeEnum;
 use App\Http\Resources\AdminCounsellorVerificationRequestResource;
 use App\Http\Resources\RequestResource;
+use App\Models\Counsellor;
+use App\Models\GroupTherapy;
 use App\Models\Organization;
 use App\Models\Request;
+use App\Models\Therapy;
 use App\Models\User;
 
 class RequestService extends Service
@@ -135,5 +139,13 @@ class RequestService extends Service
 
         EnsureCanActAsCounsellorAction::new()->execute($request->to);
         EnsureCanActAsCounsellorAction::new()->execute($request->from, asTarget: true);
+
+        // SCRUM-288: nor can a minor whose therapies are paused for a missing guardian accept one as
+        // a client or member (whoever answers for a counsellor acts as one, and isn't asked). The
+        // other party, where there is one, is checked by the request's own action under its lock.
+        if (! $request->to instanceof Counsellor) {
+            $for = $request->for;
+            EnsureMinorHasActiveGuardianAction::new()->execute($requestResponseDTO->user, $for instanceof Therapy || $for instanceof GroupTherapy ? $for : null, counterparty: false);
+        }
     }
 }

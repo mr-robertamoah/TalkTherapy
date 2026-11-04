@@ -21,9 +21,9 @@ use App\Models\User;
 // verifies only what it's meant to.
 
 test('updating a session applies to the URL\'s session, not a spoofed sessionId in the body', function () {
-    $counsellorUser = User::factory()->create();
+    $counsellorUser = User::factory()->adult()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
-    $therapyOwner = User::factory()->create();
+    $therapyOwner = User::factory()->adult()->create();
     $therapy = Therapy::factory()->create([
         'addedby_type' => User::class,
         'addedby_id' => $therapyOwner->id,
@@ -72,7 +72,7 @@ test('updating a session applies to the URL\'s session, not a spoofed sessionId 
 });
 
 test('updating a therapy applies to the URL\'s therapy, not a spoofed therapyId in the body', function () {
-    $owner = User::factory()->create();
+    $owner = User::factory()->adult()->create();
     $ownedTherapy = Therapy::factory()->create([
         'addedby_type' => User::class,
         'addedby_id' => $owner->id,
@@ -101,7 +101,7 @@ test('updating a therapy applies to the URL\'s therapy, not a spoofed therapyId 
 });
 
 test('updating a group therapy applies to the URL\'s group therapy, not a spoofed groupTherapyId in the body', function () {
-    $owner = User::factory()->create();
+    $owner = User::factory()->adult()->create();
     $ownedGroupTherapy = GroupTherapy::factory()->create([
         'addedby_type' => User::class,
         'addedby_id' => $owner->id,

@@ -11,7 +11,6 @@ use App\Models\Therapy;
 use App\Models\TherapyTopic;
 use App\Services\TherapyTopicService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Redirect;
 use Throwable;
 
 class TherapyTopicController extends Controller
@@ -34,7 +33,7 @@ class TherapyTopicController extends Controller
                 ])
             );
 
-            return $this->returnSuccess($request, $topic);
+            return $this->successResponse($request, ['topic' => new TherapyTopicResource($topic)]);
         } catch (Throwable $th) {
 
             return $this->returnFailure($request, $th);
@@ -72,7 +71,7 @@ class TherapyTopicController extends Controller
                 ])
             );
 
-            return $this->returnSuccess($request, $topic);
+            return $this->successResponse($request, ['topic' => new TherapyTopicResource($topic)]);
         } catch (Throwable $th) {
 
             return $this->returnFailure($request, $th);
@@ -92,21 +91,10 @@ class TherapyTopicController extends Controller
                 ])
             );
 
-            return $this->returnSuccess($request, $topic);
+            return $this->successResponse($request, ['topic' => new TherapyTopicResource($topic)]);
         } catch (Throwable $th) {
 
             return $this->returnFailure($request, $th);
         }
-    }
-
-    private function returnSuccess(Request $request, TherapyTopic $topic)
-    {
-        $topic = new TherapyTopicResource($topic);
-
-        if ($request->wantsJsonResponse()) {
-            return response()->json(['topic' => $topic]);
-        }
-
-        return Redirect::back()->with(['topic' => $topic]);
     }
 }

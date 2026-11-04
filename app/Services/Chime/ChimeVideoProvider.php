@@ -8,8 +8,8 @@ use App\Models\VideoSession;
 use Illuminate\Support\Str;
 use RuntimeException;
 
-// Chime SDK Meetings has no attendee-level "owner"/"host" concept (unlike Daily's is_owner), so
-// $isOwner is accepted for interface parity but has no effect here.
+// Chime SDK Meetings has no attendee-level "owner"/"host" concept (unlike Daily's is_owner), and
+// since SCRUM-380 no participant is an owner with either provider.
 class ChimeVideoProvider implements VideoProviderInterface
 {
     public function __construct(private ChimeClient $client) {}
@@ -44,7 +44,7 @@ class ChimeVideoProvider implements VideoProviderInterface
     // field at all (only ExternalUserId); the frontend maps attendee id -> display name itself.
     // Still part of the interface's own signature for parity with DailyVideoProvider, which does
     // send $displayName to its provider (see VideoProviderInterface's own comment on why).
-    public function createParticipantCredentials(VideoSession $videoSession, User $user, string $displayName, bool $isOwner = false, bool $receiveOnly = false, bool $canSendVideo = true): array
+    public function createParticipantCredentials(VideoSession $videoSession, User $user, string $displayName, bool $receiveOnly = false, bool $canSendVideo = true): array
     {
         $args = [
             'MeetingId' => $videoSession->provider_room_id,

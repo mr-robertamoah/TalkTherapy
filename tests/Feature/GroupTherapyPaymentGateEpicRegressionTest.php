@@ -24,7 +24,7 @@ use Illuminate\Support\Facades\Http;
 // new independent copies.
 
 test('the whole epic works end to end for one group and one member: blocked, paid, exempt-for-history, never-blocked-for-counsellor, always-free-to-join', function () {
-    $counsellorUser = User::factory()->create();
+    $counsellorUser = User::factory()->adult()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
     $groupTherapy = GroupTherapy::factory()->create([
         'addedby_type' => User::class,
@@ -41,7 +41,7 @@ test('the whole epic works end to end for one group and one member: blocked, pai
     // A member who joined 5 days ago, before the group's PER_THERAPY strict gate blocks new
     // content -- old content stays visible for free per allowFreeHistoricalAccess; new content
     // requires payment.
-    $member = User::factory()->create();
+    $member = User::factory()->adult()->create();
     $groupTherapy->users()->attach($member->id, ['anonymous' => false, 'created_at' => now()->subDays(5)]);
 
     // Stage 1: blocked at page load -- the member has never paid.
@@ -93,7 +93,7 @@ test('the whole epic works end to end for one group and one member: blocked, pai
 
     // Stage 6: a brand-new, never-paying member can still join today -- joining itself was never
     // gated by any of this (TT-7.5b-b4's own confirmed decision).
-    $newJoiner = User::factory()->create();
+    $newJoiner = User::factory()->adult()->create();
     $groupTherapy->users()->attach($newJoiner->id, ['anonymous' => false]);
     expect($groupTherapy->fresh()->users()->whereKey($newJoiner->id)->exists())->toBeTrue();
 });
@@ -103,7 +103,7 @@ test('the whole epic works end to end for one group and one member: blocked, pai
 // copies -- this pins down that individual Therapy's own page-load and content-access strict-gate
 // behavior is completely unaffected by any of that widening.
 test('individual Therapy strict-gate page-load and content-access behavior is completely unaffected by the GroupTherapy widening', function () {
-    $client = User::factory()->create();
+    $client = User::factory()->adult()->create();
     $therapy = Therapy::factory()->create([
         'addedby_type' => User::class,
         'addedby_id' => $client->id,
@@ -152,7 +152,7 @@ test('payment_access_grants requires no GroupTherapy-specific columns -- the pre
         'payment_type' => 'PAID',
         'payment_data' => ['per' => 'PER_THERAPY', 'amount' => 50, 'currency' => 'GHS', 'strictPaymentGate' => true],
     ]);
-    $member = User::factory()->create();
+    $member = User::factory()->adult()->create();
     $groupTherapy->users()->attach($member->id, ['anonymous' => false]);
     Transaction::factory()->create([
         'for_type' => GroupTherapy::class, 'for_id' => $groupTherapy->id, 'user_id' => $member->id, 'status' => 'SUCCESS',

@@ -5,9 +5,13 @@ import { addMinutesToInputValue, defaultFormTime, isMinutesBefore, toLocalInputV
 // SCRUM-379: the start/end time handling the create and update session/discussion modals each had a
 // copy of. Values are datetime-local strings (local time); the forms send toISOString() of them.
 //
-// withDefaults: a create form. Its defaults are set each time it opens (`isOpen` true), not once at
-// mount -- the modal stays mounted on the therapy page, so a default set at page load goes stale
-// (SCRUM-377). A start the user picked that is still far enough ahead is kept.
+// defaultsWhen: a create form passes a getter for "is the form open" (e.g. () => props.show). Its
+// defaults are then set each time it opens, not once at mount -- the modal stays mounted on the therapy
+// page, so a default set at page load goes stale (SCRUM-377). A start the user picked that is still far
+// enough ahead is kept. Update forms pass only `isOpen` (to refresh `now`) and use setTimes().
+//
+// SCRUM-380: one option instead of withDefaults + isOpen (the second meant nothing without the first),
+// and `now` (the inputs' `min`) is refreshed whenever the form opens, not fixed at page load.
 //
 // The end follows the start: moving the start so the end is under 30 minutes after it moves the end
 // too. Editing the END is no longer snapped back (it used to be, which left the input showing the
@@ -16,9 +20,10 @@ export const MINUTES_AHEAD = 30
 export const MIN_DURATION_MINUTES = 30
 const DEFAULT_DURATION_MINUTES = 40
 
-export default function useScheduleTimes({ withDefaults = false, isOpen = () => false } = {}) {
+export default function useScheduleTimes({ defaultsWhen = null, isOpen = defaultsWhen } = {}) {
     const startTime = ref('')
     const endTime = ref('')
+    const now = ref(new Date())
 
     function setDefaultTimes() {
         if (startTime.value && isMinutesBefore({ firstTime: startTime.value, minutes: MINUTES_AHEAD })) return
@@ -27,10 +32,16 @@ export default function useScheduleTimes({ withDefaults = false, isOpen = () => 
         endTime.value = addMinutesToInputValue(startTime.value, DEFAULT_DURATION_MINUTES)
     }
 
-    if (withDefaults) {
+    if (defaultsWhen) {
         onBeforeMount(setDefaultTimes)
+    }
+
+    if (isOpen) {
         watch(isOpen, (open) => {
-            if (open) setDefaultTimes()
+            if (!open) return
+
+            now.value = new Date()
+            if (defaultsWhen) setDefaultTimes()
         })
     }
 
@@ -66,7 +77,7 @@ export default function useScheduleTimes({ withDefaults = false, isOpen = () => 
 
     const computedStartTime = computed(() => new Date(startTime.value).toLocaleString())
     const computedEndTime = computed(() => new Date(endTime.value).toLocaleString())
-    const computedNow = computed(() => toLocalInputValue(new Date()))
+    const computedNow = computed(() => toLocalInputValue(now.value))
     const computedDuration = computed(() => (endTime.value && startTime.value)
         ? differenceInMinutes(new Date(endTime.value), new Date(startTime.value))
         : '')

@@ -19,6 +19,8 @@ use App\Models\VideoSession;
 // "every active counsellor gets host credentials" scoping).
 class RemoveParticipantFromVideoSessionAction extends Action
 {
+    public const COUNSELLOR_ONLY = 'Only a counsellor may remove a participant from this group video call.';
+
     // TT-3.2b/SCRUM-309 security-review finding: $targetUserId is a bare id, deliberately never
     // resolved against the global `users` table before authorization -- doing so previously let
     // any active counsellor distinguish "this id doesn't exist at all" (a controller-level 422)
@@ -34,7 +36,7 @@ class RemoveParticipantFromVideoSessionAction extends Action
         }
 
         if (! $session->for->isCounsellorUser($actingUser)) {
-            throw new VideoException('Only a counsellor may remove a participant from this group video call.', 422);
+            throw new VideoException(self::COUNSELLOR_ONLY, 422);
         }
 
         if ($actingUser->id === $targetUserId) {

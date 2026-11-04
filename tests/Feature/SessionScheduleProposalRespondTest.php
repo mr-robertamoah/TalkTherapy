@@ -61,7 +61,7 @@ function aPendingScheduleProposalForRespondRoute(Therapy $therapy, $from, $to, a
 test('the counsellor accepting a client proposal creates a real session', function () {
     Notification::fake();
     $counsellor = aCounsellorForScheduleProposalRespondRoute();
-    $client = User::factory()->create();
+    $client = User::factory()->adult()->create();
     $therapy = aTherapyForScheduleProposalRespondRoute($counsellor, $client);
     $proposal = aPendingScheduleProposalForRespondRoute($therapy, $client, $counsellor, ['proposedById' => $client->id]);
 
@@ -85,7 +85,7 @@ test('a proposal created without type/paymentType still accepts into a valid ses
     // default to valid values at propose-time, or accept-time's CreateSessionAction call throws a
     // QueryException instead of creating the session. Found via live browser verification.
     $counsellor = aCounsellorForScheduleProposalRespondRoute();
-    $client = User::factory()->create();
+    $client = User::factory()->adult()->create();
     $therapy = aTherapyForScheduleProposalRespondRoute($counsellor, $client);
 
     $this->actingAs($client)
@@ -114,7 +114,7 @@ test('a proposal created without type/paymentType still accepts into a valid ses
 test('the client accepting a counsellor counter-proposal creates a session with the counsellor as actor, not the client', function () {
     Notification::fake();
     $counsellor = aCounsellorForScheduleProposalRespondRoute();
-    $client = User::factory()->create();
+    $client = User::factory()->adult()->create();
     $therapy = aTherapyForScheduleProposalRespondRoute($counsellor, $client);
     // counsellor -> client direction, as if the counsellor had countered
     $proposal = aPendingScheduleProposalForRespondRoute($therapy, $counsellor, $client, ['proposedById' => $counsellor->user->id]);
@@ -134,7 +134,7 @@ test('the client accepting a counsellor counter-proposal creates a session with 
 test('accepting a proposal that is now stale does not auto-reject and does not create a session', function () {
     Notification::fake();
     $counsellor = aCounsellorForScheduleProposalRespondRoute();
-    $client = User::factory()->create();
+    $client = User::factory()->adult()->create();
     $therapy = aTherapyForScheduleProposalRespondRoute($counsellor, $client);
     $proposal = aPendingScheduleProposalForRespondRoute($therapy, $client, $counsellor, ['proposedById' => $client->id]);
 
@@ -163,7 +163,7 @@ test('accepting a proposal that is now stale does not auto-reject and does not c
 test('accepting a proposal whose therapy no longer has an assigned counsellor stays pending with a stale reason', function () {
     Notification::fake();
     $counsellor = aCounsellorForScheduleProposalRespondRoute();
-    $client = User::factory()->create();
+    $client = User::factory()->adult()->create();
     $therapy = aTherapyForScheduleProposalRespondRoute($counsellor, $client);
     $proposal = aPendingScheduleProposalForRespondRoute($therapy, $client, $counsellor, ['proposedById' => $client->id]);
 
@@ -182,7 +182,7 @@ test('accepting a proposal whose therapy no longer has an assigned counsellor st
 
 test('accepting an already-resolved proposal is rejected and does not create a duplicate session', function () {
     $counsellor = aCounsellorForScheduleProposalRespondRoute();
-    $client = User::factory()->create();
+    $client = User::factory()->adult()->create();
     $therapy = aTherapyForScheduleProposalRespondRoute($counsellor, $client);
     $proposal = aPendingScheduleProposalForRespondRoute($therapy, $client, $counsellor, [
         'proposedById' => $client->id,
@@ -202,7 +202,7 @@ test('accepting an already-resolved proposal is rejected and does not create a d
 test('the counsellor can reject a client proposal outright', function () {
     Notification::fake();
     $counsellor = aCounsellorForScheduleProposalRespondRoute();
-    $client = User::factory()->create();
+    $client = User::factory()->adult()->create();
     $therapy = aTherapyForScheduleProposalRespondRoute($counsellor, $client);
     $proposal = aPendingScheduleProposalForRespondRoute($therapy, $client, $counsellor, ['proposedById' => $client->id]);
 
@@ -216,7 +216,7 @@ test('the counsellor can reject a client proposal outright', function () {
 
 test('rejecting with a reason stores it for the client to see', function () {
     $counsellor = aCounsellorForScheduleProposalRespondRoute();
-    $client = User::factory()->create();
+    $client = User::factory()->adult()->create();
     $therapy = aTherapyForScheduleProposalRespondRoute($counsellor, $client);
     $proposal = aPendingScheduleProposalForRespondRoute($therapy, $client, $counsellor, ['proposedById' => $client->id]);
 
@@ -236,7 +236,7 @@ test('rejecting with an overly long reason is rejected', function () {
     // straight from client input with no FormRequest in front of it -- EnsureRequestResponseReasonIsValidAction
     // bounds it before it can be persisted and emailed to the other party.
     $counsellor = aCounsellorForScheduleProposalRespondRoute();
-    $client = User::factory()->create();
+    $client = User::factory()->adult()->create();
     $therapy = aTherapyForScheduleProposalRespondRoute($counsellor, $client);
     $proposal = aPendingScheduleProposalForRespondRoute($therapy, $client, $counsellor, ['proposedById' => $client->id]);
 
@@ -253,7 +253,7 @@ test('rejecting with an overly long reason is rejected', function () {
 test('the counsellor can counter-propose a different time, flipping the direction', function () {
     Notification::fake();
     $counsellor = aCounsellorForScheduleProposalRespondRoute();
-    $client = User::factory()->create();
+    $client = User::factory()->adult()->create();
     $therapy = aTherapyForScheduleProposalRespondRoute($counsellor, $client);
     $proposal = aPendingScheduleProposalForRespondRoute($therapy, $client, $counsellor, ['proposedById' => $client->id]);
 
@@ -284,7 +284,7 @@ test('a client cannot counter-offer a PAID therapy proposal down to FREE', funct
     // invariant enforced at propose-time also applies to a counter-offer, since it's the same
     // client-controlled field on the same underlying negotiation.
     $counsellor = aCounsellorForScheduleProposalRespondRoute();
-    $client = User::factory()->create();
+    $client = User::factory()->adult()->create();
     $therapy = aTherapyForScheduleProposalRespondRoute($counsellor, $client, ['payment_type' => 'PAID']);
     $proposal = aPendingScheduleProposalForRespondRoute($therapy, $counsellor, $client, [
         'proposedById' => $counsellor->user->id,
@@ -304,7 +304,7 @@ test('a client cannot counter-offer a PAID therapy proposal down to FREE', funct
 
 test('a counter-offer past the round limit is rejected', function () {
     $counsellor = aCounsellorForScheduleProposalRespondRoute();
-    $client = User::factory()->create();
+    $client = User::factory()->adult()->create();
     $therapy = aTherapyForScheduleProposalRespondRoute($counsellor, $client);
     $proposal = aPendingScheduleProposalForRespondRoute($therapy, $client, $counsellor, [
         'proposedById' => $client->id,
@@ -321,7 +321,7 @@ test('a counter-offer past the round limit is rejected', function () {
 
 test('a counter-offer on an already-resolved proposal is rejected', function () {
     $counsellor = aCounsellorForScheduleProposalRespondRoute();
-    $client = User::factory()->create();
+    $client = User::factory()->adult()->create();
     $therapy = aTherapyForScheduleProposalRespondRoute($counsellor, $client);
     $proposal = aPendingScheduleProposalForRespondRoute($therapy, $client, $counsellor, ['proposedById' => $client->id]);
     $proposal->update(['status' => RequestStatusEnum::rejected->value]);
@@ -336,7 +336,7 @@ test('a counter-offer on an already-resolved proposal is rejected', function () 
 
 test('counter-offering a request of a different type is rejected as not found', function () {
     $counsellor = aCounsellorForScheduleProposalRespondRoute();
-    $client = User::factory()->create();
+    $client = User::factory()->adult()->create();
     $therapy = aTherapyForScheduleProposalRespondRoute($counsellor, $client);
     $unrelatedRequest = Request::factory()->create([
         'from_type' => User::class,
@@ -360,10 +360,10 @@ test('counter-offering a request of a different type is rejected as not found', 
 
 test('a party not addressed by the proposal cannot accept, reject, or counter it', function () {
     $counsellor = aCounsellorForScheduleProposalRespondRoute();
-    $client = User::factory()->create();
+    $client = User::factory()->adult()->create();
     $therapy = aTherapyForScheduleProposalRespondRoute($counsellor, $client);
     $proposal = aPendingScheduleProposalForRespondRoute($therapy, $client, $counsellor, ['proposedById' => $client->id]);
-    $outsider = User::factory()->create();
+    $outsider = User::factory()->adult()->create();
 
     $this->actingAs($outsider)
         ->postJson(route('requests.respond', ['requestId' => $proposal->id]), ['response' => 'accepted'])

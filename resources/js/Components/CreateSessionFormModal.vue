@@ -35,7 +35,7 @@ const emits = defineEmits(['closeModal', 'onSuccess'])
 const sessionCreationMap = ref(null)
 const loading = ref(false)
 // SCRUM-379: shared start/end handling (resources/js/Composables/useScheduleTimes.js).
-const { startTime, endTime, clearTimes, timesError, computedStartTime, computedEndTime, computedNow, computedDuration } = useScheduleTimes({ withDefaults: true, isOpen: () => props.show })
+const { startTime, endTime, clearTimes, timesError, computedStartTime, computedEndTime, computedNow, computedDuration } = useScheduleTimes({ defaultsWhen: () => props.show })
 const selectedCases = ref([])
 const sessionForm = useForm({
     'name': '',

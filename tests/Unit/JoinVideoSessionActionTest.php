@@ -38,9 +38,9 @@ function fakeVideoProvider(): VideoProviderInterface
             return ['room_id' => "fake-room-{$videoSession->id}", 'meta' => ['fake' => true]];
         }
 
-        public function createParticipantCredentials(VideoSession $videoSession, User $user, string $displayName, bool $isOwner = false, bool $receiveOnly = false, bool $canSendVideo = true): array
+        public function createParticipantCredentials(VideoSession $videoSession, User $user, string $displayName, bool $receiveOnly = false, bool $canSendVideo = true): array
         {
-            $this->createParticipantCredentialsCalls[] = [$videoSession->id, $user->id, $displayName, $isOwner, $receiveOnly, $canSendVideo];
+            $this->createParticipantCredentialsCalls[] = [$videoSession->id, $user->id, $displayName, $receiveOnly, $canSendVideo];
 
             return ['token' => "fake-token-{$user->id}"];
         }
@@ -128,7 +128,9 @@ test('a second join by a different participant reuses the same VideoSession rath
     ]);
 });
 
-test('the assigned counsellor joins as owner, the client does not', function () {
+// SCRUM-380 (deliberate change): the assigned counsellor used to join as the provider-side owner.
+// No one is an owner now (VideoProviderInterface has no owner flag); both sides are full participants.
+test('the assigned counsellor and the client both join as full participants', function () {
     $session = onlineInSessionTherapySessionForJoin();
     $client = $session->for->addedby;
     $counsellorUser = $session->for->counsellor->user;
@@ -138,11 +140,13 @@ test('the assigned counsellor joins as owner, the client does not', function () 
     JoinVideoSessionAction::new()->execute($session, $client);
     JoinVideoSessionAction::new()->execute($session, $counsellorUser);
 
-    [, , , $clientIsOwner] = $fakeProvider->createParticipantCredentialsCalls[0];
-    [, , , $counsellorIsOwner] = $fakeProvider->createParticipantCredentialsCalls[1];
+    [, , , $clientReceiveOnly, $clientCanSendVideo] = $fakeProvider->createParticipantCredentialsCalls[0];
+    [, , , $counsellorReceiveOnly, $counsellorCanSendVideo] = $fakeProvider->createParticipantCredentialsCalls[1];
 
-    expect($clientIsOwner)->toBeFalse()
-        ->and($counsellorIsOwner)->toBeTrue();
+    expect($clientReceiveOnly)->toBeFalse()
+        ->and($clientCanSendVideo)->toBeTrue()
+        ->and($counsellorReceiveOnly)->toBeFalse()
+        ->and($counsellorCanSendVideo)->toBeTrue();
 });
 
 test('joining is blocked by the same availability gate as EnsureVideoIsAvailableForSessionAction', function () {
@@ -171,7 +175,7 @@ test('a provider room-creation failure surfaces a safe, generic message, never t
             throw new RuntimeException('{"error":"authorization-header-error","info":"invalid authorization header"}');
         }
 
-        public function createParticipantCredentials(VideoSession $videoSession, User $user, string $displayName, bool $isOwner = false, bool $receiveOnly = false, bool $canSendVideo = true): array
+        public function createParticipantCredentials(VideoSession $videoSession, User $user, string $displayName, bool $receiveOnly = false, bool $canSendVideo = true): array
         {
             return [];
         }
@@ -210,7 +214,7 @@ test('a provider credential failure surfaces a generic 502 and closes the partic
             return ['room_id' => 'room-'.$videoSession->id, 'meta' => []];
         }
 
-        public function createParticipantCredentials(VideoSession $videoSession, User $user, string $displayName, bool $isOwner = false, bool $receiveOnly = false, bool $canSendVideo = true): array
+        public function createParticipantCredentials(VideoSession $videoSession, User $user, string $displayName, bool $receiveOnly = false, bool $canSendVideo = true): array
         {
             throw new RuntimeException('{"error":"authorization-header-error","info":"invalid authorization header"}', 400);
         }
@@ -315,7 +319,7 @@ function onlineInSessionGroupTherapySessionForJoin(): array
     $counsellorUser = User::factory()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
     $groupTherapy->counsellors()->attach($counsellor->id, ['state' => 'ACTIVE', 'role' => 'NORMAL']);
-    $member = User::factory()->create();
+    $member = User::factory()->adult()->create();
     $groupTherapy->users()->attach($member->id, ['anonymous' => false]);
     $session = Session::factory()->create([
         'for_id' => $groupTherapy->id,
@@ -335,7 +339,7 @@ test('an ordinary GroupTherapy member joins receive-only', function () {
 
     JoinVideoSessionAction::new()->execute($data['session'], $data['member']);
 
-    [, , , , $receiveOnly] = $fakeProvider->createParticipantCredentialsCalls[0];
+    [, , , $receiveOnly] = $fakeProvider->createParticipantCredentialsCalls[0];
     expect($receiveOnly)->toBeTrue();
 });
 
@@ -346,7 +350,7 @@ test('an active counsellor on a GroupTherapy joins with full access, not receive
 
     JoinVideoSessionAction::new()->execute($data['session'], $data['counsellorUser']);
 
-    [, , , , $receiveOnly] = $fakeProvider->createParticipantCredentialsCalls[0];
+    [, , , $receiveOnly] = $fakeProvider->createParticipantCredentialsCalls[0];
     expect($receiveOnly)->toBeFalse();
 });
 
@@ -357,7 +361,7 @@ test('the group\'s own creator joins with full access, not receive-only', functi
 
     JoinVideoSessionAction::new()->execute($data['session'], $data['creator']);
 
-    [, , , , $receiveOnly] = $fakeProvider->createParticipantCredentialsCalls[0];
+    [, , , $receiveOnly] = $fakeProvider->createParticipantCredentialsCalls[0];
     expect($receiveOnly)->toBeFalse();
 });
 
@@ -369,7 +373,7 @@ test('a 1:1 Therapy client never joins receive-only, regardless of role', functi
 
     JoinVideoSessionAction::new()->execute($session, $client);
 
-    [, , , , $receiveOnly] = $fakeProvider->createParticipantCredentialsCalls[0];
+    [, , , $receiveOnly] = $fakeProvider->createParticipantCredentialsCalls[0];
     expect($receiveOnly)->toBeFalse();
 });
 
@@ -477,22 +481,18 @@ test('a GroupTherapy counsellor never joins as a provider-side owner', function 
 
     JoinVideoSessionAction::new()->execute($data['session'], $data['counsellorUser']);
 
-    [, , , $isOwner, $receiveOnly, $canSendVideo] = $fakeProvider->createParticipantCredentialsCalls[0];
-    expect($isOwner)->toBeFalse()
-        ->and($receiveOnly)->toBeFalse()
+    [, , , $receiveOnly, $canSendVideo] = $fakeProvider->createParticipantCredentialsCalls[0];
+    expect($receiveOnly)->toBeFalse()
         ->and($canSendVideo)->toBeTrue();
 });
 
-test('a 1:1 Therapy counsellor still joins as owner, unchanged', function () {
-    $session = onlineInSessionTherapySessionForJoin();
-    $fakeProvider = fakeVideoProvider();
-    app()->instance(VideoProviderInterface::class, $fakeProvider);
-    $counsellorUser = $session->for->counsellor->user;
+// SCRUM-380: there is no owner flag left to pass -- the contract itself can't mint an owner.
+test('the video provider contract has no owner parameter', function () {
+    $parameters = collect((new ReflectionMethod(VideoProviderInterface::class, 'createParticipantCredentials'))->getParameters())
+        ->map(fn ($parameter) => $parameter->getName())
+        ->all();
 
-    JoinVideoSessionAction::new()->execute($session, $counsellorUser);
-
-    [, , , $isOwner] = $fakeProvider->createParticipantCredentialsCalls[0];
-    expect($isOwner)->toBeTrue();
+    expect($parameters)->toBe(['videoSession', 'user', 'displayName', 'receiveOnly', 'canSendVideo']);
 });
 
 // SCRUM-332: the creator of an anonymous group joins audio-only -- their face is never shown.
@@ -504,7 +504,7 @@ test('the creator of an anonymous group joins audio-only', function () {
 
     JoinVideoSessionAction::new()->execute($data['session'], $data['creator']);
 
-    [, , $displayName, , $receiveOnly, $canSendVideo] = $fakeProvider->createParticipantCredentialsCalls[0];
+    [, , $displayName, $receiveOnly, $canSendVideo] = $fakeProvider->createParticipantCredentialsCalls[0];
     expect($displayName)->toBe(ConstantsEnum::anonymousUserLabel->value)
         ->and($receiveOnly)->toBeFalse()
         ->and($canSendVideo)->toBeFalse();
@@ -518,7 +518,7 @@ test('the creator of a non-anonymous group keeps their camera', function () {
 
     JoinVideoSessionAction::new()->execute($data['session'], $data['creator']);
 
-    [, , , , , $canSendVideo] = $fakeProvider->createParticipantCredentialsCalls[0];
+    [, , , , $canSendVideo] = $fakeProvider->createParticipantCredentialsCalls[0];
     expect($canSendVideo)->toBeTrue();
 });
 
@@ -530,7 +530,7 @@ test('a counsellor of an anonymous group keeps their camera', function () {
 
     JoinVideoSessionAction::new()->execute($data['session'], $data['counsellorUser']);
 
-    [, , , , , $canSendVideo] = $fakeProvider->createParticipantCredentialsCalls[0];
+    [, , , , $canSendVideo] = $fakeProvider->createParticipantCredentialsCalls[0];
     expect($canSendVideo)->toBeTrue();
 });
 
@@ -543,7 +543,7 @@ test('an anonymous 1:1 Therapy client still joins with video allowed', function 
 
     JoinVideoSessionAction::new()->execute($session, $session->for->addedby);
 
-    [, , , , , $canSendVideo] = $fakeProvider->createParticipantCredentialsCalls[0];
+    [, , , , $canSendVideo] = $fakeProvider->createParticipantCredentialsCalls[0];
     expect($canSendVideo)->toBeTrue();
 });
 
@@ -595,10 +595,10 @@ test('a counsellor joining mid-call sees the hands and speakers already live in 
     $data = onlineInSessionGroupTherapySessionForJoin();
     app()->instance(VideoProviderInterface::class, fakeVideoProvider());
     JoinVideoSessionAction::new()->execute($data['session'], $data['member']);
-    $speaker = User::factory()->create();
+    $speaker = User::factory()->adult()->create();
     $data['groupTherapy']->users()->attach($speaker->id, ['anonymous' => false]);
     JoinVideoSessionAction::new()->execute($data['session'], $speaker);
-    $leaver = User::factory()->create();
+    $leaver = User::factory()->adult()->create();
     $data['groupTherapy']->users()->attach($leaver->id, ['anonymous' => false]);
     JoinVideoSessionAction::new()->execute($data['session'], $leaver);
 
@@ -691,7 +691,7 @@ test('a join reads the group\'s anonymity fresh, not from an already-loaded copy
 
     JoinVideoSessionAction::new()->execute($session, $data['creator']);
 
-    [, , $displayName, , , $canSendVideo] = $fakeProvider->createParticipantCredentialsCalls[0];
+    [, , $displayName, , $canSendVideo] = $fakeProvider->createParticipantCredentialsCalls[0];
     expect($displayName)->toBe(ConstantsEnum::anonymousUserLabel->value)
         ->and($canSendVideo)->toBeFalse();
 });

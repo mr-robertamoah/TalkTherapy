@@ -6,10 +6,10 @@ use App\Actions\Action;
 use App\Actions\Request\CreateRequestAction;
 use App\DTOs\CreateRequestDTO;
 use App\DTOs\EnsureDobChangeIsAllowedDTO;
+use App\Enums\RequestStatusEnum;
 use App\Enums\RequestTypeEnum;
 use App\Exceptions\DobChangeRequiresApprovalException;
 use App\Models\GroupTherapy;
-use App\Models\Guardianship;
 use App\Models\Request;
 use App\Models\Therapy;
 use App\Models\User;
@@ -33,7 +33,7 @@ class EnsureDobChangeIsAllowedAction extends Action
             return;
         }
 
-        if (! $this->hasQualifyingRelationship($target)) {
+        if (! $this->hasQualifyingRelationship($target, $dto->actor)) {
             return;
         }
 
@@ -56,14 +56,27 @@ class EnsureDobChangeIsAllowedAction extends Action
         return $dob ? (new Carbon($dob))->toDateString() : null;
     }
 
-    private function hasQualifyingRelationship(User $user): bool
+    // SCRUM-288 (security review): also a group membership (not just a created group), anyone who was
+    // ever a ward (a guardianship now, or one accepted through a request), and anyone paused for a
+    // missing guardian right now -- otherwise a paused minor could edit their way to 18 and un-pause.
+    // A first date of birth on an account with none of these (signing up) stays free, and so does an
+    // administrator's edit of a paused account with no other relationship.
+    private function hasQualifyingRelationship(User $user, ?User $actor): bool
     {
         return $user->guardians()->exists()
-            // Therapy::whereUser() is an existing, exact-match scope for this. GroupTherapy's own
-            // scopeWhereUser() is deliberately NOT reused here -- it's broader (also matches any
-            // participant via a pivot join), not just the self-added-client case this gate needs.
+            || Request::query()
+                ->where('type', RequestTypeEnum::guardianship->value)
+                ->where('status', RequestStatusEnum::accepted->value)
+                ->where('from_type', User::class)
+                ->where('from_id', $user->id)
+                ->exists()
+            // Therapy::whereUser() is an exact-match scope for the client; GroupTherapy::whereUser()
+            // matches the creator and any member.
             || Therapy::query()->whereUser($user)->exists()
-            || GroupTherapy::query()->where('addedby_type', User::class)->where('addedby_id', $user->id)->exists();
+            || GroupTherapy::query()->whereUser($user)->exists()
+            // Only their own edit: an administrator editing it is the approver such a request
+            // would go to anyway (no active guardian, so `to` is any admin).
+            || ($user->dob && (! $actor || $actor->is($user)) && $user->isPausedForMissingGuardian(fresh: true));
     }
 
     // Idempotent and race-safe, mirroring GrantVideoConsentAction's own find-or-create-under-lock
@@ -99,7 +112,9 @@ class EnsureDobChangeIsAllowedAction extends Action
             // respond, mirroring `refund`'s own null-`to` shape) only when no guardian exists.
             // Deliberately never both: an existing guardian is never bypassed by an
             // always-available admin route.
-            $guardian = Guardianship::query()->where('ward_id', $dto->user->id)->first()?->guardian;
+            // SCRUM-288: only a guardian who counts (Guardianship::scopeActive) -- a suspended, deleted
+            // or under-age one can't approve.
+            $guardian = $dto->user->activeGuardianships()->first()?->guardian;
 
             return CreateRequestAction::new()->execute(
                 CreateRequestDTO::new()->fromArray([

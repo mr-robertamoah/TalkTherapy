@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\DTOs\RequestResponseDTO;
 use App\Models\Request as ModelsRequest;
 use App\Services\RequestService;
+use App\Support\FailureResponse;
 use Illuminate\Http\Request;
 use Throwable;
 
@@ -47,6 +48,8 @@ class RequestController extends Controller
                 'status' => false,
                 'request' => null,
                 'error' => $message,
+                // SCRUM-288: e.g. guardian_required, when the refusal has one.
+                ...(($code = FailureResponse::code($th)) ? ['code' => $code] : []),
             ], $status);
         }
     }

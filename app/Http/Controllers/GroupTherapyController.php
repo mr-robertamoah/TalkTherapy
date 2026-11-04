@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\DTOs\GetTherapyDTO;
 use App\DTOs\GroupTherapyDTO;
 use App\DTOs\JoinGroupTherapyDTO;
+use App\Exceptions\BadRequestException;
 use App\Exceptions\PaymentRequiredException;
 use App\Http\Requests\CreateGroupTherapyRequest;
 use App\Http\Requests\UpdateGroupTherapyRequest;
@@ -15,6 +16,7 @@ use App\Http\Resources\SessionResource;
 use App\Http\Resources\TherapyTopicResource;
 use App\Models\GroupTherapy;
 use App\Services\GroupTherapyService;
+use App\Support\FailureResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Redirect;
 use Inertia\Inertia;
@@ -115,19 +117,20 @@ class GroupTherapyController extends Controller
                 'groupTherapy' => new GroupTherapyMiniResource($therapy),
             ]);
         } catch (Throwable $th) {
-            $status = $this->statusFor($th);
-            $message = $this->messageFor($th, $status);
-
-            return response()->json(['message' => $message], $status);
+            return FailureResponse::json($th);
         }
     }
 
     // Every lookup below reads $request->route(...) rather than the magic ->groupTherapyId
     // property -- see the identical fix/rationale in SessionController (SCRUM-116).
+    // SCRUM-380: update/payment-gate/end/delete are reached both by Inertia forms (web routes -- they
+    // expect the redirect, and read a failure from errors.alert) and by JSON callers
+    // (api.group.therapies.*), exactly like TherapyController's. successResponse()/returnFailure() give
+    // each its own answer.
     public function updateGroupTherapy(UpdateGroupTherapyRequest $request)
     {
         try {
-            GroupTherapyService::new()->updateGroupTherapy(
+            $therapy = GroupTherapyService::new()->updateGroupTherapy(
                 GroupTherapyDTO::new()->fromArray([
                     'user' => $request->user(),
                     'groupTherapy' => GroupTherapy::find($request->route('groupTherapyId')),
@@ -155,12 +158,9 @@ class GroupTherapyController extends Controller
                 ])
             );
 
-            return Redirect::back();
+            return $this->successResponse($request, ['status' => true, 'groupTherapy' => new GroupTherapyMiniResource($therapy)], Redirect::back());
         } catch (Throwable $th) {
-            $status = $this->statusFor($th);
-            $message = $this->messageFor($th, $status);
-
-            return Redirect::back()->withErrors(['alert' => $message]);
+            return $this->returnFailure($request, $th);
         }
     }
 
@@ -175,11 +175,12 @@ class GroupTherapyController extends Controller
             'allowFreeHistoricalAccess' => ['nullable', 'boolean'],
         ]);
 
-        if (is_null($request->strictPaymentGate) && is_null($request->allowFreeHistoricalAccess)) {
-            return Redirect::back()->withErrors(['alert' => 'At least one payment gate setting must be provided.']);
-        }
-
         try {
+            // SCRUM-380: thrown, so a JSON caller gets the 422 {message} and a visit the same alert.
+            if (is_null($request->strictPaymentGate) && is_null($request->allowFreeHistoricalAccess)) {
+                throw new BadRequestException('At least one payment gate setting must be provided.', 422);
+            }
+
             GroupTherapyService::new()->updateGroupTherapyPaymentGate(
                 GroupTherapyDTO::new()->fromArray([
                     'user' => $request->user(),
@@ -189,12 +190,9 @@ class GroupTherapyController extends Controller
                 ])
             );
 
-            return Redirect::back();
+            return $this->successResponse($request, ['status' => true], Redirect::back());
         } catch (Throwable $th) {
-            $status = $this->statusFor($th);
-            $message = $this->messageFor($th, $status);
-
-            return Redirect::back()->withErrors(['alert' => $message]);
+            return $this->returnFailure($request, $th);
         }
     }
 
@@ -208,12 +206,9 @@ class GroupTherapyController extends Controller
                 ])
             );
 
-            return Redirect::route('home');
+            return $this->successResponse($request, ['status' => true], Redirect::route('home'));
         } catch (Throwable $th) {
-            $status = $this->statusFor($th);
-            $message = $this->messageFor($th, $status);
-
-            return Redirect::back()->withErrors(['alert' => $message]);
+            return $this->returnFailure($request, $th);
         }
     }
 
@@ -223,16 +218,15 @@ class GroupTherapyController extends Controller
             GroupTherapyService::new()->endGroupTherapy(
                 GroupTherapyDTO::new()->fromArray([
                     'user' => $request->user(),
-                    'therapy' => GroupTherapy::find($request->route('groupTherapyId')),
+                    // SCRUM-380: was 'therapy', a key GroupTherapyDTO doesn't have -- every end failed
+                    // with the generic 500 alert.
+                    'groupTherapy' => GroupTherapy::find($request->route('groupTherapyId')),
                 ])
             );
 
-            return Redirect::back();
+            return $this->successResponse($request, ['status' => true], Redirect::back());
         } catch (Throwable $th) {
-            $status = $this->statusFor($th);
-            $message = $this->messageFor($th, $status);
-
-            return Redirect::back()->withErrors(['alert' => $message]);
+            return $this->returnFailure($request, $th);
         }
     }
 

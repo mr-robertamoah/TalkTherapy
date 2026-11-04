@@ -276,6 +276,7 @@ counsellor-only "remove participant" control, and raise-hand / let-speak moderat
 | `group_video_call_demo_minor_member` | `password` | An ordinary member who is a minor. Joins receive-only like any member, but is never offered "raise hand" (minors can't be granted speaking yet, SCRUM-324/329). |
 | `group_video_call_demo_anonymous_member` | `password` | An ordinary member who joined anonymously. Shown as "Anonymous" in the call; if let speak, gets audio only — no camera button. |
 | `group_video_call_demo_minor_creator` | `password` | Creator of a SEPARATE group ("Group Video Call Demo (Minor Creator)"), created while a minor. "Join video" is still visible (intentional — see the feature doc), but clicking it is cleanly blocked with a 422. |
+| `group_video_call_demo_guardian` | `password` | Guardian of both minors above (SCRUM-288): without an active guardian their therapies would be paused. |
 
 "Group Video Call Demo" already has an immediately in-progress, online session. Same known
 limitation as the 1:1 video call fixture above (no real Daily/Chime credentials in this dev
@@ -396,3 +397,21 @@ Two closed (deleted) accounts, password **`password`** (they can't sign in while
 Run the job by hand with
 `docker compose exec php php artisan tinker --execute="App\Services\AppService::new()->anonymiseClosedAccounts();"`.
 See `documentation/features/scrum-367-privacy-access-hardening.md`.
+
+## Therapy paused for a missing guardian (SCRUM-288)
+
+A minor (15) whose only guardian was removed, so their individual therapy and their group are
+paused: they (and the counsellor of the 1:1) can read everything, but every write is refused with
+`guardian_required`. All passwords are **`password`**.
+
+| Username | What it is |
+|---|---|
+| `paused_minor` | Jordan Avery, 15, no guardian. Client of "Paused Minor Demo Therapy" (a held session with two messages to read, and an upcoming session that stays booked but can't be started) and a member of "Paused Minor Demo Group" (a session in progress). Adding a guardian from the profile page resumes both. |
+| `paused_minor_demo_counsellor` | Counsellor of the paused 1:1 (read-only there too) and of the group (unaffected there). |
+| `paused_minor_demo_group_member` | An adult member of the group, who carries on as normal. |
+
+Note: a missing date of birth counts as a minor (SCRUM-288), so a client with no date of birth and no
+guardian is paused too. The seed therefore gives every demo adult that had none an adult date of
+birth (30 years ago), so the demos keep working. Run
+`docker compose exec -u www-data php php artisan guardians:report-unguarded-minors` to list anyone paused.
+

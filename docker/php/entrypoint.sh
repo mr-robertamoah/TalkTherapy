@@ -52,7 +52,12 @@ SEED_MARKER=/var/www/html/storage/framework/.seeded
     exit 0
   fi
   # Never seed production: the seed creates demo accounts with known passwords (security review).
-  if [ "$APP_ENV" = "production" ]; then
+  # SCRUM-380: only the php-fpm container seeds. The queue container still migrates here (idempotent,
+  # under the same flock): after a host reboot the Docker daemon ignores depends_on, and this keeps the
+  # worker from running ahead of migrations. Seeding twice is what was redundant.
+  if [ "$1" != "php-fpm" ]; then
+    echo "Not the php-fpm container: leaving the seed to it."
+  elif [ "$APP_ENV" = "production" ]; then
     echo "APP_ENV=production: not seeding."
   elif [ ! -f "$SEED_MARKER" ]; then
     # 0 = the database already has users, 3 = empty, anything else = couldn't tell (don't seed).

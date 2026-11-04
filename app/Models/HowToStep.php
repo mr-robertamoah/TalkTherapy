@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\FileTagEnum;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphToMany;
@@ -23,7 +24,7 @@ class HowToStep extends Model
     public function stepFile(): MorphToMany
     {
         return $this->morphToMany(File::class, 'fileable', 'fileables')
-            ->withPivotValue('tag', 'step')
+            ->withPivotValue('tag', FileTagEnum::step->value)
             ->withTimestamps();
     }
 

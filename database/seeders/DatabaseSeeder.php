@@ -192,6 +192,126 @@ class DatabaseSeeder extends Seeder
         // SCRUM-367: two closed accounts, one past the retention period (erased by the next run of
         // the daily job, or `php artisan schedule:test`) and one closed yesterday (kept).
         $this->createClosedAccountDemoData();
+
+        // SCRUM-288: a minor whose only guardian was removed -- their individual therapy and their
+        // group are paused (read-only) until a guardian is added.
+        $this->createPausedMinorDemoData();
+        $this->giveDemoAdultsADateOfBirth();
+    }
+
+    private function createPausedMinorDemoData(): void
+    {
+        $counsellorUser = User::factory()->adult()->create([
+            'firstName' => 'Paused',
+            'lastName' => 'DemoCounsellor',
+            'email' => 'paused.minor.demo.counsellor@example.com',
+            'username' => 'paused_minor_demo_counsellor',
+            'password' => Hash::make('password'),
+            'email_verified_at' => now(),
+            'gender' => GenderEnum::female,
+        ]);
+
+        $counsellor = $counsellorUser->counsellor()->create([
+            'name' => 'Dr. Paused DemoCounsellor',
+            'about' => 'Seeded counsellor of a therapy paused for a missing guardian (SCRUM-288).',
+            'email' => $counsellorUser->email,
+            'phone' => fake()->phoneNumber(),
+            'verified_at' => now(),
+            'email_verified_at' => now(),
+            'profession_id' => rand(1, 10),
+            'contact_visible' => true,
+        ]);
+
+        // Fifteen, with no guardianship row: the guardian who linked them has since been removed.
+        $minor = User::factory()->create([
+            'firstName' => 'Jordan',
+            'lastName' => 'Avery',
+            'email' => 'paused.minor@example.com',
+            'username' => 'paused_minor',
+            'password' => Hash::make('password'),
+            'email_verified_at' => now(),
+            'gender' => GenderEnum::male,
+            'dob' => now()->subYears(15)->toDateString(),
+        ]);
+
+        $therapy = $minor->addedTherapies()->create([
+            'name' => 'Paused Minor Demo Therapy',
+            'background_story' => 'Seeded individual therapy of a minor with no guardian (SCRUM-288): readable, but every write is refused until a guardian is added.',
+            'counsellor_id' => $counsellor->id,
+            'session_type' => 'Once',
+            'payment_type' => 'FREE',
+            'allow_in_person' => false,
+            'anonymous' => false,
+            'public' => false,
+            'status' => 'in_session',
+            // Bypasses CreateTherapyAction, so set explicitly (see createGuardianVideoConsentDemoData).
+            'client_was_minor_at_creation' => true,
+        ]);
+
+        // History to read, and an upcoming session that stays booked but can't be started (Q2).
+        $held = $this->seedSession($counsellor, $therapy, [
+            'name' => 'Paused Minor Demo: first session',
+            'about' => 'A past session with a few messages, readable while the therapy is paused.',
+            'start_time' => now()->subDays(7),
+            'end_time' => now()->subDays(7)->addHour(),
+            'type' => 'online',
+            'status' => 'held',
+            'payment_type' => 'FREE',
+        ]);
+        foreach ([[$counsellor, $minor, 'Thanks for coming in today. How has this week been?'], [$minor, $counsellor, 'Better than last week, thank you.']] as $i => [$from, $to, $content]) {
+            $from->sentMessages()->create([
+                'content' => $content,
+                'to_id' => $to->id,
+                'to_type' => $to::class,
+                'for_id' => $held->id,
+                'for_type' => $held::class,
+                'created_at' => now()->subDays(7)->addMinutes(5 + $i),
+            ]);
+        }
+        $this->seedSession($counsellor, $therapy, [
+            'name' => 'Paused Minor Demo: next session',
+            'about' => 'An upcoming session: kept while paused, but it cannot be started.',
+            'start_time' => now()->addDays(2),
+            'end_time' => now()->addDays(2)->addHour(),
+            'type' => 'online',
+            'status' => 'pending',
+            'payment_type' => 'FREE',
+        ]);
+
+        // A group the minor belongs to -- only they are paused there; the adult member carries on.
+        $member = User::factory()->adult()->create([
+            'firstName' => 'Paused',
+            'lastName' => 'DemoGroupMember',
+            'email' => 'paused.minor.demo.group.member@example.com',
+            'username' => 'paused_minor_demo_group_member',
+            'password' => Hash::make('password'),
+            'email_verified_at' => now(),
+            'gender' => GenderEnum::female,
+        ]);
+
+        $group = $counsellor->addedGroupTherapies()->create([
+            'name' => 'Paused Minor Demo Group',
+            'about' => 'Seeded group with a paused minor member (SCRUM-288) and an adult member who is not affected.',
+            'session_type' => 'Once',
+            'payment_type' => 'FREE',
+            'max_users' => 10,
+            'allow_anyone' => false,
+            'anonymous' => false,
+            'public' => false,
+            'status' => 'in_session',
+        ]);
+        $group->counsellors()->attach($counsellor->id, ['state' => 'ACTIVE']);
+        $group->users()->attach($minor->id, ['anonymous' => false, 'background_story' => 'test', 'was_minor_at_join' => true]);
+        $group->users()->attach($member->id, ['anonymous' => false, 'background_story' => 'test', 'was_minor_at_join' => false]);
+        $this->seedSession($counsellor, $group, [
+            'name' => 'Paused Minor Demo Group Session',
+            'about' => 'An in-progress group session: the adult member can write, the paused minor can only read.',
+            'start_time' => now()->subMinutes(5),
+            'end_time' => now()->addHour(),
+            'type' => 'online',
+            'status' => 'in_session',
+            'payment_type' => 'FREE',
+        ]);
     }
 
     private function createClosedAccountDemoData(): void
@@ -474,10 +594,15 @@ class DatabaseSeeder extends Seeder
                 'anonymous' => rand(0, 1),
                 'public' => rand(0, 1),
                 'status' => 'pending',
+                // SCRUM-380: valid payment settings, so a seeded paid group can be saved through its edit
+                // form. `per` was 'session' (not a real value), and with no sharePercentage the rule that
+                // a user-created group gives counsellors at least 70% refused every save.
                 'payment_data' => [
                     'amount' => rand(30, 100),
                     'currency' => 'USD',
-                    'per' => 'session',
+                    'per' => 'PER_SESSION',
+                    'shareEqually' => false,
+                    'sharePercentage' => rand(70, 90),
                 ],
             ]);
 
@@ -826,6 +951,15 @@ class DatabaseSeeder extends Seeder
         }
 
         return $contentMap['default'];
+    }
+
+    // SCRUM-288: a missing date of birth counts as a minor (user's decision, 2026-11-03), so a client
+    // with no dob and no guardian has their therapy paused. Every seeded persona without a dob is meant
+    // to be an adult (the minors are seeded with one), so they get an adult dob here, last -- otherwise
+    // maria_garcia and most other demo clients would be paused and their demos unusable.
+    private function giveDemoAdultsADateOfBirth(): void
+    {
+        User::withTrashed()->whereNull('dob')->update(['dob' => now()->subYears(30)->toDateString()]);
     }
 
     // SCRUM-301: a counsellor who hasn't been verified yet, with everything the verification form
@@ -1444,7 +1578,8 @@ class DatabaseSeeder extends Seeder
             'dob' => now()->subYears(15)->toDateString(),
         ]);
 
-        $guardian = User::factory()->create([
+        // SCRUM-288: adult -- a guardian with no date of birth doesn't count (Guardianship::scopeActive).
+        $guardian = User::factory()->adult()->create([
             'firstName' => 'VideoConsent',
             'lastName' => 'DemoGuardian',
             'email' => 'video.consent.demo.guardian@example.com',
@@ -1683,6 +1818,20 @@ class DatabaseSeeder extends Seeder
             'dob' => now()->subYears(15)->toDateString(),
         ]);
 
+        // SCRUM-288: both minors here need an active guardian, or their therapies are paused (see
+        // createPausedMinorDemoData()) and these fixtures stop showing what they were made for.
+        $guardian = User::factory()->adult()->create([
+            'firstName' => 'GroupVideoCall',
+            'lastName' => 'DemoGuardian',
+            'email' => 'group.video.call.demo.guardian@example.com',
+            'username' => 'group_video_call_demo_guardian',
+            'password' => Hash::make('password'),
+            'email_verified_at' => now(),
+        ]);
+        foreach ([$minorMember, $minorCreator] as $ward) {
+            Guardianship::query()->create(['guardian_id' => $guardian->id, 'ward_id' => $ward->id, 'ward_was_minor_at_creation' => true]);
+        }
+
         $minorCreatedGroupTherapy = $minorCreator->addedGroupTherapies()->create([
             'name' => 'Group Video Call Demo (Minor Creator)',
             'about' => 'Seeded FREE group therapy whose own creator is a minor, for testing the hard video block (SCRUM-308) ahead of the group-scoped guardian-consent flow (SCRUM-313, unstarted).',
@@ -1755,7 +1904,7 @@ class DatabaseSeeder extends Seeder
             'dob' => now()->subYears(15)->toDateString(),
         ]);
 
-        $firstGuardian = User::factory()->create([
+        $firstGuardian = User::factory()->adult()->create([
             'firstName' => 'DobChange',
             'lastName' => 'DemoFirstGuardian',
             'email' => 'dobchange.demo.first.guardian@example.com',
@@ -1764,7 +1913,7 @@ class DatabaseSeeder extends Seeder
             'email_verified_at' => now(),
         ]);
 
-        $secondGuardian = User::factory()->create([
+        $secondGuardian = User::factory()->adult()->create([
             'firstName' => 'DobChange',
             'lastName' => 'DemoSecondGuardian',
             'email' => 'dobchange.demo.second.guardian@example.com',

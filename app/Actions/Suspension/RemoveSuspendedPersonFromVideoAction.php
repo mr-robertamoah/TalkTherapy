@@ -5,6 +5,7 @@ namespace App\Actions\Suspension;
 use App\Actions\Action;
 use App\Actions\Video\EjectVideoParticipantAction;
 use App\Actions\Video\EndVideoSessionAction;
+use App\Actions\Video\GetLivePersonVideoParticipationsAction;
 use App\Enums\SuspensionScopeEnum;
 use App\Models\GroupTherapy;
 use App\Models\Session;
@@ -39,16 +40,8 @@ class RemoveSuspendedPersonFromVideoAction extends Action
         $person = $suspension->user;
         $counsellor = $person->counsellor;
 
-        VideoSessionParticipant::query()
-            ->where('participant_type', $person->getMorphClass())
-            ->where('participant_id', $person->id)
-            ->whereNull('left_at')
-            ->whereHas('videoSession', fn ($q) => $q->whereNull('ended_at'))
-            ->with('videoSession.session.for')
-            // Their live row in each room (the latest join), not a stale reconnect row.
-            ->orderByDesc('joined_at')
-            ->get()
-            ->unique('video_session_id')
+        // Their live row in each room (the latest join), not a stale reconnect row.
+        GetLivePersonVideoParticipationsAction::new()->execute($person)
             ->filter(function (VideoSessionParticipant $participant) use ($suspension, $counsellor) {
                 if ($suspension->scope == SuspensionScopeEnum::account) {
                     return true;

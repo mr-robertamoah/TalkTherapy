@@ -23,6 +23,14 @@ window.axios.interceptors.response.use(undefined, (error) => {
         window.location.assign('/suspended');
     }
 
+    // SCRUM-288: a write refused because the therapy is paused (no active guardian) means this page is
+    // stale -- reload its props so the paused banner shows and the controls lock. Once only: a page that
+    // already shows the pause won't loop (its controls are off, so it doesn't send these).
+    if (error?.response?.data?.code === 'guardian_required' && !window.__guardianPauseReloaded) {
+        window.__guardianPauseReloaded = true;
+        import('@inertiajs/vue3').then(({ router }) => router.reload({ preserveScroll: true }));
+    }
+
     return Promise.reject(error);
 });
 

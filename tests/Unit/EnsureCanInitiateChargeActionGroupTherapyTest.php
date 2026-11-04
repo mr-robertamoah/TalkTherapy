@@ -36,7 +36,7 @@ function aPaidGroupTherapy(array $paymentDataOverrides = []): GroupTherapy
 
 function aGroupTherapyMember(GroupTherapy $groupTherapy): User
 {
-    $member = User::factory()->create();
+    $member = User::factory()->adult()->create();
     $groupTherapy->users()->attach($member->id, ['background_story' => 'test', 'anonymous' => false]);
 
     return $member;
@@ -137,7 +137,7 @@ test('a group therapy member can pay for a PER_SESSION session even after a diff
 // exactly one legitimate payer (its own client), so a second attempt by that same client stays
 // blocked exactly as before this fix.
 test('an individual therapy session cannot be paid for twice', function () {
-    $client = User::factory()->create();
+    $client = User::factory()->adult()->create();
     $therapy = Therapy::factory()->create([
         'addedby_type' => User::class,
         'addedby_id' => $client->id,

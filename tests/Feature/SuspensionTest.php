@@ -196,7 +196,7 @@ test('a counsellor-role suspension hides them and stops them working, but they c
     $c = suspCounsellorCase();
     suspApply(suspSuperAdmin(), $c['report'], 'counsellor');
     $person = $c['counsellorUser'];
-    $viewer = User::factory()->create();
+    $viewer = User::factory()->adult()->create();
 
     $this->actingAs($viewer)->getJson(route('api.counsellors'))->assertOk()
         ->assertJsonMissing(['id' => $c['counsellor']->id]);
@@ -217,7 +217,7 @@ test('a counsellor-role suspension hides them and stops them working, but they c
         'type' => RequestTypeEnum::therapy->value, 'status' => 'PENDING', 'data' => [],
         'from_type' => User::class, 'from_id' => User::factory()->create()->id,
         'to_type' => Counsellor::class, 'to_id' => $c['counsellor']->id,
-        'for_type' => Therapy::class, 'for_id' => Therapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => User::factory()->create()->id])->id,
+        'for_type' => Therapy::class, 'for_id' => Therapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => User::factory()->adult()->create()->id])->id,
     ]);
     $this->actingAs($person)->postJson(route('requests.respond', ['requestId' => $request->id]), ['response' => 'accepted'])
         ->assertForbidden()->assertJsonPath('error', EnsureCanActAsCounsellorAction::SUSPENDED);
@@ -235,7 +235,7 @@ test('suspending a counsellor fails their upcoming sessions in the window, decli
     $afterWindow = suspPendingSession($c['therapy'], 10);
     $held = Session::factory()->create(['for_id' => $c['therapy']->id, 'for_type' => Therapy::class, 'status' => SessionStatusEnum::held->value, 'start_time' => now()->addDay(), 'end_time' => now()->addDay()->addHour()]);
 
-    $requester = User::factory()->create();
+    $requester = User::factory()->adult()->create();
     $request = Request::factory()->create([
         'type' => RequestTypeEnum::therapy->value, 'status' => 'PENDING', 'data' => [],
         'from_type' => User::class, 'from_id' => $requester->id,
@@ -249,9 +249,9 @@ test('suspending a counsellor fails their upcoming sessions in the window, decli
     ]);
 
     // A group with a second counsellor carries on.
-    $group = GroupTherapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => User::factory()->create()->id]);
+    $group = GroupTherapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => User::factory()->adult()->create()->id]);
     $group->counsellors()->attach($c['counsellor']->id, ['state' => 'ACTIVE', 'role' => 'NORMAL']);
-    $group->counsellors()->attach(Counsellor::factory()->create(['user_id' => User::factory()->create()->id])->id, ['state' => 'ACTIVE', 'role' => 'NORMAL']);
+    $group->counsellors()->attach(Counsellor::factory()->create(['user_id' => User::factory()->adult()->create()->id])->id, ['state' => 'ACTIVE', 'role' => 'NORMAL']);
     $groupSession = suspPendingSession($group, 2);
 
     suspApply(suspSuperAdmin(), $c['report'], 'counsellor', 7);
@@ -278,8 +278,8 @@ test('suspending a counsellor fails their upcoming sessions in the window, decli
 
 test('a group with no other counsellor has its sessions in the window failed', function () {
     $c = suspCounsellorCase();
-    $member = User::factory()->create();
-    $group = GroupTherapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => User::factory()->create()->id]);
+    $member = User::factory()->adult()->create();
+    $group = GroupTherapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => User::factory()->adult()->create()->id]);
     $group->counsellors()->attach($c['counsellor']->id, ['state' => 'ACTIVE', 'role' => 'NORMAL']);
     $group->users()->attach($member->id, ['anonymous' => true]);
     $session = suspPendingSession($group, 2);
@@ -507,6 +507,7 @@ arch('counsellor entry points call the suspension check')
     ])
     ->toUse('App\Actions\Suspension\EnsureCanActAsCounsellorAction');
 
+// SCRUM-288: through EnsureTherapyCanProceedAction, which runs this check first.
 arch('session entry points call the therapy-counsellor check')
     ->expect([
         'App\Services\SessionService',
@@ -515,7 +516,7 @@ arch('session entry points call the therapy-counsellor check')
         'App\Services\MessageService',
         'App\Services\TherapyTopicService',
     ])
-    ->toUse('App\Actions\Suspension\EnsureTherapyCounsellorIsAvailableAction');
+    ->toUse('App\Actions\Therapy\EnsureTherapyCanProceedAction');
 
 test('a normal admin is not offered the suspend form', function () {
     $c = suspCounsellorCase();
@@ -526,7 +527,7 @@ test('a normal admin is not offered the suspend form', function () {
 
 test('a signed-out visitor can search counsellors, and suspended ones are left out', function () {
     $c = suspCounsellorCase();
-    $other = Counsellor::factory()->create(['user_id' => User::factory()->create()->id]);
+    $other = Counsellor::factory()->create(['user_id' => User::factory()->adult()->create()->id]);
     suspApply(suspSuperAdmin(), $c['report'], 'counsellor', 7);
 
     $this->getJson(route('api.counsellors'))->assertOk()
@@ -553,7 +554,7 @@ test('a suspended counsellor can not write session notes or change topics, and r
 
 test('a guardian of any member of a reported group is part of the report', function () {
     $member = User::factory()->adult()->create();
-    $group = GroupTherapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => User::factory()->create()->id]);
+    $group = GroupTherapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => User::factory()->adult()->create()->id]);
     $group->users()->attach($member->id, ['anonymous' => true]);
     $report = new Report(['description' => 'Something happened', 'data' => []]);
     $report->addedby()->associate(User::factory()->create());
@@ -624,7 +625,7 @@ function suspVideoProvider(array &$removed): VideoProviderInterface
             return [];
         }
 
-        public function createParticipantCredentials(VideoSession $videoSession, User $user, string $displayName, bool $isOwner = false, bool $receiveOnly = false, bool $canSendVideo = true): array
+        public function createParticipantCredentials(VideoSession $videoSession, User $user, string $displayName, bool $receiveOnly = false, bool $canSendVideo = true): array
         {
             return [];
         }
@@ -645,9 +646,9 @@ function suspVideoProvider(array &$removed): VideoProviderInterface
 
 test('a suspended counsellor is taken out of a live group call that carries on with another counsellor', function () {
     $c = suspCounsellorCase();
-    $group = GroupTherapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => User::factory()->create()->id]);
+    $group = GroupTherapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => User::factory()->adult()->create()->id]);
     $group->counsellors()->attach($c['counsellor']->id, ['state' => 'ACTIVE', 'role' => 'NORMAL']);
-    $group->counsellors()->attach(Counsellor::factory()->create(['user_id' => User::factory()->create()->id])->id, ['state' => 'ACTIVE', 'role' => 'NORMAL']);
+    $group->counsellors()->attach(Counsellor::factory()->create(['user_id' => User::factory()->adult()->create()->id])->id, ['state' => 'ACTIVE', 'role' => 'NORMAL']);
     $session = Session::factory()->create(['for_id' => $group->id, 'for_type' => GroupTherapy::class, 'status' => SessionStatusEnum::in_session->value, 'start_time' => now()->subMinutes(5), 'end_time' => now()->addHour()]);
     $videoSession = VideoSession::factory()->create(['session_id' => $session->id, 'provider_room_id' => 'room-g']);
     $row = VideoSessionParticipant::factory()->create(['video_session_id' => $videoSession->id, 'participant_type' => User::class, 'participant_id' => $c['counsellorUser']->id, 'left_at' => null]);

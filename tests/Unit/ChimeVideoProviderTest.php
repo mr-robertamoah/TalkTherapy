@@ -79,7 +79,7 @@ test('createParticipantCredentials mints receive-only Capabilities when requeste
         ]))
         ->andReturn(['Attendee' => []]);
 
-    (new ChimeVideoProvider($client))->createParticipantCredentials($videoSession, $user, 'Some Member', false, true);
+    (new ChimeVideoProvider($client))->createParticipantCredentials($videoSession, $user, 'Some Member', true);
 });
 
 // SCRUM-332: the creator of an anonymous group may publish audio but never video.
@@ -95,7 +95,7 @@ test('createParticipantCredentials mints audio-only Capabilities when video is n
         ]))
         ->andReturn(['Attendee' => []]);
 
-    (new ChimeVideoProvider($client))->createParticipantCredentials($videoSession, $user, 'Anonymous', false, false, false);
+    (new ChimeVideoProvider($client))->createParticipantCredentials($videoSession, $user, 'Anonymous', false, false);
 });
 
 test('receive-only wins over audio-only on Chime too', function () {
@@ -110,7 +110,7 @@ test('receive-only wins over audio-only on Chime too', function () {
         ]))
         ->andReturn(['Attendee' => []]);
 
-    (new ChimeVideoProvider($client))->createParticipantCredentials($videoSession, $user, 'Anonymous', false, true, false);
+    (new ChimeVideoProvider($client))->createParticipantCredentials($videoSession, $user, 'Anonymous', true, false);
 });
 
 test('endRoom deletes the provider meeting by its stored provider_room_id', function () {

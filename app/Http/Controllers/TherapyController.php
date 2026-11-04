@@ -18,8 +18,7 @@ use App\Http\Resources\TherapyTopicResource;
 use App\Models\Counsellor;
 use App\Models\Therapy;
 use App\Services\TherapyService;
-use Illuminate\Http\JsonResponse;
-use Illuminate\Http\RedirectResponse;
+use App\Support\FailureResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Redirect;
 use Inertia\Inertia;
@@ -117,15 +116,15 @@ class TherapyController extends Controller
                 'therapy' => new TherapyMiniResource($therapy),
             ]);
         } catch (Throwable $th) {
-            $status = $this->statusFor($th);
-            $message = $this->messageFor($th, $status);
-
-            return response()->json(['message' => $message], $status);
+            return FailureResponse::json($th);
         }
     }
 
     // Every lookup below reads $request->route(...) rather than the magic ->therapyId property
     // -- see the identical fix/rationale in SessionController (SCRUM-116).
+    // SCRUM-379: update/strict-gate/end/delete are reached both by Inertia forms (web routes -- they
+    // expect the redirect, and read a failure from errors.alert) and by JSON callers (api.therapies.*).
+    // successResponse()/returnFailure() give each its own answer.
     public function updateTherapy(UpdateTherapyRequest $request)
     {
         try {
@@ -150,7 +149,7 @@ class TherapyController extends Controller
                 ])
             );
 
-            return $this->returnSuccess($request, Redirect::back(), ['therapy' => new TherapyMiniResource($therapy)]);
+            return $this->successResponse($request, ['status' => true, 'therapy' => new TherapyMiniResource($therapy)], Redirect::back());
         } catch (Throwable $th) {
             return $this->returnFailure($request, $th);
         }
@@ -173,7 +172,7 @@ class TherapyController extends Controller
                 ])
             );
 
-            return $this->returnSuccess($request, Redirect::back());
+            return $this->successResponse($request, ['status' => true], Redirect::back());
         } catch (Throwable $th) {
             return $this->returnFailure($request, $th);
         }
@@ -189,7 +188,7 @@ class TherapyController extends Controller
                 ])
             );
 
-            return $this->returnSuccess($request, Redirect::route('home'));
+            return $this->successResponse($request, ['status' => true], Redirect::route('home'));
         } catch (Throwable $th) {
             return $this->returnFailure($request, $th);
         }
@@ -205,7 +204,7 @@ class TherapyController extends Controller
                 ])
             );
 
-            return $this->returnSuccess($request, Redirect::back());
+            return $this->successResponse($request, ['status' => true], Redirect::back());
         } catch (Throwable $th) {
             return $this->returnFailure($request, $th);
         }
@@ -302,24 +301,8 @@ class TherapyController extends Controller
                 'status' => true,
             ]);
         } catch (Throwable $th) {
-            $status = $this->statusFor($th);
-            $message = $this->messageFor($th, $status);
-
-            return response()->json(['message' => $message], $status);
+            return FailureResponse::json($th);
         }
-    }
-
-    // SCRUM-379: the update/strict-gate/end/delete endpoints are reached both by Inertia forms (web
-    // routes -- they expect the redirect, and read a failure from errors.alert) and by JSON callers
-    // (the api.therapies.* routes) -- which used to get that same redirect. JSON for a script;
-    // otherwise the redirect each endpoint has always returned. Failures go through returnFailure().
-    private function returnSuccess(Request $request, RedirectResponse $redirect, array $data = []): JsonResponse|RedirectResponse
-    {
-        if ($request->wantsJsonResponse()) {
-            return response()->json(['status' => true, ...$data]);
-        }
-
-        return $redirect;
     }
 
     public function show()

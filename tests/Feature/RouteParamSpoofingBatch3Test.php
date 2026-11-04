@@ -24,18 +24,18 @@ use Illuminate\Support\Str;
 
 function anAdmin(): User
 {
-    $admin = User::factory()->create();
+    $admin = User::factory()->adult()->create();
     Administrator::factory()->create(['user_id' => $admin->id]);
 
     return $admin;
 }
 
 test('CommentController::deleteComment applies to the URL\'s comment, not a spoofed commentId in the body', function () {
-    $owner = User::factory()->create();
+    $owner = User::factory()->adult()->create();
 
     Comment::unguard();
     $ownedComment = Comment::create(['content' => 'Owned', 'user_id' => $owner->id]);
-    $unrelatedComment = Comment::create(['content' => 'Untouched', 'user_id' => User::factory()->create()->id]);
+    $unrelatedComment = Comment::create(['content' => 'Untouched', 'user_id' => User::factory()->adult()->create()->id]);
     Comment::reguard();
 
     $response = $this
@@ -48,11 +48,11 @@ test('CommentController::deleteComment applies to the URL\'s comment, not a spoo
 });
 
 test('ContactController::deleteContact applies to the URL\'s contact, not a spoofed contactId in the body', function () {
-    $owner = User::factory()->create();
+    $owner = User::factory()->adult()->create();
 
     Contact::unguard();
     $ownedContact = Contact::create(['content' => 'Owned', 'type' => ContactTypeEnum::general->value, 'addedby_type' => User::class, 'addedby_id' => $owner->id]);
-    $unrelatedContact = Contact::create(['content' => 'Untouched', 'type' => ContactTypeEnum::general->value, 'addedby_type' => User::class, 'addedby_id' => User::factory()->create()->id]);
+    $unrelatedContact = Contact::create(['content' => 'Untouched', 'type' => ContactTypeEnum::general->value, 'addedby_type' => User::class, 'addedby_id' => User::factory()->adult()->create()->id]);
     Contact::reguard();
 
     $response = $this
@@ -82,8 +82,8 @@ test('LinkController::changeLinkStatus applies to the URL\'s link, not a spoofed
     $admin = anAdmin();
 
     Link::unguard();
-    $ownedLink = Link::create(['uuid' => (string) Str::uuid(), 'type' => LinkTypeEnum::guardianship->value, 'state' => LinkStateEnum::active->value, 'addedby_type' => User::class, 'addedby_id' => User::factory()->create()->id]);
-    $unrelatedLink = Link::create(['uuid' => (string) Str::uuid(), 'type' => LinkTypeEnum::guardianship->value, 'state' => LinkStateEnum::active->value, 'addedby_type' => User::class, 'addedby_id' => User::factory()->create()->id]);
+    $ownedLink = Link::create(['uuid' => (string) Str::uuid(), 'type' => LinkTypeEnum::guardianship->value, 'state' => LinkStateEnum::active->value, 'addedby_type' => User::class, 'addedby_id' => User::factory()->adult()->create()->id]);
+    $unrelatedLink = Link::create(['uuid' => (string) Str::uuid(), 'type' => LinkTypeEnum::guardianship->value, 'state' => LinkStateEnum::active->value, 'addedby_type' => User::class, 'addedby_id' => User::factory()->adult()->create()->id]);
     Link::reguard();
 
     $response = $this
@@ -100,7 +100,7 @@ test('LinkController::changeLinkStatus applies to the URL\'s link, not a spoofed
 // (guardianship) rather than just toggle a state -- both subagents flagged this as more
 // consequential than changeLinkStatus, so it gets its own test rather than relying on that one.
 test('LinkController::performAction applies to the URL\'s link, not a spoofed uuid in the query', function () {
-    $guardian = User::factory()->create();
+    $guardian = User::factory()->adult()->create();
     $ownedWard = User::factory()->create();
     $unrelatedWard = User::factory()->create();
 
@@ -140,8 +140,8 @@ test('PostController::deletePost applies to the URL\'s post, not a spoofed postI
     $admin = anAdmin();
 
     Post::unguard();
-    $ownedPost = Post::create(['content' => 'Owned', 'addedby_type' => User::class, 'addedby_id' => User::factory()->create()->id]);
-    $unrelatedPost = Post::create(['content' => 'Untouched', 'addedby_type' => User::class, 'addedby_id' => User::factory()->create()->id]);
+    $ownedPost = Post::create(['content' => 'Owned', 'addedby_type' => User::class, 'addedby_id' => User::factory()->adult()->create()->id]);
+    $unrelatedPost = Post::create(['content' => 'Untouched', 'addedby_type' => User::class, 'addedby_id' => User::factory()->adult()->create()->id]);
     Post::reguard();
 
     $response = $this

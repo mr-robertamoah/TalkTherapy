@@ -72,14 +72,14 @@ test('createParticipantCredentials mints a token scoped to the room and this use
             return $properties['room_name'] === 'session-1-1'
                 && $properties['user_name'] === 'Anonymous Display Name'
                 && $properties['user_id'] === $videoSession->participantKeyFor($user->id)
-                && $properties['is_owner'] === true
-                // SCRUM-379: an owner's token carries no `permissions` -- Daily applies them to
-                // non-owners only, so they'd only suggest a limit that doesn't exist.
-                && ! array_key_exists('permissions', $properties);
+                // SCRUM-380 (deliberate change): this used to pin an owner token with no
+                // `permissions` (the 1:1 counsellor). No token is an owner now.
+                && $properties['is_owner'] === false
+                && ($properties['permissions'] ?? null) === ['canSend' => ['audio', 'video'], 'canAdmin' => false];
         }))
         ->andReturn(['token' => 'jwt-token-value']);
 
-    $result = (new DailyVideoProvider($client))->createParticipantCredentials($videoSession, $user, 'Anonymous Display Name', true);
+    $result = (new DailyVideoProvider($client))->createParticipantCredentials($videoSession, $user, 'Anonymous Display Name');
 
     expect($result)->toBe(['url' => 'https://example.daily.co/room', 'token' => 'jwt-token-value']);
 });
@@ -100,10 +100,10 @@ test('createParticipantCredentials mints a receive-only token with canSend false
         ->with(Mockery::on(fn ($properties) => ($properties['permissions']['canSend'] ?? null) === false))
         ->andReturn(['token' => 'jwt-token-value']);
 
-    (new DailyVideoProvider($client))->createParticipantCredentials($videoSession, $user, 'Some Member', false, true);
+    (new DailyVideoProvider($client))->createParticipantCredentials($videoSession, $user, 'Some Member', true);
 });
 
-// SCRUM-379: a full non-owner participant (a 1:1 client, a group's counsellor or creator) may send
+// SCRUM-379/380: a full participant (a 1:1 client or counsellor, a group's counsellor or creator) may send
 // exactly audio and video -- never `true`, which also allows screen and custom tracks -- and holds no
 // admin rights (no changing others' permissions, live streaming or transcription).
 test('createParticipantCredentials gives a full non-owner participant audio and video only, and no admin rights', function () {
@@ -136,7 +136,7 @@ test('createParticipantCredentials gives receive-only and audio-only participant
         ->with(Mockery::on(fn ($properties) => ($properties['permissions'] ?? null) === ['canSend' => $canSend, 'canAdmin' => false]))
         ->andReturn(['token' => 'jwt-token-value']);
 
-    (new DailyVideoProvider($client))->createParticipantCredentials($videoSession, $user, 'Anonymous', false, $receiveOnly, $canSendVideo);
+    (new DailyVideoProvider($client))->createParticipantCredentials($videoSession, $user, 'Anonymous', $receiveOnly, $canSendVideo);
 })->with([
     'receive-only' => [true, true, false],
     'audio-only' => [false, false, ['audio']],
@@ -156,7 +156,7 @@ test('createParticipantCredentials mints an audio-only token when video is not a
         ->with(Mockery::on(fn ($properties) => ($properties['permissions']['canSend'] ?? null) === ['audio']))
         ->andReturn(['token' => 'jwt-token-value']);
 
-    (new DailyVideoProvider($client))->createParticipantCredentials($videoSession, $user, 'Anonymous', false, false, false);
+    (new DailyVideoProvider($client))->createParticipantCredentials($videoSession, $user, 'Anonymous', false, false);
 });
 
 test('receive-only wins over audio-only when both are requested', function () {
@@ -172,7 +172,7 @@ test('receive-only wins over audio-only when both are requested', function () {
         ->with(Mockery::on(fn ($properties) => ($properties['permissions']['canSend'] ?? null) === false))
         ->andReturn(['token' => 'jwt-token-value']);
 
-    (new DailyVideoProvider($client))->createParticipantCredentials($videoSession, $user, 'Anonymous', false, true, false);
+    (new DailyVideoProvider($client))->createParticipantCredentials($videoSession, $user, 'Anonymous', true, false);
 });
 
 test('endRoom deletes the provider room by its stored provider_room_id', function () {

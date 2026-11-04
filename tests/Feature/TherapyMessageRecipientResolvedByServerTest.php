@@ -15,8 +15,8 @@ use Illuminate\Http\Request;
 
 function anAnonymousTherapySessionFor348(): array
 {
-    $client = User::factory()->create();
-    $counsellor = Counsellor::factory()->create(['user_id' => User::factory()->create()->id]);
+    $client = User::factory()->adult()->create();
+    $counsellor = Counsellor::factory()->create(['user_id' => User::factory()->adult()->create()->id]);
     $therapy = Therapy::factory()->create([
         'addedby_type' => User::class, 'addedby_id' => $client->id,
         'counsellor_id' => $counsellor->id, 'anonymous' => true,
@@ -52,7 +52,7 @@ test('a counsellor\'s message reaches the client without the client\'s id being 
 
 test('a client-sent recipient is ignored: the message always goes to the other party', function () {
     [, $session, $client, $counsellor] = anAnonymousTherapySessionFor348();
-    $someoneElse = User::factory()->create();
+    $someoneElse = User::factory()->adult()->create();
 
     $this->actingAs($client)->postJson(route('api.messages.create'), [
         'content' => 'Hello', 'type' => 'NORMAL',
@@ -69,7 +69,7 @@ test('a party using their other account in a therapy session is refused, so ids 
     [, $session, $client, $counsellor] = anAnonymousTherapySessionFor348();
 
     // The counsellor posting as their User account with a guessed client id: right or wrong, refused.
-    foreach ([$client->id, User::factory()->create()->id] as $guess) {
+    foreach ([$client->id, User::factory()->adult()->create()->id] as $guess) {
         $this->actingAs($counsellor->user)->postJson(route('api.messages.create'), [
             'content' => 'Guess', 'type' => 'NORMAL',
             'fromType' => 'User', 'fromId' => $counsellor->user->id,
@@ -109,13 +109,13 @@ test('a counsellor\'s report on their anonymous client never hands back the clie
 
     // Naming the anonymous client by a guessed id: the same refusal whether the guess is right or wrong.
     $right = $this->actingAs($counsellor->user)->postJson(route('api.reports.create'), $payload(['userId' => $client->id]));
-    $wrong = $this->actingAs($counsellor->user)->postJson(route('api.reports.create'), $payload(['userId' => User::factory()->create()->id]));
+    $wrong = $this->actingAs($counsellor->user)->postJson(route('api.reports.create'), $payload(['userId' => User::factory()->adult()->create()->id]));
     expect($right->status())->toBe(422)->and($right->json('message'))->toBe($wrong->json('message'));
 });
 
 test('group session messages still keep the recipient the sender chose', function () {
-    $creator = User::factory()->create();
-    $counsellor = Counsellor::factory()->create(['user_id' => User::factory()->create()->id]);
+    $creator = User::factory()->adult()->create();
+    $counsellor = Counsellor::factory()->create(['user_id' => User::factory()->adult()->create()->id]);
     $group = GroupTherapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => $creator->id, 'anonymous' => false]);
     $group->counsellors()->attach($counsellor->id, ['state' => 'ACTIVE', 'role' => 'NORMAL']);
     $session = Session::factory()->create(['for_id' => $group->id, 'for_type' => GroupTherapy::class, 'status' => 'IN_SESSION']);

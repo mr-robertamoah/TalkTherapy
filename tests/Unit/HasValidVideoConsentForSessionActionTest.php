@@ -14,7 +14,7 @@ use App\Models\VideoConsent;
 function minorTherapyWithSessionForEnforcement(array $sessionOverrides = []): array
 {
     $minor = User::factory()->create();
-    $counsellorUser = User::factory()->create();
+    $counsellorUser = User::factory()->adult()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
     $therapy = Therapy::factory()->create([
         'addedby_type' => User::class,
@@ -94,7 +94,7 @@ test('a grant belonging to a different ward does not satisfy this ward\'s check'
 
 test('an adult client\'s session always satisfies the check (nothing to gate on)', function () {
     $adultClient = User::factory()->adult()->create();
-    $counsellorUser = User::factory()->create();
+    $counsellorUser = User::factory()->adult()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
     $therapy = Therapy::factory()->create([
         'addedby_type' => User::class, 'addedby_id' => $adultClient->id, 'counsellor_id' => $counsellor->id,
@@ -117,7 +117,7 @@ test('a group therapy session always satisfies the check (no ward concept)', fun
 
 test('a client who edited their dob to look adult AFTER creation still gets gated, per the stable snapshot', function () {
     $client = User::factory()->adult()->create();
-    $counsellorUser = User::factory()->create();
+    $counsellorUser = User::factory()->adult()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
     $therapy = Therapy::factory()->create([
         'addedby_type' => User::class,
@@ -131,8 +131,8 @@ test('a client who edited their dob to look adult AFTER creation still gets gate
 });
 
 test('a client whose live dob still reads as a minor is NOT gated once the snapshot says adult', function () {
-    $client = User::factory()->create();
-    $counsellorUser = User::factory()->create();
+    $client = User::factory()->adult()->create();
+    $counsellorUser = User::factory()->adult()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
     $therapy = Therapy::factory()->create([
         'addedby_type' => User::class,

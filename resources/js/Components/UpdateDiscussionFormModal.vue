@@ -37,7 +37,7 @@ const sessionSearch = ref('')
 const sessions = ref({data: [], page: 1})
 const getting = ref({show: '', type: ''})
 // SCRUM-379: shared start/end handling (resources/js/Composables/useScheduleTimes.js).
-const { startTime, endTime, setTimes, clearTimes, timesError, computedStartTime, computedEndTime, computedNow, computedDuration } = useScheduleTimes({})
+const { startTime, endTime, setTimes, clearTimes, timesError, computedStartTime, computedEndTime, computedNow, computedDuration } = useScheduleTimes({ isOpen: () => props.show })
 const discussionData = ref({
     'name': '',
     'description': '',
@@ -110,7 +110,6 @@ async function updateDiscussion() {
         ...discussionData.value
     })
     .then((res) => {
-        console.log(res)
         
         setSuccessAlertData({
             message: 'The discussion has been successfully updated.',
@@ -156,7 +155,6 @@ async function getSessions() {
         groupTherapyId: props.discussion.forType == 'GroupTherapy' ? props.discussion.forId : null,
     }))
     .then((res) => {
-        console.log(res)
         
         if (sessions.value.page == 1)
             sessions.value.data = []

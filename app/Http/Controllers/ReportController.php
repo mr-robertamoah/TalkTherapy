@@ -11,7 +11,6 @@ use App\Models\Report;
 use App\Services\ReportService;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Redirect;
 use Throwable;
 
 class ReportController extends Controller
@@ -32,7 +31,7 @@ class ReportController extends Controller
                 ])
             );
 
-            return $this->returnSuccess($request, $report);
+            return $this->successResponse($request, ['report' => new ReportResource($report)]);
         } catch (Throwable $th) {
 
             return $this->returnFailure($request, $th);
@@ -59,7 +58,7 @@ class ReportController extends Controller
                 ])
             );
 
-            return $this->returnSuccess($request, $report);
+            return $this->successResponse($request, ['report' => new ReportResource($report)]);
         } catch (Throwable $th) {
 
             return $this->returnFailure($request, $th);
@@ -77,7 +76,7 @@ class ReportController extends Controller
                 ])
             );
 
-            return $this->returnSuccess($request, $report);
+            return $this->successResponse($request, ['report' => new ReportResource($report)]);
         } catch (Throwable $th) {
 
             return $this->returnFailure($request, $th);
@@ -95,7 +94,7 @@ class ReportController extends Controller
                 ])
             );
 
-            return $this->returnSuccess($request, $report);
+            return $this->successResponse($request, ['report' => new ReportResource($report)]);
         } catch (Throwable $th) {
 
             return $this->returnFailure($request, $th);
@@ -120,17 +119,6 @@ class ReportController extends Controller
 
             return $this->returnFailure($request, $th);
         }
-    }
-
-    private function returnSuccess(Request $request, Report $report)
-    {
-        $report = new ReportResource($report);
-
-        if ($request->wantsJsonResponse()) {
-            return response()->json(['report' => $report]);
-        }
-
-        return Redirect::back()->with(['report' => $report]);
     }
 
     private function reportable(Request $request): ?Model

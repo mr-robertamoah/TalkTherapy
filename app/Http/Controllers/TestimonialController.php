@@ -8,7 +8,6 @@ use App\Http\Resources\TestimonialResource;
 use App\Models\Testimonial;
 use App\Services\TestimonialService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Redirect;
 use Throwable;
 
 class TestimonialController extends Controller
@@ -24,7 +23,7 @@ class TestimonialController extends Controller
                 ])
             );
 
-            return $this->returnSuccess($request, $testimonial);
+            return $this->successResponse($request, ['testimonial' => new TestimonialResource($testimonial)]);
         } catch (Throwable $th) {
 
             return $this->returnFailure($request, $th);
@@ -46,7 +45,7 @@ class TestimonialController extends Controller
                 ])
             );
 
-            return $this->returnSuccess($request, $testimonial);
+            return $this->successResponse($request, ['testimonial' => new TestimonialResource($testimonial)]);
         } catch (Throwable $th) {
 
             return $this->returnFailure($request, $th);
@@ -64,7 +63,7 @@ class TestimonialController extends Controller
                 ])
             );
 
-            return $this->returnSuccess($request, $testimonial);
+            return $this->successResponse($request, ['testimonial' => new TestimonialResource($testimonial)]);
         } catch (Throwable $th) {
 
             return $this->returnFailure($request, $th);
@@ -83,7 +82,7 @@ class TestimonialController extends Controller
                 ])
             );
 
-            return $this->returnSuccess($request, $testimonial);
+            return $this->successResponse($request, ['testimonial' => new TestimonialResource($testimonial)]);
         } catch (Throwable $th) {
 
             return $this->returnFailure($request, $th);
@@ -106,16 +105,5 @@ class TestimonialController extends Controller
 
             return $this->returnFailure($request, $th);
         }
-    }
-
-    private function returnSuccess(Request $request, Testimonial $testimonial)
-    {
-        $testimonial = new TestimonialResource($testimonial);
-
-        if ($request->wantsJsonResponse()) {
-            return response()->json(['testimonial' => $testimonial]);
-        }
-
-        return Redirect::back()->with(['testimonial' => $testimonial]);
     }
 }

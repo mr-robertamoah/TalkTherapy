@@ -19,7 +19,7 @@ use Illuminate\Http\Request;
 
 // SCRUM-57: no notification about an anonymous therapy or group ever names the anonymous person --
 // by mail or broadcast. SCRUM-55/56: who is masked follows who sent a request, and each user's own
-// anonymity (isAnonymousFor), not just the group flag.
+// anonymity (hidesIdentityOf), not just the group flag.
 
 function aDistinctUserFor57(string $first = 'Zephyrine', string $last = 'Quillfeather'): User
 {
@@ -105,7 +105,7 @@ test('SCRUM-56: a member who chose anonymity, and an anonymous group\'s creator,
     expectNoNameFor57(mailTextFor57(new GroupTherapyMembershipRequestSentNotification($membership), $creator), $requester);
 
     // A creator never gets a group_therapy_user row through the app today (they're a participant via
-    // isUser()), so this state is an invariant guard: masking must follow isAnonymousFor($creator),
+    // isUser()), so this state is an invariant guard: masking must follow hidesIdentityOf($creator),
     // the same rule as addedByUserIsMaskedFor(), whatever sets it.
     // The creator is anonymous in their own group by their own choice (pivot), not the group flag.
     $group->users()->attach($creator->id, ['anonymous' => true]);
@@ -123,7 +123,7 @@ test('SCRUM-56: a group assistance acceptance respects the creator\'s own anonym
     $counsellor = aCounsellorFor57();
     $group = GroupTherapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => $creator->id, 'anonymous' => false]);
     // A creator never gets a group_therapy_user row through the app today (they're a participant via
-    // isUser()), so this state is an invariant guard: masking must follow isAnonymousFor($creator),
+    // isUser()), so this state is an invariant guard: masking must follow hidesIdentityOf($creator),
     // the same rule as addedByUserIsMaskedFor(), whatever sets it.
     $group->users()->attach($creator->id, ['anonymous' => true]);
     $request = aRequestFor57(['from_type' => Counsellor::class, 'from_id' => $counsellor->id, 'to_type' => User::class, 'to_id' => $creator->id, 'for_type' => GroupTherapy::class, 'for_id' => $group->id, 'type' => RequestTypeEnum::groupTherapy->value]);

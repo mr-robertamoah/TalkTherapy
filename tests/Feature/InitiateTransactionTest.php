@@ -30,7 +30,7 @@ test('an authenticated user can initiate a charge for a paid therapy via the rea
         ], 200),
     ]);
 
-    $therapyOwner = User::factory()->create();
+    $therapyOwner = User::factory()->adult()->create();
     $therapy = Therapy::factory()->create([
         'addedby_type' => User::class,
         'addedby_id' => $therapyOwner->id,
@@ -56,7 +56,7 @@ test('an authenticated user can initiate a charge for a paid therapy via the rea
 });
 
 test('initiating a charge for a therapy that does not exist returns a clean error, not a crash', function () {
-    $user = User::factory()->create();
+    $user = User::factory()->adult()->create();
     $this->actingAs($user);
 
     $response = $this->postJson('/therapies/999999/transactions');
@@ -70,7 +70,7 @@ test('initiating a charge for a therapy that does not exist returns a clean erro
 // Paystack checkout URL plus that record's price.
 
 test('a user with no relationship to the therapy is rejected via the real route, not given a checkout link', function () {
-    $therapyOwner = User::factory()->create();
+    $therapyOwner = User::factory()->adult()->create();
     $therapy = Therapy::factory()->create([
         'addedby_type' => User::class,
         'addedby_id' => $therapyOwner->id,
@@ -80,7 +80,7 @@ test('a user with no relationship to the therapy is rejected via the real route,
         'payment_data' => ['per' => TherapyPerPaymentEnum::therapy->value, 'amount' => 150, 'currency' => 'GHS'],
     ]);
 
-    $outsider = User::factory()->create();
+    $outsider = User::factory()->adult()->create();
     $this->actingAs($outsider);
 
     $response = $this->postJson("/therapies/{$therapy->id}/transactions");
@@ -102,7 +102,7 @@ test('the resolved payment target comes from the URL route parameter, not a spoo
         ], 200),
     ]);
 
-    $owner = User::factory()->create();
+    $owner = User::factory()->adult()->create();
     $ownedTherapy = Therapy::factory()->create([
         'addedby_type' => User::class,
         'addedby_id' => $owner->id,
@@ -154,8 +154,8 @@ test('an authenticated member can initiate a charge via their organization throu
 
     $organization = Organization::factory()->create(['is_provider' => true, 'is_consumer' => true, 'verified_at' => now()]);
     OrganizationPaymentInstrument::factory()->create(['organization_id' => $organization->id]);
-    $payer = User::factory()->create();
-    $counsellorUser = User::factory()->create();
+    $payer = User::factory()->adult()->create();
+    $counsellorUser = User::factory()->adult()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
 
     $member = OrganizationMember::factory()->create([
@@ -206,7 +206,7 @@ test('an authenticated member can initiate a charge via their organization throu
 });
 
 test('a malformed organizationId is rejected cleanly, not as an uncaught 500', function () {
-    $owner = User::factory()->create();
+    $owner = User::factory()->adult()->create();
     $therapy = Therapy::factory()->create([
         'addedby_type' => User::class,
         'addedby_id' => $owner->id,

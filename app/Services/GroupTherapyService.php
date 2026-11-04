@@ -8,6 +8,7 @@ use App\Actions\GroupTherapy\EnsureCanSetGroupTherapyPaymentGateAction;
 use App\Actions\GroupTherapy\EnsureGroupTherapyCanBecomeAnonymousAction;
 use App\Actions\GroupTherapy\JoinGroupTherapyAction;
 use App\Actions\GroupTherapy\UpdateGroupTherapyAction;
+use App\Actions\Guardianship\EnsureMinorHasActiveGuardianAction;
 use App\Actions\Request\SendTherapyAssistanceRequestAction;
 use App\Actions\Star\CreateStarAction;
 use App\Actions\Suspension\EnsureCanActAsCounsellorAction;
@@ -101,6 +102,9 @@ class GroupTherapyService extends Service
 
         EnsureCanUpdateTherapyAction::new()->execute($groupTherapyDTO);
 
+        // SCRUM-288: settings can't change while the therapy is paused for a missing guardian.
+        EnsureMinorHasActiveGuardianAction::new()->execute($groupTherapyDTO->user, $groupTherapyDTO->groupTherapy);
+
         // TT-7.5b-b1/SCRUM-265: defense-in-depth, mirrors TherapyService::updateTherapy()'s own
         // identical call -- only runs when one of the two gate-related fields is actually being
         // touched (EnsureCanSetGroupTherapyPaymentGateAction itself has no such guard, since it
@@ -148,6 +152,8 @@ class GroupTherapyService extends Service
             'Group Therapy'
         );
 
+        // SCRUM-288: no guardian check -- only a group's active counsellors (or an admin) get past the
+        // check above, and a group's counsellors are never paused.
         EnsureCanSetGroupTherapyPaymentGateAction::new()->execute($groupTherapyDTO->groupTherapy, $groupTherapyDTO->user);
 
         return UpdateGroupTherapyAction::new()->execute($groupTherapyDTO);
@@ -211,7 +217,7 @@ class GroupTherapyService extends Service
     public function getRandomGroupTherapies(?User $user)
     {
         // Eager-load users (with the per-member anonymity pivot) once for the whole page --
-        // GroupTherapyMiniResource::isAnonymousFor() would otherwise lazy-load this pivot per
+        // hidesIdentityOf() would otherwise lazy-load this pivot per
         // row (SCRUM-71 N+1 finding).
         $query = GroupTherapy::query()->with('users');
 

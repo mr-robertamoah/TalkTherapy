@@ -1,6 +1,6 @@
 <script setup>
 import { Head, Link, usePage } from "@inertiajs/vue3";
-import { ref, watchEffect } from "vue";
+import { ref, watch, watchEffect } from "vue";
 import AuthenticatedLayout from "@/Layouts/AuthenticatedLayout.vue";
 import TherapyComponent from "@/Components/TherapyComponent.vue";
 import Alert from "@/Components/Alert.vue";
@@ -22,6 +22,10 @@ const props = defineProps({
 // this codebase's established pattern of independently re-joining the presence channel per
 // mounted page -- see TherapyComponent.vue's own `.private('sessions.{id}')` join alongside it.
 const therapyRef = ref(props.therapy);
+// SCRUM-288 (browser QA): follow Inertia's reloaded `therapy` prop. The pause/resume events reload it,
+// and without this the chat page kept the old pause state (no banner, composer still shown) until a
+// hard reload -- as UnifiedTherapy.vue already does since SCRUM-379.
+watch(() => props.therapy, (therapy) => { therapyRef.value = therapy; });
 const {
   activeSession,
   listening,

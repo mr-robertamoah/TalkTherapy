@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Actions\Admin\RecordAdminContentReadAction;
 use App\Actions\GroupTherapy\EnsureGroupTherapyCanBecomeAnonymousAction;
+use App\Actions\Guardianship\EnsureMinorHasActiveGuardianAction;
 use App\Actions\Request\SendTherapyAssistanceRequestAction;
 use App\Actions\Star\CreateStarAction;
 use App\Actions\Suspension\EnsureCanActAsCounsellorAction;
@@ -97,6 +98,9 @@ class TherapyService extends Service
 
         EnsureCanSetStrictPaymentGateAction::new()->execute($createTherapyDTO);
 
+        // SCRUM-288: settings can't change while the therapy is paused for a missing guardian.
+        EnsureMinorHasActiveGuardianAction::new()->execute($createTherapyDTO->user, $createTherapyDTO->therapy);
+
         EnsureTherapyDataIsValidAction::new()->execute($createTherapyDTO);
 
         // SCRUM-334 (security review): the same rule and lock as a group -- no turning anonymity on while
@@ -139,6 +143,9 @@ class TherapyService extends Service
         EnsureTherapyExistsAction::new()->execute($createTherapyDTO);
 
         EnsureCanSetStrictPaymentGateAction::new()->execute($createTherapyDTO);
+
+        // SCRUM-288: settings can't change while the therapy is paused for a missing guardian.
+        EnsureMinorHasActiveGuardianAction::new()->execute($createTherapyDTO->user, $createTherapyDTO->therapy);
 
         return UpdateTherapyAction::new()->execute($createTherapyDTO);
     }
@@ -205,6 +212,9 @@ class TherapyService extends Service
         EnsureTherapyExistsAction::new()->execute($assistTherapyDTO);
 
         EnsureCanSendTherapyAssistanceRequestAction::new()->execute($assistTherapyDTO);
+
+        // SCRUM-288: no new counsellor is asked in while the therapy is paused for a missing guardian.
+        EnsureMinorHasActiveGuardianAction::new()->execute($assistTherapyDTO->user, $assistTherapyDTO->therapy);
 
         EnsureTherapyHasNoAssistanceAction::new()->execute($assistTherapyDTO);
 

@@ -26,10 +26,12 @@ use Throwable;
 // has no single acting user) can still call this without a check that would never apply to it.
 class EndVideoSessionAction extends Action
 {
+    public const NOT_ALLOWED = 'You are not allowed to end this session\'s video call.';
+
     public function execute(Session $session, ?User $user = null): void
     {
         if ($user && $session->isNotParticipant($user)) {
-            throw new VideoException('You are not allowed to end this session\'s video call.', 422);
+            throw new VideoException(self::NOT_ALLOWED, 422);
         }
 
         // TT-3.2d/SCRUM-311 security-review finding (found while reviewing TT-3.2a): 1:1 Therapy

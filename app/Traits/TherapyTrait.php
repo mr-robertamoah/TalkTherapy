@@ -206,14 +206,46 @@ trait TherapyTrait
 
     // SCRUM-354: whether $user is one of this therapy's own anonymous people (its anonymous client,
     // or an anonymous group member/creator) -- their comments show the anonymous label. Anyone else
-    // commenting on a public therapy is never masked, even when the therapy itself is anonymous.
+    // commenting on a public therapy is never masked, even when the therapy itself is anonymous:
+    // that includes someone who has left the group (hidesIdentityOf() alone would mask them, as a
+    // former member, so the "one of its own people" check stays explicit). A comment written while
+    // they were a member keeps its recorded `anonymous` snapshot (CreateCommentAction).
+    // SCRUM-380: the masking half is hidesIdentityOf(), which agrees with the old rule for every
+    // client, creator and member.
     public function isAnonymousParticipant(User $user): bool
     {
         $isClientOrMember = $this instanceof GroupTherapy
             ? $this->isUser($user) || $this->users->contains('id', $user->id)
             : (bool) $this->addedby?->is($user);
 
-        return $isClientOrMember && $this->isAnonymousFor($user);
+        return $isClientOrMember && $this->hidesIdentityOf($user);
+    }
+
+    // SCRUM-380: whether $subject's identity (their real user id in chat and on sessions, their name
+    // in the assistance-accepted notification) is withheld from everyone else. isMaskedToOthers()
+    // is the rule, and on top of it -- so that nothing the old isAnonymousFor() masked is shown now
+    // -- everyone in a therapy whose own flag is anonymous, and anyone whose own membership row is
+    // anonymous. Together that's exactly the old rule plus isMaskedToOthers()'s extra masking:
+    // - a person who left a group, or anyone else with no row (an administrator), in a
+    //   non-anonymous group is now masked (the old rule showed them);
+    // - a counsellor acting through their own User account stays masked where they were (an
+    //   anonymous therapy), though isMaskedToOthers() alone would show them.
+    // Viewer-relative exemptions (the subject seeing themselves) are the caller's.
+    public function hidesIdentityOf(User $subject): bool
+    {
+        if ($this->anonymous) {
+            return true;
+        }
+
+        if (! $this instanceof GroupTherapy) {
+            return $this->isMaskedToOthers($subject);
+        }
+
+        // A page of messages, sessions or comments shares one group instance: its members are
+        // loaded once (as the old rule did), not one membership query per row.
+        $this->loadMissing('users');
+
+        return $this->isMaskedToOthers($subject) || (bool) $this->membershipOf($subject)?->anonymous;
     }
 
     // SCRUM-379: how $subject is labelled to everyone ELSE -- the presence channels

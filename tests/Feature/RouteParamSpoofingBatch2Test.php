@@ -24,14 +24,14 @@ use App\Models\User;
 // and PHP fatals on redeclaring a top-level function once both files are loaded together.
 function anAdminForBatch2(): User
 {
-    $admin = User::factory()->create();
+    $admin = User::factory()->adult()->create();
     Administrator::factory()->create(['user_id' => $admin->id]);
 
     return $admin;
 }
 
 test('DiscussionController::showChat applies to the URL\'s discussion, not a spoofed discussionId in the query', function () {
-    $counsellorUser = User::factory()->create();
+    $counsellorUser = User::factory()->adult()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
     $therapy = Therapy::factory()->create();
     $ownedDiscussion = Discussion::factory()->create([
@@ -79,7 +79,7 @@ test('MessageController::deleteMessage applies to the URL\'s message, not a spoo
 test('MessageController::getTopicMessages applies to the URL\'s topic, not a spoofed topicId in the query', function () {
     $admin = anAdminForBatch2();
 
-    $counsellorUser = User::factory()->create();
+    $counsellorUser = User::factory()->adult()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
     $ownedTopic = TherapyTopic::create(['name' => 'Owned Topic', 'counsellor_id' => $counsellor->id]);
     $unrelatedTopic = TherapyTopic::create(['name' => 'Untouched Topic', 'counsellor_id' => $counsellor->id]);
@@ -115,7 +115,7 @@ test('ReportController::getReport applies to the URL\'s report, not a spoofed re
 
 test('TherapyTopicController::deleteTherapyTopic applies to the URL\'s topic, not a spoofed topicId in the body', function () {
     $admin = anAdminForBatch2();
-    $counsellorUser = User::factory()->create();
+    $counsellorUser = User::factory()->adult()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
     $ownedTopic = TherapyTopic::create(['name' => 'Owned', 'counsellor_id' => $counsellor->id]);
     $unrelatedTopic = TherapyTopic::create(['name' => 'Untouched', 'counsellor_id' => $counsellor->id]);
@@ -135,7 +135,7 @@ test('TherapyTopicController::deleteTherapyTopic applies to the URL\'s topic, no
 // coverage above, which never exercises the therapyId path.
 test('TherapyTopicController::getTherapyTopics applies to the URL\'s therapy, not a spoofed therapyId in the query', function () {
     $admin = anAdminForBatch2();
-    $counsellorUser = User::factory()->create();
+    $counsellorUser = User::factory()->adult()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
     $ownedTherapy = Therapy::factory()->create();
     $unrelatedTherapy = Therapy::factory()->create();
@@ -167,8 +167,8 @@ test('TherapyTopicController::getTherapyTopics applies to the URL\'s therapy, no
 
 test('UserController::deleteGuardianship applies to the URL\'s guardianship, not a spoofed guardianshipId in the body', function () {
     $admin = anAdminForBatch2();
-    $ownedGuardianship = Guardianship::create(['guardian_id' => User::factory()->create()->id, 'ward_id' => User::factory()->create()->id]);
-    $unrelatedGuardianship = Guardianship::create(['guardian_id' => User::factory()->create()->id, 'ward_id' => User::factory()->create()->id]);
+    $ownedGuardianship = Guardianship::create(['guardian_id' => User::factory()->adult()->create()->id, 'ward_id' => User::factory()->create()->id]);
+    $unrelatedGuardianship = Guardianship::create(['guardian_id' => User::factory()->adult()->create()->id, 'ward_id' => User::factory()->create()->id]);
 
     $response = $this
         ->actingAs($admin)
@@ -181,9 +181,9 @@ test('UserController::deleteGuardianship applies to the URL\'s guardianship, not
 
 test('CounsellorController::updateCounsellor applies to the URL\'s counsellor, not a spoofed counsellorId in the body', function () {
     $admin = anAdminForBatch2();
-    $ownedCounsellorUser = User::factory()->create();
+    $ownedCounsellorUser = User::factory()->adult()->create();
     $ownedCounsellor = Counsellor::factory()->create(['user_id' => $ownedCounsellorUser->id, 'about' => 'Original']);
-    $unrelatedCounsellorUser = User::factory()->create();
+    $unrelatedCounsellorUser = User::factory()->adult()->create();
     $unrelatedCounsellor = Counsellor::factory()->create(['user_id' => $unrelatedCounsellorUser->id, 'about' => 'Untouched']);
 
     $response = $this
@@ -200,8 +200,8 @@ test('CounsellorController::updateCounsellor applies to the URL\'s counsellor, n
 
 test('AdministratorController::getCounsellorStats applies to the URL\'s counsellor, not a spoofed counsellorId in the query', function () {
     $admin = anAdminForBatch2();
-    $ownedCounsellor = Counsellor::factory()->create(['user_id' => User::factory()]);
-    $unrelatedCounsellor = Counsellor::factory()->create(['user_id' => User::factory()]);
+    $ownedCounsellor = Counsellor::factory()->create(['user_id' => User::factory()->adult()]);
+    $unrelatedCounsellor = Counsellor::factory()->create(['user_id' => User::factory()->adult()]);
 
     $response = $this
         ->actingAs($admin)

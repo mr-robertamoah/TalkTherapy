@@ -34,8 +34,8 @@ function refusedFor350($response): void
 }
 
 test('a guardianship link can only be for yourself', function () {
-    $user = User::factory()->create();
-    $victim = User::factory()->create();
+    $user = User::factory()->adult()->create();
+    $victim = User::factory()->adult()->create();
 
     refusedFor350($this->actingAs($user)->postJson(route('api.links.create'), linkPayloadFor350($user, 'GUARDIANSHIP', 'User', $victim->id)));
     $this->actingAs($user)->postJson(route('api.links.create'), linkPayloadFor350($user, 'GUARDIANSHIP', 'User', $user->id))->assertSuccessful();
@@ -44,20 +44,20 @@ test('a guardianship link can only be for yourself', function () {
 });
 
 test('a therapy counsellor link can only be created by that therapy\'s client', function () {
-    $client = User::factory()->create();
+    $client = User::factory()->adult()->create();
     $therapy = Therapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => $client->id, 'counsellor_id' => null]);
-    $stranger = User::factory()->create();
+    $stranger = User::factory()->adult()->create();
 
     refusedFor350($this->actingAs($stranger)->postJson(route('api.links.create'), linkPayloadFor350($stranger, 'THERAPY_COUNSELLOR', 'Therapy', $therapy->id)));
     $this->actingAs($client)->postJson(route('api.links.create'), linkPayloadFor350($client, 'THERAPY_COUNSELLOR', 'Therapy', $therapy->id))->assertSuccessful();
 });
 
 test('group links can only be created by the group\'s creator, a user or a counsellor', function () {
-    $creator = User::factory()->create();
+    $creator = User::factory()->adult()->create();
     $group = GroupTherapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => $creator->id]);
-    $counsellorCreator = Counsellor::factory()->create(['user_id' => User::factory()->create()->id]);
+    $counsellorCreator = Counsellor::factory()->create(['user_id' => User::factory()->adult()->create()->id]);
     $counsellorGroup = GroupTherapy::factory()->create(['addedby_type' => Counsellor::class, 'addedby_id' => $counsellorCreator->id]);
-    $member = User::factory()->create();
+    $member = User::factory()->adult()->create();
     $group->users()->attach($member->id, ['anonymous' => false]);
 
     refusedFor350($this->actingAs($member)->postJson(route('api.links.create'), linkPayloadFor350($member, 'GROUP_THERAPY_COUNSELLOR', 'GroupTherapy', $group->id)));
@@ -66,16 +66,16 @@ test('group links can only be created by the group\'s creator, a user or a couns
 });
 
 test('a discussion link can only be created by someone who manages the discussion', function () {
-    $owner = Counsellor::factory()->create(['user_id' => User::factory()->create()->id]);
+    $owner = Counsellor::factory()->create(['user_id' => User::factory()->adult()->create()->id]);
     $discussion = Discussion::factory()->create(['addedby_type' => Counsellor::class, 'addedby_id' => $owner->id]);
-    $other = Counsellor::factory()->create(['user_id' => User::factory()->create()->id]);
+    $other = Counsellor::factory()->create(['user_id' => User::factory()->adult()->create()->id]);
 
     refusedFor350($this->actingAs($other->user)->postJson(route('api.links.create'), linkPayloadFor350($other->user, 'DISCUSSION', 'Discussion', $discussion->id, 'Counsellor', $other->id)));
     $this->actingAs($owner->user)->postJson(route('api.links.create'), linkPayloadFor350($owner->user, 'DISCUSSION', 'Discussion', $discussion->id, 'Counsellor', $owner->id))->assertSuccessful();
 });
 
 test('a missing target gets the same refusal as someone else\'s', function () {
-    $user = User::factory()->create();
+    $user = User::factory()->adult()->create();
 
     refusedFor350($this->actingAs($user)->postJson(route('api.links.create'), linkPayloadFor350($user, 'THERAPY_COUNSELLOR', 'Therapy', 999999)));
     refusedFor350($this->actingAs($user)->postJson(route('api.links.create'), linkPayloadFor350($user, 'DISCUSSION', 'Discussion', 999999)));
@@ -94,10 +94,10 @@ function anOldLinkFor350(User $creator, string $type, $for): Link
 }
 
 test('an old guardianship link for someone else can\'t be used, even though it is active', function () {
-    $attacker = User::factory()->create();
-    $victim = User::factory()->create();
+    $attacker = User::factory()->adult()->create();
+    $victim = User::factory()->adult()->create();
     $link = anOldLinkFor350($attacker, 'GUARDIANSHIP', $victim);
-    $accomplice = User::factory()->create();
+    $accomplice = User::factory()->adult()->create();
 
     expect(fn () => LinkService::new()->performAction(CreateLinkDTO::new()->fromArray(['user' => $accomplice, 'link' => $link])))
         ->toThrow(LinkException::class, 'This link is no longer active.');
@@ -111,14 +111,14 @@ test('an old guardianship link for someone else can\'t be used, even though it i
 
 test('an admin can\'t issue a link in someone else\'s name', function () {
     $admin = User::factory()->has(Administrator::factory())->create();
-    $owner = Counsellor::factory()->create(['user_id' => User::factory()->create()->id]);
+    $owner = Counsellor::factory()->create(['user_id' => User::factory()->adult()->create()->id]);
     $discussion = Discussion::factory()->create(['addedby_type' => Counsellor::class, 'addedby_id' => $owner->id]);
 
     refusedFor350($this->actingAs($admin)->postJson(route('api.links.create'), linkPayloadFor350($admin, 'DISCUSSION', 'Discussion', $discussion->id, 'Counsellor', $owner->id)));
 });
 
 test('the clean-up migration removes links their creators could never have issued', function () {
-    $attacker = User::factory()->create();
+    $attacker = User::factory()->adult()->create();
     $bad = anOldLinkFor350($attacker, 'GUARDIANSHIP', User::factory()->create());
     $good = anOldLinkFor350($attacker, 'GUARDIANSHIP', $attacker);
 

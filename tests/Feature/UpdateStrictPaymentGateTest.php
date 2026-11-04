@@ -14,8 +14,8 @@ use App\Models\User;
 
 function assignedCounsellorTherapy(): array
 {
-    $client = User::factory()->create();
-    $counsellorUser = User::factory()->create();
+    $client = User::factory()->adult()->create();
+    $counsellorUser = User::factory()->adult()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
     $therapy = Therapy::factory()->create([
         'addedby_type' => User::class,
@@ -67,7 +67,7 @@ test('an admin can toggle strictPaymentGate via the dedicated endpoint', functio
 
 test('an unrelated counsellor cannot toggle strictPaymentGate via the dedicated endpoint', function () {
     [$client, $counsellorUser, $therapy] = assignedCounsellorTherapy();
-    $unrelatedCounsellorUser = User::factory()->create();
+    $unrelatedCounsellorUser = User::factory()->adult()->create();
     Counsellor::factory()->create(['user_id' => $unrelatedCounsellorUser->id]);
 
     $response = $this->actingAs($unrelatedCounsellorUser)
@@ -96,7 +96,7 @@ test('an unrelated user cannot "set" strictPaymentGate to its current, unchanged
     // the caller has no relationship to) plus an unauthorized write side-effect. The identity
     // check must run first regardless of whether the value is actually changing.
     [$client, $counsellorUser, $therapy] = assignedCounsellorTherapy();
-    $unrelatedUser = User::factory()->create();
+    $unrelatedUser = User::factory()->adult()->create();
 
     $response = $this->actingAs($unrelatedUser)
         ->patch(route('therapies.strict_payment_gate.update', ['therapyId' => $therapy->id]), [

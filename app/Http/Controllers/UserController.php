@@ -8,12 +8,10 @@ use App\DTOs\GetUsersDTO;
 use App\DTOs\SubmitAgeVerificationDTO;
 use App\Http\Requests\SubmitAgeVerificationRequest;
 use App\Http\Resources\GuardianshipResource;
-use App\Http\Resources\UserMiniResource;
 use App\Models\Guardianship;
 use App\Models\User;
 use App\Services\UserService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Redirect;
 use Throwable;
 
 class UserController extends Controller
@@ -96,16 +94,5 @@ class UserController extends Controller
         } catch (Throwable $th) {
             return $this->returnFailure($request, $th);
         }
-    }
-
-    private function returnSuccess(Request $request, User $user)
-    {
-        $user = new UserMiniResource($user);
-
-        if ($request->wantsJsonResponse()) {
-            return response()->json(['user' => $user]);
-        }
-
-        return Redirect::back()->with(['user' => $user]);
     }
 }

@@ -1,5 +1,5 @@
 import { ref, computed, watch, watchEffect, onBeforeUnmount } from 'vue'
-import { usePage } from '@inertiajs/vue3'
+import { router, usePage } from '@inertiajs/vue3'
 import useAlert from '@/Composables/useAlert'
 import useEnums from '@/Composables/useEnums'
 import { createAnnouncementQueue, resolveAnnouncedSession } from '@/Composables/announcements'
@@ -192,6 +192,9 @@ export default function useTherapyState(therapy, therapyType = 'individual', ale
                         activeSession.value.currentTopic = null
                     }
                 })
+                // SCRUM-288: a 1:1 client was paused or resumed (no payload) -- reload the therapy so
+                // the counsellor's banner and controls follow.
+                .listen(`.therapy.access-changed`, () => router.reload({ only: ['therapy'], preserveScroll: true }))
         }
 
         // SCRUM-367: discussions are counsellors-only, so they arrive on this counsellor's own

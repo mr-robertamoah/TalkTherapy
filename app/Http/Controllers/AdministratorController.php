@@ -77,7 +77,7 @@ class AdministratorController extends Controller
                 ])
             );
 
-            return $this->returnSuccess($request, $user);
+            return $this->successResponse($request, ['user' => new AdminUserResource($user)]);
         } catch (Throwable $th) {
 
             return $this->returnFailure($request, $th);
@@ -95,7 +95,7 @@ class AdministratorController extends Controller
                 ])
             );
 
-            return $this->returnSuccess($request, $user);
+            return $this->successResponse($request, ['user' => new AdminUserResource($user)]);
         } catch (Throwable $th) {
 
             return $this->returnFailure($request, $th);
@@ -119,7 +119,7 @@ class AdministratorController extends Controller
                 ])
             );
 
-            return $this->returnSuccessCounsellor($request, $counsellor);
+            return $this->successResponse($request, ['counsellor' => new AdminCounsellorResource($counsellor)]);
         } catch (Throwable $th) {
 
             return $this->returnFailure($request, $th);
@@ -145,27 +145,5 @@ class AdministratorController extends Controller
                 'filterValue' => $request->filterValue,
             ])
         );
-    }
-
-    private function returnSuccess(Request $request, User $user)
-    {
-        $user = new AdminUserResource($user);
-
-        if ($request->wantsJsonResponse()) {
-            return response()->json(['user' => $user]);
-        }
-
-        return Redirect::back()->with(['user' => $user]);
-    }
-
-    private function returnSuccessCounsellor(Request $request, Counsellor $counsellor)
-    {
-        $counsellor = new AdminCounsellorResource($counsellor);
-
-        if ($request->wantsJsonResponse()) {
-            return response()->json(['counsellor' => $counsellor]);
-        }
-
-        return Redirect::back()->with(['counsellor' => $counsellor]);
     }
 }

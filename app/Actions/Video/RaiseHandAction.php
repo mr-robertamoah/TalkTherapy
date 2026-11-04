@@ -16,6 +16,8 @@ use Illuminate\Support\Facades\DB;
 // always self-service: the acting user is the one raising, never a client-supplied target.
 class RaiseHandAction extends Action
 {
+    public const JOIN_FIRST = 'Join the video call before raising your hand.';
+
     public function execute(Session $session, User $user): void
     {
         if (! $session->for instanceof GroupTherapy) {
@@ -31,7 +33,7 @@ class RaiseHandAction extends Action
         EnsureMemberMayBeGrantedSpeakingAction::new()->execute($session->for, $user);
 
         $participant = $session->videoSessions()->whereNull('ended_at')->first()?->activeParticipantFor($user->id)
-            ?? throw new VideoException('Join the video call before raising your hand.', 422);
+            ?? throw new VideoException(self::JOIN_FIRST, 422);
 
         $wasRaised = DB::transaction(function () use ($participant) {
             // Backs the "at most one open raise per participant" rule the
@@ -39,7 +41,7 @@ class RaiseHandAction extends Action
             $participant = VideoSessionParticipant::query()->lockForUpdate()->find($participant->id);
 
             if (! $participant->isActive()) {
-                throw new VideoException('Join the video call before raising your hand.', 422);
+                throw new VideoException(self::JOIN_FIRST, 422);
             }
 
             if ($participant->currentSpeakingGrant()) {
