@@ -40,6 +40,7 @@ use App\Notifications\GroupTherapyCounsellorLinkUsedNotification;
 use App\Notifications\GroupTherapyMemberJoinedGuardianNotification;
 use App\Notifications\GroupTherapyMemberLeftGuardianNotification;
 use App\Notifications\GroupTherapyMemberLeftNotification;
+use App\Support\TherapyLink;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Notification;
@@ -247,13 +248,14 @@ test('the creator and active counsellors are told, by the name the group shows; 
 
     foreach ([$creator, $counsellor->user] as $person) {
         Notification::assertSentTo($person, GroupTherapyMemberLeftNotification::class, fn ($n, $c, $notifiable) => $n->toArray($notifiable)['memberName'] === $named->name);
-        Notification::assertSentTo($person, GroupTherapyMemberLeftNotification::class, function ($n, $c, $notifiable) use ($hidden) {
+        Notification::assertSentTo($person, GroupTherapyMemberLeftNotification::class, function ($n, $c, $notifiable) use ($hidden, $group) {
             $mail = implode(' ', $n->toMail($notifiable)->introLines);
             $array = $n->toArray($notifiable);
 
             return $array['memberName'] === ConstantsEnum::anonymousUserLabel->value
                 && ! str_contains($mail, 'Hector') && ! str_contains($mail, 'Moss')
-                && ! in_array($hidden->id, $array, true) && ! array_key_exists('userId', $array);
+                // the group's own id key can equal the member's id by chance -- leave it out of the check
+                && ! in_array($hidden->id, array_diff_key($array, TherapyLink::ids($group)), true) && ! array_key_exists('userId', $array);
         });
     }
     Notification::assertNotSentTo($invited->user, GroupTherapyMemberLeftNotification::class);
