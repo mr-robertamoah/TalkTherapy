@@ -7,6 +7,7 @@ use App\Events\VideoSessionStatusChangedEvent;
 use App\Exceptions\VideoException;
 use App\Models\Counsellor;
 use App\Models\GroupTherapy;
+use App\Models\Guardianship;
 use App\Models\Session;
 use App\Models\Therapy;
 use App\Models\User;
@@ -565,16 +566,20 @@ test('an ordinary member\'s join state is receive-only with a raisable hand', fu
         ->and($state['speakerKeys'])->toBe([]);
 });
 
-test('a minor member is never offered a raisable hand', function () {
+// The user's decision (2026-11-05, replacing 2026-09-14's receive-only-for-anyone): a member who
+// joined as a minor needs a guardian's video consent first, and group consent doesn't exist yet
+// (SCRUM-313) -- so they aren't let in at all, and no participant row is made.
+test('a member who is a minor is refused group video, before any credentials are made', function () {
     $data = onlineInSessionGroupTherapySessionForJoin();
     $data['groupTherapy']->users()->updateExistingPivot($data['member']->id, ['was_minor_at_join' => true]);
+    $data['member']->update(['dob' => now()->subYears(15)]);
+    // with a guardian, so the SCRUM-288 pause isn't what refuses them
+    Guardianship::query()->create(['guardian_id' => User::factory()->adult()->create()->id, 'ward_id' => $data['member']->id, 'ward_was_minor_at_creation' => true]);
     app()->instance(VideoProviderInterface::class, fakeVideoProvider());
 
-    $state = JoinVideoSessionAction::new()->execute($data['session'], $data['member'])['participant'];
-
-    expect($state['receiveOnly'])->toBeTrue()
-        ->and($state['canRaiseHand'])->toBeFalse()
-        ->and($state['isMinorMember'])->toBeTrue();
+    expect(fn () => JoinVideoSessionAction::new()->execute($data['session'], $data['member']))
+        ->toThrow(VideoException::class, "Video calls in a group need a parent or guardian's consent first.")
+        ->and(VideoSessionParticipant::query()->where('participant_id', $data['member']->id)->exists())->toBeFalse();
 });
 
 test('an anonymous group\'s creator joins audio-only and flagged anonymous', function () {

@@ -32,6 +32,7 @@ class RequestController extends Controller
                     'user' => $request->user(),
                     'response' => $request->response,
                     'reason' => $request->reason,
+                    'endsAt' => is_string($request->endsAt) ? $request->endsAt : null,
                     'request' => ModelsRequest::find($request->route('requestId')),
                 ])
             );
@@ -44,13 +45,12 @@ class RequestController extends Controller
             $status = $this->statusFor($th);
             $message = $this->messageFor($th, $status);
 
-            return response()->json([
+            // SCRUM-288: plus e.g. guardian_required, when the refusal has one.
+            return response()->json(FailureResponse::withCode([
                 'status' => false,
                 'request' => null,
                 'error' => $message,
-                // SCRUM-288: e.g. guardian_required, when the refusal has one.
-                ...(($code = FailureResponse::code($th)) ? ['code' => $code] : []),
-            ], $status);
+            ], $th), $status);
         }
     }
 }

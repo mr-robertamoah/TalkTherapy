@@ -79,7 +79,7 @@ class SessionController extends Controller
             return $this->successResponse($request, ['session' => new SessionResource($session)]);
         } catch (Throwable $th) {
 
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -115,7 +115,7 @@ class SessionController extends Controller
             return $this->successResponse($request, ['session' => new SessionResource($session)]);
         } catch (Throwable $th) {
 
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -135,7 +135,7 @@ class SessionController extends Controller
             return $this->successResponse($request, ['session' => new SessionResource($session)]);
         } catch (Throwable $th) {
 
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -176,7 +176,7 @@ class SessionController extends Controller
             return $this->successResponse($request, ['session' => new SessionResource($session)]);
         } catch (Throwable $th) {
 
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -196,7 +196,7 @@ class SessionController extends Controller
             return $this->successResponse($request, ['session' => new SessionResource($session)]);
         } catch (Throwable $th) {
 
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -216,7 +216,7 @@ class SessionController extends Controller
             return $this->successResponse($request, ['session' => new SessionResource($session)]);
         } catch (Throwable $th) {
 
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -236,7 +236,7 @@ class SessionController extends Controller
             return $this->successResponse($request, ['session' => new SessionResource($session)]);
         } catch (Throwable $th) {
 
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -256,7 +256,7 @@ class SessionController extends Controller
             return $this->successResponse($request, ['session' => new SessionResource($session)]);
         } catch (Throwable $th) {
 
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -276,7 +276,7 @@ class SessionController extends Controller
             return $this->successResponse($request, ['session' => new SessionResource($session)]);
         } catch (Throwable $th) {
 
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 

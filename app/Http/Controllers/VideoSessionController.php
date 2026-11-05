@@ -230,11 +230,10 @@ class VideoSessionController extends Controller
 
         // TT-3.1e-f/SCRUM-285: lets the frontend show a specific "guardian consent needed" banner
         // instead of a generic error+retry, without string-matching $message.
-        return response()->json([
+        // SCRUM-288: plus e.g. guardian_required, when the refusal has one.
+        return response()->json(FailureResponse::withCode([
             'message' => $message,
             'videoConsentRequired' => $th instanceof VideoConsentRequiredException,
-            // SCRUM-288: e.g. guardian_required, when the refusal has one.
-            ...(($code = FailureResponse::code($th)) ? ['code' => $code] : []),
-        ], $status);
+        ], $th), $status);
     }
 }

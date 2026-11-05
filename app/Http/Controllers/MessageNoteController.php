@@ -39,7 +39,7 @@ class MessageNoteController extends Controller
             // browser-only-reproducible bug for the analogous SessionNote endpoint).
             return response()->json(['note' => $note ? new MessageNoteResource($note) : null]);
         } catch (Throwable $th) {
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -57,7 +57,7 @@ class MessageNoteController extends Controller
 
             return response()->json(['note' => new MessageNoteResource($note)]);
         } catch (Throwable $th) {
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -75,7 +75,7 @@ class MessageNoteController extends Controller
 
             return response()->json(['note' => new MessageNoteResource($note)]);
         } catch (Throwable $th) {
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -92,7 +92,7 @@ class MessageNoteController extends Controller
 
             return response()->json(['note' => new MessageNoteResource($note)]);
         } catch (Throwable $th) {
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 }

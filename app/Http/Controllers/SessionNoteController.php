@@ -39,7 +39,7 @@ class SessionNoteController extends Controller
             // test, so the same code looked correct in tests and was broken in the browser.
             return response()->json(['notes' => SessionNoteResource::collection($notes)]);
         } catch (Throwable $th) {
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -57,7 +57,7 @@ class SessionNoteController extends Controller
 
             return $this->successResponse($request, ['note' => new SessionNoteResource($note)]);
         } catch (Throwable $th) {
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -75,7 +75,7 @@ class SessionNoteController extends Controller
 
             return $this->successResponse($request, ['note' => new SessionNoteResource($note)]);
         } catch (Throwable $th) {
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -92,7 +92,7 @@ class SessionNoteController extends Controller
 
             return $this->successResponse($request, ['note' => new SessionNoteResource($note)]);
         } catch (Throwable $th) {
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 }

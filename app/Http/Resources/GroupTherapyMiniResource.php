@@ -43,7 +43,7 @@ class GroupTherapyMiniResource extends JsonResource
             'sessionsHeld' => $this->sessionsHeld,
             'createdAt' => $this->created_at->diffForHumans(),
             // SCRUM-288: the viewer's own state only (memoised on the request's user).
-            'viewerAccessPaused' => (bool) $user?->isPausedForMissingGuardian(),
+            'viewerAccessPaused' => $this->pauseStateFor($user, counterparty: false)['viewer'],
         ];
     }
 }

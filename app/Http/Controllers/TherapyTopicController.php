@@ -36,7 +36,7 @@ class TherapyTopicController extends Controller
             return $this->successResponse($request, ['topic' => new TherapyTopicResource($topic)]);
         } catch (Throwable $th) {
 
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -52,7 +52,7 @@ class TherapyTopicController extends Controller
             );
         } catch (Throwable $th) {
 
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -74,7 +74,7 @@ class TherapyTopicController extends Controller
             return $this->successResponse($request, ['topic' => new TherapyTopicResource($topic)]);
         } catch (Throwable $th) {
 
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -94,7 +94,7 @@ class TherapyTopicController extends Controller
             return $this->successResponse($request, ['topic' => new TherapyTopicResource($topic)]);
         } catch (Throwable $th) {
 
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 }

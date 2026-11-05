@@ -3,10 +3,13 @@
 namespace App\Http\Resources;
 
 use App\Actions\GroupTherapy\GetGroupTherapyPaymentRosterAction;
+use App\Actions\SafeguardingException\GetPausedGroupMembersAction;
+use App\Actions\Video\EnsureVideoIsAvailableForSessionAction;
 use App\Enums\ConstantsEnum;
 use App\Enums\CounsellorGroupTherapyStateEnum;
 use App\Enums\TherapyPaymentTypeEnum;
 use App\Enums\TherapyPerPaymentEnum;
+use App\Enums\TherapyStatusEnum;
 use App\Models\Counsellor;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -137,7 +140,22 @@ class GroupTherapyResource extends JsonResource
             'activeSession' => $activeSession ? new SessionResource($activeSession) : null,
             'activeDiscussion' => $activeDiscussion ? new DiscussionResource($activeDiscussion) : null,
             // SCRUM-288: the viewer's own state only -- never another member's.
-            'viewerAccessPaused' => (bool) $user?->isPausedForMissingGuardian(),
+            'viewerAccessPaused' => $this->pauseStateFor($user, counterparty: false)['viewer'],
+            // The user's decision (2026-11-05): a minor needs a guardian's video consent for group
+            // video, which doesn't exist yet (SCRUM-313) -- so the page doesn't offer them "join
+            // video" (EnsureVideoIsAvailableForSessionAction re-checks every join). Only about the
+            // viewer, never another member.
+            'viewerNeedsGuardianVideoConsent' => $user && $this->isParticipant($user)
+                && EnsureVideoIsAvailableForSessionAction::new()->groupVideoNeedsGuardianConsent($this->resource, $user),
+            // SCRUM-381 (changing SCRUM-288): only for this group's active counsellors -- the members
+            // paused for a missing guardian, named as the group shows them (an anonymous member stays
+            // "Anonymous") and keyed by something other than their user id. The group carries on.
+            'pausedMembers' => $this->when(
+                $user && $this->status !== TherapyStatusEnum::ended->value && $this->isCounsellorUser($user),
+                fn () => GetPausedGroupMembersAction::new()->execute($this->resource)
+                    ->map(fn (array $member) => ['key' => $member['key'], 'name' => $member['name'], 'exceptionRequested' => $member['exceptionRequested']])
+                    ->values(),
+            ),
         ];
     }
 }

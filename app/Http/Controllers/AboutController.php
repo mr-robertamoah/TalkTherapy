@@ -23,7 +23,7 @@ class AboutController extends Controller
             return AppService::new()->getStats();
         } catch (Throwable $th) {
 
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 }

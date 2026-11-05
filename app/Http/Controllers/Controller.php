@@ -20,7 +20,7 @@ class Controller extends BaseController
     // SCRUM-371: the one failure response (23 controllers each had their own copy). Only the app's
     // own messages are shown (ResolvesExceptionResponse). JSON for a script (axios/fetch);
     // otherwise back with the alert -- for an Inertia visit, and for a plain browser navigation.
-    protected function returnFailure(Request $request, Throwable $th): JsonResponse|RedirectResponse
+    protected function failureResponse(Request $request, Throwable $th): JsonResponse|RedirectResponse
     {
         return FailureResponse::make($request, $th);
     }

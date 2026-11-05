@@ -19,8 +19,8 @@ use Illuminate\Support\Facades\DB;
 //
 // Once committed (afterCommit): this guardian's still-valid video consents for the ward lapse when
 // the guardianship or the account ends (not for a suspension, which ends), and a ward this leaves
-// with no active guardian is paused (HandleGuardianLossAction). A deleted (soft-deleted) ward only
-// has the row removed.
+// with no active guardian is paused (HandleGuardianLossAction::schedule(), queued). A deleted
+// (soft-deleted) ward only has the row removed.
 class RemoveGuardianFromWardAction extends Action
 {
     public const GUARDIANSHIP_REMOVED = 'guardianship_removed';
@@ -51,7 +51,7 @@ class RemoveGuardianFromWardAction extends Action
             }
 
             if (! $wasPaused && $willBePaused) {
-                DB::afterCommit(fn () => HandleGuardianLossAction::new()->execute($locked, $trigger));
+                HandleGuardianLossAction::new()->schedule($locked->id, $trigger);
             }
         });
     }

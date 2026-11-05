@@ -33,9 +33,11 @@ class SuspensionService extends Service
             ->each(function (int $id) use (&$ended) {
                 try {
                     $suspension = DB::transaction(function () use ($id) {
-                        $suspension = Suspension::query()->lockForUpdate()->find($id);
+                        // SCRUM-382: the person, then the suspension (Suspension::lockWithPerson(),
+                        // which throws if the row is gone -- suspensions are never deleted).
+                        $suspension = Suspension::lockWithPerson($id);
 
-                        if (! $suspension || $suspension->end_processed_at || $suspension->lifted_at) {
+                        if ($suspension->end_processed_at || $suspension->lifted_at) {
                             return null;
                         }
 
@@ -56,7 +58,11 @@ class SuspensionService extends Service
                     });
 
                     if ($suspension) {
-                        Notification::send($suspension->user, new SuspensionEndedNotification($suspension, SuspensionEndedNotification::EXPIRED));
+                        Notification::send($suspension->user, new SuspensionEndedNotification(
+                            $suspension,
+                            SuspensionEndedNotification::EXPIRED,
+                            (bool) $suspension->user?->isPausedForMissingGuardian(fresh: true),
+                        ));
                         ResumeHeldPayoutsAction::new()->execute($suspension->user);
                         $ended++;
                     }

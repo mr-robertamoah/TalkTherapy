@@ -3,6 +3,7 @@
 namespace App\Actions\User;
 
 use App\Actions\Action;
+use App\Actions\Guardianship\HandleGuardianLossAction;
 use App\DTOs\EnsureDobChangeIsAllowedDTO;
 use App\DTOs\UpdateUserDTO;
 use App\Exceptions\DobChangeRequiresApprovalException;
@@ -49,7 +50,15 @@ class UpdateUserAction extends Action
             }
         }
 
-        $updateUserDTO->updatedUser->update($data);
+        // SCRUM-382: a dob edit that leaves them paused for a missing guardian runs the loss handling.
+        // Only then does it take the row lock and the pause reads; any other edit just saves.
+        $user = $updateUserDTO->updatedUser->fill($data);
+
+        if ($user->isDirty('dob')) {
+            HandleGuardianLossAction::new()->around($user, HandleGuardianLossAction::DOB_CHANGED, fn () => $user->save());
+        } else {
+            $user->save();
+        }
 
         return $updateUserDTO->updatedUser->refresh();
     }

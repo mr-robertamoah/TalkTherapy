@@ -25,19 +25,17 @@ class EnsureMinorHasActiveGuardianAction extends Action
             return;
         }
 
-        $actsAsCounsellor ??= $therapy && $actor->counsellor && $therapy->isCounsellor($actor->counsellor);
+        // SCRUM-382: the rule itself is the therapy's (TherapyTrait::pauseStateFor()), shared with the
+        // page state. With no therapy, only the actor's own state.
+        $state = $therapy
+            ? $therapy->pauseStateFor($actor, $fresh, $actsAsCounsellor, $counterparty)
+            : ['viewer' => ! $actsAsCounsellor && $actor->isPausedForMissingGuardian($fresh), 'client' => null];
 
-        if (! $actsAsCounsellor && $actor->isPausedForMissingGuardian($fresh)) {
+        if ($state['viewer']) {
             throw GuardianRequiredException::forViewer();
         }
 
-        if (! $counterparty || ! $actsAsCounsellor || ! $therapy instanceof Therapy) {
-            return;
-        }
-
-        $client = $therapy->addedby_type === User::class ? $therapy->addedby : null;
-
-        if ($client && $client->isPausedForMissingGuardian($fresh)) {
+        if ($state['client']) {
             throw GuardianRequiredException::forClient();
         }
     }

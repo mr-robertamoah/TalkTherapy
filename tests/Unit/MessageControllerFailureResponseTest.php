@@ -4,9 +4,9 @@ use App\Exceptions\TherapyException;
 use App\Http\Controllers\MessageController;
 use Illuminate\Http\Request;
 
-function callReturnFailure(Request $request, Throwable $th)
+function callMessageControllerFailureResponse(Request $request, Throwable $th)
 {
-    $reflection = new ReflectionMethod(MessageController::class, 'returnFailure');
+    $reflection = new ReflectionMethod(MessageController::class, 'failureResponse');
     $reflection->setAccessible(true);
 
     return $reflection->invoke(new MessageController, $request, $th);
@@ -19,7 +19,7 @@ test('an uncoded exception (getCode() 0) shows the generic message, not its raw 
     $request = Request::create('/', 'GET');
     $request->headers->set('Accept', 'application/json');
 
-    $response = callReturnFailure($request, new Exception('some internal detail that should not leak'));
+    $response = callMessageControllerFailureResponse($request, new Exception('some internal detail that should not leak'));
 
     expect($response->getStatusCode())->toBe(500);
     expect($response->getData(true)['message'])->toBe('Something unfortunate happened. Please try again shortly.');
@@ -29,7 +29,7 @@ test('an exception with a real HTTP status code still shows its own message', fu
     $request = Request::create('/', 'GET');
     $request->headers->set('Accept', 'application/json');
 
-    $response = callReturnFailure($request, new TherapyException('you are not allowed to do that', 422));
+    $response = callMessageControllerFailureResponse($request, new TherapyException('you are not allowed to do that', 422));
 
     expect($response->getStatusCode())->toBe(422);
     expect($response->getData(true)['message'])->toBe('you are not allowed to do that');

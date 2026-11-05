@@ -80,7 +80,7 @@ class AdministratorController extends Controller
             return $this->successResponse($request, ['user' => new AdminUserResource($user)]);
         } catch (Throwable $th) {
 
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -98,7 +98,7 @@ class AdministratorController extends Controller
             return $this->successResponse($request, ['user' => new AdminUserResource($user)]);
         } catch (Throwable $th) {
 
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -122,7 +122,7 @@ class AdministratorController extends Controller
             return $this->successResponse($request, ['counsellor' => new AdminCounsellorResource($counsellor)]);
         } catch (Throwable $th) {
 
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 

@@ -61,7 +61,7 @@ class TherapyController extends Controller
 
             return TherapyMiniResource::collection($therapies);
         } catch (Throwable $th) {
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -72,7 +72,7 @@ class TherapyController extends Controller
 
             return TherapyMiniResource::collection($therapies);
         } catch (Throwable $th) {
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -83,7 +83,7 @@ class TherapyController extends Controller
 
             return TherapyMiniResource::collection($therapies);
         } catch (Throwable $th) {
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -124,7 +124,7 @@ class TherapyController extends Controller
     // -- see the identical fix/rationale in SessionController (SCRUM-116).
     // SCRUM-379: update/strict-gate/end/delete are reached both by Inertia forms (web routes -- they
     // expect the redirect, and read a failure from errors.alert) and by JSON callers (api.therapies.*).
-    // successResponse()/returnFailure() give each its own answer.
+    // successResponse()/failureResponse() give each its own answer.
     public function updateTherapy(UpdateTherapyRequest $request)
     {
         try {
@@ -151,7 +151,7 @@ class TherapyController extends Controller
 
             return $this->successResponse($request, ['status' => true, 'therapy' => new TherapyMiniResource($therapy)], Redirect::back());
         } catch (Throwable $th) {
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -174,7 +174,7 @@ class TherapyController extends Controller
 
             return $this->successResponse($request, ['status' => true], Redirect::back());
         } catch (Throwable $th) {
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -190,7 +190,7 @@ class TherapyController extends Controller
 
             return $this->successResponse($request, ['status' => true], Redirect::route('home'));
         } catch (Throwable $th) {
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -206,7 +206,7 @@ class TherapyController extends Controller
 
             return $this->successResponse($request, ['status' => true], Redirect::back());
         } catch (Throwable $th) {
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 

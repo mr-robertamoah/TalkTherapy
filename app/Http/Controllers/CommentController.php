@@ -32,7 +32,7 @@ class CommentController extends Controller
             return $this->successResponse($request, ['comment' => new CommentResource($comment)]);
         } catch (Throwable $th) {
 
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -51,7 +51,7 @@ class CommentController extends Controller
             return $this->successResponse($request, ['comment' => new CommentResource($comment)]);
         } catch (Throwable $th) {
 
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -65,7 +65,7 @@ class CommentController extends Controller
             );
         } catch (Throwable $th) {
 
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 }

@@ -14,7 +14,8 @@ class Administrator extends Model
         'type', 'verified_at',
     ];
 
-    public function user() {
+    public function user()
+    {
         return $this->belongsTo(User::class);
     }
 

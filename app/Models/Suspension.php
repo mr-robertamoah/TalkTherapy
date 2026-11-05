@@ -24,6 +24,22 @@ class Suspension extends Model
         'appeal_decided_at' => 'datetime',
     ];
 
+    // SCRUM-382: the one lock order for changing a suspension -- the suspended person's row first
+    // (ApplySuspensionAction locks them before their suspensions), then the suspension, then (for a
+    // guardian) their wards in id order (Guardianship::lockedWardsOf()). Lifting, an appeal and the
+    // expiry sweep used to lock the suspension first, the reverse of applying one. Call inside a
+    // transaction.
+    public static function lockWithPerson(int $id): self
+    {
+        $personId = self::query()->whereKey($id)->value('user_id');
+
+        if ($personId) {
+            User::query()->withTrashed()->whereKey($personId)->lockForUpdate()->first(['id']);
+        }
+
+        return self::query()->lockForUpdate()->findOrFail($id);
+    }
+
     public function user()
     {
         return $this->belongsTo(User::class)->withTrashed();

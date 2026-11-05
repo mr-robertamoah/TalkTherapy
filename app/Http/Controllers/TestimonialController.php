@@ -26,7 +26,7 @@ class TestimonialController extends Controller
             return $this->successResponse($request, ['testimonial' => new TestimonialResource($testimonial)]);
         } catch (Throwable $th) {
 
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -48,7 +48,7 @@ class TestimonialController extends Controller
             return $this->successResponse($request, ['testimonial' => new TestimonialResource($testimonial)]);
         } catch (Throwable $th) {
 
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -66,7 +66,7 @@ class TestimonialController extends Controller
             return $this->successResponse($request, ['testimonial' => new TestimonialResource($testimonial)]);
         } catch (Throwable $th) {
 
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -85,7 +85,7 @@ class TestimonialController extends Controller
             return $this->successResponse($request, ['testimonial' => new TestimonialResource($testimonial)]);
         } catch (Throwable $th) {
 
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -103,7 +103,7 @@ class TestimonialController extends Controller
             return TestimonialResource::collection($testimonials);
         } catch (Throwable $th) {
 
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 }

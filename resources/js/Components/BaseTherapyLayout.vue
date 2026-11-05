@@ -103,8 +103,9 @@
       </div>
 
       <!-- SCRUM-288: explain why the actions below are limited, on the overview page too. -->
-      <div v-if="computedIsParticipant && (computedTherapy.viewerAccessPaused || computedTherapy.clientAccessPaused)" class="max-w-7xl mx-auto sm:px-6 lg:px-8 mt-4">
-        <TherapyPausedBanner :viewer-paused="!!computedTherapy.viewerAccessPaused" />
+      <!-- SCRUM-381: and for a group's counsellors, which of its members are paused. -->
+      <div v-if="computedIsParticipant && (computedTherapy.viewerAccessPaused || computedTherapy.clientAccessPaused || computedTherapy.pausedMembers?.length)" class="max-w-7xl mx-auto sm:px-6 lg:px-8 mt-4">
+        <TherapyPausedBanner :viewer-paused="!!computedTherapy.viewerAccessPaused" :therapy="computedTherapy" :therapy-type="therapyType" />
       </div>
 
       <!-- Therapy Actions -->

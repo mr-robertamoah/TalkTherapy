@@ -316,6 +316,12 @@ function respondToVerificationRequest(requestId, response) {
                 class="text-sm text-nowrap uppercase tracking-wider cursor-pointer rounded p-2 transition duration-75 mr-2 border-b-2 border-transparent hover:border-gray-700 hover:rounded-none"
             >suspensions</Link>
 
+            <!-- SCRUM-381 -->
+            <Link
+                :href="route('administrator.safeguarding_exceptions')"
+                class="text-sm text-nowrap uppercase tracking-wider cursor-pointer rounded p-2 transition duration-75 mr-2 border-b-2 border-transparent hover:border-gray-700 hover:rounded-none"
+            >safeguarding exceptions</Link>
+
             <!-- SCRUM-360 -->
             <Link
                 v-if="$page.props.auth.user?.isSuperAdmin"

@@ -74,6 +74,9 @@ class EnsureDobChangeIsAllowedAction extends Action
             // matches the creator and any member.
             || Therapy::query()->whereUser($user)->exists()
             || GroupTherapy::query()->whereUser($user)->exists()
+            // SCRUM-381: a minor carrying on under a safeguarding exception is not paused, so the
+            // line below wouldn't catch them -- any exception, ever, counts as a relationship.
+            || $user->safeguardingExceptions()->exists()
             // Only their own edit: an administrator editing it is the approver such a request
             // would go to anyway (no active guardian, so `to` is any admin).
             || ($user->dob && (! $actor || $actor->is($user)) && $user->isPausedForMissingGuardian(fresh: true));

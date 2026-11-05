@@ -7,9 +7,11 @@ import { computed } from 'vue';
 import useAuth from '@/Composables/useAuth';
 import Alert from './Alert.vue';
 import useAlert from '@/Composables/useAlert';
+import useEnums from '@/Composables/useEnums';
 
 const { goToLogin } = useAuth()
 const { alertData, clearAlertData, setAlertData } = useAlert()
+const { RequestTypeEnum } = useEnums()
 
 const RequestStatus = {
     accepted: 'ACCEPTED',
@@ -146,6 +148,17 @@ const hasRequests = computed(() => {
 function removeFromPendingRequests(request) {
     pendingRequests.value = [...pendingRequests.value.filter((c) => c.id !== request.id)]
 }
+
+// SCRUM-381: accepting a safeguarding exception request closes the minor's other pending ones on the
+// server, so reload the pending list rather than leave them showing as Pending.
+function respondedTo(request) {
+    removeFromPendingRequests(request)
+
+    if (request?.type == RequestTypeEnum.safeguardingException && request?.status == RequestStatus.accepted) {
+        pages.value[RequestStatus.pending] = 1
+        getRequests()
+    }
+}
 </script>
 
 <template>
@@ -191,9 +204,7 @@ function removeFromPendingRequests(request) {
                             :key="request.id"
                             :request="request"
                             class="mx-auto"
-                            @on-data="(req) => {
-                                removeFromPendingRequests(req)
-                            }"
+                            @on-data="respondedTo"
                             @alert="(alertData) => {
                                 setAlert(alertData)
                             }"

@@ -3,6 +3,7 @@
 namespace App\Actions\User;
 
 use App\Actions\Action;
+use App\Actions\Guardianship\HandleGuardianLossAction;
 use App\Models\GroupTherapy;
 use App\Models\Guardianship;
 use App\Models\Therapy;
@@ -31,21 +32,27 @@ class ApplyVerifiedDobAction extends Action
     // dobChange). A later, unverified dobChange approval for the same user must explicitly clear
     // `dob_verified_at` (not just leave it stale) -- otherwise the system would keep treating a
     // brand new, never-verified dob value as if it still carried the old verification.
+    //
+    // SCRUM-382: an approved change can make an adult a minor (or clear the dob, which counts as one).
+    // When that leaves them paused for a missing guardian, the loss handling runs (live calls,
+    // pages, notices) exactly as if their guardian had gone -- decided under their row lock.
     public function execute(User $user, ?string $dob, bool $verified = false): void
     {
-        $user->update([
-            'dob' => $dob,
-            'dob_verified_at' => $verified ? now() : null,
-        ]);
+        HandleGuardianLossAction::new()->around($user, HandleGuardianLossAction::DOB_CHANGED, function () use ($user, $dob, $verified) {
+            $user->update([
+                'dob' => $dob,
+                'dob_verified_at' => $verified ? now() : null,
+            ]);
 
-        $isMinor = ! $user->refresh()->isAdult();
+            $isMinor = ! $user->refresh()->isAdult();
 
-        Guardianship::query()->where('ward_id', $user->id)->update(['ward_was_minor_at_creation' => $isMinor]);
+            Guardianship::query()->where('ward_id', $user->id)->update(['ward_was_minor_at_creation' => $isMinor]);
 
-        Therapy::query()->where('addedby_type', User::class)->where('addedby_id', $user->id)
-            ->update(['client_was_minor_at_creation' => $isMinor]);
+            Therapy::query()->where('addedby_type', User::class)->where('addedby_id', $user->id)
+                ->update(['client_was_minor_at_creation' => $isMinor]);
 
-        GroupTherapy::query()->where('addedby_type', User::class)->where('addedby_id', $user->id)
-            ->update(['client_was_minor_at_creation' => $isMinor]);
+            GroupTherapy::query()->where('addedby_type', User::class)->where('addedby_id', $user->id)
+                ->update(['client_was_minor_at_creation' => $isMinor]);
+        });
     }
 }

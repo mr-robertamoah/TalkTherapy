@@ -3,6 +3,7 @@
 namespace App\Actions\Request;
 
 use App\Actions\Action;
+use App\Actions\SafeguardingException\EnsureCanManageSafeguardingExceptionAction;
 use App\DTOs\RequestResponseDTO;
 use App\Enums\RequestTypeEnum;
 use App\Exceptions\CannotRespondToRequestException;
@@ -33,6 +34,17 @@ class EnsureUserCanRespondToRequestAction extends Action
     // logic, however small the copy looks at the time.
     public function userCanRespond(User $user, ModelsRequest $request): bool
     {
+        // SCRUM-381 (the user's decision): only the super administrator answers a counsellor's
+        // request for a safeguarding exception -- never another administrator (the generic isAdmin()
+        // branch below), never the counsellor who sent it, and (SCRUM-382 review) never one who
+        // counsels the minor: the same rule as granting one (EnsureCanManageSafeguardingExceptionAction).
+        if ($request->type === RequestTypeEnum::safeguardingException->value) {
+            $manage = EnsureCanManageSafeguardingExceptionAction::new();
+
+            return $manage->allows($user, User::withTrashed()->find($request->data['wardId'] ?? null))
+                && ! $manage->sentBy($request, $user);
+        }
+
         $respondent = $request->to;
         // TT-4.10f/SCRUM-295 security-review finding: a dobChange request's `to` is fixed, at
         // creation time, to whichever ONE guardian happened to be picked -- an identity match

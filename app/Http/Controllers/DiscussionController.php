@@ -62,7 +62,7 @@ class DiscussionController extends Controller
             return $this->successResponse($request, ['discussion' => new DiscussionResource($discussion)]);
         } catch (Throwable $th) {
 
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -90,7 +90,7 @@ class DiscussionController extends Controller
             return $this->successResponse($request, ['discussion' => new DiscussionResource($discussion)]);
         } catch (Throwable $th) {
 
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -107,7 +107,7 @@ class DiscussionController extends Controller
             return $this->successResponse($request, ['discussion' => new DiscussionResource($discussion)]);
         } catch (Throwable $th) {
 
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -122,7 +122,7 @@ class DiscussionController extends Controller
                 ])
             );
         } catch (Throwable $th) {
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -141,7 +141,7 @@ class DiscussionController extends Controller
                 'counsellor' => new CounsellorResource($counsellor),
             ]);
         } catch (Throwable $th) {
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -158,7 +158,7 @@ class DiscussionController extends Controller
             );
         } catch (Throwable $th) {
 
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -174,7 +174,7 @@ class DiscussionController extends Controller
             );
         } catch (Throwable $th) {
 
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -193,7 +193,7 @@ class DiscussionController extends Controller
             return $this->successResponse($request, ['discussion' => new DiscussionResource($discussion)]);
         } catch (Throwable $th) {
 
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -212,7 +212,7 @@ class DiscussionController extends Controller
             return $this->successResponse($request, ['discussion' => new DiscussionResource($discussion)]);
         } catch (Throwable $th) {
 
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -231,7 +231,7 @@ class DiscussionController extends Controller
             return $this->successResponse($request, ['discussion' => new DiscussionResource($discussion)]);
         } catch (Throwable $th) {
 
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 }

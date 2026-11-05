@@ -60,6 +60,12 @@ enum RequestTypeEnum: string
     // always left null -- admin-only by design (no guardian counterpart makes sense here, unlike
     // dobChange), mirrors `refund`'s own null-`to` shape. `data` carries the `attestation` text.
     case ageVerification = 'AGE_VERIFICATION_REQUEST';
+    // SCRUM-381: a counsellor asking the super administrator for a safeguarding exception for a
+    // paused minor client or group member (SendSafeguardingExceptionRequestAction). `from` is the
+    // Counsellor; `to` is always null -- only a super administrator may respond
+    // (EnsureUserCanRespondToRequestAction); `for` is the Therapy or GroupTherapy. `data` carries
+    // `reason`, `proposedEndsAt` and `wardId` (server-side only: never sent to the counsellor).
+    case safeguardingException = 'SAFEGUARDING_EXCEPTION_REQUEST';
 
     // SCRUM-359: requests that ask a counsellor to work with someone (or offer to). A suspended
     // counsellor can't send, receive or accept these, and pending ones are declined when they are

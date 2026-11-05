@@ -27,7 +27,7 @@ class UserController extends Controller
             );
         } catch (Throwable $th) {
 
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -42,7 +42,7 @@ class UserController extends Controller
                 ])
             );
         } catch (Throwable $th) {
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -62,7 +62,7 @@ class UserController extends Controller
                 'guardianship' => new GuardianshipResource($guardianship),
             ]);
         } catch (Throwable $th) {
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -71,7 +71,7 @@ class UserController extends Controller
         try {
             return UserService::new()->getGuardianship($request->user());
         } catch (Throwable $th) {
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -92,7 +92,7 @@ class UserController extends Controller
                 'request' => $requestModel,
             ], 201);
         } catch (Throwable $th) {
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 }

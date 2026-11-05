@@ -31,7 +31,7 @@ class LikeController extends Controller
             return $this->successResponse($request, ['like' => new LikeResource($like)]);
         } catch (Throwable $th) {
 
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -48,7 +48,7 @@ class LikeController extends Controller
             return $this->successResponse($request, ['like' => new LikeResource($like)]);
         } catch (Throwable $th) {
 
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -64,7 +64,7 @@ class LikeController extends Controller
             );
         } catch (Throwable $th) {
 
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 }

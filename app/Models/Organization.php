@@ -6,6 +6,7 @@ use App\Enums\FileTagEnum;
 use App\Enums\OrganizationInvoiceStatusEnum;
 use App\Enums\RequestStatusEnum;
 use App\Enums\RequestTypeEnum;
+use App\Traits\HasTaggedFiles;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasOne;
@@ -14,7 +15,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Organization extends Model
 {
-    use HasFactory, SoftDeletes;
+    use HasFactory, HasTaggedFiles, SoftDeletes;
 
     protected $fillable = [
         'name',
@@ -90,9 +91,7 @@ class Organization extends Model
     // attach()/sync(). logo_id/logoFile() coexist for now; dropping the FK column is deferred.
     public function logoFile(): MorphToMany
     {
-        return $this->morphToMany(File::class, 'fileable', 'fileables')
-            ->withPivotValue('tag', FileTagEnum::logo->value)
-            ->withTimestamps();
+        return $this->taggedFile(FileTagEnum::logo);
     }
 
     public function getLogoAttribute(): ?File

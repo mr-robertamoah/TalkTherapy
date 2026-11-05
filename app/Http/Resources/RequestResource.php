@@ -3,12 +3,14 @@
 namespace App\Http\Resources;
 
 use App\Actions\Request\EnsureUserCanRespondToRequestAction;
+use App\Actions\SafeguardingException\EnsureCanManageSafeguardingExceptionAction;
 use App\Enums\ConstantsEnum;
 use App\Enums\RequestTypeEnum;
 use App\Models\Discussion;
 use App\Models\GroupTherapy;
 use App\Models\Organization;
 use App\Models\OrganizationCounsellor;
+use App\Models\Therapy;
 use App\Models\Transaction;
 use App\Models\User;
 use Illuminate\Http\Request;
@@ -24,6 +26,22 @@ class RequestResource extends JsonResource
     public function toArray(Request $request): array
     {
         $viewer = $request->user();
+
+        // SCRUM-382 review (SCRUM-362's rule for reports): a super administrator lists every
+        // counsellor's request for a safeguarding exception, but one about a minor they counsel
+        // (and didn't send) shows only that it exists -- not who, the therapy, or the reason.
+        if ($this->isInvolvedSafeguardingAdmin($viewer)) {
+            return [
+                'id' => $this->id,
+                'from' => null,
+                'for' => null,
+                'to' => null,
+                'status' => $this->status,
+                'type' => $this->type,
+                'safeguardingException' => ['involved' => true, 'isRespondent' => false],
+                'createdAt' => $this->created_at->diffForHumans(),
+            ];
+        }
 
         return [
             'id' => $this->id,
@@ -90,9 +108,51 @@ class RequestResource extends JsonResource
                     ];
                 }
             ),
+            // SCRUM-381: a counsellor's request for a safeguarding exception. Only its sender (the
+            // counsellor) and the super administrator can list it. The client is named as the
+            // therapy shows them to everyone else (displayNameOf(): an anonymous client or member
+            // stays "Anonymous", never an id); only the super administrator, who decides, sees who
+            // they are.
+            'safeguardingException' => $this->when(
+                $this->type === RequestTypeEnum::safeguardingException->value,
+                fn () => $this->safeguardingException($viewer),
+            ),
             'round' => $this->when(! is_null($this->round), $this->round),
             'expiresAt' => $this->when(! is_null($this->expires_at), fn () => $this->expires_at?->diffForHumans()),
             'createdAt' => $this->created_at->diffForHumans(),
+        ];
+    }
+
+    // The sender sees their own request as its counsellor (below), never this summary.
+    private function isInvolvedSafeguardingAdmin(?User $viewer): bool
+    {
+        if (! $viewer || $this->type !== RequestTypeEnum::safeguardingException->value || ! $viewer->isAdmin()) {
+            return false;
+        }
+
+        $manage = EnsureCanManageSafeguardingExceptionAction::new();
+        $ward = User::withTrashed()->find($this->data['wardId'] ?? null);
+
+        return ! $manage->sentBy($this->resource, $viewer) && $ward && $manage->counsels($viewer, $ward);
+    }
+
+    private function safeguardingException(?User $viewer): array
+    {
+        $isRespondent = $viewer && EnsureUserCanRespondToRequestAction::new()->userCanRespond($viewer, $this->resource);
+        $ward = User::withTrashed()->find($this->data['wardId'] ?? null);
+        $therapy = $this->for;
+
+        return [
+            'reason' => $this->data['reason'] ?? null,
+            'proposedEndsAt' => $this->data['proposedEndsAt'] ?? null,
+            'isRespondent' => $isRespondent,
+            'involved' => false,
+            'client' => match (true) {
+                ! $ward => ['fullName' => 'a deleted account'],
+                $isRespondent => $this->narrowUserProjection($ward),
+                $therapy instanceof Therapy || $therapy instanceof GroupTherapy => ['fullName' => $therapy->displayNameOf($ward)],
+                default => ['fullName' => ConstantsEnum::anonymousUserLabel->value],
+            },
         ];
     }
 
@@ -245,6 +305,7 @@ class RequestResource extends JsonResource
         return is_null($this->to_type) && in_array($this->type, [
             RequestTypeEnum::dobChange->value,
             RequestTypeEnum::ageVerification->value,
+            RequestTypeEnum::safeguardingException->value,
         ]);
     }
 
@@ -252,7 +313,9 @@ class RequestResource extends JsonResource
     {
         // SCRUM-206 (TT-2.5a): a session-schedule proposal's `for` is also a Therapy directly,
         // same shape as a `therapy` (assistance) request.
-        if (in_array($this->type, [RequestTypeEnum::therapy->value, RequestTypeEnum::sessionScheduleProposal->value])) {
+        // SCRUM-381: a safeguarding exception request is `for` a Therapy or (below) a GroupTherapy.
+        if (in_array($this->type, [RequestTypeEnum::therapy->value, RequestTypeEnum::sessionScheduleProposal->value])
+            || ($this->type === RequestTypeEnum::safeguardingException->value && $this->for_type === Therapy::class)) {
             return new TherapyMiniResource($this->for);
         }
 

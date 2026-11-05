@@ -41,7 +41,7 @@ return Application::configure(basePath: dirname(__DIR__))
     })
     ->withExceptions(function (Exceptions $exceptions) {
         // SCRUM-374: the app's own refusals (AppException) answer the same way wherever they are
-        // thrown -- the base Controller's returnFailure() for the controllers that catch them, this
+        // thrown -- the base Controller's failureResponse() for the controllers that catch them, this
         // for anything that doesn't (middleware, a controller with no try/catch). Both are
         // App\Support\FailureResponse. A real refusal (4xx) is expected and not reported; an
         // uncoded or 5xx one is a bug and still is (FailureResponse reports a 500).

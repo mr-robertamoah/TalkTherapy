@@ -15,8 +15,9 @@ use Illuminate\Support\Collection;
 
 // SCRUM-288 (Q7): read-only inventory of the people whose therapies are paused for a missing
 // guardian -- non-administrator accounts with no date of birth or one under 18, with no active
-// guardian (Guardianship::scopeActive()). Ids and counts only, nothing personal. Grouped by
-// whether a date of birth is known, since the user decides what to do about the no-dob ones.
+// guardian (Guardianship::scopeActive()) and no safeguarding exception in force (SCRUM-381). Ids
+// and counts only, nothing personal. Grouped by whether a date of birth is known, since the user
+// decides what to do about the no-dob ones.
 class FindMinorsWithoutActiveGuardianAction extends Action
 {
     public const NO_DOB = 'no_dob';
@@ -26,12 +27,9 @@ class FindMinorsWithoutActiveGuardianAction extends Action
     /** @return array{no_dob: Collection, known_minor: Collection} each row: id, openTherapies, groupMemberships, upcomingSessions, pendingProposals */
     public function execute(): array
     {
-        $adultFrom = now()->subYears(18)->toDateString();
-
         $rows = User::query()
-            ->where(fn ($q) => $q->whereNull('dob')->orWhere('dob', '>', $adultFrom))
-            ->whereDoesntHave('administrator')
-            ->whereDoesntHave('guardians', fn ($q) => $q->active())
+            // SCRUM-381: this includes a safeguarding exception in force, which means they aren't paused.
+            ->wherePausedForMissingGuardian()
             ->orderBy('id')
             ->get(['id', 'dob'])
             // isAdult() is the definition; the date filter above only narrows the query.

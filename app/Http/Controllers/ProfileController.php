@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Actions\Counsellor\EnsureCanDeleteCounsellorAction;
 use App\Actions\EnsureNameStaysRetrievableAction;
+use App\Actions\Guardianship\HandleGuardianLossAction;
 use App\Actions\Guardianship\RemoveGuardianFromWardAction;
 use App\Actions\Suspension\EnsureCanDeleteOwnAccountWhileSuspendedAction;
 use App\Actions\User\EnsureDobChangeIsAllowedAction;
@@ -123,7 +124,13 @@ class ProfileController extends Controller
             $request->user()->dob_verified_at = null;
         }
 
-        $request->user()->save();
+        // SCRUM-382: a dob edit (clearing it included) that leaves them paused for a missing guardian
+        // runs the loss handling, as a guardian going would. Any other edit just saves (no row lock).
+        if ($request->user()->isDirty('dob')) {
+            HandleGuardianLossAction::new()->around($request->user(), HandleGuardianLossAction::DOB_CHANGED, fn () => $request->user()->save());
+        } else {
+            $request->user()->save();
+        }
 
         return Redirect::route('profile.show')->with(
             $dobChangeRequiresApproval ? ['dobChangePendingApproval' => true] : []

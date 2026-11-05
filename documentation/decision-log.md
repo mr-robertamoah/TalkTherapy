@@ -9782,3 +9782,153 @@ therapy 18 after the last QA pass.
   - the lift/apply lock order;
   - tidy-ups.
 - **Admin override:** SCRUM-381.
+
+## SCRUM-382 + 381 — follow-ups and the safeguarding exception (2026-11-04)
+
+- **SCRUM-381 product decisions (user):**
+  - Only the super admin can grant, renew or end an exception.
+  - Each exception lasts at most 30 days, needs a reason, and can be renewed with a new reason.
+  - Both 1:1 and group counsellors can ask the super admin for one.
+  - At expiry with still no guardian, the therapy pauses again with the usual notices.
+- **Who is told, and what:**
+  - The minor and the counsellor(s) are told neutrally when an exception is granted, including the
+    end date. They are never told the reason or any family detail.
+  - Every party gets the 3-day expiry warning: the minor, their counsellors and the super admin.
+- **Group counsellors are told about pauses (user, changes SCRUM-288):** a group counsellor now
+  gets the same paused/resumed notice and banner as a 1:1 counsellor, using the member's masked
+  display name.
+- **Video (user):** an exception does not stand in for a guardian's video consent. Video stays
+  blocked until a guardian consents; chat and sessions carry on.
+- **My calls (from the architect design):**
+  - **Scope:** an exception covers the whole minor, so all their therapies and groups, and is
+    checked inside `User::isPausedForMissingGuardian()` with no call-site changes.
+  - **Storage:** a `safeguarding_exceptions` table, not Request rows. A counsellor's ask is a
+    Request with `to` = null, linked to the exception, and the super-admin check runs when someone
+    responds.
+  - **Enforcement:** live from `ends_at`. The minute sweep only does the side effects, such as
+    ending live calls and sending notices.
+  - **A known gap, accepted (user):** if a guardian is removed in the minute between `ends_at` and
+    the sweep, the minor may get a duplicate "paused" notice. The user accepted it on one condition:
+    lifting a pause checks every pause. A "resumed" notice goes out only when nothing else still
+    blocks that therapy. The ward's account suspension, a suspended counsellor and an ended therapy
+    all count. Lifting a suspension on a minor who is still paused for a missing guardian doesn't
+    promise that therapy resumes.
+  - **A super admin who counsels the minor can't grant them an exception.**
+  - **Closed accounts:** the exception row is kept, but the free-text reason is redacted when the
+    minor's account is anonymised.
+- **SCRUM-382 implementation calls (mine):**
+  - **Dob changes:** every dob write goes through `HandleGuardianLossAction::around`. That covers an
+    approved change, an age verification, a self edit and an admin edit. Going from not paused to
+    paused runs the usual loss handling. A dob change that makes someone an adult announces nothing,
+    the same as turning 18.
+  - **Backfill:** `guardians:announce-existing-pauses` runs once per account, with a marker in the
+    scheduler cache store. A minor paused normally after deploy and then caught by the backfill
+    could be told twice. That's accepted because the backfill is a one-off run at deploy time.
+  - **Group links:**
+    - Creating a participant, admin or counsellor link for a paused user's group is refused.
+    - Using a link into a paused creator's group gets a neutral "This link can't be used right
+      now.".
+    - Groups created through a counsellor profile, and counsellor links, are exempt.
+    - Finding: using a group link does nothing at all today. Ticketed as SCRUM-383.
+  - **Removing people from live calls:** one `RemovePersonFromLiveCallsAction` with two policies,
+    guardian loss and suspension. Every removal is under `VideoJoinLock` and has a queued retry.
+    Suspension removal now waits on the join lock. The old job and the suspension removal action are
+    deleted; there is no production, so there are no queued payloads to migrate.
+  - **Queued loss handling:** it runs in `HandleGuardianLossJob` with `tries = 1`, so a retry can't
+    notify twice. Every step in it is best effort, and live-call removal has its own retry.
+  - **Error handling:** a single `BestEffort::attempt()` replaces the three copies, with one generic
+    log message.
+  - **`pauseStateFor`:** someone acting as the therapy's counsellor is now exempt in the page state
+    too, matching the gate.
+  - **Lock order:** `Suspension::lockWithPerson()` locks the person, then the suspension. Wards
+    follow in id order. Lift, appeal decisions and the expiry sweep all use it now, not just lift
+    and apply.
+  - **"Resumed" only when nothing else blocks:** `IsTherapyBlockedForAction` checks for an ended
+    therapy, the person's own suspension and the gate. The suspension-ended notice no longer
+    promises therapy while the minor is still paused.
+- **SCRUM-381 implementation calls (mine):**
+  - **Requests:**
+    - A request stores the minor as `data.wardId`, and that id is never sent to the counsellor.
+    - A group counsellor names a member by a key that isn't a user id: `creator` or the membership
+      row id. This keeps to the SCRUM-345 rule.
+    - The super admin who decides sees the anonymous minor's real name, because they need it to
+      decide. Counsellors only ever see the display name.
+  - **Granting and renewing:**
+    - One grant route both grants and renews.
+    - A request can't be accepted while an exception is in force, or once the minor has a
+      guardian ("no longer needed"). The request stays pending for the super admin to reject.
+    - A direct grant closes the minor's other pending requests as "Closed", not "Rejected".
+    - Accepting needs the super admin's own reason, prefilled with the counsellor's.
+    - Every admin can see the reasons. Ending early needs a reason.
+  - **Reminders:**
+    - A reminder is claimed but not sent when the minor has a guardian again.
+    - It goes to every super admin.
+    - It's sent even for an exception shorter than 3 days.
+  - **`requests.type` is a MySQL enum:** a migration adds the new type. SQLite tests didn't catch
+    this.
+  - **Date-of-birth changes:** any exception row, past or present, counts as a reason to require
+    approval for a dob change. Without it, a minor under an exception could make themselves an
+    adult.
+  - **Side effect of telling group counsellors:** a counsellor who runs both the minor's 1:1 and
+    their group gets two notices.
+- **Group video (user, 2026-11-05, replaces the 2026-09-14 decision):** group video now follows the
+  same rule as 1:1. A minor needs a guardian's video consent before joining group video, receive-only
+  included, and a safeguarding exception does not stand in for that consent. Group-scoped consent
+  doesn't exist yet (SCRUM-313), so for now every minor is refused group video: creators and ordinary
+  members alike. SCRUM-313 will add the way for a guardian to consent.
+- **Review fixes (mine):**
+  - A super admin who counsels the minor, or who sent the request, can't approve or reject it. On
+    the admin page and in the requests list, they see a "you're involved" summary instead of the
+    minor's identity and the reason, as SCRUM-362 does for reports.
+  - A reject that arrives after the request was already answered is refused, and no notice is sent.
+  - The neutral link and request refusals no longer carry the `guardian_required` code.
+  - A renewal that moves the end date earlier gets neutral copy, not "for longer".
+  - A profile save takes the pause lock only when the dob changes.
+  - Creating a group link is also refused when the group's creator is paused.
+  - The backfill marks each person as done only once their notice is queued. It must be run as the
+    web user (www-data), never root.
+  - Every remaining review item is ticketed as SCRUM-384.
+- **Accepted edge:** a grant that lands in the minute between an expired exception's `ends_at` and
+  the sweep can send "resumed" without an earlier "paused". This is the same family as the accepted
+  duplicate-notice gap.
+- **Review follow-ups (2026-11-05):**
+  - **Group video (user, changes the 2026-09-14 decision):** group video follows the 1:1 rule: a
+    minor needs a guardian's video consent first, and an exception doesn't stand in for it. Group
+    consent doesn't exist yet (SCRUM-313), so every minor in a group is refused group video for now:
+    the creator and ordinary members, receive-only included. "Minor" is the group's snapshot
+    (creator at creation, member at joining) or the dob now; either is enough, so it fails closed.
+    The group page replaces "join video" with a short note for them (`viewerNeedsGuardianVideoConsent`).
+  - **Involved administrators (my call on the wording "or who sent the request"):** on the admin
+    page, an administrator who counsels the minor or sent any of the requests about them sees only a
+    summary. In the requests list, the summary is for a super administrator who counsels the minor
+    but didn't send it. The sender still sees their own request as its counsellor does (display name,
+    their own reason, their therapy), because nothing there is new to them. Neither can answer it.
+  - **Recipients:** the "requested" notice skips super administrators who counsel the minor or whose
+    account is suspended. The 3-day reminder skips suspended ones only, as asked. A co-counselling
+    super administrator still gets the counsellor copy of the reminder.
+  - **Neutral refusals:** `GuardianRequiredException::linkUnavailable()` and `requestUnavailable()`
+    keep their 403 and message but return a null error code (the `HasErrorCode` interface now
+    allows null), so the frontend's guardian_required reload doesn't fire for them.
+  - **Renewal copy:** one neutral copy for every renewal ("The date a therapy can continue until has
+    changed"). `TherapyContinuationNotification::EXTENDED` is renamed `RENEWED`, and the database type
+    is now `guardian_access.continuation_renewed`. There is no production, so no stored rows need it.
+  - **Stored end:** the terms action truncates `ends_at` to whole seconds, so `continuesUntil` in
+    the notices equals the stored value (a DATETIME column would round the fraction).
+  - **Pending-request checks without locking reads:** the duplicate check in Send and the
+    close-the-others step in Grant no longer take locking reads on `requests` (no index on
+    `data.wardId`). The minor's row lock serialises every writer. Grant locks the found ids by key.
+  - **Suspension sweep:** the dead `! $suspension` check is removed. `lockWithPerson()` throws on a
+    missing row, the sweep's catch logs it, and suspensions are never deleted.
+  - **Group links:** creating a group link is also refused while the group's creator (a user) is
+    paused, whoever creates it. Today only the creator can create group links, so this guards a
+    future co-admin rule.
+
+- **Re-verification fixes (mine):**
+  - **Group video at 18:** group video drops the consent requirement once the member's dob says 18,
+    the same as the 1:1 rule (SCRUM-288 Q6), and no longer goes by the membership snapshot. No dob
+    still counts as a minor, so it fails closed.
+  - **Expiry reminder:** the 3-day reminder to super admins skips one who counsels the minor.
+  - **Anonymisation:** anonymising an account locks the safeguarding requests it closes.
+  - **Requests modal:** fixed a crash when a super admin who counsels the minor opened it, because a
+    masked request has no `for`.
+  - **Mobile:** the group-video consent note wraps on phones.

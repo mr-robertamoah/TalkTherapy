@@ -16,11 +16,13 @@ export default function useEnums() {
         sessionScheduleProposal: 'SESSION_SCHEDULE_PROPOSAL_REQUEST',
         dobChange: 'DOB_CHANGE_REQUEST',
         ageVerification: 'AGE_VERIFICATION_REQUEST',
+        safeguardingException: 'SAFEGUARDING_EXCEPTION_REQUEST',
     }
     const RequestStatusEnum = {
         accepted: 'ACCEPTED',
         pending: 'PENDING',
         rejected: 'REJECTED',
+        inconsequencial: 'INCONSEQUENCIAL',
     }
     const SessionStatusEnum = {
         pending: 'PENDING',

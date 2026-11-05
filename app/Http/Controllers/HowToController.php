@@ -40,7 +40,7 @@ class HowToController extends Controller
             return $this->successResponse($request, ['howTo' => new HowToResource($howTo)]);
         } catch (Throwable $th) {
 
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -65,7 +65,7 @@ class HowToController extends Controller
             return $this->successResponse($request, ['howTo' => new HowToResource($howTo)]);
         } catch (Throwable $th) {
 
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -82,7 +82,7 @@ class HowToController extends Controller
             return $this->successResponse($request, ['howTo' => new HowToResource($howTo)]);
         } catch (Throwable $th) {
 
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 }

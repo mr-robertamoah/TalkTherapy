@@ -445,7 +445,7 @@ test('POST api.group.therapies.join creates a pending request when allow_anyone 
 
 test('POST api.group.therapies.join surfaces a full group as 422 with a real message instead of a silent empty 200 (SCRUM-94)', function () {
     // Before SCRUM-94, GroupTherapyController::joinGroupTherapy's catch block called
-    // $this->returnFailure($request, $th) without `return`, so the method fell through and
+    // $this->failureResponse($request, $th) without `return`, so the method fell through and
     // implicitly returned null -- Laravel serialised that as an empty HTTP 200, silently
     // hiding the real 422 CannotJoinGroupTherapyException from the client.
     $creator = anAdult();

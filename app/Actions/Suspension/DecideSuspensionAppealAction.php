@@ -31,7 +31,8 @@ class DecideSuspensionAppealAction extends Action
         }
 
         $suspension = DB::transaction(function () use ($admin, $suspension, $decision, $note) {
-            $suspension = Suspension::query()->lockForUpdate()->findOrFail($suspension->id);
+            // SCRUM-382: the person, then the suspension (Suspension::lockWithPerson()).
+            $suspension = Suspension::lockWithPerson($suspension->id);
 
             if (! $suspension->appealIsPending()) {
                 throw new SuspensionException('There is no appeal waiting on this suspension.', 422);

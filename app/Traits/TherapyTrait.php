@@ -248,6 +248,40 @@ trait TherapyTrait
         return $this->isMaskedToOthers($subject) || (bool) $this->membershipOf($subject)?->anonymous;
     }
 
+    // SCRUM-382: the one rule for whether this therapy is paused for a missing guardian as $viewer
+    // sees it -- used by the write gate (EnsureMinorHasActiveGuardianAction) and by the page state
+    // (the resources' viewerAccessPaused / clientAccessPaused), so the two can't disagree.
+    //  - viewer: $viewer is a minor with no active guardian taking part as a client or member.
+    //    Someone acting as this therapy's own counsellor is never the minor it is paused for, so
+    //    their own age isn't asked.
+    //  - client: only for someone acting as an individual therapy's counsellor (null for everyone
+    //    else, and when $counterparty is false): whether its client is paused, which makes that
+    //    counsellor read-only too (SCRUM-288 Q5).
+    // $actsAsCounsellor: when the caller already knows (otherwise worked out here, and only when it
+    // matters -- an adult who isn't paused costs no query). $fresh re-reads (inside a lock). No
+    // viewer (a guest) is never paused.
+    /** @return array{viewer: bool, client: ?bool} */
+    public function pauseStateFor(?User $viewer, bool $fresh = false, ?bool $actsAsCounsellor = null, bool $counterparty = true): array
+    {
+        if (! $viewer) {
+            return ['viewer' => false, 'client' => null];
+        }
+
+        $actsAs = function () use ($viewer, &$actsAsCounsellor): bool {
+            return $actsAsCounsellor ??= (bool) ($viewer->counsellor && $this->isCounsellor($viewer->counsellor));
+        };
+
+        $client = null;
+        if ($counterparty && ! $this instanceof GroupTherapy && $actsAs()) {
+            $client = $this->addedby_type === User::class && $this->addedby && $this->addedby->isPausedForMissingGuardian($fresh);
+        }
+
+        return [
+            'viewer' => $viewer->isPausedForMissingGuardian($fresh) && ! $actsAs(),
+            'client' => $client,
+        ];
+    }
+
     // SCRUM-379: how $subject is labelled to everyone ELSE -- the presence channels
     // (routes/channels.php), the name minted into a video token (JoinVideoSessionAction) and the
     // name the call UI shows (GetVideoParticipantDisplayNameAction). The rule itself is

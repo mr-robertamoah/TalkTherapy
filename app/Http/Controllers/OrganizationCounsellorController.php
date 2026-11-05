@@ -30,7 +30,7 @@ class OrganizationCounsellorController extends Controller
 
             return OrganizationCounsellorResource::collection($counsellors);
         } catch (Throwable $th) {
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -47,7 +47,7 @@ class OrganizationCounsellorController extends Controller
 
             return response()->json(['request' => new OrganizationRequestResource($organizationRequest)]);
         } catch (Throwable $th) {
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -64,7 +64,7 @@ class OrganizationCounsellorController extends Controller
 
             return response()->json(['request' => new OrganizationRequestResource($organizationRequest)]);
         } catch (Throwable $th) {
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 }

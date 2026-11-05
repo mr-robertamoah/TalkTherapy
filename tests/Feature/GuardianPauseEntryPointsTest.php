@@ -233,6 +233,7 @@ function gpepEntryPoints(): array
         'accept a proposed time (counsellor of a paused 1:1)' => ['POST', 'api/requests/{requestId}', 'counsellor', fn (array $c) => [
             ['requestId' => gpepProposal(gpepIdleTherapy($c), $c['minor'], $c['counsellor'])->id], ['response' => 'accepted'],
         ], 403],
+        // SCRUM-382 review: told neutrally (GuardianRequiredException::requestUnavailable()), so no code (null).
         'accept a group membership request from the minor' => ['POST', 'api/requests/{requestId}', 'counsellor', function (array $c) {
             $group = GroupTherapy::factory()->create(['addedby_type' => Counsellor::class, 'addedby_id' => $c['counsellor']->id, 'allow_anyone' => false]);
             $group->counsellors()->attach($c['counsellor']->id, ['state' => 'ACTIVE', 'role' => 'NORMAL']);
@@ -243,7 +244,7 @@ function gpepEntryPoints(): array
             ]);
 
             return [['requestId' => $request->id], ['response' => 'accepted']];
-        }, 403],
+        }, 403, null],
         'take on the minor\'s therapy' => ['POST', 'api/requests/{requestId}', 'counsellor', function (array $c) {
             $therapy = gpepTherapy($c['minor'], null, ['status' => TherapyStatusEnum::pending->value]);
             $request = Request::factory()->create([
@@ -274,7 +275,8 @@ function gpepEntryPoints(): array
         'update their group (api)' => ['PATCH', 'api/group-therapies/{groupTherapyId}', 'minor', $groupUpdate, 403],
         'update their group (web)' => ['PATCH', 'group-therapies/{groupTherapyId}', 'minor', $groupUpdate, 403],
         'join a 1:1 video call (counsellor of a paused 1:1)' => ['POST', 'sessions/{sessionId}/video/join', 'counsellor', fn (array $c) => [['sessionId' => $c['liveSession']->id], []], 403],
-        'join a group video call' => ['POST', 'sessions/{sessionId}/video/join', 'minor', fn (array $c) => [['sessionId' => $c['groupSession']->id], []], 403],
+        // (A minor joining group video isn't here: since the user's decision of 2026-11-05 it is
+        // refused even with a guardian, until group video consent exists -- SCRUM-313.)
         // Told the therapy is paused, not that video needs consent (the guarded case has the consent).
         'join a 1:1 video call (the minor)' => ['POST', 'sessions/{sessionId}/video/join', 'minor', function (array $c) {
             if ($guardianId = $c['minor']->guardians()->value('guardian_id')) {
@@ -358,13 +360,15 @@ function gpepRun($test, string $method, string $uri, string $actor, Closure $bui
     return [$test->actingAs($user)->json($method, gpepUrl($uri, $params), $payload), $c];
 }
 
-test('a write is refused with guardian_required while the minor has no active guardian', function (string $method, string $uri, string $actor, Closure $build, int $status) {
+// $code: null for a refusal that is told neutrally (no code at all).
+test('a write is refused with guardian_required while the minor has no active guardian', function (string $method, string $uri, string $actor, Closure $build, int $status, ?string $code = 'guardian_required') {
     [$response] = gpepRun($this, $method, $uri, $actor, $build, guarded: false);
 
-    $response->assertStatus($status)->assertJsonPath('code', 'guardian_required');
+    $response->assertStatus($status);
+    $code ? $response->assertJsonPath('code', $code) : $response->assertJsonMissingPath('code');
 })->with(gpepEntryPoints());
 
-test('the same write goes through once the minor has an active guardian', function (string $method, string $uri, string $actor, Closure $build) {
+test('the same write goes through once the minor has an active guardian', function (string $method, string $uri, string $actor, Closure $build, int $status = 0, ?string $code = null) {
     [$response] = gpepRun($this, $method, $uri, $actor, $build, guarded: true);
 
     expect($response->status())->toBeLessThan(400, $response->getContent())

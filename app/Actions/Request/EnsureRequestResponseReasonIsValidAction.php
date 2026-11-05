@@ -3,7 +3,9 @@
 namespace App\Actions\Request;
 
 use App\Actions\Action;
+use App\Actions\SafeguardingException\EnsureSafeguardingExceptionTermsAction;
 use App\DTOs\RequestResponseDTO;
+use App\Enums\RequestTypeEnum;
 use App\Exceptions\BadRequestException;
 
 class EnsureRequestResponseReasonIsValidAction extends Action
@@ -22,8 +24,13 @@ class EnsureRequestResponseReasonIsValidAction extends Action
             throw new BadRequestException('Reason must be a string.', 422);
         }
 
-        if (mb_strlen($requestResponseDTO->reason) > 1000) {
-            throw new BadRequestException('Reason must not be greater than 1000 characters.', 422);
+        // SCRUM-381: a safeguarding exception's reason may run to 2000 (its own limit).
+        $max = $requestResponseDTO->request?->type === RequestTypeEnum::safeguardingException->value
+            ? EnsureSafeguardingExceptionTermsAction::MAX_REASON
+            : 1000;
+
+        if (mb_strlen($requestResponseDTO->reason) > $max) {
+            throw new BadRequestException("Reason must not be greater than {$max} characters.", 422);
         }
     }
 }

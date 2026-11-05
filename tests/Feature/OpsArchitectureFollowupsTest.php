@@ -139,7 +139,7 @@ test('one JSON-or-redirect rule: JSON for scripts, a redirect for Inertia visits
         ->and($make(['Accept' => 'text/html,application/xhtml+xml,*/*;q=0.8']))->toBeFalse();
 });
 
-test('an AppException thrown outside any controller catch answers like returnFailure', function () {
+test('an AppException thrown outside any controller catch answers like failureResponse', function () {
     Route::middleware('web')->get('/_oaf/refusal', fn () => throw new TherapyException('Not allowed here.', 422));
 
     $this->getJson('/_oaf/refusal')->assertStatus(422)->assertJsonPath('message', 'Not allowed here.');
