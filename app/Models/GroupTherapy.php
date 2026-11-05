@@ -91,7 +91,7 @@ class GroupTherapy extends Model
     public function users()
     {
         return $this->belongsToMany(User::class, 'group_therapy_user', 'group_therapy_id', 'user_id')
-            ->withPivot(['background_story', 'anonymous', 'was_minor_at_join'])
+            ->withPivot(['id', 'background_story', 'anonymous', 'was_minor_at_join'])
             ->withTimestamps();
     }
 

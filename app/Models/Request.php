@@ -4,13 +4,15 @@ namespace App\Models;
 
 use App\Enums\FileTagEnum;
 use App\Enums\RequestStatusEnum;
+use App\Enums\RequestTypeEnum;
+use App\Traits\HasTaggedFiles;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphToMany;
 
 class Request extends Model
 {
-    use HasFactory;
+    use HasFactory, HasTaggedFiles;
 
     protected $fillable = ['data', 'type', 'status', 'expires_at', 'round', 'reminder_sent_at'];
 
@@ -57,10 +59,7 @@ class Request extends Model
     // rather than managing the tag manually against the generic files() relation above.
     public function identityDocument(): MorphToMany
     {
-        return $this
-            ->morphToMany(File::class, 'fileable', 'fileables')
-            ->withPivotValue('tag', FileTagEnum::identityDocument->value)
-            ->withTimestamps();
+        return $this->taggedFile(FileTagEnum::identityDocument);
     }
 
     public function to()
@@ -94,6 +93,22 @@ class Request extends Model
     public function scopeWherePending($query)
     {
         return $query->where('status', RequestStatusEnum::pending->value);
+    }
+
+    // SCRUM-381: counsellors' requests for a safeguarding exception -- for one minor ($ward, stored
+    // as data.wardId) and/or in one Therapy or GroupTherapy ($for), when given.
+    public function scopeSafeguardingException($query, User|int|null $ward = null, $for = null)
+    {
+        return $query
+            ->where('type', RequestTypeEnum::safeguardingException->value)
+            ->when(! is_null($ward), fn ($query) => $query->where('data->wardId', $ward instanceof User ? $ward->id : $ward))
+            ->when($for, fn ($query) => $query->whereFor($for));
+    }
+
+    // The ones still waiting for the super administrator.
+    public function scopePendingSafeguardingException($query, User|int|null $ward = null, $for = null)
+    {
+        return $query->safeguardingException($ward, $for)->wherePending();
     }
 
     public function scopeWhereType($query, $type)

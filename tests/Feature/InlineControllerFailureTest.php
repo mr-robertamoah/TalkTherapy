@@ -17,7 +17,7 @@ use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Str;
 
 // SCRUM-97: the controllers that catch exceptions inline (instead of through a shared
-// returnFailure helper) -- each failure path answers in its own shape with the domain message.
+// failureResponse helper) -- each failure path answers in its own shape with the domain message.
 
 function icfCounsellor(): Counsellor
 {
@@ -138,7 +138,7 @@ test('performAction sends any other failure home too, and answers XHR with JSON'
     expect($therapy->fresh()->counsellor_id)->toBeNull();
 });
 
-// --- SCRUM-371: the one returnFailure (base Controller) --------------------------------------
+// --- SCRUM-371: the one failureResponse (base Controller) --------------------------------------
 
 test('a failure answers a script with JSON, and an Inertia visit or a browser navigation with the alert', function () {
     $user = User::factory()->adult()->create();
@@ -163,10 +163,10 @@ test('a failure answers a script with JSON, and an Inertia visit or a browser na
     expect($counsellor->fresh()->deleted_at)->toBeNull();
 });
 
-test('no controller keeps its own returnFailure copy', function () {
+test('no controller keeps its own failureResponse copy', function () {
     $copies = collect(glob(app_path('Http/Controllers/*.php')))
         ->reject(fn (string $path) => basename($path) === 'Controller.php')
-        ->filter(fn (string $path) => str_contains(file_get_contents($path), 'function returnFailure('))
+        ->filter(fn (string $path) => str_contains(file_get_contents($path), 'function failureResponse('))
         ->map(fn (string $path) => basename($path))
         ->values()
         ->all();

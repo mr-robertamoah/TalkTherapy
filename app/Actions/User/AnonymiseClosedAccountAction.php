@@ -9,6 +9,7 @@ use App\Enums\RequestTypeEnum;
 use App\Models\Contact;
 use App\Models\Counsellor;
 use App\Models\Request;
+use App\Models\SafeguardingException;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -22,7 +23,8 @@ use Illuminate\Support\Str;
 //  - its age and date-of-birth requests: the dates of birth in them, and any identity document
 //    still attached (a pending request's scan is otherwise never swept);
 //  - its notifications, password-reset token and API tokens, the name and email on contact
-//    messages it sent, and the link from visit records to the account.
+//    messages it sent, and the link from visit records to the account;
+//  - the reasons on its safeguarding exceptions and on counsellors' requests for one (SCRUM-381).
 // What stays: the account row itself (soft-deleted), so what the person took part in still holds
 // together -- their messages stay in other people's conversations as "Deleted user", and payment,
 // complaint, suspension and audit records keep pointing at it. Guardianship and organisation
@@ -64,6 +66,25 @@ class AnonymiseClosedAccountAction extends Action
             });
 
             $counsellor?->forceFill(['name' => null, 'email' => null, 'phone' => null, 'about' => null])->saveQuietly();
+
+            // SCRUM-381: their safeguarding exceptions stay (the audit trail), without the
+            // administrators' and counsellors' free-text reasons about them.
+            SafeguardingException::query()->where('ward_id', $user->id)->update(['reason' => null, 'end_reason' => null]);
+            Request::query()
+                ->safeguardingException($user)
+                ->lockForUpdate()
+                ->get()
+                ->each(function (Request $request) {
+                    $request->data = collect($request->data ?? [])->except('reason')->all();
+
+                    // saveQuietly() skips the model hook that would stamp responded_at.
+                    if ($request->status === RequestStatusEnum::pending->value) {
+                        $request->status = RequestStatusEnum::inconsequencial->value;
+                        $request->responded_at = now();
+                    }
+
+                    $request->saveQuietly();
+                });
 
             DB::table('notifications')->where('notifiable_type', $user->getMorphClass())->where('notifiable_id', $user->id)->delete();
             if ($user->email) {

@@ -18,7 +18,7 @@ use Illuminate\Support\Facades\Storage;
 // SCRUM-380: one success response (App\Support\SuccessResponse, via the base Controller's
 // successResponse()) replaced every controller's private returnSuccess, and GroupTherapyController's
 // update/payment-gate/end/delete plus CounsellorController::verifyCounsellor moved onto it and
-// returnFailure(). JSON callers get JSON; Inertia visits get the same redirect (and errors.alert) as before.
+// failureResponse(). JSON callers get JSON; Inertia visits get the same redirect (and errors.alert) as before.
 
 function ssrInertiaHeaders(): array
 {

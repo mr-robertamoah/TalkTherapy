@@ -7,7 +7,7 @@ use App\Models\Session;
 use App\Models\Therapy;
 use App\Models\User;
 
-// Regression test for SCRUM-20 QA finding: MessageController::returnFailure used to re-throw a
+// Regression test for SCRUM-20 QA finding: MessageController::failureResponse used to re-throw a
 // bare Exception for JSON requests, which lost the original MessageException's 422 code and
 // always surfaced to the client as a 500 via Laravel's default exception handler. A rejected
 // send now needs to come back as an actual 422 response, not a 500.

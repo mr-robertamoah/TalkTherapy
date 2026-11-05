@@ -26,6 +26,7 @@ use App\Http\Controllers\ReligionController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\ReportEvidenceController;
 use App\Http\Controllers\RequestController;
+use App\Http\Controllers\SafeguardingExceptionRequestController;
 use App\Http\Controllers\SchedulerHealthController;
 use App\Http\Controllers\SessionController;
 use App\Http\Controllers\SessionNoteController;
@@ -229,6 +230,10 @@ Route::middleware('auth:sanctum')->group(function () {
     // TT-2.5b). No web.php duplicate registration -- see SCRUM-200 for why that pattern is
     // avoided now.
     Route::post('/therapies/{therapyId}/schedule-proposals', [SessionScheduleProposalController::class, 'store'])->name('api.session_schedule_proposals.store')->middleware('throttle:30,1,api.session_schedule_proposals.store');
+    // SCRUM-381: a counsellor asks the super administrator for a safeguarding exception for a paused
+    // client (1:1) or group member.
+    Route::post('/therapies/{therapyId}/safeguarding-exception-requests', [SafeguardingExceptionRequestController::class, 'storeForTherapy'])->name('api.safeguarding_exception_requests.therapy')->whereNumber('therapyId')->middleware('throttle:10,1,api.safeguarding_exception_requests.therapy');
+    Route::post('/group-therapies/{groupTherapyId}/safeguarding-exception-requests', [SafeguardingExceptionRequestController::class, 'storeForGroup'])->name('api.safeguarding_exception_requests.group')->whereNumber('groupTherapyId')->middleware('throttle:10,1,api.safeguarding_exception_requests.group');
     // SCRUM-207/TT-2.5b: accept/reject reuse the existing generic requests.respond endpoint
     // (RespondToRequestAction's per-type dispatch already covers this type) -- only
     // counter-offer needs its own endpoint, mirroring requests.compensation_counter_offer.

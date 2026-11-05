@@ -36,6 +36,9 @@
             <PrimaryButton
                 v-if="computedCanJoinVideo && !videoActive"
                 @click="videoActive = true" class="shrink-0">join video</PrimaryButton>
+            <span
+                v-if="computedGroupVideoNeedsConsent"
+                class="min-w-0 shrink whitespace-normal text-sm text-gray-600">Video calls in a group need a parent or guardian's consent first.</span>
     </div>
     <VideoCallPanel
         v-if="computedCanJoinVideo && videoActive"
@@ -43,7 +46,7 @@
         @close="videoActive = false"
     />
     <div class="my-2 w-full h-1 rounded bg-stone-400"  v-if="showSessions"></div>
-    <TherapyPausedBanner v-if="computedAccessPaused && isParticipant" :viewer-paused="computedViewerPaused" class="mb-2" />
+    <TherapyPausedBanner v-if="(computedAccessPaused || therapy?.pausedMembers?.length) && isParticipant" :viewer-paused="computedViewerPaused" :therapy="therapy" :therapy-type="therapyType" class="mb-2" />
     <div v-bind="$attrs" class="min-h-[500px] relative flex flex-col items-center justify-center">
         <div v-if="therapy.status == 'PENDING' && !isParticipant"
             class="flex absolute top-0 left-0 w-full h-full bg-gray-500 justify-center items-center text-white text-sm bg-opacity-75 rounded z-[1]">
@@ -677,25 +680,30 @@ const computedCanAbandon = computed(() => {
 //
 // TT-3.2c/SCRUM-310: the `therapyType === 'individual'` restriction here was a TT-3.1-era leftover
 // -- GroupTherapy video's own backend allow-list (counsellor, or the group's own creator) has been
-// live since SCRUM-308. Deliberately does NOT pre-check the group creator's minor status here the
-// way a display flag might -- same reasoning as the consent case just above: a minor creator can
-// still click "join video," and the backend's plain VideoException (no consent flow for group, per
-// this epic's own scoping) surfaces through the panel's existing generic `error` state.
+// live since SCRUM-308.
+// The user's decision (2026-11-05): a minor in a group (creator or member) needs a guardian's
+// video consent first, and group consent doesn't exist yet (SCRUM-313) -- so instead of a button
+// that can only refuse, they see a short note (the server's viewerNeedsGuardianVideoConsent).
+const computedVideoIsLive = computed(() => {
+    if (computedAccessPaused.value || !props.isParticipant) return false
+
+    return props.activeSession?.type === 'ONLINE' &&
+        ['IN_SESSION', 'IN_SESSION_CONFIRMATION'].includes(props.activeSession?.status)
+})
+const computedGroupVideoNeedsConsent = computed(() => {
+    return computedVideoIsLive.value && props.therapyType === 'group' && !!props.therapy?.viewerNeedsGuardianVideoConsent
+})
 const computedCanJoinVideo = computed(() => {
-    if (computedAccessPaused.value) return false
+    if (!computedVideoIsLive.value) return false
 
-    if (props.activeSession?.type !== 'ONLINE' ||
-        !['IN_SESSION', 'IN_SESSION_CONFIRMATION'].includes(props.activeSession?.status)
-    ) return false
+    if (props.therapyType === 'individual') return true
 
-    if (props.therapyType === 'individual') return props.isParticipant
-
-    // TT-3.2f-j/SCRUM-327: every group participant now -- an ordinary member joins receive-only
-    // (SCRUM-321's backend allow-list), so they need the button too.
-    return props.therapyType === 'group' && props.isParticipant
+    // TT-3.2f-j/SCRUM-327: every group participant -- an ordinary member joins receive-only
+    // (SCRUM-321's backend allow-list) -- except a minor, above.
+    return props.therapyType === 'group' && !computedGroupVideoNeedsConsent.value
 })
 const computedHasActions = computed(() => {
-    return computedCanStart.value || computedCanEnd.value || computedCanAbandon.value || computedCanJoinVideo.value
+    return computedCanStart.value || computedCanEnd.value || computedCanAbandon.value || computedCanJoinVideo.value || computedGroupVideoNeedsConsent.value
 })
 // Closes a stale panel if the active session changes out from under it (a different session
 // becomes active, or this one leaves the online/in-progress window) -- VideoCallPanel.vue's own

@@ -7,6 +7,7 @@ use App\Enums\FileTagEnum;
 use App\Enums\RequestStatusEnum;
 use App\Enums\RequestTypeEnum;
 use App\Enums\TherapyPaymentTypeEnum;
+use App\Traits\HasTaggedFiles;
 use App\Traits\Likeable;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -17,8 +18,8 @@ use Illuminate\Notifications\Notifiable;
 
 class Counsellor extends Model
 {
-    use HasFactory, Likeable,
-        Notifiable, SoftDeletes;
+    use HasFactory, HasTaggedFiles,
+        Likeable, Notifiable, SoftDeletes;
 
     protected $fillable = [
         'name',
@@ -392,16 +393,12 @@ class Counsellor extends Model
     // and is silently absorbed by Eloquent's dynamic-where-clause magic instead of erroring.
     public function avatarFile(): MorphToMany
     {
-        return $this->morphToMany(File::class, 'fileable', 'fileables')
-            ->withPivotValue('tag', FileTagEnum::avatar->value)
-            ->withTimestamps();
+        return $this->taggedFile(FileTagEnum::avatar);
     }
 
     public function coverFile(): MorphToMany
     {
-        return $this->morphToMany(File::class, 'fileable', 'fileables')
-            ->withPivotValue('tag', FileTagEnum::cover->value)
-            ->withTimestamps();
+        return $this->taggedFile(FileTagEnum::cover);
     }
 
     // Accessors, not the relation methods themselves, are what CounsellorResource and the rest of

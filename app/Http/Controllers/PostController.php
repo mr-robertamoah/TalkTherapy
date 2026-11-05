@@ -30,7 +30,7 @@ class PostController extends Controller
             return $this->successResponse($request, ['post' => new PostResource($post)]);
         } catch (Throwable $th) {
 
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -53,7 +53,7 @@ class PostController extends Controller
             return $this->successResponse($request, ['post' => new PostResource($post)]);
         } catch (Throwable $th) {
 
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -71,7 +71,7 @@ class PostController extends Controller
             return $this->successResponse($request, ['post' => new PostResource($post)]);
         } catch (Throwable $th) {
 
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -85,7 +85,7 @@ class PostController extends Controller
             return Redirect::route('home');
         } catch (Throwable $th) {
 
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -103,7 +103,7 @@ class PostController extends Controller
             return PostResource::collection($posts);
         } catch (Throwable $th) {
 
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 }

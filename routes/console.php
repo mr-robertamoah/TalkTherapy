@@ -5,6 +5,7 @@ use App\Actions\Counsellor\PurgeExpiredSoftDeletedCounsellorsAction;
 use App\Actions\Discussion\FailUnheldDiscussionsAction;
 use App\Actions\Discussion\NotifyParticipantsOfStartingDiscussionsAction;
 use App\Actions\Guardianship\FindMinorsWithoutActiveGuardianAction;
+use App\Actions\Guardianship\HandleGuardianLossAction;
 use App\Actions\Organization\ExpireStaleCompensationRequestsAction;
 use App\Actions\Organization\SendCompensationRequestExpiryRemindersAction;
 use App\Actions\Organization\SettleDueOrganizationInvoicesAction;
@@ -24,8 +25,10 @@ use App\Models\GroupTherapy;
 use App\Models\Session;
 use App\Models\Therapy;
 use App\Services\LicenseService;
+use App\Services\SafeguardingExceptionService;
 use App\Services\SuspensionService;
 use App\Support\SchedulerHeartbeat;
+use App\Support\SchedulerOnce;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schedule;
@@ -109,6 +112,18 @@ Schedule::call(fn () => SuspensionService::new()->endExpiredSuspensions())
     ->name('end-expired-suspensions')->everyFiveMinutes()->withoutOverlapping(10)
     ->onFailure(fn () => Log::error('The suspension expiry sweep failed.'));
 
+// SCRUM-381: a safeguarding exception stops applying the moment its end passes
+// (SafeguardingException::scopeActive); this records the end and, with still no guardian, pauses the
+// minor's therapy again with the usual notices. Every minute, so the notices follow closely.
+Schedule::call(fn () => SafeguardingExceptionService::new()->endExpiredExceptions())
+    ->name('end-expired-safeguarding-exceptions')->everyMinute()->withoutOverlapping(10)
+    ->onFailure(fn () => Log::error('The safeguarding exception expiry sweep failed.'));
+
+// SCRUM-381: the heads-up three days before an exception runs out (once per exception).
+Schedule::call(fn () => SafeguardingExceptionService::new()->sendExpiryReminders())
+    ->name('safeguarding-exception-expiry-reminders')->hourly()->withoutOverlapping(30)
+    ->onFailure(fn () => Log::error('The safeguarding exception reminder sweep failed.'));
+
 // TT-3.2f-h/SCRUM-325: every minute, not every five -- with the 5-minute default timeout, a
 // five-minute sweep would let an idle grant linger for up to ~10 minutes.
 Schedule::call(fn () => ExpireIdleSpeakingGrantsAction::new()->execute())->name('expire-idle-speaking-grants')->everyMinute()->withoutOverlapping();
@@ -189,6 +204,70 @@ Artisan::command('guardians:report-unguarded-minors', function () {
 
     return 0;
 })->purpose('List minors (and accounts with no date of birth) whose therapies are paused for a missing guardian. Read-only.');
+
+// SCRUM-382: accounts that were already paused before every way into the pause ran the loss handling
+// (an approved dob change, or simply being a minor with no guardian when SCRUM-288 shipped) were
+// never taken out of their calls or told. One-off: runs it (HandleGuardianLossAction, queued) once
+// for every account paused now with an open therapy or group. Once per account, ever (a marker in the
+// scheduler's store, which the deploy's cache:clear leaves alone), so running it again is harmless.
+// --dry-run lists the ids and changes nothing.
+Artisan::command('guardians:announce-existing-pauses {--dry-run}', function () {
+    $dryRun = (bool) $this->option('dry-run');
+    $found = FindMinorsWithoutActiveGuardianAction::new()->execute();
+    $ids = $found[FindMinorsWithoutActiveGuardianAction::NO_DOB]
+        ->concat($found[FindMinorsWithoutActiveGuardianAction::KNOWN_MINOR])
+        ->filter(fn (array $row) => $row['openTherapies'] || $row['groupMemberships'])
+        ->pluck('id')
+        ->sort()
+        ->values();
+
+    if ($dryRun) {
+        $this->info("Would announce the pause of {$ids->count()} account(s)".($ids->isNotEmpty() ? ': '.$ids->implode(', ') : '.'));
+
+        return 0;
+    }
+
+    // Claimed and queued one account at a time: a queueing failure gives that account's marker back
+    // (so a re-run tries it again), is logged and counted, and doesn't stop the rest.
+    $announced = collect();
+    $failed = collect();
+    $skipped = 0;
+
+    foreach ($ids as $id) {
+        $key = "guardian-pause-existing:{$id}";
+
+        if (! SchedulerOnce::key($key, now()->addYears(10))) {
+            $skipped++;
+
+            continue;
+        }
+
+        try {
+            HandleGuardianLossAction::new()->schedule($id, HandleGuardianLossAction::EXISTING_PAUSE);
+            $announced->push($id);
+        } catch (Throwable $th) {
+            SchedulerOnce::forget($key);
+            Log::error('Could not queue the announcement of an existing pause.', ['ward' => $id, 'error' => $th->getMessage()]);
+            $failed->push($id);
+        }
+    }
+
+    if ($announced->isNotEmpty()) {
+        Log::info('guardian_access.existing_pauses_announced', ['wards' => $announced->all()]);
+    }
+
+    $this->info("Queued the pause announcement for {$announced->count()} account(s)"
+        .($announced->isNotEmpty() ? ': '.$announced->implode(', ') : '.')
+        ." Skipped {$skipped} already announced.");
+
+    if ($failed->isNotEmpty()) {
+        $this->error("Could not queue {$failed->count()} account(s): {$failed->implode(', ')}. Run it again to retry them.");
+
+        return 1;
+    }
+
+    return 0;
+})->purpose('One-off: take every account already paused for a missing guardian out of live calls and tell them and their counsellors, once.');
 
 // SCRUM-338: applies the license document retention policy now, to everything already past its
 // window (the same rules the daily 04:15 sweep uses). --dry-run lists what would go.

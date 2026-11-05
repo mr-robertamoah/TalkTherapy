@@ -7,6 +7,7 @@ use App\Http\Controllers\AdminOrganizationBillingController;
 use App\Http\Controllers\AdminPayoutController;
 use App\Http\Controllers\AdminRefundRequestController;
 use App\Http\Controllers\AdminReportController;
+use App\Http\Controllers\AdminSafeguardingExceptionController;
 use App\Http\Controllers\AdminSuspensionController;
 use App\Http\Controllers\CounsellorController;
 use App\Http\Controllers\CounsellorPricingController;
@@ -126,6 +127,11 @@ Route::middleware('auth')->group(function () {
     Route::post('/administrator/reports/{report}/suspensions', [AdminSuspensionController::class, 'apply'])->name('admin.suspensions.apply')->whereNumber('report')->middleware('throttle:30,1,admin.suspensions.apply');
     Route::post('/administrator/suspensions/{suspension}/lift', [AdminSuspensionController::class, 'lift'])->name('admin.suspensions.lift')->whereNumber('suspension')->middleware('throttle:30,1,admin.suspensions.lift');
     Route::post('/administrator/suspensions/{suspension}/appeal', [AdminSuspensionController::class, 'decideAppeal'])->name('admin.suspensions.appeal')->whereNumber('suspension')->middleware('throttle:30,1,admin.suspensions.appeal');
+    // SCRUM-381: safeguarding exceptions for minors paused for a missing guardian -- every admin
+    // sees them; only the super administrator grants, renews (the same route) or ends one.
+    Route::get('/administrator/safeguarding-exceptions', [AdminSafeguardingExceptionController::class, 'index'])->name('administrator.safeguarding_exceptions');
+    Route::post('/administrator/safeguarding-exceptions/wards/{ward}', [AdminSafeguardingExceptionController::class, 'grant'])->name('admin.safeguarding_exceptions.grant')->whereNumber('ward')->middleware('throttle:30,1,admin.safeguarding_exceptions.grant');
+    Route::post('/administrator/safeguarding-exceptions/{exception}/end', [AdminSafeguardingExceptionController::class, 'end'])->name('admin.safeguarding_exceptions.end')->whereNumber('exception')->middleware('throttle:30,1,admin.safeguarding_exceptions.end');
     // SCRUM-359: the only pages a suspended account can reach (EnsureAccountIsNotSuspended).
     Route::get('/suspended', [SuspensionController::class, 'show'])->name('suspended.show');
     Route::post('/suspended/{suspension}/appeal', [SuspensionController::class, 'appeal'])->name('suspended.appeal')->whereNumber('suspension')->middleware('throttle:10,1,suspended.appeal');

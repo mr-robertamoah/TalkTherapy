@@ -45,7 +45,7 @@ class GroupTherapyController extends Controller
 
             return GroupTherapyMiniResource::collection($therapies);
         } catch (Throwable $th) {
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -56,7 +56,7 @@ class GroupTherapyController extends Controller
 
             return GroupTherapyMiniResource::collection($therapies);
         } catch (Throwable $th) {
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -67,7 +67,7 @@ class GroupTherapyController extends Controller
 
             return GroupTherapyMiniResource::collection($therapies);
         } catch (Throwable $th) {
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -125,7 +125,7 @@ class GroupTherapyController extends Controller
     // property -- see the identical fix/rationale in SessionController (SCRUM-116).
     // SCRUM-380: update/payment-gate/end/delete are reached both by Inertia forms (web routes -- they
     // expect the redirect, and read a failure from errors.alert) and by JSON callers
-    // (api.group.therapies.*), exactly like TherapyController's. successResponse()/returnFailure() give
+    // (api.group.therapies.*), exactly like TherapyController's. successResponse()/failureResponse() give
     // each its own answer.
     public function updateGroupTherapy(UpdateGroupTherapyRequest $request)
     {
@@ -160,7 +160,7 @@ class GroupTherapyController extends Controller
 
             return $this->successResponse($request, ['status' => true, 'groupTherapy' => new GroupTherapyMiniResource($therapy)], Redirect::back());
         } catch (Throwable $th) {
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -192,7 +192,7 @@ class GroupTherapyController extends Controller
 
             return $this->successResponse($request, ['status' => true], Redirect::back());
         } catch (Throwable $th) {
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -208,7 +208,7 @@ class GroupTherapyController extends Controller
 
             return $this->successResponse($request, ['status' => true], Redirect::route('home'));
         } catch (Throwable $th) {
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -226,7 +226,7 @@ class GroupTherapyController extends Controller
 
             return $this->successResponse($request, ['status' => true], Redirect::back());
         } catch (Throwable $th) {
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -288,7 +288,7 @@ class GroupTherapyController extends Controller
                     : new RequestResource($result),
             ]);
         } catch (Throwable $th) {
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 

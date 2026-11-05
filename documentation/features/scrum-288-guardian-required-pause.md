@@ -17,6 +17,8 @@ isn't suspended. Someone with no date of birth counts as a minor.
   therapy's settings, new therapies or groups, joining a group, or accepting requests. The 1:1
   counsellor is read-only in that therapy too.
 - In a group, only the minor's own participation is paused. Everyone else carries on.
+  Since SCRUM-381 the group's counsellors are told about a member's pause and resume too, and see
+  the paused member (masked if anonymous) in a banner on the group page.
 - Upcoming sessions stay scheduled but can't start. Nothing is deleted, ended or refunded.
 - Both sides see a calm banner explaining this, with crisis-line wording. The minor's banner links to
   adding a guardian.
@@ -31,6 +33,9 @@ admin deleting the guardian, or the guardian's account being suspended):
 **When a guardian is back** (a guardianship is accepted or linked, or a suspension is lifted or
 expires), everything unlocks on its own and a "resumed" notice is sent. Turning 18 also ends the
 pause, and drops the guardian video-consent requirement.
+
+**Safeguarding exception (SCRUM-381):** the super administrator can let a paused minor carry on for
+up to 30 days without a guardian -- see `documentation/features/scrum-381-safeguarding-exception.md`.
 
 ### SCRUM-380: follow-ups
 - **Video:** nobody is a Daily meeting owner any more. The 1:1 counsellor can't start a live stream
@@ -78,4 +83,11 @@ account by id. It changes nothing.
   `docker compose up -d --force-recreate php queue reverb`.
 - **No production yet** (user, 2026-11-03). Before any first deploy, run the report command: accounts
   without a date of birth and without a guardian are paused.
+- **SCRUM-382 backfill:** after deploying, run
+  `docker compose exec -u www-data php php artisan guardians:announce-existing-pauses [--dry-run]` --
+  always as the web user, never root (in production: as the web server's user), since it writes the
+  scheduler cache. `--dry-run` lists the accounts already paused with something open; without it,
+  it takes them out of live calls and tells them and their counsellors, once per account (queued; the
+  queue worker must run). An account it couldn't queue is listed, the command exits with 1, and
+  running it again retries just those.
 - **New queued notifications and broadcast events:** the queue worker and Reverb need to be running.

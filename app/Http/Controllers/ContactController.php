@@ -30,7 +30,7 @@ class ContactController extends Controller
             return $this->successResponse($request, ['contact' => new ContactResource($contact)]);
         } catch (Throwable $th) {
 
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -55,7 +55,7 @@ class ContactController extends Controller
             return $this->successResponse($request, ['contact' => new ContactResource($contact)]);
         } catch (Throwable $th) {
 
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -73,7 +73,7 @@ class ContactController extends Controller
             return $this->successResponse($request, ['contact' => new ContactResource($contact)]);
         } catch (Throwable $th) {
 
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -91,7 +91,7 @@ class ContactController extends Controller
             return ContactResource::collection($contacts);
         } catch (Throwable $th) {
 
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 }

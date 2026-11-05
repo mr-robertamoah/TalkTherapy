@@ -412,6 +412,25 @@ paused: they (and the counsellor of the 1:1) can read everything, but every writ
 
 Note: a missing date of birth counts as a minor (SCRUM-288), so a client with no date of birth and no
 guardian is paused too. The seed therefore gives every demo adult that had none an adult date of
-birth (30 years ago), so the demos keep working. Run
+birth (30 years ago), so the demos keep working -- except `no_dob_demo_user` below. Run
 `docker compose exec -u www-data php php artisan guardians:report-unguarded-minors` to list anyone paused.
+
+## Safeguarding exceptions (SCRUM-381)
+
+Built on the SCRUM-288 demo above. All passwords are **`password`**.
+
+| Username | What it is |
+|---|---|
+| `paused_minor` | Still paused. `paused_minor_demo_counsellor` has a **pending request** for a safeguarding exception for them on "Paused Minor Demo Therapy" (proposed: 14 days). |
+| `safeguarding_exception_minor` | Casey Morgan, 15, no guardian, carrying on under an **active exception that ends in 2 days** (granted by `mr_robertamoah` 12 days ago). Client of "Safeguarding Exception Demo Therapy" (counsellor: `paused_minor_demo_counsellor`) and an **anonymous** member of "Paused Minor Demo Group" -- its counsellor sees them only as "Anonymous". The next hourly reminder sweep sends the 3-day heads-up. |
+| `mr_robertamoah` | The super admin: approves/rejects the request, grants, renews and ends exceptions at `/administrator/safeguarding-exceptions` (or from the requests list). |
+| `suspension_demo_normal_admin` | A normal admin: sees the page and the audit list, but can't grant, renew, end or answer a request. |
+
+See `documentation/features/scrum-381-safeguarding-exception.md`.
+
+## An account with no date of birth (SCRUM-382)
+
+| Username | What it is |
+|---|---|
+| `no_dob_demo_user` | NoDob Demo, email verified, no date of birth, no therapy or group. Password **`password`**. Opening "create a therapy" shows "You must set your date of birth before you can create a therapy." Setting an adult date of birth on the profile page lets them create one. It is the one seeded account the seed leaves without a date of birth, so it shows up (with nothing open) in `guardians:report-unguarded-minors`. |
 

@@ -306,16 +306,43 @@ test('an ordinary GroupTherapy member (not a counsellor, not the creator) can no
         ->not->toThrow(VideoException::class);
 });
 
-// TT-3.2f-d/SCRUM-321: a minor ORDINARY member is allowed to join (receive-only) unconditionally --
-// unlike the group's own creator, whose minor status IS still gated below. Only a later grant of
-// speaking permission (TT-3.2f-g, not yet built) will hard-block a minor member specifically.
-test('a minor ordinary GroupTherapy member can join video unconditionally, unlike a minor creator', function () {
+// The user's decision (2026-11-05, replacing the 2026-09-14 one that let a minor member join
+// receive-only unconditionally): every minor in a group needs a guardian's video consent first.
+// Group consent doesn't exist yet (SCRUM-313), so this fails closed for all of them.
+test('a minor ordinary GroupTherapy member is refused group video, like a minor creator', function () {
     $data = onlineInSessionGroupTherapySession();
     $minorMember = User::factory()->create(['dob' => now()->subYears(15)]);
     $data['groupTherapy']->users()->attach($minorMember->id, ['anonymous' => false, 'was_minor_at_join' => true]);
 
     expect(fn () => EnsureVideoIsAvailableForSessionAction::new()->execute($data['session'], $minorMember))
-        ->not->toThrow(VideoException::class);
+        ->toThrow(VideoException::class, EnsureVideoIsAvailableForSessionAction::GROUP_NEEDS_GUARDIAN_CONSENT);
+});
+
+test('a member who is a minor now is refused even when the membership row says otherwise (fails closed)', function () {
+    $data = onlineInSessionGroupTherapySession();
+    $minorMember = User::factory()->create(['dob' => now()->subYears(15)]);
+    $data['groupTherapy']->users()->attach($minorMember->id, ['anonymous' => false, 'was_minor_at_join' => false]);
+
+    expect(fn () => EnsureVideoIsAvailableForSessionAction::new()->execute($data['session'], $minorMember))
+        ->toThrow(VideoException::class, EnsureVideoIsAvailableForSessionAction::GROUP_NEEDS_GUARDIAN_CONSENT);
+});
+
+// Like the 1:1 rule (SCRUM-288 Q6): the requirement drops once their dob says 18.
+test('a member who joined as a minor and is an adult now can join group video', function () {
+    $data = onlineInSessionGroupTherapySession();
+    $grownUp = User::factory()->adult()->create();
+    $data['groupTherapy']->users()->attach($grownUp->id, ['anonymous' => false, 'was_minor_at_join' => true]);
+
+    expect(fn () => EnsureVideoIsAvailableForSessionAction::new()->execute($data['session'], $grownUp))->not->toThrow(VideoException::class);
+});
+
+test('an adult member is unaffected by the minor rule', function () {
+    $data = onlineInSessionGroupTherapySession();
+    $adult = User::factory()->adult()->create();
+    $data['groupTherapy']->users()->attach($adult->id, ['anonymous' => false, 'was_minor_at_join' => false]);
+
+    expect(fn () => EnsureVideoIsAvailableForSessionAction::new()->execute($data['session'], $adult))->not->toThrow(VideoException::class)
+        ->and(EnsureVideoIsAvailableForSessionAction::new()->groupVideoNeedsGuardianConsent($data['groupTherapy'], $adult))->toBeFalse();
 });
 
 test('an active counsellor on a GroupTherapy can join video', function () {
@@ -334,12 +361,12 @@ test('an adult creator of a GroupTherapy can join video', function () {
 
 test('a minor creator is hard-blocked from group video entirely, with no consent check', function () {
     $data = onlineInSessionGroupTherapySession(['client_was_minor_at_creation' => true]);
+    $data['creator']->update(['dob' => now()->subYears(15)]);
 
     // A plain VideoException, NOT VideoConsentRequiredException -- there is no group-scoped
-    // consent flow to redirect to yet (SCRUM-313, not started); this is an interim, unconditional
-    // block, not a gate a guardian grant could ever satisfy today.
+    // consent flow to redirect to yet (SCRUM-313); a guardian grant can't satisfy it today.
     expect(fn () => EnsureVideoIsAvailableForSessionAction::new()->execute($data['session'], $data['creator']))
-        ->toThrow(VideoException::class, 'Video is not yet available to a minor client for group therapy.');
+        ->toThrow(VideoException::class, EnsureVideoIsAvailableForSessionAction::GROUP_NEEDS_GUARDIAN_CONSENT);
 });
 
 test('a counsellor can still join group video even when the group\'s own creator is a minor', function () {

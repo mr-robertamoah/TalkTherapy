@@ -8,6 +8,7 @@ use App\DTOs\GetLinksDTO;
 use App\Http\Resources\LinkResource;
 use App\Models\Link;
 use App\Services\LinkService;
+use App\Support\FailureResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Redirect;
@@ -30,7 +31,7 @@ class LinkController extends Controller
 
             return $this->successResponse($request, ['link' => new LinkResource($link)]);
         } catch (Throwable $th) {
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -48,7 +49,7 @@ class LinkController extends Controller
 
             return $this->successResponse($request, ['link' => new LinkResource($link)]);
         } catch (Throwable $th) {
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -68,7 +69,7 @@ class LinkController extends Controller
 
             return response()->json(['links' => LinkResource::collection($links)]);
         } catch (Throwable $th) {
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -84,7 +85,7 @@ class LinkController extends Controller
 
             return $this->successResponse($request, ['link' => new LinkResource($link)]);
         } catch (Throwable $th) {
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -104,7 +105,8 @@ class LinkController extends Controller
             // SCRUM-97: a link is opened by navigating to it (often from an email), so it always
             // lands on home with the alert; only a script gets JSON (see Controller).
             if ($request->wantsJsonResponse()) {
-                return response()->json(['message' => $message], $status);
+                // SCRUM-382: plus e.g. guardian_required, when the refusal has one.
+                return response()->json(FailureResponse::withCode(['message' => $message], $th), $status);
             }
 
             session()->flash('alert', $message);
@@ -129,7 +131,7 @@ class LinkController extends Controller
 
             return response()->json(['links' => $request->linksData]);
         } catch (Throwable $th) {
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -159,7 +161,7 @@ class LinkController extends Controller
                 ])
             );
         } catch (Throwable $th) {
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 }

@@ -20,6 +20,10 @@ class RequestResponseDTO extends BaseDTO
     // distinct choice from a bare reject) -- every other RespondTo*RequestAction ignores it.
     public ?string $reason = null;
 
+    // SCRUM-381: only for accepting a safeguarding exception request -- when the exception ends
+    // (the administrator's choice; `reason` is theirs too). Ignored by every other type.
+    public ?string $endsAt = null;
+
     /**
      * assign data (filled or validated) to the dto properties as an
      * addition to the fromRequest function.

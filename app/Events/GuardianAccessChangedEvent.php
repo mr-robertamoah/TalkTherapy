@@ -7,9 +7,12 @@ use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Foundation\Events\Dispatchable;
 
-// SCRUM-288: tells a minor's open pages that their therapies were paused (no active guardian left)
-// or resumed, so they reload. Convenience only -- every write re-checks on the server. Carries
-// nothing but its name, on the minor's own channel (copied from AccountSuspendedEvent).
+// SCRUM-288: tells open pages that a minor's therapies were paused (no active guardian left) or
+// resumed, so they reload -- on the minor's own user channel and (SCRUM-381) on the user channel of
+// each of their group counsellors (a 1:1 counsellor gets TherapyAccessChangedEvent instead;
+// AnnounceGuardianAccessChangeAction). Convenience only --
+// every write re-checks on the server. Carries nothing but its name (copied from
+// AccountSuspendedEvent).
 class GuardianAccessChangedEvent implements ShouldBroadcastNow
 {
     use Dispatchable, InteractsWithSockets;

@@ -2,20 +2,23 @@
 
 namespace App\Notifications;
 
-use App\Models\Therapy;
+use App\Models\SafeguardingException;
+use Carbon\CarbonInterface;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
-// SCRUM-288: a paused minor has an active guardian again. Without a therapy it is to the minor; with
-// one it is to the counsellor of that individual therapy, naming the client as the therapy shows them
-// (displayNameOf(), masking-safe).
+// SCRUM-288: to a paused minor whose account has an active guardian again. SCRUM-382: the
+// counsellor's side is ClientAccessResumedNotification, mirroring the pause side.
+// SCRUM-381: $continuesUntil -- it is a super administrator's safeguarding exception that lets them
+// carry on, until then. Neutral: it doesn't say "a guardian again" (they have none), and never gives
+// the reason or anything about the family.
 class GuardianAccessResumedNotification extends Notification implements ShouldQueue
 {
     use Queueable;
 
-    public function __construct(private ?Therapy $therapy = null, private ?string $clientName = null)
+    public function __construct(private ?CarbonInterface $continuesUntil = null)
     {
         $this->afterCommit();
     }
@@ -27,25 +30,30 @@ class GuardianAccessResumedNotification extends Notification implements ShouldQu
 
     public function toMail(object $notifiable): MailMessage
     {
-        $mail = (new MailMessage)->greeting("Hello {$notifiable->name},");
+        if ($this->continuesUntil) {
+            $until = SafeguardingException::formatEnd($this->continuesUntil);
 
-        if ($this->therapy) {
-            return $mail
-                ->subject('A paused therapy has started again')
-                ->line("Your therapy with {$this->clientName} is no longer paused.")
-                ->action('Open the therapy', route('therapies.get', ['therapyId' => $this->therapy->id]));
+            return (new MailMessage)
+                ->subject('Your therapy on TalkTherapy can continue')
+                ->greeting("Hello {$notifiable->name},")
+                ->line("Your therapy can continue for now, until {$until}. You can send messages and book sessions as before. Joining video calls still needs a parent or guardian's consent.")
+                ->line('Adding a guardian to your account keeps it going after that date.')
+                ->action('Go to TalkTherapy', route('home'))
+                ->line('If you need support urgently, please contact your local emergency services or a crisis line.');
         }
 
-        return $mail
+        return (new MailMessage)
             ->subject('Your therapy on TalkTherapy has started again')
+            ->greeting("Hello {$notifiable->name},")
             ->line('Your account has a guardian again, so your therapy is no longer paused. You can send messages, book sessions and join calls as before.')
             ->action('Go to TalkTherapy', route('home'));
     }
 
     public function toArray(object $notifiable): array
     {
-        return $this->therapy
-            ? ['type' => 'guardian_access.client_resumed', 'therapyId' => $this->therapy->id, 'clientName' => $this->clientName]
-            : ['type' => 'guardian_access.resumed'];
+        return array_filter([
+            'type' => 'guardian_access.resumed',
+            'continuesUntil' => $this->continuesUntil?->toJSON(),
+        ]);
     }
 }

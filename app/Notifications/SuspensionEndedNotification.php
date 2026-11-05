@@ -10,6 +10,8 @@ use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
 // SCRUM-359: a suspension is over -- it reached its end, or an administrator lifted it.
+// SCRUM-382: $therapyStaysPaused when the person is still a minor without an active guardian, so it
+// doesn't promise their therapy carries on (it stays paused, SCRUM-288).
 class SuspensionEndedNotification extends Notification implements ShouldQueue
 {
     use Queueable;
@@ -18,7 +20,7 @@ class SuspensionEndedNotification extends Notification implements ShouldQueue
 
     public const LIFTED = 'lifted';
 
-    public function __construct(private Suspension $suspension, private string $how)
+    public function __construct(private Suspension $suspension, private string $how, private bool $therapyStaysPaused = false)
     {
         $this->afterCommit();
     }
@@ -38,7 +40,9 @@ class SuspensionEndedNotification extends Notification implements ShouldQueue
             ->line($this->how == self::LIFTED
                 ? "An administrator has lifted the suspension of {$what}."
                 : "The suspension of {$what} has come to an end.")
-            ->line('You can use TalkTherapy as before. Sessions cancelled during the suspension are not restored.')
+            ->line($this->therapyStaysPaused
+                ? 'You can sign in and use TalkTherapy again. Your therapy stays paused until a guardian is added to your account. Sessions cancelled during the suspension are not restored.'
+                : 'You can use TalkTherapy as before. Sessions cancelled during the suspension are not restored.')
             ->action('Go to TalkTherapy', route('home'));
     }
 
@@ -48,6 +52,7 @@ class SuspensionEndedNotification extends Notification implements ShouldQueue
             'type' => 'suspension.ended',
             'suspensionId' => $this->suspension->id,
             'how' => $this->how,
+            ...($this->therapyStaysPaused ? ['therapyPaused' => true] : []),
         ];
     }
 }

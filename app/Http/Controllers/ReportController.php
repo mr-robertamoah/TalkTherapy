@@ -34,7 +34,7 @@ class ReportController extends Controller
             return $this->successResponse($request, ['report' => new ReportResource($report)]);
         } catch (Throwable $th) {
 
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -61,7 +61,7 @@ class ReportController extends Controller
             return $this->successResponse($request, ['report' => new ReportResource($report)]);
         } catch (Throwable $th) {
 
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -79,7 +79,7 @@ class ReportController extends Controller
             return $this->successResponse($request, ['report' => new ReportResource($report)]);
         } catch (Throwable $th) {
 
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -97,7 +97,7 @@ class ReportController extends Controller
             return $this->successResponse($request, ['report' => new ReportResource($report)]);
         } catch (Throwable $th) {
 
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -117,7 +117,7 @@ class ReportController extends Controller
             return ReportResource::collection($reports);
         } catch (Throwable $th) {
 
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 

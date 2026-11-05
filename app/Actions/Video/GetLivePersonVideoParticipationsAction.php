@@ -8,9 +8,10 @@ use App\Models\VideoSessionParticipant;
 use Illuminate\Support\Collection;
 
 // The person's live row in each video room that hasn't ended -- the latest join, not a stale
-// reconnect row (SCRUM-330) -- with its video session, session and therapy loaded. Extracted from
-// RemoveSuspendedPersonFromVideoAction (SCRUM-363) so a guardian loss (SCRUM-288) finds calls the
-// same way. $sessionId narrows it to one session (a re-check under that session's join lock).
+// reconnect row (SCRUM-330) -- with its video session, session and therapy loaded. Used by
+// RemovePersonFromLiveCallsAction (SCRUM-382), so a suspension (SCRUM-363) and a guardian loss
+// (SCRUM-288) find calls the same way. $sessionId narrows it to one session (a re-check under that
+// session's join lock).
 class GetLivePersonVideoParticipationsAction extends Action
 {
     public function execute(User $person, ?int $sessionId = null): Collection

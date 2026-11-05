@@ -4,6 +4,8 @@ namespace App\Actions\Suspension;
 
 use App\Actions\Action;
 use App\Actions\Guardianship\RemoveGuardianFromWardAction;
+use App\Actions\Video\EndVideoSessionAction;
+use App\Actions\Video\RemovePersonFromLiveCallsAction;
 use App\Enums\SuspensionScopeEnum;
 use App\Events\AccountSuspendedEvent;
 use App\Events\SessionUpdatedEvent;
@@ -15,6 +17,7 @@ use App\Models\Suspension;
 use App\Models\User;
 use App\Notifications\SuspensionAppliedNotification;
 use App\Notifications\WardSuspendedNotification;
+use App\Support\BestEffort;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
@@ -105,8 +108,22 @@ class ApplySuspensionAction extends Action
         // Open pages see the cancelled sessions change without reloading.
         $endedSessions->each(fn (Session $session) => rescue(fn () => SessionUpdatedEvent::dispatch($session), report: true));
 
-        // Provider calls never run inside the locked transaction.
-        rescue(fn () => RemoveSuspendedPersonFromVideoAction::new()->execute($suspension, $endedSessions), report: true);
+        // Provider calls never run inside the locked transaction. SCRUM-363: a token handed out before
+        // the suspension would otherwise keep people in a live call -- every room of a session the
+        // suspension ended is closed, and the person is taken out of the others they are still in
+        // (RemovePersonFromLiveCallsAction's SUSPENSION policy). Rejoining is refused by
+        // JoinVideoSessionAction's own checks.
+        $endedSessions->each(fn (Session $session) => BestEffort::attempt(
+            fn () => EndVideoSessionAction::new()->execute($session),
+            'suspension-end-video-room',
+            ['suspension' => $suspension->id, 'session' => $session->id],
+        ));
+
+        BestEffort::attempt(
+            fn () => RemovePersonFromLiveCallsAction::new()->execute($suspension->user, RemovePersonFromLiveCallsAction::SUSPENSION, $suspension->id),
+            'suspension-live-call-removal',
+            ['suspension' => $suspension->id],
+        );
     }
 
     private function notify(Suspension $suspension): void

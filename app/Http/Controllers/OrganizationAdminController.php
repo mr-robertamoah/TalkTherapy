@@ -28,7 +28,7 @@ class OrganizationAdminController extends Controller
 
             return $this->returnAdmins($organization);
         } catch (Throwable $th) {
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -48,7 +48,7 @@ class OrganizationAdminController extends Controller
 
             return $this->returnAdmins($organization);
         } catch (Throwable $th) {
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -65,7 +65,7 @@ class OrganizationAdminController extends Controller
 
             return $this->returnAdmins($organization);
         } catch (Throwable $th) {
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 

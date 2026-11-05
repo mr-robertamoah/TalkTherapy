@@ -33,6 +33,8 @@ class EnsureVideoIsAvailableForSessionAction extends Action
 {
     public const NOT_ALLOWED_TO_JOIN = 'You are not allowed to join this session.';
 
+    public const GROUP_NEEDS_GUARDIAN_CONSENT = 'Video calls in a group need a parent or guardian\'s consent first.';
+
     public function execute(Session $session, User $user): void
     {
         // TT-3.1b/SCRUM-275 security-review finding: this check now runs FIRST, not last. This
@@ -105,28 +107,32 @@ class EnsureVideoIsAvailableForSessionAction extends Action
     // TT-3.2f-d/SCRUM-321 widens this: an ordinary member (attached only via the
     // group_therapy_user pivot) is no longer excluded from video AT ALL -- they're admitted, just
     // never with full two-way access. That distinction (receive-only vs. full) is deliberately
-    // NOT decided here -- mirrors how $isOwner was already computed independently in
-    // JoinVideoSessionAction rather than returned from this action -- see that action's own
-    // isReceiveOnly() for where it's actually enforced (both at credential-minting time via the
-    // provider, and structurally: a receive-only member can never be the one this method itself
-    // would need to gate any further, since Session::isNotParticipant() above already excludes
-    // anyone who isn't even a group participant).
+    // NOT decided here -- see JoinVideoSessionAction's own isReceiveOnly() for where it's enforced.
     //
-    // This method's own remaining job is narrower than it once was: only the group's own
-    // creator's minor status is gated here.
+    // The user's decision (2026-11-05, replacing the 2026-09-14 one that let a minor member join
+    // receive-only unconditionally): group video follows the same rule as 1:1 -- a minor needs a
+    // guardian's video consent before joining, and a safeguarding exception (SCRUM-381) doesn't
+    // stand in for it. Group-scoped consent doesn't exist yet (SCRUM-313), so until it does this
+    // fails closed for EVERY minor in the group -- the creator and ordinary members alike,
+    // receive-only included. SCRUM-313 adds the consent path here.
     private function ensureGroupTherapyVideoIsAllowed(GroupTherapy $groupTherapy, User $user): void
     {
-        $isCreator = $groupTherapy->isUser($user);
-
-        // Interim fail-closed, mirroring TT-3.1's own original 1:1 precedent (the age check that
-        // shipped ahead of TT-3.1e's real consent flow) -- group-scoped guardian video-consent
-        // doesn't exist yet (SCRUM-313, not started), so a minor CREATOR is hard-blocked entirely
-        // rather than let through ungated. Deliberately does NOT apply to an ordinary minor
-        // member -- per the user's own explicit decision (2026-09-14), receive-only join is
-        // allowed unconditionally regardless of an ordinary member's age; only a later GRANT of
-        // speaking permission (TT-3.2f-g, not yet built) hard-blocks a minor member specifically.
-        if ($isCreator && $groupTherapy->clientIsMinor()) {
-            throw new VideoException('Video is not yet available to a minor client for group therapy.', 422);
+        if ($this->groupVideoNeedsGuardianConsent($groupTherapy, $user)) {
+            throw new VideoException(self::GROUP_NEEDS_GUARDIAN_CONSENT, 422);
         }
+    }
+
+    // Also the group page's flag (GroupTherapyResource), so a minor isn't offered a "join video"
+    // button that can only refuse. Like the 1:1 rule (SCRUM-288 Q6), the requirement drops once
+    // their dob says 18 -- safe because a dob change across 18 needs approval (SCRUM-292) -- and
+    // no dob counts as a minor, so it fails closed. The group's counsellors are never gated (the
+    // 1:1 rule's counsellor exemption).
+    public function groupVideoNeedsGuardianConsent(GroupTherapy $groupTherapy, User $user): bool
+    {
+        if ($groupTherapy->isCounsellorUser($user)) {
+            return false;
+        }
+
+        return ! $user->isAdult();
     }
 }

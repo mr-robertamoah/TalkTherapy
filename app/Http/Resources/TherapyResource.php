@@ -25,6 +25,7 @@ class TherapyResource extends JsonResource
         $activeDiscussion = null;
         $user = $request->user();
         $counsellor = $this->counsellor()->withTrashed()->first();
+        $pause = $this->pauseStateFor($user);
 
         if ($user && $this->isParticipant($user)) {
             $activeSession = $this->getActiveSession($user);
@@ -105,13 +106,14 @@ class TherapyResource extends JsonResource
             'orgRetainerCoverage' => $this->orgRetainerCoverage($user),
             'videoConsent' => $this->videoConsentData($user),
             // SCRUM-288: the viewer's own state -- paused for a missing guardian (memoised on the
-            // request's user, so one query at most for a minor and none for an adult).
-            'viewerAccessPaused' => (bool) $user?->isPausedForMissingGuardian(),
+            // request's user, so one query at most for a minor and none for an adult). SCRUM-382: the
+            // gate's own rule (pauseStateFor()), so someone acting as its counsellor is never paused here.
+            'viewerAccessPaused' => $pause['viewer'],
             // Only for this therapy's own counsellor: their client's state (it makes them read-only too).
-            'clientAccessPaused' => $this->when(
-                (bool) ($user?->counsellor && $this->isCounsellor($user->counsellor)),
-                fn () => $this->addedby instanceof User && $this->addedby->isPausedForMissingGuardian(),
-            ),
+            'clientAccessPaused' => $this->when(! is_null($pause['client']), $pause['client']),
+            // SCRUM-381: only for that counsellor, while their client is paused -- whether a request
+            // for a safeguarding exception is already waiting for the super administrator.
+            'safeguardingExceptionRequested' => $this->when($pause['client'] === true, fn () => $this->requests()->pendingSafeguardingException()->exists()),
         ];
     }
 

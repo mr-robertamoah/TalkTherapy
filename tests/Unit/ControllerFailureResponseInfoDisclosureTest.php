@@ -19,14 +19,14 @@ use App\Http\Controllers\TherapyTopicController;
 use App\Http\Controllers\UserController;
 use Illuminate\Http\Request;
 
-// SCRUM-94: before this fix, every one of these controllers' shared returnFailure() re-threw
+// SCRUM-94: before this fix, every one of these controllers' shared failureResponse() re-threw
 // a plain Exception on the JSON path instead of returning a response. With APP_DEBUG=true that
 // leaks the raw message/stack trace via Laravel's default exception renderer; with APP_DEBUG=false
 // it instead swallows the real status/message and always shows a generic 500, even for safe,
 // intentionally-non-500 business errors. Both are fixed by returning the response directly here.
-function callControllerReturnFailure(string $controllerClass, Request $request, Throwable $th)
+function callControllerFailureResponse(string $controllerClass, Request $request, Throwable $th)
 {
-    $reflection = new ReflectionMethod($controllerClass, 'returnFailure');
+    $reflection = new ReflectionMethod($controllerClass, 'failureResponse');
     $reflection->setAccessible(true);
 
     return $reflection->invoke(new $controllerClass, $request, $th);
@@ -55,7 +55,7 @@ test('an uncoded exception on the JSON path returns a generic 500 JSON response 
     $request = Request::create('/', 'GET');
     $request->headers->set('Accept', 'application/json');
 
-    $response = callControllerReturnFailure($controllerClass, $request, new Exception('some internal detail that should not leak'));
+    $response = callControllerFailureResponse($controllerClass, $request, new Exception('some internal detail that should not leak'));
 
     expect($response->getStatusCode())->toBe(500);
     expect($response->getData(true)['message'])->toBe('Something unfortunate happened. Please try again shortly.');
@@ -65,7 +65,7 @@ test('an exception with a real HTTP status code returns that status and its own 
     $request = Request::create('/', 'GET');
     $request->headers->set('Accept', 'application/json');
 
-    $response = callControllerReturnFailure($controllerClass, $request, new TherapyException('you are not allowed to do that', 422));
+    $response = callControllerFailureResponse($controllerClass, $request, new TherapyException('you are not allowed to do that', 422));
 
     expect($response->getStatusCode())->toBe(422);
     expect($response->getData(true)['message'])->toBe('you are not allowed to do that');
@@ -75,7 +75,7 @@ test('a non-JSON request still redirects back with a flashed error, unaffected b
     $request = Request::create('/', 'GET');
     $request->headers->set('Accept', 'text/html');
 
-    $response = callControllerReturnFailure($controllerClass, $request, new TherapyException('you are not allowed to do that', 422));
+    $response = callControllerFailureResponse($controllerClass, $request, new TherapyException('you are not allowed to do that', 422));
 
     expect($response->getTargetUrl())->not->toBeNull();
 })->with($controllers);

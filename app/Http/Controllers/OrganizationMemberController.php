@@ -30,7 +30,7 @@ class OrganizationMemberController extends Controller
 
             return OrganizationMemberResource::collection($members);
         } catch (Throwable $th) {
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -57,7 +57,7 @@ class OrganizationMemberController extends Controller
                 'status' => $organizationRequest->status,
             ]]);
         } catch (Throwable $th) {
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -74,7 +74,7 @@ class OrganizationMemberController extends Controller
 
             return response()->json(['request' => new OrganizationRequestResource($organizationRequest)]);
         } catch (Throwable $th) {
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 }

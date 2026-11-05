@@ -8,6 +8,7 @@ use App\Actions\Request\RespondToGuardianshipRequestAction;
 use App\Actions\Suspension\ApplySuspensionAction;
 use App\Actions\Suspension\LiftSuspensionAction;
 use App\Actions\User\DeleteGuardianshipAction;
+use App\Actions\Video\RemovePersonFromLiveCallsAction;
 use App\Actions\VideoConsent\HasValidVideoConsentForSessionAction;
 use App\Contracts\VideoProviderInterface;
 use App\DTOs\CreateLinkDTO;
@@ -28,7 +29,7 @@ use App\Exceptions\GuardianRequiredException;
 use App\Exceptions\UserException;
 use App\Http\Resources\GroupTherapyResource;
 use App\Http\Resources\TherapyResource;
-use App\Jobs\RemovePausedMinorFromVideoJob;
+use App\Jobs\RemovePersonFromLiveCallJob;
 use App\Models\Administrator;
 use App\Models\Counsellor;
 use App\Models\GroupTherapy;
@@ -45,6 +46,7 @@ use App\Models\VideoConsent;
 use App\Models\VideoSession;
 use App\Models\VideoSessionParticipant;
 use App\Notifications\ClientAccessPausedNotification;
+use App\Notifications\ClientAccessResumedNotification;
 use App\Notifications\GuardianAccessPausedNotification;
 use App\Notifications\GuardianAccessResumedNotification;
 use App\Services\SuspensionService;
@@ -179,9 +181,14 @@ test('removing the only guardianship pauses the minor once: told, their counsell
 
     expect($f['minor']->fresh()->isPausedForMissingGuardian())->toBeTrue();
     Notification::assertSentToTimes($f['minor'], GuardianAccessPausedNotification::class, 1);
-    Notification::assertSentToTimes($f['counsellorUser'], ClientAccessPausedNotification::class, 1);
+    // SCRUM-381 (the user's decision): the counsellor runs the 1:1 and the group, so is told about both.
+    Notification::assertSentToTimes($f['counsellorUser'], ClientAccessPausedNotification::class, 2);
+    Notification::assertSentTo($f['counsellorUser'], ClientAccessPausedNotification::class, fn ($n) => ($n->toArray($f['counsellorUser'])['groupTherapyId'] ?? null) === $f['group']->id);
     Notification::assertNotSentTo($f['adultMember'], ClientAccessPausedNotification::class);
-    Event::assertDispatchedTimes(GuardianAccessChangedEvent::class, 1);
+    // The minor's own channel, and (SCRUM-381) the group counsellor's own -- never the group's.
+    Event::assertDispatchedTimes(GuardianAccessChangedEvent::class, 2);
+    Event::assertDispatched(GuardianAccessChangedEvent::class, fn ($e) => $e->broadcastOn()[0]->name === "private-users.{$f['minor']->id}");
+    Event::assertDispatched(GuardianAccessChangedEvent::class, fn ($e) => $e->broadcastOn()[0]->name === "private-users.{$f['counsellorUser']->id}");
     Event::assertDispatched(GuardianAccessChangedEvent::class, fn ($e) => $e->broadcastAs() === GuardianAccessChangedEvent::PAUSED && $e->broadcastWith() === []);
     // Only the 1:1's channel -- never the group's.
     Event::assertDispatchedTimes(TherapyAccessChangedEvent::class, 1);
@@ -266,7 +273,8 @@ test('a guardianship accepted for a paused minor resumes them once', function ()
 
     expect($f['minor']->fresh()->isPausedForMissingGuardian())->toBeFalse();
     Notification::assertSentToTimes($f['minor'], GuardianAccessResumedNotification::class, 1);
-    Notification::assertSentToTimes($f['counsellorUser'], GuardianAccessResumedNotification::class, 1);
+    // SCRUM-381: once for the 1:1 and once for the group this counsellor also runs.
+    Notification::assertSentToTimes($f['counsellorUser'], ClientAccessResumedNotification::class, 2);
     Event::assertDispatched(GuardianAccessChangedEvent::class, fn ($e) => $e->broadcastAs() === GuardianAccessChangedEvent::RESUMED);
 });
 
@@ -530,13 +538,13 @@ test('a group counsellor is told neutrally that a paused minor\'s request to joi
     gplDeleteGuardianship($f['guardian'], $f['minor']);
 
     $this->actingAs($f['counsellorUser'])->postJson(route('requests.respond', ['requestId' => $request->id]), ['response' => 'accepted'])
-        ->assertForbidden()->assertJsonPath('error', GuardianRequiredException::REQUEST_UNAVAILABLE)->assertJsonPath('code', GuardianRequiredException::CODE);
+        ->assertForbidden()->assertJsonPath('error', GuardianRequiredException::REQUEST_UNAVAILABLE)->assertJsonMissingPath('code');
 });
 
 test('a paused minor removed while their join lock is held is taken out of the call by the queued retry', function () {
     config(['video.join_lock_wait_seconds' => 0]);
     app()->instance(VideoProviderInterface::class, gplVideoProvider());
-    Queue::fake([RemovePausedMinorFromVideoJob::class]);
+    Queue::fake([RemovePersonFromLiveCallJob::class]);
     $f = gplFamily();
     $room = VideoSession::query()->create(['session_id' => $f['session']->id, 'provider' => 'daily', 'started_at' => now()]);
     VideoSessionParticipant::query()->create(['video_session_id' => $room->id, 'participant_type' => User::class, 'participant_id' => $f['minor']->id, 'joined_at' => now()]);
@@ -546,10 +554,10 @@ test('a paused minor removed while their join lock is held is taken out of the c
     gplDeleteGuardianship($f['guardian'], $f['minor']);
 
     expect($room->fresh()->ended_at)->toBeNull();
-    Queue::assertPushed(RemovePausedMinorFromVideoJob::class, 1);
+    Queue::assertPushed(RemovePersonFromLiveCallJob::class, 1);
 
     $lock->release();
-    (new RemovePausedMinorFromVideoJob($f['session']->id, $f['minor']->id))->handle();
+    (new RemovePersonFromLiveCallJob($f['session']->id, $f['minor']->id, RemovePersonFromLiveCallsAction::GUARDIAN_LOSS))->handle();
 
     expect($room->fresh()->ended_at)->not->toBeNull();
 });
@@ -560,7 +568,7 @@ test('the retry does nothing once the minor has a guardian again', function () {
     $room = VideoSession::query()->create(['session_id' => $f['session']->id, 'provider' => 'daily', 'started_at' => now()]);
     VideoSessionParticipant::query()->create(['video_session_id' => $room->id, 'participant_type' => User::class, 'participant_id' => $f['minor']->id, 'joined_at' => now()]);
 
-    (new RemovePausedMinorFromVideoJob($f['session']->id, $f['minor']->id))->handle();
+    (new RemovePersonFromLiveCallJob($f['session']->id, $f['minor']->id, RemovePersonFromLiveCallsAction::GUARDIAN_LOSS))->handle();
 
     expect($room->fresh()->ended_at)->toBeNull();
 });

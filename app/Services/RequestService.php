@@ -38,11 +38,12 @@ class RequestService extends Service
         // just the one `to` was fixed to at creation, so every guardian must be able to list it.
         $wardIds = $user->wards()->pluck('ward_id');
         $isAdmin = $user->isAdmin();
+        $isSuperAdmin = $isAdmin && $user->isSuperAdmin();
 
         // SCRUM-142: every "may see this request" branch sits inside one group, and the status
         // filter is applied once, outside it -- AND binds tighter than OR, so a status filter
         // added after a bare chain of orWhere()s would only attach to the last branch.
-        $query = Request::query()->where(function ($query) use ($user, $counsellor, $administeredOrganizationIds, $wardIds, $isAdmin) {
+        $query = Request::query()->where(function ($query) use ($user, $counsellor, $administeredOrganizationIds, $wardIds, $isAdmin, $isSuperAdmin) {
             $query->whereFrom($user)->orWhere(fn ($query) => $query->whereTo($user));
 
             if ($counsellor) {
@@ -67,6 +68,12 @@ class RequestService extends Service
                 $query->orWhere(fn ($query) => $query
                     ->whereIn('type', [RequestTypeEnum::dobChange->value, RequestTypeEnum::ageVerification->value])
                     ->whereNull('to_id'));
+            }
+
+            // SCRUM-381: a counsellor's request for a safeguarding exception is for the super
+            // administrator only (EnsureUserCanRespondToRequestAction), so only they list it.
+            if ($isSuperAdmin) {
+                $query->orWhere(fn ($query) => $query->where('type', RequestTypeEnum::safeguardingException->value)->whereNull('to_id'));
             }
         });
 

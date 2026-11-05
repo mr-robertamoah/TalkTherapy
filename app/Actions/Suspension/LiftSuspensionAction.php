@@ -32,7 +32,11 @@ class LiftSuspensionAction extends Action
 
         $suspension = DB::transaction(fn () => $this->lift($admin, $suspension, $reason, $event));
 
-        Notification::send($suspension->user, new SuspensionEndedNotification($suspension, SuspensionEndedNotification::LIFTED));
+        Notification::send($suspension->user, new SuspensionEndedNotification(
+            $suspension,
+            SuspensionEndedNotification::LIFTED,
+            (bool) $suspension->user?->isPausedForMissingGuardian(fresh: true),
+        ));
         rescue(fn () => ResumeHeldPayoutsAction::new()->execute($suspension->user), report: true);
 
         return $suspension;
@@ -41,7 +45,8 @@ class LiftSuspensionAction extends Action
     // Inside the caller's transaction.
     public function lift(User $admin, Suspension $suspension, string $reason, string $event): Suspension
     {
-        $suspension = Suspension::query()->lockForUpdate()->findOrFail($suspension->id);
+        // SCRUM-382: the person, then the suspension, then their wards (Suspension::lockWithPerson()).
+        $suspension = Suspension::lockWithPerson($suspension->id);
 
         if (! $suspension->isActive()) {
             throw new SuspensionException('This suspension has already ended.', 422);

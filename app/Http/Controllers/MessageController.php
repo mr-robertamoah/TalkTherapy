@@ -69,7 +69,7 @@ class MessageController extends Controller
             );
         } catch (Throwable $th) {
 
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -106,7 +106,7 @@ class MessageController extends Controller
             return $this->successResponse($request, ['message' => new MessageResource($message)]);
         } catch (Throwable $th) {
 
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -136,7 +136,7 @@ class MessageController extends Controller
             return $this->successResponse($request, ['message' => new MessageResource($message)]);
         } catch (Throwable $th) {
 
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -153,7 +153,7 @@ class MessageController extends Controller
             return $this->successResponse($request, ['message' => new MessageResource($message)]);
         } catch (Throwable $th) {
 
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -170,7 +170,7 @@ class MessageController extends Controller
             return $this->successResponse($request, ['message' => new MessageResource($message)]);
         } catch (Throwable $th) {
 
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 }

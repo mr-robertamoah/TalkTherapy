@@ -67,7 +67,7 @@ class OrganizationController extends Controller
 
             return $this->successResponse($request, ['organization' => new OrganizationResource($organization)]);
         } catch (Throwable $th) {
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -97,7 +97,7 @@ class OrganizationController extends Controller
 
             return $this->successResponse($request, ['organization' => new OrganizationResource($organization)]);
         } catch (Throwable $th) {
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -187,7 +187,7 @@ class OrganizationController extends Controller
 
             return RequestResource::collection($requests);
         } catch (Throwable $th) {
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -200,7 +200,7 @@ class OrganizationController extends Controller
 
             return MyOrganizationCounsellorAffiliationResource::collection($affiliations);
         } catch (Throwable $th) {
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -211,7 +211,7 @@ class OrganizationController extends Controller
 
             return MyOrganizationMembershipResource::collection($memberships);
         } catch (Throwable $th) {
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -222,7 +222,7 @@ class OrganizationController extends Controller
 
             return MyAdministeredOrganizationResource::collection($organizations);
         } catch (Throwable $th) {
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -281,7 +281,7 @@ class OrganizationController extends Controller
 
             return OrganizationRequestResource::collection($requests);
         } catch (Throwable $th) {
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 

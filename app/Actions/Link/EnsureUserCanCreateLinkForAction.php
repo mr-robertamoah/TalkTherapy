@@ -25,6 +25,12 @@ class EnsureUserCanCreateLinkForAction extends Action
 {
     public const NOT_ALLOWED = 'You are not allowed to create this link.';
 
+    public const GROUP_TYPES = [
+        LinkTypeEnum::groupTherapyAdmin->value,
+        LinkTypeEnum::groupTherapyParticipant->value,
+        LinkTypeEnum::groupTherapyCounsellor->value,
+    ];
+
     public function execute(CreateLinkDTO $createLinkDTO): void
     {
         if ($createLinkDTO->type === LinkTypeEnum::organizationSelfApply->value) {
@@ -43,9 +49,21 @@ class EnsureUserCanCreateLinkForAction extends Action
         }
 
         // SCRUM-288: a paused minor can't invite a counsellor into their therapy (using the link is
-        // refused too, PerformTherapyCounsellorLinkAction).
-        if ($createLinkDTO->type === LinkTypeEnum::therapyCounsellor->value && $createLinkDTO->user->isPausedForMissingGuardian()) {
+        // refused too, PerformTherapyCounsellorLinkAction). SCRUM-382: nor anyone into a group they
+        // created (using one is refused too, PerformLinkAction). A group created through a
+        // counsellor profile is the counsellor's, who is never the minor it is paused for.
+        $intoUsersGroup = in_array($createLinkDTO->type, self::GROUP_TYPES, true) && $createLinkDTO->for->addedby_type === User::class;
+        $invitesIntoOwnTherapy = $createLinkDTO->type === LinkTypeEnum::therapyCounsellor->value || $intoUsersGroup;
+
+        if ($invitesIntoOwnTherapy && $createLinkDTO->user->isPausedForMissingGuardian()) {
             throw GuardianRequiredException::forViewer();
+        }
+
+        // SCRUM-382 review: and nobody else into a group whose creator is paused -- the same rule
+        // using a link follows (PerformLinkAction). Only the creator may create group links today
+        // (mayCreate()), so this guards that rule changing (e.g. group co-admins).
+        if ($intoUsersGroup && $createLinkDTO->for->addedby instanceof User && $createLinkDTO->for->addedby->isPausedForMissingGuardian()) {
+            throw GuardianRequiredException::linkUnavailable();
         }
     }
 

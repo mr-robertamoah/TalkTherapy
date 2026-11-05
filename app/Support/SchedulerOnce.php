@@ -29,4 +29,11 @@ class SchedulerOnce
     {
         return Cache::store(config('cache.scheduler_store'))->add("scheduler-once:{$key}", true, $until);
     }
+
+    // SCRUM-382 review: gives a claimed key back, when what it guarded couldn't be done (so a re-run
+    // tries again).
+    public static function forget(string $key): void
+    {
+        Cache::store(config('cache.scheduler_store'))->forget("scheduler-once:{$key}");
+    }
 }

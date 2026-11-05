@@ -10,7 +10,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Redirect;
 use Throwable;
 
-// SCRUM-371/374: the one failure response -- used by the base Controller's returnFailure() (for the
+// SCRUM-371/374: the one failure response -- used by the base Controller's failureResponse() (for the
 // controllers that catch) and by bootstrap/app.php's AppException renderer (for refusals thrown
 // anywhere else), so the two can't drift. Only the app's own refusals show their message.
 class FailureResponse
@@ -43,9 +43,16 @@ class FailureResponse
     // The JSON body: the message, plus the code when there is one.
     public static function body(Throwable $th): array
     {
+        return self::withCode(['message' => self::message($th, self::status($th))], $th);
+    }
+
+    // SCRUM-382: a controller's own failure body (RequestController, VideoSessionController,
+    // LinkController), plus the code when there is one.
+    public static function withCode(array $body, Throwable $th): array
+    {
         $code = self::code($th);
 
-        return ['message' => self::message($th, self::status($th)), ...($code ? ['code' => $code] : [])];
+        return [...$body, ...($code ? ['code' => $code] : [])];
     }
 
     // For the controllers that always answer JSON and catch inline (no report: their callers decide).

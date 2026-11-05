@@ -307,23 +307,19 @@ test('raise hand, a grant from one counsellor, then a revoke by another, each ch
     expect($participant->fresh()->currentHandRaise())->toBeNull();
 })->with('video providers');
 
-test('a minor member can watch but can neither raise a hand nor be granted speaking permission', function (string $provider) {
-    $fake = gvrFakeProvider($provider);
+// The user's decision (2026-11-05): a minor member can't join group video at all until group
+// consent exists (SCRUM-313) -- even with a guardian (this one has one). Speaking stays blocked
+// behind that too (EnsureMemberMayBeGrantedSpeakingAction).
+test('a minor member is refused group video, so can neither raise a hand nor be granted speaking', function (string $provider) {
+    gvrFakeProvider($provider);
     $data = gvrGroupCall();
     gvrJoin($this, $data['session'], $data['counsellorA'])->assertOk();
 
-    gvrJoin($this, $data['session'], $data['minorMember'])->assertOk()
-        ->assertJsonPath('participant.receiveOnly', true)
-        ->assertJsonPath('participant.canRaiseHand', false)
-        ->assertJsonPath('participant.isMinorMember', true);
+    gvrJoin($this, $data['session'], $data['minorMember'])->assertStatus(422)
+        ->assertJsonPath('message', "Video calls in a group need a parent or guardian's consent first.");
 
-    $minorBlocked = 'Speaking permission is not yet available to a minor member in group therapy video.';
-    gvrPost($this, 'sessions.video.hand.raise', $data['session'], $data['minorMember'])
-        ->assertStatus(422)->assertJsonPath('message', $minorBlocked);
-    gvrPost($this, 'sessions.video.participants.grant_speaking', $data['session'], $data['counsellorA'], $data['minorMember'])
-        ->assertStatus(422)->assertJsonPath('message', $minorBlocked);
-
-    expect(gvrCanSendAtProvider($fake, $data['session'], $data['minorMember']))->toBe(['audio' => false, 'video' => false]);
+    gvrPost($this, 'sessions.video.hand.raise', $data['session'], $data['minorMember'])->assertStatus(422);
+    gvrPost($this, 'sessions.video.participants.grant_speaking', $data['session'], $data['counsellorA'], $data['minorMember'])->assertStatus(422);
 })->with('video providers');
 
 test('an anonymous member is granted audio only, a non-anonymous member audio and video', function (string $provider) {

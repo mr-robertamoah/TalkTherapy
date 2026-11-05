@@ -16,6 +16,12 @@ class GuardianRequiredException extends AppException implements HasErrorCode
 
     public const REQUEST_UNAVAILABLE = 'This request can\'t be accepted right now.';
 
+    public const LINK_UNAVAILABLE = 'This link can\'t be used right now.';
+
+    // SCRUM-382 review: set for the neutral refusals below -- they carry no code, so nothing can tell
+    // them apart from any other refusal (and the frontend doesn't reload for them).
+    private bool $neutral = false;
+
     public static function forViewer(): self
     {
         return new self(self::PAUSED, 403);
@@ -27,13 +33,28 @@ class GuardianRequiredException extends AppException implements HasErrorCode
     }
 
     // To someone who isn't the minor's counsellor (e.g. a group's, answering their request to join).
+    // Neutral: no code.
     public static function requestUnavailable(): self
     {
-        return new self(self::REQUEST_UNAVAILABLE, 403);
+        return self::neutral(self::REQUEST_UNAVAILABLE);
     }
 
-    public function errorCode(): string
+    // SCRUM-382: to someone using a link into a paused minor's group. Neutral: no code.
+    public static function linkUnavailable(): self
     {
-        return self::CODE;
+        return self::neutral(self::LINK_UNAVAILABLE);
+    }
+
+    private static function neutral(string $message): self
+    {
+        $exception = new self($message, 403);
+        $exception->neutral = true;
+
+        return $exception;
+    }
+
+    public function errorCode(): ?string
+    {
+        return $this->neutral ? null : self::CODE;
     }
 }

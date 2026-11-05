@@ -38,6 +38,7 @@ use App\Models\Refund;
 use App\Models\Report;
 use App\Models\ReportStatusHistory;
 use App\Models\Request;
+use App\Models\SafeguardingException;
 use App\Models\Session;
 use App\Models\Suspension;
 use App\Models\Therapy;
@@ -50,6 +51,9 @@ use RuntimeException;
 
 class DatabaseSeeder extends Seeder
 {
+    // SCRUM-382: the one seeded account deliberately left without a date of birth.
+    public const NO_DOB_DEMO_USERNAME = 'no_dob_demo_user';
+
     /**
      * Seed the application's database.
      */
@@ -196,7 +200,29 @@ class DatabaseSeeder extends Seeder
         // SCRUM-288: a minor whose only guardian was removed -- their individual therapy and their
         // group are paused (read-only) until a guardian is added.
         $this->createPausedMinorDemoData();
+        // SCRUM-381: a pending counsellor request for a safeguarding exception (for paused_minor), and
+        // a second minor carrying on under one that ends in two days.
+        $this->createSafeguardingExceptionDemoData($superAdmin);
+        // SCRUM-382: an adult who hasn't set a date of birth yet -- kept without one (below).
+        $this->createNoDobDemoData();
         $this->giveDemoAdultsADateOfBirth();
+    }
+
+    // SCRUM-382: a verified adult-intent account with no date of birth and no therapy, so the "set your
+    // date of birth before you can create a therapy" prompt can be tried (giveDemoAdultsADateOfBirth()
+    // leaves this one without a dob).
+    private function createNoDobDemoData(): void
+    {
+        User::factory()->create([
+            'firstName' => 'NoDob',
+            'lastName' => 'Demo',
+            'email' => 'no.dob.demo.user@example.com',
+            'username' => self::NO_DOB_DEMO_USERNAME,
+            'password' => Hash::make('password'),
+            'email_verified_at' => now(),
+            'gender' => GenderEnum::female,
+            'dob' => null,
+        ]);
     }
 
     private function createPausedMinorDemoData(): void
@@ -311,6 +337,67 @@ class DatabaseSeeder extends Seeder
             'type' => 'online',
             'status' => 'in_session',
             'payment_type' => 'FREE',
+        ]);
+    }
+
+    // SCRUM-381: needs createPausedMinorDemoData() first (its counsellor, therapy and group).
+    //  - paused_minor's counsellor has asked the super administrator for a safeguarding exception
+    //    (pending: approve or reject it from the requests list or /administrator/safeguarding-exceptions);
+    //  - safeguarding_exception_minor (15, no guardian) has a 1:1 with the same counsellor and is an
+    //    ANONYMOUS member of "Paused Minor Demo Group", under an exception that ends in two days -- so
+    //    the next hourly reminder sweep sends the 3-day heads-up, and the group counsellor sees them
+    //    only as "Anonymous".
+    public function createSafeguardingExceptionDemoData(User $superAdmin): void
+    {
+        $counsellorUser = User::query()->where('username', 'paused_minor_demo_counsellor')->firstOrFail();
+        $counsellor = $counsellorUser->counsellor;
+        $pausedMinor = User::query()->where('username', 'paused_minor')->firstOrFail();
+        $pausedTherapy = Therapy::query()->where('name', 'Paused Minor Demo Therapy')->whereAddedby($pausedMinor)->firstOrFail();
+        $group = GroupTherapy::query()->where('name', 'Paused Minor Demo Group')->whereAddedby($counsellor)->firstOrFail();
+
+        $request = $counsellor->sentRequests()->create([
+            'type' => RequestTypeEnum::safeguardingException->value,
+            'status' => RequestStatusEnum::pending->value,
+            'data' => [
+                'reason' => 'Jordan is in the middle of work on anxiety before exams. Their guardian is unreachable for a few weeks; a new guardian is being arranged.',
+                'proposedEndsAt' => now()->addDays(14)->toJSON(),
+                'wardId' => $pausedMinor->id,
+            ],
+        ]);
+        $request->for()->associate($pausedTherapy);
+        $request->save();
+
+        $minor = User::factory()->create([
+            'firstName' => 'Casey',
+            'lastName' => 'Morgan',
+            'email' => 'safeguarding.exception.minor@example.com',
+            'username' => 'safeguarding_exception_minor',
+            'password' => Hash::make('password'),
+            'email_verified_at' => now(),
+            'gender' => GenderEnum::female,
+            'dob' => now()->subYears(15)->toDateString(),
+        ]);
+
+        $minor->addedTherapies()->create([
+            'name' => 'Safeguarding Exception Demo Therapy',
+            'background_story' => 'Seeded individual therapy of a minor with no guardian who carries on under a safeguarding exception (SCRUM-381).',
+            'counsellor_id' => $counsellor->id,
+            'session_type' => 'Once',
+            'payment_type' => 'FREE',
+            'allow_in_person' => false,
+            'anonymous' => false,
+            'public' => false,
+            'status' => 'in_session',
+            'client_was_minor_at_creation' => true,
+        ]);
+        $group->users()->attach($minor->id, ['anonymous' => true, 'background_story' => 'test', 'was_minor_at_join' => true]);
+
+        SafeguardingException::query()->create([
+            'ward_id' => $minor->id,
+            'granted_by' => $superAdmin->id,
+            'reason' => 'Casey\'s guardian has passed away; the family is arranging a new guardianship. Therapy should not stop in the meantime.',
+            'starts_at' => now()->subDays(12),
+            'ends_at' => now()->addDays(2),
         ]);
     }
 
@@ -959,7 +1046,9 @@ class DatabaseSeeder extends Seeder
     // maria_garcia and most other demo clients would be paused and their demos unusable.
     private function giveDemoAdultsADateOfBirth(): void
     {
-        User::withTrashed()->whereNull('dob')->update(['dob' => now()->subYears(30)->toDateString()]);
+        User::withTrashed()->whereNull('dob')
+            ->where('username', '!=', self::NO_DOB_DEMO_USERNAME)
+            ->update(['dob' => now()->subYears(30)->toDateString()]);
     }
 
     // SCRUM-301: a counsellor who hasn't been verified yet, with everything the verification form

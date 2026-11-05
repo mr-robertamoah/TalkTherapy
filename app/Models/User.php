@@ -6,6 +6,7 @@ use App\Enums\ConstantsEnum;
 use App\Enums\FileTagEnum;
 use App\Enums\SuspensionScopeEnum;
 use App\Notifications\VerifyEmailNotification;
+use App\Traits\HasTaggedFiles;
 use Carbon\Carbon;
 use Illuminate\Auth\MustVerifyEmail;
 use Illuminate\Broadcasting\PrivateChannel;
@@ -21,7 +22,7 @@ use Laravel\Sanctum\HasApiTokens;
 
 class User extends Authenticatable implements MustVerifyEmailContract
 {
-    use HasApiTokens, HasFactory, MustVerifyEmail, Notifiable, SoftDeletes;
+    use HasApiTokens, HasFactory, HasTaggedFiles, MustVerifyEmail, Notifiable, SoftDeletes;
 
     // SCRUM-367/368: the columns cleared from a closed account once its retention period has passed
     // (AnonymiseClosedAccountAction) -- its personal details plus what would still tie the row to
@@ -120,9 +121,7 @@ class User extends Authenticatable implements MustVerifyEmailContract
     // prop), never via ::collection(), so this carries no N+1 exposure the way Counsellor's did.
     public function avatarFile(): MorphToMany
     {
-        return $this->morphToMany(File::class, 'fileable', 'fileables')
-            ->withPivotValue('tag', FileTagEnum::avatar->value)
-            ->withTimestamps();
+        return $this->taggedFile(FileTagEnum::avatar);
     }
 
     public function getAvatarAttribute(): ?File
@@ -206,13 +205,60 @@ class User extends Authenticatable implements MustVerifyEmailContract
     // guardian can read their therapies but not act in them. Adults are answered without a query;
     // administrators are exempt. $exceptGuardianIds: would they be paused without these guardians
     // (asked before one stops counting, and to tell whether one coming back resumed them).
+    // SCRUM-381: nor is a minor covered by a super administrator's safeguarding exception, checked
+    // only once the guardian check has failed (most minors have a guardian: no extra query).
     public function isPausedForMissingGuardian(bool $fresh = false, array $exceptGuardianIds = []): bool
+    {
+        if (! $this->lacksGuardianCover($fresh, $exceptGuardianIds)) {
+            return false;
+        }
+
+        return ! $this->hasActiveSafeguardingException($fresh || (bool) $exceptGuardianIds);
+    }
+
+    // SCRUM-382 review: the one "no guardian cover" rule, whether or not a safeguarding exception
+    // stands in -- a minor (no date of birth counts as one), not an administrator, with no active
+    // guardian. isPausedForMissingGuardian() is this minus any exception in force; granting one and
+    // its reminder ask this directly.
+    public function lacksGuardianCover(bool $fresh = false, array $exceptGuardianIds = []): bool
     {
         if ($this->isAdult() || $this->isAdmin()) {
             return false;
         }
 
         return ! $this->hasActiveGuardian($fresh, $exceptGuardianIds);
+    }
+
+    public function safeguardingExceptions()
+    {
+        return $this->hasMany(SafeguardingException::class, 'ward_id');
+    }
+
+    // false: none was in force when last read. Otherwise the end of the one that was -- so a reused
+    // instance stops counting it the moment it runs out, without another query.
+    private \DateTimeInterface|false|null $activeSafeguardingExceptionEndsAt = null;
+
+    // SCRUM-381: memoised like hasActiveGuardian(); $fresh re-reads as a locking read (shared).
+    public function hasActiveSafeguardingException(bool $fresh = false): bool
+    {
+        if ($fresh || is_null($this->activeSafeguardingExceptionEndsAt)) {
+            $query = $this->safeguardingExceptions()->active();
+            $row = ($fresh ? $query->sharedLock() : $query)->orderByDesc('ends_at')->first(['id', 'ends_at']);
+            $this->activeSafeguardingExceptionEndsAt = $row?->ends_at ?? false;
+        }
+
+        return $this->activeSafeguardingExceptionEndsAt !== false && now()->lt($this->activeSafeguardingExceptionEndsAt);
+    }
+
+    // SCRUM-382 review: the memo above only re-checks the clock, so an exception ended early (or a
+    // new one granted) on another instance -- or on this one, by an action holding it -- isn't seen
+    // until it is re-read. The actions that grant or end one call this on any instance they were
+    // handed, like forgetActiveSuspension().
+    public function forgetSafeguardingException(): static
+    {
+        $this->activeSafeguardingExceptionEndsAt = null;
+
+        return $this;
     }
 
     public function wards()
@@ -522,7 +568,26 @@ class User extends Authenticatable implements MustVerifyEmailContract
     {
         return $query
             ->whereHas('administrator')
-            ->whereDoesntHave('suspensions', fn ($q) => $q->active()->where('scope', SuspensionScopeEnum::account->value));
+            ->whereNotAccountSuspended();
+    }
+
+    // SCRUM-382 review: isPausedForMissingGuardian() as a query, for lists -- no date of birth or one
+    // under 18, not an administrator, no active guardian and no safeguarding exception in force. The
+    // date filter only narrows it: callers still drop anyone isAdult() says is an adult.
+    public function scopeWherePausedForMissingGuardian($query)
+    {
+        $adultFrom = now()->subYears(18)->toDateString();
+
+        return $query
+            ->where(fn ($q) => $q->whereNull('dob')->orWhere('dob', '>', $adultFrom))
+            ->whereDoesntHave('administrator')
+            ->whereDoesntHave('guardians', fn ($q) => $q->active())
+            ->whereDoesntHave('safeguardingExceptions', fn ($q) => $q->active());
+    }
+
+    public function scopeWhereNotAccountSuspended($query)
+    {
+        return $query->whereDoesntHave('suspensions', fn ($q) => $q->active()->where('scope', SuspensionScopeEnum::account->value));
     }
 
     public function scopeWhereWard($query, User $user)

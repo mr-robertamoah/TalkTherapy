@@ -2,7 +2,9 @@
 
 namespace App\Notifications;
 
+use App\Models\GroupTherapy;
 use App\Models\Therapy;
+use App\Support\TherapyLink;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -11,11 +13,13 @@ use Illuminate\Notifications\Notification;
 // SCRUM-288: to the counsellor of an individual therapy paused because its minor client has no
 // active guardian. The client is named as that therapy shows them ($clientName from
 // displayNameOf(), so an anonymous client stays anonymous). Nothing about the client's family.
+// SCRUM-381 (the user's decision): also to each counsellor of a group the minor belongs to -- only
+// that member is paused there; the group carries on.
 class ClientAccessPausedNotification extends Notification implements ShouldQueue
 {
     use Queueable;
 
-    public function __construct(private Therapy $therapy, private string $clientName)
+    public function __construct(private Therapy|GroupTherapy $therapy, private string $clientName)
     {
         $this->afterCommit();
     }
@@ -27,12 +31,22 @@ class ClientAccessPausedNotification extends Notification implements ShouldQueue
 
     public function toMail(object $notifiable): MailMessage
     {
+        if ($this->therapy instanceof GroupTherapy) {
+            return (new MailMessage)
+                ->subject('A group member\'s participation is paused')
+                ->greeting("Hello {$notifiable->name},")
+                ->line("{$this->clientName}'s participation in your group \"{$this->therapy->name}\" is paused until their account has a guardian again.")
+                ->line('They can still read the group, but can\'t write in it or join its calls. The rest of the group carries on as usual.')
+                ->action('Open the group', TherapyLink::to($this->therapy))
+                ->line('It starts again on its own. You will be told when it does.');
+        }
+
         return (new MailMessage)
             ->subject('A therapy is paused')
             ->greeting("Hello {$notifiable->name},")
             ->line("Your therapy with {$this->clientName} is paused until their account has a guardian again.")
             ->line('You can still read its history. Messages, sessions and calls are on hold, and upcoming sessions stay booked; you can still cancel one.')
-            ->action('Open the therapy', route('therapies.get', ['therapyId' => $this->therapy->id]))
+            ->action('Open the therapy', TherapyLink::to($this->therapy))
             ->line('It starts again on its own. You will be told when it does.');
     }
 
@@ -40,7 +54,7 @@ class ClientAccessPausedNotification extends Notification implements ShouldQueue
     {
         return [
             'type' => 'guardian_access.client_paused',
-            'therapyId' => $this->therapy->id,
+            ...TherapyLink::ids($this->therapy),
             'clientName' => $this->clientName,
         ];
     }
