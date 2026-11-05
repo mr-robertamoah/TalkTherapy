@@ -61,8 +61,8 @@ class AnnounceGuardianAccessChangeAction extends Action
 
         $counsellors->each(fn (array $row) => BestEffort::attempt(
             fn () => Notification::send($row['user'], $paused
-                ? new ClientAccessPausedNotification($row['therapy'], $row['clientName'])
-                : new ClientAccessResumedNotification($row['therapy'], $row['clientName'], $continuesUntil)),
+                ? new ClientAccessPausedNotification($row['therapy'], $row['clientName'], $ward)
+                : new ClientAccessResumedNotification($row['therapy'], $row['clientName'], $ward, $continuesUntil)),
             'client-access-notify',
             [...$context, 'therapy' => $row['therapy']->id, 'group' => $row['therapy'] instanceof GroupTherapy],
         ));
@@ -77,7 +77,7 @@ class AnnounceGuardianAccessChangeAction extends Action
         BestEffort::attempt(fn () => $ward->notify(new TherapyContinuationNotification($kind, $endsAt)), 'continuation-notify', $context);
 
         $this->counsellorsOf($ward, $open)->each(fn (array $row) => BestEffort::attempt(
-            fn () => Notification::send($row['user'], new TherapyContinuationNotification($kind, $endsAt, $row['therapy'], $row['clientName'])),
+            fn () => Notification::send($row['user'], new TherapyContinuationNotification($kind, $endsAt, $row['therapy'], $row['clientName'], $ward)),
             'continuation-counsellor-notify',
             [...$context, 'therapy' => $row['therapy']->id, 'group' => $row['therapy'] instanceof GroupTherapy],
         ));

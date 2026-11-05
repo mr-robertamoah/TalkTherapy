@@ -9,12 +9,12 @@ use Illuminate\Http\Resources\Json\JsonResource;
 // invoice period -- session-metadata-only, never SessionNote/journal content, mirroring the same
 // data-minimization boundary as OrganizationFinancedTransactionResource.
 //
-// Security-engineer finding: `sessionLabel` is an opaque "Session #<id>" reference built directly
-// off session_id, deliberately never `Session::name` -- like Therapy's own name, that's
-// client-authored free text with no constraint against containing identity/condition-revealing
-// content, and this org-billing admin has no other legitimate route to session content at all.
-// Built off the raw id (not the loaded relation), so no eager-load is even needed for this field,
-// and it stays correct even if the session is later soft-deleted.
+// Security-engineer finding: `sessionLabel` is deliberately never `Session::name` -- like Therapy's
+// own name, that's client-authored free text with no constraint against containing
+// identity/condition-revealing content, and this org-billing admin has no other legitimate route
+// to session content at all. SCRUM-385: it's the session's start date ("Session on 3 Feb 2026")
+// rather than a raw "#<id>"; the session relation is eager-loaded withTrashed() by
+// GetOrganizationRetainerInvoicesAction so a later soft-deleted session still gets its date.
 class OrganizationInvoiceLineResource extends JsonResource
 {
     /**
@@ -27,7 +27,9 @@ class OrganizationInvoiceLineResource extends JsonResource
         return [
             'id' => $this->id,
             'sessionId' => $this->session_id,
-            'sessionLabel' => "Session #{$this->session_id}",
+            'sessionLabel' => $this->session?->start_time
+                ? 'Session on '.$this->session->start_time->format('j M Y')
+                : 'Session',
             // The counsellor's own name is professional/public information, not a client-anonymity
             // concern (see OrganizationFinancedTransactionResource's identical reasoning).
             'counsellorName' => $this->whenLoaded('counsellor', fn () => $this->counsellor?->name),

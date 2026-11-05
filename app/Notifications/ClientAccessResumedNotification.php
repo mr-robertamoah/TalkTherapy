@@ -5,7 +5,9 @@ namespace App\Notifications;
 use App\Models\GroupTherapy;
 use App\Models\SafeguardingException;
 use App\Models\Therapy;
+use App\Models\User;
 use App\Support\TherapyLink;
+use App\Support\WardRef;
 use Carbon\CarbonInterface;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -22,8 +24,14 @@ class ClientAccessResumedNotification extends Notification implements ShouldQueu
 {
     use Queueable;
 
-    public function __construct(private Therapy|GroupTherapy $therapy, private string $clientName, private ?CarbonInterface $continuesUntil = null)
+    // SCRUM-384: the minor as an opaque WardRef (never their id), so anonymising their closed
+    // account can replace $clientName in the stored notice. Nullable with a default: a notice queued
+    // before this property existed is unserialised without it, and is stored without the key.
+    private ?string $wardRef = null;
+
+    public function __construct(private Therapy|GroupTherapy $therapy, private string $clientName, User $ward, private ?CarbonInterface $continuesUntil = null)
     {
+        $this->wardRef = WardRef::of($ward);
         $this->afterCommit();
     }
 
@@ -59,6 +67,7 @@ class ClientAccessResumedNotification extends Notification implements ShouldQueu
             'type' => 'guardian_access.client_resumed',
             ...TherapyLink::ids($this->therapy),
             'clientName' => $this->clientName,
+            WardRef::KEY => $this->wardRef,
             'continuesUntil' => $this->continuesUntil?->toJSON(),
         ]);
     }

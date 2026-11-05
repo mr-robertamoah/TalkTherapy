@@ -4,7 +4,9 @@ namespace App\Notifications;
 
 use App\Models\GroupTherapy;
 use App\Models\Therapy;
+use App\Models\User;
 use App\Support\TherapyLink;
+use App\Support\WardRef;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -19,8 +21,14 @@ class ClientAccessPausedNotification extends Notification implements ShouldQueue
 {
     use Queueable;
 
-    public function __construct(private Therapy|GroupTherapy $therapy, private string $clientName)
+    // SCRUM-384: the minor as an opaque WardRef (never their id), so anonymising their closed
+    // account can replace $clientName in the stored notice. Nullable with a default: a notice queued
+    // before this property existed is unserialised without it, and is stored without the key.
+    private ?string $wardRef = null;
+
+    public function __construct(private Therapy|GroupTherapy $therapy, private string $clientName, User $ward)
     {
+        $this->wardRef = WardRef::of($ward);
         $this->afterCommit();
     }
 
@@ -56,6 +64,7 @@ class ClientAccessPausedNotification extends Notification implements ShouldQueue
             'type' => 'guardian_access.client_paused',
             ...TherapyLink::ids($this->therapy),
             'clientName' => $this->clientName,
+            ...($this->wardRef ? [WardRef::KEY => $this->wardRef] : []),
         ];
     }
 }

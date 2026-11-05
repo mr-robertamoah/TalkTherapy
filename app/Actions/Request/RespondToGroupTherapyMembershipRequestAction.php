@@ -3,22 +3,27 @@
 namespace App\Actions\Request;
 
 use App\Actions\Action;
+use App\Actions\GroupTherapy\AddGroupTherapyMemberAction;
 use App\Actions\Guardianship\EnsureMinorHasActiveGuardianAction;
-use App\Actions\User\AlertGuardianAction;
-use App\DTOs\GuardianAlertDTO;
 use App\DTOs\RequestResponseDTO;
 use App\Enums\RequestStatusEnum;
+use App\Exceptions\CannotJoinGroupTherapyException;
 use App\Exceptions\GuardianRequiredException;
 use App\Models\GroupTherapy;
 use App\Models\User;
-use App\Notifications\GroupTherapyMembershipRequestAcceptedGuardianNotification;
+use App\Notifications\GroupTherapyMemberJoinedGuardianNotification;
 use App\Notifications\GroupTherapyMembershipRequestAcceptedNotification;
 use App\Notifications\GroupTherapyMembershipRequestRejectedNotification;
-use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 
 class RespondToGroupTherapyMembershipRequestAction extends Action
 {
+    // The requester is told why an accepted request couldn't be met.
+    private const CLOSED_BECAUSE = [
+        AddGroupTherapyMemberAction::ENDED => 'This group therapy has since ended.',
+        AddGroupTherapyMemberAction::FULL => 'This group therapy has since reached its maximum number of members.',
+    ];
+
     public function execute(RequestResponseDTO $requestResponseDTO)
     {
         $request = $requestResponseDTO->request;
@@ -46,12 +51,25 @@ class RespondToGroupTherapyMembershipRequestAction extends Action
                 return [$request, $groupTherapy, null];
             }
 
-            if ($response == RequestStatusEnum::accepted->value && $groupTherapy->users()->count() >= $groupTherapy->max_users) {
+            // SCRUM-73: the add's own checks, under the lock. An ended or full group closes the
+            // request; someone already taking part (an immediate join or an invitation link between
+            // the request and this accept) leaves nothing to add.
+            $closedBecause = null;
+            $alreadyMember = false;
+
+            if ($response == RequestStatusEnum::accepted->value) {
+                try {
+                    AddGroupTherapyMemberAction::new()->ensureCanAdd($groupTherapy, $request->from);
+                } catch (CannotJoinGroupTherapyException $exception) {
+                    $alreadyMember = $exception->getMessage() === AddGroupTherapyMemberAction::ALREADY_MEMBER;
+                    $closedBecause = $alreadyMember ? null : (self::CLOSED_BECAUSE[$exception->getMessage()] ?? $exception->getMessage());
+                }
+            }
+
+            if ($closedBecause) {
                 $request->update([
                     'status' => RequestStatusEnum::rejected->value,
-                    'data' => array_merge($request->data ?? [], [
-                        'reason' => 'This group therapy has since reached its maximum number of members.',
-                    ]),
+                    'data' => array_merge($request->data ?? [], ['reason' => $closedBecause]),
                 ]);
 
                 return [$request->refresh(), $groupTherapy, 'rejected'];
@@ -70,18 +88,17 @@ class RespondToGroupTherapyMembershipRequestAction extends Action
 
             $request->update(['status' => $response]);
 
+            // Already a member through some other path: the request is still marked accepted above,
+            // with nothing left to add. SCRUM-73: a former member rejoins through the shared step,
+            // which also tells a minor's guardians once this commits.
             if ($response == RequestStatusEnum::accepted->value) {
-                try {
-                    // TT-3.2f-b/SCRUM-319: was_minor_at_join snapshot, same reasoning as
-                    // JoinGroupTherapyAction's own identical attach call.
-                    $groupTherapy->users()->attach($request->from->id, [
-                        'anonymous' => $groupTherapy->resolveMembershipAnonymity((bool) ($request->data['anonymous'] ?? false)),
-                        'was_minor_at_join' => ! $request->from->isAdult(),
-                    ]);
-                } catch (UniqueConstraintViolationException) {
-                    // Already a member via some other path (e.g. an immediate join that
-                    // happened between request-send and this accept) -- the request is still
-                    // correctly marked accepted above, just nothing left to attach.
+                if (! $alreadyMember) {
+                    AddGroupTherapyMemberAction::new()->execute(
+                        $groupTherapy,
+                        $request->from,
+                        (bool) ($request->data['anonymous'] ?? false),
+                        GroupTherapyMemberJoinedGuardianNotification::VIA_REQUEST,
+                    );
                 }
 
                 return [$request->refresh(), $groupTherapy, 'accepted'];
@@ -92,23 +109,6 @@ class RespondToGroupTherapyMembershipRequestAction extends Action
 
         if ($outcome == 'accepted') {
             $request->from->notify(new GroupTherapyMembershipRequestAcceptedNotification($request));
-
-            // TT-4.10b/SCRUM-291: deliberately does NOT pass 'for' => $groupTherapy here --
-            // $request->from is the JOINING MEMBER, not the group's own addedby/owner, so
-            // $groupTherapy->client_was_minor_at_creation answers a question about a different
-            // person entirely (whoever created the group). TT-3.2f-b/SCRUM-319 later added a
-            // per-membership snapshot (group_therapy_user.was_minor_at_join) for exactly this
-            // question, but AlertGuardianAction's own live-isAdult() check here predates and is
-            // independent of that -- this alert fires at the moment of acceptance, when
-            // $request->from's live status IS the accurate, current answer, so there's no
-            // bypass risk the snapshot exists to close elsewhere (GroupTherapy::memberIsMinor(),
-            // used by the video speaking-permission grant path).
-            AlertGuardianAction::new()->execute(
-                GuardianAlertDTO::new()->fromArray([
-                    'user' => $request->from,
-                    'notification' => new GroupTherapyMembershipRequestAcceptedGuardianNotification($groupTherapy),
-                ])
-            );
         }
 
         if ($outcome == 'rejected') {

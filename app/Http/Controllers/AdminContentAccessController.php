@@ -11,6 +11,8 @@ use App\Models\Request as ModelsRequest;
 use App\Models\Session;
 use App\Models\Therapy;
 use App\Models\TherapyTopic;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Redirect;
 use Illuminate\Validation\Rule;
@@ -47,7 +49,13 @@ class AdminContentAccessController extends Controller
         ]);
 
         $accesses = AdminContentAccess::query()
-            ->with('admin')
+            // SCRUM-385: the subject (and a message's session or discussion) and the file, for their
+            // names -- eager-loaded so the labels below cost no query per row.
+            ->with([
+                'admin',
+                'file',
+                'subject' => fn (MorphTo $morphTo) => $morphTo->morphWith([Message::class => ['for']]),
+            ])
             ->when($filters['resource'] ?? null, fn ($q, $resource) => $q->where('resource', $resource))
             ->when($filters['admin'] ?? null, fn ($q, $admin) => $q->where('admin_user_id', $admin))
             ->when($filters['subject'] ?? null, fn ($q, $subject) => $q->where('subject_type', self::SUBJECTS[$subject])->where('subject_id', $filters['subject_id']))
@@ -58,10 +66,11 @@ class AdminContentAccessController extends Controller
                 'id' => $access->id,
                 'admin' => ['id' => $access->admin_user_id, 'name' => $access->admin?->name ?? 'a deleted account'],
                 'resource' => $access->resource,
-                'subject' => class_basename($access->subject_type).' #'.$access->subject_id,
+                'subject' => $this->subjectLabel($access->subject_type, $access->subject),
                 'subjectKey' => array_search($access->subject_type, self::SUBJECTS, true) ?: null,
                 'subjectId' => $access->subject_id,
                 'fileId' => $access->file_id,
+                'fileName' => $access->file?->name,
                 'page' => $access->page,
                 'ip' => $access->ip,
                 'at' => $access->created_at,
@@ -74,8 +83,49 @@ class AdminContentAccessController extends Controller
                 'admin' => $filters['admin'] ?? null,
                 'subject' => $filters['subject'] ?? null,
                 'subject_id' => $filters['subject_id'] ?? null,
+                'subjectLabel' => isset($filters['subject']) ? $this->filteredSubjectLabel($filters['subject'], $filters['subject_id']) : null,
             ],
             'resources' => AdminContentAccess::RESOURCES,
         ]);
+    }
+
+    private function filteredSubjectLabel(string $subject, int $subjectId): string
+    {
+        $type = self::SUBJECTS[$subject];
+        $model = $type::query()->when($type === Message::class, fn ($q) => $q->with('for'))->find($subjectId);
+
+        return $this->subjectLabel($type, $model);
+    }
+
+    // SCRUM-385: what was read, by name rather than "Therapy #16" -- only super administrators
+    // see this page, and they may see these names. A subject that has since been deleted (or
+    // soft-deleted) is no longer loaded, so it falls back to "a deleted <type>".
+    private function subjectLabel(?string $type, ?Model $subject): string
+    {
+        if (! $subject) {
+            return 'a deleted '.match ($type) {
+                Therapy::class => 'therapy',
+                GroupTherapy::class => 'group therapy',
+                Session::class => 'session',
+                Message::class => 'message',
+                Discussion::class => 'discussion',
+                TherapyTopic::class => 'topic',
+                License::class => 'licence',
+                ModelsRequest::class => 'request',
+                default => 'item',
+            };
+        }
+
+        return match (true) {
+            $subject instanceof Therapy => "Therapy: {$subject->name}",
+            $subject instanceof GroupTherapy => "Group therapy: {$subject->name}",
+            $subject instanceof Session => "Session: {$subject->name}",
+            $subject instanceof Message => $subject->for?->name ? "A message in {$subject->for->name}" : 'A message',
+            $subject instanceof Discussion => "Discussion: {$subject->name}",
+            $subject instanceof TherapyTopic => "Topic: {$subject->name}",
+            $subject instanceof License => 'A licence',
+            $subject instanceof ModelsRequest => 'A verification request',
+            default => 'A document',
+        };
     }
 }

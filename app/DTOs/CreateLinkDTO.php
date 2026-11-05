@@ -28,4 +28,7 @@ class CreateLinkDTO extends BaseDTO
     public ?string $type = null;
 
     public ?array $linksData = [];
+
+    // SCRUM-383: a member invitation link's invitee chooses this when they confirm joining.
+    public bool $anonymous = false;
 }

@@ -71,6 +71,21 @@ for a while. It lasts at most 30 days and needs a reason. It covers the minor ev
     `endsAt` and `reason`, and is refused with a 422 if the client is no longer paused.
   - A direct grant closes any other pending request for that minor (status `INCONSEQUENCIAL`,
     shown as "Closed").
+- **Admin page (SCRUM-384):** "Paused now" is paged 20 at a time on `?pausedPage=` (the exceptions
+  stay on `?page=`). A "Requests no longer needed" list shows pending requests whose minor isn't
+  paused any more (a guardian, an exception in force, turned 18, or a closed account), with the
+  reason. The super administrator can reject them there. An involved administrator sees them masked,
+  as on the rest of the page. The grant form posts `endsAt` (camelCase, like `requests.respond`).
+- **One limit (SCRUM-384):** `SafeguardingException::MAX_DAYS` reaches `SafeguardingExceptionTermsFields`
+  as a `maxDays` prop: from the admin page's props, `TherapyResource`/`GroupTherapyResource`
+  (`safeguardingExceptionMaxDays`, counsellors only) and `RequestResource` (`safeguardingException.maxDays`,
+  the respondent only).
+- **Requests list cost (SCRUM-384):** `PreloadRequestListAction` loads each row's `from`/`to`/`for`
+  and each safeguarding request's minor once per page. `tests/Feature/SafeguardingExceptionFollowupsTest.php`
+  pins the query count.
+- **Closed accounts in counsellors' notices (SCRUM-384):** the pause, resume and continuation notices
+  to counsellors store `wardRef`, an HMAC of the minor's id with the app key (`App\Support\WardRef`),
+  never the id. Anonymising the account sets `clientName` to "a closed account" in those rows.
 - **Scheduler** (`routes/console.php`):
   - `end-expired-safeguarding-exceptions` runs every minute. It records each end and, if the minor
     is still paused, schedules the loss handling (trigger `safeguarding_exception_expired`).
@@ -128,6 +143,7 @@ Log in at http://localhost:8000. Every password is **`password`** (the super adm
   writes the scheduler cache. If it can't queue an account, it lists it and exits with 1. Running it
   again retries just those accounts.
 - `docker compose restart queue` after deploying, so the worker loads the new code.
+- What to alert on: `documentation/operations/monitoring.md`.
 
 ## Test data
 

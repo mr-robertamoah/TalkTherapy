@@ -34,7 +34,7 @@ member" — a different relationship entirely.
   `GroupTherapy::resolveMembershipAnonymity()` (see below), notifies the requester
   (`GroupTherapyMembershipRequestAcceptedNotification` — mail/database/broadcast), and alerts the
   requester's guardian if they're a minor (`AlertGuardianAction` +
-  `GroupTherapyMembershipRequestAcceptedGuardianNotification`, both no-ops for an adult).
+  `GroupTherapyMemberJoinedGuardianNotification`, both no-ops for an adult).
 - **Reject**: updates status and notifies the requester
   (`GroupTherapyMembershipRequestRejectedNotification`).
 
@@ -153,7 +153,7 @@ join flow through the UI. See "Test data" below.
   `TherapyAssistanceRequestAcceptedNotification`/`GroupTherapyAssistanceRequestSentNotification`'s
   precedent. Flagging this explicitly so it can be confirmed rather than assumed correct.
 - Similarly, `GroupTherapyMembershipRequestAcceptedNotification` /
-  `GroupTherapyMembershipRequestAcceptedGuardianNotification` mask the group **creator's** identity
+  `GroupTherapyMemberJoinedGuardianNotification` mask the group **creator's** identity
   (not the group's name) when the group is anonymous — this is the same masking convention
   `GroupTherapyResource` already applies to `addedby`, applied here to protect the creator's
   identity in a notification sent to a newly-accepted member. This reading of "masks the group's
@@ -199,7 +199,7 @@ join flow through the UI. See "Test data" below.
 - `app/Exceptions/CannotJoinGroupTherapyException.php` (new)
 - `app/Notifications/GroupTherapyMembershipRequestSentNotification.php`,
   `GroupTherapyMembershipRequestAcceptedNotification.php`,
-  `GroupTherapyMembershipRequestAcceptedGuardianNotification.php`,
+  `GroupTherapyMemberJoinedGuardianNotification.php`,
   `GroupTherapyMembershipRequestRejectedNotification.php` (all new)
 - `app/Http/Controllers/GroupTherapyController.php` — `joinGroupTherapy()`,
   `pendingMembershipRequest` prop on `getGroupTherapy()`

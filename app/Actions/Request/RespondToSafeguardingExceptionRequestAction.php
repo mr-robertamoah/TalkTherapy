@@ -25,16 +25,22 @@ class RespondToSafeguardingExceptionRequestAction extends Action
     public function execute(RequestResponseDTO $dto): Request
     {
         $request = $dto->request;
-        $wardId = (int) ($request->data['wardId'] ?? 0);
+        $wardId = (int) $request->safeguardingWardId();
         $endsAt = null;
+        $noLongerNeeded = false;
 
         if (strtoupper((string) $dto->response) === RequestStatusEnum::accepted->value) {
             $exception = GrantSafeguardingExceptionAction::new()->execute($dto->user, User::query()->find($wardId), $dto->reason, $dto->endsAt, $request);
             $endsAt = $exception->ends_at;
             $request = $request->refresh();
         } else {
-            // The same check as accepting (a super administrator who doesn't counsel the minor).
-            EnsureCanManageSafeguardingExceptionAction::new()->execute($dto->user, User::withTrashed()->find($wardId));
+            // The same check as accepting (a super administrator who doesn't counsel the minor) --
+            // except that a request whose minor's row is gone for good can still be closed.
+            $ward = User::withTrashed()->find($wardId);
+            EnsureCanManageSafeguardingExceptionAction::new()->ensureCanClose($dto->user, $ward);
+            // Rejected from the "no longer needed" list: the counsellor is told it was closed, not
+            // that the therapy stays paused.
+            $noLongerNeeded = ! $ward || $ward->trashed() || ! $ward->isPausedForMissingGuardian(fresh: true);
 
             $request = DB::transaction(function () use ($request, $wardId) {
                 User::query()->whereKey($wardId)->lockForUpdate()->first(['id']);
@@ -55,7 +61,7 @@ class RespondToSafeguardingExceptionRequestAction extends Action
         $counsellor = $request->from;
         if ($counsellor instanceof Counsellor && $counsellor->user) {
             BestEffort::attempt(
-                fn () => $counsellor->user->notify(new SafeguardingExceptionRequestDecidedNotification($request, $endsAt)),
+                fn () => $counsellor->user->notify(new SafeguardingExceptionRequestDecidedNotification($request, $endsAt, closed: $noLongerNeeded)),
                 'safeguarding-exception-decided-notify',
                 ['request' => $request->id],
             );

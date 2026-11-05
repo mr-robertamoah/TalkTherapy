@@ -3,6 +3,7 @@
 namespace App\Actions\Link;
 
 use App\Actions\Action;
+use App\Actions\GroupTherapy\AddCounsellorToGroupTherapyAction;
 use App\DTOs\CreateLinkDTO;
 use App\Enums\LinkTypeEnum;
 use App\Exceptions\GuardianRequiredException;
@@ -65,6 +66,15 @@ class EnsureUserCanCreateLinkForAction extends Action
         if ($intoUsersGroup && $createLinkDTO->for->addedby instanceof User && $createLinkDTO->for->addedby->isPausedForMissingGuardian()) {
             throw GuardianRequiredException::linkUnavailable();
         }
+
+        // SCRUM-383 (QA): a counsellor link for a group whose counsellor places are all taken would
+        // only be refused when used -- refused now, with the same answer.
+        if (
+            $createLinkDTO->type === LinkTypeEnum::groupTherapyCounsellor->value
+            && $createLinkDTO->for->activeCounsellors()->count() >= $createLinkDTO->for->max_counsellors
+        ) {
+            throw new LinkException(AddCounsellorToGroupTherapyAction::GROUP_FULL, 422);
+        }
     }
 
     // Security review: re-checked when a link is USED (EnsureCanUseLinkAction). Links created before
@@ -97,8 +107,9 @@ class EnsureUserCanCreateLinkForAction extends Action
             LinkTypeEnum::guardianship->value => $for instanceof User && $for->is($user),
             // The therapy page: the client invites a counsellor to their own therapy.
             LinkTypeEnum::therapyCounsellor->value => $for instanceof Therapy && $for->isUser($user),
-            // The group page: its creator (a user, or a counsellor's user).
-            LinkTypeEnum::groupTherapyAdmin->value,
+            // The group page: its creator (a user, or a counsellor's user). SCRUM-383 (the user's
+            // decision): no GROUP_THERAPY_ADMIN -- the app has no group-admin role. Refused here, and
+            // so (creatorMayStillIssue()) when an existing one is used.
             LinkTypeEnum::groupTherapyParticipant->value,
             LinkTypeEnum::groupTherapyCounsellor->value => $for instanceof GroupTherapy && $this->createdGroup($user, $for),
             // DiscussionModal: whoever may manage the discussion.

@@ -434,3 +434,43 @@ See `documentation/features/scrum-381-safeguarding-exception.md`.
 |---|---|
 | `no_dob_demo_user` | NoDob Demo, email verified, no date of birth, no therapy or group. Password **`password`**. Opening "create a therapy" shows "You must set your date of birth before you can create a therapy." Setting an adult date of birth on the profile page lets them create one. It is the one seeded account the seed leaves without a date of birth, so it shows up (with nothing open) in `guardians:report-unguarded-minors`. |
 
+
+## Leaving a group, and group invitation links (SCRUM-73, SCRUM-383)
+
+"Leave Demo Group Therapy" -- private and **PAID** (50 USD per therapy, 70% to counsellors; a FREE
+group must be public, so the earlier FREE-and-private seed couldn't be edited), with no strict payment
+gate, `allow_anyone = false` (a rejoin needs the creator's approval again), not anonymous as a group,
+in session, 5 member places, 2 counsellor places. The anonymous member, the minor member and the
+former member each have a SUCCESS payment for it. It has a held
+session with a message from each of the counsellor, the former member (stored as anonymous) and the
+anonymous member. All passwords are **`password`**.
+
+| Username | What it is |
+|---|---|
+| `leave_demo_creator` | Lena Creator, the group's creator. Can't leave (end or delete instead). Sees the **counsellor links** and **member links** panels in the Participants tab, each with one seeded active link. Gets the "a member left your group" notice. |
+| `leave_demo_counsellor` | Dr. Leo Counsellor, the group's active counsellor. Gets the "a member left" notice; can't leave as a member. |
+| `leave_demo_anonymous_member` | Ada Hidden, a current member who joined **anonymously** -- shown to others as "Anonymous", and named that way in the leave notice. Can leave. |
+| `leave_demo_minor_member` | Milo Minor, 15, a current member (`was_minor_at_join` set) with guardian `leave_demo_guardian`. Leaving tells the guardian in neutral wording. |
+| `leave_demo_guardian` | Gail Guardian, `leave_demo_minor_member`'s guardian. |
+| `leave_demo_former_member` | Felix Former, **left three days ago** (`left_at` set). Their message in the session stays, shown as anonymous. Opening the (private) group shows only a "You left this group" box: report the group, or "ask to join again" (sends a membership request, since the group needs approval). Can't become one of its counsellors. |
+| `leave_demo_invitee` | Ivy Invitee, not in the group -- use the seeded **member link** as her (`/links/{uuid}`). |
+| `leave_demo_link_counsellor` | Dr. Lara Linkcounsellor, a verified counsellor not in the group -- use the seeded **counsellor link** as her. |
+
+The two links' uuids (each works once). In the current local database (group id 16, restored
+2026-11-05 after QA) they are:
+- member link: `http://localhost:8000/links/61daf278-476b-40fd-b722-71f70d9f5fd7`
+- counsellor link: `http://localhost:8000/links/092b478b-cb3d-43f4-b41e-16bcf95602d3`
+
+A fresh seed makes new ones; print them with:
+```bash
+docker compose exec -u www-data -e HOME=/tmp php php artisan tinker --execute='
+$g = App\Models\GroupTherapy::where("name", "Leave Demo Group Therapy")->first();
+echo "group {$g->id}\n";
+App\Models\Link::where("for_type", App\Models\GroupTherapy::class)->where("for_id", $g->id)->get()->each(fn ($l) => print("{$l->type} {$l->state} http://localhost:8000/links/{$l->uuid}\n"));'
+```
+To put the demo back without a full reseed (the group private and PAID, the seeded memberships and
+payments, fresh links), use the seeder's own helpers from tinker:
+`DatabaseSeeder::LEAVE_DEMO_PAYMENT_DATA`, `(new DatabaseSeeder)->seedLeaveDemoMemberships(...)` and
+`->seedLeaveDemoLinks($group, $creator)`, after deactivating the old links.
+
+See `documentation/features/scrum-73-leave-group-therapy.md`.

@@ -453,7 +453,7 @@ const visibleConfidentialCount = computed(() =>
                 <div v-if="report.accessLog.length === 0" class="mt-2 text-sm text-gray-500 italic">No one has read the conversation.</div>
                 <ol v-else class="mt-3 space-y-2 text-sm">
                     <li v-for="access in report.accessLog" :key="access.id" class="border-l-2 border-purple-200 pl-3">
-                        <div class="text-gray-900">{{ access.admin }} read session #{{ access.sessionId }}</div>
+                        <div class="text-gray-900">{{ access.admin }} read {{ access.sessionName ? `the session '${access.sessionName}'` : 'a session' }}</div>
                         <div class="text-xs text-gray-500">{{ formatDate(access.at) }}</div>
                         <p class="mt-1 text-gray-700">{{ access.reason }}</p>
                     </li>

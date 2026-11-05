@@ -35,13 +35,14 @@ class MessageResource extends JsonResource
         // never masked -- confirmed Discussion messages can *only* ever come from a counsellor, so
         // `$message->for instanceof Session` also naturally excludes Discussion without needing an
         // extra type check), is computed live from the therapy (SCRUM-380:
-        // TherapyTrait::hidesIdentityOf(), so someone who has left the group is masked too) rather
-        // than a stored snapshot, and never applies when the viewer is the sender themselves.
+        // TherapyTrait::hidesIdentityOf(), so someone who has left the group is masked too), and
+        // never applies when the viewer is the sender themselves. SCRUM-73: OR the snapshot taken
+        // when it was sent (sender_anonymous), so a message sent anonymously is never unmasked --
+        // not even after its sender rejoins the group as named.
         $fromUser = $fromCounsellor ? null : $message->from;
         $isAnonymousSender = $fromUser
-            && $message->for instanceof Session
-            && $message->for->hidesIdentityOf($fromUser)
-            && ! $fromUser->is($viewer);
+            && ! $fromUser->is($viewer)
+            && ($message->sender_anonymous || ($message->for instanceof Session && $message->for->hidesIdentityOf($fromUser)));
 
         // fromUserId is never displayed as a name in the frontend -- it only drives equality
         // checks against the viewer's own id (own-message layout/edit/delete). Nulling it for a
@@ -51,12 +52,11 @@ class MessageResource extends JsonResource
 
         // SCRUM-195 (security review): the recipient's id gets the same masking as the sender's --
         // a counsellor writing to an anonymous member must not reveal that member's real user id to
-        // the rest of the group.
+        // the rest of the group. SCRUM-73: snapshot OR live rule, as for the sender.
         $toUser = $message->to_type === User::class ? $message->to : null;
         $isAnonymousRecipient = $toUser
-            && $message->for instanceof Session
-            && $message->for->hidesIdentityOf($toUser)
-            && ! $toUser->is($viewer);
+            && ! $toUser->is($viewer)
+            && ($message->recipient_anonymous || ($message->for instanceof Session && $message->for->hidesIdentityOf($toUser)));
         $toId = $isAnonymousRecipient ? null : $message->recipientUserId();
         $recipient = $isAnonymousRecipient
             ? ['toUserId' => null]

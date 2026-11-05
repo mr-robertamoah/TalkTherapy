@@ -9932,3 +9932,145 @@ therapy 18 after the last QA pass.
   - **Requests modal:** fixed a crash when a super admin who counsels the minor opened it, because a
     masked request has no `for`.
   - **Mobile:** the group-video consent note wraps on phones.
+
+## SCRUM-73 + 383 + 384 — leave a group, group links, review clean-ups (2026-11-05)
+
+- **User decisions:**
+  - **Group links:** "invite a counsellor" and a new "invite a member" link both work. The "group
+    admin" link is switched off at creation and when used, because the app has no group-admin
+    role.
+  - **Member links:** a member link skips the creator's approval, since the creator issued it. The
+    invitee confirms on the group page and chooses anonymity before joining. Each link works once.
+  - **A leaver's messages** stay in the chat, shown as anonymous. Anything sent anonymously stays
+    anonymous forever, even after rejoining as named, as with comments. A
+    `messages.sender_anonymous` snapshot is stored when a message is sent, and the display rule is
+    that snapshot OR the live rule.
+  - **Who is told:** the creator and counsellors, with the name the group shows. A minor's
+    guardians are told in neutral wording.
+  - **Rejoining and payments:** rejoining follows the normal join rules. Nothing is refunded
+    automatically: the usual refund request still works, and an earlier payment that wasn't refunded
+    still counts on rejoin.
+- **Defaults approved with the plan:**
+  - The creator can't leave; they end or delete the group instead.
+  - Nobody can leave a group that has already ended.
+  - A leaver loses the group's history unless the group is public.
+  - On rejoin, the original join date counts for free history.
+  - `was_minor_at_join` sticks on rejoin.
+  - Former memberships count for the dob-change rule.
+  - An immediate join now alerts a minor's guardians too, a behaviour change.
+- **Design:**
+  - Leaving sets `group_therapy_user.left_at`. `users()` is current members only; a separate
+    `allMemberships()` keeps former members for history.
+  - Every way of joining (the join button, an accepted request, a member link) uses one
+    add-member step, and both counsellor routes use one add-counsellor step.
+  - Leaving locks the group, then the user.
+  - Group links lock the link, then the group, then the request.
+- **SCRUM-384 calls (mine):**
+  - **Requests list:** loads each page of requests with a fixed number of queries; the count is
+    pinned by a test.
+  - **"Is this admin involved with the minor?"** That check runs once per admin and minor instead of
+    once per row. A super admin who is also a counsellor still costs a few queries per distinct
+    minor.
+  - **Group members for masking:** the group's full member list is loaded, so an anonymous
+    creator's membership is never missed.
+  - **Admin page paging:** "Paused now" uses its own `pausedPage`; the exceptions list keeps
+    `page`.
+  - **"No longer needed" list:** requests for a minor whose account was deleted, who turned 18, has
+    a guardian, or has an exception in force.
+  - **The 30-day limit** reaches the forms through page and resource props, not a value shared on
+    every page.
+  - **End date:** the field is called `endsAt` everywhere.
+  - **Closed accounts:** counsellors' stored notices now carry an opaque `wardRef` (an HMAC with
+    the app key), so anonymising an account can change `clientName` to "a closed account".
+    Rotating `APP_KEY` stops that matching for older notices.
+  - **The dob-change form** wasn't split out: RequestBadge has no such form.
+  - **Monitoring:** notes are in `documentation/operations/monitoring.md`.
+- **SCRUM-73/383 implementation calls (mine):**
+  - **Suspended members can leave:** the leave route is allowed for a suspended account
+    (`EnsureAccountIsNotSuspended::ALLOWED_ROUTES`), the same as during a pause.
+  - **Order of leave checks:** creator → not a member → already left → ended. The membership check
+    comes before the ended check, so a stranger can't learn a private group's status.
+  - **Counsellor links:** these are also single use, like the 1:1 counsellor link.
+  - **Member-link joins:**
+    - The joiner's pending membership request closes as "Closed" ("Joined through an invitation
+      link.").
+    - Accepting a request for a group that has since ended rejects it with a reason.
+  - **Invitation view (corrected after the security review):** someone holding a valid member
+    link gets a reduced preview of a private group: name, about, cases and counts. The creator is
+    masked unless they created the group through a counsellor profile, and only active counsellors
+    are listed, by their public name. The invitation is one more grant in the normal access check,
+    and it isn't usable for an ended group or a paused creator.
+  - **Leaver's page:** it always goes home after leaving, even for a public group.
+  - **Guardian notices:** the "joined" notice to a guardian reads "joined" for direct and link
+    joins, and "accepted" for an approved request.
+  - **Live refresh:** leaving and joining both send the members-changed refresh (after review).
+  - **Writes to the membership table** go through `allMemberships()`, because `users()` filters out
+    former members and would silently skip their rows.
+- **Former members can report (user, 2026-11-05):** someone who has left a group can still report
+  the group, its sessions and its messages. Admins see them as a "former member". They reach the
+  report button from a minimal "You left this group" view, which shows no content.
+- **Review fixes (mine):**
+  - A former member can't become one of that group's counsellors, the cautious choice.
+  - Invitation and former-member viewers get a reduced preview of the group. The creator is masked
+    unless they are a counsellor profile, and only active counsellors are listed, by their public
+    counsellor name. A usable invitation is one more grant inside the normal access check. It isn't
+    usable for an ended group or a paused creator.
+  - A `messages.recipient_anonymous` snapshot is added, so messages sent to an anonymous member stay
+    masked after they rejoin as named.
+  - Notices about a member leaving get the same closed-account name clean-up as the other notices.
+  - Joining is throttled.
+  - Joins also refresh other members' pages live.
+- **IDs in user-facing text (user, 2026-11-05):** messages and alerts that refer to records by ID
+  get swept across the app as SCRUM-385, in this PR.
+- **Review-fix calls (mine):**
+  - **Former-member reporting:** this covers the group and its sessions. Messages aren't reportable
+    on their own in this app; they're reported through their session or group.
+  - **Session masking:** `sessions.updatedby_anonymous` was added alongside
+    `messages.recipient_anonymous`, so a member who changed a session's status stays masked after
+    rejoining as named.
+  - **Preview counsellors:** each one carries their counsellor id, so the report form can name
+    them. Counsellor ids are already public on profiles.
+  - **Former members' view of the group:**
+    - A former member of a private group gets the preview with a "You left this group" box, which
+      offers report and rejoin.
+    - A former member of a public group sees the normal page with that box.
+  - **Duplicate guardian alerts:** accepting a request for someone who is already a member no
+    longer sends a second guardian alert.
+  - **Closed-account names:** the rename also matches refs made under previous app keys
+    (`APP_PREVIOUS_KEYS`).
+  - **Closing safeguarding requests:**
+    - A super admin can close a request whose minor's account is gone.
+    - That rejection, a rejection from the "no longer needed" list, and leaving the group all use
+      the "no longer needed, so it has been closed" wording.
+  - **Leaver's live connection (revised after testing on the running stack):** this is not
+    closed from the server.
+    - Reverb 1.10's terminate-connections endpoint fails (500) whenever the user also holds a
+      private channel, which is always the case here (`users.{id}`), so the call was removed.
+    - The leaver's page drops its channels when it gets `group-therapy.left`.
+    - A deliberately modified client can keep existing subscriptions until it disconnects. That
+      gives the group's presence roster (display names) and id-only "a message arrived"
+      announcements, never message content, because messages are announced and fetched under
+      access checks (SCRUM-366).
+    - Accepted, and tracked in SCRUM-386.
+  - **End group therapy:** the button now shows only to the group's creator. The server already
+    refused everyone else.
+  - **Deleted-person wording:** "a deleted account" is kept for deleted staff and reporter names
+    outside safeguarding.
+  - **Query-count test:** the list-page test was dropped, because group lists use the Mini resource.
+    Its per-group queries are ticketed separately.
+- **SCRUM-385, IDs in user-facing text (mine):**
+  - **Access refusals:** these now read "You are not allowed to access this therapy." or "...this
+    group therapy.", with no name and no id.
+  - **Org billing labels:** these never show names that clients write. They read:
+    - "Therapy with {counsellor}";
+    - "Group therapy (started {date})";
+    - "Session on {date}".
+  - **Admin read logs:**
+    - show the subject's name ("Therapy: …", "A message in …", "A licence", "A verification
+      request"), with "a deleted {type}" as the fallback;
+    - show the file's name;
+    - show the session's name in a report's access log.
+  - **Report numbers:** "Report #12" stays, as the case reference.
+  - **Form errors:** validation messages use plain field names.
+  - **Requests modal (user):** the line under a Pending chip is removed, except "It is waiting
+    for review." for an involved admin.

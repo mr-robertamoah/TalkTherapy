@@ -59,7 +59,7 @@ class AdminReportController extends Controller
                 ->with('message', $this->messageFor($th, $this->statusFor($th)));
         }
 
-        $model->load(['confidentialAccesses' => fn ($q) => $q->whereNull('message_id')->with('admin')])
+        $model->load(['confidentialAccesses' => fn ($q) => $q->whereNull('message_id')->with(['admin', 'session:id,name'])])
             ->loadCount(['confidentialAccesses as confidential_reads_count' => fn ($q) => $q->whereNotNull('message_id')->whereNull('file_id')]);
 
         return Inertia::render('Admin/ReportShow', [

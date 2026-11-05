@@ -5,7 +5,9 @@ namespace App\Notifications;
 use App\Models\GroupTherapy;
 use App\Models\SafeguardingException;
 use App\Models\Therapy;
+use App\Models\User;
 use App\Support\TherapyLink;
+use App\Support\WardRef;
 use Carbon\CarbonInterface;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -25,12 +27,18 @@ class TherapyContinuationNotification extends Notification implements ShouldQueu
 
     public const ENDING_SOON = 'ending_soon';
 
+    // SCRUM-384: on a counsellor's copy, the minor as an opaque WardRef (never their id), so
+    // anonymising their closed account can replace $clientName in the stored notice.
+    private ?string $wardRef = null;
+
     public function __construct(
         private string $kind,
         private CarbonInterface $endsAt,
         private Therapy|GroupTherapy|null $therapy = null,
         private ?string $clientName = null,
+        ?User $ward = null,
     ) {
+        $this->wardRef = $ward && $therapy ? WardRef::of($ward) : null;
         $this->afterCommit();
     }
 
@@ -72,6 +80,7 @@ class TherapyContinuationNotification extends Notification implements ShouldQueu
             'type' => "guardian_access.continuation_{$this->kind}",
             ...($this->therapy ? TherapyLink::ids($this->therapy) : []),
             'clientName' => $this->clientName,
+            WardRef::KEY => $this->wardRef,
             'endsAt' => $this->endsAt->toJSON(),
         ]);
     }

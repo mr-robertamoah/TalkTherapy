@@ -29,6 +29,7 @@ use App\Models\CounsellorPayout;
 use App\Models\GroupTherapy;
 use App\Models\Guardianship;
 use App\Models\License;
+use App\Models\Link;
 use App\Models\Message;
 use App\Models\Organization;
 use App\Models\OrganizationInvoice;
@@ -203,9 +204,123 @@ class DatabaseSeeder extends Seeder
         // SCRUM-381: a pending counsellor request for a safeguarding exception (for paused_minor), and
         // a second minor carrying on under one that ends in two days.
         $this->createSafeguardingExceptionDemoData($superAdmin);
+        // SCRUM-73/383: a group to leave (an anonymous member and a minor member who can, and a
+        // former member), with an active member link and counsellor link and someone to use each.
+        $this->createLeaveGroupDemoData();
         // SCRUM-382: an adult who hasn't set a date of birth yet -- kept without one (below).
         $this->createNoDobDemoData();
         $this->giveDemoAdultsADateOfBirth();
+    }
+
+    // SCRUM-73/383: "Leave Demo Group Therapy" -- private and PAID (each seeded member has paid),
+    // needs approval to join (so a rejoin asks again), created by leave_demo_creator and run by leave_demo_counsellor. Current members:
+    // leave_demo_anonymous_member (anonymous) and leave_demo_minor_member (15, guardian
+    // leave_demo_guardian). leave_demo_former_member left three days ago, after an anonymous message.
+    // One active member link (for leave_demo_invitee) and one active counsellor link (for
+    // leave_demo_link_counsellor). All passwords: "password".
+    public function createLeaveGroupDemoData(): void
+    {
+        $person = fn (string $username, string $first, string $last, array $extra = []) => User::factory()->adult()->create(array_merge([
+            'firstName' => $first,
+            'lastName' => $last,
+            'email' => str_replace('_', '.', $username).'@example.com',
+            'username' => $username,
+            'password' => Hash::make('password'),
+            'email_verified_at' => now(),
+            'dob' => now()->subYears(30)->toDateString(),
+        ], $extra));
+
+        $counsellorOf = fn (User $user, string $name) => $user->counsellor()->create([
+            'name' => $name,
+            'about' => 'Seeded counsellor for the leave-a-group and group-link demo (SCRUM-73/383).',
+            'email' => $user->email,
+            'phone' => fake()->phoneNumber(),
+            'verified_at' => now(),
+            'email_verified_at' => now(),
+            'profession_id' => rand(1, 10),
+            'contact_visible' => true,
+        ]);
+
+        $creator = $person('leave_demo_creator', 'Lena', 'Creator');
+        $counsellor = $counsellorOf($person('leave_demo_counsellor', 'Leo', 'Counsellor'), 'Dr. Leo Counsellor');
+        $linkCounsellor = $counsellorOf($person('leave_demo_link_counsellor', 'Lara', 'Linkcounsellor'), 'Dr. Lara Linkcounsellor');
+        $anonymousMember = $person('leave_demo_anonymous_member', 'Ada', 'Hidden');
+        $formerMember = $person('leave_demo_former_member', 'Felix', 'Former');
+        $person('leave_demo_invitee', 'Ivy', 'Invitee');
+        $guardian = $person('leave_demo_guardian', 'Gail', 'Guardian');
+        $minor = $person('leave_demo_minor_member', 'Milo', 'Minor', ['dob' => now()->subYears(15)->toDateString()]);
+        Guardianship::query()->create(['guardian_id' => $guardian->id, 'ward_id' => $minor->id, 'ward_was_minor_at_creation' => true]);
+
+        $group = $creator->addedGroupTherapies()->create([
+            'name' => 'Leave Demo Group Therapy',
+            'about' => 'Seeded group for trying leaving a group, rejoining, and member/counsellor invitation links (SCRUM-73/383).',
+            'session_type' => 'Periodic',
+            // PAID: a FREE group must be public (EnsureTherapyDataIsValidAction), so editing a FREE
+            // private one was refused. No strict payment gate, so a new member can still open it.
+            'payment_type' => 'PAID',
+            'payment_data' => self::LEAVE_DEMO_PAYMENT_DATA,
+            'max_users' => 5,
+            'max_counsellors' => 2,
+            'allow_anyone' => false,
+            'anonymous' => false,
+            'public' => false,
+            'status' => 'IN_SESSION',
+            'client_was_minor_at_creation' => false,
+        ]);
+        $group->counsellors()->attach($counsellor->id, ['state' => 'ACTIVE', 'role' => 'NORMAL']);
+
+        $this->seedLeaveDemoMemberships($group, $anonymousMember, $minor, $formerMember);
+
+        $session = $this->seedSession($counsellor, $group, [
+            'name' => 'Leave Demo Session',
+            'about' => 'Seeded earlier session, with a message from the member who has since left.',
+            'start_time' => now()->subDays(4),
+            'end_time' => now()->subDays(4)->addHour(),
+            'type' => 'online',
+            'status' => 'HELD',
+        ]);
+
+        foreach ([[$counsellor, 'Welcome, everyone.', false, 1], [$formerMember, 'Thanks -- this helped me a lot.', true, 3], [$anonymousMember, 'Glad to be here.', true, 5]] as [$from, $content, $masked, $minutes]) {
+            $message = new Message(['content' => $content, 'type' => 'NORMAL', 'status' => 'SENT', 'confidential' => false]);
+            $message->from()->associate($from);
+            $message->for()->associate($session);
+            $message->sender_anonymous = $masked;
+            $message->created_at = $session->start_time->copy()->addMinutes($minutes);
+            $message->save();
+        }
+
+        $this->seedLeaveDemoLinks($group, $creator);
+    }
+
+    public const LEAVE_DEMO_PAYMENT_DATA = ['amount' => 50, 'currency' => 'USD', 'per' => 'PER_THERAPY', 'sharePercentage' => 70];
+
+    // The demo group's members as seeded: two current ones, and one who left three days ago (each
+    // with a SUCCESS payment for the group). Also used to put a local demo back as it was.
+    public function seedLeaveDemoMemberships(GroupTherapy $group, User $anonymousMember, User $minor, User $formerMember): void
+    {
+        $group->allMemberships()->syncWithoutDetaching([
+            $anonymousMember->id => ['anonymous' => true, 'was_minor_at_join' => false, 'left_at' => null],
+            $minor->id => ['anonymous' => false, 'was_minor_at_join' => true, 'left_at' => null],
+            $formerMember->id => ['anonymous' => true, 'was_minor_at_join' => false, 'left_at' => now()->subDays(3)],
+        ]);
+
+        foreach ([$anonymousMember, $minor, $formerMember] as $member) {
+            Transaction::query()->firstOrCreate(
+                ['for_type' => GroupTherapy::class, 'for_id' => $group->id, 'user_id' => $member->id, 'status' => TransactionStatusEnum::success->value],
+                ['reference' => 'leave_demo_'.fake()->unique()->uuid(), 'amount' => 5000, 'currency' => 'USD'],
+            );
+        }
+    }
+
+    // One active member link and one active counsellor link from the creator (each works once).
+    public function seedLeaveDemoLinks(GroupTherapy $group, User $creator): void
+    {
+        foreach (['GROUP_THERAPY_PARTICIPANT', 'GROUP_THERAPY_COUNSELLOR'] as $type) {
+            $link = new Link(['type' => $type, 'state' => 'ACTIVE', 'uuid' => (string) Str::uuid()]);
+            $link->addedby()->associate($creator);
+            $link->for()->associate($group);
+            $link->save();
+        }
     }
 
     // SCRUM-382: a verified adult-intent account with no date of birth and no therapy, so the "set your

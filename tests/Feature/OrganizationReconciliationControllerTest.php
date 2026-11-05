@@ -48,8 +48,8 @@ test('an org admin can load the reconciliation page', function () {
     );
 });
 
-// Security-engineer finding: subjectLabel must be an opaque "Therapy #<id>" reference, NEVER the
-// therapy's own client-authored `name` -- a real anonymity/content leak to a viewer (an org
+// Security-engineer finding: subjectLabel must never be the therapy's own client-authored `name`
+// (SCRUM-385: it names the counsellor instead of a raw "#<id>") -- a real anonymity/content leak to a viewer (an org
 // billing admin) with no other legitimate route to therapy content at all.
 test('a financed transaction row exposes an opaque subject label, never the therapy\'s own client-authored name', function () {
     [$organization, $owner] = anOrgAdmin();
@@ -85,7 +85,8 @@ test('a financed transaction row exposes an opaque subject label, never the ther
     $response->assertInertia(function ($page) use ($therapy) {
         $row = collect($page->toArray()['props']['financedTransactions']['data'])->first();
 
-        expect($row['subjectLabel'])->toBe("Therapy #{$therapy->id}");
+        expect($row['subjectLabel'])->toBe('Therapy with Jane Counsellor');
+        expect($row['subjectLabel'])->not->toContain((string) $therapy->id);
         expect($row['subjectLabel'])->not->toContain('Anxiety Support');
         // The counsellor's own name is professional/public info -- not a client-anonymity concern.
         expect($row['counsellorName'])->toBe('Jane Counsellor');
@@ -99,7 +100,7 @@ test('a financed transaction row exposes an opaque subject label, never the ther
 test('a retainer invoice row exposes its lines with an opaque session label, never the session\'s own client-authored name', function () {
     [$organization, $owner] = anOrgAdmin();
     $counsellor = Counsellor::factory()->create(['user_id' => User::factory(), 'name' => 'Jane Counsellor']);
-    $session = Session::factory()->create(['name' => 'My private struggle with anxiety']);
+    $session = Session::factory()->create(['name' => 'My private struggle with anxiety', 'start_time' => '2026-02-03 10:00:00']);
     $invoice = OrganizationInvoice::factory()->create([
         'organization_id' => $organization->id,
         'status' => OrganizationInvoiceStatusEnum::settled->value,
@@ -117,13 +118,13 @@ test('a retainer invoice row exposes its lines with an opaque session label, nev
 
     $response = $this->get(route('organizations.reconciliation', ['organizationId' => $organization->id]));
 
-    $response->assertInertia(function ($page) use ($session) {
+    $response->assertInertia(function ($page) {
         $invoiceRow = collect($page->toArray()['props']['retainerInvoices']['data'])->first();
 
         expect($invoiceRow['status'])->toBe(OrganizationInvoiceStatusEnum::settled->value);
         expect($invoiceRow['amount'])->toBe(5500);
         $line = collect($invoiceRow['lines'])->first();
-        expect($line['sessionLabel'])->toBe("Session #{$session->id}");
+        expect($line['sessionLabel'])->toBe('Session on 3 Feb 2026');
         expect($line['sessionLabel'])->not->toContain('anxiety');
         expect($line['counsellorName'])->toBe('Jane Counsellor');
         expect($line['netAmount'])->toBe(5000);
@@ -167,19 +168,55 @@ test('a settlement transaction (for an OrganizationInvoice) is excluded from the
 
 test('a GroupTherapy financed transaction shows no counsellor (org billing was never built for group therapies)', function () {
     [$organization, $owner] = anOrgAdmin();
-    $groupTherapy = GroupTherapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => User::factory(), 'name' => 'Group Session']);
+    $groupTherapy = GroupTherapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => User::factory(), 'name' => 'Group Session', 'created_at' => '2026-01-15 09:00:00']);
     Transaction::factory()->create(['for_type' => GroupTherapy::class, 'for_id' => $groupTherapy->id, 'organization_id' => $organization->id]);
 
     $this->actingAs($owner);
 
     $response = $this->get(route('organizations.reconciliation', ['organizationId' => $organization->id]));
 
-    $response->assertInertia(function ($page) use ($groupTherapy) {
+    $response->assertInertia(function ($page) {
         $row = collect($page->toArray()['props']['financedTransactions']['data'])->first();
 
         expect($row['subjectType'])->toBe('GroupTherapy');
-        expect($row['subjectLabel'])->toBe("Group Therapy #{$groupTherapy->id}");
+        expect($row['subjectLabel'])->toBe('Group therapy (started 15 Jan 2026)');
+        expect($row['subjectLabel'])->not->toContain('Group Session');
         expect($row['counsellorName'])->toBeNull();
+    });
+});
+
+// SCRUM-385: the fallbacks when there is no counsellor / no session date to name.
+test('a financed therapy with no counsellor is labelled plainly "Therapy"', function () {
+    [$organization, $owner] = anOrgAdmin();
+    $therapy = Therapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => User::factory(), 'counsellor_id' => null, 'name' => 'Secret name']);
+    Transaction::factory()->create(['for_type' => Therapy::class, 'for_id' => $therapy->id, 'organization_id' => $organization->id]);
+
+    $this->actingAs($owner);
+
+    $response = $this->get(route('organizations.reconciliation', ['organizationId' => $organization->id]));
+
+    $response->assertInertia(function ($page) {
+        $row = collect($page->toArray()['props']['financedTransactions']['data'])->first();
+
+        expect($row['subjectLabel'])->toBe('Therapy');
+    });
+});
+
+test('an invoice line whose session was soft-deleted still shows the session date', function () {
+    [$organization, $owner] = anOrgAdmin();
+    $session = Session::factory()->create(['start_time' => '2026-03-09 14:00:00']);
+    $invoice = OrganizationInvoice::factory()->create(['organization_id' => $organization->id]);
+    OrganizationInvoiceLine::factory()->create(['organization_invoice_id' => $invoice->id, 'session_id' => $session->id]);
+    $session->delete();
+
+    $this->actingAs($owner);
+
+    $response = $this->get(route('organizations.reconciliation', ['organizationId' => $organization->id]));
+
+    $response->assertInertia(function ($page) {
+        $line = collect($page->toArray()['props']['retainerInvoices']['data'][0]['lines'])->first();
+
+        expect($line['sessionLabel'])->toBe('Session on 9 Mar 2026');
     });
 });
 

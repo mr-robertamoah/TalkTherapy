@@ -14,7 +14,7 @@ use App\Models\GroupTherapy;
 use App\Models\Guardianship;
 use App\Models\Request as RequestModel;
 use App\Models\User;
-use App\Notifications\GroupTherapyMembershipRequestAcceptedGuardianNotification;
+use App\Notifications\GroupTherapyMemberJoinedGuardianNotification;
 use App\Notifications\GroupTherapyMembershipRequestAcceptedNotification;
 use App\Notifications\GroupTherapyMembershipRequestRejectedNotification;
 use App\Notifications\GroupTherapyMembershipRequestSentNotification;
@@ -387,7 +387,7 @@ test('a minor with a guardian can request to join, and accepting it alerts the g
     expect($groupTherapy->users()->whereKey($minor->id)->exists())->toBeTrue();
     expect((bool) $groupTherapy->users()->whereKey($minor->id)->first()->pivot->was_minor_at_join)->toBeTrue();
 
-    Notification::assertSentTo($guardian, GroupTherapyMembershipRequestAcceptedGuardianNotification::class);
+    Notification::assertSentTo($guardian, GroupTherapyMemberJoinedGuardianNotification::class);
 });
 
 // HTTP-level coverage for the Controller -> Service -> Action -> DTO wiring.

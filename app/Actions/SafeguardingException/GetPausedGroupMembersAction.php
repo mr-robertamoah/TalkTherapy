@@ -39,8 +39,8 @@ class GetPausedGroupMembersAction extends Action
 
         $requested = Request::query()
             ->pendingSafeguardingException(for: $group)
-            ->get(['id', 'data'])
-            ->map(fn (Request $request) => (int) ($request->data['wardId'] ?? 0));
+            ->get(['id', 'type', 'data'])
+            ->map(fn (Request $request) => $request->safeguardingWardId());
 
         return $paused->map(fn (array $member) => [
             ...$member,

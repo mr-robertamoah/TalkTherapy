@@ -25,10 +25,13 @@ class Session extends Model
         'updatedby_type', 'updatedby_id',
     ];
 
+    // SCRUM-73: updatedby_anonymous is a snapshot set with updatedby (ChangeSessionStatusAction) --
+    // deliberately not fillable.
     protected $casts = [
         'end_time' => 'datetime',
         'start_time' => 'datetime',
         'ended_at' => 'datetime',
+        'updatedby_anonymous' => 'boolean',
     ];
 
     public function therapy()

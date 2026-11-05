@@ -38,4 +38,16 @@ class CreateMessageRequest extends FormRequest
             'forType' => ['required', 'string', Rule::in(['Discussion', 'Session'])],
         ];
     }
+
+    // SCRUM-385: name these fields in plain words in the default messages, not "the reply id".
+    public function attributes(): array
+    {
+        return [
+            'replyId' => 'reply',
+            'topicId' => 'topic',
+            'fromId' => 'sender',
+            'toId' => 'recipient',
+            'forId' => 'therapy',
+        ];
+    }
 }

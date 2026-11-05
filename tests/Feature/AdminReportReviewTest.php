@@ -487,3 +487,14 @@ test('the database itself refuses to change or remove an access record', functio
         ->toThrow(QueryException::class, 'append-only')
         ->and(ConfidentialMessageAccess::query()->first()->reason)->toBe('Reviewing the abuse complaint');
 })->group('mysql-triggers');
+
+// SCRUM-385: the access log names the session read, not "session #12".
+test('the conversation access log names the session that was read', function () {
+    $g = arrGroupReport(['userId' => null]);
+    $g['session']->update(['name' => 'Weekly check-in']);
+    $admin = arrAdmin();
+    ConfidentialMessageAccess::record($g['report'], $admin, $g['session']->id, 'Reviewing the abuse complaint');
+
+    $this->actingAs($admin)->get(route('administrator.reports.show', ['report' => $g['report']->id]))->assertOk()
+        ->assertInertia(fn ($page) => $page->where('report.accessLog.0.sessionName', 'Weekly check-in'));
+});

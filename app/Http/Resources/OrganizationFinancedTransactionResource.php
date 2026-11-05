@@ -14,7 +14,8 @@ use Illuminate\Http\Resources\Json\JsonResource;
 // legitimate need for clinical content, only "which engagement, which counsellor, how much" (the
 // same data-minimization call already made for OrganizationMemberResource, SCRUM-159).
 //
-// Security-engineer finding: `subjectLabel` is deliberately an opaque "Therapy #<id>" reference,
+// Security-engineer finding: `subjectLabel` is deliberately built from system/professional data
+// only (SCRUM-385: the counsellor's name, or a group's start date -- no longer a raw "#<id>"),
 // NEVER the therapy's own `name` -- that field is client-authored free text (typed in the same
 // form step as background_story), not a system-generated label, and this org-billing admin is a
 // genuinely new category of viewer with no other route to ever see therapy content at all (unlike
@@ -45,9 +46,7 @@ class OrganizationFinancedTransactionResource extends JsonResource
             'id' => $this->id,
             'reference' => $this->reference,
             'subjectType' => $subject instanceof GroupTherapy ? 'GroupTherapy' : ($subject instanceof Therapy ? 'Therapy' : null),
-            'subjectLabel' => $subject instanceof GroupTherapy
-                ? "Group Therapy #{$subject->id}"
-                : ($subject instanceof Therapy ? "Therapy #{$subject->id}" : null),
+            'subjectLabel' => $this->subjectLabel($subject),
             // The counsellor's own name is professional/public information (already shown
             // throughout this org's existing dashboard, e.g. CounsellorsSection.vue) -- unlike the
             // client-authored subjectLabel above, this is not a client-anonymity concern. Only
@@ -63,5 +62,18 @@ class OrganizationFinancedTransactionResource extends JsonResource
             'payoutStatus' => $earning instanceof CounsellorEarning ? $earning->payout?->status : null,
             'createdAt' => $this->created_at,
         ];
+    }
+
+    private function subjectLabel(Therapy|GroupTherapy|null $subject): ?string
+    {
+        if ($subject instanceof GroupTherapy) {
+            return 'Group therapy (started '.$subject->created_at->format('j M Y').')';
+        }
+
+        if ($subject instanceof Therapy) {
+            return $subject->counsellor ? "Therapy with {$subject->counsellor->name}" : 'Therapy';
+        }
+
+        return null;
     }
 }

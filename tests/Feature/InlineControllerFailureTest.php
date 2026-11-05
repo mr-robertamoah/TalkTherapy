@@ -64,7 +64,7 @@ test('createCounsellor answers a refused request with JSON carrying the domain m
 test('show sends an unknown counsellor back home with the message', function () {
     $this->get(route('counsellor.show', ['counsellorId' => 999999]))
         ->assertRedirect(route('home'))
-        ->assertSessionHas('message', 'Counsellor with the given id is nonexistent.');
+        ->assertSessionHas('message', 'This counsellor does not exist.');
 });
 
 test('updateCounsellor, verifyCounsellor and deleteCounsellor refuse someone else\'s profile with an alert', function () {

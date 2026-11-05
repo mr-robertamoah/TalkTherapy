@@ -187,7 +187,7 @@
                         title="copy"
                         class="cursor-pointer w-5 h-5 text-green-600"/>
                 </div>
-                <div class="text-sm text-center w-[90%] mx-auto text-blue-600">talktherapy.tech/posts/{{ post.id }}</div>
+                <div class="text-sm text-center w-[90%] mx-auto text-blue-600">{{ postUrl }}</div>
                 <div v-if="copying" class="text-xs text-gray-600 my-2 text-end w-full">{{ copying }}</div>
             </div>
         </div>
@@ -258,6 +258,8 @@ watchEffect(() => {
 })
 
 // SCRUM-355: the server says whether you liked it; it never sends who did.
+// The app's own address, not a hard-coded domain, so a copied link works in every environment.
+const postUrl = computed(() => `${window.location.origin}${route('posts.get', { postId: props.post.id }, false)}`)
 const computedHasLiked = computed(() => !!usePage().props.auth.user && !!props.post?.isLiked)
 
 const computedIsAddedby = computed(() => {
@@ -277,7 +279,7 @@ function copyLink() {
     setTimeout(() => {
         copying.value = 'copied.'
     }, 1000)
-    navigator.clipboard.writeText(`www.talktherapy.tech/posts/${props.post.id}`)
+    navigator.clipboard.writeText(postUrl.value)
     setTimeout(() => {
         copying.value = ''
     }, 2000)

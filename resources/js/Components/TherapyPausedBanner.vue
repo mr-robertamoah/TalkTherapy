@@ -63,9 +63,10 @@
     </div>
 
     <SafeguardingExceptionRequestModal
-        v-if="therapy && !viewerPaused"
+        v-if="therapy?.safeguardingExceptionMaxDays && !viewerPaused"
         :show="!!requesting"
         :therapy-id="therapy.id"
+        :max-days="therapy.safeguardingExceptionMaxDays"
         :is-group="therapyType === 'group'"
         :member="requesting?.key ? requesting : null"
         @close="requesting = null"

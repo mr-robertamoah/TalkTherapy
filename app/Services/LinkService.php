@@ -12,11 +12,14 @@ use App\Actions\Link\EnsureLinkDataIsValidAction;
 use App\Actions\Link\EnsureLinkExistsAction;
 use App\Actions\Link\EnsureUserCanCreateLinkForAction;
 use App\Actions\Link\EnsureUserCanCreateOrganizationSelfApplyLinkAction;
+use App\Actions\Link\PerformGroupTherapyLinkAction;
 use App\Actions\Link\PerformLinkAction;
 use App\Actions\User\EnsureUserExistsAction;
 use App\DTOs\CreateLinkDTO;
 use App\DTOs\GetLinksDTO;
+use App\Enums\LinkTypeEnum;
 use App\Enums\PaginationEnum;
+use App\Exceptions\LinkException;
 use App\Http\Resources\LinkResource;
 use App\Models\Link;
 
@@ -31,6 +34,23 @@ class LinkService extends Service
         EnsureCanUseLinkAction::new()->execute($createLinkDTO);
 
         return PerformLinkAction::new()->execute($createLinkDTO);
+    }
+
+    // SCRUM-383: the invitee of a member invitation link confirms on the group's page (with their
+    // anonymity choice) -- opening the link only took them there.
+    public function joinGroupByLink(CreateLinkDTO $createLinkDTO)
+    {
+        EnsureUserExistsAction::new()->execute($createLinkDTO->user);
+
+        EnsureLinkExistsAction::new()->execute($createLinkDTO);
+
+        EnsureCanUseLinkAction::new()->execute($createLinkDTO);
+
+        if ($createLinkDTO->link->type !== LinkTypeEnum::groupTherapyParticipant->value) {
+            throw LinkException::inactive();
+        }
+
+        return PerformGroupTherapyLinkAction::new()->joinAsMember($createLinkDTO);
     }
 
     public function createLink(CreateLinkDTO $createLinkDTO)

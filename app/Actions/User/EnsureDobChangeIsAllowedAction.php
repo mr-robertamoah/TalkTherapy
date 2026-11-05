@@ -71,9 +71,11 @@ class EnsureDobChangeIsAllowedAction extends Action
                 ->where('from_id', $user->id)
                 ->exists()
             // Therapy::whereUser() is an exact-match scope for the client; GroupTherapy::whereUser()
-            // matches the creator and any member.
+            // matches the creator and any current member. SCRUM-73: a group they have left counts
+            // too, so leaving, editing the dob and rejoining can't get round this rule.
             || Therapy::query()->whereUser($user)->exists()
             || GroupTherapy::query()->whereUser($user)->exists()
+            || $user->allGroupTherapyMemberships()->exists()
             // SCRUM-381: a minor carrying on under a safeguarding exception is not paused, so the
             // line below wouldn't catch them -- any exception, ever, counts as a relationship.
             || $user->safeguardingExceptions()->exists()

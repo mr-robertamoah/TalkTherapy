@@ -10,6 +10,7 @@ use App\Actions\Request\EnsureRequestResponseReasonIsValidAction;
 use App\Actions\Request\EnsureUserCanRespondToRequestAction;
 use App\Actions\Request\GetPendingRefundRequestsForAdminAction;
 use App\Actions\Request\GetRequestResourceAction;
+use App\Actions\Request\PreloadRequestListAction;
 use App\Actions\Request\RespondToRequestAction;
 use App\Actions\Suspension\EnsureCanActAsCounsellorAction;
 use App\DTOs\GetVerificationRequestsDTO;
@@ -79,9 +80,10 @@ class RequestService extends Service
 
         $query->when($status, fn ($query) => $query->where('status', $status));
 
-        return RequestResource::collection($query->latest()->paginate(
+        // SCRUM-384: each row's `for`, and a safeguarding request's minor, loaded once for the page.
+        return RequestResource::collection(PreloadRequestListAction::new()->execute($query->latest()->paginate(
             PaginationEnum::preferencesPagination->value
-        ));
+        )));
     }
 
     public function getVerificationRequestsForCounsellors(GetVerificationRequestsDTO $getVerificationRequestsDTO)

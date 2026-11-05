@@ -16,7 +16,7 @@ use App\Models\GroupTherapy;
 use App\Models\Guardianship;
 use App\Models\Therapy;
 use App\Models\User;
-use App\Notifications\GroupTherapyMembershipRequestAcceptedGuardianNotification;
+use App\Notifications\GroupTherapyMemberJoinedGuardianNotification;
 use App\Notifications\TherapyAssistanceRequestAcceptedGuardianNotification;
 use App\Notifications\TherapyCreatedNotification;
 use App\Services\GroupTherapyService;
@@ -210,6 +210,6 @@ test('RespondToGroupTherapyMembershipRequestAction alerts based on the JOINING M
         ])
     );
 
-    Notification::assertNotSentTo($staleGuardian, GroupTherapyMembershipRequestAcceptedGuardianNotification::class);
-    Notification::assertNotSentTo($creatorGuardian, GroupTherapyMembershipRequestAcceptedGuardianNotification::class);
+    Notification::assertNotSentTo($staleGuardian, GroupTherapyMemberJoinedGuardianNotification::class);
+    Notification::assertNotSentTo($creatorGuardian, GroupTherapyMemberJoinedGuardianNotification::class);
 });

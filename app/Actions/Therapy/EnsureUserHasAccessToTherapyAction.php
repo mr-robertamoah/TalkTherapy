@@ -7,17 +7,26 @@ use App\Actions\Transaction\EnsureStrictPaymentGateSatisfiedAction;
 use App\DTOs\GetTherapyDTO;
 use App\Exceptions\TherapyAccessDeniedException;
 use App\Models\Discussion;
+use App\Models\Link;
 use App\Models\Request;
 
+// Returns null for full access. SCRUM-73/383: when the caller allows it ($getTherapyDTO->allowPreview,
+// the group's page only), someone with no other way into a private group may still see a reduced
+// preview of it (GroupTherapyPreviewResource) -- the returned PREVIEW_* says why: a usable member
+// invitation ($invitation, from FindUsableGroupInvitationAction), or having been a member.
 class EnsureUserHasAccessToTherapyAction extends Action
 {
-    public function execute(GetTherapyDTO $getTherapyDTO, string $type = 'therapy')
+    public const PREVIEW_INVITATION = 'invitation';
+
+    public const PREVIEW_FORMER_MEMBER = 'former_member';
+
+    public function execute(GetTherapyDTO $getTherapyDTO, string $type = 'therapy', ?Link $invitation = null): ?string
     {
         $therapy = $getTherapyDTO->$type;
         $user = $getTherapyDTO->user;
 
         if ($therapy->public) {
-            return;
+            return null;
         }
 
         // A guest (null user) can never satisfy any of the below checks -- isParticipant()
@@ -25,7 +34,7 @@ class EnsureUserHasAccessToTherapyAction extends Action
         // therapy would fail closed only by accident, via an uncaught TypeError the calling
         // controller's generic catch block happens to redirect (SCRUM-76).
         if (! $user) {
-            throw new TherapyAccessDeniedException("You are not allowed to access therapy with id: {$therapy->id}", 422);
+            throw new TherapyAccessDeniedException(self::deniedMessage($therapy), 422);
         }
 
         // SCRUM-219/TT-7.5a: the client (the therapy's own addedby) is the only participant ever
@@ -78,9 +87,28 @@ class EnsureUserHasAccessToTherapyAction extends Action
                 EnsureStrictPaymentGateSatisfiedAction::new()->execute($therapy, $user);
             }
 
-            return;
+            return null;
         }
 
-        throw new TherapyAccessDeniedException("You are not allowed to access therapy with id: {$therapy->id}", 422);
+        if ($therapy->is_group_therapy && $getTherapyDTO->allowPreview) {
+            if ($invitation) {
+                return self::PREVIEW_INVITATION;
+            }
+
+            if ($therapy->isFormerMember($user)) {
+                return self::PREVIEW_FORMER_MEMBER;
+            }
+        }
+
+        throw new TherapyAccessDeniedException(self::deniedMessage($therapy), 422);
+    }
+
+    // SCRUM-385: never name (or number) the therapy in the denial -- the caller isn't allowed to
+    // see it, so just say which kind of thing it was.
+    private static function deniedMessage($therapy): string
+    {
+        return $therapy->is_group_therapy
+            ? 'You are not allowed to access this group therapy.'
+            : 'You are not allowed to access this therapy.';
     }
 }

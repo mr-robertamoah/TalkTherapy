@@ -6,6 +6,10 @@ const props = defineProps({
   recentSessions: { default: null },
   recentTopics: { default: null },
   pendingRequest: { default: null },
+  pendingMembershipRequest: { default: null },
+  linkInvitation: { default: null },
+  preview: { default: null },
+  isFormerMember: { type: Boolean, default: false },
 });
 </script>
 
@@ -16,5 +20,9 @@ const props = defineProps({
     :recent-sessions="recentSessions"
     :recent-topics="recentTopics"
     :pending-request="pendingRequest"
+    :pending-membership-request="pendingMembershipRequest"
+    :link-invitation="linkInvitation"
+    :preview="preview"
+    :is-former-member="isFormerMember"
   />
 </template>

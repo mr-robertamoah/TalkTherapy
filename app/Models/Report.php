@@ -108,9 +108,9 @@ class Report extends Model
     // SCRUM-340: an admin who is the reporter, the reported person, the author of a reported post,
     // or a participant (past counsellors included) of the reported therapy can't review the report
     // or see it beyond its existence. SCRUM-362/363: nor a guardian of the reporter, of the
-    // reported person, of the reported therapy's client, or of any member of a reported group. Former group members are covered by
-    // isParticipant(): nothing removes a group_therapy_user row -- a future "leave group" must
-    // change the row's state, not delete it, or this check (and the report history) loses them.
+    // reported person, of the reported therapy's client, or of any member of a reported group. SCRUM-73:
+    // a former member (who left -- the row is kept, stamped left_at) still counts, through
+    // allMemberships(); isParticipant() is current members only.
     public function involves(User $user): bool
     {
         if ($this->isReportedBy($user) || $this->reportedUser()?->is($user)) {
@@ -124,6 +124,7 @@ class Report extends Model
         $therapy = $this->therapy();
         if ($therapy) {
             return (bool) $therapy->isParticipant($user)
+                || ($therapy instanceof GroupTherapy && $therapy->allMemberships()->whereKey($user->id)->exists())
                 || ($therapy instanceof GroupTherapy && $user->counsellor && $therapy->counsellors()->whereKey($user->counsellor->id)->exists());
         }
 
@@ -148,8 +149,8 @@ class Report extends Model
             ->contains(fn (User $person) => $wardIds->contains($person->id));
 
         // SCRUM-363: in a group, a guardian of any member -- the cautious choice: it only ever
-        // keeps more admins away from a case, never fewer.
-        return $named || ($therapy instanceof GroupTherapy && $therapy->users()->whereIn('users.id', $wardIds)->exists());
+        // keeps more admins away from a case, never fewer. SCRUM-73: former members too.
+        return $named || ($therapy instanceof GroupTherapy && $therapy->allMemberships()->whereIn('users.id', $wardIds)->exists());
     }
 
     // SCRUM-340/362: all an admin who is part of a report sees of it in any list -- that it exists.

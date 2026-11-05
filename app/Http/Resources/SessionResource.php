@@ -46,7 +46,7 @@ class SessionResource extends JsonResource
         return [
             'id' => $this->id,
             'userId' => $this->addedby_type == Counsellor::class ? $this->addedby->user->id : $this->maskedUserId($this->addedby, $request->user()),
-            'updatedById' => $this->updatedby_type == Counsellor::class ? $this->updatedby->user_id : $this->maskedUserId($this->updatedby, $request->user()),
+            'updatedById' => $this->updatedby_type == Counsellor::class ? $this->updatedby->user_id : $this->maskedUserId($this->updatedby, $request->user(), (bool) $this->updatedby_anonymous),
             'name' => $this->name,
             'about' => $this->about,
             'type' => $this->type,
@@ -113,13 +113,16 @@ class SessionResource extends JsonResource
     // SCRUM-345 (security review): a client who adds or confirms a session in an anonymous therapy
     // is recorded as its addedby/updatedby -- their real id went to every other member. The frontend
     // only compares these with the viewer's own id, and a masked person is never the viewer.
-    private function maskedUserId(?User $user, ?User $viewer): ?int
+    // SCRUM-73: $snapshot -- they were masked when they did it (sessions.updatedby_anonymous), so a
+    // member who rejoins as named isn't unmasked on what they did while anonymous. (A group session's
+    // addedby is always a counsellor or an administrator, so only updatedby has one.)
+    private function maskedUserId(?User $user, ?User $viewer, bool $snapshot = false): ?int
     {
         if (! $user) {
             return null;
         }
 
         // SCRUM-380: TherapyTrait::hidesIdentityOf() via Session::hidesIdentityOf().
-        return $this->hidesIdentityOf($user) && ! $user->is($viewer) ? null : $user->id;
+        return ($snapshot || $this->hidesIdentityOf($user)) && ! $user->is($viewer) ? null : $user->id;
     }
 }

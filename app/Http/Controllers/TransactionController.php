@@ -12,6 +12,7 @@ use App\Models\Therapy;
 use App\Models\Transaction;
 use App\Services\TransactionService;
 use App\Support\FailureResponse;
+use App\Support\TherapyLink;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Redirect;
 use Throwable;
@@ -166,8 +167,6 @@ class TransactionController extends Controller
             return route('organizations.payment_instrument', ['organizationId' => $for->id]);
         }
 
-        return $for instanceof GroupTherapy
-            ? route('group.therapies.get', ['groupTherapyId' => $for->id])
-            : route('therapies.get', ['therapyId' => $for->id]);
+        return TherapyLink::to($for);
     }
 }

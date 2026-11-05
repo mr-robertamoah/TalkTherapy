@@ -8,7 +8,7 @@ use App\Models\Request as AppRequest;
 use App\Models\Therapy;
 use App\Models\User;
 use App\Notifications\GroupTherapyAssistanceRequestSentNotification;
-use App\Notifications\GroupTherapyMembershipRequestAcceptedGuardianNotification;
+use App\Notifications\GroupTherapyMemberJoinedGuardianNotification;
 use App\Notifications\GroupTherapyMembershipRequestAcceptedNotification;
 use App\Notifications\GroupTherapyMembershipRequestSentNotification;
 use App\Notifications\TherapyAssistanceRequestAcceptedGuardianNotification;
@@ -111,11 +111,11 @@ test('SCRUM-56: a member who chose anonymity, and an anonymous group\'s creator,
     $group->users()->attach($creator->id, ['anonymous' => true]);
     $group = $group->fresh();
     expectNoNameFor57(mailTextFor57(new GroupTherapyMembershipRequestAcceptedNotification($membership->fresh()), $requester), $creator);
-    expectNoNameFor57(mailTextFor57(new GroupTherapyMembershipRequestAcceptedGuardianNotification($group), User::factory()->create()), $creator);
+    expectNoNameFor57(mailTextFor57(new GroupTherapyMemberJoinedGuardianNotification($group), User::factory()->create()), $creator);
 
     // And when the whole group is anonymous.
     $anonymousGroup = GroupTherapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => $creator->id, 'anonymous' => true]);
-    expectNoNameFor57(mailTextFor57(new GroupTherapyMembershipRequestAcceptedGuardianNotification($anonymousGroup), User::factory()->create()), $creator);
+    expectNoNameFor57(mailTextFor57(new GroupTherapyMemberJoinedGuardianNotification($anonymousGroup), User::factory()->create()), $creator);
 });
 
 test('SCRUM-56: a group assistance acceptance respects the creator\'s own anonymity choice', function () {
@@ -162,7 +162,7 @@ test('positive controls: when nobody is anonymous, the accepting user and the gr
     $group = GroupTherapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => $creator->id, 'anonymous' => false]);
     $membership = aRequestFor57(['from_type' => User::class, 'from_id' => $requester->id, 'to_type' => User::class, 'to_id' => $creator->id, 'for_type' => GroupTherapy::class, 'for_id' => $group->id, 'type' => RequestTypeEnum::groupTherapyMembership->value]);
     expect(mailTextFor57(new GroupTherapyMembershipRequestAcceptedNotification($membership), $requester))->toContain('Creatorine')
-        ->and(mailTextFor57(new GroupTherapyMembershipRequestAcceptedGuardianNotification($group->fresh()), User::factory()->create()))->toContain('Creatorine');
+        ->and(mailTextFor57(new GroupTherapyMemberJoinedGuardianNotification($group->fresh()), User::factory()->create()))->toContain('Creatorine');
 });
 
 test('an acceptance by a since-deleted user names no one and doesn\'t crash', function () {

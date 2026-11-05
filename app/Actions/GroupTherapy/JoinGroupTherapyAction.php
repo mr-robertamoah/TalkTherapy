@@ -11,8 +11,9 @@ use App\Enums\RequestTypeEnum;
 use App\Exceptions\CannotJoinGroupTherapyException;
 use App\Models\Counsellor;
 use App\Models\GroupTherapy;
+use App\Models\User;
+use App\Notifications\GroupTherapyMemberJoinedGuardianNotification;
 use App\Notifications\GroupTherapyMembershipRequestSentNotification;
-use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 
 class JoinGroupTherapyAction extends Action
@@ -26,16 +27,11 @@ class JoinGroupTherapyAction extends Action
         // Therapy namespace: it's a generic user-eligibility check, not Therapy-specific.
         EnsureCanCreateTherapyAction::new()->execute($user);
 
-        if ($groupTherapy->isParticipant($user)) {
-            throw new CannotJoinGroupTherapyException('You are already a participant of this group therapy.', 422);
-        }
+        // Ended, already taking part, or full -- the checks the add itself makes again under the lock.
+        AddGroupTherapyMemberAction::new()->ensureCanAdd($groupTherapy, $user);
 
         if ($user->hasPendingRequestFor($groupTherapy)) {
             throw new CannotJoinGroupTherapyException('You already have a pending request to join this group therapy.', 422);
-        }
-
-        if ($groupTherapy->users()->count() >= $groupTherapy->max_users) {
-            throw new CannotJoinGroupTherapyException('This group therapy has reached its maximum number of members.', 422);
         }
 
         $anonymous = $groupTherapy->resolveMembershipAnonymity($joinGroupTherapyDTO->anonymous);
@@ -47,31 +43,16 @@ class JoinGroupTherapyAction extends Action
         return $this->attachImmediately($user, $groupTherapy, $anonymous);
     }
 
-    // The check above is just a fast-path rejection -- two concurrent immediate joins against
-    // a near-full group could both pass it before either attaches. Re-check capacity under a
-    // row lock immediately before attaching, and fall back to the friendly "already a
-    // participant" message if a race still slips through the DB's unique constraint on
-    // (group_therapy_id, user_id) -- e.g. a double-submitted click from the same user (SCRUM-80).
-    private function attachImmediately($user, GroupTherapy $groupTherapy, bool $anonymous)
+    // The checks above are just a fast-path rejection -- two concurrent immediate joins against a
+    // near-full group could both pass them. AddGroupTherapyMemberAction re-checks under the group's
+    // row lock (SCRUM-80). SCRUM-73: a former member rejoins through the same step, which also tells
+    // a minor's guardians (a behaviour change, approved with the plan) once this commits.
+    private function attachImmediately(User $user, GroupTherapy $groupTherapy, bool $anonymous)
     {
         return DB::transaction(function () use ($user, $groupTherapy, $anonymous) {
             $lockedGroupTherapy = GroupTherapy::query()->lockForUpdate()->findOrFail($groupTherapy->id);
 
-            if ($lockedGroupTherapy->users()->count() >= $lockedGroupTherapy->max_users) {
-                throw new CannotJoinGroupTherapyException('This group therapy has reached its maximum number of members.', 422);
-            }
-
-            try {
-                // TT-3.2f-b/SCRUM-319: was_minor_at_join is the new per-membership snapshot
-                // GroupTherapy::memberIsMinor() reads -- closes the "no stable minor record for an
-                // ordinary member" gap (only the group's own creator/addedby had one before this).
-                $lockedGroupTherapy->users()->attach($user->id, [
-                    'anonymous' => $anonymous,
-                    'was_minor_at_join' => ! $user->isAdult(),
-                ]);
-            } catch (UniqueConstraintViolationException) {
-                throw new CannotJoinGroupTherapyException('You are already a participant of this group therapy.', 422);
-            }
+            AddGroupTherapyMemberAction::new()->execute($lockedGroupTherapy, $user, $anonymous, GroupTherapyMemberJoinedGuardianNotification::VIA_BUTTON);
 
             return $lockedGroupTherapy->refresh();
         });

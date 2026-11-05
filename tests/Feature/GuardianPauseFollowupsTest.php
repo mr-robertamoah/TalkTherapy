@@ -57,6 +57,7 @@ use App\Services\SuspensionService;
 use App\Support\BestEffort;
 use App\Support\FailureResponse;
 use App\Support\SchedulerOnce;
+use App\Support\WardRef;
 use Database\Seeders\DatabaseSeeder;
 use Illuminate\Database\Events\TransactionBeginning;
 use Illuminate\Http\Request as HttpRequest;
@@ -310,9 +311,14 @@ test('a paused minor can\'t create any link into a group they created', function
     [$creator, $group] = gpfPausedGroupCreator();
 
     foreach (EnsureUserCanCreateLinkForAction::GROUP_TYPES as $type) {
-        $this->actingAs($creator)->postJson(route('api.links.create'), [
+        $response = $this->actingAs($creator)->postJson(route('api.links.create'), [
             'type' => $type, 'addedbyType' => 'User', 'addedbyId' => $creator->id, 'forType' => 'GroupTherapy', 'forId' => $group->id,
-        ])->assertForbidden()->assertJsonPath('code', GuardianRequiredException::CODE);
+        ])->assertForbidden();
+
+        // SCRUM-383: an admin link is refused for everyone (there is no group-admin role), before the pause.
+        $type === LinkTypeEnum::groupTherapyAdmin->value
+            ? $response->assertJsonPath('message', EnsureUserCanCreateLinkForAction::NOT_ALLOWED)
+            : $response->assertJsonPath('code', GuardianRequiredException::CODE);
     }
 
     expect(Link::query()->where('for_type', GroupTherapy::class)->where('for_id', $group->id)->exists())->toBeFalse();
@@ -331,7 +337,9 @@ test('a group link can\'t be used while the group\'s creator is paused; it can o
         ->assertForbidden()->assertJsonPath('message', GuardianRequiredException::LINK_UNAVAILABLE)->assertJsonMissingPath('code');
 
     Guardianship::query()->create(['guardian_id' => User::factory()->adult()->create()->id, 'ward_id' => $creator->id]);
-    $this->actingAs($adult)->getJson(route('links.get', ['uuid' => $link->uuid]))->assertSuccessful();
+    // SCRUM-383: opening a member link takes them to the group's page to confirm.
+    $this->actingAs($adult)->getJson(route('links.get', ['uuid' => $link->uuid]))
+        ->assertRedirect(route('group.therapies.get', ['groupTherapyId' => $group->id, 'invitation' => $link->uuid]));
 });
 
 test('a paused minor can\'t use someone else\'s group participant or admin link; a counsellor link isn\'t about their age', function () {
@@ -339,10 +347,11 @@ test('a paused minor can\'t use someone else\'s group participant or admin link;
     $group = GroupTherapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => $creator->id]);
     $paused = User::factory()->create(['dob' => now()->subYears(15)->toDateString()]);
 
-    foreach ([LinkTypeEnum::groupTherapyParticipant->value, LinkTypeEnum::groupTherapyAdmin->value] as $type) {
-        $this->actingAs($paused)->getJson(route('links.get', ['uuid' => gpfGroupLink($group, $creator, $type)->uuid]))
-            ->assertStatus(422)->assertJsonPath('code', GuardianRequiredException::CODE);
-    }
+    $this->actingAs($paused)->getJson(route('links.get', ['uuid' => gpfGroupLink($group, $creator, LinkTypeEnum::groupTherapyParticipant->value)->uuid]))
+        ->assertStatus(422)->assertJsonPath('code', GuardianRequiredException::CODE);
+    // SCRUM-383: an admin link no longer works for anyone.
+    $this->actingAs($paused)->getJson(route('links.get', ['uuid' => gpfGroupLink($group, $creator, LinkTypeEnum::groupTherapyAdmin->value)->uuid]))
+        ->assertStatus(422)->assertJsonPath('message', 'This link is no longer active.');
 
     expect($group->fresh()->users()->whereKey($paused->id)->exists())->toBeFalse();
 });
@@ -435,7 +444,7 @@ test('resuming tells the minor and, separately, the counsellor, with the copy un
 
         return $mail->subject === 'A paused therapy has started again'
             && $mail->introLines === ["Your therapy with {$f['client']->name} is no longer paused."]
-            && $notification->toArray($notifiable) === ['type' => 'guardian_access.client_resumed', 'therapyId' => $f['therapy']->id, 'clientName' => $f['client']->name];
+            && $notification->toArray($notifiable) === ['type' => 'guardian_access.client_resumed', 'therapyId' => $f['therapy']->id, 'clientName' => $f['client']->name, 'wardRef' => WardRef::of($f['client'])];
     });
     Notification::assertSentTo($f['client'], GuardianAccessResumedNotification::class, function ($notification, $channels, $notifiable) {
         return $notification->toMail($notifiable)->subject === 'Your therapy on TalkTherapy has started again'

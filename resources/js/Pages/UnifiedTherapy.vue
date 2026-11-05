@@ -53,6 +53,12 @@ const props = defineProps({
   pendingRequest: { default: null },
   pendingMembershipRequest: { default: null },
   pendingSessionScheduleProposal: { default: null },
+  // SCRUM-383: opened from a member invitation link the viewer may use -- { uuid }.
+  linkInvitation: { default: null },
+  // SCRUM-73/383: why the server sent only a preview of a private group ('invitation' |
+  // 'former_member'), and whether the viewer left this group.
+  preview: { default: null },
+  isFormerMember: { type: Boolean, default: false },
 })
 
 // Initialize therapy state
@@ -78,10 +84,19 @@ const {
   userId,
   startTimer,
   listenToTherapy,
+  leaveGroupPage,
   updateSessionOrTopic,
   deleteSessionOrTopic,
   addSessionOrTopic,
-} = useTherapyState(therapyRef, props.therapyType, { setSuccessAlertData })
+} = useTherapyState(therapyRef, props.therapyType, { setSuccessAlertData, onMembershipChanged: refreshMemberLinks })
+
+// SCRUM-383 QA: a join through a member link used that link -- the creator's link panels (shown
+// only to them) are fetched again from page 1, so the used link no longer shows as active.
+function refreshMemberLinks() {
+  if (props.therapyType !== 'group' || !shouldGetCounsellorLinks()) return
+  getTherapyLinks('member', { fresh: true })
+  getTherapyLinks('counsellor', { fresh: true })
+}
 
 const {
   initiating: payInitiating,
@@ -121,11 +136,17 @@ const membershipRequest = ref({ responding: false, status: null })
 const scheduleProposalRequest = ref({ responding: false })
 const scheduleCounterOfferRequest = ref(null)
 const joinAnonymous = ref(false)
+// SCRUM-383: the invitation link uuid when "join" was opened from a member invitation.
+const joinInvitation = ref(null)
 const counsellorSearch = ref("")
 const newSession = ref(null)
 const counsellor = ref(null)
 const counsellors = ref([])
-const counsellorLinks = ref({ page: 1, data: [] })
+// SCRUM-383: invitation links by kind -- counsellors (both therapy types) and a group's members.
+const therapyLinks = ref({
+  counsellor: { page: 1, data: [] },
+  member: { page: 1, data: [] },
+})
 const currentUpdatedSessionOrTopic = ref(null)
 const getting = ref({ show: false, type: "" })
 const currentDeletedSessionOrTopic = ref(null)
@@ -142,6 +163,9 @@ const computedCanParticipate = computed(() => {
   if ((user?.id && user.id == computedTherapy.value.user?.id) || user?.counsellor) return true
   return false
 })
+
+// SCRUM-73 QA: joining a group that needs approval sends its creator a request (unless invited).
+const joinNeedsApproval = computed(() => !joinInvitation.value && !computedTherapy.value?.allowAnyone)
 
 // Watchers
 watch(() => counsellorSearch.value, () => {
@@ -205,22 +229,31 @@ watchEffect(() => {
     recentTopics.value = [...props.recentTopics]
 })
 
-watchEffect(() => {
-  let currentTherapy = props.therapy?.data ? props.therapy?.data : props.therapy
-  let user = usePage().props.auth.user
+// Once per therapy, not on every change of the page's state: inside a watchEffect, the fetches
+// below read their own paging state, so the first response re-ran them and the second page-1 fetch
+// appended duplicates (QA). SCRUM-73/383: a preview (a former member, or an invitation to a private
+// group) has no links, discussions or channel.
+watch(
+  () => computedTherapy.value?.id,
+  (therapyId) => {
+    const currentTherapy = computedTherapy.value
+    const user = usePage().props.auth.user
 
-  if (!user?.id || !currentTherapy.id) return
+    if (!user?.id || !therapyId || currentTherapy.isPreview) return
 
-  // Get counsellor links for users without counsellors
-  if (shouldGetCounsellorLinks()) getCounsellorlinks()
+    // The creator's (or client's) invitation links
+    if (shouldGetCounsellorLinks()) getTherapyLinks('counsellor', { fresh: true })
+    if (props.therapyType === 'group' && shouldGetCounsellorLinks()) getTherapyLinks('member', { fresh: true })
 
-  // Get discussions for counsellors
-  if (user?.counsellor) getDiscussions(currentTherapy)
+    // Get discussions for counsellors
+    if (user?.counsellor) getDiscussions(currentTherapy)
 
-  if (listening.value) return
-  listening.value = true
-  listenToTherapy(currentTherapy)
-})
+    if (listening.value) return
+    listening.value = true
+    listenToTherapy(currentTherapy)
+  },
+  { immediate: true }
+)
 
 // Helper functions
 function shouldGetCounsellorLinks() {
@@ -280,7 +313,7 @@ async function waitForAlert() {
   await axios
     .post(route(`alert.wait`), {
       alertableType: props.therapyType === 'individual' ? "Therapy" : "GroupTherapy",
-      alertableId: props.therapy?.id,
+      alertableId: computedTherapy.value?.id,
     })
     .then((res) => {
     })
@@ -290,26 +323,13 @@ async function waitForAlert() {
 }
 
 function isNotParticipant() {
-  if (props.therapyType === 'individual') {
-    const counsellor = props.therapy?.data
-      ? props.therapy?.data?.counsellor
-      : props.therapy?.counsellor
-    const user = props.therapy?.data ? props.therapy?.data?.user : props.therapy?.user
+  // SCRUM-73/383 QA: the same participants the server accepts (isParticipant()). The old check read
+  // `therapy.user`, which a group resource never sends -- so a preview (an invitation, a former
+  // member) or anyone browsing a public group was taken for a participant and POST /api/alerts
+  // answered 422.
+  if (props.preview || computedTherapy.value?.isPreview || !userId.value) return true
 
-    if (!counsellor || !user) return false
-    return userId.value !== counsellor?.userId && userId.value !== user?.id
-  } else {
-    const user = props.therapy?.data ? props.therapy?.data?.user : props.therapy?.user
-    if (!user) return false
-
-    const counsellor = (
-      props.therapy?.data
-        ? props.therapy?.data?.counsellors
-        : props.therapy?.counsellors
-    ).find((c) => c.userId == userId.value)
-
-    return !counsellor && userId.value !== user.id
-  }
+  return !computedIsParticipant.value
 }
 
 async function getDiscussions(therapy) {
@@ -382,11 +402,17 @@ async function getCounsellors() {
   endLoader()
 }
 
-async function createCounsellorLink() {
-  setGetting("create link")
+// SCRUM-383: one pair of helpers for every invitation-link kind (see therapyLinks).
+function linkTypeOf(kind) {
+  if (kind === 'member') return 'GROUP_THERAPY_PARTICIPANT'
+  return props.therapyType === 'individual' ? 'THERAPY_COUNSELLOR' : 'GROUP_THERAPY_COUNSELLOR'
+}
+
+async function createTherapyLink(kind) {
+  setGetting(`create link ${kind}`)
 
   const link = await createLink({
-    type: props.therapyType === 'individual' ? "THERAPY_COUNSELLOR" : "GROUP_THERAPY_COUNSELLOR",
+    type: linkTypeOf(kind),
     addedbyId: usePage().props.auth.user?.id,
     addedbyType: "User",
     forId: computedTherapy.value?.id,
@@ -396,30 +422,38 @@ async function createCounsellorLink() {
   clearGetting()
   if (!link) return
 
-  counsellorLinks.value.data = [link, ...counsellorLinks.value.data]
+  therapyLinks.value[kind].data = [link, ...therapyLinks.value[kind].data]
 }
 
-async function getCounsellorlinks() {
-  if (!counsellorLinks.value.page) return
-  setGetting("links")
-
-  const therapy = props.therapy?.data ? props.therapy?.data : props.therapy
+// `fresh`: start again from page 1 (the page's first load of a therapy).
+async function getTherapyLinks(kind, { fresh = false } = {}) {
+  const links = therapyLinks.value[kind]
+  if (fresh) links.page = 1
+  if (!links.page) return
+  setGetting(`links ${kind}`)
 
   const res = await getlinks({
-    page: counsellorLinks.value.page,
-    type: props.therapyType === 'individual' ? "THERAPY_COUNSELLOR" : "GROUP_THERAPY_COUNSELLOR",
-    forId: therapy.id,
+    page: links.page,
+    type: linkTypeOf(kind),
+    forId: computedTherapy.value?.id,
     forType: props.therapyType === 'individual' ? "Therapy" : "GroupTherapy",
   })
 
   clearGetting()
   if (!res) return
 
-  if (counsellorLinks.value.page == 1) counsellorLinks.value.data = []
+  // Page 1 replaces the list, so a repeated first fetch never shows a link twice.
+  links.data = links.page == 1 ? [...res.data.data] : [...links.data, ...res.data.data]
+  links.page = res.data.links?.next ? links.page + 1 : 0
+}
 
-  counsellorLinks.value.data = [...counsellorLinks.value.data, ...res.data.data]
+// SCRUM-383: the link panels tell the page what changed; the list lives here.
+function linkUpdated(kind, idx, link) {
+  if (link) therapyLinks.value[kind].data.splice(idx, 1, link)
+}
 
-  updateRefPage(res, counsellorLinks)
+function linkDeleted(kind, idx) {
+  therapyLinks.value[kind].data.splice(idx, 1)
 }
 
 // Action handlers
@@ -490,12 +524,15 @@ async function clickedResponse(response) {
 }
 
 // Group therapy membership/join (SCRUM-72)
-function clickedJoinGroup() {
+function clickedJoinGroup(options = null) {
   joinAnonymous.value = !!computedTherapy.value?.anonymous
+  joinInvitation.value = options?.invitation ?? null
   showModal("join group")
 }
 
 async function joinGroupTherapy() {
+  if (joinInvitation.value) return joinGroupByInvitation()
+
   setLoader("join group")
 
   await axios
@@ -514,7 +551,9 @@ async function joinGroupTherapy() {
       })
 
       closeModal()
-      router.reload({ only: ["therapy", "pendingMembershipRequest"] })
+      // From a preview (a former member rejoining) the whole page is loaded again, now as a member.
+      if (props.preview) router.visit(route("group.therapies.get", { groupTherapyId: computedTherapy.value?.id }))
+      else router.reload({ only: ["therapy", "pendingMembershipRequest"] })
     })
     .catch((err) => {
       console.log(err)
@@ -523,6 +562,59 @@ async function joinGroupTherapy() {
         message:
           err.response?.data?.message ||
           "Something unfortunate happened while trying to join. Please try again shortly.",
+        time: 5000,
+      })
+    })
+
+  endLoader()
+}
+
+// SCRUM-383: confirming a member invitation -- no approval needed. The page is reloaded without
+// the invitation in its address, now as a member.
+async function joinGroupByInvitation() {
+  setLoader("join group")
+
+  await axios
+    .post(route("api.links.join", { uuid: joinInvitation.value }), {
+      anonymous: computedTherapy.value?.anonymous ? true : joinAnonymous.value,
+    })
+    .then(() => {
+      setSuccessAlertData({ message: "You have joined this group therapy.", time: 4000 })
+      closeModal()
+      router.visit(route("group.therapies.get", { groupTherapyId: computedTherapy.value?.id }))
+    })
+    .catch((err) => {
+      goToLogin(err)
+      setFailedAlertData({
+        message: err.response?.data?.message || "Something unfortunate happened while trying to join. Please try again shortly.",
+        time: 5000,
+      })
+    })
+
+  endLoader()
+}
+
+// SCRUM-73: leaving a group, after the confirmation.
+function clickedLeaveGroup() {
+  showModal("leave group")
+}
+
+async function leaveGroupTherapy() {
+  setLoader("leave group")
+
+  await axios
+    .post(route("api.group.therapies.leave", { groupTherapyId: computedTherapy.value?.id }))
+    .then(() => {
+      setSuccessAlertData({ message: "You have left this group therapy.", time: 4000 })
+      closeModal()
+      // Off the page and its channel -- once, whether this or the GroupTherapyLeftEvent broadcast
+      // gets there first (useTherapyState).
+      leaveGroupPage()
+    })
+    .catch((err) => {
+      goToLogin(err)
+      setFailedAlertData({
+        message: err.response?.data?.message || "Something unfortunate happened while trying to leave. Please try again shortly.",
         time: 5000,
       })
     })
@@ -913,7 +1005,11 @@ function reportCreated(report) {
     :request="request"
     :pending-membership-request="pendingMembershipRequest"
     :membership-request="membershipRequest"
-    :counsellor-links="counsellorLinks"
+    :counsellor-links="therapyLinks.counsellor"
+    :member-links="therapyLinks.member"
+    :link-invitation="linkInvitation"
+    :is-former-member="isFormerMember"
+    :former-member-view="preview === 'former_member'"
     :pending-session-schedule-proposal="pendingSessionScheduleProposal"
     :schedule-proposal-request="scheduleProposalRequest"
     @clicked-show-all="clickedShowAll"
@@ -926,8 +1022,11 @@ function reportCreated(report) {
     @clicked-response="clickedResponse"
     @clicked-join-group="clickedJoinGroup"
     @clicked-membership-response="clickedMembershipResponse"
-    @create-counsellor-link="createCounsellorLink"
-    @get-counsellor-links="getCounsellorlinks"
+    @clicked-leave-group="clickedLeaveGroup"
+    @create-link="createTherapyLink"
+    @get-links="getTherapyLinks"
+    @link-updated="linkUpdated"
+    @link-deleted="linkDeleted"
     @clicked-report="clickedReport"
     @clicked-create-session="clickedCreateSession"
     @clicked-create-discussion="clickedCreateDiscussion"
@@ -1125,10 +1224,17 @@ function reportCreated(report) {
           <hr class="my-2" />
 
           <div class="relative">
-            <FormLoader :text="'joining group'" :show="loader.show && loader.type == 'join group'" />
+            <FormLoader :text="joinNeedsApproval ? 'sending request' : 'joining group'" :show="loader.show && loader.type == 'join group'" />
 
             <div class="my-4 text-sm text-gray-700 text-center w-[90%] mx-auto">
-              You are about to join <strong>{{ computedTherapy.name }}</strong>.
+              <template v-if="joinNeedsApproval">
+                You are about to send a request to join <strong>{{ computedTherapy.name }}</strong> to its creator.
+                You become a member once they accept it.
+              </template>
+              <template v-else>
+                You are about to join <strong>{{ computedTherapy.name }}</strong>.
+                <template v-if="joinInvitation"> You were invited, so you join straight away.</template>
+              </template>
             </div>
 
             <div class="flex items-center justify-center space-x-2 my-4">
@@ -1157,7 +1263,43 @@ function reportCreated(report) {
               @click="joinGroupTherapy"
               :disabled="loader.show && loader.type == 'join group'"
               class="shrink-0"
-              >join</PrimaryButton
+              >{{ joinNeedsApproval ? 'send request' : 'join' }}</PrimaryButton
+            >
+          </div>
+        </div>
+      </MiniModal>
+
+      <!-- Leave Group Therapy Modal (SCRUM-73) -->
+      <MiniModal
+        v-if="therapyType === 'group'"
+        :show="modalData.show && modalData.type == 'leave group'"
+        @close="closeModal"
+      >
+        <div class="select-none">
+          <div class="text-gray-600 text-center font-bold tracking-wide">
+            Leave Group Therapy
+          </div>
+
+          <hr class="my-2" />
+
+          <div class="relative">
+            <FormLoader :text="'leaving group'" :show="loader.show && loader.type == 'leave group'" />
+
+            <div class="my-4 text-sm text-gray-700 w-[90%] mx-auto space-y-2">
+              <p>You are about to leave <strong>{{ computedTherapy.name }}</strong>.</p>
+              <p>Your earlier messages stay in the group's history. {{ computedTherapy.public ? 'You can still read it, as this group is public.' : 'You will no longer be able to read it.' }}</p>
+              <p>Nothing is refunded automatically. If you paid, you can still request a refund as usual.</p>
+              <p>You can join again later, following the group's usual joining rules.</p>
+            </div>
+          </div>
+
+          <div class="flex space-x-2 justify-end items-center w-full p-2">
+            <SecondaryButton @click="closeModal" class="shrink-0">cancel</SecondaryButton>
+            <DangerButton
+              @click="leaveGroupTherapy"
+              :disabled="loader.show && loader.type == 'leave group'"
+              class="shrink-0"
+              >leave</DangerButton
             >
           </div>
         </div>

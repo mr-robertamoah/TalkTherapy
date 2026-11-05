@@ -17,7 +17,17 @@ const RequestStatus = {
     accepted: 'ACCEPTED',
     pending: 'PENDING',
     rejected: 'REJECTED',
+    // SCRUM-73 QA: closed without an answer, e.g. a safeguarding request after the member left.
+    closed: 'INCONSEQUENCIAL',
 }
+
+// One tab per status, in this order.
+const tabs = [
+    { status: RequestStatus.pending, label: 'Pending' },
+    { status: RequestStatus.accepted, label: 'Accepted' },
+    { status: RequestStatus.rejected, label: 'Rejected' },
+    { status: RequestStatus.closed, label: 'Closed' },
+]
 
 const props = defineProps({
     show: {
@@ -29,15 +39,13 @@ const props = defineProps({
 const emits = defineEmits(['closeModal'])
 
 const loading = ref(false)
-const pages = ref({
-    [RequestStatus.pending]: 1,
-    [RequestStatus.accepted]: 1,
-    [RequestStatus.rejected]: 1,
-})
-const pendingRequests = ref([])
-const acceptedRequests = ref([])
-const rejectedRequests = ref([])
+const pages = ref(Object.fromEntries(tabs.map((tab) => [tab.status, 1])))
+const requests = ref(emptyLists())
 const requestStatus = ref(RequestStatus.pending)
+
+function emptyLists() {
+    return Object.fromEntries(tabs.map((tab) => [tab.status, []]))
+}
 
 watch(() => requestStatus.value, () => {
     if (pages.value[requestStatus.value] == 1) {
@@ -52,16 +60,12 @@ watch(() => props.show, () => {
     }
 
     setPages(1)
-    acceptedRequests.value = []
-    pendingRequests.value = []
-    rejectedRequests.value = []
+    requests.value = emptyLists()
     requestStatus.value = RequestStatus.pending
 })
 
 function setPages(num) {
-    pages.value[RequestStatus.accepted] = num
-    pages.value[RequestStatus.rejected] = num
-    pages.value[RequestStatus.pending] = num
+    tabs.forEach((tab) => { pages.value[tab.status] = num })
 }
 
 function closeModal() {
@@ -76,22 +80,19 @@ function setAlert(alertData) {
 
 async function getRequests() {
     loading.value = true
+    const status = requestStatus.value
 
     await axios
     .get(route('requests.get', {
-        status: requestStatus.value,
-        page: pages.value[requestStatus.value]
+        status,
+        page: pages.value[status]
     }))
     .then((res) => {
-        console.log(res)
-        if (pages.value[requestStatus.value] > 1) {
-            updateRequests(res.data.data)
-            updatePage(res)
-            return
-        }
-
-        addRequests(res.data.data)
-        updatePage(res)
+        // Page 1 replaces the list; later pages add to it.
+        requests.value[status] = pages.value[status] > 1
+            ? [...requests.value[status], ...res.data.data]
+            : [...res.data.data]
+        updatePage(status, res)
     })
     .catch((err) => {
         console.log(err)
@@ -106,47 +107,19 @@ const debouncedGet = () => {
     getRequests()
 }
 
-function addRequests(data) {
-    if (requestStatus.value == RequestStatus.accepted) {
-        acceptedRequests.value = [...data]
-        return
-    }
-    
-    if (requestStatus.value == RequestStatus.pending) {
-        pendingRequests.value = [...data]
-        return
-    }
-
-    rejectedRequests.value = [...data]
+function updatePage(status, res) {
+    if (res.data.links.next) pages.value[status] += 1
+    else pages.value[status] = 0
 }
 
-function updateRequests(data) {
-    if (requestStatus.value == RequestStatus.accepted) {
-        acceptedRequests.value = [...acceptedRequests.value, ...data]
-        return
-    }
-    
-    if (requestStatus.value == RequestStatus.pending) {
-        pendingRequests.value = [...pendingRequests.value, ...data]
-        return
-    }
+const shownRequests = computed(() => requests.value[requestStatus.value] ?? [])
 
-    rejectedRequests.value = [...rejectedRequests.value, ...data]
-}
+const hasRequests = computed(() => shownRequests.value.length > 0)
 
-function updatePage(res) {
-    if (res.data.links.next) pages.value[requestStatus.value] += 1
-    else pages.value[requestStatus.value] = 0
-}
-
-const hasRequests = computed(() => {
-    return (pendingRequests.value.length && requestStatus.value == RequestStatus.pending) || 
-        (acceptedRequests.value.length && requestStatus.value == RequestStatus.accepted) ||
-        (rejectedRequests.value.length && requestStatus.value == RequestStatus.rejected)
-})
+const shownStatusLabel = computed(() => tabs.find((tab) => tab.status == requestStatus.value)?.label.toLowerCase())
 
 function removeFromPendingRequests(request) {
-    pendingRequests.value = [...pendingRequests.value.filter((c) => c.id !== request.id)]
+    requests.value[RequestStatus.pending] = requests.value[RequestStatus.pending].filter((c) => c.id !== request.id)
 }
 
 // SCRUM-381: accepting a safeguarding exception request closes the minor's other pending ones on the
@@ -174,33 +147,23 @@ function respondedTo(request) {
                 </div>
             </div>
 
-            <div class="flex justify-center gap-1 mb-4 bg-gray-100 rounded-lg p-1 w-fit mx-auto">
+            <div class="flex justify-center gap-1 mb-4 bg-gray-100 rounded-lg p-1 w-fit max-w-full mx-auto overflow-x-auto">
                 <button
+                    v-for="tab in tabs"
+                    :key="tab.status"
                     type="button"
-                    @click="() => requestStatus = RequestStatus.pending"
-                    class="min-w-[6rem] text-center px-4 py-1.5 text-sm rounded-md transition duration-75"
-                    :class="requestStatus == RequestStatus.pending ? 'bg-gray-800 text-white' : 'text-gray-600 hover:bg-gray-200'"
-                >Pending</button>
-                <button
-                    type="button"
-                    @click="() => requestStatus = RequestStatus.accepted"
-                    class="min-w-[6rem] text-center px-4 py-1.5 text-sm rounded-md transition duration-75"
-                    :class="requestStatus == RequestStatus.accepted ? 'bg-gray-800 text-white' : 'text-gray-600 hover:bg-gray-200'"
-                >Accepted</button>
-                <button
-                    type="button"
-                    @click="() => requestStatus = RequestStatus.rejected"
-                    class="min-w-[6rem] text-center px-4 py-1.5 text-sm rounded-md transition duration-75"
-                    :class="requestStatus == RequestStatus.rejected ? 'bg-gray-800 text-white' : 'text-gray-600 hover:bg-gray-200'"
-                >Rejected</button>
+                    @click="() => requestStatus = tab.status"
+                    class="shrink-0 min-w-[6rem] text-center px-4 py-1.5 text-sm rounded-md transition duration-75"
+                    :class="requestStatus == tab.status ? 'bg-gray-800 text-white' : 'text-gray-600 hover:bg-gray-200'"
+                >{{ tab.label }}</button>
             </div>
 
             <div class="min-h-[10rem] max-h-[60vh] overflow-hidden overflow-y-auto p-4 bg-gray-50 rounded-lg">
-                <div v-if="loading" class="p-3 text-center text-sm text-blue-700 bg-blue-50 border border-blue-200 rounded-lg mb-4">Loading {{ requestStatus.toLowerCase() }} requests...</div>
+                <div v-if="loading" class="p-3 text-center text-sm text-blue-700 bg-blue-50 border border-blue-200 rounded-lg mb-4">Loading {{ shownStatusLabel }} requests...</div>
                 <div v-if="hasRequests" class="space-y-3">
                     <template v-if="requestStatus == RequestStatus.pending">
                         <RequestBadge
-                            v-for="request in pendingRequests"
+                            v-for="request in shownRequests"
                             :key="request.id"
                             :request="request"
                             class="mx-auto"
@@ -210,17 +173,9 @@ function respondedTo(request) {
                             }"
                         />
                     </template>
-                    <template v-if="requestStatus == RequestStatus.rejected">
+                    <template v-else>
                         <RequestBadge
-                            v-for="request in rejectedRequests"
-                            :key="request.id"
-                            :request="request"
-                            class="mx-auto"
-                        />
-                    </template>
-                    <template v-if="requestStatus == RequestStatus.accepted">
-                        <RequestBadge
-                            v-for="request in acceptedRequests"
+                            v-for="request in shownRequests"
                             :key="request.id"
                             :request="request"
                             class="mx-auto"
@@ -230,7 +185,7 @@ function respondedTo(request) {
                 <div v-else-if="!loading" class="flex justify-center items-center h-24 text-gray-500 text-sm">
                     <div class="text-center">
                         <div class="text-4xl mb-2">📭</div>
-                        <div>No {{ requestStatus.toLowerCase() }} requests</div>
+                        <div>No {{ shownStatusLabel }} requests</div>
                     </div>
                 </div>
 

@@ -41,4 +41,12 @@ class UpdateCounsellorRequest extends FormRequest
             'contactVisible' => ['nullable', 'bool'],
         ];
     }
+
+    // SCRUM-385: name these fields in plain words in the default messages, not "the reply id".
+    public function attributes(): array
+    {
+        return [
+            'professionId' => 'profession',
+        ];
+    }
 }

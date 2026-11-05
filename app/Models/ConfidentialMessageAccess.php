@@ -40,4 +40,10 @@ class ConfidentialMessageAccess extends Model
     {
         return $this->belongsTo(User::class, 'admin_user_id')->withTrashed();
     }
+
+    // SCRUM-385: for the report's access log, which names the session read.
+    public function session()
+    {
+        return $this->belongsTo(Session::class)->withTrashed();
+    }
 }

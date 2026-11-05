@@ -6,6 +6,8 @@ use App\Actions\Action;
 use App\Actions\Organization\RecordOrganizationInvoiceLineForSessionAction;
 use App\DTOs\CreateSessionDTO;
 use App\Enums\SessionStatusEnum;
+use App\Models\GroupTherapy;
+use App\Models\User;
 
 class ChangeSessionStatusAction extends Action
 {
@@ -65,6 +67,12 @@ class ChangeSessionStatusAction extends Action
         if ($updatedby) {
             $createSessionDTO->session->updatedby()->associate($updatedby);
         }
+
+        // SCRUM-73: whether that person is masked right now (SessionResource) -- kept, so rejoining a
+        // group as named doesn't unmask them on this. Not fillable.
+        $createSessionDTO->session->updatedby_anonymous = $updatedby instanceof User
+            && $createSessionDTO->session->for instanceof GroupTherapy
+            && $createSessionDTO->session->hidesIdentityOf($updatedby);
 
         $createSessionDTO->session->save();
 

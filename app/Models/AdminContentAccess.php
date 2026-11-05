@@ -60,4 +60,9 @@ class AdminContentAccess extends Model
     {
         return $this->morphTo();
     }
+
+    public function file()
+    {
+        return $this->belongsTo(File::class);
+    }
 }
