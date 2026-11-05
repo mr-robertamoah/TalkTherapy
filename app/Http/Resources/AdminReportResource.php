@@ -108,6 +108,7 @@ class AdminReportResource extends JsonResource
                     'id' => $access->id,
                     'admin' => $access->admin?->name ?? 'a deleted account',
                     'sessionId' => $access->session_id,
+                    'sessionName' => $access->session?->name,
                     'reason' => $access->reason,
                     'at' => $access->created_at,
                 ])->values()->all(),
@@ -199,7 +200,8 @@ class AdminReportResource extends JsonResource
 
         if ($therapy instanceof GroupTherapy) {
             $therapy->counsellors()->wherePivot('state', CounsellorGroupTherapyStateEnum::active->value)->get()->each(fn (Counsellor $c) => $people->push([...$this->person($c), 'role' => 'counsellor']));
-            $therapy->users()->get()->each(fn (User $u) => $people->push([...$this->person($u), 'role' => 'member']));
+            // SCRUM-73: former members too (the report may be about them), told apart.
+            $therapy->allMemberships()->get()->each(fn (User $u) => $people->push([...$this->person($u), 'role' => $u->pivot->left_at ? 'former member' : 'member']));
         }
 
         $reporter = $this->addedby;

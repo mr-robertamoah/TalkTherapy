@@ -27,7 +27,8 @@ const labels = {
 }
 
 function filter(changes) {
-    const query = { ...props.filters, ...changes }
+    const { subjectLabel, ...current } = props.filters
+    const query = { ...current, ...changes }
     Object.keys(query).forEach((key) => (query[key] === null || query[key] === '') && delete query[key])
     router.get(route('administrator.content-accesses'), query, { preserveScroll: true })
 }
@@ -78,7 +79,7 @@ function formatDate(value) {
                     type="button"
                     class="text-sm text-gray-700 underline hover:text-gray-900"
                     @click="() => filter({ subject: null, subject_id: null })"
-                >show everything read, not just {{ filters.subject }} #{{ filters.subject_id }}</button>
+                >show everything read, not just {{ filters.subjectLabel ?? `this ${filters.subject}` }}</button>
             </div>
 
             <div class="bg-white shadow-sm border border-gray-200 sm:rounded-lg p-6">
@@ -115,7 +116,7 @@ function formatDate(value) {
                                         @click="() => filter({ subject: access.subjectKey, subject_id: access.subjectId })"
                                     >{{ access.subject }}</button>
                                     <template v-else>{{ access.subject }}</template>
-                                    <span v-if="access.fileId" class="text-gray-500">· file #{{ access.fileId }}</span>
+                                    <span v-if="access.fileId" class="text-gray-500">· {{ access.fileName ?? 'an attachment' }}</span>
                                 </td>
                                 <td class="py-3 text-gray-500">{{ access.ip ?? '--' }}</td>
                             </tr>

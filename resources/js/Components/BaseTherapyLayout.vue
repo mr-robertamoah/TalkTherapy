@@ -20,6 +20,35 @@
       />
     </div>
 
+    <!-- SCRUM-73: someone who left the group. For a private group this is all they see (the
+         server sends only its name and a masked preview); a public one they can still read below. -->
+    <div v-if="isFormerMember && !computedIsParticipant" class="max-w-7xl mx-auto sm:px-6 lg:px-8 mt-4">
+      <div class="bg-white border border-gray-200 shadow-sm sm:rounded-lg p-6">
+        <div class="text-gray-800 font-semibold">You left this group</div>
+        <p class="mt-2 text-sm text-gray-600">
+          <template v-if="formerMemberView">
+            You are no longer a member of <strong>{{ computedTherapy.name }}</strong>, so its members, sessions, topics and messages are hidden.
+          </template>
+          <template v-else>You are no longer a member of <strong>{{ computedTherapy.name }}</strong>.</template>
+          You can still report something that happened while you were in it.
+        </p>
+        <p v-if="pendingMembershipRequest" class="mt-2 text-sm text-gray-600">
+          Your request to join again is waiting for the creator's answer.
+        </p>
+        <p v-else-if="computedTherapy.status === 'ENDED'" class="mt-2 text-sm text-gray-600">
+          This group therapy has ended.
+        </p>
+        <div class="mt-4 flex flex-wrap gap-2 justify-end">
+          <SecondaryButton @click="$emit('clicked-report')">make a report</SecondaryButton>
+          <PrimaryButton
+            v-if="formerMemberView && !pendingMembershipRequest && computedTherapy.status !== 'ENDED'"
+            @click="$emit('clicked-join-group')"
+          >{{ computedTherapy.allowAnyone ? 'join again' : 'ask to join again' }}</PrimaryButton>
+        </div>
+      </div>
+    </div>
+
+    <template v-if="!formerMemberView">
     <!-- Active Session/Discussion Sticky Header -->
     <TherapyActiveHeader
       :active-session="activeSession"
@@ -86,14 +115,19 @@
           :membership-request="membershipRequest"
           :getting="getting"
           :counsellor-links="counsellorLinks"
+          :member-links="memberLinks"
+          :link-invitation="linkInvitation"
           :computed-is-user="computedIsUser"
           :computed-is-counsellor="computedIsCounsellor"
           :computed-is-participant="computedIsParticipant"
           :computed-can-participate="computedCanParticipate"
           @clicked-response="$emit('clicked-response', $event)"
-          @create-counsellor-link="$emit('create-counsellor-link')"
-          @get-counsellor-links="$emit('get-counsellor-links')"
-          @clicked-join-group="$emit('clicked-join-group')"
+          @create-link="$emit('create-link', $event)"
+          @get-links="$emit('get-links', $event)"
+          @link-updated="(kind, idx, link) => $emit('link-updated', kind, idx, link)"
+          @link-deleted="(kind, idx) => $emit('link-deleted', kind, idx)"
+          @clicked-join-group="$emit('clicked-join-group', $event)"
+          @clicked-leave-group="$emit('clicked-leave-group')"
           @clicked-membership-response="$emit('clicked-membership-response', $event)"
         >
           <template #therapy-component>
@@ -128,6 +162,7 @@
         @clicked-propose-schedule="$emit('clicked-propose-schedule')"
       />
     </div>
+    </template>
 
     <!-- Modals -->
     <slot name="modals" />
@@ -137,6 +172,8 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue'
 import HelpButton from '@/Components/HelpButton.vue'
+import PrimaryButton from '@/Components/PrimaryButton.vue'
+import SecondaryButton from '@/Components/SecondaryButton.vue'
 import TherapyPausedBanner from '@/Components/TherapyPausedBanner.vue'
 import TherapyActiveHeader from '@/Components/TherapyActiveHeader.vue'
 import TherapyRecentSections from '@/Components/TherapyRecentSections.vue'
@@ -188,6 +225,12 @@ defineProps({
   pendingMembershipRequest: { default: null },
   membershipRequest: { default: () => ({ responding: false, status: null }) },
   counsellorLinks: { default: () => ({ page: 1, data: [] }) },
+  memberLinks: { default: () => ({ page: 1, data: [] }) },
+  linkInvitation: { default: null },
+  // SCRUM-73: the viewer left this group; formerMemberView -- and it is private, so only the
+  // "you left" box shows.
+  isFormerMember: { type: Boolean, default: false },
+  formerMemberView: { type: Boolean, default: false },
   pendingSessionScheduleProposal: { default: null },
   scheduleProposalRequest: { default: () => ({ responding: false }) },
 })
@@ -204,8 +247,11 @@ defineEmits([
   'clicked-response',
   'clicked-join-group',
   'clicked-membership-response',
-  'create-counsellor-link',
-  'get-counsellor-links',
+  'clicked-leave-group',
+  'create-link',
+  'get-links',
+  'link-updated',
+  'link-deleted',
   'clicked-report',
   'clicked-create-session',
   'clicked-create-discussion',

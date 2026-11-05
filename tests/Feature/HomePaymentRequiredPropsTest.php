@@ -12,7 +12,7 @@ test('Home surfaces the payment-required props from the flash session', function
 
     $response = $this->actingAs($user)
         ->withSession([
-            'message' => 'Payment is required to access therapy with id: 1',
+            'message' => 'Payment is required to access this content.',
             'paymentRequired' => true,
             'paymentRequiredTherapyId' => 1,
         ])
@@ -22,7 +22,7 @@ test('Home surfaces the payment-required props from the flash session', function
         ->component('Home')
         ->where('paymentRequired', true)
         ->where('paymentRequiredTherapyId', 1)
-        ->where('paymentRequiredMessage', 'Payment is required to access therapy with id: 1')
+        ->where('paymentRequiredMessage', 'Payment is required to access this content.')
     );
 });
 
@@ -31,7 +31,7 @@ test('a payment-required redirect does not also trigger the generic errorMessage
 
     $response = $this->actingAs($user)
         ->withSession([
-            'message' => 'Payment is required to access therapy with id: 1',
+            'message' => 'Payment is required to access this content.',
             'paymentRequired' => true,
             'paymentRequiredTherapyId' => 1,
         ])

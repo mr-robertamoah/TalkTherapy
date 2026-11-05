@@ -81,7 +81,7 @@ function decide(decision) {
                 </template>
                 <template v-if="showReportLink">
                     <dt class="text-gray-500">Report</dt>
-                    <dd><Link :href="route('administrator.reports.show', { report: suspension.reportId })" class="underline text-gray-700 hover:text-gray-900">#{{ suspension.reportId }}</Link></dd>
+                    <dd><Link :href="route('administrator.reports.show', { report: suspension.reportId })" class="underline text-gray-700 hover:text-gray-900">view report</Link></dd>
                 </template>
             </dl>
 

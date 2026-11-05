@@ -26,4 +26,12 @@ class InviteOrganizationCounsellorRequest extends FormRequest
             'counsellorId' => ['required', 'integer', 'exists:counsellors,id'],
         ];
     }
+
+    // SCRUM-385: name these fields in plain words in the default messages, not "the reply id".
+    public function attributes(): array
+    {
+        return [
+            'counsellorId' => 'counsellor',
+        ];
+    }
 }

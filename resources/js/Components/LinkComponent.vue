@@ -49,7 +49,7 @@
                     title="copy"
                     class="cursor-pointer w-5 h-5 text-green-600"/>
             </div>
-            <div class="underline text-xs text-blue-600 text-ellipsis">www.talktherapy.tech/links/{{ link.uuid }}</div>
+            <div class="underline text-xs text-blue-600 text-ellipsis">{{ linkUrl }}</div>
         </div>
         <div class="flex flex-wrap justify-end space-x-2 items-center" v-if="!loading">
             <div 
@@ -82,7 +82,7 @@
             <div class="text-red-700 text-center font-bold tracking-wide">Remove Link</div>
             <hr class="my-2">
             <FormLoader :danger="true" :show="loading && modalData.type == 'delete'" :text="'deleting link'"/>
-            <div class="text-red-700 my-4 w-[90%] mx-auto text-center">Are sure you want to delete this Link?</div>
+            <div class="text-red-700 my-4 w-[90%] mx-auto text-center">Are you sure you want to delete this link?</div>
             <div class="flex p-4 items-center justify-end mx-auto w-[90%] md:w-[75%]">
                 <PrimaryButton @click="closeModal">cancel</PrimaryButton>
                 <DangerButton class="ml-2" @click="deleteTheLink">delete</DangerButton>
@@ -129,6 +129,10 @@ const displayDetails = ref(false)
 const loading = ref(false)
 const status = ref('')
 
+// The link on this app's own address (not a hard-coded production domain), so a copied link works
+// wherever the app runs.
+const linkUrl = computed(() => `${window.location.origin}${route('links.get', { uuid: props.link.uuid }, false)}`)
+
 const computedState = computed(() => {
     return props.link?.state == 'ACTIVE' ? 'active' : 'inactive'
 })
@@ -160,7 +164,7 @@ function copyLink() {
     setTimeout(() => {
         status.value = 'copied.'
     }, 1000)
-    navigator.clipboard.writeText(`www.talktherapy.tech/links/${props.link.uuid}`)
+    navigator.clipboard.writeText(linkUrl.value)
     setTimeout(() => {
         status.value = ''
     }, 2000)

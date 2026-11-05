@@ -105,6 +105,29 @@ class Request extends Model
             ->when($for, fn ($query) => $query->whereFor($for));
     }
 
+    // SCRUM-384: the id of the minor a safeguarding exception request is about (data.wardId), or
+    // null (any other type, or no id stored).
+    public function safeguardingWardId(): ?int
+    {
+        $wardId = $this->type === RequestTypeEnum::safeguardingException->value ? ($this->data['wardId'] ?? null) : null;
+
+        return is_numeric($wardId) ? (int) $wardId : null;
+    }
+
+    // SCRUM-384: that minor, deleted accounts included -- the one a list preloaded
+    // (PreloadRequestListAction, as `safeguardingWard`), otherwise looked up. Null when the account
+    // is gone for good, or for any other type.
+    public function safeguardingWard(): ?User
+    {
+        if ($this->relationLoaded('safeguardingWard')) {
+            return $this->getRelation('safeguardingWard');
+        }
+
+        $wardId = $this->safeguardingWardId();
+
+        return $wardId ? User::withTrashed()->find($wardId) : null;
+    }
+
     // The ones still waiting for the super administrator.
     public function scopePendingSafeguardingException($query, User|int|null $ward = null, $for = null)
     {

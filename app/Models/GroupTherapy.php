@@ -88,10 +88,27 @@ class GroupTherapy extends Model
             ->withTimestamps();
     }
 
+    // The group's current members. SCRUM-73: a member who left keeps their row, stamped with
+    // left_at, so this relation filters them out. Don't write through it to a row that may have left
+    // (updateExistingPivot()/detach() carry the same filter and would silently match nothing) -- use
+    // allMemberships().
     public function users()
     {
-        return $this->belongsToMany(User::class, 'group_therapy_user', 'group_therapy_id', 'user_id')
-            ->withPivot(['id', 'background_story', 'anonymous', 'was_minor_at_join'])
+        return $this->membershipRelation('users')->wherePivotNull('left_at');
+    }
+
+    // SCRUM-73: everyone who has ever been a member, former members included -- for history (report
+    // involvement, the dob-change rule) and for writing to a membership row (AddGroupTherapyMemberAction).
+    public function allMemberships()
+    {
+        return $this->membershipRelation('allMemberships');
+    }
+
+    // Named explicitly: belongsToMany() otherwise guesses the relation name from its caller.
+    private function membershipRelation(string $name)
+    {
+        return $this->belongsToMany(User::class, 'group_therapy_user', 'group_therapy_id', 'user_id', relation: $name)
+            ->withPivot(['id', 'background_story', 'anonymous', 'was_minor_at_join', 'left_at'])
             ->withTimestamps();
     }
 
@@ -115,6 +132,28 @@ class GroupTherapy extends Model
     public function isUser(User $user)
     {
         return $this->addedby_type === User::class && $this->addedby?->is($user);
+    }
+
+    // SCRUM-382/384: whether the group's creator is a minor paused for a missing guardian -- then
+    // nobody is let in through its links. A group created through a counsellor profile is the
+    // counsellor's, who is never the minor it would be paused for.
+    public function creatorIsPausedForMissingGuardian(bool $fresh = false): bool
+    {
+        return $this->addedby instanceof User && $this->addedby->isPausedForMissingGuardian(fresh: $fresh);
+    }
+
+    // SCRUM-73: someone who was a member and left (their row is kept, stamped left_at) -- not a
+    // current member.
+    public function isFormerMember(User $user): bool
+    {
+        return $this->allMemberships()->whereKey($user->id)->wherePivotNotNull('left_at')->exists();
+    }
+
+    // SCRUM-73: a current or former member -- for history (who may report the group, who an
+    // administrator may name as the reported person).
+    public function hasEverBeenMember(User $user): bool
+    {
+        return $this->allMemberships()->whereKey($user->id)->exists();
     }
 
     // TT-3.2b/SCRUM-309 review finding: the "is $user an active counsellor of THIS group" check

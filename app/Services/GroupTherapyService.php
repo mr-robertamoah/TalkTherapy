@@ -7,8 +7,10 @@ use App\Actions\GroupTherapy\CreateGroupTherapyAction;
 use App\Actions\GroupTherapy\EnsureCanSetGroupTherapyPaymentGateAction;
 use App\Actions\GroupTherapy\EnsureGroupTherapyCanBecomeAnonymousAction;
 use App\Actions\GroupTherapy\JoinGroupTherapyAction;
+use App\Actions\GroupTherapy\LeaveGroupTherapyAction;
 use App\Actions\GroupTherapy\UpdateGroupTherapyAction;
 use App\Actions\Guardianship\EnsureMinorHasActiveGuardianAction;
+use App\Actions\Link\FindUsableGroupInvitationAction;
 use App\Actions\Request\SendTherapyAssistanceRequestAction;
 use App\Actions\Star\CreateStarAction;
 use App\Actions\Suspension\EnsureCanActAsCounsellorAction;
@@ -33,6 +35,7 @@ use App\Enums\StarTypeEnum;
 use App\Models\AdminContentAccess;
 use App\Models\Counsellor;
 use App\Models\GroupTherapy;
+use App\Models\Link;
 use App\Models\User;
 use App\Notifications\TherapyCreatedNotification;
 use App\Support\VideoJoinLock;
@@ -185,23 +188,37 @@ class GroupTherapyService extends Service
         return DeleteTherapyAction::new()->execute($groupTherapyDTO);
     }
 
+    // Full access only: the chat and anything else that shows what happened in the group.
     public function getGroupTherapy(GetTherapyDTO $getTherapyDTO)
+    {
+        $getTherapyDTO->allowPreview = false;
+
+        return $this->getGroupTherapyPage($getTherapyDTO)['therapy'];
+    }
+
+    // The group's page. SCRUM-73/383: with $getTherapyDTO->allowPreview, someone with no other way
+    // into a private group may see a reduced preview of it instead -- `preview` says why
+    // (EnsureUserHasAccessToTherapyAction::PREVIEW_*): a usable member invitation (`invitation`, the
+    // link -- also given for a public group, whose page then offers to join), or having left it.
+    /** @return array{therapy: GroupTherapy, invitation: ?Link, preview: ?string} */
+    public function getGroupTherapyPage(GetTherapyDTO $getTherapyDTO): array
     {
         EnsureTherapyExistsAction::new()->execute(
             $getTherapyDTO,
             'Group Therapy'
         );
 
-        EnsureUserHasAccessToTherapyAction::new()->execute(
-            $getTherapyDTO,
-            'groupTherapy'
-        );
+        $group = $getTherapyDTO->groupTherapy;
+        $invitation = $getTherapyDTO->allowPreview
+            ? FindUsableGroupInvitationAction::new()->execute($getTherapyDTO->invitationUuid, $group, $getTherapyDTO->user)
+            : null;
+
+        $preview = EnsureUserHasAccessToTherapyAction::new()->execute($getTherapyDTO, 'groupTherapy', $invitation);
 
         // SCRUM-360 (security review)
-        RecordAdminContentReadAction::new()->execute($getTherapyDTO->user, AdminContentAccess::THERAPY, $getTherapyDTO->groupTherapy, $getTherapyDTO->groupTherapy);
+        RecordAdminContentReadAction::new()->execute($getTherapyDTO->user, AdminContentAccess::THERAPY, $group, $group);
 
-        // TODO load relationships for efficiency
-        return $getTherapyDTO->groupTherapy;
+        return ['therapy' => $group, 'invitation' => $invitation, 'preview' => $preview];
     }
 
     public function joinGroupTherapy(JoinGroupTherapyDTO $joinGroupTherapyDTO)
@@ -212,6 +229,18 @@ class GroupTherapyService extends Service
         );
 
         return JoinGroupTherapyAction::new()->execute($joinGroupTherapyDTO);
+    }
+
+    // SCRUM-73: no guardian or suspension gate -- leaving is a withdrawal, allowed while paused or
+    // suspended (EnsureAccountIsNotSuspended lets this route through).
+    public function leaveGroupTherapy(GroupTherapyDTO $groupTherapyDTO)
+    {
+        EnsureTherapyExistsAction::new()->execute(
+            $groupTherapyDTO,
+            'Group Therapy'
+        );
+
+        return LeaveGroupTherapyAction::new()->execute($groupTherapyDTO->user, $groupTherapyDTO->groupTherapy);
     }
 
     public function getRandomGroupTherapies(?User $user)

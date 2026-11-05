@@ -62,4 +62,12 @@ class VerifyCounsellorRequest extends FormRequest
             'nationalIdNumber.required_without' => 'Enter your national ID number or upload a copy of the ID.',
         ];
     }
+
+    // SCRUM-385: name these fields in plain words in the default messages, not "the reply id".
+    public function attributes(): array
+    {
+        return [
+            'licensingAuthorityId' => 'licensing authority',
+        ];
+    }
 }

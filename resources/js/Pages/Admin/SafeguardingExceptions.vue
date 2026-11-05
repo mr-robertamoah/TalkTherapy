@@ -17,15 +17,19 @@ import useAlert from '@/Composables/useAlert'
 
 defineProps({
     exceptions: { type: Object, required: true },
-    pausedMinors: { type: Array, default: () => [] },
+    // SCRUM-384: paged ({ data, meta }, `pausedPage`), like the exceptions (`page`).
+    pausedMinors: { type: Object, required: true },
+    // SCRUM-384: counsellors' requests still waiting although the minor is no longer paused.
+    noLongerNeeded: { type: Array, default: () => [] },
     canManage: { type: Boolean, default: false },
+    safeguardingExceptionMaxDays: { type: Number, required: true },
 })
 
 const { alertData, clearAlertData, setFailedAlertData, setSuccessAlertData } = useAlert()
 
 // { kind: 'grant' | 'renew' | 'end', wardId, exceptionId, requestId }
 const open = ref(null)
-const grantForm = useForm({ reason: '', ends_at: '' })
+const grantForm = useForm({ reason: '', endsAt: '' })
 const endForm = useForm({ reason: '' })
 const responding = ref(false)
 
@@ -43,7 +47,7 @@ function formatDate(value) {
 // useForm makes the data of a successful submission its new defaults, so reset() alone would bring
 // back the last reason sent: set empty defaults first.
 function start(kind, target = {}, reason = '') {
-    grantForm.defaults({ reason: '', ends_at: '' }).reset()
+    grantForm.defaults({ reason: '', endsAt: '' }).reset()
     endForm.defaults({ reason: '' }).reset()
     grantForm.clearErrors()
     endForm.clearErrors()
@@ -77,7 +81,7 @@ function end(exceptionId) {
 // A counsellor's request is answered through the requests endpoint, so it is linked to the exception.
 async function respond(request, response) {
     responding.value = true
-    const payload = response === 'accepted' ? { response, reason: grantForm.reason, endsAt: grantForm.ends_at } : { response }
+    const payload = response === 'accepted' ? { response, reason: grantForm.reason, endsAt: grantForm.endsAt } : { response }
 
     await axios.post(route('requests.respond', { requestId: request.id }), payload)
         .then(() => {
@@ -105,7 +109,7 @@ function goToPage(url) {
                 <div class="w-16 h-1 bg-blue-600 mt-2"></div>
                 <div class="mt-2 text-sm text-gray-600">
                     A minor whose account has no guardian has their therapy paused. An exception lets them carry on for up
-                    to 30 days (video calls still need a guardian's consent). The minor and their counsellors are told the
+                    to {{ safeguardingExceptionMaxDays }} days (video calls still need a guardian's consent). The minor and their counsellors are told the
                     end date, never the reason.
                     <template v-if="!canManage"> Only the super administrator can grant, renew or end one.</template>
                 </div>
@@ -113,9 +117,9 @@ function goToPage(url) {
 
             <section class="bg-white shadow-sm border border-gray-200 sm:rounded-lg p-6 space-y-3">
                 <div class="text-lg font-semibold text-gray-900">Paused now</div>
-                <div v-if="pausedMinors.length === 0" class="text-sm text-gray-500 italic">Nobody with an open therapy is paused for a missing guardian.</div>
+                <div v-if="pausedMinors.data.length === 0" class="text-sm text-gray-500 italic">Nobody with an open therapy is paused for a missing guardian.</div>
 
-                <div v-for="minor in pausedMinors" :key="minor.key" class="border border-gray-200 rounded-md p-4 text-sm space-y-3">
+                <div v-for="minor in pausedMinors.data" :key="minor.key" class="border border-gray-200 rounded-md p-4 text-sm space-y-3">
                     <div v-if="minor.involved" class="text-gray-600 italic">
                         You're involved with this client (you counsel them, or asked for this), so you can't see or decide it here.
                     </div>
@@ -141,14 +145,15 @@ function goToPage(url) {
                             <div v-if="isOpen('approve', 'requestId', request.id)" class="space-y-2">
                                 <SafeguardingExceptionTermsFields
                                     v-model:reason="grantForm.reason"
-                                    v-model:ends-at="grantForm.ends_at"
+                                    v-model:ends-at="grantForm.endsAt"
                                     :id-prefix="`approve-${request.id}`"
                                     :initial-ends-at="request.proposedEndsAt ?? ''"
+                                    :max-days="safeguardingExceptionMaxDays"
                                     reason-label="Reason (kept here, never shown to the client)"
                                     end-label="Exception ends"
                                 />
                                 <div class="flex gap-2">
-                                    <PrimaryButton :disabled="responding || !grantForm.reason.trim() || !grantForm.ends_at" @click="respond(request, 'accepted')">grant exception</PrimaryButton>
+                                    <PrimaryButton :disabled="responding || !grantForm.reason.trim() || !grantForm.endsAt" @click="respond(request, 'accepted')">grant exception</PrimaryButton>
                                     <SecondaryButton @click="open = null">cancel</SecondaryButton>
                                 </div>
                             </div>
@@ -160,15 +165,48 @@ function goToPage(url) {
                         <div v-if="isOpen('grant', 'wardId', minor.id)" class="space-y-2">
                             <SafeguardingExceptionTermsFields
                                 v-model:reason="grantForm.reason"
-                                v-model:ends-at="grantForm.ends_at"
+                                v-model:ends-at="grantForm.endsAt"
                                 :id-prefix="`grant-${minor.id}`"
+                                :max-days="safeguardingExceptionMaxDays"
                                 reason-label="Reason (kept here, never shown to the client)"
                                 end-label="Exception ends"
                             />
                             <div class="flex gap-2">
-                                <PrimaryButton :disabled="grantForm.processing || !grantForm.reason.trim() || !grantForm.ends_at" @click="grant(minor.id, 'Safeguarding exception granted.')">grant</PrimaryButton>
+                                <PrimaryButton :disabled="grantForm.processing || !grantForm.reason.trim() || !grantForm.endsAt" @click="grant(minor.id, 'Safeguarding exception granted.')">grant</PrimaryButton>
                                 <SecondaryButton @click="open = null">cancel</SecondaryButton>
                             </div>
+                        </div>
+                    </template>
+                </div>
+
+                <Pagination :meta="pausedMinors.meta" @navigate="goToPage" />
+            </section>
+
+            <section v-if="noLongerNeeded.length" class="bg-white shadow-sm border border-gray-200 sm:rounded-lg p-6 space-y-3">
+                <div>
+                    <div class="text-lg font-semibold text-gray-900">Requests no longer needed</div>
+                    <div class="mt-1 text-sm text-gray-600">
+                        These counsellors' requests are still waiting, but the client isn't paused any more, so they can't be
+                        approved.<template v-if="canManage"> Reject them to close them and let the counsellor know.</template>
+                    </div>
+                </div>
+
+                <div v-for="request in noLongerNeeded" :key="request.key" class="border border-gray-200 rounded-md p-4 text-sm space-y-2">
+                    <div v-if="request.involved" class="text-gray-600 italic">
+                        You're involved with this client (you counsel them, or asked for this), so you can't see or decide it here.
+                    </div>
+                    <template v-else>
+                        <div class="flex flex-wrap items-center gap-2">
+                            <span class="font-medium text-gray-900">{{ request.client }}</span>
+                            <span class="px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-700">{{ request.why }}</span>
+                        </div>
+                        <div class="text-gray-700">
+                            <span class="font-medium text-gray-900">{{ request.counsellor }}</span> asked for an exception in
+                            {{ request.isGroup ? 'the group' : 'the therapy' }} "{{ request.therapy }}", until {{ formatDate(request.proposedEndsAt) }}.
+                        </div>
+                        <div v-if="request.reason" class="whitespace-pre-line text-gray-900">{{ request.reason }}</div>
+                        <div v-if="request.canManage">
+                            <DangerButton :disabled="responding" @click="respond(request, 'rejected')">reject</DangerButton>
                         </div>
                     </template>
                 </div>
@@ -213,13 +251,14 @@ function goToPage(url) {
                         <div v-if="isOpen('renew', 'exceptionId', exception.id)" class="space-y-2">
                             <SafeguardingExceptionTermsFields
                                 v-model:reason="grantForm.reason"
-                                v-model:ends-at="grantForm.ends_at"
+                                v-model:ends-at="grantForm.endsAt"
                                 :id-prefix="`renew-${exception.id}`"
+                                :max-days="safeguardingExceptionMaxDays"
                                 reason-label="Why renew it? (a new reason)"
                                 end-label="New end"
                             />
                             <div class="flex gap-2">
-                                <PrimaryButton :disabled="grantForm.processing || !grantForm.reason.trim() || !grantForm.ends_at" @click="grant(exception.ward.id, 'Safeguarding exception renewed.')">renew</PrimaryButton>
+                                <PrimaryButton :disabled="grantForm.processing || !grantForm.reason.trim() || !grantForm.endsAt" @click="grant(exception.ward.id, 'Safeguarding exception renewed.')">renew</PrimaryButton>
                                 <SecondaryButton @click="open = null">cancel</SecondaryButton>
                             </div>
                         </div>

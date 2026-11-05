@@ -101,6 +101,7 @@ class RecordReportedPartyAction extends Action
             return (bool) $therapy->isUser($person);
         }
 
-        return (bool) $therapy->isParticipant($person);
+        // SCRUM-73: a former member of the group too -- the report may be about what they did in it.
+        return (bool) $therapy->isParticipant($person) || $therapy->hasEverBeenMember($person);
     }
 }

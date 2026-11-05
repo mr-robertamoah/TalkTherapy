@@ -11,6 +11,7 @@ use App\Enums\TherapyPaymentTypeEnum;
 use App\Enums\TherapyPerPaymentEnum;
 use App\Enums\TherapyStatusEnum;
 use App\Models\Counsellor;
+use App\Models\SafeguardingException;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -66,6 +67,9 @@ class GroupTherapyResource extends JsonResource
             && $user?->counsellor
             && $this->isCounsellor($user->counsellor);
 
+        // SCRUM-381/384: what this group's active counsellors see about paused members (one query).
+        $seesPausedMembers = $user && $this->status !== TherapyStatusEnum::ended->value && $this->isCounsellorUser($user);
+
         return [
             'id' => $this->id,
             'name' => $this->name,
@@ -73,6 +77,11 @@ class GroupTherapyResource extends JsonResource
             // or an assigned counsellor -- lets the frontend hide the "join" action for an
             // already-joined member.
             'isParticipant' => $user ? $this->isParticipant($user) : false,
+            // SCRUM-73: an ordinary member (not the creator, not a counsellor) -- who may leave.
+            'isMember' => $user && ! $this->isUser($user) && ! $this->isCounsellorUser($user) && $this->membershipOf($user) !== null,
+            // Current members only (a member who left frees their place). From the loaded list when a
+            // caller eager-loaded it (as the masking rule does), not one more query.
+            'membersCount' => $this->relationLoaded('users') ? $this->users->count() : $this->users()->count(),
             'addedby' => $this->addedby_type == Counsellor::class
                 ? new CounsellorMiniResource($this->addedby)
                 : $this->when(
@@ -151,11 +160,14 @@ class GroupTherapyResource extends JsonResource
             // paused for a missing guardian, named as the group shows them (an anonymous member stays
             // "Anonymous") and keyed by something other than their user id. The group carries on.
             'pausedMembers' => $this->when(
-                $user && $this->status !== TherapyStatusEnum::ended->value && $this->isCounsellorUser($user),
+                $seesPausedMembers,
                 fn () => GetPausedGroupMembersAction::new()->execute($this->resource)
                     ->map(fn (array $member) => ['key' => $member['key'], 'name' => $member['name'], 'exceptionRequested' => $member['exceptionRequested']])
                     ->values(),
             ),
+            // SCRUM-384: the request form's limit (SafeguardingExceptionRequestModal), for the same
+            // counsellors, from the model rather than a copy in the UI.
+            'safeguardingExceptionMaxDays' => $this->when($seesPausedMembers, SafeguardingException::MAX_DAYS),
         ];
     }
 }

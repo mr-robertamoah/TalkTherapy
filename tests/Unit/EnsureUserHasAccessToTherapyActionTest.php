@@ -169,3 +169,19 @@ test('a guardian of the addedby user is granted access to a non-public individua
     expect(fn () => EnsureUserHasAccessToTherapyAction::new()->execute($dto))
         ->not->toThrow(TherapyAccessDeniedException::class);
 });
+
+// SCRUM-385: the denial names neither the therapy nor its id -- the caller isn't allowed to see it.
+test('the access-denied message says "this therapy" or "this group therapy", never an id', function () {
+    $owner = User::factory()->create();
+    $outsider = User::factory()->create();
+    $therapy = Therapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => $owner->id, 'public' => false, 'name' => 'Private name']);
+    $groupTherapy = GroupTherapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => $owner->id, 'public' => false, 'name' => 'Private group']);
+
+    expect(fn () => EnsureUserHasAccessToTherapyAction::new()->execute(GetTherapyDTO::new()->fromArray(['user' => $outsider, 'therapy' => $therapy])))
+        ->toThrow(TherapyAccessDeniedException::class, 'You are not allowed to access this therapy.');
+    expect(fn () => EnsureUserHasAccessToTherapyAction::new()->execute(GetTherapyDTO::new()->fromArray(['user' => $outsider, 'groupTherapy' => $groupTherapy]), 'groupTherapy'))
+        ->toThrow(TherapyAccessDeniedException::class, 'You are not allowed to access this group therapy.');
+    // A guest is turned away by the earlier guard, with the same wording.
+    expect(fn () => EnsureUserHasAccessToTherapyAction::new()->execute(GetTherapyDTO::new()->fromArray(['therapy' => $therapy])))
+        ->toThrow(TherapyAccessDeniedException::class, 'You are not allowed to access this therapy.');
+});

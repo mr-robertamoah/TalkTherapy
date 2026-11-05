@@ -14,6 +14,13 @@ class Message extends Model
 
     protected $fillable = ['content', 'type', 'confidential', 'status', 'message_id', 'therapy_topic_id', 'deleted_for'];
 
+    // SCRUM-73: sender_anonymous and recipient_anonymous are snapshots set once, when the message is
+    // sent (CreateMessageAction) -- deliberately not fillable, so an update can't unmask a message.
+    protected $casts = [
+        'sender_anonymous' => 'boolean',
+        'recipient_anonymous' => 'boolean',
+    ];
+
     public function from()
     {
         // withTrashed: see Therapy::counsellor() -- the sender (User or Counsellor) may have

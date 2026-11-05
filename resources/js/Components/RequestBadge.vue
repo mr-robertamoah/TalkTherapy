@@ -7,8 +7,7 @@ import useAlert from '@/Composables/useAlert';
 import Alert from './Alert.vue';
 import FormLoader from './FormLoader.vue';
 import useEnums from '@/Composables/useEnums';
-import SecondaryButton from './SecondaryButton.vue';
-import SafeguardingExceptionTermsFields from './SafeguardingExceptionTermsFields.vue';
+import SafeguardingExceptionApprovalForm from './SafeguardingExceptionApprovalForm.vue';
 
 
 const { alertData, clearAlertData, setFailedAlertData, setSuccessAlertData } = useAlert()
@@ -79,10 +78,10 @@ const computedStatus = computed(() => {
     if (props.request.safeguardingException?.involved && status.value == RequestStatusEnum.pending)
         return 'It is waiting for review.'
 
+    // SCRUM-385: no line for an ordinary pending request -- the Pending chip already says it.
     return {
         [RequestStatusEnum.accepted]: computedIsFrom.value ? 'Your request has been accepted.' : 'You accepted the request.',
         [RequestStatusEnum.rejected]: computedIsFrom.value ? 'Your request has been rejected.' : 'You rejected the request.',
-        [RequestStatusEnum.pending]: computedIsFrom.value ? 'Your request is pending.' : 'You have not responded to this request.',
         [RequestStatusEnum.inconsequencial]: 'This request was closed: it is no longer needed.',
     }[status.value]
 })
@@ -174,7 +173,10 @@ function partyLabel(party) {
     if (party.deleted) return 'deleted'
     if (party.isOrganization) return party.name
     if (party.isCounsellor) return party.name
-    return `@${party.username}`
+    // SCRUM-73 QA: a masked (anonymous) party has no username -- name them as the request does,
+    // e.g. "Client (Anonymous User)", never "@undefined".
+    if (party.username) return `@${party.username}`
+    return party.fullName ?? party.name ?? '--'
 }
 
 function visitTherapy() {
@@ -188,15 +190,13 @@ function visitTherapy() {
 }
 
 // SCRUM-381: approving a safeguarding exception request needs the administrator's own end date
-// and reason (prefilled with what the counsellor proposed).
+// and reason (SafeguardingExceptionApprovalForm, prefilled with what the counsellor proposed).
 const approving = ref(false)
-const approval = ref({ reason: '', endsAt: '' })
 
 function clickedAccept() {
     if (props.request.type != RequestTypeEnum.safeguardingException)
         return clickedResponse('accepted')
 
-    approval.value = { reason: props.request.safeguardingException?.reason ?? '', endsAt: '' }
     approving.value = true
 }
 
@@ -292,22 +292,16 @@ async function clickedResponse(response, extra = {}) {
             <div v-if="computedIsTo && request.from">from: {{ partyLabel(request.from) }}</div>
         </div>
 
-        <div class="text-xs text-gray-500 mt-2">{{ computedStatus }}</div>
+        <div v-if="computedStatus" class="text-xs text-gray-500 mt-2">{{ computedStatus }}</div>
 
-        <div v-if="request.status == RequestStatusEnum.pending && computedIsTo && approving" class="mt-3 space-y-3 border-t border-gray-200 pt-3">
-            <SafeguardingExceptionTermsFields
-                v-model:reason="approval.reason"
-                v-model:ends-at="approval.endsAt"
-                :id-prefix="`approve-${request.id}`"
-                :initial-ends-at="request.safeguardingException?.proposedEndsAt ?? ''"
-                reason-label="Reason (kept in the audit list, never shown to the client)"
-                end-label="Exception ends"
-            />
-            <div class="flex justify-end gap-2">
-                <SecondaryButton :disabled="responding" @click="approving = false">cancel</SecondaryButton>
-                <PrimaryButton :disabled="responding || !approval.reason.trim() || !approval.endsAt" @click="() => clickedResponse('accepted', { reason: approval.reason, endsAt: approval.endsAt })">grant exception</PrimaryButton>
-            </div>
-        </div>
+        <SafeguardingExceptionApprovalForm
+            v-if="request.status == RequestStatusEnum.pending && request.safeguardingException?.isRespondent && approving"
+            :request-id="request.id"
+            :safeguarding-exception="request.safeguardingException"
+            :responding="responding"
+            @cancel="approving = false"
+            @submit="(terms) => clickedResponse('accepted', terms)"
+        />
 
         <div v-else-if="request.status == RequestStatusEnum.pending && computedIsTo" class="flex justify-end gap-2 mt-3">
             <PrimaryButton :disabled="responding" @click="clickedAccept">accept</PrimaryButton>

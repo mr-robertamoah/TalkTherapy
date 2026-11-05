@@ -3,16 +3,12 @@
 namespace App\Actions\Request;
 
 use App\Actions\Action;
+use App\Actions\GroupTherapy\AddCounsellorToGroupTherapyAction;
 use App\DTOs\RequestResponseDTO;
-use App\Enums\CounsellorGroupTherapyRoleEnum;
-use App\Enums\CounsellorGroupTherapyStateEnum;
 use App\Enums\RequestStatusEnum;
-use App\Enums\TherapyStatusEnum;
-use App\Exceptions\CannotRespondToRequestException;
 use App\Models\Counsellor;
 use App\Models\GroupTherapy;
 use App\Models\Request;
-use App\Models\User;
 use App\Notifications\TherapyAssistanceRequestAcceptedNotification;
 use Illuminate\Support\Facades\DB;
 
@@ -23,9 +19,9 @@ use Illuminate\Support\Facades\DB;
 // clear message and leaves the invite pending. Once the group fills up, the remaining invites close.
 class RespondToGroupTherapyAssistanceRequestAction extends Action
 {
-    public const GROUP_FULL = 'This group already has its maximum number of counsellors.';
+    public const GROUP_FULL = AddCounsellorToGroupTherapyAction::GROUP_FULL;
 
-    public const NOT_ALLOWED = 'This invitation can no longer be accepted.';
+    public const NOT_ALLOWED = AddCounsellorToGroupTherapyAction::NOT_ALLOWED;
 
     public function execute(RequestResponseDTO $requestResponseDTO): Request
     {
@@ -49,38 +45,11 @@ class RespondToGroupTherapyAssistanceRequestAction extends Action
                 return [$request, false];
             }
 
-            $counsellor = $request->to;
-            $this->ensureCanJoin($group, $counsellor, $requestResponseDTO->user);
-
-            $activeCounsellors = $group->activeCounsellors();
-            $alreadyActive = $activeCounsellors->contains('id', $counsellor->id);
-
-            if (! $alreadyActive && $activeCounsellors->count() >= $group->max_counsellors) {
-                throw new CannotRespondToRequestException(self::GROUP_FULL, 422);
-            }
-
-            $existing = $group->counsellors()->whereKey($counsellor->id)->first();
-            $group->counsellors()->syncWithoutDetaching([
-                $counsellor->id => [
-                    'state' => CounsellorGroupTherapyStateEnum::active->value,
-                    'role' => $existing?->pivot->role ?? CounsellorGroupTherapyRoleEnum::normal->value,
-                ],
-            ]);
+            // SCRUM-383: the same step a counsellor invitation link uses.
+            $counsellor = $request->to instanceof Counsellor ? $request->to : null;
+            AddCounsellorToGroupTherapyAction::new()->execute($group, $counsellor, $requestResponseDTO->user, exceptRequestId: $request->id);
 
             $request->update(['status' => $response]);
-
-            if ($group->activeCounsellors()->count() >= $group->max_counsellors) {
-                Request::query()
-                    ->whereNot('id', $request->id)
-                    ->wherePending()
-                    ->whereFor($group)
-                    ->where('type', $request->type)
-                    ->update([
-                        'status' => RequestStatusEnum::inconsequencial->value,
-                        'responded_at' => now(),
-                        'data' => ['reason' => 'This group has filled all its counsellor places.'],
-                    ]);
-            }
 
             return [$request->refresh(), true];
         });
@@ -90,25 +59,5 @@ class RespondToGroupTherapyAssistanceRequestAction extends Action
         }
 
         return $request;
-    }
-
-    // Security review: accepting an invite now really adds a counsellor, so it must be someone who
-    // may: the invited counsellor themselves (an admin can't accept on their behalf -- joining is
-    // their consent), still a verified counsellor, not the group's own client or a member (who
-    // would gain moderation powers over the other members), and a group that hasn't ended. One
-    // answer for all of these.
-    private function ensureCanJoin(GroupTherapy $group, ?Counsellor $counsellor, ?User $responder): void
-    {
-        $allowed = $counsellor
-            && $counsellor->user
-            && $responder && $counsellor->user->is($responder)
-            && $counsellor->verified_at
-            && $group->status !== TherapyStatusEnum::ended->value
-            && ! $group->isUser($counsellor->user)
-            && ! $group->users()->whereKey($counsellor->user->id)->exists();
-
-        if (! $allowed) {
-            throw new CannotRespondToRequestException(self::NOT_ALLOWED, 422);
-        }
     }
 }

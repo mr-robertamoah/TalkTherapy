@@ -117,6 +117,37 @@ test('only super admins see the read log', function () {
             ->where('accesses.data.0.admin.id', $super->id));
 });
 
+// SCRUM-385: what was read is named, not "Session #12"; a deleted subject says so.
+test('the read log names what was read, and the file, instead of showing ids', function () {
+    $t = acaTherapy();
+    $super = acaAdmin();
+    $t['therapy']->update(['name' => 'Coping with change']);
+    $t['session']->update(['name' => 'First session']);
+    $file = File::factory()->create(['name' => 'scan.pdf']);
+    $gone = acaTherapy();
+    $gone['therapy']->delete();
+
+    $row = fn ($subject, array $extra = []) => AdminContentAccess::create(array_merge([
+        'admin_user_id' => $super->id, 'resource' => 'therapy', 'subject_type' => $subject::class, 'subject_id' => $subject->id,
+    ], $extra));
+    $row($t['therapy']);
+    $row($t['session'], ['resource' => 'session']);
+    $row($t['message'], ['resource' => 'message_attachment', 'file_id' => $file->id]);
+    $row($gone['therapy']);
+
+    $this->actingAs($super)->get(route('administrator.content-accesses'))->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->where('accesses.data.0.subject', 'a deleted therapy')
+            ->where('accesses.data.1.subject', 'A message in First session')
+            ->where('accesses.data.1.fileName', 'scan.pdf')
+            ->where('accesses.data.2.subject', 'Session: First session')
+            ->where('accesses.data.3.subject', 'Therapy: Coping with change')
+            ->where('filters.subjectLabel', null));
+
+    $this->actingAs($super)->get(route('administrator.content-accesses', ['subject' => 'session', 'subject_id' => $t['session']->id]))->assertOk()
+        ->assertInertia(fn ($page) => $page->where('filters.subjectLabel', 'Session: First session'));
+});
+
 test('an admin opening a private therapy\'s page is recorded; a public one is not', function () {
     $private = acaTherapy();
     $public = acaTherapy(public: true);

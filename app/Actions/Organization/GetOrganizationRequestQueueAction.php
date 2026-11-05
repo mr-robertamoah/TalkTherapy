@@ -3,6 +3,7 @@
 namespace App\Actions\Organization;
 
 use App\Actions\Action;
+use App\Actions\Request\PreloadRequestListAction;
 use App\DTOs\OrganizationDTO;
 use App\Enums\PaginationEnum;
 use App\Models\Request;
@@ -16,12 +17,13 @@ class GetOrganizationRequestQueueAction extends Action
     // and the Counsellor across rounds), without needing to touch `for` at all.
     public function execute(OrganizationDTO $dto): LengthAwarePaginator
     {
-        return Request::query()
+        // SCRUM-384: rendered by RequestResource, so each row's `for` is loaded once for the page.
+        return PreloadRequestListAction::new()->execute(Request::query()
             ->wherePending()
             ->where(function ($query) use ($dto) {
                 $query->whereFrom($dto->organization)->orWhereTo($dto->organization);
             })
             ->latest()
-            ->paginate(PaginationEnum::preferencesPagination->value);
+            ->paginate(PaginationEnum::preferencesPagination->value));
     }
 }

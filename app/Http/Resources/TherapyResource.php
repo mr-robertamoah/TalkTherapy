@@ -7,6 +7,7 @@ use App\Actions\VideoConsent\GetCurrentValidVideoConsentForTherapyAction;
 use App\Actions\VideoConsent\GetWardForVideoConsentableAction;
 use App\Enums\ConstantsEnum;
 use App\Enums\TherapyPaymentTypeEnum;
+use App\Models\SafeguardingException;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -114,6 +115,8 @@ class TherapyResource extends JsonResource
             // SCRUM-381: only for that counsellor, while their client is paused -- whether a request
             // for a safeguarding exception is already waiting for the super administrator.
             'safeguardingExceptionRequested' => $this->when($pause['client'] === true, fn () => $this->requests()->pendingSafeguardingException()->exists()),
+            // SCRUM-384: the request form's limit, from the model rather than a copy in the UI.
+            'safeguardingExceptionMaxDays' => $this->when($pause['client'] === true, SafeguardingException::MAX_DAYS),
         ];
     }
 

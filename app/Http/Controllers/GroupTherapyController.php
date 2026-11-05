@@ -10,6 +10,7 @@ use App\Exceptions\PaymentRequiredException;
 use App\Http\Requests\CreateGroupTherapyRequest;
 use App\Http\Requests\UpdateGroupTherapyRequest;
 use App\Http\Resources\GroupTherapyMiniResource;
+use App\Http\Resources\GroupTherapyPreviewResource;
 use App\Http\Resources\GroupTherapyResource;
 use App\Http\Resources\RequestResource;
 use App\Http\Resources\SessionResource;
@@ -233,26 +234,40 @@ class GroupTherapyController extends Controller
     public function getGroupTherapy(Request $request)
     {
         try {
-            $therapy = GroupTherapyService::new()->getGroupTherapy(
+            $user = $request->user();
+            // SCRUM-383: opened from a member invitation link -- the page offers to join (and shows
+            // a private group's preview). SCRUM-73: a former member sees the preview of a private
+            // group too, to report it or ask to rejoin.
+            $page = GroupTherapyService::new()->getGroupTherapyPage(
                 GetTherapyDTO::new()->fromArray([
-                    'user' => $request->user(),
+                    'user' => $user,
                     'groupTherapy' => GroupTherapy::find($request->route('groupTherapyId')),
-                ])
+                    'invitationUuid' => is_string($request->query('invitation')) ? $request->query('invitation') : null,
+                    'allowPreview' => true,
+                ]),
             );
+            $therapy = $page['therapy'];
+            $invitation = $page['invitation'];
+            // What the group is, not who is in it or what has happened in it.
+            $preview = $page['preview'];
 
-            $pendingRequest = $therapy->pendingRequestFor($request->user()?->counsellor);
-            $pendingMembershipRequest = $request->user()
-                ? $therapy->pendingMembershipRequestFor($request->user())
+            $pendingRequest = $preview ? null : $therapy->pendingRequestFor($user?->counsellor);
+            $pendingMembershipRequest = $user
+                ? $therapy->pendingMembershipRequestFor($user)
                 : null;
 
             return Inertia::render('GroupTherapy/Index', [
-                'therapy' => new GroupTherapyResource($therapy),
+                'therapy' => $preview ? new GroupTherapyPreviewResource($therapy) : new GroupTherapyResource($therapy),
+                'preview' => $preview,
+                // SCRUM-73: they may report the group (and rejoin it by its usual rules).
+                'isFormerMember' => $user && $therapy->isFormerMember($user),
                 'session' => session('session'),
                 'transactionStatus' => session('transactionStatus'),
                 'pendingRequest' => $pendingRequest ? new RequestResource($pendingRequest) : null,
                 'pendingMembershipRequest' => $pendingMembershipRequest ? new RequestResource($pendingMembershipRequest) : null,
-                'recentSessions' => SessionResource::collection($therapy->sessions()->with('latestTransaction')->latest()->take(5)->get()->each->setRelation('for', $therapy)),
-                'recentTopics' => TherapyTopicResource::collection($therapy->topics()->latest()->take(5)->get()),
+                'linkInvitation' => $invitation ? ['uuid' => $invitation->uuid] : null,
+                'recentSessions' => $preview ? [] : SessionResource::collection($therapy->sessions()->with('latestTransaction')->latest()->take(5)->get()->each->setRelation('for', $therapy)),
+                'recentTopics' => $preview ? [] : TherapyTopicResource::collection($therapy->topics()->latest()->take(5)->get()),
             ]);
         } catch (PaymentRequiredException $th) {
             // TT-7.5b-b2/SCRUM-266: mirrors TherapyController::getTherapy()'s own identical
@@ -287,6 +302,23 @@ class GroupTherapyController extends Controller
                     ? new GroupTherapyResource($result)
                     : new RequestResource($result),
             ]);
+        } catch (Throwable $th) {
+            return $this->failureResponse($request, $th);
+        }
+    }
+
+    // SCRUM-73
+    public function leaveGroupTherapy(Request $request)
+    {
+        try {
+            GroupTherapyService::new()->leaveGroupTherapy(
+                GroupTherapyDTO::new()->fromArray([
+                    'user' => $request->user(),
+                    'groupTherapy' => GroupTherapy::find($request->route('groupTherapyId')),
+                ])
+            );
+
+            return response()->json(['status' => true]);
         } catch (Throwable $th) {
             return $this->failureResponse($request, $th);
         }

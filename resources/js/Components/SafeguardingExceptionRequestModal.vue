@@ -16,6 +16,8 @@ const props = defineProps({
     isGroup: { type: Boolean, default: false },
     // { key, name } for a group member; null for a 1:1 client.
     member: { type: Object, default: null },
+    // SCRUM-384: SafeguardingException::MAX_DAYS, from the therapy or group resource.
+    maxDays: { type: Number, required: true },
 })
 
 const emit = defineEmits(['close'])
@@ -65,7 +67,7 @@ async function send() {
                 <p class="mt-1 text-sm text-gray-600">
                     <template v-if="member">{{ member.name }}'s</template><template v-else>Your client's</template>
                     participation is paused because their account has no guardian. The super administrator can let it
-                    carry on for up to 30 days while that is sorted out. Video calls still need a guardian's consent.
+                    carry on for up to {{ maxDays }} days while that is sorted out. Video calls still need a guardian's consent.
                 </p>
             </div>
 
@@ -74,6 +76,7 @@ async function send() {
                 v-model:reason="reason"
                 v-model:ends-at="endsAt"
                 id-prefix="safeguarding-request"
+                :max-days="maxDays"
                 reason-label="Why is it needed? (only the super administrator sees this)"
                 end-label="Proposed end"
             />

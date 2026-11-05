@@ -426,10 +426,23 @@ class User extends Authenticatable implements MustVerifyEmailContract
         return $this->morphMany(GroupTherapy::class, 'addedby');
     }
 
+    // The groups this user is a member of now (SCRUM-73: not the ones they left).
     public function groupTherapies()
     {
-        return $this->belongsToMany(GroupTherapy::class, 'group_therapy_user', 'user_id', 'group_therapy_id')
-            ->withPivot(['background_story'])
+        return $this->groupTherapyMembershipRelation('groupTherapies')->wherePivotNull('left_at');
+    }
+
+    // SCRUM-73: every group this user has ever been a member of, the ones they left included.
+    public function allGroupTherapyMemberships()
+    {
+        return $this->groupTherapyMembershipRelation('allGroupTherapyMemberships');
+    }
+
+    // Named explicitly: belongsToMany() otherwise guesses the relation name from its caller.
+    private function groupTherapyMembershipRelation(string $name)
+    {
+        return $this->belongsToMany(GroupTherapy::class, 'group_therapy_user', 'user_id', 'group_therapy_id', relation: $name)
+            ->withPivot(['background_story', 'anonymous', 'left_at'])
             ->withTimestamps();
     }
 

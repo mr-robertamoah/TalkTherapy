@@ -23,6 +23,7 @@ use App\Http\Controllers\VideoSessionController;
 use App\Models\Counsellor;
 use App\Models\GroupTherapy;
 use App\Models\Guardianship;
+use App\Models\Link;
 use App\Models\Message;
 use App\Models\Request;
 use App\Models\Session;
@@ -34,6 +35,7 @@ use App\Models\VideoSession;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Str;
 
 // SCRUM-288: every write entry point of a therapy refuses a minor with no active guardian (and the
 // counsellor of their paused 1:1) with guardian_required, and lets the same minor through once they
@@ -272,6 +274,15 @@ function gpepEntryPoints(): array
 
             return [['groupTherapyId' => $group->id], []];
         }, 422],
+        // SCRUM-383: confirming a member invitation link -- the same gate as the join button.
+        'join a group by link' => ['POST', 'api/links/{uuid}/join', 'minor', function (array $c) {
+            $creator = User::factory()->adult()->create();
+            $group = GroupTherapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => $creator->id, 'allow_anyone' => false, 'max_users' => 10]);
+            $link = Link::query()->forceCreate(['type' => 'GROUP_THERAPY_PARTICIPANT', 'state' => 'ACTIVE', 'uuid' => (string) Str::uuid(),
+                'addedby_type' => User::class, 'addedby_id' => $creator->id, 'for_type' => GroupTherapy::class, 'for_id' => $group->id]);
+
+            return [['uuid' => $link->uuid], ['anonymous' => true]];
+        }, 422],
         'update their group (api)' => ['PATCH', 'api/group-therapies/{groupTherapyId}', 'minor', $groupUpdate, 403],
         'update their group (web)' => ['PATCH', 'group-therapies/{groupTherapyId}', 'minor', $groupUpdate, 403],
         'join a 1:1 video call (counsellor of a paused 1:1)' => ['POST', 'sessions/{sessionId}/video/join', 'counsellor', fn (array $c) => [['sessionId' => $c['liveSession']->id], []], 403],
@@ -322,6 +333,8 @@ const GPEP_ALLOWED = [
     'POST api/therapies/{therapyId}', 'POST therapies/{therapyId}', 'DELETE api/therapies/{therapyId}', 'DELETE therapies/{therapyId}',
     'POST api/group-therapies/{groupTherapyId}', 'POST group-therapies/{groupTherapyId}',
     'DELETE api/group-therapies/{groupTherapyId}', 'DELETE group-therapies/{groupTherapyId}',
+    // SCRUM-73: leaving a group is a withdrawal too -- allowed while paused (and while suspended).
+    'POST api/group-therapies/{groupTherapyId}/leave',
     'POST sessions/{sessionId}/video/leave', 'POST sessions/{sessionId}/video/end', 'POST sessions/{sessionId}/video/hand/lower',
     'POST sessions/{sessionId}/video/participants/{participantKey}/revoke-speaking', 'POST sessions/{sessionId}/video/participants/{participantKey}/remove',
     // Need a live call row, which a paused minor never has (removed on pause, and the join is refused).

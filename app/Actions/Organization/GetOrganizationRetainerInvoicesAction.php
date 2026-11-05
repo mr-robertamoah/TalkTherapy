@@ -18,10 +18,13 @@ class GetOrganizationRetainerInvoicesAction extends Action
     {
         return OrganizationInvoice::query()
             ->where('organization_id', $dto->organization->id)
-            // Not lines.session -- OrganizationInvoiceLineResource's own sessionLabel is built
-            // directly off session_id (security-engineer finding: never the session's own
-            // client-authored name), so eager-loading the session relation itself is unneeded.
-            ->with(['lines.counsellor'])
+            // lines.session feeds OrganizationInvoiceLineResource's sessionLabel (its start date
+            // only, never the client-authored name -- SCRUM-385). withTrashed() so a session
+            // soft-deleted after settlement still shows its date.
+            ->with([
+                'lines.counsellor',
+                'lines.session' => fn ($query) => $query->withTrashed(),
+            ])
             ->orderByDesc('period_start')
             ->paginate(PaginationEnum::preferencesPagination->value);
     }

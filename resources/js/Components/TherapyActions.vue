@@ -51,10 +51,12 @@
           >
           
           <template v-if="!computedIsInSession">
+            <!-- Only the group's creator may end it (EnsureCanUpdateTherapyAction); its members and
+                 counsellors were shown a button the server refuses. -->
             <PrimaryButton
               @click="$emit('clicked-end-therapy')"
               v-if="
-                computedIsParticipant &&
+                (therapyType === 'group' ? computedIsUser : computedIsParticipant) &&
                 therapy.status !== 'ENDED' &&
                 therapy.sessionsHeld
               "

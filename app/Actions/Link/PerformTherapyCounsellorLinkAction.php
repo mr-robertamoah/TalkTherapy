@@ -28,7 +28,7 @@ class PerformTherapyCounsellorLinkAction extends Action
         // below, instead of a clean LinkException -- SCRUM-101.
         EnsureCounsellorExistsAction::new()->execute(
             UpdateCounsellorDTO::new()->fromArray(['counsellor' => $createLinkDTO->user?->counsellor]),
-            'You do not have a counsellor account hence you are not authorized to use this link. Create a counsellor account first.'
+            LinkException::NO_COUNSELLOR
         );
 
         // Locking the therapy row before deciding whether it already has a counsellor closes

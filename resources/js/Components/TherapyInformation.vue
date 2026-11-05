@@ -2,7 +2,7 @@
   <!-- Navigation -->
   <div id="therapy-info-id" class="relative"></div>
   <div
-    class="bg-white shadow-sm sticky top-0 z-10 max-w-7xl mx-auto sm:px-6 lg:px-8 my-4 p-3 flex justify-start items-center border-b"
+    class="bg-white shadow-sm sticky top-0 z-10 max-w-7xl mx-auto sm:px-6 lg:px-8 my-4 p-3 flex justify-start items-center border-b overflow-x-auto"
   >
     <button
       v-for="item in allTabItems"
@@ -150,7 +150,12 @@
 
           <!-- Membership Section (group therapy join flow, SCRUM-72) -->
           <div v-if="therapyType === 'group'" class="bg-white p-6 shrink-0 mt-4 w-full">
-            <div class="text-gray-600 tracking-wide font-semibold">Membership</div>
+            <div class="flex justify-between items-baseline">
+              <div class="text-gray-600 tracking-wide font-semibold">Membership</div>
+              <div v-if="therapy.membersCount != null" class="text-sm text-gray-500">
+                {{ therapy.membersCount }} of {{ therapy.maxUsers }} {{ therapy.maxUsers == 1 ? 'member' : 'members' }}
+              </div>
+            </div>
 
             <div class="my-4 relative">
               <!-- The creator, viewing a request someone else sent to join -->
@@ -177,10 +182,30 @@
                 </div>
               </template>
 
-              <!-- Already a member (or the creator, with no pending request to respond to) -->
+              <!-- An ordinary member: they may leave (SCRUM-73) -->
+              <template v-else-if="therapy.isMember">
+                <div class="text-sm text-center text-gray-600 w-full">
+                  you are a member of this group therapy.
+                </div>
+                <div v-if="therapy.status !== 'ENDED'" class="flex justify-center mt-3">
+                  <DangerButton @click="$emit('clicked-leave-group')">leave group</DangerButton>
+                </div>
+              </template>
+
+              <!-- The creator or a counsellor, with no pending request to respond to -->
               <template v-else-if="computedIsParticipant">
                 <div class="text-sm text-center text-gray-600 w-full">
-                  you are already a member of this group therapy.
+                  {{ computedIsUser ? 'you created this group therapy.' : 'you are a counsellor of this group therapy.' }}
+                </div>
+              </template>
+
+              <!-- Opened from a member invitation link (SCRUM-383) -->
+              <template v-else-if="linkInvitation">
+                <div class="text-center text-sm text-gray-700 w-full">
+                  you have been invited to join this group therapy.
+                </div>
+                <div class="flex justify-center mt-3">
+                  <PrimaryButton @click="$emit('clicked-join-group', { invitation: linkInvitation.uuid })">join group</PrimaryButton>
                 </div>
               </template>
 
@@ -194,74 +219,52 @@
               </template>
 
               <!-- Not a member, nothing pending -->
-              <template v-else>
+              <template v-else-if="therapy.status !== 'ENDED'">
                 <div class="flex justify-center">
                   <PrimaryButton @click="$emit('clicked-join-group')">join group</PrimaryButton>
                 </div>
               </template>
-            </div>
-          </div>
 
-          <!-- Links Section (for users without counsellors) -->
-          <div
-            v-if="shouldShowLinks"
-            class="bg-white p-6 shrink-0 mt-4 w-full text-sm text-gray-600"
-          >
-            <div class="text-gray-600 tracking-wide font-semibold">Links</div>
-            <div class="my-2 text-justify w-full">
-              A link can be given to any counsellor and once they use the link they
-              will be automatically assigned to this therapy.
-            </div>
-            <div
-              v-if="getting.show"
-              class="text-center text-sm w-full my-4 text-green-600 bg-green-200"
-            >
-              {{
-                getting.type == "create link"
-                  ? "creating link"
-                  : "getting counsellor links"
-              }}
-            </div>
-            <div
-              class="flex justify-start items-center space-x-3 overflow-hidden overflow-x-auto"
-            >
-              <template v-if="counsellorLinks.data?.length">
-                <LinkComponent
-                  v-for="(link, idx) in counsellorLinks.data"
-                  :key="link.id"
-                  :link="link"
-                  @updated="(lk) => updateLink(lk, idx)"
-                  @deleted="(lk) => deleteLink(idx)"
-                  class="w-[90%] shrink-0 bg-white"
-                />
-
-                <div
-                  title="get more counsellor links"
-                  @click="$emit('get-counsellor-links')"
-                  v-if="counsellorLinks.page"
-                  class="cursor-pointer p-2 text-gray-600 font-bold"
-                >
-                  ...
+              <template v-else>
+                <div class="text-sm text-center text-gray-600 w-full">
+                  this group therapy has ended.
                 </div>
               </template>
-              <div v-else class="h-10 flex justify-center items-center w-full">
-                no links for {{ therapyType === 'group' ? 'counsellors' : 'counsellor' }} as at now.
-              </div>
-            </div>
-
-            <div class="flex justify-end mt-4">
-              <PrimaryButton
-                @click="$emit('create-counsellor-link')"
-                class="ms-4"
-                :class="{
-                  'opacity-25': getting.show && getting.type == 'create link',
-                }"
-                :disabled="getting.show && getting.type == 'create link'"
-              >
-                get link
-              </PrimaryButton>
             </div>
           </div>
+
+          <!-- Invitation links (SCRUM-383): counsellors, and for a group, members -->
+          <TherapyLinksPanel
+            v-if="shouldShowCounsellorLinks"
+            title="Counsellor links"
+            :description="therapyType === 'group'
+              ? 'Give a link to a counsellor. Once they use it they join this group as one of its counsellors. Each link works once.'
+              : 'A link can be given to any counsellor and once they use the link they will be automatically assigned to this therapy.'"
+            empty-label="counsellor links"
+            :links="counsellorLinks"
+            :busy="getting.show && ['links counsellor', 'create link counsellor'].includes(getting.type)"
+            :busy-text="getting.type == 'create link counsellor' ? 'creating link' : 'getting counsellor links'"
+            :creating="getting.show && getting.type == 'create link counsellor'"
+            @create="$emit('create-link', 'counsellor')"
+            @more="$emit('get-links', 'counsellor')"
+            @updated="(idx, link) => $emit('link-updated', 'counsellor', idx, link)"
+            @deleted="(idx) => $emit('link-deleted', 'counsellor', idx)"
+          />
+
+          <TherapyLinksPanel
+            v-if="shouldShowMemberLinks"
+            title="Member links"
+            description="Give a link to someone you want in this group. They join without waiting for your approval once they confirm on the group's page, choosing whether to be anonymous. Each link works once."
+            empty-label="member links"
+            :links="memberLinks"
+            :busy="getting.show && ['links member', 'create link member'].includes(getting.type)"
+            :busy-text="getting.type == 'create link member' ? 'creating link' : 'getting member links'"
+            :creating="getting.show && getting.type == 'create link member'"
+            @create="$emit('create-link', 'member')"
+            @more="$emit('get-links', 'member')"
+            @updated="(idx, link) => $emit('link-updated', 'member', idx, link)"
+            @deleted="(idx) => $emit('link-deleted', 'member', idx)"
+          />
           </div>
 
           <!-- Details -->
@@ -310,7 +313,7 @@
 import { computed, ref } from 'vue'
 import CounsellorComponent from '@/Components/CounsellorComponent.vue'
 import UserComponent from '@/Components/UserComponent.vue'
-import LinkComponent from '@/Components/LinkComponent.vue'
+import TherapyLinksPanel from '@/Components/TherapyLinksPanel.vue'
 import PrimaryButton from '@/Components/PrimaryButton.vue'
 import DangerButton from '@/Components/DangerButton.vue'
 import FormLoader from '@/Components/FormLoader.vue'
@@ -333,13 +336,21 @@ const props = defineProps({
   membershipRequest: { default: () => ({ responding: false, status: null }) },
   getting: { default: () => ({ show: false, type: '' }) },
   counsellorLinks: { default: () => ({ page: 1, data: [] }) },
+  memberLinks: { default: () => ({ page: 1, data: [] }) },
+  linkInvitation: { default: null },
   computedIsUser: { type: Boolean, default: false },
   computedIsCounsellor: { type: Boolean, default: false },
   computedCanParticipate: { type: Boolean, default: false },
   computedIsParticipant: { type: Boolean, default: false },
 })
 
-const activeTab = ref('therapy_background_story')
+// SCRUM-383 QA: someone opening a member invitation lands on Participants, where the invitation
+// and its "join group" button are, not on "about".
+const activeTab = ref(
+  props.therapyType === 'group' && props.linkInvitation && !props.computedIsParticipant
+    ? 'therapy_participants'
+    : 'therapy_background_story'
+)
 
 const allTabItems = computed(() => {
   const baseItems = [
@@ -379,11 +390,17 @@ const userToShow = computed(() => {
     : props.therapy.user
 })
 
-const shouldShowLinks = computed(() => {
+const shouldShowCounsellorLinks = computed(() => {
   if (props.therapyType === 'group') {
-    return props.computedIsUser && !props.counsellors.length
+    const active = props.therapy.activeCounsellorIds?.length ?? 0
+    return props.computedIsUser && props.therapy.status !== 'ENDED' && active < (props.therapy.maxCounsellors ?? 1)
   }
   return props.computedIsUser && !props.counsellor
+})
+
+// SCRUM-383: the creator invites members while the group is running and has room.
+const shouldShowMemberLinks = computed(() => {
+  return props.therapyType === 'group' && props.computedIsUser && props.therapy.status !== 'ENDED'
 })
 
 defineEmits([
@@ -391,8 +408,11 @@ defineEmits([
   'clicked-assistance-request',
   'clicked-join-group',
   'clicked-membership-response',
-  'create-counsellor-link',
-  'get-counsellor-links',
+  'clicked-leave-group',
+  'create-link',
+  'get-links',
+  'link-updated',
+  'link-deleted',
 ])
 </script>
 

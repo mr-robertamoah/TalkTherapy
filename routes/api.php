@@ -102,6 +102,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/links/{linkId}/status', [LinkController::class, 'changeLinkStatus'])->name('api.links.status');
     Route::post('/links/status/multiple', [LinkController::class, 'changeMultipleLinkStatuses'])->name('api.links.statusmultiple');
     Route::post('/links/{linkId}/delete', [LinkController::class, 'deleteLink'])->name('api.links.delete');
+    // SCRUM-383: confirming a member invitation link (the GET links.get only shows the confirmation).
+    Route::post('/links/{uuid}/join', [LinkController::class, 'joinGroupByLink'])->name('api.links.join')->middleware('throttle:10,1,api.links.join');
     Route::post('/links/delete/multiple', [LinkController::class, 'deleteMultipleLinks'])->name('api.links.deletemultiple');
 
     // SCRUM-177: see the matching comment on api.counsellors above.
@@ -298,7 +300,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/group-therapies/{groupTherapyId}', [GroupTherapyController::class, 'deleteGroupTherapy'])->name('api.group.therapies.delete');
     Route::post('/group-therapies/{groupTherapyId}', [GroupTherapyController::class, 'endGroupTherapy'])->name('api.group.therapies.end');
     Route::post('/group-therapies', [GroupTherapyController::class, 'createGroupTherapy'])->name('group.therapies.create');
-    Route::post('/group-therapies/{groupTherapyId}/join', [GroupTherapyController::class, 'joinGroupTherapy'])->name('api.group.therapies.join');
+    Route::post('/group-therapies/{groupTherapyId}/join', [GroupTherapyController::class, 'joinGroupTherapy'])->name('api.group.therapies.join')->middleware('throttle:10,1,api.group.therapies.join');
+    // SCRUM-73: allowed while paused or suspended (EnsureAccountIsNotSuspended's allowlist).
+    Route::post('/group-therapies/{groupTherapyId}/leave', [GroupTherapyController::class, 'leaveGroupTherapy'])->name('api.group.therapies.leave')->middleware('throttle:10,1,api.group.therapies.leave');
     Route::get('/user/group-therapies', [GroupTherapyController::class, 'getUserGroupTherapies'])->name('api.group.therapies.user');
     Route::get('/ward/group-therapies', [GroupTherapyController::class, 'getWardGroupTherapies'])->name('api.group.therapies.ward');
     Route::get('/counsellor/group-therapies', [GroupTherapyController::class, 'getCounsellorGroupTherapies'])->name('api.group.therapies.counsellor');

@@ -4,6 +4,7 @@ namespace App\Http\Requests;
 
 use App\Enums\LicensingAuthorityTypeEnum;
 use App\Enums\LicensingTypeEnum;
+use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -20,7 +21,7 @@ class CreateLicensingAuthorityRequest extends FormRequest
     /**
      * Get the validation rules that apply to the request.
      *
-     * @return array<string, \Illuminate\Contracts\Validation\ValidationRule|array<mixed>|string>
+     * @return array<string, ValidationRule|array<mixed>|string>
      */
     public function rules(): array
     {
@@ -35,6 +36,14 @@ class CreateLicensingAuthorityRequest extends FormRequest
             'email' => ['required', 'string'],
             'addedbyType' => ['nullable', 'string'],
             'addedbyId' => ['nullable', 'integer'],
+        ];
+    }
+
+    // SCRUM-385: name these fields in plain words in the default messages, not "the reply id".
+    public function attributes(): array
+    {
+        return [
+            'addedbyId' => 'creator',
         ];
     }
 }

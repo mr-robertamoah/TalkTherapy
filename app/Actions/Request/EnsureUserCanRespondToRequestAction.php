@@ -32,16 +32,20 @@ class EnsureUserCanRespondToRequestAction extends Action
     // layer (RequestResource's `isRespondent`, RequestService::getRequests()'s listing query,
     // any future caller) must call this method rather than reimplement its own copy of this
     // logic, however small the copy looks at the time.
-    public function userCanRespond(User $user, ModelsRequest $request): bool
+    // SCRUM-384: $manage lets a list share one remembering() instance (RequestResource), so the
+    // super administrator's "do they counsel this minor" is read once per minor, not per row.
+    public function userCanRespond(User $user, ModelsRequest $request, ?EnsureCanManageSafeguardingExceptionAction $manage = null): bool
     {
         // SCRUM-381 (the user's decision): only the super administrator answers a counsellor's
         // request for a safeguarding exception -- never another administrator (the generic isAdmin()
         // branch below), never the counsellor who sent it, and (SCRUM-382 review) never one who
         // counsels the minor: the same rule as granting one (EnsureCanManageSafeguardingExceptionAction).
         if ($request->type === RequestTypeEnum::safeguardingException->value) {
-            $manage = EnsureCanManageSafeguardingExceptionAction::new();
+            $manage ??= EnsureCanManageSafeguardingExceptionAction::new();
 
-            return $manage->allows($user, User::withTrashed()->find($request->data['wardId'] ?? null))
+            // allowsClosing(): a request whose minor's row is gone can still be rejected (accepting
+            // it is then refused by GrantSafeguardingExceptionAction).
+            return $manage->allowsClosing($user, $request->safeguardingWard())
                 && ! $manage->sentBy($request, $user);
         }
 

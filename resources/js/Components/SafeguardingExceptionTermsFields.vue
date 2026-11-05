@@ -5,7 +5,8 @@ import InputLabel from '@/Components/InputLabel.vue'
 // SCRUM-381: the terms of a safeguarding exception -- a reason and an end date -- shared by the
 // counsellor's request modal, the super administrator's approval (RequestBadge) and the admin page.
 // The end is a preset (7, 14 or 30 days from now) or a date; `endsAt` is emitted as an ISO (UTC)
-// string. The server checks the limits again: more than an hour away and at most 30 days.
+// string. The server checks the limits again: more than an hour away and at most `maxDays` days.
+// SCRUM-384: `maxDays` is SafeguardingException::MAX_DAYS, passed down by each page (never a copy here).
 
 const reason = defineModel('reason', { type: String, default: '' })
 const endsAt = defineModel('endsAt', { type: String, default: '' })
@@ -16,11 +17,12 @@ const props = defineProps({
     endLabel: { type: String, default: 'Ends' },
     // An ISO date the form starts from (e.g. what the counsellor proposed).
     initialEndsAt: { type: String, default: '' },
+    maxDays: { type: Number, required: true },
 })
 
-const MAX_DAYS = 30
-const presets = [7, 14, 30]
-const choice = ref('14') // '7' | '14' | '30' | 'date'
+// The usual choices, up to the limit (which is always offered).
+const presets = computed(() => [...new Set([7, 14, props.maxDays].filter((days) => days <= props.maxDays))])
+const choice = ref(String(presets.value.includes(14) ? 14 : presets.value[0])) // a preset's days, or 'date'
 const date = ref('')
 
 function toDateInput(value) {
@@ -30,7 +32,7 @@ function toDateInput(value) {
 }
 
 const minDate = computed(() => toDateInput(Date.now() + 24 * 3600 * 1000))
-const maxDate = computed(() => toDateInput(Date.now() + MAX_DAYS * 24 * 3600 * 1000))
+const maxDate = computed(() => toDateInput(Date.now() + props.maxDays * 24 * 3600 * 1000))
 
 // A prefilled date (e.g. a proposal from days ago) is kept within today's limits (YYYY-MM-DD strings
 // compare in date order).
@@ -43,9 +45,9 @@ if (props.initialEndsAt) {
 function compute() {
     if (choice.value === 'date') {
         if (!date.value) return ''
-        // The end of the chosen day, local time, kept within 30 days of now.
+        // The end of the chosen day, local time, kept within maxDays of now.
         const end = new Date(`${date.value}T23:59:00`)
-        const latest = Date.now() + MAX_DAYS * 24 * 3600 * 1000 - 60 * 1000
+        const latest = Date.now() + props.maxDays * 24 * 3600 * 1000 - 60 * 1000
         return new Date(Math.min(end.getTime(), latest)).toISOString()
     }
 
@@ -54,7 +56,7 @@ function compute() {
 
 watch([choice, date], () => { endsAt.value = compute() }, { immediate: true })
 
-const endsAtLabel = computed(() => endsAt.value ? new Date(endsAt.value).toLocaleString() : '--')
+const endsAtLabel = computed(() => endsAt.value ? new Date(endsAt.value).toLocaleString() : '')
 </script>
 
 <template>
@@ -91,7 +93,7 @@ const endsAtLabel = computed(() => endsAt.value ? new Date(endsAt.value).toLocal
                     class="border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 rounded-md shadow-sm text-sm"
                 />
             </div>
-            <div class="mt-1 text-xs text-gray-500">Until {{ endsAtLabel }}. At most {{ MAX_DAYS }} days.</div>
+            <div class="mt-1 text-xs text-gray-500">{{ endsAtLabel ? `Until ${endsAtLabel}.` : 'Pick an end date.' }} At most {{ maxDays }} days.</div>
         </div>
     </div>
 </template>

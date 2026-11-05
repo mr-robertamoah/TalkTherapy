@@ -3,6 +3,7 @@
 namespace App\Http\Resources;
 
 use App\Actions\SafeguardingException\EnsureCanManageSafeguardingExceptionAction;
+use App\Actions\User\AnonymiseClosedAccountAction;
 use App\Models\SafeguardingException;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -35,7 +36,7 @@ class AdminSafeguardingExceptionResource extends JsonResource
             'involved' => false,
             'ward' => [
                 'id' => $this->ward?->id,
-                'name' => $this->ward?->name ?? 'a deleted account',
+                'name' => $this->ward?->name ?? AnonymiseClosedAccountAction::CLOSED_ACCOUNT_NAME,
                 'username' => $this->ward?->username,
             ],
             'reason' => $this->reason,

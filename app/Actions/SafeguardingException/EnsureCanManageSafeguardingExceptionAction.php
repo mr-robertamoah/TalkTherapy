@@ -20,6 +20,10 @@ class EnsureCanManageSafeguardingExceptionAction extends Action
 
     public const COUNSELS_WARD = 'You counsel this person, so you can\'t decide a safeguarding exception for them.';
 
+    // SCRUM-384: null unless remembering() was called -- then counsels() is worked out once per
+    // administrator and minor on this instance.
+    private ?array $counselsMemo = null;
+
     public function execute(?User $admin, ?User $ward): void
     {
         if (! $admin?->isSuperAdmin()) {
@@ -40,6 +44,25 @@ class EnsureCanManageSafeguardingExceptionAction extends Action
     public function allows(?User $admin, ?User $ward): bool
     {
         return (bool) $admin?->isSuperAdmin() && $ward && ! $this->counsels($admin, $ward);
+    }
+
+    // SCRUM-384: closing (rejecting) a counsellor's request -- the same rule, except that a request
+    // whose minor's row is gone for good (nobody left to counsel) can still be closed; otherwise it
+    // would wait in the "no longer needed" list forever.
+    public function ensureCanClose(?User $admin, ?User $ward): void
+    {
+        if (! $admin?->isSuperAdmin()) {
+            throw new SafeguardingExceptionRefusedException(self::NOT_SUPER_ADMIN, 403);
+        }
+
+        if ($ward && $this->counsels($admin, $ward)) {
+            throw new SafeguardingExceptionRefusedException(self::COUNSELS_WARD, 403);
+        }
+    }
+
+    public function allowsClosing(?User $admin, ?User $ward): bool
+    {
+        return (bool) $admin?->isSuperAdmin() && (! $ward || ! $this->counsels($admin, $ward));
     }
 
     // SCRUM-382 review (SCRUM-362's rule for reports): an administrator who counsels the minor, or
@@ -67,7 +90,26 @@ class EnsureCanManageSafeguardingExceptionAction extends Action
             ->values();
     }
 
+    // For one render of a list (RequestResource shares one instance per HTTP request and viewer), so
+    // rows about the same minor don't each re-read their therapies. Never for a decision that writes:
+    // a fresh instance always re-reads.
+    public function remembering(): static
+    {
+        $this->counselsMemo ??= [];
+
+        return $this;
+    }
+
     public function counsels(User $admin, User $ward): bool
+    {
+        if (is_null($this->counselsMemo)) {
+            return $this->readCounsels($admin, $ward);
+        }
+
+        return $this->counselsMemo["{$admin->id}:{$ward->id}"] ??= $this->readCounsels($admin, $ward);
+    }
+
+    private function readCounsels(User $admin, User $ward): bool
     {
         $counsellor = $admin->counsellor;
 

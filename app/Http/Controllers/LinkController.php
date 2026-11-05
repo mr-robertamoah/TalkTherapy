@@ -3,12 +3,14 @@
 namespace App\Http\Controllers;
 
 use App\Actions\GetModelWithModelNameAndIdAction;
+use App\Actions\Link\PerformGroupTherapyLinkAction;
 use App\DTOs\CreateLinkDTO;
 use App\DTOs\GetLinksDTO;
 use App\Http\Resources\LinkResource;
 use App\Models\Link;
 use App\Services\LinkService;
 use App\Support\FailureResponse;
+use App\Support\TherapyLink;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Redirect;
@@ -112,6 +114,28 @@ class LinkController extends Controller
             session()->flash('alert', $message);
 
             return Redirect::route('home');
+        }
+    }
+
+    // SCRUM-383: confirming a member invitation link on the group's page.
+    public function joinGroupByLink(Request $request)
+    {
+        try {
+            $group = LinkService::new()->joinGroupByLink(
+                CreateLinkDTO::new()->fromArray([
+                    'user' => $request->user(),
+                    'link' => Link::where('uuid', $request->route('uuid'))->first(),
+                    'anonymous' => $request->boolean('anonymous'),
+                ])
+            );
+
+            return $this->successResponse(
+                $request,
+                ['status' => true, 'message' => PerformGroupTherapyLinkAction::JOINED],
+                Redirect::to(TherapyLink::to($group))->with('message', PerformGroupTherapyLinkAction::JOINED),
+            );
+        } catch (Throwable $th) {
+            return $this->failureResponse($request, $th);
         }
     }
 

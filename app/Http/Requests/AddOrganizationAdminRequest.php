@@ -36,4 +36,12 @@ class AddOrganizationAdminRequest extends FormRequest
             'role' => ['sometimes', Rule::in(OrganizationAdminRoleEnum::values())],
         ];
     }
+
+    // SCRUM-385: name these fields in plain words in the default messages, not "the reply id".
+    public function attributes(): array
+    {
+        return [
+            'userId' => 'user',
+        ];
+    }
 }

@@ -28,6 +28,8 @@ use Throwable;
 //    - SUSPENSION: the person is ejected (1:1 and group alike), from every room for an account
 //      suspension, and only from rooms they are in as a counsellor for a counsellor-role one. It
 //      applies while the suspension is active.
+//    - NO_LONGER_MEMBER (SCRUM-73): the person is ejected from a group's room once they are no
+//      longer one of its participants (they left the group). Never a 1:1 room.
 // A room it can't do now (the lock was busy, or a step failed) is retried from the queue
 // (RemovePersonFromLiveCallJob), which runs the same re-checked removal.
 class RemovePersonFromLiveCallsAction extends Action
@@ -35,6 +37,8 @@ class RemovePersonFromLiveCallsAction extends Action
     public const GUARDIAN_LOSS = 'guardian_loss';
 
     public const SUSPENSION = 'suspension';
+
+    public const NO_LONGER_MEMBER = 'no_longer_member';
 
     // How many rooms they were taken out of now.
     public function execute(User $person, string $reason, ?int $suspensionId = null): int
@@ -88,6 +92,12 @@ class RemovePersonFromLiveCallsAction extends Action
     {
         if ($reason === self::GUARDIAN_LOSS) {
             return $person->isPausedForMissingGuardian(fresh: true);
+        }
+
+        if ($reason === self::NO_LONGER_MEMBER) {
+            $group = $live->videoSession->session->for;
+
+            return $group instanceof GroupTherapy && ! $group->isParticipant($person);
         }
 
         $suspension = $suspensionId ? Suspension::query()->find($suspensionId) : null;

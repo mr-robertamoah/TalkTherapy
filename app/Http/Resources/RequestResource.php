@@ -4,12 +4,14 @@ namespace App\Http\Resources;
 
 use App\Actions\Request\EnsureUserCanRespondToRequestAction;
 use App\Actions\SafeguardingException\EnsureCanManageSafeguardingExceptionAction;
+use App\Actions\User\AnonymiseClosedAccountAction;
 use App\Enums\ConstantsEnum;
 use App\Enums\RequestTypeEnum;
 use App\Models\Discussion;
 use App\Models\GroupTherapy;
 use App\Models\Organization;
 use App\Models\OrganizationCounsellor;
+use App\Models\SafeguardingException;
 use App\Models\Therapy;
 use App\Models\Transaction;
 use App\Models\User;
@@ -30,7 +32,7 @@ class RequestResource extends JsonResource
         // SCRUM-382 review (SCRUM-362's rule for reports): a super administrator lists every
         // counsellor's request for a safeguarding exception, but one about a minor they counsel
         // (and didn't send) shows only that it exists -- not who, the therapy, or the reason.
-        if ($this->isInvolvedSafeguardingAdmin($viewer)) {
+        if ($this->isInvolvedSafeguardingAdmin($request, $viewer)) {
             return [
                 'id' => $this->id,
                 'from' => null,
@@ -115,7 +117,7 @@ class RequestResource extends JsonResource
             // they are.
             'safeguardingException' => $this->when(
                 $this->type === RequestTypeEnum::safeguardingException->value,
-                fn () => $this->safeguardingException($viewer),
+                fn () => $this->safeguardingException($request, $viewer),
             ),
             'round' => $this->when(! is_null($this->round), $this->round),
             'expiresAt' => $this->when(! is_null($this->expires_at), fn () => $this->expires_at?->diffForHumans()),
@@ -124,31 +126,46 @@ class RequestResource extends JsonResource
     }
 
     // The sender sees their own request as its counsellor (below), never this summary.
-    private function isInvolvedSafeguardingAdmin(?User $viewer): bool
+    private function isInvolvedSafeguardingAdmin(Request $request, ?User $viewer): bool
     {
         if (! $viewer || $this->type !== RequestTypeEnum::safeguardingException->value || ! $viewer->isAdmin()) {
             return false;
         }
 
-        $manage = EnsureCanManageSafeguardingExceptionAction::new();
-        $ward = User::withTrashed()->find($this->data['wardId'] ?? null);
+        $manage = self::safeguardingManager($request, $viewer);
+        $ward = $this->resource->safeguardingWard();
 
         return ! $manage->sentBy($this->resource, $viewer) && $ward && $manage->counsels($viewer, $ward);
     }
 
-    private function safeguardingException(?User $viewer): array
+    // SCRUM-384: one remembering() instance per HTTP request and viewer (UserMiniResource's
+    // viewerIsAdmin() precedent), so a list with several rows about one minor reads whether the
+    // viewer counsels them once. The ward itself comes preloaded (PreloadRequestListAction).
+    private static function safeguardingManager(Request $request, User $viewer): EnsureCanManageSafeguardingExceptionAction
     {
-        $isRespondent = $viewer && EnsureUserCanRespondToRequestAction::new()->userCanRespond($viewer, $this->resource);
-        $ward = User::withTrashed()->find($this->data['wardId'] ?? null);
+        $key = "safeguardingManager:{$viewer->id}";
+        if (! $request->attributes->has($key)) {
+            $request->attributes->set($key, EnsureCanManageSafeguardingExceptionAction::new()->remembering());
+        }
+
+        return $request->attributes->get($key);
+    }
+
+    private function safeguardingException(Request $request, ?User $viewer): array
+    {
+        $isRespondent = $viewer && EnsureUserCanRespondToRequestAction::new()->userCanRespond($viewer, $this->resource, self::safeguardingManager($request, $viewer));
+        $ward = $this->resource->safeguardingWard();
         $therapy = $this->for;
 
         return [
             'reason' => $this->data['reason'] ?? null,
             'proposedEndsAt' => $this->data['proposedEndsAt'] ?? null,
             'isRespondent' => $isRespondent,
+            // SCRUM-384: the approval form's limit, from the model rather than a copy in the UI.
+            'safeguardingExceptionMaxDays' => $this->when($isRespondent, SafeguardingException::MAX_DAYS),
             'involved' => false,
             'client' => match (true) {
-                ! $ward => ['fullName' => 'a deleted account'],
+                ! $ward => ['fullName' => AnonymiseClosedAccountAction::CLOSED_ACCOUNT_NAME],
                 $isRespondent => $this->narrowUserProjection($ward),
                 $therapy instanceof Therapy || $therapy instanceof GroupTherapy => ['fullName' => $therapy->displayNameOf($ward)],
                 default => ['fullName' => ConstantsEnum::anonymousUserLabel->value],

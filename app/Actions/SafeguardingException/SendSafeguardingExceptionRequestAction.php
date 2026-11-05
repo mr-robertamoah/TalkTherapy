@@ -31,6 +31,8 @@ class SendSafeguardingExceptionRequestAction extends Action
 
     public const NOT_PAUSED = 'This client\'s therapy isn\'t paused, so no safeguarding exception is needed.';
 
+    public const NOT_A_MEMBER = 'This person isn\'t a member of the group.';
+
     public const ALREADY_REQUESTED = 'A safeguarding exception has already been requested for this client. It is waiting for review.';
 
     public function execute(SafeguardingExceptionRequestDTO $dto): Request
@@ -63,11 +65,17 @@ class SendSafeguardingExceptionRequestAction extends Action
             : ($therapy->addedby_type === User::class ? $therapy->addedby : null);
 
         if (! $ward || $ward->is($dto->user)) {
-            throw new SafeguardingExceptionRefusedException($therapy instanceof GroupTherapy ? 'This person isn\'t a member of the group.' : self::NOT_PAUSED, 422);
+            throw new SafeguardingExceptionRefusedException($therapy instanceof GroupTherapy ? self::NOT_A_MEMBER : self::NOT_PAUSED, 422);
         }
 
         $request = DB::transaction(function () use ($therapy, $counsellor, $ward, $reason, $proposedEndsAt) {
             $locked = User::query()->whereKey($ward->id)->lockForUpdate()->first();
+
+            // SCRUM-73: still a member, re-read under the minor's row lock -- leaving locks the same
+            // row, so a request racing a leave is refused rather than left pending for nobody.
+            if ($locked && $therapy instanceof GroupTherapy && ! $therapy->isUser($locked) && ! $therapy->users()->whereKey($locked->id)->sharedLock()->exists()) {
+                throw new SafeguardingExceptionRefusedException(self::NOT_A_MEMBER, 422);
+            }
 
             // Paused means no exception is in force either (User::isPausedForMissingGuardian()).
             if (! $locked?->isPausedForMissingGuardian(fresh: true)) {

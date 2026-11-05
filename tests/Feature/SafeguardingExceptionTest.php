@@ -609,14 +609,14 @@ test('every administrator sees the page; only the super administrator can grant 
     $super = sgeSuperAdmin();
 
     $this->actingAs($admin)->get(route('administrator.safeguarding_exceptions'))->assertOk()
-        ->assertInertia(fn ($page) => $page->component('Admin/SafeguardingExceptions')->where('canManage', false)->where('pausedMinors.0.id', $f['minor']->id));
+        ->assertInertia(fn ($page) => $page->component('Admin/SafeguardingExceptions')->where('canManage', false)->where('pausedMinors.data.0.id', $f['minor']->id));
     $this->actingAs($f['counsellorUser'])->get(route('administrator.safeguarding_exceptions'))->assertRedirect(route('home'));
 
-    $this->actingAs($admin)->post(route('admin.safeguarding_exceptions.grant', ['ward' => $f['minor']->id]), ['reason' => 'Needed.', 'ends_at' => now()->addDays(7)->toJSON()])
+    $this->actingAs($admin)->post(route('admin.safeguarding_exceptions.grant', ['ward' => $f['minor']->id]), ['reason' => 'Needed.', 'endsAt' => now()->addDays(7)->toJSON()])
         ->assertSessionHasErrors('alert');
     expect(SafeguardingException::query()->count())->toBe(0);
 
-    $this->actingAs($super)->post(route('admin.safeguarding_exceptions.grant', ['ward' => $f['minor']->id]), ['reason' => 'Needed.', 'ends_at' => now()->addDays(7)->toJSON()])
+    $this->actingAs($super)->post(route('admin.safeguarding_exceptions.grant', ['ward' => $f['minor']->id]), ['reason' => 'Needed.', 'endsAt' => now()->addDays(7)->toJSON()])
         ->assertSessionHasNoErrors();
     $exception = SafeguardingException::query()->sole();
 
@@ -724,7 +724,7 @@ test('on the admin page, an administrator involved with the minor sees summaries
 
     $response = $this->actingAs($coSuper)->get(route('administrator.safeguarding_exceptions'))->assertOk()
         ->assertInertia(fn ($page) => $page->where('canManage', true)
-            ->where('pausedMinors', fn ($rows) => collect($rows)->where('involved', true)->count() === 1
+            ->where('pausedMinors.data', fn ($rows) => collect($rows)->where('involved', true)->count() === 1
                 && collect($rows)->where('involved', true)->every(fn ($row) => ! isset($row['id']) && ! isset($row['name']) && ! isset($row['requests']) && $row['canManage'] === false)
                 && collect($rows)->firstWhere('id', $other['minor']->id)['canManage'] === true));
     expect($response->getContent())->not->toContain($f['minor']->name)->not->toContain('They need to keep going.')->not->toContain($f['therapy']->name);

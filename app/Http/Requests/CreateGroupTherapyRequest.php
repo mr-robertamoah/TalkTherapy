@@ -57,4 +57,14 @@ class CreateGroupTherapyRequest extends FormRequest
             'allowFreeHistoricalAccess' => ['nullable', 'boolean'],
         ];
     }
+
+    // SCRUM-385: name these fields in plain words in the default messages, not "the reply id".
+    public function attributes(): array
+    {
+        return [
+            'counsellorId' => 'counsellor',
+            'counsellorIds' => 'counsellors',
+            'counsellorIds.*' => 'counsellor',
+        ];
+    }
 }

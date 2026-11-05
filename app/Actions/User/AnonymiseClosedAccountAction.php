@@ -11,6 +11,11 @@ use App\Models\Counsellor;
 use App\Models\Request;
 use App\Models\SafeguardingException;
 use App\Models\User;
+use App\Notifications\ClientAccessPausedNotification;
+use App\Notifications\ClientAccessResumedNotification;
+use App\Notifications\GroupTherapyMemberLeftNotification;
+use App\Notifications\TherapyContinuationNotification;
+use App\Support\WardRef;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -24,7 +29,9 @@ use Illuminate\Support\Str;
 //    still attached (a pending request's scan is otherwise never swept);
 //  - its notifications, password-reset token and API tokens, the name and email on contact
 //    messages it sent, and the link from visit records to the account;
-//  - the reasons on its safeguarding exceptions and on counsellors' requests for one (SCRUM-381).
+//  - the reasons on its safeguarding exceptions and on counsellors' requests for one (SCRUM-381);
+//  - its name in its counsellors' pause, resume and continuation notices (SCRUM-384), and in the
+//    "a member left your group" notices (SCRUM-73), found by WardRef.
 // What stays: the account row itself (soft-deleted), so what the person took part in still holds
 // together -- their messages stay in other people's conversations as "Deleted user", and payment,
 // complaint, suspension and audit records keep pointing at it. Guardianship and organisation
@@ -32,6 +39,18 @@ use Illuminate\Support\Str;
 class AnonymiseClosedAccountAction extends Action
 {
     private const DOB_REQUEST_KEYS = ['attestedDob', 'newDob', 'priorDob'];
+
+    public const CLOSED_ACCOUNT_NAME = 'a closed account';
+
+    // The notices that carry a WardRef, and the keys in them that hold the person's name.
+    private const NOTICES_NAMING_A_PERSON = [
+        ClientAccessPausedNotification::class,
+        ClientAccessResumedNotification::class,
+        TherapyContinuationNotification::class,
+        GroupTherapyMemberLeftNotification::class,
+    ];
+
+    private const NAME_KEYS = ['clientName', 'memberName'];
 
     // Returns false when a stored file couldn't be deleted: nothing is marked, and the next run
     // retries.
@@ -87,6 +106,7 @@ class AnonymiseClosedAccountAction extends Action
                 });
 
             DB::table('notifications')->where('notifiable_type', $user->getMorphClass())->where('notifiable_id', $user->id)->delete();
+            $this->renameInOthersNotices($user);
             if ($user->email) {
                 DB::table('password_reset_tokens')->where('email', $user->email)->delete();
             }
@@ -103,6 +123,42 @@ class AnonymiseClosedAccountAction extends Action
         });
 
         return true;
+    }
+
+    // SCRUM-384/73: other people's stored notices that name them -- their counsellors' pause, resume
+    // and continuation notices, and "a member left your group" -- found by WardRef (never their id,
+    // and under each previous app key too), have the name replaced. A plain read (the data column has
+    // no index, so a locking read or an update by JSON path would scan and lock the whole table inside
+    // this transaction), narrowed by type, then an update by key. A row whose data can't be read is
+    // skipped, never the whole anonymisation.
+    private function renameInOthersNotices(User $user): void
+    {
+        $refs = WardRef::allOf($user);
+
+        DB::table('notifications')
+            ->whereIn('type', self::NOTICES_NAMING_A_PERSON)
+            ->where(function ($query) use ($refs) {
+                foreach ($refs as $ref) {
+                    $query->orWhere('data', 'like', '%"'.WardRef::KEY.'":"'.$ref.'"%');
+                }
+            })
+            ->select(['id', 'data'])
+            ->orderBy('id')
+            ->each(function (object $row) use ($refs) {
+                $data = json_decode((string) $row->data, true);
+
+                if (! is_array($data) || ! in_array($data[WardRef::KEY] ?? null, $refs, true)) {
+                    return;
+                }
+
+                foreach (self::NAME_KEYS as $key) {
+                    if (array_key_exists($key, $data)) {
+                        $data[$key] = self::CLOSED_ACCOUNT_NAME;
+                    }
+                }
+
+                DB::table('notifications')->where('id', $row->id)->update(['data' => json_encode($data)]);
+            });
     }
 
     private function dobRequests(User $user)

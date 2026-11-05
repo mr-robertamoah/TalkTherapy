@@ -11,14 +11,21 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
-class GroupTherapyMembershipRequestAcceptedGuardianNotification extends Notification implements ShouldQueue
+// To a minor's guardians when the minor becomes a member of a group (AddGroupTherapyMemberAction).
+// SCRUM-73: renamed from GroupTherapyMembershipRequestAcceptedGuardianNotification, as it is now sent
+// for every way of joining. $joinedVia picks the wording: an accepted request reads "accepted"; the
+// join button and an invitation link read "joined" (there was nothing to accept).
+class GroupTherapyMemberJoinedGuardianNotification extends Notification implements ShouldQueue
 {
     use Queueable;
 
-    /**
-     * Create a new notification instance.
-     */
-    public function __construct(private GroupTherapy $groupTherapy)
+    public const VIA_BUTTON = 'button';
+
+    public const VIA_LINK = 'link';
+
+    public const VIA_REQUEST = 'request';
+
+    public function __construct(private GroupTherapy $groupTherapy, private string $joinedVia = self::VIA_REQUEST)
     {
         $this->afterCommit();
     }
@@ -44,11 +51,15 @@ class GroupTherapyMembershipRequestAcceptedGuardianNotification extends Notifica
      */
     public function toMail(object $notifiable): MailMessage
     {
+        $accepted = $this->joinedVia === self::VIA_REQUEST;
+
         return (new MailMessage)
             ->success()
-            ->subject('Group Therapy Membership Request Accepted')
+            ->subject($accepted ? 'Group Therapy Membership Request Accepted' : 'Your Ward Joined a Group Therapy')
             ->greeting("Hello {$notifiable->name}!")
-            ->line("Your ward's request to join the group therapy with name: '{$this->groupTherapy->name}' created by '{$this->creatorName($notifiable)}' has been accepted.")
+            ->line($accepted
+                ? "Your ward's request to join the group therapy with name: '{$this->groupTherapy->name}' created by '{$this->creatorName($notifiable)}' has been accepted."
+                : "Your ward has joined the group therapy with name: '{$this->groupTherapy->name}' created by '{$this->creatorName($notifiable)}'.")
             ->action('Visit Group Therapy Page', url("group-therapies/{$this->groupTherapy->id}"))
             ->line("Thank you for choosing to 'TalkTherapy'.");
     }

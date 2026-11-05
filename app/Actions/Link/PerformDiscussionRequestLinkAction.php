@@ -25,7 +25,7 @@ class PerformDiscussionRequestLinkAction extends Action
     {
         EnsureCounsellorExistsAction::new()->execute(
             UpdateCounsellorDTO::new()->fromArray(['counsellor' => $createLinkDTO->user?->counsellor]),
-            'You do not have a counsellor account hence you are not authorized to use this link. Create a counsellor account first.'
+            LinkException::NO_COUNSELLOR
         );
 
         DB::transaction(function () use ($createLinkDTO) {

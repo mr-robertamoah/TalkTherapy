@@ -12,6 +12,9 @@ import { minutesUntilWindow } from '@/Composables/countdown'
 export default function useTherapyState(therapy, therapyType = 'individual', alerts = null) {
     const { SessionStatusEnum, DiscussionStatusEnum } = useEnums()
     const { setSuccessAlertData } = alerts ?? useAlert()
+    // SCRUM-383 QA: the page's own follow-up when the group's membership changed (e.g. the creator's
+    // member links, one of which a join may just have used).
+    const onMembershipChanged = alerts?.onMembershipChanged ?? null
     
     // Reactive state
     const activeSession = ref(null)
@@ -125,6 +128,37 @@ export default function useTherapyState(therapy, therapyType = 'individual', ale
     // WebSocket listening
     let counsellorChannel = null
     let therapyChannel = null
+    let leftHandler = null
+    let leftHandlerUserId = null
+
+    let leftPage = false
+
+    // Only on a channel this page still has: Echo.private() would subscribe again to one that was
+    // already left (e.g. by AuthenticatedLayout on logout).
+    function stopListeningForLeave() {
+        const channel = leftHandlerUserId ? Echo.connector.channels[`private-users.${leftHandlerUserId}`] : null
+        if (leftHandler && channel) {
+            channel.stopListening('.group-therapy.left', leftHandler)
+        }
+        leftHandler = null
+        leftHandlerUserId = null
+    }
+
+    // SCRUM-73: drop the group's channel before going elsewhere.
+    function releaseTherapyChannel() {
+        therapyChannel?.release()
+        therapyChannel = null
+    }
+
+    // SCRUM-73: this account left the group -- from this page (UnifiedTherapy) or another tab
+    // (GroupTherapyLeftEvent). Whichever comes first goes home; the other does nothing.
+    function leaveGroupPage() {
+        if (leftPage) return
+        leftPage = true
+        stopListeningForLeave()
+        releaseTherapyChannel()
+        router.visit(route('home'))
+    }
 
     function listenToTherapy(currentTherapy) {
         const channelName = therapyType === 'group' 
@@ -195,6 +229,25 @@ export default function useTherapyState(therapy, therapyType = 'individual', ale
                 // SCRUM-288: a 1:1 client was paused or resumed (no payload) -- reload the therapy so
                 // the counsellor's banner and controls follow.
                 .listen(`.therapy.access-changed`, () => router.reload({ only: ['therapy'], preserveScroll: true }))
+                // SCRUM-73: someone joined or left the group (no payload) -- refetch its member count,
+                // paused members..., and whatever else the page shows about its membership.
+                .listen(`.group-therapy.membership-changed`, () => {
+                    router.reload({ only: ['therapy'], preserveScroll: true })
+                    onMembershipChanged?.()
+                })
+        }
+
+        // SCRUM-73: this account left the group in another tab or window -- leave its page and channel.
+        // Directly on the user channel (AuthenticatedLayout also listens there, outside sharedChannel.js),
+        // removing only this handler on unmount, never leaving the channel.
+        stopListeningForLeave()
+        if (therapyType === 'group' && userId.value) {
+            leftHandler = (data) => {
+                if (data?.groupTherapyId != currentTherapy.id) return
+                leaveGroupPage()
+            }
+            Echo.private(`users.${userId.value}`).listen('.group-therapy.left', leftHandler)
+            leftHandlerUserId = userId.value
         }
 
         // SCRUM-367: discussions are counsellors-only, so they arrive on this counsellor's own
@@ -298,6 +351,8 @@ export default function useTherapyState(therapy, therapyType = 'individual', ale
 
         counsellorChannel?.release()
         counsellorChannel = null
+
+        stopListeningForLeave()
     })
     
     return {
@@ -323,6 +378,8 @@ export default function useTherapyState(therapy, therapyType = 'individual', ale
         startTimer,
         resetTimer,
         listenToTherapy,
+        releaseTherapyChannel,
+        leaveGroupPage,
         updateSessionOrTopic,
         deleteSessionOrTopic,
         addSessionOrTopic,
