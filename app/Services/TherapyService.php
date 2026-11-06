@@ -262,22 +262,16 @@ class TherapyService extends Service
 
     public function getRandomTherapies(?User $user)
     {
-        $query = Therapy::query();
-
-        $query->wherePublic();
-
-        $query
-            ->when($user, function ($query) use ($user) {
-                $query->wherePublic();
-                $query->orWhereNot('addedby_id', $user->id);
-            })
-            ->when($user?->counsellor, function ($query) use ($user) {
-                $query->wherePublic();
-                $query->where(function ($query) use ($user) {
-                    $query->whereHasNoCounsellor($user->counsellor);
-                    $query->orWhereNot('counsellor_id', $user->counsellor->id);
-                });
-            })
+        // Public only, always. Each narrowing is its own grouped AND: an ungrouped orWhereNot here once
+        // listed other people's PRIVATE therapies to every signed-in user (public = 1 OR not theirs).
+        $query = Therapy::query()
+            ->wherePublic()
+            ->when($user, fn ($query) => $query->whereNot(fn ($query) => $query
+                ->where('addedby_type', User::class)
+                ->where('addedby_id', $user->id)))
+            ->when($user?->counsellor, fn ($query) => $query->where(fn ($query) => $query
+                ->whereNull('counsellor_id')
+                ->orWhere('counsellor_id', '!=', $user->counsellor->id)))
             ->inRandomOrder();
 
         return $query->paginate(PaginationEnum::preferencesPagination->value);
