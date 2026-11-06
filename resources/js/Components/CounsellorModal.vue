@@ -8,6 +8,11 @@ import Modal from './Modal.vue';
 import FormLoader from './FormLoader.vue';
 import axios from 'axios';
 import ActivityBadge from './ActivityBadge.vue';
+import CounsellorVerificationBadge from './CounsellorVerificationBadge.vue';
+import CounsellorVerificationPanel from './Admin/CounsellorVerificationPanel.vue';
+import { usePage } from '@inertiajs/vue3';
+import Alert from './Alert.vue';
+import useAlert from '@/Composables/useAlert';
 
 
 const props = defineProps({
@@ -21,6 +26,10 @@ const props = defineProps({
 })
 
 const emits = defineEmits(['close', 'onResponse'])
+
+// SCRUM-31: administrators see the verification panel (history, revoke).
+const isAdmin = !!usePage().props.auth?.user?.isAdmin
+const { alertData, setAlertData, clearAlertData } = useAlert()
 
 const loading = ref(false)
 const data = ref({})
@@ -80,16 +89,26 @@ async function getCounsellorStats() {
                     <div class="ml-4">
                         <h2 class="text-2xl font-bold text-gray-800 capitalize">{{ counsellor.name }}</h2>
                         <p class="text-gray-600">@{{ counsellor.username }}</p>
+                        <!-- SCRUM-30: the real state (this used to say "Verified Counsellor" for everyone). -->
                         <div class="flex items-center mt-2">
-                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                                Verified Counsellor
-                            </span>
+                            <CounsellorVerificationBadge :verification="counsellor.verification" />
                         </div>
                     </div>
                 </div>
             </div>
 
             <div class="h-[60vh] overflow-hidden overflow-y-auto space-y-6">
+                <!-- Only with the admin view of it (dates, true state) -- a card built for the public has
+                     only the public state. -->
+                <div v-if="isAdmin && counsellor.id && counsellor.verification && 'verifiedSince' in counsellor.verification" class="space-y-2">
+                    <h3 class="text-lg font-semibold text-gray-800">Verification</h3>
+                    <CounsellorVerificationPanel
+                        :counsellor-id="counsellor.id"
+                        :verification="counsellor.verification"
+                        @alert="(data) => setAlertData({ time: 5000, ...data })"
+                    />
+                </div>
+
                 <!-- Contact Information -->
                 <div class="bg-gradient-to-br from-slate-50 to-slate-100 p-6 rounded-xl">
                     <div class="flex items-center mb-4">
@@ -161,4 +180,11 @@ async function getCounsellorStats() {
             <div v-else class="mt-2 text-center text-sm text-gray-600 lowercase">request was {{ request.status }}</div> -->
         </div>
     </Modal>
+    <Alert
+        :show="alertData.show"
+        :type="alertData.type"
+        :message="alertData.message"
+        :time="alertData.time"
+        @close="clearAlertData"
+    />
 </template>

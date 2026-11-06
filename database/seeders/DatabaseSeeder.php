@@ -7,6 +7,7 @@ use App\Enums\AdministratorTypeEnum;
 
 use App\Enums\CounsellorEarningStatusEnum;
 use App\Enums\CounsellorPayoutStatusEnum;
+use App\Enums\CounsellorVerificationEventEnum;
 use App\Enums\DiscussionStatusEnum;
 use App\Enums\GenderEnum;
 use App\Enums\LicensingTypeEnum;
@@ -27,6 +28,7 @@ use App\Models\AdminContentAccess;
 use App\Models\Counsellor;
 use App\Models\CounsellorEarning;
 use App\Models\CounsellorPayout;
+use App\Models\CounsellorVerificationEvent;
 use App\Models\GroupTherapy;
 use App\Models\Guardianship;
 use App\Models\HowTo;
@@ -49,6 +51,7 @@ use App\Models\Testimonial;
 use App\Models\Therapy;
 use App\Models\Transaction;
 use App\Models\User;
+use App\Support\CounsellorVerification;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
@@ -220,6 +223,129 @@ class DatabaseSeeder extends Seeder
         // SCRUM-382: an adult who hasn't set a date of birth yet -- kept without one (below).
         $this->createNoDobDemoData();
         $this->giveDemoAdultsADateOfBirth();
+        // SCRUM-31: every verified counsellor above gets an end date (as the backfill migration
+        // does), then one counsellor in each renewal state.
+        $this->giveVerifiedCounsellorsAnEndDate();
+        $this->createCounsellorVerificationRenewalDemoData($superAdmin);
+    }
+
+    // SCRUM-31: the seeds above create counsellors with only verified_at, which now reads as ended
+    // without an end date -- the same pass the backfill migration makes on a real database.
+    private function giveVerifiedCounsellorsAnEndDate(): void
+    {
+        $expiresAt = now()->addMonths(CounsellorVerification::periodMonths());
+
+        Counsellor::withTrashed()->whereNotNull('verified_at')->whereNull('verification_expires_at')->pluck('id')
+            ->each(function (int $id) use ($expiresAt) {
+                Counsellor::withTrashed()->whereKey($id)->update(['verification_expires_at' => $expiresAt]);
+                CounsellorVerificationEvent::query()->create([
+                    'counsellor_id' => $id,
+                    'event' => CounsellorVerificationEventEnum::baseline,
+                    'expires_at' => $expiresAt,
+                    'dedupe_key' => "baseline:{$id}",
+                ]);
+            });
+    }
+
+    // SCRUM-31: renewal_due_counsellor (ends in 20 days, not reminded yet -- run the reminder sweep),
+    // reverifying_counsellor (ends in 10 days, re-verification waiting with licences), lapsed_counsellor
+    // (ended 3 days ago, still has an in-session client: renewal_demo_client) and revoked_counsellor
+    // (revoked yesterday by the super admin, with a reason). Each with its history. Plus a public
+    // therapy with no counsellor yet, by renewal_demo_client, to offer help on (refused for the
+    // lapsed and revoked counsellors). Passwords: "password".
+    private function createCounsellorVerificationRenewalDemoData(User $superAdmin): void
+    {
+        $counsellor = function (string $username, string $first, array $verification) {
+            $user = User::factory()->create([
+                'firstName' => $first,
+                'lastName' => 'Renewal',
+                'email' => str_replace('_', '.', $username).'@example.com',
+                'username' => $username,
+                'password' => Hash::make('password'),
+                'email_verified_at' => now(),
+                'gender' => GenderEnum::female->value,
+                'dob' => now()->subYears(38)->toDateString(),
+            ]);
+
+            $counsellor = $user->counsellor()->create([
+                'name' => "Dr. {$first} Renewal",
+                'about' => 'Seeded counsellor for trying verification renewals (SCRUM-31).',
+                'email' => $user->email,
+                'phone' => fake()->phoneNumber(),
+                'email_verified_at' => now(),
+                'profession_id' => rand(1, 10),
+                'contact_visible' => true,
+            ]);
+            $counsellor->forceFill(['verified_at' => now()->subYear(), ...$verification])->save();
+
+            return $counsellor;
+        };
+        $event = fn (Counsellor $counsellor, CounsellorVerificationEventEnum $event, array $attributes = []) => CounsellorVerificationEvent::query()->create([
+            'counsellor_id' => $counsellor->id, 'event' => $event, ...$attributes,
+        ]);
+
+        $due = $counsellor('renewal_due_counsellor', 'Due', ['verification_expires_at' => now()->addDays(20)]);
+        $event($due, CounsellorVerificationEventEnum::verified, ['actor_user_id' => $superAdmin->id, 'expires_at' => $due->verification_expires_at, 'created_at' => now()->subYear()]);
+
+        $reverifying = $counsellor('reverifying_counsellor', 'Reverifying', ['verification_expires_at' => now()->addDays(10)]);
+        $event($reverifying, CounsellorVerificationEventEnum::verified, ['actor_user_id' => $superAdmin->id, 'expires_at' => $reverifying->verification_expires_at, 'created_at' => now()->subYear()]);
+        $event($reverifying, CounsellorVerificationEventEnum::reminderSent, ['expires_at' => $reverifying->verification_expires_at, 'window_days' => 30, 'dedupe_key' => "reminder:{$reverifying->id}:30:{$reverifying->verification_expires_at->timestamp}", 'created_at' => now()->subDays(20)]);
+        $licence = function (string $number, int $authorityId) use ($reverifying) {
+            $license = new License(['number' => $number, 'validated' => false]);
+            $license->licensing_authority_id = $authorityId;
+            $license->addedby()->associate($reverifying);
+            $license->for()->associate($reverifying);
+            $license->save();
+
+            return $license;
+        };
+        $authorities = LicensingAuthority::query()->orderBy('id')->limit(2)->pluck('id');
+        $request = new Request([
+            'type' => RequestTypeEnum::counsellor->value,
+            'status' => RequestStatusEnum::pending->value,
+            'data' => [
+                'nationalIdLicense' => $licence('GHA-000333444-5', $authorities[0])->id,
+                'otherLicense' => $licence('GPC-2025-0031', $authorities[1] ?? $authorities[0])->id,
+            ],
+        ]);
+        $request->from()->associate($reverifying);
+        $request->to()->associate($superAdmin);
+        $request->for()->associate($reverifying);
+        $request->save();
+
+        $lapsed = $counsellor('lapsed_counsellor', 'Lapsed', ['verification_expires_at' => now()->subDays(3)]);
+        $event($lapsed, CounsellorVerificationEventEnum::verified, ['actor_user_id' => $superAdmin->id, 'expires_at' => $lapsed->verification_expires_at, 'created_at' => now()->subYear()]);
+        $event($lapsed, CounsellorVerificationEventEnum::lapsed, ['expires_at' => $lapsed->verification_expires_at, 'dedupe_key' => "lapsed:{$lapsed->id}:{$lapsed->verification_expires_at->timestamp}", 'created_at' => now()->subDays(3)]);
+        $client = User::factory()->adult()->create([
+            'firstName' => 'Renewal', 'lastName' => 'Client', 'email' => 'renewal.demo.client@example.com',
+            'username' => 'renewal_demo_client', 'password' => Hash::make('password'), 'email_verified_at' => now(),
+        ]);
+        $client->addedTherapies()->create([
+            'name' => 'Renewal Demo Therapy (counsellor\'s verification ended)',
+            'background_story' => 'Seeded therapy that carries on after its counsellor\'s verification ended (SCRUM-31).',
+            'counsellor_id' => $lapsed->id,
+            'session_type' => 'Periodic',
+            'payment_type' => 'FREE',
+            'allow_in_person' => false,
+            'anonymous' => false,
+            'public' => false,
+            'status' => 'in_session',
+        ]);
+
+        $client->addedTherapies()->create([
+            'name' => 'Renewal Demo Public Therapy (no counsellor yet)',
+            'background_story' => 'Seeded public therapy looking for a counsellor -- a counsellor whose verification has ended or was revoked is told they can\'t take it on (SCRUM-31).',
+            'session_type' => 'Once',
+            'payment_type' => 'FREE',
+            'allow_in_person' => false,
+            'anonymous' => false,
+            'public' => true,
+            'status' => 'pending',
+        ]);
+
+        $revoked = $counsellor('revoked_counsellor', 'Revoked', ['verification_expires_at' => now()->addMonths(6), 'verification_revoked_at' => now()->subDay()]);
+        $event($revoked, CounsellorVerificationEventEnum::verified, ['actor_user_id' => $superAdmin->id, 'expires_at' => $revoked->verification_expires_at, 'created_at' => now()->subYear()]);
+        $event($revoked, CounsellorVerificationEventEnum::revoked, ['actor_user_id' => $superAdmin->id, 'expires_at' => $revoked->verification_expires_at, 'reason' => 'Seeded: the licensing board reported this licence number as not theirs.', 'created_at' => now()->subDay()]);
     }
 
     // SCRUM-73/383: "Leave Demo Group Therapy" -- private and PAID (each seeded member has paid),

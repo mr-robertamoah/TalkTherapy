@@ -4,6 +4,7 @@ namespace App\Actions\Link;
 
 use App\Actions\Action;
 use App\Actions\Counsellor\EnsureCounsellorExistsAction;
+use App\Actions\CounsellorVerification\EnsureCounsellorMayTakeOnClientsAction;
 use App\Actions\User\AlertGuardianAction;
 use App\DTOs\CreateLinkDTO;
 use App\DTOs\GuardianAlertDTO;
@@ -30,6 +31,9 @@ class PerformTherapyCounsellorLinkAction extends Action
             UpdateCounsellorDTO::new()->fromArray(['counsellor' => $createLinkDTO->user?->counsellor]),
             LinkException::NO_COUNSELLOR
         );
+
+        // SCRUM-31: only a currently verified counsellor takes on a client.
+        EnsureCounsellorMayTakeOnClientsAction::new()->execute($createLinkDTO->user->counsellor);
 
         // Locking the therapy row before deciding whether it already has a counsellor closes
         // the same TOCTOU race SCRUM-91 fixed for RespondToTherapyAssistanceRequestAction: two

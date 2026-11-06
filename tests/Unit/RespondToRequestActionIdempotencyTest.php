@@ -234,7 +234,8 @@ test('responding to an already-accepted therapy assistance request a second time
     Guardianship::query()->create(['guardian_id' => User::factory()->adult()->create()->id, 'ward_id' => $client->id]);
     $therapy = Therapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => $client->id]);
     $counsellor = Counsellor::factory()->create(['user_id' => User::factory()->create()->id]);
-    $respondingUser = User::factory()->create();
+    // SCRUM-31: the counsellor it was sent to answers (anyone else has no counsellor to assign).
+    $respondingUser = $counsellor->user;
 
     $request = CreateRequestAction::new()->execute(
         CreateRequestDTO::new()->fromArray([

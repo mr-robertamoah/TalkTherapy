@@ -7,14 +7,12 @@ use App\Enums\FileTagEnum;
 use App\Enums\RequestStatusEnum;
 use App\Enums\RequestTypeEnum;
 use App\Support\AdminRequestQueue;
-use App\Support\BestEffort;
 use App\Traits\HasTaggedFiles;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\MorphToMany;
-use Illuminate\Support\Facades\DB;
 
 class Request extends Model
 {
@@ -59,12 +57,18 @@ class Request extends Model
                 return;
             }
 
-            DB::afterCommit(fn () => BestEffort::attempt(
-                fn () => GetAdminToDoCountsAction::forget(),
-                'admin-todo-cache-forget',
-                ['request' => $request->id],
-            ));
+            self::adminQueueChanged(['request' => $request->id]);
         });
+    }
+
+    // SCRUM-387/388: the admin area's cached to-do counts start again once the current transaction
+    // commits -- best effort, so a cache failure never undoes the change. The `saved` hook above
+    // calls it; so must any write to admin queue requests that skips that hook (a query-builder
+    // update, saveQuietly()): DeleteCounsellorAction, AnonymiseClosedAccountAction. The other bulk
+    // "made moot" updates only ever touch therapy, group and membership requests, never queue types.
+    public static function adminQueueChanged(array $context = []): void
+    {
+        GetAdminToDoCountsAction::forgetAfterCommit($context);
     }
 
     // SCRUM-387: runs $answer with $user recorded as the one answering $request (booted()).

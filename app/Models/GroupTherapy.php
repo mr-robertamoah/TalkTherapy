@@ -258,14 +258,18 @@ class GroupTherapy extends Model
     // The latest pending membership request (SCRUM-72) involving this user for this group,
     // whether they're the one who requested to join (`from`) or the creator deciding on it
     // (`to`) -- mirrors TherapyTrait::pendingRequestFor()'s single-latest-request UX for the
-    // existing counsellor-assistance flow.
+    // existing counsellor-assistance flow. SCRUM-388: a request addressed to the viewer's counsellor
+    // profile (a counsellor-created group's creator) is theirs to decide too. New requests are
+    // addressed to a User (JoinGroupTherapyAction), so this catches older rows; the OR stays inside
+    // the group so it can't escape the pending/type filters.
     public function pendingMembershipRequestFor(User $user)
     {
         return $this->requests()
             ->wherePending()
             ->whereType(RequestTypeEnum::groupTherapyMembership->value)
             ->where(function ($query) use ($user) {
-                $query->whereFrom($user)->orWhereTo($user);
+                $query->whereFrom($user)->orWhereTo($user)
+                    ->when($user->counsellor, fn ($query, Counsellor $counsellor) => $query->orWhereTo($counsellor));
             })
             ->latest()
             ->first();

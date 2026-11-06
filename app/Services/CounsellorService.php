@@ -18,6 +18,7 @@ use App\Actions\Counsellor\EnsureUserCanBecomeCounsellorAction;
 use App\Actions\Counsellor\EnsureVerificationRequestDataIsValidAction;
 use App\Actions\Counsellor\UpdateCounsellorAction;
 use App\Actions\Counsellor\VerifyEmailAction;
+use App\Actions\CounsellorVerification\EnsureCounsellorCanRequestVerificationAction;
 use App\Actions\EnsureNameStaysRetrievableAction;
 use App\Actions\Payout\GetCounsellorPayoutOverviewAction;
 use App\Actions\Suspension\EnsureCanDeleteOwnAccountWhileSuspendedAction;
@@ -145,6 +146,9 @@ class CounsellorService extends Service
         EnsureCounsellorDoesNotHavePendingVerificationRequestAction::new()->execute($verifyCounsellorDTO);
 
         EnsureCanUpdateCounsellorAction::new()->execute($verifyCounsellorDTO);
+
+        // SCRUM-31: when they may ask (not a year early) -- after the check that it's theirs to ask.
+        EnsureCounsellorCanRequestVerificationAction::new()->execute($verifyCounsellorDTO);
 
         CheckVerificationRequestRequirmentAction::new()->execute($verifyCounsellorDTO);
 

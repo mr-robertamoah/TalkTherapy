@@ -121,7 +121,8 @@ includes this migration -- `SET PERSIST log_bin_trust_function_creators=1;` as r
 `my.cnf`, or a custom parameter group on RDS -- otherwise the migration fails and the site stays in
 maintenance mode. The Docker `db` service already sets it (recreate the container after pulling:
 `docker compose up -d --force-recreate db`). If a deploy did fail on it: set the flag, run
-`DROP TRIGGER IF EXISTS cma_no_update; DROP TRIGGER IF EXISTS cma_no_delete;`, and re-run the deploy.
+`DROP TRIGGER IF EXISTS cma_no_update; DROP TRIGGER IF EXISTS cma_no_delete;` (and the same for the
+later append-only tables' `aca_no_*` and `cve_no_*` triggers), and re-run the deploy.
 
 Scheduled jobs (`routes/console.php` -- reminders, invoice settlement, document retention, the group-video
 idle speaking sweep) need Laravel's scheduler running. In Docker, the `queue` container runs it via

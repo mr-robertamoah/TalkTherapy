@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Support\CounsellorVerification;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -23,6 +24,8 @@ class AssistanceRequestCounsellorResource extends JsonResource
             'profession' => new ProfessionResource($this->profession),
             'allTherapiesCount' => $this->allTherapiesCount,
             'avatar' => $this->avatar?->url,
+            // SCRUM-30: the public state -- a client sees who can't take them on yet.
+            'verification' => CounsellorVerification::projection($this->resource),
         ];
     }
 }

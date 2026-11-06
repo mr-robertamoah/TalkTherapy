@@ -9,6 +9,17 @@ use Illuminate\Http\Resources\Json\JsonResource;
 
 class GroupTherapyMiniResource extends JsonResource
 {
+    private bool $narrowUsers = false;
+
+    // SCRUM-388: the people in it as RequestResource::narrowUserProjection() (no dob, gender or
+    // country) -- for admin queue rows every administrator sees.
+    public function withNarrowUsers(): static
+    {
+        $this->narrowUsers = true;
+
+        return $this;
+    }
+
     /**
      * Transform the resource into an array.
      *
@@ -31,10 +42,10 @@ class GroupTherapyMiniResource extends JsonResource
                     ? $this->addedby?->user_id
                     : $this->addedby?->id),
             'addedby' => $this->addedby_type == Counsellor::class
-                ? new CounsellorMiniResource($this->addedby)
+                ? ($this->narrowUsers ? (new CounsellorMiniResource($this->addedby))->withNarrowUser() : new CounsellorMiniResource($this->addedby))
                 : $this->when(
                     ! $isAnonymous,
-                    new UserMiniResource($this->addedby),
+                    fn () => $this->narrowUsers ? RequestResource::narrowUserProjection($this->addedby) : new UserMiniResource($this->addedby),
                     // SCRUM-345: never the real id (see GroupTherapyResource).
                     ['id' => null, 'fullName' => ConstantsEnum::anonymousUserLabel->value]
                 ),

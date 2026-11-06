@@ -8,6 +8,7 @@ use App\Enums\CounsellorGroupTherapyStateEnum;
 use App\Enums\OrganizationCounsellorStatusEnum;
 use App\Enums\RequestStatusEnum;
 use App\Models\Counsellor;
+use App\Models\Request;
 use App\Notifications\CounsellorAccountDeletedNotification;
 use Illuminate\Support\Facades\DB;
 
@@ -44,6 +45,10 @@ class DeleteCounsellorAction extends Action
             $counsellor->sentRequests()
                 ->wherePending()
                 ->update(['status' => RequestStatusEnum::inconsequencial->value, 'responded_at' => now()]);
+
+            // A query-builder update skips the Request saved hook; a verification among them is
+            // in the admin queue (SCRUM-388).
+            Request::adminQueueChanged(['counsellor' => $counsellor->id]);
 
             $counsellor->delete();
         });

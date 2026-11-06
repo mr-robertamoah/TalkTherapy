@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Actions\Admin\RecordAdminContentReadAction;
+use App\Actions\CounsellorVerification\EnsureCounsellorMayTakeOnClientsAction;
 use App\Actions\GroupTherapy\EnsureGroupTherapyCanBecomeAnonymousAction;
 use App\Actions\Guardianship\EnsureMinorHasActiveGuardianAction;
 use App\Actions\Request\SendTherapyAssistanceRequestAction;
@@ -56,6 +57,8 @@ class TherapyService extends Service
 
         // SCRUM-359: before anything is created (the request to them is refused too, later).
         EnsureCanActAsCounsellorAction::new()->execute($createTherapyDTO->counsellor, asTarget: true);
+        // SCRUM-31: nor to a counsellor who isn't currently verified.
+        EnsureCounsellorMayTakeOnClientsAction::new()->execute($createTherapyDTO->counsellor, asTarget: true);
 
         $therapy = CreateTherapyAction::new()->execute($createTherapyDTO);
 
@@ -224,6 +227,11 @@ class TherapyService extends Service
 
             EnsureThereIsNoPendingRequestForCounsellorsAction::new()->execute($assistTherapyDTO);
 
+            // SCRUM-31: only currently verified counsellors are asked in.
+            foreach ($assistTherapyDTO->counsellors as $counsellor) {
+                EnsureCounsellorMayTakeOnClientsAction::new()->execute($counsellor, asTarget: true);
+            }
+
             foreach ($assistTherapyDTO->counsellors as $counsellor) {
                 SendTherapyAssistanceRequestAction::new()->execute(
                     TherapyAssistanceRequestDTO::new()->fromArray([
@@ -238,6 +246,8 @@ class TherapyService extends Service
         }
 
         EnsureIsCounsellorAction::new()->execute($assistTherapyDTO);
+
+        EnsureCounsellorMayTakeOnClientsAction::new()->execute($assistTherapyDTO->user->counsellor);
 
         EnsureThereIsNoPendingRequestForCounsellorAction::new()->execute($assistTherapyDTO);
 

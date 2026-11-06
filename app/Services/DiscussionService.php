@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Actions\CounsellorVerification\EnsureCounsellorMayTakeOnClientsAction;
 use App\Actions\Discussion\ChangeDiscussionStatusAction;
 use App\Actions\Discussion\CreateDiscussionAction;
 use App\Actions\Discussion\CreateDiscussionRequestAction;
@@ -67,6 +68,9 @@ class DiscussionService extends Service
 
         EnsureDoesNotHaveDiscussionRequestAction::new()->execute($createRequestDTO);
 
+        // SCRUM-31: only a currently verified counsellor is invited in.
+        EnsureCounsellorMayTakeOnClientsAction::new()->execute($createRequestDTO->to instanceof Counsellor ? $createRequestDTO->to : null, asTarget: true, forDiscussion: true);
+
         return CreateDiscussionRequestAction::new()->execute($createRequestDTO);
     }
 
@@ -79,6 +83,8 @@ class DiscussionService extends Service
         // SCRUM-359
         EnsureCanActAsCounsellorAction::new()->execute($createDiscussionDTO->addedby);
         EnsureCanActAsCounsellorAction::new()->execute($createDiscussionDTO->user?->counsellor);
+        // SCRUM-31: and only a currently verified counsellor starts one.
+        EnsureCounsellorMayTakeOnClientsAction::new()->execute($createDiscussionDTO->user?->counsellor, forDiscussion: true);
 
         EnsureCanCreateDiscussionForAction::new()->execute($createDiscussionDTO);
 

@@ -1,6 +1,7 @@
 <script setup>
 import Avatar from './Avatar.vue';
 import StarBadge from './StarBadge.vue';
+import CounsellorVerificationBadge from './CounsellorVerificationBadge.vue';
 import { Link } from '@inertiajs/vue3';
 
 
@@ -38,6 +39,8 @@ defineProps({
                     <div class="text-white">
                         <div class="font-bold text-base capitalize truncate max-w-[120px]">{{ counsellor.name }}</div>
                         <div class="text-xs text-gray-200 opacity-90">Counsellor</div>
+                        <!-- SCRUM-30 -->
+                        <CounsellorVerificationBadge v-if="counsellor.verification" class="mt-1" :verification="counsellor.verification" />
                     </div>
                 </div>
                 

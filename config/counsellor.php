@@ -15,4 +15,13 @@ return [
     //  - SCRUM-362: every document of a license no verification request ever cited (an abandoned
     //    upload), this many days after it was uploaded.
     'license_abandoned_retention_days' => (int) env('COUNSELLOR_LICENSE_ABANDONED_RETENTION_DAYS', 30),
+
+    // SCRUM-31: a platform verification lasts this many months from the day an administrator accepts
+    // it (renewed early, from its current end). Counsellors already verified when this shipped got
+    // this long from that day (the backfill migration). See App\Support\CounsellorVerification.
+    'verification_validity_months' => (int) env('COUNSELLOR_VERIFICATION_VALIDITY_MONTHS', 12),
+
+    // SCRUM-31: reminders this many days before a verification ends (the counsellor, and the admins
+    // through their to-do count). The largest is also when the counsellor may re-verify early.
+    'verification_reminder_days' => array_values(array_filter(array_map('intval', explode(',', (string) env('COUNSELLOR_VERIFICATION_REMINDER_DAYS', '30,7'))))),
 ];

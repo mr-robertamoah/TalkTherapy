@@ -13,6 +13,7 @@ use App\Enums\CounsellorPayoutStatusEnum;
 use App\Enums\RefundStatusEnum;
 use App\Enums\ReportStatusEnum;
 use App\Enums\RequestTypeEnum;
+use App\Models\Counsellor;
 use App\Models\CounsellorPayout;
 use App\Models\Organization;
 use App\Models\Refund;
@@ -21,6 +22,7 @@ use App\Models\Request;
 use App\Models\Suspension;
 use App\Models\User;
 use App\Support\AdminRequestQueue;
+use App\Support\BestEffort;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -52,6 +54,15 @@ class GetAdminToDoCountsAction extends Action
         Cache::forever(self::GENERATION_KEY, Str::random(12));
     }
 
+    // SCRUM-388/31: forget() once the current transaction commits (so a read in between can't cache
+    // the old figures under the new generation), best effort (a cache failure never undoes the
+    // change). For anything a count reads: admin queue requests (Request::adminQueueChanged()) and
+    // counsellor verifications (revoked, ended).
+    public static function forgetAfterCommit(array $context = []): void
+    {
+        DB::afterCommit(fn () => BestEffort::attempt(fn () => self::forget(), 'admin-todo-cache-forget', $context));
+    }
+
     /**
      * The overview's to-do list: each item's count, what it is and where it is resolved (a route and
      * its pre-filter). Empty for a non-admin.
@@ -80,6 +91,8 @@ class GetAdminToDoCountsAction extends Action
 
         $items = [
             ...$requestItems,
+            // SCRUM-31: verifications ending soon with no re-verification asked for yet.
+            ['key' => 'counsellorVerificationRenewals', 'label' => 'Counsellor verifications ending soon, not yet renewed', 'route' => 'administrator.counsellor_verification', 'params' => ['view' => 'renewals']],
             ['key' => 'reports', 'label' => 'Reports open or under review', 'route' => 'administrator.reports', 'params' => []],
             ['key' => 'suspensionAppeals', 'label' => 'Suspension appeals awaiting a decision', 'route' => 'administrator.suspensions', 'params' => []],
             ['key' => 'pausedMinors', 'label' => 'Paused minors with an open therapy and no exception', 'route' => 'administrator.safeguarding_exceptions', 'params' => []],
@@ -179,6 +192,7 @@ class GetAdminToDoCountsAction extends Action
 
         return [
             ...array_map(fn (string $type) => (int) ($byType[$type] ?? 0), $countKeys),
+            'counsellorVerificationRenewals' => Counsellor::query()->whereRenewalDue()->count(),
             'reports' => Report::query()->whereIn('status', [ReportStatusEnum::open->value, ReportStatusEnum::under_review->value])->count(),
             'suspensionAppeals' => Suspension::query()->whereNotNull('appealed_at')->whereNull('appeal_decided_at')->count(),
             // A failed payout's earnings go back to pending but stay pointing at it until a later

@@ -3,6 +3,7 @@
 namespace App\Actions\GroupTherapy;
 
 use App\Actions\Action;
+use App\Actions\CounsellorVerification\EnsureCounsellorMayTakeOnClientsAction;
 use App\Actions\User\AlertGuardianAction;
 use App\DTOs\GuardianAlertDTO;
 use App\Enums\TherapyStatusEnum;
@@ -85,6 +86,10 @@ class AddGroupTherapyMemberAction extends Action
         if ($group->users()->count() >= $group->max_users) {
             throw new CannotJoinGroupTherapyException(self::FULL, 422);
         }
+
+        // SCRUM-31 (the user's decision): paused, not closed -- a membership request waiting on the
+        // creator stays waiting until a verified counsellor runs the group.
+        EnsureCounsellorMayTakeOnClientsAction::new()->ensureGroupMayAdmit($group);
     }
 
     // Run straight away when there is no open transaction.

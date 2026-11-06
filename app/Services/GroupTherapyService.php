@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Actions\Admin\RecordAdminContentReadAction;
+use App\Actions\CounsellorVerification\EnsureCounsellorMayTakeOnClientsAction;
 use App\Actions\GroupTherapy\CreateGroupTherapyAction;
 use App\Actions\GroupTherapy\EnsureCanSetGroupTherapyPaymentGateAction;
 use App\Actions\GroupTherapy\EnsureGroupTherapyCanBecomeAnonymousAction;
@@ -55,8 +56,13 @@ class GroupTherapyService extends Service
 
         // SCRUM-359: a suspended counsellor can't start a group, or be asked to join a new one.
         EnsureCanActAsCounsellorAction::new()->execute($groupTherapyDTO->counsellor);
+        // SCRUM-31: and only a currently verified counsellor starts one, or is asked to join it.
+        EnsureCounsellorMayTakeOnClientsAction::new()->execute($groupTherapyDTO->counsellor);
         Counsellor::query()->whereKey($groupTherapyDTO->counsellorIds ?: [])->get()
-            ->each(fn (Counsellor $counsellor) => EnsureCanActAsCounsellorAction::new()->execute($counsellor, asTarget: true));
+            ->each(function (Counsellor $counsellor) {
+                EnsureCanActAsCounsellorAction::new()->execute($counsellor, asTarget: true);
+                EnsureCounsellorMayTakeOnClientsAction::new()->execute($counsellor, asTarget: true);
+            });
 
         $therapy = CreateGroupTherapyAction::new()->execute($groupTherapyDTO);
 

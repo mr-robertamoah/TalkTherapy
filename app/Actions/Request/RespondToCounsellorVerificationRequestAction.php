@@ -3,9 +3,13 @@
 namespace App\Actions\Request;
 
 use App\Actions\Action;
+use App\Actions\CounsellorVerification\ApplyCounsellorVerificationAction;
+use App\Actions\CounsellorVerification\RecordCounsellorVerificationEventAction;
 use App\DTOs\RequestResponseDTO;
+use App\Enums\CounsellorVerificationEventEnum;
 use App\Enums\RequestStatusEnum;
 use App\Exceptions\InvalidVerificationRequestData;
+use App\Models\Counsellor;
 use App\Models\License;
 use App\Models\Request;
 use Illuminate\Support\Facades\DB;
@@ -54,8 +58,14 @@ class RespondToCounsellorVerificationRequestAction extends Action
 
             $request = $request->refresh();
 
-            if ($request->status == RequestStatusEnum::accepted->value) {
-                $request->from->verify();
+            // SCRUM-31: accepting sets the next end date (keeping the first verified date); a
+            // rejection leaves a still-current verification as it is until it ends. Both are recorded.
+            if ($request->from instanceof Counsellor) {
+                if ($request->status == RequestStatusEnum::accepted->value) {
+                    ApplyCounsellorVerificationAction::new()->execute($request->from, $request, $requestResponseDTO->user);
+                } elseif ($request->status == RequestStatusEnum::rejected->value) {
+                    RecordCounsellorVerificationEventAction::new()->execute($request->from, CounsellorVerificationEventEnum::rejected, $requestResponseDTO->user, $request);
+                }
             }
 
             return $request;

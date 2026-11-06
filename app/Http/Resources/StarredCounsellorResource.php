@@ -3,6 +3,7 @@
 namespace App\Http\Resources;
 
 use App\Models\User;
+use App\Support\CounsellorVerification;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -23,7 +24,9 @@ class StarredCounsellorResource extends JsonResource
             'avatar' => $counsellor->avatar?->url,
             'cover' => $counsellor->cover?->url,
             'stars' => $this->stars_count,
-            'overallStars' => $this->stars->count()
+            'overallStars' => $this->stars->count(),
+            // SCRUM-30: the public state only.
+            'verification' => CounsellorVerification::projection($counsellor),
         ];
     }
 }

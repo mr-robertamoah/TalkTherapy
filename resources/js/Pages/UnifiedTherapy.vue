@@ -776,11 +776,13 @@ async function sendAssistanceRequest() {
     .catch((err) => {
       console.log(err)
       goToLogin(err)
+      // SCRUM-31 (QA): a refusal says why (e.g. a counsellor whose verification isn't current).
+      const refusal = err.response?.status == 422 ? (err.response?.data?.message ?? err.response?.data?.error) : null
       setFailedAlertData({
-        message: computedIsUser.value
+        message: refusal || (computedIsUser.value
           ? "Your request for assistance failed, please try again in a short while."
-          : "Your request to assist has failed, please try again in a short while.",
-        time: 4000,
+          : "Your request to assist has failed, please try again in a short while."),
+        time: 6000,
       })
     })
 

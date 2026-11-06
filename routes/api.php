@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AboutController;
+use App\Http\Controllers\AdminCounsellorVerificationController;
 use App\Http\Controllers\AdministratorController;
 use App\Http\Controllers\AdminPayoutController;
 use App\Http\Controllers\AdminReportController;
@@ -122,6 +123,10 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/administrator/verification/requests', [AdministratorController::class, 'getVerificationRequests'])->name('admin.verification.requests');
         Route::get('/administrator/counsellors', [AdministratorController::class, 'getCounsellors'])->name('admin.counsellors');
         Route::get('/administrator/counsellors/{counsellorId}/stats', [AdministratorController::class, 'getCounsellorStats'])->name('admin.counsellors.stats');
+        // SCRUM-31: renewals due, ended and revoked verifications; a counsellor's history; revoking.
+        Route::get('/administrator/counsellors/verification-renewals', [AdminCounsellorVerificationController::class, 'renewals'])->name('admin.counsellors.verification.renewals');
+        Route::get('/administrator/counsellors/{counsellorId}/verification-events', [AdminCounsellorVerificationController::class, 'events'])->name('admin.counsellors.verification.events')->whereNumber('counsellorId');
+        Route::post('/administrator/counsellors/{counsellorId}/verification/revoke', [AdminCounsellorVerificationController::class, 'revoke'])->name('admin.counsellors.verification.revoke')->whereNumber('counsellorId')->middleware('throttle:10,1,admin.counsellors.verification.revoke');
         // SCRUM-134: admin-triggered counsellor deletion (e.g. revoking a counsellor found practicing
         // without a valid license) -- reuses the same CounsellorService::deleteCounsellor()/
         // EnsureCanDeleteCounsellorAction chain as self-service deletion, which already requires
@@ -185,9 +190,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/contacts', [ContactController::class, 'getContacts'])->name('api.contacts');
 
     // SCRUM-340: an admin reading a reported conversation (reason required, every confidential
-    // message recorded), and the attachments of messages they unlocked. Uniform 404s.
-    Route::post('/admin/reports/{report}/sessions/{session}/messages', [AdminReportController::class, 'conversation'])->name('admin.reports.conversation')->whereNumber(['report', 'session'])->middleware('throttle:20,1,admin.reports.conversation');
-    Route::get('/admin/reports/{report}/messages/{message}/attachments/{file}', [AdminReportController::class, 'attachment'])->name('admin.reports.attachments.show')->whereNumber(['report', 'message', 'file'])->middleware('throttle:120,1,admin.reports.attachments.show');
+    // message recorded), and the attachments of messages they unlocked. Uniform 404s for an admin.
+    // SCRUM-388: the `admin` middleware turns non-admins away first (a 403 that depends on nothing
+    // about the report), as on every other admin route.
+    Route::post('/admin/reports/{report}/sessions/{session}/messages', [AdminReportController::class, 'conversation'])->name('admin.reports.conversation')->whereNumber(['report', 'session'])->middleware(['admin', 'throttle:20,1,admin.reports.conversation']);
+    Route::get('/admin/reports/{report}/messages/{message}/attachments/{file}', [AdminReportController::class, 'attachment'])->name('admin.reports.attachments.show')->whereNumber(['report', 'message', 'file'])->middleware(['admin', 'throttle:120,1,admin.reports.attachments.show']);
     Route::get('/reports', [ReportController::class, 'getReports'])->name('api.reports');
     Route::get('/reports/{reportId}', [ReportController::class, 'getReport'])->name('api.reports.get');
     Route::post('/reports', [ReportController::class, 'createReport'])->name('api.reports.create');

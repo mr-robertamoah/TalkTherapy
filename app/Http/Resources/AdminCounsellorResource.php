@@ -2,7 +2,7 @@
 
 namespace App\Http\Resources;
 
-use App\Models\License;
+use App\Support\CounsellorVerification;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -23,6 +23,8 @@ class AdminCounsellorResource extends JsonResource
             'phone' => $this->phone,
             'email' => $this->email,
             'avatar' => $this->avatar?->url,
+            // SCRUM-31: the admin view of their verification.
+            'verification' => CounsellorVerification::projection($this->resource, $request->user()),
             // TODO add some stats
         ];
     }
