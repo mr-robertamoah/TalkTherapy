@@ -7,6 +7,7 @@ use App\Http\Controllers\AdminOrganizationBillingController;
 use App\Http\Controllers\AdminPayoutController;
 use App\Http\Controllers\AdminRefundRequestController;
 use App\Http\Controllers\AdminReportController;
+use App\Http\Controllers\AdminRequestController;
 use App\Http\Controllers\AdminSafeguardingExceptionController;
 use App\Http\Controllers\AdminSuspensionController;
 use App\Http\Controllers\CounsellorController;
@@ -94,44 +95,58 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/discussions/{discussionId}/chat', [DiscussionController::class, 'showChat'])->name('discussions.chat');
 
-    Route::get('/administrator', [AdministratorController::class, 'show'])->name('administrator');
+    Route::get('/administrator', [AdministratorController::class, 'show'])->name('administrator')->middleware('admin');
+    // SCRUM-387: the admin area's own pages -- the old /administrator tabs, each with a URL now, and
+    // the "requests to resolve" queue. The `admin` middleware refuses a non-admin (the controllers
+    // check again).
+    Route::middleware('admin')->group(function () {
+        Route::get('/administrator/requests', [AdminRequestController::class, 'index'])->name('administrator.requests');
+        Route::get('/administrator/users', [AdministratorController::class, 'users'])->name('administrator.users');
+        Route::get('/administrator/counsellors', [AdministratorController::class, 'counsellors'])->name('administrator.counsellors');
+        Route::get('/administrator/counsellor-verification', [AdministratorController::class, 'counsellorVerification'])->name('administrator.counsellor_verification');
+        Route::get('/administrator/testimonials', [AdministratorController::class, 'testimonials'])->name('administrator.testimonials');
+        Route::get('/administrator/how-tos', [AdministratorController::class, 'howTos'])->name('administrator.how_tos');
+        // The sidebar's badges (GetAdminToDoCountsAction::badges()), as JSON: AdminLayout.vue fetches
+        // them after each page, so no page waits on (or re-runs its own queries for) the counts.
+        Route::get('/administrator/badges', [AdministratorController::class, 'badges'])->name('admin.badges')->middleware('throttle:60,1,admin.badges');
+    });
     // TT-7.6e/SCRUM-229: admin-facing payout page -- platform-fee/minimum-payout settings form,
     // admin-on-behalf-of trigger UI, payout audit table. Settings updates return Redirect::back()
     // (Inertia's native response shape), so they live here rather than routes/api.php, matching
     // payout.trigger/payout.destination.store's own precedent (SCRUM-228).
-    Route::get('/administrator/payouts', [AdminPayoutController::class, 'index'])->name('administrator.payouts');
-    Route::post('/administrator/settings/platform-fee', [AdminPayoutController::class, 'updatePlatformFee'])->name('admin.settings.platform-fee.update')->middleware('throttle:10,1,admin.settings.platform-fee.update');
-    Route::post('/administrator/settings/minimum-payout', [AdminPayoutController::class, 'updateMinimumPayoutAmounts'])->name('admin.settings.minimum-payout.update')->middleware('throttle:10,1,admin.settings.minimum-payout.update');
+    Route::get('/administrator/payouts', [AdminPayoutController::class, 'index'])->name('administrator.payouts')->middleware('admin');
+    Route::post('/administrator/settings/platform-fee', [AdminPayoutController::class, 'updatePlatformFee'])->name('admin.settings.platform-fee.update')->middleware(['admin', 'throttle:10,1,admin.settings.platform-fee.update']);
+    Route::post('/administrator/settings/minimum-payout', [AdminPayoutController::class, 'updateMinimumPayoutAmounts'])->name('admin.settings.minimum-payout.update')->middleware(['admin', 'throttle:10,1,admin.settings.minimum-payout.update']);
 
     // TT-7.3b-followup/SCRUM-245: the manual "resolve this" surface SCRUM-238 left unbuilt --
     // platform-admin only (mirrors administrator.payouts' own convention exactly). Write routes
     // throttled to match admin.settings.*'s real-effect rate, not the read-only page's default.
-    Route::get('/administrator/organization-billing', [AdminOrganizationBillingController::class, 'index'])->name('administrator.organization_billing');
-    Route::post('/administrator/organization-invoices/{organizationInvoiceId}/retry-settlement', [AdminOrganizationBillingController::class, 'retrySettlement'])->name('admin.organization_invoices.retry_settlement')->middleware('throttle:10,1,admin.organization_invoices.retry_settlement');
-    Route::post('/administrator/organizations/{organizationId}/lift-billing-suspension', [AdminOrganizationBillingController::class, 'liftSuspension'])->name('admin.organizations.lift_billing_suspension')->middleware('throttle:10,1,admin.organizations.lift_billing_suspension');
+    Route::get('/administrator/organization-billing', [AdminOrganizationBillingController::class, 'index'])->name('administrator.organization_billing')->middleware('admin');
+    Route::post('/administrator/organization-invoices/{organizationInvoiceId}/retry-settlement', [AdminOrganizationBillingController::class, 'retrySettlement'])->name('admin.organization_invoices.retry_settlement')->middleware(['admin', 'throttle:10,1,admin.organization_invoices.retry_settlement']);
+    Route::post('/administrator/organizations/{organizationId}/lift-billing-suspension', [AdminOrganizationBillingController::class, 'liftSuspension'])->name('admin.organizations.lift_billing_suspension')->middleware(['admin', 'throttle:10,1,admin.organizations.lift_billing_suspension']);
 
     // TT-7.7c/SCRUM-251: read-only list page -- approve/reject post directly to the existing
     // generic requests.respond endpoint (routes/api.php), not a route here.
-    Route::get('/administrator/refund-requests', [AdminRefundRequestController::class, 'index'])->name('administrator.refund_requests');
+    Route::get('/administrator/refund-requests', [AdminRefundRequestController::class, 'index'])->name('administrator.refund_requests')->middleware('admin');
 
     // SCRUM-340: the complaint-review queue and per-report page. Status/party changes are Inertia
     // form posts; reading the reported conversation is a JSON route in routes/api.php.
-    Route::get('/administrator/reports', [AdminReportController::class, 'index'])->name('administrator.reports');
-    Route::get('/administrator/reports/{report}', [AdminReportController::class, 'show'])->name('administrator.reports.show')->whereNumber('report');
-    Route::post('/administrator/reports/{report}/status', [AdminReportController::class, 'transition'])->name('admin.reports.status')->whereNumber('report')->middleware('throttle:30,1,admin.reports.status');
-    Route::post('/administrator/reports/{report}/party', [AdminReportController::class, 'recordParty'])->name('admin.reports.party')->whereNumber('report')->middleware('throttle:30,1,admin.reports.party');
+    Route::get('/administrator/reports', [AdminReportController::class, 'index'])->name('administrator.reports')->middleware('admin');
+    Route::get('/administrator/reports/{report}', [AdminReportController::class, 'show'])->name('administrator.reports.show')->whereNumber('report')->middleware('admin');
+    Route::post('/administrator/reports/{report}/status', [AdminReportController::class, 'transition'])->name('admin.reports.status')->whereNumber('report')->middleware(['admin', 'throttle:30,1,admin.reports.status']);
+    Route::post('/administrator/reports/{report}/party', [AdminReportController::class, 'recordParty'])->name('admin.reports.party')->whereNumber('report')->middleware(['admin', 'throttle:30,1,admin.reports.party']);
     // SCRUM-360: the admin content-read log (super admins only).
-    Route::get('/administrator/content-accesses', [AdminContentAccessController::class, 'index'])->name('administrator.content-accesses');
+    Route::get('/administrator/content-accesses', [AdminContentAccessController::class, 'index'])->name('administrator.content-accesses')->middleware('admin');
     // SCRUM-359: suspensions -- applied from a resolved report, lifted early, appeals decided.
-    Route::get('/administrator/suspensions', [AdminSuspensionController::class, 'index'])->name('administrator.suspensions');
-    Route::post('/administrator/reports/{report}/suspensions', [AdminSuspensionController::class, 'apply'])->name('admin.suspensions.apply')->whereNumber('report')->middleware('throttle:30,1,admin.suspensions.apply');
-    Route::post('/administrator/suspensions/{suspension}/lift', [AdminSuspensionController::class, 'lift'])->name('admin.suspensions.lift')->whereNumber('suspension')->middleware('throttle:30,1,admin.suspensions.lift');
-    Route::post('/administrator/suspensions/{suspension}/appeal', [AdminSuspensionController::class, 'decideAppeal'])->name('admin.suspensions.appeal')->whereNumber('suspension')->middleware('throttle:30,1,admin.suspensions.appeal');
+    Route::get('/administrator/suspensions', [AdminSuspensionController::class, 'index'])->name('administrator.suspensions')->middleware('admin');
+    Route::post('/administrator/reports/{report}/suspensions', [AdminSuspensionController::class, 'apply'])->name('admin.suspensions.apply')->whereNumber('report')->middleware(['admin', 'throttle:30,1,admin.suspensions.apply']);
+    Route::post('/administrator/suspensions/{suspension}/lift', [AdminSuspensionController::class, 'lift'])->name('admin.suspensions.lift')->whereNumber('suspension')->middleware(['admin', 'throttle:30,1,admin.suspensions.lift']);
+    Route::post('/administrator/suspensions/{suspension}/appeal', [AdminSuspensionController::class, 'decideAppeal'])->name('admin.suspensions.appeal')->whereNumber('suspension')->middleware(['admin', 'throttle:30,1,admin.suspensions.appeal']);
     // SCRUM-381: safeguarding exceptions for minors paused for a missing guardian -- every admin
     // sees them; only the super administrator grants, renews (the same route) or ends one.
-    Route::get('/administrator/safeguarding-exceptions', [AdminSafeguardingExceptionController::class, 'index'])->name('administrator.safeguarding_exceptions');
-    Route::post('/administrator/safeguarding-exceptions/wards/{ward}', [AdminSafeguardingExceptionController::class, 'grant'])->name('admin.safeguarding_exceptions.grant')->whereNumber('ward')->middleware('throttle:30,1,admin.safeguarding_exceptions.grant');
-    Route::post('/administrator/safeguarding-exceptions/{exception}/end', [AdminSafeguardingExceptionController::class, 'end'])->name('admin.safeguarding_exceptions.end')->whereNumber('exception')->middleware('throttle:30,1,admin.safeguarding_exceptions.end');
+    Route::get('/administrator/safeguarding-exceptions', [AdminSafeguardingExceptionController::class, 'index'])->name('administrator.safeguarding_exceptions')->middleware('admin');
+    Route::post('/administrator/safeguarding-exceptions/wards/{ward}', [AdminSafeguardingExceptionController::class, 'grant'])->name('admin.safeguarding_exceptions.grant')->whereNumber('ward')->middleware(['admin', 'throttle:30,1,admin.safeguarding_exceptions.grant']);
+    Route::post('/administrator/safeguarding-exceptions/{exception}/end', [AdminSafeguardingExceptionController::class, 'end'])->name('admin.safeguarding_exceptions.end')->whereNumber('exception')->middleware(['admin', 'throttle:30,1,admin.safeguarding_exceptions.end']);
     // SCRUM-359: the only pages a suspended account can reach (EnsureAccountIsNotSuspended).
     Route::get('/suspended', [SuspensionController::class, 'show'])->name('suspended.show');
     Route::post('/suspended/{suspension}/appeal', [SuspensionController::class, 'appeal'])->name('suspended.appeal')->whereNumber('suspension')->middleware('throttle:10,1,suspended.appeal');

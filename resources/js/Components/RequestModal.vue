@@ -33,6 +33,12 @@ const props = defineProps({
     show: {
         type: Boolean,
         default: false
+    },
+    // SCRUM-386: bumped by the layout when a new request arrives live -- an open Pending tab
+    // refetches its first page.
+    refreshKey: {
+        type: Number,
+        default: 0
     }
 })
 
@@ -63,6 +69,24 @@ watch(() => props.show, () => {
     requests.value = emptyLists()
     requestStatus.value = RequestStatus.pending
 })
+
+// A refresh asked for while a fetch is running waits for it to finish (getRequests()), so two
+// fetches never race to fill the same list.
+let refreshQueued = false
+
+watch(() => props.refreshKey, refreshPending)
+
+function refreshPending() {
+    if (!props.show || requestStatus.value != RequestStatus.pending) return
+
+    if (loading.value) {
+        refreshQueued = true
+        return
+    }
+
+    pages.value[RequestStatus.pending] = 1
+    getRequests()
+}
 
 function setPages(num) {
     tabs.forEach((tab) => { pages.value[tab.status] = num })
@@ -100,6 +124,11 @@ async function getRequests() {
     })
     .finally(() => {
         loading.value = false
+
+        if (refreshQueued) {
+            refreshQueued = false
+            refreshPending()
+        }
     })
 }
 

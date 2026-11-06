@@ -116,26 +116,30 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/age-verification', [UserController::class, 'submitAgeVerification'])->name('api.users.age-verification')->middleware('throttle:10,1,api.users.age-verification');
     Route::delete('/guardianship/{guardianshipId}', [UserController::class, 'deleteGuardianship'])->name('api.guardianship.delete');
 
-    Route::get('/administrator/verification/requests', [AdministratorController::class, 'getVerificationRequests'])->name('admin.verification.requests');
-    Route::get('/administrator/counsellors', [AdministratorController::class, 'getCounsellors'])->name('admin.counsellors');
-    Route::get('/administrator/counsellors/{counsellorId}/stats', [AdministratorController::class, 'getCounsellorStats'])->name('admin.counsellors.stats');
-    // SCRUM-134: admin-triggered counsellor deletion (e.g. revoking a counsellor found practicing
-    // without a valid license) -- reuses the same CounsellorService::deleteCounsellor()/
-    // EnsureCanDeleteCounsellorAction chain as self-service deletion, which already requires
-    // isSuperAdmin() for the admin branch, mirroring admin.users.delete's super-admin gate below.
-    Route::delete('/administrator/counsellors/{counsellorId}', [AdministratorController::class, 'deleteCounsellor'])->name('admin.counsellors.delete');
-    Route::get('/administrator/users', [AdministratorController::class, 'getUsers'])->name('admin.users');
-    Route::post('/administrator/users/{userId}', [AdministratorController::class, 'updateUser'])->name('admin.users.update');
-    Route::delete('/administrator/users/{userId}', [AdministratorController::class, 'deleteUser'])->name('admin.users.delete');
+    // SCRUM-387 (security review): the `admin` middleware answers a non-admin with a JSON 403 before
+    // any of these run; each keeps its own check too.
+    Route::middleware('admin')->group(function () {
+        Route::get('/administrator/verification/requests', [AdministratorController::class, 'getVerificationRequests'])->name('admin.verification.requests');
+        Route::get('/administrator/counsellors', [AdministratorController::class, 'getCounsellors'])->name('admin.counsellors');
+        Route::get('/administrator/counsellors/{counsellorId}/stats', [AdministratorController::class, 'getCounsellorStats'])->name('admin.counsellors.stats');
+        // SCRUM-134: admin-triggered counsellor deletion (e.g. revoking a counsellor found practicing
+        // without a valid license) -- reuses the same CounsellorService::deleteCounsellor()/
+        // EnsureCanDeleteCounsellorAction chain as self-service deletion, which already requires
+        // isSuperAdmin() for the admin branch, mirroring admin.users.delete's super-admin gate below.
+        Route::delete('/administrator/counsellors/{counsellorId}', [AdministratorController::class, 'deleteCounsellor'])->name('admin.counsellors.delete');
+        Route::get('/administrator/users', [AdministratorController::class, 'getUsers'])->name('admin.users');
+        Route::post('/administrator/users/{userId}', [AdministratorController::class, 'updateUser'])->name('admin.users.update');
+        Route::delete('/administrator/users/{userId}', [AdministratorController::class, 'deleteUser'])->name('admin.users.delete');
 
-    // TT-7.6e/SCRUM-229: mirrors admin.counsellors's own convention -- a non-admin caller gets a
-    // silently-empty result (getPayoutsForAdmin's own guard), not an exception.
-    Route::get('/administrator/payouts', [AdminPayoutController::class, 'payouts'])->name('admin.payouts');
-    Route::get('/administrator/payouts/counsellors/{counsellorId}/overview', [AdminPayoutController::class, 'counsellorOverview'])->name('admin.payouts.counsellor-overview');
+        // TT-7.6e/SCRUM-229: getPayoutsForAdmin's own guard also answers a non-admin with an empty
+        // result, behind the `admin` middleware's 403 above (SCRUM-387).
+        Route::get('/administrator/payouts', [AdminPayoutController::class, 'payouts'])->name('admin.payouts');
+        Route::get('/administrator/payouts/counsellors/{counsellorId}/overview', [AdminPayoutController::class, 'counsellorOverview'])->name('admin.payouts.counsellor-overview');
 
-    Route::post('/administrator/how-tos', [HowToController::class, 'createHowTo'])->name('admin.how-tos.create');
-    Route::post('/administrator/how-tos/{howToId}', [HowToController::class, 'updateHowTo'])->name('admin.how-tos.update');
-    Route::delete('/administrator/how-tos/{howToId}', [HowToController::class, 'deleteHowTo'])->name('admin.how-tos.delete');
+        Route::post('/administrator/how-tos', [HowToController::class, 'createHowTo'])->name('admin.how-tos.create');
+        Route::post('/administrator/how-tos/{howToId}', [HowToController::class, 'updateHowTo'])->name('admin.how-tos.update');
+        Route::delete('/administrator/how-tos/{howToId}', [HowToController::class, 'deleteHowTo'])->name('admin.how-tos.delete');
+    });
 
     Route::get('/requests/counsellors', [CounsellorController::class, 'getRequestCounsellors'])->name('counsellors.request.get');
 

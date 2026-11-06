@@ -14,7 +14,7 @@ import CreateTherapyButton from "@/Components/CreateTherapyButton.vue";
 import Footer from "@/Components/Footer.vue";
 import useModal from '@/Composables/useModal';
 import ContactUsModal from '@/Components/ContactUsModal.vue';
-import { acquireCounsellorChannel } from '@/Composables/sharedChannel';
+import { acquireCounsellorChannel, acquireUserChannel } from '@/Composables/sharedChannel';
 
 const { modalData, showModal, closeModal } = useModal()
 
@@ -27,13 +27,15 @@ const props = defineProps({});
 const listening = ref(false);
 
 onBeforeUnmount(() => {
-  if (page.props.auth.user?.id) 
-    Echo.leave(`users.${page.props.auth.user?.id}`);
-  
-  // SCRUM-368: shared with the therapy page -- released, not left (see sharedChannel.js).
+  // SCRUM-368/386: both shared with the therapy page -- released, not left (see sharedChannel.js),
+  // so a group page's own handlers on users.{id} survive this layout unmounting.
+  userChannel?.release();
+  userChannel = null;
   counsellorChannel?.release();
+  counsellorChannel = null;
 });
 
+let userChannel = null;
 let counsellorChannel = null;
 
 watchEffect(() => {
@@ -65,7 +67,8 @@ watchEffect(() => {
 
   if (page.props.auth.user?.id && !listening.value) {
     listening.value = true;
-    Echo.private(`users.${page.props.auth.user?.id}`)
+    userChannel = acquireUserChannel(page.props.auth.user.id);
+    userChannel
       // SCRUM-359: leave for the suspended page the moment an account is suspended (the server
       // refuses everything else from then on anyway).
       .listen(".account.suspended", () => router.visit(route("suspended.show")))
@@ -73,6 +76,9 @@ watchEffect(() => {
       // carry nothing; reloading the page's props shows the banner and locks or unlocks the controls.
       .listen(".guardian-access.paused", () => router.reload({ preserveScroll: true }))
       .listen(".guardian-access.resumed", () => router.reload({ preserveScroll: true }))
+      // SCRUM-386: a new request to join one of this account's groups (ids only) -- an open
+      // Requests list picks it up; the group's own page refetches itself (useTherapyState).
+      .listen(".group-therapy.membership-requested", () => requestsRefreshKey.value++)
       .notification(
       (notification) => {
         console.log(notification, "notification");
@@ -159,6 +165,7 @@ watchEffect(() => {
 });
 
 const showRequest = ref(false);
+const requestsRefreshKey = ref(0);
 const showingNavigationDropdown = ref(false);
 const showBecomeCounsellorButton = computed(() => {
   return !(
@@ -556,6 +563,7 @@ function goToTherapy(data) {
 
   <RequestModal
     :show="showRequest"
+    :refresh-key="requestsRefreshKey"
     @close-modal="
       () => {
         showRequest = false;

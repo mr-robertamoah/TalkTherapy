@@ -88,7 +88,7 @@ const {
   updateSessionOrTopic,
   deleteSessionOrTopic,
   addSessionOrTopic,
-} = useTherapyState(therapyRef, props.therapyType, { setSuccessAlertData, onMembershipChanged: refreshMemberLinks })
+} = useTherapyState(therapyRef, props.therapyType, { setSuccessAlertData, setAlertData, onMembershipChanged: refreshMemberLinks })
 
 // SCRUM-383 QA: a join through a member link used that link -- the creator's link panels (shown
 // only to them) are fetched again from page 1, so the used link no longer shows as active.
@@ -509,7 +509,7 @@ async function clickedResponse(response) {
 
       setSuccessAlertData({
         time: 5000,
-        message: "You have successful responded to the request.",
+        message: "You have successfully responded to the request.",
       })
     })
     .catch((err) => {

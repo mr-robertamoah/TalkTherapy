@@ -165,7 +165,8 @@ test('a non-admin is refused (not silently shown an empty list) at the audit end
 
     $response = $this->actingAs($user)->getJson(route('admin.payouts'));
 
-    $response->assertStatus(422);
+    // SCRUM-387: the `admin` middleware's JSON 403, before the action's own refusal.
+    $response->assertForbidden();
 });
 
 test('an admin can view a specific counsellor\'s payout overview', function () {
@@ -193,7 +194,7 @@ test('a non-admin is refused when viewing a counsellor\'s payout overview', func
 
     $response = $this->actingAs($user)->getJson(route('admin.payouts.counsellor-overview', ['counsellorId' => $counsellor->id]));
 
-    $response->assertStatus(422);
+    $response->assertForbidden();
 });
 
 test('a nonexistent counsellor id on the overview endpoint returns a clear 404, not a crash', function () {

@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Http\Resources\UserResource;
+use App\Support\AdminNavigation;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -62,6 +63,20 @@ class HandleInertiaRequestsV2 extends Middleware
             // SCRUM-371: a failed page visit's message (Controller::failureResponse), shown by the layout.
             // Pulled: shown on the first page that renders, then gone (FailureResponse puts it).
             'failureAlert' => fn () => $request->hasSession() ? $request->session()->pull('failureAlert') : null,
+            ...$this->adminArea($request),
+        ];
+    }
+
+    // SCRUM-387: the admin area's sidebar, on its pages only (null elsewhere -- always present, so
+    // a value shared for one request can't linger into the next where the app is long-lived). Its
+    // badges are not a prop: AdminLayout.vue fetches them from admin.badges once a page is up, so a
+    // page never waits on the counts (the client is Inertia v1, which has no deferred props).
+    private function adminArea(Request $request): array
+    {
+        return [
+            'adminNavigation' => fn () => $request->user() && $request->routeIs('administrator', 'administrator.*')
+                ? AdminNavigation::for($request->user())
+                : null,
         ];
     }
 }

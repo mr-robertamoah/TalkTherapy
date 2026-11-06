@@ -3,8 +3,11 @@ import Alert from '@/Components/Alert.vue';
 import Pagination from '@/Components/Pagination.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import useAlert from '@/Composables/useAlert';
-import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
+import AdminLayout from '@/Layouts/AdminLayout.vue';
 import { Head, router, useForm } from '@inertiajs/vue3';
+
+// SCRUM-387: the admin area's shell (sidebar inside AuthenticatedLayout), kept across admin pages.
+defineOptions({ layout: AdminLayout });
 
 // TT-7.3b-followup/SCRUM-245: the manual "resolve this" surface SCRUM-238 deliberately left
 // unbuilt -- a dedicated page rather than another Admin.vue dispatch-table tab, same reasoning as
@@ -61,21 +64,21 @@ function goToPage(url) {
 <template>
     <Head title="Organization Billing" />
 
-    <AuthenticatedLayout>
-        <div class="my-8 w-full sm:w-[90%] md:w-[75%] mx-auto space-y-8">
+    <div>
+        <div class="my-8 w-full max-w-6xl mx-auto space-y-8 px-4">
             <div>
                 <div class="text-2xl font-bold text-gray-900">Organization Billing</div>
                 <div class="w-16 h-1 bg-blue-600 mt-2"></div>
                 <div class="mt-2 text-sm text-gray-600">
-                    Organizations currently suspended for a failed retainer invoice settlement. Retrying a
-                    settlement never automatically lifts a suspension -- review the organization's standing
-                    first.
+                    Organizations suspended for a failed retainer invoice settlement, and organizations with a
+                    failed invoice that aren't suspended. Retrying a settlement never automatically lifts a
+                    suspension -- review the organization's standing first.
                 </div>
             </div>
 
             <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg p-6">
                 <div v-if="organizations.data.length === 0" class="text-sm text-gray-500 italic">
-                    No organizations are currently billing-suspended.
+                    No organizations are billing-suspended or have a failed invoice.
                 </div>
 
                 <div v-else class="overflow-x-auto">
@@ -93,7 +96,10 @@ function goToPage(url) {
                         <tbody>
                             <tr v-for="organization in organizations.data" :key="organization.id" class="border-b border-gray-100 align-top">
                                 <td class="py-2 pr-4 font-medium">{{ organization.name }}</td>
-                                <td class="py-2 pr-4">{{ formatDate(organization.billingSuspendedAt) }}</td>
+                                <td class="py-2 pr-4">
+                                    <template v-if="organization.billingSuspendedAt">{{ formatDate(organization.billingSuspendedAt) }}</template>
+                                    <span v-else class="text-gray-500">not suspended</span>
+                                </td>
                                 <td class="py-2 pr-4 max-w-[240px] text-gray-600">{{ organization.billingSuspensionReason ?? '--' }}</td>
                                 <td class="py-2 pr-4">
                                     <template v-if="organization.latestFailedInvoice">
@@ -116,6 +122,7 @@ function goToPage(url) {
                                         @click="retrySettlement(organization.latestFailedInvoice.id)"
                                     >retry settlement</PrimaryButton>
                                     <PrimaryButton
+                                        v-if="organization.billingSuspendedAt"
                                         :disabled="liftForm.processing"
                                         :class="{ 'opacity-25': liftForm.processing }"
                                         @click="liftSuspension(organization.id)"
@@ -129,7 +136,7 @@ function goToPage(url) {
                 <Pagination :meta="organizations.meta" @navigate="goToPage" />
             </div>
         </div>
-    </AuthenticatedLayout>
+    </div>
 
     <Alert
         :show="alertData.show"

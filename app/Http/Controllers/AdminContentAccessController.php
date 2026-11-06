@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Middleware\EnsureUserIsAdmin;
 use App\Models\AdminContentAccess;
 use App\Models\Discussion;
 use App\Models\GroupTherapy;
@@ -37,7 +38,7 @@ class AdminContentAccessController extends Controller
     public function index(Request $request)
     {
         if (! $request->user()?->isSuperAdmin()) {
-            return Redirect::route('home')->with('message', 'You are not authorized to visit this page.');
+            return Redirect::route('home')->with('message', EnsureUserIsAdmin::MESSAGE);
         }
 
         $filters = $request->validate([

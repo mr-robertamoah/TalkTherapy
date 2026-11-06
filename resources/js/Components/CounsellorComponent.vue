@@ -195,7 +195,7 @@ const props = defineProps({
         type: Boolean,
         default: false
     },
-    // SCRUM-134: only the admin counsellors listing (Admin.vue) passes this true -- every other
+    // SCRUM-134: only the admin counsellors listing (Admin/People/Counsellors.vue) passes this true -- every other
     // context this component is used in (public listings, request views, etc.) leaves it off.
     canDelete: {
         type: Boolean,

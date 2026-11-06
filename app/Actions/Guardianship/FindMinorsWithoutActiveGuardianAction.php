@@ -42,6 +42,19 @@ class FindMinorsWithoutActiveGuardianAction extends Action
         ];
     }
 
+    // SCRUM-387: everyone above who still has an open therapy or group -- the admin safeguarding
+    // page's "Paused now" list and the admin overview's count of it -- ordered by id.
+    public function withOpenTherapy(): Collection
+    {
+        $found = $this->execute();
+
+        return $found[self::NO_DOB]
+            ->concat($found[self::KNOWN_MINOR])
+            ->filter(fn (array $row) => $row['openTherapies'] || $row['groupMemberships'])
+            ->sortBy('id')
+            ->values();
+    }
+
     private function row(User $user): array
     {
         $open = fn ($query) => $query->where('status', '!=', TherapyStatusEnum::ended->value);

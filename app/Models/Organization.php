@@ -85,6 +85,16 @@ class Organization extends Model
             });
     }
 
+    // SCRUM-387 (review): an organisation an administrator needs to look at for billing --
+    // billing-suspended, or with a failed invoice (one that can be retried without being suspended).
+    // The organisation billing page lists these, and the admin overview counts them.
+    public function scopeNeedsBillingAttention($query)
+    {
+        return $query->where(fn ($query) => $query
+            ->whereNotNull('billing_suspended_at')
+            ->orWhereHas('invoices', fn ($query) => $query->where('status', OrganizationInvoiceStatusEnum::failed->value)));
+    }
+
     // SCRUM-182/TT-10.4: tagged fileables pivot, same pattern as Counsellor::avatarFile()/
     // coverFile() (TT-10.2) -- withPivotValue (not the similarly-named, nonexistent
     // wherePivotValue) is what actually constrains reads AND auto-populates the tag column on

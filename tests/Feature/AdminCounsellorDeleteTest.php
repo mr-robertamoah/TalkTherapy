@@ -37,9 +37,10 @@ test('a regular user cannot delete a counsellor account via the admin route', fu
     $user = User::factory()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => User::factory()]);
 
+    // SCRUM-387: the `admin` middleware refuses them before the action does.
     $this->actingAs($user)
         ->deleteJson(route('admin.counsellors.delete', ['counsellorId' => $counsellor->id]))
-        ->assertStatus(422);
+        ->assertForbidden();
 
     expect($counsellor->fresh()->deleted_at)->toBeNull();
 });

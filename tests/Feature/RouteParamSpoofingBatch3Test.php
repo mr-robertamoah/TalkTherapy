@@ -154,7 +154,6 @@ test('PostController::deletePost applies to the URL\'s post, not a spoofed postI
 });
 
 test('RequestController::respond applies to the URL\'s request, not a spoofed requestId in the body', function () {
-    $admin = anAdmin();
     $guardian = User::factory()->create(['dob' => now()->subYears(30)]);
     $ward = User::factory()->create();
     $unrelatedWard = User::factory()->create();
@@ -180,8 +179,9 @@ test('RequestController::respond applies to the URL\'s request, not a spoofed re
     ]);
     ModelsRequest::reguard();
 
+    // SCRUM-387: the guardian, its party -- an administrator may no longer answer a guardianship.
     $response = $this
-        ->actingAs($admin)
+        ->actingAs($guardian)
         ->postJson("/api/requests/{$ownedRequest->id}", [
             'requestId' => $unrelatedRequest->id,
             'response' => 'rejected',

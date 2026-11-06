@@ -77,6 +77,22 @@ See "Common commands" in `CLAUDE.md`.
   override" failure mode is currently only theoretical. `tests/TestCase.php::setUp()` also throws
   loudly if the resolved DB connection isn't `sqlite`, as an independent safety net regardless of
   which mechanism would otherwise have failed.
+- Laravel Reverb 1.10 (composer.lock pins v1.10.0) can't close a user's existing websocket
+  subscriptions from the server (SCRUM-386): `terminate_connections` fails with a 500 when the
+  user's first channel is a private one, which is always true here because every signed-in user
+  subscribes to `users.{id}` first. So someone who leaves a group, or loses access to a therapy,
+  keeps the channels they already joined until they disconnect or reload. Exposure is limited to
+  the presence roster and the id-only "a message arrived" pings. **Revisit trigger:** when Reverb is upgraded past 1.10,
+  re-test `terminate_connections` for a user whose first channel is private and, if it works,
+  close a leaver's subscriptions from the server.
+- The Inertia client and server are a major version apart (SCRUM-387): the client is
+  `@inertiajs/vue3` 1.x (package.json) while the server is `inertiajs/inertia-laravel` 2.x
+  (composer.json). Client-side v2 features -- deferred props (`Inertia::defer`), polling, prefetch,
+  infinite scroll -- are unavailable, so the admin sidebar's badges are fetched from their own JSON
+  route (`GET /administrator/badges`, `useAdminBadges.js`) instead of a deferred prop. CLAUDE.md
+  says "Inertia v2", which is only true of the server. **Revisit trigger:** once the client is
+  upgraded to `@inertiajs/vue3` 2.x, move the badges to `Inertia::defer` on the admin pages and drop
+  the route.
 
 ## Current Sprint Goals
 

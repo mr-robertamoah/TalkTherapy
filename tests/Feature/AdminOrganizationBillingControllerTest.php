@@ -2,6 +2,7 @@
 
 use App\Enums\OrganizationAdminRoleEnum;
 use App\Enums\OrganizationInvoiceStatusEnum;
+use App\Http\Middleware\EnsureUserIsAdmin;
 use App\Jobs\ProcessOrganizationInvoiceSettlementJob;
 use App\Models\Administrator;
 use App\Models\Organization;
@@ -96,7 +97,8 @@ test('a non-admin cannot retry a settlement via the real HTTP endpoint', functio
 
     $response = $this->post(route('admin.organization_invoices.retry_settlement', ['organizationInvoiceId' => $invoice->id]));
 
-    $response->assertSessionHasErrors('alert');
+    // SCRUM-387: the `admin` middleware sends them home before the action is reached.
+    $response->assertRedirect(route('home'))->assertSessionHas('message', EnsureUserIsAdmin::MESSAGE);
     expect($invoice->fresh()->status)->toBe(OrganizationInvoiceStatusEnum::failed->value);
 });
 
@@ -123,7 +125,7 @@ test('a non-admin cannot lift a billing suspension via the real HTTP endpoint', 
 
     $response = $this->post(route('admin.organizations.lift_billing_suspension', ['organizationId' => $organization->id]));
 
-    $response->assertSessionHasErrors('alert');
+    $response->assertRedirect(route('home'))->assertSessionHas('message', EnsureUserIsAdmin::MESSAGE);
     expect($organization->fresh()->isBillingSuspended())->toBeTrue();
 });
 

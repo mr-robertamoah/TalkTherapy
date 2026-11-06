@@ -5,14 +5,15 @@ import Alert from '@/Components/Alert.vue'
 import Pagination from '@/Components/Pagination.vue'
 import PrimaryButton from '@/Components/PrimaryButton.vue'
 import DangerButton from '@/Components/DangerButton.vue'
-import SecondaryButton from '@/Components/SecondaryButton.vue'
-import TextBox from '@/Components/TextBox.vue'
-import InputLabel from '@/Components/InputLabel.vue'
-import InputError from '@/Components/InputError.vue'
 import FormLoader from '@/Components/FormLoader.vue'
+import RefundRejectionReasonForm from '@/Components/RefundRejectionReasonForm.vue'
 import useAlert from '@/Composables/useAlert'
-import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue'
+import { refreshAdminBadges } from '@/Composables/useAdminBadges'
+import AdminLayout from '@/Layouts/AdminLayout.vue'
 import { Head } from '@inertiajs/vue3'
+
+// SCRUM-387: the admin area's shell (sidebar inside AuthenticatedLayout), kept across admin pages.
+defineOptions({ layout: AdminLayout })
 
 // TT-7.7c/SCRUM-251: a dedicated page, not another Admin.vue dispatch-table tab (same reasoning
 // as Payouts.vue/OrganizationBilling.vue's own top comments). Platform-admin only. Approve/reject
@@ -22,6 +23,10 @@ import { Head } from '@inertiajs/vue3'
 
 const props = defineProps({
     refundRequests: { type: Object, required: true },
+    // SCRUM-387: refunds the provider failed (AdminFailedRefundResource), newest first, and how
+    // many there are in all. Nothing retries one, so they are only listed.
+    failedRefunds: { type: Array, default: () => [] },
+    failedRefundsTotal: { type: Number, default: 0 },
 })
 
 const { alertData, clearAlertData, setFailedAlertData, setSuccessAlertData } = useAlert()
@@ -31,8 +36,6 @@ const meta = ref(props.refundRequests.meta)
 const loadingPage = ref(false)
 const respondingId = ref(null)
 const rejectingId = ref(null)
-const rejectionReason = ref('')
-const rejectionReasonError = ref('')
 
 function formatMoney(minorUnitsAmount, currency) {
     if (minorUnitsAmount == null || !currency) return '--'
@@ -40,8 +43,14 @@ function formatMoney(minorUnitsAmount, currency) {
     return `${currency} ${(minorUnitsAmount / 100).toFixed(2)}`
 }
 
+function formatDate(value) {
+    return value ? new Date(value).toLocaleString() : '--'
+}
+
+// Answered: off this list, and the sidebar's badge drops (the server cleared its cached counts).
 function removeFromQueue(requestId) {
     requests.value = requests.value.filter((r) => r.id !== requestId)
+    refreshAdminBadges({ force: true })
 }
 
 async function approve(request) {
@@ -60,30 +69,19 @@ async function approve(request) {
 
 function startReject(request) {
     rejectingId.value = request.id
-    rejectionReason.value = ''
-    rejectionReasonError.value = ''
 }
 
 function cancelReject() {
     rejectingId.value = null
-    rejectionReason.value = ''
-    rejectionReasonError.value = ''
 }
 
-async function confirmReject(request) {
-    rejectionReasonError.value = ''
-
-    if (rejectionReason.value.trim().length < 10) {
-        rejectionReasonError.value = 'Please provide at least 10 characters explaining why this request is being declined.'
-        return
-    }
-
+async function confirmReject(request, reason) {
     respondingId.value = request.id
 
     try {
         await axios.post(route('requests.respond', { requestId: request.id }), {
             response: 'rejected',
-            reason: rejectionReason.value,
+            reason,
         })
         setSuccessAlertData({ message: 'Refund request rejected.' })
         removeFromQueue(request.id)
@@ -113,13 +111,13 @@ async function goToPage(url) {
 <template>
     <Head title="Refund Requests" />
 
-    <AuthenticatedLayout>
-        <div class="my-8 w-full sm:w-[90%] md:w-[75%] mx-auto space-y-8">
+    <div>
+        <div class="my-8 w-full max-w-6xl mx-auto space-y-8 px-4">
             <div>
                 <div class="text-2xl font-bold text-gray-900">Refund Requests</div>
                 <div class="w-16 h-1 bg-blue-600 mt-2"></div>
                 <div class="mt-2 text-sm text-gray-600">
-                    Clients awaiting a decision on their refund request. Approving does not itself move any
+                    Clients awaiting a decision on their refund request, and refunds that failed. Approving does not itself move any
                     money -- that happens once the refund is actually processed.
                 </div>
             </div>
@@ -155,13 +153,12 @@ async function goToPage(url) {
                                 <td class="py-2 pr-4 min-w-[220px]">
                                     <template v-if="rejectingId === request.id">
                                         <FormLoader class="mx-auto" :show="respondingId === request.id" :text="'submitting'" />
-                                        <InputLabel :for="`reject_reason_${request.id}`" value="Why is this being declined?" />
-                                        <TextBox :id="`reject_reason_${request.id}`" v-model="rejectionReason" class="mt-1 block w-full" rows="2" />
-                                        <InputError :message="rejectionReasonError" class="mt-1" />
-                                        <div class="mt-2 flex gap-2">
-                                            <DangerButton :disabled="respondingId === request.id" @click="() => confirmReject(request)">confirm reject</DangerButton>
-                                            <SecondaryButton :disabled="respondingId === request.id" @click="cancelReject">cancel</SecondaryButton>
-                                        </div>
+                                        <RefundRejectionReasonForm
+                                            :request-id="request.id"
+                                            :responding="respondingId === request.id"
+                                            @cancel="cancelReject"
+                                            @submit="(reason) => confirmReject(request, reason)"
+                                        />
                                     </template>
                                     <div v-else class="flex items-center space-x-2">
                                         <PrimaryButton :disabled="respondingId === request.id" @click="() => approve(request)">approve</PrimaryButton>
@@ -176,8 +173,44 @@ async function goToPage(url) {
                 <div v-if="loadingPage" class="text-center mt-4 text-sm text-gray-500">loading...</div>
                 <Pagination v-else :meta="meta" @navigate="goToPage" />
             </div>
+
+            <section aria-labelledby="failed-refunds-heading" class="bg-white overflow-hidden shadow-sm sm:rounded-lg p-6">
+                <h2 id="failed-refunds-heading" class="text-lg font-semibold text-gray-900">Failed refunds</h2>
+                <p class="mt-1 text-sm text-gray-600">
+                    Approved refunds the payment provider could not complete. Nothing retries these automatically --
+                    follow each one up with the client and the provider.
+                    <template v-if="failedRefundsTotal > failedRefunds.length">Showing the latest {{ failedRefunds.length }} of {{ failedRefundsTotal }}.</template>
+                </p>
+
+                <div v-if="failedRefunds.length === 0" class="mt-4 text-sm text-gray-500 italic">
+                    No refunds have failed.
+                </div>
+
+                <div v-else class="mt-4 overflow-x-auto">
+                    <table class="w-full text-sm text-left">
+                        <thead>
+                            <tr class="text-gray-500 border-b border-gray-200">
+                                <th class="py-2 pr-4">Client</th>
+                                <th class="py-2 pr-4">Amount</th>
+                                <th class="py-2 pr-4">Why it failed</th>
+                                <th class="py-2 pr-4">Failed</th>
+                                <th class="py-2 pr-4">Reference</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="refund in failedRefunds" :key="refund.id" class="border-b border-gray-100 align-top">
+                                <td class="py-2 pr-4 font-medium">{{ refund.from?.fullName ?? refund.from?.username ?? '--' }}</td>
+                                <td class="py-2 pr-4">{{ formatMoney(refund.amount, refund.currency) }}</td>
+                                <td class="py-2 pr-4 max-w-[280px] text-gray-600">{{ refund.failureReason ?? '--' }}</td>
+                                <td class="py-2 pr-4">{{ formatDate(refund.failedAt) }}</td>
+                                <td class="py-2 pr-4 text-gray-500 break-all">{{ refund.reference }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
         </div>
-    </AuthenticatedLayout>
+    </div>
 
     <Alert
         :show="alertData.show"

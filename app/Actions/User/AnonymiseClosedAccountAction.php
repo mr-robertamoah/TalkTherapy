@@ -127,21 +127,17 @@ class AnonymiseClosedAccountAction extends Action
 
     // SCRUM-384/73: other people's stored notices that name them -- their counsellors' pause, resume
     // and continuation notices, and "a member left your group" -- found by WardRef (never their id,
-    // and under each previous app key too), have the name replaced. A plain read (the data column has
-    // no index, so a locking read or an update by JSON path would scan and lock the whole table inside
-    // this transaction), narrowed by type, then an update by key. A row whose data can't be read is
-    // skipped, never the whole anonymisation.
+    // and under each previous app key too), have the name replaced. SCRUM-386: found through the
+    // indexed ward_ref column (generated from data's WardRef), then updated by key -- a plain read,
+    // so nothing beyond those rows is locked inside this transaction. A row whose data can't be read
+    // has no ward_ref, and is skipped, never the whole anonymisation.
     private function renameInOthersNotices(User $user): void
     {
         $refs = WardRef::allOf($user);
 
         DB::table('notifications')
+            ->whereIn('ward_ref', $refs)
             ->whereIn('type', self::NOTICES_NAMING_A_PERSON)
-            ->where(function ($query) use ($refs) {
-                foreach ($refs as $ref) {
-                    $query->orWhere('data', 'like', '%"'.WardRef::KEY.'":"'.$ref.'"%');
-                }
-            })
             ->select(['id', 'data'])
             ->orderBy('id')
             ->each(function (object $row) use ($refs) {

@@ -10,7 +10,8 @@ use App\Models\User;
 // (AnonymiseClosedAccountAction) can find those rows and replace the name in them. An HMAC of the id
 // with the app key, never the raw id (the SCRUM-345 rule): it can't be turned back into an id, or
 // matched to the same person elsewhere without the key.
-// No endpoint returns database notifications today; one that does must leave KEY out.
+// No endpoint returns database notifications today; one that does must leave KEY out, and the
+// notifications.ward_ref column generated from it (SCRUM-386, indexed for that lookup).
 // Rotating APP_KEY: rows written before the rotation are still found while the old key is listed in
 // APP_PREVIOUS_KEYS (allOf()); once it is dropped from there they no longer match.
 final class WardRef

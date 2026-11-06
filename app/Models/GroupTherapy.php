@@ -33,10 +33,15 @@ class GroupTherapy extends Model
     // Memoized (SCRUM-212), same rationale as TherapyTrait::getSessionsHeldAttribute() -- a
     // shared instance (via morphTo eager loading) re-ran this COUNT query once per sibling Session
     // rendered through GroupTherapyMiniResource instead of once per distinct GroupTherapy.
+    // SCRUM-386: a list's loadCount('counsellors') (PreloadGroupTherapyListAction) wins when present.
     protected ?int $counsellorsCountCache = null;
 
     public function getCounsellorsCountAttribute()
     {
+        if (isset($this->attributes['counsellors_count'])) {
+            return (int) $this->attributes['counsellors_count'];
+        }
+
         return $this->counsellorsCountCache ??= $this->counsellors()->count();
     }
 
@@ -88,6 +93,16 @@ class GroupTherapy extends Model
             ->withTimestamps();
     }
 
+    // SCRUM-386 (review): the group's ACTIVE counsellors, id and user id only -- what a list preloads
+    // (PreloadGroupTherapyListAction) for isCounsellor(), so a cut-down copy never stands in for the
+    // full `counsellors` relation above.
+    public function activeCounsellorLinks()
+    {
+        return $this->belongsToMany(Counsellor::class, 'counsellor_group_therapy', 'group_therapy_id', 'counsellor_id')
+            ->wherePivot('state', CounsellorGroupTherapyStateEnum::active->value)
+            ->select(['counsellors.id', 'counsellors.user_id']);
+    }
+
     // The group's current members. SCRUM-73: a member who left keeps their row, stamped with
     // left_at, so this relation filters them out. Don't write through it to a row that may have left
     // (updateExistingPivot()/detach() carry the same filter and would silently match nothing) -- use
@@ -121,6 +136,13 @@ class GroupTherapy extends Model
     {
         if ($this->addedby_type === Counsellor::class && $this->addedby?->is($counsellor)) {
             return true;
+        }
+
+        // SCRUM-386: a list preloads its active counsellors (PreloadGroupTherapyListAction), like
+        // membershipOf() reads a loaded `users`. Only that relation: whatever `counsellors` a caller
+        // loaded may be filtered or cut down in ways this can't know.
+        if ($this->relationLoaded('activeCounsellorLinks')) {
+            return $this->activeCounsellorLinks->contains(fn (Counsellor $loaded) => $loaded->getKey() == $counsellor->getKey());
         }
 
         return $this->counsellors()

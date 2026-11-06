@@ -17,6 +17,7 @@ use App\Enums\OrganizationInvoiceStatusEnum;
 use App\Enums\OrganizationMemberBillingModeEnum;
 use App\Enums\OrganizationMemberStatusEnum;
 use App\Enums\RefundStatusEnum;
+use App\Enums\RefundStatusSourceEnum;
 use App\Enums\ReportOutcomeEnum;
 use App\Enums\ReportStatusEnum;
 use App\Enums\RequestStatusEnum;
@@ -28,7 +29,9 @@ use App\Models\CounsellorEarning;
 use App\Models\CounsellorPayout;
 use App\Models\GroupTherapy;
 use App\Models\Guardianship;
+use App\Models\HowTo;
 use App\Models\License;
+use App\Models\LicensingAuthority;
 use App\Models\Link;
 use App\Models\Message;
 use App\Models\Organization;
@@ -42,6 +45,7 @@ use App\Models\Request;
 use App\Models\SafeguardingException;
 use App\Models\Session;
 use App\Models\Suspension;
+use App\Models\Testimonial;
 use App\Models\Therapy;
 use App\Models\Transaction;
 use App\Models\User;
@@ -204,6 +208,12 @@ class DatabaseSeeder extends Seeder
         // SCRUM-381: a pending counsellor request for a safeguarding exception (for paused_minor), and
         // a second minor carrying on under one that ends in two days.
         $this->createSafeguardingExceptionDemoData($superAdmin);
+        // SCRUM-387: pending counsellor and organisation verification requests, a failed payout and a
+        // failed refund, for the admin area's queue and overview counts.
+        $this->createAdminAreaDemoData($superAdmin);
+        // SCRUM-387 (QA): testimonials and a how-to, an administrator who can be suspended, and a
+        // super administrator who counsels a paused minor.
+        $this->createAdminAreaQaDemoData($superAdmin);
         // SCRUM-73/383: a group to leave (an anonymous member and a minor member who can, and a
         // former member), with an active member link and counsellor link and someone to use each.
         $this->createLeaveGroupDemoData();
@@ -470,17 +480,7 @@ class DatabaseSeeder extends Seeder
         $pausedTherapy = Therapy::query()->where('name', 'Paused Minor Demo Therapy')->whereAddedby($pausedMinor)->firstOrFail();
         $group = GroupTherapy::query()->where('name', 'Paused Minor Demo Group')->whereAddedby($counsellor)->firstOrFail();
 
-        $request = $counsellor->sentRequests()->create([
-            'type' => RequestTypeEnum::safeguardingException->value,
-            'status' => RequestStatusEnum::pending->value,
-            'data' => [
-                'reason' => 'Jordan is in the middle of work on anxiety before exams. Their guardian is unreachable for a few weeks; a new guardian is being arranged.',
-                'proposedEndsAt' => now()->addDays(14)->toJSON(),
-                'wardId' => $pausedMinor->id,
-            ],
-        ]);
-        $request->for()->associate($pausedTherapy);
-        $request->save();
+        $this->seedSafeguardingExceptionRequest($counsellor, $pausedMinor, $pausedTherapy);
 
         $minor = User::factory()->create([
             'firstName' => 'Casey',
@@ -514,6 +514,284 @@ class DatabaseSeeder extends Seeder
             'starts_at' => now()->subDays(12),
             'ends_at' => now()->addDays(2),
         ]);
+    }
+
+    // SCRUM-381: a counsellor's pending request for a safeguarding exception for a paused minor
+    // ($pausedTherapy is the minor's therapy with them).
+    private function seedSafeguardingExceptionRequest(Counsellor $counsellor, User $pausedMinor, Therapy $pausedTherapy): Request
+    {
+        $request = $counsellor->sentRequests()->create([
+            'type' => RequestTypeEnum::safeguardingException->value,
+            'status' => RequestStatusEnum::pending->value,
+            'data' => [
+                'reason' => 'Jordan is in the middle of work on anxiety before exams. Their guardian is unreachable for a few weeks; a new guardian is being arranged.',
+                'proposedEndsAt' => now()->addDays(14)->toJSON(),
+                'wardId' => $pausedMinor->id,
+            ],
+        ]);
+        $request->for()->associate($pausedTherapy);
+        $request->save();
+
+        return $request;
+    }
+
+    // SCRUM-387: what the admin area's "Requests to resolve" queue and overview counts need that
+    // nothing else seeds (the rest -- an age verification, a dob change with no guardian, a refund
+    // request, a safeguarding exception request, open reports, a suspension appeal and a
+    // billing-suspended organisation -- come from the demo data above):
+    //  - admin_area_verify_counsellor (Dr. Verify Demo), with a pending counsellor verification
+    //    request and two licences (no documents);
+    //  - "Verify Demo Organisation" (owner admin_area_org_owner), unverified, with a pending
+    //    organisation verification request;
+    //  - admin_area_payout_counsellor, with a FAILED payout whose earning is still waiting to be
+    //    paid again, and a FAILED refund for one of their client's payments.
+    // Both verification requests are addressed to the first super admin, as the app addresses them.
+    // All passwords: "password".
+    public function createAdminAreaDemoData(User $superAdmin): void
+    {
+        $verifyUser = User::factory()->create([
+            'firstName' => 'Verify',
+            'lastName' => 'Demo',
+            'email' => 'admin.area.verify.counsellor@example.com',
+            'username' => 'admin_area_verify_counsellor',
+            'password' => Hash::make('password'),
+            'email_verified_at' => now(),
+            'dob' => now()->subYears(40)->toDateString(),
+        ]);
+        $verifyCounsellor = $verifyUser->counsellor()->create([
+            'name' => 'Dr. Verify Demo',
+            'about' => 'Seeded counsellor waiting on verification (SCRUM-387).',
+            'email' => $verifyUser->email,
+            'phone' => fake()->phoneNumber(),
+            'verified_at' => null,
+            'email_verified_at' => now(),
+            'profession_id' => rand(1, 10),
+            'contact_visible' => true,
+        ]);
+        $licence = function (string $number, int $authorityId) use ($verifyCounsellor) {
+            $license = new License(['number' => $number, 'validated' => false]);
+            $license->licensing_authority_id = $authorityId;
+            $license->addedby()->associate($verifyCounsellor);
+            $license->for()->associate($verifyCounsellor);
+            $license->save();
+
+            return $license;
+        };
+        $authorities = LicensingAuthority::query()->orderBy('id')->limit(2)->pluck('id');
+        $counsellorRequest = new Request([
+            'type' => RequestTypeEnum::counsellor->value,
+            'status' => RequestStatusEnum::pending->value,
+            'data' => [
+                'nationalIdLicense' => $licence('GHA-000111222-3', $authorities[0])->id,
+                'otherLicense' => $licence('GPC-2026-0042', $authorities[1] ?? $authorities[0])->id,
+            ],
+        ]);
+        $counsellorRequest->from()->associate($verifyCounsellor);
+        $counsellorRequest->to()->associate($superAdmin);
+        $counsellorRequest->for()->associate($verifyCounsellor);
+        $counsellorRequest->save();
+
+        $organization = Organization::factory()->create([
+            'name' => 'Verify Demo Organisation',
+            'legal_name' => 'Verify Demo Organisation Ltd',
+            'registration_number' => 'REG-VERIFY-387',
+            'is_provider' => true,
+            'verified_at' => null,
+        ]);
+        $owner = User::factory()->create([
+            'firstName' => 'Org',
+            'lastName' => 'Owner',
+            'email' => 'admin.area.org.owner@example.com',
+            'username' => 'admin_area_org_owner',
+            'password' => Hash::make('password'),
+            'email_verified_at' => now(),
+            'dob' => now()->subYears(38)->toDateString(),
+        ]);
+        $organization->admins()->attach($owner->id, ['role' => OrganizationAdminRoleEnum::owner->value]);
+        $organizationRequest = new Request([
+            'type' => RequestTypeEnum::organization->value,
+            'status' => RequestStatusEnum::pending->value,
+            'data' => ['registrationNumber' => $organization->registration_number, 'legalName' => $organization->legal_name],
+        ]);
+        $organizationRequest->from()->associate($organization);
+        $organizationRequest->to()->associate($superAdmin);
+        $organizationRequest->for()->associate($organization);
+        $organizationRequest->save();
+
+        $payoutUser = User::factory()->create([
+            'firstName' => 'Payout',
+            'lastName' => 'Failed',
+            'email' => 'admin.area.payout.counsellor@example.com',
+            'username' => 'admin_area_payout_counsellor',
+            'password' => Hash::make('password'),
+            'email_verified_at' => now(),
+            'dob' => now()->subYears(45)->toDateString(),
+        ]);
+        $payoutCounsellor = $payoutUser->counsellor()->create([
+            'name' => 'Dr. Payout Failed',
+            'about' => 'Seeded counsellor whose last payout failed (SCRUM-387).',
+            'email' => $payoutUser->email,
+            'phone' => fake()->phoneNumber(),
+            'verified_at' => now(),
+            'email_verified_at' => now(),
+            'profession_id' => rand(1, 10),
+            'contact_visible' => true,
+        ]);
+        $client = User::query()->where('username', 'payout_demo_client')->firstOrFail();
+        $therapy = $client->addedTherapies()->create([
+            'name' => 'Failed Payout Demo Therapy',
+            'background_story' => 'Seeded PAID therapy whose transaction backs a failed payout and a failed refund (SCRUM-387).',
+            'counsellor_id' => $payoutCounsellor->id,
+            'session_type' => 'ONCE',
+            'payment_type' => 'PAID',
+            'allow_in_person' => false,
+            'anonymous' => false,
+            'public' => false,
+            'status' => 'IN_SESSION',
+            'payment_data' => ['amount' => 120, 'currency' => 'GHS', 'per' => 'PER_THERAPY'],
+        ]);
+        $transaction = Transaction::query()->create([
+            'for_type' => $therapy::class,
+            'for_id' => $therapy->id,
+            'user_id' => $client->id,
+            'reference' => 'admin_area_demo_'.fake()->unique()->uuid(),
+            'amount' => 12000,
+            'currency' => 'GHS',
+            'status' => TransactionStatusEnum::success->value,
+        ]);
+        $payout = CounsellorPayout::query()->create([
+            'counsellor_id' => $payoutCounsellor->id,
+            'initiated_by_id' => $payoutUser->id,
+            'reference' => 'payout_admin_area_demo_'.fake()->unique()->uuid(),
+            'amount' => 10800,
+            'currency' => 'GHS',
+            'status' => CounsellorPayoutStatusEnum::failed->value,
+        ]);
+        // Back to pending after the failure, still pointing at the failed payout until a later one
+        // claims it (RecordCounsellorPayoutStatusAction).
+        CounsellorEarning::query()->create([
+            'transaction_id' => $transaction->id,
+            'counsellor_id' => $payoutCounsellor->id,
+            'counsellor_payout_id' => $payout->id,
+            'gross_amount' => 12000,
+            'fee_amount' => 1200,
+            'net_amount' => 10800,
+            'currency' => 'GHS',
+            'status' => CounsellorEarningStatusEnum::pending->value,
+        ]);
+        $refund = Refund::query()->create([
+            'transaction_id' => $transaction->id,
+            'requested_by_id' => $client->id,
+            'reference' => 'refund_admin_area_demo_'.fake()->unique()->uuid(),
+            'amount' => 2000,
+            'currency' => 'GHS',
+            'reason' => 'Seeded failed refund (SCRUM-387).',
+            'status' => RefundStatusEnum::failed->value,
+        ]);
+        // What the refund requests page shows as why it failed.
+        $refund->statusHistories()->create([
+            'status' => RefundStatusEnum::failed->value,
+            'source' => RefundStatusSourceEnum::webhook->value,
+            'message' => 'Seeded: the payment provider declined the refund (insufficient merchant balance).',
+        ]);
+    }
+
+    // SCRUM-387 (QA): what the admin area's QA found no seed for. Needs createSuspensionDemoData()
+    // and createPausedMinorDemoData() first. All passwords: "password".
+    //  - two testimonials (one in use on the home page, one not) and a how-to with two steps, so
+    //    Content > Testimonials and How-tos aren't empty;
+    //  - suspendable_demo_admin, a normal administrator named in a resolved report (suspension
+    //    recommended) by suspension_ready_counsellor -- an administrator the super admin can suspend;
+    //  - involved_demo_super_admin, a second super administrator who is also a counsellor of
+    //    "Paused Minor Demo Group" (paused_minor is a member) -- so paused_minor's safeguarding
+    //    request shows to them only as one they are involved in, and they can't decide it.
+    // Public so it can be added to an existing local database (see documentation/seeded-data.md).
+    public function createAdminAreaQaDemoData(User $superAdmin): void
+    {
+        $person = fn (string $username, string $first, string $last) => User::factory()->create([
+            'firstName' => $first,
+            'lastName' => $last,
+            'email' => str_replace('_', '.', $username).'@example.com',
+            'username' => $username,
+            'password' => Hash::make('password'),
+            'email_verified_at' => now(),
+            'dob' => now()->subYears(35)->toDateString(),
+        ]);
+
+        // Content.
+        $client = User::query()->where('username', 'suspension_demo_client')->firstOrFail();
+        foreach ([
+            ['Talking to a counsellor every week helped me get through my exams. I could stay anonymous until I was ready.', true],
+            ['Booking a session was simple, and my counsellor always checked in before we started.', false],
+        ] as [$content, $use]) {
+            $testimonial = new Testimonial(['content' => $content, 'use' => $use]);
+            $testimonial->addedby()->associate($client);
+            $testimonial->save();
+        }
+
+        $howTo = HowTo::query()->create([
+            'name' => 'Answering a request',
+            'description' => 'How to accept or reject a request someone has sent you.',
+            'page' => 'Check Requests',
+            'user_id' => $superAdmin->id,
+        ]);
+        foreach (['Open your requests' => 'Choose Requests from the account menu to see what is waiting on you.', 'Accept or reject' => 'Read the request, then choose accept or reject. The sender is told either way.'] as $name => $description) {
+            $howTo->howToSteps()->create([
+                'name' => $name,
+                'description' => $description,
+                'user_id' => $superAdmin->id,
+                'position' => $howTo->howToSteps()->count() + 1,
+            ]);
+        }
+
+        // An administrator who can be suspended (only a super administrator can't be).
+        $admin = $person('suspendable_demo_admin', 'Suspendable', 'DemoAdmin');
+        $admin->administrator()->create(['type' => AdministratorTypeEnum::normal->value, 'verified_at' => now()]);
+        $counsellor = User::query()->where('username', 'suspension_ready_counsellor')->firstOrFail()->counsellor;
+        $therapy = $admin->addedTherapies()->create([
+            'name' => 'Suspension Demo Therapy (administrator to suspend)',
+            'background_story' => 'Seeded therapy whose client is an administrator, for trying suspending one (SCRUM-387).',
+            'counsellor_id' => $counsellor->id,
+            'session_type' => 'Periodic',
+            'payment_type' => 'FREE',
+            'allow_in_person' => false,
+            'anonymous' => false,
+            'public' => false,
+            'status' => 'in_session',
+        ]);
+        $report = new Report([
+            'description' => '[Suspension demo: administrator to suspend] My client was abusive in our sessions.',
+            'data' => ['userId' => $admin->id],
+        ]);
+        $report->addedby()->associate($counsellor->user);
+        $report->reportable()->associate($therapy);
+        $report->save();
+        $report->forceFill([
+            'status' => ReportStatusEnum::resolved,
+            'outcome' => ReportOutcomeEnum::suspension_recommended,
+            'resolution_note' => 'Seeded: the messages broke the community rules.',
+            'resolved_at' => now()->subHour(),
+            'created_at' => now()->subDays(2),
+        ])->save();
+
+        // A super administrator who counsels a paused minor.
+        $involved = $person('involved_demo_super_admin', 'Involved', 'DemoSuperAdmin');
+        $involved->administrator()->create(['type' => AdministratorTypeEnum::super->value, 'verified_at' => now()]);
+        $involvedCounsellor = $involved->counsellor()->create([
+            'name' => 'Dr. Involved DemoSuperAdmin',
+            'about' => 'Seeded super administrator who also counsels a paused minor (SCRUM-387).',
+            'email' => $involved->email,
+            'phone' => fake()->phoneNumber(),
+            'verified_at' => now(),
+            'email_verified_at' => now(),
+            'profession_id' => rand(1, 10),
+            'contact_visible' => true,
+        ]);
+        $group = GroupTherapy::query()
+            ->where('name', 'Paused Minor Demo Group')
+            ->whereAddedby(User::query()->where('username', 'paused_minor_demo_counsellor')->firstOrFail()->counsellor)
+            ->firstOrFail();
+        $group->counsellors()->attach($involvedCounsellor->id, ['state' => 'ACTIVE']);
     }
 
     private function createClosedAccountDemoData(): void

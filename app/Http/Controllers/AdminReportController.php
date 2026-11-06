@@ -8,6 +8,7 @@ use App\Actions\Report\RecordReportedPartyAction;
 use App\Actions\Report\TransitionReportStatusAction;
 use App\Enums\ReportOutcomeEnum;
 use App\Enums\ReportStatusEnum;
+use App\Http\Middleware\EnsureUserIsAdmin;
 use App\Http\Resources\AdminReportResource;
 use App\Models\File;
 use App\Models\Message;
@@ -34,7 +35,7 @@ class AdminReportController extends Controller
     public function index(Request $request)
     {
         if ($request->user()?->isNotAdmin() ?? true) {
-            return Redirect::route('home')->with('message', 'You are not authorized to visit this page.');
+            return Redirect::route('home')->with('message', EnsureUserIsAdmin::MESSAGE);
         }
 
         $status = ReportStatusEnum::tryFrom((string) $request->query('status'));

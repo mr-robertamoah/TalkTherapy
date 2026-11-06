@@ -15,6 +15,7 @@ use App\Models\SafeguardingException;
 use App\Models\Therapy;
 use App\Models\Transaction;
 use App\Models\User;
+use App\Support\AdminRequestQueue;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -40,10 +41,13 @@ class RequestResource extends JsonResource
                 'to' => null,
                 'status' => $this->status,
                 'type' => $this->type,
+                'isRespondent' => false,
                 'safeguardingException' => ['involved' => true, 'isRespondent' => false],
                 'createdAt' => $this->created_at->diffForHumans(),
             ];
         }
+
+        $isRespondent = $this->isRespondent($request, $viewer);
 
         return [
             'id' => $this->id,
@@ -52,6 +56,17 @@ class RequestResource extends JsonResource
             'to' => $this->getTo($viewer),
             'status' => $this->status,
             'type' => $this->type,
+            // SCRUM-387: whether the viewer may answer it (EnsureUserCanRespondToRequestAction, the
+            // one answer to that), for every type -- RequestBadge.vue reads this rather than working
+            // it out from `to`, which for most of the admin queue isn't the viewer at all.
+            'isRespondent' => $isRespondent,
+            // SCRUM-387: which administrator answered an admin queue request, for administrators
+            // only (an admin queue request is only ever answered by one). Name and username only.
+            'respondedBy' => $this->when(
+                $viewer?->isAdmin() && AdminRequestQueue::includes($this->type) && ! is_null($this->responded_by_id)
+                    && ! $this->resource->isOwnRequestOf($viewer),
+                fn () => self::narrowUserProjection($this->resource->respondedBy),
+            ),
             // SCRUM-208 (TT-2.5c): only meaningful for a session-schedule proposal -- every other
             // type in this resource has no proposal terms/round/stale-state to show.
             // Explicitly whitelisted, not a raw spread of `data` -- mirrors
@@ -84,19 +99,20 @@ class RequestResource extends JsonResource
                     // rather than by `to`-identity match (see EnsureUserCanRespondToRequestAction's
                     // own reasoning). The frontend has no way to derive this itself without
                     // duplicating that authorization logic (and drifting out of sync with it, as
-                    // already happened once) -- shipping the answer here instead.
-                    'isRespondent' => $viewer && EnsureUserCanRespondToRequestAction::new()->userCanRespond($viewer, $this->resource),
+                    // already happened once) -- shipping the answer here instead. The same value as
+                    // the top-level `isRespondent`.
+                    'isRespondent' => $isRespondent,
                 ]
             ),
-            // TT-4.11d/SCRUM-305: only meaningful for an ageVerification request -- no
-            // `isRespondent` field needed here the way dobChange's own block has one, since
-            // authorization for this type is the simple isAdmin()-only check
-            // EnsureUserCanRespondToRequestAction already applies (no live-relationship check to
-            // duplicate/drift out of sync with, unlike dobChange's "any current guardian").
+            // TT-4.11d/SCRUM-305: only meaningful for an ageVerification request. Whether the viewer
+            // may answer it is the top-level `isRespondent` (SCRUM-387).
             'ageVerification' => $this->when(
                 $this->type === RequestTypeEnum::ageVerification->value,
                 function () {
-                    $document = $this->identityDocument()->first();
+                    // Preloaded for a list (PreloadRequestListAction); queried for a single request.
+                    $document = $this->resource->relationLoaded('identityDocument')
+                        ? $this->resource->identityDocument->first()
+                        : $this->identityDocument()->first();
 
                     return [
                         'attestation' => $this->data['attestation'] ?? null,
@@ -117,7 +133,7 @@ class RequestResource extends JsonResource
             // they are.
             'safeguardingException' => $this->when(
                 $this->type === RequestTypeEnum::safeguardingException->value,
-                fn () => $this->safeguardingException($request, $viewer),
+                fn () => $this->safeguardingException($isRespondent),
             ),
             'round' => $this->when(! is_null($this->round), $this->round),
             'expiresAt' => $this->when(! is_null($this->expires_at), fn () => $this->expires_at?->diffForHumans()),
@@ -151,9 +167,15 @@ class RequestResource extends JsonResource
         return $request->attributes->get($key);
     }
 
-    private function safeguardingException(Request $request, ?User $viewer): array
+    // SCRUM-387: one answer per row, shared by the top-level `isRespondent` and the per-type blocks
+    // (dobChange, safeguardingException) that carried it first.
+    private function isRespondent(Request $request, ?User $viewer): bool
     {
-        $isRespondent = $viewer && EnsureUserCanRespondToRequestAction::new()->userCanRespond($viewer, $this->resource, self::safeguardingManager($request, $viewer));
+        return $viewer && EnsureUserCanRespondToRequestAction::new()->userCanRespond($viewer, $this->resource, self::safeguardingManager($request, $viewer));
+    }
+
+    private function safeguardingException(bool $isRespondent): array
+    {
         $ward = $this->resource->safeguardingWard();
         $therapy = $this->for;
 
@@ -211,8 +233,10 @@ class RequestResource extends JsonResource
         // repeat this asymmetry by only narrowing one of the three fields -- extended for
         // ageVerification (TT-4.11d/SCRUM-305) for the identical reason: also always null-`to`
         // and visible to every admin, and `from`/`for` are likewise the same submitting user.
-        if ($this->isNullToAdminOnlyType()) {
-            return $this->narrowUserProjection($this->from);
+        // SCRUM-387 (security review): a refund request is listed to every administrator too (the
+        // admin queue), so its payer is narrowed the same way.
+        if ($this->isNullToAdminOnlyType() || $this->type === RequestTypeEnum::refund->value) {
+            return self::narrowUserProjection($this->from);
         }
 
         if ($this->isOrgMemberFlowUser($this->from, $viewer)) {
@@ -232,6 +256,15 @@ class RequestResource extends JsonResource
         // ageVerification (TT-4.11d/SCRUM-305) is always null-`to` (admin-only by design, no
         // guardian counterpart), so it shares this exact handling.
         if ($this->isNullToAdminOnlyType()) {
+            return null;
+        }
+
+        // SCRUM-387 (security review): a counsellor or organisation verification is addressed to the
+        // first super administrator, but every administrator reviews it (the admin queue) -- their
+        // dob, gender and country must not go to all of them, nor to the one asking. It is shown as
+        // waiting on "any admin", like the null-`to` types above, and so is a refund (never
+        // addressed, which the generic branch below would show as a deleted counsellor).
+        if (in_array($this->type, [RequestTypeEnum::counsellor->value, RequestTypeEnum::organization->value, RequestTypeEnum::refund->value], true)) {
             return null;
         }
 
@@ -306,7 +339,8 @@ class RequestResource extends JsonResource
         ]) && ! $user?->is($viewer);
     }
 
-    private function narrowUserProjection(?User $user): array
+    // Public: RefundRequestResource narrows a refund's payer the same way.
+    public static function narrowUserProjection(?User $user): array
     {
         return ['id' => $user?->id, 'fullName' => $user?->name, 'username' => $user?->username, 'isUser' => true];
     }

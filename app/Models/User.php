@@ -6,6 +6,7 @@ use App\Enums\ConstantsEnum;
 use App\Enums\FileTagEnum;
 use App\Enums\SuspensionScopeEnum;
 use App\Notifications\VerifyEmailNotification;
+use App\Traits\HasGuardedDatabaseNotifications;
 use App\Traits\HasTaggedFiles;
 use Carbon\Carbon;
 use Illuminate\Auth\MustVerifyEmail;
@@ -23,6 +24,9 @@ use Laravel\Sanctum\HasApiTokens;
 class User extends Authenticatable implements MustVerifyEmailContract
 {
     use HasApiTokens, HasFactory, HasTaggedFiles, MustVerifyEmail, Notifiable, SoftDeletes;
+    use HasGuardedDatabaseNotifications {
+        HasGuardedDatabaseNotifications::notifications insteadof Notifiable;
+    }
 
     // SCRUM-367/368: the columns cleared from a closed account once its retention period has passed
     // (AnonymiseClosedAccountAction) -- its personal details plus what would still tie the row to

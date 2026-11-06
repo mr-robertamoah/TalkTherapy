@@ -8,12 +8,14 @@ use App\Actions\Therapy\EnsureCanCreateTherapyAction;
 use App\DTOs\CreateRequestDTO;
 use App\DTOs\JoinGroupTherapyDTO;
 use App\Enums\RequestTypeEnum;
+use App\Events\GroupTherapyMembershipRequestReceivedEvent;
 use App\Exceptions\CannotJoinGroupTherapyException;
 use App\Models\Counsellor;
 use App\Models\GroupTherapy;
 use App\Models\User;
 use App\Notifications\GroupTherapyMemberJoinedGuardianNotification;
 use App\Notifications\GroupTherapyMembershipRequestSentNotification;
+use App\Support\BestEffort;
 use Illuminate\Support\Facades\DB;
 
 class JoinGroupTherapyAction extends Action
@@ -79,6 +81,15 @@ class JoinGroupTherapyAction extends Action
         $creator?->notify(
             new GroupTherapyMembershipRequestSentNotification($request)
         );
+
+        // SCRUM-386: and live, to the creator's open pages -- the request is saved either way.
+        if ($creator) {
+            BestEffort::attempt(
+                fn () => GroupTherapyMembershipRequestReceivedEvent::dispatch($creator->id, $groupTherapy->id, $request->id),
+                'group-membership-request-broadcast-creator',
+                ['group_therapy_id' => $groupTherapy->id, 'request' => $request->id],
+            );
+        }
 
         return $request;
     }

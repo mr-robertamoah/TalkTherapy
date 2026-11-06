@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Middleware\EnsureUserIsAdmin;
 use App\Http\Resources\AdminBillingSuspendedOrganizationResource;
 use App\Models\Organization;
 use App\Models\OrganizationInvoice;
@@ -22,7 +23,7 @@ class AdminOrganizationBillingController extends Controller
     {
         $user = $request->user();
         if (is_null($user) || $user->isNotAdmin()) {
-            return Redirect::route('home')->with('message', 'You are not authorized to visit this page.');
+            return Redirect::route('home')->with('message', EnsureUserIsAdmin::MESSAGE);
         }
 
         return Inertia::render('Admin/OrganizationBilling', [

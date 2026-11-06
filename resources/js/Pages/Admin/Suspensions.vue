@@ -1,10 +1,13 @@
 <script setup>
 import { Head, router } from '@inertiajs/vue3'
-import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue'
+import AdminLayout from '@/Layouts/AdminLayout.vue'
 import Alert from '@/Components/Alert.vue'
 import Pagination from '@/Components/Pagination.vue'
 import SuspensionCard from '@/Components/SuspensionCard.vue'
 import useAlert from '@/Composables/useAlert'
+
+// SCRUM-387: the admin area's shell (sidebar inside AuthenticatedLayout), kept across admin pages.
+defineOptions({ layout: AdminLayout })
 
 // SCRUM-359: every suspension, appeals waiting first, then those in force. Suspensions are applied
 // from a report's page; lifting one and deciding an appeal need a super administrator.
@@ -24,8 +27,8 @@ function goToPage(url) {
 <template>
     <Head title="Suspensions" />
 
-    <AuthenticatedLayout>
-        <div class="my-8 w-full sm:w-[90%] md:w-[75%] mx-auto space-y-8 px-4 sm:px-0">
+    <div>
+        <div class="my-8 w-full max-w-6xl mx-auto space-y-8 px-4">
             <div>
                 <div class="text-2xl font-bold text-gray-900">Suspensions</div>
                 <div class="w-16 h-1 bg-blue-600 mt-2"></div>
@@ -47,7 +50,7 @@ function goToPage(url) {
                 <Pagination :meta="suspensions.meta" @navigate="goToPage" />
             </div>
         </div>
-    </AuthenticatedLayout>
+    </div>
 
     <Alert :show="alertData.show" :type="alertData.type" :message="alertData.message" :time="alertData.time" @close="clearAlertData" />
 </template>

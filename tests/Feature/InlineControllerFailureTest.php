@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\AdministratorTypeEnum;
 use App\Enums\LicensingAuthorityTypeEnum;
 use App\Enums\LicensingTypeEnum;
 use App\Enums\LinkStateEnum;
@@ -141,7 +142,9 @@ test('performAction sends any other failure home too, and answers XHR with JSON'
 // --- SCRUM-371: the one failureResponse (base Controller) --------------------------------------
 
 test('a failure answers a script with JSON, and an Inertia visit or a browser navigation with the alert', function () {
-    $user = User::factory()->adult()->create();
+    // A normal administrator gets past the `admin` middleware (SCRUM-387); only a super one may
+    // delete a counsellor, so the action refuses.
+    $user = icfNormalAdmin();
     $counsellor = icfCounsellor();
     $url = route('admin.counsellors.delete', ['counsellorId' => $counsellor->id]);
     $message = 'You are either not authorized to delete this counsellor account or there are some sessions to finish.';
@@ -175,7 +178,7 @@ test('no controller keeps its own failureResponse copy', function () {
 });
 
 test('a failed page visit (GET) also flashes the alert for the layout; a form submission does not', function () {
-    $user = User::factory()->adult()->create();
+    $user = icfNormalAdmin();
     $organization = Organization::factory()->create();
 
     // A form submission (Inertia DELETE): only errors.alert, which the form's own onError shows.
@@ -227,4 +230,12 @@ function icfCompleteVerification(): array
         ])->id,
         'nationalIdNumber' => 'GHA-123',
     ];
+}
+
+function icfNormalAdmin(): User
+{
+    $user = User::factory()->adult()->create();
+    $user->administrator()->create(['type' => AdministratorTypeEnum::normal->value, 'verified_at' => now()]);
+
+    return $user;
 }
