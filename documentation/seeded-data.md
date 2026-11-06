@@ -510,3 +510,28 @@ history row. The seeded safeguarding request for `paused_minor` had been answere
 fresh pending one (the same as the seeder's) was added the same day.
 
 See `documentation/features/scrum-387-admin-area.md`.
+
+## Counsellor verification renewals (SCRUM-31)
+
+Every verified counsellor above gets an end date 12 months from seeding
+(`DatabaseSeeder::giveVerifiedCounsellorsAnEndDate()`, the same pass the backfill migration makes),
+so they all show "Verified". `DatabaseSeeder::createCounsellorVerificationRenewalDemoData()` then
+adds one counsellor in each renewal state, each with a short history:
+
+| Username | Password | What it is |
+|---|---|---|
+| `renewal_due_counsellor` | `password` | Dr. Due Renewal: verified a year ago, **ends in 20 days**, not reminded yet (run the reminder sweep to send the 30-day reminder). In the overview's renewals count and on the Renewals list. |
+| `reverifying_counsellor` | `password` | Dr. Reverifying Renewal: **ends in 10 days**, already reminded, with a **pending re-verification request** (two licences, no documents) to accept or reject. |
+| `lapsed_counsellor` | `password` | Dr. Lapsed Renewal: **ended 3 days ago**. Still has an in-session therapy, "Renewal Demo Therapy (counsellor's verification ended)", with `renewal_demo_client`, which carries on; can't take on anyone new. |
+| `revoked_counsellor` | `password` | Dr. Revoked Renewal: **revoked yesterday** by the super admin, with a reason. Shows "Verification ended" to the public and "Verification revoked" to themselves and admins. |
+| `renewal_demo_client` | `password` | The client in the lapsed counsellor's therapy, and owner of **Renewal Demo Public Therapy (no counsellor yet)** -- public and waiting for a counsellor, to try offering help as `lapsed_counsellor` or `revoked_counsellor` (refused). |
+
+`unverified_counsellor` (above) is the never-verified case: "Not verified yet", can't take on clients.
+
+**Local database top-up (2026-11-06):** the migrations' backfill gave the existing local counsellors
+their end dates, and the five accounts above were added with the seeder's own method in tinker as
+`www-data` (the public therapy separately). Browser QA then revoked `renewal_due_counsellor`, accepted
+`reverifying_counsellor`'s request (renewed to a year after its old end) and added a session "QA lapsed
+session" to the lapsed counsellor's therapy; a reseed restores them.
+
+See `documentation/features/scrum-31-counsellor-verification-renewal.md`.

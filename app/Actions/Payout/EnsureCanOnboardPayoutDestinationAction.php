@@ -20,6 +20,14 @@ class EnsureCanOnboardPayoutDestinationAction extends Action
             return;
         }
 
+        // SCRUM-31: once verified, a counsellor whose verification has ended may still change where
+        // they're paid -- their current clients carry on, and so do their earnings. Not after a
+        // revocation (the one place it differs from ending): a verification revoked as possibly
+        // fraudulent mustn't be able to redirect payouts. Their existing destination keeps working.
+        if ($counsellor && $counsellor->wasEverVerified() && is_null($counsellor->verification_revoked_at) && $counsellor->payoutAccount()->exists()) {
+            return;
+        }
+
         throw new PayoutException('Only a verified counsellor can set up a payout destination.', 422);
     }
 }

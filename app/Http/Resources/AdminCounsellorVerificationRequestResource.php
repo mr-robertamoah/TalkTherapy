@@ -4,6 +4,7 @@ namespace App\Http\Resources;
 
 use App\Models\Counsellor;
 use App\Models\License;
+use App\Support\CounsellorVerification;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -38,6 +39,8 @@ class AdminCounsellorVerificationRequestResource extends JsonResource
                 'phone' => $counsellor?->phone,
                 'email' => $counsellor?->email,
                 'avatar' => $counsellor?->avatar?->url,
+                // SCRUM-31: where their verification stands now (a renewal, an ended one...).
+                'verification' => $counsellor ? CounsellorVerification::projection($counsellor, $request->user()) : null,
             ],
             'id' => $this->id,
             'type' => $this->type,

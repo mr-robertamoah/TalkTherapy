@@ -167,6 +167,11 @@ defineProps({
                         </li>
                         <li>Payment records, complaint and suspension records, and records of administrators' access are kept even after an account is closed.</li>
                         <li>Records of administrators reading content are kept permanently and can't be changed.</li>
+                        <li>
+                            A counsellor's verification history (when they were verified, reminded, re-verified, when it ended, and any
+                            revocation with the reason given) is kept permanently and can't be changed, as a record of their professional
+                            standing. It names licences only by reference, never their numbers or documents, and only administrators see it.
+                        </li>
                         <li>Verification and identity documents are deleted on the schedule below.</li>
                     </ul>
                 </section>

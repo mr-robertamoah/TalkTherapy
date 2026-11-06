@@ -206,7 +206,7 @@ class RequestResource extends JsonResource
         }
 
         if ($this->from_type != User::class) {
-            return new CounsellorMiniResource($this->from);
+            return $this->counsellorParty($this->from);
         }
 
         // A group-therapy membership request's `from` is the requesting user, who may have
@@ -367,11 +367,17 @@ class RequestResource extends JsonResource
         // SCRUM-381: a safeguarding exception request is `for` a Therapy or (below) a GroupTherapy.
         if (in_array($this->type, [RequestTypeEnum::therapy->value, RequestTypeEnum::sessionScheduleProposal->value])
             || ($this->type === RequestTypeEnum::safeguardingException->value && $this->for_type === Therapy::class)) {
-            return new TherapyMiniResource($this->for);
+            $therapy = new TherapyMiniResource($this->for);
+
+            // SCRUM-388 (security review): a safeguarding request is in the admin queue -- its
+            // therapy's counsellor is narrowed as its `from` is.
+            return AdminRequestQueue::includes($this->type) ? $therapy->withNarrowUsers() : $therapy;
         }
 
         if ($this->for_type == GroupTherapy::class) {
-            return new GroupTherapyMiniResource($this->for);
+            $group = new GroupTherapyMiniResource($this->for);
+
+            return AdminRequestQueue::includes($this->type) ? $group->withNarrowUsers() : $group;
         }
 
         if ($this->for_type == User::class) {
@@ -419,6 +425,15 @@ class RequestResource extends JsonResource
             ];
         }
 
-        return new CounsellorMiniResource($this->for);
+        return $this->counsellorParty($this->for);
+    }
+
+    // SCRUM-388: an admin queue request (a counsellor verification, a safeguarding request) is listed
+    // to every administrator, who doesn't need its counsellor's dob, gender or country.
+    private function counsellorParty($counsellor): CounsellorMiniResource
+    {
+        $resource = new CounsellorMiniResource($counsellor);
+
+        return AdminRequestQueue::includes($this->type) ? $resource->withNarrowUser() : $resource;
     }
 }

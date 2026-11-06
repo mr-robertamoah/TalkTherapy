@@ -543,9 +543,10 @@ class User extends Authenticatable implements MustVerifyEmailContract
         return ! $this->isCounsellor();
     }
 
+    // SCRUM-31: currently verified (Counsellor::isVerified()).
     public function isVerifiedCounsellor()
     {
-        return $this->counsellor()->whereNotNull('verified_at')->exists();
+        return (bool) $this->counsellor?->isVerified();
     }
 
     public function addedPosts()

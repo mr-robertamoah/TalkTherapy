@@ -34,6 +34,8 @@ import StarBadge from '@/Components/StarBadge.vue';
 import StyledLink from '@/Components/StyledLink.vue';
 import CreateTherapyButton from '@/Components/CreateTherapyButton.vue';
 import TestimonialSection from '@/Components/TestimonialSection.vue';
+import CounsellorVerificationBadge from '@/Components/CounsellorVerificationBadge.vue';
+import CounsellorVerificationStatusCard from '@/Components/CounsellorVerificationStatusCard.vue';
 
 const { modalData, showModal } = useModal()
 const { alertData, clearAlertData, setAlertData, setFailedAlertData, setSuccessAlertData } = useAlert()
@@ -104,6 +106,13 @@ watchEffect(
 
 const isCounsellor = computed(() => {
     return props.counsellor.userId == usePage().props.auth.user?.id
+})
+
+// SCRUM-31: a reminder's link (?verify=1) opens the verify form, when they may ask now.
+onMounted(() => {
+    if (isCounsellor.value && new URLSearchParams(window.location.search).has('verify')
+        && props.counsellor.verification?.mayRequest && !props.counsellor.verification?.hasPendingRequest)
+        showModal('verify')
 })
 const hasContact = computed(() => {
     const contactAvailable = !!(props.counsellor.phone || props.counsellor.email)
@@ -422,6 +431,10 @@ function closeModal() {
                         :class="{'pt-12': isCounsellor}"
                     >
                         <div class="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900 mb-2">{{ counsellor.name }}</div>
+                        <!-- SCRUM-30: visible to everyone, signed out too. -->
+                        <div class="mb-3 flex justify-center">
+                            <CounsellorVerificationBadge :verification="counsellor.verification" size="md" />
+                        </div>
                         <div class="w-16 h-1 bg-blue-600 mx-auto mb-4"></div>
                         <div
                             v-if="counsellor.profession"
@@ -653,8 +666,12 @@ function closeModal() {
                         </div>
 
                         <div class="mt-4 mb-2 flex items-end p-2 flex-col space-y-4" v-if="isCounsellor">
-                            <PrimaryButton v-if="!counsellor.hasPendingCounsellorVerificationRequest && counsellorCreationStep == 1" @click="() => showModal('verify')">request verification</PrimaryButton>
-                            <div v-if="counsellor.hasPendingCounsellorVerificationRequest && counsellorCreationStep == 1" class=" text-sm text-gray-600 w-full text-start">You have a pending verification request.</div>
+                            <CounsellorVerificationStatusCard
+                                v-if="counsellor.verification"
+                                class="w-full"
+                                :verification="counsellor.verification"
+                                @verify="() => showModal('verify')"
+                            />
                             <div v-if="counsellorCreationStep == 2" class=" text-sm text-gray-600 w-full text-start">You have been verified and awaiting certification. Request to <Link :href="route('home')" class="font-bold mx-1 cursor-pointer p-1 rounded bg-gray-200">assist</Link> a user needing therapy.</div>
                             <div v-if="counsellorCreationStep >= 3" class=" text-sm text-gray-600 w-full text-start">At least you have one therapy. Have at least one session. Visit Your <Link :href="route('therapies')" class="font-bold mx-1 cursor-pointer p-1 rounded bg-gray-200">therapies</Link> to start a session now.</div>      
                         </div>

@@ -103,7 +103,7 @@ class GetPlatformStatsAction extends Action
         return [
             'users' => $this->users()->count(),
             'counsellors' => Counsellor::query()->count(),
-            'counsellorsVerified' => Counsellor::query()->whereNotNull('verified_at')->count(),
+            'counsellorsVerified' => Counsellor::query()->whereCurrentlyVerified()->count(),
             'counsellorsAwaiting' => Counsellor::query()->whereNull('verified_at')->whereIn('id', $awaitingVerification)->count(),
             'organizations' => Organization::query()->count(),
             'organizationsVerified' => Organization::query()->whereNotNull('verified_at')->count(),

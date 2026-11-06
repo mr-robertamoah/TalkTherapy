@@ -19,7 +19,7 @@ const props = defineProps({
     },
 })
 
-const emits = defineEmits(['onData', 'alert'])
+const emits = defineEmits(['onData', 'alert', 'refused'])
 
 const { RequestStatusEnum, RequestTypeEnum } = useEnums()
 const userId = usePage().props.auth.user?.id;
@@ -244,6 +244,10 @@ async function clickedResponse(response, extra = {}) {
                 time: 5000,
                 message: serverMessage || 'Something unfortunate happened. Please try again shortly.'
             })
+
+            // SCRUM-388: refused (e.g. already answered elsewhere) -- the parent reloads what's shown.
+            if (err.response?.status == 422)
+                emits('refused')
         })
     responding.value = false
 }

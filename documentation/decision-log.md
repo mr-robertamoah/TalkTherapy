@@ -10240,3 +10240,93 @@ therapy 18 after the last QA pass.
   admins still get the nested counsellor `user` (including date of birth and gender) in the page
   data, although the page doesn't display it. Admins already see users' dates of birth on the Users
   page, so this is left as it is. Narrowing it would be a separate change.
+
+## SCRUM-30 + 31 + 388 — counsellor verification badge, renewal and audit trail; admin-area follow-ups (2026-11-06)
+
+- **The user's decisions (2026-11-06):**
+  - Unverified counsellors stay listed, with a "Not verified yet" warning everyone can see (signed
+    out too). Hiding them can be a later ticket.
+  - A verification lasts 12 months. Counsellors already verified get 12 months from release, not
+    from their old `verified_at`, so nobody lapses on release day.
+  - Before it ends, the people involved in verifying them are told so re-verification can start:
+    the counsellor (30 and 7 days before, with a re-verify link), and admins.
+  - When it ends, it blocks new work only: new clients, group joins, posts, payout set-up and
+    organisation links. Current therapies carry on.
+  - Admins can revoke with a required reason, in this PR. Revoking has the same effect as ending
+    (a suspension stays the tool for stopping everything).
+  - **Blocking new therapies applies to every counsellor not currently verified**, never-verified
+    ones included. That is a product change: before this, unverified counsellors could take clients.
+  - The revocation reason is kept in the append-only trail after the counsellor closes their
+    account. The Privacy page says so.
+  - Renewals use the same national ID rule as the first verification (a file or a number).
+  - After the security review: joining or starting a **discussion** counts as new work (blocked),
+    and a **group** whose counsellors are none of them currently verified **admits no new members**
+    until one is (paused, not closed: a waiting membership request stays waiting).
+- **Mine:**
+  - **Who "the admins involved" are:** the admin who last accepted their verification
+    (`requests.responded_by_id`, recorded only since SCRUM-387), if still an admin and not the
+    counsellor, by database and mail; plus every admin through a to-do count ("Counsellor
+    verifications ending soon, not yet renewed") and a Renewals list. The count is what does the
+    work for older verifications, which have no recorded approver.
+  - **`isVerified()` now means currently verified** (verified, not ended, not revoked), so every
+    existing gate picked the rule up: group joins, posts, a first payout destination, organisation
+    links (all named in the user's decision) and the profile's onboarding step. `wasEverVerified()`
+    is the old meaning. A `verified_at` with no end date reads as ended (the cautious reading; the
+    backfill and the factory set one).
+  - **The onboarding step:** a counsellor whose verification has ended drops back to step 1, where
+    their status card offers "Re-verify now". The later steps' prompts ("assist a user", "hold a
+    session") are about new work, which they can't do until re-verified.
+  - **Payouts:** a counsellor whose verification ended can still change where they're paid (their
+    current clients and earnings carry on). After a revocation they can't -- the one place revoking
+    differs from ending: a verification revoked as possibly fraudulent mustn't redirect payouts.
+    Their existing destination keeps working, and payouts themselves are never gated.
+  - **Renewing:** a counsellor may ask from 30 days before the end (the largest reminder day), or any
+    time once it ended or was revoked. Accepting early extends from the current end; accepting after
+    it ended or was revoked starts from now and lifts the revocation. The first verified date is
+    kept. A rejected renewal leaves a current verification until it ends.
+  - **Revoking:** any admin, not their own, and only a super admin a super admin's (security review:
+    otherwise an ordinary admin could revoke the super admin's counsellor profile, which only the super
+    admin can re-verify). A verification that has already ended can still be revoked, so fraud found
+    later is on the record. Revoking closes a waiting verification request, so an older submission
+    can't be accepted without its reviewer seeing the revocation.
+  - **Reminders** go for the narrowest window the counsellor is in, once (a `dedupe_key` of counsellor,
+    window and end date), so a missed run never sends two and renewing starts them afresh. Not while a
+    re-verification request is waiting. The ended sweep looks back 30 days; the block itself never
+    waits for it.
+  - **The history** is a new append-only `counsellor_verification_events` table (triggers as for
+    `admin_content_accesses`), not more request types: ending, revoking and reminders aren't requests,
+    and the requests table is mutable and wired into the admin queue. Licences by id only. An admin who
+    is also a counsellor can't read their own history (who answered or revoked theirs is for others).
+  - **What each viewer sees:** the public gets only the state, and a revocation reads as "ended"; the
+    counsellor and admins get the dates and the true state; only the counsellor whether a request is
+    waiting (the one query). The admin counsellor pop-up used to say "Verified Counsellor" for everyone.
+  - **Taking on clients is checked where it happens** (therapy creation and assist, accepting assist,
+    the therapy link, group creation and its invitees, discussions), in one action
+    (`EnsureCounsellorMayTakeOnClientsAction`), not at `CreateRequestAction`: creating a therapy or a
+    group isn't transactional, so the check has to run before the row exists. Accepting locks the
+    counsellor (therapy, request, then counsellor), and a respondent with no counsellor to assign is
+    refused.
+  - **Lock order:** revoking locks the waiting requests before the counsellor, the order accepting
+    takes, so the two can't deadlock (architect and security reviews).
+  - Profile data: `hasNationalIdentification` (a query per view, unused) was dropped, and
+    `hasPendingCounsellorVerificationRequest` moved into the owner-only part of the projection.
+- **SCRUM-388:**
+  - **The Membership box:** `pendingMembershipRequestFor()` also matches `to` = the viewer's counsellor
+    profile. New requests go to a User, so this catches older rows.
+  - **Refused answers** (a 422, e.g. answered in another tab) reload the list and the badges on
+    "Requests to resolve" and Counsellor verification.
+  - **Admin data:** decided to narrow. Admin queue rows (counsellor verification, safeguarding) carry
+    the counsellor's user as `narrowUserProjection` -- including, after the security review, the
+    safeguarding request's therapy's counsellor and a group's creator.
+  - **`/api/admin/reports/*`** now uses the `admin` middleware too (a non-admin gets a JSON 403). This
+    **supersedes** the SCRUM-387 security re-check line that it "doesn't use the admin middleware";
+    the routes keep their own review checks.
+  - **Cache after bulk writes:** `Request::adminQueueChanged()` (now
+    `GetAdminToDoCountsAction::forgetAfterCommit()`) runs after the only two writes to admin queue
+    requests that skip the model hook: `DeleteCounsellorAction`'s "made moot" update and
+    `AnonymiseClosedAccountAction`. The other bulk updates close only therapy, group and membership
+    requests, which no count reads. Revoking and the ended sweep call it too (the renewals count).
+- **Left as they are (noted):** `verified_at` stays fillable (the seeder creates counsellors with it;
+  every app write uses `forceFill`); the revocation email puts the reason through the mail template's
+  Markdown (only admins write it); every pre-existing verification ends on the same day a year after
+  release (`documentation/operations/monitoring.md` says to watch the renewals count then).

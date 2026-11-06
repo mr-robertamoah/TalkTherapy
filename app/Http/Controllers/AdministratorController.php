@@ -20,6 +20,7 @@ use App\Models\User;
 use App\Services\CounsellorService;
 use App\Services\RequestService;
 use App\Services\UserService;
+use App\Support\CounsellorVerification;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -75,6 +76,10 @@ class AdministratorController extends Controller
             // 'all', or one of the statuses; anything else lists the pending ones.
             'status' => $status === 'all' || RequestStatusEnum::tryFrom($status) ? $status : RequestStatusEnum::pending->value,
             'statuses' => RequestStatusEnum::values(),
+            // SCRUM-31: the renewals list (due, ended, revoked) instead of the requests.
+            'view' => $request->query('view') === 'renewals' ? 'renewals' : 'requests',
+            'renewalWindowDays' => CounsellorVerification::renewalWindowDays(),
+            'renewalFilter' => $request->query('filter') === 'ended' ? 'ended' : 'due',
         ]);
     }
 

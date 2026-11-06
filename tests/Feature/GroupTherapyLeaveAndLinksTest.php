@@ -1,5 +1,6 @@
 <?php
 
+use App\Actions\CounsellorVerification\EnsureCounsellorMayTakeOnClientsAction;
 use App\Actions\GroupTherapy\AddCounsellorToGroupTherapyAction;
 use App\Actions\GroupTherapy\AddGroupTherapyMemberAction;
 use App\Actions\GroupTherapy\LeaveGroupTherapyAction;
@@ -508,7 +509,8 @@ test('a counsellor link refuses each case that may not join', function (Closure 
 
         return [gtlCounsellor()->user, gtlLink($group, $creator, LinkTypeEnum::groupTherapyCounsellor->value)];
     }, AddCounsellorToGroupTherapyAction::NOT_ALLOWED, 422],
-    'unverified' => [fn (GroupTherapy $group, User $creator) => [gtlCounsellor(['verified_at' => null])->user, gtlLink($group, $creator, LinkTypeEnum::groupTherapyCounsellor->value)], AddCounsellorToGroupTherapyAction::NOT_ALLOWED, 422],
+    // SCRUM-31: told why -- their own verification isn't a secret from them.
+    'unverified' => [fn (GroupTherapy $group, User $creator) => [gtlCounsellor(['verified_at' => null])->user, gtlLink($group, $creator, LinkTypeEnum::groupTherapyCounsellor->value)], EnsureCounsellorMayTakeOnClientsAction::NOT_VERIFIED, 422],
     'suspended' => [function (GroupTherapy $group, User $creator) {
         $counsellor = gtlCounsellor();
         gtlSuspend($counsellor->user, SuspensionScopeEnum::counsellor);

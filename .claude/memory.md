@@ -94,6 +94,15 @@ See "Common commands" in `CLAUDE.md`.
   upgraded to `@inertiajs/vue3` 2.x, move the badges to `Inertia::defer` on the admin pages and drop
   the route.
 
+- **Counsellor verification is current, not historical (SCRUM-31, 2026-11-06).**
+  `Counsellor::isVerified()` means verified, not ended (`verification_expires_at`) and not revoked
+  (`verification_revoked_at`); `wasEverVerified()` is "has `verified_at`". Every gate on new work
+  uses `isVerified()`; taking on a client goes through `EnsureCounsellorMayTakeOnClientsAction`.
+  Never write `verified_at` directly to verify someone -- `ApplyCounsellorVerificationAction` sets
+  the end date and records it. Tests and seeds that create a verified counsellor by hand need a
+  `verification_expires_at` too (the factory sets one; `unverified()`, `lapsed()` and
+  `verificationEndingIn()` states exist).
+
 ## Current Sprint Goals
 
 See `documentation/implementation_plan.md` → "Reconciled Sprint Roadmap". Sprint 1 (Platform

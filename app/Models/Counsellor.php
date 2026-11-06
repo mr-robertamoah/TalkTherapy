@@ -3,10 +3,12 @@
 namespace App\Models;
 
 use App\Enums\ConstantsEnum;
+use App\Enums\CounsellorVerificationStateEnum;
 use App\Enums\FileTagEnum;
 use App\Enums\RequestStatusEnum;
 use App\Enums\RequestTypeEnum;
 use App\Enums\TherapyPaymentTypeEnum;
+use App\Support\CounsellorVerification;
 use App\Traits\HasGuardedDatabaseNotifications;
 use App\Traits\HasTaggedFiles;
 use App\Traits\Likeable;
@@ -40,6 +42,9 @@ class Counsellor extends Model
 
     protected $casts = [
         'email_verified_at' => 'datetime',
+        'verified_at' => 'datetime',
+        'verification_expires_at' => 'datetime',
+        'verification_revoked_at' => 'datetime',
     ];
 
     public function routeNotificationForMail()
@@ -213,10 +218,10 @@ class Counsellor extends Model
         return $this->morphMany(Discussion::class, 'addedby');
     }
 
-    public function verify()
+    // SCRUM-31: the verification history (admins only; CounsellorVerificationEventsResource).
+    public function verificationEvents()
     {
-        $this->verified_at = now()->utc();
-        $this->save();
+        return $this->hasMany(CounsellorVerificationEvent::class);
     }
 
     public function addedLanguages()
@@ -270,9 +275,66 @@ class Counsellor extends Model
             ->exists();
     }
 
-    public function isVerified()
+    // SCRUM-30/31: where their platform verification stands -- from columns only, so a list of
+    // counsellors needs no query each. Verified means accepted by an administrator, not ended
+    // (verification_expires_at) and not revoked. A verified_at without an end date is a row the
+    // backfill or a factory didn't reach: treated as ended, the cautious reading.
+    public function verificationState(): CounsellorVerificationStateEnum
     {
-        return (bool) $this->verified_at;
+        return match (true) {
+            ! is_null($this->verification_revoked_at) => CounsellorVerificationStateEnum::revoked,
+            is_null($this->verified_at) => CounsellorVerificationStateEnum::unverified,
+            is_null($this->verification_expires_at) || $this->verification_expires_at->isPast() => CounsellorVerificationStateEnum::lapsed,
+            default => CounsellorVerificationStateEnum::verified,
+        };
+    }
+
+    // SCRUM-31: CURRENTLY verified -- every caller gates new work (taking on clients, joining a group,
+    // posting, a first payout destination, an organisation link). Work already under way never asks.
+    // For "was ever verified", wasEverVerified().
+    public function isVerified(): bool
+    {
+        return $this->verificationState() === CounsellorVerificationStateEnum::verified;
+    }
+
+    public function isNotVerified(): bool
+    {
+        return ! $this->isVerified();
+    }
+
+    public function wasEverVerified(): bool
+    {
+        return ! is_null($this->verified_at);
+    }
+
+    public function scopeWhereCurrentlyVerified($query)
+    {
+        return $query->whereNotNull('verified_at')
+            ->whereNull('verification_revoked_at')
+            ->where('verification_expires_at', '>', now());
+    }
+
+    // Currently verified, and ending within $days.
+    public function scopeWhereVerificationEndingWithin($query, int $days)
+    {
+        return $query->whereCurrentlyVerified()->where('verification_expires_at', '<=', now()->addDays($days));
+    }
+
+    // Due to re-verify: ending within the renewal window, and not asked to yet (the reminders and
+    // the admins' renewals count).
+    public function scopeWhereRenewalDue($query)
+    {
+        return $query->whereVerificationEndingWithin(CounsellorVerification::renewalWindowDays())
+            ->whereDoesntHave('sentRequests', fn ($query) => $query->where('type', RequestTypeEnum::counsellor->value)->wherePending());
+    }
+
+    // Was verified, and isn't now: ended or revoked (verificationState()'s lapsed and revoked).
+    public function scopeWhereVerificationNotCurrent($query)
+    {
+        return $query->whereNotNull('verified_at')->where(fn ($query) => $query
+            ->whereNotNull('verification_revoked_at')
+            ->orWhereNull('verification_expires_at')
+            ->orWhere('verification_expires_at', '<=', now()));
     }
 
     // TT-7.6a/SCRUM-225: null until the counsellor onboards a payout destination

@@ -120,6 +120,10 @@ class AnonymiseClosedAccountAction extends Action
                 'password' => Str::random(64),
                 'anonymised_at' => now(),
             ])->saveQuietly();
+
+            // saveQuietly() above skipped the Request saved hook; dob changes and safeguarding
+            // requests are admin queue types (SCRUM-388).
+            Request::adminQueueChanged(['user' => $user->id]);
         });
 
         return true;

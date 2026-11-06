@@ -3,6 +3,7 @@
 namespace App\Actions\GroupTherapy;
 
 use App\Actions\Action;
+use App\Actions\CounsellorVerification\EnsureCounsellorMayTakeOnClientsAction;
 use App\Enums\CounsellorGroupTherapyRoleEnum;
 use App\Enums\CounsellorGroupTherapyStateEnum;
 use App\Enums\RequestStatusEnum;
@@ -62,16 +63,22 @@ class AddCounsellorToGroupTherapyAction extends Action
     }
 
     // Security review (SCRUM-358): it must be someone who may join: the counsellor themselves (an
-    // admin can't accept on their behalf -- joining is their consent), still verified, not the
+    // admin can't accept on their behalf -- joining is their consent), currently verified (SCRUM-31), not the
     // group's own client or a member (who would gain moderation powers over the other members), and a
     // group that hasn't ended. One answer for all of these. SCRUM-73: a former member counts as a
     // member here (the cautious choice) -- they knew the other members as one of them.
     public function ensureCanJoin(GroupTherapy $group, ?Counsellor $counsellor, ?User $actor): void
     {
+        // SCRUM-31: their own verification isn't a secret from them -- the same "re-verify" message
+        // as everywhere else, once it is them joining.
+        if ($counsellor?->user && $actor && $counsellor->user->is($actor)) {
+            EnsureCounsellorMayTakeOnClientsAction::new()->execute($counsellor);
+        }
+
         $allowed = $counsellor
             && $counsellor->user
             && $actor && $counsellor->user->is($actor)
-            && $counsellor->verified_at
+            && $counsellor->isVerified()
             && $group->status !== TherapyStatusEnum::ended->value
             && ! $group->isUser($counsellor->user)
             && ! $group->hasEverBeenMember($counsellor->user);

@@ -4,6 +4,7 @@ namespace App\Actions\Link;
 
 use App\Actions\Action;
 use App\Actions\Counsellor\EnsureCounsellorExistsAction;
+use App\Actions\CounsellorVerification\EnsureCounsellorMayTakeOnClientsAction;
 use App\Actions\Discussion\EnsureDiscussionCanAcceptCounsellorAction;
 use App\DTOs\CreateLinkDTO;
 use App\DTOs\GetDiscussionsDTO;
@@ -27,6 +28,9 @@ class PerformDiscussionRequestLinkAction extends Action
             UpdateCounsellorDTO::new()->fromArray(['counsellor' => $createLinkDTO->user?->counsellor]),
             LinkException::NO_COUNSELLOR
         );
+
+        // SCRUM-31: only a currently verified counsellor joins.
+        EnsureCounsellorMayTakeOnClientsAction::new()->execute($createLinkDTO->user->counsellor, forDiscussion: true);
 
         DB::transaction(function () use ($createLinkDTO) {
             // A general link (to=null) can be used by any counsellor, so the

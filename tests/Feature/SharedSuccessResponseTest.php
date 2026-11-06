@@ -228,7 +228,7 @@ test('a verification request answers JSON with JSON and a visit with the redirec
         'type' => LicensingAuthorityTypeEnum::values()[0],
         'license_type' => LicensingTypeEnum::number->value,
     ]);
-    $counsellor = Counsellor::factory()->create([
+    $counsellor = Counsellor::factory()->unverified()->create([
         'user_id' => User::factory()->adult()->create(['gender' => 'MALE'])->id,
         'email' => 'ssr-'.uniqid().'@example.com', 'email_verified_at' => now(), 'phone' => '0240000000',
     ]);

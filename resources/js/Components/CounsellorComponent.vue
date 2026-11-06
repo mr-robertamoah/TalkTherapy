@@ -33,6 +33,8 @@
                 <div class="text-gray-700 flex flex-col space-y-1">
                     <div class="capitalize font-semibold text-base">{{ counsellor.name }}</div>
                     <div class="text-sm text-gray-500">{{ counsellor.username ? `@${counsellor.username}` : '' }}</div>
+                    <!-- SCRUM-30 -->
+                    <CounsellorVerificationBadge v-if="counsellor.verification" class="w-fit" :verification="counsellor.verification" />
                 </div>
             </div>
             <slot></slot>
@@ -152,6 +154,7 @@
 <script setup>
 import { ref } from 'vue';
 import Avatar from './Avatar.vue';
+import CounsellorVerificationBadge from './CounsellorVerificationBadge.vue';
 import CounsellorModal from './CounsellorModal.vue';
 import ActivityBadge from './ActivityBadge.vue';
 import DangerButton from './DangerButton.vue';

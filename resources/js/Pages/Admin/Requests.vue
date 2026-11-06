@@ -58,7 +58,8 @@ function formatDate(value) {
     return value ? new Date(value).toLocaleString() : '--'
 }
 
-// Answered: reload the list and the sidebar's badges (the server cleared its cached counts).
+// Answered, or refused (already answered elsewhere -- SCRUM-388): reload the list and the sidebar's
+// badges (the server cleared its cached counts).
 function responded() {
     router.reload({ only: ['requests', 'rows'], preserveScroll: true })
     refreshAdminBadges({ force: true })
@@ -132,6 +133,7 @@ function responded() {
                         :request="request"
                         class="!max-w-none"
                         @on-data="responded"
+                        @refused="responded"
                         @alert="(data) => setAlertData(data)"
                     />
 

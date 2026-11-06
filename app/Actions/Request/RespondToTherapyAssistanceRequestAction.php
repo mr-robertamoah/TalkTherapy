@@ -3,12 +3,14 @@
 namespace App\Actions\Request;
 
 use App\Actions\Action;
+use App\Actions\CounsellorVerification\EnsureCounsellorMayTakeOnClientsAction;
 use App\Actions\Guardianship\EnsureMinorHasActiveGuardianAction;
 use App\Actions\User\AlertGuardianAction;
 use App\DTOs\GuardianAlertDTO;
 use App\DTOs\RequestResponseDTO;
 use App\Enums\RequestStatusEnum;
 use App\Enums\TherapyStatusEnum;
+use App\Exceptions\CounsellorException;
 use App\Models\Counsellor;
 use App\Models\Request;
 use App\Models\Therapy;
@@ -19,6 +21,8 @@ use Illuminate\Support\Facades\DB;
 
 class RespondToTherapyAssistanceRequestAction extends Action
 {
+    public const NO_COUNSELLOR = 'There is no counsellor to take this therapy on.';
+
     public function execute(RequestResponseDTO $requestResponseDTO)
     {
         // Locking the request row and re-checking its status inside the lock closes the
@@ -58,13 +62,23 @@ class RespondToTherapyAssistanceRequestAction extends Action
             if ($response == RequestStatusEnum::accepted->value) {
                 $acceptedByClient = $therapy->addedby instanceof User && $therapy->addedby->is($requestResponseDTO->user);
                 EnsureMinorHasActiveGuardianAction::new()->execute($requestResponseDTO->user, $therapy, fresh: true, actsAsCounsellor: ! $acceptedByClient);
+
+                // SCRUM-31: the counsellor taking it on must be currently verified (declining stays
+                // allowed) -- a client accepting an offer is told it's the counsellor's.
+                // Locked (therapy, request, then counsellor), so a revocation can't land in between;
+                // no counsellor to take it on means no accepting it.
+                $taking = Counsellor::query()->lockForUpdate()->find($this->getCounsellorId($requestResponseDTO));
+                if (! $taking) {
+                    throw new CounsellorException(self::NO_COUNSELLOR, 422);
+                }
+                EnsureCounsellorMayTakeOnClientsAction::new()->execute($taking, asTarget: $acceptedByClient);
             }
 
             $request->update(['status' => $response]);
 
             if ($response == RequestStatusEnum::accepted->value) {
                 $therapy->update([
-                    'counsellor_id' => $this->getCounsellorId($requestResponseDTO),
+                    'counsellor_id' => $taking->id,
                     'status' => TherapyStatusEnum::in_session->value,
                 ]);
 

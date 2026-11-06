@@ -84,7 +84,10 @@ test('only admins reach the review pages and actions', function () {
     // SCRUM-387: the `admin` middleware sends them home before the action is reached.
     $this->actingAs($user)->post(route('admin.reports.status', ['report' => $g['report']->id]), ['status' => 'under_review'])
         ->assertRedirect(route('home'))->assertSessionHas('message', EnsureUserIsAdmin::MESSAGE);
-    arrUnlock($this, $user, $g['report'], $g['session'])->assertNotFound();
+    // SCRUM-388: and before the conversation or an attachment, whatever the report.
+    arrUnlock($this, $user, $g['report'], $g['session'])->assertForbidden()->assertJsonPath('message', EnsureUserIsAdmin::MESSAGE);
+    $this->actingAs($user)->postJson(route('admin.reports.conversation', ['report' => 999999, 'session' => $g['session']->id]), ['reason' => 'Reviewing the abuse complaint'])->assertForbidden();
+    $this->actingAs($user)->getJson(route('admin.reports.attachments.show', ['report' => $g['report']->id, 'message' => 1, 'file' => 1]))->assertForbidden();
 
     expect($g['report']->fresh()->status)->toBe(ReportStatusEnum::open);
 });

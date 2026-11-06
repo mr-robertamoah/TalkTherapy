@@ -2,6 +2,8 @@
 
 use App\Actions\Alert\BroadcastStartedSessionsAndDiscussionsAction;
 use App\Actions\Counsellor\PurgeExpiredSoftDeletedCounsellorsAction;
+use App\Actions\CounsellorVerification\RecordEndedCounsellorVerificationsAction;
+use App\Actions\CounsellorVerification\SendCounsellorVerificationRemindersAction;
 use App\Actions\Discussion\FailUnheldDiscussionsAction;
 use App\Actions\Discussion\NotifyParticipantsOfStartingDiscussionsAction;
 use App\Actions\Guardianship\FindMinorsWithoutActiveGuardianAction;
@@ -123,6 +125,16 @@ Schedule::call(fn () => SafeguardingExceptionService::new()->endExpiredException
 Schedule::call(fn () => SafeguardingExceptionService::new()->sendExpiryReminders())
     ->name('safeguarding-exception-expiry-reminders')->hourly()->withoutOverlapping(30)
     ->onFailure(fn () => Log::error('The safeguarding exception reminder sweep failed.'));
+
+// SCRUM-31: a counsellor's verification stops counting the moment it ends (Counsellor::
+// verificationState()); these send the reminders before it ends (once per window) and record, and
+// tell them, when it has. Daily: the windows are days long.
+Schedule::call(fn () => SendCounsellorVerificationRemindersAction::new()->execute())
+    ->name('counsellor-verification-reminders')->dailyAt('05:00')->withoutOverlapping(30)
+    ->onFailure(fn () => Log::error('The counsellor verification reminder sweep failed.'));
+Schedule::call(fn () => RecordEndedCounsellorVerificationsAction::new()->execute())
+    ->name('record-ended-counsellor-verifications')->dailyAt('05:15')->withoutOverlapping(30)
+    ->onFailure(fn () => Log::error('The ended counsellor verification sweep failed.'));
 
 // TT-3.2f-h/SCRUM-325: every minute, not every five -- with the 5-minute default timeout, a
 // five-minute sweep would let an idle grant linger for up to ~10 minutes.

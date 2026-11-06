@@ -33,7 +33,28 @@ One more step, outside the groups (SCRUM-387), logged with `request`:
 
 | `step` | What failed | Effect |
 |---|---|---|
-| `admin-todo-cache-forget` | Clearing the admin overview's cached counts after an admin queue request was created or changed status (`Request::booted()`). | The request is saved or answered as normal; the overview and sidebar badges can show the old counts for up to a minute. |
+| `admin-todo-cache-forget` | Clearing the admin overview's cached counts after an admin queue request was created or changed status (`Request::booted()`, `Request::adminQueueChanged()`). | The request is saved or answered as normal; the overview and sidebar badges can show the old counts for up to a minute. |
+
+Counsellor verification (SCRUM-31), logged with `counsellor`:
+
+| `step` | What failed | Effect |
+|---|---|---|
+| `counsellor-verification-reminder` | Queueing the "your verification ends soon" notice. | The reminder is recorded as sent but the counsellor isn't told; the 7-day one still goes. |
+| `counsellor-verification-reminder-admin` | Queueing the notice to the administrator who last accepted them. | That administrator isn't told; the overview's renewals count still shows them. |
+| `counsellor-verification-ended` | Queueing the "your verification has ended" notice. | The end is recorded; the counsellor isn't told (it applies anyway). |
+| `counsellor-verification-revoked` | Queueing the revocation notice with its reason. | The revocation stands; the counsellor isn't told why. |
+
+The daily sweeps (05:00 and 05:15 UTC) log `The counsellor verification reminder sweep failed.` and
+`The ended counsellor verification sweep failed.` -- alert on either, since each runs once a day.
+One counsellor failing logs `A counsellor verification reminder failed.` or `Recording an ended
+counsellor verification failed.` (with `counsellor`) and the rest carry on. Run one on demand with
+`docker compose exec -u www-data php php artisan schedule:test --name=counsellor-verification-reminders`.
+A verification stops counting the moment it ends whatever the sweep does; the ended sweep looks back
+30 days, so a longer scheduler outage loses only those records and notices.
+
+Every counsellor verified before SCRUM-31 shipped got the same end date (release + 12 months). Watch
+the overview's renewals count from about 30 days before that date: reminders arrive in two bursts,
+and any not renewed in time all end on the same day.
 
 Related lines worth a dashboard but not a page: `Could not send a safeguarding exception reminder.`,
 `The safeguarding exception reminder sweep failed.` (hourly) and `Could not queue the announcement

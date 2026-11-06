@@ -3,6 +3,7 @@
 namespace App\Actions\Request;
 
 use App\Actions\Action;
+use App\Actions\CounsellorVerification\EnsureCounsellorMayTakeOnClientsAction;
 use App\Actions\Discussion\EnsureDiscussionCanAcceptCounsellorAction;
 use App\Actions\Discussion\EnsureNotAlreadyPartOfDiscussionAction;
 use App\DTOs\CreateRequestDTO;
@@ -10,6 +11,7 @@ use App\DTOs\GetDiscussionsDTO;
 use App\DTOs\RequestResponseDTO;
 use App\Enums\RequestStatusEnum;
 use App\Events\DiscussionRequestResponseEvent;
+use App\Models\Counsellor;
 use App\Models\Discussion;
 use App\Models\Request;
 use App\Notifications\DiscussionInclusionNotification;
@@ -66,6 +68,11 @@ class RespondToDiscussionRequestAction extends Action
             // empirically reproduced against a real MySQL connection during security review: with
             // the old refresh() call in place, two concurrent accepts on the same discussion could
             // both pass the capacity check even after correctly serializing on the Discussion lock.
+            // SCRUM-31: only a currently verified counsellor joins (declining stays open to them).
+            if ($request->status == RequestStatusEnum::accepted->value) {
+                EnsureCounsellorMayTakeOnClientsAction::new()->execute(Counsellor::query()->lockForUpdate()->find($request->to_id), forDiscussion: true);
+            }
+
             $attached = $request->status == RequestStatusEnum::accepted->value
                 && $this->attachCounsellorIfMissing($request);
 

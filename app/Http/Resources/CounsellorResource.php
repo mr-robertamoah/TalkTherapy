@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Support\CounsellorVerification;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -30,7 +31,8 @@ class CounsellorResource extends JsonResource
             'cover' => $this->cover?->url,
             'contactVisible' => (bool) $this->contact_visible,
             'emailVerified' => (bool) $this->email_verified_at,
-            'verified' => (bool) $this->verified_at,
+            // SCRUM-30/31: the public state for anyone; more for the counsellor and administrators.
+            'verification' => CounsellorVerification::projection($this->resource, $request->user()),
             'overallStarsCount' => $this->overallStarsCount,
             'currentMonthStarsCount' => $this->currentMonthStarsCount,
             // TODO therapies
@@ -45,8 +47,6 @@ class CounsellorResource extends JsonResource
             'groupTherapiesCount' => $this->groupTherapiesCount,
             'onlineSessionsHeldCount' => $this->onlineSessionsHeldCount,
             'inPersonSessionsCount' => $this->inPersonSessionsCount,
-            'hasNationalIdentification' => $this->hasNationalIdentification(),
-            'hasPendingCounsellorVerificationRequest' => $this->hasPendingCounsellorVerificationRequest(),
         ];
     }
 }
