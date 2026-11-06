@@ -474,3 +474,39 @@ payments, fresh links), use the seeder's own helpers from tinker:
 `->seedLeaveDemoLinks($group, $creator)`, after deactivating the old links.
 
 See `documentation/features/scrum-73-leave-group-therapy.md`.
+
+## Admin area: requests to resolve and the overview (SCRUM-387, SCRUM-49)
+
+Log in as the super admin (`mr_robertamoah`) or as the normal admin `suspension_demo_normal_admin`
+(password `password`) and open `/administrator`. `DatabaseSeeder::createAdminAreaDemoData()` adds
+what nothing else seeds, so every queue type and every to-do count has something to show:
+
+| Username | Password | What it is |
+|---|---|---|
+| `admin_area_verify_counsellor` | `password` | Dr. Verify Demo, unverified, with a **pending counsellor verification request** (two licences, no documents), addressed to the super admin like the app does. Shows in "Requests to resolve" and on `/administrator/counsellor-verification`. |
+| `admin_area_org_owner` | `password` | Owner of **Verify Demo Organisation** (unverified), which has a **pending organisation verification request**. Any admin can see and answer it in the queue. |
+| `admin_area_payout_counsellor` | `password` | Dr. Payout Failed: a **FAILED payout** whose earning is still waiting to be paid again, and a **FAILED refund** on a payment by `payout_demo_client` (with the provider's reason, listed under "Failed refunds" on `/administrator/refund-requests`). |
+
+The rest of the queue and counts come from the demo data above: the age verification
+(`age_verification_demo_user`), the dob change with no guardian, the pending refund request, the
+counsellor's safeguarding exception request for `paused_minor` (super admins only), the open
+reports, the suspension appeal and the billing-suspended organisation.
+
+`DatabaseSeeder::createAdminAreaQaDemoData()` (SCRUM-387 QA) adds:
+
+| Username | Password | What it is |
+|---|---|---|
+| `suspendable_demo_admin` | `password` | A **normal administrator** named in a resolved report ("suspension recommended") by `suspension_ready_counsellor`, about "Suspension Demo Therapy (administrator to suspend)". The super admin can suspend them from that report (only a super admin can't be suspended). |
+| `involved_demo_super_admin` | `password` | A **second super administrator** who is also an ACTIVE counsellor (Dr. Involved DemoSuperAdmin) of "Paused Minor Demo Group", where `paused_minor` is a member. `paused_minor`'s safeguarding exception request shows to them only as one they are involved in: no name, no therapy, no buttons. `mr_robertamoah` can still answer it. |
+
+It also adds two testimonials by `suspension_demo_client` (one in use on the home page, one not)
+and the how-to "Answering a request" (page "Check Requests", two steps), for Content > Testimonials
+and How-tos.
+
+**Local database top-up (2026-11-06):** the local database predates these, so they were added with
+the seeder's own code under `Model::unguarded()`, as `www-data` in tinker
+(`(new DatabaseSeeder)->createAdminAreaQaDemoData($superAdmin)`), plus the failed refund's status
+history row. The seeded safeguarding request for `paused_minor` had been answered during QA, so a
+fresh pending one (the same as the seeder's) was added the same day.
+
+See `documentation/features/scrum-387-admin-area.md`.

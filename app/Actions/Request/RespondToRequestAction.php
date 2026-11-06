@@ -5,10 +5,22 @@ namespace App\Actions\Request;
 use App\Actions\Action;
 use App\DTOs\RequestResponseDTO;
 use App\Enums\RequestTypeEnum;
+use App\Models\Request as ModelsRequest;
 
 class RespondToRequestAction extends Action
 {
+    // SCRUM-387: every answer records who gave it (requests.responded_by_id), stamped by the Request
+    // model in the same write that decides it, whichever per-type action below makes that write.
     public function execute(RequestResponseDTO $requestResponseDTO)
+    {
+        return ModelsRequest::answeredBy(
+            $requestResponseDTO->user,
+            $requestResponseDTO->request,
+            fn () => $this->respond($requestResponseDTO),
+        );
+    }
+
+    private function respond(RequestResponseDTO $requestResponseDTO)
     {
         $request = $requestResponseDTO->request;
 

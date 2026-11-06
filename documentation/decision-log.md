@@ -10074,3 +10074,169 @@ therapy 18 after the last QA pass.
   - **Form errors:** validation messages use plain field names.
   - **Requests modal (user):** the line under a Pending chip is removed, except "It is waiting
     for review." for an involved admin.
+
+## SCRUM-387 + 386 + 49 — admin area redesign and follow-ups (2026-11-05)
+
+- **Layout (user):** one admin area with a grouped left sidebar:
+  - Overview;
+  - People: users, counsellors, counsellor verification;
+  - Requests to resolve;
+  - Safety: reports, suspensions, safeguarding, read log (super admins only);
+  - Money: payouts, refunds, organisation billing;
+  - Content: testimonials, how-tos.
+
+  It's a slide-out menu on phones. Every section gets its own URL, and the existing URLs keep
+  working.
+- **Overview (user):** to-do counts linking to their sections, and platform stats. This covers
+  SCRUM-49; its "system health" becomes a failed-jobs count for super admins.
+- **Verifications (user):** every admin can review and approve both counsellor and organisation
+  verifications. Organisation requests used to be visible only to one super admin.
+- **Money (user):** all admins see money figures, as on the money pages today. Totals are always
+  per currency, from successful, non-reversed rows only.
+- **Stats (user):** this week, this month and all time, each with the change compared with the
+  previous period. Only totals are shown, never names or lists of people.
+- **Requests to resolve (user):** one queue for everything waiting on an admin. That covers
+  counsellor and organisation verification, age verification, date-of-birth changes with no
+  guardian, refunds, and safeguarding (super admins only). Refunds and counsellor verification keep
+  their own pages too. The queue is defined by a fixed list of types, not by "can respond", because
+  admins can technically answer any request type; that wider permission goes to security as its
+  own item. The personal Requests pop-up is unchanged.
+- **My calls (approved with the plan):**
+  - **Access checks:** one admin route middleware on top of the per-controller checks. Super-admin
+    checks stay on the server.
+  - **Moved tab views:** they keep their current components and axios paging, and only gain a page
+    shell and a URL.
+  - **Caching:** the cheap counts are cached for about a minute and cleared when someone responds.
+    The paused-minors count is cached for about 5 minutes, on the overview only. Stats are cached
+    for about 15 minutes, with an "as of" time.
+  - **Layout nesting:** AdminLayout sits inside AuthenticatedLayout, so the live suspension and
+    guardian listeners keep working. The SCRUM-386 channel change comes after the admin shell is
+    built.
+- **SCRUM-386 calls (mine):**
+  - **Group lists:** `PreloadGroupTherapyListAction` loads each page's creator, members,
+    counsellors and counts in one go, and the counsellor calendar uses it too.
+    `GroupTherapy::isCounsellor()` now reads a loaded counsellors relation, the same way
+    `membershipOf()` reads loaded users. The request list also runs it for group requests.
+  - **Notices to rename on account closure:** these are found through a generated, indexed
+    `notifications.ward_ref` column (stored on MySQL, virtual on SQLite).
+    - It's guarded with `json_valid`, so a malformed row gets null instead of breaking the
+      migration or later writes.
+    - The LIKE scan is gone.
+    - Adding the column rebuilds the `notifications` table on MySQL, so it needs a quiet deploy
+      window.
+  - **Reverb limit:** the Reverb 1.10 connection limit is recorded as known technical debt in
+    `.claude/memory.md`, to re-test when Reverb is upgraded past 1.10.
+- **SCRUM-387 implementation calls (mine):**
+  - **Layout:** AdminLayout is an Inertia persistent layout that wraps AuthenticatedLayout.
+    Moving between admin pages keeps the live channel joined.
+  - **Sidebar:** defined once in `AdminNavigation::for($user)` and filtered by role. ReportShow
+    highlights Reports.
+  - **Access:** the new `admin` middleware is on every `/administrator*` page, and the inline
+    checks stay as a backstop.
+  - **Requests queue:** the queue, the personal list and the counts share
+    `Request::scopeAwaitingAdmin($viewer, $types)`.
+    - The two verification types match whatever their `to` is; every other type needs a null `to`.
+    - The queue shows only when a request was answered, not who answered it, because nothing stores
+      the responder.
+  - **Badges:**
+    - The requests badge is the viewer's pending queue total.
+    - Other badges: counsellor verification, reports, suspension appeals, failed payouts, failed
+      refunds and organisation billing.
+    - Safeguarding gets no badge, because its count is the expensive one.
+    - The client is Inertia 1.3, so there are no deferred props. Badges load with a partial reload
+      after each navigation.
+  - **To-do count definitions:**
+    - Failed payouts counts failures not yet paid again.
+    - Failed refunds counts every failed row, because nothing retries them.
+    - Organisation billing counts organisations that are billing-suspended or have any failed
+      invoice.
+    - For super admins, "involved" safeguarding means pending minus answerable.
+  - **Stat periods:**
+    - Weeks start on Monday and months are calendar months, in the app's timezone.
+    - The current period runs up to now and is compared with the whole previous period.
+    - Rows are counted by `created_at`, sessions by `start_time` and video by `started_at`.
+    - The "failed or abandoned" share is out of held, failed and abandoned sessions.
+  - **Counting rules:** "Awaiting" counsellors are unverified ones with a pending request. Users
+    exclude soft-deleted and anonymised accounts.
+  - **Moved lists:** the users and how-tos lists keep their load-more paging, so only the counsellor
+    search and the verification status filter go in the URL.
+  - **Indexes:** added only where they were missing: requests (status, type, to_id), and status plus
+    date on transactions, sessions, payouts, earnings, refunds and invoices, plus users.created_at
+    and video_sessions.started_at.
+- **SCRUM-386 realtime calls (mine):**
+  - **Shared channel:** the private `users.{id}` channel has one ref-counted owner,
+    `acquireUserChannel()` in `sharedChannel.js`. The layout and the group page each release only
+    their own handlers, and the `Echo.leave` that cut off other listeners is gone.
+  - **Live join requests:** they reach the creator through
+    `GroupTherapyMembershipRequestReceivedEvent` on the creator's `users.{id}` channel, sent after
+    commit.
+    - It is queued, so delivery needs the queue worker.
+    - The payload is ids only. The creator's page reloads `pendingMembershipRequest`, which for the
+      creator is the incoming request (`pendingMembershipRequestFor` matches from or to the viewer), so
+      masking stays on the server. The notice uses a neutral grey "info" alert style. (Corrected
+      after review.)
+    - A counsellor-created group sends it to the counsellor's user.
+    - The group page shows a neutral alert, "Someone has asked to join this group therapy." The
+      Requests pop-up refreshes if it is open on Pending. There is no new nav badge.
+  - **Admin page widths:** the older admin pages are full width inside the admin layout
+    (`max-w-6xl`).
+- **SCRUM-387 review fixes (mine, 2026-11-06).** Where these contradict a line above, these win.
+  - **Answering:** an administrator now answers only the admin queue's types
+    (`App\Support\AdminRequestQueue`): counsellor and organisation verification, age verification
+    (never their own), a dob change with no `to`, a refund, and a safeguarding exception (super
+    admin, not involved, not the sender). Every other type needs its real party. No admin page or
+    flow relied on answering any other type, so nothing needed keeping.
+  - **Who answered:** `requests.responded_by_id` is stamped by the Request model's saving hook, in
+    the same write that first moves a request out of PENDING, while `RespondToRequestAction` has
+    marked it as being answered (`Request::answeredBy()`). So a no-op re-answer or a system close
+    (superseded, made moot) records no one. The queue shows "answered by {name}" to administrators
+    only, never on a row the viewer is involved in.
+  - **One registry:** `AdminRequestQueue` holds each queue type's label, count key, overview label,
+    own page, super-only flag and whether only a request with no `to` counts. Only the dob change has
+    that flag: safeguarding, refund and age verification never have a `to`, so the one definition of
+    "pending safeguarding" is `scopePendingSafeguardingException()` (type only), and the queue's
+    `ofAdminQueueTypes()` agrees with it.
+  - **Respondent:** `RequestResource` sends one `isRespondent` for every type; `RequestBadge` uses
+    it for the buttons (pending only) and the "from:" line, and the per-type branches are gone.
+  - **PII:** a verification's and a refund's `to` is null in `RequestResource` (shown as "any
+    admin"); a refund's payer is name and username only there and in `RefundRequestResource`.
+  - **Cache:** cleared by a Request model `saved` hook, only for an admin queue type that was just
+    created or changed status, after commit and best effort (`admin-todo-cache-forget`). The
+    paused-minors key is outside the generation. The shared counts are worked out without a viewer.
+  - **Badges:** a JSON route, `GET /administrator/badges` (`admin.badges`), fetched by AdminLayout
+    on mount, on navigate and after any successful visit (form posts that redirect back fire no
+    navigate), throttled to one a second. Axios-only actions (the queue, counsellor verification,
+    refund requests) force a refresh. The Refund requests item's badge is pending refund requests
+    plus failed refunds (`refunds`), since that page now lists both.
+  - **Pages behind counts:** the refund requests page lists failed refunds (latest 50, with the
+    total; nothing retries them, so no action). Organisation billing lists organisations with a
+    failed invoice that aren't suspended too (`Organization::scopeNeedsBillingAttention()`, shared
+    with the count); retry shows for any with a failed invoice, lift only for a suspended one.
+  - **Queue filter:** a `?type` the viewer can't filter by (unknown, or safeguarding for an ordinary
+    admin) is ignored rather than refused or listing nothing, so the filter shown always matches.
+  - **Middleware:** `admin` now also covers the `admin.*` write routes and `/api/administrator/*`,
+    answering JSON with a 403. Non-admins on those now get the middleware's refusal instead of each
+    action's own; the tests were updated to match.
+  - **Group lists:** the preload loads `activeCounsellorLinks` (ACTIVE pivot, id and user_id only)
+    and `isCounsellor()` reads only that relation, so the full `counsellors` relation is never a
+    cut-down copy.
+  - **Live join requests:** the reload now asks for `pendingMembershipRequest` only. That prop is
+    `GroupTherapy::pendingMembershipRequestFor()` -- the latest pending membership request from OR
+    to the viewer -- so for the creator it is the incoming request that drives the Membership box.
+    The alert uses a new neutral `info` style.
+  - **Seed:** testimonials, a how-to, `suspendable_demo_admin` and `involved_demo_super_admin` (see
+    `documentation/seeded-data.md`).
+- **Security re-check fixes (mine, 2026-11-06):**
+  - **Organisation verification response:** answering one no longer returns the super admin's
+    profile. `OrganizationRequestResource` sends `to` as null for that type.
+  - **No self-answering:** an administrator can't answer a queue request they raised, or one that is
+    about them. That covers their own counsellor verification (from their counsellor profile),
+    refund, date-of-birth change and age verification. Another admin answers it
+    (`Request::isOwnRequestOf`).
+  - **"Answered by":** it isn't shown on the viewer's own requests.
+  - **Report review routes:** `/api/admin/reports/*` keeps its own admin-review checks
+    (`EnsureAdminCanReviewReportAction`) and doesn't use the `admin` middleware.
+- **Counsellor details in queue data (mine):** on counsellor-verification and safeguarding rows,
+  admins still get the nested counsellor `user` (including date of birth and gender) in the page
+  data, although the page doesn't display it. Admins already see users' dates of birth on the Users
+  page, so this is left as it is. Narrowing it would be a separate change.

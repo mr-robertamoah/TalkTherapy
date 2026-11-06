@@ -8,6 +8,7 @@ use App\Actions\GroupTherapy\EnsureCanSetGroupTherapyPaymentGateAction;
 use App\Actions\GroupTherapy\EnsureGroupTherapyCanBecomeAnonymousAction;
 use App\Actions\GroupTherapy\JoinGroupTherapyAction;
 use App\Actions\GroupTherapy\LeaveGroupTherapyAction;
+use App\Actions\GroupTherapy\PreloadGroupTherapyListAction;
 use App\Actions\GroupTherapy\UpdateGroupTherapyAction;
 use App\Actions\Guardianship\EnsureMinorHasActiveGuardianAction;
 use App\Actions\Link\FindUsableGroupInvitationAction;
@@ -245,10 +246,9 @@ class GroupTherapyService extends Service
 
     public function getRandomGroupTherapies(?User $user)
     {
-        // Eager-load users (with the per-member anonymity pivot) once for the whole page --
-        // hidesIdentityOf() would otherwise lazy-load this pivot per
-        // row (SCRUM-71 N+1 finding).
-        $query = GroupTherapy::query()->with('users');
+        // SCRUM-386: what each row renders (members, counts, creator) is loaded once for the page by
+        // PreloadGroupTherapyListAction -- see listPage().
+        $query = GroupTherapy::query();
 
         $query->wherePublic();
 
@@ -274,7 +274,7 @@ class GroupTherapyService extends Service
             })
             ->inRandomOrder();
 
-        return $query->paginate(PaginationEnum::preferencesPagination->value);
+        return $this->listPage($query);
     }
 
     public function getCounsellorGroupTherapies(?User $user)
@@ -283,7 +283,7 @@ class GroupTherapyService extends Service
             return [];
         }
 
-        $query = GroupTherapy::query()->with('users');
+        $query = GroupTherapy::query();
 
         $query->where(function ($query) use ($user) {
             $query->where('addedby_id', $user->counsellor->id)
@@ -320,7 +320,7 @@ class GroupTherapyService extends Service
 
         $query->latest();
 
-        return $query->paginate(PaginationEnum::preferencesPagination->value);
+        return $this->listPage($query);
     }
 
     public function getUserGroupTherapies(?User $user)
@@ -329,14 +329,14 @@ class GroupTherapyService extends Service
             return [];
         }
 
-        $query = GroupTherapy::query()->with('users');
+        $query = GroupTherapy::query();
 
         $query->where('addedby_id', $user->id);
         $query->where('addedby_type', User::class);
 
         $query->latest();
 
-        return $query->paginate(PaginationEnum::preferencesPagination->value);
+        return $this->listPage($query);
     }
 
     public function getWardGroupTherapies(?User $user)
@@ -345,7 +345,7 @@ class GroupTherapyService extends Service
             return [];
         }
 
-        $query = GroupTherapy::query()->with('users');
+        $query = GroupTherapy::query();
 
         // TODO test getting them when ward is participating
         $query->where(function ($query) use ($user) {
@@ -364,7 +364,7 @@ class GroupTherapyService extends Service
 
         $query->latest();
 
-        return $query->paginate(PaginationEnum::preferencesPagination->value);
+        return $this->listPage($query);
     }
 
     public function getRecentGroupTherapies(?User $user)
@@ -378,5 +378,13 @@ class GroupTherapyService extends Service
             ->orderBy('created_at', 'desc')
             ->limit(3)
             ->get();
+    }
+
+    // SCRUM-386: one page of a GroupTherapyMiniResource list, with what each row reads preloaded.
+    private function listPage($query)
+    {
+        return PreloadGroupTherapyListAction::new()->execute(
+            $query->paginate(PaginationEnum::preferencesPagination->value)
+        );
     }
 }

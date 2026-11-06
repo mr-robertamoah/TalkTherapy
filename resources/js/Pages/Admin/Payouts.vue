@@ -7,10 +7,13 @@ import Pagination from '@/Components/Pagination.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import TextInput from '@/Components/TextInput.vue';
 import useAlert from '@/Composables/useAlert';
-import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
+import AdminLayout from '@/Layouts/AdminLayout.vue';
 import { Head, useForm } from '@inertiajs/vue3';
 import { computed, reactive, ref, watch } from 'vue';
 import { default as _ } from 'lodash';
+
+// SCRUM-387: the admin area's shell (sidebar inside AuthenticatedLayout), kept across admin pages.
+defineOptions({ layout: AdminLayout });
 
 // TT-7.6e/SCRUM-229: a dedicated page rather than another Admin.vue dispatch-table tab -- that
 // pattern is already flagged as ad-hoc debt (documentation/implementation_plan.md), and the
@@ -193,8 +196,8 @@ function statusClass(status) {
 <template>
     <Head title="Admin Payouts" />
 
-    <AuthenticatedLayout>
-        <div class="my-8 w-full sm:w-[90%] md:w-[75%] mx-auto space-y-8">
+    <div>
+        <div class="my-8 w-full max-w-6xl mx-auto space-y-8 px-4">
 
             <!-- Platform Settings -->
             <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg p-6">
@@ -355,5 +358,5 @@ function statusClass(status) {
             :time="alertData.time"
             @close="clearAlertData"
         />
-    </AuthenticatedLayout>
+    </div>
 </template>

@@ -9,6 +9,7 @@ use App\Actions\Suspension\EnsureCanManageSuspensionAction;
 use App\Actions\Suspension\LiftSuspensionAction;
 use App\Enums\SuspensionAppealDecisionEnum;
 use App\Enums\SuspensionScopeEnum;
+use App\Http\Middleware\EnsureUserIsAdmin;
 use App\Http\Resources\AdminSuspensionResource;
 use App\Models\Counsellor;
 use App\Models\Report;
@@ -29,7 +30,7 @@ class AdminSuspensionController extends Controller
     public function index(Request $request)
     {
         if ($request->user()?->isNotAdmin() ?? true) {
-            return Redirect::route('home')->with('message', 'You are not authorized to visit this page.');
+            return Redirect::route('home')->with('message', EnsureUserIsAdmin::MESSAGE);
         }
 
         $suspensions = Suspension::query()

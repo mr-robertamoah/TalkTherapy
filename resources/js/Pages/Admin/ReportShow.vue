@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import axios from 'axios'
 import { Head, Link, router, useForm } from '@inertiajs/vue3'
-import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue'
+import AdminLayout from '@/Layouts/AdminLayout.vue'
 import Alert from '@/Components/Alert.vue'
 import PrimaryButton from '@/Components/PrimaryButton.vue'
 import SecondaryButton from '@/Components/SecondaryButton.vue'
@@ -13,6 +13,9 @@ import SuspensionCard from '@/Components/SuspensionCard.vue'
 import TextBox from '@/Components/TextBox.vue'
 import ReportStatusBadge from '@/Components/ReportStatusBadge.vue'
 import useAlert from '@/Composables/useAlert'
+
+// SCRUM-387: the admin area's shell (sidebar inside AuthenticatedLayout), kept across admin pages.
+defineOptions({ layout: AdminLayout })
 
 // SCRUM-340: reviewing one report. Status and reported-person changes are Inertia form posts. The
 // reported conversation is fetched over axios on demand (with a reason) and only kept in this
@@ -160,8 +163,8 @@ const visibleConfidentialCount = computed(() =>
 <template>
     <Head :title="`Report #${report.id}`" />
 
-    <AuthenticatedLayout>
-        <div class="my-8 w-full sm:w-[90%] md:w-[75%] mx-auto space-y-6 px-4 sm:px-0">
+    <div>
+        <div class="my-8 w-full max-w-6xl mx-auto space-y-6 px-4">
             <div>
                 <Link :href="route('administrator.reports')" class="text-sm text-gray-600 hover:underline">&larr; all reports</Link>
                 <div class="mt-2 flex flex-wrap items-center gap-3">
@@ -460,7 +463,7 @@ const visibleConfidentialCount = computed(() =>
                 </ol>
             </section>
         </div>
-    </AuthenticatedLayout>
+    </div>
 
     <Alert
         :show="alertData.show"

@@ -1,5 +1,6 @@
 // SCRUM-368/370: one owner for a channel that several components listen on at once -- a
-// counsellor's `counsellors.{id}` (AuthenticatedLayout and the therapy page), a session's
+// counsellor's `counsellors.{id}` and a user's `users.{id}` (AuthenticatedLayout and the therapy
+// page, SCRUM-386), a session's
 // `sessions.{id}` (the chat, its video call, and every session badge), a discussion's
 // `discussions.{id}` presence channel (its chat page and every DiscussionModal on a therapy page).
 // None of them may simply leave it: that would silence the others. Each caller gets its own
@@ -99,4 +100,10 @@ export function acquireChannel(name, { presence = false } = {}) {
 
 export function acquireCounsellorChannel(counsellorId) {
     return counsellorId ? acquireChannel(`counsellors.${counsellorId}`) : null
+}
+
+// SCRUM-386: the account's own channel -- AuthenticatedLayout (suspension, guardian pause,
+// notifications) and a group page (left the group, new membership requests) both listen here.
+export function acquireUserChannel(userId) {
+    return userId ? acquireChannel(`users.${userId}`) : null
 }

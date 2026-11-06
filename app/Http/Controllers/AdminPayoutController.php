@@ -6,6 +6,7 @@ use App\DTOs\GetCounsellorPayoutOverviewForAdminDTO;
 use App\DTOs\GetModelsForAdminDTO;
 use App\DTOs\SettingDTO;
 use App\Enums\SettingsEnum;
+use App\Http\Middleware\EnsureUserIsAdmin;
 use App\Http\Requests\UpdateMinimumPayoutAmountsRequest;
 use App\Http\Requests\UpdatePlatformFeeRequest;
 use App\Models\Counsellor;
@@ -23,7 +24,7 @@ class AdminPayoutController extends Controller
     {
         $user = $request->user();
         if (is_null($user) || $user->isNotAdmin()) {
-            return Redirect::route('home')->with('message', 'You are not authorized to visit this page.');
+            return Redirect::route('home')->with('message', EnsureUserIsAdmin::MESSAGE);
         }
 
         $payouts = PayoutService::new()->getPayoutsForAdmin(

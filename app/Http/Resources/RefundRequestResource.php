@@ -25,7 +25,9 @@ class RefundRequestResource extends JsonResource
             'id' => $this->id,
             'status' => $this->status,
             'type' => $this->type,
-            'from' => new UserMiniResource($this->from),
+            // SCRUM-387 (security review): every administrator reads this list -- name and
+            // username only, never the payer's dob, gender or country.
+            'from' => RequestResource::narrowUserProjection($this->from),
             'reason' => $this->data['reason'] ?? null,
             'rejectionReason' => $this->data['rejectionReason'] ?? null,
             'transaction' => $transaction ? [

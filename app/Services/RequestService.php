@@ -39,12 +39,11 @@ class RequestService extends Service
         // just the one `to` was fixed to at creation, so every guardian must be able to list it.
         $wardIds = $user->wards()->pluck('ward_id');
         $isAdmin = $user->isAdmin();
-        $isSuperAdmin = $isAdmin && $user->isSuperAdmin();
 
         // SCRUM-142: every "may see this request" branch sits inside one group, and the status
         // filter is applied once, outside it -- AND binds tighter than OR, so a status filter
         // added after a bare chain of orWhere()s would only attach to the last branch.
-        $query = Request::query()->where(function ($query) use ($user, $counsellor, $administeredOrganizationIds, $wardIds, $isAdmin, $isSuperAdmin) {
+        $query = Request::query()->where(function ($query) use ($user, $counsellor, $administeredOrganizationIds, $wardIds, $isAdmin) {
             $query->whereFrom($user)->orWhere(fn ($query) => $query->whereTo($user));
 
             if ($counsellor) {
@@ -65,16 +64,12 @@ class RequestService extends Service
 
             // TT-4.10e/SCRUM-294 and TT-4.11d/SCRUM-305: a null-`to` dobChange or ageVerification
             // request ("any admin may respond") would otherwise appear in no one's listing.
+            // SCRUM-381: so would a counsellor's request for a safeguarding exception, which is for
+            // the super administrator only (EnsureUserCanRespondToRequestAction), so only they list
+            // it. SCRUM-387: both now come from Request::scopeAwaitingAdmin(), shared with the admin
+            // area's queue and counts.
             if ($isAdmin) {
-                $query->orWhere(fn ($query) => $query
-                    ->whereIn('type', [RequestTypeEnum::dobChange->value, RequestTypeEnum::ageVerification->value])
-                    ->whereNull('to_id'));
-            }
-
-            // SCRUM-381: a counsellor's request for a safeguarding exception is for the super
-            // administrator only (EnsureUserCanRespondToRequestAction), so only they list it.
-            if ($isSuperAdmin) {
-                $query->orWhere(fn ($query) => $query->where('type', RequestTypeEnum::safeguardingException->value)->whereNull('to_id'));
+                $query->orWhere(fn ($query) => $query->awaitingAdmin($user, Request::ADMIN_PERSONAL_LIST_TYPES));
             }
         });
 
@@ -100,7 +95,13 @@ class RequestService extends Service
             $query->where($getVerificationRequestsDTO->filterType, $getVerificationRequestsDTO->filterValue);
         }
 
-        return AdminCounsellorVerificationRequestResource::collection($query->paginate(
+        // SCRUM-387: the admin area's Counsellor verification page lists one status at a time.
+        $status = $getVerificationRequestsDTO->filterType == 'status'
+            ? RequestStatusEnum::tryFrom((string) $getVerificationRequestsDTO->filterValue)
+            : null;
+        $query->when($status, fn ($query) => $query->where('status', $status->value));
+
+        return AdminCounsellorVerificationRequestResource::collection($query->latest('id')->paginate(
             PaginationEnum::preferencesPagination->value
         ));
     }
@@ -132,6 +133,9 @@ class RequestService extends Service
         $this->ensureNoSuspendedCounsellorIsTakenOn($requestResponseDTO);
 
         $request = RespondToRequestAction::new()->execute($requestResponseDTO);
+
+        // SCRUM-387: the admin area's cached to-do counts are cleared by the Request model itself,
+        // for an admin queue request only, when its status changes (Request::booted()).
 
         // TODO dispatch event
         return GetRequestResourceAction::new()->execute($request);

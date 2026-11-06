@@ -27,6 +27,13 @@ The group steps (SCRUM-73/383), each logged with `group_therapy_id` and `user_id
 | `group-leave-broadcast-group` | `GroupTherapyMembershipChangedEvent` to the group's open pages. | Other members' pages show the old member count until reloaded. |
 | `group-join-notify-guardians` | "Your ward joined" to a minor's guardians, for any way of joining. | The guardians aren't told. |
 | `group-join-broadcast-group` | `GroupTherapyMembershipChangedEvent` after a join. | Other members' pages don't refresh until reloaded. |
+| `group-membership-request-broadcast-creator` (SCRUM-386) | `GroupTherapyMembershipRequestReceivedEvent` to the group's creator (a counsellor-created group's counsellor user) after someone asks to join (also `request`). The event is queued, so delivery also needs the queue worker. | The creator's open group page and Requests pop-up don't show the request until reloaded; the request itself is saved. |
+
+One more step, outside the groups (SCRUM-387), logged with `request`:
+
+| `step` | What failed | Effect |
+|---|---|---|
+| `admin-todo-cache-forget` | Clearing the admin overview's cached counts after an admin queue request was created or changed status (`Request::booted()`). | The request is saved or answered as normal; the overview and sidebar badges can show the old counts for up to a minute. |
 
 Related lines worth a dashboard but not a page: `Could not send a safeguarding exception reminder.`,
 `The safeguarding exception reminder sweep failed.` (hourly) and `Could not queue the announcement
@@ -103,12 +110,33 @@ resume and continuation notices, and "a member left your group".
 - **Rotating `APP_KEY`:** keep the old key in `APP_PREVIOUS_KEYS` for as long as notices written
   under it may still need renaming. Refs are matched under the current key and every previous one;
   once a key is dropped from that list, notices written under it keep the name.
-- **The scan:** `notifications.data` has no index (nor does `type`), so finding these rows reads
-  the table. It is now bounded to the notice classes that carry a ref and to rows whose `data`
-  contains the ref, as a plain non-locking read, and each match is updated by its primary key -- it
-  no longer runs an UPDATE by JSON path that scanned and locked the whole table inside the
-  anonymisation's transaction. A row whose JSON can't be read is skipped. On a large table, watch
-  the anonymisation run's duration; an index on `notifications.type` would narrow the read.
+- **The lookup (SCRUM-386):** the ref is also an indexed generated column, `notifications.ward_ref`
+  (stored on MySQL, virtual on SQLite), so these rows are found by an index lookup on it -- no
+  LIKE over `data`, no table scan. It is a plain non-locking read, and each match is updated by its
+  primary key. A row whose `data` isn't valid JSON, or has no ref (or a JSON null one), has a null
+  `ward_ref` and is never matched. Adding the column rebuilt the `notifications` table on MySQL
+  (deploy it in a quiet window). Neither the column nor `data.wardRef` is ever serialised
+  (`App\Models\DatabaseNotification`).
+
+## Admin overview caching (SCRUM-387)
+
+The admin overview's to-do counts and the sidebar badges (`GetAdminToDoCountsAction`, the badges
+through `GET /administrator/badges`) are cached in the app's default cache store:
+
+| Key | What | TTL |
+|---|---|---|
+| `admin-todo:generation` | A random generation in every key below except the paused-minors one. Moving it on (`GetAdminToDoCountsAction::forget()`) is how they are cleared: whenever an admin queue request is created or changes status. | forever |
+| `admin-todo:{generation}:shared` | The counts every administrator sees, worked out without a viewer. | 60 s |
+| `admin-todo:{generation}:super` | Super administrators' safeguarding total, "no longer needed" and failed jobs. | 60 s |
+| `admin-todo:{generation}:user:{id}` | One super administrator's safeguarding split (can answer / involved). | 60 s |
+| `admin-todo:paused-minors` | Paused minors with an open therapy and no exception -- the expensive one, on the overview only. Outside the generation: answering a request doesn't change it. | 5 min |
+| `admin-platform-stats` | The platform stats (`GetPlatformStatsAction`), shown with an "as of" time. Not cleared by answers. | 15 min |
+
+- `php artisan cache:clear` (as `www-data`) resets all of them; the next overview works them out
+  again.
+- An old generation's keys aren't deleted, they just expire.
+- The cache is the single node's file store in Docker. With more than one app node, the store must
+  be shared (Redis, database) for a clear on one node to reach the others.
 
 ## Websocket subscriptions after leaving
 

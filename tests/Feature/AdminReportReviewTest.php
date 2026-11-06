@@ -3,6 +3,7 @@
 use App\Actions\Report\EnsureAdminCanReviewReportAction;
 use App\Actions\Report\RecordReportedPartyAction;
 use App\Enums\ReportStatusEnum;
+use App\Http\Middleware\EnsureUserIsAdmin;
 use App\Http\Resources\AdminReportedMessageResource;
 use App\Models\Administrator;
 use App\Models\ConfidentialMessageAccess;
@@ -80,8 +81,9 @@ test('only admins reach the review pages and actions', function () {
 
     $this->actingAs($user)->get(route('administrator.reports'))->assertRedirect(route('home'));
     $this->actingAs($user)->get(route('administrator.reports.show', ['report' => $g['report']->id]))->assertRedirect(route('home'));
+    // SCRUM-387: the `admin` middleware sends them home before the action is reached.
     $this->actingAs($user)->post(route('admin.reports.status', ['report' => $g['report']->id]), ['status' => 'under_review'])
-        ->assertSessionHasErrors(['alert' => EnsureAdminCanReviewReportAction::NOT_FOUND]);
+        ->assertRedirect(route('home'))->assertSessionHas('message', EnsureUserIsAdmin::MESSAGE);
     arrUnlock($this, $user, $g['report'], $g['session'])->assertNotFound();
 
     expect($g['report']->fresh()->status)->toBe(ReportStatusEnum::open);

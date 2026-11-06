@@ -3,7 +3,7 @@ import { router, usePage } from '@inertiajs/vue3'
 import useAlert from '@/Composables/useAlert'
 import useEnums from '@/Composables/useEnums'
 import { createAnnouncementQueue, resolveAnnouncedSession } from '@/Composables/announcements'
-import { acquireChannel, acquireCounsellorChannel } from '@/Composables/sharedChannel'
+import { acquireChannel, acquireCounsellorChannel, acquireUserChannel } from '@/Composables/sharedChannel'
 import { minutesUntilWindow } from '@/Composables/countdown'
 
 // SCRUM-374 QA: `alerts` is the page's own useAlert() -- the presence alerts ("X is already online",
@@ -11,7 +11,7 @@ import { minutesUntilWindow } from '@/Composables/countdown'
 // rendered, so they never showed.
 export default function useTherapyState(therapy, therapyType = 'individual', alerts = null) {
     const { SessionStatusEnum, DiscussionStatusEnum } = useEnums()
-    const { setSuccessAlertData } = alerts ?? useAlert()
+    const { setSuccessAlertData, setAlertData = null } = alerts ?? useAlert()
     // SCRUM-383 QA: the page's own follow-up when the group's membership changed (e.g. the creator's
     // member links, one of which a join may just have used).
     const onMembershipChanged = alerts?.onMembershipChanged ?? null
@@ -128,20 +128,15 @@ export default function useTherapyState(therapy, therapyType = 'individual', ale
     // WebSocket listening
     let counsellorChannel = null
     let therapyChannel = null
-    let leftHandler = null
-    let leftHandlerUserId = null
+    // SCRUM-386: this page's own handle on users.{id}, shared with AuthenticatedLayout through
+    // sharedChannel.js -- releasing it removes only this page's handlers.
+    let userChannel = null
 
     let leftPage = false
 
-    // Only on a channel this page still has: Echo.private() would subscribe again to one that was
-    // already left (e.g. by AuthenticatedLayout on logout).
-    function stopListeningForLeave() {
-        const channel = leftHandlerUserId ? Echo.connector.channels[`private-users.${leftHandlerUserId}`] : null
-        if (leftHandler && channel) {
-            channel.stopListening('.group-therapy.left', leftHandler)
-        }
-        leftHandler = null
-        leftHandlerUserId = null
+    function releaseUserChannel() {
+        userChannel?.release()
+        userChannel = null
     }
 
     // SCRUM-73: drop the group's channel before going elsewhere.
@@ -155,7 +150,7 @@ export default function useTherapyState(therapy, therapyType = 'individual', ale
     function leaveGroupPage() {
         if (leftPage) return
         leftPage = true
-        stopListeningForLeave()
+        releaseUserChannel()
         releaseTherapyChannel()
         router.visit(route('home'))
     }
@@ -237,17 +232,30 @@ export default function useTherapyState(therapy, therapyType = 'individual', ale
                 })
         }
 
-        // SCRUM-73: this account left the group in another tab or window -- leave its page and channel.
-        // Directly on the user channel (AuthenticatedLayout also listens there, outside sharedChannel.js),
-        // removing only this handler on unmount, never leaving the channel.
-        stopListeningForLeave()
+        // On this account's own channel, about this group only.
+        releaseUserChannel()
         if (therapyType === 'group' && userId.value) {
-            leftHandler = (data) => {
-                if (data?.groupTherapyId != currentTherapy.id) return
-                leaveGroupPage()
-            }
-            Echo.private(`users.${userId.value}`).listen('.group-therapy.left', leftHandler)
-            leftHandlerUserId = userId.value
+            const isThisGroup = (data) => data?.groupTherapyId == currentTherapy.id
+
+            userChannel = acquireUserChannel(userId.value)
+            userChannel
+                // SCRUM-73: this account left the group in another tab or window -- leave its page
+                // and channel.
+                .listen('.group-therapy.left', (data) => {
+                    if (isThisGroup(data)) leaveGroupPage()
+                })
+                // SCRUM-386: someone asked to join this group (sent to its creator only, ids only).
+                // The Membership box reads `pendingMembershipRequest` -- the latest pending membership
+                // request from OR to the viewer (GroupTherapy::pendingMembershipRequestFor()), so for
+                // the creator it is the incoming one -- refetched through the page's own props, which
+                // mask an anonymous requester. A neutral notice: nothing has succeeded or failed.
+                .listen('.group-therapy.membership-requested', (data) => {
+                    if (!isThisGroup(data)) return
+                    router.reload({ only: ['pendingMembershipRequest'], preserveScroll: true })
+                    const notice = { message: 'Someone has asked to join this group therapy.', time: 6000 }
+                    if (setAlertData) setAlertData({ ...notice, type: 'info' })
+                    else setSuccessAlertData(notice)
+                })
         }
 
         // SCRUM-367: discussions are counsellors-only, so they arrive on this counsellor's own
@@ -352,7 +360,7 @@ export default function useTherapyState(therapy, therapyType = 'individual', ale
         counsellorChannel?.release()
         counsellorChannel = null
 
-        stopListeningForLeave()
+        releaseUserChannel()
     })
     
     return {

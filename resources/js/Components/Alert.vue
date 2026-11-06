@@ -1,5 +1,5 @@
 <script setup>
-import { watch } from 'vue';
+import { computed, watch } from 'vue';
 
 const emits = defineEmits(['clicked', 'close'])
 
@@ -20,6 +20,18 @@ watch(
     }
 )
 
+// SCRUM-386: `info` is a neutral notice (nothing succeeded or failed); anything else but `failed`
+// keeps the success style.
+const boxClasses = computed(() => ({
+    failed: 'bg-red-600 text-red-200',
+    info: 'bg-gray-800 text-white',
+}[props.type] ?? 'bg-green-600 text-green-200'))
+
+const closeClasses = computed(() => ({
+    failed: 'bg-red-300 border-red-700 text-red-700',
+    info: 'bg-white border-gray-700 text-gray-700',
+}[props.type] ?? 'bg-green-300 border-green-700 text-green-700'))
+
 function clickedClose() {
     emits('close')
 }
@@ -36,7 +48,7 @@ function clickedClose() {
         >
             <div
                 class="flex justify-center relative items-center min-w-[300px] sm:w-[80%] md:w-[60%] mx-auto rounded-lg min-h-[50px] p-2 cursor-pointer"
-                :class="[show ? 'pointer-events-auto' : 'pointer-events-none', type == 'failed' ? 'bg-red-600 text-red-200' : 'bg-green-600 text-green-200']"
+                :class="[show ? 'pointer-events-auto' : 'pointer-events-none', boxClasses]"
             >
                 <div 
                     @click.self="() => {
@@ -46,7 +58,7 @@ function clickedClose() {
                 <div 
                     @click="clickedClose"
                     class="absolute -top-2 -right-2 w-7 h-7 leading-none text-sm rounded-full p-2 cursor-pointer flex justify-center items-center border-2"
-                    :class="[type == 'failed' ? 'bg-red-300 border-red-700 text-red-700' : 'bg-green-300 border-green-700 text-green-700']"
+                    :class="closeClasses"
                 >x</div>
             </div>
         </div>

@@ -17,12 +17,22 @@ export default function useEnums() {
         dobChange: 'DOB_CHANGE_REQUEST',
         ageVerification: 'AGE_VERIFICATION_REQUEST',
         safeguardingException: 'SAFEGUARDING_EXCEPTION_REQUEST',
+        refund: 'REFUND_REQUEST',
     }
     const RequestStatusEnum = {
         accepted: 'ACCEPTED',
         pending: 'PENDING',
         rejected: 'REJECTED',
         inconsequencial: 'INCONSEQUENCIAL',
+    }
+    // SCRUM-387: how each request status reads in a filter or list (the admin requests queue and
+    // counsellor verification). Every status the server has (RequestStatusEnum::values()).
+    const RequestStatusLabels = {
+        PENDING: 'Pending',
+        ACCEPTED: 'Accepted',
+        REJECTED: 'Rejected',
+        INCONSEQUENCIAL: 'Closed',
+        SUPERSEDED: 'Superseded',
     }
     const SessionStatusEnum = {
         pending: 'PENDING',
@@ -52,7 +62,7 @@ export default function useEnums() {
     }
 
     return {
-        SessionStatusEnum, DiscussionStatusEnum, RequestStatusEnum, RequestTypeEnum,
+        SessionStatusEnum, DiscussionStatusEnum, RequestStatusEnum, RequestStatusLabels, RequestTypeEnum,
         PaymentTypeEnum, SessionTypeEnum
     }
 }

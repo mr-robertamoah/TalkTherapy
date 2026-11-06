@@ -2,6 +2,7 @@
 
 use App\Exceptions\AppException;
 use App\Http\Middleware\EnsureAccountIsNotSuspended;
+use App\Http\Middleware\EnsureUserIsAdmin;
 use App\Http\Middleware\HandleInertiaRequestsV2;
 use App\Http\Middleware\StoreVisitationMiddleware;
 use App\Support\FailureResponse;
@@ -38,6 +39,9 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
 
         $middleware->append(StoreVisitationMiddleware::class);
+
+        // SCRUM-387: every /administrator page (routes/web.php).
+        $middleware->alias(['admin' => EnsureUserIsAdmin::class]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
         // SCRUM-374: the app's own refusals (AppException) answer the same way wherever they are

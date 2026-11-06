@@ -25,6 +25,7 @@ use App\Events\AccountSuspendedEvent;
 use App\Events\SessionUpdatedEvent;
 use App\Exceptions\PayoutException;
 use App\Exceptions\SuspensionException;
+use App\Http\Middleware\EnsureUserIsAdmin;
 use App\Jobs\ProcessCounsellorPayoutJob;
 use App\Models\Administrator;
 use App\Models\Counsellor;
@@ -138,8 +139,9 @@ test('only an uninvolved super admin can suspend, and only from a report resolve
         ->post(route('admin.suspensions.apply', ['report' => ($report ?? $c['report'])->id]), ['scope' => $scope, 'duration' => '7', 'public_reason' => 'Repeated abusive messages.']);
 
     $apply(suspNormalAdmin())->assertSessionHasErrors(['alert' => EnsureCanApplySuspensionAction::SUPER_ADMIN_ONLY]);
-    $apply(User::factory()->create())->assertSessionHasErrors('alert');
-    $apply($c['counsellorUser'])->assertSessionHasErrors('alert');
+    // SCRUM-387: a non-admin is sent home by the `admin` middleware before the action is reached.
+    $apply(User::factory()->create())->assertRedirect(route('home'))->assertSessionHas('message', EnsureUserIsAdmin::MESSAGE);
+    $apply($c['counsellorUser'])->assertRedirect(route('home'))->assertSessionHas('message', EnsureUserIsAdmin::MESSAGE);
 
     $warning = suspCounsellorCase(['outcome' => 'warning']);
     $apply(suspSuperAdmin(), $warning['report'])->assertSessionHasErrors('alert');

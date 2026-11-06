@@ -1,7 +1,10 @@
 <script setup>
 import { Head, router } from '@inertiajs/vue3'
-import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue'
+import AdminLayout from '@/Layouts/AdminLayout.vue'
 import Pagination from '@/Components/Pagination.vue'
+
+// SCRUM-387: the admin area's shell (sidebar inside AuthenticatedLayout), kept across admin pages.
+defineOptions({ layout: AdminLayout })
 
 // SCRUM-360: every time an administrator read content they could only reach as an administrator
 // (a private therapy's or discussion's messages and files, a licence or identity document).
@@ -45,8 +48,8 @@ function formatDate(value) {
 <template>
     <Head title="Read log" />
 
-    <AuthenticatedLayout>
-        <div class="my-8 w-full sm:w-[90%] md:w-[75%] mx-auto space-y-8 px-4 sm:px-0">
+    <div>
+        <div class="my-8 w-full max-w-6xl mx-auto space-y-8 px-4">
             <div>
                 <div class="text-2xl font-bold text-gray-900">Admin read log</div>
                 <div class="w-16 h-1 bg-blue-600 mt-2"></div>
@@ -127,5 +130,5 @@ function formatDate(value) {
                 <Pagination :meta="accesses" @navigate="goToPage" />
             </div>
         </div>
-    </AuthenticatedLayout>
+    </div>
 </template>

@@ -3,6 +3,7 @@
 namespace App\Actions\Session;
 
 use App\Actions\Action;
+use App\Actions\GroupTherapy\PreloadGroupTherapyListAction;
 use App\DTOs\GetCounsellorCalendarSessionsDTO;
 use App\Enums\CounsellorGroupTherapyStateEnum;
 use App\Models\Counsellor;
@@ -94,6 +95,10 @@ class GetCounsellorCalendarSessionsAction extends Action
             ->whereIn('for_id', $groupTherapyIds)
             ->whereWithinRange($startDate, $endDate)
             ->get();
+
+        // SCRUM-386: each distinct group's members and counts, once for the whole calendar rather
+        // than once per group (GroupTherapyMiniResource reads them).
+        PreloadGroupTherapyListAction::new()->execute($groupTherapySessions->pluck('for')->filter()->all());
 
         return $therapySessions
             ->merge($groupTherapySessions)

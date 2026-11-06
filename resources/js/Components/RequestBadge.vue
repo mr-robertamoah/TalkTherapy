@@ -8,6 +8,7 @@ import Alert from './Alert.vue';
 import FormLoader from './FormLoader.vue';
 import useEnums from '@/Composables/useEnums';
 import SafeguardingExceptionApprovalForm from './SafeguardingExceptionApprovalForm.vue';
+import RefundRejectionReasonForm from './RefundRejectionReasonForm.vue';
 
 
 const { alertData, clearAlertData, setFailedAlertData, setSuccessAlertData } = useAlert()
@@ -15,7 +16,7 @@ const { alertData, clearAlertData, setFailedAlertData, setSuccessAlertData } = u
 const props = defineProps({
     request: {
         default: null
-    }
+    },
 })
 
 const emits = defineEmits(['onData', 'alert'])
@@ -66,6 +67,13 @@ const computedTypeMessage = computed(() => {
         [RequestTypeEnum.ageVerification]: computedIsFrom.value
             ? `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}submitted an age-verification statement for review.`
             : `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}received an age-verification submission to review.`,
+        // SCRUM-387: shown in the admin queue (they were blank before).
+        [RequestTypeEnum.organization]: computedIsFrom.value
+            ? `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}sent an organisation verification request.`
+            : `${props.request.for?.name ?? 'An organisation'} has asked to be verified as an organisation.`,
+        [RequestTypeEnum.refund]: computedIsFrom.value
+            ? `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}asked for a refund.`
+            : `${partyLabel(props.request.from)} has asked for a refund${props.request.for?.amount != null ? ` of ${props.request.for.currency} ${(props.request.for.amount / 100).toFixed(2)}` : ''}.`,
         // SCRUM-381: a counsellor asking the super administrator to let a paused minor carry on.
         [RequestTypeEnum.safeguardingException]: props.request.safeguardingException?.involved
             ? 'A counsellor has asked for a safeguarding exception for a client you are involved with, so you can\'t see or decide it.'
@@ -112,35 +120,15 @@ const computedIsFrom = computed(() => {
 
     return userId == props.request.from.id
 })
+// Whether the viewer is the one this request waits on -- for every type, the server's own answer
+// (RequestResource's `isRespondent`, from EnsureUserCanRespondToRequestAction, SCRUM-387): a dob
+// change's current guardians (TT-4.10f/SCRUM-295), any admin for the admin queue's types but never
+// on their own age verification (TT-4.11d/SCRUM-305), the super administrator for a safeguarding
+// exception (SCRUM-381). Working it out here from `to` is exactly what drifted out of sync before.
+// A request from a resource without the field (none today) falls back to matching `to`.
 const computedIsTo = computed(() => {
-    if (!props.request.from) return
+    if (props.request.isRespondent !== undefined) return !!props.request.isRespondent
 
-    // TT-4.10f/SCRUM-295: dobChange's respondent isn't just `to` -- any one of the target's
-    // CURRENT guardians (or any admin) may act, re-verified live server-side rather than by a
-    // `to`-identity match here (a ward's second guardian, or `to` after their own guardianship was
-    // revoked, would otherwise be wrongly shown as not the recipient, or wrongly shown as still
-    // the recipient, respectively). Trust the backend's own answer instead of re-deriving this --
-    // duplicating that authorization logic here is exactly what drifted out of sync before.
-    if (props.request.type == RequestTypeEnum.dobChange)
-        return !!props.request.dobChange?.isRespondent
-
-    // TT-4.11d/SCRUM-305: ageVerification's authorization is the simple isAdmin()-only check
-    // (no live-relationship check to duplicate/drift out of sync with, unlike dobChange's "any
-    // current guardian") -- no server-computed isRespondent flag needed, unlike dobChange above.
-    // Excludes an admin who is ALSO the submitter (computedIsFrom) from seeing themselves as the
-    // recipient -- mirrors EnsureUserCanRespondToRequestAction's own identical server-side
-    // exclusion (review finding, SCRUM-305): the whole point of this type is an independent
-    // check, which an admin approving their own submission would defeat.
-    if (props.request.type == RequestTypeEnum.ageVerification)
-        return !!usePage().props.auth.user?.isAdmin && !computedIsFrom.value
-
-    // SCRUM-381: the super administrator only -- the server's own answer.
-    if (props.request.type == RequestTypeEnum.safeguardingException)
-        return !!props.request.safeguardingException?.isRespondent
-
-    // Defensive: dobChange/ageVerification are the only types with a genuinely null `to` today
-    // (both handled above) -- guards against a throw below if that ever changes for some other
-    // type.
     if (!props.request.to) return
 
     if (props.request.to.isCounsellor)
@@ -149,10 +137,16 @@ const computedIsTo = computed(() => {
     return userId == props.request.to.id
 })
 
+// SCRUM-387: the accept/reject buttons -- only while it is pending. computedIsTo alone still
+// drives the "from:" line on an answered one.
+const computedCanRespond = computed(() => status.value == RequestStatusEnum.pending && !!computedIsTo.value)
+
 // TT-4.11d/SCRUM-305: mirrors RequestResource's own isNullToAdminOnlyType() naming -- a single
 // named list a third null-`to`, admin-only type gets added to once, instead of two separate
 // array literals (here and in the template below) that could drift apart.
-const nullToAdminOnlyTypes = [RequestTypeEnum.dobChange, RequestTypeEnum.ageVerification, RequestTypeEnum.safeguardingException]
+// SCRUM-387: the two verification types too -- their `to` is no longer sent (it was the first
+// super administrator, whose details every admin then saw), and any admin reviews them.
+const nullToAdminOnlyTypes = [RequestTypeEnum.dobChange, RequestTypeEnum.ageVerification, RequestTypeEnum.safeguardingException, RequestTypeEnum.counsellor, RequestTypeEnum.organization, RequestTypeEnum.refund]
 
 // SCRUM-298: collapses the exact three-way OR the template's wrapping v-if and its inner
 // v-if/v-else-if/v-if branches would otherwise have to repeat in sync -- a future edit to one
@@ -193,6 +187,17 @@ function visitTherapy() {
 // and reason (SafeguardingExceptionApprovalForm, prefilled with what the counsellor proposed).
 const approving = ref(false)
 
+// SCRUM-387 (QA): declining a refund request needs a reason for the client
+// (RefundRejectionReasonForm, as on the refund requests page).
+const rejectingRefund = ref(false)
+
+function clickedReject() {
+    if (props.request.type != RequestTypeEnum.refund)
+        return clickedResponse('rejected')
+
+    rejectingRefund.value = true
+}
+
 function clickedAccept() {
     if (props.request.type != RequestTypeEnum.safeguardingException)
         return clickedResponse('accepted')
@@ -208,6 +213,7 @@ async function clickedResponse(response, extra = {}) {
 
             emits('onData', res.data.request)
             approving.value = false
+            rejectingRefund.value = false
             status.value = res.data.request.status
             if (res.data.request?.status !== status.value && status.value == RequestStatusEnum.accepted) {
                 emits('alert', {
@@ -221,18 +227,22 @@ async function clickedResponse(response, extra = {}) {
             emits('alert', {
                 type: 'success',
                 time: 5000,
-                message: 'You have successful responded to the request.'
+                message: 'You have successfully responded to the request.'
             })
         })
         .catch((err) => {
             console.log(err)
 
+            // SCRUM-387 (QA): a refusal (422) says why, for every type -- requests.respond's failure
+            // shape uses an "error" key (RequestController::respond()).
+            const serverMessage = err.response?.status == 422
+                ? (err.response?.data?.error ?? err.response?.data?.message)
+                : null
+
             emits('alert', {
                 type: 'failed',
                 time: 5000,
-                message: props.request.type == RequestTypeEnum.safeguardingException && err.response?.data?.error
-                    ? err.response.data.error
-                    : 'Something unfortunate happened. Please try again shortly.'
+                message: serverMessage || 'Something unfortunate happened. Please try again shortly.'
             })
         })
     responding.value = false
@@ -303,9 +313,18 @@ async function clickedResponse(response, extra = {}) {
             @submit="(terms) => clickedResponse('accepted', terms)"
         />
 
-        <div v-else-if="request.status == RequestStatusEnum.pending && computedIsTo" class="flex justify-end gap-2 mt-3">
+        <RefundRejectionReasonForm
+            v-else-if="computedCanRespond && rejectingRefund"
+            class="mt-3 border-t border-gray-200 pt-3"
+            :request-id="request.id"
+            :responding="responding"
+            @cancel="rejectingRefund = false"
+            @submit="(reason) => clickedResponse('rejected', { reason })"
+        />
+
+        <div v-else-if="computedCanRespond" class="flex justify-end gap-2 mt-3">
             <PrimaryButton :disabled="responding" @click="clickedAccept">accept</PrimaryButton>
-            <DangerButton :disabled="responding" @click="() => clickedResponse('rejected')">reject</DangerButton>
+            <DangerButton :disabled="responding" @click="clickedReject">reject</DangerButton>
         </div>
     </div>
 

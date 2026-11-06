@@ -2,13 +2,19 @@
 
 namespace App\Models;
 
+use App\Actions\Admin\GetAdminToDoCountsAction;
 use App\Enums\FileTagEnum;
 use App\Enums\RequestStatusEnum;
 use App\Enums\RequestTypeEnum;
+use App\Support\AdminRequestQueue;
+use App\Support\BestEffort;
 use App\Traits\HasTaggedFiles;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\MorphToMany;
+use Illuminate\Support\Facades\DB;
 
 class Request extends Model
 {
@@ -23,17 +29,62 @@ class Request extends Model
         'responded_at' => 'datetime',
     ];
 
+    // SCRUM-387: who is answering which request right now (answeredBy()), for the saving hook.
+    private static ?array $answering = null;
+
     // SCRUM-362: stamp the moment a request first leaves PENDING (accepted, rejected, superseded or
     // made moot) -- once, so a later change to the row never moves it. Query-builder updates skip
     // this hook, so those few call sites set responded_at themselves.
+    // SCRUM-387: when that change is someone answering it (answeredBy()), who answered, in the same
+    // write -- so only the save that actually decides it is stamped, never a no-op re-answer.
     protected static function booted(): void
     {
         static::saving(function (Request $request) {
             // A new row without a status is PENDING (the column's default).
             if ($request->status && $request->status !== RequestStatusEnum::pending->value && is_null($request->responded_at)) {
                 $request->responded_at = now();
+
+                if (self::$answering && (int) $request->getKey() === self::$answering['request'] && is_null($request->responded_by_id)) {
+                    $request->responded_by_id = self::$answering['user'];
+                }
             }
         });
+
+        // SCRUM-387: the admin area's cached to-do counts include every admin queue request, so a
+        // new one or a change of status starts them again -- after commit, so a read in between
+        // can't cache the old figures under the new generation, and best effort, so a cache
+        // failure never undoes the change. Query-builder updates skip this, as above.
+        static::saved(function (Request $request) {
+            if (! AdminRequestQueue::includes($request->type) || ! ($request->wasRecentlyCreated || $request->wasChanged('status'))) {
+                return;
+            }
+
+            DB::afterCommit(fn () => BestEffort::attempt(
+                fn () => GetAdminToDoCountsAction::forget(),
+                'admin-todo-cache-forget',
+                ['request' => $request->id],
+            ));
+        });
+    }
+
+    // SCRUM-387: runs $answer with $user recorded as the one answering $request (booted()).
+    public static function answeredBy(User $user, self $request, callable $answer): mixed
+    {
+        $previous = self::$answering;
+        self::$answering = ['user' => $user->id, 'request' => (int) $request->getKey()];
+
+        try {
+            return $answer();
+        } finally {
+            self::$answering = $previous;
+        }
+    }
+
+    // SCRUM-387: who answered it (accepted or rejected it), when someone did. Null for a request
+    // closed by the system (superseded, made moot) or answered before this was recorded.
+    public function respondedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'responded_by_id');
     }
 
     public function from()
@@ -132,6 +183,75 @@ class Request extends Model
     public function scopePendingSafeguardingException($query, User|int|null $ward = null, $for = null)
     {
         return $query->safeguardingException($ward, $for)->wherePending();
+    }
+
+    // The ones an admin's personal Requests list (RequestService::getRequests()) adds for them:
+    // unaddressed requests nobody else would list. Unchanged by SCRUM-387.
+    public const ADMIN_PERSONAL_LIST_TYPES = [
+        RequestTypeEnum::dobChange->value,
+        RequestTypeEnum::ageVerification->value,
+        RequestTypeEnum::safeguardingException->value,
+    ];
+
+    // SCRUM-387: the requests waiting on an administrator that $viewer may see, of $types (default:
+    // the whole queue, App\Support\AdminRequestQueue). Any status -- callers filter it. Matches
+    // nothing for a non-admin, or for a type outside what the viewer may see.
+    public function scopeAwaitingAdmin(Builder $query, User $viewer, ?array $types = null): Builder
+    {
+        return $query->ofAdminQueueTypes(array_values(array_intersect($types ?? AdminRequestQueue::types(), AdminRequestQueue::typesFor($viewer))));
+    }
+
+    // SCRUM-387: requests of these admin queue types that wait on an administrator, whoever is
+    // looking (scopeAwaitingAdmin() adds that). A dob change only counts with no `to` (no guardian);
+    // every other queue type counts whoever its `to` is. Matches nothing for no types.
+    public function scopeOfAdminQueueTypes(Builder $query, array $types): Builder
+    {
+        $types = array_values(array_filter($types, fn (string $type) => AdminRequestQueue::includes($type)));
+
+        if (! $types) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        $unaddressed = AdminRequestQueue::unaddressedOnly($types);
+        $anyRecipient = array_values(array_diff($types, $unaddressed));
+
+        return $query->where(function (Builder $query) use ($anyRecipient, $unaddressed) {
+            if ($unaddressed) {
+                $query->orWhere(fn (Builder $query) => $query->whereIn('type', $unaddressed)->whereNull('to_id'));
+            }
+
+            if ($anyRecipient) {
+                $query->orWhereIn('type', $anyRecipient);
+            }
+        });
+    }
+
+    // SCRUM-387: $user's own age verification, which another administrator must review.
+    public function isOwnAgeVerificationOf(User $user): bool
+    {
+        return $this->type === RequestTypeEnum::ageVerification->value
+            && $this->for_type === User::class
+            && (int) $this->for_id === $user->id;
+    }
+
+    // SCRUM-387: whether $user raised this request themselves, or it is about them -- sent from their
+    // account or their counsellor profile, or (a dob change / age verification) for their account.
+    // An administrator may not answer their own: the point of the admin queue is an independent check.
+    public function isOwnRequestOf(User $user): bool
+    {
+        $fromSelf = ($this->from_type === User::class && (int) $this->from_id === $user->id)
+            || ($user->counsellor && $this->from_type === Counsellor::class && (int) $this->from_id === $user->counsellor->id);
+        $aboutSelf = $this->for_type === User::class && (int) $this->for_id === $user->id;
+
+        return $fromSelf || $aboutSelf;
+    }
+
+    public function scopeOwnAgeVerificationOf(Builder $query, User $user): Builder
+    {
+        return $query
+            ->where('type', RequestTypeEnum::ageVerification->value)
+            ->where('for_type', User::class)
+            ->where('for_id', $user->id);
     }
 
     public function scopeWhereType($query, $type)

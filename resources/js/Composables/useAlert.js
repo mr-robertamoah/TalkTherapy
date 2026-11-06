@@ -7,6 +7,7 @@ export default function useAlert() {
     const AlertType = {
         failed: 'failed',
         success: 'success',
+        info: 'info',
     }
 
     const alertData = ref({

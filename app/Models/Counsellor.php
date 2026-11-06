@@ -7,6 +7,7 @@ use App\Enums\FileTagEnum;
 use App\Enums\RequestStatusEnum;
 use App\Enums\RequestTypeEnum;
 use App\Enums\TherapyPaymentTypeEnum;
+use App\Traits\HasGuardedDatabaseNotifications;
 use App\Traits\HasTaggedFiles;
 use App\Traits\Likeable;
 use Illuminate\Broadcasting\PrivateChannel;
@@ -20,6 +21,9 @@ class Counsellor extends Model
 {
     use HasFactory, HasTaggedFiles,
         Likeable, Notifiable, SoftDeletes;
+    use HasGuardedDatabaseNotifications {
+        HasGuardedDatabaseNotifications::notifications insteadof Notifiable;
+    }
 
     protected $fillable = [
         'name',

@@ -1,7 +1,7 @@
 <script setup>
 import { ref } from 'vue'
 import { Head, router, useForm } from '@inertiajs/vue3'
-import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue'
+import AdminLayout from '@/Layouts/AdminLayout.vue'
 import Alert from '@/Components/Alert.vue'
 import Pagination from '@/Components/Pagination.vue'
 import InputLabel from '@/Components/InputLabel.vue'
@@ -10,6 +10,9 @@ import SecondaryButton from '@/Components/SecondaryButton.vue'
 import DangerButton from '@/Components/DangerButton.vue'
 import SafeguardingExceptionTermsFields from '@/Components/SafeguardingExceptionTermsFields.vue'
 import useAlert from '@/Composables/useAlert'
+
+// SCRUM-387: the admin area's shell (sidebar inside AuthenticatedLayout), kept across admin pages.
+defineOptions({ layout: AdminLayout })
 
 // SCRUM-381: minors whose therapy is paused because they have no guardian, counsellors' requests for
 // a safeguarding exception, and every exception granted (the audit trail). Every administrator sees
@@ -102,8 +105,8 @@ function goToPage(url) {
 <template>
     <Head title="Safeguarding exceptions" />
 
-    <AuthenticatedLayout>
-        <div class="my-8 w-full sm:w-[90%] md:w-[75%] mx-auto space-y-8 px-4 sm:px-0">
+    <div>
+        <div class="my-8 w-full max-w-6xl mx-auto space-y-8 px-4">
             <div>
                 <div class="text-2xl font-bold text-gray-900">Safeguarding exceptions</div>
                 <div class="w-16 h-1 bg-blue-600 mt-2"></div>
@@ -277,7 +280,7 @@ function goToPage(url) {
                 <Pagination :meta="exceptions.meta" @navigate="goToPage" />
             </section>
         </div>
-    </AuthenticatedLayout>
+    </div>
 
     <Alert :show="alertData.show" :type="alertData.type" :message="alertData.message" :time="alertData.time" @close="clearAlertData" />
 </template>

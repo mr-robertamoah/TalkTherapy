@@ -29,7 +29,9 @@ class OrganizationRequestResource extends JsonResource
             'type' => $this->type,
             'status' => $this->status,
             'from' => $this->partyResource($this->from_type, $this->from),
-            'to' => $this->partyResource($this->to_type, $this->to),
+            // SCRUM-387 security re-check: an organisation verification is addressed to the first
+            // super administrator, but any admin answers it -- never send that person's profile.
+            'to' => $this->type === RequestTypeEnum::organization->value ? null : $this->partyResource($this->to_type, $this->to),
             // SCRUM-146 (TT-6.4c): `for` is an OrganizationCounsellor affiliation for the new
             // compensation-change type, not the Organization directly -- resolve through it so
             // this field stays a stable Organization regardless of which type is being rendered.

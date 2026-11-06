@@ -49,6 +49,11 @@ trait TherapyTrait
 
     public function getSessionsHeldAttribute()
     {
+        // SCRUM-386: a list loads this as a count (PreloadGroupTherapyListAction).
+        if (isset($this->attributes['sessions_held_count'])) {
+            return (int) $this->attributes['sessions_held_count'];
+        }
+
         return $this->sessionsHeldCache ??= $this->sessions()->whereHeld()->count();
     }
 

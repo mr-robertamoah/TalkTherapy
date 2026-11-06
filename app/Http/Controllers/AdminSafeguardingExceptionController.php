@@ -5,8 +5,10 @@ namespace App\Http\Controllers;
 use App\Actions\Guardianship\FindMinorsWithoutActiveGuardianAction;
 use App\Actions\SafeguardingException\EndSafeguardingExceptionAction;
 use App\Actions\SafeguardingException\EnsureCanManageSafeguardingExceptionAction;
+use App\Actions\SafeguardingException\FindNoLongerNeededSafeguardingRequestsAction;
 use App\Actions\SafeguardingException\GrantSafeguardingExceptionAction;
 use App\Actions\User\AnonymiseClosedAccountAction;
+use App\Http\Middleware\EnsureUserIsAdmin;
 use App\Http\Resources\AdminSafeguardingExceptionResource;
 use App\Models\Counsellor;
 use App\Models\GroupTherapy;
@@ -31,7 +33,7 @@ class AdminSafeguardingExceptionController extends Controller
     public function index(Request $request)
     {
         if ($request->user()?->isNotAdmin() ?? true) {
-            return Redirect::route('home')->with('message', 'You are not authorized to visit this page.');
+            return Redirect::route('home')->with('message', EnsureUserIsAdmin::MESSAGE);
         }
 
         $exceptions = SafeguardingException::query()
@@ -48,10 +50,9 @@ class AdminSafeguardingExceptionController extends Controller
             ->pendingSafeguardingException()
             ->with(['for', 'from' => fn ($morph) => $morph->morphWith([Counsellor::class => ['user']])])
             ->latest('id')
-            ->get()
-            ->groupBy(fn (ModelsRequest $request) => (int) $request->safeguardingWardId());
+            ->get();
 
-        $paused = $this->pausedMinors($request, $manage, $pending);
+        $paused = $this->pausedMinors($request, $manage, $pending->groupBy(fn (ModelsRequest $request) => (int) $request->safeguardingWardId()));
 
         return Inertia::render('Admin/SafeguardingExceptions', [
             'exceptions' => AdminSafeguardingExceptionResource::collection($exceptions)->response()->getData(true),
@@ -103,12 +104,7 @@ class AdminSafeguardingExceptionController extends Controller
     private function pausedMinors(Request $request, EnsureCanManageSafeguardingExceptionAction $manage, Collection $pending): LengthAwarePaginator
     {
         $admin = $request->user();
-        $found = FindMinorsWithoutActiveGuardianAction::new()->execute();
-        $rows = $found[FindMinorsWithoutActiveGuardianAction::NO_DOB]
-            ->concat($found[FindMinorsWithoutActiveGuardianAction::KNOWN_MINOR])
-            ->filter(fn (array $row) => $row['openTherapies'] || $row['groupMemberships'])
-            ->sortBy('id')
-            ->values();
+        $rows = FindMinorsWithoutActiveGuardianAction::new()->withOpenTherapy();
 
         $perPage = self::PAUSED_PER_PAGE;
         $page = LengthAwarePaginator::resolveCurrentPage('pausedPage');
@@ -158,56 +154,27 @@ class AdminSafeguardingExceptionController extends Controller
     // administrator rejects them here. The same masking as "Paused now" for an involved administrator.
     private function noLongerNeeded(User $admin, EnsureCanManageSafeguardingExceptionAction $manage, Collection $pending): array
     {
-        $wards = User::withTrashed()->whereIn('id', $pending->keys())->get()->keyBy('id');
         $rows = [];
 
-        foreach ($pending->sortKeys() as $wardId => $requests) {
-            $ward = $wards->get($wardId);
-            $why = $this->whyNoLongerNeeded($ward);
+        foreach (FindNoLongerNeededSafeguardingRequestsAction::new()->execute($pending) as ['request' => $request, 'ward' => $ward, 'why' => $why]) {
+            if ($manage->involves($admin, $ward, $request)) {
+                $rows[] = ['key' => 'involved-'.count($rows), 'involved' => true, 'canManage' => false];
 
-            if (is_null($why)) {
                 continue;
             }
 
-            foreach ($requests as $request) {
-                if ($manage->involves($admin, $ward, $request)) {
-                    $rows[] = ['key' => 'involved-'.count($rows), 'involved' => true, 'canManage' => false];
-
-                    continue;
-                }
-
-                $rows[] = [
-                    'key' => "request-{$request->id}",
-                    'involved' => false,
-                    'client' => $ward && ! $ward->trashed() ? $ward->name : AnonymiseClosedAccountAction::CLOSED_ACCOUNT_NAME,
-                    'why' => $why,
-                    // Rejecting goes through requests.respond -- also when the minor's row is gone.
-                    'canManage' => $manage->allowsClosing($admin, $ward),
-                    ...$this->requestRow($request),
-                ];
-            }
+            $rows[] = [
+                'key' => "request-{$request->id}",
+                'involved' => false,
+                'client' => $ward && ! $ward->trashed() ? $ward->name : AnonymiseClosedAccountAction::CLOSED_ACCOUNT_NAME,
+                'why' => $why,
+                // Rejecting goes through requests.respond -- also when the minor's row is gone.
+                'canManage' => $manage->allowsClosing($admin, $ward),
+                ...$this->requestRow($request),
+            ];
         }
 
         return $rows;
-    }
-
-    // Null while the minor is still paused (their request belongs under "Paused now").
-    private function whyNoLongerNeeded(?User $ward): ?string
-    {
-        if (! $ward || $ward->trashed()) {
-            return 'The account was closed.';
-        }
-
-        if ($ward->isPausedForMissingGuardian()) {
-            return null;
-        }
-
-        return match (true) {
-            $ward->isAdult() => 'They have turned 18.',
-            $ward->hasActiveGuardian() => 'They have a guardian now.',
-            $ward->hasActiveSafeguardingException() => 'A safeguarding exception is in force.',
-            default => 'They are no longer paused.',
-        };
     }
 
     private function requestRow(ModelsRequest $request): array

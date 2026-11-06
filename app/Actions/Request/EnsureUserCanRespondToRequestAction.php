@@ -10,16 +10,19 @@ use App\Exceptions\CannotRespondToRequestException;
 use App\Models\Organization;
 use App\Models\Request as ModelsRequest;
 use App\Models\User;
+use App\Support\AdminRequestQueue;
 
 class EnsureUserCanRespondToRequestAction extends Action
 {
+    public const NOT_ALLOWED = 'You are not allowed to respond to this request.';
+
     public function execute(RequestResponseDTO $requestResponseDTO)
     {
         if ($this->userCanRespond($requestResponseDTO->user, $requestResponseDTO->request)) {
             return;
         }
 
-        throw new CannotRespondToRequestException('You are not allowed to respond to this request.', 422);
+        throw new CannotRespondToRequestException(self::NOT_ALLOWED, 422);
     }
 
     // TT-4.10f/SCRUM-295: extracted so RequestResource can expose the SAME authorization answer
@@ -37,7 +40,7 @@ class EnsureUserCanRespondToRequestAction extends Action
     public function userCanRespond(User $user, ModelsRequest $request, ?EnsureCanManageSafeguardingExceptionAction $manage = null): bool
     {
         // SCRUM-381 (the user's decision): only the super administrator answers a counsellor's
-        // request for a safeguarding exception -- never another administrator (the generic isAdmin()
+        // request for a safeguarding exception -- never another administrator (the admin queue
         // branch below), never the counsellor who sent it, and (SCRUM-382 review) never one who
         // counsels the minor: the same rule as granting one (EnsureCanManageSafeguardingExceptionAction).
         if ($request->type === RequestTypeEnum::safeguardingException->value) {
@@ -49,41 +52,55 @@ class EnsureUserCanRespondToRequestAction extends Action
                 && ! $manage->sentBy($request, $user);
         }
 
+        // SCRUM-387 (security review): an administrator answers only what waits on an
+        // administrator (App\Support\AdminRequestQueue) -- never, as before, any request at all on
+        // someone's behalf (a guardianship, a group membership, an organisation flow, a schedule
+        // proposal...). Every other type needs its real party, administrator or not.
+        if ($user->isAdmin() && $this->adminMayAnswer($user, $request)) {
+            return true;
+        }
+
         $respondent = $request->to;
         // TT-4.10f/SCRUM-295 security-review finding: a dobChange request's `to` is fixed, at
         // creation time, to whichever ONE guardian happened to be picked -- an identity match
         // against it alone (the generic branch below) would let a guardian who has since had
         // their guardianship REVOKED keep responding forever, since nothing about that generic
         // check re-verifies the relationship still exists. dobChange is therefore authorized
-        // entirely by a live `isGuardianOf` re-check (plus admin) instead of participating in the
-        // generic identity-match branch at all -- this also covers a ward with more than one
-        // active guardian (mirrors GrantVideoConsentAction's identical "any one guardian, no
-        // unanimity, checked live" precedent), not just the one `to` happens to name.
+        // entirely by a live `isGuardianOf` re-check instead of participating in the generic
+        // identity-match branch at all -- this also covers a ward with more than one active
+        // guardian (mirrors GrantVideoConsentAction's identical "any one guardian, no unanimity,
+        // checked live" precedent), not just the one `to` happens to name.
         $isDobChange = $request->type === RequestTypeEnum::dobChange->value;
 
-        // TT-4.11d/SCRUM-305 review finding: an admin who is ALSO the request's own submitter
-        // must not be able to approve their own ageVerification submission -- the entire point of
-        // this type is an INDEPENDENT check on a user's self-attestation, unlike dobChange's
-        // "any admin" fallback (a deliberate stand-in for a missing guardian, not meant to gate a
-        // self-check the same way). Scoped to this type only -- the identical, pre-existing
-        // self-response possibility for dobChange/refund (an admin who is also the requester) is
-        // out of this ticket's scope; see decision log.
-        $isSelfAgeVerification = $request->type === RequestTypeEnum::ageVerification->value
-            && $request->for instanceof User
-            && $request->for->is($user);
-
-        return ($user->isAdmin() && ! $isSelfAgeVerification) ||
-            ($isDobChange && $request->for instanceof User && $user->isGuardianOf($request->for)) ||
+        return ($isDobChange && $request->for instanceof User && $user->isGuardianOf($request->for)) ||
             (! $isDobChange && $respondent && $respondent->is($user)) ||
             // TT-7.7a/SCRUM-249 (security-engineer finding): `to` is null for a refund request
-            // (RequestTypeEnum::refund's own deliberate design -- any admin may respond, matched
-            // above) -- guarded here too so a NON-admin caller against a null-`to` request throws
-            // the intended exception below instead of an uncaught "call to a member function on
-            // null" error.
+            // (any admin may respond, adminMayAnswer() above) -- guarded here too so a NON-admin
+            // caller against a null-`to` request is refused instead of an uncaught "call to a
+            // member function on null" error.
             (! $isDobChange && $respondent && $respondent->is($user->counsellor)) ||
             // SCRUM-120: an organizationCounsellorApplication request is addressed `to` the
             // Organization itself (it has no single admin), not a specific User/Counsellor --
             // any of that org's admins may respond on its behalf.
             (! $isDobChange && $respondent instanceof Organization && $respondent->isAdministeredBy($user));
+    }
+
+    // The admin queue's types, as the queue lists them: a dob change only with no guardian (`to`),
+    // and (TT-4.11d/SCRUM-305 review finding) never an administrator's own request, e.g. their own age verification -- the
+    // whole point of that type is an INDEPENDENT check on a user's self-attestation. The safeguarding
+    // exception is decided above, by its own rule.
+    private function adminMayAnswer(User $user, ModelsRequest $request): bool
+    {
+        if (! AdminRequestQueue::includes($request->type)) {
+            return false;
+        }
+
+        if (AdminRequestQueue::unaddressedOnly([$request->type]) && ! is_null($request->to_id)) {
+            return false;
+        }
+
+        // SCRUM-387 security re-check: never their own -- not just an age verification, but a
+        // counsellor verification, refund or dob change they raised or that is about them.
+        return ! $request->isOwnAgeVerificationOf($user) && ! $request->isOwnRequestOf($user);
     }
 }

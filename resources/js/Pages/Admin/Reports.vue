@@ -1,8 +1,11 @@
 <script setup>
 import { Head, Link, router } from '@inertiajs/vue3'
-import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue'
+import AdminLayout from '@/Layouts/AdminLayout.vue'
 import Pagination from '@/Components/Pagination.vue'
 import ReportStatusBadge from '@/Components/ReportStatusBadge.vue'
+
+// SCRUM-387: the admin area's shell (sidebar inside AuthenticatedLayout), kept across admin pages.
+defineOptions({ layout: AdminLayout })
 
 // SCRUM-340: the complaint-review queue. Active reports (open, then under review, oldest first) by
 // default; each status can be listed on its own. Reviewing happens on the per-report page.
@@ -34,8 +37,8 @@ function formatDate(value) {
 <template>
     <Head title="Reports" />
 
-    <AuthenticatedLayout>
-        <div class="my-8 w-full sm:w-[90%] md:w-[75%] mx-auto space-y-8 px-4 sm:px-0">
+    <div>
+        <div class="my-8 w-full max-w-6xl mx-auto space-y-8 px-4">
             <div>
                 <div class="text-2xl font-bold text-gray-900">Reports</div>
                 <div class="w-16 h-1 bg-blue-600 mt-2"></div>
@@ -115,5 +118,5 @@ function formatDate(value) {
                 <Pagination :meta="reports.meta" @navigate="goToPage" />
             </div>
         </div>
-    </AuthenticatedLayout>
+    </div>
 </template>

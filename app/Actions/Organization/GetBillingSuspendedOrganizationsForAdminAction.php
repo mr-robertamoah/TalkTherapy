@@ -22,10 +22,14 @@ class GetBillingSuspendedOrganizationsForAdminAction extends Action
         // can't leak suspension reasons/invoice amounts with zero authorization.
         EnsureCanManageOrganizationBillingSuspensionAction::new()->execute($user);
 
+        // SCRUM-387: and organisations with a failed invoice that aren't suspended (the overview's
+        // count is both) -- suspended ones first, most recent first, then the rest.
         return Organization::query()
-            ->whereNotNull('billing_suspended_at')
+            ->needsBillingAttention()
             ->with(['latestFailedInvoice', 'paymentInstrument'])
+            ->orderByRaw('billing_suspended_at is null')
             ->orderByDesc('billing_suspended_at')
+            ->latest('id')
             ->paginate(PaginationEnum::preferencesPagination->value);
     }
 }

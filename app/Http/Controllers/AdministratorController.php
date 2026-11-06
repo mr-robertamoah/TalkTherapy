@@ -2,11 +2,15 @@
 
 namespace App\Http\Controllers;
 
+use App\Actions\Admin\GetAdminToDoCountsAction;
+use App\Actions\Admin\GetPlatformStatsAction;
 use App\DTOs\DeleteCounsellorDTO;
 use App\DTOs\GetCounsellorStatsForAdminDTO;
 use App\DTOs\GetModelsForAdminDTO;
 use App\DTOs\GetVerificationRequestsDTO;
 use App\DTOs\UpdateUserDTO;
+use App\Enums\RequestStatusEnum;
+use App\Http\Middleware\EnsureUserIsAdmin;
 use App\Http\Requests\AdminUpdateUserRequest;
 use App\Http\Resources\AdminCounsellorResource;
 use App\Http\Resources\AdministratorResource;
@@ -16,23 +20,90 @@ use App\Models\User;
 use App\Services\CounsellorService;
 use App\Services\RequestService;
 use App\Services\UserService;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Redirect;
+use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Throwable;
 
 class AdministratorController extends Controller
 {
+    // SCRUM-387 (+ SCRUM-49): the admin area's overview -- what is waiting on the administrators
+    // and the platform figures. The `admin` route middleware refuses a non-admin first; each page
+    // checks again here.
     public function show(Request $request)
     {
-        $user = $request->user();
-        if (is_null($user) || $user->isNotAdmin()) {
-            return Redirect::route('home')->with('message', 'You are not authorized to visit /administrator page.');
+        if ($redirect = $this->refuseNonAdmin($request)) {
+            return $redirect;
         }
 
-        return Inertia::render('Admin', [
+        $user = $request->user();
+
+        return Inertia::render('Admin/Overview', [
             'administrator' => new AdministratorResource($user->administrator),
+            'toDo' => GetAdminToDoCountsAction::new()->execute($user),
+            'stats' => GetPlatformStatsAction::new()->execute($user),
         ]);
+    }
+
+    // SCRUM-387: the old /administrator tabs, each a page now. Each hosts the component the tab did,
+    // which keeps fetching its own list (routes/api.php); what the page itself filters by is in the
+    // query string.
+    public function users(Request $request)
+    {
+        return $this->refuseNonAdmin($request) ?? Inertia::render('Admin/People/Users');
+    }
+
+    public function counsellors(Request $request)
+    {
+        return $this->refuseNonAdmin($request) ?? Inertia::render('Admin/People/Counsellors', [
+            'search' => Str::limit(trim((string) $request->query('search')), 100, ''),
+        ]);
+    }
+
+    public function counsellorVerification(Request $request)
+    {
+        if ($redirect = $this->refuseNonAdmin($request)) {
+            return $redirect;
+        }
+
+        $status = (string) $request->query('status', RequestStatusEnum::pending->value);
+
+        return Inertia::render('Admin/People/CounsellorVerification', [
+            // 'all', or one of the statuses; anything else lists the pending ones.
+            'status' => $status === 'all' || RequestStatusEnum::tryFrom($status) ? $status : RequestStatusEnum::pending->value,
+            'statuses' => RequestStatusEnum::values(),
+        ]);
+    }
+
+    public function testimonials(Request $request)
+    {
+        return $this->refuseNonAdmin($request) ?? Inertia::render('Admin/Content/Testimonials');
+    }
+
+    public function howTos(Request $request)
+    {
+        return $this->refuseNonAdmin($request) ?? Inertia::render('Admin/Content/HowTos');
+    }
+
+    // SCRUM-387: the sidebar's badges, as JSON (admin.badges) -- only the counts, never a page's own
+    // queries. The `admin` middleware refuses a non-admin; badges() is empty for one anyway.
+    public function badges(Request $request): JsonResponse
+    {
+        return response()->json(['badges' => GetAdminToDoCountsAction::new()->badges($request->user())]);
+    }
+
+    private function refuseNonAdmin(Request $request): ?RedirectResponse
+    {
+        $user = $request->user();
+
+        if (is_null($user) || $user->isNotAdmin()) {
+            return Redirect::route('home')->with('message', EnsureUserIsAdmin::MESSAGE);
+        }
+
+        return null;
     }
 
     public function getCounsellors(Request $request)

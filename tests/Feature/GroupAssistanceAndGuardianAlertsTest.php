@@ -1,5 +1,6 @@
 <?php
 
+use App\Actions\Request\EnsureUserCanRespondToRequestAction;
 use App\Actions\Request\RespondToGroupTherapyAssistanceRequestAction;
 use App\Enums\RequestTypeEnum;
 use App\Models\Administrator;
@@ -79,10 +80,11 @@ test('only the invited, verified counsellor can accept -- not an admin for them,
     $group = GroupTherapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => $creator->id, 'max_counsellors' => 5]);
     $accept = fn (User $as, AppRequest $invite) => $this->actingAs($as)->postJson(route('requests.respond', ['requestId' => $invite->id]), ['response' => 'accepted']);
 
-    // An admin can't accept on the counsellor's behalf.
+    // An admin can't accept on the counsellor's behalf -- refused before the invite's own checks
+    // (SCRUM-387: an admin answers only the admin queue's types).
     $counsellor = aCounsellorFor358();
     $admin = User::factory()->has(Administrator::factory())->create();
-    $accept($admin, aGroupInviteFor358($group, $counsellor))->assertStatus(422)->assertJsonPath('error', RespondToGroupTherapyAssistanceRequestAction::NOT_ALLOWED);
+    $accept($admin, aGroupInviteFor358($group, $counsellor))->assertStatus(422)->assertJsonPath('error', EnsureUserCanRespondToRequestAction::NOT_ALLOWED);
 
     // The group's own client inviting their own counsellor profile would gain moderation powers.
     $ownProfile = Counsellor::factory()->create(['user_id' => $creator->id]);
