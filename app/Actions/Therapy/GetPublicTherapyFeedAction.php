@@ -5,6 +5,7 @@ namespace App\Actions\Therapy;
 use App\Actions\Action;
 use App\Actions\GroupTherapy\PreloadGroupTherapyListAction;
 use App\Enums\PaginationEnum;
+use App\Enums\TherapyStatusEnum;
 use App\Models\GroupTherapy;
 use App\Models\Therapy;
 use App\Models\User;
@@ -21,13 +22,20 @@ use Illuminate\Support\Facades\DB;
 // same filters as the Home rows (TherapyService/GroupTherapyService public queries).
 class GetPublicTherapyFeedAction extends Action
 {
-    public function execute(?User $viewer, int $seed, ?int $perPage = null): LengthAwarePaginator
+    // $needsCounsellor (SCRUM-391, the counsellor dashboard's "therapies you could help"): only a
+    // therapy with no counsellor yet and a group with a free counsellor place, neither ended.
+    public function execute(?User $viewer, int $seed, ?int $perPage = null, bool $needsCounsellor = false): LengthAwarePaginator
     {
         $perPage ??= PaginationEnum::preferencesPagination->value;
         $match = PreferenceMatch::forTherapiesViewedBy($viewer);
 
-        $union = $this->ranked(TherapyService::new()->publicTherapiesQuery($viewer), 'individual', $match, $seed)
-            ->unionAll($this->ranked(GroupTherapyService::new()->publicGroupsQuery($viewer), 'group', $match, $seed));
+        $therapies = TherapyService::new()->publicTherapiesQuery($viewer)
+            ->when($needsCounsellor, fn ($query) => $query->whereHasNoCounsellor()->where('status', '!=', TherapyStatusEnum::ended->value));
+        $groups = GroupTherapyService::new()->publicGroupsQuery($viewer)
+            ->when($needsCounsellor, fn ($query) => $query->whereCanTakeCounsellor());
+
+        $union = $this->ranked($therapies, 'individual', $match, $seed)
+            ->unionAll($this->ranked($groups, 'group', $match, $seed));
 
         $page = DB::query()->fromSub($union, 'feed')
             ->orderByDesc(PreferenceRanking::COLUMN)

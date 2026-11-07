@@ -35,6 +35,8 @@ class EnsureUserCanRespondToRequestAction extends Action
     // layer (RequestResource's `isRespondent`, RequestService::getRequests()'s listing query,
     // any future caller) must call this method rather than reimplement its own copy of this
     // logic, however small the copy looks at the time.
+    // (Request::scopeAwaitingCounsellor, the counsellor dashboard's narrower view by request type,
+    // lists a subset -- update its types when a counsellor gains a new request type to answer.)
     // SCRUM-384: $manage lets a list share one remembering() instance (RequestResource), so the
     // super administrator's "do they counsel this minor" is read once per minor, not per row.
     public function userCanRespond(User $user, ModelsRequest $request, ?EnsureCanManageSafeguardingExceptionAction $manage = null): bool

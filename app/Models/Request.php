@@ -252,6 +252,30 @@ class Request extends Model
         });
     }
 
+    // SCRUM-391: the pending requests a counsellor answers -- addressed to their counsellor profile
+    // (a therapy or group invitation, a discussion invitation, a schedule proposal), or to their
+    // account about a group their counsellor profile created (a membership request, a counsellor's
+    // offer to help). Matches on `to`, as EnsureUserCanRespondToRequestAction does. A dashboard view,
+    // not the authority: a new request type a counsellor answers needs adding here too.
+    public function scopeAwaitingCounsellor(Builder $query, Counsellor $counsellor): Builder
+    {
+        return $query->wherePending()->where(fn (Builder $query) => $query
+            ->where(fn (Builder $query) => $query
+                ->whereTo($counsellor)
+                ->whereIn('type', [
+                    RequestTypeEnum::therapy->value,
+                    RequestTypeEnum::groupTherapy->value,
+                    RequestTypeEnum::discussion->value,
+                    RequestTypeEnum::sessionScheduleProposal->value,
+                ]))
+            ->orWhere(fn (Builder $query) => $query
+                ->where('to_type', User::class)
+                ->where('to_id', $counsellor->user_id)
+                ->whereIn('type', [RequestTypeEnum::groupTherapyMembership->value, RequestTypeEnum::groupTherapy->value])
+                ->where('for_type', GroupTherapy::class)
+                ->whereIn('for_id', GroupTherapy::query()->select('id')->where('addedby_type', Counsellor::class)->where('addedby_id', $counsellor->id))));
+    }
+
     // SCRUM-387: $user's own age verification, which another administrator must review.
     public function isOwnAgeVerificationOf(User $user): bool
     {

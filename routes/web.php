@@ -11,6 +11,7 @@ use App\Http\Controllers\AdminRequestController;
 use App\Http\Controllers\AdminSafeguardingExceptionController;
 use App\Http\Controllers\AdminSuspensionController;
 use App\Http\Controllers\CounsellorController;
+use App\Http\Controllers\CounsellorDashboardController;
 use App\Http\Controllers\CounsellorPricingController;
 use App\Http\Controllers\DiscussionController;
 use App\Http\Controllers\GroupTherapyController;
@@ -85,6 +86,8 @@ Route::get('/counsellor/{counsellorId}/verify-email/{hash}', [CounsellorControll
 // before the /counsellor/{counsellorId} route below, or "calendar" gets swallowed as a
 // counsellorId route parameter instead (Laravel matches routes in registration order).
 Route::middleware('auth')->get('/counsellor/calendar', [SessionController::class, 'calendar'])->name('counsellor.calendar');
+// SCRUM-391: before /counsellor/{counsellorId}, like the calendar.
+Route::middleware('auth')->get('/counsellor/dashboard', CounsellorDashboardController::class)->name('counsellor.dashboard');
 Route::get('/counsellor/{counsellorId}', [CounsellorController::class, 'show'])->name('counsellor.show');
 
 Route::get('/posts/{postId}', [PostController::class, 'getPost'])->name('posts.get');
