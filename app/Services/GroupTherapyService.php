@@ -34,7 +34,6 @@ use App\DTOs\GroupTherapyDTO;
 use App\DTOs\GuardianAlertDTO;
 use App\DTOs\JoinGroupTherapyDTO;
 use App\DTOs\TherapyAssistanceRequestDTO;
-use App\Enums\CounsellorGroupTherapyStateEnum;
 use App\Enums\PaginationEnum;
 use App\Enums\StarTypeEnum;
 use App\Exceptions\TherapyException;
@@ -291,7 +290,7 @@ class GroupTherapyService extends Service
         // PreloadGroupTherapyListAction -- see listPage().
         $seed = PreferenceRanking::seed($seed);
 
-        $query = $this->publicGroupsQuery($user);
+        $query = GroupTherapy::query()->publicForOutsider($user);
 
         PreferenceRanking::apply($query, PreferenceMatch::forTherapiesViewedBy($user), $seed);
 
@@ -402,23 +401,6 @@ class GroupTherapyService extends Service
     }
 
     // SCRUM-386: one page of a GroupTherapyMiniResource list, with what each row reads preloaded.
-    // Public groups $user isn't part of: not one they created (as a user or through their counsellor
-    // profile), are a member of, or counsel. Each narrowing a grouped AND. The Home row and the Public
-    // Therapies page (GetPublicTherapyFeedAction).
-    public function publicGroupsQuery(?User $user)
-    {
-        return GroupTherapy::query()
-            ->wherePublic()
-            ->when($user, fn ($query) => $query
-                ->whereNot(fn ($query) => $query->where('addedby_type', User::class)->where('addedby_id', $user->id))
-                ->whereDoesntHave('users', fn ($query) => $query->whereKey($user->id)))
-            ->when($user?->counsellor, fn ($query) => $query
-                ->whereNot(fn ($query) => $query->where('addedby_type', Counsellor::class)->where('addedby_id', $user->counsellor->id))
-                ->whereDoesntHave('counsellors', fn ($query) => $query
-                    ->whereKey($user->counsellor->id)
-                    ->where('counsellor_group_therapy.state', CounsellorGroupTherapyStateEnum::active->value)));
-    }
-
     private function listPage($query, array $appends = [])
     {
         return PreloadGroupTherapyListAction::new()->execute(

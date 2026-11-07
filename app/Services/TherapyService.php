@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Actions\Admin\RecordAdminContentReadAction;
+use App\Actions\Counsellor\EnsureCounsellorOfferCapAction;
 use App\Actions\CounsellorVerification\EnsureCounsellorMayTakeOnClientsAction;
 use App\Actions\GroupTherapy\EnsureGroupTherapyCanBecomeAnonymousAction;
 use App\Actions\Guardianship\EnsureMinorHasActiveGuardianAction;
@@ -254,6 +255,8 @@ class TherapyService extends Service
 
         EnsureThereIsNoPendingRequestForCounsellorAction::new()->execute($assistTherapyDTO);
 
+        EnsureCounsellorOfferCapAction::new()->execute($assistTherapyDTO->user->counsellor);
+
         SendTherapyAssistanceRequestAction::new()->execute(
             TherapyAssistanceRequestDTO::new()->fromArray([
                 'from' => $assistTherapyDTO->user->counsellor,
@@ -271,7 +274,7 @@ class TherapyService extends Service
     {
         $seed = PreferenceRanking::seed($seed);
 
-        $query = $this->publicTherapiesQuery($user);
+        $query = Therapy::query()->publicForOutsider($user);
 
         PreferenceRanking::apply($query, PreferenceMatch::forTherapiesViewedBy($user), $seed);
 
@@ -280,20 +283,6 @@ class TherapyService extends Service
         );
 
         return ResolveTherapyCardStateAction::new()->execute($page, $user);
-    }
-
-    // Public therapies $user isn't part of: public only, not their own, not one they counsel. Each
-    // narrowing a grouped AND. The Home row and the Public Therapies page (GetPublicTherapyFeedAction).
-    public function publicTherapiesQuery(?User $user)
-    {
-        return Therapy::query()
-            ->wherePublic()
-            ->when($user, fn ($query) => $query->whereNot(fn ($query) => $query
-                ->where('addedby_type', User::class)
-                ->where('addedby_id', $user->id)))
-            ->when($user?->counsellor, fn ($query) => $query->where(fn ($query) => $query
-                ->whereNull('counsellor_id')
-                ->orWhere('counsellor_id', '!=', $user->counsellor->id)));
     }
 
     public function getCounsellorTherapies(?User $user)

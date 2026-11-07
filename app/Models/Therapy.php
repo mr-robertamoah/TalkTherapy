@@ -125,6 +125,21 @@ class Therapy extends Model
         });
     }
 
+    // SCRUM-392 (from TherapyService): public therapies $user isn't part of -- not their own, not one
+    // they counsel. NOT an access check (it hides a viewer's own therapy from them); for the public
+    // lists only. Grouped as a whole, so a caller's orWhere can't reach past it to private rows.
+    public function scopePublicForOutsider($query, ?User $user)
+    {
+        return $query->where(fn ($query) => $query
+            ->wherePublic()
+            ->when($user, fn ($query) => $query->whereNot(fn ($query) => $query
+                ->where('addedby_type', User::class)
+                ->where('addedby_id', $user->id)))
+            ->when($user?->counsellor, fn ($query) => $query->where(fn ($query) => $query
+                ->whereNull('counsellor_id')
+                ->orWhere('counsellor_id', '!=', $user->counsellor->id))));
+    }
+
     public function scopeWhereHasNoCounsellor($query)
     {
         return $query

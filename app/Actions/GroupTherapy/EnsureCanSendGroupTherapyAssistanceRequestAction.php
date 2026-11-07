@@ -3,10 +3,10 @@
 namespace App\Actions\GroupTherapy;
 
 use App\Actions\Action;
+use App\Actions\Counsellor\EnsureCounsellorOfferCapAction;
 use App\Actions\CounsellorVerification\EnsureCounsellorMayTakeOnClientsAction;
 use App\Actions\Guardianship\EnsureMinorHasActiveGuardianAction;
 use App\Actions\Suspension\EnsureCanActAsCounsellorAction;
-use App\Enums\RequestTypeEnum;
 use App\Enums\TherapyStatusEnum;
 use App\Exceptions\TherapyException;
 use App\Models\Counsellor;
@@ -44,7 +44,7 @@ class EnsureCanSendGroupTherapyAssistanceRequestAction extends Action
             throw TherapyException::notAllowed();
         }
 
-        if ($group->creatorUser()?->is($user)) {
+        if ($group->isCreatedBy($user)) {
             $this->ensureCanInvite($user, $group, $counsellors);
 
             return 'invite';
@@ -72,6 +72,8 @@ class EnsureCanSendGroupTherapyAssistanceRequestAction extends Action
             throw new TherapyException(self::ALREADY_PENDING, 422);
         }
 
+        EnsureCounsellorOfferCapAction::new()->execute($counsellor);
+
         return 'offer';
     }
 
@@ -93,7 +95,7 @@ class EnsureCanSendGroupTherapyAssistanceRequestAction extends Action
             EnsureCounsellorMayTakeOnClientsAction::new()->execute($counsellor, asTarget: true);
 
             if ($group->isCounsellor($counsellor) || ! $counsellor->user || $group->hasEverBeenMember($counsellor->user)
-                || $group->creatorUser()?->is($counsellor->user)) {
+                || $group->isCreatedBy($counsellor->user)) {
                 throw new TherapyException(self::COUNSELLOR_UNAVAILABLE, 422);
             }
 
@@ -106,10 +108,6 @@ class EnsureCanSendGroupTherapyAssistanceRequestAction extends Action
     // A pending group assistance request for $group between it and $counsellor, either direction.
     private function pendingBetween(GroupTherapy $group, Counsellor $counsellor)
     {
-        return Request::query()
-            ->wherePending()
-            ->whereFor($group)
-            ->where('type', RequestTypeEnum::groupTherapy->value)
-            ->where(fn ($query) => $query->whereTo($counsellor)->orWhere(fn ($query) => $query->whereFrom($counsellor)));
+        return Request::query()->pendingGroupAssistance($group)->whereToOrFrom($counsellor);
     }
 }

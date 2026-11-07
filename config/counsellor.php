@@ -25,4 +25,8 @@ return [
     // through their to-do count). The largest is also when the counsellor may re-verify early.
     // Kept as written (e.g. "30,7"); App\Support\CounsellorVerification::reminderDays() parses it.
     'verification_reminder_days' => env('COUNSELLOR_VERIFICATION_REMINDER_DAYS', '30,7'),
+
+    // SCRUM-392: how many offers to help (therapies and groups together) a counsellor may send in any
+    // 24 hours, whatever became of them -- on top of the per-minute throttle on the routes.
+    'daily_offer_cap' => (int) env('COUNSELLOR_DAILY_OFFER_CAP', 5),
 ];

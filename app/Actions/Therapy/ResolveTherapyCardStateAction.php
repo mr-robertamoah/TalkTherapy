@@ -47,10 +47,10 @@ class ResolveTherapyCardStateAction extends Action
         // "type:id" => 'offer' (from them) or 'invite' (to them).
         $assistance = $counsellor
             ? Request::query()->wherePending()
-                ->whereIn('type', [RequestTypeEnum::therapy->value, RequestTypeEnum::groupTherapy->value])
+                ->whereIn('type', Request::ASSISTANCE_TYPES)
                 ->where(fn ($query) => $models->groupBy(fn ($row) => $row::class)->each(fn ($group, $type) => $query
                     ->orWhere(fn ($query) => $query->where('for_type', $type)->whereIn('for_id', $group->pluck('id')))))
-                ->where(fn ($query) => $query->whereTo($counsellor)->orWhere(fn ($query) => $query->whereFrom($counsellor)))
+                ->whereToOrFrom($counsellor)
                 ->get(['type', 'for_type', 'for_id', 'from_type', 'from_id', 'to_type', 'to_id'])
                 ->mapWithKeys(fn (Request $request) => [
                     "{$request->for_type}:{$request->for_id}" => $request->isAssistanceOffer() ? 'offer' : 'invite',
@@ -90,7 +90,7 @@ class ResolveTherapyCardStateAction extends Action
     {
         $activeCounsellors = $group->activeCounsellorsForList();
 
-        $isParticipant = $viewer && ($group->creatorUser()?->is($viewer) || $group->users->contains('id', $viewer->id)
+        $isParticipant = $viewer && ($group->isCreatedBy($viewer) || $group->users->contains('id', $viewer->id)
             || ($counsellor && $activeCounsellors->contains('id', $counsellor->id)));
 
         if ($isParticipant) {

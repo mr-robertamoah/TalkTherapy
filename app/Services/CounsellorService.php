@@ -61,9 +61,13 @@ class CounsellorService extends Service
         $updateCounsellorDTO->counsellor->notify(new VerifyCounsellorEmailNotification);
     }
 
-    public function getCounsellors(?User $user, ?string $name)
+    // SCRUM-392: $requestableOnly -- the "find a counsellor" picker lists only counsellors who are
+    // currently verified (they'd be refused when the request is sent anyway); the public directory
+    // still lists everyone not suspended, with their verification shown.
+    public function getCounsellors(?User $user, ?string $name, bool $requestableOnly = false)
     {
         $query = Counsellor::query();
+        $query->when($requestableOnly, fn ($query) => $query->whereCurrentlyVerified());
 
         // whereName() groups its own ORs, so they can't escape the filters below.
         $query->when($name, fn ($query) => $query->whereName($name));

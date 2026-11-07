@@ -60,6 +60,7 @@ class GroupTherapyMiniResource extends JsonResource
             // SCRUM-113/114: on the Home and Public lists -- status and places, the viewer's button
             // (ResolveTherapyCardStateAction) and whether it matched their preferences (never how).
             'status' => $this->status,
+            'statusLabel' => $this->getStatusLabel(),
             'maxUsers' => $this->max_users,
             ...($this->resource->viewerCard ? [
                 'memberCount' => $this->resource->relationLoaded('users') ? $this->users->count() : null,

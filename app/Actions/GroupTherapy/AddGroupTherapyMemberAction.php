@@ -83,7 +83,7 @@ class AddGroupTherapyMemberAction extends Action
             throw new CannotJoinGroupTherapyException(self::ALREADY_MEMBER, 422);
         }
 
-        if ($group->users()->count() >= $group->max_users) {
+        if ($group->isFull()) {
             throw new CannotJoinGroupTherapyException(self::FULL, 422);
         }
 

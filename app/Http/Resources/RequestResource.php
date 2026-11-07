@@ -11,6 +11,7 @@ use App\Models\Discussion;
 use App\Models\GroupTherapy;
 use App\Models\Organization;
 use App\Models\OrganizationCounsellor;
+use App\Models\Request as RequestModel;
 use App\Models\SafeguardingException;
 use App\Models\Therapy;
 use App\Models\Transaction;
@@ -53,7 +54,7 @@ class RequestResource extends JsonResource
         return [
             // SCRUM-389: an assistance request's direction -- 'invite' (to a counsellor) or 'offer'
             // (a counsellor offering to help), so the frontend never works it out from the parties.
-            'direction' => in_array($this->type, [RequestTypeEnum::therapy->value, RequestTypeEnum::groupTherapy->value], true)
+            'direction' => in_array($this->type, RequestModel::ASSISTANCE_TYPES, true)
                 ? ($this->resource->isAssistanceOffer() ? 'offer' : 'invite')
                 : null,
             'id' => $this->id,
@@ -297,7 +298,7 @@ class RequestResource extends JsonResource
         // SCRUM-389 (architect review): a counsellor's offer to help is addressed to the client or the
         // group's creator -- the counsellor who offered has no relationship with them yet, so they get
         // a name only (when not masked above), never dob, gender or country.
-        if (in_array($this->type, [RequestTypeEnum::therapy->value, RequestTypeEnum::groupTherapy->value], true) && ! $this->to?->is($viewer)) {
+        if (in_array($this->type, RequestModel::ASSISTANCE_TYPES, true) && ! $this->to?->is($viewer)) {
             return NarrowUserProjection::of($this->to);
         }
 

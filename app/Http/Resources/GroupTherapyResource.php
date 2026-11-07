@@ -109,7 +109,8 @@ class GroupTherapyResource extends JsonResource
                 ->pluck('id')->values(),
             'about' => $this->about,
             'sessionsHeld' => $this->sessionsHeld,
-            'status' => $this->getStatus(),
+            'status' => $this->status,
+            'statusLabel' => $this->getStatusLabel(),
             'paymentData' => $this->payment_data,
             // SCRUM-263: null for anyone but this group's counsellors and administrators.
             'paymentStatus' => $this->showsPaymentStatusTo($user) ? $this->latestTransaction?->status : null,

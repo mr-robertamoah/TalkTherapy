@@ -113,8 +113,7 @@ class PerformGroupTherapyLinkAction extends Action
             return $group->refresh();
         });
 
-        $creator = $group->addedby instanceof Counsellor ? $group->addedby->user : $group->addedby;
-        $creator?->notify(new GroupTherapyCounsellorLinkUsedNotification($group, $counsellor));
+        $group->creatorUser()?->notify(new GroupTherapyCounsellorLinkUsedNotification($group, $counsellor));
 
         // A minor creator's guardians, by the group's creation-time snapshot (clientIsMinor()).
         if ($group->addedby instanceof User) {

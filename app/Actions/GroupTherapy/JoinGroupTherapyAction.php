@@ -10,7 +10,6 @@ use App\DTOs\JoinGroupTherapyDTO;
 use App\Enums\RequestTypeEnum;
 use App\Events\GroupTherapyMembershipRequestReceivedEvent;
 use App\Exceptions\CannotJoinGroupTherapyException;
-use App\Models\Counsellor;
 use App\Models\GroupTherapy;
 use App\Models\User;
 use App\Notifications\GroupTherapyMemberJoinedGuardianNotification;
@@ -63,10 +62,8 @@ class JoinGroupTherapyAction extends Action
     private function sendMembershipRequest($user, $groupTherapy, bool $anonymous)
     {
         // The group's creator (addedby) may be a User or a Counsellor -- the request always
-        // goes `to` a User, mirroring GroupTherapy::getUsers()'s own addedby-to-User resolution.
-        $creator = $groupTherapy->addedby_type === Counsellor::class
-            ? $groupTherapy->addedby?->user
-            : $groupTherapy->addedby;
+        // goes `to` a User.
+        $creator = $groupTherapy->creatorUser();
 
         $request = CreateRequestAction::new()->execute(
             CreateRequestDTO::new()->fromArray([
