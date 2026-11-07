@@ -30,6 +30,7 @@ use App\Http\Resources\GuardianshipResource;
 use App\Http\Resources\UserMiniResource;
 use App\Models\Guardianship;
 use App\Models\User;
+use App\Support\AdminSearch;
 
 class UserService extends Service
 {
@@ -112,6 +113,8 @@ class UserService extends Service
 
         $query->when($getModelsForAdminDTO->name, fn ($query) => $query->whereContains(['firstName', 'lastName', 'otherNames'], $getModelsForAdminDTO->name));
         $query->when($getModelsForAdminDTO->username, fn ($query) => $query->whereContains('username', $getModelsForAdminDTO->username));
+        // SCRUM-390: names, username and email (all shown on the page).
+        $query->when($getModelsForAdminDTO->search, fn ($query, $term) => AdminSearch::person($query, $term, withEmail: true));
 
         $query->when($getModelsForAdminDTO->age, function ($query) use ($getModelsForAdminDTO) {
             $query->where(function ($query) use ($getModelsForAdminDTO) {
@@ -123,7 +126,7 @@ class UserService extends Service
 
         return AdminUserResource::collection($query->paginate(
             PaginationEnum::preferencesPagination->value
-        ));
+        )->withQueryString());
     }
 
     public function getUsers(GetUsersDTO $getUsersDTO)

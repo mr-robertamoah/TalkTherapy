@@ -20,12 +20,12 @@ use App\Models\User;
 use App\Services\CounsellorService;
 use App\Services\RequestService;
 use App\Services\UserService;
+use App\Support\AdminSearch;
 use App\Support\CounsellorVerification;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Redirect;
-use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Throwable;
 
@@ -54,13 +54,13 @@ class AdministratorController extends Controller
     // query string.
     public function users(Request $request)
     {
-        return $this->refuseNonAdmin($request) ?? Inertia::render('Admin/People/Users');
+        return $this->refuseNonAdmin($request) ?? Inertia::render('Admin/People/Users', ['search' => AdminSearch::term($request) ?? '']);
     }
 
     public function counsellors(Request $request)
     {
         return $this->refuseNonAdmin($request) ?? Inertia::render('Admin/People/Counsellors', [
-            'search' => Str::limit(trim((string) $request->query('search')), 100, ''),
+            'search' => AdminSearch::term($request) ?? '',
         ]);
     }
 
@@ -80,6 +80,8 @@ class AdministratorController extends Controller
             'view' => $request->query('view') === 'renewals' ? 'renewals' : 'requests',
             'renewalWindowDays' => CounsellorVerification::renewalWindowDays(),
             'renewalFilter' => $request->query('filter') === 'ended' ? 'ended' : 'due',
+            // SCRUM-390
+            'search' => AdminSearch::term($request) ?? '',
         ]);
     }
 
@@ -113,22 +115,28 @@ class AdministratorController extends Controller
 
     public function getCounsellors(Request $request)
     {
+        $search = AdminSearch::term($request);
+
         return CounsellorService::new()->geCounsellorsForAdmin(
             GetModelsForAdminDTO::new()->fromArray([
                 'user' => $request->user(),
                 'filterType' => $request->filterType,
                 'filterValue' => $request->filterValue,
+                'search' => $search,
             ])
         );
     }
 
     public function getUsers(Request $request)
     {
+        $search = AdminSearch::term($request);
+
         return UserService::new()->getUsersForAdmin(
             GetModelsForAdminDTO::new()->fromArray([
                 'user' => $request->user(),
                 'filterType' => $request->filterType,
                 'filterValue' => $request->filterValue,
+                'search' => $search,
             ])
         );
     }
@@ -219,7 +227,8 @@ class AdministratorController extends Controller
                 'user' => $request->user(),
                 'filterType' => $request->filterType,
                 'filterValue' => $request->filterValue,
-            ])
+            ]),
+            AdminSearch::term($request),
         );
     }
 }

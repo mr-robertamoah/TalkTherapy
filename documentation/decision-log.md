@@ -10409,3 +10409,52 @@ therapy 18 after the last QA pass.
   filters into model scopes; the remaining inline copies of `creatorUser()`/`isFull()`; a daily cap on
   offers; hiding unverified counsellors from the picker; dialog roles; Home refreshing member counts
   after a join.
+
+## SCRUM-390 + 391 + 393 — admin search, counsellor dashboard, UI polish (2026-11-07)
+
+- **Grouping (the user's decisions):** SCRUM-390/391 are the second PR of the discovery work; the TODO
+  list's UI items became SCRUM-393 and joined this PR. Admin search goes on every list page; the
+  dashboard is its own page with six blocks (a first version, to be improved later).
+- **SCRUM-390, search:**
+  - One helper (`App\Support\AdminSearch`): 2-100 characters (one character searches nothing, more
+    than 100 is refused), wildcards literal (`whereContains`), ORs grouped so a search never escapes
+    the page's own filters, and a counsellor matched through the existing `Counsellor::whereName`.
+  - People are matched on names and username (email on Users) -- details any administrator already
+    sees on People -- never a masked or narrowed field.
+  - **Involved rows never match:** a row the viewer may only see as an "involved" summary (their
+    report, a ward's suspension, a minor they counsel...) is filtered out of search results by the
+    page's own `involves()` rule, in PHP, reading at most 200 matches (ordered by id); more asks for a
+    narrower search. Unsearched lists still show them as summaries. Accepted cost: a query or so per
+    row read on Reports/Suspensions; revisit in SQL if those tables grow.
+  - Searches live in the URL (`?search=`), so they can be bookmarked and survive paging; accepted
+    (security review, Low) that an administrator's search text can reach access logs -- production
+    logging of `/administrator/*` query strings should be checked.
+  - No indexes: `LIKE '%term%'` can't use one (devops review).
+- **SCRUM-391, dashboard:**
+  - "Needs your action" is a dashboard view (`Request::scopeAwaitingCounsellor`, by request type),
+    not the authority on who may respond (`EnsureUserCanRespondToRequestAction`); the two point at
+    each other so a new request type is added to both.
+  - "Therapies you could help" reuses the public feed with a `needsCounsellor` flag; a group's free
+    counsellor place is a model scope (`GroupTherapy::whereCanTakeCounsellor`) counted exactly as
+    `canTakeCounsellor()` (architect review: the first raw-SQL copy counted soft-deleted counsellors
+    and a creator twice). Only while the counsellor's verification is current.
+  - Current therapies and groups are only active ones; sessions are the next 7 days.
+- **SCRUM-393, UI:**
+  - Preferences: one `PreferencePicker` per kind (search first, chips with a tick, Load more, "Add
+    a ..." which also chooses it, up to 20 as the server enforces); "Set preferences" compares with
+    what's saved, so it re-enables after a save.
+  - Cards: the kind is colour plus icon (blue/person individual, orange/group group) with its name
+    kept for screen readers; "Matches your preferences" is a sparkles mark (stars already mean
+    starred counsellors) with a tooltip on hover and focus, explained on Preferences.
+  - "Find a counsellor" cards: summary lines in small text and a Select button.
+- **Review fixes:**
+  - The safeguarding *request* masking rule is one method
+    (`EnsureCanManageSafeguardingExceptionAction::masksRequestFrom`), used by `RequestResource` and the
+    requests search alike, so the two can't drift.
+  - Failed refunds are searched by the refund's own reference (what the row shows) as well as the
+    payment's; organisation billing by name only (legal name isn't shown); the Counsellors page moved
+    onto the shared search box; a report search without a viewer is refused.
+  - Search boxes no longer drop text typed while a search is on its way, and every API-fed admin list
+    shows only its latest answer.
+  - Left as accepted: the involvement check runs per row (bounded by the cap); search limits (2/100/200,
+    20 preferences) are repeated in the frontend.

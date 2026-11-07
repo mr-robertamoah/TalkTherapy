@@ -4,6 +4,7 @@ namespace App\Actions\SafeguardingException;
 
 use App\Actions\Action;
 use App\Actions\Guardianship\GetWardOpenTherapiesAction;
+use App\Enums\RequestTypeEnum;
 use App\Exceptions\SafeguardingExceptionRefusedException;
 use App\Models\Counsellor;
 use App\Models\GroupTherapy;
@@ -71,6 +72,20 @@ class EnsureCanManageSafeguardingExceptionAction extends Action
     public function involves(User $admin, ?User $ward, ?Request $request = null): bool
     {
         return ($request && $this->sentBy($request, $admin)) || ($ward && $this->counsels($admin, $ward));
+    }
+
+    // SCRUM-390 (review): the one rule for when a safeguarding *request* is shown to $admin only as
+    // "involved" -- they counsel the minor and didn't send it (the sender sees it as its counsellor).
+    // RequestResource masks by it and the requests search leaves such rows out by it.
+    public function masksRequestFrom(User $admin, Request $request): bool
+    {
+        if ($request->type !== RequestTypeEnum::safeguardingException->value || $this->sentBy($request, $admin)) {
+            return false;
+        }
+
+        $ward = $request->safeguardingWard();
+
+        return $ward !== null && $this->counsels($admin, $ward);
     }
 
     public function sentBy(Request $request, User $user): bool

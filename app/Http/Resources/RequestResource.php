@@ -154,10 +154,7 @@ class RequestResource extends JsonResource
             return false;
         }
 
-        $manage = self::safeguardingManager($request, $viewer);
-        $ward = $this->resource->safeguardingWard();
-
-        return ! $manage->sentBy($this->resource, $viewer) && $ward && $manage->counsels($viewer, $ward);
+        return self::safeguardingManager($request, $viewer)->masksRequestFrom($viewer, $this->resource);
     }
 
     // SCRUM-384: one remembering() instance per HTTP request and viewer (UserMiniResource's

@@ -1,5 +1,7 @@
 <script setup>
 import { Head, router } from '@inertiajs/vue3'
+import AdminSearchBox from '@/Components/Admin/AdminSearchBox.vue'
+import { searchPage } from '@/Composables/useAdminSearch'
 import AdminLayout from '@/Layouts/AdminLayout.vue'
 import Pagination from '@/Components/Pagination.vue'
 
@@ -11,6 +13,7 @@ defineOptions({ layout: AdminLayout })
 // Super administrators only. Rows can't be changed or deleted.
 
 const props = defineProps({
+    search: { type: String, default: '' },
     accesses: { type: Object, required: true },
     filters: { type: Object, required: true },
     resources: { type: Array, required: true },
@@ -43,6 +46,11 @@ function goToPage(url) {
 function formatDate(value) {
     return value ? new Date(value).toLocaleString() : '--'
 }
+
+// SCRUM-390: the page's search, kept in the URL with its other filters.
+function searchFor(term) {
+    searchPage('administrator.content-accesses', term, { resource: props.filters.resource ?? undefined, admin: props.filters.admin ?? undefined, subject: props.filters.subject ?? undefined, subject_id: props.filters.subject_id ?? undefined })
+}
 </script>
 
 <template>
@@ -59,6 +67,7 @@ function formatDate(value) {
                     read during a complaint review are recorded on the report itself.
                 </div>
             </div>
+            <AdminSearchBox :model-value="search" label="Search by the administrator's name or username" @search="searchFor" />
 
             <div class="flex flex-wrap items-center gap-3">
                 <label for="resource_filter" class="text-sm text-gray-700">Show</label>

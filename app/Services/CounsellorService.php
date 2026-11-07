@@ -201,9 +201,12 @@ class CounsellorService extends Service
             $query->whereName((string) $getModelsForAdminDTO->filterValue);
         }
 
-        return AdminCounsellorResource::collection($query->paginate(
+        // SCRUM-390: the counsellor's name, or their account's names and username.
+        $query->when($getModelsForAdminDTO->search, fn ($query, $term) => $query->whereName($term));
+
+        return AdminCounsellorResource::collection($query->with(['user', 'avatarFile', 'profession'])->paginate(
             PaginationEnum::preferencesPagination->value
-        ));
+        )->withQueryString());
     }
 
     public function getCounsellorStats(GetCounsellorStatsForAdminDTO $getCounsellorStatsForAdminDTO)

@@ -12,6 +12,7 @@ use App\Http\Requests\UpdatePlatformFeeRequest;
 use App\Models\Counsellor;
 use App\Services\PayoutService;
 use App\Services\SettingsService;
+use App\Support\AdminSearch;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\Redirect;
@@ -27,13 +28,15 @@ class AdminPayoutController extends Controller
             return Redirect::route('home')->with('message', EnsureUserIsAdmin::MESSAGE);
         }
 
+        $search = AdminSearch::term($request);
         $payouts = PayoutService::new()->getPayoutsForAdmin(
-            GetModelsForAdminDTO::new()->fromArray(['user' => $user])
+            GetModelsForAdminDTO::new()->fromArray(['user' => $user, 'search' => $search])
         );
 
         return Inertia::render('Admin/Payouts', [
             'settings' => SettingsService::new()->getSettingsForAdmin(),
             'payoutHistory' => $this->paginatedResource($payouts),
+            'search' => $search ?? '',
         ]);
     }
 
@@ -41,7 +44,7 @@ class AdminPayoutController extends Controller
     {
         try {
             return PayoutService::new()->getPayoutsForAdmin(
-                GetModelsForAdminDTO::new()->fromArray(['user' => $request->user()])
+                GetModelsForAdminDTO::new()->fromArray(['user' => $request->user(), 'search' => AdminSearch::term($request)])
             );
         } catch (Throwable $th) {
             $status = $this->statusFor($th);

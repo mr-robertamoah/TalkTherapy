@@ -159,9 +159,9 @@ class OrganizationService extends Service
     // read-side check lives inline in the controller (matching AdminPayoutController's own
     // convention), the two write actions below each re-check via
     // EnsureCanManageOrganizationBillingSuspensionAction independently.
-    public function getBillingSuspendedOrganizationsForAdmin(?User $user): LengthAwarePaginator
+    public function getBillingSuspendedOrganizationsForAdmin(?User $user, ?string $search = null): LengthAwarePaginator
     {
-        return GetBillingSuspendedOrganizationsForAdminAction::new()->execute($user);
+        return GetBillingSuspendedOrganizationsForAdminAction::new()->execute($user, $search);
     }
 
     public function retryOrganizationInvoiceSettlement(?User $user, ?OrganizationInvoice $invoice): ?Transaction

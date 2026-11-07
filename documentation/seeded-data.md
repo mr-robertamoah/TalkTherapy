@@ -544,7 +544,7 @@ See `documentation/features/scrum-31-counsellor-verification-renewal.md`.
 |---|---|---|
 | `discovery_demo_user` | `password` | Saved preferences: one case and one language. "Discovery Demo Therapy (matches)", "Discovery Demo Group (open)" and Dr. Discovery Helper match -- first on Home and `/public-therapies`, labelled. |
 | `discovery_demo_creator` | `password` | Creates the public groups: **(open)** (Join), **(ask to join)**, **(full)**, **(ended)**, **(counsellor not verified)** (run by `lapsed_counsellor`: not taking members), **(needs a counsellor)** (Offer to help) and **(offer waiting)** -- a pending offer to help from `discovery_demo_counsellor` to accept in Requests. |
-| `discovery_demo_counsellor` | `password` | Dr. Discovery Helper, verified, with the matching case and language: sees "Offer to help" on cards and pages. |
+| `discovery_demo_counsellor` | `password` | Dr. Discovery Helper, verified, with the matching case and language: sees "Offer to help" on cards and pages, and has **My Dashboard** (`/counsellor/dashboard`, SCRUM-391) with "Therapies you could help" filled. |
 | `discovery_demo_client` | `password` | Owns the public therapies "Discovery Demo Therapy (matches)" and "(other)", both waiting for a counsellor ("find a counsellor"). |
 
 **Local database top-up (2026-11-07):** added with the seeder's method in tinker (unguarded, as

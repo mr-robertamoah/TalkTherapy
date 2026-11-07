@@ -1,5 +1,7 @@
 <script setup>
 import { Head, Link, router } from '@inertiajs/vue3'
+import AdminSearchBox from '@/Components/Admin/AdminSearchBox.vue'
+import { searchPage } from '@/Composables/useAdminSearch'
 import AdminLayout from '@/Layouts/AdminLayout.vue'
 import Pagination from '@/Components/Pagination.vue'
 import ReportStatusBadge from '@/Components/ReportStatusBadge.vue'
@@ -11,6 +13,8 @@ defineOptions({ layout: AdminLayout })
 // default; each status can be listed on its own. Reviewing happens on the per-report page.
 
 const props = defineProps({
+    search: { type: String, default: '' },
+    searchTooMany: { type: Boolean, default: false },
     reports: { type: Object, required: true },
     status: { type: String, default: null },
     statuses: { type: Array, required: true },
@@ -32,6 +36,11 @@ function goToPage(url) {
 function formatDate(value) {
     return value ? new Date(value).toLocaleDateString() : '--'
 }
+
+// SCRUM-390: the page's search, kept in the URL with its other filters.
+function searchFor(term) {
+    searchPage('administrator.reports', term, { status: props.status ?? undefined })
+}
 </script>
 
 <template>
@@ -47,6 +56,7 @@ function formatDate(value) {
                     about and, when needed, read the reported conversation.
                 </div>
             </div>
+            <AdminSearchBox :model-value="search" label="Search by the reporter's name or username, or the therapy's name" :too-many="searchTooMany" @search="searchFor" />
 
             <div class="flex flex-wrap gap-2">
                 <button

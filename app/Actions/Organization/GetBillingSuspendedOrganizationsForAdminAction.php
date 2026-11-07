@@ -13,7 +13,7 @@ use Illuminate\Pagination\LengthAwarePaginator;
 // act on one. Most-recently-suspended first (an admin cares most about active/growing issues).
 class GetBillingSuspendedOrganizationsForAdminAction extends Action
 {
-    public function execute(?User $user): LengthAwarePaginator
+    public function execute(?User $user, ?string $search = null): LengthAwarePaginator
     {
         // Reviewer finding: the controller's own inline admin check was this action's ONLY
         // guard -- re-checked here too (mirrors the two write actions' own independent
@@ -26,10 +26,13 @@ class GetBillingSuspendedOrganizationsForAdminAction extends Action
         // count is both) -- suspended ones first, most recent first, then the rest.
         return Organization::query()
             ->needsBillingAttention()
+            // SCRUM-390: by name (grouped, so it can't escape needsBillingAttention()).
+            ->when($search, fn ($query, $term) => $query->whereContains('name', $term))
             ->with(['latestFailedInvoice', 'paymentInstrument'])
             ->orderByRaw('billing_suspended_at is null')
             ->orderByDesc('billing_suspended_at')
             ->latest('id')
-            ->paginate(PaginationEnum::preferencesPagination->value);
+            ->paginate(PaginationEnum::preferencesPagination->value)
+            ->withQueryString();
     }
 }

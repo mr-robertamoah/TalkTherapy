@@ -81,7 +81,7 @@ class RequestService extends Service
         )));
     }
 
-    public function getVerificationRequestsForCounsellors(GetVerificationRequestsDTO $getVerificationRequestsDTO)
+    public function getVerificationRequestsForCounsellors(GetVerificationRequestsDTO $getVerificationRequestsDTO, ?string $search = null)
     {
         if (is_null($getVerificationRequestsDTO->user) || $getVerificationRequestsDTO->user?->isNotAdmin()) {
             return [];
@@ -100,16 +100,18 @@ class RequestService extends Service
             ? RequestStatusEnum::tryFrom((string) $getVerificationRequestsDTO->filterValue)
             : null;
         $query->when($status, fn ($query) => $query->where('status', $status->value));
+        // SCRUM-390: the counsellor asking -- their name, or their account's names and username.
+        $query->when($search, fn ($query, $term) => $query->whereHasMorph('from', [Counsellor::class], fn ($query) => $query->whereName($term)));
 
         return AdminCounsellorVerificationRequestResource::collection($query->latest('id')->paginate(
             PaginationEnum::preferencesPagination->value
-        ));
+        )->withQueryString());
     }
 
     // TT-7.7c/SCRUM-251
-    public function getPendingRefundRequestsForAdmin(?User $user)
+    public function getPendingRefundRequestsForAdmin(?User $user, ?string $search = null)
     {
-        return GetPendingRefundRequestsForAdminAction::new()->execute($user);
+        return GetPendingRefundRequestsForAdminAction::new()->execute($user, $search);
     }
 
     public function respondToRequest(RequestResponseDTO $requestResponseDTO)

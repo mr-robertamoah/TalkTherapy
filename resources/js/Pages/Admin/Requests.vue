@@ -4,6 +4,8 @@
 // requests.respond; the row itself says whether the viewer may answer it (`isRespondent`) and who
 // answered it (`respondedBy`). Filters and the page are in the query string.
 import { computed } from 'vue'
+import AdminSearchBox from '@/Components/Admin/AdminSearchBox.vue'
+import { searchPage } from '@/Composables/useAdminSearch'
 import { Head, Link, router } from '@inertiajs/vue3'
 import AdminLayout from '@/Layouts/AdminLayout.vue'
 import Alert from '@/Components/Alert.vue'
@@ -16,6 +18,8 @@ import { refreshAdminBadges } from '@/Composables/useAdminBadges'
 defineOptions({ layout: AdminLayout })
 
 const props = defineProps({
+    search: { type: String, default: '' },
+    searchTooMany: { type: Boolean, default: false },
     requests: { type: Object, required: true },
     rows: { type: [Object, Array], default: () => ({}) },
     filters: { type: Object, required: true },
@@ -64,6 +68,11 @@ function responded() {
     router.reload({ only: ['requests', 'rows'], preserveScroll: true })
     refreshAdminBadges({ force: true })
 }
+
+// SCRUM-390: the page's search, kept in the URL with its other filters.
+function searchFor(term) {
+    searchPage('administrator.requests', term, { type: props.filters.type ?? undefined, status: props.filters.status === 'PENDING' ? undefined : props.filters.status })
+}
 </script>
 
 <template>
@@ -78,6 +87,7 @@ function responded() {
                 <template v-else>Everything waiting on an administrator: verifications, age and date-of-birth checks, and refunds.</template>
             </p>
         </div>
+        <AdminSearchBox :model-value="search" label="Search by who sent it" :too-many="searchTooMany" @search="searchFor" />
 
         <div class="bg-white shadow-sm border border-gray-200 rounded-lg p-4 flex flex-col sm:flex-row sm:items-end gap-4">
             <div>

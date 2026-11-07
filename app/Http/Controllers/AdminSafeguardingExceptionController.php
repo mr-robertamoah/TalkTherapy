@@ -15,6 +15,7 @@ use App\Models\GroupTherapy;
 use App\Models\Request as ModelsRequest;
 use App\Models\SafeguardingException;
 use App\Models\User;
+use App\Support\AdminSearch;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Arr;
@@ -36,16 +37,25 @@ class AdminSafeguardingExceptionController extends Controller
             return Redirect::route('home')->with('message', EnsureUserIsAdmin::MESSAGE);
         }
 
-        $exceptions = SafeguardingException::query()
-            ->with(['ward', 'grantedBy', 'endedBy', 'request'])
+        // SCRUM-390: the minor's names and username; one the viewer is involved in (shown only as
+        // "involved") never matches.
+        $search = AdminSearch::term($request);
+        $query = SafeguardingException::query()
+            ->when($search, fn ($query, $term) => $query->whereHas('ward', fn ($query) => AdminSearch::person($query, $term)))
+            ->with(['ward', 'grantedBy', 'endedBy', 'request']);
+        // SCRUM-384: one instance for the whole page (read-only), so "do they counsel this minor"
+        // is read once per minor across the search and both lists.
+        $manage = EnsureCanManageSafeguardingExceptionAction::new()->remembering();
+        $tooMany = $search
+            ? AdminSearch::withoutInvolved($query, $request->user(), fn (SafeguardingException $exception, User $viewer) => $manage->involves($viewer, $exception->ward, $exception->request))
+            : false;
+
+        $exceptions = $query
             ->orderByRaw('case when ended_at is null and ends_at > ? then 0 else 1 end', [now()])
             ->latest('id')
             ->paginate(20)
             ->withQueryString();
 
-        // SCRUM-384: one instance for the whole page (read-only), so "do they counsel this minor"
-        // is read once per minor across both lists.
-        $manage = EnsureCanManageSafeguardingExceptionAction::new()->remembering();
         $pending = ModelsRequest::query()
             ->pendingSafeguardingException()
             ->with(['for', 'from' => fn ($morph) => $morph->morphWith([Counsellor::class => ['user']])])
@@ -62,6 +72,8 @@ class AdminSafeguardingExceptionController extends Controller
             'canManage' => $request->user()->isSuperAdmin(),
             // SCRUM-384: the terms form's limit, from the model rather than a copy in the UI.
             'safeguardingExceptionMaxDays' => SafeguardingException::MAX_DAYS,
+            'search' => $search ?? '',
+            'searchTooMany' => $tooMany,
         ]);
     }
 

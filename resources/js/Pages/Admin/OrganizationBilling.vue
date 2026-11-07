@@ -1,5 +1,7 @@
 <script setup>
 import Alert from '@/Components/Alert.vue';
+import AdminSearchBox from '@/Components/Admin/AdminSearchBox.vue'
+import { searchPage } from '@/Composables/useAdminSearch'
 import Pagination from '@/Components/Pagination.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import useAlert from '@/Composables/useAlert';
@@ -16,6 +18,7 @@ defineOptions({ layout: AdminLayout });
 // self-service for the org's own admin.
 
 const props = defineProps({
+    search: { type: String, default: '' },
     organizations: { type: Object, required: true },
 })
 
@@ -59,6 +62,11 @@ function goToPage(url) {
     if (!url) return
     router.visit(url, { preserveScroll: true })
 }
+
+// SCRUM-390: the page's search, kept in the URL with its other filters.
+function searchFor(term) {
+    searchPage('administrator.organization_billing', term, {})
+}
 </script>
 
 <template>
@@ -75,6 +83,7 @@ function goToPage(url) {
                     suspension -- review the organization's standing first.
                 </div>
             </div>
+            <AdminSearchBox :model-value="search" label="Search by organisation name" @search="searchFor" />
 
             <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg p-6">
                 <div v-if="organizations.data.length === 0" class="text-sm text-gray-500 italic">

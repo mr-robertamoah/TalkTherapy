@@ -205,6 +205,11 @@ const showCalendarLink = computed(() => {
   );
 });
 
+// SCRUM-391: counsellors only, like the calendar.
+const showDashboardLink = computed(() => {
+  return usePage().props.auth.user?.counsellor && route().current() != "counsellor.dashboard";
+});
+
 function goToTherapy(data) {
   router.get(route(`therapies.get`, { therapyId: data.therapyId }));
 }
@@ -291,6 +296,9 @@ function goToTherapy(data) {
                       </DropdownLink>
                       <DropdownLink v-if="showMyOrganizationsLink" :href="route('organizations.mine.dashboard')">
                         My Organizations
+                      </DropdownLink>
+                      <DropdownLink v-if="showDashboardLink" :href="route('counsellor.dashboard')">
+                        My Dashboard
                       </DropdownLink>
                       <DropdownLink v-if="showCalendarLink" :href="route('counsellor.calendar')">
                         My Calendar
@@ -476,6 +484,9 @@ function goToTherapy(data) {
               </ResponsiveNavLink>
               <ResponsiveNavLink v-if="showMyOrganizationsLink" :href="route('organizations.mine.dashboard')">
                 My Organizations
+              </ResponsiveNavLink>
+              <ResponsiveNavLink v-if="showDashboardLink" :href="route('counsellor.dashboard')">
+                My Dashboard
               </ResponsiveNavLink>
               <ResponsiveNavLink v-if="showCalendarLink" :href="route('counsellor.calendar')">
                 My Calendar

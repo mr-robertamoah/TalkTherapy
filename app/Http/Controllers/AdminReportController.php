@@ -15,6 +15,7 @@ use App\Models\Message;
 use App\Models\Report;
 use App\Models\Session;
 use App\Services\ReportService;
+use App\Support\AdminSearch;
 use App\Traits\StreamsPrivateDocuments;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Redirect;
@@ -39,10 +40,14 @@ class AdminReportController extends Controller
         }
 
         $status = ReportStatusEnum::tryFrom((string) $request->query('status'));
+        $search = AdminSearch::term($request);
+        [$reports, $tooMany] = ReportService::new()->getReportsForAdmin($status, $search, $request->user());
 
         return Inertia::render('Admin/Reports', [
-            'reports' => AdminReportResource::collection(ReportService::new()->getReportsForAdmin($status))->response()->getData(true),
+            'reports' => AdminReportResource::collection($reports)->response()->getData(true),
             'status' => $status?->value,
+            'search' => $search ?? '',
+            'searchTooMany' => $tooMany,
             'statuses' => ReportStatusEnum::values(),
         ]);
     }

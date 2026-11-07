@@ -2,19 +2,21 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import TextInput from '@/Components/TextInput.vue';
 import Modal from '@/Components/Modal.vue';
-import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
-import { onBeforeMount, ref, watch, watchEffect } from 'vue';
+import { Head, useForm, usePage } from '@inertiajs/vue3';
+import { computed, ref, watch } from 'vue';
 import InputError from '@/Components/InputError.vue';
-import PreferenceItem from '@/Components/PreferenceItem.vue';
 import InputLabel from '@/Components/InputLabel.vue';
 import Alert from '@/Components/Alert.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
+import SecondaryButton from '@/Components/SecondaryButton.vue';
 import TextBox from '@/Components/TextBox.vue';
 import useAlert from '@/Composables/useAlert';
 import useErrorHandler from '@/Composables/useErrorHandler';
 import Checkbox from '@/Components/Checkbox.vue';
 import StyledLink from '@/Components/StyledLink.vue';
 import HelpButton from '@/Components/HelpButton.vue';
+import PreferencePicker from '@/Components/PreferencePicker.vue';
+import PreferenceMatchMark from '@/Components/PreferenceMatchMark.vue';
 import useGuidedTours from '@/Composables/useGuidedTours';
 
 // SCRUM-113 (QA): the saved preferences arrive as plain lists (resources aren't wrapped, see
@@ -22,448 +24,122 @@ import useGuidedTours from '@/Composables/useGuidedTours';
 // wiped them. Either shape is read.
 const asList = (value) => Array.isArray(value) ? value : (value?.data ?? [])
 
+// SCRUM-393: each kind is one PreferencePicker (search first, choose, load more, add). Matches
+// PreferenceRanking::MAX_PER_KIND, which the server enforces.
+const MAX_PER_KIND = 20
+
+const KINDS = {
+    cases: {
+        singular: 'case', route: 'cases.get', createRoute: 'therapy-cases.create', response: 'case', detail: 'description',
+        title: 'Cases',
+        about: 'The cases you choose help us show you public therapies about them first, and counsellors who handle them.',
+    },
+    languages: {
+        singular: 'language', route: 'languages.get', createRoute: 'languages.create', response: 'language', detail: 'about',
+        title: 'Languages',
+        about: 'The languages you choose help us show you therapies and counsellors you can talk with first.',
+    },
+    religions: {
+        singular: 'religion', route: 'religions.get', createRoute: 'religions.create', response: 'religion', detail: 'about',
+        title: 'Religions',
+        about: 'Some people find it easier to talk with someone who shares their faith. You can skip this if it doesn\'t matter to you.',
+    },
+}
 
 const { PAGES } = useGuidedTours()
+const page = usePage()
+const { alertData, clearAlertData, setAlertData } = useAlert()
+const { setErrorData, clearError } = useErrorHandler()
+
 const form = useForm({
     selectedCases: [],
     selectedLanguages: [],
     selectedReligions: [],
-    anonymous: false
+    anonymous: false,
 })
 
-const preferenceChanged = ref(false)
-const loader = ref({
-    show: false, type: ''
-})
-const modalData = ref({
-    show: false, type: ''
-})
-const caseData = ref({
-    name: '', description: ''
-})
-const caseErrors = ref({
-    name: '', description: ''
-})
-const casesSearch = ref('')
-const casesPage = ref(0)
-const cases = ref([])
-const selectedCases = ref([])
-const languageData = ref({
-    name: '', about: ''
-})
-const languageErrors = ref({
-    name: '', about: ''
-})
-const languagesSearch = ref('')
-const languagesPage = ref(0)
-const languages = ref([])
-const selectedLanguages = ref([])
-const religionData = ref({
-    name: '', about: ''
-})
-const religionErrors = ref({
-    name: '', about: ''
-})
-const religionsSearch = ref('')
-const religionsPage = ref(0)
-const religions = ref([])
-const selectedReligions = ref([])
+// What's saved, from the page props (which a save refreshes).
+const saved = computed(() => ({
+    anonymous: page.props.auth?.user?.settings?.anonymous === true,
+    cases: asList(page.props.cases),
+    languages: asList(page.props.languages),
+    religions: asList(page.props.religions),
+}))
 
-const { alertData, clearAlertData, setAlertData } = useAlert()
-const { setErrorData, clearError } = useErrorHandler()
-
-onBeforeMount(() => {
-    setCasesAndLanguages()
+const anonymous = ref(saved.value.anonymous)
+const selected = ref({
+    cases: [...saved.value.cases],
+    languages: [...saved.value.languages],
+    religions: [...saved.value.religions],
 })
 
-watch(() => casesSearch.value.length, () => {
-    if (casesSearch.value.length && casesPage.value != 1) {
-        casesPage.value = 1
-        debouncedGetCases()
-    }
-})
-watch(() => languagesSearch.value.length, () => {
-    if (languagesSearch.value.length && languagesPage.value != 1) {
-        languagesPage.value = 1
-        debouncedGetLanguages()
-    }
-})
-watch(() => religionsSearch.value.length, () => {
-    if (religionsSearch.value.length && religionsPage.value != 1) {
-        religionsPage.value = 1
-        debouncedGetReligions()
-    }
-})
-watch(() => caseData.value.name, () => {
-    if (
-        caseData.value.name?.length &&
-        caseErrors.value.name?.length
-    ) clearError(caseErrors, 'name')
-})
-watch(() => languageData.value.name, () => {
-    if (
-        languageData.value.name?.length &&
-        languageErrors.value.name?.length
-    ) clearError(languageErrors, 'name')
-})
-watch(() => religionData.value.name, () => {
-    if (
-        religionData.value.name?.length &&
-        religionErrors.value.name?.length
-    ) clearError(religionErrors, 'name')
-})
+const sameIds = (a, b) => a.length === b.length && a.every((item) => b.some((other) => other.id === item.id))
+const changed = computed(() => anonymous.value !== saved.value.anonymous
+    || Object.keys(KINDS).some((kind) => !sameIds(selected.value[kind], saved.value[kind])))
 
-function setCasesAndLanguages() {
-    const props = usePage().props
-    cases.value = [...asList(props.loadedCases)]
-    languages.value = [...asList(props.loadedLanguages)]
-    religions.value = [...asList(props.loadedReligions)]
-
-    const settings = usePage().props?.auth?.user?.settings
-    if (!settings) return
-
-    if (typeof settings.anonymous == 'boolean') {
-        form.anonymous = settings.anonymous
-    }
-
-    if (asList(props.cases).length)
-        selectedCases.value = [...asList(props.cases)]
-    if (asList(props.languages).length)
-        selectedLanguages.value = [...asList(props.languages)]
-    if (asList(props.religions).length)
-        selectedReligions.value = [...asList(props.religions)]
-}
-
-const debouncedGetCases = () => {
-    getCases()
-}
-
-const debouncedGetLanguages = () => {
-    getLanguages()
-}
-
-const debouncedGetReligions = () => {
-    getReligions()
-}
-
-async function getCases() {
-    loader.value.type = 'cases'
-    loader.value.show = true
-
-    await axios
-    .get(route('cases.get', {name: casesSearch.value, page: casesPage.value}))
-    .then((res) => {
-        console.log(res)
-        if (casesPage.value > 1) {
-            cases.value = [...cases.value, ...res.data.data]
-            updateCasesPage(res)
-            return
-        }
-
-        cases.value = [...res.data.data]
-        updateCasesPage(res)
-    })
-    .catch((err) => {
-        console.log(err)
-    })
-    .finally(() => {
-        clearLoader()
-    })
-}
-
-function updateCasesPage(res) {
-    if (res.data.links.next) casesPage.value += 1
-    else casesPage.value = 0
-}
-
-async function getLanguages() {
-    loader.value.type = 'lang'
-    loader.value.show = true
-
-    await axios
-    .get(route('languages.get', {name: languagesSearch.value, page: languagesPage.value}))
-    .then((res) => {
-        console.log(res)
-        if (languagesPage.value > 1) {
-            languages.value = [...languages.value, ...res.data.data]
-            updateLanguagesPage(res)
-            return
-        }
-
-        languages.value = [...res.data.data]
-        updateLanguagesPage(res)
-    })
-    .catch((err) => {
-        console.log(err)
-    })
-    .finally(() => {
-        clearLoader()
-    })
-}
-
-async function getReligions() {
-    loader.value.type = 'religion'
-    loader.value.show = true
-
-    await axios
-    .get(route('religions.get', {name: religionsSearch.value, page: religionsPage.value}))
-    .then((res) => {
-        console.log(res)
-        if (religionsPage.value > 1) {
-            religions.value = [...religions.value, ...res.data.data]
-            updateReligionsPage(res)
-            return
-        }
-
-        religions.value = [...res.data.data]
-        updateReligionsPage(res)
-    })
-    .catch((err) => {
-        console.log(err)
-    })
-    .finally(() => {
-        clearLoader()
-    })
-}
-
-function clearLoader() {
-    loader.value.type = ''
-    loader.value.show = false
-}
-
-function updateLanguagesPage(res) {
-    if (res.data.links.next) languagesPage.value += 1
-    else languagesPage.value = 0
-}
-
-function updateReligionsPage(res) {
-    if (res.data.links.next) religionsPage.value += 1
-    else religionsPage.value = 0
-}
- 
 function submitPreferences() {
-    loader.value.type = 'preference'
-    loader.value.show = true
+    form.anonymous = anonymous.value
+    form.selectedCases = selected.value.cases.map((c) => c.id)
+    form.selectedLanguages = selected.value.languages.map((l) => l.id)
+    form.selectedReligions = selected.value.religions.map((r) => r.id)
 
-    form.selectedCases = selectedCases.value.map(c => c.id)
-    form.selectedLanguages = selectedLanguages.value.map(l => l.id)
-    form.selectedReligions = selectedReligions.value.map(r => r.id)
-
-    form.post(route(`preferences.set`), {
-        onFinish: () => form.reset('anonymous', 'selectedCases', 'selectedLanguages', 'selectedReligions'),
+    form.post(route('preferences.set'), {
+        preserveScroll: true,
+        onSuccess: () => {
+            // Take what the server saved as the new starting point.
+            anonymous.value = saved.value.anonymous
+            selected.value = { cases: [...saved.value.cases], languages: [...saved.value.languages], religions: [...saved.value.religions] }
+            setAlertData({ message: 'Your preferences are saved.', type: 'success', show: true })
+        },
+        onError: () => setAlertData({ message: 'Your preferences couldn\'t be saved. Please try again.', type: 'failed', show: true }),
     })
 }
- 
-async function createCase() {
-    loader.value.type = 'create case'
-    loader.value.show = true
 
-    await axios
-    .post(route(`therapy-cases.create`), {
-        ...caseData.value
-    })
-    .then((res) => {
-        console.log(res)
-        cases.value = [res.data.case, ...cases.value]
-        closeModal()
-    })
-    .catch((err) => {
-        console.log(err, err.response?.status)
-        if (err.response?.status == 422) {
-            setErrorData(caseErrors, err.response.data.errors, ['name', 'description'])
-            return
-        }
+// Adding a case, language or religion that isn't listed.
+// Function refs: a ref object inside v-for would be filled with an array.
+const pickers = {}
+const adding = ref({ kind: '', name: '', detail: '', saving: false })
+const addErrors = ref({ name: '', detail: '' })
 
-        setAlertData({
-            message: 'Something unfortunate happened. Please try again later.',
-            type: 'failed',
-            show: true,
+watch(() => adding.value.name, () => {
+    if (adding.value.name?.length && addErrors.value.name?.length) clearError(addErrors, 'name')
+})
+
+function startAdding(kind, name) {
+    addErrors.value = { name: '', detail: '' }
+    adding.value = { kind, name, detail: '', saving: false }
+}
+
+function closeAdding() {
+    adding.value = { kind: '', name: '', detail: '', saving: false }
+}
+
+async function saveNew() {
+    const kind = KINDS[adding.value.kind]
+    adding.value.saving = true
+
+    await axios.post(route(kind.createRoute), { name: adding.value.name, [kind.detail]: adding.value.detail })
+        .then((res) => {
+            pickers[adding.value.kind]?.added(res.data[kind.response])
+            closeAdding()
         })
-    })
-    .finally(() => {
-        clearLoader()
-    })
-}
- 
- async function createLanguage() {
-     loader.value.type = 'create language'
-     loader.value.show = true
- 
-     await axios
-     .post(route(`languages.create`), {
-         ...languageData.value
-     })
-     .then((res) => {
-        console.log(res)
-        languages.value = [res.data.language, ...languages.value]
-        closeModal()
-     })
-     .catch((err) => {
-         console.log(err)
-        if (err.response?.status == 422) {
-            setErrorData(languageErrors, err.response.data.errors, ['name', 'about'])
-            return
-        }
-
-         setAlertData({
-             message: 'Something unfortunate happened. Please try again later.',
-             type: 'failed',
-             show: true,
-         })
-     })
-     .finally(() => {
-         clearLoader()
-     })
- }
- 
- async function createReligion() {
-     loader.value.type = 'create religion'
-     loader.value.show = true
- 
-     await axios
-     .post(route(`religions.create`), {
-         ...religionData.value
-     })
-     .then((res) => {
-        console.log(res)
-        religions.value = [res.data.religion, ...religions.value]
-        closeModal()
-     })
-     .catch((err) => {
-         console.log(err)
-        if (err.response?.status == 422) {
-            setErrorData(religionErrors, err.response.data.errors, ['name', 'about'])
-            return
-        }
-
-         setAlertData({
-             message: 'Something unfortunate happened. Please try again later.',
-             type: 'failed',
-             show: true,
-         })
-     })
-     .finally(() => {
-         clearLoader()
-     })
- }
- 
-function showModal(type) {
-    modalData.value.type = type
-    modalData.value.show = true
-}
- 
-function closeModal() {
-    if (modalData.value.type.includes('case')) clearCaseData()
-    else if (modalData.value.type.includes('religion')) clearReligionData()
-    else clearLanguageData()
-    modalData.value.type = ''
-    modalData.value.show = false
+        .catch((err) => {
+            if (err.response?.status == 422) {
+                const errors = err.response.data.errors
+                if (errors) {
+                    setErrorData(addErrors, { name: errors.name, detail: errors[kind.detail] }, ['name', 'detail'])
+                    return
+                }
+                // A refusal (e.g. not allowed to add one) comes with only a message.
+                setAlertData({ message: err.response.data.message ?? 'That couldn\'t be added.', type: 'failed', show: true })
+                return
+            }
+            setAlertData({ message: 'Something unfortunate happened. Please try again later.', type: 'failed', show: true })
+        })
+        .finally(() => { adding.value.saving = false })
 }
 
-function clearCaseData() {
-    caseData.value.name = ''
-    caseData.value.description = ''
-}
-
-function clearLanguageData() {
-    languageData.value.name = ''
-    languageData.value.about = ''
-}
-
-function clearReligionData() {
-    religionData.value.name = ''
-    religionData.value.about = ''
-}
-
-function checkPreferences() {
-    preferenceChanged.value = false
-
-    const props = usePage().props
-    if (props.auth?.user.settings?.anonymous !== form.anonymous) {
-        preferenceChanged.value = true
-        return
-    }
-
-    let data = asList(usePage().props.cases).map(c => c.id)
-    if (
-        !selectedCases.value.length && data?.length ||
-        selectedCases.value.length && !data?.length ||
-        selectedCases.value.length !== !data?.length
-    ) {
-        preferenceChanged.value = true
-        return
-    }
-
-    selectedCases.value.forEach(c => {
-        if (data.includes(c)) return
-        preferenceChanged.value = true
-    })
-
-    if (preferenceChanged.value) return
-
-    data = asList(usePage().props.languages).map(c => c.id)
-    if (
-        !selectedLanguages.value.length && data?.length ||
-        selectedLanguages.value.length && !data?.length ||
-        selectedLanguages.value.length !== !data?.length
-    ) {
-        preferenceChanged.value = true
-        return
-    }
-
-    selectedLanguages.value.forEach(c => {
-        if (data.includes(c)) return
-        preferenceChanged.value = true
-    })
-
-    if (preferenceChanged.value) return
-    
-    data = asList(usePage().props.religions).map(c => c.id)
-    if (
-        !selectedReligions.value.length && data?.length ||
-        selectedReligions.value.length && !data?.length ||
-        selectedReligions.value.length !== !data?.length
-    ) {
-        preferenceChanged.value = true
-        return
-    }
-
-    selectedReligions.value.forEach(c => {
-        if (data.includes(c)) return
-        preferenceChanged.value = true
-    })
-}
-
-function addCaseToSelected(newCase) {
-    selectedCases.value = [...selectedCases.value.filter((c) => c.id !== newCase.id), newCase]
-    checkPreferences()
-}
-
-function removeCaseFromSelected(oldCase) {
-    selectedCases.value = [...selectedCases.value.filter((c) => c.id !== oldCase.id)]
-    checkPreferences()
-}
-
-function addLanguageToSelected(newLanguage) {
-    selectedLanguages.value = [...selectedLanguages.value.filter((c) => c.id !== newLanguage.id), newLanguage]
-    checkPreferences()
-}
-
-function removeLanguageFromSelected(oldLanguage) {
-    selectedLanguages.value = [...selectedLanguages.value.filter((c) => c.id !== oldLanguage.id)]
-    checkPreferences()
-}
-
-function addReligionToSelected(newReligion) {
-    selectedReligions.value = [...selectedReligions.value.filter((c) => c.id !== newReligion.id), newReligion]
-    checkPreferences()
-}
-
-function removeReligionFromSelected(oldReligion) {
-    selectedReligions.value = [...selectedReligions.value.filter((c) => c.id !== oldReligion.id)]
-    checkPreferences()
-}
-
+const card = 'bg-white overflow-hidden border border-gray-100 shadow-sm sm:rounded-lg p-6 text-gray-900'
 </script>
 
 <template>
@@ -482,274 +158,68 @@ function removeReligionFromSelected(oldReligion) {
         </template>
 
         <div class="py-12">
-            <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 my-4 flex justify-end">
-                <HelpButton
-                    title="get help on Preference Page"
-                    :page="PAGES.preference"
-                    class="mr-4"
-                    :user="$page.props.auth?.user"
-                />
-            </div>
-            <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
-                <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg my-8 p-6">
-                    <StyledLink :href="route('profile.show')" class="float-right my-2 mr-2" title="go to profile" :text="'user profile'"/>
-                    <div class="w-full text-justify capitalize mt-4 mb-1 text-lg font-medium text-gray-900">Set your preferences</div>
-                    <div class="text-sm text-justify text-gray-600 mb-4">
-                        You can set your preferences now or skip to your profile. You can always set them at any time.
+            <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
+                <div class="flex justify-end">
+                    <HelpButton
+                        title="get help on Preference Page"
+                        :page="PAGES.preference"
+                        :user="$page.props.auth?.user"
+                    />
+                </div>
+
+                <div :class="card">
+                    <div class="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                            <h3 class="text-lg font-medium text-gray-900">Set your preferences</h3>
+                            <p class="mt-1 text-sm text-gray-600">You can set them now or later -- change them any time.</p>
+                        </div>
+                        <StyledLink :href="route('profile.show')" title="go to profile" :text="'user profile'" class="shrink-0" />
+                    </div>
+                    <div class="mt-4 flex items-start gap-3 rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-900">
+                        <PreferenceMatchMark legend class="mt-0.5" />
+                        <p>
+                            Therapies, groups and counsellors that match your preferences are shown first, with this mark.
+                            Only you see it.
+                        </p>
                     </div>
                 </div>
 
                 <div id="preference-anon-id" class="relative"></div>
-                <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg my-8">
-                    <div class="p-6 text-gray-900">
-                        <div>
-                            <div class="w-full text-justify capitalize mt-4 mb-1 text-lg font-medium text-gray-900">Anonymity</div>
-                            <div class="text-sm text-justify text-gray-600 mb-4">
-                                Most people feel more open about their issues when they stay anonymous. Once you set this preference, you will be automatically anonymous in every therapy you engage in, unless you change this preference or specifically unset the anonymous attribute of the therapy.
-                            </div>
-                            <div class="text-sm text-center capitalize mb-2 font-bold">select preferences</div>
-                            
-                            <div class="block mt-4">
-                                <label class="flex items-center">
-                                    <Checkbox name="anonymous" @change="() => checkPreferences()" v-model:checked="form.anonymous" />
-                                    <span class="ms-2 text-sm text-gray-600">Automatically stay anonymous</span>
-                                </label>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+                <section :class="card" aria-labelledby="preference-anonymity">
+                    <h3 id="preference-anonymity" class="text-lg font-medium text-gray-900">Anonymity</h3>
+                    <p class="mt-1 text-sm text-gray-600">
+                        Most people feel more open when they stay anonymous. With this on, you're anonymous in every
+                        therapy you start, unless you change it here or for that therapy.
+                    </p>
+                    <label class="mt-4 flex items-center">
+                        <Checkbox name="anonymous" v-model:checked="anonymous" />
+                        <span class="ms-2 text-sm text-gray-700">Automatically stay anonymous</span>
+                    </label>
+                </section>
 
-                <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg my-8">
-                    <div id="preference-cases-id" class="relative"></div>
-                    <div class="p-6 text-gray-900">
-                        <div>
-                            <div class="w-full text-justify capitalize mt-4 mb-1 text-lg font-medium text-gray-900">cases</div>
-                            <div class="text-sm text-justify text-gray-600 mb-4">
-                                Selected case preferences will help us get you the most helpful posted therapies as well as counsellors with the expertise of handling your preferred cases.
-                            </div>
-                            <div class="text-sm text-center capitalize mb-2 font-bold">select preferences</div>
-                            <div class="text-sm text-center mb-2 text-gray-600">double click/tap to a case to see options.</div>
-                            <div class="p-2 flex justify-start items-center overflow-hidden overflow-x-auto my-2 mb-4">
-                                <div
-                                    class="mr-3 rounded text-sm p-2 min-w-[200px] text-white bg-blue-400 text-center"
-                                >
-                                    <div>did not find what you are looking for?</div>
-                                    <div
-                                        @click="() => showModal('cases')"
-                                        title="create a case"
-                                        class="my-2 py-1 px-2 rounded bg-blue-600 text-blue-200 transition duration-75 cursor-pointer hover:text-white hover:bg-blue-800 w-fit mx-auto"
-                                    >create it</div>
-                                </div>
-                                <template v-if="cases.length">
-                                    <PreferenceItem
-                                        v-for="c in cases"
-                                        :key="c.id"
-                                        :item="c"
-                                        @select-item="(data) => addCaseToSelected(data)"
-                                    />
-                                    <div 
-                                        v-if="casesPage != 0"
-                                        class="p-2 text-gray-500 transition duration-75 cursor-pointer hover:text-gray-700"
-                                        @click="() => getCases()"
-                                        title="get more cases"
-                                    >...</div>
-                                </template>
-                                <div v-else class="w-full text-center text-sm text-gray-600">no cases</div>
-                            </div>
-                            <div
-                                class="w-full text-center text-green-700 mt-8 mb-2"
-                                v-if="loader.show && loader.type == 'cases'"
-                            >getting{{ casesPage < 2 ? '' : ' more' }} cases...</div>
-                            <div class="mb-8">
-                                <TextInput
-                                    id="name"
-                                    type="text"
-                                    class="mt-1 block w-full max-w-[500px]"
-                                    v-model="casesSearch"
-                                    placeholder="search for cases"
-                                />
-                            </div>
-
-                            <div class="text-sm text-center capitalize mb-2 font-bold">selected preferences</div>
-                            <div class="p-2 flex justify-start items-center overflow-hidden overflow-x-auto my-2">
-                                
-                                <template v-if="selectedCases.length">
-                                    <div
-                                        v-for="c in selectedCases"
-                                        :key="c.id"
-                                        class="capitalize mr-3 rounded relative text-sm p-2 w-fit text-gray-700 bg-gray-300 select-none cursor-pointer text-center"
-                                    >
-                                        {{ c.name }}
-                                        <div 
-                                            @click="() => removeCaseFromSelected(c)"
-                                            :title="`remove ${c.name}`"
-                                            class="absolute -top-2 -right-2 text-sm flex justify-center items-center transition duration-75 text-center rounded-full
-                                                border-2 border-gray-800 bg-gray-300 text-gray-800 cursor-pointer w-6 h-6 hover:bg-gray-600 hover:text-white"
-                                        >x</div>
-                                    </div>
-                                </template>
-                                <div v-else class="w-full text-center text-sm text-gray-600">no preferred cases</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg my-8">
-                    <div id="preference-languages-id" class="relative"></div>
-                    <div class="p-6 text-gray-900">
-                        <div>
-                            <div class="w-full text-justify capitalize mt-4 mb-1 text-lg font-medium text-gray-900">languages</div>
-                            <div class="text-sm text-justify text-gray-600 mb-4">
-                                Selected language preferences will help us connect you to therapies with sessions in that language as well as counsellors conversant with these languages.
-                            </div>
-                            <div class="text-sm text-center capitalize mb-2 font-bold">select preferences</div>
-                            <div class="text-sm text-center mb-2 text-gray-600">double click/tap to a language to see options.</div>
-                            <div class="p-2 flex justify-start items-center overflow-hidden overflow-x-auto my-2 mb-4">
-                                <div
-                                    class="mr-3 rounded text-sm p-2 min-w-[200px] text-white bg-blue-400 text-center"
-                                >
-                                    <div>did not find what you are looking for?</div>
-                                    <div
-                                        @click="() => showModal('languages')"
-                                        title="create a language"
-                                        class="my-2 py-1 px-2 rounded bg-blue-600 text-blue-200 transition duration-75 cursor-pointer hover:text-white hover:bg-blue-800 w-fit mx-auto"
-                                    >create it</div>
-                                </div>
-                                <template v-if="languages.length">
-                                    <PreferenceItem
-                                        v-for="language in languages"
-                                        :key="language.id"
-                                        :item="language"
-                                        @select-item="(data) => addLanguageToSelected(data)"
-                                    />
-                                    <div 
-                                        v-if="languagesPage != 0"
-                                        class="p-2 text-gray-500 transition duration-75 cursor-pointer hover:text-gray-700"
-                                        @click="() => getLanguages()"
-                                        title="get more languages"
-                                    >...</div>
-                                </template>
-                                <div v-else class="w-full text-center text-sm text-gray-600">no languages</div>
-                            </div>
-                            <div
-                                class="w-full text-center text-green-700 mt-8 mb-2"
-                                v-if="loader.show && loader.type == 'languages'"
-                            >getting{{ languagesPage < 2 ? '' : ' more' }} languages...</div>
-                            <div class="mb-8">
-                                <TextInput
-                                    id="name"
-                                    type="text"
-                                    class="mt-1 block w-full max-w-[500px]"
-                                    v-model="languagesSearch"
-                                    placeholder="search for languages"
-                                />
-                            </div>
-
-                            <div class="text-sm text-center capitalize mb-2 font-bold">selected preferences</div>
-                            <div class="p-2 flex justify-start items-center overflow-hidden overflow-x-auto my-2">
-                                
-                                <template v-if="selectedLanguages.length">
-                                    <div
-                                        v-for="l in selectedLanguages"
-                                        :key="l.id"
-                                        class="capitalize mr-3 rounded relative text-sm p-2 w-fit text-gray-700 bg-gray-300 select-none cursor-pointer text-center"
-                                    >
-                                        {{ l.name }}
-                                        <div 
-                                            @click="() => removeLanguageFromSelected(l)"
-                                            :title="`remove ${l.name}`"
-                                            class="absolute -top-2 -right-2 text-sm flex justify-center items-center transition duration-75 text-center rounded-full
-                                                border-2 border-gray-800 bg-gray-300 text-gray-800 cursor-pointer w-6 h-6 hover:bg-gray-600 hover:text-white"
-                                        >x</div>
-                                    </div>
-                                </template>
-                                <div v-else class="w-full text-center text-sm text-gray-600">no preferred languages</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg my-8">
-                    <div id="preference-religions-id" class="relative"></div>
-                    <div class="p-6 text-gray-900">
-                        <div>
-                            <div class="w-full text-justify capitalize mt-4 mb-1 text-lg font-medium text-gray-900">religions</div>
-                            <div class="text-sm text-justify text-gray-600 mb-4">
-                                Some people feel more confident and find it easier when interacting with persons with whom they have similar religious inclinations. This preference helps us to connect you to persons with similar inclinations.
-                            </div>
-                            <div class="text-sm text-center capitalize mb-2 font-bold">select preferences</div>
-                            <div class="text-sm text-center mb-2 text-gray-600">double click/tap to a religion to see options.</div>
-                            <div class="p-2 flex justify-start items-center overflow-hidden overflow-x-auto my-2 mb-4">
-                                <div
-                                    class="mr-3 rounded text-sm p-2 min-w-[200px] text-white bg-blue-400 text-center"
-                                >
-                                    <div>did not find what you are looking for?</div>
-                                    <div
-                                        @click="() => showModal('religions')"
-                                        title="create a religion"
-                                        class="my-2 py-1 px-2 rounded bg-blue-600 text-blue-200 transition duration-75 cursor-pointer hover:text-white hover:bg-blue-800 w-fit mx-auto"
-                                    >create it</div>
-                                </div>
-                                <template v-if="religions.length">
-                                    <PreferenceItem
-                                        v-for="religion in religions"
-                                        :key="religion.id"
-                                        :item="religion"
-                                        @select-item="(data) => addReligionToSelected(data)"
-                                    />
-                                    <div 
-                                        v-if="religionsPage != 0"
-                                        class="p-2 text-gray-500 transition duration-75 cursor-pointer hover:text-gray-700"
-                                        @click="() => getReligions()"
-                                        title="get more religions"
-                                    >...</div>
-                                </template>
-                                <div v-else class="w-full text-center text-sm text-gray-600">no religions</div>
-                            </div>
-                            <div
-                                class="w-full text-center text-green-700 mt-8 mb-2"
-                                v-if="loader.show && loader.type == 'religions'"
-                            >getting{{ religionsPage < 2 ? '' : ' more' }} religions...</div>
-                            <div class="mb-8">
-                                <TextInput
-                                    id="name"
-                                    type="text"
-                                    class="mt-1 block w-full max-w-[500px]"
-                                    v-model="religionsSearch"
-                                    placeholder="search for religions"
-                                />
-                            </div>
-
-                            <div class="text-sm text-center capitalize mb-2 font-bold">selected preferences</div>
-                            <div class="p-2 flex justify-start items-center overflow-hidden overflow-x-auto my-2">
-                                
-                                <template v-if="selectedReligions.length">
-                                    <div
-                                        v-for="l in selectedReligions"
-                                        :key="l.id"
-                                        class="capitalize mr-3 rounded relative text-sm p-2 w-fit text-gray-700 bg-gray-300 select-none cursor-pointer text-center"
-                                    >
-                                        {{ l.name }}
-                                        <div 
-                                            @click="() => removeReligionFromSelected(l)"
-                                            :title="`remove ${l.name}`"
-                                            class="absolute -top-2 -right-2 text-sm flex justify-center items-center transition duration-75 text-center rounded-full
-                                                border-2 border-gray-800 bg-gray-300 text-gray-800 cursor-pointer w-6 h-6 hover:bg-gray-600 hover:text-white"
-                                        >x</div>
-                                    </div>
-                                </template>
-                                <div v-else class="w-full text-center text-sm text-gray-600">no preferred religions</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+                <template v-for="(kind, key) in KINDS" :key="key">
+                    <div :id="`preference-${key}-id`" class="relative"></div>
+                    <section :class="card" :aria-labelledby="`preference-${key}`">
+                        <h3 :id="`preference-${key}`" class="text-lg font-medium text-gray-900">{{ kind.title }}</h3>
+                        <p class="mt-1 mb-4 text-sm text-gray-600">{{ kind.about }}</p>
+                        <PreferencePicker
+                            :ref="(el) => { pickers[key] = el }"
+                            v-model="selected[key]"
+                            :lookup-route="kind.route"
+                            :singular="kind.singular"
+                            :plural="key"
+                            :max="MAX_PER_KIND"
+                            @add="(name) => startAdding(key, name)"
+                        />
+                    </section>
+                </template>
 
                 <div id="preference-action-id" class="relative"></div>
-                <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg my-8 p-4 flex justify-end">
+                <div class="sticky bottom-0 z-10 flex flex-wrap items-center justify-end gap-3 border border-gray-100 bg-white p-4 shadow-sm sm:rounded-lg">
+                    <span v-if="changed" class="text-sm text-gray-600">You have unsaved changes.</span>
                     <PrimaryButton
-                        class="ms-4" 
-                        :class="{ 'opacity-25': (loader.show && loader.type == 'preference') }" 
-                        :disabled="loader.type == 'preference' || !preferenceChanged"
+                        :class="{ 'opacity-25': form.processing }"
+                        :disabled="form.processing || !changed"
                         @click="submitPreferences"
                     >
                         set preferences
@@ -759,156 +229,27 @@ function removeReligionFromSelected(oldReligion) {
         </div>
     </AuthenticatedLayout>
 
-    <Modal
-        :show="modalData.show"
-        @close="closeModal"
-    >
-        <div class="p-4">
+    <Modal :show="!!adding.kind" max-width="md" @close="closeAdding">
+        <form v-if="adding.kind" class="p-6" @submit.prevent="saveNew">
+            <h2 class="text-lg font-semibold text-gray-900">Add a {{ KINDS[adding.kind].singular }}</h2>
+            <p class="mt-1 text-sm text-gray-600">It's added to the list for everyone, and chosen for you.</p>
 
-            <div class="w-full mt-2 mb-4">
-                <div
-                    class="w-fit mx-auto text-2xl font-bold bg-gradient-to-r from-gray-800 to-gray-500 bg-clip-text text-transparent mb-2"
-                >Create {{ modalData.type == 'cases' ? 'Case' : (modalData.type == 'religions' ? 'Religion' : 'Language') }}</div>
-                <hr>
-            </div>
-            <div
-                v-if="modalData.type == 'cases'"
-            >
-                <div 
-                    class="text-green-700 bg-green-300 rounded my-2 transition duration-100 text-center w-[80%] py-1 px-2 mx-auto"
-                    :class="[(loader.show && loader.type.includes('create')) ? 'visible' : 'invisible']"
-                >creating case...</div>
-                <form 
-                    @submit.prevent="createCase"
-                >
-
-                    <div class="mt-4 mx-auto max-w-[400px]">
-                        <InputLabel for="name" value="Name" />
-
-                        <TextInput
-                            id="name"
-                            type="text"
-                            class="mt-1 block w-full"
-                            v-model="caseData.name"
-                            required
-                            autofocus
-                        />
-
-                        <InputError class="mt-2" :message="caseErrors.name" />
-                    </div>
-
-                    <div class="mt-4 mx-auto max-w-[400px]">
-                        <InputLabel for="description" value="Description" />
-
-                        <TextBox
-                            id="description"
-                            class="mt-1 block w-full"
-                            v-model="caseData.description"
-                        />
-
-                        <InputError class="mt-2" :message="caseErrors.description" />
-                    </div>
-
-                    <div class="flex items-center justify-end mt-4">
-
-                        <PrimaryButton class="ms-4" :class="{ 'opacity-25': loader.show }" :disabled="loader.type == 'create case'">
-                            create
-                        </PrimaryButton>
-                    </div>
-                </form>
+            <div class="mt-4">
+                <InputLabel for="preference-new-name" value="Name" />
+                <TextInput id="preference-new-name" v-model="adding.name" type="text" class="mt-1 block w-full" required autofocus />
+                <InputError class="mt-2" :message="addErrors.name" />
             </div>
 
-            <div
-                v-if="modalData.type == 'languages'"
-            >
-                <div 
-                    class="text-green-700 bg-green-300 rounded my-2 transition duration-100 text-center w-[80%] py-1 px-2 mx-auto"
-                    :class="[(loader.show && loader.type.includes('create')) ? 'visible' : 'invisible']"
-                >creating language...</div>
-                <form 
-                    @submit.prevent="createLanguage"
-                >
-
-                    <div class="mt-4 mx-auto max-w-[400px]">
-                        <InputLabel for="name" value="Name" />
-
-                        <TextInput
-                            id="name"
-                            type="text"
-                            class="mt-1 block w-full"
-                            v-model="languageData.name"
-                            required
-                        />
-
-                        <InputError class="mt-2" :message="languageErrors.name" />
-                    </div>
-
-                    <div class="mt-4 mx-auto max-w-[400px]">
-                        <InputLabel for="about" value="About" />
-
-                        <TextBox
-                            id="about"
-                            class="mt-1 block w-full"
-                            v-model="languageData.about"
-                        />
-
-                        <InputError class="mt-2" :message="languageErrors.about" />
-                    </div>
-
-                    <div class="flex items-center justify-end mt-4">
-
-                        <PrimaryButton class="ms-4" :class="{ 'opacity-25': loader.show }" :disabled="loader.type == 'create language'">
-                            create
-                        </PrimaryButton>
-                    </div>
-                </form>
+            <div class="mt-4">
+                <InputLabel for="preference-new-detail" :value="KINDS[adding.kind].detail === 'description' ? 'Description (optional)' : 'About (optional)'" />
+                <TextBox id="preference-new-detail" v-model="adding.detail" class="mt-1 block w-full" />
+                <InputError class="mt-2" :message="addErrors.detail" />
             </div>
-            
-            <div
-                v-if="modalData.type == 'religions'"
-            >
-                <div 
-                    class="text-green-700 bg-green-300 rounded my-2 transition duration-100 text-center w-[80%] py-1 px-2 mx-auto"
-                    :class="[(loader.show && loader.type.includes('create')) ? 'visible' : 'invisible']"
-                >creating religion...</div>
-                <form 
-                    @submit.prevent="createReligion"
-                >
 
-                    <div class="mt-4 mx-auto max-w-[400px]">
-                        <InputLabel for="name" value="Name" />
-
-                        <TextInput
-                            id="name"
-                            type="text"
-                            class="mt-1 block w-full"
-                            v-model="religionData.name"
-                            required
-                        />
-
-                        <InputError class="mt-2" :message="religionErrors.name" />
-                    </div>
-
-                    <div class="mt-4 mx-auto max-w-[400px]">
-                        <InputLabel for="about" value="About" />
-
-                        <TextBox
-                            id="about"
-                            class="mt-1 block w-full"
-                            v-model="religionData.about"
-                        />
-
-                        <InputError class="mt-2" :message="religionErrors.about" />
-                    </div>
-
-                    <div class="flex items-center justify-end mt-4">
-
-                        <PrimaryButton class="ms-4" :class="{ 'opacity-25': loader.show }" :disabled="loader.type == 'create religion'">
-                            create
-                        </PrimaryButton>
-                    </div>
-                </form>
+            <div class="mt-6 flex justify-end gap-2">
+                <SecondaryButton type="button" :disabled="adding.saving" @click="closeAdding">Cancel</SecondaryButton>
+                <PrimaryButton :disabled="adding.saving">{{ adding.saving ? 'Adding…' : 'Add' }}</PrimaryButton>
             </div>
-        </div>
+        </form>
     </Modal>
 </template>

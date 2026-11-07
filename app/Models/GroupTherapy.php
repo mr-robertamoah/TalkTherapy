@@ -187,6 +187,26 @@ class GroupTherapy extends Model
             && ($activeCounsellors ?? $this->activeCounsellors()->count()) < $this->max_counsellors;
     }
 
+    // SCRUM-391: canTakeCounsellor() as a query -- not ended, and its active counsellors (not
+    // soft-deleted) plus a live counsellor creator, counted once, below max_counsellors. Counted as
+    // activeCounsellors() counts them; keep the two together.
+    public function scopeWhereCanTakeCounsellor($query)
+    {
+        $counsellors = (new Counsellor)->getTable();
+
+        return $query
+            ->where($this->qualifyColumn('status'), '!=', TherapyStatusEnum::ended->value)
+            ->whereRaw(
+                "(select count(*) from counsellor_group_therapy cgt join {$counsellors} c on c.id = cgt.counsellor_id"
+                .' where cgt.group_therapy_id = group_therapies.id and cgt.state = ? and c.deleted_at is null'
+                .' and not (group_therapies.addedby_type = ? and group_therapies.addedby_id = c.id))'
+                ." + (case when group_therapies.addedby_type = ? and exists (select 1 from {$counsellors} cc"
+                .' where cc.id = group_therapies.addedby_id and cc.deleted_at is null) then 1 else 0 end)'
+                .' < group_therapies.max_counsellors',
+                [CounsellorGroupTherapyStateEnum::active->value, Counsellor::class, Counsellor::class]
+            );
+    }
+
     // SCRUM-31: admits new members unless it has counsellors and none of them is currently verified
     // (one still waiting for its first counsellor does). $counsellors: the active ones, if loaded.
     public function admitsNewMembers(?Collection $counsellors = null): bool
