@@ -4,6 +4,7 @@ namespace App\Actions\Request;
 
 use App\Actions\Action;
 use App\Actions\GroupTherapy\AddCounsellorToGroupTherapyAction;
+use App\Actions\Suspension\EnsureCanActAsCounsellorAction;
 use App\DTOs\RequestResponseDTO;
 use App\Enums\RequestStatusEnum;
 use App\Models\Counsellor;
@@ -17,6 +18,10 @@ use Illuminate\Support\Facades\DB;
 // loads a Therapy and so always failed. Product decision (2026-11-01): accepting adds the counsellor
 // as an active, normal-role counsellor -- unless the group is already full, which is refused with a
 // clear message and leaves the invite pending. Once the group fills up, the remaining invites close.
+// SCRUM-389: also the other direction -- a counsellor's offer to help (from them, to the creator's
+// User), accepted by the creator. The counsellor is locked after the group and the request (the
+// SCRUM-31 lock order) and re-checked (verification, suspension); a counsellor creator accepting must
+// not be suspended either.
 class RespondToGroupTherapyAssistanceRequestAction extends Action
 {
     public const GROUP_FULL = AddCounsellorToGroupTherapyAction::GROUP_FULL;
@@ -46,8 +51,22 @@ class RespondToGroupTherapyAssistanceRequestAction extends Action
             }
 
             // SCRUM-383: the same step a counsellor invitation link uses.
-            $counsellor = $request->to instanceof Counsellor ? $request->to : null;
-            AddCounsellorToGroupTherapyAction::new()->execute($group, $counsellor, $requestResponseDTO->user, exceptRequestId: $request->id);
+            $isOffer = $request->isAssistanceOffer();
+            $counsellorId = $request->assistanceCounsellor()?->id;
+            $counsellor = $counsellorId ? Counsellor::query()->lockForUpdate()->find($counsellorId) : null;
+
+            if ($isOffer) {
+                EnsureCanActAsCounsellorAction::new()->execute($counsellor, asTarget: true);
+                EnsureCanActAsCounsellorAction::new()->execute($group->creatorCounsellor());
+            }
+
+            AddCounsellorToGroupTherapyAction::new()->execute(
+                $group,
+                $counsellor,
+                $requestResponseDTO->user,
+                exceptRequestId: $request->id,
+                offer: $isOffer ? $request : null,
+            );
 
             $request->update(['status' => $response]);
 

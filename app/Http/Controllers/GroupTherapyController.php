@@ -2,12 +2,14 @@
 
 namespace App\Http\Controllers;
 
+use App\Actions\Therapy\ResolveTherapyCardStateAction;
 use App\DTOs\GetTherapyDTO;
 use App\DTOs\GroupTherapyDTO;
 use App\DTOs\JoinGroupTherapyDTO;
 use App\Exceptions\BadRequestException;
 use App\Exceptions\PaymentRequiredException;
 use App\Http\Requests\CreateGroupTherapyRequest;
+use App\Http\Requests\TherapyAssistanceRequest;
 use App\Http\Requests\UpdateGroupTherapyRequest;
 use App\Http\Resources\GroupTherapyMiniResource;
 use App\Http\Resources\GroupTherapyPreviewResource;
@@ -15,6 +17,7 @@ use App\Http\Resources\GroupTherapyResource;
 use App\Http\Resources\RequestResource;
 use App\Http\Resources\SessionResource;
 use App\Http\Resources\TherapyTopicResource;
+use App\Models\Counsellor;
 use App\Models\GroupTherapy;
 use App\Services\GroupTherapyService;
 use App\Support\FailureResponse;
@@ -28,7 +31,7 @@ class GroupTherapyController extends Controller
     public function getRandomGroupTherapies(Request $request)
     {
         try {
-            $therapies = GroupTherapyService::new()->getRandomGroupTherapies($request->user());
+            $therapies = GroupTherapyService::new()->getRandomGroupTherapies($request->user(), $request->query('seed'));
 
             return GroupTherapyMiniResource::collection($therapies);
         } catch (Throwable $th) {
@@ -252,6 +255,10 @@ class GroupTherapyController extends Controller
             $preview = $page['preview'];
 
             $pendingRequest = $preview ? null : $therapy->pendingRequestFor($user?->counsellor);
+            // SCRUM-389: the page's "offer to help" / "find a counsellor" from the same rules as the cards.
+            if (! $preview) {
+                ResolveTherapyCardStateAction::new()->execute(collect([$therapy]), $user);
+            }
             $pendingMembershipRequest = $user
                 ? $therapy->pendingMembershipRequestFor($user)
                 : null;
@@ -302,6 +309,23 @@ class GroupTherapyController extends Controller
                     ? new GroupTherapyResource($result)
                     : new RequestResource($result),
             ]);
+        } catch (Throwable $th) {
+            return $this->failureResponse($request, $th);
+        }
+    }
+
+    // SCRUM-389: the creator invites more counsellors (counsellorIds), or a counsellor offers to help.
+    public function sendAssistanceRequest(TherapyAssistanceRequest $request)
+    {
+        try {
+            GroupTherapyService::new()->sendAssistanceRequest(
+                $request->user(),
+                GroupTherapy::query()->find($request->route('groupTherapyId')),
+                Counsellor::query()->whereKey($request->input('counsellorIds', []))->get(),
+                count($request->input('counsellorIds', [])),
+            );
+
+            return response()->json(['status' => true]);
         } catch (Throwable $th) {
             return $this->failureResponse($request, $th);
         }

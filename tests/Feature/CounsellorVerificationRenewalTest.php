@@ -92,6 +92,19 @@ function cvrVerificationRequest(Counsellor $counsellor): Request
     ]));
 }
 
+// A request made earlier (while they were verified), written directly -- CreateRequestAction would
+// refuse it now (SCRUM-389's backstop).
+function cvrEarlierRequest(string $type, $from, $to, $for): Request
+{
+    $request = new Request(['type' => $type, 'data' => [], 'status' => RequestStatusEnum::pending->value]);
+    $request->from()->associate($from);
+    $request->to()->associate($to);
+    $request->for()->associate($for);
+    $request->save();
+
+    return $request;
+}
+
 function cvrRespond($test, User $admin, Request $request, string $response)
 {
     return $test->actingAs($admin)->postJson(route('requests.respond', ['requestId' => $request->id]), ['response' => $response]);
@@ -323,9 +336,7 @@ test('a client can\'t ask a lapsed counsellor to assist, and a lapsed counsellor
         ->assertStatus(422)->assertJsonPath('message', EnsureCounsellorMayTakeOnClientsAction::NOT_VERIFIED);
 
     // A request sent while they were verified can't be accepted once it has ended.
-    $request = CreateRequestAction::new()->execute(CreateRequestDTO::new()->fromArray([
-        'from' => $client, 'to' => $lapsed, 'for' => $therapy, 'type' => RequestTypeEnum::therapy->value, 'data' => [],
-    ]));
+    $request = cvrEarlierRequest(RequestTypeEnum::therapy->value, $client, $lapsed, $therapy);
     $this->actingAs($lapsed->user)->postJson(route('requests.respond', ['requestId' => $request->id]), ['response' => 'accepted'])->assertStatus(422);
     expect($therapy->fresh()->counsellor_id)->toBeNull()
         ->and($request->fresh()->status)->toBe(RequestStatusEnum::pending->value);
@@ -414,17 +425,30 @@ test('administrators get the renewals list, the history (no licence numbers) and
     $this->actingAs($user)->getJson(route('admin.counsellors.verification.events', ['counsellorId' => $fine->id]))->assertForbidden();
 });
 
-test('the backfill gives counsellors already verified the full period from when it runs, and a baseline entry', function () {
-    $old = cvrCounsellor(['verified_at' => now()->subYears(3), 'verification_expires_at' => null]);
+test('the backfill gives counsellors already verified 12 months from when it runs plus a spread of up to two months, and a baseline entry', function () {
+    $this->travelTo(now()->startOfSecond());
+    $old = collect(range(1, 5))->map(fn () => cvrCounsellor(['verified_at' => now()->subYears(3), 'verification_expires_at' => null]));
     $never = Counsellor::factory()->unverified()->create(['user_id' => User::factory()->create()->id]);
     $migration = require database_path('migrations/2026_11_10_300000_backfill_counsellor_verification_expiry.php');
 
     $migration->up();
     $migration->up();
 
-    expect($old->fresh()->isVerified())->toBeTrue()
-        ->and($old->fresh()->verification_expires_at->diffInDays(now()->addMonths(12), true))->toBeLessThan(1)
-        ->and(cvrEvents($old, CounsellorVerificationEventEnum::baseline))->toHaveCount(1)
+    foreach ($old as $counsellor) {
+        $counsellor = $counsellor->fresh();
+        // SCRUM-389: 12 months, plus 0-60 days fixed by the counsellor's id.
+        $expected = now()->addMonths(12)->addDays($counsellor->id % 61);
+        $baseline = cvrEvents($counsellor, CounsellorVerificationEventEnum::baseline);
+
+        expect($counsellor->isVerified())->toBeTrue()
+            ->and($counsellor->verification_expires_at->equalTo($expected))->toBeTrue()
+            ->and($counsellor->verification_expires_at->gte(now()->addMonths(12)))->toBeTrue()
+            ->and($counsellor->verification_expires_at->lte(now()->addMonths(12)->addDays(60)))->toBeTrue()
+            ->and($baseline)->toHaveCount(1)
+            ->and($baseline->sole()->expires_at->equalTo($expected))->toBeTrue();
+    }
+
+    expect($old->map(fn ($counsellor) => $counsellor->fresh()->verification_expires_at->toDateString())->unique())->toHaveCount(5)
         ->and($never->fresh()->verification_expires_at)->toBeNull()
         ->and(cvrEvents($never))->toBeEmpty();
 });
@@ -472,9 +496,7 @@ test('every way of taking on new work refuses a counsellor whose verification ha
 
     // A client accepting the offer they made while verified is told it's the counsellor's.
     $therapy = Therapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => $client->id, 'status' => TherapyStatusEnum::pending->value, 'counsellor_id' => null]);
-    $offer = CreateRequestAction::new()->execute(CreateRequestDTO::new()->fromArray([
-        'from' => $lapsed, 'to' => $client, 'for' => $therapy, 'type' => RequestTypeEnum::therapy->value, 'data' => [],
-    ]));
+    $offer = cvrEarlierRequest(RequestTypeEnum::therapy->value, $lapsed, $client, $therapy);
     $this->actingAs($client)->postJson(route('requests.respond', ['requestId' => $offer->id]), ['response' => 'accepted'])
         ->assertStatus(422)->assertJsonPath('error', EnsureCounsellorMayTakeOnClientsAction::TARGET_NOT_VERIFIED);
     expect($therapy->fresh()->counsellor_id)->toBeNull();
@@ -484,9 +506,7 @@ test('a discussion invitation can\'t be accepted once the counsellor\'s verifica
     $lapsed = cvrCounsellor(['verification_expires_at' => now()->subDay()]);
     $owner = cvrCounsellor();
     $discussion = Discussion::factory()->create(['addedby_type' => Counsellor::class, 'addedby_id' => $owner->id]);
-    $invite = CreateRequestAction::new()->execute(CreateRequestDTO::new()->fromArray([
-        'from' => $owner, 'to' => $lapsed, 'for' => $discussion, 'type' => RequestTypeEnum::discussion->value, 'data' => [],
-    ]));
+    $invite = cvrEarlierRequest(RequestTypeEnum::discussion->value, $owner, $lapsed, $discussion);
 
     $this->actingAs($lapsed->user)->postJson(route('requests.respond', ['requestId' => $invite->id]), ['response' => 'accepted'])
         ->assertStatus(422)->assertJsonPath('error', EnsureCounsellorMayTakeOnClientsAction::NOT_VERIFIED_FOR_DISCUSSION);
@@ -506,4 +526,13 @@ test('a group run only by counsellors whose verification isn\'t current takes no
     $lapsed->forceFill(['verification_expires_at' => now()->addYear()])->save();
     $this->actingAs($joiner)->postJson("api/group-therapies/{$group->id}/join")->assertSuccessful();
     expect($group->fresh()->isParticipant($joiner))->toBeTrue();
+});
+
+test('a revocation reason can\'t add a heading or a link to the email', function () {
+    $counsellor = cvrCounsellor();
+    $html = (string) (new CounsellorVerificationRevokedNotification("# You are verified again\n[Click here](https://example.com)"))
+        ->toMail($counsellor)->render();
+
+    expect($html)->not->toMatch('/<h[1-6][^>]*>\s*You are verified again/')
+        ->not->toContain('href="https://example.com"');
 });

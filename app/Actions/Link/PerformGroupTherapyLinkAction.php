@@ -105,17 +105,8 @@ class PerformGroupTherapyLinkAction extends Action
 
             AddCounsellorToGroupTherapyAction::new()->execute($group, $counsellor, $user);
 
-            // Their own pending invite to this group is answered by joining.
-            Request::query()
-                ->wherePending()
-                ->whereFor($group)
-                ->where('type', RequestTypeEnum::groupTherapy->value)
-                ->whereTo($counsellor)
-                ->update([
-                    'status' => RequestStatusEnum::inconsequencial->value,
-                    'responded_at' => now(),
-                    'data' => ['reason' => 'Joined through an invitation link.'],
-                ]);
+            // Their own pending invites and offers for this group are closed by joining
+            // (AddCounsellorToGroupTherapyAction, SCRUM-389).
 
             $link->deactivate();
 

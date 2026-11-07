@@ -80,6 +80,9 @@ const randomTherapies = ref({ data: [], page: 1 })
 const randomGroupTherapies = ref({ data: [], page: 1 })
 const randomCounsellors = ref({ data: [], page: 1 })
 
+// SCRUM-113: one seed for this visit, so ranked lists keep their order while paging (no repeats).
+const visitSeed = Math.floor(Math.random() * 2147483646) + 1
+
 watch(() => newTherapy.value, () => {
     if (newTherapy.value)
         recentTherapies.value = [newTherapy.value, ...recentTherapies.value]
@@ -174,7 +177,7 @@ async function getRandomCounsellors() {
     if (!randomCounsellors.value.page) return
 
     setGetting('counsellors')
-    await axios.get(route('api.counsellors.random', {page: randomCounsellors.value.page}))
+    await axios.get(route('api.counsellors.random', { page: randomCounsellors.value.page, seed: visitSeed }))
         .then((res) => {
             console.log(res)
             if (randomCounsellors.value.page == 1)
@@ -224,7 +227,7 @@ function getRandomTherapies() {
     if (!randomTherapies.value.page) return
 
     setGetting('therapies')
-    axios.get(route('api.therapies.random', {page: randomTherapies.value.page}))
+    axios.get(route('api.therapies.random', { page: randomTherapies.value.page, seed: visitSeed }))
         .then((res) => {
             console.log(res)
             if (randomTherapies.value.page == 1)
@@ -249,7 +252,7 @@ function getRandomGroupTherapies() {
     if (!randomGroupTherapies.value.page) return
 
     setGetting('group-therapies')
-    axios.get(route('api.group.therapies.random', {page: randomGroupTherapies.value.page}))
+    axios.get(route('api.group.therapies.random', { page: randomGroupTherapies.value.page, seed: visitSeed }))
         .then((res) => {
             console.log(res)
             if (randomGroupTherapies.value.page == 1)

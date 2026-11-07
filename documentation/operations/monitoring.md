@@ -52,9 +52,14 @@ counsellor verification failed.` (with `counsellor`) and the rest carry on. Run 
 A verification stops counting the moment it ends whatever the sweep does; the ended sweep looks back
 30 days, so a longer scheduler outage loses only those records and notices.
 
-Every counsellor verified before SCRUM-31 shipped got the same end date (release + 12 months). Watch
-the overview's renewals count from about 30 days before that date: reminders arrive in two bursts,
-and any not renewed in time all end on the same day.
+Counsellors verified before SCRUM-31 shipped get end dates spread from release + 12 months to
+release + 12 months + 60 days (one per counsellor, fixed by id -- SCRUM-389), so reminders and ends
+trickle in over about two months. Watch the overview's renewals count from about 30 days before
+release + 12 months until about two months after.
+
+Preference ranking (SCRUM-113) runs SQL on every Home and Public list request. If one of those
+queries fails, Laravel's exception report includes its bindings -- the viewer's own preference ids
+(cases, languages, religions). Treat those logs as personal data.
 
 Related lines worth a dashboard but not a page: `Could not send a safeguarding exception reminder.`,
 `The safeguarding exception reminder sweep failed.` (hourly) and `Could not queue the announcement

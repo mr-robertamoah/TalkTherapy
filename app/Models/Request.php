@@ -96,6 +96,28 @@ class Request extends Model
         return $this->morphTo();
     }
 
+    // SCRUM-389: an assistance request (a therapy's or a group's) is either an invitation to a
+    // counsellor (`to` is the Counsellor) or a counsellor's own offer to help (from the Counsellor,
+    // to the client or the group's creator -- a User). Named here, so nothing works it out again.
+    public function isAssistanceOffer(): bool
+    {
+        return in_array($this->type, [RequestTypeEnum::therapy->value, RequestTypeEnum::groupTherapy->value], true)
+            && $this->from_type === Counsellor::class
+            && $this->to_type !== Counsellor::class;
+    }
+
+    // The counsellor an assistance request would add: the one invited, or the one offering.
+    public function assistanceCounsellor(): ?Counsellor
+    {
+        if (! in_array($this->type, [RequestTypeEnum::therapy->value, RequestTypeEnum::groupTherapy->value], true)) {
+            return null;
+        }
+
+        $counsellor = $this->isAssistanceOffer() ? $this->from : $this->to;
+
+        return $counsellor instanceof Counsellor ? $counsellor : null;
+    }
+
     // TT-4.11a/SCRUM-302: mirrors License::files() exactly -- introduced for identity-verification
     // document attachments (age/identity verification, SCRUM-289), always uploaded to the private
     // 'identity_documents' disk (never the public default), retrieved only through the dedicated

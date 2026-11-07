@@ -23,5 +23,6 @@ return [
 
     // SCRUM-31: reminders this many days before a verification ends (the counsellor, and the admins
     // through their to-do count). The largest is also when the counsellor may re-verify early.
-    'verification_reminder_days' => array_values(array_filter(array_map('intval', explode(',', (string) env('COUNSELLOR_VERIFICATION_REMINDER_DAYS', '30,7'))))),
+    // Kept as written (e.g. "30,7"); App\Support\CounsellorVerification::reminderDays() parses it.
+    'verification_reminder_days' => env('COUNSELLOR_VERIFICATION_REMINDER_DAYS', '30,7'),
 ];

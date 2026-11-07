@@ -41,6 +41,8 @@ defineProps({
                         <div class="text-xs text-gray-200 opacity-90">Counsellor</div>
                         <!-- SCRUM-30 -->
                         <CounsellorVerificationBadge v-if="counsellor.verification" class="mt-1" :verification="counsellor.verification" />
+                        <!-- SCRUM-113 -->
+                        <span v-if="counsellor.matchesPreferences" class="mt-1 ml-1 inline-flex items-center rounded-full border border-green-200 bg-green-50 px-2 py-0.5 text-xs font-medium text-green-800">Matches your preferences</span>
                     </div>
                 </div>
                 

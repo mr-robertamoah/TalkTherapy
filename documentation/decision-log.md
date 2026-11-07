@@ -10330,3 +10330,82 @@ therapy 18 after the last QA pass.
   every app write uses `forceFill`); the revocation email puts the reason through the mail template's
   Markdown (only admins write it); every pre-existing verification ends on the same day a year after
   release (`documentation/operations/monitoring.md` says to watch the renewals count then).
+
+## SCRUM-113 + 114 + 389 — ranking by preferences, card buttons, offering to help (2026-11-07)
+
+- **Grouping (the user's decisions, 2026-11-07):** with SCRUM-389's follow-ups went SCRUM-113 and 114,
+  plus two new requests (SCRUM-390 admin search, SCRUM-391 counsellor dashboard). Split into two PRs:
+  this one (113, 114, 389); 390 and 391 after it merges (the dashboard needs these offers and ranking).
+- **Found first and shipped on its own (PR #288):** the Home "Public Therapies" row listed other
+  people's PRIVATE therapies to every signed-in user (an ungrouped `orWhereNot`). This branch carries
+  the same fix inside the refactored query.
+- **SCRUM-113, the user's decisions:**
+  - Ranked lists: the Home public therapies, groups and counsellors rows, and the Public Therapies page.
+    Not posts; not the Home "best"/"leading" counsellor rows (top 5 by stars -- mine).
+  - Inside the existing rows: matches first, then the rest, with a "Matches your preferences" label
+    for the viewer only (a boolean -- never the score or what matched).
+  - Each matched kind (case, language, religion) counts the same; more kinds rank higher (mine:
+    "matches first" read as a count, not a yes/no).
+  - A counsellor browsing therapies is matched on the therapy's cases against theirs, and on the
+    client's saved languages against theirs. The user first chose "both" (languages and religions);
+    after the security review showed a counsellor could work out a client's religion (set one on their
+    profile, watch the label), the user chose cases + languages only. Language could be guessed the
+    same way; it is less sensitive, and the user accepted that.
+- **Mine (SCRUM-113):**
+  - Ranked in SQL before paging, then a seeded order kept for the visit (`?seed=`, carried in `links.next`)
+    -- "load more" used to repeat or skip rows (`inRandomOrder` + paging). Integer arithmetic, so it
+    works the same on MySQL and SQLite; the multiplier is kept to the middle of its range so an order
+    never looks like plain ids.
+  - The Public Therapies page used to load every public therapy and group into memory and shuffle them
+    on each request; it is now one SQL union, ranked and paged (`GetPublicTherapyFeedAction`), and
+    `PublicTherapyResource` now delegates to the two mini resources instead of being a third copy.
+  - The Home groups row used to drop every group a counsellor created and keep the viewer's own
+    memberships; both fixed (grouped ANDs).
+  - Saving preferences: real ids only, at most 20 of each; an empty list clears one (it used to be
+    ignored). QA found the Preferences page never showed saved preferences (it read `.data` from lists
+    that arrive unwrapped), so saving wiped them; fixed.
+  - The client's settings are read inside SQL only; never sent, cached or logged by the app (a failed
+    query's exception report does carry the viewer's own ids -- noted in monitoring.md).
+- **SCRUM-114, the user's decisions:** joining from a card opens a small centred modal with the one
+  choice joining needs (by name or anonymously; locked for an anonymous group); counsellors see "Offer
+  to help" where they can take the therapy or group on.
+- **Mine (SCRUM-114):**
+  - The button is decided on the server (`ResolveTherapyCardStateAction`, `TherapyCardActionEnum`) from
+    the same model rules the actions enforce (`GroupTherapy::isFull`, `canTakeCounsellor`,
+    `admitsNewMembers`), in at most two queries a page, so the card and the action can't disagree.
+  - An administrator with a counsellor profile sees "Offer to help" like any counsellor (the offer
+    endpoint allows them); an administrator without one sees "View".
+  - A card doesn't check "former member" for a counsellor's offer (that would be a query per row); the
+    offer is refused if so.
+  - The card modal starts from the person's saved "stay anonymous" preference; the group page's own
+    join modal still starts from the group's flag (SCRUM-392 merges the two).
+- **SCRUM-389:**
+  - **Offering to help a group** (new `POST /api/group-therapies/{id}/assist`): a counsellor offers to
+    help a public group that can take another counsellor; the request goes to the creator's User (a
+    counsellor creator's account) and the creator accepts. The group's creator can also invite more
+    counsellors after setting it up (the user's decision). Checked and sent under the group's lock.
+    Refused alike for a missing, private, ended group or one whose creator has gone.
+  - The request's direction is named (`Request::isAssistanceOffer()`, `assistanceCounsellor()`,
+    `direction` on `RequestResource`) instead of being worked out from the parties' types.
+  - Accepting an offer: the creator's consent plus the offer itself (`AddCounsellorToGroupTherapyAction`
+    `$offer`); the counsellor is locked and re-checked (verification, suspension), and a counsellor
+    creator must not be suspended. Joining closes the counsellor's other invites and offers for the
+    group (saved one by one, keeping their payment data); this replaces the link path's own copy.
+  - An offer's recipient (a client or creator) is shown to the counsellor by name only.
+  - **End dates spread** (the user's decision): pre-existing verifications end between 12 months and
+    12 months + 60 days after release, by counsellor id. SCRUM-31 hasn't reached `main`, so the
+    unreleased backfill migration was edited; databases that already ran it from `develop` keep one
+    date (re-seed, or null the column and re-run it).
+  - **Backstop:** `CreateRequestAction` also refuses a counsellor who isn't currently verified on
+    therapy, group and discussion requests. The checks where each request is made stay the main ones.
+  - `verified_at` is no longer fillable (supersedes the SCRUM-30/31/388 "left as is" line); the revoke
+    reason goes through the existing `MailText::inline` (SCRUM-366).
+  - One narrow-person projection (`App\Support\NarrowUserProjection`); the platform "awaiting
+    verification" stat now counts ended, revoked and undated verifications with a request waiting.
+  - DevOps review: an index on `counsellor_group_therapy (group_therapy_id, state, counsellor_id)`, the
+    group counsellor match split into two EXISTS halves, and a `mysql-json` CI group so the MySQL-only
+    ranking SQL runs in CI.
+- **Left for SCRUM-392 (follow-up ticket):** one join modal for the card and the page; moving the public
+  filters into model scopes; the remaining inline copies of `creatorUser()`/`isFull()`; a daily cap on
+  offers; hiding unverified counsellors from the picker; dialog roles; Home refreshing member counts
+  after a join.

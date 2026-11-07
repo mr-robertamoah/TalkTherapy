@@ -499,11 +499,13 @@ async function clickedResponse(response) {
         return
       }
 
+      // SCRUM-389: the counsellor is `to` for an invitation, `from` for their own offer.
       if (res.data.request?.status == "ACCEPTED") {
+        const joined = res.data.request.direction === 'offer' ? res.data.request.from : res.data.request.to
         if (props.therapyType === 'individual') {
-          counsellor.value = res.data.request.to
+          counsellor.value = joined
         } else {
-          counsellors.value.push(res.data.request.to)
+          counsellors.value.push(joined)
         }
       }
 
@@ -517,7 +519,7 @@ async function clickedResponse(response) {
 
       setFailedAlertData({
         time: 5000,
-        message: "Something unfortunate happened. Please try again shortly.",
+        message: (err.response?.status == 422 && (err.response?.data?.error ?? err.response?.data?.message)) || "Something unfortunate happened. Please try again shortly.",
       })
     })
   request.value.responding = false
@@ -766,12 +768,15 @@ async function sendAssistanceRequest() {
     .then((res) => {
       setSuccessAlertData({
         message: computedIsUser.value
-          ? "You have successfully requested for assistance for this therapy."
-          : "You have successfully sent an assistance request for this therapy.",
+          ? "Your request has been sent to the counsellors you chose."
+          : "Your offer to help has been sent.",
         time: 4000,
       })
 
       closeModal()
+      // SCRUM-389: the page now shows "offer sent" (pendingRequest).
+      selectedCounsellors.value = []
+      router.reload({ only: ["pendingRequest"] })
     })
     .catch((err) => {
       console.log(err)
@@ -1015,6 +1020,7 @@ function reportCreated(report) {
     :pending-session-schedule-proposal="pendingSessionScheduleProposal"
     :schedule-proposal-request="scheduleProposalRequest"
     @clicked-show-all="clickedShowAll"
+    @clicked-assistance-request="() => showModal('request assistance')"
     @clicked-active-session="clickedActiveSession"
     @clicked-active-discussion="clickedActiveDiscussion"
     @handle-session-topic-update="handleSessionTopicUpdate"
@@ -1054,7 +1060,7 @@ function reportCreated(report) {
         <div class="select-none">
           <template v-if="modalData.type == 'request assistance'">
             <div class="text-gray-600 text-center font-bold tracking-wide">
-              Assistance Request
+              {{ computedIsUser ? 'Find a counsellor' : 'Offer to help' }}
             </div>
 
             <hr class="my-2" />
@@ -1143,7 +1149,7 @@ function reportCreated(report) {
                 <UserComponent :user="computedTherapy.user" v-else />
 
                 <div class="w-[90%] mx-auto text-sm text-center text-gray-600">
-                  You are sending a request to assist with this {{ therapyType }} therapy.
+                  {{ therapyType === 'group' ? 'The group\'s creator' : 'The client' }} is asked to accept your offer. You'll be told when they do.
                 </div>
               </div>
 
@@ -1154,7 +1160,7 @@ function reportCreated(report) {
                     !$page.props.auth.user?.counsellor
                   "
                   @click="sendAssistanceRequest"
-                  >send request</PrimaryButton
+                  >{{ computedIsUser ? 'send request' : 'send offer' }}</PrimaryButton
                 >
               </div>
             </div>

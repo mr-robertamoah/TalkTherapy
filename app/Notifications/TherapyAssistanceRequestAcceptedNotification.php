@@ -59,7 +59,11 @@ class TherapyAssistanceRequestAcceptedNotification extends Notification implemen
             ->greeting("Hello {$name}!")
             // SCRUM-358: a group invite -- sent by the group's creator (a user OR a counsellor) and
             // accepted by a counsellor joining the group. Its own wording either way.
-            ->when(! $this->request->for->isTherapy, function ($mail) {
+            // SCRUM-389: a counsellor's own offer to help a group, accepted by its creator.
+            ->when(! $this->request->for->isTherapy && $this->request->isAssistanceOffer(), function ($mail) {
+                $mail->line("Your offer to help the group therapy with name: '{$this->request->for->name}' has been accepted. You are now one of its counsellors.");
+            })
+            ->when(! $this->request->for->isTherapy && ! $this->request->isAssistanceOffer(), function ($mail) {
                 $acceptedBy = $this->request->to instanceof Counsellor
                     ? "counsellor with name: '{$this->request->to->getName()}'"
                     : $this->acceptedByPhrase();

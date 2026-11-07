@@ -144,6 +144,10 @@ class GroupTherapyResource extends JsonResource
             'maxSessions' => $this->max_sessions,
             'maxUsers' => $this->max_users,
             'maxCounsellors' => $this->max_counsellors,
+            // SCRUM-389: on the group's page -- whether it can take another counsellor (its creator's
+            // "find a counsellor") and the viewer's own button (an offer, or one waiting).
+            'canTakeCounsellor' => $this->resource->canTakeCounsellor(),
+            ...($this->resource->viewerCard ? ['viewer' => $this->resource->viewerCard] : []),
             'topicsCount' => $this->topicsCount,
             'createdAt' => $this->created_at,
             'activeSession' => $activeSession ? new SessionResource($activeSession) : null,

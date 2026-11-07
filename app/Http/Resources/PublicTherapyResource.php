@@ -2,53 +2,20 @@
 
 namespace App\Http\Resources;
 
-use App\Models\Counsellor;
 use App\Models\GroupTherapy;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
+// The Public Therapies page's rows (a therapy or a group). SCRUM-113: the same as the mini resources
+// the Home rows use -- with each card's button and the preference label -- plus which kind it is.
+// It used to be a third, drifting copy of them.
 class PublicTherapyResource extends JsonResource
 {
-    /**
-     * Transform the resource into an array.
-     *
-     * @return array<string, mixed>
-     */
     public function toArray(Request $request): array
     {
-        // Check if this is a GroupTherapy model
-        $isGroupTherapy = $this->resource instanceof GroupTherapy;
-        $user = $request->user();
-        $isAnonymous = $this->addedByUserIsMaskedFor($user);
+        $isGroup = $this->resource instanceof GroupTherapy;
+        $resource = $isGroup ? new GroupTherapyMiniResource($this->resource) : new TherapyMiniResource($this->resource);
 
-        $baseData = [
-            'id' => $this->id,
-            'name' => $this->name,
-            'public' => $this->public,
-            'anonymous' => $this->anonymous,
-            'type' => $isGroupTherapy ? 'group' : 'individual',
-            'createdAt' => $this->created_at->diffForHumans(),
-            'sessionsHeld' => $this->sessionsHeld ?? 0,
-        ];
-
-        if ($isGroupTherapy) {
-            return array_merge($baseData, [
-                'allowAnyone' => $this->allow_anyone,
-                'maxUsers' => $this->max_users,
-                'userId' => $isAnonymous
-                    ? null
-                    : ($this->addedby_type == Counsellor::class
-                        ? $this->addedby?->user_id
-                        : $this->addedby?->id),
-                'counsellorsCount' => $this->counsellorsCount,
-                'about' => $this->about,
-            ]);
-        }
-
-        return array_merge($baseData, [
-            'userId' => $isAnonymous ? null : $this->addedby?->id,
-            'counsellor' => $this->when($this->counsellor, new CounsellorMiniResource($this->counsellor)),
-            'backgroundStory' => $this->background_story,
-        ]);
+        return [...$resource->toArray($request), 'type' => $isGroup ? 'group' : 'individual'];
     }
 }

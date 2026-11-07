@@ -269,6 +269,13 @@ function gpepEntryPoints(): array
         'start a group' => ['POST', 'api/group-therapies', 'minor', fn (array $c) => [[], [
             'name' => 'New group', 'about' => 'About it.', 'anonymous' => false, 'allowInPerson' => false, 'allowAnyone' => true, 'public' => true, 'sessionType' => 'ONCE', 'paymentType' => 'FREE',
         ]], 422],
+        // SCRUM-389: a group's creator asking more counsellors in after setting it up.
+        'invite more counsellors to a group' => ['POST', 'api/group-therapies/{groupTherapyId}/assist', 'minor', function (array $c) {
+            $group = GroupTherapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => $c['minor']->id, 'max_counsellors' => 3]);
+            $invited = Counsellor::factory()->create(['user_id' => User::factory()->adult()->create()->id]);
+
+            return [['groupTherapyId' => $group->id], ['counsellorIds' => [$invited->id]]];
+        }, 403],
         'join a group' => ['POST', 'api/group-therapies/{groupTherapyId}/join', 'minor', function (array $c) {
             $group = GroupTherapy::factory()->create(['addedby_type' => Counsellor::class, 'addedby_id' => $c['counsellor']->id, 'allow_anyone' => true, 'max_users' => 10]);
 

@@ -97,7 +97,7 @@ test('only the invited, verified counsellor can accept -- not an admin for them,
 
     // Nor an unverified counsellor.
     $unverified = aCounsellorFor358();
-    $unverified->update(['verified_at' => null]);
+    $unverified->forceFill(['verified_at' => null])->save();
     $accept($unverified->user, aGroupInviteFor358($group, $unverified))->assertStatus(422);
 
     // Nor into a group that has ended.

@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\CounsellorGroupTherapyStateEnum;
 use App\Enums\RequestTypeEnum;
+use App\Enums\TherapyStatusEnum;
 use App\Traits\Alertable;
 use App\Traits\Commentable;
 use App\Traits\Likeable;
@@ -13,6 +14,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Pivot;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Collection;
 
 class GroupTherapy extends Model
 {
@@ -100,7 +102,8 @@ class GroupTherapy extends Model
     {
         return $this->belongsToMany(Counsellor::class, 'counsellor_group_therapy', 'group_therapy_id', 'counsellor_id')
             ->wherePivot('state', CounsellorGroupTherapyStateEnum::active->value)
-            ->select(['counsellors.id', 'counsellors.user_id']);
+            // SCRUM-114: and their verification, so a list can tell whether the group admits members.
+            ->select(['counsellors.id', 'counsellors.user_id', 'counsellors.verified_at', 'counsellors.verification_expires_at', 'counsellors.verification_revoked_at']);
     }
 
     // The group's current members. SCRUM-73: a member who left keeps their row, stamped with
@@ -154,6 +157,43 @@ class GroupTherapy extends Model
     public function isUser(User $user)
     {
         return $this->addedby_type === User::class && $this->addedby?->is($user);
+    }
+
+    // SCRUM-389: the person who created it -- the User, or a counsellor creator's User. They answer
+    // a counsellor's offer to help and its membership requests.
+    public function creatorUser(): ?User
+    {
+        return $this->addedby instanceof Counsellor ? $this->addedby->user : ($this->addedby instanceof User ? $this->addedby : null);
+    }
+
+    // A counsellor creator, or null for a group a user created.
+    public function creatorCounsellor(): ?Counsellor
+    {
+        return $this->addedby instanceof Counsellor ? $this->addedby : null;
+    }
+
+    // SCRUM-114/389: the rules the cards show and the actions enforce, in one place. Each takes a
+    // count already loaded for a list (PreloadGroupTherapyListAction), else counts now.
+    public function isFull(?int $members = null): bool
+    {
+        return ($members ?? $this->users()->count()) >= $this->max_users;
+    }
+
+    // Takes another counsellor: not ended, and below its counsellor places (active counsellors and
+    // a counsellor creator, as AddCounsellorToGroupTherapyAction counts them).
+    public function canTakeCounsellor(?int $activeCounsellors = null): bool
+    {
+        return $this->status !== TherapyStatusEnum::ended->value
+            && ($activeCounsellors ?? $this->activeCounsellors()->count()) < $this->max_counsellors;
+    }
+
+    // SCRUM-31: admits new members unless it has counsellors and none of them is currently verified
+    // (one still waiting for its first counsellor does). $counsellors: the active ones, if loaded.
+    public function admitsNewMembers(?Collection $counsellors = null): bool
+    {
+        $counsellors ??= $this->activeCounsellors();
+
+        return $counsellors->isEmpty() || $counsellors->contains(fn (Counsellor $counsellor) => $counsellor->isVerified());
     }
 
     // SCRUM-382/384: whether the group's creator is a minor paused for a missing guardian -- then
@@ -444,6 +484,24 @@ class GroupTherapy extends Model
         }
 
         return $counsellors->unique('id');
+    }
+
+    // SCRUM-114: the same set from a list's preloaded links (PreloadGroupTherapyListAction -- id,
+    // user and verification columns only), so a card counts and checks them without a query. Falls
+    // back to activeCounsellors() when the links aren't loaded.
+    public function activeCounsellorsForList(): Collection
+    {
+        if (! $this->relationLoaded('activeCounsellorLinks')) {
+            return $this->activeCounsellors();
+        }
+
+        $counsellors = collect($this->activeCounsellorLinks->all());
+        $creator = $this->creatorCounsellor();
+        if ($creator && ! $creator->trashed()) {
+            $counsellors->push($creator);
+        }
+
+        return $counsellors->unique('id')->values();
     }
 
     public function scopeWhereNotCounsellor($query, Counsellor $counsellor)

@@ -123,6 +123,8 @@ maintenance mode. The Docker `db` service already sets it (recreate the containe
 `docker compose up -d --force-recreate db`). If a deploy did fail on it: set the flag, run
 `DROP TRIGGER IF EXISTS cma_no_update; DROP TRIGGER IF EXISTS cma_no_delete;` (and the same for the
 later append-only tables' `aca_no_*` and `cve_no_*` triggers), and re-run the deploy.
+**None of these trigger migrations is on `main` yet, so the next promotion to `main` is that first
+deploy: set the flag on the production database before it** (and check it on the promotion checklist).
 
 Scheduled jobs (`routes/console.php` -- reminders, invoice settlement, document retention, the group-video
 idle speaking sweep) need Laravel's scheduler running. In Docker, the `queue` container runs it via

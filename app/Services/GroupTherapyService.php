@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Actions\Admin\RecordAdminContentReadAction;
 use App\Actions\CounsellorVerification\EnsureCounsellorMayTakeOnClientsAction;
 use App\Actions\GroupTherapy\CreateGroupTherapyAction;
+use App\Actions\GroupTherapy\EnsureCanSendGroupTherapyAssistanceRequestAction;
 use App\Actions\GroupTherapy\EnsureCanSetGroupTherapyPaymentGateAction;
 use App\Actions\GroupTherapy\EnsureGroupTherapyCanBecomeAnonymousAction;
 use App\Actions\GroupTherapy\JoinGroupTherapyAction;
@@ -24,6 +25,7 @@ use App\Actions\Therapy\EnsureCanUpdateTherapyAction;
 use App\Actions\Therapy\EnsureTherapyDataIsValidAction;
 use App\Actions\Therapy\EnsureTherapyExistsAction;
 use App\Actions\Therapy\EnsureUserHasAccessToTherapyAction;
+use App\Actions\Therapy\ResolveTherapyCardStateAction;
 use App\Actions\User\AlertGuardianAction;
 use App\Actions\User\EnsureUserMeetsTherapyRequirementsAction;
 use App\DTOs\CreateStarDTO;
@@ -32,15 +34,20 @@ use App\DTOs\GroupTherapyDTO;
 use App\DTOs\GuardianAlertDTO;
 use App\DTOs\JoinGroupTherapyDTO;
 use App\DTOs\TherapyAssistanceRequestDTO;
+use App\Enums\CounsellorGroupTherapyStateEnum;
 use App\Enums\PaginationEnum;
 use App\Enums\StarTypeEnum;
+use App\Exceptions\TherapyException;
 use App\Models\AdminContentAccess;
 use App\Models\Counsellor;
 use App\Models\GroupTherapy;
 use App\Models\Link;
 use App\Models\User;
 use App\Notifications\TherapyCreatedNotification;
+use App\Support\PreferenceMatch;
+use App\Support\PreferenceRanking;
 use App\Support\VideoJoinLock;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 class GroupTherapyService extends Service
@@ -101,6 +108,30 @@ class GroupTherapyService extends Service
         );
 
         return $therapy;
+    }
+
+    // SCRUM-389: after a group is set up -- its creator invites more counsellors, or a counsellor
+    // offers to help a public group (from them, to the creator's User, who accepts). Checked first
+    // (EnsureCanSendGroupTherapyAssistanceRequestAction); CreateRequestAction adds its own backstop.
+    // Checked and sent under the group's lock (the accept path's lock order), so a double submit
+    // can't send two. $asked: how many counsellor ids were sent -- one that doesn't exist is refused
+    // like one that can't be invited.
+    public function sendAssistanceRequest(User $user, ?GroupTherapy $group, Collection $counsellors, int $asked = 0): void
+    {
+        if ($counsellors->count() < $asked) {
+            throw new TherapyException(EnsureCanSendGroupTherapyAssistanceRequestAction::COUNSELLOR_UNAVAILABLE, 422);
+        }
+
+        DB::transaction(function () use ($user, $group, $counsellors) {
+            $group = $group ? GroupTherapy::query()->lockForUpdate()->find($group->id) : null;
+            $kind = EnsureCanSendGroupTherapyAssistanceRequestAction::new()->execute($user, $group, $counsellors);
+
+            SendTherapyAssistanceRequestAction::new()->execute(
+                TherapyAssistanceRequestDTO::new()->fromArray($kind === 'invite'
+                    ? ['from' => $group->addedby, 'to' => $counsellors->pluck('id')->all(), 'for' => $group]
+                    : ['from' => $user->counsellor, 'to' => $group->creatorUser(), 'for' => $group])
+            );
+        });
     }
 
     public function updateGroupTherapy(GroupTherapyDTO $groupTherapyDTO)
@@ -250,37 +281,21 @@ class GroupTherapyService extends Service
         return LeaveGroupTherapyAction::new()->execute($groupTherapyDTO->user, $groupTherapyDTO->groupTherapy);
     }
 
-    public function getRandomGroupTherapies(?User $user)
+    // The Home page's public groups: public, not one the viewer created (as a user or through their
+    // counsellor profile), is a member of, or counsels. SCRUM-113: each narrowing a grouped AND (they
+    // used to drop every group a counsellor created, and kept the viewer's own); ranked by the
+    // viewer's preferences (a counsellor by their profile) in a seeded order for the visit.
+    public function getRandomGroupTherapies(?User $user, mixed $seed = null)
     {
         // SCRUM-386: what each row renders (members, counts, creator) is loaded once for the page by
         // PreloadGroupTherapyListAction -- see listPage().
-        $query = GroupTherapy::query();
+        $seed = PreferenceRanking::seed($seed);
 
-        $query->wherePublic();
+        $query = $this->publicGroupsQuery($user);
 
-        $query
-            ->when($user, function ($query) use ($user) {
-                $query->wherePublic();
-                $query->where(function ($query) use ($user) {
-                    $query->whereNot('addedby_id', $user->id)
-                        ->where('addedby_type', User::class);
-                });
-            })
-            ->when($user?->counsellor, function ($query) use ($user) {
-                $query->wherePublic();
-                $query->where(function ($query) use ($user) {
-                    $query->where(function ($query) use ($user) {
-                        $query->whereNot('addedby_id', $user->counsellor->id)
-                            ->where('addedby_type', Counsellor::class);
-                    });
-                    $query->orWhere(function ($query) use ($user) {
-                        $query->whereNotCounsellor($user->counsellor);
-                    });
-                });
-            })
-            ->inRandomOrder();
+        PreferenceRanking::apply($query, PreferenceMatch::forTherapiesViewedBy($user), $seed);
 
-        return $this->listPage($query);
+        return ResolveTherapyCardStateAction::new()->execute($this->listPage($query, ['seed' => $seed]), $user);
     }
 
     public function getCounsellorGroupTherapies(?User $user)
@@ -387,10 +402,27 @@ class GroupTherapyService extends Service
     }
 
     // SCRUM-386: one page of a GroupTherapyMiniResource list, with what each row reads preloaded.
-    private function listPage($query)
+    // Public groups $user isn't part of: not one they created (as a user or through their counsellor
+    // profile), are a member of, or counsel. Each narrowing a grouped AND. The Home row and the Public
+    // Therapies page (GetPublicTherapyFeedAction).
+    public function publicGroupsQuery(?User $user)
+    {
+        return GroupTherapy::query()
+            ->wherePublic()
+            ->when($user, fn ($query) => $query
+                ->whereNot(fn ($query) => $query->where('addedby_type', User::class)->where('addedby_id', $user->id))
+                ->whereDoesntHave('users', fn ($query) => $query->whereKey($user->id)))
+            ->when($user?->counsellor, fn ($query) => $query
+                ->whereNot(fn ($query) => $query->where('addedby_type', Counsellor::class)->where('addedby_id', $user->counsellor->id))
+                ->whereDoesntHave('counsellors', fn ($query) => $query
+                    ->whereKey($user->counsellor->id)
+                    ->where('counsellor_group_therapy.state', CounsellorGroupTherapyStateEnum::active->value)));
+    }
+
+    private function listPage($query, array $appends = [])
     {
         return PreloadGroupTherapyListAction::new()->execute(
-            $query->paginate(PaginationEnum::preferencesPagination->value)
+            $query->paginate(PaginationEnum::preferencesPagination->value)->appends($appends)
         );
     }
 }

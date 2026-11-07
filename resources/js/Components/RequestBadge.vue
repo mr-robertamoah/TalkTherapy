@@ -40,7 +40,14 @@ const computedTypeMessage = computed(() => {
         [RequestTypeEnum.administrator]: computedIsFrom.value ? '' : 'You accepted the request.',
         [RequestTypeEnum.therapy]: computedIsFrom.value ? `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}sent an assistance request for therapy with name: ${props.request.for?.name}.` 
             : `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}received an assistance request for therapy with name: ${props.request.for?.name}.`,
-        [RequestTypeEnum.groupTherapy]: computedIsFrom.value ? '' : 'You accepted the request.',
+        // SCRUM-389: a creator's invitation to a counsellor, or a counsellor's own offer to help (to the creator).
+        [RequestTypeEnum.groupTherapy]: props.request.direction === 'offer'
+            ? (computedIsFrom.value
+                ? `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}offered to help with the group therapy: ${props.request.for?.name}.`
+                : `A counsellor ${props.request.status == RequestStatusEnum.pending ? 'has ' : ''}offered to help with your group therapy: ${props.request.for?.name}.`)
+            : (computedIsFrom.value
+                ? `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}invited a counsellor to the group therapy: ${props.request.for?.name}.`
+                : `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}been invited to help with the group therapy: ${props.request.for?.name}.`),
         // SCRUM-175: previously missing entirely (fell through to `undefined`, a blank line) --
         // this is SCRUM-72's join-a-group-therapy request type, distinct from RequestTypeEnum.groupTherapy above.
         [RequestTypeEnum.groupTherapyMembership]: computedIsFrom.value ? `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}requested to join the group therapy "${props.request.for?.name}".`

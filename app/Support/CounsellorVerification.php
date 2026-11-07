@@ -16,12 +16,16 @@ final class CounsellorVerification
     }
 
     /** @return array<int, int> days before the end, largest first */
+    // The one place the setting is parsed (SCRUM-389): "30,7" or an array; positive whole days only,
+    // without repeats, largest first. Falls back to 30 and 7.
     public static function reminderDays(): array
     {
-        $days = array_values(array_unique(array_filter((array) config('counsellor.verification_reminder_days', [30, 7]), fn ($day) => (int) $day > 0)));
+        $raw = config('counsellor.verification_reminder_days', '30,7');
+        $days = array_map('intval', is_array($raw) ? $raw : explode(',', (string) $raw));
+        $days = array_values(array_unique(array_filter($days, fn (int $day) => $day > 0)));
         rsort($days);
 
-        return array_map('intval', $days ?: [30, 7]);
+        return $days ?: [30, 7];
     }
 
     // How long before the end a counsellor may re-verify (and admins count them as due).

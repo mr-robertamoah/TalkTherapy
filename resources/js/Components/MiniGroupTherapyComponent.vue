@@ -4,6 +4,7 @@ import ActivityBadge from "./ActivityBadge.vue";
 import CounsellorComponent from "./CounsellorComponent.vue";
 import StyledLink from "./StyledLink.vue";
 import { usePage } from "@inertiajs/vue3";
+import TherapyCardAction from "./TherapyCardAction.vue";
 
 const showDetails = ref(false)
 
@@ -23,17 +24,12 @@ const computedAbout = computed(() => {
             props.groupTherapy.about) : 
         'No description available'
 })
+// Where the card has no server-decided button (lists other than Home and Public): the creator.
+// SCRUM-114: it used to read a `counsellor` a group doesn't have.
 const computedIsParticipant = computed(() => {
     const user = usePage().props.auth.user
 
-    if (!user) return false
-
-    if (
-        user?.id == props.groupTherapy?.userId ||
-        user?.id == props.groupTherapy?.counsellor?.userId
-    ) return true
-
-    return false
+    return !!user && user.id == props.groupTherapy?.userId
 })
 const computedIsUser = computed(() => {
     const user = usePage().props.auth.user
@@ -65,7 +61,9 @@ const computedCanViewPage = computed(() => {
             <div class="bg-orange-600 text-white px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide">
                 Group Therapy
             </div>
-            <div class="flex gap-1">
+            <div class="flex flex-wrap justify-end gap-1">
+                <!-- SCRUM-113: only the viewer sees this, and never why. -->
+                <span v-if="groupTherapy.viewer?.matchesPreferences" class="bg-green-50 text-green-800 px-2 py-1 rounded-full text-xs font-medium border border-green-200">Matches your preferences</span>
                 <span v-if="groupTherapy.public" class="bg-gray-100 text-gray-700 px-2 py-1 rounded-full text-xs font-medium border">Public</span>
                 <span v-if="groupTherapy.anonymous" class="bg-gray-100 text-gray-700 px-2 py-1 rounded-full text-xs font-medium border">Anonymous</span>
             </div>
@@ -84,7 +82,8 @@ const computedCanViewPage = computed(() => {
             <div class="font-semibold text-gray-700">
                 <span>{{ groupTherapy.counsellorsCount || 0 }} counsellor{{ (groupTherapy.counsellorsCount || 0) === 1 ? '' : 's' }}</span>
                 <span class="text-gray-400 mx-1">•</span>
-                <span>Max {{ groupTherapy.maxUsers || '∞' }} users</span>
+                <span v-if="groupTherapy.memberCount !== undefined && groupTherapy.memberCount !== null">{{ groupTherapy.memberCount }} / {{ groupTherapy.maxUsers }} members</span>
+                <span v-else-if="groupTherapy.maxUsers">Up to {{ groupTherapy.maxUsers }} members</span>
             </div>
         </div>
 
@@ -97,10 +96,11 @@ const computedCanViewPage = computed(() => {
             <span>{{ groupTherapy.createdAt }}</span>
         </div>
 
-        <!-- Action -->
-        <div v-if="computedCanViewPage" class="text-center">
+        <!-- Action: SCRUM-114, the viewer's button where the server decided it. -->
+        <TherapyCardAction v-if="groupTherapy.viewer" :item="groupTherapy" kind="group" />
+        <div v-else-if="computedCanViewPage" class="text-center">
             <StyledLink 
-                :text="'Join Group'" 
+                :text="computedIsParticipant ? 'Open' : 'View'" 
                 :href="route('group.therapies.get', { groupTherapyId: groupTherapy.id})" 
                 class="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg font-medium text-sm transition-colors inline-block"
             />
