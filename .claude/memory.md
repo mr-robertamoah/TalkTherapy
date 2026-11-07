@@ -119,6 +119,13 @@ See "Common commands" in `CLAUDE.md`.
   `Request::scopeAwaitingCounsellor` lists by type -- add a new counsellor-answerable request type
   there too. Cards share `TherapyCardFrame` (kind by colour) and `PreferenceMatchMark`.
 
+- **Group helpers and public lists (SCRUM-392, 2026-11-07).** Use `GroupTherapy::creatorUser()`,
+  `isCreatedBy()`, `isFull()`, `hasFreeCounsellorPlace()`/`canTakeCounsellor()` -- never re-derive them
+  inline. The Home/Public lists use the `publicForOutsider(?User)` model scope; it hides the viewer's
+  own therapies, so it is never an access check. Counsellor offers to help are capped per day
+  (`EnsureCounsellorOfferCapAction`). There is one join modal (`JoinGroupTherapyModal`, incl.
+  invitation links). Resources send raw `status` plus `statusLabel`.
+
 ## Current Sprint Goals
 
 See `documentation/implementation_plan.md` → "Reconciled Sprint Roadmap". Sprint 1 (Platform

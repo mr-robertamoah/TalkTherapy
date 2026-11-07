@@ -10458,3 +10458,53 @@ therapy 18 after the last QA pass.
     shows only its latest answer.
   - Left as accepted: the involvement check runs per row (bounded by the cap); search limits (2/100/200,
     20 preferences) are repeated in the frontend.
+
+## SCRUM-392 — review follow-ups; plans for SCRUM-33 and SCRUM-32 (2026-11-07)
+
+- **Planning (the user's decisions):** the next group was crisis + safety. The architect recommended
+  splitting; the user chose three PRs in this order: SCRUM-392 alone, then SCRUM-33, then SCRUM-32.
+  - **SCRUM-33 re-scoped by the user** from a static hotline list to a **quick help chat**: signed-in
+    users start a chat that can go to audio; counsellors who are "available for urgent help" are rung
+    and the first to accept is connected; admins watch a live queue and can pull in a counsellor or
+    quickly set up a therapy and session. The country's emergency number is always shown (numbers
+    verified by a person, never invented); guests see it and a sign-in prompt; minors can chat, and
+    audio follows the existing guardian video-consent rules. It will be planned in detail before code.
+  - **SCRUM-32:** all non-involved admins + super admins are alerted; the client is told with a
+    neutral notice (the handling admin may delay it); a minor's guardians are told on imminent/urgent
+    flags unless a safeguarding reason is recorded. Its other defaults (re-alert windows, a suspended
+    counsellor may still flag, anonymity only to the handling admin) are in the Jira comment and
+    confirmed in its own plan.
+- **SCRUM-392:**
+  - The public-list queries became the model scope `publicForOutsider(?User)` (named so it isn't
+    mistaken for an access check; grouped as a whole). A counsellor who left a group (inactive) still
+    sees it in the public lists and may offer again -- unchanged.
+  - `GroupTherapy::isCreatedBy()` and `hasFreeCounsellorPlace()` replace the inline copies;
+    `canTakeCounsellor()` is built on the latter, so callers that refuse an ended group with their own
+    message keep it. `Request::pendingGroupAssistance()` + `whereToOrFrom()` replace the copied
+    "pending between group and counsellor" queries; the batched card-state query keeps its own shape.
+  - **Offer cap:** 5 offers to help per rolling 24 hours (`COUNSELLOR_DAILY_OFFER_CAP`), therapies and
+    groups together, every status counted; a group creator's invites don't count. Not locked:
+    parallel offers to different therapies/groups can go a few over, bounded by the routes'
+    10-a-minute throttle -- accepted as low impact (security review L1). A value of 0 blocks every
+    offer (fails closed).
+  - The find-a-counsellor picker lists only currently verified counsellors; the public directory is
+    unchanged (it shows verification).
+  - Status: resources send the raw value (e.g. `IN_SESSION`) plus `statusLabel` for display.
+  - **One join modal** (`JoinGroupTherapyModal`) for cards, the group page and member invitation links;
+    its anonymity choice starts from the person's saved preference everywhere (the page used to start
+    from the group's flag).
+  - `Modal`/`MiniModal` carry `role="dialog"`, `aria-modal` and an accessible name; focus trapping is
+    left as debt.
+  - Architect review: an offer is defined once (`Request::isAssistanceOffer()` and its query twin
+    `whereAssistanceOfferFrom()`, used by the cap); offers closed by the system (the place went)
+    still count toward the cap -- a deliberate choice. `Request::ASSISTANCE_TYPES` replaces the copied
+    type pair. The API's `status` changed from "IN SESSION" to `IN_SESSION` (+ `statusLabel`); nothing
+    read the old form. Left for SCRUM-394: one member-count name (`memberCount` vs `membersCount`),
+    modal focus trapping, a hard (locked) offer cap and logging cap refusals.
+  - Reviewer: a group joined from a Home card goes into "Your Recent Group Therapies" shaped like the
+    server's rows (no card button or match mark) and the row stays at three; the shared join modal
+    sends an expired session to login again.
+  - QA found two older bugs, fixed here: Home scrolled sideways at 375px (the cards' screen-reader
+    label was positioned outside its card -- the card is now `relative`), and the find-a-counsellor
+    search asked for the next page of the previous search after the text changed (it now starts from
+    page 1).
