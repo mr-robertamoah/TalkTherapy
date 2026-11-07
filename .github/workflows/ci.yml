@@ -168,7 +168,8 @@ jobs:
           DB_PASSWORD: root
         # By group, not by name, and --fail-on-empty-test-suite: a renamed test can never leave this
         # job green while running nothing.
-        run: vendor/bin/pest --configuration=phpunit.mysql.xml --group=mysql-triggers --fail-on-empty-test-suite
+        # mysql-json (SCRUM-113): the preference ranking's MySQL-only JSON_TABLE branch.
+        run: vendor/bin/pest --configuration=phpunit.mysql.xml --group=mysql-triggers,mysql-json --fail-on-empty-test-suite
 
   build-frontend:
     name: Build frontend (Vite)
