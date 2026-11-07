@@ -16,7 +16,7 @@
       
       <div class="bg-gradient-to-br from-slate-50 to-slate-100 p-4 rounded-lg border border-slate-200">
         <span class="text-sm font-medium text-slate-600">Status</span>
-        <p class="text-lg font-semibold text-gray-800 capitalize mt-1">{{ therapy.status }}</p>
+        <p class="text-lg font-semibold text-gray-800 capitalize mt-1">{{ therapy.statusLabel ?? therapy.status }}</p>
       </div>
       
       <!-- Group therapy specific details -->

@@ -96,20 +96,31 @@ class Request extends Model
         return $this->morphTo();
     }
 
+    // SCRUM-392: the request types that ask a counsellor onto a therapy or a group.
+    public const ASSISTANCE_TYPES = [RequestTypeEnum::therapy->value, RequestTypeEnum::groupTherapy->value];
+
     // SCRUM-389: an assistance request (a therapy's or a group's) is either an invitation to a
     // counsellor (`to` is the Counsellor) or a counsellor's own offer to help (from the Counsellor,
     // to the client or the group's creator -- a User). Named here, so nothing works it out again.
     public function isAssistanceOffer(): bool
     {
-        return in_array($this->type, [RequestTypeEnum::therapy->value, RequestTypeEnum::groupTherapy->value], true)
+        return in_array($this->type, self::ASSISTANCE_TYPES, true)
             && $this->from_type === Counsellor::class
             && $this->to_type !== Counsellor::class;
+    }
+
+    // SCRUM-392: isAssistanceOffer() as a query -- $counsellor's own offers to help, any status.
+    public function scopeWhereAssistanceOfferFrom($query, Counsellor $counsellor)
+    {
+        return $query->whereIn('type', self::ASSISTANCE_TYPES)
+            ->whereFrom($counsellor)
+            ->where('to_type', '!=', Counsellor::class);
     }
 
     // The counsellor an assistance request would add: the one invited, or the one offering.
     public function assistanceCounsellor(): ?Counsellor
     {
-        if (! in_array($this->type, [RequestTypeEnum::therapy->value, RequestTypeEnum::groupTherapy->value], true)) {
+        if (! in_array($this->type, self::ASSISTANCE_TYPES, true)) {
             return null;
         }
 
@@ -165,6 +176,18 @@ class Request extends Model
             $q->where('to_id', $to->id);
             $q->where('to_type', $to::class);
         });
+    }
+
+    // SCRUM-392: one request between $party and the other side, whichever way it was sent.
+    public function scopeWhereToOrFrom($query, $party)
+    {
+        return $query->where(fn ($query) => $query->whereTo($party)->orWhere(fn ($query) => $query->whereFrom($party)));
+    }
+
+    // SCRUM-392: the pending counsellor invites and offers to help for a group (type groupTherapy).
+    public function scopePendingGroupAssistance($query, GroupTherapy $group)
+    {
+        return $query->wherePending()->whereFor($group)->where('type', RequestTypeEnum::groupTherapy->value);
     }
 
     public function scopeWherePending($query)

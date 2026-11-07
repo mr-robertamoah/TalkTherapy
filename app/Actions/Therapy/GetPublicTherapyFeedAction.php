@@ -9,8 +9,6 @@ use App\Enums\TherapyStatusEnum;
 use App\Models\GroupTherapy;
 use App\Models\Therapy;
 use App\Models\User;
-use App\Services\GroupTherapyService;
-use App\Services\TherapyService;
 use App\Support\PreferenceMatch;
 use App\Support\PreferenceRanking;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -19,7 +17,7 @@ use Illuminate\Support\Facades\DB;
 // SCRUM-113: public therapies and groups as one list -- each ranked in SQL (PreferenceRanking: matches
 // first, then the visit's seeded order), unioned and paged in SQL, then only that page's rows are
 // loaded (preloaded, with each card's button for the viewer) and put back in the feed's order. The
-// same filters as the Home rows (TherapyService/GroupTherapyService public queries).
+// same filters as the Home rows (the models' publicForOutsider scopes).
 class GetPublicTherapyFeedAction extends Action
 {
     // $needsCounsellor (SCRUM-391, the counsellor dashboard's "therapies you could help"): only a
@@ -29,9 +27,9 @@ class GetPublicTherapyFeedAction extends Action
         $perPage ??= PaginationEnum::preferencesPagination->value;
         $match = PreferenceMatch::forTherapiesViewedBy($viewer);
 
-        $therapies = TherapyService::new()->publicTherapiesQuery($viewer)
+        $therapies = Therapy::query()->publicForOutsider($viewer)
             ->when($needsCounsellor, fn ($query) => $query->whereHasNoCounsellor()->where('status', '!=', TherapyStatusEnum::ended->value));
-        $groups = GroupTherapyService::new()->publicGroupsQuery($viewer)
+        $groups = GroupTherapy::query()->publicForOutsider($viewer)
             ->when($needsCounsellor, fn ($query) => $query->whereCanTakeCounsellor());
 
         $union = $this->ranked($therapies, 'individual', $match, $seed)

@@ -72,7 +72,8 @@ class TherapyResource extends JsonResource
             'counsellor' => $this->when($counsellor, new CounsellorMiniResource($counsellor)),
             'backgroundStory' => $this->background_story,
             'sessionsHeld' => $this->sessionsHeld,
-            'status' => $this->getStatus(),
+            'status' => $this->status,
+            'statusLabel' => $this->getStatusLabel(),
             'paymentData' => $this->payment_data,
             // SCRUM-368: the client's own payment -- only for the client, the counsellor and
             // administrators, never for someone browsing a public therapy.

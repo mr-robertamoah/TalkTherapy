@@ -19,6 +19,8 @@ const props = defineProps({
     kind: { type: String, required: true }, // 'individual' | 'group'
 })
 
+const emit = defineEmits(['joined'])
+
 const action = ref(props.item.viewer?.action ?? A.view)
 const reason = ref(props.item.viewer?.reason ?? '')
 const error = ref('')
@@ -42,9 +44,11 @@ const states = {
 const primary = 'inline-flex items-center justify-center min-h-[40px] px-4 rounded-lg text-sm font-medium text-white transition-colors'
 const colour = computed(() => props.kind === 'group' ? 'bg-orange-600 hover:bg-orange-700' : 'bg-blue-600 hover:bg-blue-700')
 
-function joined({ joined }) {
+// SCRUM-392: the list is told, so it can update the member count and the person's own groups.
+function joined({ joined, membersCount }) {
     joining.value = false
     action.value = joined ? A.open : A.requestSent
+    emit('joined', { joined, membersCount })
 }
 
 async function sendOffer() {
@@ -92,9 +96,9 @@ async function sendOffer() {
             @done="joined"
         />
 
-        <MiniModal :show="offering" @close="offering = false">
+        <MiniModal :show="offering" :labelledby="`offer-title-${kind}-${item.id}`" @close="offering = false">
             <div class="p-1 text-left">
-                <h2 class="text-base font-semibold text-gray-900">Offer to help with {{ item.name }}</h2>
+                <h2 :id="`offer-title-${kind}-${item.id}`" class="text-base font-semibold text-gray-900">Offer to help with {{ item.name }}</h2>
                 <p class="mt-2 text-sm text-gray-600">
                     {{ kind === 'group' ? 'The group\'s creator' : 'The client' }} is asked to accept your offer.
                     You'll be told when they do.

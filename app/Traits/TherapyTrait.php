@@ -5,7 +5,6 @@ namespace App\Traits;
 use App\Enums\ConstantsEnum;
 use App\Enums\RequestTypeEnum;
 use App\Enums\SessionStatusEnum;
-use App\Enums\TherapyStatusEnum;
 use App\Models\Counsellor;
 use App\Models\Discussion;
 use App\Models\GroupTherapy;
@@ -72,13 +71,10 @@ trait TherapyTrait
         return $this->sessions()->whereFree()->count();
     }
 
-    public function getStatus()
+    // SCRUM-392: resources send the raw status (e.g. IN_SESSION) for logic, and this for display.
+    public function getStatusLabel(): string
     {
-        if ($this->status == TherapyStatusEnum::in_session->value) {
-            return str_replace('_', ' ', TherapyStatusEnum::in_session->value);
-        }
-
-        return $this->status;
+        return strtolower(str_replace('_', ' ', (string) $this->status));
     }
 
     public function getActiveDiscussion(Counsellor $counsellor)
@@ -194,7 +190,7 @@ trait TherapyTrait
                 ->whereTo($counsellor)
                 ->orWhere(fn ($query) => $query
                     ->whereFrom($counsellor)
-                    ->whereIn('type', [RequestTypeEnum::therapy->value, RequestTypeEnum::groupTherapy->value])))
+                    ->whereIn('type', Request::ASSISTANCE_TYPES)))
             ->latest()
             ->first();
     }

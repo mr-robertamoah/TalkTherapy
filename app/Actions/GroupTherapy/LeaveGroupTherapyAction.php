@@ -77,10 +77,7 @@ class LeaveGroupTherapyAction extends Action
 
     private function ensureCanLeave(GroupTherapy $group, User $user): void
     {
-        $createdIt = $group->isUser($user)
-            || ($group->addedby instanceof Counsellor && $group->addedby->user?->is($user));
-
-        if ($createdIt) {
+        if ($group->isCreatedBy($user)) {
             throw new CannotLeaveGroupTherapyException(self::CREATOR, 422);
         }
 
@@ -149,7 +146,7 @@ class LeaveGroupTherapyAction extends Action
     // The creator (as a person) and the group's active counsellors, never the leaver.
     private function teamOf(GroupTherapy $group, User $leaver)
     {
-        $creator = $group->addedby instanceof Counsellor ? $group->addedby->user : $group->addedby;
+        $creator = $group->creatorUser();
 
         return $group->activeCounsellors()
             ->map(fn (Counsellor $counsellor) => $counsellor->user)

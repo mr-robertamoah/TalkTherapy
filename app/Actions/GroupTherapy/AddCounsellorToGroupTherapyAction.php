@@ -7,7 +7,6 @@ use App\Actions\CounsellorVerification\EnsureCounsellorMayTakeOnClientsAction;
 use App\Enums\CounsellorGroupTherapyRoleEnum;
 use App\Enums\CounsellorGroupTherapyStateEnum;
 use App\Enums\RequestStatusEnum;
-use App\Enums\RequestTypeEnum;
 use App\Enums\TherapyStatusEnum;
 use App\Exceptions\CannotJoinGroupTherapyException;
 use App\Models\Counsellor;
@@ -41,7 +40,7 @@ class AddCounsellorToGroupTherapyAction extends Action
         $activeCounsellors = $lockedGroup->activeCounsellors();
         $alreadyActive = $activeCounsellors->contains('id', $counsellor->id);
 
-        if (! $alreadyActive && $activeCounsellors->count() >= $lockedGroup->max_counsellors) {
+        if (! $alreadyActive && ! $lockedGroup->hasFreeCounsellorPlace($activeCounsellors->count())) {
             throw new CannotJoinGroupTherapyException(self::GROUP_FULL, 422);
         }
 
@@ -56,7 +55,7 @@ class AddCounsellorToGroupTherapyAction extends Action
         // Their other invites and offers for this group are answered by joining.
         $this->closePending($lockedGroup, $exceptRequestId, self::ANSWERED_REASON, $counsellor);
 
-        if ($lockedGroup->activeCounsellors()->count() >= $lockedGroup->max_counsellors) {
+        if (! $lockedGroup->hasFreeCounsellorPlace()) {
             $this->closePending($lockedGroup, $exceptRequestId, self::FILLED_REASON);
         }
 
@@ -70,10 +69,8 @@ class AddCounsellorToGroupTherapyAction extends Action
     {
         Request::query()
             ->when($exceptRequestId, fn ($query) => $query->whereNot('id', $exceptRequestId))
-            ->wherePending()
-            ->whereFor($group)
-            ->where('type', RequestTypeEnum::groupTherapy->value)
-            ->when($counsellor, fn ($query) => $query->where(fn ($query) => $query->whereTo($counsellor)->orWhere(fn ($query) => $query->whereFrom($counsellor))))
+            ->pendingGroupAssistance($group)
+            ->when($counsellor, fn ($query) => $query->whereToOrFrom($counsellor))
             ->get()
             ->each(fn (Request $request) => $request->forceFill([
                 'status' => RequestStatusEnum::inconsequencial->value,
@@ -94,7 +91,7 @@ class AddCounsellorToGroupTherapyAction extends Action
         $acceptingTheirOffer = $counsellor && $actor && $offer
             && $offer->from_type === Counsellor::class && (int) $offer->from_id === $counsellor->id
             && $offer->for_type === GroupTherapy::class && (int) $offer->for_id === $group->id
-            && $group->creatorUser()?->is($actor);
+            && $group->isCreatedBy($actor);
 
         // SCRUM-31: their own verification isn't a secret from them -- the same "re-verify" message
         // as everywhere else; the creator accepting is told it's the counsellor's.

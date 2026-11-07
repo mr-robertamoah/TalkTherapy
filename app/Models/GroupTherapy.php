@@ -154,6 +154,8 @@ class GroupTherapy extends Model
             ->exists();
     }
 
+    // Created directly by $user (not through a counsellor profile) -- for "who created it, whichever
+    // way", use isCreatedBy().
     public function isUser(User $user)
     {
         return $this->addedby_type === User::class && $this->addedby?->is($user);
@@ -164,6 +166,12 @@ class GroupTherapy extends Model
     public function creatorUser(): ?User
     {
         return $this->addedby instanceof Counsellor ? $this->addedby->user : ($this->addedby instanceof User ? $this->addedby : null);
+    }
+
+    // SCRUM-392: whether $user created it -- directly, or through their counsellor profile.
+    public function isCreatedBy(User $user): bool
+    {
+        return (bool) $this->creatorUser()?->is($user);
     }
 
     // A counsellor creator, or null for a group a user created.
@@ -184,7 +192,13 @@ class GroupTherapy extends Model
     public function canTakeCounsellor(?int $activeCounsellors = null): bool
     {
         return $this->status !== TherapyStatusEnum::ended->value
-            && ($activeCounsellors ?? $this->activeCounsellors()->count()) < $this->max_counsellors;
+            && $this->hasFreeCounsellorPlace($activeCounsellors);
+    }
+
+    // SCRUM-392: the place count alone, for callers that refuse an ended group with its own answer.
+    public function hasFreeCounsellorPlace(?int $activeCounsellors = null): bool
+    {
+        return ($activeCounsellors ?? $this->activeCounsellors()->count()) < $this->max_counsellors;
     }
 
     // SCRUM-391: canTakeCounsellor() as a query -- not ended, and its active counsellors (not
@@ -402,12 +416,8 @@ class GroupTherapy extends Model
     {
         $users = collect();
 
-        if ($this->addedby_type === User::class && $this->addedby) {
-            $users->push($this->addedby);
-        }
-
-        if ($this->addedby_type === Counsellor::class && $this->addedby?->user) {
-            $users->push($this->addedby->user);
+        if ($creator = $this->creatorUser()) {
+            $users->push($creator);
         }
 
         $this->counsellors->each(function ($counsellor) use ($users) {
@@ -440,12 +450,8 @@ class GroupTherapy extends Model
     {
         $users = collect();
 
-        if ($this->addedby_type === User::class && $this->addedby && $this->addedby_id !== $user->id) {
-            $users->push($this->addedby);
-        }
-
-        if ($this->addedby_type === Counsellor::class && $this->addedby?->user && ! $this->addedby->user->is($user)) {
-            $users->push($this->addedby->user);
+        if (($creator = $this->creatorUser()) && ! $creator->is($user)) {
+            $users->push($creator);
         }
 
         $this->counsellors->each(function ($counsellor) use ($users, $user) {
@@ -522,6 +528,24 @@ class GroupTherapy extends Model
         }
 
         return $counsellors->unique('id')->values();
+    }
+
+    // SCRUM-392 (from GroupTherapyService): public groups $user isn't part of -- not one they created
+    // (as a user or through their counsellor profile), are a member of, or actively counsel (a
+    // counsellor who left still sees it, and may offer again). NOT an access check; for the public
+    // lists only. Grouped as a whole, so a caller's orWhere can't reach past it to private rows.
+    public function scopePublicForOutsider($query, ?User $user)
+    {
+        return $query->where(fn ($query) => $query
+            ->wherePublic()
+            ->when($user, fn ($query) => $query
+                ->whereNot(fn ($query) => $query->where('addedby_type', User::class)->where('addedby_id', $user->id))
+                ->whereDoesntHave('users', fn ($query) => $query->whereKey($user->id)))
+            ->when($user?->counsellor, fn ($query) => $query
+                ->whereNot(fn ($query) => $query->where('addedby_type', Counsellor::class)->where('addedby_id', $user->counsellor->id))
+                ->whereDoesntHave('counsellors', fn ($query) => $query
+                    ->whereKey($user->counsellor->id)
+                    ->where('counsellor_group_therapy.state', CounsellorGroupTherapyStateEnum::active->value))));
     }
 
     public function scopeWhereNotCounsellor($query, Counsellor $counsellor)

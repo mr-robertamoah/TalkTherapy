@@ -71,7 +71,7 @@ class EnsureUserCanCreateLinkForAction extends Action
         // only be refused when used -- refused now, with the same answer.
         if (
             $createLinkDTO->type === LinkTypeEnum::groupTherapyCounsellor->value
-            && $createLinkDTO->for->activeCounsellors()->count() >= $createLinkDTO->for->max_counsellors
+            && ! $createLinkDTO->for->hasFreeCounsellorPlace()
         ) {
             throw new LinkException(AddCounsellorToGroupTherapyAction::GROUP_FULL, 422);
         }
@@ -120,8 +120,6 @@ class EnsureUserCanCreateLinkForAction extends Action
 
     private function createdGroup(User $user, GroupTherapy $group): bool
     {
-        return $group->addedby instanceof Counsellor
-            ? (bool) $group->addedby->user?->is($user)
-            : (bool) $group->addedby?->is($user);
+        return $group->isCreatedBy($user);
     }
 }

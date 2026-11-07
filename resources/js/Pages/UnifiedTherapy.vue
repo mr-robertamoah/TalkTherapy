@@ -5,6 +5,8 @@ import { default as _ } from 'lodash'
 
 import BaseTherapyLayout from '@/Components/BaseTherapyLayout.vue'
 import MiniModal from '@/Components/MiniModal.vue'
+import JoinGroupTherapyModal from '@/Components/JoinGroupTherapyModal.vue'
+import { offerToHelp, refusalMessage } from '@/Composables/useOfferToHelp'
 import Alert from '@/Components/Alert.vue'
 import FormLoader from '@/Components/FormLoader.vue'
 import PrimaryButton from '@/Components/PrimaryButton.vue'
@@ -135,7 +137,6 @@ const request = ref({ responding: false, status: null })
 const membershipRequest = ref({ responding: false, status: null })
 const scheduleProposalRequest = ref({ responding: false })
 const scheduleCounterOfferRequest = ref(null)
-const joinAnonymous = ref(false)
 // SCRUM-383: the invitation link uuid when "join" was opened from a member invitation.
 const joinInvitation = ref(null)
 const counsellorSearch = ref("")
@@ -165,11 +166,16 @@ const computedCanParticipate = computed(() => {
 })
 
 // SCRUM-73 QA: joining a group that needs approval sends its creator a request (unless invited).
-const joinNeedsApproval = computed(() => !joinInvitation.value && !computedTherapy.value?.allowAnyone)
+// (An invitation joins straight away -- JoinGroupTherapyModal decides that.)
+const joinNeedsApproval = computed(() => !computedTherapy.value?.allowAnyone)
 
 // Watchers
+// A new search starts again from its first page (QA, SCRUM-392: it used to ask for the next page of
+// the old search).
 watch(() => counsellorSearch.value, () => {
-  if (counsellorSearch.value) debouncedGetCounsellors()
+  if (!counsellorSearch.value) return
+  page.value = 1
+  debouncedGetCounsellors()
 })
 
 // One-time payment status banner, on return from Paystack's checkout (transactionStatus is a
@@ -527,73 +533,26 @@ async function clickedResponse(response) {
 
 // Group therapy membership/join (SCRUM-72)
 function clickedJoinGroup(options = null) {
-  joinAnonymous.value = !!computedTherapy.value?.anonymous
   joinInvitation.value = options?.invitation ?? null
   showModal("join group")
 }
 
-async function joinGroupTherapy() {
-  if (joinInvitation.value) return joinGroupByInvitation()
+// SCRUM-392: the shared JoinGroupTherapyModal does the joining (by link for an invitation); this
+// tells the person and loads the page again -- from a preview (a former member rejoining) or an
+// invitation the whole page, now as a member.
+function joinedGroup({ joined }) {
+  setSuccessAlertData({
+    message: joined
+      ? "You have successfully joined this group therapy."
+      : "Your request to join this group therapy has been sent and is pending approval.",
+    time: 4000,
+  })
 
-  setLoader("join group")
-
-  await axios
-    .post(route("api.group.therapies.join", { groupTherapyId: computedTherapy.value?.id }), {
-      anonymous: computedTherapy.value?.anonymous ? true : joinAnonymous.value,
-    })
-    .then((res) => {
-
-      const sentAsRequest = res.data.result?.type === RequestTypeEnum.groupTherapyMembership
-
-      setSuccessAlertData({
-        message: sentAsRequest
-          ? "Your request to join this group therapy has been sent and is pending approval."
-          : "You have successfully joined this group therapy.",
-        time: 4000,
-      })
-
-      closeModal()
-      // From a preview (a former member rejoining) the whole page is loaded again, now as a member.
-      if (props.preview) router.visit(route("group.therapies.get", { groupTherapyId: computedTherapy.value?.id }))
-      else router.reload({ only: ["therapy", "pendingMembershipRequest"] })
-    })
-    .catch((err) => {
-      console.log(err)
-      goToLogin(err)
-      setFailedAlertData({
-        message:
-          err.response?.data?.message ||
-          "Something unfortunate happened while trying to join. Please try again shortly.",
-        time: 5000,
-      })
-    })
-
-  endLoader()
-}
-
-// SCRUM-383: confirming a member invitation -- no approval needed. The page is reloaded without
-// the invitation in its address, now as a member.
-async function joinGroupByInvitation() {
-  setLoader("join group")
-
-  await axios
-    .post(route("api.links.join", { uuid: joinInvitation.value }), {
-      anonymous: computedTherapy.value?.anonymous ? true : joinAnonymous.value,
-    })
-    .then(() => {
-      setSuccessAlertData({ message: "You have joined this group therapy.", time: 4000 })
-      closeModal()
-      router.visit(route("group.therapies.get", { groupTherapyId: computedTherapy.value?.id }))
-    })
-    .catch((err) => {
-      goToLogin(err)
-      setFailedAlertData({
-        message: err.response?.data?.message || "Something unfortunate happened while trying to join. Please try again shortly.",
-        time: 5000,
-      })
-    })
-
-  endLoader()
+  const invited = !!joinInvitation.value
+  closeModal()
+  joinInvitation.value = null
+  if (invited || props.preview) router.visit(route("group.therapies.get", { groupTherapyId: computedTherapy.value?.id }))
+  else router.reload({ only: ["therapy", "pendingMembershipRequest"] })
 }
 
 // SCRUM-73: leaving a group, after the confirmation.
@@ -756,16 +715,12 @@ function removeFromSelected(counsellor) {
   ]
 }
 
+// SCRUM-392: through useOfferToHelp, like the cards (one request, one refusal message).
 async function sendAssistanceRequest() {
   setLoader("assistance")
-  const routeName = props.therapyType === 'individual' ? 'therapies.assist' : 'group.therapies.assist'
-  const paramName = props.therapyType === 'individual' ? 'therapyId' : 'groupTherapyId'
-  
-  await axios
-    .post(route(routeName, { [paramName]: computedTherapy.value?.id }), {
-      counsellorIds: selectedCounsellors.value.map((c) => c.id),
-    })
-    .then((res) => {
+
+  await offerToHelp(props.therapyType === 'group' ? 'group' : 'individual', computedTherapy.value?.id, selectedCounsellors.value.map((c) => c.id))
+    .then(() => {
       setSuccessAlertData({
         message: computedIsUser.value
           ? "Your request has been sent to the counsellors you chose."
@@ -779,12 +734,9 @@ async function sendAssistanceRequest() {
       router.reload({ only: ["pendingRequest"] })
     })
     .catch((err) => {
-      console.log(err)
       goToLogin(err)
-      // SCRUM-31 (QA): a refusal says why (e.g. a counsellor whose verification isn't current).
-      const refusal = err.response?.status == 422 ? (err.response?.data?.message ?? err.response?.data?.error) : null
       setFailedAlertData({
-        message: refusal || (computedIsUser.value
+        message: refusalMessage(err, computedIsUser.value
           ? "Your request for assistance failed, please try again in a short while."
           : "Your request to assist has failed, please try again in a short while."),
         time: 6000,
@@ -1217,64 +1169,16 @@ function reportCreated(report) {
         </div>
       </MiniModal>
 
-      <!-- Join Group Therapy Modal -->
-      <MiniModal
+      <!-- Join Group Therapy Modal (SCRUM-392: the shared one) -->
+      <JoinGroupTherapyModal
         v-if="therapyType === 'group'"
         :show="modalData.show && modalData.type == 'join group'"
-        @close="closeModal"
-      >
-        <div class="select-none">
-          <div class="text-gray-600 text-center font-bold tracking-wide">
-            Join Group Therapy
-          </div>
-
-          <hr class="my-2" />
-
-          <div class="relative">
-            <FormLoader :text="joinNeedsApproval ? 'sending request' : 'joining group'" :show="loader.show && loader.type == 'join group'" />
-
-            <div class="my-4 text-sm text-gray-700 text-center w-[90%] mx-auto">
-              <template v-if="joinNeedsApproval">
-                You are about to send a request to join <strong>{{ computedTherapy.name }}</strong> to its creator.
-                You become a member once they accept it.
-              </template>
-              <template v-else>
-                You are about to join <strong>{{ computedTherapy.name }}</strong>.
-                <template v-if="joinInvitation"> You were invited, so you join straight away.</template>
-              </template>
-            </div>
-
-            <div class="flex items-center justify-center space-x-2 my-4">
-              <input
-                id="join-anonymous"
-                type="checkbox"
-                v-model="joinAnonymous"
-                :disabled="computedTherapy.anonymous"
-              />
-              <label for="join-anonymous" class="text-sm text-gray-600">
-                join anonymously
-              </label>
-            </div>
-
-            <div
-              v-if="computedTherapy.anonymous"
-              class="text-xs text-center text-gray-500 w-[90%] mx-auto mb-2"
-            >
-              This group is anonymous — all members are anonymous automatically.
-            </div>
-          </div>
-
-          <div class="flex space-x-2 justify-end items-center w-full p-2">
-            <PrimaryButton @click="closeModal" class="shrink-0">cancel</PrimaryButton>
-            <PrimaryButton
-              @click="joinGroupTherapy"
-              :disabled="loader.show && loader.type == 'join group'"
-              class="shrink-0"
-              >{{ joinNeedsApproval ? 'send request' : 'join' }}</PrimaryButton
-            >
-          </div>
-        </div>
-      </MiniModal>
+        :group="computedTherapy"
+        :needs-approval="joinNeedsApproval"
+        :invitation="joinInvitation"
+        @close="() => { closeModal(); joinInvitation = null }"
+        @done="joinedGroup"
+      />
 
       <!-- Leave Group Therapy Modal (SCRUM-73) -->
       <MiniModal

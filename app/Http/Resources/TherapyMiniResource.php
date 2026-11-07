@@ -47,6 +47,7 @@ class TherapyMiniResource extends JsonResource
             // SCRUM-113/114: on the Home and Public lists -- the status, the viewer's button
             // (ResolveTherapyCardStateAction) and whether it matched their preferences (never how).
             'status' => $this->status,
+            'statusLabel' => $this->getStatusLabel(),
             ...($this->resource->viewerCard ? [
                 'viewer' => [...$this->resource->viewerCard, 'matchesPreferences' => (int) $this->resource->getAttribute(PreferenceRanking::COLUMN) > 0],
             ] : []),

@@ -213,7 +213,7 @@ class CounsellorController extends Controller
     public function getRequestCounsellors(Request $request)
     {
         return AssistanceRequestCounsellorResource::collection(
-            CounsellorService::new()->getCounsellors($request->user(), $request->name)
+            CounsellorService::new()->getCounsellors($request->user(), $request->name, requestableOnly: true)
         );
     }
 

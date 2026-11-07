@@ -137,6 +137,17 @@ const computedCanCreatePost = computed(() => {
     return (!!user.counsellor) ? true : false
 })
 
+// SCRUM-392: joining from a public card updates its member count and puts the group first in
+// "Your Recent Group Therapies", without reloading the rows.
+function joinedGroup(group, { joined, membersCount }) {
+    if (!joined) return
+    // `group` is this page's own row (from randomGroupTherapies).
+    group.memberCount = membersCount ?? (group.memberCount ?? 0) + 1
+    // Shaped like the server's recent rows (no card button or match mark), and still three at most.
+    const { viewer, memberCount, ...own } = group
+    recentGroupTherapies.value = [own, ...recentGroupTherapies.value.filter((item) => item.id !== group.id)].slice(0, 3)
+}
+
 function updateNewTherapy(value) {
     newTherapy.value = value
 }
@@ -488,6 +499,7 @@ function showPost() {
                                         :key="therapy.id"
                                         :group-therapy="therapy"
                                         class="w-[250px] shrink-0"
+                                        @joined="(event) => joinedGroup(therapy, event)"
                                     />
                                 </template>
                                 <div v-else-if="!getting.show && getting.type !== 'group-therapies'" class="text-center text-sm w-full text-gray-600">there are no group therapies for public at the moment.</div>
