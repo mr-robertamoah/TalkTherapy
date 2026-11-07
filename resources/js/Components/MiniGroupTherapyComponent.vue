@@ -6,6 +6,8 @@ import { Link, usePage } from "@inertiajs/vue3";
 import TherapyCardAction from "./TherapyCardAction.vue";
 import TherapyCardFrame from "./TherapyCardFrame.vue";
 
+const emit = defineEmits(['joined'])
+
 const props = defineProps({
     groupTherapy: {
         default: null,
@@ -49,7 +51,7 @@ const facts = computed(() => {
         :matches-preferences="!!groupTherapy.viewer?.matchesPreferences"
     >
         <!-- Action: SCRUM-114, the viewer's button where the server decided it. -->
-        <TherapyCardAction v-if="groupTherapy.viewer" :item="groupTherapy" kind="group" />
+        <TherapyCardAction v-if="groupTherapy.viewer" :item="groupTherapy" kind="group" @joined="(event) => emit('joined', event)" />
         <div v-else-if="computedCanViewPage" class="text-center">
             <Link
                 :href="route('group.therapies.get', { groupTherapyId: groupTherapy.id })"

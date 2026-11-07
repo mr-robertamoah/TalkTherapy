@@ -14,6 +14,15 @@ const props = defineProps({
         type: Boolean,
         default: true,
     },
+    // SCRUM-392: the dialog's name for screen readers -- the id of its heading, or a label.
+    labelledby: {
+        type: String,
+        default: '',
+    },
+    label: {
+        type: String,
+        default: '',
+    },
     classes: {
         type: String,
         default: 'shadow-xl bg-white',
@@ -92,6 +101,10 @@ const maxWidthClass = computed(() => {
                         v-show="show"
                         class="mb-6 rounded-lg overflow-hidden transform transition-all sm:w-full sm:mx-auto"
                         :class="maxWidthClass + ' ' + classes"
+                        role="dialog"
+                        aria-modal="true"
+                        :aria-labelledby="labelledby || undefined"
+                        :aria-label="labelledby ? undefined : (label || undefined)"
                     >
                         <slot v-if="show" />
                     </div>

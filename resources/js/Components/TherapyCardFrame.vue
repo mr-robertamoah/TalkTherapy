@@ -21,7 +21,7 @@ const kinds = {
 </script>
 
 <template>
-    <article class="flex h-full min-w-[280px] flex-col rounded-lg border border-l-4 border-gray-200 bg-white p-4 shadow-sm transition-shadow hover:shadow-md" :class="kinds[kind].edge">
+    <article class="relative flex h-full min-w-[280px] flex-col rounded-lg border border-l-4 border-gray-200 bg-white p-4 shadow-sm transition-shadow hover:shadow-md" :class="kinds[kind].edge">
         <div class="flex items-start gap-3">
             <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full" :class="kinds[kind].icon" :title="kinds[kind].label">
                 <svg v-if="kind === 'group'" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">

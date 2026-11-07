@@ -50,6 +50,13 @@ async function getTherapies() {
       loading.value = false
     })
 }
+
+// SCRUM-392: joining from a card updates its member count without reloading the list.
+function joinedGroup(group, { joined, membersCount }) {
+  if (!joined) return
+  // `group` is this page's own row (from therapies).
+  group.memberCount = membersCount ?? (group.memberCount ?? 0) + 1
+}
 </script>
 
 <template>
@@ -84,6 +91,7 @@ async function getTherapies() {
                   v-else-if="therapy.type === 'group'"
                   :group-therapy="therapy"
                   class="w-full"
+                  @joined="(event) => joinedGroup(therapy, event)"
                 />
               </template>
             </div>
