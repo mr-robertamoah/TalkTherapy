@@ -7,6 +7,7 @@ use App\Enums\RequestTypeEnum;
 use App\Http\Resources\AdminCounsellorVerificationRenewalResource;
 use App\Http\Resources\CounsellorVerificationEventResource;
 use App\Models\Counsellor;
+use App\Support\AdminSearch;
 use App\Support\CounsellorVerification;
 use Illuminate\Http\Request;
 use Throwable;
@@ -26,6 +27,7 @@ class AdminCounsellorVerificationController extends Controller
     public function renewals(Request $request)
     {
         $ended = $request->query('filter') === 'ended';
+        $search = AdminSearch::term($request);
 
         $counsellors = Counsellor::query()
             ->when(
@@ -33,6 +35,10 @@ class AdminCounsellorVerificationController extends Controller
                 fn ($query) => $query->whereVerificationNotCurrent()->orderByDesc('verification_revoked_at')->orderByDesc('verification_expires_at'),
                 fn ($query) => $query->whereVerificationEndingWithin(CounsellorVerification::renewalWindowDays())->orderBy('verification_expires_at'),
             )
+            // SCRUM-390
+            ->when($search, fn ($query, $term) => $query->where(fn ($query) => $query
+                ->whereContains('counsellors.name', $term)
+                ->orWhereHas('user', fn ($query) => AdminSearch::person($query, $term))))
             ->withExists(['sentRequests as pending_verification_request_exists' => fn ($query) => $query
                 ->where('type', RequestTypeEnum::counsellor->value)->wherePending()])
             ->with(['user', 'avatarFile'])

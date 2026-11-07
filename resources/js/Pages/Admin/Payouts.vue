@@ -1,4 +1,5 @@
 <script setup>
+import AdminSearchBox from '@/Components/Admin/AdminSearchBox.vue'
 import Alert from '@/Components/Alert.vue';
 import FormLoader from '@/Components/FormLoader.vue';
 import InputError from '@/Components/InputError.vue';
@@ -166,22 +167,35 @@ function triggerPayoutForSelectedCounsellor() {
 const history = reactive({ data: [...props.payoutHistory.data], meta: props.payoutHistory.meta })
 const loadingHistoryPage = ref(false)
 
+// Only the latest page or search asked for is shown (review).
+let latestHistory = 0
+
 async function goToHistoryPage(url) {
     if (!url) return
+    const ticket = ++latestHistory
     loadingHistoryPage.value = true
 
     await axios.get(url)
         .then((res) => {
+            if (ticket !== latestHistory) return
             history.data = res.data.data
             history.meta = res.data.meta
         })
         .finally(() => {
-            loadingHistoryPage.value = false
+            if (ticket === latestHistory) loadingHistoryPage.value = false
         })
 }
 
+// SCRUM-390: by the counsellor's name or username, or the payout's reference.
+const historySearch = ref('')
+
 async function reloadPayoutHistory() {
-    await goToHistoryPage(route('admin.payouts'))
+    await goToHistoryPage(route('admin.payouts', historySearch.value ? { search: historySearch.value } : {}))
+}
+
+function searchHistory(term) {
+    historySearch.value = term
+    reloadPayoutHistory()
 }
 
 function statusClass(status) {
@@ -311,6 +325,7 @@ function statusClass(status) {
             <!-- Payout Audit History -->
             <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg p-6">
                 <div class="text-lg font-medium text-gray-900">Payout History</div>
+                <AdminSearchBox class="mt-3" label="Search payouts by the counsellor's name or username, or the reference" @search="searchHistory" />
                 <div class="mt-1 text-sm text-gray-600">All payouts across every counsellor.</div>
 
                 <div class="relative mt-4">

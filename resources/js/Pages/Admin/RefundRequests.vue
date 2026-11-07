@@ -1,5 +1,7 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
+import AdminSearchBox from '@/Components/Admin/AdminSearchBox.vue'
+import { searchPage } from '@/Composables/useAdminSearch'
 import axios from 'axios'
 import Alert from '@/Components/Alert.vue'
 import Pagination from '@/Components/Pagination.vue'
@@ -22,6 +24,7 @@ defineOptions({ layout: AdminLayout })
 // Inertia-compatible one, so useForm() isn't a fit here the way it is on OrganizationBilling.vue.
 
 const props = defineProps({
+    search: { type: String, default: '' },
     refundRequests: { type: Object, required: true },
     // SCRUM-387: refunds the provider failed (AdminFailedRefundResource), newest first, and how
     // many there are in all. Nothing retries one, so they are only listed.
@@ -106,6 +109,14 @@ async function goToPage(url) {
             loadingPage.value = false
         })
 }
+
+// A new search's list replaces this page's copy of it.
+watch(() => props.refundRequests, (page) => { requests.value = [...page.data] })
+
+// SCRUM-390: the page's search, kept in the URL with its other filters.
+function searchFor(term) {
+    searchPage('administrator.refund_requests', term, {})
+}
 </script>
 
 <template>
@@ -121,6 +132,7 @@ async function goToPage(url) {
                     money -- that happens once the refund is actually processed.
                 </div>
             </div>
+            <AdminSearchBox :model-value="search" label="Search by the payer's name or username, or the payment reference" @search="searchFor" />
 
             <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg p-6">
                 <div v-if="requests.length === 0" class="text-sm text-gray-500 italic">

@@ -24,10 +24,13 @@ use App\Http\Resources\AdminReportedMessageResource;
 use App\Models\ConfidentialMessageAccess;
 use App\Models\Counsellor;
 use App\Models\File;
+use App\Models\GroupTherapy;
 use App\Models\Message;
 use App\Models\Report;
 use App\Models\Session;
+use App\Models\Therapy;
 use App\Models\User;
+use App\Support\AdminSearch;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Support\Facades\DB;
 
@@ -120,22 +123,43 @@ class ReportService extends Service
 
     // SCRUM-340: the admin review queue -- active reports (open first, oldest first) unless a status
     // is asked for. Loads what AdminReportResource reads for every row.
-    public function getReportsForAdmin(?ReportStatusEnum $status)
+    // SCRUM-390: [page, more than AdminSearch::CAP matches]. $search: the reporter's names and
+    // username, or the reported therapy's or group's name; a report the viewer is involved in
+    // (shown only as "involved") never matches.
+    public function getReportsForAdmin(?ReportStatusEnum $status, ?string $search = null, ?User $viewer = null): array
     {
-        return Report::query()
+        // A search must know who is looking, or it could match reports they're involved in.
+        if ($search && ! $viewer) {
+            throw new \InvalidArgumentException('A report search needs the viewer.');
+        }
+
+        $therapyName = fn ($query) => $query->whereContains('name', $search);
+
+        $query = Report::query()
             ->when(
                 $status,
                 fn ($q) => $q->where('status', $status->value),
                 fn ($q) => $q->whereIn('status', [ReportStatusEnum::open->value, ReportStatusEnum::under_review->value])
             )
+            ->when($search, fn ($query, $term) => $query->where(fn ($query) => $query
+                ->whereHasMorph('addedby', [User::class], fn ($query) => AdminSearch::person($query, $term))
+                ->orWhereHasMorph('addedby', [Counsellor::class], fn ($query) => $query->whereHas('user', fn ($query) => AdminSearch::person($query, $term)))
+                ->orWhereHasMorph('reportable', [Therapy::class, GroupTherapy::class], $therapyName)
+                ->orWhereHasMorph('reportable', [Session::class], fn ($query) => $query->whereHasMorph('for', [Therapy::class, GroupTherapy::class], $therapyName))))
             ->with([
                 'addedby' => fn (MorphTo $morph) => $morph->morphWith([Counsellor::class => ['user']]),
                 'reportable' => fn (MorphTo $morph) => $morph->morphWith([Session::class => ['for']]),
-            ])
-            ->orderByRaw("status = 'open' desc")
-            ->orderBy('created_at')
-            ->paginate(PaginationEnum::homePagination->value)
-            ->withQueryString();
+            ]);
+
+        $tooMany = $search ? AdminSearch::withoutInvolved($query, $viewer, fn (Report $report, User $viewer) => $report->involves($viewer)) : false;
+
+        return [
+            $query->orderByRaw("status = 'open' desc")
+                ->orderBy('created_at')
+                ->paginate(PaginationEnum::homePagination->value)
+                ->withQueryString(),
+            $tooMany,
+        ];
     }
 
     // SCRUM-340: an admin reads a reported conversation, giving a reason. Everything is decided and

@@ -7,6 +7,7 @@ use App\Http\Resources\AdminBillingSuspendedOrganizationResource;
 use App\Models\Organization;
 use App\Models\OrganizationInvoice;
 use App\Services\OrganizationService;
+use App\Support\AdminSearch;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\Redirect;
@@ -26,10 +27,13 @@ class AdminOrganizationBillingController extends Controller
             return Redirect::route('home')->with('message', EnsureUserIsAdmin::MESSAGE);
         }
 
+        $search = AdminSearch::term($request);
+
         return Inertia::render('Admin/OrganizationBilling', [
             'organizations' => $this->paginatedResource(AdminBillingSuspendedOrganizationResource::collection(
-                OrganizationService::new()->getBillingSuspendedOrganizationsForAdmin($user)
+                OrganizationService::new()->getBillingSuspendedOrganizationsForAdmin($user, $search)
             )),
+            'search' => $search ?? '',
         ]);
     }
 

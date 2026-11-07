@@ -15,6 +15,7 @@ use App\Models\Counsellor;
 use App\Models\Report;
 use App\Models\Session;
 use App\Models\Suspension;
+use App\Support\AdminSearch;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Redirect;
 use Illuminate\Validation\Rule;
@@ -33,19 +34,29 @@ class AdminSuspensionController extends Controller
             return Redirect::route('home')->with('message', EnsureUserIsAdmin::MESSAGE);
         }
 
-        $suspensions = Suspension::query()
+        // SCRUM-390: the suspended person's names and username; one the viewer is involved in (shown
+        // only as "involved") never matches.
+        $search = AdminSearch::term($request);
+        $query = Suspension::query()
+            ->when($search, fn ($query, $term) => $query->whereHas('user', fn ($query) => AdminSearch::person($query, $term)))
             ->with([
                 'user', 'createdBy', 'liftedBy', 'appealDecidedBy',
                 'report.addedby' => fn ($morph) => $morph->morphWith([Counsellor::class => ['user']]),
                 'report.reportable' => fn ($morph) => $morph->morphWith([Session::class => ['for']]),
-            ])
+            ]);
+        $tooMany = $search ? AdminSearch::withoutInvolved($query, $request->user(), fn (Suspension $suspension, $viewer) => $suspension->involves($viewer)) : false;
+
+        $suspensions = $query
             ->orderByRaw('appealed_at is not null and appeal_decided_at is null desc')
             ->orderByRaw('case when appealed_at is not null and appeal_decided_at is null then appealed_at end')
             ->orderByRaw('lifted_at is null desc')
             ->latest('id')
-            ->paginate(20);
+            ->paginate(20)
+            ->withQueryString();
 
         return Inertia::render('Admin/Suspensions', [
+            'search' => $search ?? '',
+            'searchTooMany' => $tooMany,
             'suspensions' => AdminSuspensionResource::collection($suspensions)->response()->getData(true),
             'canManage' => $request->user()->isSuperAdmin(),
         ]);

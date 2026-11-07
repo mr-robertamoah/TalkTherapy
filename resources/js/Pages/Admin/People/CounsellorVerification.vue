@@ -6,7 +6,7 @@
 // SCRUM-31: ?view=renewals lists verifications ending soon, ended or revoked instead, each with its
 // history and (while current) a revoke action.
 import { Head, router } from '@inertiajs/vue3'
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import AdminLayout from '@/Layouts/AdminLayout.vue'
 import Alert from '@/Components/Alert.vue'
 import FormLoader from '@/Components/FormLoader.vue'
@@ -14,6 +14,8 @@ import PrimaryButton from '@/Components/PrimaryButton.vue'
 import VerificationRequest from '@/Components/VerificationRequest.vue'
 import Avatar from '@/Components/Avatar.vue'
 import CounsellorVerificationPanel from '@/Components/Admin/CounsellorVerificationPanel.vue'
+import AdminSearchBox from '@/Components/Admin/AdminSearchBox.vue'
+import { searchPage } from '@/Composables/useAdminSearch'
 import useAlert from '@/Composables/useAlert'
 import useEnums from '@/Composables/useEnums'
 import { refreshAdminBadges } from '@/Composables/useAdminBadges'
@@ -26,6 +28,7 @@ const props = defineProps({
     view: { type: String, default: 'requests' },
     renewalWindowDays: { type: Number, default: 30 },
     renewalFilter: { type: String, default: 'due' },
+    search: { type: String, default: '' },
 })
 
 const { alertData, clearAlertData, setAlertData, setFailedAlertData } = useAlert()
@@ -40,11 +43,17 @@ const requests = ref([])
 const nextPage = ref(1)
 const loading = ref(false)
 
-async function getRequests() {
-    if (!nextPage.value || loading.value) return
+// A newer load (a new search or filter) wins over one still on its way (review): "load more" waits,
+// a first page always goes, and only the latest answer is shown.
+let latestRequests = 0
+let latestRenewals = 0
 
+async function getRequests() {
+    if (!nextPage.value || (loading.value && nextPage.value > 1)) return
+
+    const ticket = ++latestRequests
     const page = nextPage.value
-    const query = { page }
+    const query = { page, ...(props.search ? { search: props.search } : {}) }
     if (props.status !== 'all') {
         query.filterType = 'status'
         query.filterValue = props.status
@@ -53,12 +62,13 @@ async function getRequests() {
     loading.value = true
     await axios.get(route('admin.verification.requests', query))
         .then((res) => {
+            if (ticket !== latestRequests) return
             requests.value = page > 1 ? [...requests.value, ...res.data.data] : [...res.data.data]
             nextPage.value = res.data?.links?.next ? page + 1 : 0
         })
         .catch(() => setFailedAlertData({ message: 'Something unfortunate happened. Please try again later.' }))
         .finally(() => {
-            loading.value = false
+            if (ticket === latestRequests) loading.value = false
         })
 }
 
@@ -69,11 +79,11 @@ function reloadRequests() {
 }
 
 function filterBy(status) {
-    router.get(route('administrator.counsellor_verification'), status === 'PENDING' ? {} : { status }, { preserveScroll: true })
+    searchPage('administrator.counsellor_verification', props.search, { status: status === 'PENDING' ? undefined : status }, false)
 }
 
 function showRenewals(filter = 'due') {
-    router.get(route('administrator.counsellor_verification'), filter === 'ended' ? { view: 'renewals', filter } : { view: 'renewals' }, { preserveScroll: true })
+    searchPage('administrator.counsellor_verification', props.search, { view: 'renewals', filter: filter === 'ended' ? filter : undefined }, false)
 }
 
 // SCRUM-31: the renewals list.
@@ -82,17 +92,19 @@ const renewalsNextPage = ref(1)
 const renewalsLoading = ref(false)
 
 async function getRenewals() {
-    if (!renewalsNextPage.value || renewalsLoading.value) return
+    if (!renewalsNextPage.value || (renewalsLoading.value && renewalsNextPage.value > 1)) return
 
+    const ticket = ++latestRenewals
     const page = renewalsNextPage.value
     renewalsLoading.value = true
-    await axios.get(route('admin.counsellors.verification.renewals', { page, filter: props.renewalFilter }))
+    await axios.get(route('admin.counsellors.verification.renewals', { page, filter: props.renewalFilter, ...(props.search ? { search: props.search } : {}) }))
         .then((res) => {
+            if (ticket !== latestRenewals) return
             renewals.value = page > 1 ? [...renewals.value, ...res.data.data] : [...res.data.data]
             renewalsNextPage.value = res.data?.links?.next ? page + 1 : 0
         })
         .catch(() => setFailedAlertData({ message: 'Something unfortunate happened. Please try again later.' }))
-        .finally(() => { renewalsLoading.value = false })
+        .finally(() => { if (ticket === latestRenewals) renewalsLoading.value = false })
 }
 
 function respond(requestId, response) {
@@ -119,6 +131,23 @@ function respond(requestId, response) {
 }
 
 onMounted(() => props.view === 'renewals' ? getRenewals() : getRequests())
+
+// SCRUM-390: a new search (in the URL) lists from the first page again.
+function searchFor(term) {
+    const keep = props.view === 'renewals'
+        ? { view: 'renewals', filter: props.renewalFilter === 'ended' ? 'ended' : undefined }
+        : { status: props.status === 'PENDING' ? undefined : props.status }
+    searchPage('administrator.counsellor_verification', term, keep)
+}
+
+watch(() => props.search, () => {
+    if (props.view === 'renewals') {
+        renewalsNextPage.value = 1
+        getRenewals()
+    } else {
+        reloadRequests()
+    }
+})
 </script>
 
 <template>
@@ -131,6 +160,8 @@ onMounted(() => props.view === 'renewals' ? getRenewals() : getRequests())
             <p v-if="view === 'renewals'" class="mt-2 text-sm text-gray-600">Verifications ending in the next {{ renewalWindowDays }} days, or ones that have ended or were revoked. Counsellors are reminded to re-verify; their requests appear under the request filters.</p>
             <p v-else class="mt-2 text-sm text-gray-600">Counsellors asking to be verified. Open one to see their licences, then accept or reject it.</p>
         </div>
+
+        <AdminSearchBox :model-value="search" label="Search by the counsellor's name or username" @search="searchFor" />
 
         <div class="flex flex-wrap gap-2" role="group" aria-label="Status">
             <button

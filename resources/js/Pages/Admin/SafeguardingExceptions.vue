@@ -1,5 +1,7 @@
 <script setup>
 import { ref } from 'vue'
+import AdminSearchBox from '@/Components/Admin/AdminSearchBox.vue'
+import { searchPage } from '@/Composables/useAdminSearch'
 import { Head, router, useForm } from '@inertiajs/vue3'
 import AdminLayout from '@/Layouts/AdminLayout.vue'
 import Alert from '@/Components/Alert.vue'
@@ -18,7 +20,9 @@ defineOptions({ layout: AdminLayout })
 // a safeguarding exception, and every exception granted (the audit trail). Every administrator sees
 // this page; only the super administrator grants, renews or ends an exception.
 
-defineProps({
+const props = defineProps({
+    search: { type: String, default: '' },
+    searchTooMany: { type: Boolean, default: false },
     exceptions: { type: Object, required: true },
     // SCRUM-384: paged ({ data, meta }, `pausedPage`), like the exceptions (`page`).
     pausedMinors: { type: Object, required: true },
@@ -100,6 +104,11 @@ async function respond(request, response) {
 function goToPage(url) {
     if (url) router.get(url, {}, { preserveScroll: true })
 }
+
+// SCRUM-390: the page's search, kept in the URL with its other filters.
+function searchFor(term) {
+    searchPage('administrator.safeguarding_exceptions', term, {})
+}
 </script>
 
 <template>
@@ -117,7 +126,6 @@ function goToPage(url) {
                     <template v-if="!canManage"> Only the super administrator can grant, renew or end one.</template>
                 </div>
             </div>
-
             <section class="bg-white shadow-sm border border-gray-200 sm:rounded-lg p-6 space-y-3">
                 <div class="text-lg font-semibold text-gray-900">Paused now</div>
                 <div v-if="pausedMinors.data.length === 0" class="text-sm text-gray-500 italic">Nobody with an open therapy is paused for a missing guardian.</div>
@@ -217,7 +225,8 @@ function goToPage(url) {
 
             <section class="bg-white shadow-sm border border-gray-200 sm:rounded-lg p-6 space-y-3">
                 <div class="text-lg font-semibold text-gray-900">Exceptions</div>
-                <div v-if="exceptions.data.length === 0" class="text-sm text-gray-500 italic">No safeguarding exceptions yet.</div>
+                <AdminSearchBox :model-value="search" label="Search exceptions by the minor's name or username" :too-many="searchTooMany" @search="searchFor" />
+                <div v-if="exceptions.data.length === 0" class="text-sm text-gray-500 italic">{{ search ? 'No exceptions match your search.' : 'No safeguarding exceptions yet.' }}</div>
 
                 <div v-for="exception in exceptions.data" :key="exception.id" class="border border-gray-200 rounded-md p-4 text-sm space-y-3">
                     <div v-if="exception.involved" class="flex flex-wrap items-center gap-2">

@@ -12,6 +12,7 @@ use App\Models\Request as ModelsRequest;
 use App\Models\Session;
 use App\Models\Therapy;
 use App\Models\TherapyTopic;
+use App\Support\AdminSearch;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Http\Request;
@@ -49,6 +50,8 @@ class AdminContentAccessController extends Controller
             'subject_id' => ['nullable', 'integer', 'required_with:subject'],
         ]);
 
+        $search = AdminSearch::term($request);
+
         $accesses = AdminContentAccess::query()
             // SCRUM-385: the subject (and a message's session or discussion) and the file, for their
             // names -- eager-loaded so the labels below cost no query per row.
@@ -59,6 +62,8 @@ class AdminContentAccessController extends Controller
             ])
             ->when($filters['resource'] ?? null, fn ($q, $resource) => $q->where('resource', $resource))
             ->when($filters['admin'] ?? null, fn ($q, $admin) => $q->where('admin_user_id', $admin))
+            // SCRUM-390: the administrator's names and username.
+            ->when($search, fn ($q, $term) => $q->whereHas('admin', fn ($q) => AdminSearch::person($q, $term)))
             ->when($filters['subject'] ?? null, fn ($q, $subject) => $q->where('subject_type', self::SUBJECTS[$subject])->where('subject_id', $filters['subject_id']))
             ->latest('id')
             ->paginate(30)
@@ -78,6 +83,8 @@ class AdminContentAccessController extends Controller
             ]);
 
         return Inertia::render('Admin/ContentAccesses', [
+            // SCRUM-390
+            'search' => $search ?? '',
             'accesses' => $accesses,
             'filters' => [
                 'resource' => $filters['resource'] ?? null,

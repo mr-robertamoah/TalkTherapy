@@ -8,6 +8,7 @@ use App\Http\Resources\AdminFailedRefundResource;
 use App\Http\Resources\RefundRequestResource;
 use App\Models\Refund;
 use App\Services\RequestService;
+use App\Support\AdminSearch;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\Redirect;
@@ -32,11 +33,18 @@ class AdminRefundRequestController extends Controller
 
         // SCRUM-387 (review): the failed refunds too -- the admin overview counts them and links
         // here. Nothing retries one, so they are listed only, newest first.
-        $failed = Refund::query()->where('status', RefundStatusEnum::failed->value);
+        // SCRUM-390: the payer's names and username, or a reference -- the payment's on the pending
+        // list, the refund's own (the one its row shows) or the payment's on the failed list.
+        $search = AdminSearch::term($request);
+        $failed = Refund::query()->where('status', RefundStatusEnum::failed->value)
+            ->when($search, fn ($query, $term) => $query->where(fn ($query) => $query
+                ->whereHas('requestedBy', fn ($query) => AdminSearch::person($query, $term))
+                ->orWhere(fn ($query) => $query->whereContains('refunds.reference', $term))
+                ->orWhereHas('transaction', fn ($query) => $query->whereContains('reference', $term))));
 
         return Inertia::render('Admin/RefundRequests', [
             'refundRequests' => $this->paginatedResource(RefundRequestResource::collection(
-                RequestService::new()->getPendingRefundRequestsForAdmin($user)
+                RequestService::new()->getPendingRefundRequestsForAdmin($user, $search)
             )),
             'failedRefunds' => AdminFailedRefundResource::collection(
                 (clone $failed)
@@ -49,6 +57,7 @@ class AdminRefundRequestController extends Controller
                     ->get()
             )->resolve(),
             'failedRefundsTotal' => $failed->count(),
+            'search' => $search ?? '',
         ]);
     }
 

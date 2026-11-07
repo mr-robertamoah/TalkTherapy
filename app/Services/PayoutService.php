@@ -43,9 +43,14 @@ class PayoutService extends Service
 
         return AdminCounsellorPayoutResource::collection(
             CounsellorPayout::query()
+                // SCRUM-390: the counsellor's name or account, or the payout's reference.
+                ->when($dto->search, fn ($query, $term) => $query->where(fn ($query) => $query
+                    ->whereContains('reference', $term)
+                    ->orWhereHas('counsellor', fn ($query) => $query->whereName($term))))
                 ->with(['counsellor', 'initiatedBy', 'statusHistories'])
                 ->latest()
                 ->paginate(PaginationEnum::preferencesPagination->value)
+                ->withQueryString()
         );
     }
 

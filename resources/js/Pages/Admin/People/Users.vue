@@ -4,8 +4,15 @@
 import { Head } from '@inertiajs/vue3'
 import AdminLayout from '@/Layouts/AdminLayout.vue'
 import AdminUsersComponent from '@/Components/AdminUsersComponent.vue'
+import AdminSearchBox from '@/Components/Admin/AdminSearchBox.vue'
+import { searchPage } from '@/Composables/useAdminSearch'
 
 defineOptions({ layout: AdminLayout })
+
+// SCRUM-390: kept in the URL (?search=).
+defineProps({
+    search: { type: String, default: '' },
+})
 </script>
 
 <template>
@@ -18,8 +25,10 @@ defineOptions({ layout: AdminLayout })
             <p class="mt-2 text-sm text-gray-600">Every account apart from your own. Edit someone's details or close their account.</p>
         </div>
 
+        <AdminSearchBox :model-value="search" label="Search by name, username or email" @search="(term) => searchPage('administrator.users', term)" />
+
         <div class="bg-white shadow-sm border border-gray-200 rounded-lg p-4 sm:p-6">
-            <AdminUsersComponent :show="true" class="w-full" />
+            <AdminUsersComponent :show="true" :search="search" class="w-full" />
         </div>
     </div>
 </template>
