@@ -110,6 +110,15 @@ See "Common commands" in `CLAUDE.md`.
   request's direction is `Request::isAssistanceOffer()` / `direction`, never guessed from party types.
   Counsellor viewers are never matched on a client's religions (special-category data).
 
+- **Admin search and the counsellor dashboard (SCRUM-390/391/393, 2026-11-07).** Every admin list
+  searches through `App\Support\AdminSearch` (`term()`, `person()`, `withoutInvolved()`) and the
+  `AdminSearchBox` + `useAdminSearch` frontend; a new admin list should too, and a row a viewer sees only
+  as "involved" must be excluded by the same rule its resource masks by (one method, not a copy).
+  Counsellor names go through `Counsellor::whereName`. "Free counsellor place" in a query is
+  `GroupTherapy::whereCanTakeCounsellor` (kept in step with `canTakeCounsellor()`). The dashboard's
+  `Request::scopeAwaitingCounsellor` lists by type -- add a new counsellor-answerable request type
+  there too. Cards share `TherapyCardFrame` (kind by colour) and `PreferenceMatchMark`.
+
 ## Current Sprint Goals
 
 See `documentation/implementation_plan.md` → "Reconciled Sprint Roadmap". Sprint 1 (Platform
