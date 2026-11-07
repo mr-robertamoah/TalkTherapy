@@ -103,6 +103,13 @@ See "Common commands" in `CLAUDE.md`.
   `verification_expires_at` too (the factory sets one; `unverified()`, `lapsed()` and
   `verificationEndingIn()` states exist).
 
+- **Discovery lists and cards (SCRUM-113/114/389, 2026-11-07).** Home/Public lists rank in SQL
+  (`App\Support\PreferenceRanking`, `PreferenceMatch`) with a `?seed=` that the client sends back for
+  stable paging; never sort them in PHP after paginating. A card's button comes from the server
+  (`ResolveTherapyCardStateAction` -> `viewer.action`); don't re-derive it in Vue. An assistance
+  request's direction is `Request::isAssistanceOffer()` / `direction`, never guessed from party types.
+  Counsellor viewers are never matched on a client's religions (special-category data).
+
 ## Current Sprint Goals
 
 See `documentation/implementation_plan.md` → "Reconciled Sprint Roadmap". Sprint 1 (Platform

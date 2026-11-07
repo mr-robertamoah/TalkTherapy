@@ -30,7 +30,6 @@ class Counsellor extends Model
     protected $fillable = [
         'name',
         'about',
-        'verified_at',
         'email_verified_at',
         'avatar_id',
         'cover_id',
@@ -40,6 +39,8 @@ class Counsellor extends Model
         'phone',
     ];
 
+    // SCRUM-389: verified_at isn't fillable -- only ApplyCounsellorVerificationAction verifies anyone
+    // (with an end date and an audit row). Factories and `db:seed` run unguarded.
     protected $casts = [
         'email_verified_at' => 'datetime',
         'verified_at' => 'datetime',

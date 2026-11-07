@@ -17,6 +17,11 @@ import StyledLink from '@/Components/StyledLink.vue';
 import HelpButton from '@/Components/HelpButton.vue';
 import useGuidedTours from '@/Composables/useGuidedTours';
 
+// SCRUM-113 (QA): the saved preferences arrive as plain lists (resources aren't wrapped, see
+// HandleInertiaRequestsV2), so reading `.data` found nothing -- the page showed none saved, and saving
+// wiped them. Either shape is read.
+const asList = (value) => Array.isArray(value) ? value : (value?.data ?? [])
+
 
 const { PAGES } = useGuidedTours()
 const form = useForm({
@@ -110,9 +115,9 @@ watch(() => religionData.value.name, () => {
 
 function setCasesAndLanguages() {
     const props = usePage().props
-    cases.value = [...props.loadedCases.data]
-    languages.value = [...props.loadedLanguages.data]
-    religions.value = [...props.loadedReligions.data]
+    cases.value = [...asList(props.loadedCases)]
+    languages.value = [...asList(props.loadedLanguages)]
+    religions.value = [...asList(props.loadedReligions)]
 
     const settings = usePage().props?.auth?.user?.settings
     if (!settings) return
@@ -121,12 +126,12 @@ function setCasesAndLanguages() {
         form.anonymous = settings.anonymous
     }
 
-    if (props.cases?.data?.length)
-        selectedCases.value = [...props.cases.data]
-    if (props.languages?.data?.length)
-        selectedLanguages.value = [...props.languages.data]
-    if (props.religions?.data?.length)
-        selectedReligions.value = [...props.religions.data]
+    if (asList(props.cases).length)
+        selectedCases.value = [...asList(props.cases)]
+    if (asList(props.languages).length)
+        selectedLanguages.value = [...asList(props.languages)]
+    if (asList(props.religions).length)
+        selectedReligions.value = [...asList(props.religions)]
 }
 
 const debouncedGetCases = () => {
@@ -379,7 +384,7 @@ function checkPreferences() {
         return
     }
 
-    let data = props.cases?.data?.map(c => c.id)
+    let data = asList(usePage().props.cases).map(c => c.id)
     if (
         !selectedCases.value.length && data?.length ||
         selectedCases.value.length && !data?.length ||
@@ -396,7 +401,7 @@ function checkPreferences() {
 
     if (preferenceChanged.value) return
 
-    data = props.languages?.data?.map(c => c.id)
+    data = asList(usePage().props.languages).map(c => c.id)
     if (
         !selectedLanguages.value.length && data?.length ||
         selectedLanguages.value.length && !data?.length ||
@@ -413,7 +418,7 @@ function checkPreferences() {
 
     if (preferenceChanged.value) return
     
-    data = props.religions?.data?.map(c => c.id)
+    data = asList(usePage().props.religions).map(c => c.id)
     if (
         !selectedReligions.value.length && data?.length ||
         selectedReligions.value.length && !data?.length ||

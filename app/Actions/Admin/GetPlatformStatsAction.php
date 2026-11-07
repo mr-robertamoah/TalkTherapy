@@ -104,7 +104,17 @@ class GetPlatformStatsAction extends Action
             'users' => $this->users()->count(),
             'counsellors' => Counsellor::query()->count(),
             'counsellorsVerified' => Counsellor::query()->whereCurrentlyVerified()->count(),
-            'counsellorsAwaiting' => Counsellor::query()->whereNull('verified_at')->whereIn('id', $awaitingVerification)->count(),
+            // SCRUM-389: not currently verified (never, ended -- or no end date, read as ended -- or
+            // revoked) and asking to be. Written out, not NOT(...): SQL's NULLs would drop a row with
+            // no end date (reviewer finding).
+            'counsellorsAwaiting' => Counsellor::query()
+                ->where(fn ($query) => $query
+                    ->whereNull('verified_at')
+                    ->orWhereNotNull('verification_revoked_at')
+                    ->orWhereNull('verification_expires_at')
+                    ->orWhere('verification_expires_at', '<=', $now))
+                ->whereIn('id', $awaitingVerification)
+                ->count(),
             'organizations' => Organization::query()->count(),
             'organizationsVerified' => Organization::query()->whereNotNull('verified_at')->count(),
             'activeTherapies' => (int) $therapies->active,

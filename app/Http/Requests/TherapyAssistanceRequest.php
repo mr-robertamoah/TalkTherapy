@@ -23,7 +23,9 @@ class TherapyAssistanceRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'counsellorIds' => ['nullable', 'array'],
+            // SCRUM-389: refused, not silently cut short (no `exists`: which counsellors exist isn't told).
+            'counsellorIds' => ['nullable', 'array', 'max:20'],
+            'counsellorIds.*' => ['integer', 'distinct'],
         ];
     }
 

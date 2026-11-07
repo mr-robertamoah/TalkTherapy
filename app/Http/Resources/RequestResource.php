@@ -16,6 +16,7 @@ use App\Models\Therapy;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Support\AdminRequestQueue;
+use App\Support\NarrowUserProjection;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -50,6 +51,11 @@ class RequestResource extends JsonResource
         $isRespondent = $this->isRespondent($request, $viewer);
 
         return [
+            // SCRUM-389: an assistance request's direction -- 'invite' (to a counsellor) or 'offer'
+            // (a counsellor offering to help), so the frontend never works it out from the parties.
+            'direction' => in_array($this->type, [RequestTypeEnum::therapy->value, RequestTypeEnum::groupTherapy->value], true)
+                ? ($this->resource->isAssistanceOffer() ? 'offer' : 'invite')
+                : null,
             'id' => $this->id,
             'from' => $this->getFrom($viewer),
             'for' => $this->getFor(),
@@ -65,7 +71,7 @@ class RequestResource extends JsonResource
             'respondedBy' => $this->when(
                 $viewer?->isAdmin() && AdminRequestQueue::includes($this->type) && ! is_null($this->responded_by_id)
                     && ! $this->resource->isOwnRequestOf($viewer),
-                fn () => self::narrowUserProjection($this->resource->respondedBy),
+                fn () => NarrowUserProjection::of($this->resource->respondedBy),
             ),
             // SCRUM-208 (TT-2.5c): only meaningful for a session-schedule proposal -- every other
             // type in this resource has no proposal terms/round/stale-state to show.
@@ -188,7 +194,7 @@ class RequestResource extends JsonResource
             'involved' => false,
             'client' => match (true) {
                 ! $ward => ['fullName' => AnonymiseClosedAccountAction::CLOSED_ACCOUNT_NAME],
-                $isRespondent => $this->narrowUserProjection($ward),
+                $isRespondent => NarrowUserProjection::of($ward),
                 $therapy instanceof Therapy || $therapy instanceof GroupTherapy => ['fullName' => $therapy->displayNameOf($ward)],
                 default => ['fullName' => ConstantsEnum::anonymousUserLabel->value],
             },
@@ -236,11 +242,11 @@ class RequestResource extends JsonResource
         // SCRUM-387 (security review): a refund request is listed to every administrator too (the
         // admin queue), so its payer is narrowed the same way.
         if ($this->isNullToAdminOnlyType() || $this->type === RequestTypeEnum::refund->value) {
-            return self::narrowUserProjection($this->from);
+            return NarrowUserProjection::of($this->from);
         }
 
         if ($this->isOrgMemberFlowUser($this->from, $viewer)) {
-            return $this->narrowUserProjection($this->from);
+            return NarrowUserProjection::of($this->from);
         }
 
         return new UserMiniResource($this->from);
@@ -288,7 +294,14 @@ class RequestResource extends JsonResource
         }
 
         if ($this->isOrgMemberFlowUser($this->to, $viewer)) {
-            return $this->narrowUserProjection($this->to);
+            return NarrowUserProjection::of($this->to);
+        }
+
+        // SCRUM-389 (architect review): a counsellor's offer to help is addressed to the client or the
+        // group's creator -- the counsellor who offered has no relationship with them yet, so they get
+        // a name only (when not masked above), never dob, gender or country.
+        if (in_array($this->type, [RequestTypeEnum::therapy->value, RequestTypeEnum::groupTherapy->value], true) && ! $this->to?->is($viewer)) {
+            return NarrowUserProjection::of($this->to);
         }
 
         return new UserMiniResource($this->to);
@@ -339,12 +352,6 @@ class RequestResource extends JsonResource
         ]) && ! $user?->is($viewer);
     }
 
-    // Public: RefundRequestResource narrows a refund's payer the same way.
-    public static function narrowUserProjection(?User $user): array
-    {
-        return ['id' => $user?->id, 'fullName' => $user?->name, 'username' => $user?->username, 'isUser' => true];
-    }
-
     // TT-4.10e/SCRUM-294 security review (extended by TT-4.11d/SCRUM-305 for ageVerification):
     // shared by getFrom()/getTo()/getFor() so the null-`to` narrowing can't be applied to only
     // one of the three fields by accident. Both types are visible to EVERY admin (not just
@@ -391,7 +398,7 @@ class RequestResource extends JsonResource
             // `dob` specifically is redundant anyway since `priorDob`/`attestedDob` above already
             // carries it.
             if ($this->isNullToAdminOnlyType()) {
-                return $this->narrowUserProjection($this->for);
+                return NarrowUserProjection::of($this->for);
             }
 
             return new UserMiniResource($this->for);

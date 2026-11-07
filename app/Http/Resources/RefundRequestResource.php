@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Support\NarrowUserProjection;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -27,7 +28,7 @@ class RefundRequestResource extends JsonResource
             'type' => $this->type,
             // SCRUM-387 (security review): every administrator reads this list -- name and
             // username only, never the payer's dob, gender or country.
-            'from' => RequestResource::narrowUserProjection($this->from),
+            'from' => NarrowUserProjection::of($this->from),
             'reason' => $this->data['reason'] ?? null,
             'rejectionReason' => $this->data['rejectionReason'] ?? null,
             'transaction' => $transaction ? [

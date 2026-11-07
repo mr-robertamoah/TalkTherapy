@@ -97,7 +97,7 @@ test('only the invited, verified counsellor can accept -- not an admin for them,
 
     // Nor an unverified counsellor.
     $unverified = aCounsellorFor358();
-    $unverified->update(['verified_at' => null]);
+    $unverified->forceFill(['verified_at' => null])->save();
     $accept($unverified->user, aGroupInviteFor358($group, $unverified))->assertStatus(422);
 
     // Nor into a group that has ended.
@@ -125,6 +125,8 @@ test('the creator of a counsellor-made group is told, in group wording, who acce
     $creatorCounsellor = aCounsellorFor358();
     $group = GroupTherapy::factory()->create(['addedby_type' => Counsellor::class, 'addedby_id' => $creatorCounsellor->id, 'max_counsellors' => 5]);
     $joining = aCounsellorFor358();
+    // A fixed name: a random one with an apostrophe is encoded differently in the mail than by e().
+    $joining->forceFill(['name' => 'Dr Joining Counsellor'])->save();
     $invite = AppRequest::query()->forceCreate([
         'from_type' => Counsellor::class, 'from_id' => $creatorCounsellor->id,
         'to_type' => Counsellor::class, 'to_id' => $joining->id,

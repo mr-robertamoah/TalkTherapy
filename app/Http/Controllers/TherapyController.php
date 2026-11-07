@@ -29,7 +29,7 @@ class TherapyController extends Controller
     public function getRandomTherapies(Request $request)
     {
         try {
-            $therapies = TherapyService::new()->getRandomTherapies($request->user());
+            $therapies = TherapyService::new()->getRandomTherapies($request->user(), $request->query('seed'));
 
             return TherapyMiniResource::collection($therapies);
         } catch (Throwable $th) {
@@ -43,7 +43,7 @@ class TherapyController extends Controller
     public function getPublicTherapies(Request $request)
     {
         try {
-            $therapies = TherapyService::new()->getPublicTherapies($request->user());
+            $therapies = TherapyService::new()->getPublicTherapies($request->user(), $request->query('seed'));
 
             return PublicTherapyResource::collection($therapies);
         } catch (Throwable $th) {

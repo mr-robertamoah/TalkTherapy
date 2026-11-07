@@ -47,10 +47,7 @@ class EnsureCounsellorMayTakeOnClientsAction extends Action
     // of them currently verified admits nobody new. One still waiting for its first counsellor does.
     public function ensureGroupMayAdmit(GroupTherapy $group): void
     {
-        // Its active counsellors, a counsellor creator included.
-        $counsellors = $group->activeCounsellors();
-
-        if ($counsellors->isNotEmpty() && $counsellors->doesntContain(fn (Counsellor $counsellor) => $counsellor->isVerified())) {
+        if (! $group->admitsNewMembers()) {
             throw new CounsellorException(self::GROUP_NOT_ADMITTING, 422);
         }
     }

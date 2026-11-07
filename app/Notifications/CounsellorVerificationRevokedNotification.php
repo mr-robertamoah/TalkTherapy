@@ -2,6 +2,7 @@
 
 namespace App\Notifications;
 
+use App\Support\MailText;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -29,7 +30,7 @@ class CounsellorVerificationRevokedNotification extends Notification implements 
             ->subject('Your TalkTherapy verification was revoked')
             ->greeting("Hello {$notifiable->getName()},")
             ->line('An administrator has revoked your counsellor verification. The reason given:')
-            ->line($this->reason)
+            ->line(MailText::inline($this->reason))
             ->line('Your current clients and sessions carry on. Until you are verified again, you can\'t take on new clients, join groups as a counsellor, post, or link to an organisation.')
             ->action('Request verification', route('counsellor.show', ['counsellorId' => $notifiable->id]).'?verify=1');
     }

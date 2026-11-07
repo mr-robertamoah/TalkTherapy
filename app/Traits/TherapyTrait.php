@@ -176,21 +176,30 @@ trait TherapyTrait
             ->withTimestamps();
     }
 
+    // SCRUM-114: the viewer's card state on a list (ResolveTherapyCardStateAction) -- never saved.
+    public ?array $viewerCard = null;
+
     public function pendingRequestFor(?Counsellor $counsellor)
     {
         if (is_null($counsellor)) {
             return null;
         }
 
+        // SCRUM-389: or their own offer to help (an assistance request FROM them), so the page can
+        // say "offer sent" -- the OR grouped, so it can't escape the pending/for filters.
         return Request::query()
             ->wherePending()
             ->whereFor($this)
-            ->whereTo($counsellor)
+            ->where(fn ($query) => $query
+                ->whereTo($counsellor)
+                ->orWhere(fn ($query) => $query
+                    ->whereFrom($counsellor)
+                    ->whereIn('type', [RequestTypeEnum::therapy->value, RequestTypeEnum::groupTherapy->value])))
             ->latest()
             ->first();
     }
 
-    // Unlike pendingRequestFor() above (assistance requests, always `to` a Counsellor), a session
+    // Unlike pendingRequestFor() above (assistance requests to or from the Counsellor), a session
     // schedule proposal's `to` alternates between the client User and the Counsellor across
     // counter-offer rounds (SCRUM-207/TT-2.5b) -- so this is scoped by `for`/`type` only, not `to`.
     public function pendingSessionScheduleProposal()

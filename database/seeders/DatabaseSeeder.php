@@ -23,6 +23,7 @@ use App\Enums\ReportOutcomeEnum;
 use App\Enums\ReportStatusEnum;
 use App\Enums\RequestStatusEnum;
 use App\Enums\RequestTypeEnum;
+use App\Enums\TherapyStatusEnum;
 use App\Enums\TransactionStatusEnum;
 use App\Models\AdminContentAccess;
 use App\Models\Counsellor;
@@ -32,6 +33,7 @@ use App\Models\CounsellorVerificationEvent;
 use App\Models\GroupTherapy;
 use App\Models\Guardianship;
 use App\Models\HowTo;
+use App\Models\Language;
 use App\Models\License;
 use App\Models\LicensingAuthority;
 use App\Models\Link;
@@ -49,6 +51,7 @@ use App\Models\Session;
 use App\Models\Suspension;
 use App\Models\Testimonial;
 use App\Models\Therapy;
+use App\Models\TherapyCase;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Support\CounsellorVerification;
@@ -227,6 +230,104 @@ class DatabaseSeeder extends Seeder
         // does), then one counsellor in each renewal state.
         $this->giveVerifiedCounsellorsAnEndDate();
         $this->createCounsellorVerificationRenewalDemoData($superAdmin);
+        // SCRUM-113/114/389: a user whose preferences match some public therapies, groups and
+        // counsellors, public groups in every card state, and a counsellor's offer to help a group.
+        $this->createDiscoveryDemoData();
+    }
+
+    // SCRUM-113/114/389. Passwords: "password".
+    // - discovery_demo_user: preferences (one case, one language) that match "Discovery Demo Therapy
+    //   (matches)", "Discovery Demo Group (open)" and Dr. Discovery Helper -- they come first, labelled.
+    // - discovery_demo_creator: creates the public groups -- open (join), ask to join, full, ended, run
+    //   only by lapsed_counsellor (not taking members), and "needs a counsellor" (offer to help), and
+    //   has a waiting offer to help from discovery_demo_counsellor on "Discovery Demo Group (offer
+    //   waiting)" to accept.
+    // - discovery_demo_counsellor: verified, offers to help (cards show "Offer to help"/"Offer sent").
+    public function createDiscoveryDemoData(): void
+    {
+        $person = fn (string $username, string $first, array $extra = []) => User::factory()->adult()->create([
+            'firstName' => $first,
+            'lastName' => 'Discovery',
+            'email' => str_replace('_', '.', $username).'@example.com',
+            'username' => $username,
+            'password' => Hash::make('password'),
+            'email_verified_at' => now(),
+            ...$extra,
+        ]);
+        $case = TherapyCase::query()->orderBy('id')->first() ?? TherapyCase::query()->create(['name' => 'Anxiety']);
+        $language = Language::query()->orderBy('id')->first() ?? Language::query()->create(['name' => 'English']);
+
+        $person('discovery_demo_user', 'Seeker', ['settings' => ['cases' => [$case->id], 'languages' => [$language->id], 'anonymous' => false]]);
+        $creator = $person('discovery_demo_creator', 'Creator');
+        $client = $person('discovery_demo_client', 'Client');
+
+        $counsellorUser = $person('discovery_demo_counsellor', 'Helper');
+        $counsellor = $counsellorUser->counsellor()->create([
+            'name' => 'Dr. Discovery Helper',
+            'about' => 'Seeded verified counsellor for trying "Offer to help" (SCRUM-389).',
+            'email' => $counsellorUser->email,
+            'phone' => fake()->phoneNumber(),
+            'email_verified_at' => now(),
+            'profession_id' => rand(1, 10),
+            'contact_visible' => true,
+        ]);
+        $counsellor->forceFill(['verified_at' => now()->subMonth(), 'verification_expires_at' => now()->addMonths(11)])->save();
+        $counsellor->cases()->attach($case->id);
+        $counsellor->languages()->attach($language->id);
+
+        $therapy = fn (string $name, bool $matches) => tap($client->addedTherapies()->create([
+            'name' => $name,
+            'background_story' => 'Seeded public therapy looking for a counsellor (SCRUM-113/389).',
+            'session_type' => 'Once',
+            'payment_type' => 'FREE',
+            'allow_in_person' => false,
+            'anonymous' => false,
+            'public' => true,
+            'status' => TherapyStatusEnum::pending->value,
+        ]), fn (Therapy $therapy) => $matches ? $therapy->cases()->attach($case->id) : null);
+        $therapy('Discovery Demo Therapy (matches)', true);
+        $therapy('Discovery Demo Therapy (other)', false);
+
+        $group = function (string $name, array $attributes = []) use ($creator) {
+            $addedby = $attributes['addedby'] ?? $creator;
+            unset($attributes['addedby']);
+
+            $group = new GroupTherapy([
+                'name' => $name,
+                'about' => 'Seeded public group (SCRUM-114).',
+                'session_type' => 'Periodic',
+                'payment_type' => 'FREE',
+                'allow_in_person' => false,
+                'anonymous' => false,
+                'public' => true,
+                'allow_anyone' => true,
+                'max_users' => 10,
+                'max_counsellors' => 2,
+                'status' => TherapyStatusEnum::pending->value,
+                ...$attributes,
+            ]);
+            $group->addedby()->associate($addedby);
+            $group->save();
+
+            return $group;
+        };
+        $group('Discovery Demo Group (open)')->cases()->attach($case->id);
+        $group('Discovery Demo Group (ask to join)', ['allow_anyone' => false]);
+        $full = $group('Discovery Demo Group (full)', ['max_users' => 1]);
+        $full->users()->attach($client->id, ['anonymous' => false, 'was_minor_at_join' => false]);
+        $group('Discovery Demo Group (ended)', ['status' => TherapyStatusEnum::ended->value]);
+        $lapsed = Counsellor::query()->whereHas('user', fn ($query) => $query->where('username', 'lapsed_counsellor'))->first();
+        if ($lapsed) {
+            $group('Discovery Demo Group (counsellor not verified)', ['addedby' => $lapsed]);
+        }
+        $group('Discovery Demo Group (needs a counsellor)');
+        $waiting = $group('Discovery Demo Group (offer waiting)');
+
+        $offer = new Request(['type' => RequestTypeEnum::groupTherapy->value, 'status' => RequestStatusEnum::pending->value, 'data' => []]);
+        $offer->from()->associate($counsellor);
+        $offer->to()->associate($creator);
+        $offer->for()->associate($waiting);
+        $offer->save();
     }
 
     // SCRUM-31: the seeds above create counsellors with only verified_at, which now reads as ended
@@ -234,17 +335,17 @@ class DatabaseSeeder extends Seeder
     private function giveVerifiedCounsellorsAnEndDate(): void
     {
         $expiresAt = now()->addMonths(CounsellorVerification::periodMonths());
+        $ids = Counsellor::withTrashed()->whereNotNull('verified_at')->whereNull('verification_expires_at')->pluck('id');
 
-        Counsellor::withTrashed()->whereNotNull('verified_at')->whereNull('verification_expires_at')->pluck('id')
-            ->each(function (int $id) use ($expiresAt) {
-                Counsellor::withTrashed()->whereKey($id)->update(['verification_expires_at' => $expiresAt]);
-                CounsellorVerificationEvent::query()->create([
-                    'counsellor_id' => $id,
-                    'event' => CounsellorVerificationEventEnum::baseline,
-                    'expires_at' => $expiresAt,
-                    'dedupe_key' => "baseline:{$id}",
-                ]);
-            });
+        // SCRUM-389: one update and one insert, not one of each per counsellor.
+        Counsellor::withTrashed()->whereKey($ids->all())->update(['verification_expires_at' => $expiresAt]);
+        CounsellorVerificationEvent::query()->insert($ids->map(fn (int $id) => [
+            'counsellor_id' => $id,
+            'event' => CounsellorVerificationEventEnum::baseline->value,
+            'expires_at' => $expiresAt,
+            'dedupe_key' => "baseline:{$id}",
+            'created_at' => now(),
+        ])->all());
     }
 
     // SCRUM-31: renewal_due_counsellor (ends in 20 days, not reminded yet -- run the reminder sweep),

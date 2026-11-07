@@ -129,6 +129,7 @@
           @clicked-join-group="$emit('clicked-join-group', $event)"
           @clicked-leave-group="$emit('clicked-leave-group')"
           @clicked-membership-response="$emit('clicked-membership-response', $event)"
+          @clicked-assistance-request="$emit('clicked-assistance-request')"
         >
           <template #therapy-component>
             <slot name="therapy-component" />
@@ -261,5 +262,6 @@ defineEmits([
   'clicked-propose-schedule',
   'clicked-schedule-response',
   'clicked-schedule-counter-offer',
+  'clicked-assistance-request',
 ])
 </script>

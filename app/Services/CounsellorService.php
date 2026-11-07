@@ -38,6 +38,8 @@ use App\Models\Counsellor;
 use App\Models\LicensingAuthority;
 use App\Models\User;
 use App\Notifications\VerifyCounsellorEmailNotification;
+use App\Support\PreferenceMatch;
+use App\Support\PreferenceRanking;
 
 class CounsellorService extends Service
 {
@@ -249,8 +251,11 @@ class CounsellorService extends Service
         return $query->get();
     }
 
-    public function getRandomCounsellors(?User $user)
+    // SCRUM-113: ranked by the viewer's saved preferences, in a seeded order for the visit.
+    public function getRandomCounsellors(?User $user, mixed $seed = null)
     {
+        $seed = PreferenceRanking::seed($seed);
+
         $query = Counsellor::query();
 
         $query->when($user, function ($query) use ($user) {
@@ -258,10 +263,11 @@ class CounsellorService extends Service
         });
 
         $query->whereNotSuspended();
-        $query->inRandomOrder();
-        // StarredCounsellorResource reads ->avatar and ->cover -- see the eager-load comments above.
-        $query->with(['avatarFile', 'coverFile']);
+        // StarredCounsellorResource reads ->avatar, ->cover and ->stars -- see the eager-load comments above.
+        $query->with(['avatarFile', 'coverFile', 'stars']);
 
-        return $query->paginate(PaginationEnum::preferencesPagination->value);
+        PreferenceRanking::apply($query, PreferenceMatch::forUser($user), $seed);
+
+        return $query->paginate(PaginationEnum::preferencesPagination->value)->appends(['seed' => $seed]);
     }
 }

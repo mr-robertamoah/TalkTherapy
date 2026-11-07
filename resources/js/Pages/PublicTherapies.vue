@@ -10,6 +10,8 @@ const props = defineProps({
 })
 
 const therapies = ref({ data: [], page: 1 })
+// SCRUM-113: one seed for this visit, so the ranked list keeps its order while paging.
+const visitSeed = Math.floor(Math.random() * 2147483646) + 1
 const loading = ref(false)
 
 onBeforeMount(() => {
@@ -30,7 +32,7 @@ async function getTherapies() {
   if (!therapies.value.page) return
   
   loading.value = true
-  await axios.get(route('api.therapies.public', { page: therapies.value.page }))
+  await axios.get(route('api.therapies.public', { page: therapies.value.page, seed: visitSeed }))
     .then((res) => {
       if (therapies.value.page === 1) therapies.value.data = []
       

@@ -4,6 +4,7 @@ import ActivityBadge from "./ActivityBadge.vue";
 import CounsellorComponent from "./CounsellorComponent.vue";
 import StyledLink from "./StyledLink.vue";
 import { usePage } from "@inertiajs/vue3";
+import TherapyCardAction from "./TherapyCardAction.vue";
 
 const showDetails = ref(false)
 
@@ -65,6 +66,8 @@ const computedCanViewPage = computed(() => {
                 Individual Therapy
             </div>
             <div class="flex gap-1">
+                <!-- SCRUM-113: only the viewer sees this, and never why. -->
+                <span v-if="therapy.viewer?.matchesPreferences" class="bg-green-50 text-green-800 px-2 py-1 rounded-full text-xs font-medium border border-green-200">Matches your preferences</span>
                 <span v-if="therapy.public" class="bg-gray-100 text-gray-700 px-2 py-1 rounded-full text-xs font-medium border">Public</span>
                 <span v-if="therapy.anonymous" class="bg-gray-100 text-gray-700 px-2 py-1 rounded-full text-xs font-medium border">Anonymous</span>
             </div>
@@ -92,10 +95,11 @@ const computedCanViewPage = computed(() => {
             <span>{{ therapy.createdAt }}</span>
         </div>
 
-        <!-- Action -->
-        <div v-if="computedCanViewPage" class="text-center">
+        <!-- Action: SCRUM-114, the viewer's button where the server decided it. -->
+        <TherapyCardAction v-if="therapy.viewer" :item="therapy" kind="individual" />
+        <div v-else-if="computedCanViewPage" class="text-center">
             <StyledLink 
-                :text="'Join Therapy'" 
+                :text="computedIsParticipant ? 'Open' : 'View'" 
                 :href="route('therapies.get', { therapyId: therapy.id})" 
                 class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium text-sm transition-colors inline-block"
             />

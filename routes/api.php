@@ -211,7 +211,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/likes', [LikeController::class, 'like'])->name('api.likes.create');
     Route::post('/likes/delete', [LikeController::class, 'dislike'])->name('api.likes.delete');
 
-    Route::post('/therapies/{therapyId}/assist', [TherapyController::class, 'sendAssistanceRequest'])->name('therapies.assist');
+    Route::post('/therapies/{therapyId}/assist', [TherapyController::class, 'sendAssistanceRequest'])->name('therapies.assist')->middleware('throttle:10,1,therapies.assist');
     Route::get('/therapies', [TherapyController::class, 'show'])->name('api.therapies');
     Route::get('/therapies/{therapyId}', [TherapyController::class, 'getTherapy'])->name('api.therapies.get');
     Route::get('/user/therapies', [TherapyController::class, 'getUserTherapies'])->name('api.therapies.user');
@@ -312,6 +312,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/group-therapies/{groupTherapyId}', [GroupTherapyController::class, 'endGroupTherapy'])->name('api.group.therapies.end');
     Route::post('/group-therapies', [GroupTherapyController::class, 'createGroupTherapy'])->name('group.therapies.create');
     Route::post('/group-therapies/{groupTherapyId}/join', [GroupTherapyController::class, 'joinGroupTherapy'])->name('api.group.therapies.join')->middleware('throttle:10,1,api.group.therapies.join');
+    // SCRUM-389: the creator invites more counsellors, or a counsellor offers to help a public group.
+    Route::post('/group-therapies/{groupTherapyId}/assist', [GroupTherapyController::class, 'sendAssistanceRequest'])->name('group.therapies.assist')->whereNumber('groupTherapyId')->middleware('throttle:10,1,group.therapies.assist');
     // SCRUM-73: allowed while paused or suspended (EnsureAccountIsNotSuspended's allowlist).
     Route::post('/group-therapies/{groupTherapyId}/leave', [GroupTherapyController::class, 'leaveGroupTherapy'])->name('api.group.therapies.leave')->middleware('throttle:10,1,api.group.therapies.leave');
     Route::get('/user/group-therapies', [GroupTherapyController::class, 'getUserGroupTherapies'])->name('api.group.therapies.user');

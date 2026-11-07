@@ -25,6 +25,9 @@ use App\Actions\Therapy\EnsureTherapyHasNoAssistanceAction;
 use App\Actions\Therapy\EnsureThereIsNoPendingRequestForCounsellorAction;
 use App\Actions\Therapy\EnsureThereIsNoPendingRequestForCounsellorsAction;
 use App\Actions\Therapy\EnsureUserHasAccessToTherapyAction;
+use App\Actions\Therapy\GetPublicTherapyFeedAction;
+use App\Actions\Therapy\PreloadTherapyListAction;
+use App\Actions\Therapy\ResolveTherapyCardStateAction;
 use App\Actions\Therapy\UpdateTherapyAction;
 use App\Actions\User\AlertGuardianAction;
 use App\Actions\User\EnsureUserMeetsTherapyRequirementsAction;
@@ -37,12 +40,12 @@ use App\DTOs\TherapyAssistanceRequestDTO;
 use App\Enums\PaginationEnum;
 use App\Enums\StarTypeEnum;
 use App\Models\AdminContentAccess;
-use App\Models\GroupTherapy;
 use App\Models\Therapy;
 use App\Models\User;
 use App\Notifications\TherapyCreatedNotification;
+use App\Support\PreferenceMatch;
+use App\Support\PreferenceRanking;
 use App\Support\VideoJoinLock;
-use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 
 class TherapyService extends Service
@@ -260,21 +263,37 @@ class TherapyService extends Service
         );
     }
 
-    public function getRandomTherapies(?User $user)
+    // The Home page's public therapies. Public only, always, and each narrowing a grouped AND (an
+    // ungrouped orWhereNot here once listed other people's PRIVATE therapies to every signed-in user).
+    // SCRUM-113: ranked by the viewer's preferences (a counsellor by their profile), in a seeded
+    // order that stays the same for the visit.
+    public function getRandomTherapies(?User $user, mixed $seed = null)
     {
-        // Public only, always. Each narrowing is its own grouped AND: an ungrouped orWhereNot here once
-        // listed other people's PRIVATE therapies to every signed-in user (public = 1 OR not theirs).
-        $query = Therapy::query()
+        $seed = PreferenceRanking::seed($seed);
+
+        $query = $this->publicTherapiesQuery($user);
+
+        PreferenceRanking::apply($query, PreferenceMatch::forTherapiesViewedBy($user), $seed);
+
+        $page = PreloadTherapyListAction::new()->execute(
+            $query->paginate(PaginationEnum::preferencesPagination->value)->appends(['seed' => $seed])
+        );
+
+        return ResolveTherapyCardStateAction::new()->execute($page, $user);
+    }
+
+    // Public therapies $user isn't part of: public only, not their own, not one they counsel. Each
+    // narrowing a grouped AND. The Home row and the Public Therapies page (GetPublicTherapyFeedAction).
+    public function publicTherapiesQuery(?User $user)
+    {
+        return Therapy::query()
             ->wherePublic()
             ->when($user, fn ($query) => $query->whereNot(fn ($query) => $query
                 ->where('addedby_type', User::class)
                 ->where('addedby_id', $user->id)))
             ->when($user?->counsellor, fn ($query) => $query->where(fn ($query) => $query
                 ->whereNull('counsellor_id')
-                ->orWhere('counsellor_id', '!=', $user->counsellor->id)))
-            ->inRandomOrder();
-
-        return $query->paginate(PaginationEnum::preferencesPagination->value);
+                ->orWhere('counsellor_id', '!=', $user->counsellor->id)));
     }
 
     public function getCounsellorTherapies(?User $user)
@@ -351,61 +370,10 @@ class TherapyService extends Service
         return $query->paginate(PaginationEnum::preferencesPagination->value);
     }
 
-    public function getPublicTherapies(?User $user)
+    // SCRUM-113: the Public Therapies page -- public therapies and groups together, ranked and paged
+    // in SQL (it used to load every one into memory and shuffle them on each request).
+    public function getPublicTherapies(?User $user, mixed $seed = null)
     {
-        $page = request('page', 1);
-        $perPage = PaginationEnum::preferencesPagination->value;
-
-        // Get individual therapies
-        $individualTherapies = Therapy::query()
-            ->wherePublic()
-            ->when($user, function ($query) use ($user) {
-                $query->whereNot('addedby_id', $user->id);
-            })
-            ->when($user?->counsellor, function ($query) use ($user) {
-                $query->where(function ($query) use ($user) {
-                    $query->whereHasNoCounsellor($user->counsellor)
-                        ->orWhereNot('counsellor_id', $user->counsellor->id);
-                });
-            })
-            ->get()
-            ->map(function ($therapy) {
-                $therapy->type = 'individual';
-
-                return $therapy;
-            });
-
-        // Get group therapies
-        $groupTherapies = GroupTherapy::query()
-            ->wherePublic()
-            ->when($user, function ($query) use ($user) {
-                $query->whereNot('addedby_id', $user->id);
-            })
-            ->when($user?->counsellor, function ($query) use ($user) {
-                $query->whereDoesntHave('counsellors', function ($query) use ($user) {
-                    $query->where('counsellor_id', $user->counsellor->id);
-                });
-            })
-            ->get()
-            ->map(function ($therapy) {
-                $therapy->type = 'group';
-
-                return $therapy;
-            });
-
-        // Combine and shuffle
-        $allTherapies = $individualTherapies->concat($groupTherapies)->shuffle();
-
-        // Manual pagination
-        $total = $allTherapies->count();
-        $items = $allTherapies->forPage($page, $perPage);
-
-        return new LengthAwarePaginator(
-            $items,
-            $total,
-            $perPage,
-            $page,
-            ['path' => request()->url(), 'pageName' => 'page']
-        );
+        return GetPublicTherapyFeedAction::new()->execute($user, PreferenceRanking::seed($seed));
     }
 }

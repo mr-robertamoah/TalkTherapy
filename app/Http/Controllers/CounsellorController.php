@@ -49,7 +49,7 @@ class CounsellorController extends Controller
     public function getRandomCounsellors(Request $request)
     {
         try {
-            $counsellors = CounsellorService::new()->getRandomCounsellors($request->user());
+            $counsellors = CounsellorService::new()->getRandomCounsellors($request->user(), $request->query('seed'));
 
             return StarredCounsellorResource::collection($counsellors);
         } catch (Throwable $th) {

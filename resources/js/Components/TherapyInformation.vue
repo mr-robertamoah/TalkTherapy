@@ -70,7 +70,7 @@
                     pendingRequest.from?.userId == $page.props.auth.user?.id
                   "
                 >
-                  you have already sent a request to assist.
+                  your offer to help is waiting for the client.
                 </div>
 
                 <template v-else>
@@ -99,9 +99,9 @@
               <div v-else class="my-4 flex justify-center items-start flex-col">
                 <PrimaryButton
                   @click="$emit('clicked-assistance-request')"
-                  v-if="computedCanParticipate"
+                  v-if="computedCanParticipate && therapy.status !== 'ENDED'"
                   >{{
-                    !computedIsUser ? "request to assist" : "send assistance request"
+                    !computedIsUser ? "offer to help" : "find a counsellor"
                   }}</PrimaryButton
                 >
                 <div class="mt-2 text-sm text-center p-2 text-gray-600">
@@ -122,17 +122,21 @@
                   class="bg-stone-200"
                 />
               </div>
-              <div v-else class="my-4 flex justify-center items-start flex-col">
-                <PrimaryButton
-                  @click="$emit('clicked-assistance-request')"
-                  v-if="computedCanParticipate"
-                  >{{
-                    !computedIsUser ? "request to assist" : "send assistance request"
-                  }}</PrimaryButton
-                >
-                <div class="mt-2 text-sm text-center p-2 text-gray-600">
-                  no counsellors yet
-                </div>
+              <div v-else class="mt-2 text-sm p-2 text-gray-600">no counsellors yet</div>
+              <!-- SCRUM-389: while the group has a free counsellor place -- its creator invites
+                   counsellors, another counsellor offers to help (the creator accepts). -->
+              <div
+                v-if="therapy.viewer?.action === 'offerSent'"
+                class="my-2 text-sm text-gray-600"
+              >Your offer to help is waiting for the group's creator.</div>
+              <div
+                v-else-if="therapy.viewer?.action === 'invited'"
+                class="my-2 text-sm text-gray-600"
+              >You've been invited to help with this group. Accept it from your requests.</div>
+              <div v-else-if="computedCanOfferOrInvite" class="my-2">
+                <PrimaryButton @click="$emit('clicked-assistance-request')">
+                  {{ computedIsUser ? "find a counsellor" : "offer to help" }}
+                </PrimaryButton>
               </div>
             </template>
           </div>
@@ -342,6 +346,16 @@ const props = defineProps({
   computedIsCounsellor: { type: Boolean, default: false },
   computedCanParticipate: { type: Boolean, default: false },
   computedIsParticipant: { type: Boolean, default: false },
+})
+
+// SCRUM-389: a group with a free counsellor place, for its creator or a counsellor who isn't on it.
+// From the server (GroupTherapyResource): the creator while the group can take a counsellor, or a
+// counsellor whose card would offer to help (ResolveTherapyCardStateAction).
+const computedCanOfferOrInvite = computed(() => {
+  if (props.therapyType !== 'group') return false
+  if (props.computedIsUser) return !!props.therapy?.canTakeCounsellor
+
+  return props.therapy?.viewer?.action === 'offer'
 })
 
 // SCRUM-383 QA: someone opening a member invitation lands on Participants, where the invitation

@@ -221,3 +221,24 @@ test('the figures are cached for 15 minutes with the time they were worked out, 
 
     expect(GetPlatformStatsAction::new()->execute(User::factory()->create()))->toBe([]);
 });
+
+test('counsellors awaiting verification include ended, revoked and undated verifications with a request waiting', function () {
+    $states = [
+        'never' => ['verified_at' => null, 'verification_expires_at' => null],
+        'ended' => ['verified_at' => now()->subYear(), 'verification_expires_at' => now()->subDay()],
+        'revoked' => ['verification_revoked_at' => now()->subDay()],
+        'undated' => ['verified_at' => now()->subYear(), 'verification_expires_at' => null],
+        'current' => [],
+    ];
+
+    foreach ($states as $state) {
+        $counsellor = apsCounsellor($state);
+        $request = new Request(['type' => RequestTypeEnum::counsellor->value, 'data' => [], 'status' => 'PENDING']);
+        $request->from()->associate($counsellor);
+        $request->for()->associate($counsellor);
+        $request->save();
+    }
+
+    // Every one but the currently verified counsellor (a renewal waiting).
+    expect(apsStats()['totals']['counsellorsAwaiting'])->toBe(4);
+});

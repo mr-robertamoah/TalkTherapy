@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Support\NarrowUserProjection;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -23,7 +24,7 @@ class AdminFailedRefundResource extends JsonResource
             'reference' => $this->reference,
             'amount' => $this->amount,
             'currency' => $this->currency,
-            'from' => RequestResource::narrowUserProjection($this->requestedBy),
+            'from' => NarrowUserProjection::of($this->requestedBy),
             'failureReason' => $failure?->message,
             'failedAt' => ($failure?->created_at ?? $this->updated_at)?->toIso8601String(),
         ];
