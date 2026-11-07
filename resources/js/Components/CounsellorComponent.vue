@@ -1,7 +1,8 @@
 <template>
     <div
         v-bind="$attrs"
-        class="w-full max-w-[400px] p-4 rounded-xl shadow-lg bg-white border border-gray-100 select-none cursor-pointer hover:shadow-xl transition-all duration-300"
+        class="p-4 rounded-xl shadow-lg bg-white border border-gray-100 select-none cursor-pointer hover:shadow-xl transition-all duration-300"
+        :class="forRequest ? 'w-64' : 'w-full max-w-[400px]'"
         @dblclick="() => {
             $emit('dblclick')
             if (useMinimal) return
@@ -28,10 +29,10 @@
             <slot></slot>
         </div>
         <div v-else>
-            <div class="flex justify-start items-center mb-4 cursor-pointer space-x-3 p-2 rounded-lg hover:bg-gray-50 transition-colors">
-                <Avatar class="shrink-0" :avatar-text="'...'" :size="48" :src="counsellor?.avatar ?? ''"/>
-                <div class="text-gray-700 flex flex-col space-y-1">
-                    <div class="capitalize font-semibold text-base">{{ counsellor.name }}</div>
+            <div class="flex justify-start items-center cursor-pointer space-x-3 p-2 rounded-lg hover:bg-gray-50 transition-colors" :class="forRequest ? 'mb-2' : 'mb-4'">
+                <Avatar class="shrink-0" :avatar-text="'...'" :size="forRequest ? 40 : 48" :src="counsellor?.avatar ?? ''"/>
+                <div class="text-gray-700 flex min-w-0 flex-col space-y-1">
+                    <div class="capitalize font-semibold text-base truncate">{{ counsellor.name }}</div>
                     <div class="text-sm text-gray-500">{{ counsellor.username ? `@${counsellor.username}` : '' }}</div>
                     <!-- SCRUM-30 -->
                     <CounsellorVerificationBadge v-if="counsellor.verification" class="w-fit" :verification="counsellor.verification" />
@@ -46,55 +47,20 @@
                     class="p-2 bg-gray-700 text-gray-200 cursor-pointer tracking-wide rounded min-w-[80px] text-center hover:bg-gray-600 hover:text-white transition duration-75">view</div>
                 <DangerButton v-if="canDelete" @click="() => showModal('delete')">delete</DangerButton>
             </div>
-            <div class="" v-if="forRequest">
-                <div class="my-2">
-                    <ActivityBadge
-                        :name="'number of therapies'"
-                        :value="counsellor.allTherapiesCount ?? 0"
-                    />
-                </div>
-                <div 
-                    class="flex flex-col justify-center items-center w-full"
-                >
-                    <div class="my-2 flex justify-start w-full overflow-hidden overflow-x-auto p-2 space-x-2">
-                        <div
-                            v-for="(item, idx) in ['profession', 'cases', 'languages', 'religions']"
-                            :key="idx"
-                            @click="() => {
-                                selectedItem = item
-                            }"
-                            class="px-2 py-1 cursor-pointer rounded transition duration-100"
-                            :class="[selectedItem == item ? 'bg-slate-300 text-slate-800' : 'bg-slate-200 text-slate-600']"
-                        >{{ item }}</div>
+            <!-- SCRUM-393: in the "find a counsellor" picker, what they work with is a few lines of
+                 small text (it used to be tabs of large chips, which made each card very tall). -->
+            <div v-if="forRequest" class="text-xs text-gray-600">
+                <dl class="space-y-1">
+                    <div v-for="row in requestSummary" :key="row.label" class="flex gap-1">
+                        <dt class="shrink-0 font-medium text-gray-700">{{ row.label }}:</dt>
+                        <dd class="min-w-0 truncate" :class="{ capitalize: row.full }" :title="row.full">{{ row.text }}</dd>
                     </div>
-                    <div
-                        v-if="selectedItem"
-                    >
-                        <div v-if="selectedItem == 'profession'" class="p-2">
-                            <div
-                                v-if="counsellor[selectedItem]"
-                                :title="counsellor[selectedItem].about ?? ''"
-                                class="capitalize mr-3 rounded text-sm p-2 min-w-[100px] text-gray-700 bg-gray-300 select-none transition duration-75 cursor-pointer hover:bg-gray-600 hover:text-white text-center"
-                            >{{ counsellor[selectedItem].name }}</div>
-
-                            <div v-else class="text-gray-600 w-full my-2 text-center text-sm">has no {{ selectedItem }} set</div>
-                        </div>
-                        <div v-else class="p-2 flex justify-start items-center overflow-hidden overflow-x-auto">
-                            <template v-if="counsellor[selectedItem]?.length">
-                                <div
-                                    v-for="(item, idx) in counsellor[selectedItem]"
-                                    :title="item.about ?? ''"
-                                    :key="idx"
-                                    class="capitalize mr-3 rounded shrink-0 text-sm p-2 min-w-[100px] text-gray-700 bg-gray-300 select-none transition duration-75 cursor-pointer hover:bg-gray-600 hover:text-white text-center"
-                                >{{ item.name }}</div>
-
-                            </template>
-
-                            <div v-else class="text-gray-600 w-full my-2 text-center text-sm">has no {{ selectedItem }} set</div>
-                        </div>
-                    </div>
-                    <!-- <div v-else class="text-gray-600 w-full my-2 text-center text-sm">nothing selected yet</div> -->
-                </div>
+                </dl>
+                <button
+                    type="button"
+                    class="mt-3 inline-flex min-h-[36px] w-full items-center justify-center rounded-lg border border-blue-600 px-3 text-sm font-medium text-blue-700 hover:bg-blue-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                    @click.stop="$emit('select')"
+                >Select</button>
             </div>
             <div class="flex justify-end" v-if="online">
                 <div 
@@ -152,11 +118,10 @@
 </template>
 
 <script setup>
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import Avatar from './Avatar.vue';
 import CounsellorVerificationBadge from './CounsellorVerificationBadge.vue';
 import CounsellorModal from './CounsellorModal.vue';
-import ActivityBadge from './ActivityBadge.vue';
 import DangerButton from './DangerButton.vue';
 import PrimaryButton from './PrimaryButton.vue';
 import FormLoader from './FormLoader.vue';
@@ -206,13 +171,33 @@ const props = defineProps({
     }
 })
 
-const emits = defineEmits(['onResponse', 'dblclick', 'deleted'])
+const emits = defineEmits(['onResponse', 'dblclick', 'select', 'deleted'])
 
 const { alertData, setFailedAlertData, setSuccessAlertData, clearAlertData } = useAlert()
 const { modalData, showModal, closeModal } = useModal()
 
 const view = ref(false)
-const selectedItem = ref(null)
+
+// SCRUM-393: the picker's summary -- up to three names per kind, the rest counted.
+const requestSummary = computed(() => {
+    if (!props.forRequest || !props.counsellor) return []
+    const names = (list) => (list ?? []).map((item) => item.name).filter(Boolean)
+    const line = (list) => {
+        const all = names(list)
+        if (!all.length) return { text: 'Not set', full: '' }
+        const shown = all.slice(0, 3).join(', ')
+        return { text: all.length > 3 ? `${shown} +${all.length - 3} more` : shown, full: all.join(', ') }
+    }
+    const therapies = props.counsellor.allTherapiesCount ?? 0
+
+    return [
+        { label: 'Therapies', text: String(therapies), full: '' },
+        { label: 'Profession', ...line(props.counsellor.profession ? [props.counsellor.profession] : []) },
+        { label: 'Cases', ...line(props.counsellor.cases) },
+        { label: 'Languages', ...line(props.counsellor.languages) },
+        { label: 'Religions', ...line(props.counsellor.religions) },
+    ]
+})
 const deleting = ref(false)
 
 function clickedResponse(response) {

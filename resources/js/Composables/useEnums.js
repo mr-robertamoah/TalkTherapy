@@ -61,8 +61,23 @@ export default function useEnums() {
         periodic: 'PERIODIC'
     }
 
+    // Mirrors App\Enums\TherapyCardActionEnum (SCRUM-114): the button a therapy/group card shows its viewer.
+    const TherapyCardActionEnum = {
+        view: 'view',
+        open: 'open',
+        join: 'join',
+        ask: 'ask',
+        requestSent: 'requestSent',
+        full: 'full',
+        ended: 'ended',
+        offer: 'offer',
+        offerSent: 'offerSent',
+        invited: 'invited',
+        blocked: 'blocked',
+    }
+
     return {
         SessionStatusEnum, DiscussionStatusEnum, RequestStatusEnum, RequestStatusLabels, RequestTypeEnum,
-        PaymentTypeEnum, SessionTypeEnum
+        PaymentTypeEnum, SessionTypeEnum, TherapyCardActionEnum
     }
 }

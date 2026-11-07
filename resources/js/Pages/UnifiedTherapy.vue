@@ -1079,8 +1079,8 @@ function reportCreated(report) {
 
               <div v-if="computedIsUser" class="overflow-hidden overflow-y-auto h-[60vh]">
                 <div class="w-[90%] mx-auto text-sm text-center text-gray-600 my-2">
-                  Search counsellors, select (<em>by double clicking</em>) and send request.
-                  You can send the request to multiple counsellors.
+                  Search counsellors, select the ones you want and send the request.
+                  You can send it to more than one counsellor.
                 </div>
                 <div class="my-2 mx-auto w-[90%]">
                   <TextInput
@@ -1101,9 +1101,8 @@ function reportCreated(report) {
                       :has-view="false"
                       :visit-page="false"
                       :for-request="true"
-                      title="double click to select"
-                      @dblclick="addToSelected(counsellor)"
-                      class="shrink-0 bg-stone-200"
+                      @select="addToSelected(counsellor)"
+                      class="shrink-0"
                     />
                     <div
                       v-if="page !== 0 && searchedCounsellors.length"

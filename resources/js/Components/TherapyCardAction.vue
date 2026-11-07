@@ -10,13 +10,16 @@ import MiniModal from './MiniModal.vue'
 import PrimaryButton from './PrimaryButton.vue'
 import SecondaryButton from './SecondaryButton.vue'
 import { offerToHelp, refusalMessage } from '@/Composables/useOfferToHelp'
+import useEnums from '@/Composables/useEnums'
+
+const { TherapyCardActionEnum: A } = useEnums()
 
 const props = defineProps({
     item: { type: Object, required: true },
     kind: { type: String, required: true }, // 'individual' | 'group'
 })
 
-const action = ref(props.item.viewer?.action ?? 'view')
+const action = ref(props.item.viewer?.action ?? A.view)
 const reason = ref(props.item.viewer?.reason ?? '')
 const error = ref('')
 const joining = ref(false)
@@ -28,12 +31,12 @@ const href = computed(() => props.kind === 'group'
     : route('therapies.get', { therapyId: props.item.id }))
 
 const states = {
-    requestSent: 'Request sent',
-    full: 'Full',
-    ended: 'Ended',
-    offerSent: 'Offer sent',
-    invited: 'You\'re invited — see your requests',
-    blocked: 'Not taking new members',
+    [A.requestSent]: 'Request sent',
+    [A.full]: 'Full',
+    [A.ended]: 'Ended',
+    [A.offerSent]: 'Offer sent',
+    [A.invited]: 'You\'re invited — see your requests',
+    [A.blocked]: 'Not taking new members',
 }
 
 const primary = 'inline-flex items-center justify-center min-h-[40px] px-4 rounded-lg text-sm font-medium text-white transition-colors'
@@ -41,7 +44,7 @@ const colour = computed(() => props.kind === 'group' ? 'bg-orange-600 hover:bg-o
 
 function joined({ joined }) {
     joining.value = false
-    action.value = joined ? 'open' : 'requestSent'
+    action.value = joined ? A.open : A.requestSent
 }
 
 async function sendOffer() {
@@ -50,7 +53,7 @@ async function sendOffer() {
     await offerToHelp(props.kind, props.item.id)
         .then(() => {
             offering.value = false
-            action.value = 'offerSent'
+            action.value = A.offerSent
         })
         .catch((err) => { error.value = refusalMessage(err) })
         .finally(() => { sending.value = false })
@@ -59,16 +62,16 @@ async function sendOffer() {
 
 <template>
     <div class="text-center space-y-2">
-        <button v-if="action === 'join' || action === 'ask'" type="button" :class="[primary, colour]" @click="() => { error = ''; joining = true }">
-            {{ action === 'join' ? 'Join' : 'Ask to join' }}
+        <button v-if="action === A.join || action === A.ask" type="button" :class="[primary, colour]" @click="() => { error = ''; joining = true }">
+            {{ action === A.join ? 'Join' : 'Ask to join' }}
         </button>
 
-        <button v-else-if="action === 'offer'" type="button" :class="[primary, colour]" @click="() => { error = ''; offering = true }">
+        <button v-else-if="action === A.offer" type="button" :class="[primary, colour]" @click="() => { error = ''; offering = true }">
             Offer to help
         </button>
 
-        <Link v-else-if="action === 'open' || action === 'view'" :href="href" :class="[primary, colour]">
-            {{ action === 'open' ? 'Open' : 'View' }}
+        <Link v-else-if="action === A.open || action === A.view" :href="href" :class="[primary, colour]">
+            {{ action === A.open ? 'Open' : 'View' }}
         </Link>
 
         <div v-else class="flex flex-col items-center gap-1">
@@ -84,7 +87,7 @@ async function sendOffer() {
             v-if="kind === 'group'"
             :show="joining"
             :group="item"
-            :needs-approval="action === 'ask'"
+            :needs-approval="action === A.ask"
             @close="joining = false"
             @done="joined"
         />
