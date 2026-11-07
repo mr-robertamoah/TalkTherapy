@@ -125,6 +125,8 @@ test('the creator of a counsellor-made group is told, in group wording, who acce
     $creatorCounsellor = aCounsellorFor358();
     $group = GroupTherapy::factory()->create(['addedby_type' => Counsellor::class, 'addedby_id' => $creatorCounsellor->id, 'max_counsellors' => 5]);
     $joining = aCounsellorFor358();
+    // A fixed name: a random one with an apostrophe is encoded differently in the mail than by e().
+    $joining->forceFill(['name' => 'Dr Joining Counsellor'])->save();
     $invite = AppRequest::query()->forceCreate([
         'from_type' => Counsellor::class, 'from_id' => $creatorCounsellor->id,
         'to_type' => Counsellor::class, 'to_id' => $joining->id,
