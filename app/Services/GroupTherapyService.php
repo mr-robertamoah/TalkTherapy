@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Actions\Admin\RecordAdminContentReadAction;
+use App\Actions\Counsellor\EnsureCounsellorOfferCapAction;
 use App\Actions\CounsellorVerification\EnsureCounsellorMayTakeOnClientsAction;
 use App\Actions\GroupTherapy\CreateGroupTherapyAction;
 use App\Actions\GroupTherapy\EnsureCanSendGroupTherapyAssistanceRequestAction;
@@ -123,6 +124,12 @@ class GroupTherapyService extends Service
 
         DB::transaction(function () use ($user, $group, $counsellors) {
             $group = $group ? GroupTherapy::query()->lockForUpdate()->find($group->id) : null;
+            // SCRUM-394 (review): the counsellor's row straight after the group's (the same order as the
+            // accept path), before any plain read -- under REPEATABLE READ a read first would fix the
+            // snapshot and the offer cap's count could miss an offer committed meanwhile.
+            if ($user->counsellor) {
+                EnsureCounsellorOfferCapAction::lockCounsellor($user->counsellor);
+            }
             $kind = EnsureCanSendGroupTherapyAssistanceRequestAction::new()->execute($user, $group, $counsellors);
 
             SendTherapyAssistanceRequestAction::new()->execute(

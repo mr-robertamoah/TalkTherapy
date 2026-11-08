@@ -55,7 +55,7 @@ async function getTherapies() {
 function joinedGroup(group, { joined, membersCount }) {
   if (!joined) return
   // `group` is this page's own row (from therapies).
-  group.memberCount = membersCount ?? (group.memberCount ?? 0) + 1
+  group.membersCount = membersCount ?? (group.membersCount ?? 0) + 1
 }
 </script>
 

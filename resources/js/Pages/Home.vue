@@ -142,9 +142,9 @@ const computedCanCreatePost = computed(() => {
 function joinedGroup(group, { joined, membersCount }) {
     if (!joined) return
     // `group` is this page's own row (from randomGroupTherapies).
-    group.memberCount = membersCount ?? (group.memberCount ?? 0) + 1
+    group.membersCount = membersCount ?? (group.membersCount ?? 0) + 1
     // Shaped like the server's recent rows (no card button or match mark), and still three at most.
-    const { viewer, memberCount, ...own } = group
+    const { viewer, membersCount: _count, ...own } = group
     recentGroupTherapies.value = [own, ...recentGroupTherapies.value.filter((item) => item.id !== group.id)].slice(0, 3)
 }
 

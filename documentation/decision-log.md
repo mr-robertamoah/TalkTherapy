@@ -11118,3 +11118,19 @@ therapy 18 after the last QA pass.
   anonymised. Ticketed as **SCRUM-396**. The bell must render the text with `{{ }}`, never `v-html` (for
   TT-5.4c).
 
+## SCRUM-394 — SCRUM-392 review follow-ups (2026-11-08)
+
+- **One name for a group's member count:** `membersCount`, as the full and preview resources already
+  used. The mini resource and its Vue readers follow.
+- **Focus in dialogs** (`useFocusTrap`, used by `Modal` and `MiniModal`):
+  - Tab and Shift+Tab stay inside the open dialog, including after a click on its text.
+  - Focus moves in when it opens and returns to the opener when it closes.
+  - Only the dialog on top traps focus and closes on Escape. Before, one Escape closed every open dialog.
+  - Content a dialog teleports elsewhere, such as a toast, counts as outside it. This is documented.
+- **A hard daily cap on offers to help:**
+  - The counsellor's row is locked first in the transaction, before any plain read. Under REPEATABLE READ
+    a read first would fix the snapshot, and the count could miss an offer committed meanwhile (review).
+  - On the group path the counsellor lock comes straight after the group lock, the accept path's order.
+  - On the therapy path the "already pending" check now runs inside the same transaction too, which
+    closes a double-submit race.
+  - Refusals are logged.
