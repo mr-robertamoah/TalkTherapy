@@ -249,6 +249,8 @@ class DatabaseSeeder extends Seeder
         $this->createHelpDemoData();
         // SCRUM-32: counsellors' safety flags (an open one, one being handled, and therapies to flag).
         $this->createSafetyFlagDemoData($superAdmin);
+        // SCRUM-39: notifications for the bell (maria_garcia, and sarah_johnson as herself and as counsellor).
+        $this->call(NotificationCenterSeeder::class);
     }
 
     // SCRUM-32 (TT-4.3a): counsellors' safety flags. Passwords: "password". The feature is off by default:

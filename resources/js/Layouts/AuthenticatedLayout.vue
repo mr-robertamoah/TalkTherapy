@@ -15,6 +15,8 @@ import Footer from "@/Components/Footer.vue";
 import useModal from '@/Composables/useModal';
 import ContactUsModal from '@/Components/ContactUsModal.vue';
 import { acquireCounsellorChannel, acquireUserChannel } from '@/Composables/sharedChannel';
+import NotificationBell from '@/Components/Notifications/NotificationBell.vue';
+import { notificationsChanged } from '@/Composables/useNotifications';
 
 const { modalData, showModal, closeModal } = useModal()
 
@@ -79,9 +81,10 @@ watchEffect(() => {
       // SCRUM-386: a new request to join one of this account's groups (ids only) -- an open
       // Requests list picks it up; the group's own page refetches itself (useTherapyState).
       .listen(".group-therapy.membership-requested", () => requestsRefreshKey.value++)
+      // SCRUM-39: a notification was stored or marked read (nothing in it) -- the bell refetches.
+      .listen(".notifications.changed", () => notificationsChanged())
       .notification(
       (notification) => {
-        console.log(notification, "notification");
 
         const therapyRoute =
           notification.forType == "Therapy" ? "therapies.get" : "group.therapies.get";
@@ -130,7 +133,6 @@ watchEffect(() => {
       counsellorChannel = acquireCounsellorChannel(page.props.auth.user.counsellor.id);
       counsellorChannel
         .notification((notification) => {
-          console.log(notification, "notification");
 
           if (notification.type == "discussion.counsellor.removed") {
 
@@ -247,8 +249,10 @@ function goToTherapy(data) {
               </div>
             </div>
 
-            <template v-if="$page.props.auth.user">
-              <div class="hidden sm:flex sm:items-center sm:ms-6">
+            <div v-if="$page.props.auth.user" class="flex items-center">
+              <!-- SCRUM-39: the notification bell, on every size. -->
+              <NotificationBell />
+              <div class="hidden sm:flex sm:items-center sm:ms-3">
                 <!-- Settings Dropdown -->
                 <div class="ms-3 relative">
                   <Dropdown align="right" width="48">
@@ -369,7 +373,7 @@ function goToTherapy(data) {
                   </svg>
                 </button>
               </div>
-            </template>
+            </div>
             <div class="flex justify-start items-center" v-else>
               <div
                 class="hidden sm:flex justify-start items-center overflow-hidden overflow-x-auto gap-2"

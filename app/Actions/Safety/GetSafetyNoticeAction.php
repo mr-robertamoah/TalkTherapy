@@ -3,9 +3,11 @@
 namespace App\Actions\Safety;
 
 use App\Actions\Action;
+use App\Events\NotificationsChangedEvent;
 use App\Models\User;
 use App\Notifications\GuardianSafetyNoticeNotification;
 use App\Notifications\SafetyNoticeNotification;
+use App\Support\BestEffortBroadcast;
 
 // SCRUM-32 (TT-4.3c): the persistent notice a person sees until they dismiss it -- the neutral one about
 // themselves, or (as a guardian) one asking them to check in with their ward. A fixed projection: the
@@ -36,7 +38,13 @@ class GetSafetyNoticeAction extends Action
     // Marks one of their own safety notices read (only those two kinds -- anything else is untouched).
     public function dismiss(User $user, ?string $id): bool
     {
-        return $id !== null && $this->unread($user)->whereKey($id)->update(['read_at' => now()]) > 0;
+        $dismissed = $id !== null && $this->unread($user)->whereKey($id)->update(['read_at' => now()]) > 0;
+        // SCRUM-39 (review): their other open pages' bells update (nothing in the ping).
+        if ($dismissed) {
+            BestEffortBroadcast::send(new NotificationsChangedEvent($user->id));
+        }
+
+        return $dismissed;
     }
 
     // Through the user's guarded notifications (App\Models\DatabaseNotification -- reviews). "Dismissed" is

@@ -78,6 +78,11 @@ session, client `maria_garcia` / counsellor `sarah_johnson`), and a `Chat Demo D
 An `Editable Demo Discussion` (`PENDING`, three days out at 10:00–10:40, owned by `sarah_johnson`
 with `michael_chen`, on the `Chat Demo Individual Therapy`) is there for trying the update-discussion
 form (SCRUM-379).
+
+**Notification bell (SCRUM-39):** `NotificationCenterSeeder` gives `maria_garcia` 19 notifications, some unread
+and more than one page. It gives `sarah_johnson` 1 on her account and 3 on her counsellor profile, labelled
+"As counsellor". They link to the Chat Demo therapy, group and discussion. It is safe to re-run on an existing
+database (`db:seed --class=NotificationCenterSeeder`). See `documentation/features/scrum-39c-notification-bell.md`.
 The demo sessions and the demo discussion are live for **one hour after seeding**. After that their end time has passed, and the chat pages have nothing to send into. To make them live again without reseeding, run `docker compose exec php php artisan demo:refresh-chat`.
 
 `Chat Demo Group Therapy`'s live session has **two** active counsellors (`sarah_johnson` and
