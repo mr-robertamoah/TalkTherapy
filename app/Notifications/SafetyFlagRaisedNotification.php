@@ -6,6 +6,7 @@ use App\Enums\SafetyFlagStatusEnum;
 use App\Models\SafetyFlag;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Notifications\AnonymousNotifiable;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
@@ -30,6 +31,11 @@ class SafetyFlagRaisedNotification extends Notification implements ShouldQueue
 
     public function via(object $notifiable): array
     {
+        // The fallback mailbox (TT-4.3b) is an address, not an account.
+        if ($notifiable instanceof AnonymousNotifiable) {
+            return ['mail'];
+        }
+
         return $notifiable->email_verified_at ? ['database', 'mail'] : ['database'];
     }
 
@@ -37,7 +43,7 @@ class SafetyFlagRaisedNotification extends Notification implements ShouldQueue
     {
         return (new MailMessage)
             ->subject("Safety alert ({$this->urgencyLabel}): a counsellor raised a safety flag")
-            ->greeting("Hello {$notifiable->name},")
+            ->greeting($notifiable instanceof AnonymousNotifiable ? 'Hello,' : "Hello {$notifiable->name},")
             ->line("A counsellor raised a safety flag ({$this->urgencyLabel}): they think a client may need specialist or inpatient care.")
             ->line('Please open the safety alerts and acknowledge it if you can handle it. Only the administrator handling it sees who it is about.')
             ->action('Open the safety alerts', route('administrator.safety_flags'));

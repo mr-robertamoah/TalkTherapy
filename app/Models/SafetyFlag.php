@@ -6,15 +6,19 @@ use App\Actions\Admin\NotifyUninvolvedAdminsAction;
 use App\Enums\SafetyFlagDiscussedEnum;
 use App\Enums\SafetyFlagKindEnum;
 use App\Enums\SafetyFlagNoticeStateEnum;
+use App\Enums\SafetyFlagOutcomeEnum;
 use App\Enums\SafetyFlagStatusEnum;
 use App\Enums\SafetyFlagUrgencyEnum;
 use App\Events\SafetyFlagsChangedEvent;
+use App\Support\AdminNotifyResult;
 use App\Support\BestEffortBroadcast;
 use App\Support\Countries;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
+use Illuminate\Notifications\Notification;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 // SCRUM-32: a counsellor's safety flag -- they think a client needs more care than talk therapy can
@@ -33,6 +37,7 @@ class SafetyFlag extends Model
 
     protected $casts = [
         'kind' => SafetyFlagKindEnum::class,
+        'outcome' => SafetyFlagOutcomeEnum::class,
         'client_notice_state' => SafetyFlagNoticeStateEnum::class,
         'guardian_notice_state' => SafetyFlagNoticeStateEnum::class,
         'urgency' => SafetyFlagUrgencyEnum::class,
@@ -117,6 +122,81 @@ class SafetyFlag extends Model
     public function events()
     {
         return $this->hasMany(SafetyFlagEvent::class)->orderBy('id');
+    }
+
+    public function notes()
+    {
+        return $this->hasMany(SafetyFlagNote::class)->orderBy('id');
+    }
+
+    // TT-4.3b: being handled -- acknowledged, or withdrawn after an administrator took it on (they can
+    // still note, hand on and resolve it). One rule (reviews); TT-4.3c's help-chat hold uses
+    // scopeWhereUnresolved too.
+    public function isBeingHandled(): bool
+    {
+        return $this->handler_user_id !== null
+            && in_array($this->status, [SafetyFlagStatusEnum::acknowledged, SafetyFlagStatusEnum::withdrawn], true);
+    }
+
+    // Still needs someone: open, being handled, or withdrawn after an administrator took it on.
+    public function scopeWhereUnresolved(Builder $query): Builder
+    {
+        return $query->where(fn ($query) => $query
+            ->whereIn('status', [SafetyFlagStatusEnum::open->value, SafetyFlagStatusEnum::acknowledged->value])
+            ->orWhere(fn ($query) => $query->where('status', SafetyFlagStatusEnum::withdrawn->value)->whereNotNull('handler_user_id')));
+    }
+
+    public static function beingHandledStatuses(): array
+    {
+        return [SafetyFlagStatusEnum::acknowledged->value, SafetyFlagStatusEnum::withdrawn->value];
+    }
+
+    // TT-4.3b: the fallback mailbox, when one is set (one place: reviews).
+    public static function fallbackMailbox(): ?string
+    {
+        $mailbox = config('safety.fallback_mailbox');
+
+        return is_string($mailbox) && filter_var($mailbox, FILTER_VALIDATE_EMAIL) ? $mailbox : null;
+    }
+
+    // TT-4.3b: tells the (super) administrators who aren't involved, falling back to the mailbox, and
+    // records a fallback in the history only when it really went out.
+    public function alertUninvolved(Notification $notification, string $about, bool $superOnly = false): AdminNotifyResult
+    {
+        $result = NotifyUninvolvedAdminsAction::new()->execute(
+            fn (User $admin) => $this->involvesAdmin($admin), $notification,
+            superOnly: $superOnly, about: $about, fallbackMailbox: self::fallbackMailbox(),
+        );
+
+        if ($result->fellBack) {
+            SafetyFlagEvent::query()->create(['safety_flag_id' => $this->id, 'action' => SafetyFlagEvent::FALLBACK_ALERTED]);
+        }
+
+        return $result;
+    }
+
+    // A value as the model's `encrypted` cast stores it -- for conditional query-builder updates, which
+    // bypass casts (reviews: one named place for the trick).
+    public static function encryptedValue(string $column, ?string $value): ?string
+    {
+        return (new self)->forceFill([$column => $value])->getAttributes()[$column];
+    }
+
+    // TT-4.3b: when nobody has acknowledged it by then, the super administrators are alerted again.
+    // Fails closed: a missing, non-numeric or non-positive setting falls back to the default (logged),
+    // never "don't re-alert".
+    public static function realertMinutes(SafetyFlagUrgencyEnum $urgency): int
+    {
+        $defaults = ['IMMINENT' => 60, 'URGENT' => 240, 'NON_URGENT' => 1440];
+        $configured = config("safety.realert_minutes.{$urgency->value}");
+
+        if (! is_numeric($configured) || (int) $configured < 1) {
+            Log::error('Safety flag re-alert time is missing or invalid; using the default.', ['urgency' => $urgency->value, 'configured' => $configured]);
+
+            return $defaults[$urgency->value];
+        }
+
+        return (int) $configured;
     }
 
     // Open or acknowledged: still being dealt with.

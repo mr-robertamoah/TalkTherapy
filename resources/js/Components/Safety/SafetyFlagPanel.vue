@@ -6,6 +6,7 @@ import { computed, ref } from 'vue'
 import axios from 'axios'
 import SecondaryButton from '@/Components/SecondaryButton.vue'
 import SafetyFlagModal from '@/Components/Safety/SafetyFlagModal.vue'
+import SafetyFlagStatusList from '@/Components/Safety/SafetyFlagStatusList.vue'
 
 const props = defineProps({
     therapyId: { type: [Number, String], required: true },
@@ -17,6 +18,12 @@ const open = ref(false)
 const members = ref(null)
 const memberKey = ref('')
 const loadError = ref('')
+const statusList = ref(null)
+
+// TT-4.3b: the flags already raised here, and where they stand.
+const statusesUrl = computed(() => props.isGroup
+    ? route('api.safety_flags.group_statuses', { groupTherapyId: props.therapyId })
+    : route('api.safety_flags.therapy_statuses', { therapyId: props.therapyId }))
 
 const url = computed(() => props.isGroup
     ? route('api.safety_flags.group', { groupTherapyId: props.therapyId })
@@ -60,12 +67,15 @@ async function start() {
         </div>
         <p v-if="loadError" class="mt-2 text-sm text-red-700" role="alert">{{ loadError }}</p>
 
+        <SafetyFlagStatusList ref="statusList" :url="statusesUrl" />
+
         <SafetyFlagModal
             :show="open"
             :url="url"
             :member-key="isGroup ? memberKey : null"
             :person-name="isGroup ? (chosen?.name ?? 'this member') : (clientName || 'your client')"
             @close="open = false; members = null; memberKey = ''"
+            @raised="statusList?.load()"
         />
     </section>
 </template>

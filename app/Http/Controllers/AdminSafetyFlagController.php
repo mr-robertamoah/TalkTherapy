@@ -3,14 +3,19 @@
 namespace App\Http\Controllers;
 
 use App\Actions\Safety\AcknowledgeSafetyFlagAction;
+use App\Actions\Safety\AddSafetyFlagNoteAction;
 use App\Actions\Safety\GetSafetyFlagsAction;
 use App\Actions\Safety\ReassignSafetyFlagAction;
+use App\Actions\Safety\ResolveSafetyFlagAction;
 use App\Actions\Safety\RevealSafetyFlagAction;
+use App\Enums\SafetyFlagActionEnum;
+use App\Enums\SafetyFlagOutcomeEnum;
 use App\Enums\SafetyFlagStatusEnum;
 use App\Models\SafetyFlag;
 use App\Models\User;
 use App\Support\FailureResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Throwable;
 
@@ -26,6 +31,8 @@ class AdminSafetyFlagController extends Controller
             'admins' => $request->user()->isSuperAdmin() ? GetSafetyFlagsAction::new()->admins() : [],
             'status' => $this->status($request) ?? '',
             'label' => SafetyFlag::label(),
+            'outcomes' => collect(SafetyFlagOutcomeEnum::cases())->map(fn ($case) => ['value' => $case->value, 'label' => $case->label()])->all(),
+            'actions' => collect(SafetyFlagActionEnum::cases())->map(fn ($case) => ['value' => $case->value, 'label' => $case->label()])->all(),
         ]);
     }
 
@@ -64,6 +71,43 @@ class AdminSafetyFlagController extends Controller
     public function reason(Request $request, string $flag)
     {
         return $this->respond(fn () => RevealSafetyFlagAction::new()->reason($request->user(), SafetyFlag::findPublic($flag)));
+    }
+
+    // TT-4.3b: the handling administrator's notes, actions and resolution.
+    public function note(Request $request, string $flag)
+    {
+        $input = $request->validate(['content' => ['required', 'string', 'max:2000']]);
+
+        return $this->respond(function () use ($request, $flag, $input) {
+            // The note itself, which they just wrote (no logged read of the rest needed -- reviews).
+            return ['note' => AddSafetyFlagNoteAction::present(AddSafetyFlagNoteAction::new()->note($request->user(), SafetyFlag::findPublic($flag), $input['content']))];
+        });
+    }
+
+    public function action(Request $request, string $flag)
+    {
+        $input = $request->validate([
+            'action' => ['required', Rule::in(SafetyFlagActionEnum::values())],
+            'content' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        return $this->respond(function () use ($request, $flag, $input) {
+            return ['note' => AddSafetyFlagNoteAction::present(AddSafetyFlagNoteAction::new()->action($request->user(), SafetyFlag::findPublic($flag), SafetyFlagActionEnum::from($input['action']), $input['content'] ?? null))];
+        });
+    }
+
+    public function resolve(Request $request, string $flag)
+    {
+        $input = $request->validate([
+            'outcome' => ['required', Rule::in(SafetyFlagOutcomeEnum::values())],
+            'note' => ['required', 'string', 'max:2000'],
+        ]);
+
+        return $this->respond(function () use ($request, $flag, $input) {
+            ResolveSafetyFlagAction::new()->execute($request->user(), SafetyFlag::findPublic($flag), SafetyFlagOutcomeEnum::from($input['outcome']), $input['note']);
+
+            return ['status' => true];
+        });
     }
 
     private function status(Request $request): ?string

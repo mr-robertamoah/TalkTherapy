@@ -117,6 +117,7 @@ Route::middleware('auth')->prefix('help')->name('help.')->group(function () {
     Route::post('/requests/{helpRequest}/invite', [HelpRequestController::class, 'invite'])->name('requests.invite')->whereNumber('helpRequest')->middleware('throttle:10,1,help.requests.invite');
     // SCRUM-32: the counsellor who answered raises a safety flag for the person (not open to a suspended account).
     Route::post('/requests/{helpRequest}/safety-flag', [SafetyFlagController::class, 'storeForHelpChat'])->name('requests.safety_flag')->whereNumber('helpRequest')->middleware(['safety_flags', 'throttle:10,1,help.requests.safety_flag']);
+    Route::get('/requests/{helpRequest}/safety-flags', [SafetyFlagController::class, 'statusesForHelpChat'])->name('requests.safety_flags')->whereNumber('helpRequest')->middleware(['safety_flags', 'throttle:60,1,help.requests.safety_flags']);
     Route::get('/chat/{helpRequest}', [HelpRequestController::class, 'page'])->name('chat')->whereNumber('helpRequest');
     Route::get('/requests/ringing', [HelpRequestController::class, 'ringing'])->name('requests.ringing')->middleware('throttle:30,1,help.requests.ringing');
     Route::post('/availability', [HelpRequestController::class, 'availability'])->name('availability')->middleware('throttle:10,1,help.availability');
@@ -156,6 +157,10 @@ Route::middleware('auth')->group(function () {
             Route::post('/administrator/safety-flags/{flag}/reassign', [AdminSafetyFlagController::class, 'reassign'])->name('admin.safety_flags.reassign')->where('flag', '[0-9A-Za-z]{26}')->middleware('throttle:30,1,admin.safety_flags.reassign');
             Route::post('/administrator/safety-flags/{flag}/who', [AdminSafetyFlagController::class, 'who'])->name('admin.safety_flags.who')->where('flag', '[0-9A-Za-z]{26}')->middleware('throttle:30,1,admin.safety_flags.who');
             Route::post('/administrator/safety-flags/{flag}/reason', [AdminSafetyFlagController::class, 'reason'])->name('admin.safety_flags.reason')->where('flag', '[0-9A-Za-z]{26}')->middleware('throttle:30,1,admin.safety_flags.reason');
+            // TT-4.3b: the handling administrator's notes, actions and resolution.
+            Route::post('/administrator/safety-flags/{flag}/notes', [AdminSafetyFlagController::class, 'note'])->name('admin.safety_flags.note')->where('flag', '[0-9A-Za-z]{26}')->middleware('throttle:30,1,admin.safety_flags.note');
+            Route::post('/administrator/safety-flags/{flag}/actions', [AdminSafetyFlagController::class, 'action'])->name('admin.safety_flags.action')->where('flag', '[0-9A-Za-z]{26}')->middleware('throttle:30,1,admin.safety_flags.action');
+            Route::post('/administrator/safety-flags/{flag}/resolve', [AdminSafetyFlagController::class, 'resolve'])->name('admin.safety_flags.resolve')->where('flag', '[0-9A-Za-z]{26}')->middleware('throttle:30,1,admin.safety_flags.resolve');
         });
         // SCRUM-33: the emergency numbers (every admin sees them; a super administrator edits).
         Route::get('/administrator/emergency-numbers', [AdminEmergencyNumberController::class, 'index'])->name('administrator.emergency_numbers');
