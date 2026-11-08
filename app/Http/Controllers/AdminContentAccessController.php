@@ -10,6 +10,7 @@ use App\Models\HelpRequest;
 use App\Models\License;
 use App\Models\Message;
 use App\Models\Request as ModelsRequest;
+use App\Models\SafetyFlag;
 use App\Models\Session;
 use App\Models\Therapy;
 use App\Models\TherapyTopic;
@@ -36,6 +37,8 @@ class AdminContentAccessController extends Controller
         'license' => License::class,
         'request' => ModelsRequest::class,
         'help' => HelpRequest::class,
+        // SCRUM-32: safety flags deliberately not filterable by id (security review: an involved super
+        // administrator mustn't be able to pick out the flag about someone close to them).
     ];
 
     public function index(Request $request)
@@ -76,7 +79,7 @@ class AdminContentAccessController extends Controller
                 'resource' => $access->resource,
                 'subject' => $this->subjectLabel($access->subject_type, $access->subject),
                 'subjectKey' => array_search($access->subject_type, self::SUBJECTS, true) ?: null,
-                'subjectId' => $access->subject_id,
+                'subjectId' => $access->subject_type === SafetyFlag::class ? null : $access->subject_id,
                 'fileId' => $access->file_id,
                 'fileName' => $access->file?->name,
                 'page' => $access->page,
@@ -123,6 +126,7 @@ class AdminContentAccessController extends Controller
                 License::class => 'licence',
                 ModelsRequest::class => 'request',
                 HelpRequest::class => 'help request',
+                SafetyFlag::class => 'safety flag',
                 default => 'item',
             };
         }
@@ -137,6 +141,7 @@ class AdminContentAccessController extends Controller
             $subject instanceof License => 'A licence',
             $subject instanceof ModelsRequest => 'A verification request',
             $subject instanceof HelpRequest => "Urgent help request #{$subject->id}",
+            $subject instanceof SafetyFlag => 'A safety flag',
             default => 'A document',
         };
     }

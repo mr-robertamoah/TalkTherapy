@@ -3,12 +3,12 @@
 namespace App\Actions\Help;
 
 use App\Actions\Action;
+use App\Actions\Admin\NotifyUninvolvedAdminsAction;
 use App\Enums\HelpRequestStatusEnum;
 use App\Models\HelpRequest;
 use App\Models\User;
 use App\Notifications\HelpRequestWaitingNotification;
 use App\Support\HelpBroadcast;
-use Illuminate\Support\Facades\Notification;
 
 // SCRUM-33 (TT-4.4b): a help request still waiting after config help.first_alert_seconds alerts every
 // administrator who isn't involved; still waiting after help.second_alert_seconds, again. Each alert is
@@ -39,10 +39,13 @@ class EscalateHelpRequestsAction extends Action
                         return;
                     }
 
-                    $admins = User::query()->whereAdmin()->get()->reject(fn (User $admin) => $request->involvesAdmin($admin));
-                    rescue(fn () => Notification::send($admins, new HelpRequestWaitingNotification(
-                        $request->id, (int) floor($request->created_at->diffInMinutes(now())), $again,
-                    )), report: true);
+                    // SCRUM-32: the shared "tell the administrators who aren't involved" (logged as critical
+                    // when there's nobody to tell).
+                    NotifyUninvolvedAdminsAction::new()->execute(
+                        fn (User $admin) => $request->involvesAdmin($admin),
+                        new HelpRequestWaitingNotification($request->id, (int) floor($request->created_at->diffInMinutes(now())), $again),
+                        about: "urgent help request #{$request->id} still waiting",
+                    );
                     HelpBroadcast::queueChanged($request->id);
                     $sent++;
                 });

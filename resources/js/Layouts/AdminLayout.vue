@@ -11,7 +11,7 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue'
 import AdminNavList from '@/Components/AdminNavList.vue'
 import useAdminBadges from '@/Composables/useAdminBadges'
-import { acquireChannel } from '@/Composables/sharedChannel'
+import { acquireChannel, acquireUserChannel } from '@/Composables/sharedChannel'
 import { router, usePage } from '@inertiajs/vue3'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 
@@ -39,11 +39,18 @@ function onViewportChange(event) {
 
 // SCRUM-33 (TT-4.4b): the Urgent help badge is live -- someone waiting can't wait for a page change.
 let helpQueue = null
+let safetyQueue = null
 
 onMounted(() => {
     refreshAdminBadges()
     helpQueue = acquireChannel('admin.help-requests')
     helpQueue?.listen('.help.queue', () => refreshAdminBadges({ force: true }))
+    // SCRUM-32: and the Safety alerts badge -- pinged on the administrator's own channel, only when it
+    // concerns them (never for a flag they're involved in), and only while the feature is on.
+    if (page.props.features?.safetyFlags) {
+        safetyQueue = acquireUserChannel(page.props.auth?.user?.id)
+        safetyQueue?.listen('.safety.changed', () => refreshAdminBadges({ force: true }))
+    }
     wideViewport = window.matchMedia('(min-width: 1024px)')
     wideViewport.addEventListener('change', onViewportChange)
 })
@@ -99,6 +106,7 @@ function onDrawerKeydown(event) {
 
 onBeforeUnmount(() => {
     helpQueue?.release()
+    safetyQueue?.release()
     stopListening()
     stopListeningForSuccess()
     wideViewport?.removeEventListener('change', onViewportChange)

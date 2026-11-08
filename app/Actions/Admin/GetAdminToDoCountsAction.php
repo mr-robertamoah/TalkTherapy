@@ -8,6 +8,7 @@ use App\Actions\Request\EnsureUserCanRespondToRequestAction;
 use App\Actions\Request\PreloadRequestListAction;
 use App\Actions\SafeguardingException\EnsureCanManageSafeguardingExceptionAction;
 use App\Actions\SafeguardingException\FindNoLongerNeededSafeguardingRequestsAction;
+use App\Actions\Safety\GetSafetyFlagsAction;
 use App\Enums\CounsellorEarningStatusEnum;
 use App\Enums\CounsellorPayoutStatusEnum;
 use App\Enums\HelpRequestStatusEnum;
@@ -146,6 +147,8 @@ class GetAdminToDoCountsAction extends Action
             // SCRUM-33 (TT-4.4b): never cached -- someone waiting for urgent help can't wait a minute -- and
             // per viewer: one they're involved in isn't counted (security review: it would tell a guardian).
             'helpRequests' => $this->waitingHelpRequestsFor($viewer),
+            // SCRUM-32: the same -- never cached, per viewer, open safety flags nobody has acknowledged.
+            ...(config('safety.enabled') ? ['safetyAlerts' => GetSafetyFlagsAction::new()->countOpenFor($viewer)] : []),
         ];
     }
 

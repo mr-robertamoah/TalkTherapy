@@ -36,6 +36,8 @@ class AdminNavigation
             ['key' => 'safety', 'label' => 'Safety', 'items' => array_values(array_filter([
                 // SCRUM-33 (TT-4.4b): people waiting for urgent help (the badge is live).
                 self::item('help-requests', 'Urgent help', 'administrator.help_requests', 'helpRequests'),
+                // SCRUM-32: counsellors' safety flags (hidden until SAFETY_FLAGS_ENABLED; the badge is live).
+                config('safety.enabled') ? self::item('safety-flags', 'Safety alerts', 'administrator.safety_flags', 'safetyAlerts') : null,
                 // A report's own page counts as Reports.
                 self::item('reports', 'Reports', 'administrator.reports', 'reports', 'administrator.reports*'),
                 self::item('suspensions', 'Suspensions', 'administrator.suspensions', 'suspensionAppeals'),

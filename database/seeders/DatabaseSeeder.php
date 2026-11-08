@@ -25,6 +25,10 @@ use App\Enums\ReportOutcomeEnum;
 use App\Enums\ReportStatusEnum;
 use App\Enums\RequestStatusEnum;
 use App\Enums\RequestTypeEnum;
+use App\Enums\SafetyFlagDiscussedEnum;
+use App\Enums\SafetyFlagKindEnum;
+use App\Enums\SafetyFlagStatusEnum;
+use App\Enums\SafetyFlagUrgencyEnum;
 use App\Enums\TherapyStatusEnum;
 use App\Enums\TransactionStatusEnum;
 use App\Models\AdminContentAccess;
@@ -51,6 +55,8 @@ use App\Models\Report;
 use App\Models\ReportStatusHistory;
 use App\Models\Request;
 use App\Models\SafeguardingException;
+use App\Models\SafetyFlag;
+use App\Models\SafetyFlagEvent;
 use App\Models\Session;
 use App\Models\Suspension;
 use App\Models\Testimonial;
@@ -239,6 +245,77 @@ class DatabaseSeeder extends Seeder
         // counsellors, public groups in every card state, and a counsellor's offer to help a group.
         $this->createDiscoveryDemoData();
         $this->createHelpDemoData();
+        // SCRUM-32: counsellors' safety flags (an open one, one being handled, and therapies to flag).
+        $this->createSafetyFlagDemoData($superAdmin);
+    }
+
+    // SCRUM-32 (TT-4.3a): counsellors' safety flags. Passwords: "password". The feature is off by default:
+    // set SAFETY_FLAGS_ENABLED=true (in .env.docker, then recreate the php and queue containers) to see it.
+    // - safety_demo_counsellor (Dr. Esi Safety): counsels the three below.
+    // - safety_demo_minor (15, guardian safety_demo_guardian): in "Safety Flag Demo Therapy", with an OPEN
+    //   imminent flag nobody has acknowledged yet.
+    // - safety_demo_member: an anonymous member of "Safety Flag Demo Group", with an urgent flag the super
+    //   administrator is handling.
+    // - safety_demo_client: an adult in "Safety Flag Demo (raise one)" -- no flag yet, to raise one.
+    public function createSafetyFlagDemoData(User $superAdmin): void
+    {
+        $person = fn (string $username, string $first, array $extra = []) => User::factory()->adult()->create([
+            'firstName' => $first, 'lastName' => 'Safety', 'username' => $username, 'password' => Hash::make('password'),
+            'email' => str_replace('_', '.', $username).'@example.com', 'email_verified_at' => now(), 'country' => 'Ghana', ...$extra,
+        ]);
+
+        $counsellorUser = $person('safety_demo_counsellor', 'Esi');
+        $counsellor = $counsellorUser->counsellor()->create([
+            'name' => 'Dr. Esi Safety', 'about' => 'Seeded counsellor for safety flags (SCRUM-32).', 'email' => $counsellorUser->email,
+            'phone' => fake()->phoneNumber(), 'email_verified_at' => now(), 'profession_id' => rand(1, 10), 'contact_visible' => true,
+        ]);
+        $counsellor->forceFill(['verified_at' => now()->subMonth(), 'verification_expires_at' => now()->addMonths(11)])->save();
+
+        $minor = $person('safety_demo_minor', 'Kwame', ['dob' => now()->subYears(15)->toDateString()]);
+        $guardian = $person('safety_demo_guardian', 'Abena');
+        Guardianship::query()->create(['guardian_id' => $guardian->id, 'ward_id' => $minor->id, 'ward_was_minor_at_creation' => true]);
+        $member = $person('safety_demo_member', 'Yaa');
+        $client = $person('safety_demo_client', 'Kojo');
+
+        $therapy = fn (User $for, string $name) => Therapy::factory()->create([
+            'name' => $name, 'addedby_type' => User::class, 'addedby_id' => $for->id, 'counsellor_id' => $counsellor->id,
+            'status' => TherapyStatusEnum::in_session->value, 'anonymous' => false, 'public' => false,
+            'client_was_minor_at_creation' => ! $for->isAdult(),
+        ]);
+        $minorTherapy = $therapy($minor, 'Safety Flag Demo Therapy');
+        $therapy($client, 'Safety Flag Demo (raise one)');
+
+        $group = GroupTherapy::factory()->create([
+            'name' => 'Safety Flag Demo Group', 'addedby_type' => Counsellor::class, 'addedby_id' => $counsellor->id,
+            'status' => TherapyStatusEnum::in_session->value, 'anonymous' => false, 'public' => false,
+        ]);
+        $group->counsellors()->attach($counsellor->id, ['state' => 'ACTIVE', 'role' => 'NORMAL']);
+        $group->users()->attach($member->id, ['anonymous' => true, 'was_minor_at_join' => false]);
+
+        // Straight to the tables: the actions would alert every administrator by email on each seed. The
+        // snapshot (minor, guardian, country, notice states) is the action's own (SafetyFlag::snapshotFor).
+        $raise = function (Therapy|GroupTherapy $flaggable, User $about, SafetyFlagUrgencyEnum $urgency, string $reason, array $extra = []) use ($counsellor, $counsellorUser) {
+            $raised = SafetyFlag::query()->create([
+                'flaggable_type' => $flaggable::class, 'flaggable_id' => $flaggable->id,
+                'kind' => $flaggable instanceof GroupTherapy ? SafetyFlagKindEnum::group : SafetyFlagKindEnum::therapy,
+                'client_user_id' => $about->id, 'counsellor_id' => $counsellor->id, 'urgency' => $urgency, 'reason' => $reason,
+                'discussed_with_client' => SafetyFlagDiscussedEnum::yes, 'emergency_services_contacted' => false,
+                'status' => SafetyFlagStatusEnum::open, 'open_client_key' => SafetyFlag::openKeyFor($flaggable, $about),
+                'anonymous' => $flaggable instanceof GroupTherapy,
+                ...SafetyFlag::snapshotFor($about, $urgency),
+                ...$extra,
+            ]);
+            SafetyFlagEvent::query()->create(['safety_flag_id' => $raised->id, 'action' => SafetyFlagEvent::RAISED, 'actor_user_id' => $counsellorUser->id, 'data' => ['urgency' => $urgency->value]]);
+
+            return $raised;
+        };
+
+        $raise($minorTherapy, $minor, SafetyFlagUrgencyEnum::imminent, 'Seeded: said they have a plan to hurt themselves this week; needs urgent specialist assessment.');
+        $handled = $raise($group, $member, SafetyFlagUrgencyEnum::urgent, 'Seeded: severe weight loss and not sleeping; recommend referral for inpatient assessment.', [
+            'membership_id' => $group->users()->whereKey($member->id)->first()->pivot->id,
+            'status' => SafetyFlagStatusEnum::acknowledged, 'handler_user_id' => $superAdmin->id, 'acknowledged_at' => now()->subHour(),
+        ]);
+        SafetyFlagEvent::query()->create(['safety_flag_id' => $handled->id, 'action' => SafetyFlagEvent::ACKNOWLEDGED, 'actor_user_id' => $superAdmin->id]);
     }
 
     // SCRUM-33: the quick help chat. Passwords: "password".

@@ -142,6 +142,11 @@ See "Common commands" in `CLAUDE.md`.
   through the normal therapy form/request (`HelpRequest::canInviteToTherapy`). Help chats are deleted a
   year after ending (`PruneHelpChatTranscriptsAction`, held while `HelpRequest::hasOpenReport`). Any
   new place that stores help-chat content (attachments, notes) must also be cleaned up there.
+- **Safety flags (SCRUM-32, 2026-11-08).** Behind `SAFETY_FLAGS_ENABLED` (off; `safety_flags` route
+  middleware, `features.safetyFlags` prop). Who an admin is "involved" with in a therapy/group is
+  `TherapyTrait::involvesInOversight` (shared with reports) -- don't copy it. Group members are referred to
+  by `App\Support\GroupMemberKeys` keys, never user ids. Admin pages/routes use `SafetyFlag::public_id`,
+  never the sequential id, and the live ping goes only to uninvolved admins' `users.{id}` channels.
 
 ## Current Sprint Goals
 

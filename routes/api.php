@@ -28,6 +28,7 @@ use App\Http\Controllers\ReportController;
 use App\Http\Controllers\ReportEvidenceController;
 use App\Http\Controllers\RequestController;
 use App\Http\Controllers\SafeguardingExceptionRequestController;
+use App\Http\Controllers\SafetyFlagController;
 use App\Http\Controllers\SchedulerHealthController;
 use App\Http\Controllers\SessionController;
 use App\Http\Controllers\SessionNoteController;
@@ -247,6 +248,13 @@ Route::middleware('auth:sanctum')->group(function () {
     // client (1:1) or group member.
     Route::post('/therapies/{therapyId}/safeguarding-exception-requests', [SafeguardingExceptionRequestController::class, 'storeForTherapy'])->name('api.safeguarding_exception_requests.therapy')->whereNumber('therapyId')->middleware('throttle:10,1,api.safeguarding_exception_requests.therapy');
     Route::post('/group-therapies/{groupTherapyId}/safeguarding-exception-requests', [SafeguardingExceptionRequestController::class, 'storeForGroup'])->name('api.safeguarding_exception_requests.group')->whereNumber('groupTherapyId')->middleware('throttle:10,1,api.safeguarding_exception_requests.group');
+    // SCRUM-32: a counsellor raises a safety flag for their 1:1 client or a group member (by key). Not
+    // open to a suspended account (the user's decision); a suspended counsellor role doesn't stop it.
+    Route::middleware('safety_flags')->group(function () {
+        Route::post('/therapies/{therapyId}/safety-flags', [SafetyFlagController::class, 'storeForTherapy'])->name('api.safety_flags.therapy')->whereNumber('therapyId')->middleware('throttle:10,1,api.safety_flags.therapy');
+        Route::post('/group-therapies/{groupTherapyId}/safety-flags', [SafetyFlagController::class, 'storeForGroup'])->name('api.safety_flags.group')->whereNumber('groupTherapyId')->middleware('throttle:10,1,api.safety_flags.group');
+        Route::get('/group-therapies/{groupTherapyId}/safety-flag-members', [SafetyFlagController::class, 'groupMembers'])->name('api.safety_flags.group_members')->whereNumber('groupTherapyId')->middleware('throttle:30,1,api.safety_flags.group_members');
+    });
     // SCRUM-207/TT-2.5b: accept/reject reuse the existing generic requests.respond endpoint
     // (RespondToRequestAction's per-type dispatch already covers this type) -- only
     // counter-offer needs its own endpoint, mirroring requests.compensation_counter_offer.

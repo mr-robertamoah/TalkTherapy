@@ -10730,3 +10730,148 @@ therapy 18 after the last QA pass.
   - The person's invitation is hidden once they've asked that counsellor for a therapy (a pending
     request, or a therapy with them).
   - A chat whose messages were deleted no longer says "You can read it here".
+
+## SCRUM-32 — counsellor safety flag: plan approved (2026-11-08)
+
+- **Approved by the user** after product-owner, project-manager and architect passes. It ships as three PRs in
+  order:
+  - **TT-4.3a (13):** the flag, alerts, the admin list, acknowledge and reassign, and logged views.
+  - **TT-4.3b (8):** handling, re-alerts and withdrawal.
+  - **TT-4.3c (8):** notices and closeout.
+
+  About 29 points in total, revised from 26.
+- **The user's answers (2026-11-08):**
+  - **Notices** to the client and to a minor's guardians are **held for the handling administrator**. Once
+    acknowledged they're sent, unless the administrator holds them for a recorded safety reason. If nobody
+    acknowledges by the re-alert time, they're sent automatically.
+  - **Release gate:** the feature sits behind an **off-by-default switch** (`SAFETY_FLAGS_ENABLED`) that hides
+    its routes, menu item and alerts. Other work can still be promoted while the Ghana Act 846/843 legal read
+    is pending.
+  - **"In-app"** means a **persistent, dismissable notice** at the top of the app plus a stored notification.
+    It isn't a notification list (that stays SCRUM-395 item 9).
+- **Defaults the user accepted with the plan:**
+  - **Suspended counsellors:** one whose whole account is suspended can't flag (they can't reach a therapy
+    page) and contacts support instead. A suspension of only the counsellor role doesn't stop flagging.
+  - **Re-alert:** super administrators are re-alerted once, at 1h / 4h / 24h by urgency. When nobody who
+    isn't involved can be told, the alert goes to a configured fallback mailbox and is logged as critical.
+  - **Held notices:** a held client notice must be sent, or withheld with a recorded reason, when the flag is
+    resolved.
+  - **Notice channels:** guardians are told in-app and by email (imminent and urgent). The client is told
+    in-app only.
+  - **When a flag can be raised:** up to 14 days after a therapy or help chat ended. A member who has left a
+    group can be flagged.
+  - **Who sees what:**
+    - Co-counsellors in a group see that a flag exists and its status, never the reason.
+    - The flagging counsellor sees "resolved", not the outcome.
+  - **Retention:**
+    - Flags are kept indefinitely. On account closure their free text is cleared, as for safeguarding
+      exceptions.
+    - An open flag keeps a help chat's messages past its one-year deletion.
+  - **Label and outcomes:** the label is "Safety flag: recommend specialist or inpatient care", not
+    "institutionalisation", and it lives in one place so a legal rename is cheap. The outcome list:
+    - referred to specialist or inpatient care
+    - emergency services attended
+    - safety plan, therapy continues
+    - client declined
+    - couldn't reach the client
+    - not warranted
+    - other
+- **Design (architect):**
+  - **Data:** a `SafetyFlag` morph model (a Therapy or a GroupTherapy; a help chat is a Therapy) and an
+    append-only `safety_flag_events` table with triggers, like the emergency-number history. Flags can't be
+    deleted, which is also enforced by a trigger. Reason, notes and hold reasons are encrypted.
+  - **One open flag per client per therapy:** an app-maintained unique `open_client_key`, the same pattern as
+    `help_requests.active_user_id`.
+  - **Shared rules, extracted first with no behaviour change:**
+    - the therapy-involvement rule, moved out of `Report::involves`;
+    - group member keys, moved out of `GetPausedGroupMembersAction`;
+    - the best-effort broadcast, moved out of `HelpBroadcast`;
+    - "notify the administrators who aren't involved".
+  - **Escalation:** the help chat's pattern is copied (claim with a conditional update; a delayed job plus a
+    sweep). It is deliberately not made into a generic engine.
+  - **Gates:** the flag actions never call `EnsureTherapyCanProceedAction`. (The architect proposed listing each
+    flag route in the suspension allowlist. The user's later default replaced that: a counsellor whose whole
+    account is suspended can't flag, so the flag routes are *not* allowlisted. See TT-4.3a below.)
+  - **Privacy:**
+    - The counsellor's status comes from its own endpoint, so nothing the client receives changes.
+    - The admin channel's ping carries no id.
+    - The admin list has no search by person.
+
+## SCRUM-32 (TT-4.3a) — raising a safety flag and alerting: implementation decisions (2026-11-08)
+
+- **Shared rules extracted first, with no change in behaviour:**
+  - `TherapyTrait::involvesInOversight`: the therapy part of `Report::involves`. Reports and safety
+    flags now use the same rule.
+  - `App\Support\GroupMemberKeys`, extracted from `GetPausedGroupMembersAction`. It now also covers
+    former members.
+  - `App\Support\BestEffortBroadcast`, extracted from `HelpBroadcast`.
+  - `NotifyUninvolvedAdminsAction`, which logs as critical when nobody can be told.
+  - `EmergencyNumbersPanel.vue`, extracted from the help dialog.
+- **The off switch** is a `safety_flags` route middleware that returns a plain 404. It also hides the
+  menu item, the badge key and the counsellor's UI (`features.safetyFlags`).
+- **"Ended in the last 14 days":**
+  - A help chat uses the request's `ended_at`.
+  - A therapy or group has no end time of its own, so `updated_at` stands in for when it ended
+    (`EndTherapyAction` writes it).
+- **"Already flagged" (409)** tells a second counsellor of the same therapy that an open flag exists.
+  That matches the default the user accepted, "co-counsellors see that a flag exists, never the
+  reason".
+- **Privacy:**
+  - The admin channel's ping carries no id.
+  - The list has no search by person.
+  - Notifications and emails carry only the urgency and a link.
+  - `SafetyFlag` hides the client id and every free-text field from serialisation.
+  - The reason must be at least 10 characters.
+- **Seeding:** the demo flags are written straight to the tables, so seeding doesn't email every
+  administrator.
+- **Review fixes (reviewer, security, architect, devops; no blocker but Pint):**
+  - **The live ping goes only to administrators who aren't involved,** on each one's own `users.{id}`
+    channel, and never carries an id (security review). A ping to every administrator, followed by no
+    change, would have told an involved one that something happened. The shared `admin.safety-flags`
+    channel was dropped.
+  - **Flags have a public ULID** (`public_id`). Pages, routes and notifications use it instead of the
+    sequential id, whose gaps would show an involved administrator that a flag exists.
+  - **The read log** names "A safety flag" with no id, and offers no filter by it.
+  - **Reassign:** the picker lists every administrator whose account isn't suspended. Leaving out the
+    involved ones would name them. Refusing one gives the same answer as any other failure. **Accepted
+    residual risk:** a super administrator could still learn who is involved by trying to hand the flag
+    to them. Each attempt that works really moves the flag and is recorded.
+  - **Former members** are told apart without a name ("Former member, left Mar 2026", numbered when two
+    match). A flag on the wrong person is a harm of its own.
+  - **"Can I flag here?" is one rule:**
+    - `EnsureCanFlagClientAction::forGroupCounsellor`, used by the member list and the flag.
+    - `canRaiseSafetyFlag` on the therapy, group and help chat resources, only for their counsellors, so
+      a button is never offered and then refused after the counsellor has typed a crisis.
+  - **A flag that fails for an unexpected reason** is reported, never silent.
+    `NotifyUninvolvedAdminsAction` is wrapped whole in `rescue`.
+  - **Help escalation now uses `NotifyUninvolvedAdminsAction` too,** so it also logs as critical when
+    there's nobody to tell.
+  - **Data:**
+    - Notice states are an enum (`SafetyFlagNoticeStateEnum`).
+    - One snapshot rule, `SafetyFlag::snapshotFor`, serves the action and the seeder. The seeded group
+      flag records its membership.
+    - `reason` is nullable, for account anonymisation (TT-4.3c).
+    - `SafetyFlag` serialises only its public id, status, urgency, kind and created time.
+  - **Performance:** the list and the badge load what the involvement check reads with the flags,
+    instead of once per row. Closed flags list newest first.
+  - **Off-switch hygiene:**
+    - The test configuration pins `SAFETY_FLAGS_ENABLED=false`, so Docker and CI agree.
+    - A queued alert isn't sent once the feature is off.
+    - The admin layout only listens while it's on.
+- **Decided for later PRs:**
+  - **TT-4.3b:** note text goes somewhere it can be cleared on account anonymisation (a clearable column
+    or table that the append-only events refer to), never only in the events. Unless the user says
+    otherwise, that's how the "free text cleared on closure" default holds.
+  - **Follow-up:** a real `ended_at` on therapies and groups. Today `updated_at` stands in for when one
+    ended, and a later write moves the 14-day window.
+- **Operations (devops review):**
+  - **Don't switch the feature on in production before TT-4.3b** (re-alerts and the fallback mailbox).
+    Until then, alerts rely on the queue worker alone.
+  - **The encrypted, append-only history needs its key for as long as it's kept.** An old `APP_KEY` must
+    stay in `APP_PREVIOUS_KEYS`, and a backup is useless without its key.
+  - **Never `migrate:rollback` this migration in testing or production:** it drops the safety record.
+    Turning it off is `SAFETY_FLAGS_ENABLED=false` plus `queue:restart`, after handing any open flags
+    over.
+
+- **QA (Playwright, five browsers): approved.** Fixed: after handing a flag on, "Hand to" is cleared (it
+  kept the new handler, so a second click was refused). The reason's hint now says "10 characters or more".

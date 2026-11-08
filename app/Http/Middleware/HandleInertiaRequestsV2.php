@@ -60,6 +60,8 @@ class HandleInertiaRequestsV2 extends Middleware
             // not per-therapy/session, so it's shared globally like supportedCurrencies above
             // rather than threaded through as a page prop.
             'videoProvider' => config('video.provider'),
+            // SCRUM-32: features switched on or off by the deployment (the safety flag waits for a legal read).
+            'features' => ['safetyFlags' => (bool) config('safety.enabled')],
             // SCRUM-371: a failed page visit's message (Controller::failureResponse), shown by the layout.
             // Pulled: shown on the first page that renders, then gone (FailureResponse puts it).
             'failureAlert' => fn () => $request->hasSession() ? $request->session()->pull('failureAlert') : null,

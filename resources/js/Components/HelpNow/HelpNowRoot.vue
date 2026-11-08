@@ -6,24 +6,23 @@
 // - Signed in: ask for a counsellor now (optionally anonymously, with a one-line note), wait, and
 //   go to the chat when someone answers. Guests are asked to sign in.
 // - A counsellor on call is rung here when someone asks (HelpRingModal).
-import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Link, usePage } from '@inertiajs/vue3'
 import MiniModal from '@/Components/MiniModal.vue'
 import PrimaryButton from '@/Components/PrimaryButton.vue'
 import SecondaryButton from '@/Components/SecondaryButton.vue'
-// Loaded only when "Change country" is used: the full list isn't sent to every page.
-const CountrySelect = defineAsyncComponent(() => import('@/Components/CountrySelect.vue'))
 import HelpRingModal from './HelpRingModal.vue'
+import EmergencyNumbersPanel from './EmergencyNumbersPanel.vue'
 import useHelpNow from '@/Composables/useHelpNow'
 
 const page = usePage()
 const user = computed(() => page.props.auth?.user ?? null)
-const { open, numbers, numbersLoading, numbersFailed, request, starting, error, show, loadNumbers, resume, start, cancel, startAgain, forget } = useHelpNow()
+const { open, request, starting, error, show, resume, start, cancel, startAgain, forget } = useHelpNow()
 
 const anonymous = ref(false)
 const note = ref('')
-const changingCountry = ref(false)
-const countryCode = ref('')
+// Bumped on every open, so the country picker starts closed.
+const panelKey = ref(0)
 const now = ref(Date.now())
 let ticker = null
 
@@ -40,13 +39,7 @@ const waitedFor = computed(() => {
 watch(open, (isOpen) => {
     if (!isOpen) return
     anonymous.value = !!user.value?.settings?.anonymous
-    changingCountry.value = false
-})
-
-watch(countryCode, (code) => {
-    if (!code) return
-    changingCountry.value = false
-    loadNumbers(code)
+    panelKey.value++
 })
 
 onMounted(() => {
@@ -98,36 +91,7 @@ function submit() {
                 <h2 id="help-now-title" class="text-lg font-semibold">Get help now</h2>
 
                 <!-- The emergency number, always first. -->
-                <section class="rounded-lg border border-red-200 bg-red-50 p-4" aria-labelledby="help-now-emergency">
-                    <h3 id="help-now-emergency" class="text-sm font-semibold text-red-900">If you or someone else is in immediate danger</h3>
-                    <p v-if="numbersLoading" class="mt-2 text-sm text-red-900">Finding your emergency number…</p>
-                    <template v-else-if="numbers.numbers?.length">
-                        <p class="mt-1 text-sm text-red-900">Call now{{ numbers.country?.name ? ` (${numbers.country.name})` : '' }}:</p>
-                        <ul class="mt-2 space-y-2">
-                            <li v-for="number in numbers.numbers" :key="number.id">
-                                <a :href="`tel:${number.number.replace(/[^0-9+]/g, '')}`" class="inline-flex min-h-[44px] items-center gap-2 rounded-md bg-red-700 px-4 text-base font-semibold text-white hover:bg-red-800 focus:outline-none focus-visible:ring-4 focus-visible:ring-red-300">
-                                    {{ number.label }}: <span class="tabular-nums">{{ number.number }}</span>
-                                </a>
-                                <span v-if="number.notes" class="ml-2 text-xs text-red-900">{{ number.notes }}</span>
-                            </li>
-                        </ul>
-                        <p class="mt-2 text-xs text-red-900">Checked {{ numbers.numbers[0].verifiedAt }}.</p>
-                    </template>
-                    <p v-else class="mt-2 text-sm text-red-900">
-                        Contact your local emergency services{{ numbers.country?.name ? ` in ${numbers.country.name}` : '' }} now.
-                        <template v-if="numbersFailed"> (We couldn't load the number just now.)</template>
-                    </p>
-
-                    <div class="mt-3 text-sm">
-                        <button v-if="!changingCountry" type="button" class="font-medium text-red-900 underline" @click="changingCountry = true">
-                            Not in {{ numbers.country?.name ?? 'this country' }}? Change country
-                        </button>
-                        <div v-else>
-                            <label for="help-now-country" class="block text-xs font-medium text-red-900">Your country</label>
-                            <CountrySelect v-model="countryCode" by="code" input-id="help-now-country" :clearable="false" class="mt-1" />
-                        </div>
-                    </div>
-                </section>
+                <EmergencyNumbersPanel :key="panelKey" input-id="help-now-country" />
 
                 <p class="text-xs text-gray-600">TalkTherapy isn't an emergency service, and a counsellor may not be free straight away.</p>
 

@@ -37,6 +37,11 @@ class AdminContentAccess extends Model
     // SCRUM-33 (TT-4.4b): who asked for urgent help, revealed to an administrator handling it.
     public const HELP_REQUEST_IDENTITY = 'help_request_identity';
 
+    // SCRUM-32: who a safety flag is about, and the counsellor's reason -- to the administrator handling it.
+    public const SAFETY_FLAG_IDENTITY = 'safety_flag_identity';
+
+    public const SAFETY_FLAG_REASON = 'safety_flag_reason';
+
     public const RESOURCES = [
         self::THERAPY,
         self::SESSION,
@@ -49,6 +54,8 @@ class AdminContentAccess extends Model
         self::LICENSE_DOCUMENT,
         self::IDENTITY_DOCUMENT,
         self::HELP_REQUEST_IDENTITY,
+        self::SAFETY_FLAG_IDENTITY,
+        self::SAFETY_FLAG_REASON,
     ];
 
     protected $guarded = ['id'];

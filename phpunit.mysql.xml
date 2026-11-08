@@ -53,6 +53,8 @@
         <env name="DB_CONNECTION" value="mysql" force="true"/>
         <env name="DB_DATABASE" value="talktherapy_mysql_ci" force="true"/>
         <env name="MAIL_MAILER" value="array" force="true"/>
+        <!-- SCRUM-32: off unless a test switches it on (.env.docker has it on locally). -->
+        <env name="SAFETY_FLAGS_ENABLED" value="false" force="true"/>
         <env name="PULSE_ENABLED" value="false" force="true"/>
         <env name="QUEUE_CONNECTION" value="sync" force="true"/>
         <env name="SESSION_DRIVER" value="array" force="true"/>
@@ -64,6 +66,7 @@
         <server name="DB_CONNECTION" value="mysql"/>
         <server name="DB_DATABASE" value="talktherapy_mysql_ci"/>
         <server name="MAIL_MAILER" value="array"/>
+        <server name="SAFETY_FLAGS_ENABLED" value="false"/>
         <server name="PULSE_ENABLED" value="false"/>
         <server name="QUEUE_CONNECTION" value="sync"/>
         <server name="SESSION_DRIVER" value="array"/>

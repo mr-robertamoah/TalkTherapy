@@ -4,6 +4,7 @@ namespace App\Http\Resources;
 
 use App\Actions\GroupTherapy\GetGroupTherapyPaymentRosterAction;
 use App\Actions\SafeguardingException\GetPausedGroupMembersAction;
+use App\Actions\Safety\EnsureCanFlagClientAction;
 use App\Actions\Video\EnsureVideoIsAvailableForSessionAction;
 use App\Enums\ConstantsEnum;
 use App\Enums\CounsellorGroupTherapyStateEnum;
@@ -173,6 +174,12 @@ class GroupTherapyResource extends JsonResource
             // SCRUM-384: the request form's limit (SafeguardingExceptionRequestModal), for the same
             // counsellors, from the model rather than a copy in the UI.
             'safeguardingExceptionMaxDays' => $this->when($seesPausedMembers, SafeguardingException::MAX_DAYS),
+            // SCRUM-32: only for its counsellors, while the feature is on -- whether they can raise a safety
+            // flag for a member now.
+            'canRaiseSafetyFlag' => $this->when(
+                config('safety.enabled') && $user && $this->isCounsellorUser($user),
+                fn () => EnsureCanFlagClientAction::new()->canFlag(fn (EnsureCanFlagClientAction $can) => $can->forGroupCounsellor($user, $this->resource)),
+            ),
         ];
     }
 }

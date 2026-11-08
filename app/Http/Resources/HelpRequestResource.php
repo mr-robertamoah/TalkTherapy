@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Actions\Safety\EnsureCanFlagClientAction;
 use App\Enums\HelpRequestStatusEnum;
 use App\Models\HelpRequest;
 use App\Models\Language;
@@ -56,6 +57,12 @@ class HelpRequestResource extends JsonResource
                     'byCounsellor' => (int) $this->invited_by_id === (int) $this->counsellor->user_id,
                 ]
                 : null,
+            // SCRUM-32: the counsellor who answered, while the feature is on -- whether they can raise a
+            // safety flag for the person now (during the chat, or for a while after it ended).
+            'canRaiseSafetyFlag' => $this->when(
+                ! $isPerson && config('safety.enabled') && $viewer && $this->resource->isAnsweredBy($viewer),
+                fn () => EnsureCanFlagClientAction::new()->canFlag(fn (EnsureCanFlagClientAction $can) => $can->forHelpChat($viewer, $this->resource)),
+            ),
             'canInvite' => ! $isPerson && $viewer && $this->resource->isAnsweredBy($viewer) && $this->resource->canInviteToTherapy(),
         ];
     }

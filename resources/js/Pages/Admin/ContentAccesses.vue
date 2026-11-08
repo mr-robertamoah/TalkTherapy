@@ -31,6 +31,8 @@ const labels = {
     license_document: 'licence document',
     identity_document: 'identity document',
     help_request_identity: 'who asked for urgent help',
+    safety_flag_identity: 'who a safety flag is about',
+    safety_flag_reason: "a safety flag's reason",
 }
 
 function filter(changes) {

@@ -19,6 +19,7 @@ use App\Models\Transaction;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphToMany;
+use Illuminate\Support\Collection;
 
 trait TherapyTrait
 {
@@ -301,6 +302,36 @@ trait TherapyTrait
     abstract public function isMaskedToOthers(User $subject): bool;
 
     abstract public function allowsCameraFor(User $user): bool;
+
+    // SCRUM-340/362/363/73, shared with SCRUM-32: someone too close to this therapy or group to oversee
+    // anything about it -- a participant; for a group also a former member (allMemberships()) or one of
+    // its counsellors; or a guardian of its client or of any member, former ones too (the cautious
+    // choice: it only ever keeps more administrators away, never fewer). $wardIds: theirs, when the
+    // caller has them already.
+    public function involvesInOversight(User $user, ?Collection $wardIds = null): bool
+    {
+        if ($this->isParticipant($user)) {
+            return true;
+        }
+
+        $isGroup = $this instanceof GroupTherapy;
+        if ($isGroup && ($this->allMemberships()->whereKey($user->id)->exists()
+            || ($user->counsellor && $this->counsellors()->whereKey($user->counsellor->id)->exists()))) {
+            return true;
+        }
+
+        $wardIds ??= $user->wardIds();
+        if ($wardIds->isEmpty()) {
+            return false;
+        }
+
+        $client = $this->addedby;
+        if ($client instanceof User && $wardIds->contains($client->id)) {
+            return true;
+        }
+
+        return $isGroup && $this->allMemberships()->whereIn('users.id', $wardIds)->exists();
+    }
 
     // The subject's name as everyone ELSE sees it (not viewer-relative, hence "Of").
     public function displayNameOf(User $subject): string

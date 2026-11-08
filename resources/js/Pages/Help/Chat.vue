@@ -11,6 +11,7 @@ import SecondaryButton from '@/Components/SecondaryButton.vue'
 import DangerButton from '@/Components/DangerButton.vue'
 import MiniModal from '@/Components/MiniModal.vue'
 import VideoCallPanel from '@/Components/VideoCallPanel.vue'
+import SafetyFlagModal from '@/Components/Safety/SafetyFlagModal.vue'
 import { acquireChannel } from '@/Composables/sharedChannel'
 import useHelpNow, { helpRefusal } from '@/Composables/useHelpNow'
 
@@ -29,6 +30,7 @@ const error = ref('')
 const confirmingEnd = ref(false)
 const ending = ref(false)
 const inCall = ref(false)
+const flagging = ref(false)
 const list = ref(null)
 let channel = null
 
@@ -139,6 +141,8 @@ onBeforeUnmount(() => channel?.release())
                 <div class="flex flex-wrap gap-2">
                     <SecondaryButton type="button" @click="showHelp">Emergency numbers</SecondaryButton>
                     <SecondaryButton v-if="connected && help.audioPossible && !inCall" type="button" @click="inCall = true">Start audio call</SecondaryButton>
+                    <!-- SCRUM-32: the counsellor can raise a safety flag (during the chat, or for a while after). -->
+                    <SecondaryButton v-if="help.canRaiseSafetyFlag" type="button" @click="flagging = true">Raise a safety flag</SecondaryButton>
                     <DangerButton v-if="connected" type="button" @click="confirmingEnd = true">End chat</DangerButton>
                 </div>
             </div>
@@ -196,6 +200,14 @@ onBeforeUnmount(() => channel?.release())
                 <p v-if="error" class="px-4 pb-3 text-sm text-red-700" role="alert">{{ error }}</p>
             </section>
         </div>
+
+        <SafetyFlagModal
+            v-if="help.canRaiseSafetyFlag"
+            :show="flagging"
+            :url="route('help.requests.safety_flag', { helpRequest: help.id })"
+            :person-name="otherName"
+            @close="flagging = false"
+        />
 
         <MiniModal :show="confirmingEnd" labelledby="help-end-title" @close="confirmingEnd = false">
             <div class="space-y-4">
