@@ -29,7 +29,7 @@ const facts = computed(() => {
     const counsellors = group.counsellorsCount || 0
     const sessions = group.sessionsHeld || 0
     let members = ''
-    if (group.memberCount !== undefined && group.memberCount !== null) members = `${group.memberCount}/${group.maxUsers} members`
+    if (group.membersCount !== undefined && group.membersCount !== null) members = `${group.membersCount}/${group.maxUsers} members`
     else if (group.maxUsers) members = `Up to ${group.maxUsers} members`
 
     return [

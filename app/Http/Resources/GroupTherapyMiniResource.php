@@ -63,7 +63,8 @@ class GroupTherapyMiniResource extends JsonResource
             'statusLabel' => $this->getStatusLabel(),
             'maxUsers' => $this->max_users,
             ...($this->resource->viewerCard ? [
-                'memberCount' => $this->resource->relationLoaded('users') ? $this->users->count() : null,
+                // SCRUM-394: the same name as the full and preview resources.
+                'membersCount' => $this->resource->relationLoaded('users') ? $this->users->count() : null,
                 'viewer' => [...$this->resource->viewerCard, 'matchesPreferences' => (int) $this->resource->getAttribute(PreferenceRanking::COLUMN) > 0],
             ] : []),
         ];
