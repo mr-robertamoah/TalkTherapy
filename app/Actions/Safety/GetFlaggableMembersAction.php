@@ -14,8 +14,12 @@ class GetFlaggableMembersAction extends Action
 {
     public function execute(?User $viewer, ?GroupTherapy $group): array
     {
-        $group = EnsureCanFlagClientAction::new()->forGroupCounsellor($viewer, $group);
+        return $this->labels(EnsureCanFlagClientAction::new()->forGroupCounsellor($viewer, $group), $viewer);
+    }
 
+    // The members as a counsellor of the group refers to them (no check: the caller has made it).
+    public function labels(GroupTherapy $group, User $viewer): array
+    {
         $members = GroupMemberKeys::all($group)
             ->reject(fn (array $member) => $member['user']->is($viewer) || $group->isCounsellorUser($member['user']))
             ->values();

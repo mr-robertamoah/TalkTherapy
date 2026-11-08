@@ -27,11 +27,25 @@ class EnsureCanFlagClientAction extends Action
 {
     public const NOT_FOUND = 'You can\'t raise a safety flag here.';
 
+    // Who counsels where -- shared with GetSafetyFlagStatusesAction (reviews), which skips the time window.
+    public static function isTherapyCounsellor(?User $viewer, ?Therapy $therapy): bool
+    {
+        return $therapy && ! $therapy->isHelpChat() && $viewer?->counsellor && (int) $therapy->counsellor_id === (int) $viewer->counsellor->id;
+    }
+
+    public static function isGroupCounsellor(?User $viewer, ?GroupTherapy $group): bool
+    {
+        return $viewer && $group && $group->isCounsellorUser($viewer);
+    }
+
+    public static function answeredHelpChat(?User $viewer, ?HelpRequest $request): bool
+    {
+        return $viewer && $request && $request->isAnsweredBy($viewer) && $request->therapy;
+    }
+
     public function forTherapy(?User $viewer, ?Therapy $therapy): SafetyFlagSubject
     {
-        $counsellor = $viewer?->counsellor;
-        if (! $therapy || $therapy->isHelpChat() || ! $counsellor || (int) $therapy->counsellor_id !== (int) $counsellor->id
-            || ! $this->withinWindow($therapy->status, $therapy->updated_at)) {
+        if (! self::isTherapyCounsellor($viewer, $therapy) || ! $this->withinWindow($therapy->status, $therapy->updated_at)) {
             throw $this->notFound();
         }
 
@@ -47,7 +61,7 @@ class EnsureCanFlagClientAction extends Action
     // alike (one rule, reviewer).
     public function forGroupCounsellor(?User $viewer, ?GroupTherapy $group): GroupTherapy
     {
-        if (! $viewer || ! $group || ! $group->isCounsellorUser($viewer) || ! $this->withinWindow($group->status, $group->updated_at)) {
+        if (! self::isGroupCounsellor($viewer, $group) || ! $this->withinWindow($group->status, $group->updated_at)) {
             throw $this->notFound();
         }
 
@@ -72,7 +86,7 @@ class EnsureCanFlagClientAction extends Action
 
     public function forHelpChat(?User $viewer, ?HelpRequest $request): SafetyFlagSubject
     {
-        if (! $viewer || ! $request || ! $request->isAnsweredBy($viewer) || ! $request->therapy || ! $request->user) {
+        if (! self::answeredHelpChat($viewer, $request) || ! $request->user) {
             throw $this->notFound();
         }
 

@@ -22,6 +22,9 @@ const props = defineProps({
     admins: { type: Array, default: () => [] },
     status: { type: String, default: '' },
     label: { type: String, default: 'Safety flag' },
+    // TT-4.3b: the lists for recording an action and resolving.
+    outcomes: { type: Array, default: () => [] },
+    actions: { type: Array, default: () => [] },
 })
 
 const { alertData, clearAlertData, setFailedAlertData, setSuccessAlertData } = useAlert()
@@ -30,6 +33,14 @@ const rows = ref([...props.flags])
 const who = ref({}) // id -> what RevealSafetyFlagAction::who returned
 const why = ref({}) // id -> what RevealSafetyFlagAction::reason returned
 const handTo = ref({}) // id -> admin id
+// TT-4.3b: the handling administrator's forms, per flag.
+const noteText = ref({})
+const actionType = ref({})
+const actionText = ref({})
+const outcome = ref({})
+const outcomeNote = ref({})
+const resolving = ref(null)
+const showHistory = ref({})
 const busy = ref(null)
 const filter = ref(props.status)
 let channel = null
@@ -37,13 +48,16 @@ let reloadTimer = null
 let latest = 0
 
 const filters = [
-    { value: '', label: 'Open and being handled' },
+    { value: '', label: 'Needing someone (open or being handled)' },
     { value: 'OPEN', label: 'Open' },
     { value: 'ACKNOWLEDGED', label: 'Being handled' },
     { value: 'WITHDRAWN', label: 'Withdrawn' },
     { value: 'RESOLVED', label: 'Resolved' },
 ]
 const statusLabel = { OPEN: 'Open -- nobody is handling it yet', ACKNOWLEDGED: 'Being handled', WITHDRAWN: 'Withdrawn by the counsellor', RESOLVED: 'Resolved' }
+// Being handled: acknowledged, or withdrawn after someone took it on (it still needs resolving).
+const beingHandled = (row) => !!row.handler && ['ACKNOWLEDGED', 'WITHDRAWN'].includes(row.status)
+const handled = (row) => row.isMine && beingHandled(row)
 // Never by colour alone: each urgency has its own word and mark.
 const urgencyMark = { IMMINENT: '!!!', URGENT: '!!', NON_URGENT: '!' }
 const discussedLabel = { YES: 'Yes', NO: 'No', NOT_POSSIBLE: 'It wasn\'t possible' }
@@ -97,6 +111,28 @@ function showWho(row) {
 
 function showWhy(row) {
     act(row, 'why', () => axios.post(route('admin.safety_flags.reason', { flag: row.id })).then((res) => { why.value = { ...why.value, [row.id]: res.data } }))
+}
+
+// TT-4.3b: a new note or action is added to what's shown -- only if the reason is already open: adding
+// one never reads (and logs) the reason on the handler's behalf (reviews).
+function appendNote(row, note) {
+    if (!why.value[row.id]) return
+    why.value = { ...why.value, [row.id]: { ...why.value[row.id], notes: [...(why.value[row.id].notes ?? []), note] } }
+}
+
+function addNote(row) {
+    act(row, 'note', () => axios.post(route('admin.safety_flags.note', { flag: row.id }), { content: noteText.value[row.id] })
+        .then((res) => { noteText.value = { ...noteText.value, [row.id]: '' }; appendNote(row, res.data.note); reload() }), 'The note has been added.')
+}
+
+function recordAction(row) {
+    act(row, 'action', () => axios.post(route('admin.safety_flags.action', { flag: row.id }), { action: actionType.value[row.id], content: actionText.value[row.id] || null })
+        .then((res) => { actionType.value = { ...actionType.value, [row.id]: undefined }; actionText.value = { ...actionText.value, [row.id]: '' }; appendNote(row, res.data.note); reload() }), 'The action has been recorded.')
+}
+
+function resolve(row) {
+    act(row, 'resolve', () => axios.post(route('admin.safety_flags.resolve', { flag: row.id }), { outcome: outcome.value[row.id], note: outcomeNote.value[row.id] })
+        .then(() => { resolving.value = null; reload() }), 'It has been resolved.')
 }
 
 function reassign(row) {
@@ -157,7 +193,8 @@ onBeforeUnmount(() => {
                             <template v-if="row.country"> · {{ row.country }}</template>
                         </p>
                         <p class="mt-0.5 text-xs text-gray-600">
-                            Raised {{ formatWhen(row.createdAt) }} · {{ statusLabel[row.status] ?? row.status }}<template v-if="row.handler"> by {{ row.isMine ? 'you' : row.handler.name }}</template>
+                            Raised {{ formatWhen(row.createdAt) }} · {{ statusLabel[row.status] ?? row.status }}<template v-if="row.handler"> · handled by {{ row.isMine ? 'you' : row.handler.name }}</template>
+                            <template v-if="row.outcome"> · {{ row.outcome }}</template>
                         </p>
                     </div>
                     <div class="flex flex-wrap gap-2">
@@ -185,10 +222,74 @@ onBeforeUnmount(() => {
                     <dd class="text-gray-900">{{ discussedLabel[why[row.id].discussedWithClient] }}</dd>
                     <dt class="text-gray-600">Emergency services</dt>
                     <dd class="text-gray-900">{{ why[row.id].emergencyServicesContacted ? 'Contacted' : 'Not contacted' }}<template v-if="why[row.id].emergencyServicesNote"> -- {{ why[row.id].emergencyServicesNote }}</template></dd>
+                    <template v-if="why[row.id].withdrawnReason">
+                        <dt class="text-gray-600">Withdrawn because</dt>
+                        <dd class="whitespace-pre-wrap break-words text-gray-900">{{ why[row.id].withdrawnReason }}</dd>
+                    </template>
+                    <template v-if="why[row.id].outcome">
+                        <dt class="text-gray-600">Outcome</dt>
+                        <dd class="whitespace-pre-wrap break-words text-gray-900">{{ why[row.id].outcome }}<template v-if="why[row.id].outcomeNote"> -- {{ why[row.id].outcomeNote }}</template></dd>
+                    </template>
+                    <template v-if="why[row.id].notes?.length">
+                        <dt class="text-gray-600">Notes and actions</dt>
+                        <dd>
+                            <ul class="space-y-1">
+                                <li v-for="(note, index) in why[row.id].notes" :key="index" class="text-gray-900">
+                                    <span class="text-xs text-gray-600">{{ formatWhen(note.at) }} · {{ note.by }}:</span>
+                                    <strong v-if="note.action" class="ml-1">{{ note.action }}</strong>
+                                    <span v-if="note.content" class="ml-1 whitespace-pre-wrap break-words">{{ note.content }}</span>
+                                </li>
+                            </ul>
+                        </dd>
+                    </template>
                 </dl>
 
+                <!-- TT-4.3b: the handling administrator's tools (an acknowledged flag, or one withdrawn since). -->
+                <div v-if="handled(row)" class="mt-3 grid gap-3 sm:grid-cols-2">
+                    <form class="space-y-1" @submit.prevent="addNote(row)">
+                        <label :for="`safety-note-${row.id}`" class="block text-xs font-medium text-gray-700">Add a note</label>
+                        <textarea :id="`safety-note-${row.id}`" v-model="noteText[row.id]" rows="2" maxlength="2000" class="block w-full rounded-md border-gray-300 text-sm shadow-sm"></textarea>
+                        <SecondaryButton type="submit" :disabled="!noteText[row.id]?.trim() || busy === `note-${row.id}`">Add note</SecondaryButton>
+                    </form>
+                    <form class="space-y-1" @submit.prevent="recordAction(row)">
+                        <label :for="`safety-action-${row.id}`" class="block text-xs font-medium text-gray-700">Record an action</label>
+                        <select :id="`safety-action-${row.id}`" v-model="actionType[row.id]" class="block w-full rounded-md border-gray-300 text-sm shadow-sm">
+                            <option :value="undefined" disabled>Choose what you did</option>
+                            <option v-for="option in actions" :key="option.value" :value="option.value">{{ option.label }}</option>
+                        </select>
+                        <input v-model="actionText[row.id]" type="text" maxlength="2000" :aria-label="actionType[row.id] === 'OTHER' ? 'What you did (needed)' : 'Details (optional)'" :placeholder="actionType[row.id] === 'OTHER' ? 'What you did (needed)' : 'Details (optional)'" class="block w-full rounded-md border-gray-300 text-sm shadow-sm" />
+                        <SecondaryButton type="submit" :disabled="!actionType[row.id] || (actionType[row.id] === 'OTHER' && !actionText[row.id]?.trim()) || busy === `action-${row.id}`">Record</SecondaryButton>
+                    </form>
+                    <div class="sm:col-span-2">
+                        <PrimaryButton v-if="resolving !== row.id" type="button" @click="resolving = row.id">Resolve…</PrimaryButton>
+                        <form v-else class="space-y-2 rounded-md border border-gray-200 p-3" @submit.prevent="resolve(row)">
+                            <label :for="`safety-outcome-${row.id}`" class="block text-xs font-medium text-gray-700">Outcome</label>
+                            <select :id="`safety-outcome-${row.id}`" v-model="outcome[row.id]" class="block w-full rounded-md border-gray-300 text-sm shadow-sm">
+                                <option :value="undefined" disabled>Choose the outcome</option>
+                                <option v-for="option in outcomes" :key="option.value" :value="option.value">{{ option.label }}</option>
+                            </select>
+                            <label :for="`safety-outcome-note-${row.id}`" class="block text-xs font-medium text-gray-700">What happened (needed)</label>
+                            <textarea :id="`safety-outcome-note-${row.id}`" v-model="outcomeNote[row.id]" rows="2" maxlength="2000" class="block w-full rounded-md border-gray-300 text-sm shadow-sm"></textarea>
+                            <div class="flex gap-2">
+                                <SecondaryButton type="button" @click="resolving = null">Cancel</SecondaryButton>
+                                <PrimaryButton :disabled="!outcome[row.id] || !outcomeNote[row.id]?.trim() || busy === `resolve-${row.id}`">Resolve</PrimaryButton>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- TT-4.3b: what happened and when (never what was written), for every administrator who sees it. -->
+                <div class="mt-3">
+                    <button type="button" class="text-xs font-medium text-gray-700 underline" :aria-expanded="!!showHistory[row.id]" @click="showHistory = { ...showHistory, [row.id]: !showHistory[row.id] }">
+                        {{ showHistory[row.id] ? 'Hide history' : 'Show history' }}
+                    </button>
+                    <ol v-if="showHistory[row.id]" class="mt-2 space-y-1 border-l border-gray-200 pl-3 text-xs text-gray-700">
+                        <li v-for="(step, index) in row.history" :key="index">{{ formatWhen(step.at) }} -- {{ step.label }}<template v-if="step.by"> ({{ step.by }})</template></li>
+                    </ol>
+                </div>
+
                 <!-- A super administrator hands one being handled to someone else. -->
-                <div v-if="admins.length && row.status === 'ACKNOWLEDGED'" class="mt-3 flex flex-wrap items-end gap-2">
+                <div v-if="admins.length && beingHandled(row)" class="mt-3 flex flex-wrap items-end gap-2">
                     <div>
                         <label :for="`safety-flag-hand-${row.id}`" class="block text-xs font-medium text-gray-700">Hand to</label>
                         <select :id="`safety-flag-hand-${row.id}`" v-model="handTo[row.id]" class="mt-1 rounded-md border-gray-300 text-sm shadow-sm">

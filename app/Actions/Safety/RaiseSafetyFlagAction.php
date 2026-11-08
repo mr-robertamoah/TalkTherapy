@@ -3,11 +3,11 @@
 namespace App\Actions\Safety;
 
 use App\Actions\Action;
-use App\Actions\Admin\NotifyUninvolvedAdminsAction;
 use App\Enums\SafetyFlagDiscussedEnum;
 use App\Enums\SafetyFlagStatusEnum;
 use App\Enums\SafetyFlagUrgencyEnum;
 use App\Exceptions\SafetyFlagException;
+use App\Jobs\ReAlertSafetyFlagJob;
 use App\Models\SafetyFlag;
 use App\Models\SafetyFlagEvent;
 use App\Models\User;
@@ -74,13 +74,16 @@ class RaiseSafetyFlagAction extends Action
 
         RateLimiter::hit($limitKey, 3600);
 
-        // Committed by now: the notification is queued (afterCommit), the ping best effort.
-        NotifyUninvolvedAdminsAction::new()->execute(
-            fn (User $admin) => $flag->involvesAdmin($admin),
-            new SafetyFlagRaisedNotification($flag->id, $flag->public_id, $urgency->label()),
-            about: "safety flag {$flag->public_id}",
-        );
+        // Committed by now: the notification is queued (afterCommit), the ping best effort. Nobody to tell:
+        // the fallback mailbox (TT-4.3b), recorded in the history only if it went out.
+        $flag->alertUninvolved(new SafetyFlagRaisedNotification($flag->id, $flag->public_id, $urgency->label()), "safety flag {$flag->public_id}");
         $flag->broadcastChanged();
+
+        // TT-4.3b: re-alert the super administrators if nobody has acknowledged it by then (the sweep is
+        // the backstop). Pushed inside the rescue (reviews: a PendingDispatch would push after it returned).
+        rescue(function () use ($flag, $urgency) {
+            dispatch((new ReAlertSafetyFlagJob($flag->id))->delay(now()->addMinutes(SafetyFlag::realertMinutes($urgency))));
+        }, report: true);
 
         return $flag;
     }

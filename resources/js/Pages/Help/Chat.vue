@@ -12,6 +12,7 @@ import DangerButton from '@/Components/DangerButton.vue'
 import MiniModal from '@/Components/MiniModal.vue'
 import VideoCallPanel from '@/Components/VideoCallPanel.vue'
 import SafetyFlagModal from '@/Components/Safety/SafetyFlagModal.vue'
+import SafetyFlagStatusList from '@/Components/Safety/SafetyFlagStatusList.vue'
 import { acquireChannel } from '@/Composables/sharedChannel'
 import useHelpNow, { helpRefusal } from '@/Composables/useHelpNow'
 
@@ -31,6 +32,7 @@ const confirmingEnd = ref(false)
 const ending = ref(false)
 const inCall = ref(false)
 const flagging = ref(false)
+const flagStatuses = ref(null)
 const list = ref(null)
 let channel = null
 
@@ -165,6 +167,9 @@ onBeforeUnmount(() => channel?.release())
                 </template>
             </div>
 
+            <!-- SCRUM-32 (TT-4.3b): the counsellor's safety flags for this person, and where they stand. -->
+            <SafetyFlagStatusList v-if="!help.isPerson && $page.props.features?.safetyFlags" ref="flagStatuses" :url="route('help.requests.safety_flags', { helpRequest: help.id })" />
+
             <p v-if="help.isPerson" class="text-xs text-gray-600">If you are in danger, call your emergency number now -- TalkTherapy isn't an emergency service.</p>
             <p v-if="connected && !help.audioPossible" class="text-xs text-gray-600">
                 {{ help.audioUnavailable === 'minor' ? 'Audio calls in this chat need a parent or guardian\'s consent, so it\'s text only.' : 'This chat is text only.' }}
@@ -203,6 +208,7 @@ onBeforeUnmount(() => channel?.release())
 
         <SafetyFlagModal
             v-if="help.canRaiseSafetyFlag"
+            @raised="flagStatuses?.load()"
             :show="flagging"
             :url="route('help.requests.safety_flag', { helpRequest: help.id })"
             :person-name="otherName"

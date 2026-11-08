@@ -14,6 +14,7 @@ use App\Actions\Organization\ExpireStaleCompensationRequestsAction;
 use App\Actions\Organization\SendCompensationRequestExpiryRemindersAction;
 use App\Actions\Organization\SettleDueOrganizationInvoicesAction;
 use App\Actions\Request\DeleteExpiredIdentityDocumentsAction;
+use App\Actions\Safety\ReAlertSafetyFlagsAction;
 use App\Actions\Session\FailUnheldSessionsAction;
 use App\Actions\Session\NotifyParticipantsOfStartingSessionsAction;
 use App\Actions\Therapy\FindPaidTherapiesMissingPaymentDataAction;
@@ -75,6 +76,11 @@ Schedule::call(fn () => NotifyParticipantsOfStartingSessionsAction::new()->execu
 Schedule::call(fn () => FailUnheldSessionsAction::new()->execute())->name('fail-unheld-sessions')->everyFourHours();
 // SCRUM-33: help requests nobody answered expire; help chats past their time end.
 Schedule::call(fn () => SweepHelpRequestsAction::new()->execute())->name('sweep-help-requests')->everyMinute()->withoutOverlapping(5);
+// SCRUM-32 (TT-4.3b): safety flags nobody has acknowledged re-alert the super administrators (the delayed
+// job's backstop; nothing while the feature is off).
+Schedule::call(fn () => ReAlertSafetyFlagsAction::new()->execute())->name('realert-safety-flags')->everyFiveMinutes()
+    ->withoutOverlapping(10)->onOneServer()
+    ->onFailure(fn () => Log::error('The safety flag re-alert sweep failed.'));
 // SCRUM-33 (TT-4.4c): help chats' messages and notes are deleted a year after they ended.
 Schedule::call(fn () => PruneHelpChatTranscriptsAction::new()->execute())->name('prune-help-chat-transcripts')->dailyAt('01:45')->withoutOverlapping(60)->onOneServer()
     ->onFailure(fn () => Log::error('The help chat transcript retention sweep failed.'));

@@ -14,4 +14,17 @@ return [
 
     // A counsellor may still flag this many days after a therapy, group or help chat ended.
     'flag_window_days_after_end' => (int) env('SAFETY_FLAG_WINDOW_DAYS', 14),
+
+    // TT-4.3b: a flag nobody has acknowledged re-alerts the super administrators once, this many
+    // minutes after it was raised (by urgency). A missing or invalid value never means "never": the
+    // default is used and an error logged (SafetyFlag::realertMinutes).
+    'realert_minutes' => [
+        'IMMINENT' => env('SAFETY_REALERT_MINUTES_IMMINENT', 60),
+        'URGENT' => env('SAFETY_REALERT_MINUTES_URGENT', 240),
+        'NON_URGENT' => env('SAFETY_REALERT_MINUTES_NON_URGENT', 1440),
+    ],
+
+    // TT-4.3b: when no administrator who isn't involved can be told, this mailbox is (as well as a
+    // critical log entry). Must be set before the feature is switched on in production.
+    'fallback_mailbox' => env('SAFETY_FALLBACK_MAILBOX'),
 ];

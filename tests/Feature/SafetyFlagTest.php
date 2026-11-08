@@ -313,7 +313,7 @@ test('the demo data seeds an open imminent flag on a minor and one being handled
     (new DatabaseSeeder)->createSafetyFlagDemoData($super);
 
     $flags = SafetyFlag::query()->orderBy('id')->get();
-    expect($flags)->toHaveCount(2)
+    expect($flags)->toHaveCount(4) // TT-4.3b adds a withdrawn and a resolved one.
         ->and($flags[0]->status)->toBe(SafetyFlagStatusEnum::open)->and($flags[0]->was_minor)->toBeTrue()->and($flags[0]->had_guardian)->toBeTrue()
         ->and($flags[1]->status)->toBe(SafetyFlagStatusEnum::acknowledged)->and($flags[1]->anonymous)->toBeTrue()
         ->and((int) $flags[1]->handler_user_id)->toBe($super->id);

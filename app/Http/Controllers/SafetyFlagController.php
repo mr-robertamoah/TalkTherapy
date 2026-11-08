@@ -4,12 +4,15 @@ namespace App\Http\Controllers;
 
 use App\Actions\Safety\EnsureCanFlagClientAction;
 use App\Actions\Safety\GetFlaggableMembersAction;
+use App\Actions\Safety\GetSafetyFlagStatusesAction;
 use App\Actions\Safety\RaiseSafetyFlagAction;
 use App\Actions\Safety\SafetyFlagSubject;
+use App\Actions\Safety\WithdrawSafetyFlagAction;
 use App\Enums\SafetyFlagDiscussedEnum;
 use App\Enums\SafetyFlagUrgencyEnum;
 use App\Models\GroupTherapy;
 use App\Models\HelpRequest;
+use App\Models\SafetyFlag;
 use App\Models\Therapy;
 use App\Support\FailureResponse;
 use Illuminate\Http\Request;
@@ -46,6 +49,53 @@ class SafetyFlagController extends Controller
         try {
             return response()->json(['members' => GetFlaggableMembersAction::new()->execute($request->user(), GroupTherapy::query()->find($groupTherapyId))]);
         } catch (Throwable $th) {
+            return FailureResponse::json($th);
+        }
+    }
+
+    // TT-4.3b: the flags on a therapy, group or help chat, as its counsellors see them (status only).
+    public function statusesForTherapy(Request $request, int $therapyId)
+    {
+        return $this->statuses(fn () => GetSafetyFlagStatusesAction::new()->forTherapy($request->user(), Therapy::query()->find($therapyId)));
+    }
+
+    public function statusesForGroup(Request $request, int $groupTherapyId)
+    {
+        return $this->statuses(fn () => GetSafetyFlagStatusesAction::new()->forGroup($request->user(), GroupTherapy::query()->find($groupTherapyId)));
+    }
+
+    public function statusesForHelpChat(Request $request, int $helpRequest)
+    {
+        return $this->statuses(fn () => GetSafetyFlagStatusesAction::new()->forHelpChat($request->user(), HelpRequest::query()->find($helpRequest)));
+    }
+
+    // TT-4.3b: the counsellor who raised it withdraws it, with a reason.
+    public function withdraw(Request $request, string $flag)
+    {
+        $input = $request->validate(['reason' => ['required', 'string', 'min:5', 'max:1000']]);
+
+        try {
+            WithdrawSafetyFlagAction::new()->execute($request->user(), SafetyFlag::findPublic($flag), $input['reason']);
+
+            return response()->json(['status' => true]);
+        } catch (Throwable $th) {
+            if (FailureResponse::status($th) === 500) {
+                report($th);
+            }
+
+            return FailureResponse::json($th);
+        }
+    }
+
+    private function statuses(callable $statuses)
+    {
+        try {
+            return response()->json(['flags' => $statuses()]);
+        } catch (Throwable $th) {
+            if (FailureResponse::status($th) === 500) {
+                report($th);
+            }
+
             return FailureResponse::json($th);
         }
     }

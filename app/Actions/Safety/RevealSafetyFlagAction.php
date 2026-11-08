@@ -8,6 +8,7 @@ use App\Enums\SafetyFlagKindEnum;
 use App\Models\AdminContentAccess;
 use App\Models\GroupTherapy;
 use App\Models\SafetyFlag;
+use App\Models\SafetyFlagNote;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 
@@ -16,7 +17,8 @@ use Illuminate\Support\Facades\DB;
 // - who(): the client (for an anonymous one, the only way anyone learns who they are), where it was
 //   raised and by which counsellor;
 // - reason(): the counsellor's reason, whether they discussed it with the client, and whether
-//   emergency services were contacted.
+//   emergency services were contacted; and (TT-4.3b) the notes and actions so far, the counsellor's
+//   reason for withdrawing it, and how it was resolved.
 class RevealSafetyFlagAction extends Action
 {
     public function who(?User $admin, ?SafetyFlag $flag): array
@@ -59,6 +61,10 @@ class RevealSafetyFlagAction extends Action
             'discussedWithClient' => $flag->discussed_with_client->value,
             'emergencyServicesContacted' => $flag->emergency_services_contacted,
             'emergencyServicesNote' => $flag->emergency_services_note,
+            'withdrawnReason' => $flag->withdrawn_reason,
+            'outcome' => $flag->outcome?->label(),
+            'outcomeNote' => $flag->outcome_note,
+            'notes' => $flag->notes()->with('author')->get()->map(fn (SafetyFlagNote $note) => AddSafetyFlagNoteAction::present($note))->all(),
         ];
     }
 }

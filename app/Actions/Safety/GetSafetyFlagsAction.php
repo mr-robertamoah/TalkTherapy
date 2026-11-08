@@ -7,6 +7,7 @@ use App\Enums\SafetyFlagStatusEnum;
 use App\Enums\SafetyFlagUrgencyEnum;
 use App\Models\GroupTherapy;
 use App\Models\SafetyFlag;
+use App\Models\SafetyFlagEvent;
 use App\Models\Therapy;
 use App\Models\User;
 use App\Support\Countries;
@@ -28,8 +29,9 @@ class GetSafetyFlagsAction extends Action
         $closed = $status && ! in_array($status, [SafetyFlagStatusEnum::open, SafetyFlagStatusEnum::acknowledged], true);
 
         $flags = self::withInvolvement(SafetyFlag::query())
-            ->with('handler')
-            ->when($status, fn ($query) => $query->where('status', $status->value), fn ($query) => $query->whereOpen())
+            ->with(['handler', 'events.actor'])
+            // By default everything that still needs someone -- a flag withdrawn after it was taken on included.
+            ->when($status, fn ($query) => $query->where('status', $status->value), fn ($query) => $query->whereUnresolved())
             // Open ones: open before handled, the most urgent and then the oldest first. Closed ones: newest
             // first (devops review), so the latest are never cut off.
             ->when(! $closed, fn ($query) => $query
@@ -75,6 +77,18 @@ class GetSafetyFlagsAction extends Action
             'country' => Countries::nameOf($flag->country_code),
             'handler' => $flag->handler ? ['id' => $flag->handler->id, 'name' => $flag->handler->name] : null,
             'isMine' => $flag->isHandledBy($admin),
+            // TT-4.3b: the outcome's category (not its note), and the history -- what happened and when,
+            // never what was written. The counsellor isn't named.
+            'outcome' => $flag->outcome?->label(),
+            'history' => $flag->events->map(fn (SafetyFlagEvent $event) => [
+                'label' => $event->label(),
+                'by' => match ($event->action) {
+                    SafetyFlagEvent::RAISED, SafetyFlagEvent::WITHDRAWN => 'the counsellor',
+                    SafetyFlagEvent::REALERTED, SafetyFlagEvent::FALLBACK_ALERTED => null,
+                    default => $event->actor?->name,
+                },
+                'at' => $event->created_at?->toIso8601String(),
+            ])->all(),
         ];
     }
 

@@ -3,7 +3,6 @@
 namespace App\Actions\Safety;
 
 use App\Actions\Action;
-use App\Enums\SafetyFlagStatusEnum;
 use App\Exceptions\SafetyFlagException;
 use App\Models\SafetyFlag;
 use App\Models\SafetyFlagEvent;
@@ -30,7 +29,8 @@ class ReassignSafetyFlagAction extends Action
         }
 
         DB::transaction(function () use ($superAdmin, $flag, $to) {
-            $moved = SafetyFlag::query()->whereKey($flag->id)->where('status', SafetyFlagStatusEnum::acknowledged->value)
+            // Acknowledged, or withdrawn after someone took it on (it still needs resolving -- reviews).
+            $moved = SafetyFlag::query()->whereKey($flag->id)->whereIn('status', SafetyFlag::beingHandledStatuses())->whereNotNull('handler_user_id')
                 ->where('handler_user_id', $flag->handler_user_id)
                 ->update(['handler_user_id' => $to->id, 'updated_at' => now()]);
 

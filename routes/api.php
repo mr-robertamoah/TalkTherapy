@@ -254,6 +254,10 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/therapies/{therapyId}/safety-flags', [SafetyFlagController::class, 'storeForTherapy'])->name('api.safety_flags.therapy')->whereNumber('therapyId')->middleware('throttle:10,1,api.safety_flags.therapy');
         Route::post('/group-therapies/{groupTherapyId}/safety-flags', [SafetyFlagController::class, 'storeForGroup'])->name('api.safety_flags.group')->whereNumber('groupTherapyId')->middleware('throttle:10,1,api.safety_flags.group');
         Route::get('/group-therapies/{groupTherapyId}/safety-flag-members', [SafetyFlagController::class, 'groupMembers'])->name('api.safety_flags.group_members')->whereNumber('groupTherapyId')->middleware('throttle:30,1,api.safety_flags.group_members');
+        // TT-4.3b: the flags' status for the therapy's or group's counsellors, and withdrawing one.
+        Route::get('/therapies/{therapyId}/safety-flags', [SafetyFlagController::class, 'statusesForTherapy'])->name('api.safety_flags.therapy_statuses')->whereNumber('therapyId')->middleware('throttle:60,1,api.safety_flags.therapy_statuses');
+        Route::get('/group-therapies/{groupTherapyId}/safety-flags', [SafetyFlagController::class, 'statusesForGroup'])->name('api.safety_flags.group_statuses')->whereNumber('groupTherapyId')->middleware('throttle:60,1,api.safety_flags.group_statuses');
+        Route::post('/safety-flags/{flag}/withdraw', [SafetyFlagController::class, 'withdraw'])->name('api.safety_flags.withdraw')->where('flag', '[0-9A-Za-z]{26}')->middleware('throttle:10,1,api.safety_flags.withdraw');
     });
     // SCRUM-207/TT-2.5b: accept/reject reuse the existing generic requests.respond endpoint
     // (RespondToRequestAction's per-type dispatch already covers this type) -- only
