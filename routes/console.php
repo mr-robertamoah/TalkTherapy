@@ -8,6 +8,7 @@ use App\Actions\Discussion\FailUnheldDiscussionsAction;
 use App\Actions\Discussion\NotifyParticipantsOfStartingDiscussionsAction;
 use App\Actions\Guardianship\FindMinorsWithoutActiveGuardianAction;
 use App\Actions\Guardianship\HandleGuardianLossAction;
+use App\Actions\Help\PruneHelpChatTranscriptsAction;
 use App\Actions\Help\SweepHelpRequestsAction;
 use App\Actions\Organization\ExpireStaleCompensationRequestsAction;
 use App\Actions\Organization\SendCompensationRequestExpiryRemindersAction;
@@ -74,6 +75,9 @@ Schedule::call(fn () => NotifyParticipantsOfStartingSessionsAction::new()->execu
 Schedule::call(fn () => FailUnheldSessionsAction::new()->execute())->name('fail-unheld-sessions')->everyFourHours();
 // SCRUM-33: help requests nobody answered expire; help chats past their time end.
 Schedule::call(fn () => SweepHelpRequestsAction::new()->execute())->name('sweep-help-requests')->everyMinute()->withoutOverlapping(5);
+// SCRUM-33 (TT-4.4c): help chats' messages and notes are deleted a year after they ended.
+Schedule::call(fn () => PruneHelpChatTranscriptsAction::new()->execute())->name('prune-help-chat-transcripts')->dailyAt('01:45')->withoutOverlapping(60)->onOneServer()
+    ->onFailure(fn () => Log::error('The help chat transcript retention sweep failed.'));
 
 Schedule::call(fn () => BroadcastStartedSessionsAndDiscussionsAction::new()->execute())->name('broadcast-started-sessions-and-discussions')->everyMinute();
 

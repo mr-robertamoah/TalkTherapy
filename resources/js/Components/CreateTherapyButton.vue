@@ -1,4 +1,5 @@
 <script setup>
+import { onMounted } from "vue"
 import useModal from "@/Composables/useModal"
 import Alert from "./Alert.vue";
 import PrimaryButton from "./PrimaryButton.vue";
@@ -8,10 +9,19 @@ import GroupTherapyFormModal from "./GroupTherapyFormModal.vue";
 
 const { modalData, closeModal, showModal } = useModal()
 
-defineProps({
+const props = defineProps({
     counsellor: {
         default: null
+    },
+    // SCRUM-33 (TT-4.4c): open the individual therapy form straight away (an invitation's link).
+    openIndividualForm: {
+        type: Boolean,
+        default: false
     }
+})
+
+onMounted(() => {
+    if (props.openIndividualForm && props.counsellor) showModal('individual')
 })
 
 const emits = defineEmits(['successful'])

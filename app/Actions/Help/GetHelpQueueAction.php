@@ -4,9 +4,11 @@ namespace App\Actions\Help;
 
 use App\Actions\Action;
 use App\Enums\HelpRequestStatusEnum;
+use App\Enums\SuspensionScopeEnum;
 use App\Models\Counsellor;
 use App\Models\Guardianship;
 use App\Models\HelpRequest;
+use App\Models\Suspension;
 use App\Models\User;
 use App\Support\AdminSearch;
 use App\Support\Countries;
@@ -25,7 +27,9 @@ class GetHelpQueueAction extends Action
         $query = HelpRequest::query()
             ->where(fn ($query) => $query
                 ->whereIn('status', [HelpRequestStatusEnum::waiting->value, HelpRequestStatusEnum::connected->value])
-                ->orWhere('updated_at', '>=', now()->subDay()))
+                // TT-4.4c (QA): by when it ended -- a later change (an invitation, the retention sweep) mustn't
+                // bring an old request back into "the last day".
+                ->orWhere('ended_at', '>=', now()->subDay()))
             ->when($search, fn ($query, $term) => $query->where(fn ($query) => $query
                 ->whereHas('counsellor', fn ($query) => $query->whereName($term))))
             ->with(['user', 'counsellor.user', 'pulledCounsellor.user'])
@@ -37,9 +41,14 @@ class GetHelpQueueAction extends Action
 
         // A request the viewer is involved in isn't shown at all (security review): even "you're involved"
         // would tell a guardian their ward asked.
-        $rows = $query->get()
-            ->reject(fn (HelpRequest $request) => $request->involvesAdmin($admin, $wardIds))
-            ->map(fn (HelpRequest $request) => $this->row($request));
+        $requests = $query->get()->reject(fn (HelpRequest $request) => $request->involvesAdmin($admin, $wardIds));
+
+        // TT-4.4c: which counsellors of ended chats are suspended -- one query for "Invite", not one a row.
+        $endedCounsellorUserIds = $requests->where('status', HelpRequestStatusEnum::ended)->pluck('counsellor.user_id')->filter()->unique()->values();
+        $suspendedCounsellorUserIds = $endedCounsellorUserIds->isEmpty() ? [] : Suspension::query()->active()
+            ->covering(SuspensionScopeEnum::counsellor)->whereIn('user_id', $endedCounsellorUserIds)->pluck('user_id')->map(fn ($id) => (int) $id)->all();
+
+        $rows = $requests->map(fn (HelpRequest $request) => $this->row($request, $suspendedCounsellorUserIds));
 
         return [
             'requests' => $rows->values()->all(),
@@ -48,7 +57,7 @@ class GetHelpQueueAction extends Action
         ];
     }
 
-    private function row(HelpRequest $request): array
+    private function row(HelpRequest $request, array $suspendedCounsellorUserIds): array
     {
         $person = $request->user;
 
@@ -70,6 +79,9 @@ class GetHelpQueueAction extends Action
             'counsellor' => $request->counsellor?->getName(),
             'pulledCounsellor' => $request->pulledCounsellor?->getName(),
             'closedNote' => $request->closed_note,
+            // TT-4.4c: invited to a regular therapy with the counsellor -- or, for an ended chat, could be.
+            'invitedAt' => $request->invited_at?->toIso8601String(),
+            'canInvite' => $request->canInviteToTherapy($suspendedCounsellorUserIds),
         ];
     }
 }

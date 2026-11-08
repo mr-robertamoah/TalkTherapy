@@ -28,4 +28,9 @@ return [
     'suspended_requests_per_hour' => (int) env('HELP_SUSPENDED_REQUESTS_PER_HOUR', 1),
     // And from one network address, whoever is signed in.
     'requests_per_hour_per_address' => (int) env('HELP_REQUESTS_PER_HOUR_PER_ADDRESS', 10),
+
+    // TT-4.4c: a help chat's messages, and the person's note, are deleted this many days after it
+    // ended (the user's decision: one year). The request itself stays, without them. Under 30 (or not a
+    // number) and the nightly run is skipped with an error logged -- never a shorter retention.
+    'transcript_retention_days' => env('HELP_TRANSCRIPT_RETENTION_DAYS') ?: 365,
 ];

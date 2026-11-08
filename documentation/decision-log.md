@@ -10668,3 +10668,65 @@ therapy 18 after the last QA pass.
   - **Deferred (SCRUM-395):** an in-app notification list. The escalation's database notifications are
     stored but the app has no bell yet, so an administrator learns of an escalation by email, or from
     the queue badge if the app is open.
+
+## SCRUM-33 (TT-4.4c) — after the help chat: invitation, retention, closeout (2026-11-08)
+
+- **Invitation, not a new therapy (judgment call, within the approved plan).** "The counsellor or an
+  admin can invite the person into a regular therapy" is built as an *invitation only*: two columns on
+  the request (`invited_at`, `invited_by_id`), once per request, and a link that opens the counsellor's
+  profile with the individual-therapy form already open (`CreateTherapyButton :open-individual-form`).
+  The person then starts it through the usual form and assistance request, so payment, a minor's
+  guardian, a suspension and the counsellor's limits apply unchanged, with no second way into a
+  therapy. The architect agreed: a new `RequestTypeEnum` case would duplicate the accept path and tie a
+  counsellor to an anonymous person's identity. Nothing links the resulting therapy to the help chat,
+  so the chat is never copied and the counsellor learns who it is only if the person chooses (this
+  also means conversion can't be measured).
+- **Who and when.**
+  - The counsellor who was in the chat can invite from the chat page, at any time until its messages
+    are deleted.
+  - An administrator who isn't involved can invite from the queue, which lists ended chats for a day,
+    so administrators have a one-day window. That's deliberate: the counsellor is the main route, and
+    the administrator path is for when the counsellor asks them to.
+  - Only after an ended chat that took place.
+  - Not while the counsellor is unverified, suspended (counsellor or account) or deleted.
+  - Not while a report about the chat is open (security review).
+  - The two paths are separate. The counsellor's route answers 404 for anyone else, administrators
+    included.
+- **Wording (security review).** An administrator's invitation reads as our team's *suggestion*
+  ("You could continue with …"), never as the counsellor inviting. The person's invitation is hidden
+  once that counsellor can't take clients.
+- **Where the person sees it.** On the help chat page and by email, plus a database notification. There
+  is no notification list yet (SCRUM-395, item 9), so someone without a verified email only sees it on
+  the chat page. Accepted for now.
+- **Retention: one year (the user's decision).**
+  - **Deleted for good:** the chat's messages, the counsellor's message and session notes on it
+    (including ones already soft-deleted; reviewer and security review), the person's note, and an
+    administrator's close note (part of the content, by the user's decision).
+  - **Kept:** the request row, as the record. The help Therapy and Session rows also stay, without
+    content (existing TT-4.4a modelling).
+  - **Held back:** a chat with an open or under-review report (on its therapy, session or one of its
+    messages) is kept until the report is resolved. A report reopened after its chat was pruned has no
+    messages to look at; accepted.
+  - **Schedule:** daily at 01:45, logged, failure-logged, with a 60-minute lock.
+  - **Safety:** a retention setting that is missing a number or under 30 days skips the run with an
+    error, so a typo can never shorten the year (devops review).
+- **Anonymisation** clears the notes on a closed account's help requests. The note's text also opens the
+  chat as its first message. That message follows the chat's own one-year retention, like every other
+  message a closed account sent, which stays as from "Deleted user" (security review, noted rather than
+  changed).
+- **Administrators reading a help chat's messages** keep the existing recorded path (SCRUM-395, item 4:
+  confirmed rather than limited to super administrators). An administrator *involved* in the request
+  (they asked, are the person's guardian, or are the counsellor in it) is now refused there too
+  (security review). /privacy says so.
+- **Smaller fixes:**
+  - The on-call badge lapses on its own.
+  - A connected request without a session row still ends after `accepted_at` plus the chat length.
+  - SCRUM-395, item 5: done.
+- **QA fixes (Playwright, four browsers; approved with minor fixes):**
+  - The admin queue's "last day" now goes by when a request *ended*, not when it was last updated, so
+    an invitation or the retention sweep no longer brings an old request back into it.
+  - An administrator's invitation is confirmed first, since it emails the person and can't be taken
+    back.
+  - The person's invitation is hidden once they've asked that counsellor for a therapy (a pending
+    request, or a therapy with them).
+  - A chat whose messages were deleted no longer says "You can read it here".

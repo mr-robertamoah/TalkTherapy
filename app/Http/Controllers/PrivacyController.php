@@ -18,6 +18,8 @@ class PrivacyController extends Controller
                 'licenseRejected' => config('counsellor.license_rejected_retention_days'),
                 'nationalId' => config('counsellor.national_id_retention_days'),
                 'licenseAbandoned' => config('counsellor.license_abandoned_retention_days'),
+                // SCRUM-33 (TT-4.4c): urgent help chats.
+                'helpChat' => config('help.transcript_retention_days'),
             ],
         ]);
     }

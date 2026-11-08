@@ -560,7 +560,7 @@ See `documentation/features/scrum-113-114-389-ranking-cards-offers.md`.
 
 | Username | Password | What it is |
 |---|---|---|
-| `help_demo_user` | `password` | Akosua, an adult in Ghana with a language set. Taps **I need help now**; has one earlier help chat (ended, read-only) with Dr. Efua Help. |
+| `help_demo_user` | `password` | Akosua, an adult in Ghana with a language set. Taps **I need help now**; has one earlier help chat (ended, read-only) with Dr. Efua Help -- not yet invited, so Dr. Efua Help can **Invite to a regular therapy** from it -- and one from over a year ago whose messages the retention sweep has deleted (TT-4.4c). |
 | `help_demo_minor` | `password` | Kofi, 15: a minor's help chat is text only (audio needs a guardian's consent). |
 | `help_demo_counsellor` | `password` | Dr. Efua Help, verified and **available for urgent help** for 4 hours from seeding (switch on again from **My Dashboard → Urgent help**). |
 | `help_demo_counsellor_two` | `password` | Dr. Yaw Help, the same -- so two counsellors are rung (first to accept wins). |

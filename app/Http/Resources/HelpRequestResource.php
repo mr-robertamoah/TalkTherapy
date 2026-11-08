@@ -40,6 +40,23 @@ class HelpRequestResource extends JsonResource
             // Why not, for the chat to say: a minor needs a guardian's consent; otherwise text only.
             'audioUnavailable' => $this->was_minor ? 'minor' : 'text_only',
             'person' => $isPerson ? null : $this->summary(),
+            // TT-4.4c: the messages are gone once the retention period has passed.
+            'transcriptDeleted' => (bool) $this->transcript_deleted_at,
+            // TT-4.4c: an invitation to continue in a regular therapy with the counsellor. The person
+            // gets who to start it with; the counsellor, whether they've invited or still can.
+            'invitedAt' => $this->invited_at?->toIso8601String(),
+            // Shown only while that counsellor can still take on clients (review) -- otherwise it would lead
+            // to a profile with no way to start one -- and until the person has asked them (QA).
+            'invite' => $isPerson && $this->invited_at && $this->counsellor?->isVerified() && ! $this->counsellor->isSuspended()
+                && ! $this->resource->personAlreadyAskedCounsellor()
+                ? [
+                    'counsellorId' => $this->counsellor_id,
+                    'counsellorName' => $this->counsellor->getName(),
+                    // The counsellor sent it, or our team suggested it (worded so).
+                    'byCounsellor' => (int) $this->invited_by_id === (int) $this->counsellor->user_id,
+                ]
+                : null,
+            'canInvite' => ! $isPerson && $viewer && $this->resource->isAnsweredBy($viewer) && $this->resource->canInviteToTherapy(),
         ];
     }
 

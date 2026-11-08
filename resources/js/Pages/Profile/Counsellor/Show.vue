@@ -114,6 +114,8 @@ onMounted(() => {
         && props.counsellor.verification?.mayRequest && !props.counsellor.verification?.hasPendingRequest)
         showModal('verify')
 })
+// SCRUM-33 (TT-4.4c): an urgent help chat's invitation links here (?start=therapy) and opens the form.
+const startTherapy = new URLSearchParams(window.location.search).get('start') === 'therapy'
 const hasContact = computed(() => {
     const contactAvailable = !!(props.counsellor.phone || props.counsellor.email)
 
@@ -769,7 +771,7 @@ function closeModal() {
 
                         <div v-if="!counsellorUnavailable" class="flex justify-end mt-6 ">
 
-                            <CreateTherapyButton :counsellor="counsellor" v-if="$page.props.auth.user"/>
+                            <CreateTherapyButton :counsellor="counsellor" :open-individual-form="startTherapy && !isCounsellor" v-if="$page.props.auth.user"/>
                             <StyledLink v-else :text="'login to create a therapy'" :href="route('login')"/>
                         </div>
                     </div>
