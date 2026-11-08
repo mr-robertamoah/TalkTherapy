@@ -2,8 +2,10 @@
 
 namespace App\Notifications;
 
+use App\Contracts\ShownInNotificationCenter;
 use App\Enums\SuspensionAppealDecisionEnum;
 use App\Models\Suspension;
+use App\Support\NotificationEntry;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -11,7 +13,7 @@ use Illuminate\Notifications\Notification;
 
 // SCRUM-359: the outcome of a person's appeal, with the deciding administrator's note (never
 // their name).
-class SuspensionAppealDecidedNotification extends Notification implements ShouldQueue
+class SuspensionAppealDecidedNotification extends Notification implements ShouldQueue, ShownInNotificationCenter
 {
     use Queueable;
 
@@ -49,5 +51,13 @@ class SuspensionAppealDecidedNotification extends Notification implements Should
             'suspensionId' => $this->suspension->id,
             'decision' => $this->suspension->appeal_decision?->value,
         ];
+    }
+
+    // SCRUM-39: in the notification center.
+    public static function present(array $data): NotificationEntry
+    {
+        return ($data['decision'] ?? null) === SuspensionAppealDecisionEnum::lifted->value
+            ? new NotificationEntry('Your appeal was accepted', 'Your suspension has been lifted.')
+            : new NotificationEntry('Your appeal was not accepted', 'Your suspension stays in place.', NotificationEntry::link('suspended.show', []));
     }
 }

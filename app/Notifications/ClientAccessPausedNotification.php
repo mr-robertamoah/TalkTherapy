@@ -2,9 +2,11 @@
 
 namespace App\Notifications;
 
+use App\Contracts\ShownInNotificationCenter;
 use App\Models\GroupTherapy;
 use App\Models\Therapy;
 use App\Models\User;
+use App\Support\NotificationEntry;
 use App\Support\TherapyLink;
 use App\Support\WardRef;
 use Illuminate\Bus\Queueable;
@@ -17,7 +19,7 @@ use Illuminate\Notifications\Notification;
 // displayNameOf(), so an anonymous client stays anonymous). Nothing about the client's family.
 // SCRUM-381 (the user's decision): also to each counsellor of a group the minor belongs to -- only
 // that member is paused there; the group carries on.
-class ClientAccessPausedNotification extends Notification implements ShouldQueue
+class ClientAccessPausedNotification extends Notification implements ShouldQueue, ShownInNotificationCenter
 {
     use Queueable;
 
@@ -66,5 +68,15 @@ class ClientAccessPausedNotification extends Notification implements ShouldQueue
             'clientName' => $this->clientName,
             ...($this->wardRef ? [WardRef::KEY => $this->wardRef] : []),
         ];
+    }
+
+    // SCRUM-39: in the notification center.
+    public static function present(array $data): NotificationEntry
+    {
+        $name = NotificationEntry::text($data, 'clientName', 'A client');
+
+        return isset($data['groupTherapyId'])
+            ? new NotificationEntry("{$name}'s participation is paused", 'Until their account has a guardian again. The group carries on.', TherapyLink::fromIds($data))
+            : new NotificationEntry("{$name}'s therapy is paused", 'Paused until their account has a guardian again.', TherapyLink::fromIds($data));
     }
 }

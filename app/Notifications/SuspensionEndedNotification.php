@@ -2,8 +2,10 @@
 
 namespace App\Notifications;
 
+use App\Contracts\ShownInNotificationCenter;
 use App\Enums\SuspensionScopeEnum;
 use App\Models\Suspension;
+use App\Support\NotificationEntry;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -12,7 +14,7 @@ use Illuminate\Notifications\Notification;
 // SCRUM-359: a suspension is over -- it reached its end, or an administrator lifted it.
 // SCRUM-382: $therapyStaysPaused when the person is still a minor without an active guardian, so it
 // doesn't promise their therapy carries on (it stays paused, SCRUM-288).
-class SuspensionEndedNotification extends Notification implements ShouldQueue
+class SuspensionEndedNotification extends Notification implements ShouldQueue, ShownInNotificationCenter
 {
     use Queueable;
 
@@ -54,5 +56,11 @@ class SuspensionEndedNotification extends Notification implements ShouldQueue
             'how' => $this->how,
             ...($this->therapyStaysPaused ? ['therapyPaused' => true] : []),
         ];
+    }
+
+    // SCRUM-39: in the notification center.
+    public static function present(array $data): NotificationEntry
+    {
+        return new NotificationEntry('Your suspension has ended');
     }
 }

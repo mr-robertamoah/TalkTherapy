@@ -2,6 +2,8 @@
 
 namespace App\Notifications;
 
+use App\Contracts\ShownInNotificationCenter;
+use App\Support\NotificationEntry;
 use Carbon\CarbonInterface;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -11,7 +13,7 @@ use Illuminate\Notifications\Notification;
 // SCRUM-359: to a client whose counsellor has been suspended (or whose pending request to them was
 // declined because of it). Deliberately neutral: never says "suspended" or why. Points to the
 // next steps and to urgent help.
-class CounsellorUnavailableNotification extends Notification implements ShouldQueue
+class CounsellorUnavailableNotification extends Notification implements ShouldQueue, ShownInNotificationCenter
 {
     use Queueable;
 
@@ -59,5 +61,17 @@ class CounsellorUnavailableNotification extends Notification implements ShouldQu
             'cancelledSessions' => $this->cancelledSessions,
             'requestDeclined' => $this->requestDeclined,
         ];
+    }
+
+    // SCRUM-39: in the notification center.
+    public static function present(array $data): NotificationEntry
+    {
+        $name = NotificationEntry::text($data, 'counsellorName', 'Your counsellor');
+        $until = NotificationEntry::date($data['until'] ?? null);
+
+        $declined = ! empty($data['requestDeclined']) ? ' Your pending request to them was declined.' : '';
+        $cancelled = (int) ($data['cancelledSessions'] ?? 0) > 0 ? ' Upcoming sessions with them were cancelled.' : '';
+
+        return new NotificationEntry("{$name} is unavailable", ($until ? "Until {$until}." : 'For now.').$declined.$cancelled);
     }
 }

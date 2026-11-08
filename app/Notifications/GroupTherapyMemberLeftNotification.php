@@ -2,8 +2,10 @@
 
 namespace App\Notifications;
 
+use App\Contracts\ShownInNotificationCenter;
 use App\Models\GroupTherapy;
 use App\Models\User;
+use App\Support\NotificationEntry;
 use App\Support\TherapyLink;
 use App\Support\WardRef;
 use Illuminate\Bus\Queueable;
@@ -16,7 +18,7 @@ use Illuminate\Notifications\Notification;
 // so an anonymous member stays "Anonymous"), and never by id (SCRUM-345). The stored notice carries
 // them as an opaque WardRef, so anonymising their closed account can replace $memberName in it
 // (AnonymiseClosedAccountAction).
-class GroupTherapyMemberLeftNotification extends Notification implements ShouldQueue
+class GroupTherapyMemberLeftNotification extends Notification implements ShouldQueue, ShownInNotificationCenter
 {
     use Queueable;
 
@@ -51,5 +53,13 @@ class GroupTherapyMemberLeftNotification extends Notification implements ShouldQ
             'memberName' => $this->memberName,
             WardRef::KEY => $this->wardRef,
         ];
+    }
+
+    // SCRUM-39: in the notification center.
+    public static function present(array $data): NotificationEntry
+    {
+        $name = NotificationEntry::text($data, 'memberName', 'A member');
+
+        return new NotificationEntry("{$name} left your group", 'Their place is free for someone else.', TherapyLink::fromIds($data));
     }
 }

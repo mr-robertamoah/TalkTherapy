@@ -2,6 +2,8 @@
 
 namespace App\Notifications;
 
+use App\Contracts\ShownInNotificationCenter;
+use App\Support\NotificationEntry;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Notification;
@@ -9,7 +11,7 @@ use Illuminate\Notifications\Notification;
 // SCRUM-32 (TT-4.3c): the neutral notice to the person a safety flag is about -- in the app only (never by
 // email: the user's decision), shown as a notice they dismiss (GetSafetyNoticeAction). Nothing about the
 // flag: no reason, counsellor, therapy, or that a flag exists. The wording is pending the legal read.
-class SafetyNoticeNotification extends Notification implements ShouldQueue
+class SafetyNoticeNotification extends Notification implements ShouldQueue, ShownInNotificationCenter
 {
     use Queueable;
 
@@ -39,5 +41,11 @@ class SafetyNoticeNotification extends Notification implements ShouldQueue
     public function toArray(object $notifiable): array
     {
         return ['type' => 'safety.notice'];
+    }
+
+    // SCRUM-39: in the notification center.
+    public static function present(array $data): NotificationEntry
+    {
+        return new NotificationEntry('A message from TalkTherapy', self::message($data));
     }
 }

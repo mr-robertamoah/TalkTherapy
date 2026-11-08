@@ -2,7 +2,10 @@
 
 namespace App\Notifications;
 
+use App\Contracts\SentOnlyToSuperAdministrators;
+use App\Contracts\ShownInNotificationCenter;
 use App\Models\SafeguardingException;
+use App\Support\NotificationEntry;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -10,7 +13,7 @@ use Illuminate\Notifications\Notification;
 
 // SCRUM-381: to the super administrators, three days before a safeguarding exception runs out. No
 // name and no reason by email -- those stay behind the admin page.
-class SafeguardingExceptionEndingSoonNotification extends Notification implements ShouldQueue
+class SafeguardingExceptionEndingSoonNotification extends Notification implements SentOnlyToSuperAdministrators, ShouldQueue, ShownInNotificationCenter
 {
     use Queueable;
 
@@ -39,5 +42,13 @@ class SafeguardingExceptionEndingSoonNotification extends Notification implement
             'safeguardingExceptionId' => $this->exception->id,
             'endsAt' => $this->exception->ends_at->toJSON(),
         ];
+    }
+
+    // SCRUM-39: in the notification center.
+    public static function present(array $data): NotificationEntry
+    {
+        $date = NotificationEntry::date($data['endsAt'] ?? null);
+
+        return new NotificationEntry('A safeguarding exception ends soon', $date ? "It ends on {$date}." : '', NotificationEntry::link('administrator.safeguarding_exceptions', []));
     }
 }

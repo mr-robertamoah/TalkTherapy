@@ -2,10 +2,12 @@
 
 namespace App\Notifications;
 
+use App\Contracts\ShownInNotificationCenter;
 use App\Models\GroupTherapy;
 use App\Models\SafeguardingException;
 use App\Models\Therapy;
 use App\Models\User;
+use App\Support\NotificationEntry;
 use App\Support\TherapyLink;
 use App\Support\WardRef;
 use Carbon\CarbonInterface;
@@ -20,7 +22,7 @@ use Illuminate\Notifications\Notification;
 // anonymous client stays anonymous). Nothing about the client's family.
 // SCRUM-381: also to each counsellor of a group the minor belongs to, and with $continuesUntil when
 // a safeguarding exception lets them carry on until then (never its reason).
-class ClientAccessResumedNotification extends Notification implements ShouldQueue
+class ClientAccessResumedNotification extends Notification implements ShouldQueue, ShownInNotificationCenter
 {
     use Queueable;
 
@@ -70,5 +72,14 @@ class ClientAccessResumedNotification extends Notification implements ShouldQueu
             WardRef::KEY => $this->wardRef,
             'continuesUntil' => $this->continuesUntil?->toJSON(),
         ]);
+    }
+
+    // SCRUM-39: in the notification center.
+    public static function present(array $data): NotificationEntry
+    {
+        $name = NotificationEntry::text($data, 'clientName', 'A client');
+        $until = NotificationEntry::date($data['continuesUntil'] ?? null);
+
+        return new NotificationEntry("{$name} can take part again", $until ? "For now, until {$until}." : '', TherapyLink::fromIds($data));
     }
 }

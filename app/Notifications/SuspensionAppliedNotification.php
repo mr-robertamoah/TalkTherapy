@@ -2,8 +2,10 @@
 
 namespace App\Notifications;
 
+use App\Contracts\ShownInNotificationCenter;
 use App\Enums\SuspensionScopeEnum;
 use App\Models\Suspension;
+use App\Support\NotificationEntry;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -12,7 +14,7 @@ use Illuminate\Notifications\Notification;
 // SCRUM-359: tells a person they have been suspended -- what it covers, until when, the reason
 // written for them and how to appeal. Never names the reporter or the administrator. Mailed when
 // the address is verified; always kept in-app.
-class SuspensionAppliedNotification extends Notification implements ShouldQueue
+class SuspensionAppliedNotification extends Notification implements ShouldQueue, ShownInNotificationCenter
 {
     use Queueable;
 
@@ -57,5 +59,11 @@ class SuspensionAppliedNotification extends Notification implements ShouldQueue
     public static function until(Suspension $suspension): string
     {
         return $suspension->ends_at ? $suspension->ends_at->toDayDateTimeString().' (UTC)' : 'when an administrator lifts it';
+    }
+
+    // SCRUM-39: in the notification center.
+    public static function present(array $data): NotificationEntry
+    {
+        return new NotificationEntry('You have been suspended', 'The reason and how to appeal are on your suspension page.', NotificationEntry::link('suspended.show', []));
     }
 }

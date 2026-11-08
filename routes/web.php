@@ -22,6 +22,7 @@ use App\Http\Controllers\HelpController;
 use App\Http\Controllers\HelpRequestController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\LinkController;
+use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\OrganizationAdminController;
 use App\Http\Controllers\OrganizationController;
 use App\Http\Controllers\OrganizationCounsellorCompensationController;
@@ -101,6 +102,14 @@ Route::get('/posts/{postId}', [PostController::class, 'getPost'])->name('posts.g
 
 // SCRUM-33: the "I need help now" dialog's emergency numbers -- for everyone, signed in or not.
 Route::get('/help/emergency-numbers', [HelpController::class, 'emergencyNumbers'])->name('help.emergency_numbers')->middleware('throttle:60,1,help.emergency_numbers');
+
+// SCRUM-39: the notification center (JSON). Not open to a suspended account.
+Route::middleware('auth')->prefix('notifications')->name('notifications.')->group(function () {
+    Route::get('/', [NotificationController::class, 'index'])->name('index')->middleware('throttle:60,1,notifications.index');
+    Route::get('/count', [NotificationController::class, 'count'])->name('count')->middleware('throttle:120,1,notifications.count');
+    Route::post('/read-all', [NotificationController::class, 'readAll'])->name('read_all')->middleware('throttle:30,1,notifications.read_all');
+    Route::post('/{notification}/read', [NotificationController::class, 'read'])->name('read')->whereUuid('notification')->middleware('throttle:60,1,notifications.read');
+});
 
 // SCRUM-32 (TT-4.3c): the signed-in person's persistent safety notice (open to a suspended account too).
 Route::middleware(['auth', 'safety_flags'])->group(function () {

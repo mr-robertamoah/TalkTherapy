@@ -2,6 +2,8 @@
 
 namespace App\Notifications;
 
+use App\Contracts\ShownInNotificationCenter;
+use App\Support\NotificationEntry;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -9,7 +11,7 @@ use Illuminate\Notifications\Notification;
 
 // SCRUM-33 (TT-4.4c): to the person who asked for urgent help -- the counsellor they spoke with invites
 // them to continue in a regular therapy. Nothing from the chat itself.
-class HelpTherapyInviteNotification extends Notification implements ShouldQueue
+class HelpTherapyInviteNotification extends Notification implements ShouldQueue, ShownInNotificationCenter
 {
     use Queueable;
 
@@ -45,5 +47,17 @@ class HelpTherapyInviteNotification extends Notification implements ShouldQueue
             'counsellorName' => $this->counsellorName,
             'byCounsellor' => $this->byCounsellor,
         ];
+    }
+
+    // SCRUM-39: in the notification center.
+    public static function present(array $data): NotificationEntry
+    {
+        $name = NotificationEntry::text($data, 'counsellorName', 'A counsellor');
+
+        return new NotificationEntry(
+            ! empty($data['byCounsellor']) ? 'An invitation to continue with a counsellor' : 'A suggestion to continue with a counsellor',
+            "To continue with {$name} in a regular therapy. It's up to you.",
+            NotificationEntry::link('help.chat', ['helpRequest' => $data['helpRequestId'] ?? null]),
+        );
     }
 }

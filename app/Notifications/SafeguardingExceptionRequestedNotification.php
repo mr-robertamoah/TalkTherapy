@@ -2,7 +2,10 @@
 
 namespace App\Notifications;
 
+use App\Contracts\SentOnlyToSuperAdministrators;
+use App\Contracts\ShownInNotificationCenter;
 use App\Models\Request;
+use App\Support\NotificationEntry;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -10,7 +13,7 @@ use Illuminate\Notifications\Notification;
 
 // SCRUM-381: to the super administrators, when a counsellor asks for a safeguarding exception for a
 // paused client. No name and no reason by email -- those stay behind the admin page.
-class SafeguardingExceptionRequestedNotification extends Notification implements ShouldQueue
+class SafeguardingExceptionRequestedNotification extends Notification implements SentOnlyToSuperAdministrators, ShouldQueue, ShownInNotificationCenter
 {
     use Queueable;
 
@@ -35,5 +38,11 @@ class SafeguardingExceptionRequestedNotification extends Notification implements
     public function toArray(object $notifiable): array
     {
         return ['type' => 'safeguarding_exception.requested', 'requestId' => $this->request->id];
+    }
+
+    // SCRUM-39: in the notification center.
+    public static function present(array $data): NotificationEntry
+    {
+        return new NotificationEntry('A safeguarding exception was requested', 'A counsellor asked for one for a client whose therapy is paused.', NotificationEntry::link('administrator.safeguarding_exceptions', []));
     }
 }
