@@ -553,3 +553,23 @@ See `documentation/features/scrum-31-counsellor-verification-renewal.md`.
 "(offer waiting)" one), and sent a request from `discovery_demo_client`; a reseed restores them.
 
 See `documentation/features/scrum-113-114-389-ranking-cards-offers.md`.
+
+### Quick help chat (SCRUM-33)
+
+`DatabaseSeeder::createHelpDemoData()` (after the discovery accounts):
+
+| Username | Password | What it is |
+|---|---|---|
+| `help_demo_user` | `password` | Akosua, an adult in Ghana with a language set. Taps **I need help now**; has one earlier help chat (ended, read-only) with Dr. Efua Help. |
+| `help_demo_minor` | `password` | Kofi, 15: a minor's help chat is text only (audio needs a guardian's consent). |
+| `help_demo_counsellor` | `password` | Dr. Efua Help, verified and **available for urgent help** for 4 hours from seeding (switch on again from **My Dashboard → Urgent help**). |
+| `help_demo_counsellor_two` | `password` | Dr. Yaw Help, the same -- so two counsellors are rung (first to accept wins). |
+
+Outside production only: a clearly fake Ghana emergency number, "TEST ONLY - not a real number" (0000).
+Replace it with Ghana's verified number(s) in **Administration → Emergency numbers** before release.
+
+**Local database top-up (2026-11-08):** added with the seeder's method in tinker (as `www-data`).
+Browser QA then had `help_demo_user` ask and chat with `help_demo_counsellor` (ended); a reseed
+restores them.
+
+See `documentation/features/scrum-33a-help-chat-core.md`.
