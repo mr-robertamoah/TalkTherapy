@@ -138,6 +138,10 @@ See "Common commands" in `CLAUDE.md`.
   `RingAvailableCounsellorsAction::{mayAnswer, ringingFor}`; don't re-derive it. An admin
   "involved" in a request (`HelpRequest::involvesAdmin`) never sees it, and every status change
   calls `HelpBroadcast::queueChanged`.
+  After the chat (TT-4.4c): "invite to a regular therapy" is only an invitation; the person goes
+  through the normal therapy form/request (`HelpRequest::canInviteToTherapy`). Help chats are deleted a
+  year after ending (`PruneHelpChatTranscriptsAction`, held while `HelpRequest::hasOpenReport`). Any
+  new place that stores help-chat content (attachments, notes) must also be cleaned up there.
 
 ## Current Sprint Goals
 
