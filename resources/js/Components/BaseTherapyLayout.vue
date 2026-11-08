@@ -143,6 +143,12 @@
         <TherapyPausedBanner :viewer-paused="!!computedTherapy.viewerAccessPaused" :therapy="computedTherapy" :therapy-type="therapyType" />
       </div>
 
+      <!-- SCRUM-32: its counsellors can raise a safety flag (only while the server says they may: the feature is
+           on, and the therapy is going or ended recently). -->
+      <div v-if="computedIsCounsellor && computedTherapy.canRaiseSafetyFlag" class="max-w-7xl mx-auto sm:px-6 lg:px-8 mt-4">
+        <SafetyFlagPanel :therapy-id="computedTherapy.id" :is-group="therapyType === 'group'" :client-name="therapyType === 'group' ? '' : (computedTherapy.user?.fullName ?? '')" />
+      </div>
+
       <!-- Therapy Actions -->
       <TherapyActions
         v-if="computedIsParticipant"
@@ -176,6 +182,7 @@ import HelpButton from '@/Components/HelpButton.vue'
 import PrimaryButton from '@/Components/PrimaryButton.vue'
 import SecondaryButton from '@/Components/SecondaryButton.vue'
 import TherapyPausedBanner from '@/Components/TherapyPausedBanner.vue'
+import SafetyFlagPanel from '@/Components/Safety/SafetyFlagPanel.vue'
 import TherapyActiveHeader from '@/Components/TherapyActiveHeader.vue'
 import TherapyRecentSections from '@/Components/TherapyRecentSections.vue'
 import TherapyDiscussions from '@/Components/TherapyDiscussions.vue'

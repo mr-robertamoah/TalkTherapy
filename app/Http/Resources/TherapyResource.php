@@ -3,6 +3,7 @@
 namespace App\Http\Resources;
 
 use App\Actions\Organization\GetRetainerCoveringOrganizationAction;
+use App\Actions\Safety\EnsureCanFlagClientAction;
 use App\Actions\VideoConsent\GetCurrentValidVideoConsentForTherapyAction;
 use App\Actions\VideoConsent\GetWardForVideoConsentableAction;
 use App\Enums\ConstantsEnum;
@@ -116,6 +117,12 @@ class TherapyResource extends JsonResource
             // SCRUM-381: only for that counsellor, while their client is paused -- whether a request
             // for a safeguarding exception is already waiting for the super administrator.
             'safeguardingExceptionRequested' => $this->when($pause['client'] === true, fn () => $this->requests()->pendingSafeguardingException()->exists()),
+            // SCRUM-32: only for its counsellor, and only while the feature is on -- whether they can raise a
+            // safety flag here now (the client's resource never has the key).
+            'canRaiseSafetyFlag' => $this->when(
+                config('safety.enabled') && $user?->counsellor && (int) $this->counsellor_id === (int) $user->counsellor->id,
+                fn () => EnsureCanFlagClientAction::new()->canFlag(fn (EnsureCanFlagClientAction $can) => $can->forTherapy($user, $this->resource)),
+            ),
             // SCRUM-384: the request form's limit, from the model rather than a copy in the UI.
             'safeguardingExceptionMaxDays' => $this->when($pause['client'] === true, SafeguardingException::MAX_DAYS),
         ];
