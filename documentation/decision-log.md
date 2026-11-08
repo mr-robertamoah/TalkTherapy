@@ -10954,3 +10954,92 @@ therapy 18 after the last QA pass.
   handler's list, the withdrawal email carries no reason, and re-alerts reach only uninvolved super
   administrators.
 
+
+## SCRUM-32 (TT-4.3c) — the client's and guardians' notices: the user's answers (2026-11-08)
+
+- **After an administrator acknowledges a flag,** the handler chooses: **send the notices now, or hold
+  them** for a recorded safety reason. If they do neither, the notices go out automatically at the
+  flag's re-alert time after acknowledgement (1h / 4h / 24h by urgency). Before anyone acknowledges,
+  they go out automatically at the re-alert time after the flag was raised, as already decided.
+- **When the counsellor withdraws a flag:**
+  - **Before anyone acknowledged it:** its unsent notices are cancelled and never sent.
+  - **After acknowledgement:** the notices stay pending, and the handler still decides (send, or
+    withhold with a reason) before resolving.
+- **Implementation (TT-4.3c):**
+  - **One send path** (`SendSafetyFlagNoticeAction`) for the handler, the sweep and the guardians:
+    - it claims the notice (pending or held → sent) with a conditional update, and releases it if
+      sending fails;
+    - the guardians are the person's active guardians at sending time (none: recorded as sent to 0);
+    - the history records who sent it, or that it went automatically.
+  - **Automatic sending** happens only for flags that are open (from raising) or acknowledged (from
+    acknowledging). A held notice, or one on a flag withdrawn after acknowledgement, waits for the
+    handler.
+  - **The client's notice is a database notification** shown by a persistent dialog at the app root
+    (`SafetyNotice.vue`, through `GetSafetyNoticeAction`). It returns a fixed projection (id, kind,
+    message), never the notification row, so the WardRef stays on the server.
+  - **The guardians' notice** is a database notification plus an email naming only the ward. Its
+    `wardName` is renamed on anonymisation, like the other notices that name a person.
+  - **A counsellor's safeguarding reason** puts the guardians' notice in "held". The history and
+    **Show the reason** say whose reason it is.
+  - **Anonymisation** clears `SafetyFlag::FREE_TEXT` and the notes' content (the trigger allows exactly
+    that).
+  - **The help-chat prune** keeps a chat while `HelpRequest::hasUnresolvedSafetyFlag()` is true, using
+    the same "unresolved" rule as the admin list.
+- **Review fixes (reviewer, security, architect, devops; blockers: the sweep race and Pint):**
+  - **The sweep can no longer send a notice the handler has just held,** or one on a flag withdrawn a
+    moment before (found by three reviewers). The claim checks the state, the flag's status and the due
+    time in the same UPDATE (`SafetyFlag::scopeWhereNoticesDue`, the one rule shared with
+    `noticesDueAt`):
+    - automatic sends claim `pending` only;
+    - the handler claims `held` or `pending`.
+
+    A failed queueing releases the claim to the state actually claimed, and only if it's still `sent`.
+    After some recipients it stays sent (at least once; a guardian may get a second copy).
+  - **Every hold or withhold reason is its own encrypted note** (`NOTICE_P` / `NOTICE_G`) with its
+    author, and its event points at it.
+    - Nothing overwrites another reason, so the counsellor's safeguarding reason is kept even after the
+      handler sends or withholds.
+    - The counsellor's hold is in the history as "by the counsellor", never their name. Who an event
+      shows as is one rule, `SafetyFlagEvent::shownBy()`.
+    - The old reason columns are no longer written (they stay in `FREE_TEXT`).
+  - **"Sent" means someone was told.** A new `NO_RECIPIENT` state covers a closed account, a person who
+    has turned 18 since (re-checked at sending time, security review), or no active guardian. A guardian
+    notice also checks, at delivery, that the ward hasn't been closed meanwhile.
+  - **Closing the person's account cancels their waiting notices.**
+  - **The person's notice:**
+    - Escape or a click outside only puts it aside; only "I've read this" dismisses it.
+    - It is checked again on every page visit, since it sits outside the Inertia page.
+    - It reads through the user's guarded notifications.
+    - Its wording lives on the notification classes, one place for the legal read.
+  - **Failed-job alerts** never name a safety notification or show its error (which could carry a
+    guardian's address); those details stay in the server log.
+  - **Smaller:**
+    - a waiting notice on a flag withdrawn after acknowledgement reads "Waiting for the handling
+      administrator to decide";
+    - the sweep broadcasts only when something went, and one flag failing doesn't stop the rest;
+    - buttons are disabled while a decision is sent;
+    - the seeded history matches the seeded notices.
+- **Decided and recorded:**
+  - **Handing a flag on doesn't restart the notices' clock.** The notices are about the person, not the
+    administrator, and the new handler can hold them.
+  - **For SCRUM-395 (the notification list):** "dismissed" is `read_at`. The list must never mark these
+    two notice types read on its own; it shows them through each class's `message()`.
+  - **For the legal read:** /privacy says a guardian "may be asked to check in" when a counsellor raises a
+    safety concern. A guardian who reads that can infer the minor saw a counsellor (security review). The
+    wording is part of the legal read.
+- **Playwright closeout (seven browser contexts): conditionally approved, conditions now fixed.**
+  - Every administrator who sees a flag now sees where its notices stand (no reasons), not only its
+    handler. "Cancelled", "Sent" and "Withheld" were hidden on rows nobody was handling.
+  - /privacy's help-chat retention line now says an unresolved safety concern also keeps the chat.
+  - **Smaller:**
+    - hold and withhold reasons are told apart ("Why the notice … was held / withheld");
+    - a decision's reason appears in the open panel straight away;
+    - the history reads "Unsent notices cancelled";
+    - the notice is fetched once on page load.
+  - Confirmed in the browser:
+    - the one-open-flag rule;
+    - the resolve gate;
+    - the counsellor masked in the history;
+    - the neutral, in-app-only notice to the person, which comes back after Escape until it's read;
+    - the guardian's dialog and email naming only the ward;
+    - notices cancelled on an early withdrawal.

@@ -584,7 +584,7 @@ Counsellors' safety flags. The feature is **off by default**: set `SAFETY_FLAGS_
 |---|---|---|
 | `safety_demo_counsellor` | `password` | Dr. Esi Safety, verified. Counsels the three below and raises flags from their therapies and group. |
 | `safety_demo_minor` | `password` | Kwame, 15, in "Safety Flag Demo Therapy". Has an **open imminent** flag nobody has acknowledged yet, and an earlier **resolved** one (TT-4.3b). |
-| `safety_demo_guardian` | `password` | Abena, the minor's guardian. |
+| `safety_demo_guardian` | `password` | Abena, the minor's guardian. Receives a "please check in with Kwame" notice when an administrator sends it, or when it goes out automatically (TT-4.3c). |
 | `safety_demo_member` | `password` | Yaa, an anonymous member of "Safety Flag Demo Group". Has an **urgent** flag `suspension_demo_admin` is handling. |
 | `safety_demo_client` | `password` | Kojo, an adult in "Safety Flag Demo (raise one)". No open flag, so you can raise one. A **withdrawn** flag is already there (TT-4.3b). |
 
