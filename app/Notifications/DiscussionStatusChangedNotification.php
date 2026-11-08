@@ -2,15 +2,17 @@
 
 namespace App\Notifications;
 
+use App\Contracts\ShownInNotificationCenter;
 use App\Enums\DiscussionStatusEnum;
 use App\Models\Counsellor;
 use App\Models\Discussion;
+use App\Support\NotificationEntry;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
-class DiscussionStatusChangedNotification extends Notification implements ShouldQueue
+class DiscussionStatusChangedNotification extends Notification implements ShouldQueue, ShownInNotificationCenter
 {
     use Queueable;
 
@@ -31,9 +33,10 @@ class DiscussionStatusChangedNotification extends Notification implements Should
     {
         $via = ['database'];
 
-        if ($notifiable->email_verified_at)
+        if ($notifiable->email_verified_at) {
             $via[] = 'mail';
-        
+        }
+
         return $via;
     }
 
@@ -44,7 +47,7 @@ class DiscussionStatusChangedNotification extends Notification implements Should
     {
         [$type, $url] = $this->discussion->getNotificationActionData();
         $name = $notifiable::class == Counsellor::class ? $notifiable->getName() : $notifiable->name;
-        
+
         return (new MailMessage)
             ->success()
             ->subject("'{$this->discussion->name}' Discussion")
@@ -58,11 +61,11 @@ class DiscussionStatusChangedNotification extends Notification implements Should
     private function getDiscussionText()
     {
         return match ($this->discussion->status) {
-            DiscussionStatusEnum::abandoned->value => "has been abandoned. The counsellor who created the discussion has ended before its end time.",
-            DiscussionStatusEnum::in_session->value => "has started.",
-            DiscussionStatusEnum::held->value => "has ended.",
-            DiscussionStatusEnum::failed->value => "has been failed. Meaning it did not take place.",
-            default => "is currently pending.",
+            DiscussionStatusEnum::abandoned->value => 'has been abandoned. The counsellor who created the discussion has ended before its end time.',
+            DiscussionStatusEnum::in_session->value => 'has started.',
+            DiscussionStatusEnum::held->value => 'has ended.',
+            DiscussionStatusEnum::failed->value => 'has been failed. Meaning it did not take place.',
+            default => 'is currently pending.',
         };
     }
 
@@ -74,7 +77,13 @@ class DiscussionStatusChangedNotification extends Notification implements Should
     public function toArray(object $notifiable): array
     {
         return [
-            'discussion_id' => $this->discussion->id
+            'discussion_id' => $this->discussion->id,
         ];
+    }
+
+    // SCRUM-39 (TT-5.4b): in the notification center -- from the saved ids only, never more than the email.
+    public static function present(array $data): NotificationEntry
+    {
+        return new NotificationEntry("A discussion's status changed", '', NotificationEntry::link('discussions.chat', ['discussionId' => $data['discussion_id'] ?? null]));
     }
 }

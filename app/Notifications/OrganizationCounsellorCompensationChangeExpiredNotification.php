@@ -2,8 +2,10 @@
 
 namespace App\Notifications;
 
+use App\Contracts\ShownInNotificationCenter;
 use App\Models\Counsellor;
 use App\Models\Request;
+use App\Support\NotificationEntry;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -11,7 +13,7 @@ use Illuminate\Notifications\Notification;
 
 // SCRUM-149 (TT-6.4c): sent when a pending compensation-change request auto-expires unanswered,
 // to whoever it was addressed `to` at the moment it expired.
-class OrganizationCounsellorCompensationChangeExpiredNotification extends Notification implements ShouldQueue
+class OrganizationCounsellorCompensationChangeExpiredNotification extends Notification implements ShouldQueue, ShownInNotificationCenter
 {
     use Queueable;
 
@@ -61,5 +63,11 @@ class OrganizationCounsellorCompensationChangeExpiredNotification extends Notifi
     private function notifiableName(object $notifiable): string
     {
         return $notifiable instanceof Counsellor ? $notifiable->getName() : $notifiable->name;
+    }
+
+    // SCRUM-39 (TT-5.4b): in the notification center -- from the saved ids only, never more than the email.
+    public static function present(array $data): NotificationEntry
+    {
+        return new NotificationEntry('A compensation negotiation expired', 'Any existing terms are unchanged.', NotificationEntry::link('organizations.mine.dashboard', []));
     }
 }

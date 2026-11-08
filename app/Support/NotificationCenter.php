@@ -7,55 +7,14 @@ use App\Contracts\ShownInNotificationCenter;
 use App\Models\Counsellor;
 use App\Models\DatabaseNotification;
 use App\Models\User;
-use App\Notifications\AgeVerificationRequestApprovedNotification;
-use App\Notifications\AgeVerificationRequestRejectedNotification;
 use App\Notifications\CounsellorVerificationEndingAdminNotification;
-use App\Notifications\DiscussionDeletedNotification;
-use App\Notifications\DiscussionDueNotification;
-use App\Notifications\DiscussionInclusionNotification;
-use App\Notifications\DiscussionRequestNotification;
-use App\Notifications\DiscussionStatusChangedNotification;
-use App\Notifications\DiscussionUpdatedNotification;
-use App\Notifications\DobChangeRequestApprovedNotification;
-use App\Notifications\DobChangeRequestRejectedNotification;
-use App\Notifications\DobChangeRequestSupersededNotification;
-use App\Notifications\GroupTherapyCounsellorLinkUsedNotification;
-use App\Notifications\GroupTherapyMemberJoinedGuardianNotification;
-use App\Notifications\GroupTherapyMembershipRequestAcceptedNotification;
-use App\Notifications\GroupTherapyMembershipRequestRejectedNotification;
-use App\Notifications\GuardianshipEstablishedNotification;
-use App\Notifications\GuardianshipRemovedNotification;
-use App\Notifications\GuardianshipRequestNotification;
-use App\Notifications\GuardianVideoConsentReminderNotification;
 use App\Notifications\HelpRequestWaitingNotification;
-use App\Notifications\OrganizationCounsellorCompensationChangeAcceptedNotification;
-use App\Notifications\OrganizationCounsellorCompensationChangeExpiredNotification;
-use App\Notifications\OrganizationCounsellorCompensationChangeExpiryReminderNotification;
-use App\Notifications\OrganizationCounsellorCompensationChangeProposedNotification;
-use App\Notifications\OrganizationCounsellorCompensationChangeRejectedNotification;
-use App\Notifications\OrganizationFinancedTransactionRefundedNotification;
-use App\Notifications\RefundFailedNotification;
-use App\Notifications\RefundRequestRejectedNotification;
-use App\Notifications\RefundSucceededNotification;
-use App\Notifications\ReportClosedNotification;
 use App\Notifications\SafeguardingExceptionEndingSoonNotification;
 use App\Notifications\SafeguardingExceptionRequestedNotification;
 use App\Notifications\SafetyFlagRaisedNotification;
 use App\Notifications\SafetyFlagReAlertNotification;
 use App\Notifications\SafetyFlagWithdrawnNotification;
-use App\Notifications\SessionCreatedNotification;
-use App\Notifications\SessionDeletedNotification;
-use App\Notifications\SessionDueNotification;
-use App\Notifications\SessionScheduleProposalAcceptedNotification;
-use App\Notifications\SessionScheduleProposalRejectedNotification;
-use App\Notifications\SessionScheduleProposedNotification;
-use App\Notifications\SessionUpdatedNotification;
 use App\Notifications\SuspensionAppealSubmittedNotification;
-use App\Notifications\TherapyAssistanceLinkNotification;
-use App\Notifications\TherapyAssistanceRequestAcceptedGuardianNotification;
-use App\Notifications\TherapyAssistanceRequestAcceptedNotification;
-use App\Notifications\TherapyContinuationNotification;
-use App\Notifications\TherapyCreatedNotification;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Log;
 
@@ -143,7 +102,7 @@ final class NotificationCenter
 
         if (! $entry) {
             // Once per type per process, not once per row on every list load (review).
-            if (! in_array($type, self::PENDING_WORDING, true) && ! isset(self::$warned[$type])) {
+            if (! isset(self::$warned[$type])) {
                 self::$warned[$type] = true;
                 Log::warning('A notification has nothing for the notification center to show.', ['notification' => $notification->id]);
             }
@@ -162,50 +121,4 @@ final class NotificationCenter
             'safetyNotice' => in_array($type, self::NEVER_MARKED_BY_LIST, true),
         ];
     }
-
-    // TT-5.4b: classes that store only ids and get their wording there. Until then they show generically,
-    // without a warning each time. Emptied by TT-5.4b (a test keeps the rest honest).
-    public const PENDING_WORDING = [
-        AgeVerificationRequestApprovedNotification::class,
-        AgeVerificationRequestRejectedNotification::class,
-        DiscussionDeletedNotification::class,
-        DiscussionDueNotification::class,
-        DiscussionInclusionNotification::class,
-        DiscussionRequestNotification::class,
-        DiscussionStatusChangedNotification::class,
-        DiscussionUpdatedNotification::class,
-        DobChangeRequestApprovedNotification::class,
-        DobChangeRequestRejectedNotification::class,
-        DobChangeRequestSupersededNotification::class,
-        GroupTherapyCounsellorLinkUsedNotification::class,
-        GroupTherapyMemberJoinedGuardianNotification::class,
-        GroupTherapyMembershipRequestAcceptedNotification::class,
-        GroupTherapyMembershipRequestRejectedNotification::class,
-        GuardianshipEstablishedNotification::class,
-        GuardianshipRemovedNotification::class,
-        GuardianshipRequestNotification::class,
-        GuardianVideoConsentReminderNotification::class,
-        OrganizationCounsellorCompensationChangeAcceptedNotification::class,
-        OrganizationCounsellorCompensationChangeExpiredNotification::class,
-        OrganizationCounsellorCompensationChangeExpiryReminderNotification::class,
-        OrganizationCounsellorCompensationChangeProposedNotification::class,
-        OrganizationCounsellorCompensationChangeRejectedNotification::class,
-        OrganizationFinancedTransactionRefundedNotification::class,
-        RefundFailedNotification::class,
-        RefundRequestRejectedNotification::class,
-        RefundSucceededNotification::class,
-        ReportClosedNotification::class,
-        SessionCreatedNotification::class,
-        SessionDeletedNotification::class,
-        SessionDueNotification::class,
-        SessionScheduleProposalAcceptedNotification::class,
-        SessionScheduleProposalRejectedNotification::class,
-        SessionScheduleProposedNotification::class,
-        SessionUpdatedNotification::class,
-        TherapyAssistanceLinkNotification::class,
-        TherapyAssistanceRequestAcceptedGuardianNotification::class,
-        TherapyAssistanceRequestAcceptedNotification::class,
-        TherapyContinuationNotification::class,
-        TherapyCreatedNotification::class,
-    ];
 }

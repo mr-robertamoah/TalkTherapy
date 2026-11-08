@@ -2,14 +2,16 @@
 
 namespace App\Notifications;
 
+use App\Contracts\ShownInNotificationCenter;
 use App\Models\User;
+use App\Support\NotificationEntry;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\BroadcastMessage;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
-class GuardianshipRequestNotification extends Notification implements ShouldQueue
+class GuardianshipRequestNotification extends Notification implements ShouldQueue, ShownInNotificationCenter
 {
     use Queueable;
 
@@ -80,5 +82,11 @@ class GuardianshipRequestNotification extends Notification implements ShouldQueu
     public function broadcastType(): string
     {
         return 'user.guardianship';
+    }
+
+    // SCRUM-39 (TT-5.4b): in the notification center -- from the saved ids only, never more than the email.
+    public static function present(array $data): NotificationEntry
+    {
+        return new NotificationEntry('Someone asked you to be their guardian', 'You can respond from your pending requests.', NotificationEntry::link('home', []));
     }
 }

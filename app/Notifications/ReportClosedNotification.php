@@ -2,8 +2,10 @@
 
 namespace App\Notifications;
 
+use App\Contracts\ShownInNotificationCenter;
 use App\Enums\ReportStatusEnum;
 use App\Models\Report;
+use App\Support\NotificationEntry;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -13,7 +15,7 @@ use Illuminate\Notifications\Notification;
 // names the reviewing admin, and never tells the reported person who reported them. When an admin
 // read confidential messages during the review, both are told so -- the transparency promise made
 // on the confidential-message toggle.
-class ReportClosedNotification extends Notification implements ShouldQueue
+class ReportClosedNotification extends Notification implements ShouldQueue, ShownInNotificationCenter
 {
     use Queueable;
 
@@ -60,16 +62,32 @@ class ReportClosedNotification extends Notification implements ShouldQueue
 
     private function summary(): string
     {
-        $dismissed = $this->closedAs == ReportStatusEnum::dismissed;
+        return self::summaryFor($this->role, $this->closedAs->value);
+    }
 
-        if ($this->role == self::REPORTER) {
+    // The email's and the notification center's wording, one place (review).
+    private static function summaryFor(?string $role, ?string $status): string
+    {
+        $dismissed = $status === ReportStatusEnum::dismissed->value;
+
+        if ($role === self::REPORTED) {
             return $dismissed
-                ? 'Thank you for your report. An administrator reviewed it and closed it without further action.'
-                : 'Thank you for your report. An administrator reviewed it and has taken it forward.';
+                ? 'A report involving you was reviewed by an administrator and closed without further action.'
+                : 'A report involving you was reviewed by an administrator and has been resolved.';
         }
 
         return $dismissed
-            ? 'A report involving you was reviewed by an administrator and closed without further action.'
-            : 'A report involving you was reviewed by an administrator and has been resolved.';
+            ? 'Thank you for your report. An administrator reviewed it and closed it without further action.'
+            : 'Thank you for your report. An administrator reviewed it and has taken it forward.';
+    }
+
+    // SCRUM-39 (TT-5.4b): in the notification center -- from the saved ids only, never more than the email.
+    public static function present(array $data): NotificationEntry
+    {
+        return new NotificationEntry(
+            ($data['role'] ?? null) === self::REPORTED ? 'A report has been reviewed' : 'Your report has been reviewed',
+            self::summaryFor($data['role'] ?? null, $data['status'] ?? null)
+                .(! empty($data['confidentialRead']) ? ' An administrator read confidential messages from the conversation for this review; it is recorded.' : ''),
+        );
     }
 }

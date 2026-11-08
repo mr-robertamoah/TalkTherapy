@@ -2,7 +2,9 @@
 
 namespace App\Notifications;
 
+use App\Contracts\ShownInNotificationCenter;
 use App\Models\Refund;
+use App\Support\NotificationEntry;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -14,7 +16,7 @@ use Illuminate\Notifications\Notification;
 // something a client needs (or should have to parse) to understand what happened next. Must
 // explicitly state platform/therapy access is unaffected, mirroring
 // RefundRequestRejectedNotification/RefundSucceededNotification's own identical line.
-class RefundFailedNotification extends Notification implements ShouldQueue
+class RefundFailedNotification extends Notification implements ShouldQueue, ShownInNotificationCenter
 {
     use Queueable;
 
@@ -60,5 +62,11 @@ class RefundFailedNotification extends Notification implements ShouldQueue
             'refundId' => $this->refund->id,
             'transactionId' => $this->refund->transaction_id,
         ];
+    }
+
+    // SCRUM-39 (TT-5.4b): in the notification center -- from the saved ids only, never more than the email.
+    public static function present(array $data): NotificationEntry
+    {
+        return new NotificationEntry('We could not process your refund', 'Our team will follow up with you. Your access is unaffected.');
     }
 }

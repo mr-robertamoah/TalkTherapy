@@ -2,7 +2,9 @@
 
 namespace App\Notifications;
 
+use App\Contracts\ShownInNotificationCenter;
 use App\Models\Transaction;
+use App\Support\NotificationEntry;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -12,7 +14,7 @@ use Illuminate\Notifications\Notification;
 // ReconcileOrgFinancedRefundAction has reconciled its earning(s) -- mirrors
 // NotifyCompensationRequestRecipientAction's precedent of notifying every admin of an Organization
 // recipient, not a single one.
-class OrganizationFinancedTransactionRefundedNotification extends Notification implements ShouldQueue
+class OrganizationFinancedTransactionRefundedNotification extends Notification implements ShouldQueue, ShownInNotificationCenter
 {
     use Queueable;
 
@@ -67,5 +69,15 @@ class OrganizationFinancedTransactionRefundedNotification extends Notification i
             'transactionId' => $this->transaction->id,
             'needsManualReview' => $this->needsManualReview,
         ];
+    }
+
+    // SCRUM-39 (TT-5.4b): in the notification center -- from the saved ids only, never more than the email.
+    public static function present(array $data): NotificationEntry
+    {
+        return new NotificationEntry(
+            'A session or therapy your organization financed was refunded',
+            ! empty($data['needsManualReview']) ? "The counsellor's earning couldn't be reversed automatically and needs manual follow-up." : "The counsellor's pending earning was reversed.",
+            NotificationEntry::link('organizations.mine.dashboard', []),
+        );
     }
 }

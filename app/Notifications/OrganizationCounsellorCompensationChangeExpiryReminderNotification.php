@@ -2,8 +2,10 @@
 
 namespace App\Notifications;
 
+use App\Contracts\ShownInNotificationCenter;
 use App\Models\Counsellor;
 use App\Models\Request;
+use App\Support\NotificationEntry;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -12,7 +14,7 @@ use Illuminate\Notifications\Notification;
 // SCRUM-149 (TT-6.4c): sent once, ~2 days before a pending compensation-change request's
 // expires_at, to whoever the request is currently addressed `to` -- a Counsellor or (once
 // counter-offers exist) each admin of the Organization.
-class OrganizationCounsellorCompensationChangeExpiryReminderNotification extends Notification implements ShouldQueue
+class OrganizationCounsellorCompensationChangeExpiryReminderNotification extends Notification implements ShouldQueue, ShownInNotificationCenter
 {
     use Queueable;
 
@@ -61,5 +63,11 @@ class OrganizationCounsellorCompensationChangeExpiryReminderNotification extends
     private function notifiableName(object $notifiable): string
     {
         return $notifiable instanceof Counsellor ? $notifiable->getName() : $notifiable->name;
+    }
+
+    // SCRUM-39 (TT-5.4b): in the notification center -- from the saved ids only, never more than the email.
+    public static function present(array $data): NotificationEntry
+    {
+        return new NotificationEntry('A compensation negotiation expires soon', 'Respond or counter-offer before it expires.', NotificationEntry::link('organizations.mine.dashboard', []));
     }
 }

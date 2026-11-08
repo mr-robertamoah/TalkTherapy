@@ -2,16 +2,19 @@
 
 namespace App\Notifications;
 
+use App\Contracts\ShownInNotificationCenter;
 use App\Models\Request;
+use App\Support\NotificationEntry;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
+use Illuminate\Support\Str;
 
 // SCRUM-207 (TT-2.5b): sent to whoever proposed the now-rejected time. Covers both a bare reject
 // and a reject-with-reason (Option C, e.g. "please propose a new time") -- the reason, if any, is
 // included when present.
-class SessionScheduleProposalRejectedNotification extends Notification implements ShouldQueue
+class SessionScheduleProposalRejectedNotification extends Notification implements ShouldQueue, ShownInNotificationCenter
 {
     use Queueable;
 
@@ -64,5 +67,11 @@ class SessionScheduleProposalRejectedNotification extends Notification implement
             'requestId' => $this->request->id,
             'reason' => $this->request->data['reason'] ?? null,
         ];
+    }
+
+    // SCRUM-39 (TT-5.4b): in the notification center -- from the saved ids only, never more than the email.
+    public static function present(array $data): NotificationEntry
+    {
+        return new NotificationEntry('Your proposed session time was declined', Str::limit(NotificationEntry::text($data, 'reason', ''), 300), NotificationEntry::link('therapies.get', ['therapyId' => $data['therapyId'] ?? null]));
     }
 }

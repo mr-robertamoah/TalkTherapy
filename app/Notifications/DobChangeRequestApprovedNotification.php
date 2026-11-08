@@ -2,7 +2,9 @@
 
 namespace App\Notifications;
 
+use App\Contracts\ShownInNotificationCenter;
 use App\Models\Request;
+use App\Support\NotificationEntry;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -10,7 +12,7 @@ use Illuminate\Notifications\Notification;
 
 // TT-4.10d/SCRUM-293: sent to whoever originally requested the dob change ($request->from) once
 // a guardian/admin approves it and the new dob has been applied.
-class DobChangeRequestApprovedNotification extends Notification implements ShouldQueue
+class DobChangeRequestApprovedNotification extends Notification implements ShouldQueue, ShownInNotificationCenter
 {
     use Queueable;
 
@@ -65,5 +67,11 @@ class DobChangeRequestApprovedNotification extends Notification implements Shoul
         return [
             'request_id' => $this->request->id,
         ];
+    }
+
+    // SCRUM-39 (TT-5.4b): in the notification center -- from the saved ids only, never more than the email.
+    public static function present(array $data): NotificationEntry
+    {
+        return new NotificationEntry('Your date of birth change was approved', 'It has been applied.', NotificationEntry::link('profile.show', []));
     }
 }

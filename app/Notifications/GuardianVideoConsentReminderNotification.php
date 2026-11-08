@@ -2,7 +2,11 @@
 
 namespace App\Notifications;
 
+use App\Contracts\ShownInNotificationCenter;
+use App\Enums\VideoConsentReminderWindowEnum;
 use App\Models\Session;
+use App\Support\NotificationEntry;
+use App\Support\TherapyLink;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\BroadcastMessage;
@@ -13,7 +17,7 @@ use Illuminate\Notifications\Notification;
 // "any one guardian can act, but all should know" theme GetVideoConsentAuditTrailForWardAction
 // already established for the audit trail in e-b. $window is 'day_before' or 'hour_before',
 // purely for copy -- both are independent, both can fire for the same session.
-class GuardianVideoConsentReminderNotification extends Notification implements ShouldQueue
+class GuardianVideoConsentReminderNotification extends Notification implements ShouldQueue, ShownInNotificationCenter
 {
     use Queueable;
 
@@ -67,6 +71,8 @@ class GuardianVideoConsentReminderNotification extends Notification implements S
     {
         return [
             'session_id' => $this->session->id,
+            // SCRUM-39: the therapy or group, so the notification center can link it (old rows have none).
+            ...($this->session->for ? TherapyLink::ids($this->session->for) : []),
             'window' => $this->window,
         ];
     }
@@ -85,5 +91,12 @@ class GuardianVideoConsentReminderNotification extends Notification implements S
     public function broadcastType(): string
     {
         return 'video-consent.reminder';
+    }
+
+    // SCRUM-39 (TT-5.4b): in the notification center -- from the saved ids only, never more than the email.
+    public static function present(array $data): NotificationEntry
+    {
+        return new NotificationEntry('Video consent needed', (($data['window'] ?? null) === VideoConsentReminderWindowEnum::hour_before->value ? 'A session starting within the hour' : 'An upcoming session')
+            .' needs your video consent, or the client cannot join its video call.', TherapyLink::fromIds($data));
     }
 }

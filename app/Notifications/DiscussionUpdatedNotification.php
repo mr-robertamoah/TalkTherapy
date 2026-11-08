@@ -2,8 +2,10 @@
 
 namespace App\Notifications;
 
+use App\Contracts\ShownInNotificationCenter;
 use App\Models\Counsellor;
 use App\Models\Discussion;
+use App\Support\NotificationEntry;
 use Carbon\Carbon;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -11,7 +13,7 @@ use Illuminate\Notifications\Messages\BroadcastMessage;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
-class DiscussionUpdatedNotification extends Notification implements ShouldQueue
+class DiscussionUpdatedNotification extends Notification implements ShouldQueue, ShownInNotificationCenter
 {
     use Queueable;
 
@@ -91,5 +93,11 @@ class DiscussionUpdatedNotification extends Notification implements ShouldQueue
     public function broadcastType(): string
     {
         return 'discussion.updated';
+    }
+
+    // SCRUM-39 (TT-5.4b): in the notification center -- from the saved ids only, never more than the email.
+    public static function present(array $data): NotificationEntry
+    {
+        return new NotificationEntry('A discussion was updated', 'Its time or details changed.', NotificationEntry::link('discussions.chat', ['discussionId' => $data['discussion_id'] ?? null]));
     }
 }

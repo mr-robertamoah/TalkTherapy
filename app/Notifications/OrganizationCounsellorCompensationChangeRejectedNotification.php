@@ -2,7 +2,9 @@
 
 namespace App\Notifications;
 
+use App\Contracts\ShownInNotificationCenter;
 use App\Models\Request;
+use App\Support\NotificationEntry;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -10,7 +12,7 @@ use Illuminate\Notifications\Notification;
 
 // SCRUM-147 (TT-6.4c): sent to whoever proposed the now-rejected terms. A flat decline -- the
 // affiliation's status and existing compensation terms, if any, are always left untouched.
-class OrganizationCounsellorCompensationChangeRejectedNotification extends Notification implements ShouldQueue
+class OrganizationCounsellorCompensationChangeRejectedNotification extends Notification implements ShouldQueue, ShownInNotificationCenter
 {
     use Queueable;
 
@@ -55,5 +57,11 @@ class OrganizationCounsellorCompensationChangeRejectedNotification extends Notif
         return [
             'organizationCounsellorId' => $this->request->for_id,
         ];
+    }
+
+    // SCRUM-39 (TT-5.4b): in the notification center -- from the saved ids only, never more than the email.
+    public static function present(array $data): NotificationEntry
+    {
+        return new NotificationEntry('Your proposed compensation terms were declined', 'Any existing terms are unchanged.', NotificationEntry::link('organizations.mine.dashboard', []));
     }
 }

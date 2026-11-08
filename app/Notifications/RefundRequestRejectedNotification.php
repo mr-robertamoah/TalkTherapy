@@ -2,7 +2,9 @@
 
 namespace App\Notifications;
 
+use App\Contracts\ShownInNotificationCenter;
 use App\Models\Request;
+use App\Support\NotificationEntry;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -11,7 +13,7 @@ use Illuminate\Notifications\Notification;
 // TT-7.7c/SCRUM-251: sent to the client immediately on reject -- a reject is this request's own
 // final word (no further "outcome" step is coming later the way accept has, via TT-7.7d/e), so
 // unlike accept it can't wait for a later notification to explain what happened.
-class RefundRequestRejectedNotification extends Notification implements ShouldQueue
+class RefundRequestRejectedNotification extends Notification implements ShouldQueue, ShownInNotificationCenter
 {
     use Queueable;
 
@@ -65,5 +67,11 @@ class RefundRequestRejectedNotification extends Notification implements ShouldQu
             'requestId' => $this->request->id,
             'transactionId' => $this->request->for_id,
         ];
+    }
+
+    // SCRUM-39 (TT-5.4b): in the notification center -- from the saved ids only, never more than the email.
+    public static function present(array $data): NotificationEntry
+    {
+        return new NotificationEntry('Your refund request was declined', 'Your access to the platform and your therapy is unaffected.');
     }
 }

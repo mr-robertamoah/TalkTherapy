@@ -65,7 +65,7 @@ class GuardianAccessResumedNotification extends Notification implements ShouldQu
         $until = NotificationEntry::date($data['continuesUntil'] ?? null);
 
         return $until
-            ? new NotificationEntry('Your therapy can continue', "For now, until {$until}. Adding a guardian keeps it going after that.")
+            ? new NotificationEntry('Your therapy can continue', "For now, until {$until}. Adding a guardian keeps it going after that.".NotificationEntry::CRISIS_LINE)
             : new NotificationEntry('Your therapy has started again');
     }
 }
