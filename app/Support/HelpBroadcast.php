@@ -3,7 +3,6 @@
 namespace App\Support;
 
 use App\Events\HelpQueueChangedEvent;
-use Illuminate\Support\Facades\DB;
 
 // SCRUM-33 (devops review): a help chat's live updates are best effort. A broadcast is sent once the
 // database work is committed, and a broadcasting failure (Reverb down) is reported, never thrown --
@@ -14,7 +13,7 @@ final class HelpBroadcast
 {
     public static function send(object $event): void
     {
-        DB::afterCommit(fn () => rescue(fn () => event($event), report: true));
+        BestEffortBroadcast::send($event);
     }
 
     // TT-4.4b: the administrators' queue refetches this request.

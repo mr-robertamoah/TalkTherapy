@@ -117,40 +117,22 @@ class Report extends Model
             return true;
         }
 
-        if ($this->isGuardianOfSomeoneIn($user)) {
+        $wardIds = $user->wardIds();
+        if ($wardIds->isNotEmpty() && collect([$this->reporterUser(), $this->reportedUser()])->filter()
+            ->contains(fn (User $person) => $wardIds->contains($person->id))) {
             return true;
         }
 
+        // The therapy's participants, former members and counsellors, and guardians of its client or
+        // members -- the rule shared with SCRUM-32's safety flags (TherapyTrait::involvesInOversight).
         $therapy = $this->therapy();
         if ($therapy) {
-            return (bool) $therapy->isParticipant($user)
-                || ($therapy instanceof GroupTherapy && $therapy->allMemberships()->whereKey($user->id)->exists())
-                || ($therapy instanceof GroupTherapy && $user->counsellor && $therapy->counsellors()->whereKey($user->counsellor->id)->exists());
+            return $therapy->involvesInOversight($user, $wardIds);
         }
 
         $author = $this->reportable?->addedby;
 
         return (bool) ($author instanceof Counsellor ? $author->user?->is($user) : $author?->is($user));
-    }
-
-    private function isGuardianOfSomeoneIn(User $user): bool
-    {
-        $wardIds = $user->wardIds();
-
-        if ($wardIds->isEmpty()) {
-            return false;
-        }
-
-        $therapy = $this->therapy();
-        $client = $therapy?->addedby;
-
-        $named = collect([$this->reporterUser(), $this->reportedUser(), $client instanceof User ? $client : null])
-            ->filter()
-            ->contains(fn (User $person) => $wardIds->contains($person->id));
-
-        // SCRUM-363: in a group, a guardian of any member -- the cautious choice: it only ever
-        // keeps more admins away from a case, never fewer. SCRUM-73: former members too.
-        return $named || ($therapy instanceof GroupTherapy && $therapy->allMemberships()->whereIn('users.id', $wardIds)->exists());
     }
 
     // SCRUM-340/362: all an admin who is part of a report sees of it in any list -- that it exists.
