@@ -20,7 +20,34 @@ class HelpRequest extends Model
         'was_suspended' => 'boolean',
         'accepted_at' => 'datetime',
         'ended_at' => 'datetime',
+        'escalated_at' => 'datetime',
+        'escalated_again_at' => 'datetime',
+        'pulled_at' => 'datetime',
     ];
+
+    // TT-4.4b: an administrator is involved -- they asked, they're the person's guardian, or they're the
+    // counsellor in it, or one who could answer it (rung directly, or on call while it waits -- security
+    // review: they mustn't see who asked and then answer). They never see who asked, nor act on it.
+    // $wardIds: the administrator's wards, when a list has already loaded them (one query, not one a row).
+    public function involvesAdmin(User $admin, ?array $wardIds = null): bool
+    {
+        if ($this->isFor($admin)) {
+            return true;
+        }
+
+        $counsellor = $admin->counsellor;
+        if ($counsellor && in_array((int) $counsellor->id, [(int) $this->counsellor_id, (int) $this->pulled_counsellor_id], true)) {
+            return true;
+        }
+
+        if ($counsellor && $this->status === HelpRequestStatusEnum::waiting && $counsellor->isAvailableForUrgentHelp()) {
+            return true;
+        }
+
+        return $wardIds !== null
+            ? in_array((int) $this->user_id, $wardIds, true)
+            : Guardianship::query()->where('guardian_id', $admin->id)->where('ward_id', $this->user_id)->exists();
+    }
 
     public function user(): BelongsTo
     {
@@ -30,6 +57,11 @@ class HelpRequest extends Model
     public function counsellor(): BelongsTo
     {
         return $this->belongsTo(Counsellor::class)->withTrashed();
+    }
+
+    public function pulledCounsellor(): BelongsTo
+    {
+        return $this->belongsTo(Counsellor::class, 'pulled_counsellor_id')->withTrashed();
     }
 
     public function therapy(): BelongsTo

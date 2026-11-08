@@ -528,11 +528,24 @@ class Counsellor extends Model
     // verified, not suspended, their account still here, and not already in a live help chat.
     public function scopeAvailableForUrgentHelp($query)
     {
-        return $query->where('urgent_help_available_until', '>', now())
-            ->whereCurrentlyVerified()
+        return $query->where('urgent_help_available_until', '>', now())->ableToTakeUrgentHelp();
+    }
+
+    // SCRUM-33 (TT-4.4b review): the one rule for who can take an urgent help chat at all (on call or
+    // not) -- currently verified, not suspended, their account still here, not already in a help chat.
+    public function scopeAbleToTakeUrgentHelp($query)
+    {
+        return $query->whereCurrentlyVerified()
             ->whereNotSuspended()
             ->whereHas('user')
             ->whereDoesntHave('helpRequests', fn ($query) => $query->where('status', HelpRequestStatusEnum::connected->value));
+    }
+
+    // ...and for this request: never the person asking, nor one of their guardians.
+    public function scopeMayHelpWith($query, HelpRequest $request)
+    {
+        return $query->where('user_id', '!=', $request->user_id)
+            ->whereNotIn('user_id', Guardianship::query()->select('guardian_id')->where('ward_id', $request->user_id));
     }
 
     public function isAvailableForUrgentHelp(): bool

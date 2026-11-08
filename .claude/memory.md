@@ -133,6 +133,11 @@ See "Common commands" in `CLAUDE.md`.
   accounts (the middleware allowlist) -- keep new help routes under that name and check access in the
   action. Countries come from `resources/data/countries.json` (`App\Support\Countries`,
   `CountrySelect`); regenerate with `npm run countries:generate`, never hand-edit.
+  Admin queue (TT-4.4b): who may take or answer a request is decided only by the `Counsellor` scopes
+  (`ableToTakeUrgentHelp`, `availableForUrgentHelp`, `mayHelpWith`) and
+  `RingAvailableCounsellorsAction::{mayAnswer, ringingFor}`; don't re-derive it. An admin
+  "involved" in a request (`HelpRequest::involvesAdmin`) never sees it, and every status change
+  calls `HelpBroadcast::queueChanged`.
 
 ## Current Sprint Goals
 

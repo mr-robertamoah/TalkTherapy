@@ -10611,3 +10611,60 @@ therapy 18 after the last QA pass.
   anonymity choice; the country picker's search box is named "Country" for screen readers. Noted for
   product: the 3-an-hour limit counts answered chats too (a refusal always points to the emergency
   number) -- revisit with SCRUM-395.
+
+## SCRUM-33 (TT-4.4b) — urgent help admin queue and alerts (2026-11-08)
+
+- In the approved plan; built without a new approval round (CLAUDE.md: the next milestone of an
+  approved plan).
+- **Alerts:** at 60 s and 3 min (config), to every administrator not involved, by notification and
+  email with no name or note. Sent by a delayed job dispatched when someone asks, with the every-minute
+  sweep as the backstop; each alert is claimed by a conditional update, so it's never sent twice.
+- **Ring one counsellor:** an administrator rings a counsellor directly; they may accept even if not
+  on call, if they could take it (verified, not suspended, not the person's guardian, not in another
+  help chat). Only the latest pick is kept. It's a ring, never an assignment -- they still accept.
+  "Ring again" rings the counsellors on call (not everyone).
+- **Close:** a new `CLOSED` status, with an optional note; the person is told and shown the number.
+- **Who asked:** shown only on "Show who asked", every look written to the read log (a new
+  `help_request_identity` resource, recorded through `RecordAdminContentReadAction` -- see the review
+  fixes below). The queue rows show the counsellor's short summary (first name or
+  "Anonymous").
+- **Involved administrators** (they asked, their ward asked, they're the counsellor in it or rung) see
+  only that a request exists; no actions, no alerts; excluded from search. Search is by the
+  counsellor's name, never the person's.
+- **Live:** a private `admin.help-requests` channel (ids only) refreshes the queue and every admin
+  page's badge; the Urgent help badge isn't cached (the others are, for a minute).
+- **Help button:** bottom right from small screens up (it covered the admin sidebar at bottom left);
+  still raised at bottom left on phones.
+- **Review fixes (security, architect, reviewer, devops):**
+  - **An administrator who could answer is involved:** besides asking, being the person's guardian, or
+    being the counsellor in it or rung for it, an administrator who is a counsellor *on call* is
+    involved in everything waiting -- so nobody can look at who asked and then answer. Someone who
+    looked can't answer that request later either, and an administrator can't ring their own counsellor
+    profile. (An on-call administrator-counsellor doesn't see the waiting queue; they can switch off
+    call to coordinate.)
+  - **Involved requests aren't shown at all**, nor counted in their badge (a guardian mustn't learn
+    their ward asked -- not even from "you're involved").
+  - "Show who asked" only for requests live or closed in the last day, through the read log's own
+    write path (`RecordAdminContentReadAction`; no therapy context, so always recorded).
+  - One rule for who can take a help chat (`Counsellor::ableToTakeUrgentHelp`, `availableForUrgentHelp`,
+    `mayHelpWith`), and one list of everyone a request is ringing (`ringingFor`: on call + rung
+    directly) -- so a counsellor rung directly has their ring closed on cancel, expiry, accept, close,
+    or when another is rung instead (only the latest pick may answer).
+  - An administrator's close sets who and the note in the same update as the status; a direct ring
+    only while it still waits; "ring again" once every 15 s a request; the second alert only a while
+    after the first, and one alert if both were overdue; a queued alert is dropped if the request is no
+    longer waiting by the time it's sent; an index on `updated_at` for the queue's "last day".
+- **Deferred (added to SCRUM-395):** a per-administrator email cooldown (alerts scale with the number
+  of administrators), a database/mail notice for a counsellor rung directly who hasn't the app open
+  (today the ring is live only; the admin is told so), and monitoring of a queue-job backlog.
+- **QA fixes (Playwright, three browsers -- approved with minor fixes):**
+  - A counsellor with no counsellor name was a blank row in "Ring a counsellor" (and would be blank in
+    the queue's "Rang …" and "with …"): every help screen now uses `Counsellor::getName()` (falls back
+    to the account name), with the user eager-loaded.
+  - The floating "I need help now" button isn't shown on the help chat page: on a phone it sat over the
+    message box, and the chat has its own "Emergency numbers" button opening the same dialog.
+  - Small: the first alert email says "about a minute" (not "1 minutes"); "No counsellor is on call"
+    is a neutral notice, not a success; the queue page doesn't pass shared props on as attributes.
+  - **Deferred (SCRUM-395):** an in-app notification list. The escalation's database notifications are
+    stored but the app has no bell yet, so an administrator learns of an escalation by email, or from
+    the queue badge if the app is open.

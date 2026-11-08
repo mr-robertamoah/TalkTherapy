@@ -166,7 +166,7 @@ test('requests nobody answers expire, and chats past their time end, freeing the
     $this->actingAs(hlpOnCall()->user)->postJson(route('help.requests.accept', ['helpRequest' => $live['id']]))->assertOk();
 
     $this->travel(config('help.session_minutes') + 1)->minutes();
-    expect(SweepHelpRequestsAction::new()->execute())->toBe(['expired' => 1, 'ended' => 1]);
+    expect(SweepHelpRequestsAction::new()->execute())->toMatchArray(['expired' => 1, 'ended' => 1]);
 
     expect(HelpRequest::query()->find($stale['id'])->status)->toBe(HelpRequestStatusEnum::expired)
         ->and(HelpRequest::query()->find($live['id'])->status)->toBe(HelpRequestStatusEnum::ended)
@@ -220,7 +220,7 @@ test('if live updates fail (Reverb down), asking, answering and the sweep still 
 
     $waiting = hlpStart($this, User::factory()->adult()->create());
     $this->travel(config('help.session_minutes') + 1)->minutes();
-    expect(SweepHelpRequestsAction::new()->execute())->toBe(['expired' => 1, 'ended' => 1])
+    expect(SweepHelpRequestsAction::new()->execute())->toMatchArray(['expired' => 1, 'ended' => 1])
         ->and(HelpRequest::query()->find($waiting['id'])->status)->toBe(HelpRequestStatusEnum::expired);
 });
 
@@ -287,10 +287,14 @@ test('a guardian who is a counsellor on call is never rung for their ward, and o
     // The same answer as for a request that doesn't exist.
     $this->actingAs($guardianCounsellor->user)->postJson(route('help.requests.accept', ['helpRequest' => $help['id']]))->assertStatus(409);
     $this->actingAs($guardianCounsellor->user)->postJson(route('help.requests.accept', ['helpRequest' => 999999]))->assertStatus(409);
-    // A counsellor not on call is refused for their own state, whatever the id.
+    // A counsellor not on call (and not rung directly) gets the same answer, whether it exists or not.
     $offCall = Counsellor::factory()->create(['user_id' => User::factory()->adult()->create()->id]);
-    $this->actingAs($offCall->user)->postJson(route('help.requests.accept', ['helpRequest' => $help['id']]))->assertStatus(422);
-    $this->actingAs($offCall->user)->postJson(route('help.requests.accept', ['helpRequest' => 999999]))->assertStatus(422);
+    $this->actingAs($offCall->user)->postJson(route('help.requests.accept', ['helpRequest' => $help['id']]))->assertStatus(409);
+    $this->actingAs($offCall->user)->postJson(route('help.requests.accept', ['helpRequest' => 999999]))->assertStatus(409);
+    // An unverified one is refused for their own state, whatever the id.
+    $unverified = Counsellor::factory()->unverified()->create(['user_id' => User::factory()->adult()->create()->id]);
+    $this->actingAs($unverified->user)->postJson(route('help.requests.accept', ['helpRequest' => $help['id']]))->assertStatus(422);
+    $this->actingAs($unverified->user)->postJson(route('help.requests.accept', ['helpRequest' => 999999]))->assertStatus(422);
 });
 
 test('help chats stay out of the public feed and a ward\'s open therapies', function () {

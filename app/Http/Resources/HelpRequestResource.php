@@ -31,7 +31,7 @@ class HelpRequestResource extends JsonResource
             'acceptedAt' => $this->accepted_at?->toIso8601String(),
             'endedAt' => $this->ended_at?->toIso8601String(),
             'sessionId' => $this->session_id,
-            'counsellorName' => $this->counsellor_id ? $this->counsellor?->name : null,
+            'counsellorName' => $this->counsellor_id ? $this->counsellor?->getName() : null,
             'anonymous' => $this->anonymous,
             // Audio: an adult, while connected (a minor needs a guardian's consent -- the server decides).
             // A suspended account can't reach the call routes, so they aren't offered it (text only).

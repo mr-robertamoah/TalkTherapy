@@ -49,7 +49,7 @@ class GetHelpChatAction extends Action
             'id' => $message->id,
             'content' => $message->content,
             'mine' => $mine,
-            'sender' => $mine ? 'You' : ($fromPerson ? ($request->anonymous ? 'Anonymous' : ($request->user?->firstName ?: 'Someone')) : ($request->counsellor?->name ?? 'Counsellor')),
+            'sender' => $mine ? 'You' : ($fromPerson ? ($request->anonymous ? 'Anonymous' : ($request->user?->firstName ?: 'Someone')) : ($request->counsellor?->getName() ?? 'Counsellor')),
             'createdAt' => $message->created_at?->toIso8601String(),
         ];
     }
@@ -58,6 +58,6 @@ class GetHelpChatAction extends Action
     {
         return $request->status === HelpRequestStatusEnum::waiting
             && $user->counsellor
-            && in_array((int) $user->counsellor->id, RingAvailableCounsellorsAction::ringableFor($request), true);
+            && RingAvailableCounsellorsAction::mayAnswer($request, $user->counsellor);
     }
 }

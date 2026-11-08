@@ -5,9 +5,11 @@ namespace App\Actions\Help;
 use App\Actions\Action;
 use App\Enums\HelpRequestStatusEnum;
 use App\Exceptions\HelpException;
+use App\Jobs\EscalateHelpRequestJob;
 use App\Models\HelpRequest;
 use App\Models\User;
 use App\Support\Countries;
+use App\Support\HelpBroadcast;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\RateLimiter;
 
@@ -50,6 +52,11 @@ class StartHelpRequestAction extends Action
             // Another tap got there first.
             return $this->liveRequestOf($user) ?? throw new HelpException(self::TOO_MANY, 429);
         }
+
+        // TT-4.4b: administrators see it straight away; they're alerted if it waits.
+        HelpBroadcast::queueChanged($request->id);
+        EscalateHelpRequestJob::dispatch($request->id)->delay(now()->addSeconds((int) config('help.first_alert_seconds')));
+        EscalateHelpRequestJob::dispatch($request->id)->delay(now()->addSeconds((int) config('help.second_alert_seconds')));
 
         RateLimiter::hit($key, 3600);
         if ($ipKey) {

@@ -29,6 +29,11 @@ Broadcast::channel('counsellors.{counsellorId}', function ($user, $counsellorId)
     return $user->counsellor?->id == (int) $counsellorId;
 });
 
+// SCRUM-33 (TT-4.4b): the administrators' urgent help queue (ids only; each row is fetched).
+Broadcast::channel('admin.help-requests', function ($user) {
+    return (bool) $user->isAdmin();
+});
+
 // SCRUM-33: a help chat -- the person who asked, and the counsellor who answered.
 Broadcast::channel('help-requests.{helpRequestId}', function ($user, $helpRequestId) {
     return (bool) HelpRequest::query()->find($helpRequestId)?->isParticipant($user);
