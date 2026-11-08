@@ -573,3 +573,18 @@ Browser QA then had `help_demo_user` ask and chat with `help_demo_counsellor` (e
 restores them.
 
 See `documentation/features/scrum-33a-help-chat-core.md`.
+
+## Safety flags (SCRUM-32, TT-4.3a)
+
+Counsellors' safety flags. The feature is **off by default**: set `SAFETY_FLAGS_ENABLED=true` in
+`.env.docker` and recreate the php, queue and reverb containers to see it. Seeded by
+`DatabaseSeeder::createSafetyFlagDemoData`.
+
+| Username | Password | What it's for |
+|---|---|---|
+| `safety_demo_counsellor` | `password` | Dr. Esi Safety, verified. Counsels the three below and raises flags from their therapies and group. |
+| `safety_demo_minor` | `password` | Kwame, 15, in "Safety Flag Demo Therapy". Has an **open imminent** flag nobody has acknowledged yet. |
+| `safety_demo_guardian` | `password` | Abena, the minor's guardian. |
+| `safety_demo_member` | `password` | Yaa, an anonymous member of "Safety Flag Demo Group". Has an **urgent** flag `suspension_demo_admin` is handling. |
+| `safety_demo_client` | `password` | Kojo, an adult in "Safety Flag Demo (raise one)". No flag yet, for raising one. |
+
