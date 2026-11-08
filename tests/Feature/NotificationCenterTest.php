@@ -89,6 +89,7 @@ use App\Notifications\TherapyCreatedNotification;
 use App\Notifications\WardSuspendedNotification;
 use App\Support\NotificationCenter;
 use App\Support\WardRef;
+use Database\Seeders\NotificationCenterSeeder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
@@ -451,4 +452,38 @@ test('a guest and a suspended account can\'t use the center', function () {
 
     $this->actingAs($suspended)->getJson(route('notifications.index'))->assertForbidden();
     $this->actingAs($suspended)->getJson(route('notifications.count'))->assertForbidden();
+});
+
+test('the demo notifications seed once, for the client and the counsellor as both', function () {
+    $client = User::factory()->adult()->create(['username' => 'maria_garcia']);
+    $counsellor = Counsellor::factory()->for(User::factory()->adult()->state(['username' => 'sarah_johnson']))->create();
+    Therapy::factory()->create(['name' => 'Chat Demo Individual Therapy']);
+    GroupTherapy::factory()->create(['name' => 'Chat Demo Group Therapy']);
+    Discussion::factory()->create(['name' => 'Chat Demo Discussion']);
+
+    $this->seed(NotificationCenterSeeder::class);
+    $this->seed(NotificationCenterSeeder::class);
+
+    expect($client->notifications()->count())->toBe(19)
+        ->and($counsellor->user->notifications()->count())->toBe(1)
+        ->and($counsellor->notifications()->count())->toBe(3);
+    // More than a page, so "Show more" shows.
+    $this->actingAs($client)->getJson(route('notifications.index'))->assertJsonPath('nextCursor', fn ($cursor) => is_string($cursor));
+    $audiences = collect($this->actingAs($counsellor->user)->getJson(route('notifications.index'))->json('notifications'))->pluck('audience')->unique()->sort()->values()->all();
+    expect($audiences)->toBe(['counsellor', 'user']);
+});
+
+test('a dismissed safety notice stays in the list by its title only, and dismissing tells the person\'s pages', function () {
+    config(['safety.enabled' => true]);
+    Event::fake([NotificationsChangedEvent::class]);
+    $guardian = User::factory()->adult()->create();
+    $id = ncentInsert($guardian, GuardianSafetyNoticeNotification::class, ['type' => 'safety.guardian_notice', 'wardName' => 'Kofi']);
+
+    $item = fn () => collect($this->actingAs($guardian)->getJson(route('notifications.index'))->json('notifications'))->firstWhere('id', $id);
+    expect($item()['message'])->toContain('Kofi');
+
+    $this->actingAs($guardian)->postJson(route('safety_notice.dismiss', ['notice' => $id]))->assertOk();
+    Event::assertDispatchedTimes(NotificationsChangedEvent::class, 1);
+
+    expect($item())->toMatchArray(['read' => true, 'safetyNotice' => true, 'message' => '', 'title' => 'A message from TalkTherapy']);
 });

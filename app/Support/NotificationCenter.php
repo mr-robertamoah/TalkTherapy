@@ -109,16 +109,20 @@ final class NotificationCenter
             $entry = new NotificationEntry('You have an update');
         }
 
+        $safetyNotice = in_array($type, self::NEVER_MARKED_BY_LIST, true);
+
         return [
             'id' => $notification->id,
             'title' => $entry->title,
-            'message' => $entry->message,
+            // A dismissed safety notice is kept as a record by its title only (security review: its
+            // message -- a guardian's names their ward -- isn't left in the list).
+            'message' => $safetyNotice && $notification->read_at !== null ? '' : $entry->message,
             'url' => $entry->url,
             'createdAt' => $notification->created_at?->toIso8601String(),
             'read' => $notification->read_at !== null,
             'audience' => $notification->notifiable_type === (new Counsellor)->getMorphClass() ? 'counsellor' : 'user',
             // Opens the safety notice's own dialog instead of a link (SCRUM-32).
-            'safetyNotice' => in_array($type, self::NEVER_MARKED_BY_LIST, true),
+            'safetyNotice' => $safetyNotice,
         ];
     }
 }
