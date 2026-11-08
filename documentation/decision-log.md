@@ -11163,3 +11163,37 @@ therapy 18 after the last QA pass.
   - **Gap:** it isn't cleared when the writer's account is anonymised. That is added to **SCRUM-396**.
   - **For TT-5.4c:** render `message` as text (`{{ }}`), never `v-html`.
 
+## SCRUM-39 (TT-5.4c) — the notification bell (2026-11-08)
+
+- **Where:** in `AuthenticatedLayout`'s nav at every size, so admins get it too (AdminLayout sits inside it).
+  - `NotificationBell.vue` holds the panel; `useNotifications.js` is the one shared state, like
+    `useAdminBadges`.
+  - The count comes from its own route, throttled to one fetch per 15s per page visit and refreshed
+    straight away on the `notifications.changed` ping.
+- **One person's state only:** `forUser()` clears everything when the signed-in user changes (reviews,
+  security: logging out and in are Inertia visits, so the module survives them).
+  - The list always loads from empty, never showing an earlier list while loading.
+  - Every list response carries a generation; stale ones (an old "Show more", an earlier refresh) are dropped.
+- **Live refresh never collapses the list:** a ping while the panel is open merges the newest page into what
+  is shown, keeping older pages and the scroll position (review, QA).
+- **Focus:**
+  - Escape is handled on the document, wherever focus is (QA).
+  - When a control removes itself, focus moves on: a mark-one check goes to its item, "Mark all" to the
+    heading, and "Show more" to the first item it loaded.
+  - "Show more" uses `aria-disabled` while loading.
+- **Safety notices:**
+  - **Unread:** opens the existing dialog (state moved into `useSafetyNotice.js`), and focus returns to the
+    bell when it closes.
+  - **Dismissed:** kept in the list by its neutral title only, with no message and nothing to open (security
+    review: a guardian's notice names their ward). `NotificationCenter::present()` blanks the message.
+  - Dismissing now also pings the person's other pages.
+- **Links** are followed only when they point to this site (defence in depth; they are built server-side).
+- **Phones:** below `sm` the panel is fixed under the nav and closes when the page scrolls.
+- **Removed:** the two `console.log` calls in `AuthenticatedLayout`, which printed broadcast notification
+  payloads.
+- **Seed data:** `NotificationCenterSeeder` (see `seeded-data.md`), idempotent through a marker key in the
+  data. The center never shows that key.
+- **Deferred:** `trustHosts` / forced root URL in production is **SCRUM-397**. The old `'broadcast'`-channel
+  toasts for session or discussion due/status still run alongside the bell; that is existing behaviour, left
+  as is.
+

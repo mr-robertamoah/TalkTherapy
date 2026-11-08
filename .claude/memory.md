@@ -159,6 +159,9 @@ See "Common commands" in `CLAUDE.md`.
   `app/Listeners` with a typed `handle()` are auto-discovered -- don't also `Event::listen` them (if a deploy
   ever caches events, rebuild the cache). The bell's live ping is `notifications.changed` on `users.{id}`,
   content-free; the older `'broadcast'`-channel toasts in `AuthenticatedLayout.vue` are separate (debt).
+  The bell's frontend state is `useNotifications.js` (module-level, cleared by `forUser()` on account change;
+  list responses carry a generation). The safety notice's dialog state is `useSafetyNotice.js`, shared with the
+  bell -- open it through that, never a second dialog.
 
 ## Current Sprint Goals
 
