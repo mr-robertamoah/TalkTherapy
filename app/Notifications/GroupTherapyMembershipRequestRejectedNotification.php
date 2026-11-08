@@ -2,13 +2,15 @@
 
 namespace App\Notifications;
 
+use App\Contracts\ShownInNotificationCenter;
 use App\Models\Request;
+use App\Support\NotificationEntry;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
-class GroupTherapyMembershipRequestRejectedNotification extends Notification implements ShouldQueue
+class GroupTherapyMembershipRequestRejectedNotification extends Notification implements ShouldQueue, ShownInNotificationCenter
 {
     use Queueable;
 
@@ -64,5 +66,11 @@ class GroupTherapyMembershipRequestRejectedNotification extends Notification imp
         return [
             'group_therapy_id' => $this->request->for_id,
         ];
+    }
+
+    // SCRUM-39 (TT-5.4b): in the notification center -- from the saved ids only, never more than the email.
+    public static function present(array $data): NotificationEntry
+    {
+        return new NotificationEntry('Your request to join a group was declined');
     }
 }

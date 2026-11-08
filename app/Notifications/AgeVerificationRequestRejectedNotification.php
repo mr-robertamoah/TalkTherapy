@@ -2,7 +2,9 @@
 
 namespace App\Notifications;
 
+use App\Contracts\ShownInNotificationCenter;
 use App\Models\Request;
+use App\Support\NotificationEntry;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -13,7 +15,7 @@ use Illuminate\Notifications\Notification;
 // there is no automated consequence for a rejected/misrepresented submission (moderation, if
 // warranted, is a manual admin action, not automated here). Mirrors
 // DobChangeRequestRejectedNotification's own shape.
-class AgeVerificationRequestRejectedNotification extends Notification implements ShouldQueue
+class AgeVerificationRequestRejectedNotification extends Notification implements ShouldQueue, ShownInNotificationCenter
 {
     use Queueable;
 
@@ -64,5 +66,11 @@ class AgeVerificationRequestRejectedNotification extends Notification implements
         return [
             'request_id' => $this->request->id,
         ];
+    }
+
+    // SCRUM-39 (TT-5.4b): in the notification center -- from the saved ids only, never more than the email.
+    public static function present(array $data): NotificationEntry
+    {
+        return new NotificationEntry('Your age verification was not approved', 'Your account and access to therapy are unaffected.', NotificationEntry::link('profile.show', []));
     }
 }

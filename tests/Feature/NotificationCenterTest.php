@@ -4,16 +4,24 @@ use App\Contracts\SentOnlyToAdministrators;
 use App\Contracts\SentOnlyToSuperAdministrators;
 use App\Contracts\ShownInNotificationCenter;
 use App\Enums\AdministratorTypeEnum;
+use App\Enums\ReportStatusEnum;
 use App\Events\NotificationsChangedEvent;
 use App\Models\Administrator;
 use App\Models\Counsellor;
+use App\Models\Discussion;
 use App\Models\GroupTherapy;
+use App\Models\Organization;
+use App\Models\Refund;
 use App\Models\Report;
 use App\Models\Request;
 use App\Models\SafeguardingException;
+use App\Models\Session;
 use App\Models\Suspension;
 use App\Models\Therapy;
+use App\Models\Transaction;
 use App\Models\User;
+use App\Notifications\AgeVerificationRequestApprovedNotification;
+use App\Notifications\AgeVerificationRequestRejectedNotification;
 use App\Notifications\ClientAccessPausedNotification;
 use App\Notifications\ClientAccessResumedNotification;
 use App\Notifications\CounsellorUnavailableNotification;
@@ -21,13 +29,40 @@ use App\Notifications\CounsellorVerificationEndedNotification;
 use App\Notifications\CounsellorVerificationEndingAdminNotification;
 use App\Notifications\CounsellorVerificationEndingNotification;
 use App\Notifications\CounsellorVerificationRevokedNotification;
+use App\Notifications\DiscussionDeletedNotification;
+use App\Notifications\DiscussionDueNotification;
+use App\Notifications\DiscussionInclusionNotification;
+use App\Notifications\DiscussionRequestNotification;
+use App\Notifications\DiscussionStatusChangedNotification;
+use App\Notifications\DiscussionUpdatedNotification;
+use App\Notifications\DobChangeRequestApprovedNotification;
+use App\Notifications\DobChangeRequestRejectedNotification;
+use App\Notifications\DobChangeRequestSupersededNotification;
+use App\Notifications\GroupTherapyCounsellorLinkUsedNotification;
+use App\Notifications\GroupTherapyMemberJoinedGuardianNotification;
 use App\Notifications\GroupTherapyMemberLeftGuardianNotification;
 use App\Notifications\GroupTherapyMemberLeftNotification;
+use App\Notifications\GroupTherapyMembershipRequestAcceptedNotification;
+use App\Notifications\GroupTherapyMembershipRequestRejectedNotification;
 use App\Notifications\GuardianAccessPausedNotification;
 use App\Notifications\GuardianAccessResumedNotification;
 use App\Notifications\GuardianSafetyNoticeNotification;
+use App\Notifications\GuardianshipEstablishedNotification;
+use App\Notifications\GuardianshipRemovedNotification;
+use App\Notifications\GuardianshipRequestNotification;
+use App\Notifications\GuardianVideoConsentReminderNotification;
 use App\Notifications\HelpRequestWaitingNotification;
 use App\Notifications\HelpTherapyInviteNotification;
+use App\Notifications\OrganizationCounsellorCompensationChangeAcceptedNotification;
+use App\Notifications\OrganizationCounsellorCompensationChangeExpiredNotification;
+use App\Notifications\OrganizationCounsellorCompensationChangeExpiryReminderNotification;
+use App\Notifications\OrganizationCounsellorCompensationChangeProposedNotification;
+use App\Notifications\OrganizationCounsellorCompensationChangeRejectedNotification;
+use App\Notifications\OrganizationFinancedTransactionRefundedNotification;
+use App\Notifications\RefundFailedNotification;
+use App\Notifications\RefundRequestRejectedNotification;
+use App\Notifications\RefundSucceededNotification;
+use App\Notifications\ReportClosedNotification;
 use App\Notifications\SafeguardingExceptionEndingSoonNotification;
 use App\Notifications\SafeguardingExceptionRequestDecidedNotification;
 use App\Notifications\SafeguardingExceptionRequestedNotification;
@@ -35,10 +70,21 @@ use App\Notifications\SafetyFlagRaisedNotification;
 use App\Notifications\SafetyFlagReAlertNotification;
 use App\Notifications\SafetyFlagWithdrawnNotification;
 use App\Notifications\SafetyNoticeNotification;
+use App\Notifications\SessionCreatedNotification;
+use App\Notifications\SessionDeletedNotification;
+use App\Notifications\SessionDueNotification;
+use App\Notifications\SessionScheduleProposalAcceptedNotification;
+use App\Notifications\SessionScheduleProposalRejectedNotification;
+use App\Notifications\SessionScheduleProposedNotification;
+use App\Notifications\SessionUpdatedNotification;
 use App\Notifications\SuspensionAppealDecidedNotification;
 use App\Notifications\SuspensionAppealSubmittedNotification;
 use App\Notifications\SuspensionAppliedNotification;
 use App\Notifications\SuspensionEndedNotification;
+use App\Notifications\TherapyAssistanceLinkNotification;
+use App\Notifications\TherapyAssistanceRequestAcceptedGuardianNotification;
+use App\Notifications\TherapyAssistanceRequestAcceptedNotification;
+use App\Notifications\TherapyContinuationNotification;
 use App\Notifications\TherapyCreatedNotification;
 use App\Notifications\WardSuspendedNotification;
 use App\Support\NotificationCenter;
@@ -65,16 +111,14 @@ function ncentAdmin(AdministratorTypeEnum $type = AdministratorTypeEnum::super):
     return User::factory()->adult()->has(Administrator::factory()->state(['type' => $type->value]))->create();
 }
 
-test('every class stored in the database is worded for the center, or waits for TT-5.4b', function () {
+test('every class stored in the database is worded for the center', function () {
     $missing = collect(glob(app_path('Notifications/*.php')))
         ->filter(fn (string $file) => str_contains(file_get_contents($file), "'database'"))
         ->map(fn (string $file) => 'App\\Notifications\\'.basename($file, '.php'))
-        ->reject(fn (string $class) => is_subclass_of($class, ShownInNotificationCenter::class) || in_array($class, NotificationCenter::PENDING_WORDING, true))
+        ->reject(fn (string $class) => is_subclass_of($class, ShownInNotificationCenter::class))
         ->values()->all();
 
     expect($missing)->toBe([]);
-    // And nothing is both worded and pending.
-    expect(collect(NotificationCenter::PENDING_WORDING)->filter(fn (string $class) => is_subclass_of($class, ShownInNotificationCenter::class))->all())->toBe([]);
 });
 
 test('the admin-only lists are exactly the classes marked as sent only to administrators', function () {
@@ -97,6 +141,15 @@ dataset('ncent worded notifications', function () {
     $request = fn () => tap(new Request, fn (Request $request) => $request->forceFill(['id' => 4246]));
     $exception = fn () => tap(new SafeguardingException, fn (SafeguardingException $exception) => $exception->forceFill(['id' => 4247, 'ends_at' => now()->addDays(3)]));
     $counsellor = fn () => tap(new Counsellor, fn (Counsellor $counsellor) => $counsellor->forceFill(['id' => 4248]));
+    $discussion = fn () => tap(new Discussion, fn (Discussion $discussion) => $discussion->forceFill(['id' => 4251, 'name' => 'Plan', 'for_type' => Therapy::class, 'for_id' => 4243])->setRelation('for', $therapy()));
+    $session = fn () => tap(new Session, fn (Session $session) => $session->forceFill(['id' => 4252, 'name' => 'Week 1', 'for_type' => Therapy::class, 'for_id' => 4243])->setRelation('for', $therapy()));
+    $forRequest = fn ($for, array $data = []) => tap(new Request, fn (Request $request) => $request->forceFill(['id' => 4246, 'for_type' => $for::class, 'for_id' => $for->id, 'data' => $data])->setRelation('for', $for));
+    $refund = fn () => tap(new Refund, fn (Refund $refund) => $refund->forceFill(['id' => 4253, 'transaction_id' => 4254]));
+    $transaction = fn () => tap(new Transaction, fn (Transaction $transaction) => $transaction->forceFill(['id' => 4254]));
+    $organization = fn () => tap(new Organization, fn (Organization $organization) => $organization->forceFill(['id' => 4255, 'name' => 'Org']));
+    $report = fn () => tap(new Report, fn (Report $report) => $report->forceFill(['id' => 4256]));
+    $profile = fn () => route('profile.show');
+    $orgs = fn () => route('organizations.mine.dashboard');
 
     return [
         'client paused' => [fn () => new ClientAccessPausedNotification($therapy(), 'Ama', $ward()), fn () => route('therapies.get', ['therapyId' => 4243]), 'Ama'],
@@ -129,6 +182,61 @@ dataset('ncent worded notifications', function () {
         'suspended' => [fn () => new SuspensionAppliedNotification($suspension()), fn () => route('suspended.show'), 'suspended'],
         'suspension ended' => [fn () => new SuspensionEndedNotification($suspension(), SuspensionEndedNotification::LIFTED), null, 'ended'],
         'ward suspended' => [fn () => new WardSuspendedNotification($suspension()), null, 'suspended'],
+        // TT-5.4b: the classes that store only ids.
+        'age verified' => [fn () => new AgeVerificationRequestApprovedNotification($request()), $profile, 'approved'],
+        'age not verified' => [fn () => new AgeVerificationRequestRejectedNotification($request()), $profile, 'not approved'],
+        'discussion deleted' => [fn () => new DiscussionDeletedNotification($discussion()), null, 'deleted'],
+        'discussion due' => [fn () => new DiscussionDueNotification($discussion()), fn () => route('discussions.chat', ['discussionId' => 4251]), 'starts soon'],
+        'discussion inclusion' => [fn () => new DiscussionInclusionNotification($counsellor(), $discussion()), fn () => route('discussions.chat', ['discussionId' => 4251]), 'accepted'],
+        'discussion request' => [fn () => new DiscussionRequestNotification($discussion()), fn () => route('home'), 'invited'],
+        'discussion status' => [fn () => new DiscussionStatusChangedNotification($discussion()), fn () => route('discussions.chat', ['discussionId' => 4251]), 'status'],
+        'discussion updated' => [fn () => new DiscussionUpdatedNotification($discussion()), fn () => route('discussions.chat', ['discussionId' => 4251]), 'updated'],
+        'dob approved' => [fn () => new DobChangeRequestApprovedNotification($request()), $profile, 'approved'],
+        'dob declined' => [fn () => new DobChangeRequestRejectedNotification($request()), $profile, 'declined'],
+        'dob superseded' => [fn () => new DobChangeRequestSupersededNotification($request()), $profile, 'closed'],
+        'counsellor link used' => [fn () => new GroupTherapyCounsellorLinkUsedNotification($group(), $counsellor()), fn () => route('group.therapies.get', ['groupTherapyId' => 4244]), 'invitation link'],
+        'counsellor joined ward group' => [fn () => new GroupTherapyCounsellorLinkUsedNotification($group(), $counsellor(), true), fn () => route('group.therapies.get', ['groupTherapyId' => 4244]), "ward's group"],
+        'ward joined group' => [fn () => new GroupTherapyMemberJoinedGuardianNotification($group()), fn () => route('group.therapies.get', ['groupTherapyId' => 4244]), 'joined'],
+        'ward joined group (link)' => [fn () => new GroupTherapyMemberJoinedGuardianNotification($group(), GroupTherapyMemberJoinedGuardianNotification::VIA_LINK), fn () => route('group.therapies.get', ['groupTherapyId' => 4244]), 'joined'],
+        'membership accepted' => [fn () => new GroupTherapyMembershipRequestAcceptedNotification($forRequest($group())), fn () => route('group.therapies.get', ['groupTherapyId' => 4244]), 'accepted'],
+        'membership declined' => [fn () => new GroupTherapyMembershipRequestRejectedNotification($forRequest($group())), null, 'declined'],
+        'guardianship established' => [fn () => new GuardianshipEstablishedNotification($ward()), $profile, 'guardian'],
+        'guardianship removed' => [fn () => new GuardianshipRemovedNotification($ward()), $profile, 'removed'],
+        'guardianship request' => [fn () => new GuardianshipRequestNotification($ward()), fn () => route('home'), 'guardian'],
+        'video consent' => [fn () => new GuardianVideoConsentReminderNotification($session(), 'hour_before'), fn () => route('therapies.get', ['therapyId' => 4243]), 'within the hour'],
+        'video consent (day before)' => [fn () => new GuardianVideoConsentReminderNotification($session(), 'day_before'), fn () => route('therapies.get', ['therapyId' => 4243]), 'An upcoming session'],
+        'terms accepted' => [fn () => new OrganizationCounsellorCompensationChangeAcceptedNotification($request()), $orgs, 'accepted'],
+        'terms expired' => [fn () => new OrganizationCounsellorCompensationChangeExpiredNotification($request()), $orgs, 'expired'],
+        'terms expiring' => [fn () => new OrganizationCounsellorCompensationChangeExpiryReminderNotification($request()), $orgs, 'expires soon'],
+        'terms proposed' => [fn () => new OrganizationCounsellorCompensationChangeProposedNotification($organization(), []), $orgs, 'proposed'],
+        'terms declined' => [fn () => new OrganizationCounsellorCompensationChangeRejectedNotification($request()), $orgs, 'declined'],
+        'financed refund' => [fn () => new OrganizationFinancedTransactionRefundedNotification($transaction(), true), $orgs, 'manual follow-up'],
+        'refund failed' => [fn () => new RefundFailedNotification($refund()), null, 'could not'],
+        'refund declined' => [fn () => new RefundRequestRejectedNotification($forRequest($transaction(), ['rejectionReason' => 'x'])), null, 'declined'],
+        'refund done' => [fn () => new RefundSucceededNotification($refund()), null, 'processed'],
+        'report closed (reporter)' => [fn () => new ReportClosedNotification($report(), ReportStatusEnum::dismissed, ReportClosedNotification::REPORTER, false), null, 'without further action'],
+        'report resolved (reporter)' => [fn () => new ReportClosedNotification($report(), ReportStatusEnum::resolved, ReportClosedNotification::REPORTER, false), null, 'taken it forward'],
+        'report dismissed (reported)' => [fn () => new ReportClosedNotification($report(), ReportStatusEnum::dismissed, ReportClosedNotification::REPORTED, false), null, 'involving you was reviewed by an administrator and closed'],
+        'report closed (reported)' => [fn () => new ReportClosedNotification($report(), ReportStatusEnum::resolved, ReportClosedNotification::REPORTED, true), null, 'confidential'],
+        'session created' => [fn () => new SessionCreatedNotification($session()), fn () => route('therapies.get', ['therapyId' => 4243]), 'scheduled'],
+        'session deleted' => [fn () => new SessionDeletedNotification($session()), fn () => route('therapies.get', ['therapyId' => 4243]), 'deleted'],
+        'session due' => [fn () => new SessionDueNotification($session()), fn () => route('therapies.get', ['therapyId' => 4243]), 'starts soon'],
+        'session updated' => [fn () => new SessionUpdatedNotification($session()), fn () => route('therapies.get', ['therapyId' => 4243]), 'updated'],
+        'time accepted' => [fn () => new SessionScheduleProposalAcceptedNotification($forRequest($therapy())), fn () => route('therapies.get', ['therapyId' => 4243]), 'accepted'],
+        'time declined (no reason)' => [fn () => new SessionScheduleProposalRejectedNotification($forRequest($therapy())), fn () => route('therapies.get', ['therapyId' => 4243]), 'declined'],
+        'time declined' => [fn () => new SessionScheduleProposalRejectedNotification($forRequest($therapy(), ['reason' => 'Busy that day'])), fn () => route('therapies.get', ['therapyId' => 4243]), 'Busy that day'],
+        'time proposed' => [fn () => new SessionScheduleProposedNotification($forRequest($therapy())), fn () => route('therapies.get', ['therapyId' => 4243]), 'proposed'],
+        'assistance link' => [fn () => new TherapyAssistanceLinkNotification($therapy()), fn () => route('therapies.get', ['therapyId' => 4243]), 'link was used'],
+        'ward assistance accepted' => [fn () => new TherapyAssistanceRequestAcceptedGuardianNotification($therapy()), fn () => route('therapies.get', ['therapyId' => 4243]), "ward's"],
+        'group invitation accepted' => [fn () => new TherapyAssistanceRequestAcceptedNotification($forRequest($group())), fn () => route('group.therapies.get', ['groupTherapyId' => 4244]), 'invitation'],
+        'offer to help accepted' => [fn () => new TherapyAssistanceRequestAcceptedNotification(tap($forRequest($group()), fn (Request $request) => $request->forceFill(['type' => Request::ASSISTANCE_TYPES[0], 'from_type' => Counsellor::class, 'to_type' => User::class]))), fn () => route('group.therapies.get', ['groupTherapyId' => 4244]), 'offer'],
+        'request for help accepted' => [fn () => new TherapyAssistanceRequestAcceptedNotification($forRequest($therapy())), fn () => route('therapies.get', ['therapyId' => 4243]), 'request for help'],
+        'continuation (client)' => [fn () => new TherapyContinuationNotification(TherapyContinuationNotification::ENDING_SOON, now()->addDays(3)), $profile, 'crisis line'],
+        'continuation renewed (client)' => [fn () => new TherapyContinuationNotification(TherapyContinuationNotification::RENEWED, now()->addDays(3)), null, 'For now, until'],
+        'continuation ending (counsellor, therapy)' => [fn () => new TherapyContinuationNotification(TherapyContinuationNotification::ENDING_SOON, now()->addDays(3), $therapy(), 'Ama', $ward()), fn () => route('therapies.get', ['therapyId' => 4243]), 'Your therapy with Ama'],
+        'continuation (counsellor)' => [fn () => new TherapyContinuationNotification(TherapyContinuationNotification::RENEWED, now()->addDays(3), $group(), 'Ama', $ward()), fn () => route('group.therapies.get', ['groupTherapyId' => 4244]), "Ama's participation in your group"],
+        'therapy created' => [fn () => new TherapyCreatedNotification($therapy()), fn () => route('therapies.get', ['therapyId' => 4243]), 'started'],
+        'group created' => [fn () => new TherapyCreatedNotification($group()), fn () => route('group.therapies.get', ['groupTherapyId' => 4244]), 'group therapy'],
     ];
 });
 
@@ -141,6 +249,25 @@ test('each worded notification reads its own saved data', function (Closure $mak
         ->and($text)->toContain($mentions)->not->toMatch('/42\d\d/')->not->toContain('pub-id')
         ->and($entry->url)->toBe($url ? $url() : null);
 })->with('ncent worded notifications');
+
+test('rows saved before the center knew more get neutral wording and no wrong link', function () {
+    // TherapyCreated once saved a group's id as therapy_id: no link rather than a wrong one.
+    expect(TherapyCreatedNotification::present(['therapy_id' => 4243])->url)->toBeNull();
+    // An assistance acceptance saved no kind: wording true for an offer, an invitation and a request.
+    expect(TherapyAssistanceRequestAcceptedNotification::present(['group_therapy_id' => 4244])->title)->toBe('Your request or invitation was accepted');
+    // A session saved only its own id: no link, and still worded.
+    expect(SessionDueNotification::present(['session_id' => 4252]))->title->toBe('A session starts soon')->url->toBeNull();
+    // An endsAt that's missing doesn't break the wording.
+    expect(TherapyContinuationNotification::present(['type' => 'guardian_access.continuation_ending_soon', 'therapyId' => 4243, 'clientName' => 'Ama'])->message)->toContain('will be paused');
+});
+
+test('an assistance acceptance sent to a counsellor for a therapy says their request to help was accepted', function () {
+    $therapy = tap(new Therapy, fn (Therapy $therapy) => $therapy->forceFill(['id' => 4243]));
+    $request = tap(new Request, fn (Request $request) => $request->forceFill(['id' => 4246, 'for_type' => Therapy::class, 'for_id' => 4243])->setRelation('for', $therapy));
+    $data = (new TherapyAssistanceRequestAcceptedNotification($request))->toArray(new Counsellor);
+
+    expect(TherapyAssistanceRequestAcceptedNotification::present($data)->title)->toBe('Your request to help with a therapy was accepted');
+});
 
 test('the list shows one fixed shape -- never the saved data, ids, a ward reference or the class name', function () {
     $viewer = User::factory()->adult()->create();
@@ -159,9 +286,9 @@ test('the list shows one fixed shape -- never the saved data, ids, a ward refere
     expect($body)->not->toContain(WardRef::of($ward))->not->toContain('wardRef')->not->toContain('Notification')->not->toContain('"data"');
 });
 
-test('an id-only class shows generically, and broken saved data never breaks the list', function () {
+test('an unknown class shows generically, and broken saved data never breaks the list', function () {
     $viewer = User::factory()->adult()->create();
-    ncentInsert($viewer, TherapyCreatedNotification::class, ['therapy_id' => 1]);
+    ncentInsert($viewer, 'App\\Notifications\\NoLongerExistsNotification', ['therapy_id' => 1]);
     ncentInsert($viewer, ClientAccessPausedNotification::class, ['clientName' => ['not' => 'a string']]);
 
     $items = $this->actingAs($viewer)->getJson(route('notifications.index'))->assertOk()->json('notifications');

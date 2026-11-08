@@ -2,7 +2,9 @@
 
 namespace App\Notifications;
 
+use App\Contracts\ShownInNotificationCenter;
 use App\Models\Request;
+use App\Support\NotificationEntry;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -11,7 +13,7 @@ use Illuminate\Notifications\Notification;
 // TT-4.11c/SCRUM-304: sent to the submitting user ($request->for, always the same as $request->from
 // for this type) once an admin approves their age-verification submission and the dob has been
 // marked verified. Mirrors DobChangeRequestApprovedNotification's own shape.
-class AgeVerificationRequestApprovedNotification extends Notification implements ShouldQueue
+class AgeVerificationRequestApprovedNotification extends Notification implements ShouldQueue, ShownInNotificationCenter
 {
     use Queueable;
 
@@ -62,5 +64,11 @@ class AgeVerificationRequestApprovedNotification extends Notification implements
         return [
             'request_id' => $this->request->id,
         ];
+    }
+
+    // SCRUM-39 (TT-5.4b): in the notification center -- from the saved ids only, never more than the email.
+    public static function present(array $data): NotificationEntry
+    {
+        return new NotificationEntry('Your age verification was approved', 'Your date of birth is now marked as verified.', NotificationEntry::link('profile.show', []));
     }
 }

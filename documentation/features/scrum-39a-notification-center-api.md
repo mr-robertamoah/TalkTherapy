@@ -1,7 +1,10 @@
 # SCRUM-39 (TT-5.4a): notification center — backend
 
-The JSON behind the in-app notification center. The bell and dropdown that use it come in TT-5.4c, and wording
-for the remaining notification types comes in TT-5.4b. Until then, those types show as "You have an update".
+The JSON behind the in-app notification center. The bell and dropdown that use it come in TT-5.4c.
+
+**TT-5.4b:** every notification type now has its own wording. Only a type that no longer exists in the
+code shows as "You have an update". A link appears where a saved id points to a page. Sessions, video-consent
+reminders and a discussion a counsellor accepted get one only for notifications sent after TT-5.4b.
 
 ## What it does
 

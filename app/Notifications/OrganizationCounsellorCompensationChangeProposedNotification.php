@@ -2,9 +2,11 @@
 
 namespace App\Notifications;
 
+use App\Contracts\ShownInNotificationCenter;
 use App\Enums\OrganizationCounsellorCompensationTypeEnum;
 use App\Models\Counsellor;
 use App\Models\Organization;
+use App\Support\NotificationEntry;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -14,7 +16,7 @@ use Illuminate\Notifications\Notification;
 // counter-offer -- a Counsellor on the org's turn, or (SCRUM-148) each admin of the Organization
 // on the counsellor's turn. `$organization` is always the Organization the affiliation belongs
 // to, regardless of which party actually proposed this specific round.
-class OrganizationCounsellorCompensationChangeProposedNotification extends Notification implements ShouldQueue
+class OrganizationCounsellorCompensationChangeProposedNotification extends Notification implements ShouldQueue, ShownInNotificationCenter
 {
     use Queueable;
 
@@ -74,5 +76,11 @@ class OrganizationCounsellorCompensationChangeProposedNotification extends Notif
             OrganizationCounsellorCompensationTypeEnum::free->value => 'Proposed terms: free (no compensation).',
             default => 'Proposed terms are available in the app.',
         };
+    }
+
+    // SCRUM-39 (TT-5.4b): in the notification center -- from the saved ids only, never more than the email.
+    public static function present(array $data): NotificationEntry
+    {
+        return new NotificationEntry('New compensation terms were proposed', 'Your current terms, if any, stay until you respond.', NotificationEntry::link('organizations.mine.dashboard', []));
     }
 }

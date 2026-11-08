@@ -8,6 +8,10 @@ use Illuminate\Support\Carbon;
 // where it makes sense, a link (built on the server; the page it leads to still checks access).
 final class NotificationEntry
 {
+    // The sentence the emails to a client end with when their support changes (security review: kept in the
+    // center too, on a mental-health platform).
+    public const CRISIS_LINE = ' If you need support urgently, please contact your local emergency services or a crisis line.';
+
     public function __construct(
         public readonly string $title,
         public readonly string $message = '',

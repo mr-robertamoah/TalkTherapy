@@ -2,10 +2,12 @@
 
 namespace App\Notifications;
 
+use App\Contracts\ShownInNotificationCenter;
 use App\Models\GroupTherapy;
 use App\Models\SafeguardingException;
 use App\Models\Therapy;
 use App\Models\User;
+use App\Support\NotificationEntry;
 use App\Support\TherapyLink;
 use App\Support\WardRef;
 use Carbon\CarbonInterface;
@@ -19,7 +21,7 @@ use Illuminate\Notifications\Notification;
 // the client's name as that therapy shows them, displayNameOf()) that it was RENEWED with a new end
 // date, or is ENDING_SOON (the 3-day heads-up). Neutral: never the reason, nothing about the family --
 // and (SCRUM-382 review) never "for longer", since a renewal can also bring the end forward.
-class TherapyContinuationNotification extends Notification implements ShouldQueue
+class TherapyContinuationNotification extends Notification implements ShouldQueue, ShownInNotificationCenter
 {
     use Queueable;
 
@@ -83,5 +85,26 @@ class TherapyContinuationNotification extends Notification implements ShouldQueu
             WardRef::KEY => $this->wardRef,
             'endsAt' => $this->endsAt->toJSON(),
         ]);
+    }
+
+    // SCRUM-39 (TT-5.4b): in the notification center -- from the saved ids only, never more than the email.
+    public static function present(array $data): NotificationEntry
+    {
+        $until = NotificationEntry::date($data['endsAt'] ?? null);
+        $renewed = ($data['type'] ?? null) === 'guardian_access.continuation_'.self::RENEWED;
+
+        if (! isset($data['therapyId']) && ! isset($data['groupTherapyId'])) {
+            return $renewed
+                ? new NotificationEntry('Your therapy can continue', $until ? "For now, until {$until}." : '')
+                : new NotificationEntry('Your therapy will be paused soon', ($until ? "It can continue until {$until}. " : '').'Adding a guardian keeps it going.'.NotificationEntry::CRISIS_LINE, NotificationEntry::link('profile.show', []));
+        }
+
+        $name = NotificationEntry::text($data, 'clientName', 'a client');
+
+        $where = isset($data['groupTherapyId']) ? "{$name}'s participation in your group" : "Your therapy with {$name}";
+
+        return $renewed
+            ? new NotificationEntry('The date a therapy can continue until has changed', $until ? "{$where} can now continue until {$until}." : '', TherapyLink::fromIds($data))
+            : new NotificationEntry('A therapy will be paused soon', $where.($until ? " can continue until {$until}." : ' will be paused.').' After that it pauses again, unless their account has a guardian by then.', TherapyLink::fromIds($data));
     }
 }

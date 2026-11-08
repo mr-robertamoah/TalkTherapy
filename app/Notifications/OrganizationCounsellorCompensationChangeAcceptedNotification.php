@@ -2,8 +2,10 @@
 
 namespace App\Notifications;
 
+use App\Contracts\ShownInNotificationCenter;
 use App\Enums\OrganizationCounsellorCompensationTypeEnum;
 use App\Models\Request;
+use App\Support\NotificationEntry;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -11,7 +13,7 @@ use Illuminate\Notifications\Notification;
 
 // SCRUM-147 (TT-6.4c): sent to whoever proposed the now-accepted terms -- not necessarily the
 // current org admin, since a future counter-offer round can flip who proposed last.
-class OrganizationCounsellorCompensationChangeAcceptedNotification extends Notification implements ShouldQueue
+class OrganizationCounsellorCompensationChangeAcceptedNotification extends Notification implements ShouldQueue, ShownInNotificationCenter
 {
     use Queueable;
 
@@ -68,5 +70,11 @@ class OrganizationCounsellorCompensationChangeAcceptedNotification extends Notif
             OrganizationCounsellorCompensationTypeEnum::free->value => 'Accepted terms: free (no compensation).',
             default => 'Accepted terms are available in the app.',
         };
+    }
+
+    // SCRUM-39 (TT-5.4b): in the notification center -- from the saved ids only, never more than the email.
+    public static function present(array $data): NotificationEntry
+    {
+        return new NotificationEntry('Your proposed compensation terms were accepted', '', NotificationEntry::link('organizations.mine.dashboard', []));
     }
 }

@@ -2,14 +2,16 @@
 
 namespace App\Notifications;
 
+use App\Contracts\ShownInNotificationCenter;
 use App\Models\Counsellor;
 use App\Models\Discussion;
+use App\Support\NotificationEntry;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
-class DiscussionInclusionNotification extends Notification implements ShouldQueue
+class DiscussionInclusionNotification extends Notification implements ShouldQueue, ShownInNotificationCenter
 {
     use Queueable;
 
@@ -63,6 +65,14 @@ class DiscussionInclusionNotification extends Notification implements ShouldQueu
     {
         return [
             'counsellor_id' => $this->counsellor->id,
+            // SCRUM-39: so the notification center can link it (the recipient created it).
+            'discussion_id' => $this->discussion->id,
         ];
+    }
+
+    // SCRUM-39 (TT-5.4b): in the notification center -- from the saved ids only, never more than the email.
+    public static function present(array $data): NotificationEntry
+    {
+        return new NotificationEntry('A counsellor accepted your discussion invitation', '', NotificationEntry::link('discussions.chat', ['discussionId' => $data['discussion_id'] ?? null]));
     }
 }

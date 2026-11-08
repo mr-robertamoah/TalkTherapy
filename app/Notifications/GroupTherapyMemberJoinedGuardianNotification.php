@@ -2,10 +2,12 @@
 
 namespace App\Notifications;
 
+use App\Contracts\ShownInNotificationCenter;
 use App\Enums\ConstantsEnum;
 use App\Models\Counsellor;
 use App\Models\GroupTherapy;
 use App\Models\User;
+use App\Support\NotificationEntry;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -15,7 +17,7 @@ use Illuminate\Notifications\Notification;
 // SCRUM-73: renamed from GroupTherapyMembershipRequestAcceptedGuardianNotification, as it is now sent
 // for every way of joining. $joinedVia picks the wording: an accepted request reads "accepted"; the
 // join button and an invitation link read "joined" (there was nothing to accept).
-class GroupTherapyMemberJoinedGuardianNotification extends Notification implements ShouldQueue
+class GroupTherapyMemberJoinedGuardianNotification extends Notification implements ShouldQueue, ShownInNotificationCenter
 {
     use Queueable;
 
@@ -89,5 +91,11 @@ class GroupTherapyMemberJoinedGuardianNotification extends Notification implemen
         return ! $this->groupTherapy->addedby || $this->groupTherapy->addedByUserIsMaskedFor($notifiable instanceof User ? $notifiable : null)
             ? ConstantsEnum::anonymousPersonPhrase->value
             : $this->groupTherapy->addedby->name;
+    }
+
+    // SCRUM-39 (TT-5.4b): in the notification center -- from the saved ids only, never more than the email.
+    public static function present(array $data): NotificationEntry
+    {
+        return new NotificationEntry('Your ward joined a group therapy', '', NotificationEntry::link('group.therapies.get', ['groupTherapyId' => $data['group_therapy_id'] ?? null]));
     }
 }

@@ -2,16 +2,19 @@
 
 namespace App\Notifications;
 
+use App\Contracts\ShownInNotificationCenter;
 use App\Models\Counsellor;
 use App\Models\Session;
 use App\Models\Therapy;
+use App\Support\NotificationEntry;
+use App\Support\TherapyLink;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\BroadcastMessage;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
-class SessionDueNotification extends Notification implements ShouldQueue
+class SessionDueNotification extends Notification implements ShouldQueue, ShownInNotificationCenter
 {
     use Queueable;
 
@@ -68,6 +71,8 @@ class SessionDueNotification extends Notification implements ShouldQueue
     {
         return [
             'session_id' => $this->session->id,
+            // SCRUM-39: the therapy or group, so the notification center can link it (old rows have none).
+            ...($this->session->for ? TherapyLink::ids($this->session->for) : []),
         ];
     }
 
@@ -89,5 +94,11 @@ class SessionDueNotification extends Notification implements ShouldQueue
     public function broadcastType(): string
     {
         return 'session.due';
+    }
+
+    // SCRUM-39 (TT-5.4b): in the notification center -- from the saved ids only, never more than the email.
+    public static function present(array $data): NotificationEntry
+    {
+        return new NotificationEntry('A session starts soon', 'It starts in less than 30 minutes.', TherapyLink::fromIds($data));
     }
 }

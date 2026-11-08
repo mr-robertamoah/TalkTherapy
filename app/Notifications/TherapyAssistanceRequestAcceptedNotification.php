@@ -2,18 +2,20 @@
 
 namespace App\Notifications;
 
+use App\Contracts\ShownInNotificationCenter;
 use App\Enums\ConstantsEnum;
 use App\Models\Counsellor;
 use App\Models\Request;
 use App\Models\Therapy;
 use App\Models\User;
+use App\Support\NotificationEntry;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\BroadcastMessage;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
-class TherapyAssistanceRequestAcceptedNotification extends Notification implements ShouldQueue
+class TherapyAssistanceRequestAcceptedNotification extends Notification implements ShouldQueue, ShownInNotificationCenter
 {
     use Queueable;
 
@@ -98,6 +100,13 @@ class TherapyAssistanceRequestAcceptedNotification extends Notification implemen
         return [
             // SCRUM-358: group invites use this notification too -- never label a group as a therapy.
             $this->request->for->isTherapy ? 'therapy_id' : 'group_therapy_id' => $this->request->for_id,
+            // SCRUM-39 (review): which of the email's four wordings, for the notification center. Old rows have none.
+            'kind' => match (true) {
+                ! $this->request->for->isTherapy && $this->request->isAssistanceOffer() => 'offer',
+                ! $this->request->for->isTherapy => 'invite',
+                $notifiable instanceof Counsellor => 'assist',
+                default => 'help',
+            },
         ];
     }
 
@@ -143,5 +152,21 @@ class TherapyAssistanceRequestAcceptedNotification extends Notification implemen
         $name = $this->acceptedByName();
 
         return $name === ConstantsEnum::anonymousPersonPhrase->value ? $name : "user with name: '{$name}'";
+    }
+
+    // SCRUM-39 (TT-5.4b): in the notification center -- from the saved ids only, never more than the email.
+    public static function present(array $data): NotificationEntry
+    {
+        $link = isset($data['group_therapy_id'])
+            ? NotificationEntry::link('group.therapies.get', ['groupTherapyId' => $data['group_therapy_id']])
+            : NotificationEntry::link('therapies.get', ['therapyId' => $data['therapy_id'] ?? null]);
+
+        return match ($data['kind'] ?? null) {
+            'offer' => new NotificationEntry('Your offer to help a group was accepted', 'You are now one of its counsellors.', $link),
+            'invite' => new NotificationEntry('Your invitation to your group was accepted', '', $link),
+            'assist' => new NotificationEntry('Your request to help with a therapy was accepted', 'You can start creating sessions.', $link),
+            'help' => new NotificationEntry('A counsellor accepted your request for help', '', $link),
+            default => new NotificationEntry('Your request or invitation was accepted', '', $link),
+        };
     }
 }

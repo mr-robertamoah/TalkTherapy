@@ -46,6 +46,6 @@ class GuardianAccessPausedNotification extends Notification implements ShouldQue
     // SCRUM-39: in the notification center.
     public static function present(array $data): NotificationEntry
     {
-        return new NotificationEntry('Your therapy is paused', 'Your account no longer has a guardian. It starts again when one is added.');
+        return new NotificationEntry('Your therapy is paused', 'Your account no longer has a guardian. It starts again when one is added.'.NotificationEntry::CRISIS_LINE);
     }
 }

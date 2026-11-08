@@ -2,15 +2,16 @@
 
 namespace App\Notifications;
 
+use App\Contracts\ShownInNotificationCenter;
 use App\Models\Discussion;
-use App\Models\Therapy;
+use App\Support\NotificationEntry;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\BroadcastMessage;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
-class DiscussionDueNotification extends Notification implements ShouldQueue
+class DiscussionDueNotification extends Notification implements ShouldQueue, ShownInNotificationCenter
 {
     use Queueable;
 
@@ -34,8 +35,9 @@ class DiscussionDueNotification extends Notification implements ShouldQueue
     {
         $via = ['database', 'broadcast'];
 
-        if ($notifiable->email_verified_at)
+        if ($notifiable->email_verified_at) {
             $via[] = 'mail';
+        }
 
         return $via;
     }
@@ -46,13 +48,13 @@ class DiscussionDueNotification extends Notification implements ShouldQueue
     public function toMail(object $notifiable): MailMessage
     {
         $name = $notifiable->getName();
-        
+
         return (new MailMessage)
             ->success()
             ->subject("'{$this->discussion->name}' Discussion")
             ->greeting("Hello {$name}!")
-            ->line("The discussion with name: '{$this->discussion->name}' which was created for " . "'{$this->discussion->for->name}' " . $this->notificationActionData[0] . " is about to start.")
-            ->line("This discussion will be starting in less than 30 minutes. Please do not disappoint. Be on time.")
+            ->line("The discussion with name: '{$this->discussion->name}' which was created for "."'{$this->discussion->for->name}' ".$this->notificationActionData[0].' is about to start.')
+            ->line('This discussion will be starting in less than 30 minutes. Please do not disappoint. Be on time.')
             ->action("Visit {$this->notificationActionData[0]} Page now", $this->notificationActionData[1])
             ->line("Thank you for choosing to 'TalkTherapy'.");
     }
@@ -68,7 +70,7 @@ class DiscussionDueNotification extends Notification implements ShouldQueue
             'discussion_id' => $this->discussion->id,
         ];
     }
-    
+
     public function toBroadcast(object $notifiable): BroadcastMessage
     {
         return new BroadcastMessage([
@@ -78,12 +80,18 @@ class DiscussionDueNotification extends Notification implements ShouldQueue
             'discussion' => [
                 'id' => $this->discussion->id,
                 'name' => $this->discussion->name,
-            ]
+            ],
         ]);
     }
 
     public function broadcastType(): string
     {
         return 'discussion.due';
+    }
+
+    // SCRUM-39 (TT-5.4b): in the notification center -- from the saved ids only, never more than the email.
+    public static function present(array $data): NotificationEntry
+    {
+        return new NotificationEntry('A discussion starts soon', 'It starts in less than 30 minutes.', NotificationEntry::link('discussions.chat', ['discussionId' => $data['discussion_id'] ?? null]));
     }
 }

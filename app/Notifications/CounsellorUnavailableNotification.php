@@ -72,6 +72,6 @@ class CounsellorUnavailableNotification extends Notification implements ShouldQu
         $declined = ! empty($data['requestDeclined']) ? ' Your pending request to them was declined.' : '';
         $cancelled = (int) ($data['cancelledSessions'] ?? 0) > 0 ? ' Upcoming sessions with them were cancelled.' : '';
 
-        return new NotificationEntry("{$name} is unavailable", ($until ? "Until {$until}." : 'For now.').$declined.$cancelled);
+        return new NotificationEntry("{$name} is unavailable", ($until ? "Until {$until}." : 'For now.').$declined.$cancelled.NotificationEntry::CRISIS_LINE);
     }
 }

@@ -2,17 +2,19 @@
 
 namespace App\Notifications;
 
+use App\Contracts\ShownInNotificationCenter;
 use App\Enums\ConstantsEnum;
 use App\Models\Counsellor;
 use App\Models\Request;
 use App\Models\User;
+use App\Support\NotificationEntry;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\BroadcastMessage;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
-class GroupTherapyMembershipRequestAcceptedNotification extends Notification implements ShouldQueue
+class GroupTherapyMembershipRequestAcceptedNotification extends Notification implements ShouldQueue, ShownInNotificationCenter
 {
     use Queueable;
 
@@ -100,5 +102,11 @@ class GroupTherapyMembershipRequestAcceptedNotification extends Notification imp
         return ! $groupTherapy->addedby || $groupTherapy->addedByUserIsMaskedFor($notifiable instanceof User ? $notifiable : null)
             ? ConstantsEnum::anonymousPersonPhrase->value
             : $groupTherapy->addedby->name;
+    }
+
+    // SCRUM-39 (TT-5.4b): in the notification center -- from the saved ids only, never more than the email.
+    public static function present(array $data): NotificationEntry
+    {
+        return new NotificationEntry('Your request to join a group was accepted', '', NotificationEntry::link('group.therapies.get', ['groupTherapyId' => $data['group_therapy_id'] ?? null]));
     }
 }

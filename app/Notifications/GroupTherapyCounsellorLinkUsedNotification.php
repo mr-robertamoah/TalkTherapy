@@ -2,8 +2,10 @@
 
 namespace App\Notifications;
 
+use App\Contracts\ShownInNotificationCenter;
 use App\Models\Counsellor;
 use App\Models\GroupTherapy;
+use App\Support\NotificationEntry;
 use App\Support\TherapyLink;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -14,7 +16,7 @@ use Illuminate\Notifications\Notification;
 // creator (who issued it) and, for a minor creator, to their guardians ($toGuardian), as
 // PerformTherapyCounsellorLinkAction does for a 1:1. Counsellors are never anonymous, so they are
 // named; the creator never is (a guardian is only told it is their ward's group).
-class GroupTherapyCounsellorLinkUsedNotification extends Notification implements ShouldQueue
+class GroupTherapyCounsellorLinkUsedNotification extends Notification implements ShouldQueue, ShownInNotificationCenter
 {
     use Queueable;
 
@@ -49,5 +51,13 @@ class GroupTherapyCounsellorLinkUsedNotification extends Notification implements
             ...TherapyLink::ids($this->groupTherapy),
             'counsellorId' => $this->counsellor->id,
         ];
+    }
+
+    // SCRUM-39 (TT-5.4b): in the notification center -- from the saved ids only, never more than the email.
+    public static function present(array $data): NotificationEntry
+    {
+        return ($data['type'] ?? null) === 'group_therapy.ward_counsellor_joined'
+            ? new NotificationEntry("A counsellor joined your ward's group therapy", '', TherapyLink::fromIds($data))
+            : new NotificationEntry('Your counsellor invitation link was used', 'A counsellor joined your group.', TherapyLink::fromIds($data));
     }
 }
