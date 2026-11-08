@@ -11134,3 +11134,32 @@ therapy 18 after the last QA pass.
   - On the therapy path the "already pending" check now runs inside the same transaction too, which
     closes a double-submit race.
   - Refusals are logged.
+
+## SCRUM-39 (TT-5.4b) — wording for the id-only notifications (2026-11-08)
+
+- **Every database notification is now worded** (41 more classes), and the pending list is gone. The guard
+  test fails for any new database class without `present()`.
+- **Fixed text from saved ids only:** there are no look-ups, and nothing says more than the email.
+  - **Links:** only where a saved id maps to a page the recipient can open. For example, discussion links go
+    only to participants. A discussion invitation has no link to the chat, because the invitee would get a
+    403; it links home, like the guardianship request.
+  - **No link:** refunds, report outcomes, a declined group request and a deleted discussion.
+- **Saving one more id from now on, so new rows can link** (old rows simply have no link):
+  - `Session*` notifications and `GuardianVideoConsentReminder` now save `TherapyLink::ids()` of the
+    session's therapy or group;
+  - `DiscussionInclusion` now saves `discussion_id`.
+- **`TherapyCreatedNotification` now saves `TherapyLink::ids()`:**
+  - **Why:** it is sent for group therapies too, and its `therapy_id` held the group's id.
+  - **Old rows** can't be told apart, so they get no link rather than a possibly wrong one.
+  - **The email** linked groups to a therapy URL; it now uses `TherapyLink::to()`.
+  - **Readers:** no other code read the old key, it has no broadcast channel, and it isn't in the
+    anonymisation list.
+- **`TherapyAssistanceRequestAcceptedNotification` now saves a `kind`** (`offer`, `invite`, `assist` or
+  `help`), the email's four wordings. Old rows get wording that's true for all four.
+- **Crisis line:** client notices whose email ends with the crisis-line sentence carry it in the center too
+  (security review): counsellor unavailable, therapy paused, can continue, and will be paused soon.
+- **Report outcome:** the email and the center share one wording (`ReportClosedNotification::summaryFor`).
+- **Declined session time:** the reason is shown, as the email shows it, capped at 300 characters.
+  - **Gap:** it isn't cleared when the writer's account is anonymised. That is added to **SCRUM-396**.
+  - **For TT-5.4c:** render `message` as text (`{{ }}`), never `v-html`.
+
