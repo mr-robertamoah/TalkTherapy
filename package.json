@@ -3,7 +3,8 @@
     "type": "module",
     "scripts": {
         "dev": "vite",
-        "build": "vite build"
+        "build": "vite build",
+        "countries:generate": "node scripts/generate-countries.mjs"
     },
     "devDependencies": {
         "@inertiajs/vue3": "^1.2.0",
@@ -11,6 +12,7 @@
         "@vitejs/plugin-vue": "^5.0.0",
         "autoprefixer": "^10.4.12",
         "axios": "^1.7.0",
+        "i18n-iso-countries": "7.14.0",
         "laravel-echo": "^1.16.0",
         "laravel-vite-plugin": "^1.0.0",
         "postcss": "^8.4.31",

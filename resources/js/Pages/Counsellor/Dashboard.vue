@@ -4,6 +4,10 @@
 // therapies they could help with. Everything comes from GetCounsellorDashboardAction; each block
 // shows a few items and links to where the full list lives.
 import { Head, Link, router, usePage } from '@inertiajs/vue3'
+import { ref } from 'vue'
+import axios from 'axios'
+import PrimaryButton from '@/Components/PrimaryButton.vue'
+import SecondaryButton from '@/Components/SecondaryButton.vue'
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue'
 import RequestBadge from '@/Components/RequestBadge.vue'
 import CounsellorVerificationStatusCard from '@/Components/CounsellorVerificationStatusCard.vue'
@@ -38,6 +42,23 @@ function sessionHref(session) {
 // An answered request reloads the dashboard (counts change).
 function answered() {
     router.reload({ only: ['dashboard'], preserveScroll: true })
+}
+
+// SCRUM-33: switching "available for urgent help" on or off.
+const availableUntil = ref(props.dashboard.urgentHelp?.availableUntil ?? null)
+const savingAvailability = ref(false)
+
+async function setAvailable(available) {
+    savingAvailability.value = true
+    await axios.post(route('help.availability'), { available })
+        .then((res) => {
+            availableUntil.value = res.data.availableUntil
+            // SCRUM-33: anyone already waiting rings now.
+            if (available) window.dispatchEvent(new Event('help:available'))
+            setAlertData({ message: available ? 'You are available for urgent help.' : 'You are no longer available for urgent help.', type: 'success', show: true })
+        })
+        .catch((err) => setAlertData({ message: err.response?.data?.message ?? 'That could not be changed.', type: 'failed', show: true }))
+        .finally(() => { savingAvailability.value = false })
 }
 
 const card = 'rounded-lg border border-gray-200 bg-white p-4 shadow-sm sm:p-5'
@@ -94,6 +115,26 @@ const more = 'text-sm font-medium text-blue-700 underline'
                             <span class="shrink-0 text-xs text-gray-700">{{ formatWhen(session.startTime) }}</span>
                         </li>
                     </ul>
+                </section>
+
+                <!-- SCRUM-33: available for urgent help -->
+                <section :class="card" aria-labelledby="urgent-help">
+                    <div class="flex items-baseline justify-between gap-2">
+                        <h3 id="urgent-help" :class="heading">Urgent help</h3>
+                        <span v-if="availableUntil" class="rounded-full border border-green-200 bg-green-50 px-2 py-0.5 text-xs font-medium text-green-800">Available</span>
+                    </div>
+                    <p class="mt-2 text-sm text-gray-600">
+                        While you're available, you're rung when someone taps "I need help now", and the first counsellor to accept chats
+                        with them straight away. It switches off on its own after {{ dashboard.urgentHelp.hours }} hours. Urgent help chats are free and unpaid.
+                    </p>
+                    <p v-if="availableUntil" class="mt-2 text-sm text-gray-800">Available until {{ formatWhen(availableUntil) }}. Keep this app open to be rung.</p>
+                    <p v-else-if="!dashboard.urgentHelp.canBeAvailable" class="mt-2 text-sm text-amber-800">You can be available while your verification is current.</p>
+                    <div class="mt-3 flex flex-wrap gap-2">
+                        <PrimaryButton v-if="dashboard.urgentHelp.canBeAvailable" type="button" :disabled="savingAvailability" @click="setAvailable(true)">
+                            {{ availableUntil ? `Extend ${dashboard.urgentHelp.hours} hours` : 'Be available now' }}
+                        </PrimaryButton>
+                        <SecondaryButton v-if="availableUntil" type="button" :disabled="savingAvailability" @click="setAvailable(false)">Stop being available</SecondaryButton>
+                    </div>
                 </section>
 
                 <!-- Verification -->

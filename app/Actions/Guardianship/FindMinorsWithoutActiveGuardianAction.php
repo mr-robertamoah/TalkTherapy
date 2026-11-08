@@ -58,7 +58,7 @@ class FindMinorsWithoutActiveGuardianAction extends Action
     private function row(User $user): array
     {
         $open = fn ($query) => $query->where('status', '!=', TherapyStatusEnum::ended->value);
-        $therapyIds = $open(Therapy::query()->whereUser($user))->pluck('id');
+        $therapyIds = $open(Therapy::query()->withoutHelpChats()->whereUser($user))->pluck('id');
         $groupIds = $open(GroupTherapy::query()->whereUser($user))->pluck('id');
 
         return [

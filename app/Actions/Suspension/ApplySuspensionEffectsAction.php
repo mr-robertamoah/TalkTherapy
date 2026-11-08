@@ -4,6 +4,7 @@ namespace App\Actions\Suspension;
 
 use App\Actions\Action;
 use App\Actions\Counsellor\GetCounsellorClientsAction;
+use App\Actions\Help\EndCounsellorHelpChatsAction;
 use App\Enums\RequestStatusEnum;
 use App\Enums\RequestTypeEnum;
 use App\Enums\SessionStatusEnum;
@@ -44,6 +45,9 @@ class ApplySuspensionEffectsAction extends Action
         if (! $counsellor) {
             return collect();
         }
+
+        // SCRUM-33: out of any help chat first (it ends for both; the sessions below then skip it).
+        EndCounsellorHelpChatsAction::new()->execute($counsellor, 'suspension');
 
         [$cancelledByClient, $endedSessions] = $this->failSessions($counsellor, $suspension);
         $declinedRequesters = $this->declineRequests($counsellor);

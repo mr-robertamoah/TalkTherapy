@@ -2,6 +2,7 @@
 
 use App\Models\Discussion;
 use App\Models\GroupTherapy;
+use App\Models\HelpRequest;
 use App\Models\Message;
 use App\Models\Session;
 use App\Models\Therapy;
@@ -26,6 +27,11 @@ Broadcast::channel('users.{id}', function ($user, $id) {
 
 Broadcast::channel('counsellors.{counsellorId}', function ($user, $counsellorId) {
     return $user->counsellor?->id == (int) $counsellorId;
+});
+
+// SCRUM-33: a help chat -- the person who asked, and the counsellor who answered.
+Broadcast::channel('help-requests.{helpRequestId}', function ($user, $helpRequestId) {
+    return (bool) HelpRequest::query()->find($helpRequestId)?->isParticipant($user);
 });
 
 Broadcast::channel('sessions.{sessionId}', function ($user, $sessionId) {

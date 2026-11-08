@@ -43,6 +43,12 @@ class GetCounsellorDashboardAction extends Action
             'earnings' => $this->earnings($counsellor),
             // Only while they can take anyone on (SCRUM-31).
             'couldHelp' => $counsellor->isVerified() ? $this->couldHelp($viewer) : null,
+            // SCRUM-33: "available for urgent help" (it lapses on its own).
+            'urgentHelp' => [
+                'availableUntil' => $counsellor->isAvailableForUrgentHelp() ? $counsellor->urgent_help_available_until->toIso8601String() : null,
+                'canBeAvailable' => $counsellor->isVerified() && ! $counsellor->isSuspended(),
+                'hours' => (int) config('help.availability_hours'),
+            ],
         ];
     }
 
@@ -70,7 +76,7 @@ class GetCounsellorDashboardAction extends Action
     // (the user's decision: only active ones; pending invitations are under "needs your action").
     private function current(Counsellor $counsellor): array
     {
-        $therapies = Therapy::query()
+        $therapies = Therapy::query()->withoutHelpChats()
             ->where('counsellor_id', $counsellor->id)
             ->where('status', '!=', TherapyStatusEnum::ended->value);
         $groups = GroupTherapy::query()

@@ -8,6 +8,7 @@ use App\Actions\Discussion\FailUnheldDiscussionsAction;
 use App\Actions\Discussion\NotifyParticipantsOfStartingDiscussionsAction;
 use App\Actions\Guardianship\FindMinorsWithoutActiveGuardianAction;
 use App\Actions\Guardianship\HandleGuardianLossAction;
+use App\Actions\Help\SweepHelpRequestsAction;
 use App\Actions\Organization\ExpireStaleCompensationRequestsAction;
 use App\Actions\Organization\SendCompensationRequestExpiryRemindersAction;
 use App\Actions\Organization\SettleDueOrganizationInvoicesAction;
@@ -71,6 +72,8 @@ Schedule::call(fn () => SchedulerHeartbeat::beat())->name('scheduler-heartbeat')
 Schedule::call(fn () => NotifyParticipantsOfStartingSessionsAction::new()->execute())->name('notify-starting-sessions')->everyFiveMinutes();
 
 Schedule::call(fn () => FailUnheldSessionsAction::new()->execute())->name('fail-unheld-sessions')->everyFourHours();
+// SCRUM-33: help requests nobody answered expire; help chats past their time end.
+Schedule::call(fn () => SweepHelpRequestsAction::new()->execute())->name('sweep-help-requests')->everyMinute()->withoutOverlapping(5);
 
 Schedule::call(fn () => BroadcastStartedSessionsAndDiscussionsAction::new()->execute())->name('broadcast-started-sessions-and-discussions')->everyMinute();
 

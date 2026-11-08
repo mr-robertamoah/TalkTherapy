@@ -5,6 +5,7 @@ namespace App\Actions\Therapy;
 use App\Actions\Action;
 use App\Actions\Guardianship\EnsureMinorHasActiveGuardianAction;
 use App\Actions\Suspension\EnsureTherapyCounsellorIsAvailableAction;
+use App\Exceptions\TherapyException;
 use App\Models\GroupTherapy;
 use App\Models\Therapy;
 use App\Models\User;
@@ -31,7 +32,15 @@ class EnsureTherapyCanProceedAction extends Action
         bool $fresh = false,
         bool $counterparty = true,
         ?bool $actsAsCounsellor = null,
+        bool $allowHelpChat = false,
     ): void {
+        // SCRUM-33 (reviews): a quick help chat is only ever written through its own help actions --
+        // never the generic message, session, topic or schedule paths. Only its audio call (video join)
+        // goes through here on purpose.
+        if (! $allowHelpChat && $therapy instanceof Therapy && $therapy->isHelpChat()) {
+            throw TherapyException::notAllowed();
+        }
+
         EnsureTherapyCounsellorIsAvailableAction::new()->execute($user, $therapy, $includeTarget);
 
         EnsureMinorHasActiveGuardianAction::new()->execute($user, $therapy, $counterparty, $fresh, $actsAsCounsellor);

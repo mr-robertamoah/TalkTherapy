@@ -10508,3 +10508,106 @@ therapy 18 after the last QA pass.
     label was positioned outside its card -- the card is now `relative`), and the find-a-counsellor
     search asked for the next page of the previous search after the text changed (it now starts from
     page 1).
+
+## SCRUM-33 — quick help chat: plan approved (2026-11-08)
+
+- **Approved by the user** after product-owner, architect and project-manager passes. Three PRs, in order:
+  TT-4.4a (core), TT-4.4b (admin queue + escalation), TT-4.4c (follow-up, retention, closeout).
+  SCRUM-32 follows TT-4.4b (it reuses the admin alert channel).
+- **The user's decisions:**
+  - After a help chat ends it stays a private, read-only record that both the person and the
+    counsellor can see; the counsellor or an admin can invite the person into a regular therapy, and
+    the crisis transcript isn't copied into it.
+  - **Everyone signed in can use it, restricted accounts included:** a paused minor (no active
+    guardian) can text (no audio); a **suspended account** can too (the user asked for this; agreed:
+    a crisis outranks a conduct suspension), with safeguards -- one request an hour, the counsellor
+    isn't told of the suspension, the admin queue shows it, and the chat can be ended and reported.
+  - Anonymity is optional (from the person's saved preference); a ringing counsellor sees only a
+    short summary (first name or "Anonymous", adult/minor, country, languages, the optional one-line
+    note). Handling admins see the identity, each view logged.
+  - Emergency numbers are an admin-managed table (country, number, label, source, verified by, date),
+    only verified ones shown, reviewed every 6 months, Ghana first. Numbers are never invented: seed
+    rows are clearly fake, and release waits for a verified Ghana number. Countries are chosen with a
+    **searchable picker**, which also replaces the existing country fields (profile, admin user,
+    licensing authority) -- the user's request.
+- **Defaults accepted with the plan:** free for the person; counsellors unpaid in v1; one help chat at a
+  time per counsellor (not counted in the daily offer cap); on-call self-expires after 4 hours; admins
+  alerted at 60 s and 3 min, a request expires at 10 min; admins coordinate, never chat; audio only (no
+  video); minors' audio only with the existing guardian consent; guardians aren't told automatically
+  (a counsellor escalates through a SCRUM-32 flag); transcripts kept 1 year.
+- **Design (architect):** a `HelpRequest` handles ringing, the first-accept race (a conditional update),
+  escalation and the queue; accepting creates a real free, private, single-session Therapy + an
+  in-session online Session, so chat, audio, consent, reports and admin read-logging are reused rather
+  than rebuilt. The button and ring are mounted once at the app root. Help therapies are excluded from
+  every other list and count (`withoutHelpChats`). The PM moved the expiry and overdue-session sweeps
+  into TT-4.4a (the one-live-request lock needs them).
+
+## SCRUM-33 (TT-4.4a) — quick help chat core: implementation decisions (2026-11-08)
+
+- **Country list (the user's choice):** bundled, generated from the ISO 3166 dataset
+  (`i18n-iso-countries` 7.14.0, `npm run countries:generate`) into `resources/data/countries.json`,
+  shared by the server (`App\Support\Countries`) and the searchable `CountrySelect`. The external
+  countries API (`VITE_COUNTRIES_API`) and the 4-country fallback are gone. A few long official names
+  are shown in their everyday form (e.g. "Taiwan", "Laos"); every other English spelling is an alias,
+  so names saved earlier still match; an alias two countries share ("Congo") is dropped. Profile and
+  licensing-authority country fields still accept any saved name (no new validation on existing data);
+  emergency numbers are keyed by ISO code.
+- **Emergency numbers** (super admins; every change in an append-only history). Every field
+  (source, verified by, date) is required, so there is no "unverified" state to hide. Numbers over
+  6 months old are flagged "review due" but still shown -- hiding the only number would be worse.
+- **A dedicated help chat page and routes** (`/help/chat/{id}`, `help.*`) instead of the therapy chat
+  page: the user allowed suspended accounts and paused minors to use help, and the therapy chat routes
+  and gates refuse them -- opening those generic routes would be far broader. Messages are still
+  ordinary messages on the help session. **Suspended accounts get text only** (the video routes aren't
+  exempted) -- a narrowing of "suspended accounts may use it", kept small on purpose; revisit in
+  TT-4.4c if needed.
+- `EnsureAccountIsNotSuspended` lets `help.*` routes through, and broadcasting auth only for a
+  `private-help-requests.{id}` channel (whose own rule checks participation).
+- **Help chats out of everything else** with an explicit `withoutHelpChats()` on therapies and sessions
+  (a global scope would break a session's `for` lookups that audio relies on): the person's and
+  counsellor's therapy lists, recent therapies, ward therapies, counsellor counts and clients, the
+  dashboard, the calendar, platform stats and the home stats. The therapy page redirects a help
+  therapy to its chat.
+- Rings, status changes and messages are broadcast immediately (not queued) with ids only; a waiting
+  person also re-checks every 15 seconds in case the socket is down.
+- Help chats close on their own: requests nobody answers expire after 10 minutes, chats end after 60
+  (a sweep every minute).
+- **DevOps review:** every help broadcast goes through `App\Support\HelpBroadcast` -- sent after the
+  database commit, and a broadcasting failure (Reverb down) is reported, never thrown, so asking,
+  answering, sending and the sweep still succeed (a waiting person re-checks every 15 s). The sweep's
+  overlap lock is 5 minutes (not the 24-hour default). Production needs
+  `log_bin_trust_function_creators=1` for the emergency-number history triggers (as for the earlier
+  trigger migrations). Prefer a code-only rollback: rolling the migrations back would drop the help
+  audit trail and un-flag help therapies.
+- **Security, architect and reviewer findings (all fixed here):**
+  - **Help chats are only written through the help actions.** `EnsureTherapyCanProceedAction` (the
+    gate generic messages, sessions, topics and schedule proposals go through) refuses a help chat,
+    except its audio call (video join); `EnsureCanUpdateTherapyAction` refuses editing, ending or
+    deleting one; therapy and content access is the two participants only (an administrator's logged
+    read is unchanged), so a guardian can't see a ward's help chat and it can't be made public.
+    `publicForOutsider` leaves help chats out too. The therapy page and therapy chat page send the two
+    participants to the help chat.
+  - **A counsellor suspended or whose verification is revoked mid-chat** is taken out of it: the chat
+    ends for both (`ended_by` suspension/revoked), their on-call is switched off, and a suspended
+    counsellor can't send.
+  - **Never rung for their ward:** a counsellor who is the person's guardian isn't rung, can't see the
+    summary and can't accept; only a rung counsellor can accept, and a refusal never tells whether a
+    request exists. The counsellor row is locked on accept (one help chat at a time, even for two
+    accepts at once).
+  - Help chats are out of the guardian-loss "open therapies" and the admin "minors without guardian"
+    lists, and out of a counsellor's session counts.
+  - The suspension exemption names each help route (not `help.*`), and the channel pattern is anchored.
+    Accepting and going on call aren't exempt. Audio isn't offered to a suspended account.
+  - Also a per-address limit on asking (10 an hour); sources must be https; a counsellor who comes on
+    call (or reloads) is shown anyone already waiting; rings that arrive while one shows wait their
+    turn; signing out clears the last person's help state; the country picker loads only when used.
+- **Deferred (SCRUM-395):** a platform-wide ring cap and "report this request", web push, task
+  monitoring and a kill switch, retention and admin-read policy (TT-4.4c), small UI items.
+- **Noted:** a help chat counts as a counsellor relationship for the date-of-birth change lock
+  (`EnsureDobChangeIsAllowedAction`) -- deliberately, for safeguarding.
+- **QA (Playwright, two browsers):** all flows passed. Fixed: on a phone the help button is a round
+  button raised above the bottom of the screen (it covered chat message boxes); a minor's chat says
+  audio needs a guardian's consent again; "Ask again" clears the old note and restores the saved
+  anonymity choice; the country picker's search box is named "Country" for screen readers. Noted for
+  product: the 3-an-hour limit counts answered chats too (a refusal always points to the emergency
+  number) -- revisit with SCRUM-395.

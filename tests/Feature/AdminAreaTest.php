@@ -95,7 +95,7 @@ test('the sidebar is grouped in order and the read log is for super admins only'
     $keys = fn (array $groups) => collect($groups)->flatMap(fn ($group) => array_column($group['items'], 'key'))->all();
     expect($keys($admin))->toBe([
         'overview', 'users', 'counsellors', 'counsellor-verification', 'requests',
-        'reports', 'suspensions', 'safeguarding-exceptions',
+        'reports', 'suspensions', 'safeguarding-exceptions', 'emergency-numbers',
         'payouts', 'refund-requests', 'organization-billing', 'testimonials', 'how-tos',
     ]);
     expect($keys($super))->toContain('read-log');

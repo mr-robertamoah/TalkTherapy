@@ -1,5 +1,5 @@
 <script setup>
-import useCountries from '@/Composables/useCountries';
+import CountrySelect from '@/Components/CountrySelect.vue';
 import { ref, watch } from 'vue';
 import FormLoader from './FormLoader.vue';
 import InputError from './InputError.vue';
@@ -12,7 +12,6 @@ import useErrorHandler from '@/Composables/useErrorHandler';
 import useAlert from '@/Composables/useAlert';
 import Alert from './Alert.vue';
 import Select from './Select.vue';
-import { onBeforeMount } from 'vue';
 
 const { setErrorData, clearError } = useErrorHandler()
 const { alertData, clearAlertData, setAlertData, setFailedAlertData } = useAlert()
@@ -33,10 +32,6 @@ const props = defineProps({
 })
 
 const emits = defineEmits(['closeModal', 'afterCreating'])
-
-onBeforeMount(() => {
-    loadCountries()
-})
 
 const backendPhone = ref('')
 const code = ref('')
@@ -62,7 +57,6 @@ const licensingAuthorityErrors = ref({
     other: '',
     email: '',
 })
-const { countries, loadCountries } = useCountries()
 
 watch(() => licensingAuthorityData.value.name, () => {
     if (
@@ -303,14 +297,7 @@ async function createLicensingAuthory() {
                     <div class="mt-4 mx-auto max-w-[400px]">
                         <InputLabel for="country" value="Country" />
 
-                        <Select
-                            id="country"
-                            class="mt-1 block w-full"
-                            v-model="licensingAuthorityData.country"
-                            autocomplete="country"
-                            :options="countries"
-                            :default-option="'select country'"
-                        />
+                        <CountrySelect v-model="licensingAuthorityData.country" input-id="country" class="mt-1 block w-full" />
 
                         <InputError class="mt-2" :message="licensingAuthorityErrors.country" />
                     </div>

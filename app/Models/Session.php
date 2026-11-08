@@ -32,7 +32,14 @@ class Session extends Model
         'start_time' => 'datetime',
         'ended_at' => 'datetime',
         'updatedby_anonymous' => 'boolean',
+        'is_help_chat' => 'boolean',
     ];
+
+    // SCRUM-33: calendars and session lists leave a quick help chat's session out.
+    public function scopeWithoutHelpChats($query)
+    {
+        return $query->where($this->qualifyColumn('is_help_chat'), false);
+    }
 
     public function therapy()
     {

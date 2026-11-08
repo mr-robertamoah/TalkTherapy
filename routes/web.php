@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AboutController;
 use App\Http\Controllers\AdminContentAccessController;
+use App\Http\Controllers\AdminEmergencyNumberController;
 use App\Http\Controllers\AdministratorController;
 use App\Http\Controllers\AdminOrganizationBillingController;
 use App\Http\Controllers\AdminPayoutController;
@@ -15,6 +16,8 @@ use App\Http\Controllers\CounsellorDashboardController;
 use App\Http\Controllers\CounsellorPricingController;
 use App\Http\Controllers\DiscussionController;
 use App\Http\Controllers\GroupTherapyController;
+use App\Http\Controllers\HelpController;
+use App\Http\Controllers\HelpRequestController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\LinkController;
 use App\Http\Controllers\OrganizationAdminController;
@@ -92,6 +95,25 @@ Route::get('/counsellor/{counsellorId}', [CounsellorController::class, 'show'])-
 
 Route::get('/posts/{postId}', [PostController::class, 'getPost'])->name('posts.get');
 
+// SCRUM-33: the "I need help now" dialog's emergency numbers -- for everyone, signed in or not.
+Route::get('/help/emergency-numbers', [HelpController::class, 'emergencyNumbers'])->name('help.emergency_numbers')->middleware('throttle:60,1,help.emergency_numbers');
+
+// SCRUM-33: the quick help chat (signed in; open to a suspended account too -- see
+// EnsureAccountIsNotSuspended). JSON, apart from the chat page.
+Route::middleware('auth')->prefix('help')->name('help.')->group(function () {
+    Route::get('/requests/current', [HelpRequestController::class, 'current'])->name('requests.current')->middleware('throttle:60,1,help.requests.current');
+    Route::post('/requests', [HelpRequestController::class, 'store'])->name('requests.store')->middleware('throttle:10,1,help.requests.store');
+    Route::get('/requests/{helpRequest}', [HelpRequestController::class, 'show'])->name('requests.show')->whereNumber('helpRequest')->middleware('throttle:120,1,help.requests.show');
+    Route::post('/requests/{helpRequest}/cancel', [HelpRequestController::class, 'cancel'])->name('requests.cancel')->whereNumber('helpRequest')->middleware('throttle:20,1,help.requests.cancel');
+    Route::post('/requests/{helpRequest}/accept', [HelpRequestController::class, 'accept'])->name('requests.accept')->whereNumber('helpRequest')->middleware('throttle:20,1,help.requests.accept');
+    Route::post('/requests/{helpRequest}/end', [HelpRequestController::class, 'end'])->name('requests.end')->whereNumber('helpRequest')->middleware('throttle:20,1,help.requests.end');
+    Route::get('/requests/{helpRequest}/messages', [HelpRequestController::class, 'messages'])->name('requests.messages')->whereNumber('helpRequest')->middleware('throttle:120,1,help.requests.messages');
+    Route::post('/requests/{helpRequest}/messages', [HelpRequestController::class, 'sendMessage'])->name('requests.messages.store')->whereNumber('helpRequest')->middleware('throttle:60,1,help.requests.messages.store');
+    Route::get('/chat/{helpRequest}', [HelpRequestController::class, 'page'])->name('chat')->whereNumber('helpRequest');
+    Route::get('/requests/ringing', [HelpRequestController::class, 'ringing'])->name('requests.ringing')->middleware('throttle:30,1,help.requests.ringing');
+    Route::post('/availability', [HelpRequestController::class, 'availability'])->name('availability')->middleware('throttle:10,1,help.availability');
+});
+
 Route::middleware('auth')->group(function () {
 
     Route::get('/links/{uuid}', [LinkController::class, 'performAction'])->name('links.get');
@@ -109,6 +131,11 @@ Route::middleware('auth')->group(function () {
         Route::get('/administrator/counsellor-verification', [AdministratorController::class, 'counsellorVerification'])->name('administrator.counsellor_verification');
         Route::get('/administrator/testimonials', [AdministratorController::class, 'testimonials'])->name('administrator.testimonials');
         Route::get('/administrator/how-tos', [AdministratorController::class, 'howTos'])->name('administrator.how_tos');
+        // SCRUM-33: the emergency numbers (every admin sees them; a super administrator edits).
+        Route::get('/administrator/emergency-numbers', [AdminEmergencyNumberController::class, 'index'])->name('administrator.emergency_numbers');
+        Route::post('/administrator/emergency-numbers', [AdminEmergencyNumberController::class, 'store'])->name('admin.emergency_numbers.store')->middleware('throttle:20,1,admin.emergency_numbers.store');
+        Route::post('/administrator/emergency-numbers/{number}', [AdminEmergencyNumberController::class, 'update'])->name('admin.emergency_numbers.update')->whereNumber('number')->middleware('throttle:20,1,admin.emergency_numbers.update');
+        Route::post('/administrator/emergency-numbers/{number}/delete', [AdminEmergencyNumberController::class, 'destroy'])->name('admin.emergency_numbers.delete')->whereNumber('number')->middleware('throttle:20,1,admin.emergency_numbers.delete');
         // The sidebar's badges (GetAdminToDoCountsAction::badges()), as JSON: AdminLayout.vue fetches
         // them after each page, so no page waits on (or re-runs its own queries for) the counts.
         Route::get('/administrator/badges', [AdministratorController::class, 'badges'])->name('admin.badges')->middleware('throttle:60,1,admin.badges');

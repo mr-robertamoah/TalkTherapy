@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\ConstantsEnum;
 use App\Enums\CounsellorVerificationStateEnum;
 use App\Enums\FileTagEnum;
+use App\Enums\HelpRequestStatusEnum;
 use App\Enums\RequestStatusEnum;
 use App\Enums\RequestTypeEnum;
 use App\Enums\TherapyPaymentTypeEnum;
@@ -15,6 +16,7 @@ use App\Traits\Likeable;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphToMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Notifications\Notifiable;
@@ -45,6 +47,7 @@ class Counsellor extends Model
         'email_verified_at' => 'datetime',
         'verified_at' => 'datetime',
         'verification_expires_at' => 'datetime',
+        'urgent_help_available_until' => 'datetime',
         'verification_revoked_at' => 'datetime',
     ];
 
@@ -62,14 +65,14 @@ class Counsellor extends Model
 
     public function getFreeTherapiesCountAttribute()
     {
-        return $this->therapies()
+        return $this->therapies()->withoutHelpChats()
             ->where('payment_type', TherapyPaymentTypeEnum::free->value)
             ->count();
     }
 
     public function getPaidTherapiesCountAttribute()
     {
-        return $this->therapies()
+        return $this->therapies()->withoutHelpChats()
             ->where('payment_type', TherapyPaymentTypeEnum::paid->value)
             ->count();
     }
@@ -112,17 +115,17 @@ class Counsellor extends Model
 
     public function getHeldSessionsCountAttribute()
     {
-        return $this->addedSessions()->whereHeld()->count();
+        return $this->addedSessions()->withoutHelpChats()->whereHeld()->count();
     }
 
     public function getSessionsCountAttribute()
     {
-        return $this->addedSessions()->count();
+        return $this->addedSessions()->withoutHelpChats()->count();
     }
 
     public function getTherapiesCountAttribute()
     {
-        return $this->therapies()->count();
+        return $this->therapies()->withoutHelpChats()->count();
     }
 
     public function getAllTherapiesCountAttribute()
@@ -521,6 +524,27 @@ class Counsellor extends Model
     }
 
     // SCRUM-359: counsellors who may be offered to clients -- not suspended, in either scope.
+    // SCRUM-33: who is rung for an "I need help now" -- switched on (and not lapsed), currently
+    // verified, not suspended, their account still here, and not already in a live help chat.
+    public function scopeAvailableForUrgentHelp($query)
+    {
+        return $query->where('urgent_help_available_until', '>', now())
+            ->whereCurrentlyVerified()
+            ->whereNotSuspended()
+            ->whereHas('user')
+            ->whereDoesntHave('helpRequests', fn ($query) => $query->where('status', HelpRequestStatusEnum::connected->value));
+    }
+
+    public function isAvailableForUrgentHelp(): bool
+    {
+        return (bool) $this->urgent_help_available_until?->isFuture();
+    }
+
+    public function helpRequests(): HasMany
+    {
+        return $this->hasMany(HelpRequest::class);
+    }
+
     public function scopeWhereNotSuspended($query)
     {
         return $query->whereDoesntHave('user.suspensions', fn ($q) => $q->active());

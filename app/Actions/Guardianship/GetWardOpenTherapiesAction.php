@@ -17,7 +17,9 @@ class GetWardOpenTherapiesAction extends Action
     public function execute(User $ward): array
     {
         return [
+            // SCRUM-33: a ward's quick help chat isn't paused, announced or shown to guardians.
             'therapies' => Therapy::query()
+                ->withoutHelpChats()
                 ->whereUser($ward)
                 ->where('status', '!=', TherapyStatusEnum::ended->value)
                 ->with(['counsellor.user', 'addedby'])

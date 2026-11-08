@@ -38,6 +38,8 @@ class AdminNavigation
                 self::item('reports', 'Reports', 'administrator.reports', 'reports', 'administrator.reports*'),
                 self::item('suspensions', 'Suspensions', 'administrator.suspensions', 'suspensionAppeals'),
                 self::item('safeguarding-exceptions', 'Safeguarding exceptions', 'administrator.safeguarding_exceptions'),
+                // SCRUM-33: what the "I need help now" dialog shows.
+                self::item('emergency-numbers', 'Emergency numbers', 'administrator.emergency_numbers'),
                 $isSuper ? self::item('read-log', 'Read log', 'administrator.content-accesses') : null,
             ]))],
             ['key' => 'money', 'label' => 'Money', 'items' => [

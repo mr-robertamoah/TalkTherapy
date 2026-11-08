@@ -126,6 +126,14 @@ See "Common commands" in `CLAUDE.md`.
   (`EnsureCounsellorOfferCapAction`). There is one join modal (`JoinGroupTherapyModal`, incl.
   invitation links). Resources send raw `status` plus `statusLabel`.
 
+- **Quick help chat (SCRUM-33, 2026-11-08).** "I need help now" is mounted at the app root
+  (`resources/js/app.js` → `HelpNowRoot`), not in a layout. A help chat is a `HelpRequest` plus a
+  private, free Therapy + Session flagged `is_help_chat`: **every new therapy/session list, count,
+  calendar or stat must call `withoutHelpChats()`**. Help routes are `help.*` and are open to suspended
+  accounts (the middleware allowlist) -- keep new help routes under that name and check access in the
+  action. Countries come from `resources/data/countries.json` (`App\Support\Countries`,
+  `CountrySelect`); regenerate with `npm run countries:generate`, never hand-edit.
+
 ## Current Sprint Goals
 
 See `documentation/implementation_plan.md` → "Reconciled Sprint Roadmap". Sprint 1 (Platform

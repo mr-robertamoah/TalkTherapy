@@ -58,6 +58,12 @@ class EnsureUserCanAccessTherapyContentAction extends Action
             return false;
         }
 
+        // SCRUM-33: a quick help chat's content is the two of them only (an administrator's read above
+        // is the logged one).
+        if ($therapy instanceof Therapy && $therapy->isHelpChat()) {
+            return $therapy->isParticipant($user);
+        }
+
         if (! $therapy->public && $therapy->isNotParticipant($user)) {
             return false;
         }

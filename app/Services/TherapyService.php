@@ -192,7 +192,8 @@ class TherapyService extends Service
 
     public function getTherapies(User $user)
     {
-        $query = Therapy::query();
+        // SCRUM-33: a quick help chat is seen through the help chat only.
+        $query = Therapy::query()->withoutHelpChats();
 
         $query->whereParticipant($user);
 
@@ -208,6 +209,7 @@ class TherapyService extends Service
         }
 
         return Therapy::query()
+            ->withoutHelpChats()
             ->whereParticipant($user)
             ->orderBy('created_at', 'desc')
             ->limit(3)
@@ -291,32 +293,33 @@ class TherapyService extends Service
             return [];
         }
 
-        $query = Therapy::query();
+        // SCRUM-33: the ORs grouped, so leaving quick help chats out applies to all of them.
+        $query = Therapy::query()->withoutHelpChats()->where(function ($query) use ($user) {
+            $query->where('counsellor_id', $user->counsellor->id);
 
-        $query->where('counsellor_id', $user->counsellor->id);
-
-        $query->orWhere(function ($query) use ($user) {
-            $query->whereHas('discussions', function ($query) use ($user) {
-                $query->whereHas('counsellors', function ($query) use ($user) {
-                    $query->where('counsellor_id', $user->counsellor->id);
+            $query->orWhere(function ($query) use ($user) {
+                $query->whereHas('discussions', function ($query) use ($user) {
+                    $query->whereHas('counsellors', function ($query) use ($user) {
+                        $query->where('counsellor_id', $user->counsellor->id);
+                    });
                 });
             });
-        });
 
-        $query->orWhere(function ($query) use ($user) {
-            $query->whereHas('discussions', function ($query) use ($user) {
-                $query->whereHas('requests', function ($query) use ($user) {
-                    $query
-                        ->wherePending()
-                        ->whereTo($user->counsellor);
+            $query->orWhere(function ($query) use ($user) {
+                $query->whereHas('discussions', function ($query) use ($user) {
+                    $query->whereHas('requests', function ($query) use ($user) {
+                        $query
+                            ->wherePending()
+                            ->whereTo($user->counsellor);
+                    });
                 });
             });
-        });
 
-        $query->orWhereHas('requests', function ($query) use ($user) {
-            $query
-                ->wherePending()
-                ->whereTo($user->counsellor);
+            $query->orWhereHas('requests', function ($query) use ($user) {
+                $query
+                    ->wherePending()
+                    ->whereTo($user->counsellor);
+            });
         });
 
         $query->latest();
@@ -330,7 +333,7 @@ class TherapyService extends Service
             return [];
         }
 
-        $query = Therapy::query();
+        $query = Therapy::query()->withoutHelpChats();
 
         $query->where('addedby_id', $user->id);
         $query->where('addedby_type', User::class);
@@ -346,7 +349,8 @@ class TherapyService extends Service
             return [];
         }
 
-        $query = Therapy::query();
+        // SCRUM-33: a ward's quick help chat isn't shown to guardians (the user's decision).
+        $query = Therapy::query()->withoutHelpChats();
 
         $query->whereHasMorph('addedby', [User::class], function ($query) use ($user) {
             $query->whereHas('guardians', function ($query) use ($user) {
