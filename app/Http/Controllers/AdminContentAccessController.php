@@ -6,6 +6,7 @@ use App\Http\Middleware\EnsureUserIsAdmin;
 use App\Models\AdminContentAccess;
 use App\Models\Discussion;
 use App\Models\GroupTherapy;
+use App\Models\HelpRequest;
 use App\Models\License;
 use App\Models\Message;
 use App\Models\Request as ModelsRequest;
@@ -34,6 +35,7 @@ class AdminContentAccessController extends Controller
         'topic' => TherapyTopic::class,
         'license' => License::class,
         'request' => ModelsRequest::class,
+        'help' => HelpRequest::class,
     ];
 
     public function index(Request $request)
@@ -120,6 +122,7 @@ class AdminContentAccessController extends Controller
                 TherapyTopic::class => 'topic',
                 License::class => 'licence',
                 ModelsRequest::class => 'request',
+                HelpRequest::class => 'help request',
                 default => 'item',
             };
         }
@@ -133,6 +136,7 @@ class AdminContentAccessController extends Controller
             $subject instanceof TherapyTopic => "Topic: {$subject->name}",
             $subject instanceof License => 'A licence',
             $subject instanceof ModelsRequest => 'A verification request',
+            $subject instanceof HelpRequest => "Urgent help request #{$subject->id}",
             default => 'A document',
         };
     }

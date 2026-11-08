@@ -22,7 +22,7 @@ class CancelHelpRequestAction extends Action
             throw new HelpException(self::NOT_WAITING, 404);
         }
 
-        $others = RingAvailableCounsellorsAction::ringableFor($request);
+        $others = RingAvailableCounsellorsAction::ringingFor($request);
 
         if (! CloseHelpRequestAction::new()->execute($request, HelpRequestStatusEnum::waiting, HelpRequestStatusEnum::cancelled, 'person')) {
             throw new HelpException(self::NOT_WAITING, 409);

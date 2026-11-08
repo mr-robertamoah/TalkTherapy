@@ -15,13 +15,16 @@ class SweepHelpRequestsAction extends Action
 {
     public function execute(): array
     {
+        // TT-4.4b: alerts first, for anything the delayed job hasn't sent.
+        $alerted = EscalateHelpRequestsAction::new()->execute();
+
         $expired = 0;
         HelpRequest::query()->whereStatus(HelpRequestStatusEnum::waiting)
             ->where('created_at', '<=', now()->subMinutes((int) config('help.expire_after_minutes')))
             // By id, not by offset: the status being changed is what's filtered on.
             ->lazyById()
             ->each(function (HelpRequest $request) use (&$expired) {
-                $ringing = RingAvailableCounsellorsAction::ringableFor($request);
+                $ringing = RingAvailableCounsellorsAction::ringingFor($request);
                 if (CloseHelpRequestAction::new()->execute($request, HelpRequestStatusEnum::waiting, HelpRequestStatusEnum::expired, 'time')) {
                     $expired++;
                     HelpBroadcast::send(new HelpRequestUpdatedEvent($request->id, HelpRequestStatusEnum::expired->value, $ringing));
@@ -39,6 +42,6 @@ class SweepHelpRequestsAction extends Action
                 }
             });
 
-        return ['expired' => $expired, 'ended' => $ended];
+        return ['alerted' => $alerted, 'expired' => $expired, 'ended' => $ended];
     }
 }

@@ -30,6 +30,7 @@ const labels = {
     discussion_messages: 'discussion messages',
     license_document: 'licence document',
     identity_document: 'identity document',
+    help_request_identity: 'who asked for urgent help',
 }
 
 function filter(changes) {

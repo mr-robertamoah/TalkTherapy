@@ -13,6 +13,10 @@ return [
     // How long a counsellor's "available for urgent help" lasts once switched on (hours).
     'availability_hours' => (int) env('HELP_AVAILABILITY_HOURS', 4),
 
+    // TT-4.4b: administrators are alerted when a request has waited this long, and again later.
+    'first_alert_seconds' => (int) env('HELP_FIRST_ALERT_SECONDS', 60),
+    'second_alert_seconds' => (int) env('HELP_SECOND_ALERT_SECONDS', 180),
+
     // A help request nobody accepts is closed after this many minutes.
     'expire_after_minutes' => (int) env('HELP_EXPIRE_AFTER_MINUTES', 10),
 

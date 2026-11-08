@@ -34,6 +34,8 @@ class AdminNavigation
                 self::item('requests', 'Requests to resolve', 'administrator.requests', 'requests'),
             ]],
             ['key' => 'safety', 'label' => 'Safety', 'items' => array_values(array_filter([
+                // SCRUM-33 (TT-4.4b): people waiting for urgent help (the badge is live).
+                self::item('help-requests', 'Urgent help', 'administrator.help_requests', 'helpRequests'),
                 // A report's own page counts as Reports.
                 self::item('reports', 'Reports', 'administrator.reports', 'reports', 'administrator.reports*'),
                 self::item('suspensions', 'Suspensions', 'administrator.suspensions', 'suspensionAppeals'),

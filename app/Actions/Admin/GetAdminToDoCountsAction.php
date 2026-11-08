@@ -10,11 +10,14 @@ use App\Actions\SafeguardingException\EnsureCanManageSafeguardingExceptionAction
 use App\Actions\SafeguardingException\FindNoLongerNeededSafeguardingRequestsAction;
 use App\Enums\CounsellorEarningStatusEnum;
 use App\Enums\CounsellorPayoutStatusEnum;
+use App\Enums\HelpRequestStatusEnum;
 use App\Enums\RefundStatusEnum;
 use App\Enums\ReportStatusEnum;
 use App\Enums\RequestTypeEnum;
 use App\Models\Counsellor;
 use App\Models\CounsellorPayout;
+use App\Models\Guardianship;
+use App\Models\HelpRequest;
 use App\Models\Organization;
 use App\Models\Refund;
 use App\Models\Report;
@@ -140,6 +143,9 @@ class GetAdminToDoCountsAction extends Action
             'suspensionAppeals' => $counts['suspensionAppeals'],
             'failedPayouts' => $counts['failedPayouts'],
             'organizationBilling' => $counts['organizationBilling'],
+            // SCRUM-33 (TT-4.4b): never cached -- someone waiting for urgent help can't wait a minute -- and
+            // per viewer: one they're involved in isn't counted (security review: it would tell a guardian).
+            'helpRequests' => $this->waitingHelpRequestsFor($viewer),
         ];
     }
 
@@ -207,6 +213,19 @@ class GetAdminToDoCountsAction extends Action
             // The organisation billing page lists both.
             'organizationBilling' => Organization::query()->needsBillingAttention()->count(),
         ];
+    }
+
+    private function waitingHelpRequestsFor(User $viewer): int
+    {
+        $waiting = HelpRequest::query()->whereStatus(HelpRequestStatusEnum::waiting)->get();
+        if ($waiting->isEmpty()) {
+            return 0;
+        }
+
+        // Their wards only when someone is waiting: most of the time the badge is one count.
+        $wardIds = Guardianship::query()->where('guardian_id', $viewer->id)->pluck('ward_id')->map(fn ($id) => (int) $id)->all();
+
+        return $waiting->reject(fn (HelpRequest $request) => $request->involvesAdmin($viewer, $wardIds))->count();
     }
 
     private function ownPendingAgeVerifications(User $viewer): int

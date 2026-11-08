@@ -3,6 +3,7 @@
 use App\Http\Controllers\AboutController;
 use App\Http\Controllers\AdminContentAccessController;
 use App\Http\Controllers\AdminEmergencyNumberController;
+use App\Http\Controllers\AdminHelpRequestController;
 use App\Http\Controllers\AdministratorController;
 use App\Http\Controllers\AdminOrganizationBillingController;
 use App\Http\Controllers\AdminPayoutController;
@@ -131,6 +132,14 @@ Route::middleware('auth')->group(function () {
         Route::get('/administrator/counsellor-verification', [AdministratorController::class, 'counsellorVerification'])->name('administrator.counsellor_verification');
         Route::get('/administrator/testimonials', [AdministratorController::class, 'testimonials'])->name('administrator.testimonials');
         Route::get('/administrator/how-tos', [AdministratorController::class, 'howTos'])->name('administrator.how_tos');
+        // SCRUM-33 (TT-4.4b): the urgent help queue.
+        Route::get('/administrator/help-requests', [AdminHelpRequestController::class, 'index'])->name('administrator.help_requests');
+        Route::get('/administrator/help-requests/queue', [AdminHelpRequestController::class, 'queue'])->name('admin.help_requests.queue')->middleware('throttle:60,1,admin.help_requests.queue');
+        Route::post('/administrator/help-requests/{helpRequest}/ring', [AdminHelpRequestController::class, 'ringAgain'])->name('admin.help_requests.ring')->whereNumber('helpRequest')->middleware('throttle:20,1,admin.help_requests.ring');
+        Route::post('/administrator/help-requests/{helpRequest}/ring-counsellor', [AdminHelpRequestController::class, 'ringCounsellor'])->name('admin.help_requests.ring_counsellor')->whereNumber('helpRequest')->middleware('throttle:20,1,admin.help_requests.ring_counsellor');
+        Route::post('/administrator/help-requests/{helpRequest}/close', [AdminHelpRequestController::class, 'close'])->name('admin.help_requests.close')->whereNumber('helpRequest')->middleware('throttle:20,1,admin.help_requests.close');
+        Route::post('/administrator/help-requests/{helpRequest}/reveal', [AdminHelpRequestController::class, 'reveal'])->name('admin.help_requests.reveal')->whereNumber('helpRequest')->middleware('throttle:20,1,admin.help_requests.reveal');
+        Route::get('/administrator/help-requests/{helpRequest}/counsellors', [AdminHelpRequestController::class, 'counsellors'])->name('admin.help_requests.counsellors')->whereNumber('helpRequest')->middleware('throttle:60,1,admin.help_requests.counsellors');
         // SCRUM-33: the emergency numbers (every admin sees them; a super administrator edits).
         Route::get('/administrator/emergency-numbers', [AdminEmergencyNumberController::class, 'index'])->name('administrator.emergency_numbers');
         Route::post('/administrator/emergency-numbers', [AdminEmergencyNumberController::class, 'store'])->name('admin.emergency_numbers.store')->middleware('throttle:20,1,admin.emergency_numbers.store');

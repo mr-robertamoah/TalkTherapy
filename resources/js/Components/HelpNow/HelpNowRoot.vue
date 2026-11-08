@@ -28,6 +28,9 @@ const now = ref(Date.now())
 let ticker = null
 
 const status = computed(() => request.value?.status ?? null)
+// The help chat has its own "Emergency numbers" button, and on a phone this one would sit over the
+// message box (QA) -- so it isn't shown there (the dialog itself still is).
+const onHelpChat = computed(() => page.component === 'Help/Chat')
 const waitedFor = computed(() => {
     if (!request.value?.createdAt) return ''
     const seconds = Math.max(0, Math.floor((now.value - new Date(request.value.createdAt).getTime()) / 1000))
@@ -73,11 +76,13 @@ function submit() {
 
 <template>
     <div>
-        <!-- On a phone a round button raised above the bottom of the screen, clear of chat message
-             boxes (QA); from sm up, the full pill in the corner. -->
+        <!-- On a phone a round button raised above the bottom left of the screen, clear of chat
+             message boxes (QA); from sm up, the full pill in the bottom right corner, clear of the
+             admin sidebar. -->
         <button
+            v-if="!onHelpChat"
             type="button"
-            class="fixed bottom-24 left-3 z-40 inline-flex h-12 w-12 items-center justify-center gap-2 rounded-full bg-red-700 text-sm font-semibold text-white shadow-lg hover:bg-red-800 focus:outline-none focus-visible:ring-4 focus-visible:ring-red-300 sm:bottom-4 sm:left-4 sm:h-auto sm:min-h-[44px] sm:w-auto sm:px-4"
+            class="fixed bottom-24 left-3 z-40 inline-flex h-12 w-12 items-center justify-center gap-2 rounded-full bg-red-700 text-sm font-semibold text-white shadow-lg hover:bg-red-800 focus:outline-none focus-visible:ring-4 focus-visible:ring-red-300 sm:bottom-4 sm:left-auto sm:right-4 sm:h-auto sm:min-h-[44px] sm:w-auto sm:px-4"
             :aria-label="status === 'WAITING' ? 'I need help now -- looking for a counsellor' : 'I need help now'"
             @click="show"
         >
@@ -150,6 +155,11 @@ function submit() {
 
                     <template v-else-if="status === 'EXPIRED'">
                         <p class="text-sm text-gray-700" role="status">No counsellor could answer in time. If you're in danger, call the number above now. You can also ask again.</p>
+                        <PrimaryButton type="button" @click="askAgain">Ask again</PrimaryButton>
+                    </template>
+
+                    <template v-else-if="status === 'CLOSED'">
+                        <p class="text-sm text-gray-700" role="status">Our team closed your request. If you're in danger, call the number above now. You can ask again whenever you need to.</p>
                         <PrimaryButton type="button" @click="askAgain">Ask again</PrimaryButton>
                     </template>
 

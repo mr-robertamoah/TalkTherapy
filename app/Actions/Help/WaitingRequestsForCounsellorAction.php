@@ -16,13 +16,16 @@ class WaitingRequestsForCounsellorAction extends Action
     /** @return Collection<int, HelpRequest> */
     public function execute(User $user): Collection
     {
-        $counsellorId = (int) $user->counsellor?->id;
-        if (! $counsellorId || ! $user->counsellor->isAvailableForUrgentHelp()) {
+        $counsellor = $user->counsellor;
+        if (! $counsellor) {
             return collect();
         }
 
-        return HelpRequest::query()->whereStatus(HelpRequestStatusEnum::waiting)->oldest()->limit(20)->get()
-            ->filter(fn (HelpRequest $request) => in_array($counsellorId, RingAvailableCounsellorsAction::ringableFor($request), true))
+        // On call: anything waiting they'd be rung for; otherwise only what an administrator rang them for.
+        return HelpRequest::query()->whereStatus(HelpRequestStatusEnum::waiting)
+            ->when(! $counsellor->isAvailableForUrgentHelp(), fn ($query) => $query->where('pulled_counsellor_id', $counsellor->id))
+            ->oldest()->limit(20)->get()
+            ->filter(fn (HelpRequest $request) => RingAvailableCounsellorsAction::mayAnswer($request, $counsellor))
             ->values();
     }
 }

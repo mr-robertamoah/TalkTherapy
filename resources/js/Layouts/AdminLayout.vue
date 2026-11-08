@@ -11,6 +11,7 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue'
 import AdminNavList from '@/Components/AdminNavList.vue'
 import useAdminBadges from '@/Composables/useAdminBadges'
+import { acquireChannel } from '@/Composables/sharedChannel'
 import { router, usePage } from '@inertiajs/vue3'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 
@@ -36,8 +37,13 @@ function onViewportChange(event) {
     if (event.matches) closeDrawer({ restoreFocus: false })
 }
 
+// SCRUM-33 (TT-4.4b): the Urgent help badge is live -- someone waiting can't wait for a page change.
+let helpQueue = null
+
 onMounted(() => {
     refreshAdminBadges()
+    helpQueue = acquireChannel('admin.help-requests')
+    helpQueue?.listen('.help.queue', () => refreshAdminBadges({ force: true }))
     wideViewport = window.matchMedia('(min-width: 1024px)')
     wideViewport.addEventListener('change', onViewportChange)
 })
@@ -92,6 +98,7 @@ function onDrawerKeydown(event) {
 }
 
 onBeforeUnmount(() => {
+    helpQueue?.release()
     stopListening()
     stopListeningForSuccess()
     wideViewport?.removeEventListener('change', onViewportChange)

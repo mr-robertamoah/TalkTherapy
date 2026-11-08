@@ -34,6 +34,9 @@ class AdminContentAccess extends Model
 
     public const IDENTITY_DOCUMENT = 'identity_document';
 
+    // SCRUM-33 (TT-4.4b): who asked for urgent help, revealed to an administrator handling it.
+    public const HELP_REQUEST_IDENTITY = 'help_request_identity';
+
     public const RESOURCES = [
         self::THERAPY,
         self::SESSION,
@@ -45,6 +48,7 @@ class AdminContentAccess extends Model
         self::DISCUSSION_MESSAGES,
         self::LICENSE_DOCUMENT,
         self::IDENTITY_DOCUMENT,
+        self::HELP_REQUEST_IDENTITY,
     ];
 
     protected $guarded = ['id'];
