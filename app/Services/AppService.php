@@ -41,11 +41,15 @@ class AppService extends Service
         try {
             $admins = User::query()->whereAdmin()->inRandomOrder()->limit(2)->get();
 
+            // SCRUM-32 (devops review): a failed safety notice or alert mustn't tell an administrator -- maybe
+            // one involved -- which family was told, nor that a flag exists: its name and error stay in the log.
+            $sensitive = str_contains($jobFailed->job->resolveName(), 'Safety');
+
             Notification::send($admins->unique(), new QueueJobFailedNotification(
-                $jobFailed->job->resolveName(),
+                $sensitive ? 'A safety notification (details in the server log)' : $jobFailed->job->resolveName(),
                 $jobFailed->connectionName,
                 $jobFailed->job->getQueue(),
-                $jobFailed->exception->getMessage(),
+                $sensitive ? 'Withheld -- see the server log.' : $jobFailed->exception->getMessage(),
             ));
         } catch (Throwable $exception) {
             // Never let the alerting path itself crash the queue worker -- log and move on.

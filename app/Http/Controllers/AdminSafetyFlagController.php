@@ -4,10 +4,12 @@ namespace App\Http\Controllers;
 
 use App\Actions\Safety\AcknowledgeSafetyFlagAction;
 use App\Actions\Safety\AddSafetyFlagNoteAction;
+use App\Actions\Safety\DecideSafetyFlagNoticeAction;
 use App\Actions\Safety\GetSafetyFlagsAction;
 use App\Actions\Safety\ReassignSafetyFlagAction;
 use App\Actions\Safety\ResolveSafetyFlagAction;
 use App\Actions\Safety\RevealSafetyFlagAction;
+use App\Actions\Safety\SendSafetyFlagNoticeAction;
 use App\Enums\SafetyFlagActionEnum;
 use App\Enums\SafetyFlagOutcomeEnum;
 use App\Enums\SafetyFlagStatusEnum;
@@ -107,6 +109,24 @@ class AdminSafetyFlagController extends Controller
             ResolveSafetyFlagAction::new()->execute($request->user(), SafetyFlag::findPublic($flag), SafetyFlagOutcomeEnum::from($input['outcome']), $input['note']);
 
             return ['status' => true];
+        });
+    }
+
+    // TT-4.3c: send, hold or withhold the notice to the person, or to their guardians.
+    public function notice(Request $request, string $flag)
+    {
+        $input = $request->validate([
+            'which' => ['required', Rule::in([SendSafetyFlagNoticeAction::CLIENT, SendSafetyFlagNoticeAction::GUARDIANS])],
+            'decision' => ['required', Rule::in([DecideSafetyFlagNoticeAction::SEND, DecideSafetyFlagNoticeAction::HOLD, DecideSafetyFlagNoticeAction::WITHHOLD])],
+            'reason' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        return $this->respond(function () use ($request, $flag, $input) {
+            $decide = DecideSafetyFlagNoticeAction::new();
+            $decide->execute($request->user(), SafetyFlag::findPublic($flag), $input['which'], $input['decision'], $input['reason'] ?? null);
+
+            // The reason they just wrote, to add to what's shown (QA) -- no logged read of the rest.
+            return ['status' => true, 'note' => $decide->note ? AddSafetyFlagNoteAction::present($decide->note) : null];
         });
     }
 

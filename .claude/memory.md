@@ -147,6 +147,9 @@ See "Common commands" in `CLAUDE.md`.
   `TherapyTrait::involvesInOversight` (shared with reports) -- don't copy it. Group members are referred to
   by `App\Support\GroupMemberKeys` keys, never user ids. Admin pages/routes use `SafetyFlag::public_id`,
   never the sequential id, and the live ping goes only to uninvolved admins' `users.{id}` channels.
+  Handling (TT-4.3b/c): "still needs someone" is `SafetyFlag::scopeWhereUnresolved` (incl. withdrawn after
+  acknowledgement); notices go through `SendSafetyFlagNoticeAction` only; any new free-text column on a
+  flag must be added to `SafetyFlag::FREE_TEXT` so anonymisation clears it.
 
 ## Current Sprint Goals
 

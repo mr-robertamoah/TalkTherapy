@@ -13,6 +13,7 @@ import PrimaryButton from '@/Components/PrimaryButton.vue'
 import SecondaryButton from '@/Components/SecondaryButton.vue'
 import HelpRingModal from './HelpRingModal.vue'
 import EmergencyNumbersPanel from './EmergencyNumbersPanel.vue'
+import SafetyNotice from '@/Components/Safety/SafetyNotice.vue'
 import useHelpNow from '@/Composables/useHelpNow'
 
 const page = usePage()
@@ -154,5 +155,7 @@ function submit() {
         </MiniModal>
 
         <HelpRingModal v-if="user?.counsellor?.id" :counsellor-id="user.counsellor.id" />
+        <!-- SCRUM-32 (TT-4.3c): a safety notice, until it's dismissed (mounted here, at the app root). -->
+        <SafetyNotice />
     </div>
 </template>

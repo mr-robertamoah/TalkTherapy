@@ -27,6 +27,7 @@ use App\Enums\RequestStatusEnum;
 use App\Enums\RequestTypeEnum;
 use App\Enums\SafetyFlagDiscussedEnum;
 use App\Enums\SafetyFlagKindEnum;
+use App\Enums\SafetyFlagNoticeStateEnum;
 use App\Enums\SafetyFlagOutcomeEnum;
 use App\Enums\SafetyFlagStatusEnum;
 use App\Enums\SafetyFlagUrgencyEnum;
@@ -325,16 +326,25 @@ class DatabaseSeeder extends Seeder
         $withdrawn = $raise($clientTherapy, $client, SafetyFlagUrgencyEnum::nonUrgent, 'Seeded: worried about drinking; on reflection, managing well in therapy.', [
             'status' => SafetyFlagStatusEnum::withdrawn, 'open_client_key' => null, 'withdrawn_at' => now()->subDays(2),
             'withdrawn_reason' => 'Seeded: talked it through in the next session; no longer a concern.', 'created_at' => now()->subDays(3),
+            // TT-4.3c: withdrawn before anyone acknowledged it -- its notice was cancelled.
+            'client_notice_state' => SafetyFlagNoticeStateEnum::cancelled,
         ]);
         SafetyFlagEvent::query()->create(['safety_flag_id' => $withdrawn->id, 'action' => SafetyFlagEvent::WITHDRAWN, 'actor_user_id' => $counsellorUser->id, 'created_at' => $withdrawn->withdrawn_at]);
+        SafetyFlagEvent::query()->create(['safety_flag_id' => $withdrawn->id, 'action' => SafetyFlagEvent::NOTICES_CANCELLED, 'created_at' => $withdrawn->withdrawn_at]);
 
         $resolved = $raise($minorTherapy, $minor, SafetyFlagUrgencyEnum::urgent, 'Seeded (earlier): stopped attending school and sleeping very little.', [
             'status' => SafetyFlagStatusEnum::resolved, 'open_client_key' => null, 'handler_user_id' => $superAdmin->id,
             'acknowledged_at' => now()->subDays(10), 'resolved_at' => now()->subDays(9), 'outcome' => SafetyFlagOutcomeEnum::safetyPlan,
             'outcome_note' => 'Seeded: spoke with the counsellor and the guardian; a safety plan is in place and weekly sessions continue.',
             'created_at' => now()->subDays(11),
+            // TT-4.3c: settled before it was resolved -- both notices went out.
+            'client_notice_state' => SafetyFlagNoticeStateEnum::sent, 'client_notice_sent_at' => now()->subDays(10),
+            'guardian_notice_state' => SafetyFlagNoticeStateEnum::sent, 'guardian_notice_sent_at' => now()->subDays(10),
         ]);
-        foreach ([SafetyFlagEvent::ACKNOWLEDGED => $resolved->acknowledged_at, SafetyFlagEvent::RESOLVED => $resolved->resolved_at] as $action => $at) {
+        foreach ([
+            SafetyFlagEvent::ACKNOWLEDGED => $resolved->acknowledged_at, SafetyFlagEvent::CLIENT_NOTICE_SENT => $resolved->client_notice_sent_at,
+            SafetyFlagEvent::GUARDIAN_NOTICE_SENT => $resolved->guardian_notice_sent_at, SafetyFlagEvent::RESOLVED => $resolved->resolved_at,
+        ] as $action => $at) {
             SafetyFlagEvent::query()->create(['safety_flag_id' => $resolved->id, 'action' => $action, 'actor_user_id' => $superAdmin->id, 'created_at' => $at]);
         }
     }

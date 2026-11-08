@@ -3,6 +3,7 @@
 namespace App\Actions\Safety;
 
 use App\Actions\Action;
+use App\Enums\SafetyFlagNoticeStateEnum;
 use App\Enums\SafetyFlagStatusEnum;
 use App\Exceptions\SafetyFlagException;
 use App\Models\SafetyFlag;
@@ -41,6 +42,18 @@ class WithdrawSafetyFlagAction extends Action
             }
 
             SafetyFlagEvent::query()->create(['safety_flag_id' => $flag->id, 'action' => SafetyFlagEvent::WITHDRAWN, 'actor_user_id' => $counsellorUser->id]);
+
+            // TT-4.3c (the user's decision): withdrawn before anyone acknowledged it -- its unsent notices
+            // are cancelled. After acknowledgement they wait for the handler.
+            $unsent = SafetyFlagNoticeStateEnum::unsettledValues();
+            $cancelled = 0;
+            foreach (['client_notice_state', 'guardian_notice_state'] as $column) {
+                $cancelled += SafetyFlag::query()->whereKey($flag->id)->whereNull('handler_user_id')->whereIn($column, $unsent)
+                    ->update([$column => SafetyFlagNoticeStateEnum::cancelled->value]);
+            }
+            if ($cancelled) {
+                SafetyFlagEvent::query()->create(['safety_flag_id' => $flag->id, 'action' => SafetyFlagEvent::NOTICES_CANCELLED]);
+            }
         });
 
         $flag->refresh();

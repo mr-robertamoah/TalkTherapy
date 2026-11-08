@@ -130,6 +130,17 @@ function recordAction(row) {
         .then((res) => { actionType.value = { ...actionType.value, [row.id]: undefined }; actionText.value = { ...actionText.value, [row.id]: '' }; appendNote(row, res.data.note); reload() }), 'The action has been recorded.')
 }
 
+// TT-4.3c: send, hold or withhold the person's or the guardians' notice.
+const noticeReason = ref({}) // `${id}-${which}` -> text
+const noticeAction = ref(null) // `${id}-${which}-${decision}` while asking for a reason
+
+function decideNotice(row, which, decision) {
+    const key = `${row.id}-${which}`
+    act(row, `notice-${which}`, () => axios.post(route('admin.safety_flags.notice', { flag: row.id }), { which, decision, reason: noticeReason.value[key] || null })
+        .then((res) => { noticeAction.value = null; noticeReason.value = { ...noticeReason.value, [key]: '' }; if (res.data.note) appendNote(row, res.data.note); reload() }),
+    decision === 'send' ? 'The notice has been sent.' : (decision === 'hold' ? 'The notice is held.' : 'The notice is withheld.'))
+}
+
 function resolve(row) {
     act(row, 'resolve', () => axios.post(route('admin.safety_flags.resolve', { flag: row.id }), { outcome: outcome.value[row.id], note: outcomeNote.value[row.id] })
         .then(() => { resolving.value = null; reload() }), 'It has been resolved.')
@@ -244,6 +255,11 @@ onBeforeUnmount(() => {
                     </template>
                 </dl>
 
+                <!-- TT-4.3c (QA): where its notices stand, for every administrator who sees it (no reasons). -->
+                <p v-if="!handled(row) && (row.notices.client !== 'NOT_APPLICABLE' || row.notices.guardians !== 'NOT_APPLICABLE')" class="mt-1 text-xs text-gray-600">
+                    Notices -- to the person: {{ row.notices.clientLabel }}<template v-if="row.notices.guardians !== 'NOT_APPLICABLE'">; to their guardians: {{ row.notices.guardiansLabel }}</template>
+                </p>
+
                 <!-- TT-4.3b: the handling administrator's tools (an acknowledged flag, or one withdrawn since). -->
                 <div v-if="handled(row)" class="mt-3 grid gap-3 sm:grid-cols-2">
                     <form class="space-y-1" @submit.prevent="addNote(row)">
@@ -260,6 +276,28 @@ onBeforeUnmount(() => {
                         <input v-model="actionText[row.id]" type="text" maxlength="2000" :aria-label="actionType[row.id] === 'OTHER' ? 'What you did (needed)' : 'Details (optional)'" :placeholder="actionType[row.id] === 'OTHER' ? 'What you did (needed)' : 'Details (optional)'" class="block w-full rounded-md border-gray-300 text-sm shadow-sm" />
                         <SecondaryButton type="submit" :disabled="!actionType[row.id] || (actionType[row.id] === 'OTHER' && !actionText[row.id]?.trim()) || busy === `action-${row.id}`">Record</SecondaryButton>
                     </form>
+                    <!-- TT-4.3c: the notices -- sent automatically at the time shown unless you send or hold them. -->
+                    <div class="space-y-2 rounded-md border border-gray-200 p-3 sm:col-span-2">
+                        <p class="text-xs font-semibold uppercase tracking-wide text-gray-600">Notices</p>
+                        <p v-if="row.notices.dueAt" class="text-xs text-gray-600">Waiting notices go out on their own at {{ formatWhen(row.notices.dueAt) }}.</p>
+                        <div v-for="which in ['client', 'guardians']" :key="which" class="text-sm">
+                            <template v-if="row.notices[which] !== 'NOT_APPLICABLE'">
+                                <p class="text-gray-900">{{ which === 'client' ? 'To the person' : 'To their guardians' }}: <span class="text-gray-700">{{ row.notices[`${which}Label`] }}</span></p>
+                                <div v-if="['PENDING', 'HELD'].includes(row.notices[which])" class="mt-1 flex flex-wrap items-end gap-2">
+                                    <SecondaryButton type="button" :disabled="busy === `notice-${which}-${row.id}`" @click="decideNotice(row, which, 'send')">Send now</SecondaryButton>
+                                    <template v-if="noticeAction?.startsWith(`${row.id}-${which}-`)">
+                                        <input v-model="noticeReason[`${row.id}-${which}`]" type="text" maxlength="1000" :aria-label="noticeAction.endsWith('-hold') ? 'Safety reason for holding it' : 'Reason for withholding it'" :placeholder="noticeAction.endsWith('-hold') ? 'Safety reason for holding it' : 'Reason for withholding it'" class="rounded-md border-gray-300 text-sm shadow-sm" />
+                                        <SecondaryButton type="button" :disabled="!noticeReason[`${row.id}-${which}`]?.trim() || busy === `notice-${which}-${row.id}`" @click="decideNotice(row, which, noticeAction.endsWith('-hold') ? 'hold' : 'withhold')">Confirm</SecondaryButton>
+                                        <SecondaryButton type="button" :disabled="busy === `notice-${which}-${row.id}`" @click="noticeAction = null">Cancel</SecondaryButton>
+                                    </template>
+                                    <template v-else>
+                                        <SecondaryButton v-if="row.notices[which] === 'PENDING'" type="button" :disabled="busy === `notice-${which}-${row.id}`" @click="noticeAction = `${row.id}-${which}-hold`">Hold…</SecondaryButton>
+                                        <SecondaryButton type="button" :disabled="busy === `notice-${which}-${row.id}`" @click="noticeAction = `${row.id}-${which}-withhold`">Withhold…</SecondaryButton>
+                                    </template>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
                     <div class="sm:col-span-2">
                         <PrimaryButton v-if="resolving !== row.id" type="button" @click="resolving = row.id">Resolve…</PrimaryButton>
                         <form v-else class="space-y-2 rounded-md border border-gray-200 p-3" @submit.prevent="resolve(row)">

@@ -23,6 +23,8 @@ class EnsureAccountIsNotSuspended
         // Named one by one (security review), so a future help.* route isn't let through unasked.
         'help.emergency_numbers', 'help.requests.current', 'help.requests.store', 'help.requests.show', 'help.requests.cancel',
         'help.requests.end', 'help.requests.messages', 'help.requests.messages.store', 'help.chat',
+        // SCRUM-32 (TT-4.3c): the persistent safety notice -- for a suspended account too.
+        'safety_notice.current', 'safety_notice.dismiss',
     ];
 
     // SCRUM-33: joining a help chat's own channel (the channel's rule still checks they're in it).

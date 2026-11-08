@@ -4,12 +4,14 @@ namespace App\Actions\Safety;
 
 use App\Actions\Action;
 use App\Enums\SafetyFlagDiscussedEnum;
+use App\Enums\SafetyFlagNoticeStateEnum;
 use App\Enums\SafetyFlagStatusEnum;
 use App\Enums\SafetyFlagUrgencyEnum;
 use App\Exceptions\SafetyFlagException;
 use App\Jobs\ReAlertSafetyFlagJob;
 use App\Models\SafetyFlag;
 use App\Models\SafetyFlagEvent;
+use App\Models\SafetyFlagNote;
 use App\Models\User;
 use App\Notifications\SafetyFlagRaisedNotification;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -27,7 +29,7 @@ class RaiseSafetyFlagAction extends Action
 
     public const TOO_MANY = 'You have raised several safety flags in the last hour. Please contact the TalkTherapy team directly, and if someone is in danger call the emergency number now.';
 
-    /** @param array{urgency: string, reason: string, discussedWithClient: string, emergencyServicesContacted: bool, emergencyServicesNote: ?string} $input */
+    /** @param array{urgency: string, reason: string, discussedWithClient: string, emergencyServicesContacted: bool, emergencyServicesNote: ?string, guardianWithholdReason?: ?string} $input */
     public function execute(User $counsellorUser, SafetyFlagSubject $subject, array $input): SafetyFlag
     {
         $counsellor = $counsellorUser->counsellor;
@@ -39,8 +41,15 @@ class RaiseSafetyFlagAction extends Action
         $urgency = SafetyFlagUrgencyEnum::from($input['urgency']);
         $client = $subject->client;
 
+        // TT-4.3c: a safeguarding reason not to tell a minor's guardians holds their notice for the handling
+        // administrator, whose decision is final.
+        $guardianReason = trim((string) ($input['guardianWithholdReason'] ?? ''));
+
         try {
-            $flag = DB::transaction(function () use ($counsellor, $counsellorUser, $subject, $input, $urgency, $client) {
+            $flag = DB::transaction(function () use ($counsellor, $counsellorUser, $subject, $input, $urgency, $client, $guardianReason) {
+                $snapshot = SafetyFlag::snapshotFor($client, $urgency);
+                $heldForGuardians = $guardianReason !== '' && $snapshot['guardian_notice_state'] === SafetyFlagNoticeStateEnum::pending;
+
                 $flag = SafetyFlag::query()->create([
                     'flaggable_type' => $subject->flaggable::class,
                     'flaggable_id' => $subject->flaggable->getKey(),
@@ -56,7 +65,8 @@ class RaiseSafetyFlagAction extends Action
                     'status' => SafetyFlagStatusEnum::open,
                     'open_client_key' => SafetyFlag::openKeyFor($subject->flaggable, $client),
                     'anonymous' => $subject->anonymous,
-                    ...SafetyFlag::snapshotFor($client, $urgency),
+                    ...$snapshot,
+                    ...($heldForGuardians ? ['guardian_notice_state' => SafetyFlagNoticeStateEnum::held] : []),
                 ]);
 
                 SafetyFlagEvent::query()->create([
@@ -65,6 +75,19 @@ class RaiseSafetyFlagAction extends Action
                     'actor_user_id' => $counsellorUser->id,
                     'data' => ['urgency' => $urgency->value],
                 ]);
+
+                // The counsellor's reason as its own note, and the hold in the history -- shown as "by the
+                // counsellor", never their name (reviews).
+                if ($heldForGuardians) {
+                    $note = SafetyFlagNote::query()->create([
+                        'safety_flag_id' => $flag->id, 'author_user_id' => $counsellorUser->id,
+                        'kind' => SafetyFlagNote::HOLD_GUARDIANS, 'content' => $guardianReason,
+                    ]);
+                    SafetyFlagEvent::query()->create([
+                        'safety_flag_id' => $flag->id, 'action' => SafetyFlagEvent::GUARDIAN_NOTICE_HELD, 'actor_user_id' => $counsellorUser->id,
+                        'data' => ['noteId' => $note->id, 'byCounsellor' => true],
+                    ]);
+                }
 
                 return $flag;
             });

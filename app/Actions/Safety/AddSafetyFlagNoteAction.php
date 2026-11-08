@@ -37,7 +37,13 @@ class AddSafetyFlagNoteAction extends Action
     {
         return [
             'kind' => $note->kind,
-            'action' => $note->action_type?->label(),
+            'action' => match ($note->kind) {
+                SafetyFlagNote::HOLD_PERSON => 'Why the notice to the person was held',
+                SafetyFlagNote::WITHHOLD_PERSON => 'Why the notice to the person was withheld',
+                SafetyFlagNote::HOLD_GUARDIANS => 'Why the notice to their guardians was held',
+                SafetyFlagNote::WITHHOLD_GUARDIANS => 'Why the notice to their guardians was withheld',
+                default => $note->action_type?->label(),
+            },
             'content' => $note->content,
             'by' => $note->author?->name,
             'at' => $note->created_at?->toIso8601String(),
