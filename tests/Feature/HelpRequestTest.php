@@ -190,7 +190,9 @@ test('the demo data seeds an on-call counsellor, a fake (non-production) number 
     (new DatabaseSeeder)->createHelpDemoData();
 
     $user = User::query()->where('username', 'help_demo_user')->sole();
-    $chat = HelpRequest::query()->where('user_id', $user->id)->sole();
+    $chat = HelpRequest::query()->where('user_id', $user->id)->whereNull('transcript_deleted_at')->sole();
+    // TT-4.4c: and an older one whose messages the retention sweep has deleted.
+    expect(HelpRequest::query()->where('user_id', $user->id)->whereNotNull('transcript_deleted_at')->count())->toBe(1);
 
     expect(Counsellor::query()->availableForUrgentHelp()->count())->toBe(2)
         ->and(EmergencyNumber::query()->where('country_code', 'GH')->value('label'))->toContain('TEST ONLY')

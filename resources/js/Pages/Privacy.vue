@@ -42,6 +42,7 @@ defineProps({
                             <li><a href="#why" class="underline hover:text-gray-900">Why</a></li>
                             <li><a href="#sharing" class="underline hover:text-gray-900">Who sees it</a></li>
                             <li><a href="#confidential-messages" class="underline hover:text-gray-900">Confidential messages</a></li>
+                            <li><a href="#urgent-help" class="underline hover:text-gray-900">Urgent help</a></li>
                             <li><a href="#administrator-access" class="underline hover:text-gray-900">Administrators</a></li>
                             <li><a href="#retention" class="underline hover:text-gray-900">How long we keep it</a></li>
                             <li><a href="#cookies" class="underline hover:text-gray-900">Cookies</a></li>
@@ -128,6 +129,29 @@ defineProps({
                     </p>
                 </section>
 
+                <!-- SCRUM-33 (TT-4.4c): the quick help chat. -->
+                <section id="urgent-help" class="space-y-2">
+                    <h2 class="text-lg font-semibold text-gray-900">Urgent help</h2>
+                    <p>
+                        When you tap "I need help now" and ask for a counsellor, we keep a record of your request: when you asked, your
+                        country and whether you were under 18 at the time, the one-line note you wrote (if any), whether you asked
+                        anonymously, which counsellor answered, and how it ended. The emergency numbers shown are public numbers;
+                        looking them up isn't recorded against you.
+                    </p>
+                    <p>
+                        Counsellors who are asked see only a short summary: your first name (or "Anonymous"), whether you are an adult
+                        or under 18, your country, your languages and your note. The counsellor who answers and you can both read the
+                        chat afterwards. It isn't shared with your guardian or anyone else, and if the counsellor invites you to a
+                        regular therapy afterwards, the chat isn't copied into it.
+                    </p>
+                    <p>
+                        Administrators look after urgent help requests, but don't see who asked unless one of them chooses to look,
+                        and every such look is recorded, as below. If an administrator needs to read an urgent help chat's messages
+                        -- for example, to look into a report -- they can, in the same way as other conversations, and each read
+                        is recorded too.
+                    </p>
+                </section>
+
                 <section id="administrator-access" class="space-y-2">
                     <h2 class="text-lg font-semibold text-gray-900">What administrators can see</h2>
                     <p>
@@ -171,6 +195,11 @@ defineProps({
                             A counsellor's verification history (when they were verified, reminded, re-verified, when it ended, and any
                             revocation with the reason given) is kept permanently and can't be changed, as a record of their professional
                             standing. It names licences only by reference, never their numbers or documents, and only administrators see it.
+                        </li>
+                        <li>
+                            An urgent help chat's messages, your note and any administrator's note on the request are deleted
+                            {{ retentionDays.helpChat }} days after the chat ended (later only if a complaint about it is still
+                            open). A record that the request happened, without them, is kept.
                         </li>
                         <li>Verification and identity documents are deleted on the schedule below.</li>
                     </ul>

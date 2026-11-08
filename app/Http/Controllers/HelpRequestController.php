@@ -6,6 +6,7 @@ use App\Actions\Help\AcceptHelpRequestAction;
 use App\Actions\Help\CancelHelpRequestAction;
 use App\Actions\Help\EndHelpChatAction;
 use App\Actions\Help\GetHelpChatAction;
+use App\Actions\Help\InviteHelpRequesterToTherapyAction;
 use App\Actions\Help\SendHelpMessageAction;
 use App\Actions\Help\SetUrgentHelpAvailabilityAction;
 use App\Actions\Help\StartHelpRequestAction;
@@ -111,6 +112,12 @@ class HelpRequestController extends Controller
     public function end(Request $request, int $helpRequest)
     {
         return $this->respond($request, fn () => EndHelpChatAction::new()->execute($request->user(), HelpRequest::query()->find($helpRequest)));
+    }
+
+    // TT-4.4c: the counsellor in an ended chat invites the person to continue in a regular therapy.
+    public function invite(Request $request, int $helpRequest)
+    {
+        return $this->respond($request, fn () => InviteHelpRequesterToTherapyAction::new()->execute($request->user(), HelpRequest::query()->find($helpRequest)));
     }
 
     // A counsellor's rings to answer now: requests already waiting that they could take (oldest first)

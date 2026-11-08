@@ -33,7 +33,12 @@ class SweepHelpRequestsAction extends Action
 
         $ended = 0;
         HelpRequest::query()->whereStatus(HelpRequestStatusEnum::connected)
-            ->whereHas('session', fn ($query) => $query->where('end_time', '<=', now()))
+            ->where(fn ($query) => $query
+                ->whereHas('session', fn ($query) => $query->where('end_time', '<=', now()))
+                // TT-4.4c: and one whose session row is missing (removed since, or never written), once its time
+                // is up from when it was answered -- else it would hold the person's one live request for ever.
+                ->orWhere(fn ($query) => $query->whereDoesntHave('session')
+                    ->where('accepted_at', '<=', now()->subMinutes((int) config('help.session_minutes')))))
             ->lazyById()
             ->each(function (HelpRequest $request) use (&$ended) {
                 if (CloseHelpRequestAction::new()->execute($request, HelpRequestStatusEnum::connected, HelpRequestStatusEnum::ended, 'time')) {

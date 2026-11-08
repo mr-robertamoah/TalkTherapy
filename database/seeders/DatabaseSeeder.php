@@ -309,6 +309,13 @@ class DatabaseSeeder extends Seeder
             SendHelpMessageAction::new()->store($help, $user, 'Thank you. It helps to talk.');
             CloseHelpRequestAction::new()->execute($help, HelpRequestStatusEnum::connected, HelpRequestStatusEnum::ended, 'person');
         });
+
+        // TT-4.4c: a chat from over a year ago, its messages already deleted by the retention sweep.
+        HelpRequest::query()->forceCreate([
+            'user_id' => $user->id, 'status' => HelpRequestStatusEnum::ended->value, 'country_code' => 'GH',
+            'counsellor_id' => $counsellor->id, 'accepted_at' => now()->subDays(400), 'ended_at' => now()->subDays(400),
+            'ended_by' => 'person', 'transcript_deleted_at' => now(), 'created_at' => now()->subDays(400), 'updated_at' => now(),
+        ]);
     }
 
     // SCRUM-113/114/389. Passwords: "password".

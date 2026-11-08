@@ -4,7 +4,7 @@
 // therapies they could help with. Everything comes from GetCounsellorDashboardAction; each block
 // shows a few items and links to where the full list lives.
 import { Head, Link, router, usePage } from '@inertiajs/vue3'
-import { ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import axios from 'axios'
 import PrimaryButton from '@/Components/PrimaryButton.vue'
 import SecondaryButton from '@/Components/SecondaryButton.vue'
@@ -47,6 +47,12 @@ function answered() {
 // SCRUM-33: switching "available for urgent help" on or off.
 const availableUntil = ref(props.dashboard.urgentHelp?.availableUntil ?? null)
 const savingAvailability = ref(false)
+// TT-4.4c: it lapses on its own -- the badge clears when the time passes, not only on a reload.
+const now = ref(Date.now())
+let availabilityTicker = null
+onMounted(() => { availabilityTicker = setInterval(() => { now.value = Date.now() }, 30000) })
+onBeforeUnmount(() => clearInterval(availabilityTicker))
+const isAvailable = computed(() => !!availableUntil.value && new Date(availableUntil.value).getTime() > now.value)
 
 async function setAvailable(available) {
     savingAvailability.value = true
@@ -121,19 +127,19 @@ const more = 'text-sm font-medium text-blue-700 underline'
                 <section :class="card" aria-labelledby="urgent-help">
                     <div class="flex items-baseline justify-between gap-2">
                         <h3 id="urgent-help" :class="heading">Urgent help</h3>
-                        <span v-if="availableUntil" class="rounded-full border border-green-200 bg-green-50 px-2 py-0.5 text-xs font-medium text-green-800">Available</span>
+                        <span v-if="isAvailable" class="rounded-full border border-green-200 bg-green-50 px-2 py-0.5 text-xs font-medium text-green-800">Available</span>
                     </div>
                     <p class="mt-2 text-sm text-gray-600">
                         While you're available, you're rung when someone taps "I need help now", and the first counsellor to accept chats
                         with them straight away. It switches off on its own after {{ dashboard.urgentHelp.hours }} hours. Urgent help chats are free and unpaid.
                     </p>
-                    <p v-if="availableUntil" class="mt-2 text-sm text-gray-800">Available until {{ formatWhen(availableUntil) }}. Keep this app open to be rung.</p>
+                    <p v-if="isAvailable" class="mt-2 text-sm text-gray-800">Available until {{ formatWhen(availableUntil) }}. Keep this app open to be rung.</p>
                     <p v-else-if="!dashboard.urgentHelp.canBeAvailable" class="mt-2 text-sm text-amber-800">You can be available while your verification is current.</p>
                     <div class="mt-3 flex flex-wrap gap-2">
                         <PrimaryButton v-if="dashboard.urgentHelp.canBeAvailable" type="button" :disabled="savingAvailability" @click="setAvailable(true)">
-                            {{ availableUntil ? `Extend ${dashboard.urgentHelp.hours} hours` : 'Be available now' }}
+                            {{ isAvailable ? `Extend ${dashboard.urgentHelp.hours} hours` : 'Be available now' }}
                         </PrimaryButton>
-                        <SecondaryButton v-if="availableUntil" type="button" :disabled="savingAvailability" @click="setAvailable(false)">Stop being available</SecondaryButton>
+                        <SecondaryButton v-if="isAvailable" type="button" :disabled="savingAvailability" @click="setAvailable(false)">Stop being available</SecondaryButton>
                     </div>
                 </section>
 

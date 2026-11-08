@@ -90,6 +90,23 @@ async function ringAgain(row) {
         .finally(() => { busy.value = null })
 }
 
+// TT-4.4c: our team suggests the person continues with the counsellor they spoke with (they decide).
+// Confirmed first (QA): it emails the person and can't be taken back.
+const inviting = ref(null)
+
+async function inviteToTherapy() {
+    const row = inviting.value
+    busy.value = `invite-${row.id}`
+    await axios.post(route('admin.help_requests.invite', { helpRequest: row.id }))
+        .then(() => {
+            setSuccessAlertData({ message: `They've been told they could continue with ${row.counsellor ?? 'the counsellor'}. It's up to them.` })
+            inviting.value = null
+            reload()
+        })
+        .catch((err) => { setFailedAlertData({ message: refusal(err) }); inviting.value = null })
+        .finally(() => { busy.value = null })
+}
+
 async function reveal(row) {
     busy.value = `reveal-${row.id}`
     await axios.post(route('admin.help_requests.reveal', { helpRequest: row.id }))
@@ -242,6 +259,11 @@ onBeforeUnmount(() => {
                         </div>
                         <p v-if="row.counsellor" class="text-xs text-gray-600">With {{ row.counsellor }}</p>
                         <p v-if="row.closedNote" class="text-xs text-gray-600">Note: {{ row.closedNote }}</p>
+                        <!-- TT-4.4c: invite the person to a regular therapy with the counsellor they spoke with. -->
+                        <p v-if="row.invitedAt" class="text-xs text-gray-600">Invited to a regular therapy with {{ row.counsellor ?? 'the counsellor' }}</p>
+                        <div v-else-if="row.canInvite" class="mt-1">
+                            <SecondaryButton type="button" :disabled="busy === `invite-${row.id}`" @click="inviting = row">Invite to a regular therapy</SecondaryButton>
+                        </div>
                 </li>
             </ul>
         </section>
@@ -263,6 +285,21 @@ onBeforeUnmount(() => {
                 </li>
             </ul>
             <div class="flex justify-end"><SecondaryButton type="button" @click="picking = null">Cancel</SecondaryButton></div>
+        </div>
+    </MiniModal>
+
+    <MiniModal :show="!!inviting" labelledby="help-invite-title" @close="inviting = null">
+        <div v-if="inviting" class="space-y-4">
+            <h2 id="help-invite-title" class="text-lg font-semibold text-gray-900">Suggest a regular therapy?</h2>
+            <p class="text-sm text-gray-600">
+                The person is told, on their chat and by email, that our team suggests they could continue with
+                {{ inviting.counsellor ?? 'the counsellor they spoke with' }} in a regular therapy -- it's up to them, and the chat isn't copied.
+                It can't be taken back, so check with the counsellor first.
+            </p>
+            <div class="flex justify-end gap-2">
+                <SecondaryButton type="button" :disabled="busy === `invite-${inviting.id}`" @click="inviting = null">Cancel</SecondaryButton>
+                <PrimaryButton type="button" :disabled="busy === `invite-${inviting.id}`" @click="inviteToTherapy">Send</PrimaryButton>
+            </div>
         </div>
     </MiniModal>
 

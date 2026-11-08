@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Actions\Help\CloseHelpRequestByAdminAction;
 use App\Actions\Help\GetCounsellorsForHelpRequestAction;
 use App\Actions\Help\GetHelpQueueAction;
+use App\Actions\Help\InviteHelpRequesterToTherapyAction;
 use App\Actions\Help\RevealHelpRequesterAction;
 use App\Actions\Help\RingCounsellorForHelpRequestAction;
 use App\Actions\Help\RingHelpRequestAgainAction;
@@ -90,6 +91,18 @@ class AdminHelpRequestController extends Controller
     {
         try {
             return response()->json(RevealHelpRequesterAction::new()->execute($request->user(), HelpRequest::query()->find($helpRequest)));
+        } catch (Throwable $th) {
+            return FailureResponse::json($th);
+        }
+    }
+
+    // TT-4.4c: invite the person to a regular therapy with the counsellor they spoke with (an ended chat).
+    public function invite(Request $request, int $helpRequest)
+    {
+        try {
+            InviteHelpRequesterToTherapyAction::new()->execute($request->user(), HelpRequest::query()->find($helpRequest), asAdmin: true);
+
+            return response()->json(['status' => true]);
         } catch (Throwable $th) {
             return FailureResponse::json($th);
         }

@@ -50,6 +50,14 @@ class EnsureUserCanAccessTherapyContentAction extends Action
     // replies are fetched per-message, not per-session).
     public function execute(Therapy|GroupTherapy|null $therapy, User $user, ?Session $session = null, ?Carbon $contentTimestamp = null): bool
     {
+        // SCRUM-33 (TT-4.4c, security review): an administrator involved in an urgent help request (they
+        // asked, they're the person's guardian, or the counsellor) never reads its chat this way either.
+        if ($user->isAdmin() && $therapy instanceof Therapy && $therapy->isHelpChat() && ! $therapy->isParticipant($user)) {
+            $help = $therapy->helpRequest;
+
+            return $help !== null && ! $help->involvesAdmin($user);
+        }
+
         if ($user->isAdmin()) {
             return true;
         }

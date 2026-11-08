@@ -8,6 +8,7 @@ use App\Enums\RequestStatusEnum;
 use App\Enums\RequestTypeEnum;
 use App\Models\Contact;
 use App\Models\Counsellor;
+use App\Models\HelpRequest;
 use App\Models\Request;
 use App\Models\SafeguardingException;
 use App\Models\User;
@@ -32,6 +33,8 @@ use Illuminate\Support\Str;
 //  - the reasons on its safeguarding exceptions and on counsellors' requests for one (SCRUM-381);
 //  - its name in its counsellors' pause, resume and continuation notices (SCRUM-384), and in the
 //    "a member left your group" notices (SCRUM-73), found by WardRef.
+//  - the one-line note on its urgent help requests, and an administrator's close note on them
+//    (SCRUM-33; the chats themselves follow their own one-year retention).
 // What stays: the account row itself (soft-deleted), so what the person took part in still holds
 // together -- their messages stay in other people's conversations as "Deleted user", and payment,
 // complaint, suspension and audit records keep pointing at it. Guardianship and organisation
@@ -105,6 +108,7 @@ class AnonymiseClosedAccountAction extends Action
                     $request->saveQuietly();
                 });
 
+            HelpRequest::query()->where('user_id', $user->id)->update(['note' => null, 'closed_note' => null]);
             DB::table('notifications')->where('notifiable_type', $user->getMorphClass())->where('notifiable_id', $user->id)->delete();
             $this->renameInOthersNotices($user);
             if ($user->email) {

@@ -110,6 +110,9 @@ Route::middleware('auth')->prefix('help')->name('help.')->group(function () {
     Route::post('/requests/{helpRequest}/end', [HelpRequestController::class, 'end'])->name('requests.end')->whereNumber('helpRequest')->middleware('throttle:20,1,help.requests.end');
     Route::get('/requests/{helpRequest}/messages', [HelpRequestController::class, 'messages'])->name('requests.messages')->whereNumber('helpRequest')->middleware('throttle:120,1,help.requests.messages');
     Route::post('/requests/{helpRequest}/messages', [HelpRequestController::class, 'sendMessage'])->name('requests.messages.store')->whereNumber('helpRequest')->middleware('throttle:60,1,help.requests.messages.store');
+    // TT-4.4c: the counsellor in an ended chat invites the person to a regular therapy (not open to a
+    // suspended account -- not in EnsureAccountIsNotSuspended's list).
+    Route::post('/requests/{helpRequest}/invite', [HelpRequestController::class, 'invite'])->name('requests.invite')->whereNumber('helpRequest')->middleware('throttle:10,1,help.requests.invite');
     Route::get('/chat/{helpRequest}', [HelpRequestController::class, 'page'])->name('chat')->whereNumber('helpRequest');
     Route::get('/requests/ringing', [HelpRequestController::class, 'ringing'])->name('requests.ringing')->middleware('throttle:30,1,help.requests.ringing');
     Route::post('/availability', [HelpRequestController::class, 'availability'])->name('availability')->middleware('throttle:10,1,help.availability');
@@ -139,6 +142,7 @@ Route::middleware('auth')->group(function () {
         Route::post('/administrator/help-requests/{helpRequest}/ring-counsellor', [AdminHelpRequestController::class, 'ringCounsellor'])->name('admin.help_requests.ring_counsellor')->whereNumber('helpRequest')->middleware('throttle:20,1,admin.help_requests.ring_counsellor');
         Route::post('/administrator/help-requests/{helpRequest}/close', [AdminHelpRequestController::class, 'close'])->name('admin.help_requests.close')->whereNumber('helpRequest')->middleware('throttle:20,1,admin.help_requests.close');
         Route::post('/administrator/help-requests/{helpRequest}/reveal', [AdminHelpRequestController::class, 'reveal'])->name('admin.help_requests.reveal')->whereNumber('helpRequest')->middleware('throttle:20,1,admin.help_requests.reveal');
+        Route::post('/administrator/help-requests/{helpRequest}/invite', [AdminHelpRequestController::class, 'invite'])->name('admin.help_requests.invite')->whereNumber('helpRequest')->middleware('throttle:20,1,admin.help_requests.invite');
         Route::get('/administrator/help-requests/{helpRequest}/counsellors', [AdminHelpRequestController::class, 'counsellors'])->name('admin.help_requests.counsellors')->whereNumber('helpRequest')->middleware('throttle:60,1,admin.help_requests.counsellors');
         // SCRUM-33: the emergency numbers (every admin sees them; a super administrator edits).
         Route::get('/administrator/emergency-numbers', [AdminEmergencyNumberController::class, 'index'])->name('administrator.emergency_numbers');
