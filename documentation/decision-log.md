@@ -10875,3 +10875,82 @@ therapy 18 after the last QA pass.
 
 - **QA (Playwright, five browsers): approved.** Fixed: after handing a flag on, "Hand to" is cleared (it
   kept the new handler, so a second click was refused). The reason's hint now says "10 characters or more".
+
+## SCRUM-32 (TT-4.3b) — handling, re-alerts and withdrawal: implementation decisions (2026-11-08)
+
+- **Notes and actions live in `safety_flag_notes`,** not in the append-only events. Each event points
+  at a note by id. The text is encrypted and can be cleared on account anonymisation (TT-4.3c), which
+  is the architect's TT-4.3a should-fix. The outcome note and the withdrawal reason are encrypted
+  columns on the flag.
+- **Who sees what:**
+  - **The handling administrator only:** notes, action details, the withdrawal reason and the outcome
+    note. These come with **Show the reason**, under the same logged read (`safety_flag_reason`).
+  - **Every administrator who isn't involved:** the outcome's category and the history (what happened
+    and when, never what was written). The counsellor is never named there.
+  - **Counsellors:** the status only, never the outcome. That follows the user's defaults: the flagging
+    counsellor sees "resolved", and co-counsellors see that a flag exists and its status.
+- **Resolving** works on acknowledged flags and on ones withdrawn after an administrator took them. It
+  is done by the handler only, in one conditional update that also frees `open_client_key`.
+- **Withdrawing:**
+  - Only the counsellor who raised the flag can withdraw it, while it's open or acknowledged. Anyone
+    else gets a 404.
+  - It frees the key and stops the re-alert.
+  - **Who is told:** the handler (if not involved), or, if nobody had acknowledged it, the
+    administrators who were alerted. Either way it's notified without content.
+- **Re-alert (the user's default):**
+  - **Once,** at 1h, 4h or 24h by urgency, to the super administrators who aren't involved.
+  - **How:** a delayed job dispatched on raise, plus a sweep every five minutes. Both claim the
+    re-alert with a conditional update on `realerted_at`.
+  - **Bad settings:** `SafetyFlag::realertMinutes` falls back to the default and logs an error.
+- **Fallback mailbox:** `NotifyUninvolvedAdminsAction` takes a fallback address, so the help escalation
+  could use it too. When nobody can be told, it emails `SAFETY_FALLBACK_MAILBOX` on demand. The safety
+  notifications accept an address as well as an account. The history records it.
+- **Review fixes (reviewer, security, architect, devops). Blockers were Pint and the "Add note" / "Record" buttons:**
+  - **The buttons** didn't submit their forms (`SecondaryButton` defaults to `type="button"`). Fixed.
+  - **No false "fallback mailbox alerted" in the append-only history.** `NotifyUninvolvedAdminsAction`
+    now returns what really happened (told N, fell back, or failed; `AdminNotifyResult`).
+    `SafetyFlag::alertUninvolved` records a fallback only when it went out. `REALERTED` is recorded
+    only when someone was told.
+  - **A re-alert is never silently lost.** If sending fails, the claim on `realerted_at` is released, so
+    the next sweep tries again. The delayed job is pushed inside its `rescue` (a `PendingDispatch` would
+    push after it returned).
+  - **One "still needs someone" rule** (`SafetyFlag::scopeWhereUnresolved` / `isBeingHandled`): open,
+    acknowledged, or withdrawn after someone took it on.
+    - The default admin list uses it.
+    - Notes, actions, resolving and handing on accept a flag withdrawn after acknowledgement.
+    - TT-4.3c's help-chat hold will use it, not "open" alone.
+  - **Adding a note or action no longer reads (and logs) the reason** on the handler's behalf. The
+    endpoints return the new note, which is shown only if the reason is already open.
+  - **Withdrawal notices are worded for who is told:**
+    - the handler;
+    - the alerted administrators, if nobody had acknowledged it;
+    - or, if the handler can't act on it any more (gone, no longer an administrator, or now involved),
+      the super administrators, to hand it on.
+  - **`safety_flag_notes` has triggers like its sibling tables:** never deleted, and the only change
+    allowed is clearing `content`.
+  - **One place for each rule:**
+    - who counsels where (`EnsureCanFlagClientAction::isTherapyCounsellor` / `isGroupCounsellor` /
+      `answeredHelpChat`, which the statuses reuse without the time window);
+    - the fallback mailbox (`SafetyFlag::fallbackMailbox`, validated as an address);
+    - the encrypted value for query updates (`SafetyFlag::encryptedValue`);
+    - counsellor-facing status labels (`SafetyFlagStatusEnum::counsellorLabel`).
+  - **A missing or invalid fallback mailbox while the feature is on** is logged as critical once a day by
+    the sweep.
+  - **Small fixes:** an anonymised client shows as anonymous in the statuses, status endpoints report
+    500s, and a flag from a previous counsellor reads "by another counsellor".
+- **Deferred:**
+  - **Monitoring and paging (devops):** paging on critical logs, `failed_jobs`, and a stopped queue
+    worker. Before the feature goes live, external alerting must watch `/health/scheduler`, critical
+    log lines and `failed_jobs`. The queue container runs both the delayed job and the sweep.
+  - **The re-alert failure path** (claim released when sending fails) has no automated test:
+    `Action::new()` isn't container-resolved, so it can't be faked. It was checked by reading the
+    code.
+- **For TT-4.3c (to settle there):** what happens to pending client and guardian notices when a flag is
+  withdrawn. Before acknowledgement, the re-alert never fires for a withdrawn flag, so its notices would
+  never go out automatically. After acknowledgement, the handler decides.
+- **QA (Playwright, five browsers): approved.** Fixed the spacing in the handler's notes list, and the
+  seeded flags' times, which now run raised → acknowledged → withdrawn or resolved in order. The QA
+  confirmed: adding a note writes no read-log entry, a flag withdrawn after acknowledgement stays in the
+  handler's list, the withdrawal email carries no reason, and re-alerts reach only uninvolved super
+  administrators.
+
