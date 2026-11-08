@@ -2,7 +2,10 @@
 
 namespace App\Notifications;
 
+use App\Contracts\SentOnlyToSuperAdministrators;
+use App\Contracts\ShownInNotificationCenter;
 use App\Models\Suspension;
+use App\Support\NotificationEntry;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -10,7 +13,7 @@ use Illuminate\Notifications\Notification;
 
 // SCRUM-359: to the super administrators who may decide a new appeal. Carries no appeal text --
 // that stays behind the admin page.
-class SuspensionAppealSubmittedNotification extends Notification implements ShouldQueue
+class SuspensionAppealSubmittedNotification extends Notification implements SentOnlyToSuperAdministrators, ShouldQueue, ShownInNotificationCenter
 {
     use Queueable;
 
@@ -38,5 +41,11 @@ class SuspensionAppealSubmittedNotification extends Notification implements Shou
             'type' => 'suspension.appealed',
             'suspensionId' => $this->suspension->id,
         ];
+    }
+
+    // SCRUM-39: in the notification center.
+    public static function present(array $data): NotificationEntry
+    {
+        return new NotificationEntry('A suspension has been appealed', 'An administrator who did not apply it needs to decide the appeal.', NotificationEntry::link('administrator.suspensions', []));
     }
 }

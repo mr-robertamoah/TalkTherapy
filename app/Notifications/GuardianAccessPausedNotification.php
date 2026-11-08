@@ -2,6 +2,8 @@
 
 namespace App\Notifications;
 
+use App\Contracts\ShownInNotificationCenter;
+use App\Support\NotificationEntry;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -10,7 +12,7 @@ use Illuminate\Notifications\Notification;
 // SCRUM-288: to a minor whose therapies are paused because their account has no active guardian.
 // Neutral: never says what happened to the guardian, or who they were. Says what still works, how
 // it starts again, and where to find urgent help (the same wording as the rest of the app).
-class GuardianAccessPausedNotification extends Notification implements ShouldQueue
+class GuardianAccessPausedNotification extends Notification implements ShouldQueue, ShownInNotificationCenter
 {
     use Queueable;
 
@@ -39,5 +41,11 @@ class GuardianAccessPausedNotification extends Notification implements ShouldQue
     public function toArray(object $notifiable): array
     {
         return ['type' => 'guardian_access.paused'];
+    }
+
+    // SCRUM-39: in the notification center.
+    public static function present(array $data): NotificationEntry
+    {
+        return new NotificationEntry('Your therapy is paused', 'Your account no longer has a guardian. It starts again when one is added.');
     }
 }

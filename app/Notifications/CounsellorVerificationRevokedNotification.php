@@ -2,7 +2,9 @@
 
 namespace App\Notifications;
 
+use App\Contracts\ShownInNotificationCenter;
 use App\Support\MailText;
+use App\Support\NotificationEntry;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -10,7 +12,7 @@ use Illuminate\Notifications\Notification;
 
 // SCRUM-31: to a counsellor whose verification an administrator revoked, with the reason they gave
 // (never the administrator's name).
-class CounsellorVerificationRevokedNotification extends Notification implements ShouldQueue
+class CounsellorVerificationRevokedNotification extends Notification implements ShouldQueue, ShownInNotificationCenter
 {
     use Queueable;
 
@@ -41,5 +43,11 @@ class CounsellorVerificationRevokedNotification extends Notification implements 
             'type' => 'counsellor_verification.revoked',
             'reason' => $this->reason,
         ];
+    }
+
+    // SCRUM-39: in the notification center.
+    public static function present(array $data): NotificationEntry
+    {
+        return new NotificationEntry('Your verification was revoked', 'An administrator revoked your counsellor verification.'.(is_string($data['reason'] ?? null) && trim($data['reason']) !== '' ? ' Reason: '.trim($data['reason']) : ''), NotificationEntry::link('counsellor.dashboard', []));
     }
 }

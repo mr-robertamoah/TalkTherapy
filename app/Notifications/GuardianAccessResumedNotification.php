@@ -2,7 +2,9 @@
 
 namespace App\Notifications;
 
+use App\Contracts\ShownInNotificationCenter;
 use App\Models\SafeguardingException;
+use App\Support\NotificationEntry;
 use Carbon\CarbonInterface;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -14,7 +16,7 @@ use Illuminate\Notifications\Notification;
 // SCRUM-381: $continuesUntil -- it is a super administrator's safeguarding exception that lets them
 // carry on, until then. Neutral: it doesn't say "a guardian again" (they have none), and never gives
 // the reason or anything about the family.
-class GuardianAccessResumedNotification extends Notification implements ShouldQueue
+class GuardianAccessResumedNotification extends Notification implements ShouldQueue, ShownInNotificationCenter
 {
     use Queueable;
 
@@ -55,5 +57,15 @@ class GuardianAccessResumedNotification extends Notification implements ShouldQu
             'type' => 'guardian_access.resumed',
             'continuesUntil' => $this->continuesUntil?->toJSON(),
         ]);
+    }
+
+    // SCRUM-39: in the notification center.
+    public static function present(array $data): NotificationEntry
+    {
+        $until = NotificationEntry::date($data['continuesUntil'] ?? null);
+
+        return $until
+            ? new NotificationEntry('Your therapy can continue', "For now, until {$until}. Adding a guardian keeps it going after that.")
+            : new NotificationEntry('Your therapy has started again');
     }
 }

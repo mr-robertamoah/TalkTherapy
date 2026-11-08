@@ -2,6 +2,8 @@
 
 namespace App\Notifications;
 
+use App\Contracts\ShownInNotificationCenter;
+use App\Support\NotificationEntry;
 use Carbon\CarbonInterface;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -10,7 +12,7 @@ use Illuminate\Notifications\Notification;
 
 // SCRUM-31: to a counsellor, 30 and 7 days (config) before their verification ends -- once each
 // (SendCounsellorVerificationRemindersAction). The link opens their profile's verify form.
-class CounsellorVerificationEndingNotification extends Notification implements ShouldQueue
+class CounsellorVerificationEndingNotification extends Notification implements ShouldQueue, ShownInNotificationCenter
 {
     use Queueable;
 
@@ -42,5 +44,13 @@ class CounsellorVerificationEndingNotification extends Notification implements S
             'expiresAt' => $this->expiresAt->toJSON(),
             'daysLeft' => $this->daysLeft,
         ];
+    }
+
+    // SCRUM-39: in the notification center.
+    public static function present(array $data): NotificationEntry
+    {
+        $date = NotificationEntry::date($data['expiresAt'] ?? null);
+
+        return new NotificationEntry('Your verification ends soon', ($date ? "It ends on {$date}. " : '').'Re-verify to keep taking on new clients.', NotificationEntry::link('counsellor.dashboard', []));
     }
 }

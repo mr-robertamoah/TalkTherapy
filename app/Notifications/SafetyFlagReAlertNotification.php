@@ -2,8 +2,11 @@
 
 namespace App\Notifications;
 
+use App\Contracts\SentOnlyToSuperAdministrators;
+use App\Contracts\ShownInNotificationCenter;
 use App\Enums\SafetyFlagStatusEnum;
 use App\Models\SafetyFlag;
+use App\Support\NotificationEntry;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\AnonymousNotifiable;
@@ -12,7 +15,7 @@ use Illuminate\Notifications\Notification;
 
 // SCRUM-32 (TT-4.3b): to the super administrators not involved -- a safety flag is still waiting for
 // someone to acknowledge it. How urgent, how long, and a link: never who, why, where or which counsellor.
-class SafetyFlagReAlertNotification extends Notification implements ShouldQueue
+class SafetyFlagReAlertNotification extends Notification implements SentOnlyToSuperAdministrators, ShouldQueue, ShownInNotificationCenter
 {
     use Queueable;
 
@@ -51,5 +54,11 @@ class SafetyFlagReAlertNotification extends Notification implements ShouldQueue
     public function toArray(object $notifiable): array
     {
         return ['type' => 'safety_flag.realert', 'safetyFlag' => $this->publicId, 'urgency' => $this->urgencyLabel];
+    }
+
+    // SCRUM-39: in the notification center.
+    public static function present(array $data): NotificationEntry
+    {
+        return new NotificationEntry('Still waiting: safety alert'.SafetyFlagRaisedNotification::urgency($data), 'No administrator has acknowledged it yet.', NotificationEntry::link('administrator.safety_flags', []));
     }
 }

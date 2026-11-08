@@ -20,4 +20,14 @@ final class TherapyLink
     {
         return $therapy instanceof GroupTherapy ? ['groupTherapyId' => $therapy->id] : ['therapyId' => $therapy->id];
     }
+
+    // SCRUM-39: the link for ids() saved in a notification, or null (no look-up: the page checks access).
+    public static function fromIds(array $data): ?string
+    {
+        return match (true) {
+            isset($data['groupTherapyId']) => NotificationEntry::link('group.therapies.get', ['groupTherapyId' => $data['groupTherapyId']]),
+            isset($data['therapyId']) => NotificationEntry::link('therapies.get', ['therapyId' => $data['therapyId']]),
+            default => null,
+        };
+    }
 }

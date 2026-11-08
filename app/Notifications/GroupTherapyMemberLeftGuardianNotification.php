@@ -2,7 +2,9 @@
 
 namespace App\Notifications;
 
+use App\Contracts\ShownInNotificationCenter;
 use App\Models\GroupTherapy;
+use App\Support\NotificationEntry;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -10,7 +12,7 @@ use Illuminate\Notifications\Notification;
 
 // SCRUM-73: to a minor's guardians when the minor leaves a group. Neutral: the group's name and that
 // they left, nothing about anyone else in it.
-class GroupTherapyMemberLeftGuardianNotification extends Notification implements ShouldQueue
+class GroupTherapyMemberLeftGuardianNotification extends Notification implements ShouldQueue, ShownInNotificationCenter
 {
     use Queueable;
 
@@ -39,5 +41,11 @@ class GroupTherapyMemberLeftGuardianNotification extends Notification implements
             'type' => 'group_therapy.ward_left',
             'groupTherapyId' => $this->groupTherapy->id,
         ];
+    }
+
+    // SCRUM-39: in the notification center.
+    public static function present(array $data): NotificationEntry
+    {
+        return new NotificationEntry('Your ward left a group therapy', 'They can join it again later.');
     }
 }

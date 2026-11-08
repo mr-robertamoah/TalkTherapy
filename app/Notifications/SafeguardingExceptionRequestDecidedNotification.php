@@ -2,10 +2,12 @@
 
 namespace App\Notifications;
 
+use App\Contracts\ShownInNotificationCenter;
 use App\Models\GroupTherapy;
 use App\Models\Request;
 use App\Models\SafeguardingException;
 use App\Models\Therapy;
+use App\Support\NotificationEntry;
 use App\Support\TherapyLink;
 use Carbon\CarbonInterface;
 use Illuminate\Bus\Queueable;
@@ -18,7 +20,7 @@ use Illuminate\Notifications\Notification;
 // decided on it as such; it was closed because it is no longer needed (the member left the group,
 // or the super administrator rejected it from the "no longer needed" list), and the counsellor
 // isn't told why.
-class SafeguardingExceptionRequestDecidedNotification extends Notification implements ShouldQueue
+class SafeguardingExceptionRequestDecidedNotification extends Notification implements ShouldQueue, ShownInNotificationCenter
 {
     use Queueable;
 
@@ -62,5 +64,17 @@ class SafeguardingExceptionRequestDecidedNotification extends Notification imple
             'requestId' => $this->request->id,
             'endsAt' => $this->endsAt?->toJSON(),
         ]);
+    }
+
+    // SCRUM-39: in the notification center.
+    public static function present(array $data): NotificationEntry
+    {
+        $until = NotificationEntry::date($data['endsAt'] ?? null);
+
+        return match ($data['type'] ?? null) {
+            'safeguarding_exception.request_approved' => new NotificationEntry('Your safeguarding exception request was approved', $until ? "The therapy can continue until {$until}." : ''),
+            'safeguarding_exception.request_closed' => new NotificationEntry('Your safeguarding exception request was closed'),
+            default => new NotificationEntry('Your safeguarding exception request was not approved'),
+        };
     }
 }

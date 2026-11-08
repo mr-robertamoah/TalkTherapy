@@ -11044,6 +11044,80 @@ therapy 18 after the last QA pass.
     - the guardian's dialog and email naming only the ward;
     - notices cancelled on an early withdrawal.
 
+## SCRUM-39 — in-app notification center: plan approved (2026-11-08)
+
+- **Approved by the user** after product-owner, project-manager and architect passes. It ships as four
+  PRs, about 24 points (revised from 5):
+  - **TT-5.4a:** the backend.
+  - **TT-5.4b:** wording for the classes that store only ids.
+  - **TT-5.4c:** the bell.
+  - **TT-5.4d:** pruning.
+
+  TT-5.4a goes first; b, c and d can follow in parallel. The bell isn't promoted past `develop` before
+  TT-5.4b. It covers SCRUM-395 item 9.
+- **The user's answers:**
+  - **One list** of the person's and their counsellor profile's notifications, the latter labelled "As
+    counsellor".
+  - **Classes that store only ids** get fixed wording plus a link, with no live look-ups.
+  - **Marking read:** a notification can be marked read on its own and is marked read when it is clicked,
+    except the two safety notices, which only their dialog dismisses.
+  - **Pruning:** a default period set by an environment variable, which each user can override in their
+    own settings (TT-5.4d).
+- **Defaults accepted with the plan:**
+  - every database type is shown, except admin-only types for non-administrators and safety types while
+    safety flags are off;
+  - suspended accounts don't get the list;
+  - per-event email or in-app preferences stay in TT-5.5 (SCRUM-40);
+  - a reason already emailed to the person (a revoked verification, a rejected schedule proposal) may
+    show in the list;
+  - the live ping goes only to the person's own `users.{id}` channel;
+  - a dropdown with "Show more", and no separate page.
+- **Design (architect):**
+  - **Display:** each notification class implements `ShownInNotificationCenter::present(array $data)`,
+    which returns a `NotificationEntry` built from saved data and fixed text only. The safety notices
+    reuse their `message()`.
+  - **The rules live in `App\Support\NotificationCenter`:** admin-only, safety-gated, never marked by the
+    list. `GetSafetyNoticeAction` shares the last list.
+  - **Reading:** one query through `App\Models\DatabaseNotification` over both owners, with hidden types
+    filtered in SQL, ordered by `created_at` and `id` with a cursor.
+  - **Index:** `(notifiable_type, notifiable_id, read_at)` for the count.
+  - **Live updates:** a `NotificationSent` listener sends a content-free `notifications.changed` on
+    `users.{owner}` through `BestEffortBroadcast`.
+
+## SCRUM-39 (TT-5.4a) — notification center backend: implementation decisions (2026-11-08)
+
+- **Endpoints:** `GET /notifications` (cursor, 15 a page), `GET /notifications/count`,
+  `POST /notifications/{uuid}/read` and `POST /notifications/read-all`, all JSON and each with its own
+  throttle. A suspended account gets 403 from the global middleware.
+- **Cursor:** a cursor that wasn't made by this list (garbage or tampered with) falls back to the first page
+  instead of a 500 (security review). The paginator's own cursor parameter isn't named `cursor`, so Laravel
+  never reads the raw query string itself.
+- **Admin-only types are marked on the class:** `SentOnlyToAdministrators` /
+  `SentOnlyToSuperAdministrators`, and a test keeps `NotificationCenter::ADMIN_ONLY` / `SUPER_ADMIN_ONLY`
+  equal to the marked classes. Super-admin-only types (re-alert, appeal submitted, safeguarding exception
+  requested and ending soon) are hidden from an administrator who isn't a super administrator now
+  (security review). The raised and withdrawn alerts go to every uninvolved administrator, so they are
+  admin-only, not super-only.
+- **Safety notice types are defined once:** in `GetSafetyNoticeAction::TYPES`. The center's
+  `NEVER_MARKED_BY_LIST` and `SAFETY_GATED` reuse that list.
+- **Wording never points to an email:** someone with an unverified address gets the database notification
+  only, so the in-app text says what the email says, briefly (reviewer). That includes:
+  - a revoked verification's reason;
+  - an appeal's outcome;
+  - for a suspension, "on your suspension page".
+
+  A paused group member reads "participation is paused", not "therapy is paused".
+- **Links:** counsellor verification items link to the counsellor dashboard, which has the re-verify card. They
+  don't link to the profile, because `present()` only gets the saved data and the profile's id isn't in
+  it. A wrong route name in a link is reported to the log instead of silently dropped.
+- **Unworded types** log a warning once per type per process, not on every row of every list load.
+- **Index:** `(notifiable_type, notifiable_id, read_at)`. It makes the `morphs()` index redundant, but that
+  one is kept for a trivial rollback and can be dropped later (devops review). It is online DDL on
+  MySQL 8.
+- **Deferred:** a closed counsellor's name stays in clients' `counsellorName` notices, which are not
+  anonymised. Ticketed as **SCRUM-396**. The bell must render the text with `{{ }}`, never `v-html` (for
+  TT-5.4c).
+
 ## SCRUM-394 — SCRUM-392 review follow-ups (2026-11-08)
 
 - **One name for a group's member count:** `membersCount`, as the full and preview resources already

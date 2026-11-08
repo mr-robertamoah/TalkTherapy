@@ -2,8 +2,11 @@
 
 namespace App\Notifications;
 
+use App\Contracts\SentOnlyToAdministrators;
+use App\Contracts\ShownInNotificationCenter;
 use App\Enums\HelpRequestStatusEnum;
 use App\Models\HelpRequest;
+use App\Support\NotificationEntry;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -11,7 +14,7 @@ use Illuminate\Notifications\Notification;
 
 // SCRUM-33 (TT-4.4b): to every administrator not involved -- someone has asked for urgent help and no
 // counsellor has answered yet. Nothing about who: no name, no note; the queue shows the rest.
-class HelpRequestWaitingNotification extends Notification implements ShouldQueue
+class HelpRequestWaitingNotification extends Notification implements SentOnlyToAdministrators, ShouldQueue, ShownInNotificationCenter
 {
     use Queueable;
 
@@ -50,5 +53,15 @@ class HelpRequestWaitingNotification extends Notification implements ShouldQueue
             'helpRequestId' => $this->helpRequestId,
             'again' => $this->again,
         ];
+    }
+
+    // SCRUM-39: in the notification center.
+    public static function present(array $data): NotificationEntry
+    {
+        return new NotificationEntry(
+            ! empty($data['again']) ? 'Still waiting: someone needs urgent help' : 'Someone needs urgent help',
+            'No counsellor has answered yet.',
+            NotificationEntry::link('administrator.help_requests', []),
+        );
     }
 }

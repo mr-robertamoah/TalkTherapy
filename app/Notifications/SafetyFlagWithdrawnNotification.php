@@ -2,6 +2,9 @@
 
 namespace App\Notifications;
 
+use App\Contracts\SentOnlyToAdministrators;
+use App\Contracts\ShownInNotificationCenter;
+use App\Support\NotificationEntry;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\AnonymousNotifiable;
@@ -14,7 +17,7 @@ use Illuminate\Notifications\Notification;
 // - ALERTED: nobody had acknowledged it -- the administrators who were alerted;
 // - SUPERS: the handler can no longer act on it (they've since become involved) -- the super
 //   administrators who aren't, to hand it on.
-class SafetyFlagWithdrawnNotification extends Notification implements ShouldQueue
+class SafetyFlagWithdrawnNotification extends Notification implements SentOnlyToAdministrators, ShouldQueue, ShownInNotificationCenter
 {
     use Queueable;
 
@@ -59,5 +62,11 @@ class SafetyFlagWithdrawnNotification extends Notification implements ShouldQueu
     public function toArray(object $notifiable): array
     {
         return ['type' => 'safety_flag.withdrawn', 'safetyFlag' => $this->publicId, 'urgency' => $this->urgencyLabel];
+    }
+
+    // SCRUM-39: in the notification center.
+    public static function present(array $data): NotificationEntry
+    {
+        return new NotificationEntry('Safety alert withdrawn'.SafetyFlagRaisedNotification::urgency($data), '', NotificationEntry::link('administrator.safety_flags', []));
     }
 }

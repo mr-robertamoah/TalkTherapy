@@ -151,6 +151,15 @@ See "Common commands" in `CLAUDE.md`.
   acknowledgement); notices go through `SendSafetyFlagNoticeAction` only; any new free-text column on a
   flag must be added to `SafetyFlag::FREE_TEXT` so anonymisation clears it.
 
+- **Notification center (SCRUM-39, 2026-11-08).** The rules live in `App\Support\NotificationCenter`
+  (who sees what, what's hidden, what the list never marks read); read notifications only through it or the
+  guarded `DatabaseNotification`. Every `'database'` notification implements `ShownInNotificationCenter`
+  (`present()` from saved data only -- no look-ups, never more than its email), a test enforces it. A class
+  sent only to (super) administrators implements `SentOnlyTo(Super)Administrators`. Listeners in
+  `app/Listeners` with a typed `handle()` are auto-discovered -- don't also `Event::listen` them (if a deploy
+  ever caches events, rebuild the cache). The bell's live ping is `notifications.changed` on `users.{id}`,
+  content-free; the older `'broadcast'`-channel toasts in `AuthenticatedLayout.vue` are separate (debt).
+
 ## Current Sprint Goals
 
 See `documentation/implementation_plan.md` → "Reconciled Sprint Roadmap". Sprint 1 (Platform

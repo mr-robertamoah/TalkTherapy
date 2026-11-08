@@ -2,6 +2,8 @@
 
 namespace App\Notifications;
 
+use App\Contracts\ShownInNotificationCenter;
+use App\Support\NotificationEntry;
 use Carbon\CarbonInterface;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -9,7 +11,7 @@ use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
 // SCRUM-31: to a counsellor once their verification has ended (RecordEndedCounsellorVerificationsAction).
-class CounsellorVerificationEndedNotification extends Notification implements ShouldQueue
+class CounsellorVerificationEndedNotification extends Notification implements ShouldQueue, ShownInNotificationCenter
 {
     use Queueable;
 
@@ -39,5 +41,11 @@ class CounsellorVerificationEndedNotification extends Notification implements Sh
             'type' => 'counsellor_verification.ended',
             'expiresAt' => $this->expiresAt->toJSON(),
         ];
+    }
+
+    // SCRUM-39: in the notification center.
+    public static function present(array $data): NotificationEntry
+    {
+        return new NotificationEntry('Your verification has ended', 'Your current clients carry on. Re-verify to take on new clients.', NotificationEntry::link('counsellor.dashboard', []));
     }
 }

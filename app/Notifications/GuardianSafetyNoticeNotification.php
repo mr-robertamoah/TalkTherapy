@@ -2,7 +2,9 @@
 
 namespace App\Notifications;
 
+use App\Contracts\ShownInNotificationCenter;
 use App\Models\User;
+use App\Support\NotificationEntry;
 use App\Support\WardRef;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -13,7 +15,7 @@ use Illuminate\Notifications\Notification;
 // the app and by email (the user's default). It names their ward and nothing else: not the therapy, the
 // counsellor, the kind (it must never reveal an urgent help chat), the reason, or that a flag exists. The
 // WardRef lets anonymising the ward's closed account rename them here. Wording pending the legal read.
-class GuardianSafetyNoticeNotification extends Notification implements ShouldQueue
+class GuardianSafetyNoticeNotification extends Notification implements ShouldQueue, ShownInNotificationCenter
 {
     use Queueable;
 
@@ -66,5 +68,11 @@ class GuardianSafetyNoticeNotification extends Notification implements ShouldQue
     public function toArray(object $notifiable): array
     {
         return ['type' => 'safety.guardian_notice', 'wardName' => $this->wardName, WardRef::KEY => $this->wardRef];
+    }
+
+    // SCRUM-39: in the notification center.
+    public static function present(array $data): NotificationEntry
+    {
+        return new NotificationEntry('A message from TalkTherapy', self::message($data));
     }
 }

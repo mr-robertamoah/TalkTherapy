@@ -2,8 +2,11 @@
 
 namespace App\Notifications;
 
+use App\Contracts\SentOnlyToAdministrators;
+use App\Contracts\ShownInNotificationCenter;
 use App\Enums\SafetyFlagStatusEnum;
 use App\Models\SafetyFlag;
+use App\Support\NotificationEntry;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\AnonymousNotifiable;
@@ -12,7 +15,7 @@ use Illuminate\Notifications\Notification;
 
 // SCRUM-32: to every administrator not involved -- a counsellor raised a safety flag. How urgent, and
 // a link: never who, why, which therapy or which counsellor (the handling administrator sees those).
-class SafetyFlagRaisedNotification extends Notification implements ShouldQueue
+class SafetyFlagRaisedNotification extends Notification implements SentOnlyToAdministrators, ShouldQueue, ShownInNotificationCenter
 {
     use Queueable;
 
@@ -57,5 +60,17 @@ class SafetyFlagRaisedNotification extends Notification implements ShouldQueue
             'safetyFlag' => $this->publicId,
             'urgency' => $this->urgencyLabel,
         ];
+    }
+
+    // SCRUM-39: in the notification center.
+    public static function present(array $data): NotificationEntry
+    {
+        return new NotificationEntry('Safety alert'.self::urgency($data), 'A counsellor raised a safety flag. Please acknowledge it if you can handle it.', NotificationEntry::link('administrator.safety_flags', []));
+    }
+
+    // " (urgent)" -- the urgency label saved with the alert, if any.
+    public static function urgency(array $data): string
+    {
+        return is_string($data['urgency'] ?? null) && $data['urgency'] !== '' ? " ({$data['urgency']})" : '';
     }
 }
