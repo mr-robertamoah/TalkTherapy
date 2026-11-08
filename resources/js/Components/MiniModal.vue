@@ -1,5 +1,6 @@
 <script setup>
-import { computed, onMounted, onUnmounted, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import useFocusTrap from '@/Composables/useFocusTrap';
 
 const props = defineProps({
     show: {
@@ -27,6 +28,10 @@ const props = defineProps({
 
 const emit = defineEmits(['close']);
 
+// SCRUM-394: focus stays inside while it's open, and returns to the opener when it closes.
+const dialog = ref(null);
+const { isTop } = useFocusTrap(dialog, () => props.show);
+
 watch(
     () => props.show,
     () => {
@@ -45,7 +50,8 @@ const close = () => {
 };
 
 const closeOnEscape = (e) => {
-    if (e.key === 'Escape' && props.show) {
+    // Only the dialog on top closes (SCRUM-394 review: one Escape used to close every open dialog).
+    if (e.key === 'Escape' && props.show && isTop()) {
         close();
     }
 };
@@ -95,8 +101,10 @@ const maxWidthClass = computed(() => {
                 >
                     <div
                         v-show="show"
-                        class="mb-6 bg-white rounded-lg overflow-hidden shadow-xl transform transition-all sm:mx-auto w-[80%] sm:w-[70%] md:w-[50%] p-6"
+                        class="mb-6 bg-white rounded-lg overflow-hidden shadow-xl transform transition-all focus:outline-none sm:mx-auto w-[80%] sm:w-[70%] md:w-[50%] p-6"
                         :class="maxWidthClass"
+                        ref="dialog"
+                        tabindex="-1"
                         role="dialog"
                         aria-modal="true"
                         :aria-labelledby="labelledby || undefined"

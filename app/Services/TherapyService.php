@@ -255,17 +255,21 @@ class TherapyService extends Service
 
         EnsureCounsellorMayTakeOnClientsAction::new()->execute($assistTherapyDTO->user->counsellor);
 
-        EnsureThereIsNoPendingRequestForCounsellorAction::new()->execute($assistTherapyDTO);
+        // SCRUM-394: the cap check and the new request together, under the counsellor's lock (a hard cap) --
+        // taken first, before any read; the pending check inside too, so a double submit sends one.
+        DB::transaction(function () use ($assistTherapyDTO) {
+            EnsureCounsellorOfferCapAction::lockCounsellor($assistTherapyDTO->user->counsellor);
+            EnsureThereIsNoPendingRequestForCounsellorAction::new()->execute($assistTherapyDTO);
+            EnsureCounsellorOfferCapAction::new()->execute($assistTherapyDTO->user->counsellor);
 
-        EnsureCounsellorOfferCapAction::new()->execute($assistTherapyDTO->user->counsellor);
-
-        SendTherapyAssistanceRequestAction::new()->execute(
-            TherapyAssistanceRequestDTO::new()->fromArray([
-                'from' => $assistTherapyDTO->user->counsellor,
-                'to' => $assistTherapyDTO->therapy->addedby,
-                'for' => $assistTherapyDTO->therapy,
-            ])
-        );
+            SendTherapyAssistanceRequestAction::new()->execute(
+                TherapyAssistanceRequestDTO::new()->fromArray([
+                    'from' => $assistTherapyDTO->user->counsellor,
+                    'to' => $assistTherapyDTO->therapy->addedby,
+                    'for' => $assistTherapyDTO->therapy,
+                ])
+            );
+        });
     }
 
     // The Home page's public therapies. Public only, always, and each narrowing a grouped AND (an

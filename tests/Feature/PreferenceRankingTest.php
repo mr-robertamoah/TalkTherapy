@@ -218,7 +218,7 @@ test('each group card says what its viewer can do', function () {
         ->and($cards[$full->id]['viewer']['action'])->toBe('full')
         ->and($cards[$ended->id]['viewer']['action'])->toBe('ended')
         ->and($cards[$lapsedRun->id]['viewer']['action'])->toBe('blocked')
-        ->and($cards[$open->id])->toHaveKeys(['memberCount', 'maxUsers', 'status']);
+        ->and($cards[$open->id])->toHaveKeys(['membersCount', 'maxUsers', 'status']);
 
     $this->app['auth']->forgetGuards();
     expect(collect($this->getJson('/api/group-therapies/random?seed=1')->json('data'))->pluck('viewer.action')->unique()->all())->toBe(['view']);

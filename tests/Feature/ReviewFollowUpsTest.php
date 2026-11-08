@@ -14,6 +14,7 @@ use App\Models\GroupTherapy;
 use App\Models\Request;
 use App\Models\Therapy;
 use App\Models\User;
+use Illuminate\Support\Facades\Log;
 
 // SCRUM-392: the review follow-ups -- shared model helpers and scopes. Helpers are file-local and
 // rfu-prefixed (--parallel).
@@ -163,6 +164,20 @@ test('an offer under the cap goes through, and a client asking counsellors in is
     foreach (range(1, 3) as $i) {
         $this->actingAs($client)->postJson(route('therapies.assist', ['therapyId' => $therapy()->id]), ['counsellorIds' => [rfuCounsellor()->id]])->assertSuccessful();
     }
+});
+
+test('SCRUM-394: hitting the offer cap is refused and logged, so support can see it', function () {
+    config(['counsellor.daily_offer_cap' => 1]);
+    Log::spy();
+    $counsellor = rfuCounsellor();
+    $client = User::factory()->adult()->create();
+    $therapy = fn () => Therapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => $client->id, 'public' => true, 'counsellor_id' => null]);
+
+    $this->actingAs($counsellor->user)->postJson(route('therapies.assist', ['therapyId' => $therapy()->id]))->assertSuccessful();
+    $this->actingAs($counsellor->user)->postJson(route('therapies.assist', ['therapyId' => $therapy()->id]))->assertStatus(422);
+
+    Log::shouldHaveReceived('info')
+        ->withArgs(fn ($message, $context = []) => str_contains($message, 'daily cap on offers') && ($context['counsellorId'] ?? null) === $counsellor->id)->once();
 });
 
 test('a group\'s people include its creator once, through a counsellor profile too, and others leave the viewer out', function () {
