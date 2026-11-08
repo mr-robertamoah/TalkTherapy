@@ -69,6 +69,12 @@ function sfhAcknowledge($test, User $admin, SafetyFlag $flag): void
     $test->actingAs($admin)->postJson(route('admin.safety_flags.acknowledge', ['flag' => $flag->public_id]))->assertOk();
 }
 
+// TT-4.3c: a flag is resolved only once its notices are settled -- here, the person's withheld.
+function sfhSettleNotices($test, User $admin, SafetyFlag $flag): void
+{
+    $test->actingAs($admin)->postJson(route('admin.safety_flags.notice', ['flag' => $flag->public_id]), ['which' => 'client', 'decision' => 'withhold', 'reason' => 'Handled directly in a call.'])->assertOk();
+}
+
 beforeEach(function () {
     config(['safety.enabled' => true, 'safety.fallback_mailbox' => null]);
     Event::fake([SafetyFlagsChangedEvent::class]);
@@ -111,6 +117,7 @@ test('the handler resolves it with an outcome and a note; that frees the person 
 
     $this->actingAs(sfhAdmin())->postJson(route('admin.safety_flags.resolve', ['flag' => $flag->public_id]), ['outcome' => 'SAFETY_PLAN', 'note' => 'x'])->assertForbidden();
     $this->actingAs($handler)->postJson(route('admin.safety_flags.resolve', ['flag' => $flag->public_id]), ['outcome' => 'SOMETHING'])->assertStatus(422)->assertJsonValidationErrors(['outcome', 'note']);
+    sfhSettleNotices($this, $handler, $flag);
     $this->actingAs($handler)->postJson(route('admin.safety_flags.resolve', ['flag' => $flag->public_id]), ['outcome' => 'SAFETY_PLAN', 'note' => 'Safety plan with the counsellor and family.'])->assertOk();
     $this->actingAs($handler)->postJson(route('admin.safety_flags.resolve', ['flag' => $flag->public_id]), ['outcome' => 'SAFETY_PLAN', 'note' => 'Again'])->assertStatus(409);
 
@@ -146,6 +153,7 @@ test('the counsellor who raised it can withdraw it, with a reason; the handler i
 
     $this->actingAs($handler)->postJson(route('admin.safety_flags.note', ['flag' => $flag->public_id]), ['content' => 'Checked with the counsellor.'])->assertOk();
     expect($this->actingAs($handler)->postJson(route('admin.safety_flags.reason', ['flag' => $flag->public_id]))->json('withdrawnReason'))->toBe('We talked it through; much calmer.');
+    sfhSettleNotices($this, $handler, $flag);
     $this->actingAs($handler)->postJson(route('admin.safety_flags.resolve', ['flag' => $flag->public_id]), ['outcome' => 'NOT_WARRANTED', 'note' => 'Withdrawn; nothing more needed.'])->assertOk();
 });
 
@@ -270,6 +278,7 @@ test('review fixes: a flag withdrawn after it was taken on stays in the default 
         ->and(DB::table('safety_flags')->value('withdrawn_reason'))->not->toContain('Calmer');
     $next = sfhAdmin();
     $this->actingAs($super)->postJson(route('admin.safety_flags.reassign', ['flag' => $flag->public_id]), ['adminId' => $next->id])->assertOk();
+    sfhSettleNotices($this, $next, $flag);
     $this->actingAs($next)->postJson(route('admin.safety_flags.resolve', ['flag' => $flag->public_id]), ['outcome' => 'NOT_WARRANTED', 'note' => 'Withdrawn; checked.'])->assertOk();
     $this->actingAs($next)->postJson(route('admin.safety_flags.note', ['flag' => $flag->public_id]), ['content' => 'After resolving'])->assertStatus(409);
 

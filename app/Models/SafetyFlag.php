@@ -13,6 +13,7 @@ use App\Events\SafetyFlagsChangedEvent;
 use App\Support\AdminNotifyResult;
 use App\Support\BestEffortBroadcast;
 use App\Support\Countries;
+use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
@@ -60,6 +61,9 @@ class SafetyFlag extends Model
         'client_notice_sent_at' => 'datetime',
         'guardian_notice_sent_at' => 'datetime',
     ];
+
+    // TT-4.3c: the free text, cleared when the client's account is anonymised (with the notes' content).
+    public const FREE_TEXT = ['reason', 'emergency_services_note', 'withdrawn_reason', 'outcome_note', 'client_notice_hold_reason', 'guardian_withhold_reason'];
 
     public static function label(): string
     {
@@ -149,6 +153,42 @@ class SafetyFlag extends Model
     public static function beingHandledStatuses(): array
     {
         return [SafetyFlagStatusEnum::acknowledged->value, SafetyFlagStatusEnum::withdrawn->value];
+    }
+
+    // TT-4.3c (reviews): how a notice's state reads for the handler -- a waiting one says when it goes,
+    // or that it waits for them (a flag withdrawn after acknowledgement).
+    public function noticeLabel(string $column): string
+    {
+        $state = $this->{$column};
+
+        return $state === SafetyFlagNoticeStateEnum::pending && ! $this->noticesDueAt()
+            ? 'Waiting for the handling administrator to decide'
+            : $state->label();
+    }
+
+    // TT-4.3c: the flags whose waiting notices are due to go on their own -- the one rule
+    // SendDueSafetyNoticesAction claims by and noticesDueAt() shows (reviews).
+    public function scopeWhereNoticesDue(Builder $query, SafetyFlagUrgencyEnum $urgency): Builder
+    {
+        $before = now()->subMinutes(self::realertMinutes($urgency));
+
+        return $query->where('urgency', $urgency->value)->where(fn ($query) => $query
+            ->where(fn ($query) => $query->where('status', SafetyFlagStatusEnum::open->value)->where('created_at', '<=', $before))
+            ->orWhere(fn ($query) => $query->where('status', SafetyFlagStatusEnum::acknowledged->value)->where('acknowledged_at', '<=', $before)));
+    }
+
+    // TT-4.3c: when its waiting notices go out on their own -- the re-alert time after it was raised, or
+    // after it was acknowledged (SendDueSafetyNoticesAction). Null when none is waiting to go automatically.
+    public function noticesDueAt(): ?CarbonInterface
+    {
+        $waiting = $this->client_notice_state === SafetyFlagNoticeStateEnum::pending || $this->guardian_notice_state === SafetyFlagNoticeStateEnum::pending;
+        $from = match ($this->status) {
+            SafetyFlagStatusEnum::open => $this->created_at,
+            SafetyFlagStatusEnum::acknowledged => $this->acknowledged_at,
+            default => null,
+        };
+
+        return $waiting && $from ? $from->copy()->addMinutes(self::realertMinutes($this->urgency)) : null;
     }
 
     // TT-4.3b: the fallback mailbox, when one is set (one place: reviews).

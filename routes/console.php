@@ -15,6 +15,7 @@ use App\Actions\Organization\SendCompensationRequestExpiryRemindersAction;
 use App\Actions\Organization\SettleDueOrganizationInvoicesAction;
 use App\Actions\Request\DeleteExpiredIdentityDocumentsAction;
 use App\Actions\Safety\ReAlertSafetyFlagsAction;
+use App\Actions\Safety\SendDueSafetyNoticesAction;
 use App\Actions\Session\FailUnheldSessionsAction;
 use App\Actions\Session\NotifyParticipantsOfStartingSessionsAction;
 use App\Actions\Therapy\FindPaidTherapiesMissingPaymentDataAction;
@@ -81,6 +82,10 @@ Schedule::call(fn () => SweepHelpRequestsAction::new()->execute())->name('sweep-
 Schedule::call(fn () => ReAlertSafetyFlagsAction::new()->execute())->name('realert-safety-flags')->everyFiveMinutes()
     ->withoutOverlapping(10)->onOneServer()
     ->onFailure(fn () => Log::error('The safety flag re-alert sweep failed.'));
+// SCRUM-32 (TT-4.3c): the client's and guardians' notices nobody sent or held go out at the re-alert time.
+Schedule::call(fn () => SendDueSafetyNoticesAction::new()->execute())->name('send-due-safety-notices')->everyFiveMinutes()
+    ->withoutOverlapping(10)->onOneServer()
+    ->onFailure(fn () => Log::error('The safety notice sweep failed.'));
 // SCRUM-33 (TT-4.4c): help chats' messages and notes are deleted a year after they ended.
 Schedule::call(fn () => PruneHelpChatTranscriptsAction::new()->execute())->name('prune-help-chat-transcripts')->dailyAt('01:45')->withoutOverlapping(60)->onOneServer()
     ->onFailure(fn () => Log::error('The help chat transcript retention sweep failed.'));

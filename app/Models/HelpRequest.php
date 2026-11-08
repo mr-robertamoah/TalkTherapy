@@ -145,6 +145,15 @@ class HelpRequest extends Model
             ->exists();
     }
 
+    // SCRUM-32 (TT-4.3c): a safety flag about this chat still needs someone (open, being handled, or
+    // withdrawn after an administrator took it on) -- its messages are kept past the retention period.
+    public function hasUnresolvedSafetyFlag(): bool
+    {
+        return $this->therapy_id !== null && SafetyFlag::query()
+            ->where('flaggable_type', Therapy::class)->where('flaggable_id', $this->therapy_id)
+            ->whereUnresolved()->exists();
+    }
+
     // TT-4.4c: the person can still be invited to a regular therapy with the counsellor -- not yet
     // invited, after a chat that took place and is still on record, with a counsellor who can take on
     // clients and a person who still has an account. $suspendedCounsellorUserIds: when a list has

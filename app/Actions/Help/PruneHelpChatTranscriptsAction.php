@@ -44,7 +44,8 @@ class PruneHelpChatTranscriptsAction extends Action
             ->where('ended_at', '<=', $before)
             ->chunkById(self::BATCH, function ($requests) use (&$pruned, &$held) {
                 foreach ($requests as $request) {
-                    if ($request->hasOpenReport()) {
+                    // An open report, or (SCRUM-32) a safety flag still being dealt with, keeps it.
+                    if ($request->hasOpenReport() || $request->hasUnresolvedSafetyFlag()) {
                         $held++;
 
                         continue;

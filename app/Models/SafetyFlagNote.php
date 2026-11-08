@@ -15,6 +15,26 @@ class SafetyFlagNote extends Model
 
     public const ACTION = 'ACTION';
 
+    // TT-4.3c (reviews, QA): why a notice was held or withheld -- the person's (P) or the guardians' (G). Kept
+    // as notes, so each reason stays with whoever wrote it and none overwrites another.
+    public const HOLD_PERSON = 'HOLD_P';
+
+    public const HOLD_GUARDIANS = 'HOLD_G';
+
+    public const WITHHOLD_PERSON = 'WITHHOLD_P';
+
+    public const WITHHOLD_GUARDIANS = 'WITHHOLD_G';
+
+    public static function noticeKind(bool $guardians, bool $hold): string
+    {
+        return match (true) {
+            $guardians && $hold => self::HOLD_GUARDIANS,
+            $guardians => self::WITHHOLD_GUARDIANS,
+            $hold => self::HOLD_PERSON,
+            default => self::WITHHOLD_PERSON,
+        };
+    }
+
     protected $guarded = ['id'];
 
     protected $casts = [

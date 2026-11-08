@@ -6,15 +6,20 @@ use App\Actions\Action;
 use App\Actions\File\DeleteAttachedFilesAction;
 use App\Enums\RequestStatusEnum;
 use App\Enums\RequestTypeEnum;
+use App\Enums\SafetyFlagNoticeStateEnum;
 use App\Models\Contact;
 use App\Models\Counsellor;
 use App\Models\HelpRequest;
 use App\Models\Request;
 use App\Models\SafeguardingException;
+use App\Models\SafetyFlag;
+use App\Models\SafetyFlagEvent;
+use App\Models\SafetyFlagNote;
 use App\Models\User;
 use App\Notifications\ClientAccessPausedNotification;
 use App\Notifications\ClientAccessResumedNotification;
 use App\Notifications\GroupTherapyMemberLeftNotification;
+use App\Notifications\GuardianSafetyNoticeNotification;
 use App\Notifications\TherapyContinuationNotification;
 use App\Support\WardRef;
 use Illuminate\Support\Facades\DB;
@@ -31,6 +36,8 @@ use Illuminate\Support\Str;
 //  - its notifications, password-reset token and API tokens, the name and email on contact
 //    messages it sent, and the link from visit records to the account;
 //  - the reasons on its safeguarding exceptions and on counsellors' requests for one (SCRUM-381);
+//  - the free text of safety flags about it -- reasons, notes, outcome (SCRUM-32) -- and its name in its
+//    guardians' safety notices;
 //  - its name in its counsellors' pause, resume and continuation notices (SCRUM-384), and in the
 //    "a member left your group" notices (SCRUM-73), found by WardRef.
 //  - the one-line note on its urgent help requests, and an administrator's close note on them
@@ -51,9 +58,11 @@ class AnonymiseClosedAccountAction extends Action
         ClientAccessResumedNotification::class,
         TherapyContinuationNotification::class,
         GroupTherapyMemberLeftNotification::class,
+        // SCRUM-32 (TT-4.3c): a guardian's "please check in with" notice.
+        GuardianSafetyNoticeNotification::class,
     ];
 
-    private const NAME_KEYS = ['clientName', 'memberName'];
+    private const NAME_KEYS = ['clientName', 'memberName', 'wardName'];
 
     // Returns false when a stored file couldn't be deleted: nothing is marked, and the next run
     // retries.
@@ -109,6 +118,22 @@ class AnonymiseClosedAccountAction extends Action
                 });
 
             HelpRequest::query()->where('user_id', $user->id)->update(['note' => null, 'closed_note' => null]);
+            // SCRUM-32 (TT-4.3c): the free text in safety flags about them -- the counsellor's reason, the
+            // notes, the administrators' reasons and outcome note. The flags and their history stay.
+            $flagIds = SafetyFlag::query()->where('client_user_id', $user->id)->pluck('id');
+            SafetyFlag::query()->whereIn('id', $flagIds)->update(array_fill_keys(SafetyFlag::FREE_TEXT, null));
+            SafetyFlagNote::query()->whereIn('safety_flag_id', $flagIds)->whereNotNull('content')->update(['content' => null]);
+            // And any notice still waiting (to them, or naming them to their guardians) is cancelled (reviews).
+            foreach ($flagIds as $flagId) {
+                $cancelled = 0;
+                foreach (['client_notice_state', 'guardian_notice_state'] as $column) {
+                    $cancelled += SafetyFlag::query()->whereKey($flagId)->whereIn($column, SafetyFlagNoticeStateEnum::unsettledValues())
+                        ->update([$column => SafetyFlagNoticeStateEnum::cancelled->value]);
+                }
+                if ($cancelled) {
+                    SafetyFlagEvent::query()->create(['safety_flag_id' => $flagId, 'action' => SafetyFlagEvent::NOTICES_CANCELLED]);
+                }
+            }
             DB::table('notifications')->where('notifiable_type', $user->getMorphClass())->where('notifiable_id', $user->id)->delete();
             $this->renameInOthersNotices($user);
             if ($user->email) {

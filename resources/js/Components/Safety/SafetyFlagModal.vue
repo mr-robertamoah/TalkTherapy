@@ -37,6 +37,7 @@ const reason = ref('')
 const discussed = ref('')
 const contacted = ref(null)
 const contactedNote = ref('')
+const guardianReason = ref('')
 const sending = ref(false)
 const error = ref('')
 const fieldErrors = ref({})
@@ -50,6 +51,7 @@ watch(() => props.show, (show) => {
     discussed.value = ''
     contacted.value = null
     contactedNote.value = ''
+    guardianReason.value = ''
     error.value = ''
     fieldErrors.value = {}
     done.value = false
@@ -72,6 +74,7 @@ async function send() {
         emergencyServicesContacted: contacted.value,
         emergencyServicesNote: contacted.value ? contactedNote.value : null,
         memberKey: props.memberKey,
+        guardianWithholdReason: guardianReason.value || null,
     })
         .then(() => { done.value = true; emit('raised') })
         .catch((err) => {
@@ -159,6 +162,15 @@ async function send() {
                         <input id="safety-flag-contacted-note" v-model="contactedNote" type="text" maxlength="500" class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500" />
                     </div>
                 </fieldset>
+
+                <!-- TT-4.3c: for a minor, on an imminent or urgent flag, their guardians are told to check in with them
+                     unless there is a safeguarding reason not to (the administrator decides). -->
+                <div v-if="urgency !== 'NON_URGENT'">
+                    <label for="safety-flag-guardian-reason" class="block text-sm font-medium text-gray-800">If they are under 18: a safeguarding reason not to tell their guardians (optional)</label>
+                    <textarea id="safety-flag-guardian-reason" v-model="guardianReason" rows="2" maxlength="1000"
+                        class="mt-1 block w-full rounded-md border-gray-300 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500"></textarea>
+                    <p class="mt-1 text-xs text-gray-600">Otherwise their guardians are asked to check in with them (never told why). The administrator handling it decides. Ignored for adults.</p>
+                </div>
 
                 <p class="text-xs text-gray-600">Urgency: <strong>{{ urgencies.find((option) => option.value === urgency)?.label }}</strong> · <button type="button" class="underline" @click="step = 'urgency'">change</button></p>
 

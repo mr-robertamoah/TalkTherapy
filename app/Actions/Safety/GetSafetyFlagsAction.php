@@ -80,13 +80,18 @@ class GetSafetyFlagsAction extends Action
             // TT-4.3b: the outcome's category (not its note), and the history -- what happened and when,
             // never what was written. The counsellor isn't named.
             'outcome' => $flag->outcome?->label(),
+            // TT-4.3c: where the person's and the guardians' notices stand (no reasons), and when a waiting
+            // one goes out on its own.
+            'notices' => [
+                'client' => $flag->client_notice_state->value,
+                'clientLabel' => $flag->noticeLabel('client_notice_state'),
+                'guardians' => $flag->guardian_notice_state->value,
+                'guardiansLabel' => $flag->noticeLabel('guardian_notice_state'),
+                'dueAt' => $flag->noticesDueAt()?->toIso8601String(),
+            ],
             'history' => $flag->events->map(fn (SafetyFlagEvent $event) => [
                 'label' => $event->label(),
-                'by' => match ($event->action) {
-                    SafetyFlagEvent::RAISED, SafetyFlagEvent::WITHDRAWN => 'the counsellor',
-                    SafetyFlagEvent::REALERTED, SafetyFlagEvent::FALLBACK_ALERTED => null,
-                    default => $event->actor?->name,
-                },
+                'by' => $event->shownBy(),
                 'at' => $event->created_at?->toIso8601String(),
             ])->all(),
         ];

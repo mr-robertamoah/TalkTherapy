@@ -43,6 +43,7 @@ defineProps({
                             <li><a href="#sharing" class="underline hover:text-gray-900">Who sees it</a></li>
                             <li><a href="#confidential-messages" class="underline hover:text-gray-900">Confidential messages</a></li>
                             <li><a href="#urgent-help" class="underline hover:text-gray-900">Urgent help</a></li>
+                            <li><a href="#safety-flags" class="underline hover:text-gray-900">Safety concerns</a></li>
                             <li><a href="#administrator-access" class="underline hover:text-gray-900">Administrators</a></li>
                             <li><a href="#retention" class="underline hover:text-gray-900">How long we keep it</a></li>
                             <li><a href="#cookies" class="underline hover:text-gray-900">Cookies</a></li>
@@ -152,6 +153,29 @@ defineProps({
                     </p>
                 </section>
 
+                <!-- SCRUM-32 (TT-4.3c): counsellors' safety flags. Pending the legal read. -->
+                <section id="safety-flags" class="space-y-2">
+                    <h2 class="text-lg font-semibold text-gray-900">When a counsellor is worried about your safety</h2>
+                    <p>
+                        If your counsellor thinks you may need more care than therapy here can give -- for example specialist or
+                        inpatient care -- they can raise a safety concern with the TalkTherapy team. They record how urgent it is,
+                        why they think so (kept encrypted), whether they talked it through with you, and whether emergency services
+                        were contacted.
+                    </p>
+                    <p>
+                        Administrators are alerted without your name or the reason. One administrator takes it on; only they can see
+                        who it is about and why, every such look is recorded, and what they do and decide is kept in a record that
+                        can't be changed. Administrators who are close to you -- for example your guardian, or someone in the same
+                        group -- are never shown it. The concern doesn't change anything else you see in TalkTherapy.
+                    </p>
+                    <p>
+                        You may be sent a short message in TalkTherapy (never by email) making sure you know how to get help, without
+                        the reason. If you are under 18, your guardian may be asked to check in with you, unless there is a safeguarding
+                        reason not to; the administrator decides. The record of the concern is kept; if you close your account, the
+                        written reasons and notes in it are erased.
+                    </p>
+                </section>
+
                 <section id="administrator-access" class="space-y-2">
                     <h2 class="text-lg font-semibold text-gray-900">What administrators can see</h2>
                     <p>
@@ -198,8 +222,8 @@ defineProps({
                         </li>
                         <li>
                             An urgent help chat's messages, your note and any administrator's note on the request are deleted
-                            {{ retentionDays.helpChat }} days after the chat ended (later only if a complaint about it is still
-                            open). A record that the request happened, without them, is kept.
+                            {{ retentionDays.helpChat }} days after the chat ended (later only while a complaint about it is still
+                            open, or a safety concern about it is still being dealt with). A record that the request happened, without them, is kept.
                         </li>
                         <li>Verification and identity documents are deleted on the schedule below.</li>
                     </ul>

@@ -18,7 +18,8 @@ use Illuminate\Support\Facades\DB;
 //   raised and by which counsellor;
 // - reason(): the counsellor's reason, whether they discussed it with the client, and whether
 //   emergency services were contacted; and (TT-4.3b) the notes and actions so far, the counsellor's
-//   reason for withdrawing it, and how it was resolved.
+//   reason for withdrawing it, and how it was resolved; and (TT-4.3c) why a notice was held or withheld,
+//   each reason with its author (the counsellor's safeguarding reason included).
 class RevealSafetyFlagAction extends Action
 {
     public function who(?User $admin, ?SafetyFlag $flag): array

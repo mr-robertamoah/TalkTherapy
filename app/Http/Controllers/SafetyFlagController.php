@@ -113,6 +113,7 @@ class SafetyFlagController extends Controller
                 'discussedWithClient' => ['required', Rule::in(SafetyFlagDiscussedEnum::values())],
                 'emergencyServicesContacted' => ['required', 'boolean'],
                 'emergencyServicesNote' => ['nullable', 'string', 'max:500'],
+                'guardianWithholdReason' => ['nullable', 'string', 'max:1000'],
             ], [
                 'reason.min' => 'Please say a little more about why (at least 10 characters).',
             ]);
@@ -123,6 +124,7 @@ class SafetyFlagController extends Controller
                 'discussedWithClient' => $input['discussedWithClient'],
                 'emergencyServicesContacted' => (bool) $input['emergencyServicesContacted'],
                 'emergencyServicesNote' => isset($input['emergencyServicesNote']) ? trim($input['emergencyServicesNote']) : null,
+                'guardianWithholdReason' => $input['guardianWithholdReason'] ?? null,
             ]);
 
             return response()->json(['status' => true], 201);
