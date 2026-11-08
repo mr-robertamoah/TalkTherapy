@@ -2,14 +2,16 @@
 
 namespace Database\Seeders;
 
+use App\Actions\Help\CloseHelpRequestAction;
+use App\Actions\Help\CreateHelpChatAction;
+use App\Actions\Help\SendHelpMessageAction;
 use App\Enums\AdministratorTypeEnum;
-// use Illuminate\Database\Console\Seeds\WithoutModelEvents;
-
 use App\Enums\CounsellorEarningStatusEnum;
 use App\Enums\CounsellorPayoutStatusEnum;
 use App\Enums\CounsellorVerificationEventEnum;
 use App\Enums\DiscussionStatusEnum;
 use App\Enums\GenderEnum;
+use App\Enums\HelpRequestStatusEnum;
 use App\Enums\LicensingTypeEnum;
 use App\Enums\OrganizationAdminRoleEnum;
 use App\Enums\OrganizationCounsellorCompensationTypeEnum;
@@ -30,8 +32,10 @@ use App\Models\Counsellor;
 use App\Models\CounsellorEarning;
 use App\Models\CounsellorPayout;
 use App\Models\CounsellorVerificationEvent;
+use App\Models\EmergencyNumber;
 use App\Models\GroupTherapy;
 use App\Models\Guardianship;
+use App\Models\HelpRequest;
 use App\Models\HowTo;
 use App\Models\Language;
 use App\Models\License;
@@ -56,6 +60,7 @@ use App\Models\Transaction;
 use App\Models\User;
 use App\Support\CounsellorVerification;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use RuntimeException;
@@ -233,6 +238,77 @@ class DatabaseSeeder extends Seeder
         // SCRUM-113/114/389: a user whose preferences match some public therapies, groups and
         // counsellors, public groups in every card state, and a counsellor's offer to help a group.
         $this->createDiscoveryDemoData();
+        $this->createHelpDemoData();
+    }
+
+    // SCRUM-33: the quick help chat. Passwords: "password".
+    // - help_demo_user: an adult in Ghana with a language set -- taps "I need help now", and has one
+    //   earlier help chat (ended, read-only) with help_demo_counsellor.
+    // - help_demo_minor: 15, for the minor case (text only; no guardian consent for audio).
+    // - help_demo_counsellor and help_demo_counsellor_two: verified, available for urgent help (for 4
+    //   hours from seeding -- switch it on again from My Dashboard), so both are rung (first to accept).
+    // - A clearly fake Ghana emergency number (not in production): replace it with a verified one in
+    //   Administration > Emergency numbers.
+    public function createHelpDemoData(): void
+    {
+        $language = Language::query()->orderBy('id')->first() ?? Language::query()->create(['name' => 'English']);
+        $person = fn (string $username, string $first, array $extra = []) => User::factory()->adult()->create([
+            'firstName' => $first,
+            'lastName' => 'Help',
+            'email' => str_replace('_', '.', $username).'@example.com',
+            'username' => $username,
+            'password' => Hash::make('password'),
+            'email_verified_at' => now(),
+            'country' => 'Ghana',
+            ...$extra,
+        ]);
+
+        $user = $person('help_demo_user', 'Akosua', ['settings' => ['languages' => [$language->id], 'anonymous' => false]]);
+        $person('help_demo_minor', 'Kofi', ['dob' => now()->subYears(15)->toDateString()]);
+
+        $onCall = function (string $username, string $first, string $name) use ($person) {
+            $counsellorUser = $person($username, $first);
+            $counsellor = $counsellorUser->counsellor()->create([
+                'name' => $name,
+                'about' => 'Seeded counsellor, available for urgent help (SCRUM-33).',
+                'email' => $counsellorUser->email,
+                'phone' => fake()->phoneNumber(),
+                'email_verified_at' => now(),
+                'profession_id' => rand(1, 10),
+                'contact_visible' => true,
+            ]);
+            $counsellor->forceFill([
+                'verified_at' => now()->subMonth(),
+                'verification_expires_at' => now()->addMonths(11),
+                'urgent_help_available_until' => now()->addHours((int) config('help.availability_hours')),
+            ])->save();
+
+            return $counsellor;
+        };
+        $counsellor = $onCall('help_demo_counsellor', 'Efua', 'Dr. Efua Help');
+        $onCall('help_demo_counsellor_two', 'Yaw', 'Dr. Yaw Help');
+
+        if (! app()->isProduction()) {
+            EmergencyNumber::query()->forceCreate([
+                'country_code' => 'GH', 'label' => 'TEST ONLY - not a real number', 'number' => '0000',
+                'notes' => 'Seeded for local testing. Replace with a verified number.', 'source_url' => 'https://example.com/not-verified',
+                'verified_by' => 'Seeder (NOT verified)', 'verified_at' => now()->toDateString(),
+            ]);
+        }
+
+        // An earlier chat, ended: read-only for both.
+        $help = HelpRequest::query()->forceCreate([
+            'user_id' => $user->id, 'status' => HelpRequestStatusEnum::waiting->value, 'country_code' => 'GH', 'note' => 'I could not sleep and felt overwhelmed.',
+        ]);
+        $help->forceFill(['created_at' => now()->subDays(2)])->save();
+        $help->forceFill(['status' => HelpRequestStatusEnum::connected->value, 'counsellor_id' => $counsellor->id, 'accepted_at' => now()->subDays(2)])->save();
+        // Seeding broadcasts nothing.
+        Event::fakeFor(function () use ($help, $counsellor, $user) {
+            CreateHelpChatAction::new()->execute($help, $counsellor);
+            SendHelpMessageAction::new()->store($help->refresh(), $counsellor->user, 'Hello Akosua, I\'m here. Take your time.');
+            SendHelpMessageAction::new()->store($help, $user, 'Thank you. It helps to talk.');
+            CloseHelpRequestAction::new()->execute($help, HelpRequestStatusEnum::connected, HelpRequestStatusEnum::ended, 'person');
+        });
     }
 
     // SCRUM-113/114/389. Passwords: "password".

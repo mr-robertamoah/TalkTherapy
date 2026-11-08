@@ -66,7 +66,8 @@ class GetCounsellorCalendarSessionsAction extends Action
             },
         ];
 
-        $therapySessions = Session::query()
+        // SCRUM-33: a quick help chat's session isn't a calendar entry.
+        $therapySessions = Session::query()->withoutHelpChats()
             ->with($with)
             ->where('for_type', Therapy::class)
             ->whereIn('for_id', $counsellor->therapies()->pluck('therapies.id'))

@@ -220,6 +220,11 @@ class TherapyController extends Controller
                 ])
             );
 
+            // SCRUM-33: a quick help chat has its own page.
+            if ($therapy->isHelpChat() && $therapy->helpRequest) {
+                return redirect()->route('help.chat', ['helpRequest' => $therapy->helpRequest->id]);
+            }
+
             $pendingRequest = $therapy->pendingRequestFor($request->user()?->counsellor);
             $pendingSessionScheduleProposal = $therapy->pendingSessionScheduleProposal();
 
@@ -256,6 +261,11 @@ class TherapyController extends Controller
                     'therapy' => Therapy::find($request->route('therapyId')),
                 ])
             );
+
+            // SCRUM-33: a quick help chat has its own page (only its two participants get this far).
+            if ($therapy->isHelpChat() && $therapy->helpRequest) {
+                return redirect()->route('help.chat', ['helpRequest' => $therapy->helpRequest->id]);
+            }
 
             return Inertia::render('Therapy/Chat', [
                 'therapy' => new TherapyResource($therapy),

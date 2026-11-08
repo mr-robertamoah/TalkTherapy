@@ -16,7 +16,21 @@ class EnsureAccountIsNotSuspended
     public const CODE = 'account_suspended';
 
     // SCRUM-73: leaving a group is a withdrawal, so a suspended member can still leave.
-    private const ALLOWED_ROUTES = ['suspended.show', 'suspended.appeal', 'logout', 'privacy', 'api.group.therapies.leave'];
+    // SCRUM-33 (the user's decision): getting help in a crisis outranks a suspension -- the help
+    // routes (help.*) are open to a suspended account; each checks who may use it.
+    private const ALLOWED_ROUTES = [
+        'suspended.show', 'suspended.appeal', 'logout', 'privacy', 'api.group.therapies.leave',
+        // Named one by one (security review), so a future help.* route isn't let through unasked.
+        'help.emergency_numbers', 'help.requests.current', 'help.requests.store', 'help.requests.show', 'help.requests.cancel',
+        'help.requests.end', 'help.requests.messages', 'help.requests.messages.store', 'help.chat',
+    ];
+
+    // SCRUM-33: joining a help chat's own channel (the channel's rule still checks they're in it).
+    private function isHelpChannelAuth(Request $request): bool
+    {
+        return $request->is('broadcasting/auth')
+            && preg_match('/^private-help-requests\.\d+\z/', (string) $request->input('channel_name')) === 1;
+    }
 
     public function handle(Request $request, Closure $next): Response
     {
@@ -24,7 +38,7 @@ class EnsureAccountIsNotSuspended
         // the default (session) guard yet.
         $user = $request->user() ?? $request->user('sanctum');
 
-        if (! $user || $request->routeIs(...self::ALLOWED_ROUTES)) {
+        if (! $user || $request->routeIs(...self::ALLOWED_ROUTES) || $this->isHelpChannelAuth($request)) {
             return $next($request);
         }
 

@@ -60,7 +60,7 @@ class AppService extends Service
         return ['stats' => [
             'counsellors' => Counsellor::count(),
             'users' => User::count(),
-            'therapies' => Therapy::count(),
+            'therapies' => Therapy::query()->withoutHelpChats()->count(),
         ]];
     }
 }

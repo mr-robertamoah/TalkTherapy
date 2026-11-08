@@ -4,6 +4,7 @@ namespace App\Actions\CounsellorVerification;
 
 use App\Actions\Action;
 use App\Actions\Admin\GetAdminToDoCountsAction;
+use App\Actions\Help\EndCounsellorHelpChatsAction;
 use App\Enums\CounsellorVerificationEventEnum;
 use App\Enums\RequestStatusEnum;
 use App\Enums\RequestTypeEnum;
@@ -38,6 +39,9 @@ class RevokeCounsellorVerificationAction extends Action
             $reason = EnsureCanRevokeCounsellorVerificationAction::new()->execute($actor, $counsellor, $reason);
 
             $counsellor->forceFill(['verification_revoked_at' => now()])->save();
+
+            // SCRUM-33: out of any help chat they're in.
+            EndCounsellorHelpChatsAction::new()->execute($counsellor, 'revoked');
 
             RecordCounsellorVerificationEventAction::new()->execute(
                 $counsellor,

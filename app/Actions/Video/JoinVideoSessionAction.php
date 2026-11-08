@@ -36,7 +36,8 @@ class JoinVideoSessionAction extends Action
         // SCRUM-359, SCRUM-288: first, so a paused minor is told their therapy is paused (and how it
         // starts again) rather than that video needs a guardian's consent. Nothing in it depends on
         // the session being one they may join: it is about the caller and the therapy.
-        EnsureTherapyCanProceedAction::new()->execute($user, $session->for);
+        // SCRUM-33: a help chat's audio call is joined here too.
+        EnsureTherapyCanProceedAction::new()->execute($user, $session->for, allowHelpChat: true);
 
         EnsureVideoIsAvailableForSessionAction::new()->execute($session, $user);
 

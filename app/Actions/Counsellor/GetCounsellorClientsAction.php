@@ -17,7 +17,8 @@ class GetCounsellorClientsAction extends Action
 {
     public function execute(Counsellor $counsellor, bool $current = false): Collection
     {
-        $fromTherapies = $counsellor->therapies()
+        // SCRUM-33: someone they helped in a quick help chat isn't one of their clients.
+        $fromTherapies = $counsellor->therapies()->withoutHelpChats()
             ->when($current, fn ($q) => $q->where('status', '!=', TherapyStatusEnum::ended->value))
             ->get()
             ->map(fn ($therapy) => $therapy->addedby_type === User::class ? $therapy->addedby : null);

@@ -30,6 +30,7 @@ class Therapy extends Model
     protected $casts = [
         'payment_data' => 'array',
         'client_was_minor_at_creation' => 'boolean',
+        'is_help_chat' => 'boolean',
     ];
 
     public function getIsTherapyAttribute()
@@ -106,9 +107,28 @@ class Therapy extends Model
 
     // SCRUM-332/379: an anonymous 1:1 client keeps their camera -- the counsellor is the only other
     // person in the call. GroupTherapy::allowsCameraFor() is the rule that withholds it.
+    // SCRUM-33: a quick help chat is audio only, for everyone in it.
     public function allowsCameraFor(User $user): bool
     {
-        return true;
+        return ! $this->is_help_chat;
+    }
+
+    public function helpRequest()
+    {
+        return $this->hasOne(HelpRequest::class);
+    }
+
+    // SCRUM-33: the private therapy a quick help chat runs in (CreateHelpChatAction).
+    public function isHelpChat(): bool
+    {
+        return (bool) $this->is_help_chat;
+    }
+
+    // SCRUM-33: every list and count of therapies leaves quick help chats out -- they are seen only
+    // through the help chat itself.
+    public function scopeWithoutHelpChats($query)
+    {
+        return $query->where($this->qualifyColumn('is_help_chat'), false);
     }
 
     public function scopeWhereCounsellor($query, Counsellor $counsellor)
@@ -132,6 +152,7 @@ class Therapy extends Model
     {
         return $query->where(fn ($query) => $query
             ->wherePublic()
+            ->withoutHelpChats()
             ->when($user, fn ($query) => $query->whereNot(fn ($query) => $query
                 ->where('addedby_type', User::class)
                 ->where('addedby_id', $user->id)))

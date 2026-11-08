@@ -25,6 +25,16 @@ class EnsureUserHasAccessToTherapyAction extends Action
         $therapy = $getTherapyDTO->$type;
         $user = $getTherapyDTO->user;
 
+        // SCRUM-33 (reviews): a quick help chat is the two of them only -- not guardians, not anyone
+        // else -- and the same answer as any therapy they can't see.
+        if ($therapy->is_therapy && $therapy->isHelpChat()) {
+            if ($user && $therapy->isParticipant($user)) {
+                return null;
+            }
+
+            throw new TherapyAccessDeniedException(self::deniedMessage($therapy), 422);
+        }
+
         if ($therapy->public) {
             return null;
         }

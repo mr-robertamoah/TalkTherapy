@@ -93,7 +93,8 @@ class GetPlatformStatsAction extends Action
             ->where('for_type', Counsellor::class)
             ->where('status', RequestStatusEnum::pending->value);
 
-        $therapies = Therapy::query()->toBase()
+        // SCRUM-33: quick help chats aren't therapies here (TT-4.4b gives them their own place).
+        $therapies = Therapy::query()->withoutHelpChats()->toBase()
             ->selectRaw('sum(case when status = ? then 1 else 0 end) as active, sum(case when status = ? then 1 else 0 end) as pending', [TherapyStatusEnum::in_session->value, TherapyStatusEnum::pending->value])
             ->first();
         $groups = GroupTherapy::query()->toBase()
@@ -133,7 +134,7 @@ class GetPlatformStatsAction extends Action
             ->when($from, fn ($query) => $query->where($column, '>=', $from))
             ->when($to, fn ($query) => $query->where($column, '<', $to));
 
-        $sessions = $in(Session::query(), 'start_time')->toBase()
+        $sessions = $in(Session::query()->withoutHelpChats(), 'start_time')->toBase()
             ->selectRaw(
                 'sum(case when status = ? then 1 else 0 end) as held, sum(case when status in (?, ?) then 1 else 0 end) as missed',
                 [SessionStatusEnum::held->value, SessionStatusEnum::failed->value, SessionStatusEnum::abandoned->value]
