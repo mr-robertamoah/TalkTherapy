@@ -92,22 +92,7 @@
                         <div class="mt-4 mx-auto max-w-[400px]">
                             <InputLabel for="country" value="Country" />
 
-                            <SelectSearch
-                                id="country"
-                                class="mt-1 block w-full"
-                                @selected="(data) => {
-                                    if (data) {
-                                        userData.country = data.name
-                                        return
-                                    }
-
-                                    userData.country = ''
-                                }"
-                                :options="countries.map(c => {
-                                    return {name: c}
-                                })"
-                                :value="computedFormCountry"
-                            />
+                            <CountrySelect v-model="userData.country" input-id="country" class="mt-1 block w-full" />
 
                             <InputError class="mt-2" :message="userErrors.country" />
                         </div>
@@ -142,7 +127,7 @@
 </template>
 
 <script setup>
-import useCountries from '@/Composables/useCountries';
+import CountrySelect from '@/Components/CountrySelect.vue';
 import useAlert from "@/Composables/useAlert"
 import useAuth from "@/Composables/useAuth"
 import useModal from "@/Composables/useModal"
@@ -158,7 +143,6 @@ import Modal from "./Modal.vue";
 import useErrorHandler from "@/Composables/useErrorHandler";
 import { watch } from "vue";
 import Checkbox from "./Checkbox.vue";
-import SelectSearch from "./SelectSearch.vue";
 
 
 const { goToLogin } = useAuth()
@@ -197,18 +181,12 @@ const userErrors = ref({
     dob: '',
 })
 
-const { countries, loadCountries } = useCountries()
-
 watch(() => props.show, () => {
     if (!props.show) return
 
     setUserData()
-    loadCountries()
 })
 
-const computedFormCountry = computed(() => {
-    return !userData.value.country ? null : {name: userData.value.country}
-})
 const computedMaxDOB = computed(() => {
     return subYears(new Date(), 10).toISOString().slice(0, 10)
 })

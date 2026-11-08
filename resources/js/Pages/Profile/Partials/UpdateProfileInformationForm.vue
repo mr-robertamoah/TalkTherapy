@@ -1,14 +1,13 @@
 <script setup>
-import useCountries from '@/Composables/useCountries';
+import CountrySelect from '@/Components/CountrySelect.vue';
 import InputError from '@/Components/InputError.vue';
 import InputLabel from '@/Components/InputLabel.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import Select from '@/Components/Select.vue';
-import SelectSearch from '@/Components/SelectSearch.vue';
 import TextInput from '@/Components/TextInput.vue';
 import ProfileInformationDisplay from '@/Components/ProfileInformationDisplay.vue';
 import { Link, useForm, usePage } from '@inertiajs/vue3';
-import { onBeforeMount, ref } from 'vue';
+import { ref } from 'vue';
 import { computed } from 'vue';
 import { subYears } from 'date-fns';
 
@@ -31,13 +30,7 @@ const form = useForm({
     country: user.country ?? '',
 });
 
-const { countries, loadCountries } = useCountries()
-
 const update = ref(false)
-
-onBeforeMount(() => {
-    loadCountries()
-})
 
 const computedGender = computed(() => {
     const u = usePage().props.auth.user
@@ -46,9 +39,6 @@ const computedGender = computed(() => {
 })
 const computedMaxDOB = computed(() => {
     return subYears(new Date(), 10).toISOString().slice(0, 10)
-})
-const computedFormCountry = computed(() => {
-    return !form.country ? null : {name: form.country}
 })
 const computedUserDOB = computed(() => {
     return form.dob ? (new Date(form.dob)).toDateString() : ''
@@ -230,22 +220,7 @@ function clickedUpdate() {
             <div>
                 <InputLabel for="country" value="Country" />
 
-                <SelectSearch
-                    id="country"
-                    class="mt-1 block w-full"
-                    @selected="(data) => {
-                        if (data) {
-                            form.country = data.name
-                            return
-                        }
-
-                        form.country = ''
-                    }"
-                    :options="countries.map(c => {
-                        return {name: c}
-                    })"
-                    :value="computedFormCountry"
-                />
+                <CountrySelect v-model="form.country" input-id="country" class="mt-1 block w-full" />
 
                 <InputError class="mt-2" :message="form.errors.country" />
             </div>
