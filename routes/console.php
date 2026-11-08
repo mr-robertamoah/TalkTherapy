@@ -10,6 +10,7 @@ use App\Actions\Guardianship\FindMinorsWithoutActiveGuardianAction;
 use App\Actions\Guardianship\HandleGuardianLossAction;
 use App\Actions\Help\PruneHelpChatTranscriptsAction;
 use App\Actions\Help\SweepHelpRequestsAction;
+use App\Actions\Notification\PruneNotificationsAction;
 use App\Actions\Organization\ExpireStaleCompensationRequestsAction;
 use App\Actions\Organization\SendCompensationRequestExpiryRemindersAction;
 use App\Actions\Organization\SettleDueOrganizationInvoicesAction;
@@ -89,6 +90,9 @@ Schedule::call(fn () => SendDueSafetyNoticesAction::new()->execute())->name('sen
 // SCRUM-33 (TT-4.4c): help chats' messages and notes are deleted a year after they ended.
 Schedule::call(fn () => PruneHelpChatTranscriptsAction::new()->execute())->name('prune-help-chat-transcripts')->dailyAt('01:45')->withoutOverlapping(60)->onOneServer()
     ->onFailure(fn () => Log::error('The help chat transcript retention sweep failed.'));
+// SCRUM-39 (TT-5.4d): old notifications, by each person's period (never an unread safety notice).
+Schedule::call(fn () => PruneNotificationsAction::new()->execute())->name('prune-notifications')->dailyAt('02:30')->withoutOverlapping(60)->onOneServer()
+    ->onFailure(fn () => Log::error('The notification retention sweep failed.'));
 
 Schedule::call(fn () => BroadcastStartedSessionsAndDiscussionsAction::new()->execute())->name('broadcast-started-sessions-and-discussions')->everyMinute();
 

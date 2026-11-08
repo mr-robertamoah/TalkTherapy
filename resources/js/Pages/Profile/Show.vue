@@ -3,6 +3,7 @@ import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import DeleteUserForm from './Partials/DeleteUserForm.vue';
 import UpdateAvatarForm from './Partials/UpdateAvatarForm.vue';
 import UpdatePasswordForm from './Partials/UpdatePasswordForm.vue';
+import NotificationRetentionForm from './Partials/NotificationRetentionForm.vue';
 import UpdateProfileInformationForm from './Partials/UpdateProfileInformationForm.vue';
 import VerifyEmailSection from './Partials/VerifyEmailSection.vue';
 import BecomeCounsellorForm from './Partials/BecomeCounsellorForm.vue';
@@ -34,6 +35,11 @@ const props = defineProps({
     hasSubmittedAgeVerification: {
         type: Boolean,
         default: false,
+    },
+    // SCRUM-39 (TT-5.4d)
+    notificationRetention: {
+        type: Object,
+        default: null,
     },
 });
 
@@ -150,6 +156,11 @@ function changeStep(value) {
                 <div id="profile-password-id" class="relative"></div>
                 <div class="p-8 bg-white shadow-xl border border-gray-100 rounded-xl">
                     <UpdatePasswordForm class="max-w-xl" />
+                </div>
+
+                <div id="profile-notifications-id" class="relative"></div>
+                <div v-if="notificationRetention" class="p-8 bg-white shadow-xl border border-gray-100 rounded-xl">
+                    <NotificationRetentionForm :retention="notificationRetention" class="max-w-xl" />
                 </div>
 
                 <div id="profile-counsellor-id" class="relative"></div>

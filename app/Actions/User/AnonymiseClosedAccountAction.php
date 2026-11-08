@@ -135,6 +135,10 @@ class AnonymiseClosedAccountAction extends Action
                 }
             }
             DB::table('notifications')->where('notifiable_type', $user->getMorphClass())->where('notifiable_id', $user->id)->delete();
+            // SCRUM-39 (security review): and their counsellor profile's, which can name clients.
+            if ($counsellor) {
+                DB::table('notifications')->where('notifiable_type', $counsellor->getMorphClass())->where('notifiable_id', $counsellor->id)->delete();
+            }
             $this->renameInOthersNotices($user);
             if ($user->email) {
                 DB::table('password_reset_tokens')->where('email', $user->email)->delete();
