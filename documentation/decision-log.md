@@ -11197,3 +11197,42 @@ therapy 18 after the last QA pass.
   toasts for session or discussion due/status still run alongside the bell; that is existing behaviour, left
   as is.
 
+## SCRUM-39 (TT-5.4d) — notification pruning (2026-11-08)
+
+- **The user's decision:** a default set by an environment variable, which each person can override in their
+  profile.
+- **Defaults (mine):**
+  - `NOTIFICATIONS_RETENTION_DAYS` is 90.
+  - The options are 30, 90 and 180 days and 1 year, plus "the default".
+  - The minimum is 7: a number under it, or a value that isn't a number, skips the run and logs an error.
+    An empty value or 0 means 90.
+  - Choosing the default's own number keeps it even if the default changes, and the profile says so.
+- **What's deleted:** everything older than the owner's period, read or unread.
+  - **Never deleted:** an unread safety notice (`NotificationCenter::NEVER_MARKED_BY_LIST`).
+  - **Admin alerts:** unread admin-only alerts (safety flag, help waiting, appeal submitted) are pruned
+    like the rest. Their own records (`SafetyFlag`, `HelpRequest`, the appeal) are the source of truth,
+    not the notification (security review).
+- **Who follows which period:**
+  - A counsellor profile's notifications follow its owner's choice.
+  - Soft-deleted owners are included.
+  - Notifications whose owner row is gone for good (a counsellor profile purged after its grace period;
+    morph relations don't cascade) follow the default, so the /privacy promise holds (reviews).
+- **Storage:** a nullable `users.notification_retention_days` column, not `users.settings`, so the prune
+  groups people in SQL.
+- **The run:** one pass per period in use, with users and counsellor profiles in separate passes so each
+  uses its index. It deletes the oldest first, in batches of 1000 by id, on a new `notifications.created_at`
+  index (devops review: without it each batch scanned the table). It runs daily at 02:30 with an
+  `onFailure` log, and logs `Notifications pruned.` with counts.
+- **Closing an account** now also deletes the counsellor profile's notifications (`AnonymiseClosedAccountAction`,
+  security review). Before, only the user's own were deleted.
+- **One reading of the default** (`PruneNotificationsAction::defaultDays()`): the job, the profile and
+  /privacy all use it. An unusable value shows no number anywhere; /privacy then leaves the line out.
+- **Suspended accounts** can't change the setting: it is on the profile page, which they can't open
+  either. Their last choice, or the default, keeps applying.
+- **Wording:** /privacy and the profile name the kept message precisely, as the "check in" support
+  message. /privacy also says counsellor profiles follow the owner and that closing an account deletes
+  notifications.
+- **Deployment:** the first night deletes everything older than 90 days, permanently. See the deployment
+  notes in `documentation/features/scrum-39d-notification-pruning.md` (size it with a count; back up first
+  if it must be recoverable; optionally start higher and step down).
+

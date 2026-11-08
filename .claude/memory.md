@@ -162,6 +162,9 @@ See "Common commands" in `CLAUDE.md`.
   The bell's frontend state is `useNotifications.js` (module-level, cleared by `forUser()` on account change;
   list responses carry a generation). The safety notice's dialog state is `useSafetyNotice.js`, shared with the
   bell -- open it through that, never a second dialog.
+  Notifications are pruned nightly (`PruneNotificationsAction`, the owner's `users.notification_retention_days`
+  or `NOTIFICATIONS_RETENTION_DAYS`). Nothing may rely on an old notification row still existing -- except an
+  unread safety notice, which is never pruned. A new notifiable type needs adding to the prune's passes.
 
 ## Current Sprint Goals
 

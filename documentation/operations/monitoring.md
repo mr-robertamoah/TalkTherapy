@@ -14,6 +14,8 @@ Docker). The context in each line is ids only, never names or reasons.
 | error | `Could not take a person out of a live call; they may still be in it.` | `RemovePersonFromLiveCallJob::failed()` | Every retry failed (context: `session_id`, `person`, `reason`, `exception`). **The person may still be in the call.** | Page someone. End the session's call by hand if it is still live. |
 | error | `Could not finish pausing a minor's therapies for a missing guardian.` | `HandleGuardianLossJob::failed()` | The queued loss handling threw (context: `ward`, `trigger`). The pause itself is in force, because the gate is live. But the minor or their counsellors may not have been told, or taken out of calls. | Look at the error, then re-run the handling for that ward if needed. The job has `tries = 1` on purpose: a retry could tell people twice. |
 | warning | `A best-effort step failed.` | `App\Support\BestEffort` | A side step (a notice, a broadcast, a live-call removal) failed, and the rest went ahead. `step` says which one, for example `guardian-access-notify`, `client-access-notify`, `continuation-counsellor-notify`, or one of the group steps below. | Alert on a spike, or on a step that fails every time. |
+| error | `Notifications not pruned: NOTIFICATIONS_RETENTION_DAYS must be a number of at least 7 days.` | `PruneNotificationsAction` (daily 02:30, SCRUM-39) | The nightly notification prune was skipped because the setting is missing a number, or under 7 (context: `configured`). Nothing was deleted. | Fix `NOTIFICATIONS_RETENTION_DAYS`. Alert on any one: it runs once a day. Setting it to 1–6 on purpose is how to pause pruning without a deploy. |
+| error | `The notification retention sweep failed.` | `routes/console.php` (`prune-notifications`, `onFailure`) | The prune threw partway through. Batches already deleted stay deleted; the rest go the next night. | Look at the exception. Try it with `php artisan schedule:test --name=prune-notifications`. |
 
 The group steps (SCRUM-73/383), each logged with `group_therapy_id` and `user_id`:
 
@@ -78,6 +80,9 @@ of an existing pause.` (backfill, below).
   exception (`exception`, `ward`, `by`, plus `request`/`renews` on a grant).
 - `group_therapy.member_left` (SCRUM-73): a member left a group. Context: `group_therapy_id`,
   `user_id`.
+- `Notifications pruned.` (SCRUM-39, daily): what the notification prune deleted for good. Context:
+  `deletedByDays` (count per retention period in use), `ownerless` (notifications of owners deleted
+  for good), `defaultDays`. A sudden jump usually means the default was lowered.
 
 A sudden jump in `guardian_access.paused` usually means guardianships were removed in bulk, or many
 dates of birth were changed. Check it against the admin log.
