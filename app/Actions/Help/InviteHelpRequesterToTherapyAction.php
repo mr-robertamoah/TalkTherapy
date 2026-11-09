@@ -45,7 +45,7 @@ class InviteHelpRequesterToTherapyAction extends Action
         }
 
         $request->refresh();
-        rescue(fn () => $request->user->notify(new HelpTherapyInviteNotification($request->id, $request->counsellor->getName(), ! $asAdmin)), report: true);
+        rescue(fn () => $request->user->notify(new HelpTherapyInviteNotification($request->id, $request->counsellor->getName(), ! $asAdmin, $request->counsellor->user)), report: true);
         HelpBroadcast::send(new HelpRequestUpdatedEvent($request->id, $request->status->value));
         HelpBroadcast::queueChanged($request->id);
 

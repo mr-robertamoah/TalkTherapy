@@ -4,7 +4,9 @@ namespace App\Notifications;
 
 use App\Contracts\ShownInNotificationCenter;
 use App\Models\Request;
+use App\Models\User;
 use App\Support\NotificationEntry;
+use App\Support\WardRef;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -18,8 +20,12 @@ class SessionScheduleProposalRejectedNotification extends Notification implement
 {
     use Queueable;
 
-    public function __construct(private Request $request)
+    private ?string $wardRef;
+
+    // SCRUM-396: $rejectedBy -- who wrote the reason, so anonymising their closed account clears it here.
+    public function __construct(private Request $request, ?User $rejectedBy = null)
     {
+        $this->wardRef = $rejectedBy && filled($request->data['reason'] ?? null) ? WardRef::of($rejectedBy) : null;
         $this->afterCommit();
     }
 
@@ -66,6 +72,7 @@ class SessionScheduleProposalRejectedNotification extends Notification implement
             'therapyId' => $this->request->for_id,
             'requestId' => $this->request->id,
             'reason' => $this->request->data['reason'] ?? null,
+            ...($this->wardRef ? [WardRef::KEY => $this->wardRef] : []),
         ];
     }
 

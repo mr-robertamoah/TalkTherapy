@@ -3,7 +3,9 @@
 namespace App\Notifications;
 
 use App\Contracts\ShownInNotificationCenter;
+use App\Models\User;
 use App\Support\NotificationEntry;
+use App\Support\WardRef;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -17,8 +19,12 @@ class HelpTherapyInviteNotification extends Notification implements ShouldQueue,
 
     // $byCounsellor: the counsellor sent it themselves; otherwise our team suggested it (security review:
     // never tell someone a counsellor wants to continue when they didn't say so).
-    public function __construct(private int $helpRequestId, private string $counsellorName, private bool $byCounsellor = true)
+    private ?string $wardRef;
+
+    // SCRUM-396: $counsellorUser -- who it names, so anonymising their closed account renames them here.
+    public function __construct(private int $helpRequestId, private string $counsellorName, private bool $byCounsellor = true, ?User $counsellorUser = null)
     {
+        $this->wardRef = $counsellorUser ? WardRef::of($counsellorUser) : null;
         $this->afterCommit();
     }
 
@@ -46,13 +52,14 @@ class HelpTherapyInviteNotification extends Notification implements ShouldQueue,
             'helpRequestId' => $this->helpRequestId,
             'counsellorName' => $this->counsellorName,
             'byCounsellor' => $this->byCounsellor,
+            ...($this->wardRef ? [WardRef::KEY => $this->wardRef] : []),
         ];
     }
 
     // SCRUM-39: in the notification center.
     public static function present(array $data): NotificationEntry
     {
-        $name = NotificationEntry::text($data, 'counsellorName', 'A counsellor');
+        $name = NotificationEntry::personName($data, 'counsellorName', 'a counsellor');
 
         return new NotificationEntry(
             ! empty($data['byCounsellor']) ? 'An invitation to continue with a counsellor' : 'A suggestion to continue with a counsellor',

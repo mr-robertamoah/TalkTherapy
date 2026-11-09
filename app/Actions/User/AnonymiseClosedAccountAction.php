@@ -18,8 +18,11 @@ use App\Models\SafetyFlagNote;
 use App\Models\User;
 use App\Notifications\ClientAccessPausedNotification;
 use App\Notifications\ClientAccessResumedNotification;
+use App\Notifications\CounsellorUnavailableNotification;
 use App\Notifications\GroupTherapyMemberLeftNotification;
 use App\Notifications\GuardianSafetyNoticeNotification;
+use App\Notifications\HelpTherapyInviteNotification;
+use App\Notifications\SessionScheduleProposalRejectedNotification;
 use App\Notifications\TherapyContinuationNotification;
 use App\Support\WardRef;
 use Illuminate\Support\Facades\DB;
@@ -60,9 +63,18 @@ class AnonymiseClosedAccountAction extends Action
         GroupTherapyMemberLeftNotification::class,
         // SCRUM-32 (TT-4.3c): a guardian's "please check in with" notice.
         GuardianSafetyNoticeNotification::class,
+        // SCRUM-396: a counsellor named to their clients, and the reason someone gave for declining a time.
+        CounsellorUnavailableNotification::class,
+        HelpTherapyInviteNotification::class,
+        SessionScheduleProposalRejectedNotification::class,
     ];
 
-    private const NAME_KEYS = ['clientName', 'memberName', 'wardName'];
+    // One reference per notice, so every key here belongs to the one person it names. A notice that names a
+    // second person must not reuse these keys without a reference of its own (security review, SCRUM-396).
+    private const NAME_KEYS = ['clientName', 'memberName', 'wardName', 'counsellorName'];
+
+    // SCRUM-396: free text the person wrote, cleared rather than renamed.
+    private const TEXT_KEYS = ['reason'];
 
     // Returns false when a stored file couldn't be deleted: nothing is marked, and the next run
     // retries.
@@ -134,6 +146,17 @@ class AnonymiseClosedAccountAction extends Action
                     SafetyFlagEvent::query()->create(['safety_flag_id' => $flagId, 'action' => SafetyFlagEvent::NOTICES_CANCELLED]);
                 }
             }
+            // SCRUM-396: the reason they gave for declining someone's proposed session time, on the request.
+            Request::query()->where('type', RequestTypeEnum::sessionScheduleProposal->value)
+                ->where(fn ($query) => $query->where(fn ($query) => $query->where('to_type', $user->getMorphClass())->where('to_id', $user->id))
+                    ->when($counsellor, fn ($query) => $query->orWhere(fn ($query) => $query->where('to_type', $counsellor->getMorphClass())->where('to_id', $counsellor->id))))
+                ->lockForUpdate()
+                ->get()
+                ->filter(fn (Request $request) => filled($request->data['reason'] ?? null))
+                ->each(function (Request $request) {
+                    $request->data = collect($request->data)->except('reason')->all();
+                    $request->saveQuietly();
+                });
             DB::table('notifications')->where('notifiable_type', $user->getMorphClass())->where('notifiable_id', $user->id)->delete();
             // SCRUM-39 (security review): and their counsellor profile's, which can name clients.
             if ($counsellor) {
@@ -184,14 +207,26 @@ class AnonymiseClosedAccountAction extends Action
                     return;
                 }
 
-                foreach (self::NAME_KEYS as $key) {
-                    if (array_key_exists($key, $data)) {
-                        $data[$key] = self::CLOSED_ACCOUNT_NAME;
-                    }
-                }
-
-                DB::table('notifications')->where('id', $row->id)->update(['data' => json_encode($data)]);
+                DB::table('notifications')->where('id', $row->id)->update(['data' => json_encode(self::withoutPerson($data))]);
             });
+    }
+
+    // A stored notice's data with the person it names taken out: their name replaced, their own words cleared.
+    // Also used by the SCRUM-396 backfill for people already anonymised.
+    public static function withoutPerson(array $data): array
+    {
+        foreach (self::NAME_KEYS as $key) {
+            if (array_key_exists($key, $data)) {
+                $data[$key] = self::CLOSED_ACCOUNT_NAME;
+            }
+        }
+        foreach (self::TEXT_KEYS as $key) {
+            if (array_key_exists($key, $data)) {
+                $data[$key] = null;
+            }
+        }
+
+        return $data;
     }
 
     private function dobRequests(User $user)

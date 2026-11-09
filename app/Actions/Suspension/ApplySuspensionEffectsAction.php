@@ -63,6 +63,7 @@ class ApplySuspensionEffectsAction extends Action
                 $suspension->ends_at,
                 $cancelledByClient[$client->id] ?? 0,
                 $declinedRequesters->contains('id', $client->id),
+                $counsellor->user,
             )));
 
         return $endedSessions;
