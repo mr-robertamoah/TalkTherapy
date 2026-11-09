@@ -70,3 +70,17 @@ test('a deployed environment that isn\'t production (staging) gets the forced li
 
     expect(route('privacy'))->toBe('https://staging.talktherapy.example/privacy');
 });
+
+test('Reverb accepts websocket origins only from our own hosts once deployed, anything locally, or an explicit list', function () {
+    expect(AppHost::reverbOrigins(null, 'production', 'https://TalkTherapy.example', 'health.talktherapy.example'))->toBe(['talktherapy.example', 'health.talktherapy.example'])
+        ->and(AppHost::reverbOrigins('', 'staging', 'https://staging.talktherapy.example', ''))->toBe(['staging.talktherapy.example'])
+        ->and(AppHost::reverbOrigins(null, 'local', 'http://localhost:8000', ''))->toBe(['*'])
+        ->and(AppHost::reverbOrigins(null, 'testing', null, null))->toBe(['*'])
+        ->and(AppHost::reverbOrigins('app.example, *.app.example', 'production', 'https://talktherapy.example', ''))->toBe(['app.example', '*.app.example'])
+        // No usable host: refuse every origin rather than allow all.
+        ->and(AppHost::reverbOrigins(null, 'production', '', ''))->toBe([]);
+});
+
+test('the Reverb app is configured through that rule', function () {
+    expect(config('reverb.apps.apps.0.allowed_origins'))->toBe(['*']);
+});

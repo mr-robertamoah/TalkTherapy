@@ -46,7 +46,7 @@ final class AppHost
 
     // "https://Example.com:443/x" or "example.com:443" -> "example.com" (review: an entry written with a scheme
     // or a port used to never match).
-    private static function bareHost(string $value): ?string
+    public static function bareHost(string $value): ?string
     {
         $value = strtolower(trim($value));
         if ($value === '') {
@@ -55,5 +55,23 @@ final class AppHost
         $host = parse_url(str_contains($value, '://') ? $value : "http://{$value}", PHP_URL_HOST);
 
         return is_string($host) && $host !== '' ? $host : null;
+    }
+
+    // SCRUM-403: the origins Reverb accepts websocket connections from, read while config loads (so from the
+    // raw env values): REVERB_ALLOWED_ORIGINS if set (comma-separated host patterns); else anything for
+    // APP_ENV local and testing; else the same hosts as above -- APP_URL's and TRUSTED_HOSTS. Empty (no
+    // APP_URL host) refuses every origin rather than allowing all.
+    /** @return list<string> */
+    public static function reverbOrigins(?string $explicit, ?string $environment, ?string $appUrl, ?string $trustedHosts): array
+    {
+        $explicit = array_values(array_filter(array_map('trim', explode(',', (string) $explicit))));
+        if ($explicit) {
+            return $explicit;
+        }
+        if (in_array($environment, ['local', 'testing'], true)) {
+            return ['*'];
+        }
+
+        return array_values(array_unique(array_filter(array_map(self::bareHost(...), [(string) $appUrl, ...explode(',', (string) $trustedHosts)]))));
     }
 }
