@@ -102,10 +102,17 @@ onMounted(() => {
     channel?.listen('.help.updated', closedElsewhere)
     catchUp()
     window.addEventListener('help:available', catchUp)
+    // SCRUM-399: an alert tapped while the app is already open -- look again for anyone waiting.
+    navigator.serviceWorker?.addEventListener('message', fromServiceWorker)
 })
+
+function fromServiceWorker(event) {
+    if (event.data?.type === 'help-push-opened') catchUp()
+}
 
 onBeforeUnmount(() => {
     window.removeEventListener('help:available', catchUp)
+    navigator.serviceWorker?.removeEventListener('message', fromServiceWorker)
     channel?.release()
     clearTimeout(noticeTimer)
 })

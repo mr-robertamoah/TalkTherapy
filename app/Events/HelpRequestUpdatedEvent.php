@@ -15,7 +15,7 @@ class HelpRequestUpdatedEvent implements ShouldBroadcastNow
     use Dispatchable, InteractsWithSockets;
 
     /** @param list<int> $counsellorIds */
-    public function __construct(private int $helpRequestId, private string $status, private array $counsellorIds = []) {}
+    public function __construct(public readonly int $helpRequestId, public readonly string $status, public readonly array $counsellorIds = []) {}
 
     public function broadcastOn(): array
     {

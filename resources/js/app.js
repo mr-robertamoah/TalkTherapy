@@ -2,11 +2,23 @@ import './bootstrap';
 import '../css/app.css';
 
 import { createApp, h } from 'vue';
-import { createInertiaApp } from '@inertiajs/vue3';
+import { createInertiaApp, router } from '@inertiajs/vue3';
 import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
 import { ZiggyVue } from '../../vendor/tightenco/ziggy/dist/vue.m';
 import VueSelect from 'vue-select';
 import HelpNowRoot from './Components/HelpNow/HelpNowRoot.vue';
+import { forgetThisDevice } from './Composables/useWebPush';
+
+// SCRUM-399: every sign-out link (whichever layout) first stops urgent help alerts on this browser -- the session
+// it was turned on in may be long gone (a remember-me sign-in), so the server can't tell which device this is.
+let signingOut = false;
+router.on('before', (event) => {
+    const visit = event.detail.visit;
+    if (signingOut || visit.method !== 'post' || visit.url.pathname !== new URL(route('logout')).pathname) return;
+    signingOut = true;
+    forgetThisDevice().finally(() => router.post(route('logout'), {}, { onFinish: () => { signingOut = false; } }));
+    return false;
+});
 
 const appName = import.meta.env.VITE_APP_NAME || 'TalkTherapy';
 

@@ -25,6 +25,8 @@ class EnsureAccountIsNotSuspended
         'help.requests.end', 'help.requests.messages', 'help.requests.messages.store', 'help.chat',
         // SCRUM-32 (TT-4.3c): the persistent safety notice -- for a suspended account too.
         'safety_notice.current', 'safety_notice.dismiss',
+        // SCRUM-399: removing this device from web push.
+        'push.subscriptions.destroy_current',
     ];
 
     // SCRUM-33: joining a help chat's own channel (the channel's rule still checks they're in it).

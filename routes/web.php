@@ -36,6 +36,7 @@ use App\Http\Controllers\PostController;
 use App\Http\Controllers\PreferenceController;
 use App\Http\Controllers\PrivacyController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\PushSubscriptionController;
 use App\Http\Controllers\SafetyFlagController;
 use App\Http\Controllers\SafetyNoticeController;
 use App\Http\Controllers\SessionController;
@@ -102,6 +103,15 @@ Route::get('/posts/{postId}', [PostController::class, 'getPost'])->name('posts.g
 
 // SCRUM-33: the "I need help now" dialog's emergency numbers -- for everyone, signed in or not.
 Route::get('/help/emergency-numbers', [HelpController::class, 'emergencyNumbers'])->name('help.emergency_numbers')->middleware('throttle:60,1,help.emergency_numbers');
+
+// SCRUM-399: a counsellor's devices for urgent help web push (JSON, their own only). Removing this device is
+// open to a suspended account too.
+Route::middleware('auth')->prefix('push/subscriptions')->name('push.subscriptions.')->group(function () {
+    Route::get('/', [PushSubscriptionController::class, 'index'])->name('index')->middleware('throttle:30,1,push.subscriptions.index');
+    Route::post('/', [PushSubscriptionController::class, 'store'])->name('store')->middleware('throttle:10,1,push.subscriptions.store');
+    Route::post('/current/remove', [PushSubscriptionController::class, 'destroyCurrent'])->name('destroy_current')->middleware('throttle:20,1,push.subscriptions.destroy_current');
+    Route::delete('/{device}', [PushSubscriptionController::class, 'destroy'])->name('destroy')->whereNumber('device')->middleware('throttle:20,1,push.subscriptions.destroy');
+});
 
 // SCRUM-39: the notification center (JSON). Not open to a suspended account.
 Route::middleware('auth')->prefix('notifications')->name('notifications.')->group(function () {
