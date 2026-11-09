@@ -225,6 +225,12 @@ defineProps({
                             {{ retentionDays.helpChat }} days after the chat ended (later only while a complaint about it is still
                             open, or a safety concern about it is still being dealt with). A record that the request happened, without them, is kept.
                         </li>
+                        <li v-if="retentionDays.notifications">
+                            Your notifications are deleted {{ retentionDays.notifications }} days after they were sent (a
+                            counsellor profile's follow its owner's choice). You can choose a shorter or longer period in your
+                            profile. A "check in" support message from the TalkTherapy team that you haven't dismissed yet is
+                            kept until you do. Closing your account deletes your notifications as described above.
+                        </li>
                         <li>Verification and identity documents are deleted on the schedule below.</li>
                     </ul>
                 </section>

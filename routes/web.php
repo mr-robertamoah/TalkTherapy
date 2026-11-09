@@ -108,6 +108,8 @@ Route::middleware('auth')->prefix('notifications')->name('notifications.')->grou
     Route::get('/', [NotificationController::class, 'index'])->name('index')->middleware('throttle:60,1,notifications.index');
     Route::get('/count', [NotificationController::class, 'count'])->name('count')->middleware('throttle:120,1,notifications.count');
     Route::post('/read-all', [NotificationController::class, 'readAll'])->name('read_all')->middleware('throttle:30,1,notifications.read_all');
+    // TT-5.4d: how long the person's notifications are kept (their profile).
+    Route::post('/retention', [NotificationController::class, 'retention'])->name('retention')->middleware('throttle:10,1,notifications.retention');
     Route::post('/{notification}/read', [NotificationController::class, 'read'])->name('read')->whereUuid('notification')->middleware('throttle:60,1,notifications.read');
 });
 

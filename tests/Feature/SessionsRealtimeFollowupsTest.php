@@ -80,6 +80,7 @@ test('the privacy page states the configured retention periods, read on each req
         'counsellor.national_id_retention_days' => 7,
         'counsellor.license_abandoned_retention_days' => 60,
         'help.transcript_retention_days' => 365,
+        'notifications.retention_days' => 120,
     ]);
 
     $this->get(route('privacy'))->assertOk()->assertInertia(fn ($page) => $page
@@ -87,6 +88,8 @@ test('the privacy page states the configured retention periods, read on each req
         ->where('retentionDays', [
             'closedAccount' => 45, 'counsellorProfile' => 90, 'identityDocument' => 14,
             'licenseRejected' => 21, 'nationalId' => 7, 'licenseAbandoned' => 60, 'helpChat' => 365,
+            // SCRUM-39 (TT-5.4d)
+            'notifications' => 120,
         ]));
 });
 

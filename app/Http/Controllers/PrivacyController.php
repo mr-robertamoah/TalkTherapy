@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Actions\Notification\PruneNotificationsAction;
 use Inertia\Inertia;
 
 // SCRUM-368: the privacy policy states the configured retention periods, read on each request --
@@ -20,6 +21,8 @@ class PrivacyController extends Controller
                 'licenseAbandoned' => config('counsellor.license_abandoned_retention_days'),
                 // SCRUM-33 (TT-4.4c): urgent help chats.
                 'helpChat' => config('help.transcript_retention_days'),
+                // SCRUM-39 (TT-5.4d): notifications (each person can change theirs).
+                'notifications' => PruneNotificationsAction::defaultDays(),
             ],
         ]);
     }

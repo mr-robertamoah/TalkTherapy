@@ -6,6 +6,7 @@ use App\Actions\Counsellor\EnsureCanDeleteCounsellorAction;
 use App\Actions\EnsureNameStaysRetrievableAction;
 use App\Actions\Guardianship\HandleGuardianLossAction;
 use App\Actions\Guardianship\RemoveGuardianFromWardAction;
+use App\Actions\Notification\PruneNotificationsAction;
 use App\Actions\Suspension\EnsureCanDeleteOwnAccountWhileSuspendedAction;
 use App\Actions\User\EnsureDobChangeIsAllowedAction;
 use App\Actions\User\GetCounsellorCreationStepOfUserAction;
@@ -65,6 +66,12 @@ class ProfileController extends Controller
             // a distinct question from GetPendingAgeVerificationRequestAction (still used,
             // correctly, by SubmitAgeVerificationAction's own idempotent-reuse logic).
             'hasSubmittedAgeVerification' => HasSubmittedAgeVerificationAction::new()->execute($request->user()),
+            // SCRUM-39 (TT-5.4d): how long their notifications are kept.
+            'notificationRetention' => [
+                'days' => $request->user()->notification_retention_days,
+                'defaultDays' => PruneNotificationsAction::defaultDays(),
+                'options' => array_values(array_map('intval', config('notifications.retention_options'))),
+            ],
         ]);
     }
 

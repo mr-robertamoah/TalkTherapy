@@ -77,6 +77,7 @@ class User extends Authenticatable implements MustVerifyEmailContract
         'dob_verified_at' => 'datetime',
         'password' => 'hashed',
         'settings' => 'array',
+        'notification_retention_days' => 'integer',
         'anonymised_at' => 'datetime',
     ];
 
