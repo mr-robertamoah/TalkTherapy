@@ -6,6 +6,7 @@ use App\Http\Middleware\EnsureSafetyFlagsAreEnabled;
 use App\Http\Middleware\EnsureUserIsAdmin;
 use App\Http\Middleware\HandleInertiaRequestsV2;
 use App\Http\Middleware\StoreVisitationMiddleware;
+use App\Support\AppHost;
 use App\Support\FailureResponse;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -31,6 +32,9 @@ return Application::configure(basePath: dirname(__DIR__))
         if ($proxies) {
             $middleware->trustProxies(at: $proxies);
         }
+
+        // SCRUM-397: only our own host (APP_URL's, plus TRUSTED_HOSTS) once deployed; off for APP_ENV local and testing.
+        $middleware->trustHosts(at: fn () => AppHost::trustedPatterns(), subdomains: false);
 
         $middleware->web(append: [
             HandleInertiaRequestsV2::class,

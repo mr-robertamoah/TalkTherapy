@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Listeners\FailHealthCheckOnPendingMigrations;
 use App\Services\AppService;
+use App\Support\AppHost;
 use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Foundation\Events\DiagnosingHealth;
 use Illuminate\Http\Request;
@@ -28,6 +29,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // SCRUM-397: absolute links on APP_URL once deployed, never on the request's Host header.
+        AppHost::enforceLinks($this->app);
+
         // SCRUM-371/374: the one rule for "answer with JSON or redirect back" -- success and failure
         // alike. JSON for every request except an Inertia visit (which must get a redirect, never
         // plain JSON) and a browser navigation, which asks for HTML. Not acceptsJson(), which is true

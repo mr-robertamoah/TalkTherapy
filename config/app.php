@@ -54,6 +54,9 @@ return [
 
     'url' => env('APP_URL', 'http://127.0.0.1:8000'),
 
+    // SCRUM-397: other exact hosts the app may answer for in production (comma-separated), besides APP_URL's.
+    'trusted_hosts' => env('TRUSTED_HOSTS', ''),
+
     // 'asset_url' => env('ASSET_URL'),
 
     /*
@@ -107,9 +110,9 @@ return [
     | will not be safe. Please do this before deploying an application!
     |
     */
-    
+
     'cipher' => 'AES-256-CBC',
-    
+
     'key' => env('APP_KEY'),
 
     'previous_keys' => [
@@ -146,7 +149,5 @@ return [
     | this array to grant expanded functionality to your applications.
     |
     */
-
-
 
 ];
