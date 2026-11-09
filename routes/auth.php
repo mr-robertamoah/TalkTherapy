@@ -15,7 +15,8 @@ Route::middleware('guest')->group(function () {
     Route::get('register', [RegisteredUserController::class, 'create'])
         ->name('register');
 
-    Route::post('register', [RegisteredUserController::class, 'store']);
+    // SCRUM-400: against scripted floods of attempts (the per-address account limit is in the controller).
+    Route::post('register', [RegisteredUserController::class, 'store'])->name('register.store')->middleware('throttle:30,1,register.store');
 
     Route::get('login', [AuthenticatedSessionController::class, 'create'])
         ->name('login');

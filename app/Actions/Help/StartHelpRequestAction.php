@@ -9,6 +9,7 @@ use App\Exceptions\HelpUnavailableException;
 use App\Jobs\EscalateHelpRequestJob;
 use App\Models\HelpRequest;
 use App\Models\User;
+use App\Support\ClientAddress;
 use App\Support\Countries;
 use App\Support\HelpBroadcast;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -41,7 +42,8 @@ class StartHelpRequestAction extends Action
         $key = "help-requests:{$user->id}";
         $limit = self::limitFor($user, $suspended);
         // Also per address (security review), against a few throwaway accounts ringing everyone.
-        $ipKey = $ip ? 'help-requests-ip:'.sha1($ip) : null;
+        // SCRUM-400: by ClientAddress (an IPv6 /64, keyed with the app key).
+        $ipKey = $ip ? 'help-requests-ip:'.ClientAddress::key($ip) : null;
         if (RateLimiter::tooManyAttempts($key, $limit)) {
             throw new HelpException($limit === 1 ? self::ASKED_RECENTLY : self::TOO_MANY, 429);
         }

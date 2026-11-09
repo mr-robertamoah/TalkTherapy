@@ -18,6 +18,11 @@ class EmailVerificationNotificationController extends Controller
             return redirect()->intended(RouteServiceProvider::HOME);
         }
 
+        // SCRUM-400 (review): an account with no email has nothing to verify yet.
+        if (blank($request->user()->email)) {
+            return back()->with('status', 'no-email');
+        }
+
         $request->user()->sendEmailVerificationNotification();
 
         return back()->with('status', 'verification-link-sent');
