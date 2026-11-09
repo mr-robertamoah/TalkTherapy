@@ -248,7 +248,7 @@ const visibleConfidentialCount = computed(() =>
                 <p v-if="report.helpRequest.note" class="rounded-md border border-gray-200 bg-gray-50 p-3 text-sm text-gray-800">"{{ report.helpRequest.note }}"</p>
                 <p v-if="report.helpRequest.transcriptDeleted" class="text-sm text-gray-600">The chat's messages have been deleted.</p>
                 <div v-if="revealed" class="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900" role="status">
-                    {{ revealed.name }} (@{{ revealed.username }})<template v-if="revealed.email"> · {{ revealed.email }}</template>
+                    {{ revealed.name }} (@{{ revealed.username }})
                     <span class="block text-xs text-amber-800">This look has been recorded in the read log.</span>
                 </div>
                 <div v-else class="flex flex-wrap items-center gap-3">

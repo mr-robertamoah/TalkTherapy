@@ -12,6 +12,7 @@ use App\Enums\SuspensionScopeEnum;
 use App\Http\Middleware\EnsureUserIsAdmin;
 use App\Http\Resources\AdminSuspensionResource;
 use App\Models\Counsellor;
+use App\Models\HelpRequest;
 use App\Models\Report;
 use App\Models\Session;
 use App\Models\Suspension;
@@ -38,11 +39,13 @@ class AdminSuspensionController extends Controller
         // only as "involved") never matches.
         $search = AdminSearch::term($request);
         $query = Suspension::query()
-            ->when($search, fn ($query, $term) => $query->whereHas('user', fn ($query) => AdminSearch::person($query, $term)))
+            // SCRUM-398: never by name for a suspension over an urgent help request -- a match would say who asked.
+            ->when($search, fn ($query, $term) => $query->whereHas('user', fn ($query) => AdminSearch::person($query, $term))
+                ->whereDoesntHave('report', fn ($query) => $query->where('reportable_type', HelpRequest::class)))
             ->with([
                 'user', 'createdBy', 'liftedBy', 'appealDecidedBy',
                 'report.addedby' => fn ($morph) => $morph->morphWith([Counsellor::class => ['user']]),
-                'report.reportable' => fn ($morph) => $morph->morphWith([Session::class => ['for']]),
+                'report.reportable' => fn ($morph) => $morph->morphWith([Session::class => ['for'], HelpRequest::class => ['user']]),
             ]);
         $tooMany = $search ? AdminSearch::withoutInvolved($query, $request->user(), fn (Suspension $suspension, $viewer) => $suspension->involves($viewer)) : false;
 

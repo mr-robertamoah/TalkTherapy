@@ -155,9 +155,10 @@ class Report extends Model
         return $this->reportable instanceof HelpRequest ? $this->reportable : null;
     }
 
-    // SCRUM-398: THE one rule for "never show who this report is about" -- every place that presents a
-    // report (AdminReportResource, ReportResource, the report email, the closing notices) asks this. Who
-    // asked for urgent help is revealed only through the logged help path.
+    // SCRUM-398: whether who this report is about is hidden -- an urgent help request, revealed only through the
+    // logged path (RevealReportedHelpRequesterAction). Asked by the closing notices and the suspension view; the
+    // report's own views also need the request itself (helpRequest()). Older reports filed on a help chat's
+    // therapy/session (before the generic endpoint refused them) aren't covered: see the decision log.
     public function masksReportedIdentity(): bool
     {
         return $this->helpRequest() !== null;

@@ -122,7 +122,8 @@ class AdminReportController extends Controller
     public function revealHelpRequester(Request $request, int $report)
     {
         try {
-            return response()->json(['person' => RevealReportedHelpRequesterAction::new()->execute($request->user(), Report::find($report))]);
+            return response()->json(['person' => RevealReportedHelpRequesterAction::new()->execute($request->user(), Report::find($report))])
+                ->header('Cache-Control', 'private, no-store');
         } catch (Throwable $th) {
             return FailureResponse::json($th);
         }

@@ -247,6 +247,8 @@ class DatabaseSeeder extends Seeder
         // counsellors, public groups in every card state, and a counsellor's offer to help a group.
         $this->createDiscoveryDemoData();
         $this->createHelpDemoData();
+        // SCRUM-398: an unanswered, anonymous urgent help request reported as a prank, for the admin review.
+        $this->createHelpReportDemoData();
         // SCRUM-32: counsellors' safety flags (an open one, one being handled, and therapies to flag).
         $this->createSafetyFlagDemoData($superAdmin);
         // SCRUM-39: notifications for the bell (maria_garcia, and sarah_johnson as herself and as counsellor).
@@ -426,6 +428,31 @@ class DatabaseSeeder extends Seeder
             'counsellor_id' => $counsellor->id, 'accepted_at' => now()->subDays(400), 'ended_at' => now()->subDays(400),
             'ended_by' => 'person', 'transcript_deleted_at' => now(), 'created_at' => now()->subDays(400), 'updated_at' => now(),
         ]);
+    }
+
+    // SCRUM-398. Password "password". help_demo_prank (Ama) asked anonymously and nobody answered; Dr. Yaw Help
+    // (help_demo_counsellor_two) reported it as a prank -- an open report in the admin queue, masked as
+    // "Anonymous". Safe to run again: skipped once help_demo_prank exists.
+    public function createHelpReportDemoData(): void
+    {
+        $reporter = User::query()->where('username', 'help_demo_counsellor_two')->first()?->counsellor;
+        if (! $reporter || User::query()->where('username', 'help_demo_prank')->exists()) {
+            return;
+        }
+
+        $person = User::factory()->adult()->create([
+            'firstName' => 'Ama', 'lastName' => 'Prank', 'username' => 'help_demo_prank', 'email' => 'help.demo.prank@example.com',
+            'password' => Hash::make('password'), 'email_verified_at' => now(), 'country' => 'Ghana',
+        ]);
+        $help = HelpRequest::query()->forceCreate([
+            'user_id' => $person->id, 'status' => HelpRequestStatusEnum::expired->value, 'anonymous' => true, 'country_code' => 'GH',
+            'note' => 'lol just testing this', 'ended_at' => now()->subHours(3), 'ended_by' => 'time',
+            'created_at' => now()->subHours(3)->subMinutes(10), 'updated_at' => now()->subHours(3),
+        ]);
+        $report = new Report(['description' => "Prank, or not a real request\n\nThe note was a joke and they rang twice today."]);
+        $report->addedby()->associate($reporter);
+        $report->reportable()->associate($help);
+        $report->save();
     }
 
     // SCRUM-113/114/389. Passwords: "password".

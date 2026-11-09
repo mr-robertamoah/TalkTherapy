@@ -10,6 +10,7 @@ use App\Models\HelpRequest;
 use App\Models\Report;
 use App\Models\User;
 use App\Services\ReportService;
+use Illuminate\Support\Facades\Cache;
 
 // SCRUM-398: a counsellor reports an urgent help request (a prank, abuse) -- into the one report pipeline
 // (ReportService::createReport), as the HelpRequest itself, never its chat's therapy or session: that is what
@@ -30,15 +31,19 @@ class ReportHelpRequestAction extends Action
         if (! $request || ! $counsellorUser?->counsellor) {
             throw new ReportException(EnsureCanReportReportableAction::HELP_NOT_ALLOWED, 403);
         }
+        if (! array_key_exists($reason, self::REASONS)) {
+            throw new ReportException('Choose what is wrong with the request.', 422);
+        }
 
         $details = trim((string) $details);
 
-        return ReportService::new()->createReport(CreateReportDTO::new()->fromArray([
+        // Once each: a double submit waits here, then finds the first report (HELP_ALREADY_REPORTED).
+        return Cache::lock("help-report:{$request->id}:{$counsellorUser->id}", 10)->block(5, fn () => ReportService::new()->createReport(CreateReportDTO::new()->fromArray([
             'user' => $counsellorUser,
-            'addedby' => $counsellorUser?->counsellor,
+            'addedby' => $counsellorUser->counsellor,
             'reportable' => $request,
             'description' => self::REASONS[$reason].($details !== '' ? "\n\n".$details : ''),
             'data' => [],
-        ]));
+        ])));
     }
 }

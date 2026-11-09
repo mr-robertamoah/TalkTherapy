@@ -13,8 +13,9 @@ use App\Models\User;
 
 // SCRUM-398: an administrator reviewing a report on an urgent help request may see who asked -- the same
 // logged read as the help queue's (RevealHelpRequesterAction: help_request_identity, every time), but gated
-// by the report: an uninvolved reviewer, while the report is open or under review, or resolved with a
-// suspension recommended (they must see who it is before suspending them -- EnsureCanApplySuspensionAction).
+// by the report: an uninvolved reviewer, while the report is open or under review; after that only a super admin,
+// resolved with a suspension recommended and none applied yet (they must see who it is before suspending them --
+// EnsureCanApplySuspensionAction). Name and username only.
 class RevealReportedHelpRequesterAction extends Action
 {
     public const NOT_NOW = 'Who asked can only be seen while the report is being reviewed, or before suspending them.';
@@ -28,7 +29,9 @@ class RevealReportedHelpRequesterAction extends Action
             throw new ReportException(EnsureAdminCanReviewReportAction::NOT_FOUND, 404);
         }
 
-        $suspensionPending = $report->status == ReportStatusEnum::resolved && $report->outcome == ReportOutcomeEnum::suspension_recommended;
+        // After review, only for suspending: a super admin, and only until the suspension is applied.
+        $suspensionPending = $report->status == ReportStatusEnum::resolved && $report->outcome == ReportOutcomeEnum::suspension_recommended
+            && $admin->isSuperAdmin() && ! $report->suspensions()->exists();
         if (! $report->isActive() && ! $suspensionPending) {
             throw new ReportException(self::NOT_NOW, 403);
         }
@@ -39,7 +42,6 @@ class RevealReportedHelpRequesterAction extends Action
         return [
             'name' => $person?->name,
             'username' => $person?->username,
-            'email' => $person?->email,
         ];
     }
 }

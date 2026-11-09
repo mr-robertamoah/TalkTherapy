@@ -2,6 +2,7 @@
 
 use App\Actions\Help\PruneHelpChatTranscriptsAction;
 use App\Actions\Report\EnsureCanReportReportableAction;
+use App\Actions\Report\RecordReportedPartyAction;
 use App\Actions\Report\TransitionReportStatusAction;
 use App\Actions\Suspension\ApplySuspensionAction;
 use App\Actions\Suspension\EnsureCanApplySuspensionAction;
@@ -12,12 +13,14 @@ use App\Enums\ReportStatusEnum;
 use App\Enums\SuspensionScopeEnum;
 use App\Events\HelpRequestRingingEvent;
 use App\Events\HelpRequestUpdatedEvent;
+use App\Exceptions\ReportException;
 use App\Exceptions\SuspensionException;
 use App\Models\AdminContentAccess;
 use App\Models\Administrator;
 use App\Models\Counsellor;
 use App\Models\Guardianship;
 use App\Models\HelpRequest;
+use App\Models\PushSubscription;
 use App\Models\Report;
 use App\Models\Session;
 use App\Models\Therapy;
@@ -146,7 +149,12 @@ test('admins see who asked only through the logged reveal; an involved admin see
     $listed = collect($page->viewData('page')['props']['reports']['data'])->firstWhere('id', $report->id);
     expect(json_encode($listed))->not->toContain('Secretname')->not->toContain($person->username)->not->toContain('"id":'.$person->id.',')
         ->and($listed['reportedPerson'])->toBe(['type' => 'user', 'masked' => true, 'name' => 'Anonymous'])
-        ->and($listed['helpRequest']['note'])->toBe('please help');
+        // The note and the rest only on the report's own page, never in the queue (security review).
+        ->and($listed)->not->toHaveKey('helpRequest');
+    $shown = $this->actingAs($admin)->get(route('administrator.reports.show', ['report' => $report->id]))->assertOk()->viewData('page')['props']['report'];
+    expect(json_encode($shown))->not->toContain('Secretname')->not->toContain($person->username)
+        ->and($shown['helpRequest']['note'])->toBe('please help')
+        ->and($shown['suspend']['revealFirst'] ?? null)->toBeTrue();
 
     $stub = collect($this->actingAs($guardian)->get(route('administrator.reports'))->viewData('page')['props']['reports']['data'])->firstWhere('id', $report->id);
     expect($stub)->toMatchArray(['involved' => true])->not->toHaveKey('helpRequest');
@@ -190,8 +198,11 @@ test('suspending over a help report needs a logged reveal first; the person gets
         ->toThrow(SuspensionException::class, EnsureCanApplySuspensionAction::REVEAL_FIRST);
 
     $this->actingAs($admin)->postJson(route('admin.reports.help_requester', ['report' => $report->id]))->assertOk();
+    // SCRUM-399: and their devices stop being alerted.
+    PushSubscription::query()->create(['user_id' => $person->id, 'endpoint' => 'https://push.example/p', 'endpoint_hash' => PushSubscription::hashEndpoint('https://push.example/p'), 'public_key' => 'k', 'auth_token' => 'a']);
     $suspension = ApplySuspensionAction::new()->execute($admin, $report->fresh(), SuspensionScopeEnum::account, 7, 'Repeated prank urgent help requests.');
-    expect($suspension->user_id)->toBe($person->id);
+    expect($suspension->user_id)->toBe($person->id)
+        ->and(PushSubscription::query()->where('user_id', $person->id)->count())->toBe(0);
 });
 
 test('the report email never goes to an involved admin', function () {
@@ -205,4 +216,47 @@ test('the report email never goes to an involved admin', function () {
     hrtReport($this, $counsellor->user, $help)->assertOk();
 
     Notification::assertNotSentTo($guardian, ReportNotification::class);
+});
+
+test('the reveal is for review, or a super admin about to suspend -- and once suspended, the suspension stays masked', function () {
+    $counsellor = hrtOnCall();
+    $person = hrtPerson();
+    $help = hrtAsk($this, $person);
+    hrtReport($this, $counsellor->user, $help)->assertOk();
+    $report = Report::query()->sole();
+    [$super, $normal, $other] = [hrtAdmin(), hrtAdmin(AdministratorTypeEnum::normal), hrtAdmin()];
+    Notification::fake();
+
+    // Who it's about can't be re-pointed.
+    expect(fn () => RecordReportedPartyAction::new()->execute($super, $report, 'user', $counsellor->user_id))->toThrow(ReportException::class);
+
+    TransitionReportStatusAction::new()->execute($super, $report, ReportStatusEnum::under_review);
+    TransitionReportStatusAction::new()->execute($super, $report->fresh(), ReportStatusEnum::resolved, ReportOutcomeEnum::suspension_recommended, 'Pranks.');
+    // Resolved: only a super admin, to suspend.
+    $this->actingAs($normal)->postJson(route('admin.reports.help_requester', ['report' => $report->id]))->assertStatus(403);
+    $this->actingAs($super)->postJson(route('admin.reports.help_requester', ['report' => $report->id]))->assertOk()
+        ->assertHeader('Cache-Control', 'no-store, private')->assertJsonMissingPath('person.email');
+    ApplySuspensionAction::new()->execute($super, $report->fresh(), SuspensionScopeEnum::account, 7, 'Repeated prank urgent help requests.');
+
+    // Suspended: no more reveals, and an admin who never looked sees the label, on the report and in the list.
+    $this->actingAs($super)->postJson(route('admin.reports.help_requester', ['report' => $report->id]))->assertStatus(403);
+    $shown = $this->actingAs($other)->get(route('administrator.reports.show', ['report' => $report->id]))->viewData('page')['props']['report'];
+    expect($shown['suspensions'][0]['person'])->toMatchArray(['name' => 'Anonymous', 'username' => null, 'masked' => true]);
+    $listed = $this->actingAs($other)->get(route('administrator.suspensions'))->viewData('page')['props']['suspensions']['data'];
+    expect(json_encode($listed))->not->toContain('Secretname')->not->toContain($person->username);
+    // Nor found by searching their name.
+    $found = $this->actingAs($other)->get(route('administrator.suspensions', ['search' => 'Secretname']))->viewData('page')['props']['suspensions']['data'];
+    expect($found)->toBe([]);
+    // The admin who looked (logged) sees who it is.
+    $mine = $this->actingAs($super)->get(route('administrator.suspensions'))->viewData('page')['props']['suspensions']['data'];
+    expect($mine[0]['person']['username'])->toBe($person->username);
+});
+
+test('the counsellor who answered can\'t report it once its chat is deleted', function () {
+    $counsellor = hrtOnCall();
+    $help = hrtAsk($this, hrtPerson());
+    $this->actingAs($counsellor->user)->postJson(route('help.requests.accept', ['helpRequest' => $help->id]))->assertOk();
+    $help->forceFill(['transcript_deleted_at' => now()])->save();
+
+    hrtReport($this, $counsellor->user, $help)->assertStatus(403)->assertJsonPath('message', EnsureCanReportReportableAction::HELP_NOT_ALLOWED);
 });

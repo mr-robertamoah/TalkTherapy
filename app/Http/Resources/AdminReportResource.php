@@ -57,9 +57,6 @@ class AdminReportResource extends JsonResource
             'reporter' => $this->person($this->addedby),
             'reportedPerson' => $reported,
             'subject' => $this->subject(),
-            // SCRUM-398: a report on an urgent help request -- the person by the short label only, and what
-            // the reviewer needs instead (the note, what happened). Who asked: revealHelpRequester, logged.
-            'helpRequest' => $this->helpRequestSummary(),
             'therapy' => $therapy ? [
                 'type' => $therapy instanceof GroupTherapy ? 'group' : 'individual',
                 'id' => $therapy->id,
@@ -76,6 +73,10 @@ class AdminReportResource extends JsonResource
 
         return [
             ...$data,
+            // SCRUM-398: a report on an urgent help request -- the person by the short label only, and what the
+            // reviewer needs instead (the note, what happened). On the report's page only, never in the queue.
+            // Who asked: revealHelpRequester, logged.
+            'helpRequest' => $this->helpRequestSummary(),
             'files' => $this->files->map(fn ($file) => [
                 'id' => $file->id,
                 'name' => $file->name,
