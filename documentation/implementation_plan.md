@@ -493,6 +493,23 @@ path), so sequencing it right after that work is cheaper than deferring it.
 
 ---
 
+## Epic TT-11: Hardening follow-ups (SCRUM-402) — *New, 2026-11-09*
+The follow-ups that the reviews of SCRUM-33 (urgent help), SCRUM-39 (notification center) and SCRUM-395
+(help safeguards) left open, boxed as the next set of work at the user's request. Jira priority shows the
+working order. Rows 1 to 4 are fixes and chores and go ahead directly; rows 5 and 6 are features that need
+`/start-feature` and approval first.
+
+| # | Key | Story | Type | Priority | Jira | Depends on |
+|---|---|---|---|---|---|---|
+| 1 | TT-11.1 | Throttle registration per address (and decide on a CAPTCHA): every per-account limit, urgent help's included, depends on accounts not being free | Task | Highest | SCRUM-400 | — |
+| 2 | TT-11.2 | Trust only the app's own host in production (`trustHosts`, forced root URL), alongside SCRUM-395's `TRUSTED_PROXIES` | Task | High | SCRUM-397 | — |
+| 3 | TT-11.3 | Anonymise names and free-text reasons in stored notifications on account closure (`counsellorName`, a declined session time's reason), with a backfill | Task | High | SCRUM-396 | — |
+| 4 | TT-11.4 | The signed-out "login" link doesn't navigate (seen in Playwright): confirm, then fix | Bug | Medium | SCRUM-401 | — |
+| 5 | TT-11.5 | A counsellor can report an urgent help request (prank or abuse), through the existing Report flow | Story | Medium | SCRUM-398 | — |
+| 6 | TT-11.6 | Web push to on-call counsellors, so they're rung with the app closed | Story | Low | SCRUM-399 | — |
+
+---
+
 ## Reconciled Sprint Roadmap
 
 | Sprint | Focus | Epics | Why here |
@@ -505,6 +522,7 @@ path), so sequencing it right after that work is cheaper than deferring it.
 | 6 | Clinical progress & personal tools | TT-5 | Unchanged timing, expanded scope (outcome tracking, export) |
 | 7 | Admin, ops & remaining security | TT-8, TT-4.2/4.5/4.6 | Hardening work batched together |
 | 8 | Profile polish & icebox | TT-9 | Unchanged |
+| Next | Hardening follow-ups | TT-11 (SCRUM-402) | The open review follow-ups from urgent help, the notification center and the help safeguards, boxed together (2026-11-09) |
 
 ---
 
