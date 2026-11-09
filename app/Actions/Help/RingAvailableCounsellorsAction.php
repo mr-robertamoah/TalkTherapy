@@ -4,9 +4,12 @@ namespace App\Actions\Help;
 
 use App\Actions\Action;
 use App\Events\HelpRequestRingingEvent;
+use App\Jobs\EscalateHelpRequestJob;
 use App\Models\Counsellor;
 use App\Models\HelpRequest;
 use App\Support\HelpBroadcast;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\RateLimiter;
 
 // SCRUM-33: rings every counsellor on call for urgent help right now (Counsellor::availableForUrgentHelp)
 // -- never the person asking (a counsellor may need help too), and never one of their guardians
@@ -14,9 +17,25 @@ use App\Support\HelpBroadcast;
 // ringableFor() is also who may see the summary and accept.
 class RingAvailableCounsellorsAction extends Action
 {
-    public function execute(HelpRequest $request): int
+    // SCRUM-395: $capBucket -- a new request's automatic ring counts against config help.rings_per_minute
+    // in its bucket ('established' or 'new'), platform-wide. Past it the ring is skipped: the request is
+    // marked for administrators and they're alerted at once. An administrator's ring (no bucket) clears it.
+    public function execute(HelpRequest $request, ?string $capBucket = null): int
     {
         $ids = self::ringableFor($request);
+
+        if ($ids && $capBucket && ! RateLimiter::attempt("help-rings:{$capBucket}", max(1, (int) config('help.rings_per_minute')), fn () => true, 60)) {
+            Log::warning('Urgent help ring skipped: the platform-wide ring cap was reached.', ['helpRequest' => $request->id, 'bucket' => $capBucket]);
+            $request->forceFill(['ring_skipped_at' => now()])->saveQuietly();
+            HelpBroadcast::queueChanged($request->id);
+            EscalateHelpRequestJob::dispatch($request->id);
+
+            return 0;
+        }
+
+        if (! $capBucket && $request->ring_skipped_at) {
+            $request->forceFill(['ring_skipped_at' => null])->saveQuietly();
+        }
 
         if ($ids) {
             HelpBroadcast::send(new HelpRequestRingingEvent($request->id, $ids));

@@ -42,6 +42,8 @@ function haqAsk($test, ?User $person = null, array $input = []): HelpRequest
 }
 
 beforeEach(function () {
+    // SCRUM-395's stricter limit for new accounts is tested on its own (HelpSafeguardsTest); these use fresh accounts.
+    config(['help.new_account_requests_per_hour' => config('help.requests_per_hour')]);
     Event::fake([HelpRequestRingingEvent::class, HelpRequestUpdatedEvent::class, HelpQueueChangedEvent::class]);
     Bus::fake([EscalateHelpRequestJob::class]);
 });

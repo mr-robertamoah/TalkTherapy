@@ -25,6 +25,7 @@ class HelpRequest extends Model
         'accepted_at' => 'datetime',
         'ended_at' => 'datetime',
         'escalated_at' => 'datetime',
+        'ring_skipped_at' => 'datetime',
         'escalated_again_at' => 'datetime',
         'pulled_at' => 'datetime',
         'invited_at' => 'datetime',

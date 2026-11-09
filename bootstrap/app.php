@@ -24,6 +24,14 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
+        // SCRUM-395 (the user: production will sit behind a proxy): the proxy's own addresses, from
+        // TRUSTED_PROXIES (comma-separated; never "*", which would let anyone set their address). Without
+        // it, behind a proxy every person would share its address -- and the per-address urgent-help limit.
+        $proxies = array_values(array_filter(array_map('trim', explode(',', (string) env('TRUSTED_PROXIES', '')))));
+        if ($proxies) {
+            $middleware->trustProxies(at: $proxies);
+        }
+
         $middleware->web(append: [
             HandleInertiaRequestsV2::class,
             AddLinkHeadersForPreloadedAssets::class,

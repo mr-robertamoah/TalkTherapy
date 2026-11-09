@@ -27,6 +27,8 @@ class SweepHelpRequestsAction extends Action
                 $ringing = RingAvailableCounsellorsAction::ringingFor($request);
                 if (CloseHelpRequestAction::new()->execute($request, HelpRequestStatusEnum::waiting, HelpRequestStatusEnum::expired, 'time')) {
                     $expired++;
+                    // Nobody took it: it doesn't count against them (SCRUM-395).
+                    StartHelpRequestAction::giveBackAllowance($request);
                     HelpBroadcast::send(new HelpRequestUpdatedEvent($request->id, HelpRequestStatusEnum::expired->value, $ringing));
                 }
             });

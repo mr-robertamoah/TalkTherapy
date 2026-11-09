@@ -27,7 +27,9 @@ class EscalateHelpRequestsAction extends Action
                 // The second only a while after the first (review), never straight after it.
                 ->when($again, fn ($query) => $query->whereNotNull('escalated_at')
                     ->where('escalated_at', '<=', now()->subSeconds((int) config('help.second_alert_seconds') - (int) config('help.first_alert_seconds'))))
-                ->where('created_at', '<=', now()->subSeconds((int) config("help.{$setting}")))
+                // SCRUM-395: one the ring cap didn't ring alerts at once (the first alert; the second as usual).
+                ->where(fn ($query) => $query->where('created_at', '<=', now()->subSeconds((int) config("help.{$setting}")))
+                    ->when(! $again, fn ($query) => $query->orWhereNotNull('ring_skipped_at')))
                 ->lazyById()
                 ->each(function (HelpRequest $request) use ($column, $again, &$sent) {
                     // Both alerts overdue (the worker or scheduler was down): one alert, not two at once.
