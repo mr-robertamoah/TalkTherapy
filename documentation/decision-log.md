@@ -11284,3 +11284,45 @@ therapy 18 after the last QA pass.
 - **Follow-up:** registration has no throttle or CAPTCHA, so accounts are free to create. That is
   **SCRUM-400**.
 
+## SCRUM-402 — the next set of work: hardening follow-ups (2026-11-09)
+
+- **The user's request:** box the open follow-ups into the next set of work.
+- **Grouping:** a Jira epic, **SCRUM-402** (TT-11 in the plan), holding six tickets:
+  - SCRUM-400, throttle registration;
+  - SCRUM-397, trust only our host;
+  - SCRUM-396, anonymise names and reasons in stored notifications;
+  - SCRUM-401, the signed-out login link (a new ticket, from the SCRUM-39c QA);
+  - SCRUM-398, report a help request;
+  - SCRUM-399, web push.
+- **Working order:** shown by Jira priority, in the order above (Highest, High, High, Medium, Medium, Low).
+  - **Why this order:** small security items first, since every per-account limit depends on
+    registration not being free; then privacy; then the bug; then the two features.
+- **No sprint label:** the `sprint-N` labels stopped at `sprint-5`, and the plan's roadmap groups work by
+  epic. So the epic is the box, and the roadmap gets a "Next" row.
+- **Approval:** SCRUM-398 and SCRUM-399 are user-facing features, so each goes through `/start-feature`
+  and waits for approval. The other four go ahead directly.
+
+## SCRUM-400 — throttling registration (2026-11-09)
+
+- **The limit:** accounts created from one network address are limited to 10 an hour
+  (`REGISTRATIONS_PER_HOUR_PER_ADDRESS`, never under 1).
+  - **Only accounts actually created count:** a typo or a taken username gives the slot back. Each
+    sign-up is counted before creating, so requests at the same moment can't all slip under.
+  - **Why 10:** generous enough for a group signing up together on one network. Watch the refusal
+    log after launch and raise it if real people on carrier NAT hit it.
+  - **Floods:** the route also has `throttle:30,1,register.store` against scripted floods of attempts.
+- **The refusal:** a validation error, with a message that ends with the crisis line. It comes before
+  the uniqueness check, so it reveals nothing about which usernames exist.
+- **No CAPTCHA for now (mine):** it adds an accessibility cost and a third-party privacy cost on a
+  mental-health product. Revisit if abuse continues despite the limit.
+- **One address key, `App\Support\ClientAddress::key()` (security review):**
+  - an IPv6 address counts by its /64, since one device can rotate through it;
+  - the key is an HMAC with the app key, so an address can't be recovered from logs or cache keys.
+  - Urgent help's per-address limit uses it too.
+- **Found and fixed:** signing up with a username only sent an email-verification message to an empty
+  address. That job failed, and in tests it failed the sign-up too. Accounts with no email are now
+  skipped, and asking for a link with no email says "add an email first".
+- **Deployment:** `TRUSTED_PROXIES` must be set before production goes live behind its proxy. Without it,
+  every visitor has the proxy's address, and the whole site would get 10 sign-ups an hour and share one
+  urgent-help limit.
+
