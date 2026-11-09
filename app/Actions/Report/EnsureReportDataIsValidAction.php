@@ -60,10 +60,12 @@ class EnsureReportDataIsValidAction extends Action
         $counsellorId = $data['counsellorId'] ?? null;
 
         // On update, the same rule DefaultReportedPartyAction applies on create: never accept a
-        // client-sent id for a client who is anonymous to the reporter (no guess oracle).
+        // client-sent id for a client who is anonymous to the reporter (no guess oracle). SCRUM-398: on
+        // create too for a Session, which DefaultReportedPartyAction doesn't cover -- success vs "not part
+        // of this therapy" would otherwise confirm a guessed id.
         $therapyOfReport = $reportable instanceof Session ? $reportable->for : $reportable;
         if (
-            $action == 'update' && ($createReportDTO->data['userId'] ?? null) &&
+            ($action == 'update' || $reportable instanceof Session) && ($createReportDTO->data['userId'] ?? null) &&
             $therapyOfReport instanceof Therapy && $therapyOfReport->addedByUserIsMaskedFor($createReportDTO->user)
         ) {
             throw new ReportException(self::NOT_A_PARTICIPANT, 422);

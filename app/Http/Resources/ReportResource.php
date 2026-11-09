@@ -54,12 +54,17 @@ class ReportResource extends JsonResource
     private function presentedData(?User $viewer): ?array
     {
         $data = $this->data;
+        $therapy = $this->reportable instanceof Session ? $this->reportable->for : $this->reportable;
+
+        // SCRUM-398: a report about an urgent help chat (made before such reports were refused) never shows
+        // who asked by id, to anyone -- admins reveal it through the logged help path.
+        if (is_array($data) && isset($data['userId']) && $therapy instanceof Therapy && $therapy->isHelpChat()) {
+            return [...$data, 'userId' => null, 'reportedClient' => true];
+        }
 
         if (! is_array($data) || ! isset($data['userId']) || $viewer?->isAdmin()) {
             return $data;
         }
-
-        $therapy = $this->reportable instanceof Session ? $this->reportable->for : $this->reportable;
 
         if (($therapy instanceof Therapy || $therapy instanceof GroupTherapy) && $therapy->addedByUserIsMaskedFor($viewer)) {
             $data['userId'] = null;
