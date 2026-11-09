@@ -168,6 +168,11 @@ See "Common commands" in `CLAUDE.md`.
   A new notification that stores a person's name or their own free text must store `WardRef::of($thatPerson)`
   and be added to `AnonymiseClosedAccountAction::NOTICES_NAMING_A_PERSON` (and its key to `NAME_KEYS` or
   `TEXT_KEYS`), or closing that account leaves it behind (SCRUM-384/396).
+- **Help reports and push (SCRUM-398/399, 2026-11-09).** A help chat is never reported through the generic report
+  endpoint; it is reported as the `HelpRequest` (`help.requests.report`), and every report presenter asks
+  `Report::masksReportedIdentity()` -- a new place that shows a report must too. Who asked is revealed only through
+  `help_request_identity` (logged). Web push goes through `HelpBroadcast::send` (ring and close events) into
+  `SendHelpPushJob` on the `urgent` queue; never push anything about the person. `public/sw.js` must never cache pages.
 
 ## Current Sprint Goals
 

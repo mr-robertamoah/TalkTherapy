@@ -151,6 +151,22 @@ defineProps({
                         -- for example, to look into a report -- they can, in the same way as other conversations, and each read
                         is recorded too.
                     </p>
+                    <!-- SCRUM-398/399 -->
+                    <p>
+                        A counsellor who was asked, or who answered, can report a request they believe was a prank or abusive.
+                        Administrators review it seeing only "Anonymous" (or your first name, if you didn't ask anonymously), your note
+                        and what happened -- not who you are -- unless one of them chooses to look (recorded, as above), and
+                        a request with a report under review is kept until the review is finished. Being reported doesn't stop you
+                        asking for help, and you aren't told about a report; if an account is suspended because of one, its owner is
+                        told in the usual way.
+                    </p>
+                    <p>
+                        Counsellors can choose to be alerted on their devices when someone needs urgent help (a browser
+                        notification). The alert only says that someone needs help. It is passed, encrypted, through the
+                        notification service of the counsellor's browser or phone maker, and carries only a reference number,
+                        nothing about you. For this, we keep the address and a label (such as "Chrome on Android") of each
+                        device a counsellor turns alerts on for, until they turn it off or sign out there.
+                    </p>
                 </section>
 
                 <!-- SCRUM-32 (TT-4.3c): counsellors' safety flags. Pending the legal read. -->
