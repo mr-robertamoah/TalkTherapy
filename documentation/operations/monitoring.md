@@ -16,6 +16,8 @@ Docker). The context in each line is ids only, never names or reasons.
 | warning | `A best-effort step failed.` | `App\Support\BestEffort` | A side step (a notice, a broadcast, a live-call removal) failed, and the rest went ahead. `step` says which one, for example `guardian-access-notify`, `client-access-notify`, `continuation-counsellor-notify`, or one of the group steps below. | Alert on a spike, or on a step that fails every time. |
 | error | `Notifications not pruned: NOTIFICATIONS_RETENTION_DAYS must be a number of at least 7 days.` | `PruneNotificationsAction` (daily 02:30, SCRUM-39) | The nightly notification prune was skipped because the setting is missing a number, or under 7 (context: `configured`). Nothing was deleted. | Fix `NOTIFICATIONS_RETENTION_DAYS`. Alert on any one: it runs once a day. Setting it to 1–6 on purpose is how to pause pruning without a deploy. |
 | error | `The notification retention sweep failed.` | `routes/console.php` (`prune-notifications`, `onFailure`) | The prune threw partway through. Batches already deleted stay deleted; the rest go the next night. | Look at the exception. Try it with `php artisan schedule:test --name=prune-notifications`. |
+| error | `The urgent help sweep failed.` | `routes/console.php` (`sweep-help-requests`, `onFailure`, SCRUM-395) | The every-minute urgent help sweep threw: waiting requests aren't expiring, ended chats aren't closing, and the backstop alerts to administrators aren't going out. | Alert on two or more in a row. `GET /api/health/scheduler` also turns 503 with `helpRequestsOverdue: true` once a request has waited past its expiry plus two minutes. |
+| warning | `Urgent help ring skipped: the platform-wide ring cap was reached.` | `RingAvailableCounsellorsAction` (SCRUM-395) | More than `HELP_RINGS_PER_MINUTE` requests from one bucket (`bucket`: `established`, or `new` for new or unverified accounts) asked in one minute; this one (`helpRequest`) wasn't rung. It is still waiting, marked "Not rung" at the top of the admin queue, and administrators were alerted at once; "Ring again" rings it. | A burst in `new` is likely abuse: look at the admin help queue. In `established`: an incident, or the cap is too low for real traffic. To stop all new requests, see "The urgent help kill switch" below. The counter is per cache store (the file store counts loosely under heavy bursts and per host). |
 
 The group steps (SCRUM-73/383), each logged with `group_therapy_id` and `user_id`:
 
@@ -189,3 +191,16 @@ fetched through the API, which refuses a former member. The same holds for a ses
 (`sessions.{id}`) they already had open, which does carry messages: a modified client that ignores
 `GroupTherapyLeftEvent` keeps receiving that session's new messages until it disconnects. Closing
 these server-side waits on a Reverb terminate API that works with private channels (SCRUM-366).
+
+## Urgent help: the health check and the kill switch (SCRUM-395)
+
+- `GET /api/health/scheduler` also returns 503, with `helpRequestsOverdue: true`, when an urgent help request
+  has been waiting past `HELP_EXPIRE_AFTER_MINUTES` plus two minutes: the minute sweep that expires them has
+  stopped or is failing. One stuck request is enough, even with the heartbeat fine. It says only yes or no,
+  never which request.
+- **The kill switch.** To stop new urgent help requests (requests already made carry on, and the dialog still
+  shows the emergency numbers): set `HELP_ENABLED=false` in `.env.docker` (or the server's env), then
+  `docker compose up -d --force-recreate php queue` -- containers read their env file only when they are
+  created, so `config:clear` alone changes nothing. If config is cached, run `php artisan config:cache` after.
+  Back on: `HELP_ENABLED=true` and the same.
+
