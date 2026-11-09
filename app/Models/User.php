@@ -619,6 +619,12 @@ class User extends Authenticatable implements MustVerifyEmailContract
 
     public function sendEmailVerificationNotification()
     {
+        // SCRUM-400 (found there): an account made with a username only has no address to verify -- the
+        // job used to fail on an empty address (and, run synchronously, failed the sign-up).
+        if (blank($this->email)) {
+            return;
+        }
+
         $this->notify(new VerifyEmailNotification);
     }
 

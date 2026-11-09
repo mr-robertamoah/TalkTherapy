@@ -41,6 +41,13 @@ defineProps({
                 >
                     A new verification link has been sent to your email address.
                 </div>
+                <!-- SCRUM-400: an account made with a username only has no email to verify yet. -->
+                <div
+                    v-show="status === 'no-email'"
+                    class="mt-2 font-medium text-sm text-amber-700"
+                >
+                    Add an email address to your profile first, then verify it.
+                </div>
             </div>
             <StyledLink 
                 :text="'verify email'" 
