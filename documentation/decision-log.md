@@ -11391,3 +11391,14 @@ therapy 18 after the last QA pass.
 - **Deployment:** the production checklist now has a Reverb line. If the pages come from a host Reverb
   doesn't accept, real-time updates silently stop.
 
+## SCRUM-401 — the signed-out "login" link: cannot reproduce (2026-11-09)
+
+- The link works in a clean headless Chrome:
+  - on `/`, signed out;
+  - after signing in and out through the menu;
+  - at phone width through the menu, on `/` and `/about`.
+  In every case nothing covers it, the click sends `GET /login`, and the login page opens.
+- The failure in the SCRUM-39c QA came from that browser session's broken state: a hung, cancelled
+  script, after which clicks did nothing anywhere. It didn't come from the app.
+- Closed with no code change.
+

@@ -501,13 +501,13 @@ working order. Rows 1 to 4 are fixes and chores and go ahead directly; rows 5 an
 
 | # | Key | Story | Type | Priority | Jira | Depends on |
 |---|---|---|---|---|---|---|
-| 1 | TT-11.1 | Throttle registration per address (and decide on a CAPTCHA): every per-account limit, urgent help's included, depends on accounts not being free | Task | Highest | SCRUM-400 | — |
-| 2 | TT-11.2 | Trust only the app's own host in production (`trustHosts`, forced root URL), alongside SCRUM-395's `TRUSTED_PROXIES` | Task | High | SCRUM-397 | — |
-| 3 | TT-11.3 | Anonymise names and free-text reasons in stored notifications on account closure (`counsellorName`, a declined session time's reason), with a backfill | Task | High | SCRUM-396 | — |
-| 4 | TT-11.4 | The signed-out "login" link doesn't navigate (seen in Playwright): confirm, then fix | Bug | Medium | SCRUM-401 | — |
+| 1 | TT-11.1 | Throttle registration per address (and decide on a CAPTCHA): every per-account limit, urgent help's included, depends on accounts not being free. **Done (#304).** | Task | Highest | SCRUM-400 | — |
+| 2 | TT-11.2 | Trust only the app's own host in production (`trustHosts`, forced root URL), alongside SCRUM-395's `TRUSTED_PROXIES`. **Done (#305).** | Task | High | SCRUM-397 | — |
+| 3 | TT-11.3 | Anonymise names and free-text reasons in stored notifications on account closure (`counsellorName`, a declined session time's reason), with a backfill. **Done (#306).** | Task | High | SCRUM-396 | — |
+| 4 | TT-11.4 | The signed-out "login" link doesn't navigate (seen in Playwright): confirm, then fix. **Closed: cannot reproduce** (a broken browser session in that QA, not the app). | Bug | Medium | SCRUM-401 | — |
 | 5 | TT-11.5 | A counsellor can report an urgent help request (prank or abuse), through the existing Report flow | Story | Medium | SCRUM-398 | — |
 | 6 | TT-11.6 | Web push to on-call counsellors, so they're rung with the app closed | Story | Low | SCRUM-399 | — |
-| 7 | TT-11.7 | Restrict Reverb's allowed websocket origins to the app's own host once deployed (from the SCRUM-397 review) | Task | Medium | SCRUM-403 | — |
+| 7 | TT-11.7 | Restrict Reverb's allowed websocket origins to the app's own host once deployed (from the SCRUM-397 review). **Done (#307).** | Task | Medium | SCRUM-403 | — |
 
 ---
 
