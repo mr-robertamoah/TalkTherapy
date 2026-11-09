@@ -67,7 +67,7 @@ class GetHelpQueueAction extends Action
             'id' => $request->id,
             'status' => $request->status->value,
             'createdAt' => $request->created_at?->toIso8601String(),
-            'name' => $request->anonymous ? 'Anonymous' : ($person?->firstName ?: 'Someone'),
+            'name' => $request->personLabel(),
             'anonymous' => $request->anonymous,
             'isMinor' => $request->was_minor,
             'suspendedAccount' => $request->was_suspended,

@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Actions\Report\EnsureAdminCanReviewReportAction;
 use App\Actions\Report\EnsureAdminCanViewReportedAttachmentAction;
 use App\Actions\Report\RecordReportedPartyAction;
+use App\Actions\Report\RevealReportedHelpRequesterAction;
 use App\Actions\Report\TransitionReportStatusAction;
 use App\Enums\ReportOutcomeEnum;
 use App\Enums\ReportStatusEnum;
@@ -16,6 +17,7 @@ use App\Models\Report;
 use App\Models\Session;
 use App\Services\ReportService;
 use App\Support\AdminSearch;
+use App\Support\FailureResponse;
 use App\Traits\StreamsPrivateDocuments;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Redirect;
@@ -113,6 +115,16 @@ class AdminReportController extends Controller
             return Redirect::back()->with('message', 'Reported person recorded.');
         } catch (Throwable $th) {
             return $this->redirectWithFailure($th);
+        }
+    }
+
+    // SCRUM-398: who asked for urgent help, on a report about their request -- recorded every time (JSON).
+    public function revealHelpRequester(Request $request, int $report)
+    {
+        try {
+            return response()->json(['person' => RevealReportedHelpRequesterAction::new()->execute($request->user(), Report::find($report))]);
+        } catch (Throwable $th) {
+            return FailureResponse::json($th);
         }
     }
 

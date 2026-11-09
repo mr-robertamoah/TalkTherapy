@@ -25,6 +25,11 @@ class RecordReportedPartyAction extends Action
     {
         EnsureAdminCanReviewReportAction::new()->execute($admin, $report);
 
+        // SCRUM-398: a report on an urgent help request is about the person who asked -- fixed, never re-pointed.
+        if ($report->helpRequest()) {
+            throw new ReportException('This report is about the person who asked for help; that can\'t be changed.', 422);
+        }
+
         $therapy = $report->therapy();
         $person = match ($type) {
             'user' => User::find($id),

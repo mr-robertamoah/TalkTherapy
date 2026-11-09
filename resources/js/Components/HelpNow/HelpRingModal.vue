@@ -8,6 +8,7 @@ import { router } from '@inertiajs/vue3'
 import MiniModal from '@/Components/MiniModal.vue'
 import PrimaryButton from '@/Components/PrimaryButton.vue'
 import SecondaryButton from '@/Components/SecondaryButton.vue'
+import ReportHelpRequestModal from '@/Components/HelpNow/ReportHelpRequestModal.vue'
 import { acquireCounsellorChannel } from '@/Composables/sharedChannel'
 import { helpRefusal } from '@/Composables/useHelpNow'
 
@@ -18,6 +19,18 @@ const props = defineProps({
 const ring = ref(null) // HelpRequestResource
 const notice = ref('')
 const accepting = ref(false)
+// SCRUM-398: reporting a ring closes it for this counsellor only -- it goes on ringing everyone else.
+const reportingId = ref(null)
+
+function report() {
+    reportingId.value = ring.value.id
+    ring.value = null
+}
+
+function reportClosed() {
+    reportingId.value = null
+    next()
+}
 let channel = null
 let noticeTimer = null
 
@@ -110,12 +123,15 @@ onBeforeUnmount(() => {
             </dl>
             <p v-if="ring.person.note" class="rounded-md border border-gray-200 bg-gray-50 p-3 text-sm text-gray-800">"{{ ring.person.note }}"</p>
             <p class="text-xs text-gray-600">If you accept, a private chat opens with them straight away.</p>
-            <div class="flex justify-end gap-2">
+            <div class="flex flex-wrap items-center justify-end gap-2">
+                <button v-if="ring.canReport" type="button" class="mr-auto text-sm text-gray-600 underline hover:text-gray-900" :disabled="accepting" @click="report">Report this request</button>
                 <SecondaryButton type="button" :disabled="accepting" @click="() => { ring = null; next() }">Not now</SecondaryButton>
                 <PrimaryButton type="button" :disabled="accepting" @click="accept">{{ accepting ? 'Connecting…' : 'Accept' }}</PrimaryButton>
             </div>
         </div>
     </MiniModal>
+
+    <ReportHelpRequestModal :show="reportingId !== null" :help-request-id="reportingId" @close="reportClosed" />
 
     <div v-if="notice" class="fixed bottom-20 left-4 z-40 rounded-md border border-gray-200 bg-white px-4 py-2 text-sm text-gray-800 shadow-lg" role="status">{{ notice }}</div>
 </template>

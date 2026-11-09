@@ -101,6 +101,27 @@ function recordParty() {
 }
 
 // --- Suspension (SCRUM-359) -------------------------------------------------------------------
+// SCRUM-398: a report on an urgent help request -- who asked is masked until revealed, and every reveal is
+// recorded (the read log). Needed before suspending them.
+const revealed = ref(null)
+const revealing = ref(false)
+const revealError = ref('')
+async function revealHelpRequester() {
+    revealing.value = true
+    revealError.value = ''
+    await axios.post(props.report.helpRequest.revealUrl)
+        .then((res) => {
+            revealed.value = res.data.person
+            router.reload({ only: ['report'], preserveScroll: true })
+        })
+        .catch((err) => { revealError.value = err.response?.data?.message ?? 'That could not be shown.' })
+        .finally(() => { revealing.value = false })
+}
+
+function formatWhen(value) {
+    return value ? new Date(value).toLocaleString() : null
+}
+
 const suspendForm = useForm({ scope: props.report.suspend.scopes[0] ?? '', duration: '30', public_reason: '', internal_note: '' })
 watch(() => props.report.suspend.scopes, (scopes) => {
     if (!scopes.includes(suspendForm.scope)) suspendForm.scope = scopes[0] ?? ''
@@ -214,6 +235,29 @@ const visibleConfidentialCount = computed(() =>
                 </div>
             </section>
 
+            <!-- SCRUM-398: an urgent help request -- what the reviewer needs, never who asked until revealed (recorded). -->
+            <section v-if="report.helpRequest" class="bg-white shadow-sm border border-gray-200 sm:rounded-lg p-6 space-y-3">
+                <h3 class="font-semibold text-gray-900">The urgent help request</h3>
+                <dl class="grid grid-cols-[auto,1fr] gap-x-4 gap-y-1 text-sm">
+                    <dt class="text-gray-600">Who</dt>
+                    <dd class="text-gray-900">{{ report.helpRequest.person }} · {{ report.helpRequest.isMinor ? 'under 18' : 'adult' }}<template v-if="report.helpRequest.country"> · {{ report.helpRequest.country }}</template></dd>
+                    <dt class="text-gray-600">Asked</dt><dd class="text-gray-900">{{ formatWhen(report.helpRequest.askedAt) }}</dd>
+                    <template v-if="report.helpRequest.acceptedAt"><dt class="text-gray-600">Answered</dt><dd class="text-gray-900">{{ formatWhen(report.helpRequest.acceptedAt) }}</dd></template>
+                    <template v-if="report.helpRequest.endedAt"><dt class="text-gray-600">Ended</dt><dd class="text-gray-900">{{ formatWhen(report.helpRequest.endedAt) }} <span class="text-gray-500 lowercase">({{ report.helpRequest.status }})</span></dd></template>
+                </dl>
+                <p v-if="report.helpRequest.note" class="rounded-md border border-gray-200 bg-gray-50 p-3 text-sm text-gray-800">"{{ report.helpRequest.note }}"</p>
+                <p v-if="report.helpRequest.transcriptDeleted" class="text-sm text-gray-600">The chat's messages have been deleted.</p>
+                <div v-if="revealed" class="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900" role="status">
+                    {{ revealed.name }} (@{{ revealed.username }})<template v-if="revealed.email"> · {{ revealed.email }}</template>
+                    <span class="block text-xs text-amber-800">This look has been recorded in the read log.</span>
+                </div>
+                <div v-else class="flex flex-wrap items-center gap-3">
+                    <SecondaryButton type="button" :disabled="revealing" @click="revealHelpRequester">{{ revealing ? 'Showing…' : 'Show who asked' }}</SecondaryButton>
+                    <span class="text-xs text-gray-600">Every time you do, it is recorded in the read log.</span>
+                </div>
+                <p v-if="revealError" class="text-sm text-red-700" role="alert">{{ revealError }}</p>
+            </section>
+
             <!-- Reported person -->
             <section class="bg-white shadow-sm border border-gray-200 sm:rounded-lg p-6">
                 <h3 class="font-semibold text-gray-900">Reported person</h3>
@@ -316,13 +360,16 @@ const visibleConfidentialCount = computed(() =>
                     @failed="(message) => setFailedAlertData({ message })"
                 />
 
+                <p v-if="report.suspend.revealFirst && report.outcome === 'suspension_recommended'" class="text-sm text-gray-600">
+                    See who asked for help (above, recorded) before suspending them.
+                </p>
                 <p v-if="report.suspend.superAdminOnly && report.outcome === 'suspension_recommended'" class="text-sm text-gray-600">
                     Only a super administrator can suspend someone.
                 </p>
 
                 <div v-if="report.suspend.available && report.suspend.scopes.length" class="space-y-3">
                     <p class="text-sm text-gray-600">
-                        Suspend {{ report.reportedPerson?.name }}. They are told the dates and the reason you write for them,
+                        Suspend {{ revealed?.name ?? report.reportedPerson?.name }}. They are told the dates and the reason you write for them,
                         never who reported them or who you are. Their clients are told they are unavailable, not why.
                     </p>
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">

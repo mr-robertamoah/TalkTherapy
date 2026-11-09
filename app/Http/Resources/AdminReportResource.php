@@ -11,11 +11,13 @@ use App\Enums\SuspensionScopeEnum;
 use App\Models\ConfidentialMessageAccess;
 use App\Models\Counsellor;
 use App\Models\GroupTherapy;
+use App\Models\HelpRequest;
 use App\Models\Post;
 use App\Models\ReportStatusHistory;
 use App\Models\Session;
 use App\Models\Therapy;
 use App\Models\User;
+use App\Support\Countries;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -55,6 +57,9 @@ class AdminReportResource extends JsonResource
             'reporter' => $this->person($this->addedby),
             'reportedPerson' => $reported,
             'subject' => $this->subject(),
+            // SCRUM-398: a report on an urgent help request -- the person by the short label only, and what
+            // the reviewer needs instead (the note, what happened). Who asked: revealHelpRequester, logged.
+            'helpRequest' => $this->helpRequestSummary(),
             'therapy' => $therapy ? [
                 'type' => $therapy instanceof GroupTherapy ? 'group' : 'individual',
                 'id' => $therapy->id,
@@ -126,7 +131,10 @@ class AdminReportResource extends JsonResource
     private function suspendOptions(Request $request): array
     {
         $target = $this->reportedUser();
-        $available = $request->user()?->isSuperAdmin()
+        // SCRUM-398: over an urgent help request, only once this administrator has seen (logged) who asked.
+        $help = $this->resource->helpRequest();
+        $revealNeeded = $help && $request->user() && ! $help->wasRevealedTo($request->user());
+        $available = ! $revealNeeded && $request->user()?->isSuperAdmin()
             && $this->status == ReportStatusEnum::resolved
             && $this->outcome == ReportOutcomeEnum::suspension_recommended
             && $target
@@ -134,6 +142,7 @@ class AdminReportResource extends JsonResource
 
         return [
             'available' => (bool) $available,
+            'revealFirst' => (bool) $revealNeeded,
             'superAdminOnly' => ! $request->user()?->isSuperAdmin(),
             'scopes' => $available
                 ? array_values(array_filter([
@@ -147,7 +156,35 @@ class AdminReportResource extends JsonResource
 
     private function reportedPerson(): ?array
     {
+        // SCRUM-398: never who asked for urgent help (Report::masksReportedIdentity) -- no id, name or username.
+        if ($help = $this->resource->helpRequest()) {
+            return ['type' => 'user', 'masked' => true, 'name' => $help->personLabel()];
+        }
+
         return $this->person($this->reportedParty());
+    }
+
+    private function helpRequestSummary(): ?array
+    {
+        $help = $this->resource->helpRequest();
+        if (! $help) {
+            return null;
+        }
+
+        return [
+            'person' => $help->personLabel(),
+            'anonymous' => (bool) $help->anonymous,
+            'isMinor' => (bool) $help->was_minor,
+            'country' => Countries::nameOf($help->country_code),
+            'note' => $help->note,
+            'status' => $help->status->value,
+            'askedAt' => $help->created_at?->toIso8601String(),
+            'acceptedAt' => $help->accepted_at?->toIso8601String(),
+            'endedAt' => $help->ended_at?->toIso8601String(),
+            'endedBy' => $help->ended_by,
+            'transcriptDeleted' => $help->transcript_deleted_at !== null,
+            'revealUrl' => route('admin.reports.help_requester', ['report' => $this->id]),
+        ];
     }
 
     private function person(User|Counsellor|null $person): ?array
@@ -176,10 +213,11 @@ class AdminReportResource extends JsonResource
                 $reportable instanceof Therapy => 'therapy',
                 $reportable instanceof GroupTherapy => 'group therapy',
                 $reportable instanceof Post => 'post',
+                $reportable instanceof HelpRequest => 'urgent help request',
                 default => $this->reportable_type ? strtolower(class_basename($this->reportable_type)) : 'unknown',
             },
             'id' => $this->reportable_id,
-            'name' => $reportable instanceof Post ? null : $reportable?->name,
+            'name' => $reportable instanceof Post || $reportable instanceof HelpRequest ? null : $reportable?->name,
         ];
     }
 
@@ -221,6 +259,8 @@ class AdminReportResource extends JsonResource
 
         return match (true) {
             ! $this->isActive() => 'Confidential messages can only be read while the report is open or under review.',
+            $this->resource->helpRequest() && $this->resource->helpRequest()->transcript_deleted_at => 'The help chat\'s messages have been deleted.',
+            $this->resource->helpRequest() => 'Nobody answered this request, so there is no chat to read.',
             ! $therapy => 'This report is not about a therapy conversation, so there are no confidential messages to read.',
             ! $this->reportedParty() => 'Record who this report is about first. Only messages that person sent or received can be read.',
             default => 'There are no sessions in this conversation yet.',

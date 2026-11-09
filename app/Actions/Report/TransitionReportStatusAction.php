@@ -85,7 +85,9 @@ class TransitionReportStatusAction extends Action
         }
 
         $reported = $report->reportedUser();
-        if ($reported && ! $reported->is($reporter)) {
+        // SCRUM-398 (the user's decision): never to someone who asked for urgent help -- being told "a report
+        // involving you" after reaching out in a crisis can harm someone reported wrongly.
+        if ($reported && ! $reported->is($reporter) && ! $report->masksReportedIdentity()) {
             Notification::send($reported, new ReportClosedNotification($report, $report->status, ReportClosedNotification::REPORTED, $confidentialRead));
         }
     }

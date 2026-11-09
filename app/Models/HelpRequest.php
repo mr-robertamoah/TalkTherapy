@@ -132,12 +132,10 @@ class HelpRequest extends Model
     // invite the person to continue with that counsellor meanwhile (security review).
     public function hasOpenReport(): bool
     {
-        if (! $this->session_id && ! $this->therapy_id) {
-            return false;
-        }
-
         return Report::query()->whereIn('status', [ReportStatusEnum::open->value, ReportStatusEnum::under_review->value])
             ->where(fn ($query) => $query
+                // SCRUM-398: a report on the request itself -- the one way to report a request nobody answered.
+                ->where(fn ($query) => $query->where('reportable_type', self::class)->where('reportable_id', $this->id))
                 ->when($this->therapy_id, fn ($query) => $query->orWhere(fn ($query) => $query->where('reportable_type', Therapy::class)->where('reportable_id', $this->therapy_id)))
                 ->when($this->session_id, fn ($query) => $query
                     ->orWhere(fn ($query) => $query->where('reportable_type', Session::class)->where('reportable_id', $this->session_id))
@@ -173,5 +171,21 @@ class HelpRequest extends Model
             : in_array((int) $counsellor->user_id, $suspendedCounsellorUserIds, true);
 
         return ! $suspended && ! $this->hasOpenReport();
+    }
+
+    // The short way the person is shown to counsellors and administrators: "Anonymous", or their first name.
+    // Never more (SCRUM-33); who they are is revealed only through the logged path.
+    public function personLabel(): string
+    {
+        return $this->anonymous ? 'Anonymous' : ($this->user?->firstName ?: 'Someone');
+    }
+
+    // SCRUM-398: whether $admin has seen who asked (the read log, help_request_identity).
+    public function wasRevealedTo(User $admin): bool
+    {
+        return AdminContentAccess::query()->where('admin_user_id', $admin->id)
+            ->where('resource', AdminContentAccess::HELP_REQUEST_IDENTITY)
+            ->where('subject_type', self::class)->where('subject_id', $this->id)
+            ->exists();
     }
 }

@@ -7,6 +7,7 @@ use App\Actions\Help\CancelHelpRequestAction;
 use App\Actions\Help\EndHelpChatAction;
 use App\Actions\Help\GetHelpChatAction;
 use App\Actions\Help\InviteHelpRequesterToTherapyAction;
+use App\Actions\Help\ReportHelpRequestAction;
 use App\Actions\Help\SendHelpMessageAction;
 use App\Actions\Help\SetUrgentHelpAvailabilityAction;
 use App\Actions\Help\StartHelpRequestAction;
@@ -15,6 +16,7 @@ use App\Http\Resources\HelpRequestResource;
 use App\Models\HelpRequest;
 use App\Support\FailureResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Throwable;
 
@@ -135,6 +137,23 @@ class HelpRequestController extends Controller
             $until = SetUrgentHelpAvailabilityAction::new()->execute($request->user(), $request->boolean('available'));
 
             return response()->json(['availableUntil' => $until]);
+        } catch (Throwable $th) {
+            return FailureResponse::json($th);
+        }
+    }
+
+    // SCRUM-398: a counsellor reports the request (a prank, abuse). Nothing changes for the person.
+    public function report(Request $request, int $helpRequest)
+    {
+        try {
+            $validated = $request->validate([
+                'reason' => ['required', Rule::in(array_keys(ReportHelpRequestAction::REASONS))],
+                'details' => ['nullable', 'string', 'max:1000'],
+            ]);
+
+            ReportHelpRequestAction::new()->execute($request->user(), HelpRequest::query()->find($helpRequest), $validated['reason'], $validated['details'] ?? null);
+
+            return response()->json(['reported' => true]);
         } catch (Throwable $th) {
             return FailureResponse::json($th);
         }
