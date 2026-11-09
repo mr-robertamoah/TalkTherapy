@@ -11326,3 +11326,29 @@ therapy 18 after the last QA pass.
   every visitor has the proxy's address, and the whole site would get 10 sign-ups an hour and share one
   urgent-help limit.
 
+## SCRUM-397 — only our own host in production (2026-11-09)
+
+- **Trusted hosts:** `TrustHosts` is on, with exact patterns: `APP_URL`'s host, plus an optional
+  `TRUSTED_HOSTS` list.
+  - No wildcard subdomains: Laravel's default would trust every subdomain, and nothing here needs that.
+  - Any other Host header gets a 400.
+  - Laravel turns it off in local and testing by design, so localhost:8000 and CI are unaffected.
+- **Links:** in production every absolute link (emails, redirects, notification links) is built on
+  `APP_URL`, over https when `APP_URL` is https (`URL::forceRootUrl` / `forceScheme`), never on the
+  request's Host. `App\Support\AppHost` holds both rules.
+- **After the security review:**
+  - **One environment rule for both halves** (`AppHost::applies()`): on everywhere except APP_ENV
+    `local` and `testing`, so a staging server gets forced links as well as the host check. A deployed
+    environment must never be called "testing".
+  - **`TRUSTED_HOSTS` entries are reduced to bare hostnames,** so an entry written with a scheme or a port
+    still works. A second public domain should be redirected at the proxy, not listed: pages served on it
+    would post to `APP_URL`'s host and lose the session cookie.
+  - **A test covers the wiring:** removing the `trustHosts` line now fails a test.
+- **Deployment:** `documentation/operations/production-checklist.md` gathers everything production behind
+  the proxy needs:
+  - `APP_URL` (https), `TRUSTED_PROXIES` and `TRUSTED_HOSTS`;
+  - the proxy forwarding the scheme and host, otherwise signed email-verification links return 403;
+  - health checks sending the public Host header, since one by IP gets a 400;
+  - restarting workers after an env change.
+- **Follow-up:** Reverb's `allowed_origins` is `*`. That is **SCRUM-403**, under the follow-ups epic.
+

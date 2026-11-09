@@ -507,6 +507,7 @@ working order. Rows 1 to 4 are fixes and chores and go ahead directly; rows 5 an
 | 4 | TT-11.4 | The signed-out "login" link doesn't navigate (seen in Playwright): confirm, then fix | Bug | Medium | SCRUM-401 | — |
 | 5 | TT-11.5 | A counsellor can report an urgent help request (prank or abuse), through the existing Report flow | Story | Medium | SCRUM-398 | — |
 | 6 | TT-11.6 | Web push to on-call counsellors, so they're rung with the app closed | Story | Low | SCRUM-399 | — |
+| 7 | TT-11.7 | Restrict Reverb's allowed websocket origins to the app's own host once deployed (from the SCRUM-397 review) | Task | Medium | SCRUM-403 | — |
 
 ---
 
