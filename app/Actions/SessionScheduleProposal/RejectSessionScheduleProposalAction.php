@@ -37,7 +37,7 @@ class RejectSessionScheduleProposalAction extends Action
         });
 
         $proposer = User::find($request->data['proposedById'] ?? null);
-        $proposer?->notify(new SessionScheduleProposalRejectedNotification($request));
+        $proposer?->notify(new SessionScheduleProposalRejectedNotification($request, $requestResponseDTO->user));
 
         return $request;
     }

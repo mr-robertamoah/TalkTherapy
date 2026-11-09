@@ -3,7 +3,9 @@
 namespace App\Notifications;
 
 use App\Contracts\ShownInNotificationCenter;
+use App\Models\User;
 use App\Support\NotificationEntry;
+use App\Support\WardRef;
 use Carbon\CarbonInterface;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -22,9 +24,14 @@ class CounsellorUnavailableNotification extends Notification implements ShouldQu
         private ?CarbonInterface $until,
         private int $cancelledSessions = 0,
         private bool $requestDeclined = false,
+        // SCRUM-396: who it names, so anonymising their closed account renames them here (WardRef).
+        ?User $counsellorUser = null,
     ) {
+        $this->wardRef = $counsellorUser ? WardRef::of($counsellorUser) : null;
         $this->afterCommit();
     }
+
+    private ?string $wardRef;
 
     public function via(object $notifiable): array
     {
@@ -60,13 +67,14 @@ class CounsellorUnavailableNotification extends Notification implements ShouldQu
             'until' => $this->until?->toJSON(),
             'cancelledSessions' => $this->cancelledSessions,
             'requestDeclined' => $this->requestDeclined,
+            ...($this->wardRef ? [WardRef::KEY => $this->wardRef] : []),
         ];
     }
 
     // SCRUM-39: in the notification center.
     public static function present(array $data): NotificationEntry
     {
-        $name = NotificationEntry::text($data, 'counsellorName', 'Your counsellor');
+        $name = NotificationEntry::personName($data, 'counsellorName', 'Your counsellor');
         $until = NotificationEntry::date($data['until'] ?? null);
 
         $declined = ! empty($data['requestDeclined']) ? ' Your pending request to them was declined.' : '';

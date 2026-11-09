@@ -24,6 +24,7 @@ use App\Models\SessionNote;
 use App\Models\Therapy;
 use App\Models\User;
 use App\Notifications\HelpTherapyInviteNotification;
+use App\Support\WardRef;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Notification;
@@ -81,6 +82,8 @@ test('the counsellor invites the person to a regular therapy after the chat, onc
     // Who with, and nothing from the chat.
     Notification::assertSentTo($live->user, HelpTherapyInviteNotification::class, fn ($notification) => $notification->toArray($live->user) === [
         'type' => 'help_request.therapy_invite', 'helpRequestId' => $live->id, 'counsellorName' => $counsellor->getName(), 'byCounsellor' => true,
+        // SCRUM-396: who it names, so anonymising the counsellor's closed account renames them here.
+        WardRef::KEY => WardRef::of($counsellor->user),
     ]);
     $this->actingAs($live->user)->getJson(route('help.requests.show', ['helpRequest' => $live->id]))
         ->assertJsonPath('helpRequest.invite.counsellorId', $counsellor->id)

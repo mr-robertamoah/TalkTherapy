@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Actions\User\AnonymiseClosedAccountAction;
 use Illuminate\Support\Carbon;
 
 // SCRUM-39: what the notification center shows for one notification -- a title, a short message and,
@@ -41,5 +42,14 @@ final class NotificationEntry
     public static function text(array $data, string $key, string $fallback): string
     {
         return is_string($data[$key] ?? null) && trim($data[$key]) !== '' ? trim($data[$key]) : $fallback;
+    }
+
+    // A saved name, or the fallback -- also when the person's account was closed and anonymised (SCRUM-396):
+    // "Your counsellor is unavailable", never "a closed account is unavailable".
+    public static function personName(array $data, string $key, string $fallback): string
+    {
+        $name = self::text($data, $key, $fallback);
+
+        return $name === AnonymiseClosedAccountAction::CLOSED_ACCOUNT_NAME ? $fallback : $name;
     }
 }

@@ -11352,3 +11352,29 @@ therapy 18 after the last QA pass.
   - restarting workers after an env change.
 - **Follow-up:** Reverb's `allowed_origins` is `*`. That is **SCRUM-403**, under the follow-ups epic.
 
+## SCRUM-396 — names and reasons in stored notices on account closure (2026-11-09)
+
+- **New notices carry a reference to the person they name (WardRef),** so anonymising that person's closed
+  account finds them:
+  - "your counsellor is unavailable" and the help-chat invitation name the counsellor;
+  - a declined session time names whoever declined it, and only when they wrote a reason.
+- **What anonymisation does:** it renames `counsellorName`, as it already did `clientName`, `memberName` and
+  `wardName`. It **clears** `reason`, because that is the person's own words, which may identify them.
+  `AnonymiseClosedAccountAction::withoutPerson()` is the one place this happens.
+- **Display:** a counsellor anonymised this way reads as "Your counsellor" or "a counsellor", never "a
+  closed account" (`NotificationEntry::personName`).
+- **Backfill (a one-off data migration)** for notices saved before:
+  - the help invite is traced through its help request's counsellor;
+  - the declined time through the request's recipient;
+  - "counsellor unavailable" is traced through the suspension that sent it, whose end date is saved as
+    `until`. Suspensions outlive anonymisation and purged profiles, which the name never could: an
+    anonymised counsellor's name is already erased. The name only breaks a tie, and a tie it can't break is
+    left alone.
+  - Where that person is already anonymised, the name or reason is taken out at once.
+  - It pages by id, never by offset, because each row it updates leaves the filtered set (security review).
+  - What it can't trace, such as a counsellor profile purged for good on a help invite, is counted in the
+    log and left as it is.
+- **The decline reason on the request itself** (`requests.data.reason`, which the proposer can see) is
+  cleared too, both when its author's account is anonymised and in the backfill for those already
+  anonymised (security review).
+
