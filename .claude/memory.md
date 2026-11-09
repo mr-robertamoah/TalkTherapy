@@ -165,6 +165,9 @@ See "Common commands" in `CLAUDE.md`.
   Notifications are pruned nightly (`PruneNotificationsAction`, the owner's `users.notification_retention_days`
   or `NOTIFICATIONS_RETENTION_DAYS`). Nothing may rely on an old notification row still existing -- except an
   unread safety notice, which is never pruned. A new notifiable type needs adding to the prune's passes.
+  A new notification that stores a person's name or their own free text must store `WardRef::of($thatPerson)`
+  and be added to `AnonymiseClosedAccountAction::NOTICES_NAMING_A_PERSON` (and its key to `NAME_KEYS` or
+  `TEXT_KEYS`), or closing that account leaves it behind (SCRUM-384/396).
 
 ## Current Sprint Goals
 
