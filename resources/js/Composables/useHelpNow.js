@@ -20,6 +20,8 @@ let poll = null
 
 export function helpRefusal(err, fallback = 'Something went wrong. If you are in danger, call your emergency number now.') {
     if ([403, 404, 409, 422, 429].includes(err?.response?.status)) return err.response.data?.message ?? fallback
+    // SCRUM-395: the kill switch's own 503 only -- any other (maintenance, a proxy) keeps the fallback.
+    if (err?.response?.status === 503 && err.response.data?.code === 'help_unavailable') return err.response.data.message ?? fallback
     return fallback
 }
 

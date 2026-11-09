@@ -215,6 +215,7 @@ onBeforeUnmount(() => {
                                 <p class="tabular-nums">Waiting {{ waitedFor(row) }}</p>
                                 <p v-if="row.note" class="mt-1 text-gray-700">"{{ row.note }}"</p>
                                 <p class="mt-1 flex flex-wrap gap-2 text-xs">
+                                    <span v-if="row.ringSkipped && row.status === 'waiting'" class="rounded-full border border-red-300 bg-red-50 px-2 py-0.5 font-semibold text-red-800">Not rung (too many requests) -- ring again</span>
                                     <span v-if="row.suspendedAccount" class="rounded-full border border-gray-300 bg-white px-2 py-0.5 text-gray-700">Suspended account</span>
                                     <span v-if="row.escalatedAgainAt" class="rounded-full border border-red-200 bg-white px-2 py-0.5 text-red-800">Alerted twice</span>
                                     <span v-else-if="row.escalatedAt" class="rounded-full border border-amber-300 bg-white px-2 py-0.5 text-amber-800">Administrators alerted</span>

@@ -11236,3 +11236,51 @@ therapy 18 after the last QA pass.
   notes in `documentation/features/scrum-39d-notification-pruning.md` (size it with a count; back up first
   if it must be recoverable; optionally start higher and step down).
 
+## SCRUM-395 — urgent help safeguards (2026-11-09)
+
+- **Scope (the user's decision):** the safeguards and fixes in one PR.
+  - **Split out:** "report this request" is **SCRUM-398**, and web push is **SCRUM-399**.
+  - **Already done earlier:**
+    - help-chat retention and admin reads (TT-4.4b/c);
+    - anonymising `help_requests.note`;
+    - the "Available" badge clearing on its own;
+    - ending a connected request whose session row is missing (TT-4.4c).
+- **Limits (the user's decision):**
+  - At most 30 requests ring counsellors per minute, platform-wide (`HELP_RINGS_PER_MINUTE`). Past that,
+    the request is still made and shown to administrators, who are alerted as usual and can "Ring again"
+    (not capped). Only the automatic ring is skipped, with a warning logged.
+  - An account under 24 hours old (`HELP_NEW_ACCOUNT_HOURS`) or without a verified email may ask once an
+    hour (`HELP_NEW_ACCOUNT_REQUESTS_PER_HOUR`); others 3 times; the strictest limit that applies wins
+    (a suspended account's 1 included). The per-address limit stays as it was.
+- **Kill switch:** `HELP_ENABLED`, on by default. Off, starting a new request gets a 503 whose message points
+  to the emergency number, and the dialog still leads with the numbers. A request already made, waiting or
+  connected, carries on, and the person still gets theirs back.
+- **Monitoring:**
+  - `sweep-help-requests` logs on failure.
+  - The scheduler health endpoint is also 503 when a request has waited past its expiry plus two
+    minutes. It reports only yes or no, never which request.
+- **Tests:** the existing help tests use fresh accounts, so they raise the new-account limit to the usual
+  one. `HelpSafeguardsTest` covers it on its own.
+- **After the reviews (the user's decisions, 2026-11-09):**
+  - **Username-only accounts** have nothing to verify, so they are "new" only by age: the first 24 hours.
+    The unverified-email rule applies only to accounts with an email.
+  - **Two ring buckets of 30 a minute:** established, verified accounts in one, and new or unverified ones in
+    the other. A flood of throwaway accounts then can't stop established ones being rung.
+    - A request whose ring is skipped is marked (`help_requests.ring_skipped_at`) and listed first among
+      the waiting in the admin queue as "Not rung", and administrators are alerted at once.
+    - "Ring again" clears the mark.
+    - A counsellor who comes on call or opens the app still sees it, through the ringing catch-up.
+  - **An unanswered request that expired gives the person their allowance back.** They may have asked only
+    once, so the once-an-hour refusal has its own wording.
+  - **Trusted proxies:** there's no production yet, but it will sit behind a proxy. `TRUSTED_PROXIES` is a
+    comma-separated list of the proxy's own addresses, empty by default and never `*`, so the per-address
+    help limit isn't shared by everyone.
+- **Review fixes:**
+  - Per-hour limits are never under 1, so a blank or 0 setting can't shut anyone out of crisis help.
+  - The kill switch's 503 carries `code: help_unavailable`, and only that 503 shows its message. Any other
+    503 (maintenance, a proxy) keeps the emergency-number fallback.
+  - The kill-switch runbook now recreates the containers, because `config:clear` alone does nothing in
+    Docker.
+- **Follow-up:** registration has no throttle or CAPTCHA, so accounts are free to create. That is
+  **SCRUM-400**.
+

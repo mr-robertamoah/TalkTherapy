@@ -5,6 +5,7 @@ namespace App\Actions\Help;
 use App\Actions\Action;
 use App\Enums\HelpRequestStatusEnum;
 use App\Exceptions\HelpException;
+use App\Exceptions\HelpUnavailableException;
 use App\Jobs\EscalateHelpRequestJob;
 use App\Models\HelpRequest;
 use App\Models\User;
@@ -22,18 +23,29 @@ class StartHelpRequestAction extends Action
 {
     public const TOO_MANY = 'You have asked for help several times in the last hour. If you are in danger, call your emergency number now.';
 
+    // The once-an-hour case (a new account, a suspended one): they may have asked only once (security review).
+    public const ASKED_RECENTLY = 'You asked for help a short time ago. If you are in danger, call your emergency number now.';
+
     public function execute(User $user, bool $anonymous = false, ?string $note = null, ?string $ip = null): HelpRequest
     {
         if ($live = $this->liveRequestOf($user)) {
             return $live;
         }
 
+        // SCRUM-395: the kill switch (a live request, above, still comes back).
+        if (! config('help.enabled')) {
+            throw new HelpUnavailableException;
+        }
+
         $suspended = $user->isAccountSuspended();
         $key = "help-requests:{$user->id}";
-        $limit = $suspended ? (int) config('help.suspended_requests_per_hour') : (int) config('help.requests_per_hour');
+        $limit = self::limitFor($user, $suspended);
         // Also per address (security review), against a few throwaway accounts ringing everyone.
         $ipKey = $ip ? 'help-requests-ip:'.sha1($ip) : null;
-        if (RateLimiter::tooManyAttempts($key, $limit) || ($ipKey && RateLimiter::tooManyAttempts($ipKey, (int) config('help.requests_per_hour_per_address')))) {
+        if (RateLimiter::tooManyAttempts($key, $limit)) {
+            throw new HelpException($limit === 1 ? self::ASKED_RECENTLY : self::TOO_MANY, 429);
+        }
+        if ($ipKey && RateLimiter::tooManyAttempts($ipKey, max(1, (int) config('help.requests_per_hour_per_address')))) {
             throw new HelpException(self::TOO_MANY, 429);
         }
 
@@ -62,9 +74,43 @@ class StartHelpRequestAction extends Action
         if ($ipKey) {
             RateLimiter::hit($ipKey, 3600);
         }
-        RingAvailableCounsellorsAction::new()->execute($request);
+        // Within the platform-wide cap (SCRUM-395) -- new or unverified accounts share their own, so a flood
+        // of throwaway accounts can't stop established ones being rung. An administrator's "ring again"
+        // isn't capped.
+        RingAvailableCounsellorsAction::new()->execute($request, capBucket: self::isNewOrUnverified($user) ? 'new' : 'established');
 
         return $request;
+    }
+
+    // The strictest that applies: a suspended account's, a new or unverified account's (SCRUM-395), or the
+    // usual -- never under 1 (review: a blank or 0 setting must never shut anyone out of crisis help).
+    private static function limitFor(User $user, bool $suspended): int
+    {
+        $limits = [(int) config('help.requests_per_hour')];
+        if ($suspended) {
+            $limits[] = (int) config('help.suspended_requests_per_hour');
+        }
+        if (self::isNewOrUnverified($user)) {
+            $limits[] = (int) config('help.new_account_requests_per_hour');
+        }
+
+        return max(1, min($limits));
+    }
+
+    // Under config help.new_account_hours old, or with an email address that isn't verified. An account
+    // with no email (username only) is new only by age (the user's decision: it has nothing to verify).
+    public static function isNewOrUnverified(User $user): bool
+    {
+        $new = $user->created_at === null || $user->created_at->gt(now()->subHours((int) config('help.new_account_hours')));
+
+        return $new || ($user->email !== null && $user->email_verified_at === null);
+    }
+
+    // SCRUM-395 (the user's decision): a request that expired without anyone taking it gives the person
+    // their allowance back, so they can ask again at once.
+    public static function giveBackAllowance(HelpRequest $request): void
+    {
+        RateLimiter::decrement("help-requests:{$request->user_id}", 3600);
     }
 
     private function liveRequestOf(User $user): ?HelpRequest

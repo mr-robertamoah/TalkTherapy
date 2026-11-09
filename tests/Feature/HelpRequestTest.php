@@ -28,6 +28,11 @@ use Illuminate\Support\Facades\Event;
 // SCRUM-33: the quick help chat -- asking, ringing, the first-to-accept race, the chat, ending and the
 // sweeps. Helpers are file-local and hlp-prefixed (--parallel).
 
+// SCRUM-395's stricter limit for new accounts is tested on its own (HelpSafeguardsTest); these use fresh accounts.
+beforeEach(function () {
+    config(['help.new_account_requests_per_hour' => config('help.requests_per_hour')]);
+});
+
 function hlpOnCall(array $state = []): Counsellor
 {
     return Counsellor::factory()->create(['user_id' => User::factory()->adult()->create()->id, 'urgent_help_available_until' => now()->addHours(2), ...$state]);

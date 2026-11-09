@@ -28,6 +28,19 @@ return [
     'suspended_requests_per_hour' => (int) env('HELP_SUSPENDED_REQUESTS_PER_HOUR', 1),
     // And from one network address, whoever is signed in.
     'requests_per_hour_per_address' => (int) env('HELP_REQUESTS_PER_HOUR_PER_ADDRESS', 10),
+    // SCRUM-395 (the user's decision): an account under this many hours old, or without a verified email,
+    // gets this stricter one (against throwaway accounts ringing everyone).
+    'new_account_hours' => (int) env('HELP_NEW_ACCOUNT_HOURS', 24),
+    'new_account_requests_per_hour' => (int) env('HELP_NEW_ACCOUNT_REQUESTS_PER_HOUR', 1),
+
+    // SCRUM-395 (the user's decision): at most this many requests ring the on-call counsellors in any one
+    // minute, platform-wide. Past it a request is still made and shown to administrators (who are alerted
+    // and can ring again) -- only the automatic ring is skipped.
+    'rings_per_minute' => (int) env('HELP_RINGS_PER_MINUTE', 30),
+
+    // SCRUM-395: the kill switch. Off, nobody can start a new request (the dialog still shows the emergency
+    // numbers, and says so); requests already made carry on.
+    'enabled' => filter_var(env('HELP_ENABLED', true), FILTER_VALIDATE_BOOL),
 
     // TT-4.4c: a help chat's messages, and the person's note, are deleted this many days after it
     // ended (the user's decision: one year). The request itself stays, without them. Under 30 (or not a

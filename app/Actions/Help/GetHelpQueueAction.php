@@ -34,6 +34,8 @@ class GetHelpQueueAction extends Action
                 ->whereHas('counsellor', fn ($query) => $query->whereName($term))))
             ->with(['user', 'counsellor.user', 'pulledCounsellor.user'])
             ->orderByRaw('case status when ? then 0 when ? then 1 else 2 end', [HelpRequestStatusEnum::waiting->value, HelpRequestStatusEnum::connected->value])
+            // SCRUM-395: among the waiting, the ones nobody was rung for first.
+            ->orderByRaw('case when ring_skipped_at is null then 1 else 0 end')
             ->latest('id')
             ->limit(100);
 
@@ -76,6 +78,8 @@ class GetHelpQueueAction extends Action
             'endedBy' => $request->ended_by,
             'escalatedAt' => $request->escalated_at?->toIso8601String(),
             'escalatedAgainAt' => $request->escalated_again_at?->toIso8601String(),
+            // SCRUM-395: the ring cap skipped its automatic ring -- nobody has been rung for it.
+            'ringSkipped' => $request->ring_skipped_at !== null,
             'counsellor' => $request->counsellor?->getName(),
             'pulledCounsellor' => $request->pulledCounsellor?->getName(),
             'closedNote' => $request->closed_note,

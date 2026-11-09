@@ -77,7 +77,8 @@ Schedule::call(fn () => NotifyParticipantsOfStartingSessionsAction::new()->execu
 
 Schedule::call(fn () => FailUnheldSessionsAction::new()->execute())->name('fail-unheld-sessions')->everyFourHours();
 // SCRUM-33: help requests nobody answered expire; help chats past their time end.
-Schedule::call(fn () => SweepHelpRequestsAction::new()->execute())->name('sweep-help-requests')->everyMinute()->withoutOverlapping(5);
+Schedule::call(fn () => SweepHelpRequestsAction::new()->execute())->name('sweep-help-requests')->everyMinute()->withoutOverlapping(5)
+    ->onFailure(fn () => Log::error('The urgent help sweep failed.'));
 // SCRUM-32 (TT-4.3b): safety flags nobody has acknowledged re-alert the super administrators (the delayed
 // job's backstop; nothing while the feature is off).
 Schedule::call(fn () => ReAlertSafetyFlagsAction::new()->execute())->name('realert-safety-flags')->everyFiveMinutes()
