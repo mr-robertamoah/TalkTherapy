@@ -21,6 +21,11 @@ Check every item before going live.
   name. A second public domain (for example `www.`) should be **301-redirected at the proxy**, not listed:
   pages served on it would post to `APP_URL`'s host, and the session cookie wouldn't follow.
 
+- [ ] **Websockets (Reverb)** accept connections only from `APP_URL`'s host plus `TRUSTED_HOSTS` (SCRUM-403), or
+  from `REVERB_ALLOWED_ORIGINS` if set. If the pages are served from another host than `APP_URL`'s, real-time
+  updates (chat, the bell, urgent help rings) silently stop. Restart the `reverb` container after changing
+  any of these.
+
 ## The proxy
 
 - [ ] It sets `X-Forwarded-Proto` (https), `X-Forwarded-For`, and `Host` / `X-Forwarded-Host` equal to

@@ -11378,3 +11378,16 @@ therapy 18 after the last QA pass.
   cleared too, both when its author's account is anonymised and in the backfill for those already
   anonymised (security review).
 
+## SCRUM-403 — Reverb's allowed websocket origins (2026-11-09)
+
+- **Before:** `allowed_origins` was `*`, so any website could open websocket connections. Private
+  channels were still protected by `/broadcasting/auth`.
+- **Now (`App\Support\AppHost::reverbOrigins()`, read from the raw env as config loads):**
+  - an explicit `REVERB_ALLOWED_ORIGINS` (comma-separated host patterns) wins;
+  - otherwise `*` for APP_ENV `local` and `testing`;
+  - otherwise the same hosts the app answers for: `APP_URL`'s plus `TRUSTED_HOSTS`.
+  - With no usable host, every origin is refused rather than all allowed.
+- **Local Docker and the Vite dev server are unchanged** (`local`).
+- **Deployment:** the production checklist now has a Reverb line. If the pages come from a host Reverb
+  doesn't accept, real-time updates silently stop.
+
