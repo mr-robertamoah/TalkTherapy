@@ -85,6 +85,14 @@ See "Common commands" in `CLAUDE.md`.
   the presence roster and the id-only "a message arrived" pings. **Revisit trigger:** when Reverb is upgraded past 1.10,
   re-test `terminate_connections` for a user whose first channel is private and, if it works,
   close a leaver's subscriptions from the server.
+- **Conventions from the first release check (SCRUM-413, 2026-11-10):**
+  - Never read `env()` outside `config/` (and `bootstrap/` only for what can't wait for config): once config is cached
+    it returns null and the setting silently falls back to its default. Input ceilings live in `config/limits.php`;
+    trusted proxies in `config('app.trusted_proxies')`, applied in `AppServiceProvider::boot`.
+  - Name new migrations with **today's** date (`php artisan make:migration`), never a future one: 14 migrations are
+    dated 2026-11-12..21, and one created before those dates sorts ahead of them on a fresh install but runs after them
+    on an existing database.
+  - A migration's `down()` drops an index before its column (SQLite can't drop an indexed column).
 - **Frontend dependency changes and the dev server (SCRUM-406, 2026-11-10):** the `vite` container has its own
   `node_modules` (a volume): the host's `node_modules` is not what the app runs, so check packages inside the container.
   Vite's pre-bundle cache (`node_modules/.vite/deps`) did NOT rebuild after `npm install` changed a package, and the

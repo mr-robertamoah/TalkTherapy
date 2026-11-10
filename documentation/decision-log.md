@@ -11664,3 +11664,38 @@ therapy 18 after the last QA pass.
   client is v1") now give the real one.
 - **When to revisit:** only if every admin page's props become lazy closures, so that a partial reload computes
   nothing but the badges.
+
+## SCRUM-413 — release-readiness fixes before the first develop → testing promotion (2026-11-10)
+
+From the SCRUM-411 readiness check (devops-engineer). All in one PR, by the user's choice ("fix all small items").
+
+- **The blocker: Pint.** The promotion PR's lint job checks every PHP file changed since `testing`, 1,547 of them.
+  One legacy migration failed (`2025_02_10_084703`). It's formatted now; its `up()` logic is unchanged (Pint
+  wrapped a brace-less `if`'s body). All 1,547 pass.
+- **`env()` outside config, widened from one finding to the whole class.** The check flagged
+  `DISCUSSION_MAX_COUNSELLORS_CEILING`. The same mistake was in four more places:
+  - the therapy and group-therapy caps, and FileService's default disk;
+  - **`TRUSTED_PROXIES`** itself, in `bootstrap/app.php` and `AppServiceProvider` (SCRUM-395/138, partly mine).
+
+  Once config is cached, `env()` returns null: the caps would fall back to their defaults and, worse, the proxy would
+  silently stop being trusted. Nothing caches config today, but one `config:cache` would break it.
+  - Caps: new `config/limits.php`. Disk: `config('filesystems.default')`.
+  - Proxies: `config('app.trusted_proxies')`, applied in `AppServiceProvider::boot`, which runs before the global
+    middleware sees a request.
+  - Checked with `config:cache`: `env()` gives NULL, the config value comes through, and `TrustProxies::at` is set.
+- **Migration `down()`s that failed on SQLite.** The check found one; a full reset found two more (`2026_09_04_100002`,
+  `2025_02_10_084703`). Fixed as follows:
+  - each index is dropped before its column;
+  - the foreign key before its unique index (MySQL needs the index while the key exists);
+  - a re-added column is made nullable.
+
+  Only `down()` changed. Round trip (migrate, full reset, migrate) is OK on SQLite and on a throwaway MySQL database.
+- **Env examples:**
+  - the mail settings were swapped. The host example now uses Mailpit's published port (127.0.0.1:1027); the Docker
+    example uses `mailpit:1025`, with Mailgun commented for deployed environments.
+  - `.env.docker.example` gains the 31 keys only `.env.example` documented, plus `DISCUSSION_MAX_COUNSELLORS_CEILING`.
+- **README:** the trigger recovery list adds `ene_no_*` and `sfn_*`.
+- **Conventions,** in `.claude/memory.md`: no `env()` outside config; no future-dated migration names (14 are dated
+  2026-11-12..21); drop an index before its column.
+- **Not here; they gate `testing` → `main`, not this step:** the production database flag, the worker command, the
+  production env, backups and restore, alert transport, the real-device push test, and Dependabot alerts.
