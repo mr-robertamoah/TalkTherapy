@@ -11699,3 +11699,28 @@ From the SCRUM-411 readiness check (devops-engineer). All in one PR, by the user
   2026-11-12..21); drop an index before its column.
 - **Not here; they gate `testing` → `main`, not this step:** the production database flag, the worker command, the
   production env, backups and restore, alert transport, the real-device push test, and Dependabot alerts.
+
+## First promotion develop → testing, and the branch rule change (2026-11-10)
+
+- **SCRUM-411:** `develop` was promoted to `testing` for the first time (#317: 807 commits, 308 PRs, 105 migrations),
+  after the readiness check and its fixes (SCRUM-413). CI passed on the PR, with all five jobs green. Nothing deploys
+  from `testing`. `testing` → `main` stays gated on SCRUM-364.
+- **Repository rule "branch guard" (covers `main` and `testing`), changed at the user's request:** the user is the
+  only person on the project, so no one else could approve a PR. `pull_request` now requires **0 approvals**, with no
+  code-owner review and no approval after the last push.
+  - **Kept:** a PR is still required, review threads must be resolved, and deletion and force-pushes stay blocked.
+  - **When someone joins:** turn approvals back on under Settings → Rules.
+- **Correction to the SCRUM-411 readiness report:** it said `testing` had no branch protection. It checked the legacy
+  branch-protection API, which is empty, and missed this ruleset, which is what blocked #317 until the change above.
+
+## SCRUM-414 — therapy_topics migration (2025_02_10): the foreign-key check is limited to this database (2026-11-10)
+
+- `foreignKeyExists()` now filters `information_schema` by this connection's database (`DATABASE()`, or
+  `current_schema()` on PostgreSQL). On a MySQL server shared by several databases, a constraint with the same name
+  elsewhere no longer counts.
+- **Not changed, on checking:** the review said `down()` doesn't restore a foreign key. But the table's original
+  `therapy_id` (the 2024_03_24 create migration) was `foreignIdFor()` without `constrained()`, so there was never one
+  to restore. Group-therapy topics have no place in the old schema, so on rollback they keep a NULL `therapy_id`; the
+  code says so in a comment.
+- Round trips (migrate → full reset → migrate) pass on SQLite and on a throwaway MySQL database. The filtered query
+  finds a real foreign key in the current database.
