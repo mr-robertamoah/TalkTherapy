@@ -55,8 +55,18 @@ return new class extends Migration
     {
         Schema::dropIfExists('help_requests');
 
-        Schema::table('sessions', fn (Blueprint $table) => $table->dropColumn('is_help_chat'));
-        Schema::table('therapies', fn (Blueprint $table) => $table->dropColumn('is_help_chat'));
-        Schema::table('counsellors', fn (Blueprint $table) => $table->dropColumn('urgent_help_available_until'));
+        // Each index before its column: SQLite can't drop an indexed column (SCRUM-413).
+        Schema::table('sessions', function (Blueprint $table) {
+            $table->dropIndex(['is_help_chat']);
+            $table->dropColumn('is_help_chat');
+        });
+        Schema::table('therapies', function (Blueprint $table) {
+            $table->dropIndex(['is_help_chat']);
+            $table->dropColumn('is_help_chat');
+        });
+        Schema::table('counsellors', function (Blueprint $table) {
+            $table->dropIndex(['urgent_help_available_until']);
+            $table->dropColumn('urgent_help_available_until');
+        });
     }
 };

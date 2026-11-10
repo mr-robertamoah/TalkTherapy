@@ -34,7 +34,7 @@ class EnsureDiscussionDataIsValidAction extends Action
             // cap) despite the coincidentally identical field name. Without this, a value near
             // the `unsignedInteger` column's ~4.29 billion ceiling would surface as an uncaught
             // QueryException (500) instead of a clean 422 (security review, SCRUM-23).
-            $maxCounsellorsCeiling = env('DISCUSSION_MAX_COUNSELLORS_CEILING', 50);
+            $maxCounsellorsCeiling = (int) config('limits.discussion_max_counsellors_ceiling');
 
             if ($createDiscussionDTO->maxCounsellors < 1 || $createDiscussionDTO->maxCounsellors > $maxCounsellorsCeiling) {
                 throw new DiscussionException("The maximum number of counsellors must be between 1 and {$maxCounsellorsCeiling}.", 422);

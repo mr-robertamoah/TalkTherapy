@@ -57,6 +57,11 @@ return [
     // SCRUM-397: other exact hosts the app may answer for in production (comma-separated), besides APP_URL's.
     'trusted_hosts' => env('TRUSTED_HOSTS', ''),
 
+    // SCRUM-395/138: the proxy's own addresses or CIDR ranges (comma-separated; App\Support\TrustedProxies keeps
+    // only explicit ones). Applied in AppServiceProvider::boot -- here, not env() in bootstrap/app.php, so it
+    // still works once config is cached (SCRUM-413).
+    'trusted_proxies' => env('TRUSTED_PROXIES', ''),
+
     // 'asset_url' => env('ASSET_URL'),
 
     /*

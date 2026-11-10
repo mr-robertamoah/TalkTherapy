@@ -74,7 +74,7 @@ class EnsureTherapyDataIsValidAction extends Action
         // -- both sides are always a genuine int here (DTOTrait force-casts typed ?int
         // properties, and these are plain SQL integer columns), so there's no numeric-string
         // case to loosen for.
-        $maxSessions = env('THERAPY_MAX_SESSIONS', 100);
+        $maxSessions = (int) config('limits.therapy_max_sessions');
         if (
             $dto->maxSessions > $maxSessions &&
             ! ($therapy && $dto->maxSessions === $therapy->max_sessions)
@@ -122,7 +122,7 @@ class EnsureTherapyDataIsValidAction extends Action
 
         // See the maxSessions bypass above (SCRUM-88) for why an unchanged, already-over-ceiling
         // value must not block an unrelated edit.
-        $maxCounsellors = env('GROUP_THERAPY_MAX_COUNSELLORS', 10);
+        $maxCounsellors = (int) config('limits.group_therapy_max_counsellors');
         if (
             $dto->maxCounsellors > $maxCounsellors &&
             ! ($therapy && $dto->maxCounsellors === $therapy->max_counsellors)
@@ -135,10 +135,10 @@ class EnsureTherapyDataIsValidAction extends Action
         // group video to the full membership, both ceilings must be the same number so a group's
         // video room can always admit everyone in it (user's own explicit decision, 2026-09-14).
         // Review finding: this is a SHARED VALUE, not an enforced coupling -- changing
-        // GROUP_THERAPY_MAX_USERS (an env-only, no-deploy change) without also updating the enum
+        // GROUP_THERAPY_MAX_USERS (config/limits.php, an env-only change) without also updating the enum
         // silently reintroduces the exact drift this ticket exists to eliminate. Keep both in sync
         // by hand until/unless a single source of truth is worth the refactor.
-        $maxUsers = env('GROUP_THERAPY_MAX_USERS', 25);
+        $maxUsers = (int) config('limits.group_therapy_max_users');
         if (
             $dto->maxUsers > $maxUsers &&
             ! ($therapy && $dto->maxUsers === $therapy->max_users)
