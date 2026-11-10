@@ -31,8 +31,12 @@ return new class extends Migration
      */
     public function down(): void
     {
+        // Foreign key, then its unique index, then the column: MySQL needs the index while the key exists, and
+        // SQLite can't drop an indexed column (SCRUM-413).
         Schema::table('counsellor_earnings', function (Blueprint $table) {
-            $table->dropConstrainedForeignIdFor(OrganizationInvoiceLine::class);
+            $table->dropForeign(['organization_invoice_line_id']);
+            $table->dropUnique(['organization_invoice_line_id']);
+            $table->dropColumn('organization_invoice_line_id');
         });
     }
 };

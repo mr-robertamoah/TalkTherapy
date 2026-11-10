@@ -63,7 +63,7 @@ test('resending an unrelated update with an already-over-ceiling, UNCHANGED maxS
     // mistake was caught here during review: an earlier draft of the maxUsers test below used a
     // hardcoded 75, which never exceeded this project's real GROUP_THERAPY_MAX_USERS at the time,
     // 100 -- since lowered to 25 by TT-3.2f-a/SCRUM-318).
-    $overCeiling = env('THERAPY_MAX_SESSIONS', 100) + 50;
+    $overCeiling = config('limits.therapy_max_sessions') + 50;
 
     $therapy = Therapy::factory()->create([
         'addedby_type' => User::class,
@@ -78,7 +78,7 @@ test('resending an unrelated update with an already-over-ceiling, UNCHANGED maxS
 });
 
 test('genuinely increasing an already-over-ceiling maxSessions further is still rejected (SCRUM-88)', function () {
-    $overCeiling = env('THERAPY_MAX_SESSIONS', 100) + 50;
+    $overCeiling = config('limits.therapy_max_sessions') + 50;
 
     $therapy = Therapy::factory()->create([
         'addedby_type' => User::class,
@@ -93,7 +93,7 @@ test('genuinely increasing an already-over-ceiling maxSessions further is still 
 });
 
 test('resending an unrelated update with an already-over-ceiling, UNCHANGED maxCounsellors is accepted (SCRUM-88)', function () {
-    $overCeiling = env('GROUP_THERAPY_MAX_COUNSELLORS', 10) + 5;
+    $overCeiling = config('limits.group_therapy_max_counsellors') + 5;
 
     $groupTherapy = GroupTherapy::factory()->create([
         'addedby_type' => User::class,
@@ -108,7 +108,7 @@ test('resending an unrelated update with an already-over-ceiling, UNCHANGED maxC
 });
 
 test('genuinely increasing an already-over-ceiling maxCounsellors further is still rejected (SCRUM-88)', function () {
-    $overCeiling = env('GROUP_THERAPY_MAX_COUNSELLORS', 10) + 5;
+    $overCeiling = config('limits.group_therapy_max_counsellors') + 5;
 
     $groupTherapy = GroupTherapy::factory()->create([
         'addedby_type' => User::class,
@@ -123,7 +123,7 @@ test('genuinely increasing an already-over-ceiling maxCounsellors further is sti
 });
 
 test('resending an unrelated update with an already-over-ceiling, UNCHANGED maxUsers is accepted (SCRUM-88)', function () {
-    $overCeiling = env('GROUP_THERAPY_MAX_USERS', 50) + 25;
+    $overCeiling = config('limits.group_therapy_max_users') + 25;
 
     $groupTherapy = GroupTherapy::factory()->create([
         'addedby_type' => User::class,
@@ -138,7 +138,7 @@ test('resending an unrelated update with an already-over-ceiling, UNCHANGED maxU
 });
 
 test('genuinely increasing an already-over-ceiling maxUsers further is still rejected (SCRUM-88)', function () {
-    $overCeiling = env('GROUP_THERAPY_MAX_USERS', 50) + 25;
+    $overCeiling = config('limits.group_therapy_max_users') + 25;
 
     $groupTherapy = GroupTherapy::factory()->create([
         'addedby_type' => User::class,

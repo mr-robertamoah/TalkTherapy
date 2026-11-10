@@ -122,7 +122,8 @@ includes this migration -- `SET PERSIST log_bin_trust_function_creators=1;` as r
 maintenance mode. The Docker `db` service already sets it (recreate the container after pulling:
 `docker compose up -d --force-recreate db`). If a deploy did fail on it: set the flag, run
 `DROP TRIGGER IF EXISTS cma_no_update; DROP TRIGGER IF EXISTS cma_no_delete;` (and the same for the
-later append-only tables' `aca_no_*` and `cve_no_*` triggers), and re-run the deploy.
+later append-only tables' `aca_no_*`, `cve_no_*`, `ene_no_*` and `sfn_*` triggers -- `SHOW TRIGGERS` lists
+them), and re-run the deploy.
 **None of these trigger migrations is on `main` yet, so the next promotion to `main` is that first
 deploy: set the flag on the production database before it** (and check it on the promotion checklist).
 

@@ -12,6 +12,9 @@ Check every item before going live.
 - [ ] **`APP_URL`** is the real public URL, over **https**, with no trailing path. Every absolute link (emails,
   redirects, notification links) is built on it (SCRUM-397). If it's missing, the default
   `http://127.0.0.1:8000` makes every real request a 400.
+- [ ] **Mail goes to Mailgun, not Mailpit** (SCRUM-413): in the deployed `.env`, the Mailgun `MAIL_HOST` / `MAIL_PORT` /
+  `MAIL_USERNAME` / `MAIL_PASSWORD` lines (commented in `.env.docker.example`) replace the `mailpit` ones, and
+  `MAIL_FROM_ADDRESS` is a real sender on that domain. Otherwise verification and password-reset emails never arrive.
 - [ ] **`TRUSTED_PROXIES`** lists the proxy's own addresses or CIDR ranges, comma-separated (SCRUM-395/400/138). For a
   CDN such as Cloudflare, that is its published ranges.
   - Wildcards (`*`), `REMOTE_ADDR`, `PRIVATE_SUBNETS`, ranges wider than /8 (IPv4) or /29 (IPv6) and IPv4-mapped IPv6

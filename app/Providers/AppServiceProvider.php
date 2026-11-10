@@ -10,6 +10,7 @@ use App\Support\MinishlinkPushSender;
 use App\Support\TrustedProxies;
 use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Foundation\Events\DiagnosingHealth;
+use Illuminate\Http\Middleware\TrustProxies;
 use Illuminate\Http\Request;
 use Illuminate\Mail\Markdown;
 use Illuminate\Queue\Events\JobFailed;
@@ -37,9 +38,16 @@ class AppServiceProvider extends ServiceProvider
         // SCRUM-397: absolute links on APP_URL once deployed, never on the request's Host header.
         AppHost::enforceLinks($this->app);
 
-        // SCRUM-138: a TRUSTED_PROXIES entry that would trust more than a proxy is dropped (bootstrap/app.php),
-        // which fails safe -- but silently brings back "everyone shares one address". Said once per boot.
-        if ($ignored = TrustedProxies::ignored(env('TRUSTED_PROXIES'))) {
+        // SCRUM-395/138: the proxy's own addresses -- only explicit ones (TrustedProxies) -- and only the headers it
+        // must tell us. From config, so it holds once config is cached (SCRUM-413). Set before any request reaches
+        // the global TrustProxies middleware. An entry that would trust more is dropped, which fails safe -- but
+        // silently brings back "everyone shares one address", so it's said once per boot.
+        $configured = (string) config('app.trusted_proxies');
+        if ($proxies = TrustedProxies::fromEnv($configured)) {
+            TrustProxies::at($proxies);
+            TrustProxies::withHeaders(TrustedProxies::HEADERS);
+        }
+        if ($ignored = TrustedProxies::ignored($configured)) {
             Log::warning('TRUSTED_PROXIES entries ignored.', ['ignored' => $ignored]);
         }
 
