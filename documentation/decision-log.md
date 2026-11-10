@@ -11609,3 +11609,42 @@ therapy 18 after the last QA pass.
   which needs AWS-side setup by the user. That's its own ticket.
 - **Repo setting, the user's call:** Dependabot alerts are off. If automated security PRs are turned on, they target
   `main` and must be retargeted to `develop` (see `.github/dependabot.yml`).
+## SCRUM-406 — encrypt Inertia history and clear it when a session ends (2026-11-10)
+
+- **Encrypted, decided per request.**
+  - `config/inertia.php` `history.encrypt` is the switch. It defaults to true; `INERTIA_ENCRYPT_HISTORY=false` turns it
+    off.
+  - `HandleInertiaRequestsV2` asks the browser to encrypt only when it can: an https request, or a localhost host
+    (`App\Support\InertiaHistory::encrypts`, the browser's own secure-context rule).
+  - **Why per request (security review, confirmed in the browser):** without `crypto.subtle`, Inertia 2.3.29 throws
+    "Unable to encrypt history" and Link navigation stops working. My first version's comment ("nothing breaks") was
+    wrong. Over plain http on a non-localhost host (`http://talktherapy.lan`), the server now sends
+    `encryptHistory: false` and navigation works.
+  - Behind a TLS-terminating proxy, `isSecure()` needs `TRUSTED_PROXIES` (SCRUM-138). Without it, history isn't
+    encrypted; that's less private, but not broken.
+- **Where history is cleared:**
+  - **Sign-out and account closure:** after `session()->invalidate()` / `regenerateToken()`, because the flag lives in
+    the session.
+  - **The login page:** this also covers a session that simply expired. The security review found no other path
+    that ends a session or changes the user.
+- **No browser cache for signed-in pages:** `Cache-Control: no-store, private` on a signed-in person's Inertia
+  responses, both the full HTML and the visits (security review). A cached full page carries its props in plain text
+  in `data-page`, and back/forward could serve it from cache. Public pages are unchanged.
+- **What it doesn't cover** (the key is in `sessionStorage`, one per tab):
+  - other tabs left open after signing out in one, until they make a visit;
+  - tabs duplicated before signing out;
+  - walking away without signing out;
+  - a script injected into the page (which could read the page anyway).
+- **Browser QA on the real v2 client:**
+  - `history.state.page` is an ArrayBuffer.
+  - Signed in, back and forward between a help chat and another page work.
+  - After signing out, pressing back three times never shows the chat message; each step refetches and lands on
+    /login or /.
+  - A non-secure host keeps working, with encryption off.
+- **Correction (SCRUM-405):** that ticket's browser QA ran against Inertia v1. The vite dev server's pre-bundle cache
+  (`node_modules/.vite`) didn't rebuild after the upgrade; the production build and the tests used v2. Found here,
+  because history wasn't encrypted. After clearing the cache, the SCRUM-405 walkthrough passes on the real v2 client:
+  sign-in and its errors, Link navigation and back, admin pages, the partial reload of "Show who asked", urgent help
+  end to end, and sign-out.
+  - The host's own `node_modules` is still v1, so assets must be built in the `vite` container, not on the host.
+    Both points are in `.claude/memory.md`.

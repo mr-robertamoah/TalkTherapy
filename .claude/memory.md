@@ -85,6 +85,18 @@ See "Common commands" in `CLAUDE.md`.
   the presence roster and the id-only "a message arrived" pings. **Revisit trigger:** when Reverb is upgraded past 1.10,
   re-test `terminate_connections` for a user whose first channel is private and, if it works,
   close a leaver's subscriptions from the server.
+- **Frontend dependency changes and the dev server (SCRUM-406, 2026-11-10):** the `vite` container has its own
+  `node_modules` (a volume): the host's `node_modules` is not what the app runs, so check packages inside the container.
+  Vite's pre-bundle cache (`node_modules/.vite/deps`) did NOT rebuild after `npm install` changed a package, and the
+  dev server (`public/hot` present) kept serving the old version: SCRUM-405's first browser QA ran against Inertia v1.
+  After any npm change: `docker compose exec vite rm -rf node_modules/.vite && docker compose restart vite`, then confirm in
+  the browser that the new code is what runs before doing browser QA.
+- **Inertia history is encrypted (SCRUM-406):** `config/inertia.php` `history.encrypt` (default true) is the switch;
+  `HandleInertiaRequestsV2` encrypts per request only where the browser can (https or a localhost host,
+  `App\Support\InertiaHistory`) -- asked to without `crypto.subtle`, Inertia v2 breaks navigation. `Inertia::clearHistory()`
+  runs on sign-out and account closure (after the session is replaced -- the flag lives in it) and on the login page.
+  Signed-in Inertia responses get `Cache-Control: no-store`. In the browser, `history.state.page` is an ArrayBuffer.
+  The host's `node_modules` is not the app's: build assets in the `vite` container only (a host build would ship stale packages).
 - The Inertia client and server are both v2 since SCRUM-405 (2026-11-10): `@inertiajs/vue3` 2.3.x with
   `inertiajs/inertia-laravel` 2.x. Until then the client was 1.x (SCRUM-387), so the admin sidebar's
   badges are still fetched from their own JSON route (`GET /administrator/badges`, `useAdminBadges.js`)
