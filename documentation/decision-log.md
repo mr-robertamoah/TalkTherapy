@@ -11554,3 +11554,34 @@ therapy 18 after the last QA pass.
   dropped deepmerge after 2.0.7, so moving the client to a current 2.x removes it.
 - **Suggested, not done here:** a minimum release age in automated dependency updates (Renovate/Dependabot
   `minimumReleaseAge: 7 days`), so a routine update can't pull same-day releases.
+
+## SCRUM-405 — Inertia client v2, and a minimum release age for dependency updates (2026-11-10)
+
+- **Inertia client 1.3 → 2.3.29.** The server was already v2.
+  - **Why this version:** 2.3.29 is a month old, so it meets the SCRUM-404 rule. It removes the last npm
+    advisory, deepmerge, which @inertiajs/core dropped after 2.0.7. `npm audit` is now clean.
+  - **New transitive packages**, all over a week old and with no install scripts: lodash-es, laravel-precognition,
+    @types/lodash(-es). Removed: deepmerge, nprogress, lodash.clonedeep, lodash.isequal.
+  - **v1 → v2 breaking changes checked:**
+    - No `router.replace` anywhere.
+    - The 15 partial reloads (`router.reload({ only })`) don't read props synchronously afterwards. Browser QA
+      covered "Show who asked" on a help report, a partial reload of `report` that keeps component state.
+    - Every import we use from `@inertiajs/vue3` (createInertiaApp, Head, Link, router, useForm, usePage)
+      still exists.
+    - The sign-out hook (SCRUM-399) still cancels with `return false` from `router.on('before')`: v2 prevents
+      a cancelable event when the callback returns false.
+  - **Not done here:** the admin badges stay on their JSON route. Moving them to `Inertia::defer` is the
+    follow-up whose trigger this meets (.claude/memory.md).
+- **`.github/dependabot.yml`:**
+  - Covers composer, npm and GitHub Actions, targets `develop`, and runs weekly (Actions monthly). Minor and patch
+    updates are grouped; majors arrive one at a time.
+  - `cooldown: default-days: 7` builds in the SCRUM-404 rule for version updates.
+  - **Security updates** (security review) are a repository setting, currently off, and alerts aren't enabled
+    either. If they are turned on, their PRs target `main` and ignore `target-branch`; retarget any such PR to
+    `develop`, because a merge into `main` deploys. Enabling alerts is the user's call (repo settings).
+- **Follow-ups from the security review:**
+  - Inertia history encryption, with `clearHistory` on sign-out, so the back button after signing out can't
+    show cached chats. It's a behaviour change and needs its own QA.
+  - Pinning GitHub Actions to commit hashes. They are pinned by tag today, and `main.yml` holds the AWS secrets.
+- **Left for later:** SCRUM-404's exact npm overrides. Three of the releases they hold back are under a week old
+  (4 and 8 Nov). Dependabot doesn't move overrides, so they're removed by hand after about 15 Nov.

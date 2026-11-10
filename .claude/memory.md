@@ -85,14 +85,13 @@ See "Common commands" in `CLAUDE.md`.
   the presence roster and the id-only "a message arrived" pings. **Revisit trigger:** when Reverb is upgraded past 1.10,
   re-test `terminate_connections` for a user whose first channel is private and, if it works,
   close a leaver's subscriptions from the server.
-- The Inertia client and server are a major version apart (SCRUM-387): the client is
-  `@inertiajs/vue3` 1.x (package.json) while the server is `inertiajs/inertia-laravel` 2.x
-  (composer.json). Client-side v2 features -- deferred props (`Inertia::defer`), polling, prefetch,
-  infinite scroll -- are unavailable, so the admin sidebar's badges are fetched from their own JSON
-  route (`GET /administrator/badges`, `useAdminBadges.js`) instead of a deferred prop. CLAUDE.md
-  says "Inertia v2", which is only true of the server. **Revisit trigger:** once the client is
-  upgraded to `@inertiajs/vue3` 2.x, move the badges to `Inertia::defer` on the admin pages and drop
-  the route.
+- The Inertia client and server are both v2 since SCRUM-405 (2026-11-10): `@inertiajs/vue3` 2.3.x with
+  `inertiajs/inertia-laravel` 2.x. Until then the client was 1.x (SCRUM-387), so the admin sidebar's
+  badges are still fetched from their own JSON route (`GET /administrator/badges`, `useAdminBadges.js`)
+  instead of a deferred prop. **Open follow-up (trigger met):** move the badges to `Inertia::defer` on the
+  admin pages and drop the route. v2 behaviour to remember: partial reloads (`router.reload({ only })`) are
+  async -- they don't cancel other visits and show no progress bar; `router.replace` is client-side only
+  (use `router.get(url, data, { replace: true })` for a server visit).
 
 - **Counsellor verification is current, not historical (SCRUM-31, 2026-11-06).**
   `Counsellor::isVerified()` means verified, not ended (`verification_expires_at`) and not revoked
