@@ -11585,3 +11585,27 @@ therapy 18 after the last QA pass.
   - Pinning GitHub Actions to commit hashes. They are pinned by tag today, and `main.yml` holds the AWS secrets.
 - **Left for later:** SCRUM-404's exact npm overrides. Three of the releases they hold back are under a week old
   (4 and 8 Nov). Dependabot doesn't move overrides, so they're removed by hand after about 15 Nov.
+
+## SCRUM-407 — GitHub Actions pinned to commit hashes (2026-11-10)
+
+- Every `uses:` in `ci.yml` and `main.yml` is pinned to a full commit hash, with the version in a trailing comment
+  (`@<sha> # v4.4.0`). A tag can be moved to point at different code; a hash can't. `main.yml`, the production deploy,
+  holds the AWS secrets.
+- **No version changed:** each hash is the commit its tag pointed to on 2026-11-10. `main.yml` keeps
+  `actions/checkout` v4.1.7 and `ci.yml` keeps v4 (now v4.4.0), as before. All of those commits are over a month old,
+  so the SCRUM-404 rule is met.
+- **Keeping them current:** Dependabot's github-actions updates (SCRUM-405: monthly, 7-day cooldown) bump hash pins
+  and their version comments together.
+- **Also from the devops review:**
+  - Both workflows get a read-only token through `permissions:`: `contents: read`, plus `pull-requests: read` in CI
+    for `dorny/paths-filter`. Before, they ran with the repo's default token, which may be read/write.
+  - `persist-credentials: false` is set on every checkout. Nothing fetches or pushes afterwards; the lint job's
+    `git diff` is local.
+  - The Dependabot github-actions group now takes minor and patch updates only, so majors come one at a time, as the
+    file's header says. Majors for checkout, setup-node and configure-aws-credentials are pending, and one of them
+    touches the deploy.
+  - `ramsey/composer-install@v3` was a moving *branch*, not a tag; it's now a fixed commit.
+- **Follow-up:** the deploy authenticates with long-lived IAM keys. It should move to GitHub OIDC (`role-to-assume`),
+  which needs AWS-side setup by the user. That's its own ticket.
+- **Repo setting, the user's call:** Dependabot alerts are off. If automated security PRs are turned on, they target
+  `main` and must be retargeted to `develop` (see `.github/dependabot.yml`).
