@@ -11724,3 +11724,28 @@ From the SCRUM-411 readiness check (devops-engineer). All in one PR, by the user
   code says so in a comment.
 - Round trips (migrate → full reset → migrate) pass on SQLite and on a throwaway MySQL database. The filtered query
   finds a real foreign key in the current database.
+
+## SCRUM-181 closed as already fixed; SCRUM-214 — organisation admins create join links (2026-11-10)
+
+- **SCRUM-181** ("billing config never consumed") is closed: TT-7.3a (SCRUM-48) and the TT-7.3b epic (SCRUM-230,
+  12 sub-tickets) built exactly what it asked for after it was filed.
+  - Pay-per-use charges the organisation.
+  - Retainer sessions become invoice lines, which are settled automatically.
+  - Counsellors are paid for organisation-funded work.
+- **SCRUM-214:** a "Join links" card on the organisation admin dashboard (`SelfApplyLinkPanel.vue`, above Members,
+  consumer orgs only).
+  - It creates a self-apply link and shows it with a copy button.
+  - It says each link works **once, for one person**: it deactivates on use (SCRUM-101's anti-replay fix). So an
+    admin creates one per person; the card doesn't pretend to offer one shareable link.
+  - If self-apply is off or the org is unverified, it says what to change and shows no button.
+- **Two checks added where the link is created** (`EnsureUserCanCreateOrganizationSelfApplyLinkAction`):
+  - **In the admin's own name.** `EnsureAddedbyIsValidAction` lets a platform administrator name anyone as the
+    creator, and `EnsureUserCanCreateLinkForAction`'s own-account check skips this link type. For anyone else, a
+    different creator was already refused by the generic check.
+  - **Only a link that can work.** A verified, consumer organisation with self-apply on is required; otherwise 422.
+    The link used to be created and fail only for whoever opened it.
+- **The applicant's side is left for SCRUM-415:**
+  - opening the link applies immediately, with no confirm step;
+  - success shows nothing;
+  - the failure flash can be used up by concurrent requests on the same session (seen in browser QA; the server side
+    is fine in a test).
