@@ -5,8 +5,8 @@ import axios from 'axios'
 // GetAdminToDoCountsAction::badges()), never a reload of the page (which re-ran the whole page's
 // controller). One copy for the app: AdminLayout shows it and refreshes it after each page; a page
 // that has just resolved something calls refreshAdminBadges({ force: true }) so its badge drops
-// straight away (the server cleared its cached counts). The client is Inertia 1.x, which has no
-// deferred props -- see .claude/memory.md.
+// straight away (the server cleared its cached counts). Not a deferred prop, on purpose (SCRUM-410): it
+// would load through a partial reload, which re-runs the page's whole controller -- see .claude/memory.md.
 
 const badges = ref({})
 

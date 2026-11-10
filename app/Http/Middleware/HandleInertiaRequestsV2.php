@@ -91,7 +91,8 @@ class HandleInertiaRequestsV2 extends Middleware
     // SCRUM-387: the admin area's sidebar, on its pages only (null elsewhere -- always present, so
     // a value shared for one request can't linger into the next where the app is long-lived). Its
     // badges are not a prop: AdminLayout.vue fetches them from admin.badges once a page is up, so a
-    // page never waits on the counts (the client is Inertia v1, which has no deferred props).
+    // page never waits on the counts. Not a deferred prop either, on purpose (SCRUM-410): a deferred prop
+    // loads through a partial reload, which runs the page's whole controller again.
     private function adminArea(Request $request): array
     {
         return [

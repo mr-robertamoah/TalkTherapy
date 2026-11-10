@@ -11648,3 +11648,19 @@ therapy 18 after the last QA pass.
   end to end, and sign-out.
   - The host's own `node_modules` is still v1, so assets must be built in the `vite` container, not on the host.
     Both points are in `.claude/memory.md`.
+
+## SCRUM-410 — the admin badges stay on their JSON route; won't move to Inertia::defer (2026-11-10)
+
+- **The ticket:** move the admin sidebar's badges from `GET /administrator/badges` to a deferred prop. The trigger
+  was my own note in `.claude/memory.md` ("once the client is v2"), and SCRUM-405 met it.
+- **Why not (found before any code, the user's choice):**
+  - A deferred prop is fetched with a partial reload of the same URL. Laravel runs the page's controller in full,
+    and Inertia only filters which props it returns, so every eagerly built prop is built again.
+  - Every admin navigation would run its controller twice, plus once more after each action that refreshes the
+    badges.
+  - SCRUM-387's review removed exactly that cost, which is why it moved the badges from a partial reload to their
+    own route. My trigger note had missed it.
+- **What changed:** documentation only. The memory note and the two code comments that gave the wrong reason ("the
+  client is v1") now give the real one.
+- **When to revisit:** only if every admin page's props become lazy closures, so that a partial reload computes
+  nothing but the badges.
