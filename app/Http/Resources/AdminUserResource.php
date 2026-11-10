@@ -23,10 +23,14 @@ class AdminUserResource extends JsonResource
             'username' => $this->username,
             'otherNames' => $this->otherNames,
             'email' => $this->email,
-            'emailVerified' => !!$this->email_verified_at,
+            'emailVerified' => (bool) $this->email_verified_at,
             'dob' => $this->dob,
             'age' => $this->age,
             'createdAt' => $this->created_at,
+            // SCRUM-366: links an administrator to their read log. Only when loaded (no query per row).
+            'isAdmin' => $this->relationLoaded('administrator') ? (bool) $this->administrator : null,
+            // SCRUM-193: AdminUserComponent shows it beside the username in the admin users list.
+            'avatar' => $this->avatar?->url,
         ];
     }
 }

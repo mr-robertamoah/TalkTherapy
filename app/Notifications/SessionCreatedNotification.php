@@ -2,9 +2,11 @@
 
 namespace App\Notifications;
 
-use App\Http\Resources\SessionResource;
+use App\Contracts\ShownInNotificationCenter;
 use App\Models\Counsellor;
 use App\Models\Session;
+use App\Support\NotificationEntry;
+use App\Support\TherapyLink;
 use Carbon\Carbon;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -12,7 +14,7 @@ use Illuminate\Notifications\Messages\BroadcastMessage;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
-class SessionCreatedNotification extends Notification implements ShouldQueue
+class SessionCreatedNotification extends Notification implements ShouldQueue, ShownInNotificationCenter
 {
     use Queueable;
 
@@ -33,9 +35,10 @@ class SessionCreatedNotification extends Notification implements ShouldQueue
     {
         $via = ['database', 'broadcast'];
 
-        if ($notifiable->email_verified_at)
+        if ($notifiable->email_verified_at) {
             $via[] = 'mail';
-        
+        }
+
         return $via;
     }
 
@@ -54,10 +57,10 @@ class SessionCreatedNotification extends Notification implements ShouldQueue
             ->success()
             ->subject("'{$this->session->name}' Session")
             ->greeting("Hello {$name}!")
-            ->line("A session with name: '{$this->session->name}' has been created for '{$this->session->for->name}' " . ($this->session->for->isTherapy ? "Therapy." : "Group Therapy."))
+            ->line("A session with name: '{$this->session->name}' has been created for '{$this->session->for->name}' ".($this->session->for->isTherapy ? 'Therapy.' : 'Group Therapy.'))
             ->line("This session will start on {$startTime}. The session will last {$duration} minutes. Please take notice.")
             ->action("Visit {$type} Page", $url)
-            ->line("You may receive other reminders before the starting time.")
+            ->line('You may receive other reminders before the starting time.')
             ->line("Thank you for choosing to 'TalkTherapy'.");
     }
 
@@ -70,18 +73,34 @@ class SessionCreatedNotification extends Notification implements ShouldQueue
     {
         return [
             'session_id' => $this->session->id,
+            // SCRUM-39: the therapy or group, so the notification center can link it (old rows have none).
+            ...($this->session->for ? TherapyLink::ids($this->session->for) : []),
         ];
     }
-    
+
     public function toBroadcast(object $notifiable): BroadcastMessage
     {
-        return (new BroadcastMessage([
-            'session' => new SessionResource($this->session)
-        ]));
+        // SCRUM-374: a small fixed summary -- the same for every recipient, never a per-viewer
+        // resource (payment status, dob) built for whoever happened to be signed in.
+        return new BroadcastMessage([
+            'session' => [
+                'id' => $this->session->id,
+                'name' => $this->session->name,
+                'startTime' => $this->session->start_time,
+                'endTime' => $this->session->end_time,
+                'status' => $this->session->status,
+            ],
+        ]);
     }
 
     public function broadcastType(): string
     {
         return 'session.created';
+    }
+
+    // SCRUM-39 (TT-5.4b): in the notification center -- from the saved ids only, never more than the email.
+    public static function present(array $data): NotificationEntry
+    {
+        return new NotificationEntry('A session was scheduled', '', TherapyLink::fromIds($data));
     }
 }

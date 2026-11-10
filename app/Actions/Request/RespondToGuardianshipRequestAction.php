@@ -3,37 +3,110 @@
 namespace App\Actions\Request;
 
 use App\Actions\Action;
+use App\Actions\Guardianship\HandleGuardianRestoredAction;
 use App\Actions\User\EnsureUserCanBeGuardianAction;
 use App\DTOs\CreateRequestDTO;
 use App\DTOs\RequestResponseDTO;
 use App\Enums\RequestStatusEnum;
-use App\Models\License;
+use App\Models\Request;
 use App\Notifications\GuardianshipEstablishedNotification;
+use Illuminate\Database\UniqueConstraintViolationException;
+use Illuminate\Support\Facades\DB;
 
 class RespondToGuardianshipRequestAction extends Action
 {
     public function execute(RequestResponseDTO $requestResponseDTO)
     {
-        EnsureUserCanBeGuardianAction::new()->execute(
-            CreateRequestDTO::new()->fromArray(['to' => $requestResponseDTO->request->to]),
-            "You are trying to respond to a guardianship request but do not qualify to be a guardian because you are not an adult, have not set date or birth, have not set email or have not verified your email."
-        );
+        // SCRUM-299: only an ACCEPT needs to re-confirm guardian eligibility -- rejecting a
+        // request one didn't ask for and doesn't qualify for must always be allowed regardless
+        // of eligibility, the same way EnsureUserCanRespondToRequestAction's own authorization
+        // check never depends on the requestor's eligibility either. This previously ran
+        // unconditionally, so a recipient who'd become ineligible (or never was) got a 422
+        // trying to reject, not just accept.
+        //
+        // A null response is an IMPLICIT reject (EnsureRequestResponseIsValidAction's own
+        // documented convention), but every real caller (RequestBadge.vue's clickedResponse(),
+        // and every other RespondTo*RequestAction's own test suite) sends the explicit string
+        // 'rejected' -- checking merely `! is_null(...)` would still run this for that real
+        // reject payload, since 'rejected' is non-null. Must key off "is this actually an
+        // accept" instead.
+        if (strtoupper((string) $requestResponseDTO->response) === RequestStatusEnum::accepted->value) {
+            EnsureUserCanBeGuardianAction::new()->execute(
+                CreateRequestDTO::new()->fromArray(['to' => $requestResponseDTO->request->to]),
+                'You are trying to respond to a guardianship request but do not qualify to be a guardian because you are not an adult, have not set date or birth, have not set email or have not verified your email.'
+            );
+        }
 
-        $requestResponseDTO->request->update([
-            'status' => is_null($requestResponseDTO->response)
-                ? RequestStatusEnum::rejected->value
-                : strtoupper($requestResponseDTO->response)
-        ]);
-        
-        $request = $requestResponseDTO->request->refresh();
+        // Locking the request row and re-checking its status inside the lock closes the same
+        // double-submission race SCRUM-80 fixed for group therapy membership requests: two
+        // concurrent responses to the same request both queue on this lock, so the second one
+        // always observes the first's committed status update and just no-ops instead of
+        // creating a duplicate guardianship row (SCRUM-91).
+        //
+        // That alone doesn't close a *different* pair's worth of race: the same ward could end
+        // up with two separate pending requests to the same guardian (each locks a different
+        // Request row, so they don't serialize against each other), and accepting both -- even
+        // sequentially, no concurrency required -- would try to create the guardianship row
+        // twice. $created only reflects whether *this* call actually created a NEW guardianship
+        // row, so a request that turns out to be redundant (the pair already exists) still
+        // ends up ACCEPTED but doesn't duplicate the row or re-send the notification. The
+        // guardianship(guardian_id, ward_id) unique index (SCRUM-99) is the actual guarantee
+        // here -- the existence check is just to avoid an avoidable exception on the common
+        // path, and the catch below is the fallback for the residual race the existence check
+        // itself can't close on its own.
+        [$request, $created] = DB::transaction(function () use ($requestResponseDTO) {
+            $request = Request::query()->lockForUpdate()->findOrFail($requestResponseDTO->request->id);
 
-        if ($request->status == RequestStatusEnum::accepted->value) {
-            $request->from->guardians()->create(['guardian_id' => $request->to->id]);
+            if ($request->status != RequestStatusEnum::pending->value) {
+                return [$request, false];
+            }
+
+            $request->update([
+                'status' => is_null($requestResponseDTO->response)
+                    ? RequestStatusEnum::rejected->value
+                    : strtoupper($requestResponseDTO->response),
+            ]);
+
+            $request = $request->refresh();
+
+            $created = $request->status == RequestStatusEnum::accepted->value
+                && $this->createGuardianshipIfMissing($request);
+
+            return [$request, $created];
+        });
+
+        if ($created) {
             $request->from->notify(
                 new GuardianshipEstablishedNotification($request->to)
             );
         }
-        
+
         return $request;
+    }
+
+    private function createGuardianshipIfMissing(Request $request): bool
+    {
+        // SCRUM-288: under the ward's lock, with locking reads (HandleGuardianRestoredAction::around()),
+        // so a paused ward is told once that their therapies have started again.
+        try {
+            return HandleGuardianRestoredAction::new()->around($request->from, HandleGuardianRestoredAction::GUARDIANSHIP_CREATED, function () use ($request) {
+                if ($request->from->guardians()->where('guardian_id', $request->to->id)->sharedLock()->first(['id'])) {
+                    return false;
+                }
+
+                // TT-4.10a/SCRUM-290: captured once, here, from the ward's OWN live isAdult() at
+                // this exact moment -- the snapshot written for a Guardianship row (also by
+                // PerformGuardianshipLinkAction). See the column's own migration for why this must
+                // be stable regardless of a later dob edit.
+                $request->from->guardians()->create([
+                    'guardian_id' => $request->to->id,
+                    'ward_was_minor_at_creation' => ! $request->from->isAdult(),
+                ]);
+
+                return true;
+            });
+        } catch (UniqueConstraintViolationException) {
+            return false;
+        }
     }
 }

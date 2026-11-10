@@ -8,7 +8,6 @@ use App\Actions\HowToStep\DeleteHowToStepAction;
 use App\Actions\HowToStep\UpdateHowToStepAction;
 use App\DTOs\CreateHowToDTO;
 use App\DTOs\CreateHowToStepDTO;
-use App\Models\HowToStep;
 use Illuminate\Support\Facades\DB;
 
 class UpdateHowToAction extends Action
@@ -17,51 +16,55 @@ class UpdateHowToAction extends Action
 
     public function execute(CreateHowToDTO $createHowToDTO)
     {
-        DB::beginTransaction();
+        // SCRUM-379 (found by a review test): a closure, so ANY exception rolls back. The old manual
+        // beginTransaction()/commit() left the transaction open when a step failed (e.g. a step id
+        // from another how-to), so the rest of that request ran inside a transaction never committed.
+        return DB::transaction(function () use ($createHowToDTO) {
 
-        $this->setData($createHowToDTO);
-        
-        $createHowToDTO->howTo->update($this->data);
+            $this->setData($createHowToDTO);
 
-        foreach ($createHowToDTO->howToSteps as $howToStepData) {
-            UpdateHowToStepAction::new()->execute(
-                CreateHowToStepDTO::new()->fromArray([
-                    'howToStep' => HowToStep::find($howToStepData['id']),
-                    'user' => $createHowToDTO->user,
-                    'name' => getArrayKey('name', $howToStepData),
-                    'description' => getArrayKey('description', $howToStepData),
-                    'position' => getArrayKey('position', $howToStepData),
-                    'elementId' => getArrayKey('elementId', $howToStepData),
-                    'file' => getArrayKey('file', $howToStepData),
-                ])
-            );
-        }
+            $createHowToDTO->howTo->update($this->data);
 
-        foreach ($createHowToDTO->addedHowToSteps as $howToStepData) {
-            CreateHowToStepAction::new()->execute(
-                CreateHowToStepDTO::new()->fromArray([
-                    'howTo' => $createHowToDTO->howTo,
-                    'user' => $createHowToDTO->user,
-                    'name' => getArrayKey('name', $howToStepData),
-                    'description' => getArrayKey('description', $howToStepData),
-                    'position' => getArrayKey('position', $howToStepData),
-                    'elementId' => getArrayKey('elementId', $howToStepData),
-                    'file' => getArrayKey('file', $howToStepData),
-                ])
-            );
-        }
+            // SCRUM-379 (security review): steps are looked up within THIS how-to, so editing one can't
+            // replace or delete another how-to's steps (and their files); an unknown id is a 404.
+            foreach ($createHowToDTO->howToSteps as $howToStepData) {
+                UpdateHowToStepAction::new()->execute(
+                    CreateHowToStepDTO::new()->fromArray([
+                        'howToStep' => $createHowToDTO->howTo->howToSteps()->findOrFail($howToStepData['id']),
+                        'user' => $createHowToDTO->user,
+                        'name' => getArrayKey('name', $howToStepData),
+                        'description' => getArrayKey('description', $howToStepData),
+                        'position' => getArrayKey('position', $howToStepData),
+                        'elementId' => getArrayKey('elementId', $howToStepData),
+                        'file' => getArrayKey('file', $howToStepData),
+                    ])
+                );
+            }
 
-        foreach ($createHowToDTO->deletedHowToSteps as $howToStepData) {
-            DeleteHowToStepAction::new()->execute(
-                CreateHowToStepDTO::new()->fromArray([
-                    'howToStep' => HowToStep::find($howToStepData['id']),
-                ])
-            );
-        }
+            foreach ($createHowToDTO->addedHowToSteps as $howToStepData) {
+                CreateHowToStepAction::new()->execute(
+                    CreateHowToStepDTO::new()->fromArray([
+                        'howTo' => $createHowToDTO->howTo,
+                        'user' => $createHowToDTO->user,
+                        'name' => getArrayKey('name', $howToStepData),
+                        'description' => getArrayKey('description', $howToStepData),
+                        'position' => getArrayKey('position', $howToStepData),
+                        'elementId' => getArrayKey('elementId', $howToStepData),
+                        'file' => getArrayKey('file', $howToStepData),
+                    ])
+                );
+            }
 
-        DB::commit();
+            foreach ($createHowToDTO->deletedHowToSteps as $howToStepData) {
+                DeleteHowToStepAction::new()->execute(
+                    CreateHowToStepDTO::new()->fromArray([
+                        'howToStep' => $createHowToDTO->howTo->howToSteps()->findOrFail($howToStepData['id']),
+                    ])
+                );
+            }
 
-        return $createHowToDTO->howTo->refresh();
+            return $createHowToDTO->howTo->refresh()->load('howToSteps.stepFile'); // SCRUM-380: no lazy load per step in the response
+        });
     }
 
     private function setData(CreateHowToDTO $createHowToDTO)
@@ -70,18 +73,19 @@ class UpdateHowToAction extends Action
         $this->setValueOnData('description', $createHowToDTO);
         $this->setValueOnData('page', $createHowToDTO);
     }
-    
+
     private function setValueOnData(
-        String $dataKey,
+        string $dataKey,
         CreateHowToDTO $createHowToDTO,
-        String|null $objectKey = null
+        ?string $objectKey = null
     ) {
         $objectKey = $objectKey ?: $dataKey;
 
         if (
-            !is_null($createHowToDTO->$objectKey) &&
+            ! is_null($createHowToDTO->$objectKey) &&
             $createHowToDTO->$objectKey !== $createHowToDTO->howTo->$dataKey
-        )        
+        ) {
             $this->data[$dataKey] = $createHowToDTO->$objectKey;
+        }
     }
 }

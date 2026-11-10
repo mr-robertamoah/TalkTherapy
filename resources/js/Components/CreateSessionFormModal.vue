@@ -1,5 +1,6 @@
 <script setup>
-import { computed, onBeforeMount, ref, unref, watch, watchEffect } from 'vue';
+import { ref, unref, watch, watchEffect } from 'vue';
+import useScheduleTimes from '@/Composables/useScheduleTimes'
 import TextInput from '@/Components/TextInput.vue';
 import InputLabel from '@/Components/InputLabel.vue';
 import InputError from '@/Components/InputError.vue';
@@ -13,7 +14,6 @@ import Alert from "./Alert.vue";
 import PrimaryButton from "./PrimaryButton.vue";
 import Select from "./Select.vue";
 import { useForm } from '@inertiajs/vue3';
-import { addMinutes, format, differenceInMinutes } from 'date-fns';
 import PreferenceItem from './PreferenceItem.vue';
 
 const { alertData, clearAlertData, setAlertData, setFailedAlertData } = useAlert()
@@ -34,8 +34,8 @@ const emits = defineEmits(['closeModal', 'onSuccess'])
 
 const sessionCreationMap = ref(null)
 const loading = ref(false)
-const startTime = ref('')
-const endTime = ref('')
+// SCRUM-379: shared start/end handling (resources/js/Composables/useScheduleTimes.js).
+const { startTime, endTime, clearTimes, timesError, computedStartTime, computedEndTime, computedNow, computedDuration } = useScheduleTimes({ defaultsWhen: () => props.show })
 const selectedCases = ref([])
 const sessionForm = useForm({
     'name': '',
@@ -48,11 +48,6 @@ const sessionForm = useForm({
     'type': '',
     'paymentType': '',
     'cases': []
-})
-
-onBeforeMount(() => {
-    startTime.value = getDefaultTime(30)
-    endTime.value = getDefaultTime(70)
 })
 
 watchEffect(() => {
@@ -84,62 +79,7 @@ watch(() => props.therapy.cases?.length, () => {
     if (props.therapy.cases?.length)
         sessionForm.cases = props.therapy.cases.map((c) => c.id)
 })
-watch(() => startTime.value, () => {
-    if (
-        !isMinutesBefore({
-            firstTime: endTime.value, 
-            secondTime: startTime.value, 
-            minutes: 30
-        })
-    ) endTime.value = addMinitesToDate(startTime.value, 30)
-})
-watch(() => endTime.value, () => {
-    if (
-        !isMinutesBefore({
-            firstTime: endTime.value, 
-            secondTime: startTime.value, 
-            minutes: 30
-        })
-    ) endTime.value = addMinitesToDate(startTime.value, 30)
-})
 
-const computedStartTime = computed(() => {
-    return new Date(startTime.value).toGMTString()
-})
-const computedEndTime = computed(() => {
-    return new Date(endTime.value).toGMTString()
-})
-const computedNow = computed(() => {
-    return new Date().toISOString().slice(0, 16)
-})
-const computedDuration = computed(() => {
-    return (endTime.value && startTime.value) ? differenceInMinutes(new Date(endTime.value), new Date(startTime.value)) : ''
-})
-
-function isMinutesBefore({firstTime, secondTime = null, minutes}) {
-    if (!firstTime) return null
-
-    const comparisonDate = addMinutes(secondTime ? new Date(secondTime) : new Date(), minutes)
-
-    return new Date(firstTime) >= comparisonDate
-}
-
-function getDefaultTime(minutes) {
-    const now = new Date()
-    let time = addMinutes(now, minutes).toISOString().slice(0, 16)
-    return time
-}
-
-function formatDateTimeForFrontend(dateTime) {
-    return format(dateTime, "yyyy-MM-dd'T'HH:mm")
-}
-
-function addMinitesToDate(time, minutes) {
-    if (!time) return null
-    const newTime = formatDateTimeForFrontend(addMinutes(time, minutes))
-    
-    return newTime
-}
 
 async function createSession() {
     if (!sessionForm.name) {
@@ -151,18 +91,9 @@ async function createSession() {
         return
     }
 
-    // start cannot be before 30 mins from now, end cannot be 30 mins before start
-    if (!isMinutesBefore({ firstTime: startTime.value, minutes: 25 })) {
-        setFailedAlertData({
-            message: 'Start time must be at least 25 minutes away from current time. Please increase the start time.',
-        })
-        return
-    }
-    
-    if (!isMinutesBefore({ firstTime: endTime.value, secondTime: startTime.value, minutes: 30})) {
-        setFailedAlertData({
-            message: 'End time must be at least 30 minutes away from start time. Please increase the end time.',
-        })
+    const timeError = timesError()
+    if (timeError) {
+        setFailedAlertData({ message: timeError })
         return
     }
 
@@ -238,8 +169,7 @@ function clearData() {
     sessionForm.lat = ''
     sessionForm.landmark = ''
     sessionForm.startTime = ''
-    startTime.value = ''
-    endTime.value = ''
+    clearTimes()
     sessionForm.endTime = ''
     sessionForm.type = ''
     sessionForm.cases = []

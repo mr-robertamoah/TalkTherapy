@@ -1,0 +1,87 @@
+<?php
+
+namespace App\Http\Resources;
+
+use App\Actions\Report\EnsureCanReportReportableAction;
+use App\Actions\Safety\EnsureCanFlagClientAction;
+use App\Enums\HelpRequestStatusEnum;
+use App\Models\HelpRequest;
+use App\Models\Language;
+use App\Support\Countries;
+use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\JsonResource;
+
+// SCRUM-33: a help request as its viewer may see it.
+// - The person: its status, and once answered the counsellor's name and the chat's session.
+// - A counsellor (rung, or the one who answered): the short summary only -- first name or
+//   "Anonymous", adult or minor, country, languages, the person's note (the user's decision). Never
+//   whether the account is suspended, nor anything else about them.
+/** @mixin HelpRequest */
+class HelpRequestResource extends JsonResource
+{
+    public function toArray(Request $request): array
+    {
+        $viewer = $request->user();
+        $isPerson = $viewer && $this->resource->isFor($viewer);
+        $connected = $this->status === HelpRequestStatusEnum::connected;
+
+        return [
+            'id' => $this->id,
+            'status' => $this->status->value,
+            'isPerson' => $isPerson,
+            'createdAt' => $this->created_at?->toIso8601String(),
+            'acceptedAt' => $this->accepted_at?->toIso8601String(),
+            'endedAt' => $this->ended_at?->toIso8601String(),
+            'sessionId' => $this->session_id,
+            'counsellorName' => $this->counsellor_id ? $this->counsellor?->getName() : null,
+            'anonymous' => $this->anonymous,
+            // Audio: an adult, while connected (a minor needs a guardian's consent -- the server decides).
+            // A suspended account can't reach the call routes, so they aren't offered it (text only).
+            'audioPossible' => $connected && ! $this->was_minor && ! $viewer?->isAccountSuspended()
+                && ! $this->user?->isAccountSuspended(),
+            // Why not, for the chat to say: a minor needs a guardian's consent; otherwise text only.
+            'audioUnavailable' => $this->was_minor ? 'minor' : 'text_only',
+            'person' => $isPerson ? null : $this->summary(),
+            // TT-4.4c: the messages are gone once the retention period has passed.
+            'transcriptDeleted' => (bool) $this->transcript_deleted_at,
+            // TT-4.4c: an invitation to continue in a regular therapy with the counsellor. The person
+            // gets who to start it with; the counsellor, whether they've invited or still can.
+            'invitedAt' => $this->invited_at?->toIso8601String(),
+            // Shown only while that counsellor can still take on clients (review) -- otherwise it would lead
+            // to a profile with no way to start one -- and until the person has asked them (QA).
+            'invite' => $isPerson && $this->invited_at && $this->counsellor?->isVerified() && ! $this->counsellor->isSuspended()
+                && ! $this->resource->personAlreadyAskedCounsellor()
+                ? [
+                    'counsellorId' => $this->counsellor_id,
+                    'counsellorName' => $this->counsellor->getName(),
+                    // The counsellor sent it, or our team suggested it (worded so).
+                    'byCounsellor' => (int) $this->invited_by_id === (int) $this->counsellor->user_id,
+                ]
+                : null,
+            // SCRUM-32: the counsellor who answered, while the feature is on -- whether they can raise a
+            // safety flag for the person now (during the chat, or for a while after it ended).
+            'canRaiseSafetyFlag' => $this->when(
+                ! $isPerson && config('safety.enabled') && $viewer && $this->resource->isAnsweredBy($viewer),
+                fn () => EnsureCanFlagClientAction::new()->canFlag(fn (EnsureCanFlagClientAction $can) => $can->forHelpChat($viewer, $this->resource)),
+            ),
+            'canInvite' => ! $isPerson && $viewer && $this->resource->isAnsweredBy($viewer) && $this->resource->canInviteToTherapy(),
+            // SCRUM-398: a counsellor may report it now -- the one who answered, or one it is ringing. Once.
+            'canReport' => ! $isPerson && $viewer?->counsellor !== null
+                && EnsureCanReportReportableAction::new()->mayReportHelpRequest($viewer, $this->resource),
+        ];
+    }
+
+    private function summary(): array
+    {
+        $person = $this->user;
+        $languageIds = array_filter((array) ($person?->settings['languages'] ?? []), 'is_numeric');
+
+        return [
+            'name' => $this->anonymous ? 'Anonymous' : ($person?->firstName ?: 'Someone'),
+            'isMinor' => $this->was_minor,
+            'country' => Countries::nameOf($this->country_code),
+            'languages' => $languageIds ? Language::query()->whereIn('id', $languageIds)->orderBy('name')->pluck('name')->all() : [],
+            'note' => $this->note,
+        ];
+    }
+}

@@ -12,12 +12,12 @@
         <div class="text-gray-600 font-bold capitalize">Filter By</div>
     
         <div class="mt-4">
-            <label class="flex items-center mb-2">
-                <Checkbox v-model:checked="filters.sessions"></Checkbox>
+            <label class="flex items-center mb-2" :class="{'opacity-50 cursor-not-allowed': computedFiltersDisabled}">
+                <Checkbox v-model:checked="filters.sessions" :disabled="computedFiltersDisabled"></Checkbox>
                 <span class="text-gray-600 ml-2">Sessions</span>
             </label>
-            <label class="flex items-center">
-                <Checkbox v-model:checked="filters.topics"></Checkbox>
+            <label class="flex items-center" :class="{'opacity-50 cursor-not-allowed': computedFiltersDisabled}">
+                <Checkbox v-model:checked="filters.topics" :disabled="computedFiltersDisabled"></Checkbox>
                 <span class="text-gray-600 ml-2">Topics</span>
             </label>
         </div>
@@ -33,19 +33,35 @@
             <PrimaryButton
                 v-if="computedCanEnd"
                 @click="() => clickedSessionAction('end')" class="shrink-0">end session for you</PrimaryButton>
+            <PrimaryButton
+                v-if="computedCanJoinVideo && !videoActive"
+                @click="videoActive = true" class="shrink-0">join video</PrimaryButton>
+            <span
+                v-if="computedGroupVideoNeedsConsent"
+                class="min-w-0 shrink whitespace-normal text-sm text-gray-600">Video calls in a group need a parent or guardian's consent first.</span>
     </div>
+    <VideoCallPanel
+        v-if="computedCanJoinVideo && videoActive"
+        :session="activeSession"
+        @close="videoActive = false"
+    />
     <div class="my-2 w-full h-1 rounded bg-stone-400"  v-if="showSessions"></div>
+    <TherapyPausedBanner v-if="(computedAccessPaused || therapy?.pausedMembers?.length) && isParticipant" :viewer-paused="computedViewerPaused" :therapy="therapy" :therapy-type="therapyType" class="mb-2" />
     <div v-bind="$attrs" class="min-h-[500px] relative flex flex-col items-center justify-center">
-        <div v-if="therapy.status == 'PENDING'"
-            class="flex absolute top-0 left-0 w-full h-full bg-gray-500 justify-center items-center text-gray-600 text-sm bg-opacity-35 rounded z-[1]">
-            therapy is still pending
+        <div v-if="therapy.status == 'PENDING' && !isParticipant"
+            class="flex absolute top-0 left-0 w-full h-full bg-gray-500 justify-center items-center text-white text-sm bg-opacity-75 rounded z-[1]">
+            <div class="bg-white p-4 rounded-lg shadow-lg text-gray-700 text-center">
+                <div class="font-semibold mb-2">Therapy Pending</div>
+                <div class="text-sm">This therapy is awaiting approval or counsellor assignment</div>
+            </div>
         </div>
         <div 
             class="rounded-lg bg-stone-100 w-full min-h-[50px] p-2 space-x-3 flex justify-start items-center overflow-hidden overflow-x-auto mb-2 transition duration-200"
             :class="[computedFiltered ? 'opacity-100 translate-y-0' : 'opacity-20 -translate-y-5']"
             v-if="computedFiltered"
         >
-            <PrimaryButton class="shrink-0" v-if="isCounsellor" @click="clickedCreateTopic">create topic</PrimaryButton>
+            <!-- SCRUM-380: topics are 1:1-only (see getTopics()), so no "create topic" on group pages. -->
+            <PrimaryButton class="shrink-0" v-if="isCounsellor && therapyType !== 'group' && !computedAccessPaused" @click="clickedCreateTopic">create topic</PrimaryButton>
             <template v-if="computedFilteredItems.length">
                 <TherapyFilterItem
                     v-for="(item, idx) in computedFilteredItems"
@@ -107,7 +123,7 @@
                 ref="messageArea"
             >
                 <div v-if="setting.show" class="text-sm p-2 text-green-300 bg-green-600 rounded my-2 w-full text-center sticky top-1">{{setting.type + ' current topic...'}}</div>
-                <div v-if="!getting && !computedMessagesPage && chatMessages.length" class="w-fit mx-auto my-2 text-sm text-gray-600">no more messages</div>
+                <div v-if="!getting && !computedMessagesPage && chatMessages.length" class="absolute top-1 left-1/2 -translate-x-1/2 z-10 text-sm text-gray-600">no more messages</div>
                 <div v-if="!getting && computedMessagesPage > 1" class="w-full">
                     <div @click="getSessionMessages" class="w-fit mx-auto p-4 text-lg text-gray-600 cursor-pointer">...</div>
                 </div>
@@ -120,6 +136,7 @@
                         :msg="msg"
                         :item="selectedSession"
                         :current-topic="currentTopic"
+                        :is-counsellor="isCounsellor"
                         :allow-actions="computedCanSendMessage"
                         :show="!computedSubItem?.id || computedSubItem?.id == msg.topicId"
                         :current-reply="message.replying?.id && message.replying?.id == msg.id"
@@ -176,6 +193,10 @@
                 >x</div>
                 <div class="text-xs text-gray-600 my-2 text-center">updating message</div>
             </div>
+            <div
+                v-if="therapyType === 'individual' && otherPartyTyping"
+                class="text-xs text-gray-500 italic mb-1"
+            >typing&hellip;</div>
             <div class="w-[90%] mx-auto min-h-10 flex justify-center items-start space-x-2">
                 <TextBox
                     rows="3"
@@ -195,6 +216,24 @@
                     />
                 </div>
             </div>
+            <!-- SCRUM-361: confidential is only offered when the message has one recipient -- with
+                 none, only the sender could ever read it (the server refuses that too). -->
+            <div v-if="computedCanMarkConfidential" class="w-[90%] mx-auto mt-2">
+                <label class="inline-flex items-center gap-2 text-sm text-gray-700 cursor-pointer select-none">
+                    <input
+                        v-model="message.confidential"
+                        type="checkbox"
+                        class="rounded border-gray-300 text-indigo-600 shadow-sm focus:ring-indigo-500"
+                    />
+                    Confidential
+                </label>
+                <p v-if="message.confidential" class="mt-1 text-xs text-gray-600">
+                    Only you and the person you're writing to can read this. If this conversation is reported, an
+                    administrator may read it; every read is recorded, and when the review closes the person who reported
+                    and the person it's about are told whether confidential messages were read.
+                    <a :href="route('privacy') + '#confidential-messages'" target="_blank" class="underline text-gray-700 hover:text-gray-900">Learn more</a>
+                </p>
+            </div>
             <div class="w-full max-h-[100px] p-2 flex justify-start overflow-hidden overflow-x-auto items-center space-x-2" v-if="files?.length">
                 <FilePreview
                     v-for="(file, idx) in files"
@@ -205,14 +244,39 @@
                 />
             </div>
         </div>
+        <SessionNotesPanel
+            v-if="isCounsellor && selectedSession?.id"
+            :session="selectedSession"
+        />
         <div
             @click.self="() => showAttachmentIcons = false"
-            :class="[showAttachmentIcons ? 'opacity-100 visible z-[1]' : 'opacity-0 invisible -z-[1]']" 
-            class="w-full top-0 absolute transition-all duration-100 right-0 h-full bg-gray-600 bg-opacity-30 flex justify-center items-center">
-            <div class="w-[80%] bg-white min-h-32 rounded flex justify-center items-center space-x-2 flex-wrap">
-                <CameraIcon title="take a picture" @click="() => clickedIcon('camera')" class="w-8 cursor-pointer p-1 h-8 flex justify-center items-center" />
-                <MicrophoneIcon title="record your voice note" @click="() => clickedIcon('microphone')" class="w-8 cursor-pointer p-1 h-8" />
-                <FileIcon title="upload an image or pdf file" @click="() => clickedIcon('file')" class="w-8 cursor-pointer p-1 h-8" />
+            :class="[showAttachmentIcons ? 'opacity-100 visible z-[1]' : 'opacity-0 invisible -z-[1]']"
+            class="w-full top-0 absolute transition-all duration-100 right-0 h-full bg-gray-900/50 flex justify-center items-center">
+            <div class="relative w-[85%] max-w-sm bg-white shadow-2xl rounded-2xl p-6 flex justify-center items-start gap-6">
+                <button
+                    type="button"
+                    title="close"
+                    @click="() => showAttachmentIcons = false"
+                    class="absolute top-2 right-2 w-6 h-6 flex items-center justify-center rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100"
+                >&times;</button>
+                <div class="flex flex-col items-center gap-2 cursor-pointer group" @click="() => clickedIcon('camera')">
+                    <div class="w-12 h-12 rounded-full bg-gray-100 group-hover:bg-gray-200 flex items-center justify-center transition-colors">
+                        <CameraIcon title="take a picture" class="w-6 h-6" />
+                    </div>
+                    <span class="text-xs text-gray-500">Camera</span>
+                </div>
+                <div class="flex flex-col items-center gap-2 cursor-pointer group" @click="() => clickedIcon('microphone')">
+                    <div class="w-12 h-12 rounded-full bg-gray-100 group-hover:bg-gray-200 flex items-center justify-center transition-colors">
+                        <MicrophoneIcon title="record your voice note" class="w-6 h-6" />
+                    </div>
+                    <span class="text-xs text-gray-500">Voice</span>
+                </div>
+                <div class="flex flex-col items-center gap-2 cursor-pointer group" @click="() => clickedIcon('file')">
+                    <div class="w-12 h-12 rounded-full bg-gray-100 group-hover:bg-gray-200 flex items-center justify-center transition-colors">
+                        <FileIcon title="upload an image or pdf file" class="w-6 h-6" />
+                    </div>
+                    <span class="text-xs text-gray-500">File</span>
+                </div>
             </div>
         </div>
 
@@ -282,7 +346,7 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onBeforeUnmount, reactive, ref, unref, watch, watchEffect } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, unref, watch, watchEffect } from 'vue';
 import { default as _ } from 'lodash';
 import TextBox from './TextBox.vue';
 import PaperplaneIcon from '@/Icons/PaperplaneIcon.vue';
@@ -305,6 +369,12 @@ import FilePreview from './FilePreview.vue';
 import MediaCapture from './MediaCapture.vue';
 import { usePage } from '@inertiajs/vue3';
 import MiniModal from './MiniModal.vue';
+import useConnectionStatus from '@/Composables/useConnectionStatus';
+import SessionNotesPanel from './SessionNotesPanel.vue';
+import VideoCallPanel from './VideoCallPanel.vue';
+import TherapyPausedBanner from './TherapyPausedBanner.vue';
+import { createAnnouncementQueue } from '@/Composables/announcements';
+import { acquireChannel } from '@/Composables/sharedChannel';
 
 const { goToLogin } = useAuth()
 const {
@@ -316,6 +386,16 @@ const {
 } = useMessage()
 const { alertData, setFailedAlertData, clearAlertData, setSuccessAlertData } = useAlert()
 const { modalData, showModal, closeModal } = useModal()
+const { bindConnectionStatus, unbindConnectionStatus } = useConnectionStatus({
+    onDisconnected: () => setFailedAlertData({
+        message: 'Connection lost. Trying to reconnect...',
+        time: 6000,
+    }),
+    onReconnected: () => setSuccessAlertData({
+        message: 'Connection restored.',
+        time: 3000,
+    }),
+})
 
 const emits = defineEmits([
     'deselectActiveSession', 'updateActiveSession', 'created', 'updated', 'deleted',
@@ -325,6 +405,10 @@ const emits = defineEmits([
 const props = defineProps({
     therapy: {
         default: null
+    },
+    therapyType: {
+        type: String,
+        default: 'individual'
     },
     newSession: {
         default: null
@@ -386,6 +470,12 @@ const selectedSession = ref(null)
 const selectedTopic = ref(null)
 const selectedTopicSession = ref(null)
 const receivedMessages = ref(0)
+const otherPartyTyping = ref(false)
+let typingIdleTimer = null
+// TT-3.1c/SCRUM-276: local-only display state -- VideoCallPanel.vue owns the actual video
+// session's own lifecycle (it joins on mount, leaves on unmount); this ref only decides whether
+// that component is mounted at all.
+const videoActive = ref(false)
 const sessions = ref([])
 const chatMessages = ref([])
 const messages = reactive({
@@ -401,6 +491,9 @@ const filters = ref({
     sessions: false,
     topics: false
 })
+
+// SCRUM-370: declared before the watchers below -- they call listenToMessages() during setup.
+let sessionChannel = null
 
 watchEffect(() => {
     if (props.showSessions) return
@@ -470,7 +563,7 @@ watch(() => props.deletedSessionOrTopic?.id, () => {
 })
 watch(() => props.newSession?.id, () => {
     if (!props.newSession?.id) return
-    
+
     sessions.value = [{...props.newSession}, ...sessions.value]
 })
 watchEffect(() => {
@@ -503,15 +596,40 @@ watchEffect(() => {
         clickedSwitchToActiveSession()
     }
 })
+watch(() => message.value.content, (value) => {
+    if (props.therapyType !== 'individual' || !value) return
+
+    emitTypingWhisper()
+})
+
+onMounted(() => {
+    bindConnectionStatus()
+})
 
 onBeforeUnmount(() => {
-    if (listening.value && props.activeSession)
-        Echo.leave(`sessions.${props.activeSession.id}`)
+    // SCRUM-370: shared with the video call and session badges -- release, never leave.
+    sessionChannel?.release()
+
+    clearTypingIdleTimer()
+    emitTypingWhisper.cancel()
+    unbindConnectionStatus()
 })
 
 
+// SCRUM-361
+const computedCanMarkConfidential = computed(() => !!getMessageTo().id)
+// Never send a confidential flag the person can no longer see.
+watch(computedCanMarkConfidential, (can) => {
+    if (!can) message.value.confidential = false
+})
+
+// SCRUM-288: the therapy is paused because a minor (the viewer, or this 1:1's client) has no active
+// guardian. History stays readable; every write control is off. The server refuses them regardless.
+const computedViewerPaused = computed(() => !!props.therapy?.viewerAccessPaused)
+const computedAccessPaused = computed(() => computedViewerPaused.value || !!props.therapy?.clientAccessPaused)
+
 const computedCanSendMessage = computed(() => {
-    if (!props.isParticipant) return false
+    if (!props.isParticipant || computedAccessPaused.value) return false
 
     if (
         props.activeSession?.status == 'HELD_CONFIRMATION' && 
@@ -528,7 +646,8 @@ const computedCanSendMessage = computed(() => {
         props.activeSession?.type == 'ONLINE'
 })
 const computedCanStart = computed(() => {
-    return ['PENDING', 'IN_SESSION_CONFIRMATION'].includes(props.activeSession?.status) && 
+    return !computedAccessPaused.value &&
+            ['PENDING', 'IN_SESSION_CONFIRMATION'].includes(props.activeSession?.status) && 
             userId !== props.activeSession?.updatedById && 
             props.activeSession?.status !== 'IN_SESSION' &&
             props.canStart
@@ -544,11 +663,53 @@ const computedCanEnd = computed(() => {
 })
 const computedCanAbandon = computed(() => {
     return ['PENDING', 'IN_SESSION', 'IN_SESSION_CONFIRMATION']
-            .includes(props.activeSession?.status) && 
+            .includes(props.activeSession?.status) &&
             props.canAbandon
 })
+// TT-3.1c/SCRUM-276: display-only mirror of the backend's own gate
+// (EnsureVideoIsAvailableForSessionAction) -- a defense-in-depth nicety, not the real
+// authorization, which the backend re-checks on every join/leave/end call regardless.
+//
+// TT-3.1e-f/SCRUM-285: no longer hard-blocks a minor client here (the interim isAdult-only check
+// this ticket replaces did, per SCRUM-278's own now-superseded safeguard) -- the real
+// per-scope consent check now lives entirely server-side (HasValidVideoConsentForSessionAction),
+// and a minor without consent must still be able to click "join video" so they see the specific
+// VideoConsentRequiredBanner explaining why, rather than the button being invisible and video
+// looking simply "not available" (product-owner's own explicit requirement). The counsellor/adult
+// exemption check moved out of this display gate entirely -- it's purely a backend concern now.
+//
+// TT-3.2c/SCRUM-310: the `therapyType === 'individual'` restriction here was a TT-3.1-era leftover
+// -- GroupTherapy video's own backend allow-list (counsellor, or the group's own creator) has been
+// live since SCRUM-308.
+// The user's decision (2026-11-05): a minor in a group (creator or member) needs a guardian's
+// video consent first, and group consent doesn't exist yet (SCRUM-313) -- so instead of a button
+// that can only refuse, they see a short note (the server's viewerNeedsGuardianVideoConsent).
+const computedVideoIsLive = computed(() => {
+    if (computedAccessPaused.value || !props.isParticipant) return false
+
+    return props.activeSession?.type === 'ONLINE' &&
+        ['IN_SESSION', 'IN_SESSION_CONFIRMATION'].includes(props.activeSession?.status)
+})
+const computedGroupVideoNeedsConsent = computed(() => {
+    return computedVideoIsLive.value && props.therapyType === 'group' && !!props.therapy?.viewerNeedsGuardianVideoConsent
+})
+const computedCanJoinVideo = computed(() => {
+    if (!computedVideoIsLive.value) return false
+
+    if (props.therapyType === 'individual') return true
+
+    // TT-3.2f-j/SCRUM-327: every group participant -- an ordinary member joins receive-only
+    // (SCRUM-321's backend allow-list) -- except a minor, above.
+    return props.therapyType === 'group' && !computedGroupVideoNeedsConsent.value
+})
 const computedHasActions = computed(() => {
-    return computedCanStart.value || computedCanEnd.value || computedCanAbandon.value
+    return computedCanStart.value || computedCanEnd.value || computedCanAbandon.value || computedCanJoinVideo.value || computedGroupVideoNeedsConsent.value
+})
+// Closes a stale panel if the active session changes out from under it (a different session
+// becomes active, or this one leaves the online/in-progress window) -- VideoCallPanel.vue's own
+// onBeforeUnmount already handles leaving the call cleanly either way.
+watch(() => computedCanJoinVideo.value, (canJoinVideo) => {
+    if (!canJoinVideo) videoActive.value = false
 })
 const computedSelectSessionIsActive = computed(() => {
     return props.activeSession?.id && selectedSession.value?.id && 
@@ -596,6 +757,9 @@ const computedMessagesPage = computed(() => {
 
     return 0
 })
+const computedFiltersDisabled = computed(() => {
+    return props.therapy.status == 'PENDING' && !props.isParticipant
+})
 
 function setSetting(type) {
     setting.value.type = type
@@ -611,18 +775,70 @@ function listenToMessages() {
     if (listening.value) return
 
     listening.value = true
-    Echo
-        .private(`sessions.${props.activeSession.id}`)
+    const enqueueMessage = createAnnouncementQueue()
+    sessionChannel = acquireChannel(`sessions.${props.activeSession.id}`)
+    const channel = sessionChannel
         .listen('.message.created', (data) => {
             console.log(data, 'message created');
             if (data.message?.fromUserId == userId)
                 return
 
-            onMessageCreated(data.message)
+            enqueueMessage(data.message, onMessageCreated)
+
+            // The other party just sent a message, so they're no longer "typing".
+            if (props.therapyType === 'individual') clearTypingIndicator()
         })
-        .listen('.session.updated', (data) => {
-            emits('updated', data.session)
+    // .session.updated is intentionally not handled here: this component is only ever
+    // rendered inside UnifiedTherapy.vue, which already listens for it on the presence
+    // channel via useTherapyState's listenToTherapy() -- listening again here duplicated
+    // every session-updated reaction (e.g. confirmInSession/confirmSessionHeld firing twice).
+
+    // Typing indicators are individual-therapy-only (SCRUM-20 M4); group/discussion chat
+    // are out of scope here and tracked separately under SCRUM-68.
+    if (props.therapyType === 'individual') {
+        channel.listenForWhisper('typing', (data) => {
+            // Echo does not exclude the sender's own client from whisper events (unlike
+            // server-broadcast events), so this self-exclusion check is required.
+            if (data?.token === typingToken) return
+
+            otherPartyTyping.value = true
+            resetTypingIdleTimer()
         })
+    }
+}
+
+// Throttled so a whisper is sent roughly once every 2s while the user keeps typing,
+// rather than on every keystroke. Guarded internally (not just at the call site) so it's
+// a no-op for group therapy even if ever invoked outside the individual-only watcher.
+const typingToken = (window.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`)
+const emitTypingWhisper = _.throttle(() => {
+    if (props.therapyType !== 'individual' || !props.activeSession?.id) return
+
+    // SCRUM-366 (security review): a random per-page token, not the user id -- in an anonymous
+    // therapy the other party must never receive the client's real id (SCRUM-357).
+    sessionChannel?.whisper('typing', { token: typingToken })
+}, 2000, { leading: true, trailing: true })
+
+function resetTypingIdleTimer() {
+    clearTypingIdleTimer()
+    // If no further "typing" whisper arrives within 5s, assume the other party stopped
+    // (e.g. closed the tab mid-type) and hide the indicator.
+    typingIdleTimer = setTimeout(() => {
+        otherPartyTyping.value = false
+        typingIdleTimer = null
+    }, 5000)
+}
+
+function clearTypingIdleTimer() {
+    if (!typingIdleTimer) return
+
+    clearTimeout(typingIdleTimer)
+    typingIdleTimer = null
+}
+
+function clearTypingIndicator() {
+    otherPartyTyping.value = false
+    clearTypingIdleTimer()
 }
 
 function clickedSessionAction(action) {
@@ -636,12 +852,34 @@ function getMessageTo() {
         userId: 0,
     }
 
+    if (props.therapyType === 'group') {
+        // GroupTherapyResource has no single therapy.user/therapy.counsellor field -- it
+        // returns addedby (User or Counsellor) and a counsellors array instead.
+        if (props.isCounsellor && props.therapy.addedby?.isUser) {
+            to.type = 'User'
+            to.id = props.therapy.addedby.id ?? 0
+            to.userId = props.therapy.addedby.id ?? 0
+        }
+
+        if (!props.isCounsellor && props.therapy.counsellors?.length === 1) {
+            // With more than one assigned counsellor there's no single unambiguous recipient
+            // to target, so `to` is left blank. EnsureCanSendMessageToRecepientAction (backend)
+            // skips its participant check when `to` is null rather than crashing -- the message
+            // still sends, just without a specific displayed recipient.
+            to.type = 'Counsellor'
+            to.id = props.therapy.counsellors[0].id ?? 0
+            to.userId = props.therapy.counsellors[0].userId ?? 0
+        }
+
+        return to
+    }
+
     if (props.isCounsellor) {
         to.type = 'User'
         to.id = props.therapy.user.id
         to.userId = props.therapy.user.id
     }
-    
+
     if (props.isUser) {
         to.type = 'Counsellor'
         to.id = props.therapy.counsellor.id
@@ -658,6 +896,31 @@ function getMessageFrom() {
         userId: 0,
         isCounsellor: false,
         avatar: null,
+    }
+
+    if (props.therapyType === 'group') {
+        if (props.isCounsellor) {
+            // Use the viewer's own counsellor identity directly rather than searching
+            // therapy.addedby/counsellors for a match -- avoids any ambiguity about which
+            // assigned counsellor "is" the current viewer.
+            const viewerCounsellor = usePage().props.auth.user?.counsellor
+            from.type = 'Counsellor'
+            from.isCounsellor = true
+            from.id = viewerCounsellor?.id ?? 0
+            from.userId = viewerCounsellor?.userId ?? 0
+            from.avatar = viewerCounsellor?.avatar ?? null
+        }
+
+        if (!props.isCounsellor) {
+            // The viewer themselves, for any member -- not only the creator (isUser), and not the
+            // creator's id, which made every other member's messages fail (QA finding, SCRUM-366 PR).
+            const viewer = usePage().props.auth.user
+            from.type = 'User'
+            from.id = viewer?.id ?? 0
+            from.userId = viewer?.id ?? 0
+        }
+
+        return from
     }
 
     if (props.isCounsellor) {
@@ -963,7 +1226,14 @@ function replaceOldMessage(data) {
         itemsRef = messages.topics[selectedTopicSession.value?.id]
     }
 
-    itemsRef.data.splice(itemsRef.data.findIndex((d) => d.id == data.id), 1, {...data})
+    // itemsRef can be undefined here: selectedTopicSession is a session-shaped cross-filter
+    // chip (see addToSubItem), so `messages.topics[selectedTopicSession.value?.id]` looks up
+    // the topics cache by a session id, which normally has no entry. chatMessages (the actually
+    // rendered list) is still updated unconditionally below, so this only guards the secondary
+    // per-session/topic cache from a null-reference crash.
+    if (itemsRef?.data)
+        itemsRef.data.splice(itemsRef.data.findIndex((d) => d.id == data.id), 1, {...data})
+
     chatMessages.value.splice(chatMessages.value.findIndex((d) => d.id == data.id), 1, {...data})
 }
 
@@ -973,7 +1243,8 @@ function replaceFirstMessage(data) {
         itemsRef = messages.topics[selectedTopicSession.value?.id]
     }
 
-    if (itemsRef.data.length)
+    // See the comment in replaceOldMessage above -- itemsRef can be undefined in this branch.
+    if (itemsRef?.data?.length)
         itemsRef.data[0] = {...data}
 
     chatMessages.value[chatMessages.value.length - 1] = {...data}
@@ -1164,19 +1435,23 @@ async function getSessions() {
 }
 
 async function getTopics() {
+    // SCRUM-379: topics belong to 1:1 therapies only (api.topics.get resolves a Therapy by id). On a
+    // group page this asked for the topics of whichever 1:1 therapy shared the group's id, which
+    // failed and logged "res.data.data is not iterable".
+    if (props.therapyType === 'group') return
+
     loading.value = true
 
     await axios
         .get(route('api.topics.get', {
             therapyId: props.therapy?.id,
-            page: pages.value.session
+            page: pages.value.topic, // SCRUM-379: was pages.value.session
         }))
         .then((res) => {
-            console.log(res)
             if (pages.value.topic == 1)
             topics.value = []
-        
-            topics.value = [...topics.value, ...res.data.data]
+
+            topics.value = [...topics.value, ...(res.data?.data ?? [])]
             updatePage(res, 'topic')
         })
         .catch((err) => {

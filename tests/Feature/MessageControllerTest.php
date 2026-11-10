@@ -1,0 +1,111 @@
+<?php
+
+use App\Enums\SessionStatusEnum;
+use App\Models\Counsellor;
+use App\Models\Message;
+use App\Models\Session;
+use App\Models\Therapy;
+use App\Models\User;
+
+// Regression test for SCRUM-20 QA finding: MessageController::failureResponse used to re-throw a
+// bare Exception for JSON requests, which lost the original MessageException's 422 code and
+// always surfaced to the client as a 500 via Laravel's default exception handler. A rejected
+// send now needs to come back as an actual 422 response, not a 500.
+test('a non-participant sending a message to a session is rejected with a 422, not a 500', function () {
+    $actingUser = User::factory()->adult()->create();
+    $therapyOwner = User::factory()->adult()->create();
+    $counsellorUser = User::factory()->adult()->create();
+    $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
+    $therapy = Therapy::factory()->create([
+        'addedby_id' => $therapyOwner->id,
+        'addedby_type' => $therapyOwner::class,
+        'counsellor_id' => $counsellor->id,
+    ]);
+    $session = Session::factory()->create([
+        'addedby_id' => $counsellor->id,
+        'addedby_type' => $counsellor::class,
+        'status' => SessionStatusEnum::in_session_confirmation->value,
+        'for_id' => $therapy->id,
+        'for_type' => $therapy::class,
+    ]);
+
+    $response = $this
+        ->actingAs($actingUser)
+        ->postJson(route('api.messages.create'), [
+            'content' => 'hello',
+            'type' => 'NORMAL',
+            'fromId' => $actingUser->id,
+            'fromType' => 'User',
+            'forId' => $session->id,
+            'forType' => 'Session',
+        ]);
+
+    $response->assertStatus(422);
+    expect($response->json('message'))->toBe('You are not allowed to create a message for this session.');
+});
+
+// SCRUM-126: `(bool) $request->confidential` silently flipped the string "false" to PHP true,
+// same class of bug fixed for OrganizationMemberBillingConfigController in SCRUM-125. Neither
+// CreateMessageRequest nor UpdateMessageRequest had a 'boolean' rule on this field at all, so
+// this one was a live bug, not just a defense-in-depth cleanup.
+
+function aSendableSessionAndOwner(): array
+{
+    $therapyOwner = User::factory()->adult()->create();
+    $counsellorUser = User::factory()->adult()->create();
+    $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
+    $therapy = Therapy::factory()->create([
+        'addedby_id' => $therapyOwner->id,
+        'addedby_type' => $therapyOwner::class,
+        'counsellor_id' => $counsellor->id,
+    ]);
+    $session = Session::factory()->create([
+        'addedby_id' => $counsellor->id,
+        'addedby_type' => $counsellor::class,
+        'status' => SessionStatusEnum::in_session_confirmation->value,
+        'for_id' => $therapy->id,
+        'for_type' => $therapy::class,
+    ]);
+
+    return [$session, $therapyOwner, $counsellor];
+}
+
+test('creating a message with a string "false" confidential value is rejected by validation, not silently flipped', function () {
+    [$session, $therapyOwner] = aSendableSessionAndOwner();
+
+    $response = $this
+        ->actingAs($therapyOwner)
+        ->postJson(route('api.messages.create'), [
+            'content' => 'hello',
+            'type' => 'NORMAL',
+            'confidential' => 'false',
+            'fromId' => $therapyOwner->id,
+            'fromType' => 'User',
+            'forId' => $session->id,
+            'forType' => 'Session',
+        ]);
+
+    $response->assertStatus(422);
+    $response->assertJsonValidationErrors('confidential');
+});
+
+test('creating a message with the validation-accepted string "0" persists confidential as false', function () {
+    [$session, $therapyOwner, $counsellor] = aSendableSessionAndOwner();
+
+    $response = $this
+        ->actingAs($therapyOwner)
+        ->postJson(route('api.messages.create'), [
+            'content' => 'hello',
+            'type' => 'NORMAL',
+            'confidential' => '0',
+            'fromId' => $therapyOwner->id,
+            'fromType' => 'User',
+            'toId' => $counsellor->id,
+            'toType' => 'Counsellor',
+            'forId' => $session->id,
+            'forType' => 'Session',
+        ]);
+
+    $response->assertOk();
+    expect((bool) Message::latest('id')->first()->confidential)->toBeFalse();
+});

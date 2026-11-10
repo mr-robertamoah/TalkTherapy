@@ -1,5 +1,7 @@
 <template>
-    <div class="fixed w-full z-10 left-0">
+    <!-- SCRUM-134/145: a status line, never a click target. The full-width strip used to take clicks
+         while shown, covering anything along the bottom of the screen (a modal's buttons). -->
+    <div class="fixed w-full z-10 left-0 bottom-4 pointer-events-none">
         <div
             v-bind="$attrs"
             class="rounded my-2 transition duration-100 mx-auto text-center w-[80%] py-1 px-2"

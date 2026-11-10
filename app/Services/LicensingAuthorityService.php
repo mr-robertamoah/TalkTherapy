@@ -17,22 +17,25 @@ use App\Models\User;
 
 class LicensingAuthorityService extends Service
 {
-    public function getOtherLicensingAuthorities(string|null $name)
+    public function getOtherLicensingAuthorities(?string $name)
     {
         $query = LicensingAuthority::query();
 
-        if ($name) $query->where('name', 'LIKE', "%{$name}%");
+        if ($name) {
+            $query->whereContains('name', (string) $name);
+        }
 
         $query->whereNot('name', ConstantsEnum::nationalId->value);
 
         return $query->paginate(PaginationEnum::pagination->value);
     }
 
-    public function createLicensingAuthority(CreateLicensingAuthorityDTO $createLicensingAuthorityDTO) {
+    public function createLicensingAuthority(CreateLicensingAuthorityDTO $createLicensingAuthorityDTO)
+    {
         EnsureAddedbyIsValidAction::new()->execute($createLicensingAuthorityDTO);
-        
+
         EnsureUserCanCreateLicensingAuthorityAction::new()->execute($createLicensingAuthorityDTO);
-        
+
         EnsureLicensingAuthorityNameIsUniqueAction::new()->execute($createLicensingAuthorityDTO->name);
 
         $licensingAuthority = CreateLicensingAuthorityAction::new()->execute($createLicensingAuthorityDTO);
@@ -45,7 +48,7 @@ class LicensingAuthorityService extends Service
                         $createLicensingAuthorityDTO->addedby::class == User::class
                             ? $createLicensingAuthorityDTO->addedby
                             : $createLicensingAuthorityDTO->addedby->user
-                    ) 
+                    )
                     : $createLicensingAuthorityDTO->user,
                 'starreable' => $licensingAuthority,
                 'type' => StarTypeEnum::contribution->value,

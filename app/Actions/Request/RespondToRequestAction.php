@@ -5,27 +5,97 @@ namespace App\Actions\Request;
 use App\Actions\Action;
 use App\DTOs\RequestResponseDTO;
 use App\Enums\RequestTypeEnum;
+use App\Models\Request as ModelsRequest;
 
 class RespondToRequestAction extends Action
 {
+    // SCRUM-387: every answer records who gave it (requests.responded_by_id), stamped by the Request
+    // model in the same write that decides it, whichever per-type action below makes that write.
     public function execute(RequestResponseDTO $requestResponseDTO)
+    {
+        return ModelsRequest::answeredBy(
+            $requestResponseDTO->user,
+            $requestResponseDTO->request,
+            fn () => $this->respond($requestResponseDTO),
+        );
+    }
+
+    private function respond(RequestResponseDTO $requestResponseDTO)
     {
         $request = $requestResponseDTO->request;
 
-        if ($requestResponseDTO->request->type == RequestTypeEnum::counsellor->value)
+        if ($requestResponseDTO->request->type == RequestTypeEnum::dobChange->value) {
+            $request = RespondToDobChangeRequestAction::new()->execute($requestResponseDTO);
+        }
+
+        if ($requestResponseDTO->request->type == RequestTypeEnum::ageVerification->value) {
+            $request = RespondToAgeVerificationRequestAction::new()->execute($requestResponseDTO);
+        }
+
+        if ($requestResponseDTO->request->type == RequestTypeEnum::counsellor->value) {
             $request = RespondToCounsellorVerificationRequestAction::new()->execute($requestResponseDTO);
+        }
 
-        if ($requestResponseDTO->request->type == RequestTypeEnum::therapy->value)
+        if ($requestResponseDTO->request->type == RequestTypeEnum::therapy->value) {
             $request = RespondToTherapyAssistanceRequestAction::new()->execute($requestResponseDTO);
+        }
 
-        if ($requestResponseDTO->request->type == RequestTypeEnum::guardianship->value)
+        // SCRUM-358: group invites have their own response (they used to have none at all).
+        if ($requestResponseDTO->request->type == RequestTypeEnum::groupTherapy->value) {
+            $request = RespondToGroupTherapyAssistanceRequestAction::new()->execute($requestResponseDTO);
+        }
+
+        if ($requestResponseDTO->request->type == RequestTypeEnum::guardianship->value) {
             $request = RespondToGuardianshipRequestAction::new()->execute($requestResponseDTO);
-        
-        if ($requestResponseDTO->request->type == RequestTypeEnum::discussion->value)
+        }
+
+        if ($requestResponseDTO->request->type == RequestTypeEnum::discussion->value) {
             $request = RespondToDiscussionRequestAction::new()->execute($requestResponseDTO);
-        
+        }
+
+        if ($requestResponseDTO->request->type == RequestTypeEnum::groupTherapyMembership->value) {
+            $request = RespondToGroupTherapyMembershipRequestAction::new()->execute($requestResponseDTO);
+        }
+
+        if ($requestResponseDTO->request->type == RequestTypeEnum::organization->value) {
+            $request = RespondToOrganizationVerificationRequestAction::new()->execute($requestResponseDTO);
+        }
+
+        if (in_array($requestResponseDTO->request->type, [
+            RequestTypeEnum::organizationCounsellorInvite->value,
+            RequestTypeEnum::organizationCounsellorApplication->value,
+        ])) {
+            $request = RespondToOrganizationCounsellorRequestAction::new()->execute($requestResponseDTO);
+        }
+
+        if (in_array($requestResponseDTO->request->type, [
+            RequestTypeEnum::organizationMemberInvite->value,
+            RequestTypeEnum::organizationMemberApplication->value,
+        ])) {
+            $request = RespondToOrganizationMemberRequestAction::new()->execute($requestResponseDTO);
+        }
+
+        if ($requestResponseDTO->request->type == RequestTypeEnum::organizationCounsellorCompensationChange->value) {
+            $request = RespondToOrganizationCounsellorCompensationRequestAction::new()->execute($requestResponseDTO);
+        }
+
+        if ($requestResponseDTO->request->type == RequestTypeEnum::sessionScheduleProposal->value) {
+            $request = RespondToSessionScheduleProposalAction::new()->execute($requestResponseDTO);
+        }
+
+        if ($requestResponseDTO->request->type == RequestTypeEnum::refund->value) {
+            $request = RespondToRefundRequestAction::new()->execute($requestResponseDTO);
+        }
+
+        if ($requestResponseDTO->request->type == RequestTypeEnum::safeguardingException->value) {
+            $request = RespondToSafeguardingExceptionRequestAction::new()->execute($requestResponseDTO);
+        }
+
         // TODO respond to other requests
-        
+        // (SCRUM-119/120: this per-type dispatch chain is accepted, tracked debt -- see the
+        // architect note on documentation/implementation_plan.md's Epic TT-6. A follow-up to
+        // extract a type->handler map is worth filing independently of the Organizations work.)
+
         return $request->refresh();
     }
 }

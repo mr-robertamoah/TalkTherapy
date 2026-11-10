@@ -5,6 +5,7 @@ namespace App\Http\Requests;
 use App\Enums\TherapyPaymentTypeEnum;
 use App\Enums\TherapyPerPaymentEnum;
 use App\Enums\TherapySessionTypeEnum;
+use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -21,7 +22,7 @@ class CreateGroupTherapyRequest extends FormRequest
     /**
      * Get the validation rules that apply to the request.
      *
-     * @return array<string, \Illuminate\Contracts\Validation\ValidationRule|array<mixed>|string>
+     * @return array<string, ValidationRule|array<mixed>|string>
      */
     public function rules(): array
     {
@@ -31,14 +32,18 @@ class CreateGroupTherapyRequest extends FormRequest
             'anonymous' => ['required', 'boolean'],
             'allowInPerson' => ['required', 'boolean'],
             'allowAnyone' => ['required', 'boolean'],
-            'maxUsers' => ['nullable', 'integer'],
-            'maxCounsellors' => ['nullable', 'integer'],
+            'maxUsers' => ['nullable', 'integer', 'min:1'],
+            'maxCounsellors' => ['nullable', 'integer', 'min:1'],
             'public' => ['required', 'boolean'],
             'cases' => ['nullable', 'array'],
-            'counsellorIds' => ['nullable', 'array'],
+            'counsellorId' => ['nullable', 'integer'],
+            // SCRUM-358 (security review): invites now actually let a counsellor join -- only real
+            // counsellors, and a bounded list.
+            'counsellorIds' => ['nullable', 'array', 'max:50'],
+            'counsellorIds.*' => ['integer', 'exists:counsellors,id'],
             'sessionType' => ['required', Rule::in(TherapySessionTypeEnum::values())],
             'paymentType' => ['required', Rule::in(TherapyPaymentTypeEnum::values())],
-            'maxSessions' => ['nullable', Rule::requiredIf($this->get('sessionType') == TherapySessionTypeEnum::periodic->value), 'integer'],
+            'maxSessions' => ['nullable', Rule::requiredIf($this->get('sessionType') == TherapySessionTypeEnum::periodic->value), 'integer', 'min:1'],
             'per' => ['nullable', Rule::requiredIf($this->get('paymentType') == TherapyPaymentTypeEnum::paid->value), 'string'],
             'amount' => ['nullable', Rule::requiredIf($this->get('paymentType') == TherapyPaymentTypeEnum::paid->value), 'numeric'],
             'inPersonAmount' => ['nullable', Rule::requiredIf(
@@ -46,7 +51,20 @@ class CreateGroupTherapyRequest extends FormRequest
                 $this->get('per') == TherapyPerPaymentEnum::session->value &&
                 $this->get('allowInPerson')
             ), 'numeric'],
-            'currency' => ['nullable', Rule::requiredIf($this->get('paymentType') == TherapyPaymentTypeEnum::paid->value), 'string'],
+            'currency' => ['nullable', Rule::requiredIf($this->get('paymentType') == TherapyPaymentTypeEnum::paid->value), Rule::in(config('currencies.supported'))],
+            // TT-7.5b-b1/SCRUM-265: same convention CreateTherapyRequest already uses.
+            'strictPaymentGate' => ['nullable', 'boolean'],
+            'allowFreeHistoricalAccess' => ['nullable', 'boolean'],
+        ];
+    }
+
+    // SCRUM-385: name these fields in plain words in the default messages, not "the reply id".
+    public function attributes(): array
+    {
+        return [
+            'counsellorId' => 'counsellor',
+            'counsellorIds' => 'counsellors',
+            'counsellorIds.*' => 'counsellor',
         ];
     }
 }

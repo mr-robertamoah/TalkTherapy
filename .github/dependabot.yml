@@ -1,0 +1,50 @@
+# SCRUM-405: routine dependency updates, with the SCRUM-404 rule built in -- no release under a week old
+# unless it is the fix. `cooldown` holds back these version updates until a release is 7 days old. PRs
+# target develop, weekly, minor and patch grouped, so they don't flood the repo. Majors come one at a time,
+# for a deliberate look.
+#
+# Dependabot *security* updates are a repository setting, currently off, and not governed by this file.
+# If they are turned on, their PRs go to the default branch (main) and ignore `target-branch` -- retarget
+# any such PR to develop before merging: a merge into main deploys to production.
+#
+# npm `overrides` in package.json (SCRUM-404) are exact pins that Dependabot doesn't move: remove them by
+# hand once the releases they hold back are a week old (see documentation/decision-log.md).
+version: 2
+updates:
+  - package-ecosystem: composer
+    directory: /
+    target-branch: develop
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    groups:
+      composer-minor-and-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: npm
+    directory: /
+    target-branch: develop
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    groups:
+      npm-minor-and-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: develop
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 7
+    groups:
+      github-actions:
+        patterns: ['*']
+        update-types: [minor, patch]

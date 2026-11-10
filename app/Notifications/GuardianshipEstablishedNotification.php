@@ -2,15 +2,16 @@
 
 namespace App\Notifications;
 
-use App\Http\Resources\UserMiniResource;
+use App\Contracts\ShownInNotificationCenter;
 use App\Models\User;
+use App\Support\NotificationEntry;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\BroadcastMessage;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
-class GuardianshipEstablishedNotification extends Notification implements ShouldQueue
+class GuardianshipEstablishedNotification extends Notification implements ShouldQueue, ShownInNotificationCenter
 {
     use Queueable;
 
@@ -31,9 +32,10 @@ class GuardianshipEstablishedNotification extends Notification implements Should
     {
         $via = ['database', 'broadcast'];
 
-        if ($notifiable->email_verified_at)
+        if ($notifiable->email_verified_at) {
             $via[] = 'mail';
-        
+        }
+
         return $via;
     }
 
@@ -44,11 +46,11 @@ class GuardianshipEstablishedNotification extends Notification implements Should
     {
         return (new MailMessage)
             ->success()
-            ->subject("Guardianship Established")
+            ->subject('Guardianship Established')
             ->greeting("Hello {$notifiable->name}!")
             ->line("User with name: '{$this->user->name}' and username: '{$this->user->username}', has accepted your guardianship request and hence is now your guardian on TalkTherapy app.")
-            ->line("Click on the link below to go to your profile page on TalkTherapy, if you are not already on the app.")
-            ->action("Visit Profile", url('profile'))
+            ->line('Click on the link below to go to your profile page on TalkTherapy, if you are not already on the app.')
+            ->action('Visit Profile', url('profile'))
             ->line("Thank you for choosing to 'TalkTherapy'.");
     }
 
@@ -63,16 +65,27 @@ class GuardianshipEstablishedNotification extends Notification implements Should
             'userId' => $this->user->id,
         ];
     }
-    
+
     public function toBroadcast(object $notifiable): BroadcastMessage
     {
-        return (new BroadcastMessage([
-            'user' => new UserMiniResource($this->user)
-        ]));
+        // SCRUM-374: a small fixed summary -- the same for every recipient, never a per-viewer
+        // resource (payment status, dob) built for whoever happened to be signed in.
+        return new BroadcastMessage([
+            'user' => [
+                'id' => $this->user->id,
+                'name' => $this->user->name,
+            ],
+        ]);
     }
 
     public function broadcastType(): string
     {
         return 'user.guardianship';
+    }
+
+    // SCRUM-39 (TT-5.4b): in the notification center -- from the saved ids only, never more than the email.
+    public static function present(array $data): NotificationEntry
+    {
+        return new NotificationEntry('You have a new guardian', 'Your guardianship request was accepted.', NotificationEntry::link('profile.show', []));
     }
 }

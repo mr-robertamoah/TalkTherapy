@@ -23,18 +23,16 @@ class CreateHowToStepAction extends Action
         $fileData = $fileService->uploadFile(
             FileUploadDTO::new()->fromArray([
                 'file' => $createHowToStepDTO->file,
-                'path' => 'others'
+                'path' => 'others',
             ])
         );
 
         if ($fileData) {
             $file = $fileService->saveFile($createHowToStepDTO->user, $fileData);
-    
-            $howToStep->file_id = $file->id;
-        }
-        
-        $howToStep->save();
 
-        return $howToStep;
+            $howToStep->stepFile()->sync([$file->id]); // SCRUM-194
+        }
+
+        return $howToStep->load('stepFile');
     }
 }

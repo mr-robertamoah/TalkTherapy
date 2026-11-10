@@ -1,5 +1,6 @@
 <script setup>
-import { computed, onBeforeMount, ref, unref, watch, watchEffect } from 'vue';
+import { ref, watch, watchEffect } from 'vue';
+import useScheduleTimes from '@/Composables/useScheduleTimes'
 import TextInput from '@/Components/TextInput.vue';
 import InputLabel from '@/Components/InputLabel.vue';
 import InputError from '@/Components/InputError.vue';
@@ -11,7 +12,6 @@ import useLocation from "@/Composables/useLocation";
 import Alert from "./Alert.vue";
 import PrimaryButton from "./PrimaryButton.vue";
 import Select from "./Select.vue";
-import { addMinutes, format, differenceInMinutes } from 'date-fns';
 import useErrorHandler from '@/Composables/useErrorHandler';
 import SessionBadge from './SessionBadge.vue';
 import useAuth from '@/Composables/useAuth';
@@ -44,8 +44,8 @@ const loading = ref(false)
 const sessionSearch = ref('')
 const sessions = ref({data: [], page: 1})
 const getting = ref({show: '', type: ''})
-const startTime = ref('')
-const endTime = ref('')
+// SCRUM-379: shared start/end handling (resources/js/Composables/useScheduleTimes.js).
+const { startTime, endTime, clearTimes, timesError, computedStartTime, computedEndTime, computedNow, computedDuration } = useScheduleTimes({ defaultsWhen: () => props.show })
 const discussionData = ref({
     'name': '',
     'description': '',
@@ -61,11 +61,6 @@ const discussionErrors = ref({
     'sessionId': '',
 })
 
-onBeforeMount(() => {
-    startTime.value = getDefaultTime(30)
-    endTime.value = getDefaultTime(70)
-})
-
 watch(() => sessionSearch.value?.length, () => {
     if (sessionSearch.value?.length)
         debouncedGetSessions()
@@ -74,68 +69,13 @@ watchEffect(() => {
     if (props.loadedSessions?.length)
         sessions.value.data = [...props.loadedSessions]
 })
-watch(() => startTime.value, () => {
-    if (
-        !isMinutesBefore({
-            firstTime: endTime.value, 
-            secondTime: startTime.value, 
-            minutes: 30
-        })
-    ) endTime.value = addMinitesToDate(startTime.value, 30)
-})
-watch(() => endTime.value, () => {
-    if (
-        !isMinutesBefore({
-            firstTime: endTime.value, 
-            secondTime: startTime.value, 
-            minutes: 30
-        })
-    ) endTime.value = addMinitesToDate(startTime.value, 30)
-})
 
-const computedStartTime = computed(() => {
-    return new Date(startTime.value).toGMTString()
-})
-const computedEndTime = computed(() => {
-    return new Date(endTime.value).toGMTString()
-})
-const computedNow = computed(() => {
-    return new Date().toISOString().slice(0, 16)
-})
-const computedDuration = computed(() => {
-    return (endTime.value && startTime.value) ? differenceInMinutes(new Date(endTime.value), new Date(startTime.value)) : ''
-})
 
 const debouncedGetSessions = _.debounce(() => {
     sessions.value.page = 1
     discussionData.value.sessionId = ''
     getSessions()
 }, 500)
-
-function isMinutesBefore({firstTime, secondTime = null, minutes}) {
-    if (!firstTime) return null
-
-    const comparisonDate = addMinutes(secondTime ? new Date(secondTime) : new Date(), minutes)
-
-    return new Date(firstTime) >= comparisonDate
-}
-
-function getDefaultTime(minutes) {
-    const now = new Date()
-    let time = addMinutes(now, minutes).toISOString().slice(0, 16)
-    return time
-}
-
-function formatDateTimeForFrontend(dateTime) {
-    return format(dateTime, "yyyy-MM-dd'T'HH:mm")
-}
-
-function addMinitesToDate(time, minutes) {
-    if (!time) return null
-    const newTime = formatDateTimeForFrontend(addMinutes(time, minutes))
-    
-    return newTime
-}
 
 async function createDiscussion() {
     if (!discussionData.value.name) {
@@ -145,17 +85,9 @@ async function createDiscussion() {
         return
     }
 
-    if (!isMinutesBefore({ firstTime: startTime.value, minutes: 25 })) {
-        setFailedAlertData({
-            message: 'Start time must be at least 25 minutes away from current time. Please increase the start time.',
-        })
-        return
-    }
-    
-    if (!isMinutesBefore({ firstTime: endTime.value, secondTime: startTime.value, minutes: 30})) {
-        setFailedAlertData({
-            message: 'End time must be at least 30 minutes away from start time. Please increase the end time.',
-        })
+    const timeError = timesError()
+    if (timeError) {
+        setFailedAlertData({ message: timeError })
         return
     }
 
@@ -183,7 +115,9 @@ async function createDiscussion() {
     })
     .catch((err) => {
         console.log(err)
-        if (err.response?.status == 422) {
+        // A 422 is either field errors or a refusal with only a message (e.g. a clash with another
+        // session) -- the latter falls through to the alert below (SCRUM-372 QA).
+        if (err.response?.status == 422 && err.response.data?.errors) {
             setErrorData(discussionErrors, err.response.data.errors, ['name', 'description', 'startTime', 'sessionId', 'endTime'])
             return
         }
@@ -271,8 +205,7 @@ function clearData() {
     discussionData.value.name = ''
     discussionData.value.description = ''
     discussionData.value.startTime = ''
-    startTime.value = ''
-    endTime.value = ''
+    clearTimes()
     discussionData.value.endTime = ''
     discussionData.value.sessionId = ''
 }

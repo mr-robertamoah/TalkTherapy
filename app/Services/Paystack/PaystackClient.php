@@ -1,0 +1,132 @@
+<?php
+
+namespace App\Services\Paystack;
+
+use App\Services\Service;
+use Illuminate\Http\Client\PendingRequest;
+use Illuminate\Support\Facades\Http;
+
+// Thin wrapper around Paystack's REST API -- this app's first outbound third-party API call, so
+// this class alone owns the base URL/auth header, rather than every caller reimplementing it.
+// Deliberately dumb: throws Laravel's own RequestException on a non-2xx response and lets the
+// calling Action translate that into a TransactionException, rather than coupling this class to
+// an App\Exceptions\* type.
+class PaystackClient extends Service
+{
+    public function initializeTransaction(array $data): array
+    {
+        return $this->request()
+            ->post('/transaction/initialize', $data)
+            ->throw()
+            ->json();
+    }
+
+    public function verifyTransaction(string $reference): array
+    {
+        return $this->request()
+            ->get('/transaction/verify/'.rawurlencode($reference))
+            ->throw()
+            ->json();
+    }
+
+    // TT-7.6a/SCRUM-225: confirms an account number/bank-or-momo-code pair resolves to a real
+    // account before a Transfer Recipient is ever created for it, and returns the account holder
+    // name Paystack has on file -- shown back to the counsellor as confirmation, never taken as
+    // freeform input from them.
+    public function resolveAccountNumber(string $accountNumber, string $bankCode): array
+    {
+        return $this->request()
+            ->get('/bank/resolve', ['account_number' => $accountNumber, 'bank_code' => $bankCode])
+            ->throw()
+            ->json();
+    }
+
+    // Registers a payout destination with Paystack once and returns a recipient_code -- what
+    // TT-7.6c's payout execution actually transfers against on every subsequent payout, rather
+    // than re-resolving/re-registering the account each time.
+    public function createTransferRecipient(array $data): array
+    {
+        return $this->request()
+            ->post('/transferrecipient', $data)
+            ->throw()
+            ->json();
+    }
+
+    // TT-7.6c/SCRUM-227: the actual money-movement call -- always dispatched from a queued job
+    // (ProcessCounsellorPayoutJob), never inline in a request/response cycle, mirroring TT-7.7d's
+    // isolation-from-dispatcher precedent for the identical class of external, money-moving call.
+    public function initiateTransfer(array $data): array
+    {
+        return $this->request()
+            ->post('/transfer', $data)
+            ->throw()
+            ->json();
+    }
+
+    // SCRUM-376: asks Paystack what became of a transfer by the SAME caller-supplied reference
+    // initiateTransfer() sent -- used by ProcessCounsellorPayoutJob when a retry is refused (4xx),
+    // to find out whether the earlier attempt actually went through. Paystack answers a 404 for a
+    // reference it never saw. Response data carries status/reason/transfer_code like
+    // initiateTransfer()'s own.
+    public function verifyTransfer(string $reference): array
+    {
+        return $this->request()
+            ->get('/transfer/verify/'.rawurlencode($reference))
+            ->throw()
+            ->json();
+    }
+
+    // TT-7.3b-a/SCRUM-231: charges a previously-captured, reusable authorization_code on demand --
+    // what a future pay-per-use/retainer charge (TT-7.3b-c/-e) actually calls to bill an
+    // organization's saved payment instrument, with no checkout redirect involved (unlike
+    // initializeTransaction()). Response shape mirrors verifyTransaction()'s exactly (same
+    // data.status/data.authorization fields), confirmed via Paystack's own API docs during this
+    // ticket's spike.
+    public function chargeAuthorization(array $data): array
+    {
+        return $this->request()
+            ->post('/transaction/charge_authorization', $data)
+            ->throw()
+            ->json();
+    }
+
+    // TT-7.7d/SCRUM-252: the real money-movement call -- always dispatched from a queued job
+    // (ProcessRefundJob), never inline in a request/response cycle, mirroring initiateTransfer()'s
+    // own isolation-from-dispatcher precedent. Unlike initiateTransfer()/chargeAuthorization(),
+    // Paystack's refund endpoint takes no caller-supplied idempotency reference -- it keys
+    // entirely off the ORIGINAL transaction's own `transaction` field (id or reference), and
+    // (per Paystack's own docs, confirmed during this ticket's spike -- no live sandbox
+    // credentials in this dev environment to verify empirically, same limitation noted on
+    // ProcessCounsellorPayoutJob/TT-7.6c) omitting `amount` refunds the transaction in full.
+    public function refundTransaction(array $data): array
+    {
+        return $this->request()
+            ->post('/refund', $data)
+            ->throw()
+            ->json();
+    }
+
+    // SCRUM-378: Paystack's Fetch Refund (GET /refund/{id}, operationId refund_fetch in its published
+    // OpenAPI spec), keyed by Paystack's OWN refund id -- `data.id` of refundTransaction()'s response,
+    // stored on refunds.paystack_refund_id. Used by ProcessRefundJob when a retry is refused (4xx).
+    // Response data carries status, amount, currency and transaction_reference.
+    public function fetchRefund(int|string $id): array
+    {
+        return $this->request()
+            ->get('/refund/'.rawurlencode((string) $id))
+            ->throw()
+            ->json();
+    }
+
+    private function request(): PendingRequest
+    {
+        // SCRUM-272: short timeouts, so an unreachable Paystack fails within seconds with the
+        // caller's "try again" message instead of hanging until the gateway gives up (a 502). A
+        // timeout throws ConnectionException -- callers catch HttpClientException, its parent.
+        return Http::baseUrl(config('services.paystack.base_url'))
+            ->withToken(config('services.paystack.secret_key'))
+            ->connectTimeout(config('services.paystack.connect_timeout'))
+            ->timeout(config('services.paystack.timeout'))
+            ->acceptJson();
+    }
+}

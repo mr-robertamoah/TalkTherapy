@@ -2,6 +2,9 @@
 
 namespace App\Services;
 
+use App\Actions\Admin\RecordAdminContentReadAction;
+use App\Actions\Message\EnsureUserCanAccessTherapyContentAction;
+use App\Actions\Session\AfterSessionCreatedAction;
 use App\Actions\Session\ChangeSessionStatusAction;
 use App\Actions\Session\CreateSessionAction;
 use App\Actions\Session\DeleteSessionAction;
@@ -11,47 +14,77 @@ use App\Actions\Session\EnsureCanDeleteSessionAction;
 use App\Actions\Session\EnsureCanEndSessionAction;
 use App\Actions\Session\EnsureCanUpdateSessionAction;
 use App\Actions\Session\EnsureCanUpdateSessionStatusAction;
+use App\Actions\Session\EnsureCanViewCounsellorCalendarAction;
 use App\Actions\Session\EnsureSessionDataIsValidAction;
 use App\Actions\Session\EnsureSessionExistsAction;
-use App\Actions\Session\UpdateSessionAction;
-use App\Actions\Star\CreateStarAction;
 use App\Actions\Session\EnsureTherapyExistsAction;
+use App\Actions\Session\GetCounsellorCalendarSessionsAction;
 use App\Actions\Session\SetCurrentTopicOfSessionAction;
 use App\Actions\Session\UnsetCurrentTopicOfSessionAction;
+use App\Actions\Session\UpdateSessionAction;
+use App\Actions\Therapy\EnsureTherapyCanProceedAction;
 use App\Actions\TherapyTopic\EnsureTherapyTopicExistsAction;
 use App\DTOs\CreateSessionDTO;
-use App\DTOs\CreateStarDTO;
+use App\DTOs\GetCounsellorCalendarSessionsDTO;
 use App\DTOs\GetSessionsDTO;
 use App\Enums\PaginationEnum;
 use App\Enums\SessionStatusEnum;
-use App\Enums\StarTypeEnum;
 use App\Events\SessionTopicSetEvent;
 use App\Events\SessionTopicUnsetEvent;
 use App\Events\SessionUpdatedEvent;
 use App\Http\Resources\SessionResource;
-use App\Notifications\SessionCreatedNotification;
+use App\Models\AdminContentAccess;
+use App\Models\Session;
+use App\Models\User;
 use App\Notifications\SessionDeletedNotification;
 use App\Notifications\SessionStatusChangedNotification;
 use App\Notifications\SessionUpdatedNotification;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Notification;
 
 class SessionService extends Service
 {
     public function getSessions(GetSessionsDTO $getSessionsDTO)
     {
-        if (
-            $getSessionsDTO?->user?->isNotAdmin() &&
-            !$getSessionsDTO->therapy->public &&
-            $getSessionsDTO->therapy->isNotParticipant($getSessionsDTO->user)
-        ) return [];
-        
-        $query = $getSessionsDTO->therapy->sessions()->when($getSessionsDTO->name, function($query) use ($getSessionsDTO) {
+        $user = $getSessionsDTO->user;
+        $therapy = $getSessionsDTO->therapy;
+
+        if (! $therapy) {
+            return [];
+        }
+
+        // SCRUM-74: the previous `$user?->isNotAdmin() && ...` form silently skipped this
+        // restriction entirely for an unauthenticated (null $user) request instead of denying
+        // it -- this route is intentionally reachable by guests for PUBLIC therapies (mirroring
+        // this endpoint's existing design), so a null $user must still see public sessions, but
+        // must never fall through to the private/non-participant branch below.
+        $isAdmin = $user?->isNotAdmin() === false;
+
+        if (! $isAdmin && ! $therapy->public && (! $user || $therapy->isNotParticipant($user))) {
+            return [];
+        }
+
+        $query = $therapy->sessions()->with('latestTransaction')->when($getSessionsDTO->name, function ($query) use ($getSessionsDTO) {
             $query->whereNameLike($getSessionsDTO->name);
         });
-        
-        return SessionResource::collection($query->latest()->paginate(
-            PaginationEnum::preferencesPagination->value
-        ));
+
+        $sessions = $query->latest()->paginate(PaginationEnum::preferencesPagination->value);
+        // SCRUM-368: SessionResource asks each session's `for` who may see its payment status.
+        $sessions->getCollection()->each->setRelation('for', $therapy);
+
+        return SessionResource::collection($sessions);
+    }
+
+    // Aggregates a counsellor's own sessions across every Therapy/GroupTherapy they're currently
+    // assigned to (SCRUM-212/TT-2.6a) -- distinct from getSessions() above, which is always
+    // scoped to one Therapy/GroupTherapy at a time.
+    public function getCounsellorCalendarSessions(GetCounsellorCalendarSessionsDTO $dto)
+    {
+        EnsureCanViewCounsellorCalendarAction::new()->execute($dto);
+
+        $sessions = GetCounsellorCalendarSessionsAction::new()->execute($dto);
+
+        return SessionResource::collection($sessions);
     }
 
     public function createSession(CreateSessionDTO $createSessionDTO)
@@ -60,23 +93,13 @@ class SessionService extends Service
 
         EnsureCanCreateSessionAction::new()->execute($createSessionDTO);
 
+        EnsureTherapyCanProceedAction::new()->execute($createSessionDTO->user, $createSessionDTO->for);
+
         EnsureSessionDataIsValidAction::new()->execute($createSessionDTO);
-        
+
         $session = CreateSessionAction::new()->execute($createSessionDTO);
 
-        CreateStarAction::new()->execute(
-            CreateStarDTO::fromArray([
-                'starredby' => null,
-                'starred' => $createSessionDTO->user,
-                'starreable' => $session,
-                'type' => StarTypeEnum::participation->value,
-            ])
-        );
-
-        Notification::send(
-            $session->for->getOtherUsers($createSessionDTO->user),
-            new SessionCreatedNotification($session)
-        );
+        AfterSessionCreatedAction::new()->execute($session, $createSessionDTO->user);
 
         return $session;
     }
@@ -87,16 +110,39 @@ class SessionService extends Service
 
         EnsureCanUpdateSessionAction::new()->execute($createSessionDTO);
 
+        EnsureTherapyCanProceedAction::new()->execute($createSessionDTO->user, $createSessionDTO->session->for);
+
         EnsureSessionDataIsValidAction::new()->execute($createSessionDTO);
 
         $session = UpdateSessionAction::new()->execute($createSessionDTO);
 
         Notification::send(
-            $session->for->getOtherUsers($createSessionDTO->user), 
+            $session->for->getOtherUsers($createSessionDTO->user),
             new SessionUpdatedNotification($session)
         );
 
         return $session;
+    }
+
+    // SCRUM-367: session broadcasts only announce a session (its id); each open page fetches it
+    // here, so the same rules as its messages apply -- participants (or anyone, for a public
+    // therapy), the strict payment gate, suspension (middleware). Null means "not yours to see".
+    public function getSession(?Session $session, ?User $user): ?SessionResource
+    {
+        if (! $session || ! $user || ! EnsureUserCanAccessTherapyContentAction::new()->execute($session->for, $user, $session, $session->start_time)) {
+            return null;
+        }
+
+        // SCRUM-360: once per admin per session per ten minutes -- an open page refetches on every
+        // live update.
+        if (Cache::add("admin-session-read:{$user->id}:{$session->id}", 1, 600)) {
+            RecordAdminContentReadAction::new()->execute($user, AdminContentAccess::SESSION, $session, $session->for);
+        }
+
+        // Every open page fetches here on each live update: load what SessionResource reads at once.
+        $session->loadMissing(['topics', 'cases', 'addedby', 'updatedby', 'latestTransaction']);
+
+        return new SessionResource($session);
     }
 
     public function endSession(CreateSessionDTO $createSessionDTO)
@@ -108,9 +154,9 @@ class SessionService extends Service
         $session = ChangeSessionStatusAction::new()->execute($createSessionDTO, SessionStatusEnum::held->value);
 
         broadcast(new SessionUpdatedEvent($session))->toOthers();
-        
+
         Notification::send(
-            $createSessionDTO->session->for->getOtherUsers($createSessionDTO->user), 
+            $createSessionDTO->session->for->getOtherUsers($createSessionDTO->user),
             new SessionStatusChangedNotification($session)
         );
 
@@ -123,12 +169,14 @@ class SessionService extends Service
 
         EnsureCanUpdateSessionStatusAction::new()->execute($createSessionDTO);
 
+        EnsureTherapyCanProceedAction::new()->execute($createSessionDTO->user, $createSessionDTO->session->for);
+
         $session = ChangeSessionStatusAction::new()->execute($createSessionDTO, SessionStatusEnum::in_session->value);
 
         broadcast(new SessionUpdatedEvent($session))->toOthers();
-        
+
         Notification::send(
-            $createSessionDTO->session->for->getOtherUsers($createSessionDTO->user), 
+            $createSessionDTO->session->for->getOtherUsers($createSessionDTO->user),
             new SessionStatusChangedNotification($session)
         );
 
@@ -144,9 +192,9 @@ class SessionService extends Service
         $session = ChangeSessionStatusAction::new()->execute($createSessionDTO, SessionStatusEnum::abandoned->value);
 
         broadcast(new SessionUpdatedEvent($session))->toOthers();
-        
+
         Notification::send(
-            $createSessionDTO->session->for->getOtherUsers($createSessionDTO->user), 
+            $createSessionDTO->session->for->getOtherUsers($createSessionDTO->user),
             new SessionStatusChangedNotification($session)
         );
 
@@ -162,7 +210,7 @@ class SessionService extends Service
         $session = ChangeSessionStatusAction::new()->execute($createSessionDTO, SessionStatusEnum::failed->value);
 
         Notification::send(
-            $createSessionDTO->session->for->getOtherUsers($createSessionDTO->user), 
+            $createSessionDTO->session->for->getOtherUsers($createSessionDTO->user),
             new SessionStatusChangedNotification($session)
         );
 
@@ -178,7 +226,7 @@ class SessionService extends Service
         $session = DeleteSessionAction::new()->execute($createSessionDTO);
 
         Notification::send(
-            $createSessionDTO->session->for->getOtherUsers($createSessionDTO->user), 
+            $createSessionDTO->session->for->getOtherUsers($createSessionDTO->user),
             new SessionDeletedNotification($session)
         );
 
@@ -189,9 +237,13 @@ class SessionService extends Service
     {
         EnsureSessionExistsAction::new()->execute($createSessionDTO);
 
-        EnsureTherapyTopicExistsAction::new()->execute($createSessionDTO);
-
+        // SCRUM-339: authorize before the topic lookup, so a refused caller can't probe topic ids.
         EnsureCanChangeSessionTopicAction::new()->execute($createSessionDTO);
+
+        // SCRUM-363: running a session's topics is counsellor work.
+        EnsureTherapyCanProceedAction::new()->execute($createSessionDTO->user, $createSessionDTO->session->for, includeTarget: false);
+
+        EnsureTherapyTopicExistsAction::new()->execute($createSessionDTO);
 
         $session = SetCurrentTopicOfSessionAction::new()->execute($createSessionDTO);
 
@@ -204,9 +256,12 @@ class SessionService extends Service
     {
         EnsureSessionExistsAction::new()->execute($createSessionDTO);
 
-        EnsureTherapyTopicExistsAction::new()->execute($createSessionDTO);
-
+        // SCRUM-339: authorize before the topic lookup, so a refused caller can't probe topic ids.
         EnsureCanChangeSessionTopicAction::new()->execute($createSessionDTO);
+
+        EnsureTherapyCanProceedAction::new()->execute($createSessionDTO->user, $createSessionDTO->session->for, includeTarget: false);
+
+        EnsureTherapyTopicExistsAction::new()->execute($createSessionDTO);
 
         $session = UnsetCurrentTopicOfSessionAction::new()->execute($createSessionDTO);
 

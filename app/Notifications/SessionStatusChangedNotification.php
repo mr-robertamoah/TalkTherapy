@@ -3,7 +3,6 @@
 namespace App\Notifications;
 
 use App\Enums\SessionStatusEnum;
-use App\Http\Resources\SessionResource;
 use App\Models\Counsellor;
 use App\Models\Session;
 use App\Models\Therapy;
@@ -34,23 +33,24 @@ class SessionStatusChangedNotification extends Notification implements ShouldQue
     {
         $via = ['broadcast'];
 
-        if ($notifiable->email_verified_at)
+        if ($notifiable->email_verified_at) {
             $via[] = 'mail';
-        
+        }
+
         return $via;
     }
-    
+
     public function toBroadcast(object $notifiable): BroadcastMessage
     {
         $item = $this->session->for_type == Therapy::class ? 'Therapy' : 'Group Therapy';
 
-        return (new BroadcastMessage([
+        return new BroadcastMessage([
             'forId' => $this->session->for_id,
             'forType' => $item,
             'sessionId' => $this->session->id,
             'status' => $this->session->status,
-            'message' => "Visit {$item} with name: '{$this->session->for->name}' now. This session {$this->getSessionText()}"
-        ]));
+            'message' => "Visit {$item} with name: '{$this->session->for->name}' now. This session {$this->getSessionText()}",
+        ]);
     }
 
     public function broadcastType(): string
@@ -65,7 +65,7 @@ class SessionStatusChangedNotification extends Notification implements ShouldQue
     {
         [$type, $url] = $this->session->getNotificationActionData();
         $name = $notifiable::class == Counsellor::class ? $notifiable->getName() : $notifiable->name;
-        
+
         return (new MailMessage)
             ->success()
             ->subject("'{$this->session->name}' Session")
@@ -79,13 +79,13 @@ class SessionStatusChangedNotification extends Notification implements ShouldQue
     private function getSessionText()
     {
         return match ($this->session->status) {
-            SessionStatusEnum::abandoned->value => "has been abandoned. A counsellor or user has ended the session before its end time.",
-            SessionStatusEnum::in_session->value => "has started.",
-            SessionStatusEnum::held->value => "has ended.",
-            SessionStatusEnum::failed->value => "has been failed. Meaning it did not take place.",
+            SessionStatusEnum::abandoned->value => 'has been abandoned. A counsellor or user has ended the session before its end time.',
+            SessionStatusEnum::in_session->value => 'has started.',
+            SessionStatusEnum::held->value => 'has ended.',
+            SessionStatusEnum::failed->value => 'has been failed. Meaning it did not take place.',
             SessionStatusEnum::held_confirmation->value => "requires you to confirm that the session has ended. Please visit page and click the 'end session' button.",
             SessionStatusEnum::in_session_confirmation->value => "requires you to confirm that the session has started. Please visit page and click the 'start session' button.",
-            default => "is currently pending.",
+            default => 'is currently pending.',
         };
     }
 
@@ -97,7 +97,7 @@ class SessionStatusChangedNotification extends Notification implements ShouldQue
     public function toArray(object $notifiable): array
     {
         return [
-            'session_id' => $this->session->id
+            'session_id' => $this->session->id,
         ];
     }
 }

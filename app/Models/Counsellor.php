@@ -3,26 +3,35 @@
 namespace App\Models;
 
 use App\Enums\ConstantsEnum;
+use App\Enums\CounsellorVerificationStateEnum;
+use App\Enums\FileTagEnum;
+use App\Enums\HelpRequestStatusEnum;
 use App\Enums\RequestStatusEnum;
 use App\Enums\RequestTypeEnum;
 use App\Enums\TherapyPaymentTypeEnum;
+use App\Support\CounsellorVerification;
+use App\Traits\HasGuardedDatabaseNotifications;
+use App\Traits\HasTaggedFiles;
 use App\Traits\Likeable;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphToMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Notifications\Notifiable;
 
 class Counsellor extends Model
 {
-    use HasFactory, Notifiable, 
-    Likeable, SoftDeletes;
+    use HasFactory, HasTaggedFiles,
+        Likeable, Notifiable, SoftDeletes;
+    use HasGuardedDatabaseNotifications {
+        HasGuardedDatabaseNotifications::notifications insteadof Notifiable;
+    }
 
     protected $fillable = [
         'name',
         'about',
-        'verified_at',
         'email_verified_at',
         'avatar_id',
         'cover_id',
@@ -32,14 +41,20 @@ class Counsellor extends Model
         'phone',
     ];
 
+    // SCRUM-389: verified_at isn't fillable -- only ApplyCounsellorVerificationAction verifies anyone
+    // (with an end date and an audit row). Factories and `db:seed` run unguarded.
     protected $casts = [
-        'email_verified_at' => 'datetime'
+        'email_verified_at' => 'datetime',
+        'verified_at' => 'datetime',
+        'verification_expires_at' => 'datetime',
+        'urgent_help_available_until' => 'datetime',
+        'verification_revoked_at' => 'datetime',
     ];
 
     public function routeNotificationForMail()
     {
         return [
-            $this->email => $this->getName()
+            $this->email => $this->getName(),
         ];
     }
 
@@ -50,14 +65,14 @@ class Counsellor extends Model
 
     public function getFreeTherapiesCountAttribute()
     {
-        return $this->therapies()
+        return $this->therapies()->withoutHelpChats()
             ->where('payment_type', TherapyPaymentTypeEnum::free->value)
             ->count();
     }
 
     public function getPaidTherapiesCountAttribute()
     {
-        return $this->therapies()
+        return $this->therapies()->withoutHelpChats()
             ->where('payment_type', TherapyPaymentTypeEnum::paid->value)
             ->count();
     }
@@ -84,7 +99,7 @@ class Counsellor extends Model
 
     public function discussions()
     {
-        return $this->belongsToMany(Counsellor::class, 'counsellor_discussion', 'counsellor_id', 'discussion_id')
+        return $this->belongsToMany(Discussion::class, 'counsellor_discussion', 'counsellor_id', 'discussion_id')
             ->withTimestamps();
     }
 
@@ -100,17 +115,17 @@ class Counsellor extends Model
 
     public function getHeldSessionsCountAttribute()
     {
-        return $this->addedSessions()->whereHeld()->count();
+        return $this->addedSessions()->withoutHelpChats()->whereHeld()->count();
     }
 
     public function getSessionsCountAttribute()
     {
-        return $this->addedSessions()->count();
+        return $this->addedSessions()->withoutHelpChats()->count();
     }
 
     public function getTherapiesCountAttribute()
     {
-        return $this->therapies()->count();
+        return $this->therapies()->withoutHelpChats()->count();
     }
 
     public function getAllTherapiesCountAttribute()
@@ -141,7 +156,7 @@ class Counsellor extends Model
     public function getName()
     {
         return $this->name
-            ? $this->name 
+            ? $this->name
             : $this->user->name;
     }
 
@@ -182,6 +197,18 @@ class Counsellor extends Model
         return $this->morphMany(Request::class, 'for');
     }
 
+    public function organizationCounsellors()
+    {
+        return $this->hasMany(OrganizationCounsellor::class);
+    }
+
+    // SCRUM-154 (TT-7.2b): informational/display-only preferred pricing -- never read by
+    // app/Actions/Transaction/ (see GetPayableAmountAction's own guardrail comment).
+    public function pricings()
+    {
+        return $this->hasMany(CounsellorPricing::class);
+    }
+
     public function hasPendingCounsellorVerificationRequest()
     {
         return $this->sentRequests()
@@ -195,10 +222,10 @@ class Counsellor extends Model
         return $this->morphMany(Discussion::class, 'addedby');
     }
 
-    public function verify()
+    // SCRUM-31: the verification history (admins only; CounsellorVerificationEventsResource).
+    public function verificationEvents()
     {
-        $this->verified_at = now()->utc();
-        $this->save();
+        return $this->hasMany(CounsellorVerificationEvent::class);
     }
 
     public function addedLanguages()
@@ -231,29 +258,106 @@ class Counsellor extends Model
         return $this->morphMany(Session::class, 'addedby');
     }
 
-    public function hasNoPendingSessions()
-    {
-        return !$this->hasPendingSessions();
-    }
-
     public function hasPendingSessions()
     {
+        // SCRUM-134: the three OR'd conditions must be grouped in one outer where() -- otherwise
+        // only wherePending() stays scoped to this counsellor's addedSessions(), and the trailing
+        // orWhere()s break out to match ANY session in the whole table (the same
+        // where()->orWhere() footgun already fixed elsewhere as SCRUM-129/139). Found here because
+        // it silently blocked EnsureCanDeleteCounsellorAction's deletion flow for every counsellor
+        // as soon as any session anywhere was upcoming.
         return $this->addedSessions()
             ->where(function ($query) {
-                $query->wherePending();
-            })
-            ->orWhere(function ($query) {
-                $query->whereStartsInTheFuture();
-            })
-            ->orWhere(function ($query) {
-                $query->whereAboutToStart();
+                $query->wherePending()
+                    ->orWhere(function ($query) {
+                        $query->whereStartsInTheFuture();
+                    })
+                    ->orWhere(function ($query) {
+                        $query->whereAboutToStart();
+                    });
             })
             ->exists();
     }
 
-    public function isVerified()
+    // SCRUM-30/31: where their platform verification stands -- from columns only, so a list of
+    // counsellors needs no query each. Verified means accepted by an administrator, not ended
+    // (verification_expires_at) and not revoked. A verified_at without an end date is a row the
+    // backfill or a factory didn't reach: treated as ended, the cautious reading.
+    public function verificationState(): CounsellorVerificationStateEnum
     {
-        return !!$this->verified_at;
+        return match (true) {
+            ! is_null($this->verification_revoked_at) => CounsellorVerificationStateEnum::revoked,
+            is_null($this->verified_at) => CounsellorVerificationStateEnum::unverified,
+            is_null($this->verification_expires_at) || $this->verification_expires_at->isPast() => CounsellorVerificationStateEnum::lapsed,
+            default => CounsellorVerificationStateEnum::verified,
+        };
+    }
+
+    // SCRUM-31: CURRENTLY verified -- every caller gates new work (taking on clients, joining a group,
+    // posting, a first payout destination, an organisation link). Work already under way never asks.
+    // For "was ever verified", wasEverVerified().
+    public function isVerified(): bool
+    {
+        return $this->verificationState() === CounsellorVerificationStateEnum::verified;
+    }
+
+    public function isNotVerified(): bool
+    {
+        return ! $this->isVerified();
+    }
+
+    public function wasEverVerified(): bool
+    {
+        return ! is_null($this->verified_at);
+    }
+
+    public function scopeWhereCurrentlyVerified($query)
+    {
+        return $query->whereNotNull('verified_at')
+            ->whereNull('verification_revoked_at')
+            ->where('verification_expires_at', '>', now());
+    }
+
+    // Currently verified, and ending within $days.
+    public function scopeWhereVerificationEndingWithin($query, int $days)
+    {
+        return $query->whereCurrentlyVerified()->where('verification_expires_at', '<=', now()->addDays($days));
+    }
+
+    // Due to re-verify: ending within the renewal window, and not asked to yet (the reminders and
+    // the admins' renewals count).
+    public function scopeWhereRenewalDue($query)
+    {
+        return $query->whereVerificationEndingWithin(CounsellorVerification::renewalWindowDays())
+            ->whereDoesntHave('sentRequests', fn ($query) => $query->where('type', RequestTypeEnum::counsellor->value)->wherePending());
+    }
+
+    // Was verified, and isn't now: ended or revoked (verificationState()'s lapsed and revoked).
+    public function scopeWhereVerificationNotCurrent($query)
+    {
+        return $query->whereNotNull('verified_at')->where(fn ($query) => $query
+            ->whereNotNull('verification_revoked_at')
+            ->orWhereNull('verification_expires_at')
+            ->orWhere('verification_expires_at', '<=', now()));
+    }
+
+    // TT-7.6a/SCRUM-225: null until the counsellor onboards a payout destination
+    // (CreateCounsellorPayoutDestinationAction) -- deliberately not eager-loaded everywhere,
+    // since this is only ever relevant to the counsellor's own payout flow, not general display.
+    public function payoutAccount()
+    {
+        return $this->hasOne(CounsellorPayoutAccount::class);
+    }
+
+    // TT-7.6d/SCRUM-228: read side for the counsellor's own payout screen.
+    public function earnings()
+    {
+        return $this->hasMany(CounsellorEarning::class);
+    }
+
+    public function payouts()
+    {
+        return $this->hasMany(CounsellorPayout::class);
     }
 
     public function addedPosts()
@@ -278,7 +382,7 @@ class Counsellor extends Model
 
     public function doesNotHaveTestimonial()
     {
-        return !$this->hasTestimonial();
+        return ! $this->hasTestimonial();
     }
 
     public function addedReports()
@@ -311,7 +415,9 @@ class Counsellor extends Model
 
     public function user()
     {
-        return $this->belongsTo(User::class);
+        // withTrashed: a counsellor's user may have deleted their account -- see
+        // Therapy::counsellor() for why callers need this to resolve rather than crash.
+        return $this->belongsTo(User::class)->withTrashed();
     }
 
     public function cases(): MorphToMany
@@ -350,14 +456,32 @@ class Counsellor extends Model
         return $this->belongsTo(Profession::class);
     }
 
-    public function avatar()
+    // SCRUM-182/TT-10.2: migrated off the avatar_id/cover_id FK columns onto the shared, tagged
+    // fileables pivot (see TT-10.1). withPivotValue (rather than a plain wherePivot) also makes
+    // attach()/sync() auto-populate the tag column on write, not just filter reads -- note this is
+    // NOT the same as the similarly-named wherePivotValue(), which doesn't exist on this relation
+    // and is silently absorbed by Eloquent's dynamic-where-clause magic instead of erroring.
+    public function avatarFile(): MorphToMany
     {
-        return $this->belongsTo(File::class, 'avatar_id');
+        return $this->taggedFile(FileTagEnum::avatar);
     }
 
-    public function cover()
+    public function coverFile(): MorphToMany
     {
-        return $this->belongsTo(File::class, 'cover_id');
+        return $this->taggedFile(FileTagEnum::cover);
+    }
+
+    // Accessors, not the relation methods themselves, are what CounsellorResource and the rest of
+    // the app read ($counsellor->avatar / ->cover) -- a MorphToMany is always collection-returning,
+    // so this preserves the pre-existing File|null contract without touching any consumer.
+    public function getAvatarAttribute(): ?File
+    {
+        return $this->avatarFile->first();
+    }
+
+    public function getCoverAttribute(): ?File
+    {
+        return $this->coverFile->first();
     }
 
     public function engagesAUserInTherapy()
@@ -367,7 +491,7 @@ class Counsellor extends Model
 
     public function hasNotEngagedAUserInTherapy()
     {
-        return !$this->engagesAUserInTherapy();
+        return ! $this->engagesAUserInTherapy();
     }
 
     public function hasHeldATherapySession()
@@ -379,19 +503,15 @@ class Counsellor extends Model
 
     public function hasNotHeldATherapySession()
     {
-        return !$this->hasHeldATherapySession();
+        return ! $this->hasHeldATherapySession();
     }
 
     public function scopeWhereName($query, $name)
     {
-        return $query->where('name', 'LIKE', "%{$name}%")
-            ->orWhereHas('user', function ($query) use ($name) {
-                $query
-                    ->where('username', 'LIKE', "%{$name}%")
-                    ->orWhere('firstName', 'LIKE', "%{$name}%")
-                    ->orWhere('lastName', 'LIKE', "%{$name}%")
-                    ->orWhere('otherNames', 'LIKE', "%{$name}%");
-            });
+        // Grouped, and wildcards matched literally (SCRUM-363).
+        return $query->where(fn ($query) => $query
+            ->whereContains('name', $name)
+            ->orWhereHas('user', fn ($query) => $query->whereContains(['username', 'firstName', 'lastName', 'otherNames'], $name)));
     }
 
     public function scopeWhereDiscussion($query, Discussion $discussion)
@@ -403,26 +523,76 @@ class Counsellor extends Model
             });
     }
 
+    // SCRUM-359: counsellors who may be offered to clients -- not suspended, in either scope.
+    // SCRUM-33: who is rung for an "I need help now" -- switched on (and not lapsed), currently
+    // verified, not suspended, their account still here, and not already in a live help chat.
+    public function scopeAvailableForUrgentHelp($query)
+    {
+        return $query->where('urgent_help_available_until', '>', now())->ableToTakeUrgentHelp();
+    }
+
+    // SCRUM-33 (TT-4.4b review): the one rule for who can take an urgent help chat at all (on call or
+    // not) -- currently verified, not suspended, their account still here, not already in a help chat.
+    public function scopeAbleToTakeUrgentHelp($query)
+    {
+        return $query->whereCurrentlyVerified()
+            ->whereNotSuspended()
+            ->whereHas('user')
+            ->whereDoesntHave('helpRequests', fn ($query) => $query->where('status', HelpRequestStatusEnum::connected->value));
+    }
+
+    // ...and for this request: never the person asking, nor one of their guardians.
+    public function scopeMayHelpWith($query, HelpRequest $request)
+    {
+        return $query->where('user_id', '!=', $request->user_id)
+            ->whereNotIn('user_id', Guardianship::query()->select('guardian_id')->where('ward_id', $request->user_id));
+    }
+
+    public function isAvailableForUrgentHelp(): bool
+    {
+        return (bool) $this->urgent_help_available_until?->isFuture();
+    }
+
+    public function helpRequests(): HasMany
+    {
+        return $this->hasMany(HelpRequest::class);
+    }
+
+    public function scopeWhereNotSuspended($query)
+    {
+        return $query->whereDoesntHave('user.suspensions', fn ($q) => $q->active());
+    }
+
+    public function isSuspended(): bool
+    {
+        return (bool) $this->user?->isSuspendedAsCounsellor();
+    }
+
     public function scopeWhereNotUser($query, $user)
     {
         return $query->where(function ($query) use ($user) {
-                $query
-                    ->whereNot('user_id', $user->id);
-            });
+            $query
+                ->whereNot('user_id', $user->id);
+        });
     }
 
+    // The to/from alternation must be grouped -- `->whereTo($this)->orWhereFrom($this)`
+    // un-grouped makes orWhereFrom() a top-level OR, unscoped from `wherePending()`/
+    // `whereFor($model)`, so it would match ANY request this counsellor has ever sent
+    // (any status, any target), not just a pending one for this specific model.
     public function hasPendingRequestFor(Model $model)
     {
         return (bool) Request::query()
             ->wherePending()
             ->whereFor($model)
-            ->whereTo($this)
-            ->orWhereFrom($this)
+            ->where(function ($query) {
+                $query->whereTo($this)->orWhereFrom($this);
+            })
             ->count();
     }
 
     public function doesNotHavePendingRequestFor(Model $model)
     {
-        return !$this->hasPendingRequestFor($model);
+        return ! $this->hasPendingRequestFor($model);
     }
 }

@@ -2,11 +2,17 @@
 
 namespace App\Http\Controllers;
 
-use App\DTOs\GetModelsForAdminDTO;
+use App\Actions\Admin\GetAdminToDoCountsAction;
+use App\Actions\Admin\GetPlatformStatsAction;
+use App\DTOs\DeleteCounsellorDTO;
 use App\DTOs\GetCounsellorStatsForAdminDTO;
+use App\DTOs\GetModelsForAdminDTO;
 use App\DTOs\GetVerificationRequestsDTO;
 use App\DTOs\UpdateUserDTO;
+use App\Enums\RequestStatusEnum;
+use App\Http\Middleware\EnsureUserIsAdmin;
 use App\Http\Requests\AdminUpdateUserRequest;
+use App\Http\Resources\AdminCounsellorResource;
 use App\Http\Resources\AdministratorResource;
 use App\Http\Resources\AdminUserResource;
 use App\Models\Counsellor;
@@ -14,7 +20,10 @@ use App\Models\User;
 use App\Services\CounsellorService;
 use App\Services\RequestService;
 use App\Services\UserService;
-use Exception;
+use App\Support\AdminSearch;
+use App\Support\CounsellorVerification;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Redirect;
 use Inertia\Inertia;
@@ -22,67 +31,146 @@ use Throwable;
 
 class AdministratorController extends Controller
 {
+    // SCRUM-387 (+ SCRUM-49): the admin area's overview -- what is waiting on the administrators
+    // and the platform figures. The `admin` route middleware refuses a non-admin first; each page
+    // checks again here.
     public function show(Request $request)
     {
-        $user = $request->user();
-        if (is_null($user) || $user->isNotAdmin()) {
-            return Redirect::route('home')->with('message', 'You are not authorized to visit /administrator page.');
+        if ($redirect = $this->refuseNonAdmin($request)) {
+            return $redirect;
         }
 
-        return Inertia::render('Admin', [
-            'administrator' => new AdministratorResource($user->administrator)
+        $user = $request->user();
+
+        return Inertia::render('Admin/Overview', [
+            'administrator' => new AdministratorResource($user->administrator),
+            'toDo' => GetAdminToDoCountsAction::new()->execute($user),
+            'stats' => GetPlatformStatsAction::new()->execute($user),
         ]);
+    }
+
+    // SCRUM-387: the old /administrator tabs, each a page now. Each hosts the component the tab did,
+    // which keeps fetching its own list (routes/api.php); what the page itself filters by is in the
+    // query string.
+    public function users(Request $request)
+    {
+        return $this->refuseNonAdmin($request) ?? Inertia::render('Admin/People/Users', ['search' => AdminSearch::term($request) ?? '']);
+    }
+
+    public function counsellors(Request $request)
+    {
+        return $this->refuseNonAdmin($request) ?? Inertia::render('Admin/People/Counsellors', [
+            'search' => AdminSearch::term($request) ?? '',
+        ]);
+    }
+
+    public function counsellorVerification(Request $request)
+    {
+        if ($redirect = $this->refuseNonAdmin($request)) {
+            return $redirect;
+        }
+
+        $status = (string) $request->query('status', RequestStatusEnum::pending->value);
+
+        return Inertia::render('Admin/People/CounsellorVerification', [
+            // 'all', or one of the statuses; anything else lists the pending ones.
+            'status' => $status === 'all' || RequestStatusEnum::tryFrom($status) ? $status : RequestStatusEnum::pending->value,
+            'statuses' => RequestStatusEnum::values(),
+            // SCRUM-31: the renewals list (due, ended, revoked) instead of the requests.
+            'view' => $request->query('view') === 'renewals' ? 'renewals' : 'requests',
+            'renewalWindowDays' => CounsellorVerification::renewalWindowDays(),
+            'renewalFilter' => $request->query('filter') === 'ended' ? 'ended' : 'due',
+            // SCRUM-390
+            'search' => AdminSearch::term($request) ?? '',
+        ]);
+    }
+
+    public function testimonials(Request $request)
+    {
+        return $this->refuseNonAdmin($request) ?? Inertia::render('Admin/Content/Testimonials');
+    }
+
+    public function howTos(Request $request)
+    {
+        return $this->refuseNonAdmin($request) ?? Inertia::render('Admin/Content/HowTos');
+    }
+
+    // SCRUM-387: the sidebar's badges, as JSON (admin.badges) -- only the counts, never a page's own
+    // queries. The `admin` middleware refuses a non-admin; badges() is empty for one anyway.
+    public function badges(Request $request): JsonResponse
+    {
+        return response()->json(['badges' => GetAdminToDoCountsAction::new()->badges($request->user())]);
+    }
+
+    private function refuseNonAdmin(Request $request): ?RedirectResponse
+    {
+        $user = $request->user();
+
+        if (is_null($user) || $user->isNotAdmin()) {
+            return Redirect::route('home')->with('message', EnsureUserIsAdmin::MESSAGE);
+        }
+
+        return null;
     }
 
     public function getCounsellors(Request $request)
     {
+        $search = AdminSearch::term($request);
+
         return CounsellorService::new()->geCounsellorsForAdmin(
             GetModelsForAdminDTO::new()->fromArray([
                 'user' => $request->user(),
                 'filterType' => $request->filterType,
                 'filterValue' => $request->filterValue,
+                'search' => $search,
             ])
         );
     }
 
     public function getUsers(Request $request)
     {
+        $search = AdminSearch::term($request);
+
         return UserService::new()->getUsersForAdmin(
             GetModelsForAdminDTO::new()->fromArray([
                 'user' => $request->user(),
                 'filterType' => $request->filterType,
                 'filterValue' => $request->filterValue,
+                'search' => $search,
             ])
         );
     }
 
+    // Every lookup below reads $request->route('userId'/'counsellorId') rather than the magic
+    // ->userId/->counsellorId properties -- see the identical fix/rationale in SessionController
+    // (SCRUM-116/SCRUM-130).
     public function updateUser(AdminUpdateUserRequest $request)
     {
         try {
             $user = UserService::new()->updateUserByAdmin(
                 UpdateUserDTO::new()->fromArray([
                     'user' => $request->user(),
-                    'updatedUser' => User::find($request->userId),
+                    'updatedUser' => User::find($request->route('userId')),
                     'firstName' => $request->firstName,
                     'lastName' => $request->lastName,
                     'otherNames' => $request->otherNames,
                     'email' => $request->email,
                     'country' => $request->country,
-                    'emailVerified' => !!$request->emailVerified,
+                    'emailVerified' => $request->boolean('emailVerified'),
                     'dob' => $request->dob,
                 ])
             );
 
-            return $this->returnSuccess($request, $user);
+            return $this->successResponse($request, ['user' => new AdminUserResource($user)]);
         } catch (Throwable $th) {
-            
-            return $this->returnFailure($request, $th);
+
+            return $this->failureResponse($request, $th);
         }
     }
 
     public function deleteUser(AdminUpdateUserRequest $request)
     {
-        $user = User::find($request->userId);
+        $user = User::find($request->route('userId'));
         try {
             UserService::new()->deleteUserByAdmin(
                 UpdateUserDTO::new()->fromArray([
@@ -91,10 +179,34 @@ class AdministratorController extends Controller
                 ])
             );
 
-            return $this->returnSuccess($request, $user);
+            return $this->successResponse($request, ['user' => new AdminUserResource($user)]);
         } catch (Throwable $th) {
-            
-            return $this->returnFailure($request, $th);
+
+            return $this->failureResponse($request, $th);
+        }
+    }
+
+    // SCRUM-134: reuses the same CounsellorService::deleteCounsellor() chain as self-service
+    // deletion -- EnsureCanDeleteCounsellorAction already requires isSuperAdmin() for this branch
+    // and applies the same eligibility checks (no pending sessions/in-session therapy/active
+    // affiliations) as it does to a counsellor deleting their own account; there is no
+    // admin-only bypass of those safety checks.
+    public function deleteCounsellor(Request $request)
+    {
+        $counsellor = Counsellor::find($request->route('counsellorId'));
+
+        try {
+            CounsellorService::new()->deleteCounsellor(
+                DeleteCounsellorDTO::new()->fromArray([
+                    'user' => $request->user(),
+                    'counsellor' => $counsellor,
+                ])
+            );
+
+            return $this->successResponse($request, ['counsellor' => new AdminCounsellorResource($counsellor)]);
+        } catch (Throwable $th) {
+
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -103,7 +215,7 @@ class AdministratorController extends Controller
         return CounsellorService::new()->getCounsellorStats(
             GetCounsellorStatsForAdminDTO::new()->fromArray([
                 'user' => $request->user(),
-                'counsellor' => Counsellor::find($request->counsellorId),
+                'counsellor' => Counsellor::find($request->route('counsellorId')),
             ])
         );
     }
@@ -115,26 +227,8 @@ class AdministratorController extends Controller
                 'user' => $request->user(),
                 'filterType' => $request->filterType,
                 'filterValue' => $request->filterValue,
-            ])
+            ]),
+            AdminSearch::term($request),
         );
-    }
-
-    private function returnSuccess(Request $request, User $user)
-    {
-        $user = new AdminUserResource($user);
-        
-        if ($request->acceptsJson()) return response()->json(['user' => $user]);
-        
-        return Redirect::back()->with(['user' => $user]);
-    }
-
-    private function returnFailure(Request $request, Throwable $th)
-    {
-        $message = $th->getCode() == 500 ? "Something unfortunate happened. Please try again shortly." : $th->getMessage();
-        
-        ds($th);
-
-        if ($request->acceptsJson()) throw new Exception($message);
-        return Redirect::back()->withErrors(['alert'=> $message]);
     }
 }

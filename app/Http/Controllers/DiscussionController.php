@@ -13,13 +13,35 @@ use App\Models\Counsellor;
 use App\Models\Discussion;
 use App\Models\Session;
 use App\Services\DiscussionService;
-use Exception;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Redirect;
+use Inertia\Inertia;
 use Throwable;
 
 class DiscussionController extends Controller
 {
+    // Every lookup below reads $request->route('discussionId') rather than the magic
+    // ->discussionId property -- Illuminate\Http\Request::__get() prefers a same-named
+    // parsed-body/query key over the route parameter, so a client could otherwise override which
+    // discussion a request targets by sending a same-named body field (SCRUM-116/SCRUM-130).
+    public function showChat(Request $request)
+    {
+        $discussion = Discussion::find($request->route('discussionId'));
+
+        abort_unless($discussion, 404);
+
+        $user = $request->user();
+
+        abort_if(
+            $user->isNotAdmin() && $discussion->isNotParticipant($user->counsellor),
+            403,
+            'You are not allowed to view this discussion.'
+        );
+
+        return Inertia::render('Discussion/Chat', [
+            'discussion' => new DiscussionResource($discussion),
+        ]);
+    }
+
     public function createDiscussion(CreateDiscussionRequest $request)
     {
         try {
@@ -30,23 +52,24 @@ class DiscussionController extends Controller
                     'name' => $request->name,
                     'startTime' => $request->startTime,
                     'endTime' => $request->endTime,
+                    'maxCounsellors' => $request->maxCounsellors,
                     'session' => Session::find($request->sessionId),
                     'addedby' => GetModelWithModelNameAndIdAction::new()->execute($request->addedbyType, $request->addedbyId),
                     'for' => GetModelWithModelNameAndIdAction::new()->execute($request->forType, $request->forId),
                 ])
             );
 
-            return $this->returnSuccess($request, $discussion);
+            return $this->successResponse($request, ['discussion' => new DiscussionResource($discussion)]);
         } catch (Throwable $th) {
-            
-            return $this->returnFailure($request, $th);
+
+            return $this->failureResponse($request, $th);
         }
     }
-    
+
     public function updateDiscussion(Request $request)
     {
-        $discussion = Discussion::find($request->discussionId);
-        
+        $discussion = Discussion::find($request->route('discussionId'));
+
         try {
             $discussion = DiscussionService::new()->updateDiscussion(
                 CreateDiscussionDTO::new()->fromArray([
@@ -56,6 +79,7 @@ class DiscussionController extends Controller
                     'discussion' => $discussion,
                     'startTime' => $request->startTime,
                     'endTime' => $request->endTime,
+                    'maxCounsellors' => $request->maxCounsellors,
                     'addedby' => $discussion->addedby,
                     'session' => Session::find($request->sessionId),
                     'deletedSession' => Session::find($request->deletedSessionId),
@@ -63,27 +87,27 @@ class DiscussionController extends Controller
                 ])
             );
 
-            return $this->returnSuccess($request, $discussion);
+            return $this->successResponse($request, ['discussion' => new DiscussionResource($discussion)]);
         } catch (Throwable $th) {
-            
-            return $this->returnFailure($request, $th);
+
+            return $this->failureResponse($request, $th);
         }
     }
-    
+
     public function deleteDiscussion(Request $request)
     {
         try {
             DiscussionService::new()->deleteDiscussion(
                 CreateDiscussionDTO::new()->fromArray([
                     'user' => $request->user(),
-                    'discussion' => $discussion = Discussion::find($request->discussionId),
+                    'discussion' => $discussion = Discussion::find($request->route('discussionId')),
                 ])
             );
 
-            return $this->returnSuccess($request, $discussion);
+            return $this->successResponse($request, ['discussion' => new DiscussionResource($discussion)]);
         } catch (Throwable $th) {
-            
-            return $this->returnFailure($request, $th);
+
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -93,12 +117,12 @@ class DiscussionController extends Controller
             return DiscussionService::new()->sendCounsellorRequest(
                 CreateRequestDTO::new()->fromArray([
                     'from' => $request->user()?->counsellor,
-                    'for' => Discussion::find($request->discussionId),
+                    'for' => Discussion::find($request->route('discussionId')),
                     'to' => Counsellor::find($request->counsellorId),
                 ])
             );
         } catch (Throwable $th) {
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -108,19 +132,19 @@ class DiscussionController extends Controller
             DiscussionService::new()->removeCounsellor(
                 GetDiscussionsDTO::new()->fromArray([
                     'user' => $request->user(),
-                    'discussion' => Discussion::find($request->discussionId),
+                    'discussion' => Discussion::find($request->route('discussionId')),
                     'counsellor' => $counsellor = Counsellor::find($request->counsellorId),
                 ])
             );
 
             return response()->json([
-                'counsellor' => new CounsellorResource($counsellor)
+                'counsellor' => new CounsellorResource($counsellor),
             ]);
         } catch (Throwable $th) {
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
-    
+
     public function getDiscussions(Request $request)
     {
         try {
@@ -133,11 +157,11 @@ class DiscussionController extends Controller
                 ])
             );
         } catch (Throwable $th) {
-            
-            return $this->returnFailure($request, $th);
+
+            return $this->failureResponse($request, $th);
         }
     }
-    
+
     public function getDiscussionCounsellors(Request $request)
     {
         try {
@@ -145,18 +169,18 @@ class DiscussionController extends Controller
                 GetDiscussionsDTO::new()->fromArray([
                     'user' => $request->user(),
                     'name' => $request->name,
-                    'discussion' => Discussion::find($request->discussionId),
+                    'discussion' => Discussion::find($request->route('discussionId')),
                 ])
             );
         } catch (Throwable $th) {
-            
-            return $this->returnFailure($request, $th);
+
+            return $this->failureResponse($request, $th);
         }
     }
-    
+
     public function endDiscussion(Request $request)
     {
-        $discussion = Discussion::find($request->discussionId);
+        $discussion = Discussion::find($request->route('discussionId'));
 
         try {
             $discussion = DiscussionService::new()->endDiscussion(
@@ -166,16 +190,16 @@ class DiscussionController extends Controller
                 ])
             );
 
-            return $this->returnSuccess($request, $discussion);
+            return $this->successResponse($request, ['discussion' => new DiscussionResource($discussion)]);
         } catch (Throwable $th) {
-            
-            return $this->returnFailure($request, $th);
+
+            return $this->failureResponse($request, $th);
         }
     }
-    
+
     public function getInDiscussion(Request $request)
     {
-        $discussion = Discussion::find($request->discussionId);
+        $discussion = Discussion::find($request->route('discussionId'));
 
         try {
             $discussion = DiscussionService::new()->getInDiscussion(
@@ -185,16 +209,16 @@ class DiscussionController extends Controller
                 ])
             );
 
-            return $this->returnSuccess($request, $discussion);
+            return $this->successResponse($request, ['discussion' => new DiscussionResource($discussion)]);
         } catch (Throwable $th) {
-            
-            return $this->returnFailure($request, $th);
+
+            return $this->failureResponse($request, $th);
         }
     }
-    
+
     public function abandonDiscussion(Request $request)
     {
-        $discussion = Discussion::find($request->discussionId);
+        $discussion = Discussion::find($request->route('discussionId'));
 
         try {
             $discussion = DiscussionService::new()->abandonDiscussion(
@@ -204,29 +228,10 @@ class DiscussionController extends Controller
                 ])
             );
 
-            return $this->returnSuccess($request, $discussion);
+            return $this->successResponse($request, ['discussion' => new DiscussionResource($discussion)]);
         } catch (Throwable $th) {
 
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
-    }
-
-    private function returnSuccess(Request $request, Discussion $discussion)
-    {
-        $discussion = new DiscussionResource($discussion);
-        
-        if ($request->acceptsJson()) return response()->json(['discussion' => $discussion]);
-        
-        return Redirect::back()->with(['discussion' => $discussion]);
-    }
-
-    private function returnFailure(Request $request, Throwable $th)
-    {
-        $message = $th->getCode() == 500 ? "Something unfortunate happened. Please try again shortly." : $th->getMessage();
-        
-        ds($th);
-
-        if ($request->acceptsJson()) throw new Exception($message);
-        return Redirect::back()->withErrors(['alert'=> $message]);
     }
 }

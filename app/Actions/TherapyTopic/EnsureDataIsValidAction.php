@@ -10,17 +10,23 @@ class EnsureDataIsValidAction extends Action
 {
     public function execute(CreateTherapyTopicDTO $createTherapyTopicDTO)
     {
-        $sessionsCount = $createTherapyTopicDTO->therapy
+        // SCRUM-344: on update, check against the topic's own owner -- a Therapy or a GroupTherapy
+        // (the controller can only pass a Therapy as `therapy`, so group topics used to crash here).
+        $owner = $createTherapyTopicDTO->therapyTopic?->topicable ?? $createTherapyTopicDTO->therapy;
+
+        $sessionsCount = $owner
             ->sessions()
             ->whereIn('id', $createTherapyTopicDTO->sessions ?: [])
             ->count();
 
         if (
-            !$createTherapyTopicDTO->sessions ||
-            !count($createTherapyTopicDTO->sessions) ||
+            ! $createTherapyTopicDTO->sessions ||
+            ! count($createTherapyTopicDTO->sessions) ||
             $sessionsCount == count($createTherapyTopicDTO->sessions)
-        ) return;
+        ) {
+            return;
+        }
 
-        throw new TherapyTopicException("Some of the selected sessions are not valid.", 422);
+        throw new TherapyTopicException('Some of the selected sessions are not valid.', 422);
     }
 }

@@ -1,6 +1,10 @@
 <template>
     <div v-bind="$attrs" class="p-4 bg-slate-600 rounded-lg select-none">
-        <div class="mb-2 text-gray-200 text-center text-sm font-semibold tracking-wide">@{{ user.username ?? 'not set'}}</div>
+        <!-- SCRUM-193: the user's avatar beside their username, when they have one. -->
+        <div class="mb-2 flex justify-center items-center gap-2">
+            <Avatar v-if="user.avatar" class="shrink-0" :avatar-text="'...'" :size="32" :src="user.avatar"/>
+            <div class="text-gray-200 text-sm font-semibold tracking-wide">@{{ user.username ?? 'not set'}}</div>
+        </div>
         <div class="flex justify-start items-center overflow-hidden overflow-x-auto p-2 space-x-3">
             <div class="flex flex-col justify-start items-center p-2 rounded bg-slate-100 text-nowrap">
                 <div class="mb-2 text-gray-600 min-w-[150px] w-fit text-center text-sm font-semibold tracking-wide">{{ !!user.firstName ? user.firstName : 'not set'}}</div>
@@ -49,6 +53,12 @@
         </div>
         <div class="flex overflow-hidden overflow-x-auto space-x-3 justify-start items-center mt-3" v-if="showActions">
             <PrimaryButton @click="() => showModal('update')">update</PrimaryButton>        
+            <!-- SCRUM-366: what this administrator has read (super admins only). -->
+            <Link
+                v-if="user.isAdmin && $page.props.auth.user?.isSuperAdmin"
+                :href="route('administrator.content-accesses', { admin: user.id })"
+                class="inline-flex items-center px-4 py-2 bg-white border border-gray-300 rounded-md font-semibold text-xs text-gray-700 uppercase tracking-widest shadow-sm hover:bg-gray-50"
+            >access history</Link>
             <PrimaryButton>ban</PrimaryButton>        
             <DangerButton @click="() => showModal('delete')">delete</DangerButton>      
         </div>
@@ -103,8 +113,10 @@ import useModal from "@/Composables/useModal"
 import Alert from "@/Components/Alert.vue"
 import AdminUserUpdateModal from "@/Components/AdminUserUpdateModal.vue"
 import { ref, computed } from "vue"
+import { Link } from "@inertiajs/vue3"
 import DangerButton from "./DangerButton.vue"
 import PrimaryButton from "./PrimaryButton.vue"
+import Avatar from "./Avatar.vue"
 import FormLoader from "./FormLoader.vue"
 import MiniModal from "./MiniModal.vue"
 

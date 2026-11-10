@@ -2,9 +2,22 @@
 
 namespace App\Http\Resources;
 
+use App\Actions\Request\EnsureUserCanRespondToRequestAction;
+use App\Actions\SafeguardingException\EnsureCanManageSafeguardingExceptionAction;
+use App\Actions\User\AnonymiseClosedAccountAction;
+use App\Enums\ConstantsEnum;
 use App\Enums\RequestTypeEnum;
 use App\Models\Discussion;
+use App\Models\GroupTherapy;
+use App\Models\Organization;
+use App\Models\OrganizationCounsellor;
+use App\Models\Request as RequestModel;
+use App\Models\SafeguardingException;
+use App\Models\Therapy;
+use App\Models\Transaction;
 use App\Models\User;
+use App\Support\AdminRequestQueue;
+use App\Support\NarrowUserProjection;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -17,28 +30,415 @@ class RequestResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
+        $viewer = $request->user();
+
+        // SCRUM-382 review (SCRUM-362's rule for reports): a super administrator lists every
+        // counsellor's request for a safeguarding exception, but one about a minor they counsel
+        // (and didn't send) shows only that it exists -- not who, the therapy, or the reason.
+        if ($this->isInvolvedSafeguardingAdmin($request, $viewer)) {
+            return [
+                'id' => $this->id,
+                'from' => null,
+                'for' => null,
+                'to' => null,
+                'status' => $this->status,
+                'type' => $this->type,
+                'isRespondent' => false,
+                'safeguardingException' => ['involved' => true, 'isRespondent' => false],
+                'createdAt' => $this->created_at->diffForHumans(),
+            ];
+        }
+
+        $isRespondent = $this->isRespondent($request, $viewer);
+
         return [
+            // SCRUM-389: an assistance request's direction -- 'invite' (to a counsellor) or 'offer'
+            // (a counsellor offering to help), so the frontend never works it out from the parties.
+            'direction' => in_array($this->type, RequestModel::ASSISTANCE_TYPES, true)
+                ? ($this->resource->isAssistanceOffer() ? 'offer' : 'invite')
+                : null,
             'id' => $this->id,
-            'from' => $this->from_type == User::class ? new UserMiniResource($this->from) : new CounsellorMiniResource($this->from),
+            'from' => $this->getFrom($viewer),
             'for' => $this->getFor(),
-            'to' => $this->to_type == User::class ? new UserMiniResource($this->to) : new CounsellorMiniResource($this->to),
+            'to' => $this->getTo($viewer),
             'status' => $this->status,
             'type' => $this->type,
+            // SCRUM-387: whether the viewer may answer it (EnsureUserCanRespondToRequestAction, the
+            // one answer to that), for every type -- RequestBadge.vue reads this rather than working
+            // it out from `to`, which for most of the admin queue isn't the viewer at all.
+            'isRespondent' => $isRespondent,
+            // SCRUM-387: which administrator answered an admin queue request, for administrators
+            // only (an admin queue request is only ever answered by one). Name and username only.
+            'respondedBy' => $this->when(
+                $viewer?->isAdmin() && AdminRequestQueue::includes($this->type) && ! is_null($this->responded_by_id)
+                    && ! $this->resource->isOwnRequestOf($viewer),
+                fn () => NarrowUserProjection::of($this->resource->respondedBy),
+            ),
+            // SCRUM-208 (TT-2.5c): only meaningful for a session-schedule proposal -- every other
+            // type in this resource has no proposal terms/round/stale-state to show.
+            // Explicitly whitelisted, not a raw spread of `data` -- mirrors
+            // OrganizationRequestResource's identical `proposedTerms` precedent (SCRUM-150/PR #89):
+            // that column also carries `proposedById`/`sessionId` (internal ids used only for
+            // server-side attribution), which must never reach either negotiating party.
+            'proposal' => $this->when(
+                $this->type === RequestTypeEnum::sessionScheduleProposal->value,
+                fn () => [
+                    'startTime' => $this->data['startTime'] ?? null,
+                    'endTime' => $this->data['endTime'] ?? null,
+                    'name' => $this->data['name'] ?? null,
+                    'about' => $this->data['about'] ?? null,
+                    'type' => $this->data['type'] ?? null,
+                    'paymentType' => $this->data['paymentType'] ?? null,
+                    'staleReason' => $this->data['staleReason'] ?? null,
+                    'reason' => $this->data['reason'] ?? null,
+                ]
+            ),
+            // TT-4.10e/SCRUM-294: only meaningful for a dobChange request -- mirrors
+            // `proposal` above's identical "explicitly whitelisted, not a raw spread of `data`"
+            // precedent (nothing else in `data` needs to reach either party for this type).
+            'dobChange' => $this->when(
+                $this->type === RequestTypeEnum::dobChange->value,
+                fn () => [
+                    'newDob' => $this->data['newDob'] ?? null,
+                    'priorDob' => $this->data['priorDob'] ?? null,
+                    // TT-4.10f/SCRUM-295: dobChange's own respondent isn't just `to` -- any one
+                    // of the target's current guardians (or any admin) may act, re-verified live
+                    // rather than by `to`-identity match (see EnsureUserCanRespondToRequestAction's
+                    // own reasoning). The frontend has no way to derive this itself without
+                    // duplicating that authorization logic (and drifting out of sync with it, as
+                    // already happened once) -- shipping the answer here instead. The same value as
+                    // the top-level `isRespondent`.
+                    'isRespondent' => $isRespondent,
+                ]
+            ),
+            // TT-4.11d/SCRUM-305: only meaningful for an ageVerification request. Whether the viewer
+            // may answer it is the top-level `isRespondent` (SCRUM-387).
+            'ageVerification' => $this->when(
+                $this->type === RequestTypeEnum::ageVerification->value,
+                function () {
+                    // Preloaded for a list (PreloadRequestListAction); queried for a single request.
+                    $document = $this->resource->relationLoaded('identityDocument')
+                        ? $this->resource->identityDocument->first()
+                        : $this->identityDocument()->first();
+
+                    return [
+                        'attestation' => $this->data['attestation'] ?? null,
+                        'attestedDob' => $this->data['attestedDob'] ?? null,
+                        // Never a raw File::url (identity_documents is a private disk with no
+                        // public symlink and getUrlFor() refuses to resolve it) -- always this
+                        // dedicated, authorized retrieval route (TT-4.11a/SCRUM-302).
+                        'documentUrl' => $document
+                            ? route('requests.documents.show', ['request' => $this->id, 'file' => $document->id])
+                            : null,
+                    ];
+                }
+            ),
+            // SCRUM-381: a counsellor's request for a safeguarding exception. Only its sender (the
+            // counsellor) and the super administrator can list it. The client is named as the
+            // therapy shows them to everyone else (displayNameOf(): an anonymous client or member
+            // stays "Anonymous", never an id); only the super administrator, who decides, sees who
+            // they are.
+            'safeguardingException' => $this->when(
+                $this->type === RequestTypeEnum::safeguardingException->value,
+                fn () => $this->safeguardingException($isRespondent),
+            ),
+            'round' => $this->when(! is_null($this->round), $this->round),
+            'expiresAt' => $this->when(! is_null($this->expires_at), fn () => $this->expires_at?->diffForHumans()),
             'createdAt' => $this->created_at->diffForHumans(),
         ];
     }
 
+    // The sender sees their own request as its counsellor (below), never this summary.
+    private function isInvolvedSafeguardingAdmin(Request $request, ?User $viewer): bool
+    {
+        if (! $viewer || $this->type !== RequestTypeEnum::safeguardingException->value || ! $viewer->isAdmin()) {
+            return false;
+        }
+
+        return self::safeguardingManager($request, $viewer)->masksRequestFrom($viewer, $this->resource);
+    }
+
+    // SCRUM-384: one remembering() instance per HTTP request and viewer (UserMiniResource's
+    // viewerIsAdmin() precedent), so a list with several rows about one minor reads whether the
+    // viewer counsels them once. The ward itself comes preloaded (PreloadRequestListAction).
+    private static function safeguardingManager(Request $request, User $viewer): EnsureCanManageSafeguardingExceptionAction
+    {
+        $key = "safeguardingManager:{$viewer->id}";
+        if (! $request->attributes->has($key)) {
+            $request->attributes->set($key, EnsureCanManageSafeguardingExceptionAction::new()->remembering());
+        }
+
+        return $request->attributes->get($key);
+    }
+
+    // SCRUM-387: one answer per row, shared by the top-level `isRespondent` and the per-type blocks
+    // (dobChange, safeguardingException) that carried it first.
+    private function isRespondent(Request $request, ?User $viewer): bool
+    {
+        return $viewer && EnsureUserCanRespondToRequestAction::new()->userCanRespond($viewer, $this->resource, self::safeguardingManager($request, $viewer));
+    }
+
+    private function safeguardingException(bool $isRespondent): array
+    {
+        $ward = $this->resource->safeguardingWard();
+        $therapy = $this->for;
+
+        return [
+            'reason' => $this->data['reason'] ?? null,
+            'proposedEndsAt' => $this->data['proposedEndsAt'] ?? null,
+            'isRespondent' => $isRespondent,
+            // SCRUM-384: the approval form's limit, from the model rather than a copy in the UI.
+            'safeguardingExceptionMaxDays' => $this->when($isRespondent, SafeguardingException::MAX_DAYS),
+            'involved' => false,
+            'client' => match (true) {
+                ! $ward => ['fullName' => AnonymiseClosedAccountAction::CLOSED_ACCOUNT_NAME],
+                $isRespondent => NarrowUserProjection::of($ward),
+                $therapy instanceof Therapy || $therapy instanceof GroupTherapy => ['fullName' => $therapy->displayNameOf($ward)],
+                default => ['fullName' => ConstantsEnum::anonymousUserLabel->value],
+            },
+        ];
+    }
+
+    private function getFrom(?User $viewer)
+    {
+        // SCRUM-146: from/to being an Organization is only possible for the org-context request
+        // types (OrganizationRequestResource, via GetRequestResourceAction, handles those in
+        // full elsewhere) -- this generic resource just needs to not throw when one of them
+        // reaches the un-dispatched requests-list endpoint (RequestService::getRequests()).
+        if ($this->from_type == Organization::class) {
+            return new OrganizationMiniResource($this->from);
+        }
+
+        if ($this->from_type != User::class) {
+            return $this->counsellorParty($this->from);
+        }
+
+        // A group-therapy membership request's `from` is the requesting user, who may have
+        // chosen (or be forced into, by the group's own anonymous flag) anonymity -- unmasked
+        // here would leak the exact identity this ticket's whole feature is meant to protect,
+        // for anyone who can see the request (the group creator, or the requester themselves).
+        // Only mask for someone other than the requester -- they must still see their own name.
+        if ($this->type == RequestTypeEnum::groupTherapyMembership->value) {
+            $isAnonymous = $this->for?->anonymous || (bool) ($this->data['anonymous'] ?? false);
+
+            if ($isAnonymous && ! $this->from?->is($viewer)) {
+                return $this->anonymousUser();
+            }
+        }
+
+        if ($this->isMaskedTherapyClient($this->from, $viewer)) {
+            return $this->anonymousUser();
+        }
+
+        // TT-4.10e/SCRUM-294 security review: for a self-service dob edit, `from` and `for` are
+        // the same user (the ward editing their own dob) -- narrowing `getFor()` alone still let
+        // this branch broadcast the identical PII (gender/country/dob) to every admin via `from`.
+        // Shares `isNullToAdminOnlyType()` with getTo()/getFor() so a future similar type can't
+        // repeat this asymmetry by only narrowing one of the three fields -- extended for
+        // ageVerification (TT-4.11d/SCRUM-305) for the identical reason: also always null-`to`
+        // and visible to every admin, and `from`/`for` are likewise the same submitting user.
+        // SCRUM-387 (security review): a refund request is listed to every administrator too (the
+        // admin queue), so its payer is narrowed the same way.
+        if ($this->isNullToAdminOnlyType() || $this->type === RequestTypeEnum::refund->value) {
+            return NarrowUserProjection::of($this->from);
+        }
+
+        if ($this->isOrgMemberFlowUser($this->from, $viewer)) {
+            return NarrowUserProjection::of($this->from);
+        }
+
+        return new UserMiniResource($this->from);
+    }
+
+    private function getTo(?User $viewer)
+    {
+        // TT-4.10e/SCRUM-294: a dobChange request's `to` is genuinely nullable ("any admin may
+        // respond" when no guardian exists, mirroring refund's identical null-`to` shape) -- the
+        // generic `$this->to_type != User::class` branch below would otherwise call
+        // CounsellorMiniResource(null), which resolves to `{deleted: true, ...}` and
+        // misrepresents "not yet assigned to anyone" as "the guardian's account was deleted."
+        // ageVerification (TT-4.11d/SCRUM-305) is always null-`to` (admin-only by design, no
+        // guardian counterpart), so it shares this exact handling.
+        if ($this->isNullToAdminOnlyType()) {
+            return null;
+        }
+
+        // SCRUM-387 (security review): a counsellor or organisation verification is addressed to the
+        // first super administrator, but every administrator reviews it (the admin queue) -- their
+        // dob, gender and country must not go to all of them, nor to the one asking. It is shown as
+        // waiting on "any admin", like the null-`to` types above, and so is a refund (never
+        // addressed, which the generic branch below would show as a deleted counsellor).
+        if (in_array($this->type, [RequestTypeEnum::counsellor->value, RequestTypeEnum::organization->value, RequestTypeEnum::refund->value], true)) {
+            return null;
+        }
+
+        if ($this->to_type == Organization::class) {
+            return new OrganizationMiniResource($this->to);
+        }
+
+        if ($this->to_type != User::class) {
+            return new CounsellorMiniResource($this->to);
+        }
+
+        // For a group-therapy membership request, `to` is always the group's creator -- masked by
+        // the same rule GroupTherapyResource uses (addedByUserIsMaskedFor: the creator's anonymity
+        // for them, never to themselves). SCRUM-56: one shared rule instead of a group-flag copy.
+        if ($this->type == RequestTypeEnum::groupTherapyMembership->value && $this->for?->addedByUserIsMaskedFor($viewer)) {
+            return $this->anonymousUser();
+        }
+
+        if ($this->isMaskedTherapyClient($this->to, $viewer)) {
+            return $this->anonymousUser();
+        }
+
+        if ($this->isOrgMemberFlowUser($this->to, $viewer)) {
+            return NarrowUserProjection::of($this->to);
+        }
+
+        // SCRUM-389 (architect review): a counsellor's offer to help is addressed to the client or the
+        // group's creator -- the counsellor who offered has no relationship with them yet, so they get
+        // a name only (when not masked above), never dob, gender or country.
+        if (in_array($this->type, RequestModel::ASSISTANCE_TYPES, true) && ! $this->to?->is($viewer)) {
+            return NarrowUserProjection::of($this->to);
+        }
+
+        return new UserMiniResource($this->to);
+    }
+
+    // SCRUM-344 (security review): on a request about a therapy -- assistance requests either way
+    // round, and session schedule proposals -- the User side is that therapy's client, so it is
+    // masked exactly as the therapy itself masks them (TherapyTrait::addedByUserIsMaskedFor()).
+    // Without this, any counsellor could offer to assist a public anonymous therapy and read the
+    // client's full identity off their own request; invited counsellors saw it too.
+    private function isMaskedTherapyClient(?User $user, ?User $viewer): bool
+    {
+        $therapyRequestTypes = [
+            RequestTypeEnum::therapy->value,
+            RequestTypeEnum::groupTherapy->value,
+            RequestTypeEnum::sessionScheduleProposal->value,
+        ];
+
+        return $user && $this->for
+            && in_array($this->type, $therapyRequestTypes, true)
+            && method_exists($this->for, 'addedByUserIsMaskedFor')
+            && $this->for->addedby_type === User::class
+            && (bool) $this->for->addedby?->is($user)
+            && $this->for->addedByUserIsMaskedFor($viewer);
+    }
+
+    // SCRUM-345: no id -- a stable real id would let the viewer link the same anonymous person
+    // across requests. RequestBadge.vue only compares it with the viewer's own id, and a masked
+    // party is never the viewer.
+    private function anonymousUser(): array
+    {
+        return ['id' => null, 'fullName' => ConstantsEnum::anonymousUserLabel->value, 'isUser' => true];
+    }
+
+    // SCRUM-162 security review: TT-6.6d's org-scoped request queue newly surfaces
+    // organizationMemberInvite/organizationMemberApplication rows (whose from/to is an ordinary
+    // User the org admin has no other relationship with) to this generic resource, via
+    // RequestService::getRequests(). The full UserMiniResource (gender/country/dob) would reopen
+    // the exact PII-enumeration oracle SCRUM-124 already closed for
+    // OrganizationMemberController::invite()'s own response -- an org admin could invite/probe
+    // arbitrary user ids and read their PII back here. Narrowed the same way, except for the
+    // user's own view of their own request.
+    private function isOrgMemberFlowUser(?User $user, ?User $viewer): bool
+    {
+        return in_array($this->type, [
+            RequestTypeEnum::organizationMemberInvite->value,
+            RequestTypeEnum::organizationMemberApplication->value,
+        ]) && ! $user?->is($viewer);
+    }
+
+    // TT-4.10e/SCRUM-294 security review (extended by TT-4.11d/SCRUM-305 for ageVerification):
+    // shared by getFrom()/getTo()/getFor() so the null-`to` narrowing can't be applied to only
+    // one of the three fields by accident. Both types are visible to EVERY admin (not just
+    // whichever one eventually responds) via RequestService::getRequests()'s admin-visibility
+    // branch, so the full UserMiniResource (gender/country/dob) would otherwise broadcast PII to
+    // every admin who merely opens their requests list.
+    private function isNullToAdminOnlyType(): bool
+    {
+        return is_null($this->to_type) && in_array($this->type, [
+            RequestTypeEnum::dobChange->value,
+            RequestTypeEnum::ageVerification->value,
+            RequestTypeEnum::safeguardingException->value,
+        ]);
+    }
+
     private function getFor()
     {
-        if ($this->type == RequestTypeEnum::therapy->value)
-            return new TherapyMiniResource($this->for);
+        // SCRUM-206 (TT-2.5a): a session-schedule proposal's `for` is also a Therapy directly,
+        // same shape as a `therapy` (assistance) request.
+        // SCRUM-381: a safeguarding exception request is `for` a Therapy or (below) a GroupTherapy.
+        if (in_array($this->type, [RequestTypeEnum::therapy->value, RequestTypeEnum::sessionScheduleProposal->value])
+            || ($this->type === RequestTypeEnum::safeguardingException->value && $this->for_type === Therapy::class)) {
+            $therapy = new TherapyMiniResource($this->for);
 
-        if ($this->for_type == User::class)
+            // SCRUM-388 (security review): a safeguarding request is in the admin queue -- its
+            // therapy's counsellor is narrowed as its `from` is.
+            return AdminRequestQueue::includes($this->type) ? $therapy->withNarrowUsers() : $therapy;
+        }
+
+        if ($this->for_type == GroupTherapy::class) {
+            $group = new GroupTherapyMiniResource($this->for);
+
+            return AdminRequestQueue::includes($this->type) ? $group->withNarrowUsers() : $group;
+        }
+
+        if ($this->for_type == User::class) {
+            // TT-4.10e/SCRUM-294 security review (extended by TT-4.11d/SCRUM-305 for
+            // ageVerification): a null-`to` dobChange/ageVerification request is visible to
+            // *every* admin in their personal requests list (RequestService::getRequests()'s
+            // admin-visibility branch), not just whichever one eventually responds -- the full
+            // UserMiniResource (gender/country/dob) would broadcast a minor's PII to every admin
+            // who merely opens their requests list. Narrowed the same way isOrgMemberFlowUser()
+            // already narrows from/to for a viewer with no established relationship to the user;
+            // `dob` specifically is redundant anyway since `priorDob`/`attestedDob` above already
+            // carries it.
+            if ($this->isNullToAdminOnlyType()) {
+                return NarrowUserProjection::of($this->for);
+            }
+
             return new UserMiniResource($this->for);
+        }
 
-        if ($this->for_type == Discussion::class)
+        if ($this->for_type == Discussion::class) {
             return new DiscussionMiniResource($this->for);
+        }
 
-        return new CounsellorMiniResource($this->for);
+        if ($this->for_type == Organization::class) {
+            return new OrganizationMiniResource($this->for);
+        }
+
+        if ($this->for_type == OrganizationCounsellor::class) {
+            return [
+                'id' => $this->for?->id,
+                'organization' => new OrganizationMiniResource($this->for?->organization),
+                'counsellor' => new CounsellorMiniResource($this->for?->counsellor),
+            ];
+        }
+
+        // TT-7.7c/SCRUM-251: a refund request's `for` is a Transaction -- previously fell through
+        // to CounsellorMiniResource below, which has no matching fields on a Transaction and
+        // silently rendered garbage/nulls for a client's own "my requests" listing.
+        if ($this->for_type == Transaction::class) {
+            return [
+                'id' => $this->for?->id,
+                'reference' => $this->for?->reference,
+                'amount' => $this->for?->amount,
+                'currency' => $this->for?->currency,
+            ];
+        }
+
+        return $this->counsellorParty($this->for);
+    }
+
+    // SCRUM-388: an admin queue request (a counsellor verification, a safeguarding request) is listed
+    // to every administrator, who doesn't need its counsellor's dob, gender or country.
+    private function counsellorParty($counsellor): CounsellorMiniResource
+    {
+        $resource = new CounsellorMiniResource($counsellor);
+
+        return AdminRequestQueue::includes($this->type) ? $resource->withNarrowUser() : $resource;
     }
 }

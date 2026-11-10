@@ -1,0 +1,11701 @@
+# Decision Log
+
+A running record of non-trivial decisions made during autonomous/semi-autonomous execution —
+scope narrowings, design choices where a ticket's text was ambiguous, deviations from what a
+ticket literally says, resolved architectural questions. Complements (doesn't replace) the
+per-ticket Jira comments. See CLAUDE.md's "Autonomous execution" section for when this gets
+written to versus when the assistant pauses to ask instead.
+
+Newest entries at the bottom.
+
+---
+
+## 2026-08-26 — SCRUM-110: idempotency guard scope
+
+**Decision**: the "already paid" guard on `RecordTransactionStatusAction` needed to reject not
+just exact-duplicate status updates but any update attempting to move a transaction away from a
+terminal state (`success`/`failed`), not only identical re-deliveries.
+
+**Why**: an out-of-order or racing webhook event with a *different* status could otherwise
+regress an already-completed payment — the exact-match check alone was insufficient for
+money-moving code.
+
+---
+
+## 2026-08-26 — SCRUM-110: `VerifyPaystackTransactionAction` status mapping
+
+**Decision**: map only `success`/`failed`/`abandoned` Paystack statuses explicitly; leave any
+other status (e.g. a non-terminal "processing"/"queued") unrecorded rather than collapsing it
+into `abandoned`.
+
+**Why**: reviewer and security-engineer both independently flagged the original blanket mapping
+as premature finalization risk for a status Paystack might still resolve further.
+
+---
+
+## 2026-08-27 — SCRUM-111 ticket sequencing: frontend-flow gap
+
+**Decision**: added a "Frontend / UX flow per user type" section to all six Organizations-epic
+feature tickets (SCRUM-110–115) after the user pointed out none of the planning had considered
+what the frontend should look like per role. Filed SCRUM-118 as a new ticket for SCRUM-110's
+missing payment UI rather than reopening the already-implemented/PR'd backend ticket.
+
+**Why**: subagent planning passes (product-owner/project-manager/architect) default to a
+backend/data-model lens unless explicitly directed otherwise — this is now something to check
+for proactively on future feature planning, not just when asked.
+
+---
+
+## 2026-08-27 — SCRUM-111: authorization mechanism deviates from architect's recommendation
+
+**Decision**: implemented org-admin authorization as an Action (`EnsureUserIsOrganizationAdminAction`,
+Service-layer), not a Laravel Policy, despite the architect/PM passes both suggesting "a Policy."
+
+**Why**: this codebase has zero `app/Policies/` classes anywhere — every existing authorization
+check (including the `Administrator`/`isAdmin()` equivalent) is Action/Service-layer. Introducing
+Policies for one ticket would be a new, unprecedented pattern; matching existing convention wins
+over the subagents' textbook-Laravel suggestion.
+
+---
+
+## 2026-08-27 — SCRUM-111: verification state as `verified_at`, not an enum
+
+**Decision**: `Organization` verification is a nullable `verified_at` timestamp (verified or
+not — no persisted "rejected" state), not the `verification_status` enum
+(pending/verified/rejected) the original ticket text specified.
+
+**Why**: mirrors the existing `Counsellor`/`Administrator` verification pattern exactly.
+Rejection is captured on the `Request`'s own status instead — there's no need for the target
+model to separately remember "was rejected"; it just stays unverified.
+
+---
+
+## 2026-08-27 — SCRUM-120: narrowed from 4 request flows to 2
+
+**Decision**: TT-6.2 originally named 4 org-related request flows (org↔counsellor invite/apply,
+org↔member invite/self-apply). Implemented only the 2 counsellor-side flows; deferred the 2
+member-side flows to a not-yet-filed TT-6.3 ticket.
+
+**Why**: the member-side flows need an `organization_members` table that doesn't exist yet and
+isn't this ticket's to create — building request plumbing with no table to write into on
+acceptance would be untestable, speculative code. TT-6.4a (next in the M1 chain) only needed the
+counsellor-side flows anyway.
+
+---
+
+## 2026-08-27 — SCRUM-120: enumeration oracle closed with a single generic message
+
+**Decision**: collapsed "organization is unverified" and "organization is not a provider" into
+one generic "You cannot apply to this organization" message for the counsellor-apply flow
+specifically (kept distinct for the admin-invite flow).
+
+**Why**: security-engineer found the apply endpoint let any counsellor probe an arbitrary
+organization's verification/provider status via distinguishable error messages, inconsistent
+with `OrganizationController::show()` being admin-only. The admin-invite flow has no equivalent
+oracle risk since an org admin already knows their own org's state.
+
+---
+
+## 2026-08-27 — SCRUM-121: "(c) direct contract" is not a third creation path
+
+**Decision**: interpreted the original background text's "(c) an already-independent counsellor
+can be additionally, non-exclusively contracted" as the *guarantee* that holds for outcomes of
+paths (a)/(b) (both already built as `Request` flows in SCRUM-120), not a third distinct
+creation mechanism. No separate "direct contract" flow was built.
+
+**Why**: re-reading the source text, (c) describes a property (non-exclusivity, multi-org
+affiliation), not a new actor-initiated action — and nothing else in the ticket described a
+third distinct trigger. Multi-org affiliation falls out naturally from allowing multiple
+`organization_counsellors` rows per counsellor.
+
+---
+
+## 2026-08-27 — SCRUM-121: affiliation row created at accept-time, status `pending`
+
+**Decision**: an `organization_counsellors` row is created immediately when a SCRUM-120 request
+is accepted, with `status = pending` — not deferred until compensation terms exist (TT-6.4b).
+
+**Why**: the original ticket text ("results in a row only once compensation terms have been
+agreed") was ambiguous between "the row doesn't exist yet" and "the row exists but isn't yet
+active." The latter keeps the affiliation queryable immediately after acceptance instead of
+leaving an accepted-but-unrepresented gap spanning two different tickets/PRs.
+
+---
+
+## 2026-08-27 — Process change: semi-autonomous execution adopted
+
+**Decision**: per explicit user request, adopted a semi-autonomous operating mode project-wide:
+once a bugfix/chore or an already-approved epic's direction is set, proceed through that work's
+full workflow — including moving on to the next sub-ticket in a clear dependency chain — without
+waiting for a per-ticket go-ahead. Pauses only for a genuinely ambiguous/consequential decision,
+a needed clarifying question, an undetermined "what's next" (chain ended or multiple unrelated
+tickets equally valid), or when continuing would require branching off a not-yet-merged PR.
+Brand-new epics/features still always get the full `/start-feature` plan-and-approval gate first.
+Documented in `CLAUDE.md`'s new "Autonomous execution" section.
+
+**Why**: the user found the per-ticket "next one" prompt unnecessary ceremony once a chain's
+direction (e.g. an epic's milestone order) is already established, and wanted a durable,
+reviewable log of judgment calls made along the way rather than only scattered Jira comments.
+
+---
+
+## 2026-08-27 — Process change: local permission allow-list broadened
+
+**Decision**: broadened `.claude/settings.local.json`'s permission allow-list to cover git/Bash
+generally, Write/Edit/Read/Grep/Glob, the Agent tool, and the routine GitHub/Jira MCP calls used
+throughout a ticket's workflow (PR/issue reads and creates, Jira CRUD/comment/transition/link) —
+so neither the main session nor a spawned subagent (`reviewer`, `security-engineer`, etc., which
+share the same tool set) hits a per-call approval prompt for ordinary ticket work.
+
+**Why**: direct user request, twice reiterated after the semi-autonomous policy above still hit
+approval prompts in practice — first for routine GitHub calls, then specifically because
+subagents' own `Bash`/`Read`/`Grep` calls weren't covered by the initial narrower allow-list.
+This is a local, gitignored, personal file — not a project-wide/team-shared policy change.
+Destructive operations (merging PRs, force-push, branch deletion) are deliberately NOT
+allow-listed; those stay refused by the assistant's own hard rules regardless of what this file
+would technically permit — the permission file was never the actual backstop for those.
+
+---
+
+## 2026-08-27 — SCRUM-122: currency validation left as free-text, not ISO-4217-restricted
+
+**Decision**: did not add an ISO 4217 currency allow-list to the new compensation-terms
+endpoint's `currency` field, despite the security-engineer subagent flagging its absence.
+
+**Why**: every other currency field in this codebase (`Therapy`, `GroupTherapy`) is the same
+free-text `string` rule with no allow-list — this exact gap is already tracked as its own
+follow-up (TT-7.4, "real currency validation, replacing free-text"). Adding a bespoke allow-list
+to just this one new field would be an inconsistent one-off rather than the actual fix, which
+belongs in TT-7.4 across all currency fields at once.
+
+---
+
+## 2026-08-27 — TT-6.3 split into SCRUM-124/125, mirroring the TT-6.2/6.4a/6.4b split
+
+**Decision**: split the originally-planned single 13-point TT-6.3 (consumer-org membership +
+billing config) into two sub-tickets — SCRUM-124 (membership request flows) and SCRUM-125
+(billing-mode config) — before starting implementation.
+
+**Why**: matches the precedent already set on the provider side, where the analogous combined
+scope was split into TT-6.2 (request plumbing) and TT-6.4a/6.4b (affiliation + compensation
+terms) specifically because it was too large and mixed concerns for one reviewable PR. Filing
+the split tickets up front (rather than discovering the need to split mid-implementation, as
+happened with TT-6.4) keeps each PR bounded and independently testable from the start.
+
+---
+
+## 2026-08-27 — SCRUM-124: "self-apply link" read as no separate join-token
+
+**Decision**: the self-apply flow is gated purely by `Organization.self_apply_enabled` — reachable
+by any authenticated user who knows the organization's id — rather than inventing a separate
+secret join-code/token mechanism.
+
+**Why**: the original decision text ("a setting where if enabled, users with the link on their
+profile can apply to join") doesn't clearly call for a secret token, and no invite-token pattern
+exists anywhere else in this codebase to extend. Flagged explicitly on the SCRUM-124 ticket
+itself for the requester to correct if this wasn't the intent — a genuinely ambiguous point, but
+not consequential enough to block on asking before starting implementation.
+
+---
+
+## 2026-08-27 — SCRUM-124: no `self_apply_enabled` re-check at accept time
+
+**Decision**: did not re-validate `self_apply_enabled` when an org admin accepts a pending member
+*application* (the verified/`is_consumer` re-checks were kept, mirroring the counsellor flow).
+
+**Why**: the security-engineer subagent suggested this for consistency, but disabling self-apply
+is a "stop accepting *new* applications" toggle, not a statement that already-pending ones become
+invalid — an admin who paused self-apply (e.g. because they were overwhelmed with volume) should
+still be able to honor an application already in their queue if they choose to. This differs from
+verified/`is_consumer`, which are fundamental eligibility the org itself controls, not a
+submission-throttle.
+
+---
+
+## 2026-08-27 — SCRUM-124: invite endpoint response trimmed to close a PII-enumeration risk
+
+**Decision**: `OrganizationMemberController::invite()`'s success response no longer includes the
+invited user's full `OrganizationRequestResource`/`UserMiniResource` data (name, username,
+gender, country, DOB) — it returns only `{id, type, status}`.
+
+**Why**: security review found any org admin could supply an arbitrary `userId` and get back
+that user's PII synchronously, plus create a persisted pending invite against them as a
+side-effect of probing — an enumeration vector this platform's ordinary `User` records (therapy
+clients) aren't meant to be exposed to, unlike `Counsellor` profiles which are intentionally
+publicly browsable. The inviting admin already knows the id they supplied, so nothing useful is
+lost by not echoing the invitee's profile back.
+
+---
+
+## 2026-08-27 — SCRUM-125: verified a security finding empirically before accepting its severity
+
+**Decision**: security review flagged `(bool) $request->includeGroupTherapies` as a silent-flip
+risk (a string `"false"` casting to PHP `true`). Fixed the cast to `$request->boolean(...)`
+regardless, but before writing it up as a live vulnerability, wrote a feature test to actually
+exercise the claimed exploit path — it failed: Laravel's own `'boolean'` validation rule
+(`vendor/laravel/framework/.../ValidatesAttributes.php:496`) only accepts
+`[true, false, 0, 1, '0', '1']`, and the word `"false"` is rejected at validation (422) before
+the cast ever runs. Every value that rule *does* accept happens to cast correctly via `(bool)`.
+
+**Why**: a subagent's finding describes a plausible-sounding mechanism, but "plausible" isn't
+"verified" — this specific claim didn't hold up against the actual validated behavior. Filed
+SCRUM-126 as a systemic follow-up (the same cast pattern exists in several older, unrelated
+controllers) with the corrected, verified severity nuance: it's only a *live* bug on a field
+missing the `'boolean'` rule, which needs checking per-site, not assuming either way. Keeping
+the `$request->boolean()` change anyway as harmless, more idiomatic defense-in-depth — just not
+overstating why it mattered in the PR/ticket writeup.
+
+---
+
+## 2026-08-27 — SCRUM-117: mismatch rejection reuses the existing failed-job alert channel instead of a new one
+
+**Decision**: `EnsureTransactionAmountAndCurrencyMatchAction` throws a `TransactionException` on
+an amount/currency mismatch, in both `ProcessPaystackWebhookJob` (async path) and
+`VerifyPaystackTransactionAction` (synchronous browser-callback path), rather than building a
+dedicated "flag for manual review" mechanism.
+
+**Why**: `AppService::alertAdminsOfFailedJob()` (SCRUM-82) already notifies admins on any queued
+job failure -- letting the webhook job's mismatch throw uncaught means that channel does the
+"manual review" work for free. The verify-callback path throws for the same reason the file's
+existing checks do ("Transaction not found.", etc.) -- it surfaces as an ordinary error response
+to the browser rather than a silent success. Only checked when the resolved status is `success`:
+there's nothing money-correctness-sensitive to protect once a charge resolves to `failed`/
+`abandoned`.
+
+---
+
+## 2026-08-27 — SCRUM-116: regression test flakiness traced to unrelated pre-existing bugs, not fixed here
+
+**Decision**: `tests/Feature/RouteParamSpoofingTest.php`'s session-update test intermittently
+failed with a 422 depending on run — traced to two pre-existing bugs unrelated to SCRUM-116:
+`Timeable::isNotUpdateable()`'s `orWhere` branches aren't scoped by session id (any row globally
+"about to start"/ongoing falsely blocks an unrelated session's update), and
+`EnsureSessionDataIsValidAction::validateTherapy()` runs a system-wide conflict scan rather than
+one scoped to the relevant participant's actual sessions. Both were being tripped at random by
+the test's own unrelated-session fixture, whose `start_time`/`end_time` were left on
+`SessionFactory`'s bogus default (`$this->faker->timezone()`, not a real date). Fixed by pinning
+that fixture's times safely in the past; filed SCRUM-129 for the underlying scoping bugs rather
+than fixing them as part of this ticket.
+
+**Why**: same discipline as SCRUM-127/128 — bugs discovered incidentally while writing regression
+tests for a different, narrowly-scoped fix get filed as follow-ups, not folded into the ticket
+in progress.
+
+---
+
+## 2026-08-27 — SCRUM-116: same-pattern IDOR left in other controllers, filed as SCRUM-130 rather than expanded scope
+
+**Decision**: reviewer and security-engineer subagents on PR #64 both independently found the
+identical `$request->xId` magic-property route-param bug still present, unfixed, in
+`DiscussionController`, `MessageController`, `ReportController`, `TherapyTopicController`,
+`UserController::deleteGuardianship`, `CounsellorController`, and
+`AdministratorController::getCounsellorStats` — none of which SCRUM-116 named. Verified
+independently via grep against `routes/web.php`/`routes/api.php` before filing. Filed as SCRUM-130
+(High, given `DiscussionController`/`MessageController` carry private clinical content) rather
+than pulling those controllers into SCRUM-116's PR.
+
+**Why**: SCRUM-116 was explicitly scoped to three named controllers; a security finding that's
+real but outside a bugfix's stated scope gets its own ticket, not silent scope expansion —
+consistent with how SCRUM-127/128/129 were handled. Both subagents approved PR #64 itself
+unconditionally on its stated scope.
+
+---
+
+## 2026-08-27 — SCRUM-123: implemented read path + accountability trail now; deferred notification/accept-step
+
+**Decision**: built the read path (org admins, per the existing write-side scoping, plus the
+affiliated counsellor themselves, reading their own current/historical terms) and an
+accountability trail (`set_by_id` on `organization_counsellor_compensations`, a plain foreign key
+to `users` since only an org admin can ever set these terms today, not a polymorphic morph).
+Did not implement counsellor notification-on-change or any accept/dispute step; filed SCRUM-131
+as a follow-up specifically for the notification decision.
+
+**Why**: the ticket's own "Process" note explicitly says to confirm with product "before
+implementing the notification/accept-step pieces" specifically, while treating the read path and
+accountability trail as the first-pass ask — the ticket itself draws this line, so no separate
+pause-and-ask was needed here. Notification design (on first activation only vs. every
+renegotiation, email vs. in-app, etc.) is a genuine product decision with real consequence for a
+platform where this affects a counsellor's livelihood, exactly the kind of decision this
+project's autonomous-execution policy pauses on rather than guessing.
+
+---
+
+## 2026-08-27 — SCRUM-126: checked each site individually rather than blanket-replacing
+
+**Decision**: verified, per-site, whether each `(bool) $request->x` cast sat behind a `'boolean'`
+validation rule before fixing. `OrganizationController` (isProvider/isConsumer/selfApplyEnabled)
+and `AdministratorController::updateUser` (emailVerified) already had the rule -- switched to
+`$request->boolean()` anyway for consistency/defense-in-depth, not because they were live bugs.
+`MessageController` (confidential, on both create and update) had no `'boolean'` rule at all --
+added it. `TestimonialController::markTestimonial` and `GroupTherapyController::joinGroupTherapy`
+use a plain `Request` with no FormRequest/validation at all -- fixed via `$request->boolean()`
+alone, which normalizes correctly regardless of any validation rule.
+`ProfileController::update`'s `(bool) $request->dob ? $request->dob : null` is a different shape
+(a truthiness check deciding whether to null out a date value, not a boolean-flag parse) --
+simplified to `$request->dob ?: null`, not a security fix.
+
+**Why**: matches SCRUM-125's established discipline -- a plausible-sounding pattern doesn't mean
+every site is actually exploitable; checking each one individually is what determined `confidential`,
+`use`, and `anonymous` (join) were live bugs while the others were already safe. Two more
+magic-property route-param instances were noticed in passing while reading these controllers
+(`AdministratorController::updateUser`'s `$request->userId`, `TestimonialController::markTestimonial`'s
+`$request->testimonialId`) -- out of this ticket's scope, added as a comment to the already-open
+SCRUM-130 rather than filing a duplicate ticket.
+
+---
+
+## 2026-08-27 — Process change: Playwright MCP wired in for autonomous UI/QA verification
+
+**Decision**: per explicit user request, the Playwright MCP tools (`mcp__playwright__*`) are now
+part of the standard feature-development workflow at two points: a quick main-session smoke-check
+right after implementing a UI change (before handing off to `reviewer`/`security-engineer`), and
+`qa-engineer`'s own fuller acceptance-criteria walkthrough as part of its existing verification
+pass. This is autonomous (no per-use approval needed) for full-ceremony feature work with a
+frontend/UI component; available but not mandatory for bugfixes/chores that happen to touch a
+`.vue` file. Documented in the new `.claude/workflows/playwright-qa.md` (the use-case catalog),
+`.claude/agents/qa-engineer.md` (tool grant + instructions), `.claude/workflows/feature-development.md`
+(the two checkpoints), and `CLAUDE.md` (pointers from the relevant existing sections). Local
+permission allow-list (`.claude/settings.local.json`, gitignored) broadened with
+`mcp__playwright__*` so this doesn't hit per-call approval friction, consistent with the existing
+semi-autonomous-execution permission handling.
+
+**Why**: Pest's HTTP/JSON-assertion layer can't see what actually renders or behaves in a real
+browser — this codebase already has precedent for that gap mattering (the `RequestResource`
+identity-masking bugs were about exactly the kind of thing a backend-only test can't catch). The
+user wants this fired autonomously once work reaches the relevant sections, not asked for each
+time. Scoped to full-ceremony features (not blanket-applied to every bugfix) to avoid ceremony
+creep on small changes, per the same "match the weight to the work" principle as the rest of
+CLAUDE.md's process tiers.
+---
+
+## 2026-08-27 — SCRUM-135: filed SCRUM-136 for a real, unrelated bug surfaced during review
+
+**Decision**: implemented both parts of the ticket as scoped (delete `app/Http/Kernel.php`,
+add a unique constraint migration for `links.uuid`). Added a DB-level regression test for the
+new constraint (`tests/Feature/LinkUuidUniqueConstraintTest.php`) after `reviewer` correctly
+flagged its absence as breaking this codebase's own established convention (the analogous
+SCRUM-80/SCRUM-99 unique-index migrations both ship with one). Verified empirically: removed the
+migration file, confirmed the test fails with the DB not rejecting a duplicate insert, restored
+it, confirmed it passes.
+
+`security-engineer`, while confirming the `Kernel.php` deletion itself is safe, surfaced an
+unrelated, pre-existing bug in `bootstrap/app.php` (not touched by this PR): `$middleware->use([...])`
+*replaces* Laravel's entire global middleware stack rather than appending to it, silently
+disabling `TrustProxies`, `HandleCors`, `PreventRequestsDuringMaintenance`, and several others
+app-wide. Verified directly against the framework source
+(`vendor/laravel/framework/.../Configuration/Middleware.php`) -- confirmed real, not a false
+alarm. Filed as SCRUM-136 (High) rather than fixing inline, since it's unrelated to this PR's
+scope and `bootstrap/app.php` isn't part of this diff.
+
+**Why**: matches this session's standing discipline of verifying subagent findings against the
+actual source before acting on them (same pattern as the SCRUM-133 false-alarm correction), and
+filing rather than silently fixing keeps this PR's diff scoped to what it says it does, per
+CLAUDE.md's "keep commits small and focused" -- a global-middleware fix affecting every request
+in the app deserves its own PR, review, and rollout attention, not to ride along inside an
+unrelated dead-code-removal chore.
+## 2026-08-27 — SCRUM-136: corrected a stale finding, filed two genuinely-new follow-ups
+
+**Decision**: fixed `bootstrap/app.php`'s `$middleware->use([...])` → `append(...)` as scoped.
+`reviewer` approved and suggested strengthening the new test to assert ordering (TrustProxies
+before StoreVisitationMiddleware), not just presence -- added, since the original assertion
+wouldn't have caught a future `append()` → `prepend()` regression that silently breaks IP
+resolution. `reviewer` also surfaced a genuinely new, unrelated bug (`StoreVisitationMiddleware`'s
+stray semicolon making its `/login` guard a no-op) -- filed as SCRUM-137.
+
+`security-engineer` approved the fix as safe, confirmed the current no-op `TrustProxies::$proxies`
+config is *correct* for this repo's actual topology (nginx uses `fastcgi_pass`, not `proxy_pass`
+-- no HTTP-level proxy hop exists yet, so there's nothing to configure trust for today) rather
+than a gap, and recommended two follow-ups: (1) configure `TrustProxies` once a real reverse
+proxy/LB/CDN is introduced -- filed as SCRUM-138; (2) delete `app/Http/Kernel.php` -- **not
+filed**, because that subagent's review branch was cut from `develop` before SCRUM-135's PR #73
+(which already deletes that exact file) had merged, so it was seeing pre-SCRUM-135 state, not a
+new gap. Corrected in the PR comment rather than filing a duplicate.
+
+**Why**: same discipline as the SCRUM-133 false-alarm correction earlier in this sweep -- a
+subagent's review branch reflects whatever `develop` looked like at the moment it was cut, not
+the current state of all in-flight PRs, so a finding that matches already-completed-but-unmerged
+work is a branch-topology artifact, not a real gap, and should be verified (`git show` /
+checking the other PR's diff) before filing a duplicate ticket.
+## 2026-08-27 — SCRUM-128: fixed the bug in a second, deeper location the ticket didn't name
+
+**Decision**: the ticket's own diagnosis named only `UpdateSessionRequest::rules()`. Empirically
+reproducing the described symptom (PATCH with only `{"name": "..."}`) after fixing just that file
+showed the same class of bug one layer deeper, in `EnsureSessionDataIsValidAction::validateTherapy()`
+(called unconditionally by `SessionService::updateSession()`, independent of the FormRequest) --
+it re-parsed the same `null` startTime/endTime and threw a 422 with a near-identical message.
+Fixed both: `UpdateSessionRequest` now only parses submitted fields; the Action now falls back to
+the session's existing `start_time`/`end_time` when the DTO's values are null, so the real
+double-booking/30-minutes-apart conflict checks still run against the session's actual schedule
+on a partial update rather than being skipped outright. Also removed an unrelated leftover
+`Log::info('update session request', ...)` debug line found in the same file.
+
+Post-review (security-engineer) surfaced a second gap in the initial fix: `UpdateSessionRequest`
+treated "omitted" via `filled()` (blank string counts as not-provided) while the Action treated it
+via a strict `!== null` check -- so a request sending `"startTime": ""` slipped past the
+FormRequest's guard but still hit `Carbon::parse('')`, which returns "now" just like
+`Carbon::parse(null)`. Fixed by normalizing once, in `UpdateSessionRequest::prepareForValidation()`
+(blank -> null via `$this->merge()`), rather than duplicating a blank-check in every downstream
+consumer -- this also transitively fixes `UpdateSessionAction::setValueOnData()`'s matching
+`is_null()` blind spot, since the controller's `$request->startTime` reads the merged value.
+
+**Why**: this is the same empirical-verification discipline used throughout this sweep -- a
+ticket's stated root cause is a hypothesis, not a guarantee; the fix isn't done until the actual
+reported symptom is confirmed gone by reproducing it, not just until the named file compiles.
+Normalizing at the single request-parsing entry point (rather than adding matching `blank()`
+checks in the Action and in `UpdateSessionAction`) avoids the exact kind of inconsistent-null-
+handling-across-layers that caused this ticket in the first place.
+
+---
+
+## 2026-08-27 — SCRUM-130: one regression test per controller, not per method; systematic sweep found more instances (SCRUM-133)
+
+**Decision**: fixed every magic-property route-param usage SCRUM-130 named (`DiscussionController`,
+`MessageController`, `ReportController`, `TherapyTopicController`, `UserController::deleteGuardianship`,
+`CounsellorController`, `AdministratorController`), plus two already-noted-in-passing instances from
+SCRUM-126 (`AdministratorController::updateUser`/`deleteUser`'s `userId`, `TestimonialController`'s
+`testimonialId`) and `TherapyTopicController::createTherapyTopic`/`getTherapyTopics`'s `therapyId`,
+which SCRUM-130's own ticket text incorrectly assumed was already fixed (verified it wasn't).
+Added one regression test per *controller* (not per method, despite most controllers having 3-9
+affected methods), using an admin actor wherever the target action has an `isAdmin()` bypass, to
+keep fixture setup tractable. Also ran a systematic sweep -- every route-bound `{param}` across
+`routes/web.php`/`routes/api.php` checked against every controller's magic-property usages at the
+specific-method level -- which found six more affected controllers (`CommentController`,
+`ContactController`, `HowToController`, `LinkController`, `PostController`, `RequestController`).
+Filed as SCRUM-133 (High, given `RequestController::respond` backs org/group-therapy/guardianship/
+counsellor accept-reject flows) rather than expanding this already-large PR further.
+
+**Why**: the acceptance criteria said "a regression test per affected controller," which one
+well-chosen representative test per controller satisfies without needing 20+ near-duplicate tests
+for every method sharing the identical bug shape. `TherapyTopicController`'s therapyId correction
+matters because a source ticket's own claims about "already fixed" sites shouldn't be trusted
+without verifying, same discipline as SCRUM-125's empirical-verification lesson. Continuing to
+sweep and fix every newly-found instance inside SCRUM-130 itself would make an already-large PR
+open-ended -- filing SCRUM-133 keeps this PR reviewable while still surfacing the additional risk
+immediately rather than losing track of it.
+
+---
+
+## 2026-08-27 — SCRUM-130: patched the unreachable deleteCounsellor site anyway; found a dead frontend route reference (SCRUM-134)
+
+**Decision**: security-engineer confirmed `CounsellorController::deleteCounsellor` genuinely has
+no registered route (grepped both route files), but flagged it as a landmine: the frontend
+(`resources/js/Pages/Profile/Counsellor/Show.vue`) already references a `counsellor.delete` route
+name that doesn't exist anywhere, meaning the delete-account button is currently non-functional --
+a very plausible future fix (wiring up that route) would silently reintroduce this exact spoofing
+bug if `deleteCounsellor` isn't revisited at the same time. Patched `deleteCounsellor` to use
+`$request->route('counsellorId')` anyway, even though it's currently dead code, as cheap
+insurance. Filed the broken frontend route reference itself as SCRUM-134 (Medium, a separate
+functional bug) rather than fixing it here. Also added two tests reviewer flagged as the
+highest-risk untested lines in the PR: `MessageController::getTopicMessages` (the one method in
+that file where topicId is actually route-bound, unlike every other method) and
+`TherapyTopicController::getTherapyTopics` (the therapyId correction the ticket text got wrong).
+
+**Why**: a "no route, so not exploitable" argument is only true until someone adds the route --
+fixing the pattern now, while already in this file for the exact same bug class, costs nothing
+and removes the dependency on the fix being remembered later. The two added tests target the
+lines both subagents independently called out as most likely to silently regress, rather than
+treating "one test per controller" as fully satisfied by whichever method happened to be chosen
+first.
+## 2026-08-27 — SCRUM-133: fixed PostController::getPost's session-stash too; skipped a second Link test
+
+**Decision**: fixed every site SCRUM-133 named across `CommentController`, `ContactController`,
+`HowToController`, `LinkController`, `PostController`, `RequestController`. Also fixed
+`PostController::getPost`, which the ticket flagged as ambiguous ("doesn't look up a Post model
+directly... check whether this one needs the same fix or is otherwise inert") -- it doesn't look
+up a model, but it does `session()->put('postId', $request->postId)`, which would stash a
+client-spoofed id (this is a GET route, so spoofable via query string) for whatever later reads
+`session('postId')` to act on -- same bug, same fix. One test per controller (6 total), except
+`LinkController` gets only one (`changeLinkStatus`) despite also having a second affected method
+(`performAction`, keyed by `uuid` not `linkId`) -- `performAction`'s authorization
+(`EnsureCanUseLinkAction`) has no admin-bypass and dispatches to type-specific side-effecting
+actions, making a second fixture meaningfully more expensive for a fix that's mechanically
+identical to `changeLinkStatus`'s, unlike SCRUM-130's `TherapyTopicController` case where the
+second site carried a distinct, ticket-text-contradicting risk.
+
+**Why**: `getPost`'s session-stash doesn't fit either of SCRUM-116/130's "clearly still vulnerable"
+or "clearly already safe" buckets as written, so it needed its own read of the code rather than
+guessing from the ticket's hedge -- confirmed vulnerable and fixed. Declining a second Link test
+follows the same per-controller (not per-method) acceptance criteria SCRUM-130 established, applied
+consistently: extra tests are worth their setup cost only when they cover meaningfully different
+risk, not merely a different route-param name for the identical one-line fix.
+
+---
+
+## 2026-08-27 — SCRUM-133: added the performAction test after all; corrected a false-alarm review finding; severity nuance on two sites
+
+**Decision**: both reviewer and security-engineer pushed back on skipping a second
+`LinkController` test for `performAction`, noting it has no admin bypass and its side effects
+(creating a guardianship, discussion participation, or counsellor affiliation) are more
+consequential than `changeLinkStatus`'s state toggle. Added it. Also corrected a security-engineer
+finding that flagged `UserController::deleteGuardianship`/`ReportController`/`TestimonialController`/
+`DiscussionController`/`CounsellorController` as still-unfixed instances of this bug: verified via
+`git show` that all five are already fixed on `bugfix/scrum-130-route-param-spoofing-more-controllers`
+(PR #70) -- the subagent reviewed this branch, which was cut from `develop` *before* PR #70 merged,
+so those files' pre-fix state on this specific branch is expected, not a new gap. No new ticket
+filed for this; PR #70 already covers it. Also incorporated security-engineer's severity nuance for
+two sites: `RequestController::respond`'s fix is real (a user could act on a *different one of
+their own* addressed items, not an arbitrary other user's -- `EnsureUserCanRespondToRequestAction`
+checks the resolved request's own `to`, so authorization is enforced on whichever record ends up
+in the DTO either way) but narrower than "arbitrary cross-user IDOR"; `PostController::getPost`'s
+fix is correct (its `session('postId')` is read by `HomeController::goHome`) but Posts have no
+access control anywhere in the app regardless, so this specific site is a confused-content bug,
+not a privacy escalation. Filed SCRUM-135 (Low) for two unrelated hygiene items security-engineer
+noticed in passing (apparently-unused `app/Http/Kernel.php`, missing unique constraint on
+`links.uuid`).
+
+**Why**: two independent subagents converging on the same "add this test anyway" conclusion,
+backed by a concrete structural difference (no admin bypass, more consequential side effects), is
+exactly the signal that should override an initial per-controller-is-enough judgment call. The
+"other controllers still vulnerable" finding needed verification, not acceptance at face value --
+same discipline as SCRUM-125's empirical-verification lesson -- and turned out to be explainable
+by branch topology rather than a real gap. Overstating a finding's severity is as much a
+verification failure as understating one; recording the corrected nuance keeps the PR/Jira trail
+accurate for whoever reads it later without re-deriving the same analysis.
+## 2026-08-27 — SCRUM-127: fixed the same crash on group-therapy creation too, not just update
+
+**Decision**: widened `CreateTherapyDTO`'s `public`/`allowInPerson`/`anonymous` and
+`GroupTherapyDTO`'s `public`/`allowInPerson`/`anonymous`/`allowAnyone`/`shareEqually`/
+`counsellorIds` to nullable, per the ticket's ask. While auditing, found the identical crash was
+also reachable on group therapy *creation* (not just the update path the ticket described):
+`CreateGroupTherapyRequest` already allows `counsellorIds` to be omitted (`'nullable'`), and has
+no validation rule for `shareEqually` at all, so both could already reach `fromArray()` as `null`
+on a create request. Fixed both DTOs' properties in one pass rather than filing a separate ticket,
+since it's the exact same root cause and fix shape the ticket already asked to audit for
+("audit both DTOs fully for every non-nullable property... not just the two found so far").
+
+**Why**: the ticket's own text explicitly asked for a full audit, not just the two originally
+-reported properties -- finding and fixing the create-path instance of the same bug in the same
+PR is honoring that ask, not scope creep. `UpdateTherapyAction`/`UpdateGroupTherapyAction` and
+`SendTherapyAssistanceRequestAction` already had correct null-skip/null-guard logic in place for
+every one of these fields -- the bug was purely the DTO property type declarations, confirmed by
+reverting the fix and watching the new regression tests fail with the exact generic-500 message
+described in the ticket, then pass again once restored.
+
+---
+
+## 2026-08-27 — SCRUM-127: newly-reachable partial-update validation nuance filed as SCRUM-132, not fixed here
+
+**Decision**: reviewer and security-engineer both independently found that
+`EnsureTherapyDataIsValidAction`'s `payment_type == free` / `public` cross-field check reasons
+only about the current request's DTO values, not the record's persisted state -- previously
+unreachable for any partial update omitting a boolean field (it always crashed with a 500 first),
+now reachable since SCRUM-127 fixed that crash. Filed SCRUM-132 (Low) rather than expanding this
+PR, since it's a pre-existing validation-design gap this PR exposed, not one it introduced.
+
+**Why**: SCRUM-127 was scoped to "stop the crash," verified by both subagents to fail safe (the
+false-positive case rejects rather than silently corrupting state) with no privacy/authorization
+impact -- exactly the kind of newly-exposed-but-out-of-scope finding that gets its own ticket
+per the established pattern (SCRUM-127/128/129 themselves, SCRUM-130/131), not silent scope
+expansion into redesigning a validation action's partial-update semantics.
+
+---
+
+## 2026-08-28 — SCRUM-130: fixed a cross-PR CI failure surfaced by merge order
+
+**Decision**: `RouteParamSpoofingBatch2Test.php` (this PR) and `RouteParamSpoofingBatch3Test.php`
+(SCRUM-133) each independently declared a top-level `anAdmin()` Pest helper -- harmless while
+both PRs were separate, unmerged branches, but SCRUM-133 merged into `develop` first while this
+PR was still open, so once GitHub tested this PR's branch merged against the new `develop` tip,
+both files loaded in the same run and PHP fataled on redeclaring a global function. Fixed by
+merging current `develop` into this branch and renaming this file's helper to
+`anAdminForBatch2()` (all 8 call sites updated). Verified via `php artisan test --parallel`
+(the actual CI command) -- 483 passed -- and confirmed no other duplicate top-level helper names
+exist elsewhere in the suite.
+
+**Why**: Pest test files share one global PHP namespace for top-level `function` declarations
+(not scoped to a class), so any two files that each define a same-named helper will collide the
+moment both are loaded together -- independent of which one is "correct" or which came first.
+This is a variant of the existing "Pest --parallel test helpers" rule (never call a global helper
+defined in a different file) worth keeping in mind specifically for this sweep's pattern of
+adding near-identical "BatchN"-style regression test files across sibling PRs: give each file's
+local helpers a unique, file-scoped name up front rather than reusing an obvious name like
+`anAdmin()` that another sibling PR is equally likely to reach for.
+
+---
+
+## 2026-08-28 — SCRUM-132: user directed scope expansion; surfaced a High-severity live bug during review
+
+**Decision**: per explicit user direction, generalized the fix from the ticket's two named
+checks to all six checks in `EnsureTherapyDataIsValidAction` with the identical partial-update
+reachability bug (see PR #76 body for the full list). PR #76 merged before `reviewer`'s findings
+came back; addressed the one required change (missing test coverage for the paid+once+per check)
+and both suggestions as a small follow-up, PR #77, since the original branch/PR was already closed.
+
+`security-engineer`'s review of #76 surfaced a separate, High-severity, actively-occurring bug in
+`UpdateTherapyAction`/`UpdateGroupTherapyAction::setValueOnPaymentData()` (pre-existing, not
+introduced by SCRUM-132): any partial update omitting payment fields silently nulls out the
+entire `payment_data` JSON column for a PAID therapy/group-therapy, even though
+`EnsureTherapyDataIsValidAction` correctly validates the (never-persisted) effective state as
+consistent first. Confirmed via direct tinker reproduction against both actions. Filed as
+SCRUM-140 (Highest) and picked up immediately given the live-data-corruption impact, rather than
+just filing and moving to the next ticket.
+
+**Why**: this is a case where a subagent's finding, while outside the current PR's diff, was
+severe and immediately actionable enough (silently corrupts production pricing data on essentially
+any ordinary edit, no adversarial action needed) to warrant fixing right away rather than only
+logging a follow-up ticket for later -- consistent with CLAUDE.md's "never skip or silently ignore
+a finding" rule, weighted by how urgent this particular one is compared to the Low/Medium-severity
+follow-ups filed earlier in this sweep (SCRUM-137/138/139), which were correctly left for later.
+## 2026-08-28 — SCRUM-129: paused for a genuine product decision, then extended scope on a related unambiguous bug
+
+**Decision**: `isNotUpdateable()`/`isNotDeleteable()`'s scoping bugs were fixed directly (unambiguous
+query-logic errors, matching the ticket's own suggested fix). For the `EnsureSessionDataIsValidAction`
+`whereDoesntHave`/`whereHas` question, the ticket text itself flagged genuine uncertainty about
+intended business-rule semantics -- paused and asked the user before touching production
+double-booking validation logic, rather than guessing. Confirmed: flip to `whereHas`. Cross-checked
+against `EnsureDiscussionDataIsValidAction`'s already-correct analogous check to validate the
+direction before implementing.
+
+Also fixed `isNotDeleteable()` (not named in the ticket, same file/bug class as `isNotUpdateable()`,
+found while reading the trait) -- it had no id-scoping at all (`$this->where(...)` on a model
+instance queries the whole table), confirmed empirically via `->toSql()`.
+
+Post-review (`reviewer`), added Discussion-branch test coverage for `isNotUpdateable()` (it branches
+explicitly on `Session::class` vs `Discussion::class`, and only the Session branch had a test) and
+filed SCRUM-139 for a related-but-separate finding: `EnsureDiscussionDataIsValidAction`'s own
+`where`/`orWhere` chains have the identical textual shape as SCRUM-129's bug, but happen to be
+correct today only because `whereDateIsBetweenStartAndEndTimes`/`whereIsThirtyMinituesBeforeOrAfter`
+are Eloquent local scopes, whose auto-grouping behavior masks the issue -- not fixed here since it's
+not a live bug, just a latent footgun in a different file.
+
+**Why**: this is the clearest example this session of correctly distinguishing "the ticket names an
+unambiguous bug, fix it" from "the ticket itself says this needs a decision" -- SCRUM-129's own text
+explicitly said to re-check intent with product before changing the whereDoesntHave logic, and the
+autonomous-execution policy's carve-out for genuinely ambiguous/consequential product decisions
+applies exactly here (getting a booking-conflict rule wrong is costly in either direction). Filing
+SCRUM-139 rather than fixing it inline keeps this PR scoped to what it says it does, per the same
+"keep commits small and focused" principle applied throughout this sweep.
+
+---
+
+## 2026-08-28 — SCRUM-140: fixed a live High-severity data-corruption bug found mid-review
+
+**Decision**: implemented the fix as scoped by the ticket (only write payment_data keys the DTO
+explicitly provided). `reviewer` confirmed the simplified condition is strictly equivalent minus
+the buggy null-overwrite branch, and flagged a secondary, previously-dormant `$objectKey`-vs-
+`$dataKey` inconsistency in `UpdateGroupTherapyAction::setValueOnPaymentData()`'s old code that
+the fix also incidentally corrects (harmless today since no call site passes a differing
+`$objectKey`, but worth noting as a real behavior change beyond the stated bug). `security-engineer`
+confirmed the fix closes the gap with no new inconsistency direction, and flagged that rows already
+corrupted by this bug before the fix ships won't self-heal -- filed SCRUM-141 for the production
+audit/backfill task.
+
+**Why**: this is the second time in this sweep (after SCRUM-136/137/138 during the middleware fix)
+that a security-engineer review surfaced something beyond the current PR's diff -- in both cases,
+severity determined the response: High/live-and-worsening issues (this one, and SCRUM-136 itself)
+got fixed immediately in a follow-up PR; Low/deferred-until-a-future-event issues (SCRUM-138, and
+now SCRUM-141) got filed and left for later. Consistent triage criterion: is this actively
+happening/getting worse right now, or is it a one-time cleanup/future-conditional concern.
+
+---
+
+## 2026-08-28 — SCRUM-109: deploy migrations + health-check backstop (merged)
+
+**Decision**: implemented both halves of the user-chosen "Both" option: `php artisan migrate --force`
+added to the SSM deploy chain in `.github/workflows/main.yml`, plus a `FailHealthCheckOnPendingMigrations`
+listener on Laravel's `DiagnosingHealth` event as a backstop for whenever that step is ever skipped or
+fails silently. `reviewer` approved with one non-blocking style suggestion (prefer `handle(Migrator
+$migrator)` parameter injection over `app(Migrator::class)` in the listener body) -- left as-is since
+the PR was already merged before triaging it, and it's purely idiomatic with no functional effect.
+`devops-engineer` flagged real operational gaps in the broader deploy pipeline (no maintenance-mode
+wrap around the live single-instance deploy, MySQL DDL isn't transactional so a partially-applied
+migration won't self-heal on retry, `aws ssm send-command`'s result is never checked so a failed
+`migrate --force` would show green in GitHub Actions, and the leading `git stash` in the deploy chain
+would silently discard any on-server hand-fix made during incident recovery) -- all pre-existing
+pipeline characteristics, not regressions introduced by this PR, and out of scope for a "run migrations
++ add a health check" ticket. Confirmed no regression of SCRUM-94's exception-disclosure fix: the `/up`
+route's Blade view never echoes the exception message in the HTTP body regardless of `APP_DEBUG`.
+
+**Why**: the devops findings describe a real, pre-existing single-instance-deploy risk profile that
+predates this ticket and would take a separate infra-hardening effort (maintenance mode, SSM
+result-checking, migration idempotency review) to address properly -- not something to bolt onto a
+bugfix PR. Not filing a ticket for these yet since they're a cohesive block of related infra work
+better scoped as one deliberate follow-up conversation with whoever owns infra, rather than several
+disconnected Low-priority tickets; noting them here so the context isn't lost.
+
+---
+
+## 2026-08-28 — SCRUM-108: implemented validateGroupTherapy(), fixed a real bug found along the way
+
+**Decision**: implemented `EnsureSessionDataIsValidAction::validateGroupTherapy()` (previously a
+completely empty stub) mirroring `validateTherapy()`, per the user's explicit choice ("Implement it
+now, mirroring validateTherapy()"). While writing the addedby-owner double-booking check, found that
+`GroupTherapy::scopeWhereUser()` only matched the `group_therapy_user` join-pivot and never the
+`addedby` column -- so a group therapy's own direct creator was invisible to `whereParticipant()`/
+`whereUser()` queries, including the live `GroupTherapyService::getRecentGroupTherapies()` dashboard
+query. Fixed it to also match `addedby_type === User::class && addedby_id === $user->id`, consistent
+with `Therapy::scopeWhereUser()`'s existing pattern, and added a dedicated regression test
+(`GroupTherapyWhereParticipantTest`) separate from the SCRUM-108 test file since it's a distinct bug.
+Verified both fixes empirically (temporarily reverted each independently, confirmed the relevant
+tests fail, restored, confirmed they pass).
+
+Noted but deliberately not touched: `GroupTherapy` already has a separately-defined
+`scopeWhereIsParticipant()` (used by `Session`'s `whereHasMorph` dispatch) that already had the
+correct addedby-is-User logic -- my fix now duplicates that logic under a different, similarly-named
+scope. Flagging as a pre-existing duplication smell for a future cleanup pass, not consolidated here
+to keep this PR scoped to the double-booking bug it needed to fix.
+
+**Why**: this is the session's continuing "fix the underlying bug directly when it's small and
+directly blocks the current ticket's own required functionality" pattern (same reasoning as SCRUM-
+129's Timeable fix) -- without this fix, SCRUM-108's own addedby-owner double-booking check would be
+silently non-functional for the most common case (a group therapy created directly by a User rather
+than joined via the pivot).
+
+**Post-review** (`reviewer` + `security-engineer`, both approved with no required changes): added the
+one suggested test both agents flagged as the genuinely new/risky path -- a group therapy whose
+`addedby` is itself a Counsellor (the one branch with no `validateTherapy()` analogue at all). This
+also surfaced and pinned down a real, if minor, behavior quirk: because that counsellor is resolved
+both as `$addedbyUser` (via `addedby->user`) and inside `getCounsellors()` (which pushes `addedby`
+when it's a Counsellor), a conflicting session for them trips the generic addedby-owner check first,
+so the thrown message is "The user has sessions..." rather than the more-specific "Counsellor for
+this group therapy has sessions..." -- not a correctness bug (the session is still correctly
+rejected), just a slightly misleading message in that one scenario. Left as-is rather than
+deduplicating the two checks, per `reviewer`'s own "low priority" framing.
+
+Filed SCRUM-144 for `reviewer`'s two other findings: (a) the `scopeWhereUser`/`scopeWhereParticipant`
+vs `scopeWhereIsParticipant` duplication flagged when the fix was made, and (b) `scopeWhereNotUser()`
+not having been updated alongside `scopeWhereUser()`, so the two are no longer logical complements --
+latent since `scopeWhereNotUser()` on `GroupTherapy` currently has no callers, but a trap for
+whichever future change adds the first one. Declined the two remaining optional suggestions (a
+partial-update test mirroring the Therapy-side coverage, and deduping the addedby-owner/counsellor-
+loop double-query above) as genuinely low-value for a verbatim-mirrored code path already covered by
+the Therapy-side tests -- explicitly noted here rather than silently dropped.
+
+---
+
+## 2026-08-28 — SCRUM-134: counsellor account deletion, full /start-feature ceremony
+
+**Decision**: per the user's explicit choice ("Implement the feature properly") this went through
+the full `product-owner` -> `project-manager` -> `architect` gate before any code was written,
+since CLAUDE.md requires that for new feature work regardless of the autonomous-execution policy.
+The user then answered four open questions directly: (1) `current_password` re-confirmation is
+required; (2) the admin-triggered flow should be included in this ticket, not deferred; (3) former
+clients should be notified when a counsellor deletes their account; (4) soft-delete now, hard-delete
+via a scheduled job after a *configurable* grace period, default 60 days.
+
+Several concrete technical decisions were made autonomously while implementing these answers (not
+themselves reopened with the user, since they're implementation details of an already-approved
+direction, not new product forks):
+
+- **Admin path requires `isSuperAdmin()`, not just `isAdmin()`** -- matches
+  `UserService::deleteUserByAdmin()`'s existing precedent for an equally destructive action on
+  another account. `EnsureCanDeleteCounsellorAction`'s pre-existing single admin-or-self condition
+  was tightened accordingly (previously unreachable via HTTP at all, since no admin route existed).
+- **The admin path does not bypass the eligibility gate** -- an admin can trigger deletion, but is
+  still blocked by pending sessions/in-session therapies/active affiliations, same as self-service.
+  A true emergency-override mechanism, if ever needed, would be separate, out-of-scope work.
+- **Config file over `env()` calls** -- `config('counsellor.deletion_grace_period_days')` via a new
+  `config/counsellor.php`, rather than following the existing (but not-best-practice)
+  `env('GROUP_THERAPY_MAX_USERS', 50)`-in-application-code pattern found in
+  `EnsureTherapyDataIsValidAction`. A new config value has no reason to inherit that pattern's
+  config-caching-unsafety; the existing instance was left alone as out of scope.
+- **Hard-delete scope is narrow**: only the `Counsellor` row itself is force-deleted after the grace
+  period. Related historical records (therapies, sessions, licenses, testimonials) are left
+  untouched -- consistent with the non-functional requirement `product-owner` raised ("never
+  hard-delete... licenses or verification documents... legal/dispute history must survive") and
+  with how those records already tolerate a merely-soft-deleted counsellor via `withTrashed()`.
+- **Request gate/cleanup split resolved by `architect`**: the eligibility gate only checks
+  `receivedRequests()` (things awaiting the counsellor's own decision); cleanup only auto-declines
+  `sentRequests()` (things the counsellor initiated that become moot). `groupTherapyMembership`
+  requests are excluded from both -- they always resolve to the underlying `User`, never the
+  `Counsellor` model, so deleting the counsellor doesn't affect them at all.
+- **`counsellor_group_therapy` pivot cleanup**: state-flip to `inactive`, not `detach()` --
+  `architect` confirmed this matches the pivot's own `state`-column design and how
+  `GroupTherapy::isCounsellor()` already reads it, unlike `counsellor_discussion` (no state column,
+  hard-detach is correct there, mirroring the existing `RemoveCounsellorFromDiscussionAction`).
+- **Dedicated seeded test data** (`deletable_counsellor`, `blocked_counsellor`) added rather than
+  reusing the 6 main demo counsellors, since those are woven into therapies/group
+  therapies/discussions/chat demo data used by many other features -- deleting one for this
+  feature's own testing would be destructive to unrelated scenarios.
+- **Playwright browser smoke-check skipped**: port 8000 (this project's `web`/nginx service) was
+  occupied by an unrelated, pre-existing container from a different project on this machine.
+  Deliberately not stopped/touched, since it's infrastructure with no context available about what
+  else depends on it -- noted in the feature doc as follow-up verification still needed before
+  merge, rather than silently skipped.
+
+**Why**: this is the session's first true full-ceremony feature (as opposed to the bugfix sweep
+that preceded it), and the volume of technical sub-decisions above is exactly why CLAUDE.md
+distinguishes "genuinely ambiguous/consequential" product forks (which went back to the user) from
+implementation details of an already-approved direction (which don't need re-litigating one at a
+time) -- re-asking about each of these would have meant seven more round-trips for decisions each
+backed by a clear precedent already in the codebase.
+
+---
+
+## 2026-08-28 — SCRUM-134 post-review: one correctness bug fixed, one severe pre-existing bug found via manual browser QA
+
+**Decision**: `reviewer` requested changes on one real bug; `security-engineer` found nothing above
+Low severity. Both fixed, plus a second, more severe bug found independently while doing the manual
+browser walkthrough this ticket's own feature doc had flagged as still owed.
+
+1. **`DeleteCounsellorAction::getFormerClients()` notified co-counsellors and the deleted
+   counsellor themselves** (`reviewer`, required fix). `GroupTherapy::getUsers()` -- a
+   general-purpose helper used nowhere else -- returns every counsellor attached to a group, not
+   just clients, and (since this counsellor's own pivot row hasn't been flipped to `inactive` yet
+   at the point notifications are gathered) that includes the counsellor being deleted. Fixed by
+   building the group-therapy recipient list from the actual `group_therapy_user` pivot members
+   plus a `User`-type owner only. New regression test with two counsellors on one group therapy,
+   asserting neither the co-counsellor nor the deleted counsellor's own account gets notified.
+   Verified empirically (reverted, confirmed the new test fails, restored).
+
+2. **`Counsellor::hasPendingSessions()` had the same ungrouped `where()->orWhere()` scoping bug
+   already fixed twice elsewhere this sweep** (SCRUM-129's `Timeable` trait, SCRUM-139's
+   `EnsureDiscussionDataIsValidAction`) -- found not by static review but by actually clicking
+   through the self-service delete flow in a browser: `deletable_counsellor` (seeded with zero
+   sessions of their own) was rejected with "You have sessions that need to be completed..." purely
+   because *some other counsellor's* session happened to be upcoming. Only `wherePending()` stayed
+   scoped to `addedSessions()`; the trailing `orWhere()`s broke out to match any session in the
+   whole table. This silently made the entire feature this PR ships non-functional for any
+   counsellor as soon as any session anywhere in the system was upcoming or about to start --
+   effectively always, in a live app. Fixed by grouping all three conditions inside one outer
+   `where()`. New dedicated test file (`CounsellorHasPendingSessionsTest`) since this method had no
+   prior coverage at all; verified empirically the same way as (1).
+
+**Why**: this is the second time this exact `where()->orWhere()` shape has hidden a live bug behind
+what looked like correct, tested code (SCRUM-129 was the first). It reinforces the standing
+practice from this sweep of never trusting a boolean-returning query helper's *name* -- reading
+its actual generated SQL (or, here, just clicking the feature) is what catches this class of bug,
+because unit tests that only ever create one relevant row per test never exercise the "another
+unrelated row exists" case that this ungrouped-OR footgun depends on. Also reinforces why the
+Playwright/manual-browser step of full-ceremony QA is not a formality: this bug was invisible to
+34 passing unit/feature tests and was caught within the first real click-through.
+
+3. **`FormLoader.vue`'s outer `fixed` wrapper intercepted clicks meant for whatever was underneath
+   it, whenever it was supposedly hidden** (`qa-engineer`, found via Playwright). Its inner child
+   collapses via `invisible`/`opacity-0`/`h-0` when `show` is false, but the outer wrapper (`fixed
+   w-full z-10 left-0 bottom-4`) never got a matching visibility/pointer-events class -- it kept
+   occupying real, hit-testable box space at a fixed viewport position regardless of `show`. This
+   is a pre-existing defect shared across roughly 48 usages of this component, not something SCRUM-
+   134 introduced, but it happened to fully block mouse users from clicking either button in this
+   PR's own new delete-confirmation modal -- only the password field's `@keyup.enter` handler let
+   deletion complete at all (confirmed both ways: Playwright's real click timed out with
+   "intercepts pointer events" before the fix, and worked cleanly after).
+
+   **Fixed in place, not deferred to a follow-up ticket**, despite being pre-existing: severity-
+   based triage (the same criterion used all session) puts this in the "actively blocking a golden
+   path right now" bucket, not "one-time cleanup" -- a real end user cannot currently delete their
+   own counsellor account by clicking a button, only by knowing to press Enter after typing their
+   password. Fix: toggle `pointer-events-none`/`pointer-events-auto` on the outer wrapper to match
+   `show`, without touching the inner element's existing opacity/height animation -- purely
+   additive for every other usage (when `show` is true, `pointer-events-auto` is a no-op; when
+   false, it can only ever stop something that was previously an unintended click-block). Verified
+   manually via Playwright (real mouse clicks on both "delete" and "cancel" in the SCRUM-134 modal,
+   confirmed via DB before/after) since this project has no JS test framework to add automated
+   component-level coverage.
+
+---
+
+## 2026-08-28 — SCRUM-131 (TT-6.4c): scope grew from "add a notification" to a full negotiation feature, split into 5 sub-tickets
+
+**Decision**: SCRUM-131 started as "decide and implement counsellor notification for compensation-
+terms changes (and evaluate accept/dispute step)" -- a small follow-up from SCRUM-123. Through the
+full `/start-feature` product-owner -> project-manager -> architect cycle (run twice, since the
+user's answers expanded scope mid-planning), it became: mandatory notification (as asked) +
+accept/reject/**counter-offer** (not just accept/dispute) + a **reminder/expiry mechanism** (in
+scope now, not deferred, per explicit user direction). Given the resulting ~27-28 point size --
+comparable to TT-6.4a/b or TT-6.3a/b before *those* were split -- this project's own established
+splitting pattern was applied again: 5 sub-tickets (SCRUM-146-150), sequenced 1/5 (proposal
+creation) -> 2/5 (accept/reject) -> 3/5 (counter-offer) -> 4/5 (reminder/expiry) -> 5/5
+(admin-facing read API), tracked as **TT-6.4c** in `documentation/implementation_plan.md`.
+
+Key design decisions locked in during planning, all confirmed by `architect`:
+- **Zero schema changes to `organization_counsellor_compensations`** -- that table stays exactly
+  what SCRUM-122 built (append-only, every row already-accepted). All negotiation state (proposed
+  terms, direction, expiry, round count) lives in the generic `requests` table instead (`data`
+  JSON column for terms, new nullable `expires_at`/`round` columns for the rest) -- reusable by
+  any future request type needing expiry, not compensation-specific columns.
+- **"Dispute" = counter-offer, not a new status.** The ticket's own wording chose "dispute" over
+  "reject" deliberately; rather than adding a reason field or an escalation/mediation path, the
+  user's own suggestion (counter-offer) resolves this cleanly -- a counter-offer atomically
+  resolves the current request and creates a new one in the reverse direction. No new
+  `RequestStatusEnum` case needed for either dispute or expiry (expiry reuses `rejected`, since it
+  must behave identically to a manual reject everywhere except user-facing copy, which gets a
+  lightweight non-enum signal instead).
+- **Fairness-critical invariant, called out explicitly and required as its own regression test,
+  not just a design intent**: reject and expiry, at any round, in either direction, must never
+  cascade into pausing or ending the affiliation. A `pending` affiliation whose first-ever
+  proposal isn't yet accepted now stays non-active indefinitely by design (a real, deliberate
+  behavior change from SCRUM-122's instant single-write activation) -- this is the whole point of
+  the feature (real counsellor consent, not just visibility), not an incidental side effect.
+- **Round cap (5) and expiry window (7 days default) are both config-driven**, not hardcoded --
+  explicitly so that if either number turns out wrong in practice, it's a one-line env change, not
+  a code change. The round-cap number itself was flagged by `project-manager` as worth a quick
+  confirm but explicitly **non-blocking** for starting 1/5 or 2/5, which don't touch it at all.
+- **A real, pre-existing gap almost got "fixed" on a false premise.** Earlier planning (during
+  SCRUM-134) concluded `DeleteCounsellorAction` needed an extracted action to resolve pending
+  *received* requests on affiliation end, since it only resolves *sent* ones. Re-examining this
+  during SCRUM-131's second `project-manager` pass surfaced that `EnsureCanDeleteCounsellorAction`
+  already blocks deletion entirely while ANY pending received request exists (for any type) --
+  meaning this specific gap may not exist for a bidirectional request type like compensation
+  changes, since whichever direction a pending negotiation is in, it's caught by either the
+  eligibility gate (if received) or the existing sent-request cleanup (if sent). Flagged to
+  empirically verify before writing any fix, rather than trust the earlier claim -- consistent
+  with this session's standing discipline of never trusting a subagent's claim (including a past
+  one of my own) without reproducing it.
+
+**Why**: this is the second time this session a ticket's scope grew substantially *during* the
+`/start-feature` conversation itself (SCRUM-134's admin-flow/grace-period additions were the
+first) -- in both cases, the response was to re-run the planning chain against the expanded scope
+rather than patch the original plan informally, and to split into sub-tickets once the resulting
+size crossed this project's own established single-PR comfort threshold, rather than force an
+oversized PR through review. The `DeleteCounsellorAction` false-premise catch is also a concrete
+instance of why a completed decision from an earlier ticket (SCRUM-134) should still be
+re-verified rather than assumed permanent, once a later ticket's investigation touches the same
+code path from a different angle.
+
+---
+
+## 2026-08-28 — SCRUM-146 (TT-6.4c, 1/5): removed `setCompensation()` instead of leaving it as a live bypass, deviating from the ticket's literal "tests unmodified" wording
+
+**Decision**: SCRUM-146's acceptance criteria said "all existing SCRUM-122/123 tests continue to
+pass unmodified" -- written during planning, before it was clear that literally satisfying this
+meant leaving `OrganizationCounsellorCompensationService::setCompensation()` (the pre-SCRUM-146
+unilateral, immediately-effective write) fully intact and still callable. Doing that would have
+left a live bypass of this entire feature's purpose: anyone with access to call the service
+directly could skip the negotiation/consent flow altogether and write straight to
+`organization_counsellor_compensations`.
+
+Instead: `setCompensation()` was removed outright. `proposeCompensationChange()` (new) takes over
+its authorization/validation guarding (`EnsureUserCanSetOrganizationCounsellorCompensationAction`,
+`EnsureOrganizationCounsellorCompensationDataIsValidAction`, both reused unchanged) but creates a
+`Request` instead of writing directly. The regression proof the old tests provided over the
+underlying row-creation/activation/versioning mechanics
+(`CreateOrganizationCounsellorCompensationAction`, itself completely unchanged and unaffected --
+it's what SCRUM-147's accept step will call) was preserved by moving to a new, dedicated
+`tests/Unit/CreateOrganizationCounsellorCompensationActionTest.php` that exercises that action
+directly, bypassing the removed service method entirely. `tests/Unit/OrganizationCounsellorCompensationTest.php`
+was rewritten (not left as-is) to test `proposeCompensationChange()`'s new behavior instead, plus a
+new regression test proving `OrganizationCounsellor::currentCompensation()` never returns a pending
+proposal's terms (the actual spirit of AC5, even though the specific test bodies changed).
+
+Also empirically verified beyond the earlier `DeleteCounsellorAction` question this session
+already resolved (see the SCRUM-131 entry above): reproduced the whole propose flow end-to-end
+against the real dev MySQL database (not just the sqlite test suite), including confirming the
+`requests.type` native enum column actually accepts the new
+`ORGANIZATION_COUNSELLOR_COMPENSATION_CHANGE_REQUEST` value after a fresh migration run -- this
+matters because sqlite (used by the test suite) doesn't enforce native enum constraints the way
+MySQL does, so a passing test suite alone wouldn't have caught a missed
+`$table->enum('type', ...)->change()` migration the way the original 2024-05-25 migration for this
+same column required.
+
+**Why**: literal compliance with a planning-time acceptance criterion should give way to the
+criterion's actual intent once implementation reveals a conflict -- here, "prove the underlying
+mechanics still work" was the intent; "leave a dangerous bypass method reachable" was never the
+goal, just an unexamined side effect of how that intent was phrased before the codebase was read
+in enough detail to see the tension. Logging this explicitly rather than silently deviating,
+consistent with this session's standing decision-log practice for any deviation from what a ticket
+literally says.
+
+---
+
+## 2026-08-28 — SCRUM-146 (TT-6.4c, 1/5): PR #84 review findings -- one fixed now, two deferred
+
+**Reviewer** (approved, no blocking issues) and **security-engineer** (no High/Critical; one
+Medium, one Low) both audited PR #84 before merge, per CLAUDE.md's mandatory review gate for
+anything touching compensation/money.
+
+**Fixed now**: security-engineer found that `RequestService::getRequests()` (the generic
+`/requests` list endpoint) renders every hit through `RequestResource`, not
+`GetRequestResourceAction`'s per-type dispatch -- and `RequestResource::getFrom()`/`getTo()`/`getFor()`
+assumed any non-`User` `from`/`to` was a `Counsellor`, with an unmatched `for_type` falling back to
+the same assumption. For the new `organizationCounsellorCompensationChange` type (`from` =
+`Organization`, `for` = `OrganizationCounsellor`), this throws an uncaught `BadMethodCallException`
+(`Organization`/`OrganizationCounsellor` have no `getName()`) -- meaning a counsellor with a
+pending compensation proposal would get a 500 just loading their normal requests list. Both
+reviewers noted this generic-resource gap already existed for the 5 pre-existing org-context types
+(`organization`, `organizationCounsellorInvite/Application`, `organizationMemberInvite/Application`
+-- all `from`/`for` an `Organization` too), but this PR is the first to route a live,
+routinely-triggered money negotiation through it. Rather than patch only the new type, fixed
+`RequestResource` comprehensively: added an `Organization::class` branch to `getFrom()`/`getTo()`/
+`getFor()`, and an `OrganizationCounsellor::class` branch to `getFor()` (rendering organization +
+counsellor mini-resources, not the full negotiation payload -- that's `OrganizationRequestResource`'s
+job for the two dispatch-aware call sites). This also silently fixes the same latent 500 for the 5
+pre-existing types, at no extra cost. Added a regression test exercising `RequestService::getRequests()`
+directly for a pending compensation proposal (`tests/Unit/OrganizationCounsellorCompensationTest.php`).
+Also applied reviewer's minor comment-staleness finding: `EnsureUserCanSetOrganizationCounsellorCompensationAction`'s
+comment claiming "no negotiation workflow yet" was rewritten, since SCRUM-146 is exactly that
+follow-up.
+
+**Deferred, not fixed**: both reviewers independently flagged the same TOCTOU race --
+`EnsureNoPendingOrganizationCounsellorCompensationRequestAction`'s check-then-create has no DB-level
+uniqueness backing it, so two concurrent proposal submissions could both pass the "no pending"
+check before either commits. Both agents confirmed this mirrors the *exact same* existing pattern
+in `EnsureNoPendingOrganizationCounsellorRequestAction`/`EnsureNoPendingOrganizationMemberRequestAction`
+-- consistent with established project risk tolerance, not a regression -- and is not exploitable
+today since a pending `Request` here is inert (no compensation row is written until accept). Not
+worth a schema/locking change scoped to this PR alone; flagged for SCRUM-147 (accept/reject) to
+address (a partial unique index or `lockForUpdate()`) since that ticket is what will need
+"at most one pending request per affiliation" to actually hold under concurrency once accept
+exists. Also left `config('organization.compensation_negotiation_max_rounds')` unused by this PR
+as-is (reviewer's low-severity suggestion to move it to SCRUM-148 where it's consumed) -- both
+tunables were added together deliberately during planning as a single config-driven-tunables
+decision, so splitting them back apart now would just be churn.
+
+**Why**: CLAUDE.md requires never silently ignoring a reviewer/security finding -- apply a fix, or
+explicitly flag why one is deferred with a follow-up. The Medium finding was fixed immediately
+since it's a live, easily-triggered usability break once real proposals exist (starting with this
+PR). The Low finding is a pre-existing, deliberate-risk-tolerance pattern shared by two sibling
+actions already in production, better addressed once, at the ticket that actually depends on the
+invariant holding, than patched in isolation here.
+
+---
+
+## 2026-08-28 — SCRUM-147 (TT-6.4c, 2/5): the ticket's planned `EnsureUserCanRespondTo...` action turned out unnecessary
+
+**Decision**: SCRUM-147's scope, written during SCRUM-131's planning, called for a new
+`EnsureUserCanRespondToOrganizationCounsellorCompensationRequestAction` gating who may
+accept/reject a proposal. Before writing it, read the existing generic
+`EnsureUserCanRespondToRequestAction` (already invoked by `RequestService::respondToRequest()`
+ahead of every type's dispatch) and traced through its checks against this ticket's actual scope
+(the org-initiated direction only; `to` is always a `Counsellor`): its
+`$respondent->is($requestResponseDTO->user?->counsellor)` check already correctly authorizes
+exactly the counsellor the request is addressed to, and its admin/Organization-administered-by
+branches correctly reject everyone else -- with no touch to (or relaxation of) 1/5's admin-only
+`EnsureUserCanSetOrganizationCounsellorCompensationAction`. Wrote
+`RespondToOrganizationCounsellorCompensationRequestAction` with no bespoke authorization check at
+all (mirroring `RespondToOrganizationCounsellorRequestAction`'s own shape, which also has none),
+and proved it empirically with dedicated tests: an outsider is rejected, the proposing admin
+cannot respond to their own proposal, and the addressed counsellor can. All pass without any new
+authorization code.
+
+Also verified AC5 (the ticket's requested `OrganizationRequestResource` `for`→`Organization`
+fix) was already shipped as part of SCRUM-146 -- no additional change needed, just a regression
+test proving it holds through the full respond pipeline too.
+
+One real gap the ticket's scope missed: `Request.data` (as SCRUM-146 wrote it) never recorded
+*which specific org admin* proposed the terms -- only the `Organization` (`from`). Accept's
+"attribute the compensation row to the original proposer" requirement (AC1) needed that
+`User` id, so `ProposeOrganizationCounsellorCompensationChangeAction` (already merged) was
+extended to also store `proposedById` in `Request.data`.
+
+**Why**: consistent with this session's standing discipline (the `DeleteCounsellorAction` and
+`OrganizationRequestResource` catches earlier this epic) of verifying a planning-time ticket's
+stated need against the actual current codebase before building it, rather than assuming a
+plan written before implementation started is still accurate once the dependency it builds on
+(1/5) actually exists. Building an unneeded authorization action would have been redundant code
+duplicating a check the pipeline already performs -- a maintainability cost with no security
+benefit.
+
+---
+
+## 2026-08-28 — SCRUM-147 (TT-6.4c, 2/5): PR #85 review findings -- all three fixed
+
+**Reviewer** (Changes Requested) and **security-engineer** (Medium + Low/informational) both
+audited PR #85 before merge.
+
+**Fixed: the concurrency gap SCRUM-146's review explicitly assigned to this ticket.**
+`EnsureNoPendingOrganizationCounsellorCompensationRequestAction`'s check-then-create was flagged
+during SCRUM-146's review as a TOCTOU race deferred specifically to "SCRUM-147 (accept/reject) ...
+since that ticket is what will need 'at most one pending request per affiliation' to actually
+hold under concurrency once accept exists." This PR's first draft didn't touch it -- caught by
+the reviewer re-checking that the deferred item was actually addressed, not just re-reading the
+new code in isolation. Fixed by wrapping `OrganizationCounsellorCompensationService::proposeCompensationChange()`'s
+check-then-create in a `DB::transaction()` that first does
+`OrganizationCounsellor::query()->lockForUpdate()->findOrFail(...)` on the affiliation itself --
+this serializes proposal creation per affiliation (a concurrent second attempt blocks on the row
+lock until the first transaction commits, by which point its "no pending" check correctly sees
+the just-created row). Scoped to only this negotiation's action, not a schema-wide fix, since a
+naive table-wide unique constraint on `(for_type, for_id, type, status=pending)` would have been
+incorrect for other request types that legitimately allow multiple concurrent pending requests
+for the same `for` from different `from` parties (e.g. `groupTherapyMembership`, where many
+different clients can have independent pending requests to join the same group). As both
+reviewers separately noted, this fix's correctness rests on documented InnoDB `SELECT ... FOR
+UPDATE` behavior and cannot be exercised by an automated test, since the suite runs against
+sqlite `:memory:` (`phpunit.xml`), which has no real concurrent-transaction semantics -- a
+pre-existing, shared limitation across every `lockForUpdate()`-based action in this codebase, not
+unique to this fix.
+
+**Fixed: silent degradation when the original proposer's account no longer exists.**
+`RespondToOrganizationCounsellorCompensationRequestAction` read `Request.data['proposedById']`
+via `User::find()` and passed the (possibly null) result straight into
+`CreateOrganizationCounsellorCompensationAction`, which unconditionally reads `$dto->user->id` --
+either silently writing `set_by_id = NULL` or (as security-engineer verified by reproducing it)
+crashing with a generic, uncoded `ErrorException` that maps to an opaque 500, permanently blocking
+that counsellor from ever accepting the proposal. Fixed with an explicit guard: accept now throws
+a clean `OrganizationException` if the proposer can't be resolved, leaving the request `pending`
+(so it can still be rejected, or resolved once the situation is understood) instead of degrading
+invisibly. Reject was deliberately left untouched -- it must succeed even with no resolvable
+proposer, since a decline is not an accountability-sensitive write.
+
+**Fixed (reviewer's suggested improvement, treated as required given the ticket's own
+fairness/accountability framing): no affiliation-eligibility recheck on accept.**
+`RespondToOrganizationCounsellorRequestAction` (SCRUM-121, the sibling this ticket's action
+mirrors) explicitly rechecks the organization's eligibility at accept time, since it can change
+between propose and respond. This ticket's action had no analogous check -- accepting a stale
+proposal against an affiliation that has since moved to `ended` would silently resurrect
+compensation terms for a terminated relationship. Fixed by rejecting (with the same clean
+`OrganizationException` pattern) an accept attempt against an `ended` affiliation; reject remains
+unaffected, matching the "reject must never be blocked" principle applied to the proposer-missing
+case above.
+
+Added 4 new regression tests covering all three fixes (proposer-gone on accept vs. reject,
+ended-affiliation on accept vs. reject) plus verified the existing sequential "second proposal
+rejected" test still passes under the new transaction wrapper. Full suite: 578 passed (up from
+574). Pint clean.
+
+**Why**: CLAUDE.md requires never silently dropping a reviewer/security finding, and doubly so
+here since one finding was a previously-deferred item this exact ticket was assigned to address
+-- silently not doing it would have repeated, not resolved, the SCRUM-146 review's own reasoning.
+All three fixes are narrowly scoped to the actual failure mode found (no schema change, no new
+abstraction, no speculative validation added beyond what was demonstrated to be reachable).
+
+---
+
+## 2026-08-28 — SCRUM-149 (TT-6.4c, 4/5): built independently of the still-unmerged SCRUM-148, plus two implementation-level design calls
+
+**Branching decision**: SCRUM-149's own ticket text states "Does not depend on TT-6.4c (3/5) --
+expiry applies identically regardless of round/counter-offer state," and depends only on 1/5 and
+2/5, both already merged. Confirmed no file-level collision risk either (149 touches
+`AppService`/`routes/console.php`/two new notifications; 148's only new/changed files are its own
+counter-offer action, service method, and its own notification's generalization -- no overlap).
+Per CLAUDE.md's "work that's genuinely independent of the unmerged PR can still proceed without
+waiting" -- branched off fresh `develop` (which has 1/5+2/5 but not yet 3/5) rather than waiting
+for PR #86 to merge.
+
+**Design decision 1**: the ticket flagged needing "a lightweight, non-enum signal" so 5/5 can
+later distinguish a manually-rejected request from an auto-expired one, listing two candidate
+mechanisms and asking to "confirm the exact mechanism with a quick architect check before building
+5/5 against it." Rather than defer this choice, picked the explicit `data['resolvedBy'] = 'expiry'`
+marker (set only by `expireStaleCompensationRequests()`, never by manual accept/reject) over
+comparing the resolution timestamp against `expires_at` -- the latter is fragile (clock skew, or a
+manual reject landing coincidentally close to the boundary), while an explicit marker is
+unambiguous and trivial for 5/5 to read. This is a small, reversible, implementation-level choice
+well within ordinary engineering judgment, not a product/scope decision -- made directly rather
+than pausing the chain for a synchronous architect round-trip.
+
+**Design decision 2**: reminder "exactly once" is enforced with a new `reminder_sent_at` timestamp
+column + `whereNull()` guard, not by narrowing the daily sweep's time window alone. A pure
+day-arithmetic window (e.g. `expires_at BETWEEN now()+2days AND now()+3days`) would double-send if
+the scheduled job ever ran twice in a day, and silently skip a request entirely if the job missed
+a day -- a persistent flag is exactly-once regardless of how reliably the cron actually fires.
+
+**Also duplicated (not extracted)**: `AppService::notifyCompensationRequestRecipient()` -- "if `to`
+is an Organization, notify every admin; otherwise notify `to` directly" -- is a near-copy of
+`CounterOfferOrganizationCounsellorCompensationChangeAction::notifyNewRecipient()` from the
+still-unmerged SCRUM-148. Per this session's own reviewer guidance on SCRUM-146's PR ("a third
+copy would be a good trigger to extract a shared helper"), this is only the second occurrence, so
+duplicated rather than speculatively extracted across two branches that haven't even merged yet in
+either order. Worth consolidating (e.g. into a small shared action) if a third need for this same
+direction-aware-notify logic arises, most plausibly in SCRUM-150.
+
+**Why**: consistent with this session's standing practice of proceeding on genuinely independent
+work rather than serializing everything through a single PR queue, and of making small, reversible
+implementation-level judgment calls directly (logged here) rather than treating every open question
+in a ticket's text as a hard blocker requiring a synchronous check-in.
+## 2026-08-28 — SCRUM-148 (TT-6.4c, 3/5): counter-offer's reverse direction addresses the whole Organization, not a specific admin
+
+**Decision**: the ticket text didn't specify exactly what a counsellor's counter-offer's `to`
+should resolve to once direction flips. Rather than address it back to the specific admin who
+made the original proposal (`proposedById`), it's addressed to the `Organization` itself --
+mirroring how the org's own turn already works in SCRUM-146 (`from` = `Organization`, never a
+specific admin). This means any admin of the organization can respond to a counter-offer, not
+only whichever admin happened to propose the previous round -- more realistic for an org with
+multiple admins, and it lets `EnsureUserCanRespondToRequestAction`'s existing
+`Organization`-administered-by branch (already in the codebase for other org-context request
+types, unused until now by this feature) authorize the org's turn with zero new authorization
+code, continuing the pattern from SCRUM-147's finding that a bespoke authorization action wasn't
+needed.
+
+Since `Organization` isn't `Notifiable`, a counter-offer addressed to it notifies every admin
+individually (`Notification::send($organization->admins, ...)`) rather than a single party.
+
+**Also**: rather than write a second near-duplicate notification class for the counter-offer
+recipient (the ticket's own AC2 says "same notification shape as 1/5's proposal-created
+notification"), `OrganizationCounsellorCompensationChangeProposedNotification` was generalized in
+place -- its mail copy no longer assumes the organization is always the one proposing, and it now
+resolves a display name correctly for either a `Counsellor` or a `User` (org admin) notifiable.
+Reused directly for both the original propose (SCRUM-146) and every counter-offer round.
+
+**Why**: consistent with this epic's standing preference for reusing existing generic
+infrastructure (`Request`/`RequestTypeEnum`, `EnsureUserCanRespondToRequestAction`) over building
+parallel, type-specific mechanisms -- a counter-offer is fundamentally "another proposal, in the
+reverse direction," not a conceptually new capability, so it should look exactly like the
+original proposal wherever the two are actually the same operation from the recipient's point of
+view.
+
+---
+
+## 2026-08-28 — SCRUM-148 (TT-6.4c, 3/5): PR #86 review findings -- one High fixed, one Low deferred to its own already-planned ticket
+
+**Reviewer** approved with no required changes. **security-engineer** found one High and one Low.
+
+**Fixed: missing request-type guard on the counter-offer path.**
+Reusing `EnsureUserCanRespondToRequestAction` for counter-offer authorization (this ticket's own
+"no new authorization action needed" finding, mirroring SCRUM-147) came with a gap that finding
+didn't surface: that action only checks *who* the `to`-party is, never the request's `type`. For
+accept/reject this is safe because `RespondToRequestAction` dispatches strictly by
+`$request->type` via an explicit `if` chain -- an unmatched type is a no-op. But
+`OrganizationCounsellorCompensationController::counterOffer()`'s route
+(`POST /requests/{requestId}/compensation-counter-offer`) has no equivalent per-type dispatch: it
+resolves any `Request` by id and hands it straight to `counterOffer()`. Without a type check, a
+user legitimately `to` on *any* other pending request (a group-therapy invite, a guardianship
+request, an org invite/application, ...) could have it force-rejected and mutated as if it were a
+compensation negotiation. In the current codebase this happened to fail safely -- `for` on every
+other request type isn't an `OrganizationCounsellor`, so `notifyNewRecipient()`'s
+`$organizationCounsellor->organization` access throws, rolling back the whole transaction
+(including the wrongful `status = rejected` write) -- but that's an accident of the current model
+graph, not a designed safeguard, and would silently become a real cross-feature data-integrity bug
+the moment any future change makes that access more defensive or another type ever reuses
+`OrganizationCounsellor` as `for`.
+
+Fixed by checking `$dto->request->type !== RequestTypeEnum::organizationCounsellorCompensationChange->value`
+in `OrganizationCounsellorCompensationService::counterOffer()`, immediately after the existence
+check and before authorization, throwing the exact same `RequestNotFoundException`/message
+`EnsureRequestExistsAction` already uses -- a wrong-type request is indistinguishable from a
+non-existent one to whoever's asking, consistent with this codebase's established anti-enumeration
+pattern (SCRUM-120's "same generic message either way"). Added a regression test constructing an
+unrelated pending request type addressed to the same user and confirming it's rejected and left
+completely untouched.
+
+**Deferred (not a new gap -- this is precisely what the next sub-ticket already exists to do):**
+`expires_at`/`expiryDays` is stored on every round but nothing anywhere (accept, reject, or this
+ticket's counter-offer) actually checks it against `now()`, and no scheduled job auto-expires
+stale pending negotiations. This isn't a SCRUM-148-introduced gap -- SCRUM-149 ("TT-6.4c 4/5:
+Compensation-change reminder + expiry") is specifically the ticket already filed to build exactly
+this enforcement. No new follow-up ticket needed; noting it here only so it isn't mistaken for an
+oversight in this PR.
+
+Also applied reviewer's two minor, non-blocking suggestions: type-hinted
+`notifyNewRecipient()`'s second parameter as `OrganizationCounsellor`, and added a test covering
+`expiryDays` override on the counter-offer path (previously only tested on propose).
+
+**Why**: CLAUDE.md requires never silently dropping a reviewer/security finding. The High finding
+was a genuine authorization/type-integrity gap masked by incidental failure behavior, not an
+intentional safeguard -- fixed immediately rather than relying on that accident to keep holding.
+The Low finding is explicitly, already the scope of a specific upcoming ticket in this same
+5-part sequence, so re-filing it as a new follow-up would just create a duplicate to reconcile
+later.
+
+---
+
+## 2026-08-28 — SCRUM-149 (TT-6.4c, 4/5): post-merge security findings fixed via a follow-up PR
+
+PR #87 was merged before its `reviewer`/`security-engineer` passes finished (a user "merged both"
+instruction landed while they were still running against the already-open PRs). `reviewer`
+approved with no required changes. `security-engineer` found two **High** issues on the
+now-merged code -- both fixed immediately in a new PR (`bugfix/scrum-149-reminder-expiry-race-safety`)
+rather than left outstanding, since merged status doesn't change CLAUDE.md's "never silently drop
+a finding" rule, it only changes the mechanism (a follow-up PR/commit instead of amending the
+original one).
+
+**Fixed: TOCTOU race between the sweep's batch SELECT and its per-row UPDATE.** Unlike
+`RespondToOrganizationCounsellorCompensationRequestAction`/`CounterOfferOrganizationCounsellorCompensationChangeAction`
+(both lock-then-recheck-then-write), `sendCompensationRequestExpiryReminders()`/
+`expireStaleCompensationRequests()` fetched a batch of pending requests, then unconditionally
+`update()`d each one -- a concurrent accept/reject/counter-offer landing in that window could be
+silently clobbered back to `rejected` with a false `resolvedBy: 'expiry'` audit trail, even though
+compensation terms had already been legitimately accepted. Fixed by wrapping each row's actual
+write in `DB::transaction(fn () => Request::query()->lockForUpdate()->findOrFail(...))` followed
+by a fresh `status !== pending` recheck, mirroring the sibling actions exactly. Same acknowledged
+limitation as those siblings: the fix's correctness rests on documented MySQL InnoDB `SELECT ...
+FOR UPDATE` behavior and isn't directly exercisable by an automated test against sqlite -- verified
+instead via an idempotency test (running either sweep twice back to back only resolves/notifies
+once).
+
+**Fixed: an unresolvable recipient (or an admin-less organization) could abort the entire daily
+sweep for every other pending negotiation.** `notifyCompensationRequestRecipient()` called
+`$request->to->notify(...)` with no null guard -- if the counterparty had been soft-deleted while
+a negotiation was still pending (a real, already-supported lifecycle:
+`purgeExpiredSoftDeletedCounsellors()` runs in this exact same file), `to` resolves to `null` and
+the resulting fatal error, uncaught, would abort `Collection::each()` partway through, silently
+starving every other pending affiliation's reminder/expiry that day -- indefinitely, since nothing
+would ever retry it. Fixed two ways: (1) `notifyCompensationRequestRecipient()` now checks for a
+null `to` or an empty admins collection and logs a warning instead of throwing, so a request
+still correctly resolves even when nobody can be notified; (2) each row's processing is now also
+wrapped in its own `try/catch` with `Log::error()`, so even an unanticipated failure mode can
+never take down the rest of the batch. Verified with a test asserting an unaffected second
+request in the same sweep still resolves correctly when the first one's recipient is gone.
+
+**Not separately fixed (already covered by the above)**: the Medium "empty admins" and Low
+"malformed `expires_at`/`created_at`" findings were folded into the same two fixes above (the null
+guard covers admin-less orgs too; an explicit `expires_at <= created_at` check was added alongside
+the existing window-size guard) rather than treated as separate follow-ups, since they're the same
+class of defensive-guard gap. The Info-level "extract a shared notify helper" and "move magic
+numbers to config" suggestions remain deliberately unaddressed -- both were explicitly optional
+polish, not required changes, in `reviewer`'s own verdict.
+
+**Why**: two High findings on code already live in `develop` are not optional to defer just
+because the merge already happened -- the fix mechanism changes (new commit/PR instead of
+amending #87), not the obligation to fix. Both fixes are narrowly scoped to the actual failure
+modes found, matching this session's established lock-then-recheck and per-row-isolation patterns
+already proven out in SCRUM-147/148, rather than introducing new abstractions.
+
+---
+
+## 2026-08-28 — SCRUM-150 (TT-6.4c, 5/5): "resolved" state covers accepted too, not just rejected/expired
+
+**Decision**: the ticket's scope text enumerated four states -- no active proposal, pending
+(org's turn), pending (counsellor's turn), and "last negotiation rejected or expired." It didn't
+explicitly name a fifth "last negotiation was accepted" case. Rather than treat an accepted
+negotiation as unclassifiable or force it into "no active proposal" (technically true --
+nothing's pending -- but silently discarding useful context), the resource's `state` field covers
+it under the same `'resolved'` bucket as rejected/expired, with `status: 'ACCEPTED'` and no
+`resolvedBy` key (that field is only meaningful for `rejected`). This keeps the discriminator
+values to exactly `none`/`pending`/`resolved` -- three states, not five -- while still exposing
+enough information (`status`) for a consumer to render different copy for each of accepted vs.
+rejected vs. expired within the `resolved` bucket.
+
+**Also**: `getNegotiationState()` was written as a second, wholly separate query method
+alongside `getCompensations()` rather than folding negotiation-state data into that existing
+method's response shape, per the ticket's own explicit AC4 constraint ("the existing SCRUM-123
+accepted-terms history endpoint is unmodified") -- verified with a dedicated test that a pending
+negotiation never appears in `getCompensations()`'s results, not just asserted by code structure.
+
+**Why**: a five-way discriminator (none/pendingOurs/pendingTheirs/rejected/expired) would have
+duplicated information already available via `from`/`to` (direction) and `resolvedBy`
+(reject-vs-expiry) onto the top-level `state` field itself -- redundant surface area for the same
+underlying facts. Three states plus two orthogonal detail fields is simpler and covers every
+case the ticket actually described, including the one it didn't name.
+
+---
+
+## 2026-08-28 — SCRUM-150 (TT-6.4c, 5/5): PR #89 review findings -- a real correctness bug, a security fix, and a duplication extraction
+
+`reviewer` requested changes (blocked on a functional bug, verified by reproduction against the
+real app). `security-engineer` found one Medium finding. All fixed before merge.
+
+**Fixed: `getNegotiationState()`'s ordering broke across multiple negotiation chains.** The
+original query ordered `orderByDesc('round')->orderByDesc('id')`. `round` only increases *within
+one chain* -- `ProposeOrganizationCounsellorCompensationChangeAction` always starts a fresh chain
+at `round: 1`, and nothing blocks a new proposal once the prior chain has resolved (only a
+*pending* duplicate is blocked). Reviewer reproduced the bug directly: propose → counter (round 2)
+→ reject (chain 1 ends at round 2) → propose again (chain 2, round 1, pending) -- the query
+returned chain 1's resolved round-2 request instead of chain 2's actual pending round-1 request,
+directly undermining the ticket's entire purpose (reporting the *current* state). Fixed by
+ordering on `id` alone -- a strictly increasing PK regardless of chain/round, so it's the correct
+"most recent" ordering unconditionally. Added a dedicated regression test reproducing the exact
+reviewer-found scenario, plus strengthened an existing test to actually re-call
+`getNegotiationState()` after a fresh proposal rather than only asserting creation didn't throw.
+
+**Fixed: `proposedTerms` spread the raw `Request.data` payload, including `proposedById`** (an
+internal `User.id`, added by the propose/counter-offer actions purely for `set_by_id` attribution
+on accept -- never meant for display) straight to the other negotiating party. Fixed with an
+explicit field whitelist (`type`/`amount`/`currency`/`percentage`/`basis`) instead of spreading
+`$this->data` wholesale.
+
+**Correction, made during re-review of this same fix**: this entry originally claimed the
+identical pattern in `OrganizationRequestResource` was "not currently exploitable... only ever
+returned to the actor who just performed a write, never to the counterparty," and deferred it to
+SCRUM-152 on that basis. That claim was wrong -- both `reviewer` and `security-engineer`
+independently traced and empirically confirmed that `OrganizationRequestResource` is *also*
+returned via `RequestService::respondToRequest()`'s accept/reject path, which is answered by
+`$request->to` (the counterparty), not the proposer. An existing test already exercised this exact
+call chain without ever asserting on `proposedTerms`, so the leak passed silently. This was a
+live leak in already-merged code, not a dormant pattern safe to schedule as routine backlog.
+Fixed immediately in the same commit rather than left deferred, applying the identical whitelist,
+with a new regression test exercised through `respondToRequest()` specifically (not just direct
+resource instantiation) so the actual leaking call path is what's under test.
+
+**Fixed (required, not just suggested): duplicated `partyResource()` type-switch.** The new
+resource copied `OrganizationRequestResource::partyResource()`'s Organization/Counsellor/User
+branching verbatim. Extracted both into a shared `ResolvesOrganizationOrCounsellorParty` trait
+rather than leaving a second copy -- reviewer treated this as a required change, not the
+optional "wait for a third occurrence" judgment call used elsewhere this session, since the
+duplication was introduced within the same PR being reviewed, not accumulated gradually across
+already-merged tickets.
+
+**Also fixed**: an inverted doc-comment on `getNegotiationState()` that claimed it "only ever
+reads organization_counsellor_compensations, never requests" -- backwards; corrected to describe
+what the method actually queries. Eager-loaded `from`/`to` to match `getCompensations()`'s
+existing `->with('setBy')` convention.
+
+**Why**: the round-ordering bug is a genuine functional defect in the ticket's core deliverable,
+not a style nit -- fixed immediately per CLAUDE.md's "never silently ignore a reviewer finding."
+The `proposedById` leak is a real trust-boundary crossing (an internal identifier reaching the
+other negotiating party), and once shown to be live rather than latent, fixing it immediately
+rather than leaving a known, already-exploitable leak sitting in the backlog was the only
+defensible call -- consistent with this session's standing discipline of re-verifying a claim
+(including one made minutes earlier in this same log) before relying on it, rather than assuming
+a written rationale is correct just because it was already recorded.
+
+---
+
+## 2026-08-29 — SCRUM-47 (TT-7.2): re-scoped from a 3-point stub to an 18-point, 3-sub-ticket feature
+
+**Decision**: TT-7.2 ("Counsellor sets and displays preferred pricing on profile") was carried in
+`documentation/implementation_plan.md` as a 3-point stub since the original SCRUM-111-era backlog
+review. Product-owner research (grounded in the actual codebase, not the stub's wording) found
+that no counsellor-pricing concept exists anywhere today -- all pricing currently lives on
+`Therapy`/`GroupTherapy.payment_data`, filled in by the client at booking time, not the
+counsellor -- and that `Therapy`/`GroupTherapy.currency` is unconstrained free-text everywhere,
+a gap `documentation/implementation_plan.md`'s TT-7.4 row already flagged but hadn't built.
+
+Four user decisions (informational/display-only pricing with zero coupling to
+`CreateTherapyRequest`/charge logic; flat-OR-per-service-type pricing, counsellor's choice, not
+one forced shape; explicitly no link to `OrganizationCounsellorCompensationBasisEnum::COUNSELLOR_RATE`;
+and a platform-wide, config-driven supported-currency list applied everywhere currency appears,
+not just the new field) turned this from a single field into a real three-part feature. Split into
+TT-7.2a (currency foundation, absorbing TT-7.4's currency-validation item, 5 points) →
+TT-7.2b (pricing data model + API, 8 points) → TT-7.2c (pricing UI, 5 points), mirroring the
+TT-6.4a/b/c sub-ticket-split precedent. TT-7.4's own estimate was revised 8 → 5 points to remove
+the now-relocated currency-validation scope. `documentation/implementation_plan.md` updated
+accordingly (TT-7.1 also given its overdue ✅ marker -- SCRUM-110 is Done in Jira but had no
+marker in the doc).
+
+Architect review additionally settled the TT-7.2b schema before implementation: a single
+`counsellor_pricings` table with nullable `therapy_type`/`session_type`/`per` scope columns
+(all-null = flat rate; all-three-non-null = a fully-specified override row), written via a
+full delete-and-reinsert transaction per save rather than incremental upsert (avoids needing
+DB-level uniqueness tricks for a single-writer, low-contention field), with no versioning/history
+table -- unlike `organization_counsellor_compensations`'s effective-dated design, there is no
+negotiation or accountability trail to reproduce here, since the counsellor unilaterally sets
+their own non-binding, informational number. A new `TherapyTypeEnum` (individual/group) is needed
+since no existing shared enum covers that distinction (it's expressed today only by `Therapy` and
+`GroupTherapy` being separate Eloquent models).
+
+**Why**: literal compliance with a years-old backlog stub's point estimate would have meant either
+building a materially incomplete feature (a single flat-rate field, contradicting the user's
+explicit flat-or-per-service decision) or silently absorbing 15 extra points of scope into a
+ticket sized for 3 -- both worse than re-scoping and re-filing sub-tickets transparently, matching
+this project's own established practice (TT-6.3, TT-6.4, TT-7.3 were all split the same way once
+their real scope became clear during planning).
+
+---
+
+## 2026-08-29 — SCRUM-153 (TT-7.2a): PR #90 review fixes -- default-currency bug, normalization, legacy-value handling
+
+**Decision**: PR #90's own reviewer and security-engineer independently found the same
+HIGH/blocking issue: `IndividualTherapyFormModal.vue`, `UpdateIndividualTherapyFormModal.vue`,
+`GroupTherapyFormModal.vue`, and `UpdateGroupTherapyFormModal.vue` all defaulted/reset `currency`
+to `'GHȻ'` (the Cedi *symbol*, not the ISO code `'GHS'`) via a free-text `TextInput` -- a value
+that would fail the PR's own new `Rule::in(config('currencies.supported'))` validation unless a
+user manually retyped the field, breaking paid-therapy creation by default. Fixed by sharing
+`config('currencies.supported')` to the frontend as an Inertia prop (both the dead
+`HandleInertiaRequests.php` and the actually-registered `HandleInertiaRequestsV2.php`, for
+consistency) and replacing the free-text input with a `<Select>` in all four modals, deliberately
+deviating from this codebase's usual `useEnums.js` hardcoded-JS-mirror convention for enums --
+a hardcoded mirror would defeat the user's original "configurable, applied everywhere" requirement
+for currency, since an env change wouldn't reach the frontend without a code change.
+
+Also fixed the same round's Medium/Low findings: `config/currencies.php` now normalizes every
+entry to uppercase at the source (`strtoupper(trim(...))`) so `Rule::in()` and
+`EnsureCanInitiateChargeAction`'s stored-value check compare on the same casing without each
+needing its own normalization step; `env('SUPPORTED_CURRENCIES') ?: 'USD,GHS'` replaces the
+two-arg `env()` form to avoid silently accepting an empty-string override; `array_filter` after
+the trim/uppercase map drops empty entries (a stray comma or whitespace-only segment) so `Rule::in()`
+can never treat `''` as a valid currency; `SUPPORTED_CURRENCIES` is now documented in `.env.example`.
+
+A second review pass on the fix itself (both reviewer and security-engineer, run again given the
+frontend scope) confirmed all three original findings resolved and no new bugs, but the reviewer
+surfaced a real, previously-unasked-about gap: the two Update modals load
+`props.therapy.paymentData['currency']` verbatim into the form, but the new `<Select>` can only
+render options from `supportedCurrencies` -- a therapy whose stored currency predates the current
+supported list (plausible, since `'GHȻ'` was this exact field's own hardcoded default for a long
+time) would silently desync the dropdown from the form value, surfacing later as a confusing
+"currency" validation error on an unrelated field update. Fixed by making each Update modal's
+`currencyOptions` reactively include the form's current `currency` value when it falls outside
+`supportedCurrencies`, so a legacy/out-of-list value stays visibly selected and editable instead
+of disappearing. Also added a regression test (`TransactionServiceTest`) pinning the assumption
+`EnsureCanInitiateChargeAction`'s comment documents -- that it only needs to normalize the stored
+value because `config('currencies.supported')` is already uppercase -- since both reviewers
+independently flagged this as an untested cross-file invariant.
+
+**Deferred, not applied**: reviewer's suggestion to add a dedicated unit test exercising
+`config/currencies.php`'s raw env-parsing behavior (uppercase normalization and the empty-string
+fallback, as opposed to `Rule::in()` against an already-normalized config array) was left for a
+follow-up, since reliably testing `env()`-sourced config in this codebase's test setup needs more
+plumbing than this fix round's scope justified; the `array_filter` correctness fix itself was
+still applied immediately since it was cheap and directly on the touched line. Also deferred:
+reviewer's minor note that `currencyOptions` in the two *Create* modals doesn't need `computed()`
+since `supportedCurrencies` is captured once and never changes there (unlike the Update modals,
+where it's now genuinely reactive against `therapyForm.currency`) -- correct but non-blocking.
+
+**Why**: CLAUDE.md requires applying or explicitly deferring every reviewer/security-engineer
+finding, never silently dropping one. The default-currency bug and its Medium/Low siblings were
+correctness/robustness fixes with no product-decision content, so they were applied without
+asking. The Update-modal legacy-value gap was the reviewer's own explicit "Changes requested"
+blocker on a scenario the review was asked to check, so it was fixed in the same pass rather than
+deferred. The two genuinely low-priority suggestions were deferred with a stated reason rather
+than either silently skipped or force-fit into this round.
+
+---
+
+## 2026-08-29 — SCRUM-154 (TT-7.2b): counsellor pricing implemented per architect-settled schema
+
+**Decision**: Implemented the `counsellor_pricings` data model + API exactly per the schema the
+architect settled during SCRUM-47's planning (see this file's 2026-08-29 "SCRUM-47 (TT-7.2)"
+entry) — nullable `therapy_type`/`session_type`/`per` scope columns, full delete-and-reinsert per
+save, no versioning table, `EnsureCounsellorPricingDataIsValidAction`/`EnsureUserCanSetCounsellorPricingAction`
+mirroring `EnsureOrganizationCounsellorCompensationDataIsValidAction`/
+`EnsureUserCanSetOrganizationMemberBillingConfigAction`'s existing style, `GetPayableAmountAction`
+guardrail comment, no link to `COUNSELLOR_RATE`. One implementation-time addition beyond the
+ticket's literal text: `EnsureCounsellorPricingDataIsValidAction` also rejects two override rows
+covering the identical `(therapy_type, session_type, per)` combination — the ticket said each
+override must be "fully specified," which rules out partial rows but doesn't by itself rule out
+two fully-specified rows disagreeing on the price for the same exact scope. Rejecting duplicates
+outright avoids an ambiguous "which one wins" question with no clear answer (insertion order isn't
+a meaningful business rule to build on).
+
+`EnsureCounsellorExistsAction`'s accepted DTO union type was widened to include
+`CounsellorPricingDTO`, reusing the existing shared counsellor-existence check rather than writing
+a near-duplicate one, consistent with how that action already serves
+`UpdateCounsellorDTO`/`DeleteCounsellorDTO`/`VerifyCounsellorDTO`/`OrganizationCounsellorRequestDTO`.
+
+**Why**: the duplicate-scope rejection is a defensive data-integrity rule filling a gap the ticket
+didn't explicitly address, not a product decision requiring sign-off — rejecting an ambiguous input
+outright is the conservative default, and the alternative (silently picking last-inserted-wins) has
+no stated rationale to justify over rejecting. Everything else in this ticket was already fully
+specified by the prior architect pass, so no new judgment calls were needed for the core schema or
+authorization design.
+## 2026-08-29 — SCRUM-48 (TT-7.3a): org-as-payer charge initiation, scope finalized
+
+**Decision**: SCRUM-48 was carried in Jira as an 8-point "TT-7.3: Org subscription billing" stub,
+but `documentation/implementation_plan.md` already had it pre-split (during earlier TT-7 planning)
+into TT-7.3a (org-as-payer charge initiation only, 5 points) and TT-7.3b (payout/refund lifecycle,
+deferred — depends on TT-7.6/TT-7.7, neither filed yet). This entry finalizes TT-7.3a's scope
+through a full product-owner → project-manager → architect pass before implementation.
+
+Key design decisions: (1) `organization_id` is an explicit, always-required input when charging
+"via org" — never inferred from a single-org membership, even when a member belongs to only one
+org. (2) Which org financed a charge is recorded on a new `transactions.organization_id` FK
+(nullable, `nullOnDelete` since `Organization` is soft-deletable but a `Transaction` must remain a
+permanent record) — not on `Therapy`/`GroupTherapy`/`Session`, since a `PER_SESSION`-billed therapy
+has many charge events whose org attribution can differ per session, and a member later leaving an
+org must not retroactively rewrite past attribution. (3) Error messaging splits into one generic
+anti-enumeration message for "not eligible via this org" (no shared org / counsellor not covered /
+org unverified — mirrors `EnsureCanPayForModelAction`/`EnsureOrganizationCanReceiveMemberApplicationsAction`'s
+existing convention) versus specific messages for retainer-mode and group-therapy-exclusion
+rejections, on the theory that those two are only reachable once the requester has already proven
+active membership and full counsellor coverage, so they add no new disclosure beyond confirming the
+requester's own billing configuration -- the counsellor-coverage fact itself can't be probed at
+will, since a counsellor only ever ends up attached to a Therapy/GroupTherapy by actually accepting
+a real assistance/membership request, not via any client-settable input (security-engineer review,
+2026-08-29). (4) The new `EnsureOrganizationCanPayForModelAction` slots in as
+a 4th step in `TransactionService::initiateCharge()`, after the existing `EnsureCanInitiateChargeAction`
+(cheaper/existing checks fail first) and before `InitiatePaystackChargeAction`, with a single
+top-of-method `if (is_null($dto->organizationId)) return;` guard making the personal-pay path a
+structural no-op, not just a tested one.
+
+**Multi-counsellor GroupTherapy question** (the one open item product-owner couldn't resolve
+unilaterally): for a `GroupTherapy` with several counsellors, does the shared org need to cover
+*every* currently-active counsellor, or is *any one* sufficient? User decided **every active
+counsellor** — the stricter option, matching product-owner's own non-binding recommendation, to
+avoid a bookkeeping gap where TT-7.3b's future payout logic would have no compensation relationship
+to reference for a counsellor the org never actually covered. Architect confirmed this was a safe
+question to leave open through the design pass: the counsellor-resolution step (new
+`GroupTherapy::activeCounsellors()`, feeding a single set-based `whereIn`/`whereHas`-or-`whereDoesntHave`
+query, mirroring `EnsureThereIsNoPendingRequestForCounsellorsAction`'s existing idiom) makes "every"
+vs. "any one" a one-line query-polarity change, not a structural rewrite either way.
+
+**Also confirmed, not a new coupling**: TT-6.4c's negotiation flow (accept/reject/counter-offer on
+`organization_counsellor_compensations`) does not change what `organization_counsellors.status`
+being `active` means for this ticket — `CreateOrganizationCounsellorCompensationAction` activates
+the affiliation on the *first* compensation row regardless of whether that row came from the
+original unilateral proposal or the result of a later negotiation round, so `isActive()` remains a
+stable, negotiation-history-independent check.
+
+**Why**: this is a brand-new feature slice (org-as-payer is new charge-initiation behavior, not a
+bugfix), so it required the full `/start-feature`-style gate per CLAUDE.md even though its
+dependencies (TT-6.3b, TT-7.1) were already merged and its estimate was already provisionally
+sized during earlier TT-7 planning. The multi-counsellor question was genuinely undecidable by the
+product-owner subagent alone (a real product trade-off between strictness and simplicity, not a
+technical question with one correct answer), so it was surfaced to the user rather than guessed —
+consistent with this session's standing practice of pausing only for genuinely ambiguous product
+decisions, not technical ones the architecture review could settle on its own.
+
+**Implementation-time deviation from the architect's design**: the architect recommended resolving
+`organizationId` from a route parameter only (mirroring `getFor()`'s existing route-param-only
+resolution, which guards against a request body overriding which resource is being charged).
+During implementation this was changed to accept `organizationId` from the request body instead,
+since no route currently carries an `organizationId` segment and adding one would mean doubling
+every charge-initiation route (with/without org) for no real security benefit: `getFor()`'s
+concern is spoofing *what* is being charged, but `organizationId` doesn't identify the charge
+target (that's still `for`, unchanged) — it's an additional payer credential that
+`EnsureOrganizationCanPayForModelAction` independently and fully re-verifies regardless of where
+the value came from. Also added a raw `TransactionDTO::$organizationId` field alongside the
+resolved `$organization`, which the architect's design didn't explicitly call for: this is what
+lets the gate action distinguish "no organizationId supplied" (personal-pay, skip entirely) from
+"an organizationId was supplied but doesn't resolve to a real org" (reject with the same generic
+anti-enumeration message as every other ineligibility reason) — collapsing those two cases, as a
+single resolved-model field would, would have silently downgraded an invalid/foreign
+`organizationId` to a personal charge instead of rejecting it, which is both surprising (a user
+who explicitly asked to pay via their org would be charged personally without warning) and
+inconsistent with the architect's own stated anti-enumeration intent for that exact scenario.
+
+**Post-implementation review fixes**: `reviewer` and `security-engineer` both ran against the
+implementation before merge. Two required changes from `reviewer`, applied immediately: (1)
+`EnsureOrganizationCanPayForModelAction`'s generic-message cluster now also re-checks
+`Organization::is_consumer`, not just `isVerified()` — an org can have `is_consumer` toggled off
+after members already exist (`UpdateOrganizationAction` doesn't retroactively remove them), and the
+action's own comment claims to mirror `EnsureOrganizationCanReceiveMemberApplicationsAction`'s
+convention, which does check it. (2) `GroupTherapy::activeCounsellors()` now excludes a
+soft-deleted `addedby` counsellor from the coverage set — without this, a GroupTherapy created by a
+counsellor who has since deleted their account could never be paid for via any organization, since
+a deleted counsellor can never again satisfy an active `organization_counsellors` row, and the
+"every active counsellor must be covered" rule would treat that permanently-uncoverable ghost
+counsellor as blocking every future org-pay attempt on that GroupTherapy. Both fixes came with new
+regression tests. `security-engineer`'s one finding (Low): `organizationId` had no input-shape
+validation before reaching `Organization::find()`, so an array value (`organizationId[]=1`) tripped
+an uncaught `TypeError` on the DTO's typed `?Organization` property, degrading to a generic 500 --
+no information disclosure, but inconsistent with the codebase's explicit-validation convention.
+Fixed with an upfront `is_numeric()` guard in `TransactionController::initiate()` throwing a clean
+422 `TransactionException` instead.
+
+**Why**: both required changes were genuine functional gaps in the ticket's stated design (the
+`is_consumer` check the code's own comment claimed to already follow; the multi-counsellor coverage
+rule the human product owner explicitly chose), not style nits, so fixed immediately per CLAUDE.md.
+The validation gap was a robustness/UX issue, not a security hole (the existing
+`ResolvesExceptionResponse` safety net already prevented any leak), but cheap enough to fix in the
+same pass rather than deferred.
+
+---
+
+## 2026-08-29 — SCRUM-155 (TT-7.2c): pricing UI, resolving an AC-vs-schema conflict, and a discovered backend gap
+
+**Decision**: Built the counsellor-facing pricing edit form and public display per SCRUM-155's
+scope, following the established `Show.vue` section pattern (edit button → modal, mirroring
+`UpdateCounsellorContact.vue`/`UpdateCounsellorPreferences.vue` exactly). Two judgment calls made
+without asking, both logged here:
+
+1. **AC #1 vs. the merged schema, resolved in favor of the schema.** SCRUM-155's AC #1 describes
+   the flat rate as "amount + currency + `per`", but the schema section of the same ticket family
+   (and the actually-implemented, reviewed, merged `EnsureCounsellorPricingDataIsValidAction`)
+   defines flat mode as `therapy_type`/`session_type`/`per` **all null** — no `per` on a flat row
+   at all. Since SCRUM-154 is already merged and its schema can't be casually changed without a
+   migration + re-review, the UI was built to match what's actually running (flat = amount +
+   currency only), treating the older AC wording as stale planning text rather than a live
+   requirement.
+2. **Backend gap discovered mid-build**: `SetCounsellorPricingAction` always requires at least one
+   pricing entry, so there was no way to represent "no pricing listed" once a counsellor had ever
+   set one — but this ticket's own AC #6 explicitly requires a Playwright-verified "clear pricing"
+   step. Added a small, additive `DELETE /counsellor/{counsellorId}/pricings` endpoint
+   (`ClearCounsellorPricingAction`, `CounsellorPricingService::clearPricing()`), reusing the same
+   `EnsureUserCanSetCounsellorPricingAction` authorization check rather than inventing a new one.
+
+**Why**: (1) is a documentation-accuracy call, not a product decision — the human product owner's
+actual, confirmed decision (full specification, no partial/cascading overrides, recorded in the
+SCRUM-47 entry above) is unambiguous about override rows; the flat-row wording conflict is an
+artifact of AC text not being updated after the schema was finalized during SCRUM-47's planning,
+not a new requirement to litigate. (2) is a scope gap the UI ticket's own acceptance criteria
+surfaced, not an invented feature — AC #6 cannot be satisfied without it, so it was treated as
+part of delivering this ticket rather than a separate backend follow-up ticket, since it's a
+minimal, low-risk addition to an already-reviewed, merged feature (same auth rule, same model,
+no schema change).
+
+**Post-implementation review fixes**: `reviewer` requested 4 changes, all applied. (1) Added a
+Feature-level HTTP test for the new `destroy()` endpoint — the Unit tests only exercised
+`CounsellorPricingService::clearPricing()` directly, mirroring the exact gap
+`tests/Feature/SetCounsellorPricingTest.php` was originally written to close for `store()`. (2)
+Wired `onError` on both `savePricing()`/`clearPricing()` to surface `errors.alert` via
+`setAlertData`, matching this codebase's established convention (`CreateSessionFormModal.vue` and
+others) for Action-thrown exceptions that arrive via `Redirect::back()->withErrors(['alert' =>
+...])` rather than a field-named key — previously, a duplicate-override-scope rejection (or any
+other server-side validation failure) failed completely silently from the user's perspective. (3)
+Fixed `canSave`'s amount check from a bare truthiness test (which is `true` for the strings `"0"`
+and `"-5"`, since any non-empty string is JS-truthy) to an `isValidAmount()` helper matching the
+server's `integer, min:1` rule — the old check let a client submit `0`/negative amounts that the
+server would reject, but with no error ever rendering (the `InputError` was bound to the
+`pricings` key, which a wildcard `pricings.*.amount` validation failure never populates). Verified
+by browser: typing `0` now correctly keeps "save pricing" disabled. (4) Added a `MiniModal`
+"Are you sure...?" confirmation step before "clear pricing" actually fires the delete, matching
+every other destructive action in this codebase (`CommentBadge.vue`, this same `Show.vue`'s own
+"delete account" flow, etc.) — there is deliberately no versioning/history table for pricing data
+(per the SCRUM-154 entry above), so a stray click previously had no undo path at all. Also applied
+the two suggested improvements: a client-side duplicate-override-scope check (belt-and-suspenders
+ahead of the server rejection) and `min="1"` on the amount inputs.
+
+**Why**: all four were genuine, reachable failure modes in ordinary use (a duplicate override
+scope, typing `0`, an accidental click on a destructive action sitting next to the primary save
+button), not style nits, and directly contradicted established conventions this same codebase
+already uses elsewhere for the identical situations — fixed immediately per CLAUDE.md rather than
+deferred.
+
+---
+
+## 2026-08-29 — SCRUM-118: split into TT-7.4a/b/c/d, group-therapy payment model decided
+
+**Decision**: SCRUM-118 ("Payment UI") went through product-owner/project-manager/architect
+review before implementation, mirroring the TT-7.2/TT-6.4 precedent, and was found to hide a
+backend prerequisite plus a genuine product fork. Split into ordered sub-tickets: TT-7.4a
+(SCRUM-156, backend payment-status exposure plumbing — no Resource exposes transaction status
+today, and the `transactionStatus` flash value `TransactionController::callback` sets was never
+read back down), TT-7.4b (SCRUM-157, client Pay/redirect/status UI, individual therapy & session
+only), TT-7.4c (SCRUM-158, counsellor read-only status indicator, parallel with b). TT-7.4d
+(group-therapy Pay UI) is deferred as its own future epic, not scheduled or pointed yet — the
+user decided group-therapy payment should be **per-member**, not one group-wide charge covering
+everyone, which needs a new per-member payment record/schema change beyond what the current
+`Transaction` model (a single `morphMany` per model, blocked from a second charge once any one
+succeeds) supports. The original TT-7.4's "retry-on-failure" clause is carved out as a separate
+small follow-up, since none of SCRUM-118's requirements cover it and it would otherwise silently
+vanish in the renumbering.
+
+Architect review additionally required two amendments to the original ticket text before
+approval: (1) TT-7.4a's `SessionResource` exposure must go through a `latestTransaction`
+(`ofMany`) relation with eager-loading required at every collection call site (e.g.
+`SessionService::getSessions()`), not a naive per-row lazy-load — the latter would silently
+N+1 the paginated session list; (2) TT-7.4b's pay/redirect/status logic must live in a new
+`usePayment()` composable (matching this codebase's existing `useTherapyState`/`useAlert`/
+`useErrorHandler` conventions), not embedded directly in `TherapyPaymentDetails.vue` (a
+currently pure, stateless display component) with `UnifiedTherapy.vue`'s session-actions modal
+reaching into it.
+
+**Why**: the group-therapy payment model is a real, costly-to-guess-wrong fork (a per-member
+data model and a group-wide first-payer model are not incrementally related — building the
+wrong one means throwing away real work), so it was raised to the user rather than assumed, per
+CLAUDE.md's autonomous-execution rules. The two architect-required amendments were both grounded
+in code actually read (confirmed no `latestOfMany`/`scopeSuccessful` accessor exists yet on
+`Transaction`, and confirmed `TherapyPaymentDetails.vue` has no side-effecting logic today), not
+speculative — applying them now avoids a rework cycle once TT-7.4b/c implementation starts.
+
+---
+
+## 2026-08-29 — SCRUM-156 (TT-7.4a): `latestOfMany()` column, and a deferred guest-exposure question
+
+**Decision**: `TherapyTrait::latestTransaction()`/`Session::latestTransaction()` explicitly order
+by `latestOfMany('created_at')` rather than the Eloquent default (`'id'`) — reviewer caught that
+the default coincides with insertion order in this codebase today (every `Transaction` row is
+created once and only ever updated afterwards) but is an implicit assumption, not a guarantee,
+and diverges from this codebase's usual `->latest()` (created_at-based) convention elsewhere.
+Also added a code comment on both relations clarifying that "latest" means latest across *all*
+eligible payers for that model, not scoped to the current viewer — a `GroupTherapy` with
+multiple members each attempting to pay can surface one member's pending/failed attempt to a
+different member (security-engineer finding); this is a read of the existing single-payer-per-
+model backend limitation already tracked as TT-7.4d's blocker, not a new bug, so it's documented
+rather than worked around here.
+
+**Deferred, not fixed**: security-engineer also flagged that `paymentStatus` (like the
+pre-existing `paymentData`/`paymentType`) is now reachable by an unauthenticated guest on a
+`public` therapy/group therapy/session, via `EnsureUserHasAccessToTherapyAction`'s existing
+`public`-bypass and `SessionService::getSessions()`'s existing guest branch (SCRUM-74). Rated
+Low–Medium: it's an incremental extension of an already-accepted exposure pattern (amount/
+currency were already guest-visible; whether a payment succeeded is arguably less sensitive than
+the amount), not a new class of leak, and restricting it would be a product-visibility decision
+outside SCRUM-156's stated scope (status-exposure plumbing only). Recommend a follow-up ticket to
+get an explicit product decision on guest visibility of payment status/data on public
+engagements, rather than silently narrowing scope here.
+
+**Why**: both are genuine findings worth recording, but only the first is a correctness bug
+inside this ticket's own scope (fixed immediately); the second is a pre-existing product
+decision this ticket extends rather than introduces, and CLAUDE.md's autonomous-execution rules
+call for logging a scope question like this rather than either silently fixing it (unscoped
+change) or silently ignoring it.
+
+---
+
+## 2026-08-29 — SCRUM-157 (TT-7.4b): Pay-button placement, and a pre-existing broken toggle fixed
+
+**Decision**: the client's PER_SESSION "Pay Now" control was placed inside the existing "Session
+Actions Modal" in `UnifiedTherapy.vue` (reachable only once a session is the therapy's *active*
+session — imminent/ongoing, same rule already used for "start session"/"end session"/"abandon
+session") rather than inventing a new, always-visible surface. This means a session created with
+a start time far in the future won't show a Pay action until it becomes active, which is a
+looser reading of the ticket's "concrete, reachable Pay action after session creation" AC than
+"immediately after creation" — treated as acceptable since it mirrors how every other per-session
+action in this app already works, and building a second, earlier-reachable surface would be a
+larger UI addition than this ticket's scope implies.
+
+While Playwright-verifying this, the "Session Actions Modal" itself turned out to be completely
+unreachable through the UI for *any* user, regardless of this ticket's changes: the "show session
+information" toggle in `TherapyActiveHeader.vue` only emitted `clicked-show-all` to
+`UnifiedTherapy.vue`'s `clickedShowAll()`, which is an empty no-op stub (`// Implementation for
+showing all session/discussion info`) — so the local `showAll` ref the component's own template
+reads was never actually set, and the double-click target that opens the modal never rendered.
+Fixed by also toggling `showAll` locally on click, keeping the (still no-op) emit for
+compatibility with whatever it was originally meant for.
+
+**Why**: this is a genuine, pre-existing, unrelated bug (confirmed via git blame: introduced as
+dead code in the original page-consolidation commit, not by this ticket), not a regression —
+but it directly blocked this ticket's own AC #7 (Pay action must be reachable), so per CLAUDE.md's
+"never skip or silently ignore" rule it was fixed immediately rather than deferred or worked
+around with a different UI surface. `security-engineer` confirmed the fix only repairs the dead
+toggle and doesn't relax any authorization gate (the outer `v-if="activeSession && isParticipant"`
+guard, and each modal action's own condition, are all unchanged).
+
+**Also deferred (informational, not fixed)**: `security-engineer` separately flagged that
+`DatabaseSeeder::run()` has no environment guard against accidental production seeding, applying
+equally to all ~8 demo accounts in the file (pre-existing, not introduced by this ticket) —
+logged here as a candidate follow-up chore, not fixed in this ticket's scope.
+
+**Full Paystack sandbox checkout could not be Playwright-verified end-to-end**: this dev
+environment has no `PAYSTACK_SECRET_KEY` configured, so the real redirect-out/redirect-back cycle
+can't complete. Verified instead via: the Pay button rendering/gating correctly for client vs.
+counsellor on both surfaces, the initiate call reaching the real backend and surfacing its actual
+502 error distinctly (a genuine `TransactionException`, not a mocked/faked response), and manually
+flipping a `Transaction` row to `SUCCESS` in the database to confirm the "Paid" states render
+correctly on both surfaces.
+
+---
+
+## 2026-08-29 — SCRUM-158 (TT-7.4c): counsellor status excludes group therapy; TT-7.4 fully implemented
+
+**Decision**: the new counsellor read-only status branches in `TherapyPaymentDetails.vue` and
+`UnifiedTherapy.vue`'s Session Actions Modal explicitly exclude group therapy
+(`therapyType !== 'group'`), matching TT-7.4b's own scope exclusion, even though the ticket's own
+AC text didn't spell this out explicitly (it inherited "same two surfaces TT-7.4b adds the Pay
+control to", and TT-7.4b's Pay control is already group-excluded). Displaying a
+per-model payment status for a group therapy would be premature and potentially misleading given
+TT-7.4d's still-open group-payment-model question (per-member vs. group-wide) — showing "Awaiting
+payment"/"Paid" for a group therapy today would imply a single, well-defined payer state that
+doesn't actually exist yet for that case.
+
+**Why**: consistent with the same reasoning already logged for TT-7.4b/SCRUM-157 — this is a
+scope-narrowing that follows directly from an already-made decision (TT-7.4d deferred), not a new
+judgment call, so it's recorded briefly rather than re-litigated. With TT-7.4a/b/c all merged, TT-7.4
+(SCRUM-118's payment UI) is now fully implemented for individual therapies and sessions.
+
+---
+
+## 2026-08-29 — SCRUM-164 (TT-6.7): reused the generic Link infrastructure end-to-end; closed
+two gaps review found in that reuse before merge
+
+**Decision**: implemented the org self-apply link entirely on top of this codebase's existing
+generic `Link` model/flow (already used for guardianship/discussion/therapy-counsellor links) per
+the architect's original TT-6.7 call, rather than building bespoke plumbing — a new
+`LinkTypeEnum` case, a new `PerformOrganizationSelfApplyLinkAction` branch dispatched from the
+existing `PerformLinkAction`, and reusing `OrganizationMemberRequestService::applyAsMember()`
+unchanged for the actual eligibility checks (AC2). No new controller, route, or DTO shape beyond
+widening `CreateLinkDTO`'s (and, after review, `GetLinksDTO`'s) `$for` union to include
+`Organization`.
+
+**Gap found and fixed 1**: the generic `createLink()` flow had no per-type authorization hook at
+all (`EnsureAddedbyIsValidAction` only validates the *addedby* identity, never the *for* target) —
+without a new guard, any authenticated user could have generated a working self-apply link for an
+organization they don't administer. Added `EnsureUserCanCreateOrganizationSelfApplyLinkAction`
+(a no-op for every other link type) into `LinkService::createLink()`. Both reviewer and
+security-engineer then independently caught that the sibling `createMultipleLinks()` method builds
+its own per-item DTO and skipped this same guard entirely — fixed by adding the identical guard
+call inside its loop. (Currently unreachable over HTTP due to a pre-existing, unrelated routing
+mismatch — `POST /api/links/multiple` maps to `createLink`, not `createMultipleLinks` — but fixed
+proactively rather than left as a landmine for whenever that mismatch gets "fixed.")
+
+**Gap found and fixed 2**: security review noted the new guard, run *after* the generic
+`EnsureLinkDataIsValidAction`, produced two different status codes for "organization doesn't
+exist" (422, from the generic for-is-missing check) vs. "organization exists but you don't
+administer it" (403, from the new guard) — a fresh, distinguishable enumeration oracle for
+organization IDs that this ticket introduced. Fixed by reordering the new guard to run *before*
+`EnsureLinkDataIsValidAction`: since the guard's own `! $dto->for instanceof Organization` check
+is true for both a null `for` (nonexistent org) and any non-Organization target, both cases now
+collapse into the same 403.
+
+**Why**: both fixes are cheap, newly-introduced-by-this-ticket gaps with no architectural
+redesign required — squarely the "apply it" case CLAUDE.md describes, not the "defer with a
+follow-up ticket" case (contrast SCRUM-159's Decision 3/SCRUM-170, a pre-existing gap that would
+have needed a larger redesign).
+## 2026-08-29 — SCRUM-163 (TT-6.6e): owner-only enforcement built as direct actions; org
+deletion left ungated since it doesn't exist yet; a TOCTOU gap fixed pre-merge
+
+**Decision 1 (already made, recorded here for the trail)**: real behavioral enforcement of the
+existing `organization_admins.role` column — only an owner may remove the org or add/promote/
+demote other admins; any-admin access remains for existing profile/invite actions via the
+existing `EnsureUserIsOrganizationAdminAction`. Implemented as new direct actions (add/remove/
+promote/demote an admin, gated by a new `EnsureUserIsOrganizationOwnerAction`), not the `Request`/
+respond negotiation flow used elsewhere in this domain (compensation changes, invites) — the
+architect's distinction is that those flows exist because a second party's consent is being
+negotiated; an owner managing their own org's admin roster has no such second party.
+
+**Decision 2 — the ticket's AC3 lists "removing the organization" as one of the four owner-gated
+actions, but no organization-deletion capability exists anywhere in this codebase** (confirmed via
+`grep`: `OrganizationController` only has `store`/`update`/`show`; `Organization` uses
+`SoftDeletes` but nothing ever calls `delete()`). Read AC3 as "the gate must apply to org removal
+whenever it's built," not "build org removal now" — the ticket's concrete, itemized deliverable
+(AC2) only lists add/remove/promote/demote-admin, and inventing a deletion feature (with its own
+unspecified business rules — can a verified org with active members/counsellors be deleted? does
+it cascade?) would be scope invention beyond what any AC actually describes.
+
+**Decision 3 (fixed before merge, not deferred)**: `EnsureOrganizationRetainsAnOwnerAction`'s
+owner-count check and the subsequent pivot write were originally two separate, unlocked steps —
+both reviewer and security-engineer independently caught the same real TOCTOU gap: two concurrent
+requests demoting/removing two different owners of a 2-owner org could each read owner-count=2
+before either write commits, both pass the guard, and leave the organization with zero owners.
+Fixed by wrapping the guard+write pair in `DB::transaction()` with
+`Organization::query()->lockForUpdate()->find(...)`, mirroring the identical pattern already
+established in `OrganizationCounsellorRequestService`/`OrganizationMemberRequestService` for
+analogous invariants on the same model.
+
+**Why**: Decision 1/2 are recorded because they're non-trivial judgment calls made without asking
+first (an architectural pattern choice, and a scope boundary a literal reading of the ticket text
+could dispute). Decision 3 is a required fix, not a deferral — CLAUDE.md requires applying a
+reviewer/security-engineer finding, and a real, low-likelihood-but-serious data-integrity risk
+(an org with sensitive client data left permanently ownerless) with a cheap, already-precedented
+fix is exactly the case for applying it rather than filing a follow-up ticket.
+## 2026-08-29 — SCRUM-162 (TT-6.6d): fixed a real PII-enumeration oracle the ticket's own
+additive query change reopened in the generic RequestResource
+
+**Decision**: `RequestService::getRequests()` was changed exactly as the ticket specified — one
+additive `orWhere` block matching `to`/`from` against any of the user's `administeredOrganizations()`
+ids, mirroring the existing `$counsellor` block's shape. Security review then found this newly
+surfaces `organizationMemberInvite`/`organizationMemberApplication` request rows to an org admin
+through the endpoint's generic `RequestResource`, whose `getFrom()`/`getTo()` fall through to the
+full `UserMiniResource` (gender/country/dob) for any plain-`User` party. Since inviting a member
+only requires a valid user id (`InviteOrganizationMemberRequest`'s validation is just
+`exists:users,id` — no prior relationship required), this reopened the *exact* PII-enumeration
+oracle SCRUM-124 already closed for `OrganizationMemberController::invite()`'s own response: create
+an org, get it verified, invite arbitrary/sequential user ids, read each target's PII back via
+`GET /api/requests`. Fixed by adding a narrow, type-scoped projection
+(`isOrgMemberFlowUser()`/`narrowUserProjection()` in `RequestResource.php`) that returns only
+`id`/`fullName`/`username` for the User party of these two request types specifically (except a
+user viewing their own request) — every other request type's `from`/`to` rendering is unchanged.
+Two regression tests added: one pinning the narrowed fields, one confirming an admin of one
+organization never sees a different organization's requests (an adjacent invariant the reviewer
+flagged as untested, though verified correct).
+
+**Why**: this is a real, newly-introduced privacy exposure on a mental-health platform with a
+cheap, narrowly-scoped fix available — CLAUDE.md requires applying a security-engineer finding
+like this, not deferring it, when the fix doesn't require redesigning shared architecture (contrast
+with SCRUM-159's Decision 3, a pre-existing gap deferred to SCRUM-170 because fixing it properly
+would have meant redesigning a guard-action pair used by four endpoints). The narrow, type-scoped
+projection (rather than replacing `RequestResource` with `GetRequestResourceAction`'s full per-type
+dispatch here) keeps the fix inside this ticket's explicit additive-only scope guard — it touches
+only the two newly-surfaced request types' `from`/`to` rendering, not the broader resource-dispatch
+refactor the ticket text explicitly said to leave alone.
+## 2026-08-29 — SCRUM-159 (TT-6.6a): kept currentCompensation()/currentBillingConfig() as
+compatibility wrappers; trimmed member PII; deferred a pre-existing enumeration gap
+
+**Decision 1 — `OrganizationCounsellor::currentCompensation()`/`OrganizationMember::currentBillingConfig()`
+converted to `latestOfMany()`-backed relations, but the old method names kept as thin wrappers**
+around new `latestCompensation()`/`latestBillingConfig()` relation methods, rather than renaming
+every call site to property access. ~8 existing test files and one production call site
+(`EnsureOrganizationCanPayForModelAction.php`) all call these as methods expecting a model back;
+renaming them all to satisfy the new eager-loadable-relation requirement would have been a much
+larger, purely mechanical diff for no behavioral gain. The composite tie-break is
+`ofMany(['effective_from' => 'max', 'id' => 'max'])`, matching the existing
+`orderByDesc('effective_from')->orderByDesc('id')` ordering exactly.
+
+**Why**: architect's finding (from the earlier TT-6.5/6.6 restructuring pass) was that these two
+methods would N+1 the first time they're used across a paginated collection — the fix required is
+"make it eager-loadable", not "rename the public API". Reviewer confirmed this is a reasonable,
+low-risk shim, not a duplicate-API smell worth blocking on. Reviewer also flagged (not a blocker)
+that unlike the old always-re-queried form, the relation is now cached per-instance — a comment
+was added on both wrapper methods warning that a write-then-reread on the same instance now needs
+an explicit `refresh()`.
+
+**Decision 2 — `OrganizationMemberResource`'s `user` field is a narrow inline projection
+(`id`/`fullName`/`username`), not the full `UserMiniResource`**, even though `UserMiniResource` is
+the codebase's default "mini" shape for a `User`. Security review caught that reusing it here would
+regress a decision already made and documented four lines above it in the same file
+(`OrganizationMemberController.php`'s `invite()` deliberately excludes gender/country/dob per
+SCRUM-124, since "an ordinary User isn't meant to be publicly/cross-org discoverable"): an org
+admin configuring a member's billing mode has no legitimate need for that member's gender, country,
+or date of birth. Fixed before merge; a regression test
+(`'listing organization members does not leak the member's gender, country, or dob'`) pins the
+narrower shape. Left `OrganizationCounsellorResource`'s nested `counsellor.user` (via
+`CounsellorMiniResource`) unchanged, since counsellor profiles are already treated as more broadly
+discoverable elsewhere in this codebase by deliberate design (same file's own comment) — trimming
+`CounsellorMiniResource` itself would be a much wider, out-of-scope change affecting every other
+consumer of that shared resource.
+
+**Why**: a real, newly-introduced privacy exposure on a mental-health platform is a required fix,
+not something to defer — CLAUDE.md is explicit that a security-engineer finding must be applied or
+explicitly flagged with a follow-up ticket, and this one had a cheap, scoped fix available.
+
+**Decision 3 (deferred, not fixed) — the pre-existing 404-vs-403 organization-existence
+enumeration oracle** (`EnsureOrganizationExistsAction` vs. `EnsureUserIsOrganizationAdminAction`
+return distinguishable statuses for "org doesn't exist" vs. "org exists, caller isn't its admin",
+and the route only requires `auth`, not org-specific standing) was **not** fixed in this ticket.
+It already existed on `OrganizationController::show`/`update` before this ticket; SCRUM-159 extends
+the same weakness to the two new list endpoints rather than introducing it fresh. Filed as
+**SCRUM-170** (Low priority) rather than fixed inline, since fixing it properly means redesigning
+the shared guard-action pair used by four endpoints (two pre-existing, two new), which is a
+larger, more architecturally-invasive change than this ticket's scope, and risks conflating an
+existing-and-accepted-until-now gap with new work. A regression test
+(`'a nonexistent organization and a real one the caller cannot administer return different
+statuses (known gap)'`) pins the current (soon-to-change) behavior so SCRUM-170 has a concrete
+test to flip.
+
+**Why**: CLAUDE.md permits deferring a finding "with a follow-up ticket" when it isn't introduced
+fresh by the current change and fixing it properly is out of proportion to the ticket at hand —
+this is exactly that case, unlike Decision 2 above which was cheap and newly-introduced.
+## 2026-08-29 — TT-6.5 (Organizations frontend): restructured after discovering real backend gaps, three product decisions made
+
+**Decision**: TT-6.5 (SCRUM-111's frontend work) went through the full `/start-feature`
+product-owner/project-manager/architect gate. What was scoped as a 13-point, frontend-only
+ticket turned out to need real new backend work — no list endpoint for an org's own members or
+affiliated counsellors, no "my organizations" endpoint for a counsellor/member, no organization
+directory (so a counsellor/member had no way to discover an org id to apply to at all), no
+org-scoped request queue for admins, no co-admin management (the `OrganizationAdminRoleEnum`
+owner/admin distinction exists in the data model but is never enforced). Split into **M4a**
+(TT-6.6a–e, new backend enablement, ~23 pts, filed as SCRUM-159–163) which blocks **M4b**
+(TT-6.5a/a2/b/c/c2, restructured frontend, ~22–24 pts, filed as SCRUM-165–169) per-ticket rather
+than milestone-wide, plus **TT-6.7** (shareable self-apply link, filed as SCRUM-164). Total
+~45–52 points, up from the original 13 — the same undersizing pattern already seen in TT-6.3 and
+TT-7.2 on first pass.
+
+Three decisions made by the user during planning:
+1. **Owner-vs-admin roles get real behavioral enforcement now**, not a display-only badge — only
+   an owner may remove the org or add/promote/demote other admins (new
+   `EnsureUserIsOrganizationOwnerAction`, TT-6.6e).
+2. **Organization discovery ships as both a directory (TT-6.6c) and a shareable admin-generated
+   link (TT-6.7), not either/or** — architect confirmed these solve genuinely different problems
+   (curated browse-and-apply vs. a targeted, single-use grant mirroring the existing
+   discussion/guardianship Link pattern), so building both isn't redundant duplication.
+3. **The directory is verified-only** — an unverified organization stays invisible to browse/apply
+   until a platform admin verifies it, matching how counsellor verification already gates
+   visibility elsewhere in the app.
+
+**Deferred, not this restructuring's call**: the "sponsored by [org]" indicator on therapy/
+counsellor cards (SCRUM-111's third flagged open item) — both product-owner and project-manager
+recommended deferring it to a future TT-7.3a-adjacent ticket, since it depends on TT-7.3a (not yet
+built) and an undecided definition of "sponsored" over time. Proceeding with that deferral since
+neither reviewer treated it as blocking, and no objection was raised.
+
+**Why**: the three decisions above are genuine, costly-to-guess-wrong forks (real enforcement vs.
+display-only changes TT-6.6e/TT-6.5a2's actual scope; directory-vs-link changes which backend
+gets built at all; verified-only vs. show-all changes the directory's query and field exposure) —
+raised to the user per CLAUDE.md's autonomous-execution rules rather than assumed. The backend-gap
+discovery itself mirrors TT-7.4's own planning history (TT-7.4a's backend-plumbing prerequisite
+found the same way) — treated as a scope correction grounded in code actually read (architect
+verified every claimed gap against `OrganizationController`/`RequestService`/`Organization`
+model), not a guess.
+
+---
+
+## 2026-08-30 — SCRUM-160 (TT-6.6b): last of the M4a backend batch; a reviewer-verified
+non-bug in the administered-organizations ordering
+
+**Decision**: implemented all three "my organizations" endpoints as straightforward self-scoped
+Eloquent relation reads (`Counsellor::organizationCounsellors()`, `User::organizationMemberships()`,
+`User::administeredOrganizations()`) with no new guard/authorization actions — the query is
+already fully scoped to the requesting `$user`'s own relations, so there's no cross-user
+authorization decision to make (security review independently confirmed no cross-user leakage is
+possible, since no route parameter or request field ever influences which user's data is
+queried). The one asymmetry — a missing `Counsellor` account throws a 422
+(`CounsellorNotFoundException`) for the counsellor-affiliations endpoint, while the memberships/
+administered endpoints return an empty list for a user with none — is deliberate: a `User` always
+has memberships/administered-orgs as a valid (possibly empty) set, but "your counsellor
+affiliations" presupposes a `Counsellor` account that may not exist at all, mirroring
+`EnsureCounsellorExistsAction`'s existing precedent for other counsellor-only actions.
+
+**Non-bug, verified empirically**: `GetMyAdministeredOrganizationsAction` explicitly qualifies
+`orderByDesc('organizations.created_at')` rather than an unqualified `latest()`, based on a
+belief that `organizations`/`organization_admins` (both having their own `created_at` via
+`withTimestamps()`) would otherwise throw an ambiguous-column SQL error once the `belongsToMany`
+join compiles. Reviewer tested this directly against the project's real MySQL container and found
+it does NOT currently error — Eloquent aliases the pivot's copy as `pivot_created_at`, so only one
+output column is literally named `created_at`, and MySQL's ORDER BY resolution isn't ambiguous in
+that specific case. The qualification is kept anyway (harmless, and not dependent on that pivot-
+aliasing behavior continuing forever), but the code comment and test description were corrected
+to stop asserting a failure mode that doesn't actually reproduce against the current relation
+shape — a future engineer reading the original wording could have over-generalized it to a
+`belongsToMany` case where it *would* actually matter.
+
+**Why**: recorded because the original (incorrect) rationale could otherwise propagate as a
+"known codebase gotcha" via comment-copying, per the reviewer's own explicit maintainability
+concern — a cheap, no-behavior-change correction applied immediately rather than left as-is.
+With SCRUM-160 merged, all of M4a (TT-6.6a–e) and TT-6.7 are complete.
+
+---
+
+**Note (2026-08-30)**: this file's entries for SCRUM-159/162/163/164 (all merged into `develop`
+via PRs #99-#102 before this ticket branched) do not appear between this entry and the one below,
+even though they were written and committed on each of those branches. Likely lost during manual
+merge-conflict resolution on one or more of those PRs (the same class of issue caught and fixed
+in `OrganizationService.php` for PR #99's actual code) — flagged for awareness, not reconstructed
+here, since this is a documentation-history gap, not a functional defect.
+
+---
+
+## 2026-08-30 — SCRUM-165 (TT-6.5a): first frontend ticket; a real, substantial QA-caught bug
+batch fixed before merge
+
+**Decision**: built the org admin dashboard as a single `Organization/Show.vue` page (matching
+`Profile/Counsellor/Show.vue`'s actual established shape — one page, edit-via-modal, NOT a
+separate routed Edit page, since `Counsellor/Edit.vue` turned out to be an empty, unused file)
+with three section Partials (Counsellors/Members/RequestQueueSection) driven by props from a new
+`OrganizationController::dashboard()` route, additive to the existing JSON-only `show()` action
+rather than modifying it. A new `GetOrganizationRequestQueueAction` mirrors SCRUM-162's
+`getRequests()` `orWhere` shape but scoped to one organization, since the org-scoped request
+queue itself was out of SCRUM-162's own additive-only scope guard.
+
+**QA found real, substantial bugs on the first pass — not approved, fixed before merge**:
+1. **"Load more" pagination was completely broken** on all three lists: each paginator's
+`links.next` defaulted to the dashboard's own URL (not the dedicated JSON list endpoints), so the
+frontend's plain axios "load more" GET got back a full HTML page instead of JSON and crashed.
+Fixed by explicitly `->setPath(route(...))` on each paginator before wrapping it for the Inertia
+props.
+2. **Compensation counter-offers always failed, and — separately — every toast in all three new
+section components was invisible.** The counter-offer form sent stale/irrelevant fields
+regardless of the selected type, tripping the backend's cross-field validation for every
+configuration; fixed via a payload builder that only includes type-relevant fields. Independently,
+all three section Partials called `useAlert()` locally (a deliberately non-singleton composable)
+but never rendered an `<Alert>` — only the parent `Show.vue` does, bound to its own separate
+instance — so every success/failure toast from inside those three components updated state
+nothing displayed. Fixed by having them `emit('alert', ...)` instead, forwarded by `Show.vue` to
+its one rendered `<Alert>` (mirrors this codebase's existing `RequestBadge.vue` → parent `@alert`
+pattern).
+3. **Editing the org profile didn't visually update the dashboard until a hard reload**, and
+reopening the edit modal kept showing pre-save values. Root cause: `Show.vue` took a one-time
+`ref({...props.organization})` snapshot that never re-tracked Inertia's (correctly) updated props;
+fixed by switching to `computed(() => props.organization)`. `UpdateOrganizationForm.vue` had the
+identical root cause for its own form defaults, fixed via a `watch(() => props.show, ...)` that
+calls `form.defaults()`/`form.reset()` on reopen.
+4. A second QA re-verification pass (after the above were fixed) then caught a follow-on bug
+**introduced by fix #2's own new error-handling code**: Laravel's validation-error shape
+(`{field: [messages]}`) was assigned directly to the `InputError` component's `message` prop
+(expects a plain string), rendering as a literal `["The percentage field must be..."]` array
+string instead of clean text. Fixed by routing through this codebase's existing
+`useErrorHandler()`/`setErrorData()` composable (already used elsewhere for exactly this
+unwrapping) rather than a raw assignment.
+
+**Deferred, not fixed (out of scope for this ticket)**: the same QA pass surfaced that the
+*generic* request-respond pipeline (`RequestService::respondToRequest()`, used by every request
+type in the app — guardianship, group-therapy membership, counsellor verification, org
+invites/applications, discussion invites) never re-checks a `Request`'s `status` is still
+`PENDING` before applying an accept/reject, unlike the dedicated check
+`CounterOfferOrganizationCounsellorCompensationChangeAction` already has for compensation
+negotiations specifically. Filed as **SCRUM-171** rather than fixed inline: it's a pre-existing
+gap in shared, cross-cutting infrastructure this ticket happens to exercise more heavily, not
+something SCRUM-165 introduced, and fixing it properly means touching the shared guard chain used
+by every request type in the app — out of proportion to this ticket's own scope.
+
+**Why**: fixes #1-#4 are all newly-introduced-by-this-ticket bugs with cheap, scoped fixes
+available — CLAUDE.md requires applying these, not deferring them. SCRUM-171 is the opposite case
+(pre-existing, cross-cutting, disproportionate-to-fix-here) — the same distinction already drawn
+for SCRUM-159's Decision 3/SCRUM-170. Recorded in detail here because this is the first ticket in
+the session where a qa-engineer pass genuinely found the feature not-done on its first submission,
+not just style/architecture feedback — worth keeping as a concrete example of why the Playwright
+QA gate matters for full-ceremony UI work, not just a checkbox.
+
+---
+
+## 2026-08-30 — SCRUM-167 (TT-6.5b): counsellor "my organizations" + apply flow; a genuine
+route-ordering bug, a seeded-data bug, and two self-caught process mistakes
+
+**Decision**: built the counsellor-facing counterpart to SCRUM-165's org admin dashboard as a
+new `Organization/MyOrganizations.vue` page (`GET /organizations/mine/dashboard`) with three
+sections — affiliations list, a dedicated request queue, and a browse-and-apply directory —
+mirroring SCRUM-165's page/Partials shape. A new `GetMyOrganizationRequestQueueAction` mirrors
+`GetOrganizationRequestQueueAction`'s query shape but needs an explicit `whereIn('type', [...])`
+filter that the org-scoped version doesn't: `Organization` is exclusively used as a `from`/`to`
+party for org-context request types, but `Counsellor` is also a polymorphic party for unrelated
+types (therapy assistance, discussion invites, verification) — an unfiltered `from/to` match would
+leak those into this org-specific queue. Reused `OrganizationRequestResource` (not the plainer
+`RequestResource` SCRUM-165's queue uses) so proposed compensation terms/round/expiry are visible
+before a counsellor decides — a deliberate improvement over the org-admin queue's blind
+counter-offer form, since AC3 explicitly requires this data to be shown. Extracted the counter-offer
+modal (previously inline in `RequestQueueSection.vue`) into a shared `CompensationCounterOfferModal.vue`
+now used by both sides, rather than duplicating a non-trivial form for a second use site.
+
+**Bug found via reviewer, fixed before QA**: registering `/organizations/mine/dashboard` *after*
+`/organizations/{organizationId}/dashboard` in `routes/web.php` meant Laravel matched the wildcard
+route first, capturing `organizationId="mine"` and producing "organization not found" — caught by
+my own feature test, not by a subagent. Fixed by moving the entire `mine/*` block above
+`organizations.dashboard` (the pre-existing SCRUM-160 routes happened not to collide only because
+none of them shared a literal path segment with `organizations.dashboard`'s `dashboard` suffix).
+
+**Bug found via qa-engineer's Playwright pass**: the seeded pending compensation-change Request I
+added to `org_demo_counsellor`'s demo data had no `data.proposedById`, so accepting it threw "the
+original proposer no longer exists" — `RespondToOrganizationCounsellorCompensationRequestAction`
+resolves this id to attribute the accepted terms. Fixed by setting it to the seeded org admin's
+user id.
+
+**A real gap I found myself, not flagged by any reviewer**: accepting the seeded compensation
+negotiation updated the affiliation's compensation server-side but left the My Organizations
+table showing the old amount until a manual reload — the request-queue section had no way to tell
+its sibling affiliations section a compensation change had just landed. Fixed with a
+`compensation-accepted` event bubbled from `MyOrganizationRequestQueueSection` up to
+`MyOrganizations.vue`, which reloads `MyAffiliationsSection` (same `ref().reload()` pattern as
+SCRUM-165's `@invited` wiring). This exact staleness already exists, unfixed, on the merged
+org-admin side (accepting an application there doesn't refresh `CounsellorsSection`'s row either)
+— left as-is there since it's out of this ticket's scope and not something QA or the reviewers
+flagged on that already-shipped page; worth a small follow-up if it comes up again.
+
+**Two of my own process mistakes, both caught before merge**:
+1. Used `Write` to create `tests/Feature/MyOrganizationsControllerTest.php` for this ticket's
+tests without first reading the file — silently overwriting SCRUM-160's existing tests for
+`organizations.mine.memberships`/`.administered` (guest-401 checks and an N+1 regression guard)
+that lived at the same path. Caught by `security-engineer`'s review, not by me. Fixed by restoring
+the original file via `git checkout HEAD --` and moving this ticket's new tests to a distinctly-named
+`tests/Feature/MyOrganizationsDashboardControllerTest.php` instead.
+2. qa-engineer flagged an intermittent, unreproducible-by-static-review click failure on invite-type
+accept/reject buttons ("Bug 2"), recommending re-verification before sign-off rather than dismissal.
+Investigated directly: built a fresh test scenario via `tinker` and reproduced a real 500 on first
+click — but the actual cause was that my ad-hoc test Request was missing `for()->associate($organization)`
+(only `from`/`to` were set), which `RespondToOrganizationCounsellorRequestAction` dereferences as
+the Organization to re-check eligibility; `for` being null threw a `\Error` that the controller's
+generic `catch (Throwable $th)` swallowed into a silent 500 with no log entry (caught-and-handled
+exceptions aren't auto-logged by Laravel's global handler). Fixing the test data's `for` association
+and retrying reproduced success on the very first click, every time — confirming this was a test-
+artifact (most likely qa-engineer made the same construction mistake when fabricating an invite
+scenario, since none of the properly-seeded data ever exhibited it), not a real defect.
+
+**Why**: recorded in this much detail because two of the five issues resolved during this ticket's
+review cycle were self-inflicted process mistakes rather than product bugs — worth keeping as a
+concrete reminder to always read a file before `Write`ing over it even under time pressure, and
+that an "intermittent, no-console-error" QA finding can still be worth a real repro attempt rather
+than either blind acceptance or a shrug, per qa-engineer's own explicit ask not to dismiss it
+without a definitive answer.
+
+---
+
+## 2026-08-30 — SCRUM-168 (TT-6.5c): member "your organizations" view; unified into the
+existing dashboard rather than a new page, plus a real bug found via my own smoke-testing
+
+**Decision**: rather than building a third near-duplicate page/route for the member-facing view,
+extended the already-built `Organization/MyOrganizations.vue` (SCRUM-167, previously
+counsellor-only) to be reachable by any authenticated user. `OrganizationController::myOrganizationsDashboard()`
+now branches on `$user->counsellor`: present → populate the counsellor-only sections (affiliations,
+request queue, browse-and-apply) exactly as before; absent → those props are simply `null` and the
+page omits those sections, while a new "My Memberships" section (`MyMembershipsSection.vue`,
+consuming the unchanged SCRUM-160 `organizations.mine.memberships` endpoint) is always shown. This
+mirrors SCRUM-165's own is_provider/is_consumer conditional-section pattern on the org-admin
+dashboard, and avoids the app accumulating three separate "my organizations"-shaped pages
+(counsellor, member, and eventually admin via SCRUM-173) with near-identical layouts. AC2 ("accept/
+reject an org's invite via the existing generic request-respond endpoint") needed zero new backend
+or a dedicated queue like SCRUM-167's — a member's invite/application already flows through the
+pre-existing, app-wide personal "Requests" nav-dropdown modal, which every user already has.
+
+**A real, pre-existing bug found via my own Playwright smoke-test, not part of this ticket's
+stated scope**: that generic "Requests" modal (`RequestBadge.vue`, used by every user in the app
+for every request type) rendered a literal "from: @undefined" for any request whose party is an
+Organization — its from/to label logic only handled `isCounsellor` vs. falling through to
+`@${party.username}`, with no `isOrganization` branch. This had apparently never been exercised
+end-to-end before: org-context request types have existed since much earlier in this epic, but
+nothing had shown one to a plain member through this specific generic modal until this ticket's
+own AC2 verification. Fixed with a `partyLabel()` helper mirroring the same-shaped helper already
+used in `RequestQueueSection.vue`/`MyOrganizationRequestQueueSection.vue` — incidentally also fixes
+the same "@undefined" bug for a *deleted* counsellor/user party, per reviewer's independent trace
+of the resource shapes.
+
+**Two reviewer-flagged fixes applied before commit**: `documentation/seeded-data.md` wasn't
+updated for the new `org_demo_member_invitee` seed account (added to exercise AC2) — fixed.
+`MyMembershipsSection.vue`'s `statusLabel()` had a `PENDING` branch copied from the counsellor/
+admin-side pattern, but `OrganizationMemberStatusEnum` only has `ACTIVE`/`ENDED` — a membership is
+active immediately on creation, unlike a counsellor affiliation which can sit pending compensation
+agreement. Since this file was brand new and not yet merged (unlike its already-shipped
+`MembersSection.vue` counterpart, left untouched per reviewer's own scoping), simplified it to the
+two real states rather than propagating a third copy of speculative dead code.
+
+**Deferred, not fixed here**: qa-engineer's Playwright pass separately found that
+`RequestBadge.vue`'s message map also has no entry for `groupTherapyMembership` (SCRUM-72's
+join-a-group-therapy request type), rendering blank for both parties — pre-existing, unrelated to
+this ticket's own changes to that file, filed as **SCRUM-175** rather than fixed inline (same
+deferral pattern as SCRUM-171/SCRUM-174: a real gap in shared infrastructure this ticket happened
+to touch, not something SCRUM-168 introduced).
+
+**Why**: the unify-into-one-page call is recorded because it's a real architectural fork (three
+separate pages was the naive alternative) resolved by precedent (SCRUM-165's own conditional-
+section pattern) rather than by asking, per CLAUDE.md's guidance to proceed on well-precedented,
+reversible calls. The `RequestBadge.vue` fix is recorded in detail because it's the second ticket
+in a row (after SCRUM-167's own self-caught bugs) where my own manual Playwright verification
+found something real that no subagent had reason to look for, since it required actually clicking
+through the specific combination this ticket newly exercises.
+
+---
+
+## 2026-08-30 — SCRUM-166 (TT-6.5a2): co-admin management UI; the last piece of TT-6.5a's
+backend, already fully built and tested, needed only a frontend consumer
+
+**Decision**: this ticket turned out to be almost entirely a frontend exercise. SCRUM-163 (much
+earlier in this epic) had already built and fully tested the entire backend for co-admin
+management — `OrganizationAdminController::store/update/destroy`, `OrganizationAdminService`,
+owner-only enforcement (`EnsureUserIsOrganizationOwnerAction`) and last-owner protection
+(`EnsureOrganizationRetainsAnOwnerAction`) — none of which needed to change. Added a new
+`admins` prop to the existing `OrganizationController::dashboard()` (unpaginated, unlike its
+sibling counsellors/members/requestQueue props — an org's admin roster is expected to stay small)
+and a new `AdminsSection.vue` consuming the three pre-existing mutating endpoints, each of which
+already returns the full refreshed admin list — no new backend surface at all beyond the one-line
+prop addition.
+
+**A real, deliberate judgment call on the promote/demote/remove buttons**: built as actual
+`<SecondaryButton>`/`<DangerButton>` components rather than the text-link-styled `<button
+class="text-blue-600 hover:underline">` pattern used throughout the rest of this dashboard's
+existing sections (`MembersSection.vue`'s "edit billing", `RequestQueueSection.vue`'s
+"counter-offer") — the user had already flagged link-styled action buttons as a TODO item to fix
+project-wide, so new code shouldn't add more of the same debt even though the existing pattern is
+what a naive copy-paste would have produced.
+
+**Reviewer/security findings, all minor**: reviewer's one suggestion (a positional
+`admins.0`/`admins.1` test assertion, fragile since `Organization::admins()` has no `orderBy`)
+was fixed by looking up each admin by id instead, mirroring the existing convention in
+`OrganizationAdminManagementTest.php`. security-engineer's one flagged item — the admin roster
+(name/username/role) is now visible to *every* admin of an org on page load, not just owners,
+which is a real widening vs. pre-ticket behavior where only an owner-gated mutating-endpoint
+response ever returned it — is exactly what AC2 itself specifies ("a plain admin can view the
+current admin list"), so no further confirmation was needed beyond the ticket's own text.
+security-engineer's other finding (`AddOrganizationAdminRequest`'s `exists:users,id` validation
+running before the owner-authorization check, a mild pre-existing user-ID-existence oracle from
+SCRUM-163, now more directly reachable via this new UI) was filed as **SCRUM-176** rather than
+fixed inline, following the same deferral pattern as SCRUM-171/174/175.
+
+**Seed-data gap found by qa-engineer, fixed before commit**: the seeder only had a single
+owner-role admin for the demo org, so exercising promote/demote/remove, last-owner protection, or
+the plain-admin read-only view all required hand-creating accounts via `tinker` — contrary to
+CLAUDE.md's explicit seeding convention. Added a second, plain-role admin
+(`org_demo_plain_admin`) to the existing seed data.
+
+**Why**: recorded because this is the cleanest example yet in this epic of a ticket where the
+*backend* ceremony (full review/test cycle) had already happened on an earlier ticket, and this
+one's own review correctly focused entirely on the thin new frontend layer rather than
+re-litigating already-settled authorization logic — worth noting as the pattern to follow when a
+late-epic ticket's scope turns out to be "just wire up the UI."
+
+---
+
+## 2026-08-30 — SCRUM-173 (TT-6.5d): "organizations I administer" list; closes the last
+navigation gap this audit found, entirely by extending the existing my-organizations page
+
+**Decision**: rather than a fourth near-duplicate "my organizations"-shaped page, added
+"Organizations I Administer" as the first section on the already-shared `MyOrganizations.vue`
+page (from SCRUM-167/168) -- unconditionally fetched (unlike the counsellor-only sections),
+since any user can administer zero or more orgs independent of counsellor/member status. The
+"nav entry point" half of this ticket's own AC1 was already satisfied for free: SCRUM-168 had
+already widened the "My Organizations" nav link to any authenticated user, so no new nav change
+was needed here. Reuses `organizations.mine.administered` (SCRUM-160) and `organizations.dashboard`
+(SCRUM-165) entirely unchanged -- this ticket's backend footprint is a single new controller
+block passing an already-existing, already-tested paginator as a prop.
+
+**Reviewer-caught bug, fixed before commit**: the "open dashboard" link nested a `<PrimaryButton>`
+(renders `<button>`) inside an Inertia `<Link>` (renders `<a>`) -- invalid HTML (interactive
+content inside interactive content), and a first in this codebase; every existing example of a
+button-styled `<Link>` (e.g. `Profile/Show.vue`'s "Manage Preferences") applies the button classes
+directly to the `Link` itself instead. Fixed by removing the nested component and moving
+`PrimaryButton`'s exact classes onto the `Link`, preserving the visual style while producing valid
+markup.
+
+**Why**: recorded because this is the last ticket the original navigation-gap audit
+(2026-08-30) identified, closing out that entire line of work -- the epic's Organizations
+frontend (TT-6.5a/a2/b/c/d) is now complete. The reviewer finding is worth keeping as a concrete
+example of *why* this project prefers styling `<Link>` directly over wrapping button components:
+the wrapped pattern silently produces invalid HTML that a visual/functional test alone won't
+catch (the link still rendered and navigated correctly either way).
+
+---
+
+## 2026-08-30 — Bugfix batch: org dashboard frontend polish (TODO items); a genuine browser
+regex-compilation gotcha, and a user-caught reminder that frontend validation is never sufficient
+alone
+
+**Decision**: closed out several small items from a product TODO note, all scoped to the org
+admin dashboard: currency fields changed from free-text to a `Select` dropdown sourced from
+`config('currencies.supported')` (matching the existing pattern in `UpdateCounsellorPricing.vue`);
+amount/percentage/expiry number inputs got `min`/`max`/`step` matching the backend's own validation
+ranges; remaining link-styled buttons (`edit billing`, `counter-offer`) became real button
+components; "load more" (accumulate-on-scroll) pagination on the three org-admin-dashboard list
+sections (`CounsellorsSection.vue`, `MembersSection.vue`, `RequestQueueSection.vue`) was replaced
+with real numbered pagination via a new shared `Pagination.vue` component, scoped to just this
+dashboard per the user's own explicit clarification when this batch was picked up (not the
+counsellor/member "my organizations" equivalents).
+
+**A genuine, non-obvious browser bug found and fixed while adding phone format validation**:
+naively writing an HTML `pattern` attribute like `[0-9+\-\s()]{7,}` compiled and validated
+correctly when tested via `new RegExp(str, 'u')` in a JS console, but silently validated
+*nothing* when actually used as an `<input pattern>` in a real browser — every value, including
+obviously-invalid ones, passed `checkValidity()`. Root cause: modern Chromium compiles the HTML
+`pattern` attribute using regex `v`-mode (`unicodeSets`), a stricter grammar than `u`-mode where
+an unescaped `-`, `(`, or `)` inside a character class is a *compile error* — and per the HTML
+spec, a pattern that fails to compile is treated as "no constraint" (always valid), with zero
+visible symptom short of manually testing `checkValidity()`. Fixed by escaping every special
+character (`[0-9+\s\(\)\-\.]{7,}`), verified empirically against a live browser rather than
+trusted from spec-reading, since the discrepancy between "compiles fine via `new RegExp(str,
+'u')`" and "silently disables `pattern` validation" is exactly the kind of gap that's easy to miss
+by reasoning alone.
+
+**Reviewer-caught regression from that same fix**: the escaped pattern (before adding `.`) rejected
+dot-separated phone formats (e.g. `270.271.6592`), which Faker's default `phoneNumber()` — used by
+every seeded organization — frequently produces. Since the phone field is pre-filled on modal open
+and native HTML5 constraint validation blocks the *entire form* if any field is invalid, this
+would have silently blocked editing ANY field (not just phone) on an org whose stored phone
+happened to be dot-formatted, with no visible error beyond a browser validation bubble on a field
+the admin never touched. Fixed by adding `.` to the allowed character set (verified via Node's
+`v`-flag regex support, then confirmed against a live seeded org with its phone deliberately set to
+a dot-format).
+
+**User-caught gap this session should have caught itself**: after fixing the frontend phone
+pattern, testing (deliberately, to verify the fix) revealed that "abc" had been saved as a real
+organization's phone number earlier in this session -- while the frontend pattern bug above was
+still unfixed. The user pointed out, correctly, that this exposed a *separate*, more fundamental
+problem: `UpdateOrganizationRequest`/`CreateOrganizationRequest`'s `phone` rule was (and had
+always been) just `['string', 'max:255']` -- zero format validation server-side, meaning ANY
+client that bypasses or lacks JavaScript (a raw API call, a disabled-JS browser, or simply a
+frontend bug like the one above) could always have saved a non-phone value, regardless of whether
+the frontend pattern was correct. Fixed by adding matching `regex:/^[0-9+\s().-]{7,20}$/`
+validation to both request classes -- the frontend pattern is now a UX convenience, with the
+backend as the actual enforcement boundary, per this project's established defense-in-depth
+convention elsewhere (e.g. currency, compensation amounts).
+
+**Other reviewer-required fix**: added test coverage (`tests/Unit/SupportedCurrencyValidationTest.php`)
+for the `CreateOrganizationCounsellorCompensationRequest` currency tightening (`'string','size:3'`
+→ `Rule::in(config('currencies.supported'))`) from earlier in this same batch, which had shipped
+without a test.
+
+**Why**: recorded in detail because this is a genuine "process worked as intended" example within
+a single small bugfix batch -- a real browser gotcha was found and fixed, a reviewer pass caught a
+real regression in that same fix before it shipped, and the user's own manual observation caught a
+more fundamental gap (missing backend validation) that neither the implementation nor the review
+pass had surfaced, since both were focused on the frontend pattern's own correctness rather than
+questioning whether frontend-only validation was ever sufficient. Worth keeping as a concrete
+reminder that "the frontend now validates X" is never itself a complete answer to "is X validated"
+-- the backend question has to be asked explicitly, every time, not inferred from the frontend
+fix being correct.
+
+---
+
+## 2026-08-30 — SCRUM-172: search-and-select for org invite/add-admin flows; a new shared
+`SearchSelect.vue` component, and a reviewer-caught `id`-fallthrough regression worth remembering
+
+**Decision**: replaced the raw numeric-id `TextInput`s in `CounsellorsSection.vue` (invite
+counsellor), `MembersSection.vue` (invite member), and `AdminsSection.vue` (add co-admin) with a
+new, reusable `SearchSelect.vue` component -- debounced search, click-to-select, "change" to clear,
+closes on outside click. No backend work was needed: this reuses the two already-live,
+already-tested search endpoints (`api.users`/`api.counsellors`) that `AddGuardianModal.vue`/
+`DiscussionModal.vue`/`GroupTherapyFormModal.vue` already search against, confirmed via the
+2026-08-30 audit that re-scoped this ticket down from its original (assumed-bigger) footprint. The
+existing card-based bespoke search UIs in those three flows were deliberately left untouched
+rather than folded into `SearchSelect` -- they're a different UX (multi-select with manual
+pagination) serving a different need, and forcing them onto this component would have been scope
+creep beyond what the ticket asked for.
+
+**Reviewer-caught regression, fixed before commit**: the first version of `SearchSelect.vue` didn't
+declare an `id` prop, so `<SearchSelect id="user" ...>` at each call site put `id="user"` on the
+component's own wrapper `<div>` (Vue's default attribute fallthrough target) instead of on the
+actual `<input>` nested inside it. The visible symptom was nothing -- the field still worked by
+mouse -- but every `<InputLabel for="user">` pairing silently stopped associating with a focusable
+control, a real accessibility regression invisible to manual click-through testing. Fixed by
+declaring `id` as an explicit prop (removing it from the automatic fallthrough set) and forwarding
+it explicitly onto the inner `TextInput`, then confirmed via `document.querySelector('#user')` in a
+live browser session that the id now resolves to the `<input>` element itself.
+
+**Reviewer-caught gap, fixed before commit**: the search request had no `.catch()`, so a failed or
+401'd request (e.g. an expired Sanctum session mid-session) would silently do nothing visible and
+throw an unhandled promise rejection -- every comparable existing search flow in this codebase
+already has one. Added, along with a request-token guard against a slower, earlier query's response
+landing after a faster, later one's and clobbering it (the 400ms debounce rate-limits when requests
+fire, not the order they resolve in) -- a real, if low-probability, gap worth closing given this
+component is meant to become the org dashboard's shared search-and-select pattern going forward.
+
+**Deferred, not dropped**: the reviewer and security-engineer both flagged non-blocking items
+that didn't need to hold up this ticket -- `SearchSelect` only ever fetches page 1 (both backend
+endpoints paginate, so a common search term can silently truncate with no "more results" signal),
+no keyboard-only selection support (mouse/click only), and the pre-existing, unworsened lack of
+throttle middleware on `api.users`/`api.counsellors`. Filed as SCRUM-177 rather than silently
+dropped, per this project's rule against ignoring review findings without a documented reason.
+
+**Why**: recorded because the `id`-fallthrough bug is a good concrete example of why "I clicked
+through it in the browser and it worked" doesn't catch every regression a code reviewer will --
+label/input association has zero visible effect on a mouse-driven manual test, and would only have
+surfaced as a real accessibility complaint (or an automated a11y check this project doesn't have)
+much later. Worth remembering for any future shared Vue component that wraps a native form control:
+forward `id` explicitly rather than relying on default attribute fallthrough once the wrapper isn't
+itself a single native element.
+
+---
+
+## 2026-08-30 — SCRUM-177: SearchSelect.vue hardening (keyboard nav, pagination, throttle) --
+a reviewer-caught concurrency bug in the very fix meant to close a reviewer-flagged gap
+
+**Decision**: closed the three non-blocking items SCRUM-172's own review pass had flagged rather
+than left them to rot: `SearchSelect.vue` gained arrow-key/Enter keyboard selection (`role`/
+`aria-*` attributes, an `activeIndex` cursor) and a "load more" control paginating past each
+endpoint's first page (`api.counsellors` caps at 5, `api.users` at 10); `api.users`/`api.counsellors`
+gained `throttle:60,1`, matching the existing `organizations.index` precedent, since the app's
+general `api` RateLimiter is disabled entirely.
+
+**Reviewer-caught concurrency bug, fixed before commit**: the first version of `loadMore()` had no
+re-entrancy guard -- two rapid clicks before the first request resolved would increment `page`
+twice and fire two overlapping requests, and the existing out-of-order-response `searchToken` guard
+(itself a fix from the prior SCRUM-172 review pass) would then silently discard the *first*
+response once it landed, since by then `searchToken` no longer matched. The result: the page that
+first response represented was never appended and never retried -- results end up as page 1 +
+page 3, permanently missing page 2's rows, with no visible error and no way to recover except
+retyping the search from scratch. Worth remembering as a distinct class of bug from what the
+`searchToken` guard actually solves: that guard protects against out-of-order *resolution*, not
+concurrent *dispatch* -- the two need separate guards even though they look like the same problem
+at first glance. Fixed with a plain `if (searching.value) return` at the top of `loadMore()`,
+which is sufficient because Vue's/JS's single-threaded execution means `searching.value` is already
+`true` (set synchronously before the first `await`) by the time a second, near-simultaneous click's
+handler actually runs.
+
+**Reviewer-required test, added**: `tests/Feature/SearchRateLimitTest.php`, mirroring the existing
+`MessageRateLimitTest.php` pattern for `throttle:messages` -- confirms 60 requests succeed and the
+61st 429s, for both the authenticated (`api.users`, keyed per-user) and public (`api.counsellors`,
+keyed per-IP via `withServerVariables`) cases, plus that each endpoint's limit is isolated (per-user
+for `api.users`, per-IP for `api.counsellors`) rather than shared globally.
+
+**Reviewer-suggested, applied**: a load-more failure no longer collapses the dropdown and discards
+`hasMore` outright (it now only does that for a *fresh* search failure) -- it instead rolls `page`
+back by one so a retry re-fetches the page that failed, and the already-fetched first page's
+results stay visible. Similarly, `activeIndex` (the keyboard-highlighted row) is no longer reset on
+every `results` mutation, only on an actual fresh search/clear -- an append from "load more" no
+longer discards an in-progress keyboard highlight on a still-visible row.
+
+**Reviewer-suggested, deferred (documented, not silently dropped)**: giving the "load more" row its
+own keyboard path (it's currently mouse/click-only, an internal inconsistency in a diff whose whole
+point was closing a keyboard-accessibility gap) and wiring `aria-activedescendant` on the input for
+more complete screen-reader support of the highlight state. Both were explicitly called "polish, not
+a regression" by the reviewer and don't warrant their own tracking ticket at this scale, but are
+worth picking up whenever `SearchSelect.vue` is touched again.
+
+**Why**: recorded mainly for the concurrency-bug lesson -- this is the second time this specific
+component has had a "the fix for one review finding introduces a new bug that only shows up under a
+timing condition manual testing won't naturally hit" (the first was the out-of-order-response race
+in the original SCRUM-172 pass; this is the double-dispatch race in this pass's own pagination fix).
+A pattern worth watching for: whenever a fix introduces a second async operation triggered by a
+UI-repeatable action (a button that can be clicked more than once before the first call resolves),
+ask explicitly "what happens on a second click before the first resolves" as its own question,
+separate from "what happens if responses arrive out of order."
+
+---
+
+## 2026-08-30 — SCRUM-171: the ticket's own premise didn't match the codebase -- a reviewer catch
+that changed the fix from "close a data-integrity bug" to "make a known no-op honest," with the
+user explicitly choosing to make it a real, app-wide behavior change
+
+**What the ticket claimed**: responding to an already-decided Request (e.g. a second, slower
+responder) would "silently succeed and flip the already-rejected request's status back to
+ACCEPTED" -- a data-integrity bug, reproduced via tinker + a second `requests.respond` call.
+
+**What was actually true**: every one of the 9 `RespondTo*RequestAction` classes dispatched from
+`RespondToRequestAction` already re-checks the target Request's status under a `DB::transaction` +
+`lockForUpdate()`, and silently no-ops (returns the request *unchanged*) if it's no longer
+PENDING -- this was built and deliberately tested as SCRUM-80 (originally just for group-therapy
+membership) and extended to the other four/five action types as SCRUM-91, with
+`tests/Unit/RespondToRequestActionIdempotencyTest.php`'s own header comment stating the intent
+outright: a duplicate/repeated respond call "must not re-run side effects." So the request's
+*status* was never actually at risk -- the ticket's reproduction, taken literally, would not have
+produced the described flip in the current codebase. The real, narrower gap: `RequestController::
+respond()` still reported that silent no-op as a 201 "success," giving the second caller no signal
+that their response did nothing.
+
+**How this was caught**: the reviewer, given the first version of this fix (`EnsureRequestIsStill
+PendingAction`, wired into `RequestService::respondToRequest()` to throw a 422 before any write),
+traced all 9 `RespondTo*RequestAction` classes and found the existing lock-and-no-op guard in each
+one -- concluding the fix's own comments (and the ticket's) were factually wrong about what bug was
+being fixed, and that changing a 201-silent-success into a 422-error for the *entire* shared respond
+pipeline (every request type in the app) was a real, unacknowledged behavior/contract change, not a
+pure bugfix, since `RespondToRequestActionIdempotencyTest.php` explicitly locks in the old contract
+as intentional. This was independently verified (re-read all 9 action files, confirmed the lock +
+no-op pattern in each, read the idempotency test file's own header comment) before acting on it --
+the claim was serious enough (it contradicted both the Jira ticket and my own initial fix's stated
+rationale) to confirm firsthand rather than either blindly trusting or blindly dismissing a
+subagent's finding.
+
+**Decision**: rather than silently pick a side, this was surfaced to the user as a genuine product
+fork -- (a) make the 422 the new, real, app-wide behavior and update the SCRUM-80/91 idempotency
+tests/comments to describe the corrected contract, or (b) drop the fix entirely, since the actual
+data-integrity concern was already closed. The user chose (a): responding to an already-decided
+request should show as an error, everywhere, going forward. Implemented by keeping
+`EnsureRequestIsStillPendingAction` as-is (the 422 behavior), but rewriting every comment that had
+described the old bug inaccurately (in the action itself, in `RequestService::respondToRequest()`,
+and in the new test file) to correctly describe what was actually happening before this ticket: a
+safe-but-silent no-op, not a data-corrupting flip. The existing `RespondToRequestActionIdempotency
+Test.php` suite was deliberately left untouched -- it exercises the 9 actions directly, bypassing
+`RequestService::respondToRequest()` entirely, so it is not in conflict with the new 422 behavior at
+the entry point; it continues to correctly assert that a *direct* action call remains a safe no-op,
+which is still true and still desirable (that's the actual data-integrity guarantee, unaffected by
+this ticket). The new outer check is explicitly documented as a fast, unlocked pre-check layered on
+top of that untouched guarantee, not a replacement for it -- a true, near-simultaneous race can still
+land past it into a per-type action's own no-op, which is a known, narrow, and accepted residual
+(closing it fully would mean moving the check inside each of the 9 actions' own locked blocks,
+tracked as a possible follow-up rather than done here).
+
+**Why**: recorded in detail because this is the most consequential single catch of the session --
+not a code bug, but a ticket whose own stated bug didn't reproduce, caught only because the reviewer
+(and then this agent, independently) read the *actual* call chain instead of trusting the ticket's
+narrative. Worth remembering: a Jira ticket's reproduction steps are a hypothesis about the
+codebase, not a fact about it, especially for a ticket describing a fix to something built in an
+earlier, related ticket (SCRUM-80/91 here) -- always re-verify a "here's the bug" ticket against the
+current code before trusting its diagnosis, not just its acceptance criteria.
+
+---
+
+## 2026-08-30 -- SCRUM-182/TT-10: Jira sub-ticket linking via Relates/Blocks, not parent
+
+**Decision**: when filing SCRUM-183 through SCRUM-190 (TT-10.1-10.8) as sub-tickets of SCRUM-182,
+`createJiraIssue`'s `parent` field was rejected ("Please select valid parent issue") because
+SCRUM-182 is issue type "Feature" (`hierarchyLevel: 0`) -- the same hierarchy level as
+Story/Task/Bug, not an Epic (`hierarchyLevel: 1`), so it cannot hold children via the `parent`
+field the way an Epic can. Fell back to `createIssueLink` with "Relates" (each child -> SCRUM-182)
+plus "Blocks" links encoding the actual dependency graph between the 8 sub-tickets (TT-10.1 blocks
+10.2/10.4/10.6, TT-10.3 blocks 10.5/10.7/10.8, etc.).
+
+**Why**: recorded so a future `/start-feature` umbrella-ticket split in this project checks the
+parent issue's type first -- "Feature"-typed umbrella tickets (this project's apparent convention
+for a broad, not-yet-split ticket, distinct from a true Jira Epic) need the Relates/Blocks fallback,
+not the `parent` field, and that fallback should be applied from the start rather than discovered by
+trial and error each time.
+
+**How to apply**: before calling `createJiraIssue` with a `parent`, confirm the parent's
+`issuetype.hierarchyLevel` is actually above the children's (i.e. it's a real Epic) via
+`getJiraIssue`. If it's the same level, plan to link via `createIssueLink` instead.
+
+---
+
+## 2026-08-31 -- SCRUM-185/TT-10.3: bundled a pre-existing z-index bugfix, iterated UI design live
+
+**Decision 1**: while implementing the shared `ImageUploadField` component, browser QA revealed the
+counsellor "update images" edit button (`Show.vue`) was completely unclickable via a real click --
+the cover's gradient overlay div (added later in DOM order, `position: absolute inset-0`, no
+`pointer-events-none`) was intercepting it, because its container was missing the `z-[1]` class that
+an identical sibling button elsewhere in the same file already has. Verified this was pre-existing
+(reverted the refactor and confirmed the button was already broken before this PR) rather than
+something introduced by the refactor. Fixed it in the same PR rather than filing a separate ticket,
+since it's a one-line change directly blocking verification of the very feature being shipped
+(TT-10.3's whole point is to make this modal's UI better -- shipping a nicer UI nobody could
+actually open would be pointless), following the same "bundle a trivial, directly-connected fix"
+precedent as the `EnsureOrganizationExistsAction` dead-code removal during SCRUM-179.
+
+**Decision 2**: the initial implementation (plain text buttons in a row below each image preview)
+was functionally complete and reviewer-approved, but the user found it visually unappealing and
+asked directly whether the counsellor upload button was well-placed. Rather than presenting options
+and waiting, iterated live in the same turn to a hover-reveal overlay pattern (camera icon fades in
+over the image on hover, small remove/restore badge in the corner, persistent text-link below for
+touch/keyboard discoverability) -- closer to the "familiar, appealing" bar a mental-health platform
+should meet, and reused the existing `CameraIcon.vue` icon rather than introducing a new asset.
+
+**Why**: recorded because (a) it's the second time this session a "reviewer approved" checkpoint
+was revisited after direct user feedback on something the review process doesn't evaluate (visual
+appeal, not correctness) -- approval on correctness/security doesn't preclude a later design
+iteration; (b) the z-index bug was caught only because browser QA was actually performed against a
+real click rather than trusting the component's logic in isolation, reinforcing why Playwright
+verification (not just `npm run build`) matters for UI tickets even when "no JS test framework"
+means there's no automated substitute.
+
+**How to apply**: for future TT-10 frontend tickets (org logo, user avatar), consult this decision
+before re-litigating the visual design -- the hover-overlay pattern in `ImageUploadField.vue` is now
+the established look; deviating from it for a new upload surface would reintroduce the "three
+bespoke implementations" problem TT-10.3 exists to close.
+
+---
+
+## 2026-08-31 -- SCRUM-186/TT-10.4: repeated the TT-10.2-mandated audit for Organization::logoFile()
+
+Per TT-10.2's decision log entry, did the same bulk-listing eager-load audit for `Organization`
+before considering this ticket done: grepped every `Organization`-related resource for a `logo`/
+`logoUrl` read. Result: only `OrganizationResource` (single-model only, never `::collection()`)
+and `OrganizationDirectoryResource` (fed by `GetOrganizationDirectoryAction`, which already
+eager-loaded the old `logo` belongsTo for its own bulk listing -- just renamed to `logoFile`).
+No other Organization resource reads `logo` at all, so unlike Counsellor's avatar/cover (5 call
+sites needing fixes), this one had exactly one call site, and it was already correct. No N+1
+regression introduced.
+
+Also note (raised independently by both `reviewer` and `security-engineer` on this ticket):
+`feature/scrum-184-counsellor-avatar-cover-fileables` (TT-10.2) and this branch are siblings cut
+from the same TT-10.1 base commit -- TT-10.2 was reviewed but is **not yet merged** at the time
+this ticket was implemented, despite earlier framing in this session describing it as "already
+merged." Correctly not stacked on top of the unmerged branch (per CLAUDE.md), so no functional
+risk, but whoever merges these two PRs should be aware they're landing the same `withPivotValue`-
+on-tagged-`fileables` pattern twice, independently derived rather than one branch building on the
+other -- a tweak to the pattern during TT-10.2's PR review won't automatically appear here.
+## 2026-08-31 -- SCRUM-184/TT-10.2: withPivotValue vs wherePivotValue, and a class of N+1 the
+migration itself introduces
+
+**Finding 1**: `withPivotValue('tag', 'avatar')` is the correct Laravel method for a tagged
+`MorphToMany` relation -- it both constrains reads (like `wherePivot`) AND auto-populates that
+column on `attach()`/`sync()` writes. The similarly-named `wherePivotValue()` (used in the first
+draft, and in TT-10.1's plan-doc description of the pattern) does **not exist** on this Laravel
+version's `MorphToMany`/`BelongsToMany` -- calling it doesn't error, it's silently absorbed by
+Eloquent's dynamic-where-clause magic (`wherePivotValue('tag','avatar')` → `where('pivot_value',
+'avatar')`, a nonsense constraint), so the pivot row is created but its `tag` column stays NULL,
+with no exception and no failing validation. Caught only because the new Feature tests asserted
+actual DB state (`assertDatabaseHas(..., ['tag' => 'avatar'])`), not just a redirect/200 response.
+
+**Finding 2**: migrating a nullable-FK `belongsTo` (`avatar_id`, which returns null without
+querying when the FK is null) onto a `MorphToMany` (which always queries the pivot table when
+accessed, since there's no single FK column to check first) silently turns every existing bulk
+listing that serializes counsellors via `CounsellorMiniResource`/`StarredCounsellorResource` into
+an N+1. One occurrence had an existing dedicated test that caught it immediately
+(`OrganizationScopedListsControllerTest`); three more (`CounsellorService::getCounsellors`,
+`getLeadingCounsellorsForCurrentMonth`, `getBestCounsellorsForPreviousMonth`, `getRandomCounsellors`)
+had no such test and were found by inspection; a fifth (`DiscussionService::getDiscussionCounsellors`)
+was found by the `reviewer` subagent doing its own independent search, not by inspection -- it also
+had a second, pre-existing, unrelated N+1 on `counsellor.user` that got fixed alongside since it's
+the same one-line pattern.
+
+**Why**: recorded because both mistakes are the "no error, just silently wrong/slow" kind that
+tests-that-only-check-the-happy-path-response won't catch -- worth remembering for TT-10.4/10.6
+(org logo, user avatar), which will introduce their own `logoFile()`/`avatarFile()` `MorphToMany`
+relations on `Organization`/`User` respectively: (a) use `withPivotValue()`, never
+`wherePivotValue()`; (b) grep for every existing bulk listing that serializes the new model via a
+Mini/collection-style resource reading the new attribute, and add the eager load there -- don't
+assume "it's null today so it's free" holds once the relation changes shape.
+
+**How to apply**: before considering an org-logo/user-avatar sub-ticket done, repeat the same
+audit this ticket did -- grep for `Organization::query()`/`User::query()` (or wherever the
+relevant model is queried in bulk) followed by a `::collection(...)` resource call, and confirm
+the new tagged relation is in that query's eager load.
+
+**Deferred, not forgotten**: `avatar_id`/`cover_id` remain on the `counsellors` table and in
+`Counsellor::$fillable` after this ticket -- nothing reads or writes them anymore, but dropping
+the columns is intentionally left for a later cleanup migration (after a verified backfill, per
+the original TT-10 plan), not an oversight. The `security-engineer`'s suggestion to wrap
+`UpdateCounsellorAction`'s read-old/sync/delete-old sequence in a DB transaction (to fail
+gracefully instead of orphaning a file on a concurrent double-submit) was also deliberately
+deferred -- explicitly flagged as optional/non-blocking, narrow in impact (requires the same
+counsellor double-submitting within the same request window), and not worth the added complexity
+in this ticket; worth revisiting if it's ever seen in practice.
+
+---
+
+## 2026-08-31 -- SCRUM-189/TT-10.7: auto-submit design choice, and a real race condition it
+introduced
+
+**Decision**: unlike `UpdateOrganizationForm.vue`/`UpdateCounsellorImages.vue` (which bundle
+avatar/logo changes into one combined submit alongside other text fields, needing an explicit
+"save" click), `UpdateAvatarForm.vue` auto-submits as soon as a file is picked or the remove
+badge is clicked. This is deliberate, not an inconsistency: user avatar has its own dedicated,
+decoupled backend endpoint (`POST /profile/avatar`), so there is no "other field" to batch the
+save with -- requiring an explicit save click for a single-control change would be pure friction.
+`reviewer` confirmed this reasoning and confirmed `form.reset('avatar', 'deleteAvatar')` in
+`onSuccess` can't re-trigger the watchers into an infinite loop (they only fire on a truthy
+value, and reset sets both back to falsy).
+
+**Bug caught by `reviewer` (required fix, applied before merge)**: auto-submit-on-watch, with no
+guard against overlapping requests, created a real correctness bug: click remove -> a POST fires
+-> before its response returns (and updates `existingUrl`), click restore -> `removed` flips back
+to `false`, but the watcher only calls `submit()` on a *truthy* value, so no compensating request
+is sent. The in-flight delete completes anyway, silently overriding the user's restore with no
+error shown -- a genuine "undo did nothing" data-loss edge case, not a style nit. Every other
+form using `ImageUploadField` relied on its *own* submit button's `:disabled="form.processing"`
+to prevent this same class of race, but that disable state never reached into the shared
+widget's own camera/remove-restore controls -- so the other two consumers had the identical
+latent gap, just harder to trigger without an auto-submitting parent.
+
+**Fix**: added a `disabled` prop to `ImageUploadField.vue` (default `false`, so the two
+already-shipped consumers -- counsellor avatar/cover, org logo -- are unaffected unless updated
+to pass it) that disables the camera button, remove/restore badge, persistent text-link, and the
+underlying file input, all wired to `form.processing`. Verified the fix closes the actual window,
+not just in theory: checked `document.querySelector('#user-avatar').disabled` immediately after
+clicking remove (before `await`ing anything further) and confirmed it read `true` mid-flight,
+`false` again once the request resolved. Also wired `:disabled="loading"` into
+`UpdateCounsellorImages.vue`'s two existing usages while touching the shared component, since it
+was a one-line fix for the identical latent gap there. `UpdateOrganizationForm.vue` (TT-10.5) is
+a separate, not-yet-merged sibling branch and could not be updated from here without stacking on
+unmerged work -- **flagged as a fast-follow**: once both TT-10.5 and TT-10.7 land, add
+`:disabled="form.processing"` to TT-10.5's `ImageUploadField` usage too, for the same reason.
+
+**Also fixed** (found via the same Playwright pass, same root cause as SCRUM-187/TT-10.5's
+findings): the persistent "add/change {label}" text-link and rect-shape empty-state text were
+nearly illegible against `Profile/Show.vue`'s dark blue-to-indigo gradient hero -- the shared
+component's hardcoded `text-gray-600`/`text-gray-400` assumed every placement has a light
+background, which held for the previous two consumers but not this one. Added a `dark` Boolean
+prop (default `false`) rather than a broader `theme`/`variant` prop -- `reviewer` agreed a boolean
+is the right level of generalization for exactly two contexts today, not worth speculatively
+building out an enum ahead of a third actual placement.
+
+**Why**: recorded because this is the second ticket in a row (after TT-10.5) where a shared
+component's implicit assumption (there, a Tailwind safelist; here, a light background and
+non-overlapping requests) only broke because a NEW consumer's context differed from the ones the
+assumption was written against -- worth remembering that "it works for the existing callers"
+isn't the same guarantee as "it's safe for the next one," especially for a component explicitly
+designed to be reused across dissimilar surfaces.
+## 2026-08-31 -- SCRUM-187/TT-10.5: three real bugs invisible to Pest, only caught by actually
+using the feature in a browser
+
+Implementing the org logo frontend (wiring the already-reviewed `ImageUploadField`/backend into
+`UpdateOrganizationForm.vue`) surfaced three genuine, previously-shipped bugs, none of which the
+existing (passing) Pest suite could have caught -- each for a different structural reason:
+
+1. **PATCH + multipart file upload silently drops the file.** `UpdateOrganizationForm.vue`
+   submitted via `form.patch(...)`, a real HTTP PATCH. PHP never populates `$_FILES` for a
+   multipart body on a non-POST verb (a `$_FILES`-level PHP limitation, not a Laravel bug) --
+   `$request->file('logo')` just returned null, no exception, no validation error.
+   `tests/Feature/UpdateOrganizationLogoTest.php` (SCRUM-186) passed throughout, because Laravel's
+   `$this->patch(...)` test helper builds the Symfony `Request` with files already populated,
+   bypassing the real wire-level parsing entirely. Fixed with Inertia's documented pattern:
+   `form.transform(data => ({...data, _method: 'patch'})).post(...)` -- routes/authorizes/
+   validates identically (method-override happens before routing), only the transport verb and
+   file-parsing differ.
+2. **A dynamic Tailwind arbitrary-value class is invisible to Tailwind's JIT scanner.**
+   `Avatar.vue` built its sizing via `w-[${props.size}px]` (a runtime-interpolated template
+   string). Tailwind can only generate CSS for class strings its static source scanner can see;
+   a size not already present verbatim somewhere in scanned source (the safelist hack in
+   `AuthenticatedLayout.vue`, six specific pre-approved sizes) silently gets zero CSS, rendering
+   the element at unconstrained native size. Hit with `size={64}` for the new dashboard-header
+   logo. Fixed at the root by switching `Avatar.vue` to an inline `:style` binding, which has no
+   static-scanning requirement -- works for any size, permanently closing this class of bug for
+   every current and future caller. The now-dead safelist div was removed in the same PR
+   (confirmed via grep it was the only consumer).
+3. **A new upload path needs its own storage symlink entry, and nothing enforces that.** This
+   project links each upload subdirectory individually via `config/filesystems.php`'s `links`
+   array (not Laravel's default single symlink) -- `docker/php/entrypoint.sh` re-runs
+   `storage:link --force` off that array on every boot. TT-10.4's backend chose `'path' =>
+   'logos'` but never added a matching `links` entry, so uploads saved correctly but every logo
+   URL 404'd. Fixed by adding the entry, and by adding
+   `tests/Unit/FilesystemLinksCoverageTest.php` -- a Pest test that scans `app/Actions`/
+   `app/Services` for every `'path' => '...'` literal and asserts each has a matching
+   `filesystems.links` entry. Verified this test actually catches the regression (temporarily
+   removed the `logos` entry, confirmed the test fails, restored it).
+
+**Why**: two structurally distinct "invisible to automated tests" categories, worth keeping
+separate in mind rather than lumping together as "need more tests": (1) and (3) are invisible to
+Pest specifically because Laravel's test client / `Storage::fake()` bypass the real PHP
+request-parsing and real symlink layers respectively -- no amount of *better-written* Pest tests
+closes that gap; only real HTTP + real filesystem integration testing (i.e. actually using the
+feature in a browser, which CLAUDE.md already mandates for UI changes) catches them. (3) alone
+happened to also be closeable by a pure-PHP config-reflection test once the pattern was known,
+which is why that one got a permanent regression test and the other two didn't (their tests would
+just re-pass identically on the old, broken code). (2) is invisible because there is no frontend
+test framework in this repo at all (no Vitest/Jest) -- a separate, pre-existing gap, not
+introduced or closed here.
+
+**How to apply**: for TT-10.7 (user avatar frontend, the last ticket reusing these same shared
+components) and any future upload surface: (a) a real Playwright upload-and-verify-the-URL-
+renders pass is required, not optional, exactly as CLAUDE.md's playwright-qa policy already says
+for full-ceremony UI work -- this session is the concrete example of why; (b) any new
+`FileUploadDTO` `path` value will be automatically caught by `FilesystemLinksCoverageTest` if a
+matching `filesystems.links` entry is missing, no manual reminder needed; (c) `Avatar.vue`'s
+sizing is now safe for any `size` value, no safelist coordination needed.
+
+**Follow-up ticket filed**: `security-engineer`'s review of the `filesystems.php` `links` array
+noted, in passing, that the pre-existing `licenses` folder is *also* publicly symlinked (same
+pattern, unrelated to this PR) -- if it holds counsellor verification/license documents, those
+are being served from a public, unauthenticated URL today. Filed as SCRUM-191 to confirm intent,
+since this predates TT-10 entirely and wasn't introduced by it.
+
+---
+
+## 2026-08-31 -- SCRUM-190/TT-10.8: shared validation limits, client-error precedence bug, and a
+throttling gap deliberately deferred
+
+**What shipped**: `App\Support\ImageUploadRules` as the single source of truth for the
+size (2MB) / MIME (jpg, jpeg, png, webp) limits enforced on all three image-upload endpoints
+(counsellor avatar/cover, org logo, user avatar), replacing the old bare `['nullable', 'file']`
+rule that had shipped with zero size/type enforcement since TT-10.2/10.4/10.6. Mirrored on the
+frontend via `resources/js/Constants/imageUploadLimits.js` and a pre-submit check in
+`ImageUploadField.vue::onFileSelected()`, so a bad file is rejected instantly client-side instead
+of round-tripping to the server first -- purely a UX convenience, the `FormRequest` rule is the
+actual enforcement (both `reviewer` and `security-engineer` independently confirmed the two are
+not conflated anywhere, and each of the three `FormRequest`s now carries a comment saying so
+explicitly per `security-engineer`'s suggestion).
+
+**Bug caught by `reviewer`, fixed before commit**: `ImageUploadField.vue`'s `displayError`
+computed originally read `props.error || clientError.value` -- since `props.error` (the server's
+last-submission error) is never cleared on a fresh file pick, a stale server error from an
+earlier submission would mask a *new*, more relevant client-side rejection message. Fixed by
+flipping precedence to `clientError.value || props.error`. Also cleared `clientError` in
+`toggleRemoveOrRestore()` so a lingering rejection message doesn't persist after the user chooses
+to remove/restore an existing image instead of retrying the upload (a `reviewer` "suggested
+improvement", applied since it was a one-line fix for a real, if minor, UX papercut).
+
+**`security-engineer` confirmed, no action needed**: Laravel's `mimes:` rule content-sniffs via
+`finfo`/Symfony's `MimeTypes` (not the client-declared `Content-Type` or filename extension), and
+the file's *stored* name/extension is independently derived from that same sniffed value via
+`UploadedFile::hashName()` -- so a renamed-extension attack (`shell.php.jpg`) fails both at
+validation and at storage time. Deliberately excluding `svg` from `ALLOWED_MIMES` (rather than
+using Laravel's broader `image` rule) was confirmed to close the classic stored-XSS-via-SVG
+vector, not just narrow the format list arbitrarily.
+
+**Test coverage gap, closed before commit**: both `reviewer` and `security-engineer`
+independently flagged the same issue -- the existing Feature tests for all three upload endpoints
+only ever exercised the happy path (`UploadedFile::fake()->image(...)`), so the 815-tests-passing
+baseline provided zero regression protection for the very validation this ticket added (a typo in
+`ImageUploadRules::rules()` or a `FormRequest` not actually wiring it up would have gone
+undetected). Added an oversized-file case and a disallowed-MIME case to each of
+`UpdateCounsellorImagesTest`, `UpdateOrganizationLogoTest`, and `UpdateUserAvatarTest`, plus a
+direct `Unit` test asserting `ImageUploadRules::rules()`'s exact return value. 822 tests passing
+after the additions.
+
+**Deliberately deferred, filed as SCRUM-192**: none of the three upload routes carry a `throttle:`
+middleware (unlike several other mutating routes in `routes/web.php`, e.g. invite/apply/admin
+endpoints at `throttle:30,1`). `security-engineer` assessed this as a real but low-severity,
+availability-only concern (repeated cheap disk I/O from re-uploading a ~2-4MB payload, not
+unbounded storage growth since old files are deleted on replace) and explicitly recommended a
+follow-up ticket rather than blocking this ticket on it, since TT-10.8's scope is validation, not
+rate-limiting. Filed as a standalone Task (SCRUM-192) rather than folded into this ticket.
+
+**Merge note**: this branch was cut before TT-10.5 (SCRUM-187) and TT-10.7 (SCRUM-189) merged into
+`develop`, both of which also touched `ImageUploadField.vue` (adding the `dark`/`disabled` props
+and their template wiring). Merging `develop` into this branch produced one real conflict in
+`toggleRemoveOrRestore()` -- TT-10.7's `if (props.disabled) return` guard vs. this ticket's
+`clientError.value = ''` reset -- resolved by keeping both, guard first: a disabled field
+shouldn't clear a client error it can't currently produce, but the reset is still needed for the
+non-disabled path.
+
+---
+
+## 2026-09-01 -- SCRUM-196/TT-2.2a: cascadeOnDelete would have let a scheduled job silently
+destroy clinical audit records
+
+**What happened**: initial `session_notes` migration used `constrained()->cascadeOnDelete()` on
+both `session_id` and `counsellor_id`. `security-engineer` review caught that this was a live,
+scheduled data-loss path, not a theoretical one: `AppService::purgeExpiredSoftDeletedCounsellors()`
+(run on a schedule per `routes/console.php`) force-deletes a `Counsellor` row 60 days after
+account deletion, and that method's own comment states the deliberate house convention --
+"related historical records... are left untouched." `cascadeOnDelete()` would have silently,
+permanently destroyed every session note that counsellor ever authored the very next time that
+job ran, directly defeating the whole reason this ticket chose soft-deletes in the first place
+(an auditable clinical record). `session_id`'s cascade carried the same latent risk, just with no
+current code path force-deleting a `Session` to trigger it today.
+
+**Fix**: switched both FKs to `nullable()->constrained()->nullOnDelete()`, mirroring the exact
+precedent already set by `2026_08_29_600000_add_organization_id_to_transactions_table.php`
+(`transactions.organization_id`, chosen for the identical reason: a soft-deletable parent whose
+force-deletion must not destroy a historical record that references it). Added `withTrashed()` to
+`SessionNote::session()`/`counsellor()` (mirroring `Message::from()`/`to()`) so a note's author/
+session still resolves correctly while merely soft-deleted, and two regression tests
+(`SessionNoteModelTest`) that actually force-delete a counsellor/session and assert the note
+survives with a nulled reference rather than trusting the migration's intent alone.
+
+**Why recorded**: this is the second time in this project's history (after `transactions.
+organization_id`) that `cascadeOnDelete()` was the wrong default for a soft-deletable parent with
+a scheduled force-delete job behind it -- worth remembering as a standing rule for TT-2.2b/c and
+any future FK to `Counsellor`/`Organization`/any other soft-deletable model with a purge job:
+default to `nullOnDelete()` (nullable column) unless there's a specific reason the child record's
+existence is meaningless without its parent, not `cascadeOnDelete()` by habit.
+
+**Also flagged, deferred to TT-2.2b (not fixed here, correctly out of this ticket's scope)**:
+`SessionNote::$fillable` includes `counsellor_id`, which is fine at the model layer with no
+controller yet, but TT-2.2b's controller/action must derive it server-side from the authenticated
+counsellor and never accept it from client input -- otherwise a counsellor could author a note
+attributed to a different counsellor. Left a comment on the model pointing at this for whoever
+picks up TT-2.2b.
+
+---
+
+## 2026-09-01 -- SCRUM-197/TT-2.2b: a grace window derived from a freely-rewritable column isn't
+a grace window
+
+**What happened**: `GuardsPrivateNoteEditWindow::sessionAcceptsNoteEdits()` originally derived
+"how long since this session ended" from `Session::updated_at`. Both `reviewer` and
+`security-engineer`, independently, caught the same hole: `updated_at` gets re-touched by
+`/sessions/{id}/in_session`, `/end`, `/fail`, and `/abandon` -- none of which are idempotent
+against an already-terminal session (`EnsureCanUpdateSessionStatusAction` only checks
+`isParticipant()`; `EnsureCanEndSessionAction` only checks `now() > end_time`; neither checks the
+session isn't already in that state). Concretely: a counsellor (or, via `/in_session`, even the
+client on a `Therapy`) could replay any of these endpoints on an already-ended session to either
+reset the grace-window clock indefinitely or flip status back to something
+`Session::scopeWhereInSession` treats as "live," reopening a note's editability at will --
+defeating the one guarantee TT-2.2b exists to provide ("a permanent, immutable part of the
+clinical record" once the grace window elapses).
+
+**Fix**: added `sessions.ended_at` (migration
+`2026_09_01_200000_add_ended_at_to_sessions_table.php`), set exactly once by
+`ChangeSessionStatusAction` the first time a session's *final* resolved status is `HELD`/
+`FAILED`/`ABANDONED` (not the `HELD_CONFIRMATION` intermediate), and never touched again on any
+later call regardless of how many times a status endpoint gets replayed.
+`GuardsPrivateNoteEditWindow::sessionAcceptsNoteEdits()` now checks `ended_at` FIRST, and once
+it's set, that value takes **permanent priority** over the session's current live-looking status
+-- deliberately, so replaying `/in_session` to flip status back to `in_session_confirmation`
+can't resurrect an already-locked note. Added a regression test
+(`replaying a session status-transition endpoint does not reset or extend the note edit grace
+window`) that calls the real `/sessions/{id}/abandon` endpoint twice with a backdated `ended_at`
+in between and asserts the second call doesn't move it.
+
+**Why recorded**: this is the second time in this epic (after TT-2.2a's `cascadeOnDelete`
+finding) that a security-relevant guarantee was built on a column another, unrelated part of the
+app is already free to mutate for its own reasons. Worth remembering as a standing check for any
+future "N minutes/days since X happened" access-control window: confirm the timestamp it's
+anchored to is written exactly once for that purpose, not reused from a general-purpose
+`created_at`/`updated_at` that something else already touches routinely.
+
+**Other decisions from this ticket's review, recorded here since two code comments referenced
+this log without an entry existing yet (`reviewer` caught this)**:
+- No `isAdmin()` bypass anywhere in `App\Actions\SessionNote\Ensure*Action` -- a deliberate,
+  explicit divergence from every other `Ensure*Action` in this codebase (all of which give admins
+  an unconditional bypass), confirmed with the user during `/start-feature` planning (2026-09-01):
+  session notes are clinical content, not operational state, and a platform admin has no read
+  access to their content.
+- `SessionNoteResource` was pulled forward from its originally-planned home in TT-2.2c, since
+  `SessionNoteController` needed *some* response shape to be testable at the HTTP level at all.
+  Kept deliberately minimal (id/content/createdAt/updatedAt) and structurally separate from
+  `SessionResource`, matching the "never leaks to the client" invariant established in TT-2.2a.
+- Also fixed in this pass (both `reviewer` findings, not security-relevant): a wrong ticket
+  reference in `SessionNoteService`'s docblock (`SCRUM-182`, the unrelated file-uploads epic, was
+  copy-pasted instead of `SCRUM-21`), and a `max:5000` length rule added to both
+  `CreateSessionNoteRequest`/`UpdateSessionNoteRequest` (`content` had no length bound at all).
+
+---
+
+## 2026-09-01 -- SCRUM-198/TT-2.2c: a resource collection's wire shape depends on process history,
+not just its own code -- and the fastest way to catch that is to actually load the page
+
+**What happened**: `SessionNoteController::index()` originally returned
+`SessionNoteResource::collection($notes)` directly. Every `SessionNoteTest.php` list-endpoint
+assertion (`$response->json()`, expecting a bare array) passed the entire time this was true.
+Manually driving the real feature in a browser (creating/editing/deleting a note as
+`sarah_johnson` on a live seeded session) surfaced a phantom note row with "Invalid Date" and
+"locked" -- the actual HTTP response was `{"data": [...]}`, not a bare array, and my Vue code's
+`notes.value = res.data` had assigned the whole `{data: [...]}` object to `notes.value`, which
+Vue's `v-for` then iterated as a plain object (one "item" per own-enumerable property -- here,
+exactly one: the `data` key itself, itself an array, producing one nonsense row with every field
+undefined).
+
+**Root cause**: `Illuminate\Http\Resources\Json\JsonResource::$wrap` is a process-wide *mutable
+static*, not fixed at `'data'`. `HandleInertiaRequestsV2` calls `$userResource->withoutWrapping()`
+on every Inertia page load in this app, which -- because subclasses don't redeclare `$wrap`, so
+every `JsonResource` subclass shares the same underlying storage -- disables wrapping for
+*every* resource for the rest of that PHP process's lifetime. Pest runs an entire test file (often
+many files, under `--parallel`) inside one shared PHP process per worker, so once any earlier test
+in that process rendered an Inertia page, wrapping stayed disabled for every later test in the
+same process, including ones that never touch Inertia at all. A real browser request to this
+JSON-only `api.php` endpoint (no Inertia middleware in its pipeline) never had wrapping disabled,
+so it defaulted to wrapped -- the two environments silently disagreed, and the test suite had no
+way to catch it because it was internally consistent with itself.
+
+**Fix**: `index()` now explicitly returns `response()->json(['notes' => SessionNoteResource::
+collection($notes)])`, matching `store`/`update`/`destroy`'s existing `['note' => ...]` shape.
+Confirmed via reading Laravel's own resource internals (not just re-testing) that nesting a
+`ResourceCollection` inside a plain array and passing it through `response()->json()` invokes
+`jsonSerialize()` -> `resolve()` directly, which never consults `$wrap` at all -- so this fix is
+immune to the same class of bug, not just a different flavor of it. All list-assertions in
+`SessionNoteTest.php` updated from `$response->json()` to `$response->json('notes')` and re-verified
+passing in isolation (a fresh process, not benefiting from any other test's side effects).
+
+**Why recorded**: a controller method that "returns a resource/collection directly" is idiomatic,
+commonly-recommended Laravel style, and was completely correct as *written* -- the bug lived
+entirely in an ambient, cross-cutting static someone else's code toggles, not in this method's own
+logic, which is exactly the kind of thing a code review reading this file in isolation cannot
+catch. Standing rule for this codebase going forward: any *new* JSON-only endpoint (not already
+proven by an existing analogous controller) should explicitly wrap its top-level response key
+rather than relying on `JsonResource`'s default wrapping behavior, precisely because that default
+is not actually a per-request constant here.
+
+**Second, smaller discovery**: `TherapyComponent.vue`'s `computedSelectedItem` (used nearby for
+the topic-filter browsing UI) is `null` in the ordinary "already in an active session, no topic
+picked" case -- `selectedSession` (a separate ref, kept live by an existing `watchEffect`) is the
+one that actually reflects "the session currently being viewed," and is what `SessionNotesPanel`
+binds to. Caught the same way: the panel silently never rendered at all until this was fixed,
+which no unit/feature test could have caught since it's a frontend-only reactive-binding mistake.
+
+## 2026-09-02 — SCRUM-23 (TT-2.4): cap-setter is the discussion's own creator, race condition fixed inline
+
+**Decision**: `Discussion.max_counsellors` can be set/changed only through the existing
+`EnsureCanUpdateDiscussionAction` gate (the discussion's own `addedby`, or a platform admin as
+that action's existing bypass already allows) -- no new `isAdmin()`-only restriction was added.
+Also, per architect review, fixed a flagged race condition inline rather than deferring it: both
+counsellor-attach call sites (`RespondToDiscussionRequestAction`, `PerformDiscussionRequestLinkAction`)
+now additionally lock the `Discussion` row itself (`lockForUpdate()`) inside their existing
+transactions, in addition to the Request/Link row each already locked for its own prior race fix
+(SCRUM-91/SCRUM-101).
+
+**Why**: the ticket's "Admin can cap..." wording was ambiguous between a platform Administrator
+and a discussion's own creator/owner. Presented to the user as an explicit fork; the user chose
+the creator/existing-update-gate reading (matches how every other discussion field is already
+gated). The race condition -- two concurrent accepts on the same discussion each locking a
+*different* row (their own Request or Link) and both passing a stale pre-attach count check --
+was flagged by architect as reintroducing the exact class of bug SCRUM-91/101 already fixed for a
+different pair of rows; since the transaction/lock scaffolding already existed in both files,
+adding one more `lockForUpdate()` call was small enough to just do now rather than file as a
+follow-up.
+
+---
+
+## 2026-09-02 — SCRUM-23: security review found the race-condition fix was actually ineffective
+
+**Decision**: fixed a real, empirically-verified gap in the earlier `lockForUpdate()` fix for
+`RespondToDiscussionRequestAction`. That fix locked the `Discussion` row before the capacity
+count, but a redundant `$request->refresh()` a few lines earlier was a plain (non-locking) SELECT
+-- the first one in that transaction -- which, under MySQL InnoDB's default REPEATABLE-READ
+isolation, pins the transaction's consistent-read snapshot for every *later* plain read in the
+same transaction, including the capacity count. Locking the Discussion row still correctly forced
+two concurrent accepts to serialize, but the second transaction's capacity count then read its own
+stale, pre-first-commit snapshot anyway, silently defeating the cap. `security-engineer`
+reproduced this against a real MySQL connection (not just reasoned about it) before reporting it.
+
+Fixed by (1) removing the redundant `refresh()` (an already-`update()`d model doesn't need a
+re-fetch) and (2) making the capacity count and both "already attached" exists() checks
+(`RespondToDiscussionRequestAction`, `PerformDiscussionRequestLinkAction`) into `lockForUpdate()`
+reads themselves, so they're correct independent of whatever else happens earlier in either
+transaction, rather than relying on a fragile statement-ordering coincidence.
+
+**Also fixed**: added an upper ceiling (`env('DISCUSSION_MAX_COUNSELLORS_CEILING', 50)`,
+independent of the coincidentally-same-named `GroupTherapy.max_counsellors` feature/ceiling) so an
+out-of-range value gets a clean 422 instead of an uncaught `QueryException`/500 on the
+`unsignedInteger` column, plus the matching `CreateDiscussionRequest` validation rule.
+
+**Filed, not fixed here**: `DiscussionService::getDiscussionCounsellors()` has no participant/
+admin check at all (pre-existing, unrelated to this diff) -- any authenticated user can read any
+discussion's counsellor roster/count. Filed as SCRUM-204 rather than expanding this PR, since it's
+a pre-existing gap this ticket didn't introduce and doesn't itself expose `max_counsellors`.
+
+**Why recorded**: this is the clearest example so far of a subagent's finding needing empirical
+verification to be trusted (per the session's established SCRUM-125 discipline) -- but also the
+inverse lesson: a subagent claiming a fix *doesn't* work, backed by an actual reproduction against
+the real database engine (not just plausible-sounding reasoning), is exactly the kind of finding
+that must be taken at face value and fixed immediately, not dismissed as theoretical. A true
+concurrent-transaction regression test isn't feasible in this suite's harness (Pest runs against
+SQLite `:memory:`, which has neither MySQL's REPEATABLE-READ semantics nor genuinely concurrent
+connections against the same in-memory database) -- noted here explicitly rather than adding a
+test that would give false confidence.
+---
+
+## 2026-09-01 — SCRUM-22 (TT-2.3): message-note editability diverges from the documented reuse plan
+
+**Decision**: message-level notes (`MessageNote`, attached to a single chat `Message`) are
+editable/deletable by their author indefinitely, in every chat context (individual therapy, group
+therapy, and counsellor discussions) -- **not** gated by `GuardsPrivateNoteEditWindow`'s
+live-session-plus-grace-period rule, despite that trait's own docblock (written during SCRUM-197)
+explicitly naming TT-2.3 as its intended second consumer, and `documentation/implementation_plan.md`'s
+TT-2.2b row stating the same intent.
+
+**Why**: this reverses a documented plan, so it was presented to the user as an explicit fork
+(reuse the grace window for Session-owned messages / drop it everywhere) rather than assumed either
+way, per the autonomous-execution policy's carve-out for a genuinely consequential product decision.
+The user chose indefinite editability everywhere. Consequence: `MessageNote`'s authorization actions
+do **not** depend on `GuardsPrivateNoteEditWindow` at all -- author-only check plus participant-of-
+`$message->for` check are sufficient, no `ended_at`/grace-window logic needed. This also sidesteps the
+`Discussion`-has-no-`ended_at` asymmetry the product-owner pass flagged, uniformly, rather than only
+for the `Discussion` branch.
+
+---
+
+## 2026-09-01 — SCRUM-202 (TT-2.3a): `MessageNoteResource` built now, not deferred to SCRUM-203
+
+**Decision**: `app/Http/Resources/MessageNoteResource.php` (id/content/createdAt/updatedAt) was
+created as part of SCRUM-202, even though the sub-ticket split assigned "resource" to SCRUM-203
+("message note resource + UI").
+
+**Why**: `MessageNoteController`'s store/update/destroy/index actions need to return *something* to
+the caller -- `SessionNoteController`'s own precedent (SCRUM-197) already built `SessionNoteResource`
+as part of the CRUD ticket, with only eager-loading + the `isEditable` field + UI landing in the
+follow-up ticket (SCRUM-198/TT-2.2c). This ticket's split description undersized that same detail;
+corrected the same way rather than leaving the CRUD ticket unable to return a usable response.
+SCRUM-203 still owns eager-loading this resource into a message-list response and building the
+`MessageBadge.vue` UI affordance.
+
+**Also**: message-note routes are registered in `routes/api.php` only, not duplicated into
+`routes/web.php` the way SCRUM-197 originally did for session notes -- SCRUM-200 already tracks that
+web.php registration as an orphaned duplicate the frontend never actually calls (the UI uses axios
+against the api.php routes exclusively). Registering only where the feature will actually be used
+avoids repeating that same dead-code pattern here.
+
+---
+
+## 2026-09-02 — SCRUM-202 (TT-2.3a): fixed a soft-delete/unique-index conflict found in security review
+
+**Decision**: `CreateMessageNoteAction` now checks for a trashed `MessageNote` on the same
+`(message_id, counsellor_id)` pair and restores + updates it, instead of always inserting a new
+row.
+
+**Why**: security-engineer found that `message_notes`' unique index on `(message_id,
+counsellor_id)` still counts soft-deleted rows (Eloquent's default query scope excludes them from
+`EnsureCanCreateMessageNoteAction`'s duplicate check, but the DB constraint itself does not
+exclude them from a fresh `INSERT`). A real, likely sequence -- create a note, delete it, add a
+new one -- would pass the app-level duplicate check and then fail with a raw, uncoded
+`QueryException` on the unique constraint, surfacing as a generic 500 rather than the intended
+clean flow. Restoring the trashed row is also the more correct semantics here: at most one note
+has ever existed for a given (message, counsellor) pair, live or trashed, so recreating it is
+really un-deleting it with new content, not creating a logically-second note. Added a regression
+test exercising exactly this create-delete-recreate sequence, plus a co-counsellor IDOR regression
+test for update/delete (security-engineer recommendation, closing a coverage gap on an already-
+correct implementation).
+
+---
+
+## 2026-09-02 — SCRUM-206 (TT-2.5a): review found a dangling-request bug and a PII leak, both fixed
+
+**Decision**: `reviewer` and `security-engineer` independently found the same real bug --
+`EnsureCanProposeSessionScheduleAction` didn't check that the Therapy actually had an assigned
+counsellor before allowing a proposal. Since `Therapy::isParticipant()` returns true for the
+client (`addedby`) regardless of whether a counsellor exists yet, a client could propose on a
+still-unmatched therapy, `ProposeSessionScheduleAction` would then persist a Request with `to =
+null` (no `to`/`to_type` to associate), and `EnsureNoPendingSessionScheduleProposalAction` would
+permanently block any future *legitimate* proposal for that therapy (no reject/cancel or expiry
+sweep exists yet -- both are TT-2.5b's job). Fixed using the existing `Therapy::doesNotHaveAssistance()`
+helper rather than inventing a new check.
+
+`security-engineer` additionally found (a) the "not a participant" rejection message leaked the
+therapy's own name to a non-participant -- any authenticated user can hit this endpoint with any
+sequential `therapyId`, so this is a real, enumerable PII leak for a private/anonymous therapy,
+same class as the SCRUM-124/162 findings already fixed elsewhere in this codebase; fixed by using
+a generic message for that specific branch only (the other branches in the same action only fire
+once participancy is already confirmed, so they safely keep the therapy's name); and (b) the
+`Therapy::lockForUpdate()` call inside the propose transaction discarded its own result and kept
+using the pre-lock, potentially-stale `$dto->therapy` for authorization and `from`/`to`
+resolution -- fixed by reassigning `$dto->therapy` to the freshly-locked row and moving all
+checks (not just the "no pending proposal" one) to run against it, inside the transaction.
+
+`reviewer` also flagged a duplicated `EnsureTherapyExistsAction` (a fourth copy of an action this
+codebase already has one canonical, extensible version of, used by three other services) --
+deleted the new one and extended the canonical `App\Actions\Therapy\EnsureTherapyExistsAction`'s
+DTO union type instead. `type`/`paymentType` validation was tightened to match the sibling
+`CreateSessionRequest`'s enum whitelist (this data is persisted into `requests.data` and is what
+TT-2.5b's accept step will eventually feed into `CreateSessionAction`), `expiryDays` gained the
+same `between:1,30` bound as the compensation-negotiation precedent, and the route gained
+`throttle:30,1` matching sibling mutation routes.
+
+Filed SCRUM-210 for the identical, pre-existing PII-leak pattern in `EnsureCanCreateSessionAction`
+(a different, older ticket's code) rather than fixing it inline.
+
+**Why recorded**: this is the third time this session a security review has found a real,
+previously-unflagged bug during implementation of a new feature that reuses an established
+pattern (after SCRUM-198's `selectedSession`/wrapping bugs and SCRUM-23's REPEATABLE-READ
+staleness) -- worth continuing to budget for a real security pass on every new feature that
+touches authorization or concurrency, not just ones that look novel.
+## 2026-09-02 — SCRUM-203 (TT-2.3b): message note UI wired into MessageBadge.vue, live-verified
+
+**Decision**: added the inline note affordance (add/view/edit/delete) to `resources/js/Components/MessageBadge.vue`, the single shared rendering point for both `TherapyComponent.vue` (individual/group therapy chat) and `resources/js/Pages/Discussion/Chat.vue` (discussion chat), per the architect's SCRUM-22 planning confirmation that no second component tree exists. Gated behind a new `isCounsellor` prop (passed through from each page's own existing counsellor-detection), and further gated per-message on `!reply` so the compact reply-preview instances of `MessageBadge` never render it.
+
+`MessageResource` gained a `note` field, populated only when the caller (`MessageService::getSessionMessages`/`getDiscussionMessages`) explicitly eager-loads `notes` scoped to the requesting counsellor's own id -- omitted entirely (Laravel's `MissingValue`) for a client viewer, so their message list never even queries `message_notes`.
+
+**Verified live via Playwright** (not just the automated suite): logged in as `sarah_johnson` on the seeded `/therapies/6/chat`, created a real message via tinker, added a note through the actual UI, reloaded the page and confirmed the note persisted (via the eager-load, not just local component state), then edited/deleted it through the UI. A recurring Playwright quirk from this session reappeared: ref-based `browser_click` on the note toggle/save/delete controls didn't register, while a native `element.click()` via `browser_evaluate` did -- consistent with prior notes on this in earlier tickets this session.
+
+**Found and filed, not fixed here**: writing the N+1 regression test for the new `notes` eager-load surfaced a genuine, pre-existing, unrelated N+1 in `MessageResource` on `$this->files`/`$this->replying` (neither eager-loaded by any of the three message-list methods). Filed as SCRUM-205 rather than expanding this ticket, since it predates this change and the notes eager-load itself is correctly batched (confirmed by scoping the regression test's query count specifically to queries touching `message_notes`, not the total query count).
+
+**Why recorded**: the composer's own send-button click didn't register during manual QA either (traced to the same pre-existing, well-documented Playwright ref-click quirk, not a bug in this PR) -- worth remembering that quirk applies to any click in this codebase's chat UI, not just note-affordance controls, so it shouldn't be mistaken for a real regression on a future ticket.
+
+---
+
+## 2026-09-02 — SCRUM-203: reviewer caught a missed third eager-load site; surfaced an unrelated latent bug
+
+**Decision**: `reviewer` found that the notes eager-load had only been added to `getSessionMessages()`
+and `getDiscussionMessages()`, missing the third sibling method, `getTherapyTopicMessages()` --
+all three feed the exact same `MessageBadge.vue` rendering path, so a message's own note would
+have silently disappeared (and been un-editable) whenever a counsellor switched to the
+topic-filtered view. Fixed by adding the identical scoped eager-load to that method too, plus a
+regression test.
+
+Writing that regression test surfaced a second, genuinely pre-existing and unrelated bug:
+`getTherapyTopicMessages()`'s own `sessionId` filter (`$query->whereSessionId(...)`) resolves to
+`where('session_id', ...)`, but `messages` has no such column -- it's a polymorphic
+`for_id`/`for_type` model. Confirmed via grep that `TherapyComponent.vue`'s only caller of this
+endpoint never sends `sessionId`, so this is latent, not a live 500. Filed as SCRUM-209 rather
+than fixing inline (out of scope, and the fix requires a product call on what filtering was
+actually intended). The new regression test works around it by acting as an admin (skipping the
+branch that would otherwise depend on this same broken filter to resolve `$therapy`), documented
+inline so a future reader doesn't mistake the workaround for the thing under test.
+
+**Why recorded**: this is the second time in this epic (after SCRUM-198's `selectedSession`
+binding bug) that testing a UI wiring change surfaced a real inconsistency across sibling code
+paths that only manual/thorough review catches -- worth remembering that any future field added to
+one of these three message-list methods needs to be checked against all three, not just the one
+or two call sites a UI change happens to exercise first.
+
+---
+
+## 2026-09-03 — SCRUM-207 (TT-2.5b): "Option C" stale-handling implementation
+
+**Decision**: implemented the user's explicit "Option C" design for accept-time staleness:
+`AcceptSessionScheduleProposalAction` re-runs the real `EnsureCanCreateSessionAction`/
+`EnsureSessionDataIsValidAction` checks (the same ones `CreateSessionAction` uses) against
+*current* data inside a `lockForUpdate()` transaction on both the `Request` and `Therapy` rows.
+If a check fails (or the therapy no longer has an assigned counsellor), the request is **not**
+auto-rejected and **not** surfaced as a raw error -- it stays `pending` with `data.staleReason`
+set, leaving reject / counter-offer / reject-with-a-reason all still available as the counsellor's
+three explicit choices, matching the user's own wording verbatim. Per architect review, the
+session's actor (`CreateSessionDTO->user`) is always forced to `$therapy->counsellor->user`
+regardless of who clicks accept, since `CreateSessionAction` only ever resolves a counsellor or
+admin as actor, never a plain client `User`.
+
+**Two retroactive bug fixes to already-merged SCRUM-206 code**, both found by exercising the
+accept flow against the real MySQL dev database via `tinker` rather than Pest's SQLite test run
+(neither would have been caught by the existing SCRUM-206 test suite, since it never exercised
+actual `Session` creation):
+1. `requests.type` is a native MySQL enum column; the migration widening it for
+   `RequestTypeEnum::sessionScheduleProposal` (added in SCRUM-206) was missed. Added
+   `2026_09_03_100000_add_session_schedule_proposal_to_requests_type_enum.php` and migrated the
+   dev DB. This is the same class of gap the `RequestTypeEnum` convention explicitly warns about
+   (two prior precedents already existed) -- worth flagging since it slipped through review once
+   already.
+2. `sessions.about` is `NOT NULL`, but `SessionScheduleProposalDTO`/
+   `CreateSessionScheduleProposalRequest` never collected it, since SCRUM-206's own scope never
+   calls `CreateSessionAction`. Added `about` end-to-end (DTO, form request, both controller
+   actions, propose/counter-offer/accept actions) and backfilled the SCRUM-206 test fixtures.
+
+**Other fixes made within this ticket's own diff, not deferred**: the new `counterOffer()`
+endpoint was reusing `CreateSessionScheduleProposalRequest`, which makes `about` (and `name`/
+`type`/`paymentType`) required -- but `CounterOfferSessionScheduleProposalAction` already falls
+back to the current proposal's data for all of them, since a counter-offer is only meant to
+require a new time. Split out `CounterOfferSessionScheduleProposalRequest` with those fields
+nullable, since this inconsistency was introduced by this ticket's own controller method, not
+inherited pre-existing code.
+
+**Found and filed, not fixed here**: writing the "now-stale" accept test surfaced a real gap in
+`EnsureSessionDataIsValidAction`'s double-booking check (also used by normal `CreateSessionAction`,
+not just this proposal flow) -- it only checks whether the *new* range's start/end (±30min) falls
+inside an *existing* session's window, never the reverse, so a new session that fully contains a
+shorter existing one goes undetected. Filed as SCRUM-211 rather than fixing inline, since it's
+pre-existing shared validation logic outside this ticket's scope; the test itself was adjusted to
+use a conflict shape the current check does catch (overlapping start time) so it still exercises
+the staleness path Option C depends on.
+
+Also added a generic `reason` field to `RequestResponseDTO` (shared across all `RespondTo*`
+actions) to support the "reject with a reason" choice -- every other `RespondTo*RequestAction`
+ignores it silently since none of them read it, so this is additive, not a behavior change for
+other request types.
+
+**Why recorded**: this is the third ticket in this epic (after SCRUM-23's REPEATABLE-READ bug and
+SCRUM-206's dangling-request bug) where a real, previously-invisible production bug only surfaced
+via direct testing against the real MySQL dev database -- worth remembering that Pest's SQLite
+test runner cannot be trusted alone for anything touching native DB enum columns, NOT NULL
+constraints not exercised by existing fixtures, or true transaction-isolation semantics.
+
+---
+
+## 2026-09-01/02 — SCRUM-208 (TT-2.5c): proposal resource + UI, two more retroactive NOT NULL fixes
+
+**Decision**: exposed a session-schedule proposal's negotiation state through a new whitelisted
+`RequestResource::proposal` field (mirroring `OrganizationRequestResource`'s `proposedTerms`
+precedent exactly -- explicit field list, never a raw `data` spread, `proposedById`/`sessionId`
+excluded), plus top-level `round`/`expiresAt`. Added `Therapy::pendingSessionScheduleProposal()`
+(scoped by `for`/`type` only, unlike `pendingRequestFor()`'s `to`-a-Counsellor assumption, since
+this request's `to` alternates across counter-offer rounds) and threaded it through
+`TherapyController::getTherapy` as a new Inertia prop, exactly matching the existing
+`pendingRequest` pattern. Built the UI as a new `SessionScheduleProposalSection.vue` (a sibling to
+the existing assistance-request banner, not folded into `TherapyInformation.vue`, per architect
+review -- the round/stale/counter-offer state here is meaningfully richer), a `ProposeSessionScheduleModal.vue`,
+and a `SessionScheduleCounterOfferModal.vue` mirroring `CompensationCounterOfferModal.vue`'s
+established shape. The "propose a session time" CTA in `TherapyActions.vue` is gated on
+`computedIsParticipant` (not counsellor-only, per `EnsureCanProposeSessionScheduleAction`), no
+active session, and no already-pending proposal.
+
+**Two more retroactive NOT NULL fixes, both found via live Playwright browser verification (not
+Pest) of the full propose-then-accept round trip** -- the third and fourth such gaps in this
+epic's session-schedule-proposal flow (after the `requests.type` enum and `sessions.about` fixes
+in SCRUM-207), all following the identical pattern: the propose flow (SCRUM-206) never called
+`CreateSessionAction` itself, so a NOT NULL column `CreateSessionRequest` normally guarantees went
+unnoticed until an actual accept tried to insert a `Session` row:
+1. `sessions.type`/`sessions.payment_type` are both NOT NULL native enum columns with no DB
+   default. `CreateSessionScheduleProposalRequest` left both `nullable`, and
+   `ProposeSessionScheduleModal.vue` correctly doesn't render their selectors when the therapy
+   doesn't allow in-person / isn't paid (mirroring `CreateSessionFormModal.vue`'s own conditional
+   rendering) -- but unlike that direct-create modal, nothing defaulted the omitted values before
+   they reached the DB at accept-time, and a plain `??` fallback in `AcceptSessionScheduleProposalAction`
+   doesn't catch an empty string. Fixed server-side (the authoritative fix, not reliant on any one
+   frontend): `ProposeSessionScheduleAction` now defaults `type` to `ONLINE` and `paymentType` to
+   `FREE` when omitted (via `?:`, which does catch empty string), and `CreateSessionScheduleProposalRequest`
+   now conditionally requires `paymentType` when the therapy is PAID (no sensible default exists
+   there -- silently defaulting to FREE would bypass billing). `CounterOfferSessionScheduleProposalAction`'s
+   equivalent fallback was hardened from `??` to `?:` for the same reason. `ProposeSessionScheduleModal.vue`
+   was also updated to always send a resolved value, for consistency with the direct-create modal.
+2. `sessions.name` is also NOT NULL with no default, exactly like `about`'s already-fixed gap, but
+   `CreateSessionScheduleProposalRequest` still had it `nullable` (`CreateSessionRequest` requires
+   it, no default, since a session's name has no sensible fallback and participates in a
+   same-therapy uniqueness check). Found by a regression test written for finding #1 above that
+   happened to omit `name` too. Fixed by making it `required`, matching `about`.
+
+**Why recorded**: this is now the fourth and fifth time in this epic that Pest's SQLite suite
+missed a real NOT NULL bug that only live/thorough testing caught -- worth restating the pattern
+explicitly for whoever builds the next feature that defers a real side effect (here, session
+creation) to a later step: enumerate every NOT NULL column on the eventual target table against
+every field the earlier step actually collects, don't assume "it validated at propose-time" means
+"it's safe at accept-time" just because no test happened to omit the same field twice.
+
+---
+
+## 2026-09-02 — SCRUM-208: two High security findings from the pre-PR review, fixed before merge
+
+**Finding 1 -- enumeration oracle via a DB-dependent FormRequest rule (High)**: the first version
+of `CreateSessionScheduleProposalRequest`'s `paymentType` rule used
+`Rule::requiredIf(fn () => optional(Therapy::find($this->route('therapyId')))->payment_type === ...)`
+to require it only for a PAID therapy. Laravel resolves `FormRequest` validation *before* the
+controller body runs, so this closure executed -- and could leak, via the presence/absence of a
+"paymentType is required" validation error -- whether an arbitrary `therapyId` (including a
+private/anonymous therapy the caller has no relationship to) is PAID, for ANY authenticated user,
+before `EnsureCanProposeSessionScheduleAction`'s participancy check ever got a chance to run. This
+is the exact PII/business-data-enumeration class already fixed twice before for this same request
+family (SCRUM-124/162/206), reintroduced via a new code path (FormRequest validation ordering)
+those earlier fixes didn't anticipate. Fixed by reverting the rule to a plain, therapy-independent
+`nullable`/`Rule::in(...)`, and moving the actual required-for-PAID enforcement into
+`EnsureSessionScheduleProposalDataIsValidAction`, which runs strictly after
+`EnsureCanProposeSessionScheduleAction` inside the service/transaction -- so by the time payment
+type is checked, participancy is already confirmed and there's no privileged data to leak.
+
+**Finding 2 -- a client could under-report a PAID therapy's session as FREE (High)**: TT-2.5's own
+design change is what created this risk -- `EnsureCanProposeSessionScheduleAction` lets *either*
+participant propose, unlike the pre-existing direct-create flow
+(`EnsureCanCreateSessionAction`/`CreateSessionRequest`), which only ever trusted a counsellor or
+admin with the `paymentType` field. Once an ordinary client (who has a direct financial incentive
+to under-report) can set this field too, nothing previously stopped them proposing `paymentType:
+FREE` for a PAID therapy, and `AcceptSessionScheduleProposalAction` forces the session's actor to
+the counsellor regardless of who clicks accept -- so a single accept click (without the counsellor
+separately re-verifying every negotiated field) would create a real, incorrectly-priced `Session`.
+Fixed in the same `EnsureSessionScheduleProposalDataIsValidAction` check added for Finding 1: any
+client-supplied `paymentType` must equal the therapy's own `payment_type` exactly (covers both
+directions -- FREE-for-PAID and the pre-existing PAID-for-FREE case), enforced identically for
+both the initial propose and every counter-offer round (a countering party could otherwise
+reintroduce the same bypass one round later).
+
+**Why recorded**: both were caught by the `security-engineer` review dispatched before this PR,
+not by the extensive manual Playwright QA done earlier in this ticket (which exercised only
+happy-path FREE-therapy flows) -- worth remembering that a capability change ("who is trusted with
+this field") can silently invalidate an assumption a shared validation path was built on, even
+when the new code around it is otherwise a faithful copy of an existing, already-reviewed pattern.
+Also worth noting explicitly: Finding 3 from that same review (a `public` FREE therapy's pending
+proposal, including its free-text `name`/`about`, is visible to unauthenticated visitors of the
+therapy page) was assessed as **not a new gap introduced by this ticket** -- it's the same
+existing exposure `pendingRequest`/`recentSessions`/`recentTopics` already have on that page for
+any `public` therapy, and this ticket's new prop was deliberately made to match that established
+pattern rather than invent a narrower one. Left as-is rather than unilaterally restricting only
+the new field; flagged in the SCRUM-208 Jira comment for explicit product sign-off on whether
+"public therapy" is intended to mean "negotiation content is public too," since that's a product
+question about the `public` flag's existing semantics, not something scoped to this ticket to
+decide alone.
+
+---
+
+## 2026-09-02 — SCRUM-212 (TT-2.6a): counsellor calendar session aggregation
+
+**Decision**: implemented `GetCounsellorCalendarSessionsAction` (new, under `app/Actions/Session/`)
+unioning `Session` rows across a counsellor's `Therapy` set (single `counsellor_id`) and
+`GroupTherapy` set (`counsellors()` pivot with `state = active`, **plus** a `Counsellor` `addedby`
+-- mirrors `GroupTherapy::isCounsellor()`'s full definition exactly, not just the pivot half of
+it), date-range bounded via a new `Timeable::scopeWhereWithinRange()` overlap check (catches a
+session spanning into/out of the window, not just one whose start falls inside it). Wired through
+a new `SessionService::getCounsellorCalendarSessions()` method (not an overload of the existing
+single-therapy `getSessions()`) and a dedicated `EnsureCanViewCounsellorCalendarAction` with no
+admin bypass (self-scoped only, per acceptance criteria).
+
+**Anonymity-masking extraction** (architect-directed, part of this ticket's own scope): the
+addedby-anonymity ternary duplicated across `TherapyResource`, `GroupTherapyResource`,
+`TherapyMiniResource`, `GroupTherapyMiniResource` is now one shared `TherapyTrait::addedByUserIsMaskedFor()`
+method, consumed by all four (behavior-preserving -- confirmed via the existing `AnonymityMaskingTest`/
+`BroadcastChannelAnonymityTest`/`GroupTherapyMembershipTest` suites, all still green). `SessionResource`
+gained an optional `for` field (`whenLoaded`, omitted for every existing single-parent caller) so
+the calendar's per-event therapy/group name reuses `TherapyMiniResource`/`GroupTherapyMiniResource`
+directly rather than a fifth masking copy -- this also means the counsellor's own view of an
+anonymous therapy's calendar entry is correctly masked the same way the therapy page itself
+already is (no new masking logic needed, confirmed by a dedicated test).
+
+**A real Eloquent gotcha found while building the group-therapy union**: `wherePivot()` does not
+work inside a `whereHas()` closure -- it isn't aware of the pivot join in that context and silently
+produces an invalid `pivot = state` clause (caught immediately by a real-MySQL tinker reproduction,
+not by Pest's SQLite run, which would likely have surfaced it as a different, more confusing
+error). Fixed by referencing the actual pivot table/column (`counsellor_group_therapy.state`)
+directly inside the closure instead.
+
+**N+1, found by this ticket's own regression test, not by manual review**: `SessionResource` had
+never before been rendered in bulk (every other caller shows one session, or one therapy's own
+paginated list) -- `topics`/`cases`/`therapyTopicSessions` (backing the `currentTopic` accessor)/
+`addedby` were never eager-loaded anywhere, silently fine at the small scale those callers render
+at. Fixed via eager-loading in the new Action, plus a small, safe, backward-compatible tweak to
+`Session::getCurrentTopicAttribute()` to use an already-loaded `therapyTopicSessions` relation when
+present. Separately, `TherapyTrait::getSessionsHeldAttribute()`/`GroupTherapy`'s (new)
+`counsellorsCount` accessor were re-running their own COUNT query on every access even though
+Eloquent's morphTo eager loading shares one model instance across every sibling session
+referencing the same parent (confirmed via tinker: `$session1->for === $session2->for`) --
+memoized both on the shared instance, fixing the *systemic* version of this bug (any future caller
+rendering the same parent multiple times in one request benefits), not just this endpoint's case.
+
+**Why recorded**: the `wherePivot`-in-`whereHas` gotcha is worth remembering codebase-wide anytime
+a new BelongsToMany-with-pivot-state query is written via `whereHas`, not just here. The
+accessor-memoization fix is a rare case in this session where a *shared* fix (touching model code
+used everywhere) was the right call rather than filing a narrow follow-up, specifically because
+Eloquent's own object-sharing behavior meant the fix was small, safe, and universally beneficial
+rather than a targeted patch for one new endpoint.
+
+---
+
+## 2026-09-02 — SCRUM-212: review findings applied before merge
+
+Both `reviewer` and `security-engineer` approved the diff with no blocking findings. Applied their
+non-blocking suggestions before opening the PR:
+- Completed the anonymity-masking extraction properly: `PublicTherapyResource.php` had a fifth
+  independent copy of the same ternary (missed when scoping the original four), now using
+  `TherapyTrait::addedByUserIsMaskedFor()` too, plus its own inline `counsellorsCount` query
+  replaced with `GroupTherapy::getCounsellorsCountAttribute()`.
+- Restored a null-safe guard on `addedby` in `addedByUserIsMaskedFor()` (defense-in-depth against
+  a future hard-delete path on `User` -- not reachable today, per the security review, since only
+  `Counsellor` is ever force-deleted in this codebase, but cheap to keep).
+- Added a max date-range bound (93 days) to `GetCounsellorCalendarSessionsRequest` so the endpoint
+  can't be asked to union/eager-load an unbounded number of sessions in one request. Learned along
+  the way that Laravel's `before_or_equal:field +N days` syntax does **not** work the way it reads
+  -- `getDateTimestamp()` tries `strtotime()` on the whole literal string first, fails, then tries
+  to resolve it as a field name (also fails), so the comparison silently degrades to "always
+  invalid" rather than throwing or ignoring the modifier. Implemented via a manual `withValidator()`
+  check instead.
+- Added a second anonymity-masking test exercising the GroupTherapy leg specifically (the existing
+  one only covered the Therapy leg, rendered through a different mini resource).
+## 2026-09-02 — TT-2.6 (SCRUM-25): split into TT-2.6a/b after `/start-feature` review
+
+**Decision**: TT-2.6 ("Counsellor calendar view of their sessions") was originally a single
+5-point ticket. `product-owner`/`project-manager`/`architect` review found it undersized for the
+same reason as TT-2.2/TT-6.3/TT-7.2 -- no cross-therapy/group-therapy session aggregation query
+exists today, and it's a genuinely separable concern from whatever calendar UI ships. Split into
+TT-2.6a (SCRUM-212, backend aggregation, 8 points, no dependency -- TT-2.5 is done) → TT-2.6b
+(SCRUM-213, frontend calendar UI, 8 points, depends on 2.6a), 16 points total.
+
+**Calendar UI: build, not buy**. `package.json` has zero calendar/scheduling dependency, and this
+codebase has deliberately avoided heavy UI kits throughout (its only comparable dependencies,
+`vue-select`/`@popperjs/core`, are small and single-purpose). `date-fns`/`date-fns-tz` are already
+dependencies and sufficient for all the date math a week/month grid needs. TT-2.6b's scope is
+explicitly drill-through-only (no drag-and-drop rescheduling, no inline editing, no recurring
+views) -- exactly the case where a library's added bundle/maintenance/theming cost isn't justified.
+Revisit only if a future ticket adds recurring series, drag-and-drop, or true multi-timezone
+editing to the calendar.
+
+**Anonymity-masking extraction folded into TT-2.6a**: architect review found the addedby-anonymity
+masking ternary (`$addedbyUser?->is($user) || ! $isAnonymous`, built on `Therapy`/
+`GroupTherapy::isAnonymousFor()`) already independently re-implemented in four places
+(`TherapyResource`, `GroupTherapyResource`, `TherapyMiniResource`, `GroupTherapyMiniResource`).
+Since TT-2.6a's calendar payload needs the same masking for its per-event therapy/group name (the
+first cross-therapy aggregate surface in the app), a fifth inline copy would only grow the
+duplication -- TT-2.6a extracts a single shared helper instead, consumed by the calendar payload
+and, ideally, backfilled into the four existing call sites.
+
+**Confirmed with the user rather than assumed**: a `GroupTherapy` with multiple active counsellors
+means each independently sees that group's sessions on their own calendar -- there is no "primary
+counsellor" concept in the data model, and inventing one wasn't warranted just for this ticket.
+
+**Why recorded**: fourth ticket in this backlog (after TT-2.2, TT-6.3, TT-7.2) to be undersized at
+the single-ticket-estimate stage and require a `/start-feature`-time split rather than a mid-
+implementation discovery -- worth noting that "New (4.x)" or "Existing" backlog-conversion rows
+with terse one-line descriptions are the ones consistently hitting this, not tickets that already
+went through a prior planning pass.
+
+---
+
+## 2026-09-02 — SCRUM-213 (TT-2.6b): counsellor calendar UI
+
+**Decision**: implemented a custom-built (no calendar library, per the architect's earlier
+build-vs-buy call) week/month calendar at a new `/counsellor/calendar` page --
+`Pages/Counsellor/Calendar.vue` composing `CalendarWeekView.vue`/`CalendarMonthView.vue`/
+`CalendarEvent.vue`, backed by a new `useCalendar.js` composable wrapping `date-fns` (no other
+component in this codebase did week/month bucketing before this). Fetches its own range-scoped
+data client-side from TT-2.6a's endpoint on every range change -- never the counsellor's entire
+session history in one payload, per the ticket's own requirement. Drill-through only: clicking an
+event navigates to the underlying `Therapy`/`GroupTherapy` page; no session-mutation action exists
+on the calendar itself.
+
+**A real routing bug found via live browser testing, not by reading the code**: the new
+`/counsellor/calendar` route silently 302-redirected to home even for an actual counsellor,
+because the pre-existing `/counsellor/{counsellorId}` route (registered earlier in `routes/web.php`,
+outside the auth group) matched first and treated `"calendar"` as a `counsellorId` route parameter
+-- Laravel resolves competing route patterns in registration order, not specificity. Fixed by
+registering the new route immediately before the colliding one, with a comment explaining why the
+order matters here specifically.
+
+**A real UX bug found via live browser testing**: the initial month view didn't pad to full weeks
+(`startOfMonth`/`endOfMonth` only), so the grid's weekday-column headers didn't actually correspond
+to the day-of-week of the cells beneath them for any month not starting on a Sunday -- looked
+broken, not just visually rough. Fixed by padding `monthRange()` to `startOfWeek(startOfMonth(...))`
+.. `endOfWeek(endOfMonth(...))`, matching how every real calendar UI grids a month.
+
+**A `Select.vue` gotcha avoided rather than hit**: that shared component unconditionally
+uppercases its bound `v-model` value (built for this codebase's backend enum values, e.g.
+'ONLINE'/'PAID') -- noticed before wiring it up for this page's client-side-only lowercase filter
+state (`'individual'`/`'group'`/`'upcoming'`/`'past'`), which would have silently broken every
+filter comparison. Used plain native `<select>` elements instead, which was the actually-correct
+tool for genuinely local UI state rather than a backend-enum-backed field.
+
+**Why recorded**: the two real bugs above were both browser-verification catches, not code-review
+catches -- worth restating (again) that "reads correctly" and "renders correctly" are different
+claims for anything involving route registration order or date-grid math, neither of which a
+type-checker or a Pest request test would have caught (Pest's route dispatch works the same way
+in both the buggy and fixed state; the bug was in *how a human reads the resulting grid*, not in
+any assertable response shape).
+
+---
+
+## 2026-09-02 — SCRUM-213: reviewer findings applied before merge
+
+`reviewer` requested changes; `security-engineer` approved with no blocking findings (two minor,
+non-blocking style suggestions, not applied -- route-group placement and a `console.log`
+verbosity note, both explicitly called out as optional).
+
+**Real correctness bug (required change)**: `useCalendar.js`'s `toApiDate()` used `date-fns`'
+`format()`, which reads a `Date` object's *local* wall-clock getters -- not the UTC conversion the
+backend expects (`Session.start_time`/`end_time` are stored and queried in UTC throughout this
+app). For any counsellor whose browser timezone isn't UTC, the requested week/month range would
+have been silently shifted by their local UTC offset, dropping or mis-bucketing sessions near a
+day/week boundary -- exactly the kind of bug that a dev/CI environment running in UTC (as this
+one does) can't surface, which is why it wasn't caught by the live Playwright verification done
+earlier in this ticket. Fixed by switching to `.toISOString()`, matching the identical
+local-Date-to-backend-datetime precedent already established by `ProposeSessionScheduleModal.vue`/
+`SessionScheduleCounterOfferModal.vue`.
+
+**Deduplication (required change)**: the UTC-string-normalization one-liner (`dateTime.includes('T')
+? dateTime : ...`) was independently copied in both `useCalendar.js` and
+`SessionScheduleProposalSection.vue`. Extracted into the existing shared `useLocalDateTime.js`
+composable (new `toLocalDate` export) and had both call sites use it instead.
+
+**Suggested improvements also applied**: deduplicated a repeated `for_type === Therapy::class`
+comparison in `SessionResource::toArray()` into one local variable; removed a defensive
+`res.data.sessions.data ?? res.data.sessions` fallback in `Calendar.vue` that guarded against a
+paginated-response shape this particular endpoint never actually returns (confirmed via the
+existing passing tests asserting `sessions.0.id` directly).
+
+**Why recorded**: the local-vs-UTC bug is the third distinct "looks right in this UTC dev
+environment, would be wrong for a real user elsewhere" class of issue found in this session
+(alongside the two live-browser-verification catches earlier in this same ticket) -- worth noting
+that neither Pest nor a UTC-timezone dev container can ever catch this specific class of bug;
+only an explicit code-review comparison against this codebase's own established
+local-Date-to-UTC-string precedent caught it here.
+
+---
+
+## 2026-09-01 — TT-1 (SCRUM-5) and TT-2 (SCRUM-6) epics closed; TT-6/TT-7 picked as next area
+
+**Decision**: with TT-1's last remaining item (SCRUM-59) merged, transitioned epic TT-1 to Done.
+TT-2 was already fully closed in the prior session. Rather than autonomously guessing which of
+the many independent, unstarted-or-partial epics (TT-3/4/5/6/7/8/9) to pick up next, asked the
+user directly -- a genuine fork per CLAUDE.md's autonomy rules, since no dependency chain
+determined the next unit of work. User chose to finish the already-substantially-built TT-6
+(Organizations) and TT-7 (Payments) epics over starting a brand-new one.
+
+**Why**: TT-6/TT-7 turned out to have only one actual remaining ticketed item (SCRUM-169/
+TT-6.5c2) once checked against live Jira state -- everything else under TT-6 (TT-6.6a-e, TT-6.7,
+TT-6.5a/a2/b/c) was already Done, and TT-7's remaining line items (TT-7.5/7.6/7.7/7.9) have no
+Jira tickets yet and would need their own `/start-feature` pass rather than being pickable
+directly. `documentation/implementation_plan.md`'s own row-level ✅ markers are stale/incomplete
+for TT-6's later rows -- Jira, not the plan doc, is the authoritative source for what's actually
+done.
+
+---
+
+## 2026-09-01 — SCRUM-169 (TT-6.5c2): cross-ticket link-generation gap found, not absorbed here
+
+**Decision**: while implementing SCRUM-169 (member self-apply directory browse + apply UI),
+found that TT-6.7 (SCRUM-164, Done) explicitly deferred "generate a self-apply link" UI to
+TT-6.5a (SCRUM-165, Done) -- but SCRUM-165's own scope/acceptance criteria never actually
+included it, and a full-repo grep confirms zero frontend code references
+`organizationSelfApply`/self-apply links anywhere. Filed a new follow-up ticket (SCRUM-214)
+for the missing org-admin "generate link" UI rather than building it inside SCRUM-169.
+
+**Why**: SCRUM-169's own scope and acceptance criteria are member-facing only (browse the
+directory, apply, follow an existing link) -- they say nothing about admins generating links.
+Absorbing an unrelated ticket's dropped scope into a different, unrelated, already-small ticket
+would be unrequested scope creep; a dedicated follow-up keeps the gap visible and separately
+prioritizable instead of silently folding it in.
+
+---
+
+## 2026-09-02 — SCRUM-215 (TT-7.5): payment-gated access, planning decisions
+
+**Decision**: after product-owner review surfaced genuinely safety-critical open questions (what
+exactly gets blocked, whether a later refund can retroactively revoke access, GroupTherapy
+scope), asked the user directly rather than guessing on a mental-health platform's payment gate.
+Four decisions came back: (1) gate whichever model actually carries the payment obligation
+(Therapy or Session, following the existing `payment_data->per` PER_THERAPY/PER_SESSION split),
+not a blanket whole-therapy block; (2) the gate is evaluated ONCE at first access and never
+re-evaluated -- a later refund never retroactively locks an admitted client out; (3) GroupTherapy
+gating is wanted eventually but is explicitly blocked on TT-7.4d (per-member group payment,
+currently unscoped) landing first; (4) public/non-participant visibility stays untouched.
+
+Project-manager then split the buildable-now portion into TT-7.5a (SCRUM-217–221, 5 sub-tickets,
+~26 points provisional) and filed TT-7.5b (SCRUM-216) as a separate, unscheduled sibling ticket
+blocked on TT-7.4d. Architect recommended: store the new flag as `payment_data->strictPaymentGate`
+(not a new `therapies` column, matching the `per`/`amount`/`currency` convention); a new, narrow
+`payment_access_grants` table for the "granted once" state (deliberately NOT derived from
+`Transaction.status` at read time, since TT-7.7's future refund handling will start mutating that
+field); a new `PaymentRequiredException` for controller/page-load call sites only, with
+`MessageService`'s 4 duplicated authorization call sites getting a plain boolean check instead
+(matching their existing idiom, not forcing a new one on them).
+
+**Why**: this is a payment-and-access feature on a mental-health platform -- guessing wrong on
+"can a refund cut someone off mid-relationship" would be a real harm event, not just a UX misstep,
+so it was treated as a genuine "pause and ask" fork per CLAUDE.md rather than a judgment call to
+make silently. The architect's `payment_access_grants` table recommendation exists specifically
+to prevent a *future* ticket (TT-7.7 refunds) from silently breaking *this* ticket's core safety
+invariant -- a cross-ticket coupling risk worth designing around now rather than discovering later.
+
+**Follow-up decision (2026-09-02, user-confirmed)**: SCRUM-220 WILL consolidate `MessageService`'s
+4 pre-existing, independently-duplicated authorization checks (`getSessionMessages`,
+`getDiscussionMessages`, `getTherapyTopicMessages`, `getMessageReplies`) onto the one new shared
+gate-satisfaction check, rather than bolting the payment condition on next to 4 separate copies.
+
+**Why**: since all 4 methods need to be touched anyway to add the new payment-gate condition,
+fixing the pre-existing duplication in the same pass is cheaper than doing it as a separate
+follow-up later (avoids re-touching the same 4 call sites twice) and removes a real, already-
+identified wart while the context is fresh, rather than letting a fifth divergent copy of "is
+this user allowed to see this" logic risk accumulating before the follow-up ever gets picked up.
+
+---
+
+## 2026-09-02 — SCRUM-219 (TT-7.5a 3/5): closed a HIGH-severity self-disable gap before merge
+
+**Decision**: while implementing page-load enforcement of the strict payment gate,
+security-engineer found that the therapy's own `addedby` (the paying client) could call the
+existing `updateTherapy` endpoint to flip `strictPaymentGate` back to `false` (or switch `per` to
+`PER_SESSION`) at will, completely defeating the gate this ticket exists to enforce --
+`EnsureCanUpdateTherapyAction` lets the client update any field with no restriction. Added a new
+`EnsureCanSetStrictPaymentGateAction`: only an admin or the therapy's *assigned* counsellor may
+change `strictPaymentGate` once the therapy already exists; the creating client still sets its
+initial value at CREATE time, since this app has no counsellor assigned to a therapy until one
+accepts an invite/application afterward (there's no one else to set it at that point). Also
+tightened `per`'s validation to `Rule::in(TherapyPerPaymentEnum::values())` on both Create/Update
+requests (was a bare `'string'` rule) and fixed a sibling inconsistency `reviewer` found:
+`TherapyController::chat()` shares `EnsureUserHasAccessToTherapyAction` with `getTherapy()` but
+wasn't handling `PaymentRequiredException` the same way -- both now share one
+`redirectForPaymentRequired()` helper.
+
+**Deliberately NOT fixed here, deferred to SCRUM-220** (flagged in that ticket's own comments):
+a client can still switch an existing `PER_THERAPY` strict-gated therapy's `per` to `PER_SESSION`
+to escape this ticket's gate entirely, since PER_SESSION gating doesn't exist until SCRUM-220
+ships. A second follow-up-verification security pass confirmed this is a pre-existing scope
+boundary (not a new hole this fix introduces) and is now explicitly documented and test-covered
+rather than silently present.
+
+**Why**: this is the first ticket where the strict payment gate actually denies real access, so a
+security-engineer pass was run before committing per CLAUDE.md's mandatory-security-for-payment-
+and-mental-health-platform rule, not just at PR time -- catching this kind of self-disable bypass
+before merge is exactly the point of that gate, especially given `payment_access_grants` rows are
+permanent by design (SCRUM-215 decision #3): a bug here wouldn't just be wrong once, it would let
+a client bypass payment indefinitely with no self-correcting mechanism.
+
+---
+
+## 2026-09-02 — SCRUM-220 (TT-7.5a 4/5): consolidated 3 of 4 flagged MessageService checks, not 4
+
+**Decision**: this ticket's own text (and the 2026-09-02 "consolidate MessageService now" decision
+above) named all 4 of `MessageService`'s independently-duplicated authorization checks
+(`getSessionMessages`, `getDiscussionMessages`, `getTherapyTopicMessages`, `getMessageReplies`) as
+in scope for consolidation onto one shared check. The actual implementation consolidates only 3 --
+`getDiscussionMessages()` is deliberately left untouched.
+
+**Why**: `Discussion::isParticipant(?Counsellor $counsellor)` always returns `false` for a null
+`Counsellor`, and `getDiscussionMessages()` passes `$user->counsellor` (never `$user` itself) --
+so a plain client (the only party the payment gate ever applies to) can never be a Discussion
+participant at all, regardless of payment status. There is no client-payment-gating scenario to
+consolidate there; forcing it onto the same shared check would be an artificial unification of
+two genuinely different authorization shapes (`isParticipant(User)` vs `isParticipant(?Counsellor)`)
+for a case that can never actually exercise the new logic. Verified via a `security-engineer`
+pass specifically re-checking this exclusion for safety (not just convenience) before merge --
+confirmed no path (including a user who holds both a `User` and `Counsellor` identity) lets a
+paying client reach Discussion content, since the check only ever evaluates their `Counsellor`
+side there.
+
+Also fixed, found via my own test suite before either review pass: the first implementation of
+the new shared `EnsureStrictPaymentGateSatisfiedAction` only checked the PER_THERAPY case when NO
+session was passed in -- meaning `MessageService::getSessionMessages()` (which always has a
+session in context) never actually gated a PER_THERAPY-payable strict-gated therapy's chat at
+all, leaving open the exact "still reachable" hole this ticket exists to close. Fixed by checking
+PER_THERAPY unconditionally, before even considering whether a session was passed.
+
+---
+
+## 2026-09-02 — SCRUM-222 (TT-7.4-retry): scope decided, mechanism already worked
+
+**Decision**: TT-7.4's original "retry-on-failure" clause was carved out during SCRUM-118's split
+(2026-08-29) as its own small follow-up, tracked but unscoped. Before filing SCRUM-222, I verified
+the underlying retry *mechanism* already works today: `EnsureCanInitiateChargeAction` only blocks
+a further charge once a SUCCESS transaction exists (a FAILED/ABANDONED one does not block retry),
+and `usePayment.js`'s `canPayForTherapy`/`canPayForSession` already gate purely on
+`paymentStatus !== 'SUCCESS'`, so the pay button already reappears after a failed attempt with
+`STATUS_MESSAGES.FAILED` already reading "Your payment failed. Please try again."
+
+So the real open question was not "can a client retry" but "does the UI communicate that a retry
+is happening" — the pay button looked identical (same "pay now" label) on a first attempt and a
+retry. product-owner review surfaced this as a genuine product fork rather than guessing: (a)
+distinct retry wording/styling (frontend-only), (b) persistent failure visibility across reloads
+(frontend-only, reads existing `latestTransaction` data), (c) a full attempt-history list (needs
+new backend — no transaction-history endpoint exists today), or (d) close as already-satisfied
+with no new UI. User chose **(a)**: distinct "try payment again" wording/styling, keyed off the
+already-persistent `paymentStatus` field (not the one-shot `transactionStatus` flash), so it
+survives a reload without building (b)'s full persistent-banner feature or (c)'s new backend
+surface.
+
+Architect recommended centralizing the FAILED/ABANDONED check as a shared `isRetryStatus()` helper
+in `usePayment.js` (mirroring the existing `paymentStatusLabel()` pattern) rather than inlining an
+OR-check independently in both `TherapyPaymentDetails.vue` and `UnifiedTherapy.vue` — both already
+destructure from this composable for identical status-to-copy logic, so this was the minimal-diff
+option, not the heavier one. project-manager confirmed this as a single, correctly-small 2-point
+ticket needing no split, unlike the TT-6.3/TT-7.2/TT-2.6/TT-2.2 undersizing pattern.
+
+**Why**: the "what should this ticket actually deliver" question was a genuine product trade-off
+(scope ranged from a one-line copy change to a new backend feature) that couldn't be resolved by
+guessing a default without risking either under-delivering (leaving real user-facing ambiguity
+during a stressful moment — payment failure — for a mental-health platform's users) or
+over-delivering (building unwanted backend surface for a ticket explicitly sized small). Verified
+end-to-end via live Playwright QA (seeded FAILED transactions on both the PER_THERAPY and
+PER_SESSION demo therapies, confirmed both button/label/styling changes, cleaned up test data
+afterward) since no JS/Vue test framework exists in this codebase to write automated coverage
+instead. `reviewer` and `security-engineer` both approved with no required changes.
+
+---
+
+## 2026-09-03 — SCRUM-225 (TT-7.6a): payout-destination onboarding via Paystack Transfer Recipients
+
+**Decision**: implemented TT-7.6a per the product-owner/project-manager/architect plan from
+SCRUM-224's review (see that entry). This is this codebase's first Paystack API surface beyond
+`/transaction/initialize`/`/transaction/verify` -- added `PaystackClient::resolveAccountNumber()`
+(GET `/bank/resolve`) and `createTransferRecipient()` (POST `/transferrecipient`), following the
+existing thin-wrapper convention exactly. New `counsellor_payout_accounts` table (one row per
+counsellor, unique constraint -- changing a destination replaces the row in place rather than
+accumulating history, unlike the earnings ledger, since no later ticket needs to query past
+destinations) stores only a Paystack `recipient_code` + a masked account number; the raw account
+number is sent to Paystack transiently and never persisted. Onboarding gated on
+`Counsellor::isVerified()` (existing platform verification) -- no new identity-verification
+subsystem, per the user's decision during SCRUM-224 review. A destination-change email fires only
+when replacing an EXISTING destination, never on first-time setup.
+
+**A real bug found and fixed during my own implementation** (not by review, though review verified
+the fix): the "is this a first-time onboarding or a replacement" check originally read
+`$counsellor->payoutAccount` (the Eloquent relation) -- but a null-result relation is cached on
+the model instance, so a caller reusing the same in-memory `$counsellor` object across two
+separate onboarding calls (exactly what a "does replacing send a notification" test needs to
+exercise) would see a stale "no existing destination" even on a genuine replacement, silently
+skipping the security-relevant account-takeover notification. Fixed by replacing it with a direct
+`CounsellorPayoutAccount::query()->where('counsellor_id', $counsellor->id)->exists()` check.
+`reviewer`'s re-review confirmed this was the only instance of the trap in the diff.
+
+**Security-engineer findings, both addressed**:
+- **Fixed (defense in depth)**: `CreateCounsellorPayoutDestinationAction` had no independent
+  authorization check of its own -- its safety depended entirely on `PayoutService::onboardDestination()`
+  (the only current caller) remembering to run `EnsureCanOnboardPayoutDestinationAction` first.
+  Not exploitable today (no controller/route exists yet to reach this action any other way), but
+  fixed immediately anyway by having the action re-run the same ensure-check internally, so it
+  stays safe even if a future ticket ever calls it directly by mistake.
+- **Deferred to TT-7.6d (the controller ticket), logged as a Jira comment on that ticket, not
+  fixed here**: (1) the future controller must build `PayoutDestinationDTO->user` strictly from
+  the authenticated user, never request input, and call only `PayoutService::onboardDestination()`;
+  (2) no request validation exists yet on `accountNumber`/`bankCode`/`currency`/`type` -- TT-7.6d
+  needs a `FormRequest`; (3) `PayoutException`'s constructor status-code argument is currently
+  inert (nothing maps `getCode()` to an HTTP response) -- TT-7.6d needs to wire this the way
+  `TransactionException` already is via `ResolvesExceptionResponse`. All three are explicitly
+  scoped to the not-yet-built HTTP layer and confirmed by security-engineer as not exploitable in
+  this ticket's actual diff.
+
+**Why**: the relation-caching bug was a genuine correctness gap for a security-relevant
+notification (an account-takeover mitigation that would have silently failed to fire on exactly
+the scenario it exists for), so fixed immediately rather than deferred. The authorization
+defense-in-depth fix was cheap and closes a real (if currently unreachable) gap the same way the
+TT-7.7a/TT-7.6b review passes already established a pattern for in this epic. The three
+controller-layer findings were correctly deferred rather than built speculatively now, since
+building validation/HTTP-status-mapping for a route that doesn't exist yet would be exactly the
+kind of premature abstraction this project's rules caution against -- logging them on TT-7.6d's
+own ticket instead ensures they aren't silently lost.
+
+---
+## 2026-09-03 — SCRUM-226 (TT-7.6b): earnings ledger + platform settings mechanism
+
+**Decision**: implemented TT-7.6b per the product-owner/project-manager/architect plan from
+SCRUM-224's review (see that entry). Two implementation-time judgment calls, made without a
+further round of user questions since neither is a product fork -- both are technical
+interpretations of already-approved scope, logged here per CLAUDE.md rather than escalated:
+
+1. **GroupTherapy `sharePercentage` semantics**: this codebase has never actually computed a
+   payout from `payment_data->shareEqually`/`sharePercentage` before (grep confirmed: only ever
+   validated in `EnsureTherapyDataIsValidAction` and displayed in `TherapyPaymentDetails.vue`,
+   never used in a calculation) -- so this ticket had to define that behavior for the first time,
+   not just "reuse the existing logic" as the plan text implied. Read `GroupTherapyFormModal.vue`'s
+   actual field labels ("How do you want earnings shared?" / "What percentage will you give to
+   the participating counsellors?") as the closest thing to a spec: `sharePercentage` is the % of
+   the WHOLE transaction allocated to the counsellor pool collectively (not one named
+   counsellor's own cut), and — since nothing in this codebase's schema or UI has ever modeled a
+   per-counsellor split within that pool — that pool is divided EQUALLY among all currently-active
+   counsellors, whether `shareEqually` is true (100% pool) or a specific `sharePercentage` is set
+   (that %, as the pool). A leftover minor-unit remainder from an uneven equal split is assigned
+   to the first counsellor rather than dropped.
+2. Everything else (settings mechanism shape, ledger schema, idempotency, webhook placement) followed
+   the architect's explicit, decisive recommendations from SCRUM-224's review verbatim -- no
+   further judgment calls needed there.
+
+**Review findings and fixes** (both `reviewer` and `security-engineer` ran twice -- once on the
+initial implementation, once to verify fixes):
+- **Reviewer, required**: `GenerateCounsellorEarningsAction` was called from inside
+  `RecordTransactionStatusAction` AFTER that action's status update and status-history insert had
+  already committed independently -- a failure in earnings generation (DB hiccup, unexpected
+  state) would leave a transaction permanently stuck as `success` with no `CounsellorEarning` row
+  and no retriable path back to it (the terminal-status guard means a later identical webhook
+  replay just short-circuits). Fixed by wrapping the status update, status-history insert, AND
+  the earnings-generation call in one outer `DB::transaction()`, so a throw anywhere rolls
+  everything back, keeping the transaction in a genuinely retriable non-terminal state. Verified
+  (via the re-review pass) that `GenerateCounsellorEarningsAction`'s own inner
+  `DB::transaction()`+`lockForUpdate()` correctly runs as a savepoint of the outer transaction
+  rather than conflicting with it.
+- **Reviewer, required**: the arithmetic was only unit-tested by calling
+  `GenerateCounsellorEarningsAction` directly -- nothing proved `RecordTransactionStatusAction`'s
+  real callers (the Paystack webhook, the verify-callback fallback) actually reach it. Fixed by
+  adding an end-to-end test in `tests/Feature/PaystackWebhookTest.php` that posts a real signed
+  `charge.success` webhook through the HTTP boundary and asserts a `CounsellorEarning` row exists
+  afterward.
+- **Reviewer, suggested, applied**: the fee calculation multiplied a `float` percentage directly
+  against a money amount (`floor($grossAmount * $feePercentage / 100)`) -- safe for whole-number
+  percentages (the only value ever set today) but a latent drift risk once a fractional fee (e.g.
+  12.5%) is set via the new admin-configurable mechanism. Fixed by converting the percentage to
+  integer basis points once, up front, then doing pure integer division
+  (`intdiv($grossAmount * $feeBasisPoints, 10000)`), keeping the whole file in the same
+  integer/minor-unit space its GroupTherapy-split math already used.
+- **Reviewer, suggested, applied then corrected further**: added a comment to
+  `SettingsService::get()` documenting that an empty-string setting value is treated as unset --
+  but the re-review pass caught that the actual code (`$value ?? $default`) didn't match that
+  comment (`??` only substitutes on `null`, not `''`). Rather than just fixing the comment to
+  match the (wrong) behavior, changed the code itself to match the originally-intended contract
+  (`$value === null || $value === '' ? $default : $value`), since the wrong behavior was a real,
+  if narrow, money-correctness gap: an empty string ever persisted for `platformFeePercentage`
+  (e.g. a future admin-UI bug submitting a blank field) would have silently computed a 0% fee via
+  `(float) ''`, rather than falling back to the intended default. Added a regression test.
+- **Security-engineer, required**: `poolPercentage` (the GroupTherapy counsellor-pool %) was
+  derived from `payment_data` and used directly in money arithmetic with no defensive bound of
+  its own -- it relied entirely on `EnsureTherapyDataIsValidAction` (a different file, the only
+  current writer of `payment_data`) for the 40–100/70–100 invariant. Fixed with an explicit
+  `max(0, min(100, $poolPercentage))` clamp in the action itself, plus a regression test
+  simulating a bypass (`sharePercentage = 150` written directly, as a future admin tool or
+  migration might).
+- **Security-engineer, flagged, explicitly deferred (not fixed here)**: `transactions.organization_id`
+  uses `nullOnDelete()` against a soft-deletable `Organization` — if an `Organization` were ever
+  *force*-deleted while it had an in-flight, not-yet-successful transaction, that transaction's
+  `organization_id` would be nulled out before `GenerateCounsellorEarningsAction`'s
+  `organization_id !== null` check runs, misclassifying an org-financed payment as personal and
+  paying it out as counsellor earnings instead of reserving it for TT-7.3b's org-split. Confirmed
+  by security-engineer as currently unreachable (no `forceDelete()` call on `Organization` exists
+  anywhere in the codebase today) and correctly out of this ticket's scope — logged here as a
+  design constraint TT-7.3b must account for before it starts relying on `organization_id`'s
+  permanence, per the security-engineer's explicit recommendation, rather than pre-emptively
+  building a guard against a scenario that doesn't exist yet.
+- **Security-engineer, flagged, explicitly deferred (not fixed here)**: `getPlatformFeePercentage()`
+  has no equivalent clamp to the `poolPercentage` fix above — an out-of-range value stored via
+  `UpdateSettingAction` would flow unclamped into the same fee arithmetic. Not fixed here because
+  `UpdateSettingAction` has no controller/route yet (TT-7.6e builds that) and is therefore not
+  reachable by anything other than a direct Service call in a test today. Logged as a requirement
+  for TT-7.6e: add validation (in `SettingDTO`/`UpdateSettingAction`) or a defensive clamp in
+  `SettingsService::getPlatformFeePercentage()` bounding it to 0–100 when that write path is
+  actually exposed.
+
+**Why**: both the GroupTherapy-split interpretation and the review fixes were genuinely
+consequential correctness questions for a feature whose entire purpose is handling real money
+(even though this particular sub-ticket makes no external API calls yet) — logged rather than
+silently absorbed so the next engineer (starting with TT-7.6c, which builds directly on this
+ledger) has the full reasoning, not just the resulting code.
+
+---
+## 2026-09-02 — SCRUM-223 (TT-7.7): refund handling scoped, TT-7.6/TT-7.3b resequenced ahead of it
+
+**Decision**: SCRUM-223 ("TT-7.7: Refund handling") went through product-owner review and, like
+every other TT-7 sub-story reviewed so far this session (TT-6.3, TT-7.2, TT-2.2, TT-2.6, TT-7.5a),
+was found significantly undersized at its original 5-point estimate. Product-owner surfaced three
+genuine product forks rather than guessing:
+
+1. **Refund initiation**: admin-direct-action (smaller) vs. client-request/admin-approval
+   workflow (larger, new state machine). **User chose the workflow** — a client requests a
+   refund with a reason, an admin reviews and approves/rejects, matching TT-6.4c's negotiation-
+   flow shape rather than a single admin action.
+2. **Refund execution**: internal record-keeping only (smaller, lower risk) vs. a real Paystack
+   refund API call with webhook confirmation (larger, real money movement). **User chose the
+   real API call** — a record-keeping-only refund would leave the app claiming "REFUNDED" while
+   no money had actually moved, judged worse for trust on a platform where clients may already
+   carry cost anxiety about care than not building the feature yet.
+3. **Org-paid transaction eligibility** (surfaced during project-manager review, not the initial
+   product-owner pass): should a transaction with `transactions.organization_id` set (TT-7.3a)
+   be refund-eligible under this ticket, given TT-7.3b (org billing reconciliation — notifying
+   the org admin, adjusting compensation) hasn't shipped? Refunding one today would give the org
+   zero visibility. Two sub-options were offered: block org-paid refunds until TT-7.3b ships
+   (smaller), or allow now with the gap documented as debt (simpler check, but a real org could
+   lose money silently). **User rejected both** and asked for a third path: keep org-paid
+   transactions in TT-7.7's scope, but require TT-7.3b's reconciliation piece to actually exist
+   FIRST, i.e. resequence the roadmap so TT-7.7's implementation is blocked on TT-7.3b rather than
+   deferring org-paid handling to an unscoped future ticket. When asked to clarify how much of
+   TT-7.3b's scope that implied — a narrow "notify org admin" step (~2-3pts) vs. the *full*
+   payout/compensation-adjustment reconciliation TT-7.3b already covers (8pts, which itself
+   depends on TT-7.6 payout, 13pts, since there's nothing to reconcile against without a payout
+   system) — **the user chose the full path**: TT-7.6 → TT-7.3b → TT-7.7, in that order.
+
+**Net effect**: TT-7.3b's dependency direction reverses. It previously depended on TT-7.7
+(`documentation/implementation_plan.md` line 218's old "Depends on: TT-7.3a, TT-7.6, TT-7.7").
+Now TT-7.7 depends on TT-7.3b, which depends on TT-7.6. TT-7.6 (counsellor payout via Paystack
+Transfers, previously "own Epic once scheduled, not a TT-7 sub-story," 13 points provisional) is
+promoted to the active next unit of work as a direct consequence — it needs its own
+`/start-feature` pass (Jira ticket, product-owner/project-manager/architect review) before either
+TT-7.3b or TT-7.7 can start. This is a genuinely large scope escalation from what began as a
+5-point fast-follow ticket: TT-7.6 (13pts, provisional) → TT-7.3b (8pts) → TT-7.7a-e (34pts) is
+55+ points of prerequisite-and-feature work now queued ahead of what was originally framed as a
+quick refund fast-follow.
+
+**Sub-ticket split** (TT-7.7a → b → c → d → e, sequential, 34 points total — see
+`documentation/implementation_plan.md`'s TT-7 table for full per-ticket scope): architect
+recommended (1) a separate `refunds` table for the audit trail rather than overloading
+`TransactionStatusEnum` with a `refunded` case, since `status` already means "did the charge
+succeed" for existing consumers (webhook amount/currency verification, `isSuccessful()`) and
+refunds are naturally 1:many per transaction (partial-refund-friendly), not 1:1; (2) the
+client-request/admin-approval ask-and-approve step reuses the existing polymorphic `Request`
+model (new `RequestTypeEnum::refund` case, mirroring the `organizationCounsellorCompensationChange`
+precedent) for consistency, but the actual Paystack API call is deliberately isolated in its own
+queued job fired only after `RespondToRequestAction` flips the request to accepted — never called
+inline from within that shared dispatcher, which is already on record (SCRUM-119/120) as growing
+debt from its linear per-type `if`-chain, and whose only tested idempotency guarantee (safe no-op
+on double-respond, `RespondToRequestActionIdempotencyTest`) was built for simple internal-state
+flips, not for "did we already call a third-party payment API for this."
+
+**Hard, non-negotiable constraint carried through every sub-ticket**: refund handling must never
+read from, write to, or otherwise reference `payment_access_grants` (TT-7.5a's permanent,
+non-revocable first-access-grant table, see this file's 2026-09-02 SCRUM-215 entries) — a
+client's platform access must stay completely unaffected by a refund's outcome. TT-7.7d (the
+sub-ticket that actually calls Paystack) carries an explicit regression test proving this.
+
+**Why**: all three forks were genuine product/architecture trade-offs where guessing wrong would
+have been expensive to reverse (a workflow bolted onto a direct-action design later means a new
+state machine, not a patch; a real API call retrofitted onto record-keeping-only means re-touching
+every place that assumed "REFUNDED" already meant money moved) — consistent with this session's
+standing practice of surfacing genuine forks to the user rather than defaulting to the smaller
+option. The org-paid question in particular was raised by project-manager mid-review, not
+anticipated by product-owner's first pass, and needed a clarifying round (the user's first answer,
+"add it to scope with blockers implemented first," was itself ambiguous between a narrow
+notification-only blocker and the full TT-7.3b/TT-7.6 chain — resolved by presenting both
+interpretations side by side rather than guessing which one "blockers" meant).
+
+---
+
+## 2026-09-02 — SCRUM-224 (TT-7.6): counsellor payout scoped, split into 5 sub-tickets (47 points)
+
+**Decision**: TT-7.6 ("Counsellor payout via Paystack Transfers") was promoted from "own epic,
+unscheduled" to the active next unit of work as a direct consequence of the SCRUM-223 decision
+above (TT-7.6 → TT-7.3b → TT-7.7). Went through the full product-owner → project-manager →
+architect `/start-feature` sequence and, like every other TT-7 sub-story reviewed this session
+(the 8th in a row), was found significantly undersized at its 13-point provisional estimate —
+final split: TT-7.6a-e, 47 points total (see `documentation/implementation_plan.md`'s TT-7 table).
+
+**Product-owner surfaced four genuine forks**, all resolved by the user:
+
+1. **Platform fee**: not a fixed percentage. The user explicitly rejected both preset options
+   (a specific hardcoded %) and instead specified: "this should be a setting platform super admin
+   should be able to set with a fallback being a configurable env variable." This is genuinely new
+   infrastructure — no settings mechanism exists anywhere in this codebase today (`SettingsEnum`
+   was an empty stub). Disclosed to the counsellor as an itemized gross/fee/net breakdown,
+   matching TT-6.4c's existing compensation-transparency precedent.
+2. **Payout methods**: both bank account AND Ghanaian mobile money as Paystack Transfer Recipient
+   destinations, not bank-only — product-owner flagged that Ghana (this platform's primary
+   market, per `config/currencies.php`'s USD/GHS default) has strong mobile-money payout
+   preference, and bank-only would materially reduce counsellor usability.
+3. **Minimum payout threshold**: GHS 50 / USD 10 (fixed values), chosen over a higher GHS 100 /
+   USD 20 option — small enough to not make counsellors wait too long for small earnings, large
+   enough to comfortably clear Paystack's own per-transfer fee.
+4. **KYC depth**: Paystack's own account-name-match check at recipient creation, plus the
+   counsellor's EXISTING platform verification (`Counsellor::isVerified()`) — no new
+   identity-verification subsystem (no document upload, no BVN linkage). User confirmed
+   product-owner's own recommendation here rather than requesting something more rigorous.
+
+**Scope boundary (settled by product-owner, not re-litigated)**: TT-7.6 covers ONLY
+personally-financed transactions (`transactions.organization_id IS NULL`). Org-financed payout
+splitting is explicitly excluded and deferred to TT-7.3b, layered on top of TT-7.6's payout rails
+once both exist — avoids the mistake of paying a counsellor 100% of an org-financed transaction's
+share when `shareEqually`/`sharePercentage` only governs same-therapy multi-counsellor splits, not
+org-vs-counsellor splits.
+
+**Two project-manager judgment calls, both architect-endorsed, made without a further round of
+user questions** (assessed as reasonable, low-risk, reversible defaults rather than genuine
+forks):
+- The GHS 50 / USD 10 threshold reuses the SAME settings mechanism built for the platform fee
+  (decision #1), rather than being hardcoded separately — near-zero marginal cost once that
+  mechanism exists for one setting.
+- Admin-triggered payout does NOT bypass the minimum threshold — avoids two divergent enforcement
+  paths for the same money-movement operation. A future explicit override, if ever needed, should
+  be its own separately-ticketed, separately-audited exception, not a quiet default here.
+
+**Architect design decisions** (five points, all decisive, no further forks): (1) new generic
+`platform_settings` key-value table (`SettingsEnum` confirmed as the intended key namespace, now
+gains `platformFeePercentage`/`minimumPayoutAmount` cases), read via `SettingsService::get()` with
+env-backed config fallback — not a dedicated payout-only settings mechanism, since decision #3
+above explicitly requires reuse; (2) `counsellor_earnings` uses typed snapshot columns (mirroring
+`organization_counsellor_compensations`'s established convention for this exact kind of
+snapshotted business fact), not a JSON blob, since TT-7.3b needs to query/aggregate these later;
+(3) idempotency combines `lockForUpdate()` + claim-by-status-flip (mirrors `RespondToRequestAction`'s
+existing lock-then-mutate idiom) with a unique `reference` column (mirrors `transactions.reference`)
+as a second layer — flagged as the highest-risk piece of the whole ticket by both prior reviews;
+(4) payout webhooks (`transfer.success`/`transfer.failed`/`transfer.reversed`) extend the EXISTING
+`ProcessPaystackWebhookJob`'s `match($event)` rather than a second controller/route — Paystack
+only supports one webhook URL per integration, so a second route buys no isolation; (5) the exact
+Paystack Transfer Recipient API shape for `nuban` vs. `mobile_money` types is flagged as a genuine
+engineering spike (no existing `PaystackClient` precedent beyond `/transaction/initialize`/
+`/verify`) — the first task inside TT-7.6a, not assumed ahead of time.
+
+**Why**: all four product-owner forks were genuine business/product trade-offs (a hardcoded fee
+percentage would need a deploy to change; bank-only payout would exclude a real chunk of this
+platform's Ghana-based counsellors) where guessing wrong would be either expensive to reverse or
+simply wrong for the target market — consistent with this session's standing practice of
+surfacing genuine forks rather than defaulting to the smaller option. The two project-manager
+judgment calls and five architect decisions were kept in-flow without a further AskUserQuestion
+round because they were reasonable, low-risk, and cheaply reversible engineering defaults, not
+consequential product forks — asking about every such call would have been excessive-questions
+overreach for decisions an engineering review can responsibly make on its own.
+
+---
+
+## 2026-09-03 — SCRUM-227 (TT-7.6c): payout execution, three real bugs found and fixed across two review rounds
+
+**Decision**: implemented TT-7.6c per SCRUM-224's plan -- the highest-risk sub-ticket in the
+counsellor-payout epic, since real money leaves the platform as a direct consequence of it
+succeeding. Built `TriggerCounsellorPayoutAction` (lock-then-claim idempotency, mirroring
+`RespondToRequestAction`'s established idiom per architect recommendation), `RecordCounsellorPayoutStatusAction`
+(mirrors `RecordTransactionStatusAction`'s terminal-status-guard shape exactly), `ProcessCounsellorPayoutJob`
+(the actual Paystack Transfer call), and extended the existing `ProcessPaystackWebhookJob` with
+`transfer.success`/`transfer.failed`/`transfer.reversed` handling.
+
+**A bug I found and fixed myself, before either review pass**: my first draft dispatched
+`ProcessCounsellorPayoutJob` from INSIDE `TriggerCounsellorPayoutAction`'s `DB::transaction()`
+closure. I had assumed (without checking) that Laravel defers a job dispatched inside a
+transaction until it commits -- checking `config/queue.php` showed `after_commit` is `false` on
+every connection here, so a queue worker could have picked up the job before the row it depends
+on was actually committed. Fixed by moving the dispatch to after the transaction closure returns.
+
+**Reviewer + security-engineer, first pass, both required**:
+1. `PayoutFailedNotification::toMail()` called `$notifiable->getName()` unconditionally, but this
+   notification is sent to both a `Counsellor` (has a real `getName()` method) and 2 random admin
+   `User`s (only has a `->name` accessor, no `getName()` at all) -- would have fatal-errored
+   rendering the admin copy in production, silently defeating the "notify someone when money
+   movement fails" safety net this ticket exists to provide. Invisible to the original test suite
+   because `Notification::fake()` never actually calls `toMail()`. Fixed with
+   `method_exists($notifiable, 'getName') ? $notifiable->getName() : $notifiable->name`, plus new
+   tests that render `toMail()` directly (not via the fake) for both notifiable types.
+2. `RecordCounsellorPayoutStatusAction::notifyOfFailure()` was dispatched from inside its own
+   `DB::transaction()` -- the identical `after_commit: false` risk already fixed once in this same
+   diff, just not applied everywhere it appeared. Fixed by moving it to after the transaction
+   returns, mirroring `TriggerCounsellorPayoutAction`'s pattern.
+
+**Reviewer, first pass, a genuine money-duplication risk requiring a real fix, not just a style
+note**: `ProcessCounsellorPayoutJob`'s catch block treated ANY non-2xx Paystack response --
+including a transient 5xx -- as a definite transfer failure, releasing the claimed earnings for a
+fresh `TriggerCounsellorPayoutAction` attempt, which mints a NEW `CounsellorPayout` with a NEW
+`reference`. A 5xx doesn't tell you whether Paystack actually processed the transfer despite the
+error -- treating it as "definitely failed" and letting a second, differently-referenced attempt
+proceed risks a genuine double-payment if the original transfer had in fact gone through. Fixed by
+checking `$exception->response->serverError()`: a 5xx now re-throws (failing the QUEUED JOB itself
+so its own retry re-attempts the SAME payout/reference, which Paystack's reference-based dedup
+would recognize as a duplicate rather than a fresh transfer), while only a genuine 4xx (Paystack
+rejecting the request outright) records a definite failure. A `ConnectionException` (Paystack
+unreachable entirely) was independently verified by both review passes to already propagate
+uncaught the same way, since it's a sibling class to `RequestException`, not a subclass this
+catch block would swallow.
+
+**Security-engineer, second pass, found a residual gap in the 5xx fix above**: fixing the 5xx case
+to retry the SAME job/reference closes the naive double-payment path, but didn't itself prevent a
+retried job from re-sending that same reference to Paystack if the payout had ALREADY reached a
+terminal status in the meantime (e.g. a genuine `transfer.success` webhook landed between the
+original 5xx and the retry). Paystack would reject that reused reference with its own "duplicate
+reference" 4xx -- which this job's catch block would then treat as a genuine failure, releasing
+earnings that had actually already been successfully paid out, and the real `transfer.success`
+webhook arriving afterward would be silently ignored by `RecordCounsellorPayoutStatusAction`'s own
+terminal-status guard. Fixed with a second, cheaper guard: `ProcessCounsellorPayoutJob::handle()`
+now checks whether the payout is already terminal BEFORE ever calling Paystack again, making a
+stale/redundant retry a no-op instead of re-hitting Paystack with a reused reference.
+
+**Explicitly deferred, not fixed here** (security-engineer's own "longer-term, follow-up ticket,
+not blocking" framing): rather than trusting a bare 4xx as "definite failure," a more robust
+design would verify a transfer's actual status via Paystack's fetch-transfer-by-reference endpoint
+before releasing earnings on any ambiguous response -- removing the dependency on webhook-vs-retry
+timing entirely. Not built here since the terminal-status pre-check above already closes the
+practical risk for this ticket's scope; logged here as a candidate for a future payout-reliability
+follow-up if this class of edge case ever proves not narrow enough in practice.
+
+**Why**: this ticket is explicitly the point where the counsellor-payout epic's real money
+movement actually happens for the first time, so every one of these findings -- even the ones
+requiring a specific unlikely interleaving to trigger -- was treated as worth fixing immediately
+rather than deferred, consistent with the "security is mandatory, not a nice-to-have" project rule
+and this session's standing practice on every other TT-7 payment-adjacent ticket. Both `reviewer`
+and `security-engineer` ran twice (initial pass, then a verification pass against the fixes) before
+this was considered done, matching the rigor already applied to TT-7.5a's SCRUM-219/221 security
+fixes and TT-7.6b's transaction-wrapping fix.
+
+---
+
+## 2026-09-03 — SCRUM-228 (TT-7.6d): counsellor payout frontend money-formatting convention
+
+**Decision**: the new "Payouts" section on `Profile/Counsellor/Show.vue` divides
+`CounsellorEarning`/`CounsellorPayout` money fields by 100 for display (`formatMoney()`), since
+they're genuinely minor units (pesewas/cents) inherited from `Transaction.amount`.
+
+**Why**: this was verified, not assumed. A doc-comment written during implementation initially
+claimed this "matches the convention already used for therapy/session payment amounts" — checking
+the actual frontend (`TherapyPaymentDetails.vue`, `UpdateCounsellorPricing.vue`) showed no `/100`
+conversion exists anywhere else, because `CounsellorPricing`/`paymentData` amounts are already
+major units *at the source* (the counsellor enters "50" meaning GHS 50; only `InitiatePaystackChargeAction`
+converts to minor units, at the point of calling Paystack, and that's what gets persisted to
+`Transaction.amount`). `CounsellorEarning`/`CounsellorPayout` derive from that already-converted
+`Transaction.amount`, so they're genuinely minor units end-to-end — unlike pricing amounts, not
+dividing by 100 here would display a counsellor's real balance as ~100x too large. The misleading
+comment was corrected in `CounsellorEarningResource.php` before merging.
+
+**How to apply**: any future frontend work touching `CounsellorEarning`/`CounsellorPayout`/
+`Transaction.amount` directly needs the `/100` conversion; anything reading `CounsellorPricing`/
+`Therapy.payment_data.amount` does not.
+
+---
+
+## 2026-09-03 — SCRUM-228 (TT-7.6d): review findings applied before merge
+
+**reviewer** (required change): flagged missing `documentation/features/<slug>.md` and a stale
+`documentation/seeded-data.md` for the two new seeded accounts (`payout_demo_client`/
+`payout_demo_counsellor`) added by `DatabaseSeeder::createPayoutDemoData()` — both added
+(`documentation/features/scrum-228-counsellor-payout-frontend-tt-7-6d.md`, a new "Counsellor
+payout (SCRUM-228)" section in `seeded-data.md`) before merging, per CLAUDE.md's feature-doc and
+seeded-data requirements.
+
+**security-engineer** (no High/Critical findings; two Low hardening suggestions, both applied):
+1. `PayoutDestinationRequest`'s `accountNumber`/`bankCode` had no charset constraint beyond
+   `string|max:N` — added `regex:/^[A-Za-z0-9]+$/` to both as cheap local rejection of malformed
+   input, ahead of the real validation that already happens against Paystack's bank-resolve API.
+2. `payout.trigger`'s `throttle:30,1` was the same ceiling as the non-money-moving
+   `payout.destination.store` route — tightened to `throttle:6,1` specifically for the endpoint
+   that actually moves money (the existing locked-transaction idempotency in
+   `TriggerCounsellorPayoutAction` already prevents a double-spend regardless; this is a lower
+   ceiling on attempts, not a correctness fix).
+
+Both the `payoutOverview` prop-leak concern and the `triggerPayout()` `counsellorId`-bypass concern
+raised in the review brief were investigated and confirmed already correctly handled by existing,
+previously-reviewed code (`CounsellorController::show()`'s server-side gate;
+`GetPayoutTargetCounsellorAction`'s `isAdmin()` check) — no code change needed for either.
+
+---
+
+## 2026-09-03 — SCRUM-229 (TT-7.6e): admin payout frontend architecture and review findings
+
+**Decision**: built the admin-facing payout UI as a new, dedicated `resources/js/Pages/Admin/Payouts.vue`
+page (reachable via a small `<Link>` nav item added to `Admin.vue`), rather than another tab in
+`Admin.vue`'s existing dispatch-table pattern.
+
+**Why**: `documentation/implementation_plan.md` already flags that dispatch-table pattern as
+ad-hoc debt, and the Organization admin dashboard (TT-6.5a) already set the precedent of a fresh,
+dedicated page tree instead of extending it further. The ticket's own text ("admin-facing
+frontend") didn't specify a location, so this was a judgment call, not a literal requirement — but
+consistent with the most recent precedent rather than the older pattern.
+
+**Decision**: the Platform Settings section covers both `platformFeePercentage` AND
+`minimumPayoutAmount` (one form each), even though the ticket's scope line read narrowly as
+"Platform-fee-setting form."
+
+**Why**: `SettingsService`/`UpdateSettingAction` is explicitly one generic mechanism shared by both
+settings (TT-7.6b's own design), and `UpdateSettingAction` had no caller at all before this ticket
+— building a settings screen that could only ever set the fee, leaving the minimum-payout
+threshold permanently locked to its env-config default in production, would have left half of an
+already-built mechanism unreachable for no stated reason. Read "platform_settings mechanism" in
+the ticket's own phrasing as covering both keys the mechanism holds, not just one.
+
+**reviewer**: approved with no required changes — confirmed each new piece (the DTO, the two
+FormRequests, `AdminCounsellorPayoutResource`, the two new `PayoutService` methods, the controller,
+routes, and the Vue page) faithfully matches an existing, already-shipped convention rather than
+inventing a new one. Suggested optional polish (disabling the settings forms client-side for a
+non-super admin, a clarifying comment on `reloadPayoutHistory()` always returning to page 1) not
+applied — low-value relative to the ticket's actual scope.
+
+**security-engineer**: found one real Medium-severity gap and confirmed everything else safe.
+1. **Fixed** — `UpdateMinimumPayoutAmountsRequest`'s `size:N` check didn't require N *distinct*
+   currencies: a same-size payload repeating one currency (e.g. two GHS rows, no USD) would pass
+   validation while silently dropping USD's stored threshold back to its env-config default, since
+   `SettingsEnum::minimumPayoutAmount` is one JSON blob per key and `mapWithKeys` silently
+   collapses duplicate keys. Fixed by adding a `distinct` rule to `amounts.*.currency` — combined
+   with the existing `size:N` (N = the exact number of supported currencies) and `Rule::in`
+   (membership only), N required-distinct values from a set of exactly N valid values can only be
+   that exact set. Added a regression test for the duplicate-currency-same-size case.
+2. **Fixed** — `PayoutService::getPayoutsForAdmin()` used `CounsellorService::geCounsellorsForAdmin()`'s
+   silent-`[]`-for-non-admin convention, while its own sibling method in the same class
+   (`getPayoutOverviewForAdmin()`) throws a real exception for the same failure. The audit listing
+   is more sensitive than the profile-field listing that convention was designed for (counsellor
+   names, amounts, currencies, references, and failure reasons across every counsellor) — not
+   currently exploitable, but a silent-empty-array pattern fails invisibly under a future refactor
+   (nothing to catch or alert on if the guard is ever weakened or moved). Switched to
+   `EnsureIsAdminAction` for a real thrown exception, matching its sibling; updated
+   `AdminPayoutController::payouts()` with a try/catch to translate it to a JSON error response,
+   and rewrote the now-invalid "non-admin gets an empty list" test to assert a 422 instead.
+3. **Fixed** — added the missing non-super-admin rejection test for
+   `admin.settings.minimum-payout.update` (the platform-fee endpoint already had one; both share
+   the identical `EnsureIsSuperAdminAction` path inside `UpdateSettingAction`, but only one had
+   test coverage).
+
+Everything else in the review (ID-enumeration on the counsellor-overview endpoint, whether
+`failureMessage`/`initiatedBy` are safe to expose, whether the settings super-admin gate is
+genuinely server-enforced, route grouping/throttling) was investigated and confirmed already
+correctly handled by existing, previously-reviewed code — no further changes needed.
+
+---
+
+## 2026-09-03 — SCRUM-230 (TT-7.3b): scope correction — org-side billing/collection never existed
+
+**Decision**: TT-7.3b (filed as "full org-billing lifecycle: payout reconciliation + refund
+handling for org-paid transactions") was expanded, before implementation started, to also include
+building real organization-side billing/collection — not just splitting money that has already
+been collected.
+
+**Why**: during the `/start-feature` product-owner pass, the user asked a clarifying question
+("if the org is paying, can they just pay what is due... or do they have a remainder?") that
+exposed a foundational gap the ticket's original framing had silently assumed away. Investigating
+the actual charge code (`EnsureOrganizationCanPayForModelAction`, `InitiatePaystackChargeAction`)
+confirmed: **no mechanism anywhere in this codebase ever charges or bills an organization.**
+- A pay-per-use org member's own card is charged the full amount via Paystack; `organization_id`
+  is only recorded on the transaction for tracking/attribution — the org pays nothing.
+- A retainer-mode org member's charge attempt is explicitly *rejected*
+  ("your organization covers this on a retainer basis -- no per-transaction payment is needed
+  here") — but nothing anywhere actually charges the org a retainer fee. A retainer-covered
+  session today results in zero payment to anyone: not the platform, not the counsellor.
+
+TT-6.3b's `retainer`/`pay-per-use` billing-mode concept was clearly intended to support the user's
+mental model (the org is billed; the member doesn't personally front money) — but TT-7.3a only
+ever built the *attribution* layer (which org sponsors this), never the *collection* layer. This
+was not caught during TT-7.3a's own review because TT-7.3a's stated scope was explicitly
+"charge-initiation only," with the payout/collection lifecycle already deferred to "a not-yet-filed
+ticket" — which turned out to be this one, and the deferred scope was larger than its later
+one-line description ("payout to affiliated counsellors... refund handling") captured.
+
+**User's explicit decision**: TT-7.3b should "capture the whole implementation" — real org-side
+collection (retainer subscription billing and/or pay-per-use reimbursement) is now in scope,
+alongside the payout-split and refund-reconciliation pieces originally described. The user also
+confirmed, via the product-owner pass's open questions: the org's per-transaction split should
+derive directly from existing `organization_counsellor_compensations` terms (TT-6.4b); a read-only
+org-admin reconciliation view is in scope for this ticket (not deferred); and some form of
+client-facing disclosure that an org arrangement affects their session should exist (exact
+wording/form left to product-owner). The org-payout-money-movement question (does the org ever
+receive a real Paystack Transfer, vs. a pure ledger entry) was superseded by this scope correction
+rather than directly answered — it needs re-examination once the org-collection design exists,
+since "does the org get transferred money" may no longer be the right framing once real
+org-billing/collection is built (the org would now be a source of funds, not just a recipient of
+leftover margin).
+
+**How to apply**: SCRUM-230's Jira description and title were updated to reflect this corrected
+scope before the product-owner/project-manager/architect review continues. Given TT-7.6 (a
+comparable-scale payout epic) needed a 5-way split under review, expect this ticket to split
+similarly — real org billing/collection is substantial new payment-collection infrastructure on
+its own, not an incremental extension of TT-7.6's (payout, not collection) Paystack Transfer code.
+
+---
+
+## 2026-09-03 — SCRUM-230 (TT-7.3b): org-billing design forks resolved with the user
+
+Following the scope-correction entry above, a second product-owner pass (working from the
+corrected scope) surfaced two live bugs and six genuine product/financial-risk trade-offs. The
+user resolved all of them directly, in order:
+
+**Two live bugs confirmed, both to be fixed as part of this ticket** (found by tracing
+`GenerateCounsellorEarningsAction`, `EnsureOrganizationCanPayForModelAction`, and
+`EnsureStrictPaymentGateSatisfiedAction`, not assumed):
+1. A pay-per-use org-paid transaction already charges the member's card in full today, but
+   `GenerateCounsellorEarningsAction` explicitly no-ops whenever `transaction->organization_id`
+   is set — so an affiliated counsellor earns **$0** for every org-affiliated session served so
+   far, indefinitely, with no pending/queued state to later reconcile. This is live, not a future
+   gap.
+2. A retainer-covered session never produces a `Transaction` row at all (the charge attempt is
+   rejected outright by `EnsureOrganizationCanPayForModelAction` before
+   `InitiatePaystackChargeAction` ever runs). `EnsureStrictPaymentGateSatisfiedAction` only grants
+   access off a successful `Transaction` or an existing `PaymentAccessGrant` — neither can ever
+   exist for retainer content. A counsellor enabling `strictPaymentGate` (TT-7.5a) on a therapy
+   covered by a retainer-mode org member permanently locks that client out, with no path to ever
+   clear it.
+
+**Decision 1 — pay-per-use collection**: the org pays directly at charge time, via a real org
+payment instrument on file. This is new infrastructure (`Organization` has zero payment-method
+concept today) — the user chose this over the lower-risk alternative (member keeps paying, org
+reimburses after) explicitly, understanding the larger scope it implies.
+
+**Decision 2 — org charge amount** (resolves the earlier "does the org get a payout Transfer"
+question by making it moot): once the org pays directly, the org is charged the *actual cost* —
+platform fee + the counsellor's compensation-driven share (per `organization_counsellor_compensations`,
+TT-6.4b) — never the client's normal listed session price. There is never a "leftover" needing a
+destination. This also resolves FREE-type compensation cleanly and non-arbitrarily: since a FREE
+arrangement means the counsellor's per-transaction share is $0, the org is simply charged the
+platform fee alone for that session — no special-case rule needed, it falls straight out of the
+general "charge actual cost" design. The user explicitly preferred this over keeping the org
+charged the client's listed price (which would have reintroduced an unexplained leftover and not
+handled FREE cleanly).
+
+**Decision 3 — retainer billing model**: aggregated post-paid invoicing (not a prepaid pool) — the
+org is billed periodically (e.g. monthly) for the sum of what's actually owed for sessions that
+occurred that period, using the identical compensation-terms math as pay-per-use. Settled by
+auto-charging the *same* saved org payment instrument from Decision 1, rather than a separate
+manual-settlement mechanism — the user chose reuse over building two parallel org-billing
+mechanisms.
+
+**Decision 4 — retainer payout timing (a real risk trade-off, deliberately surfaced, not
+defaulted)**: the counsellor's payout for a retainer-covered session waits for the org's invoice
+to actually be settled — the platform does **not** front/advance the money ahead of collection.
+This is the more platform-protective of the two options (the alternative, prompt payout with the
+platform chasing a slow/defaulting org afterward, was offered and declined). Explicit trade-off
+accepted: a counsellor's income timing for retainer-covered work now depends on that specific
+org's payment promptness, not just on the counsellor's own activity — worth surfacing to
+counsellors in the eventual UI copy so this isn't a silent surprise.
+
+**Decision 5 — platform fee on retainer**: applies identically to retainer-covered sessions as to
+pay-per-use ones, same rate — no special-cased fee treatment by billing mode.
+
+**Decision 6 — client-facing disclosure**: a modest, non-financial line shown wherever the client
+would otherwise see a Pay control (e.g. "This session is covered under [Organization]'s plan —
+no payment needed from you.") — never fee amounts, compensation percentages, or payout figures.
+This is a genuinely new UI convention for this codebase (no prior precedent shows a client any
+financial-split information), scoped deliberately narrow to avoid it becoming one.
+
+**Also settled** (carried from the first product-owner pass, unchanged): a read-only org-admin
+reconciliation view (financed sessions, splits, payout/invoice status) is in scope for this ticket,
+not deferred to a future frontend ticket; the refund-reconciliation mechanism remains a callable
+hook for TT-7.7 (not yet built) to invoke later, independently testable via direct action
+invocation with no live UI trigger yet.
+
+**Why**: every one of these was a genuine product/financial-risk trade-off with no single
+technically-correct answer (who bears counsellor-payout risk vs. platform credit risk; how much
+new payment-collection infrastructure to build; how a compensation type most people would assume
+is purely about affiliation pay actually interacts with a specific session's billing) — consistent
+with this session's standing practice of surfacing this class of question rather than guessing.
+SCRUM-230's Jira description was updated to capture all six resolved decisions plus the two
+must-fix bugs before project-manager/architect review continues.
+
+---
+
+## 2026-09-03 — SCRUM-230 (TT-7.3b): project-manager split, final two forks resolved
+
+Project-manager proposed an 11-sub-ticket, 71-point breakdown (comparable to TT-7.6's 47/5, larger
+because it adds a brand-new recurring-charge mechanism on top of a payout-split layer, not just an
+extension of TT-7.6's existing Transfer code) and flagged two remaining genuine product forks the
+resolved decisions hadn't covered. Both resolved directly with the user:
+
+**Decision 7 — client access timing for retainer-covered sessions**: access is granted
+immediately per session, regardless of that period's invoice-settlement status — no per-session
+payment friction, matching the whole point of "retainer, regardless of usage," and directly fixing
+the permanent-lockout bug. **Refinement requested by the user, not in the original proposed
+options**: there must still be a way to suspend/block *further* access for an org's members if
+that org becomes delinquent on settling a retainer invoice — an org-level standing/suspension
+concept, not a per-session gate. This means the fix isn't "no gate at all," it's "the gate moves
+from per-session to per-org-standing." Exact suspension trigger (grace period vs. immediate on a
+failed auto-charge) is left as an implementation-time/architect-level detail, but the mechanism
+itself is required scope for this ticket, not optional or deferred.
+
+**Decision 8 — historical backfill**: not needed. Nothing is in production yet — dev/test data is
+cleared and reseeded rather than backfilled. The originally-proposed backfill sub-ticket (`TT-7.3b-h`,
+3 points) is dropped from the breakdown entirely.
+
+**Why**: both were genuine product/operational trade-offs (who bears the cost of a delinquent org
+— the platform indefinitely, or the org's own members via eventual suspension; whether pre-launch
+test data warrants real backfill machinery) with no single correct technical answer, consistent
+with this session's standing practice. The access-timing refinement in particular is a good
+example of the user substantively improving on the offered options rather than picking one
+as-is — the final design (immediate per-session access, org-level suspension for sustained
+non-payment) is better than either originally-presented option alone.
+
+**How to apply**: SCRUM-230's Jira description was updated to fold in decisions 7 and 8, alongside
+the earlier six, and to note the org-suspension mechanism as required (not optional) scope for
+whichever sub-ticket ends up owning retainer billing/access. The backfill sub-ticket is removed
+from the sub-ticket breakdown project-manager proposed; total drops from 71 to ~68 points across
+~10 sub-tickets.
+
+---
+
+## 2026-09-03 — SCRUM-230 (TT-7.3b): architect pass and final scope, ready for implementation
+
+Architect reviewed project-manager's 10-ticket breakdown against the actual codebase and made
+several concrete corrections, then the user resolved the two remaining genuine product forks the
+architect surfaced. This closes out the full product-owner → project-manager → architect review —
+SCRUM-230 is now ready for sub-ticket filing and implementation.
+
+**Architect's technical resolutions** (not product forks, decided outright):
+- `Transaction.amount` needs no schema change (already means "amount actually collected," which
+  stays true for an org row) — but `GenerateCounsellorEarningsAction`'s org branch needs its own
+  gross/fee/net formula, since an org row's `amount` is already fee+share combined (Decision 2),
+  not a gross to subtract a fee from again. New regression invariant:
+  `earning.net_amount + earning.fee_amount == transaction.amount` for every row, org and personal.
+- Retainer cardinality: **one `Transaction` per settled invoice period** (new `organization_invoices`
+  + `organization_invoice_lines` tables), `Transaction::for()` polymorphically pointed at
+  `OrganizationInvoice` — not a synthetic per-session `Transaction`, since there was never a
+  per-session charge event at the gateway to reconcile against. Fed by a new hook in
+  `App\Actions\Session\ChangeSessionStatusAction`'s transition to `held` — a previously-nonexistent
+  Session→billing coupling that ticket `e` must design explicitly, not improvise.
+  `CounsellorPayout`'s existing "many pending rows claimed into one batch" pattern (TT-7.6c) is the
+  closer analogy than `TransactionStatusHistory`'s per-state-change-is-a-row philosophy.
+- Org payment instrument needs only **one** new `PaystackClient` method (`chargeAuthorization()`)
+  — Paystack's reusable `authorization_code` is already returned by a successful `verifyTransaction`
+  call today and simply discarded (`VerifyPaystackTransactionAction`); no separate "save/tokenize"
+  call is needed, just capturing what's already there. Storage mirrors TT-7.6a's masked-display-only
+  convention (never raw card data).
+- Org suspension is a `billing_suspended_at` (+ reason) column on `Organization`, mirroring
+  `verified_at`'s existing single-current-state-flag precedent — not a new table, since this is
+  current-state, not append-only negotiated history. Enforced at
+  `EnsureUserHasAccessToTherapyAction`'s existing strict-gate call site as a retainer-specific
+  bypass-plus-suspension-check, **not** a patch to `EnsureOrganizationCanPayForModelAction` (whose
+  rejection of retainer per-transaction charge attempts remains correct — a retainer member
+  genuinely shouldn't be initiating a per-transaction Paystack charge; the fix belongs one level up,
+  at the access-gate call site, not the charge-eligibility check).
+- Two shared actions extracted as new small pre-work (ticket `b0`): resolving which org currently
+  covers a given counsellor/member/therapy (currently duplicated logic in
+  `EnsureOrganizationCanPayForModelAction`), and computing a counsellor's compensation-driven share
+  for a session (FIXED / PERCENTAGE-counsellorRate / PERCENTAGE-negotiatedRate / FREE) — consumed by
+  the charge primitive (`b`), the earnings-split logic (`d`), and later the reconciliation view
+  (`j`). Avoids a third/fourth reimplementation of this math within the same epic.
+- Dependency-graph corrections to project-manager's draft: `d` depends on `b0` (needs the shared
+  compensation-share action for correct numbers), not fully independent as first proposed; `f`
+  splits into `f1` (the bug fix — immediate retainer access, ship now, no dependency) and `f2`
+  (suspension enforcement — depends on `e`'s invoice lifecycle existing, since there's nothing to be
+  delinquent on before invoices exist); `g` sequences after `d`, not before.
+
+**Decision 11 — suspended org fallback**: a suspended org's members are blocked entirely from
+retainer-covered content until the org settles — no personal-pay fallback is offered. Chosen over
+letting members pay personally as a fallback, specifically because a personal-pay fallback would
+reopen the "does this member now unexpectedly need a payment method" question Decision 1 deliberately
+closed off, and would blur who's actually responsible for the org's unpaid bill (the org, not the
+member).
+
+**Decision 12 — negotiated-rate compensation basis**: add a new field to
+`organization_counsellor_compensations` to actually capture the negotiated per-session rate when
+`basis: negotiatedRate` is chosen. This was previously a dead-end option — validated as a valid
+enum value but with nowhere in the schema to store the actual negotiated number, meaning "70% of a
+negotiated rate" resolved to "70% of nothing." Chosen over dropping the option, since an org
+plausibly wants a custom per-session rate different from the counsellor's own public listed price
+(the likely original reason the option was added), and removing it would silently shrink what
+compensation arrangements orgs can express.
+
+**Why**: the architect's technical resolutions were genuinely settleable by design-quality
+judgment (naming, schema shape, reuse-vs-duplicate) rather than product trade-offs, so decided
+outright per this session's standing practice of not asking the user technical questions the
+review passes can resolve on their own. The two remaining forks (suspended-org fallback,
+negotiated-rate) were real product decisions with no single correct technical answer, so surfaced
+rather than guessed.
+
+**Final sub-ticket breakdown** (~74 points across 12 tickets: `a`, `b0`, `b`, `c`, `d`, `e`, `f1`,
+`f2`, `g`, `i`, `j`, `k`) is recorded in full, with points and dependencies, on SCRUM-230's own
+Jira description — not duplicated here to avoid drift between the two. `a`/`b0`/`f1`/`k` have no
+blocking dependencies and can start immediately once sub-tickets are filed.
+
+---
+
+## 2026-09-03 — SCRUM-242 (TT-7.3b-k): org-retainer-coverage disclosure must respect anonymity masking
+
+**Decision**: `TherapyResource`'s new `orgRetainerCoverage` field (naming the org covering a
+retainer-covered client, per Decision 6 above) must return `null` whenever the therapy's own
+`addedByUserIsMaskedFor($viewer)` check is true — the exact same masking the resource's existing
+`user` field already applies for an anonymous therapy.
+
+**Why**: an anonymous therapy hides the client's identity from every non-owning viewer, including
+(for a `public` therapy) an unauthenticated guest. The org a client belongs to is exactly the kind
+of fact that can re-identify them — smaller organizations especially. A first implementation pass
+computed this field unconditionally from `addedby`, which the security-engineer subagent's review
+caught before merge: a guest on a public+anonymous, retainer-covered therapy could see the client's
+employer/org name directly. No product ambiguity here (this is the same anonymity guarantee the
+codebase already commits to elsewhere) — fixed outright rather than asked, with regression tests
+covering an anonymous therapy viewed by the assigned counsellor and a public+anonymous one viewed
+by a guest.
+
+**How to apply**: any future field added to `TherapyResource` (or `GroupTherapyResource`) that
+derives from `addedby` must be checked against `addedByUserIsMaskedFor()` before exposing it to a
+non-owning viewer — the masking is per-field, not automatic, so each new field needs its own check.
+
+---
+
+## 2026-09-04 — SCRUM-231 (TT-7.3b-a): org payment-instrument verification-charge design
+
+**Decision**: Paystack has no "just verify this card" API call — capturing a reusable card
+authorization for an organization requires actually running one real charge through it. The user
+was asked, and chose: a small, nominal, configurable verification charge (reusing TT-7.6b's
+settings mechanism, e.g. GHS 1 / USD 1) is collected, tracked as `pending_credit_amount` on the
+new `organization_payment_instruments` row, to be credited toward the org's first real invoice
+once TT-7.3b-e's invoicing exists — never silently kept, never refunded outright (the other two
+options offered: immediate Paystack refund, which would have pulled part of TT-7.7's
+refund-mechanism scope forward into this ticket; or no special handling at all, leaving the org
+out a small amount indefinitely).
+
+**Why**: this is a genuine product/financial-UX decision (does a real, if tiny, charge appear on
+the org's card, and if so what happens to it) with no single correct engineering answer — the
+"credit toward first invoice" choice was explicitly offered as the recommended option and chosen
+by the user, consistent with this epic's practice of surfacing real financial trade-offs rather
+than guessing.
+
+**Follow-up bug found and fixed during implementation** (reviewer finding, not part of the
+original design): the first draft of `CaptureOrganizationPaymentInstrumentAction` overwrote
+`pending_credit_amount` on every re-registration (e.g. a declined/expired card being replaced)
+instead of accumulating it — silently losing track of a still-outstanding prior credit, directly
+contradicting this ticket's own "never silently kept" design. Fixed to accumulate when the
+currency matches across registrations, and to log (not silently drop) the rare case of a currency
+change across registrations, since summing raw minor units across two different currencies would
+itself be wrong.
+
+**Two security-engineer findings fixed immediately** (both technical, not product, so resolved
+without a further user round): (1) `TransactionController::redirectUrlFor()` — the one shared
+choke point every checkout flow's callback lands on — didn't handle an `Organization`-subject
+transaction, and would have sent the browser to `/therapies/{organizationId}` once TT-7.3b-i's
+controller starts reusing the existing `transactions.callback` route; added an explicit branch
+redirecting to `organizations.dashboard` instead. (2) The same physical card being verified for a
+second, different organization would have hit the `authorization_code` unique constraint as an
+uncaught `QueryException`, rolling back the transaction's own successful status recording along
+with it; fixed with an explicit pre-check that degrades to a safe no-op + warning log instead.
+
+**Deferred to TT-7.3b-i (SCRUM-240), logged as a Jira comment there, not fixed here** (mirrors the
+TT-7.6a→TT-7.6d precedent for controller-layer findings on a not-yet-built HTTP/UI layer):
+replacing an org's payment instrument in place currently sends no admin-facing notification,
+unlike `CreateCounsellorPayoutDestinationAction`'s `PayoutDestinationChangedNotification` — worth
+adding once TT-7.3b-i's controller/UI exists to actually reach this flow.
+
+---
+
+## 2026-09-04 — SCRUM-233 (TT-7.3b-b): shared org-charge primitive, architect review
+
+**Decision**: `ChargeOrganizationForModelAction` computes an organization's actual cost for a
+single Therapy/Session engagement as platform-fee + counsellor's compensation-driven share, then
+charges the org's saved payment instrument (TT-7.3b-a) and records a `Transaction`. The
+consequential design question — what does the platform fee percentage apply to — was resolved by
+inference, then verified with an architect pass before merge, since it's real money math every
+later ticket in this epic builds on: **the fee is a percentage of the counsellor's own LISTED
+rate** (`GetPayableAmountAction`'s existing resolution, the same one the personal-pay flow already
+uses), never the org-compensation share itself. This is the only reading consistent with Decision
+2's own FREE-compensation example ("the org is simply charged the platform fee alone" — a fee
+computed on a $0 share would be $0, contradicting that) and, per the architect, is also the direct
+generalization of how the personal-pay flow already computes its fee (a percentage of "the value
+of the session," which happens to equal the gross amount only because a client pays the listed
+price directly — org billing breaks that equivalence, but the fee's basis doesn't move).
+
+**Architect findings applied before merge**: (1) added a `PERCENTAGE-negotiatedRate` test case —
+the one compensation branch where "fee-on-listed-rate, not fee-on-negotiated-rate" is least
+self-evident, previously unexercised through this action. (2) Narrowed this action's own header
+comment, which overclaimed being "the ONE shared mechanism" for both TT-7.3b-c AND TT-7.3b-e:
+TT-7.3b-e's `for` will be a whole settled invoice period (via a not-yet-built `OrganizationInvoice`
+model, per this epic's earlier architect decision), potentially spanning several sessions and
+counsellors — this action's single-counsellor/single-listed-amount cost resolution has no defined
+behavior for that shape. TT-7.3b-e must decide, when it starts, whether to extend this action with
+an invoice-aware branch or call the lower-level compensation primitives directly per line item and
+reuse only this action's charge-and-record tail. Not decided now, since `e`'s exact needs could
+still shift before it's built.
+
+**Explicit scope boundary, not a gap**: this action has NO duplicate-charge protection of its own
+— `RecordTransactionStatusAction`'s terminal-status guard only protects a `Transaction` row that
+already exists from regressing status, not from a second, independent call creating a second
+successful charge against the org's card. TT-7.3b-c and TT-7.3b-e must each build their own
+"already charged for this engagement/period" guard before calling into this primitive, mirroring
+`EnsureCanInitiateChargeAction`'s role in the personal-pay flow — logged here so it isn't
+discovered as a surprise gap when those tickets start.
+
+**Why**: the fee-basis question was decided by inference plus an explicit architect verification
+pass rather than asked as a further user question, since it was a technical interpretation of an
+already-answered product decision (Decision 2), not a new product fork — consistent with this
+session's standing practice of resolving that class of question via review rather than guessing
+silently or re-asking settled ground.
+
+**Reviewer finding, fixed**: the fee's basis-points-conversion-and-multiply logic was duplicated
+verbatim between this action and `GenerateCounsellorEarningsAction` (the two callers pass different
+base amounts — a compensation-share-deducted-from-gross for personal-pay, a listed-rate-added-on-top
+for org-financed — but the arithmetic itself was byte-for-byte identical). Extracted to
+`ComputePlatformFeeAction`, now the ONE place this multiplication happens for both callers.
+
+**Security-engineer findings, fixed**: (1) the extracted `ComputePlatformFeeAction` now carries the
+same overflow guard `ComputeCounsellorCompensationShareAction` already has on its own basis-points
+multiplication — closed as a side effect of the reviewer's extraction, not a separate change.
+(2) The "callers own eligibility" boundary was under-specified — expanded this action's own header
+comment to itemize the FULL checklist TT-7.3b-c/-e must each build (payment_type=paid, per-alignment,
+supported currency, the member's actual org-membership/billing-mode relationship, mirroring
+`EnsureOrganizationCanPayForModelAction`'s own checks — not just duplicate-charge protection).
+(3) Added a cross-org-affiliation test (a counsellor affiliated only with a DIFFERENT org must never
+be treated as covering the org actually being billed) and a Session-under-GroupTherapy rejection
+test, both previously unexercised.
+
+**Noted, not fixed here** (pre-existing gap, not introduced by this ticket): `CreateTherapyRequest`/
+`CreateGroupTherapyRequest`'s `amount`/`inPersonAmount` validation is just `numeric`, no upper bound
+— this ticket makes that same unbounded value the input to a second chained money computation. Worth
+a small follow-up validation-hardening ticket, not blocking this one.
+
+---
+
+## 2026-09-04 — SCRUM-234 (TT-7.3b-c): pay-per-use org collection wiring, real behavior change to already-shipped TT-7.3a
+
+**Decision**: `TransactionService::initiateCharge()` now routes a pay-per-use org-financed charge
+for an individual Therapy/Session through `ChargeOrganizationForModelAction` (TT-7.3b-b — the
+org's own saved instrument, at actual cost) instead of `InitiatePaystackChargeAction` (the
+member's own card, at the client's listed price) — the collection-side fix for the "org-paid
+counsellors earn $0" bug (the other half is TT-7.3b-d). The entire existing ensure-chain
+(`EnsureForModelExistsAction` → `EnsureCanPayForModelAction` → `EnsureCanInitiateChargeAction` →
+`EnsureOrganizationCanPayForModelAction`) runs unchanged first — by the time the new branch is
+reached, `$dto->organization` is either null (personal-pay) or already fully validated as
+pay-per-use-eligible, so no new eligibility logic was needed at the branch point itself. This also
+means `EnsureCanInitiateChargeAction`'s existing duplicate-charge guard (`$dto->for->transactions()
+->where('status','success')->exists()`) already covers this ticket's own duplicate-charge
+protection for free — it wasn't a new gap TT-7.3b-c needed to close, contrary to what SCRUM-233's
+review flagged as a *future* caller's responsibility; it turned out to already exist in the shared
+chain this caller reuses wholesale.
+
+**Real, deliberate behavior change to already-shipped functionality** (not a regression, but
+consequential enough to log explicitly): before this ticket, an org-financed individual-Therapy
+pay-per-use charge with NO payment instrument on file and/or NO compensation terms set for the
+counsellor would still *succeed* — charging the member's card, tagging `organization_id` as pure
+attribution, per TT-7.3a's original "charge-initiation only" design. After this ticket, the exact
+same scenario now *fails outright* (`ChargeOrganizationForModelAction`'s own hard preconditions).
+This is the intended, designed consequence of Decision 1 (org pays directly via a real saved
+instrument, not the member fronting money) — TT-7.3a's old attribution-only behavior for
+individual-Therapy pay-per-use is being replaced, not extended, exactly as SCRUM-234's own ticket
+text says ("instead of... as happens today"). Two existing SCRUM-48/TT-7.3a tests needed updating
+to reflect this (their fixtures didn't set up an instrument/compensation because neither concept
+existed yet when they were written) — not weakened, just brought current with what "success" now
+means.
+
+**Scope boundary carried forward from TT-7.3b-b, not re-litigated**: GroupTherapy is the one
+deliberate exception — `ChargeOrganizationForModelAction` doesn't support it yet (TT-7.3b-b's own
+scope boundary), so an org-paid GroupTherapy still falls through to the OLD member's-card path,
+completely unchanged, still needing neither a payment instrument nor compensation terms to
+succeed. All of TT-7.3a's original GroupTherapy org-pay tests pass unmodified, confirming this.
+
+**Why**: this was a technical wiring decision implementing already-approved product decisions
+(Decision 1's "org pays directly" design, TT-7.3b-b's own GroupTherapy exclusion), not a new
+product fork — resolved by tracing the actual test suite's existing behavior (not assumption) to
+find the precise boundary of what would and wouldn't break, then updating exactly the two tests
+whose fixtures predated the new preconditions.
+
+**Security-engineer finding, fixed (High)**: this ticket is what makes `ChargeOrganizationForModelAction`
+reachable from a live, already-shipped production route for the first time — and unlike the
+checkout-redirect flow (a link only; real money moves on a further, separate hosted-page action),
+this action moves real money synchronously, in-request. Without a lock, two near-simultaneous
+requests (a double-click, a client retry-on-timeout) could both pass the caller's own
+duplicate-charge check before either committed a `Transaction`, charging the org's card twice for
+one engagement. The SCRUM-234 entry above had incorrectly assumed `EnsureCanInitiateChargeAction`'s
+existing check was sufficient on its own — it's necessary but not sufficient without a lock closing
+the concurrency window. Fixed: `ChargeOrganizationForModelAction` now acquires a
+`Cache::lock('charge-organization-for:{for_type}:{for_id}', 30)` before charging, re-checks the
+same duplicate-charge condition inside the lock (the caller's own check ran before the lock was
+acquired), and releases it in a `finally` block regardless of outcome.
+
+**Security-engineer findings, deferred (not blocking)**: (1) **Medium** — `ChargeOrganizationForModelAction`
+calls Paystack (real money movement) BEFORE creating the local `Transaction` row; if the DB write
+fails after Paystack succeeds, the org is charged with no local record to reconcile against. This
+predates this ticket (SCRUM-233) but is now reachable from production for the first time. Needs a
+proper fix (e.g. a pre-created `pending` row with a client-supplied idempotent reference passed to
+`chargeAuthorization` itself, updated after) — tracked as a follow-up ticket, not built here to
+avoid scope creep into a redesign of the charge sequence itself. (2) **Low** — `ChargeOrganizationForModelAction`'s
+two precondition messages ("no payment instrument on file", "no active compensation terms") are
+specific rather than generic, unlike `EnsureOrganizationCanPayForModelAction`'s deliberately-generic
+anti-enumeration message. Evaluated and NOT changed: those messages are shown only to an already-
+validated member of the SAME org asking about their OWN org's billing setup (not a cross-tenant
+enumeration vector the way `EnsureOrganizationCanPayForModelAction`'s checks are), and are
+genuinely actionable ("tell your admin to set up X") rather than merely diagnostic — kept as-is
+rather than applying the anti-enumeration convention somewhere it doesn't actually apply.
+
+---
+
+## 2026-09-04 — SCRUM-235 (TT-7.3b-d): org-financed earnings split, closing the "$0 earnings" bug
+
+**Decision**: `GenerateCounsellorEarningsAction`'s blanket no-op for any `organization_id`-set
+transaction is now removed for the individual-Therapy/Session case (GroupTherapy remains a no-op —
+see below) — this fully closes the live bug (org-paid counsellors earning $0 indefinitely) this
+whole epic exists to fix. A new `generateForOrgFinancedIndividual()` branch re-derives ONLY the
+counsellor's compensation-driven share (`net_amount`) via the SAME shared primitives TT-7.3b-b
+uses at charge time (`GetActiveOrganizationCounsellorAction`, `ComputeCounsellorCompensationShareAction`),
+then takes `fee_amount` as the REMAINDER of `transaction->amount` — not an independently
+recomputed figure. This is a deliberate design choice, not an oversight: computing fee_amount as
+the remainder mechanically guarantees the ticket's own regression invariant
+(`earning.net_amount + earning.fee_amount == transaction.amount`) holds by construction, even if
+`platform_fee_percentage` or the counsellor's compensation terms were to drift between charge-time
+(TT-7.3b-b) and this (near-immediate, same-request) earnings-generation call — recomputing the fee
+independently here could otherwise silently break the invariant under exactly that drift.
+
+**Refactor alongside the fix**: `createEarning()` (the one place a `CounsellorEarning` row is
+actually persisted) now takes `feeAmount`/`netAmount` as explicit parameters instead of computing
+fee internally from a gross amount — each caller (personal-pay individual, personal-pay group, and
+the new org-financed individual) now computes its OWN fee/net pair using whichever formula applies
+to it, but all three funnel through the identical persistence path. This was worth doing now (not
+deferred) because it structurally encodes the invariant at the one shared write point, rather than
+trusting three independent call sites to each get it right.
+
+**Scope boundary carried forward from TT-7.3b-b/-c, not re-litigated**: an org-financed
+GroupTherapy transaction remains a no-op earnings-wise. GroupTherapy org billing was never built
+(TT-7.3b-b's own exclusion) — that transaction's `amount` is still the client's own listed price,
+charged to their personal card with `organization_id` set as pure attribution (TT-7.3a's original,
+unchanged behavior for GroupTherapy), not a fee+share figure this new formula has any meaning for.
+
+**Existing test updated, not just left passing for the wrong reason**: `GenerateCounsellorEarningsActionTest`'s
+old "an org-financed transaction generates no earnings at all" test predated any org-compensation
+concept and would have kept passing after this fix only by accident (its fixture had no
+`OrganizationCounsellorCompensation` row, so the new code path's own "no active compensation
+terms" guard — not the old blanket no-op — is what actually produced the zero-earnings result).
+Replaced with tests that exercise the real fix (FIXED and FREE compensation types, each asserting
+the regression invariant explicitly) plus a correctly-scoped edge-case test for the no-compensation
+case. `ChargeOrganizationForModelActionTest`'s own "does not generate a counsellor earning -- that
+split is TT-7.3b-d's job" placeholder test was similarly updated now that this ticket exists,
+proving TT-7.3b-b's charge primitive and this ticket's earnings logic agree on the same net/fee
+figures end to end (not just each unit-tested in isolation).
+
+**Why**: this was a technical implementation of an already-approved product decision (Decision 2's
+"actual cost = fee + compensation share" design) and an architect-endorsed technical resolution
+(the `net_amount + fee_amount == transaction.amount` invariant, decided during SCRUM-230's
+architect review) — no new product fork, so implemented directly rather than re-asking. The
+fee-as-remainder (not fee-as-independent-recomputation) choice was a genuine technical judgment
+call made here, resolved by tracing which approach actually guarantees the ticket's own stated
+invariant under a realistic (if rare) drift scenario.
+
+**Security-engineer findings, both fixed (Medium)**: (1) `ComputeCounsellorCompensationShareAction`
+can throw (e.g. a COUNSELLOR_RATE-basis compensation with no resolvable listed amount at
+generation time) -- uncaught, this would propagate out of `RecordTransactionStatusAction`'s
+`DB::transaction()`, rolling back the transaction's own status update and permanently stranding an
+already-successfully-charged transaction as pending (a webhook replay would just hit the identical
+exception again). Fixed with a try/catch mirroring this method's other two guard clauses (log a
+warning, return, never throw). (2) The "fee as remainder" design means a genuine compensation or
+`platform_fee_percentage` change in the (expected-to-be-narrow, but not impossible given webhook
+delivery delays) window between TT-7.3b-b's charge and this earnings-generation call would silently
+reclassify the difference as platform fee revenue, with no trace anywhere that a drift occurred --
+a real money-integrity gap for a counsellor's actual payout, not just an invariant-satisfying
+number. Fixed by comparing the recomputed share against what the SAME fee formula would
+independently yield off today's listed rate, and logging a warning (not correcting -- there is no
+persisted charge-time split to correct against) whenever they disagree, so a drift is visible for
+manual reconciliation rather than silent. Both fixes are covered by new tests (an exception-safety
+test proving no propagation, and a warning-log assertion for the drift case) plus the previously
+missing PERCENTAGE/counsellorRate and PERCENTAGE/negotiatedRate compensation-basis coverage for
+the org-financed branch specifically (mirroring `ChargeOrganizationForModelActionTest`'s own
+coverage of those bases, which this file had not yet duplicated).
+
+**Not fixed, evaluated as disproportionate to the risk**: the security-engineer's more thorough
+option for the drift gap above -- persisting the exact charge-time compensation share (or a
+reference to the specific `OrganizationCounsellorCompensation` row/version used) on the
+`Transaction` so this action reuses that exact figure instead of ever recomputing -- would require
+a schema change spanning both this ticket and the already-merged TT-7.3b-b. Given the drift window
+is genuinely narrow (this action runs from the same near-immediate `RecordTransactionStatusAction`
+choke point regardless of webhook-vs-verify-callback path) and the warning-log fix above gives
+ops/finance real visibility into the rare case it does occur, the lighter-weight fix was chosen —
+revisit if the warning ever actually fires in production.
+
+## 2026-09-04 — SCRUM-236 (TT-7.3b-e): retainer settlement/invoicing design
+
+**Decision**: this ticket's own text explicitly called for the new Session-to-billing coupling to
+be "explicitly designed, not improvised" — a full architect design pass was run before any code was
+written (unlike the smaller sub-tickets in this epic, which went straight to implement-then-verify).
+All 7 of the drafted design points were confirmed with corrections, none were product forks (see
+each new file's own header comment for the full reasoning); the headline points:
+
+1. A line's `net_amount`/`fee_amount` are computed AND PERSISTED at session-`held` time (a new
+   `RecordOrganizationInvoiceLineForSessionAction`, hooked into `ChangeSessionStatusAction`), not
+   recomputed lazily at settlement — the gap here (weeks) is categorically different from
+   `GenerateCounsellorEarningsAction`'s own same-request drift window (TT-7.3b-d), so locking the
+   amount in at the billable event is correct, not just convenient.
+2. `organization_invoices` is keyed `(organization_id, currency, period_start)`, not just
+   `(organization_id, period_start)` — different counsellors covered by the same org can list rates
+   in different currencies, and summing mixed currencies into one `amount` would be a real bug.
+3. `SettleOrganizationInvoiceAction`/`ProcessOrganizationInvoiceSettlementJob` is a NEW action/job
+   pair, not built on top of `ChargeOrganizationForModelAction` (TT-7.3b-b) — that action's cost
+   computation assumes a single counsellor/listed amount, which has no meaning for a whole settled
+   period. Only the charge-and-record TAIL shape is mirrored (Transaction creation, a new
+   `TransactionStatusSourceEnum::orgSettlement` case, `RecordTransactionStatusAction` hookup), and
+   the periodic sweep dispatches ONE queued job per invoice (mirrors
+   `TriggerCounsellorPayoutAction`/`ProcessCounsellorPayoutJob`'s own split) so one org's
+   slow/erroring settlement can't block or crash every other org's invoice in the same run.
+4. A third `GenerateCounsellorEarningsAction` branch fans out one `CounsellorEarning` per invoice
+   line, using each line's ALREADY-COMPUTED `net_amount`/`fee_amount` directly. `gross_amount` for
+   this branch is the LINE's own total (`fee_amount + net_amount`), never `transaction->amount`
+   (the sum across every line/every counsellor for the whole period) — passing the latter would
+   have been a serious, easy-to-miss bug. The existing `unique(['transaction_id', 'counsellor_id'])`
+   constraint on `counsellor_earnings` (from TT-7.6b) would have rejected this branch the moment one
+   counsellor had two retainer sessions settled in the same invoice — dropped via a new migration
+   and replaced with a nullable-unique `organization_invoice_line_id` column as this branch's own,
+   correctly-scoped idempotency key. Verified the dropped constraint doesn't weaken protection for
+   the other two branches: every write to `counsellor_earnings` already goes exclusively through
+   this one action, which re-`lockForUpdate()`s the `Transaction` row and checks `earnings()->exists()`
+   before either of those branches ever runs.
+5. `RecordOrganizationInvoiceLineForSessionAction` must NEVER throw (a session reaching `held` is a
+   clinical fact that must always be recorded regardless of billing hygiene, unlike
+   `ChargeOrganizationForModelAction`, invoked by someone actively trying to pay who CAN be told
+   what's missing) and is called AFTER the session's own status save, not wrapped in any shared
+   transaction — billing accrual degrades to a logged warning on failure, never blocks or undoes
+   the clinical status transition.
+
+**My own decision, made independently and since verified by security review**: the aggregated
+settlement `Transaction` has no single "member" to use as `user_id` (that column is NOT NULLABLE).
+Resolved by querying the organization's owner-role admin, falling back to any admin if no owner
+somehow exists — there is no acting user in a periodic sweep, unlike every other Transaction-writing
+action in this codebase, so this is a new pattern rather than a directly reused one.
+Security-engineer review confirmed this is tenant-safe (`$organization->admins()` is scoped to that
+specific org instance — no cross-org misattribution possible).
+
+**Review findings, two real fixes applied (both money-correctness gaps in `SettleOrganizationInvoiceAction`)**:
+(1) nothing was stopping a caller from claiming a STILL-ACCRUING invoice mid-period (today only the
+periodic sweep calls this action, but a future admin manual-settle action, TT-7.3b-j, could call it
+directly) — since `RecordOrganizationInvoiceLineForSessionAction`'s own invoice lookup doesn't
+filter by status, a line held after such a premature claim would silently attach to an invoice whose
+`amount` was already fixed, generating a real `CounsellorEarning` for money never actually charged.
+Fixed by requiring `period_end` to have fully passed (mirrors the sweep's own `< today` boundary
+exactly) before an invoice can be claimed — this makes the race structurally impossible, since once
+a period has closed, no future `held` session can ever compute that same `period_start` again. (2)
+no check that the organization's saved payment instrument's currency actually matches the invoice
+being settled (an org with retainer counsellors listed in more than one currency could have its
+instrument registered in a different currency than a given invoice) — fixed with an explicit guard,
+matching this method's other precondition checks, rather than relying on Paystack to reject it.
+
+**A "critical" finding from BOTH the reviewer and security-engineer subagents, independently
+verified and rejected as a false positive**: both flagged `RecordOrganizationInvoiceLineForSessionAction`'s
+use of `firstOrCreate()` (instead of `createOrFirst()`, this codebase's documented convention for
+exactly this kind of race — see `GrantPaymentAccessAction`) as non-atomic and capable of silently
+losing billing accrual under a genuine concurrent race. Verified directly against this app's
+installed Laravel version (12) by reading `Illuminate\Database\Eloquent\Builder::firstOrCreate()`'s
+actual source and reproducing the exact race with a raw pre-inserted competing row in a real test:
+`firstOrCreate()` already delegates to `createOrFirst()` on a miss, which already catches the
+unique-constraint violation and recovers — confirmed to NOT throw, both for `Model::query()` and
+for a relation-scoped call (`$invoice->lines()->firstOrCreate(...)`). The two are behaviorally
+identical for this exact race in this Laravel version; the `GrantPaymentAccessAction` comment this
+finding was pattern-matched against is likely stale (written before this Laravel-version fix
+landed, never revisited). Switched to `createOrFirst()` anyway — purely to make the race-safety
+explicit to a future reader and match the established convention, not because anything was broken
+— but this was NOT treated as a real bug fix, since it wasn't one.
+
+**Deferred, not fixed here**: a `TransactionStatusEnum::abandoned` settlement outcome leaves its
+`OrganizationInvoice` stuck in `pending` forever (the periodic sweep only re-claims `open`
+invoices, and `UpdateOrganizationInvoiceStatusAction` has no mapping for `abandoned`). This mirrors
+a PRE-EXISTING gap (`RecordTransactionStatusAction::TERMINAL_STATUSES` already excludes `abandoned`
+for every transaction type, not just settlement), so it is not a regression introduced by this
+ticket — filed as SCRUM-244 rather than blocking this one, per the same "never silently ignore a
+finding, but don't block on an unrelated pre-existing gap" precedent as SCRUM-243 (TT-7.3b-c's own
+deferred charge-then-record ordering finding).
+
+## 2026-09-06 — SCRUM-238 (TT-7.3b-f2): org-suspension enforcement
+
+**Decision**: `Organization::suspendBilling()` (mirrors `verify()`'s existing single-current-state-
+flag precedent) is written from exactly ONE place, per the ticket's own scope: `UpdateOrganizationInvoiceStatusAction`
+(SCRUM-236's own existing hook), on a retainer invoice settlement reaching `failed`. Suspension is
+IMMEDIATE, not after a grace period — SCRUM-236's own design already has no retry/dunning logic
+at all for a failed invoice (it stays `failed` permanently, no automatic re-attempt), so a grace
+period would imply a reconsideration path that doesn't exist; immediate suspension is the only
+choice consistent with that.
+
+**A new exception type, not a reuse of `PaymentRequiredException`**: the enforcement lives at the
+exact call site the ticket specifies (`EnsureStrictPaymentGateSatisfiedAction`'s retainer bypass,
+TT-7.3b-f1's own explicit "not yet checked here" comment). The obvious-looking option — reuse
+`PaymentRequiredException`, already thrown by this same method for the ordinary strict-gate case —
+was rejected after checking its actual caller: `TherapyController` catches `PaymentRequiredException`
+specifically to set a `paymentRequired` flash flag that routes the client toward a personal "Pay
+Now" flow (SCRUM-219/221). That would be actively wrong here: a retainer-covered engagement never
+has a personal payment path to resume (no Transaction is ever created for it), and the whole point
+of this ticket's "no personal-pay fallback" requirement is that the MEMBER cannot resolve this by
+paying — only the org can. A new `OrganizationBillingSuspendedException` (mirrors
+`TherapyAccessDeniedException`'s role, just for a different reason) keeps this distinguishable. Its
+only other caller-side change: `EnsureUserCanAccessTherapyContentAction`'s existing
+`catch (PaymentRequiredException)` had to be widened to also catch the new type — otherwise it
+would have propagated uncaught out of `MessageService`'s methods as an unhandled 500, since that
+action's own boolean-return contract has no other path to surface it.
+
+**Deferred, not built here (flagged, not silently skipped)**: there is no mechanism anywhere to
+LIFT a suspension once set — no admin action, no auto-resume on a later successful settlement of a
+different invoice. The ticket's own text ("Single writer: the invoice-settlement-failure path")
+reads as an intentional MVP scoping, not an oversight, but leaving an org with genuinely no path
+back to unsuspended standing is a real gap worth surfacing rather than silently accepting — filed
+as SCRUM-245 (a manual admin action, likely paired with or adjacent to TT-7.3b-j's reconciliation
+view) rather than inventing that UI/authorization surface here, which the ticket never asked for.
+
+**Not fixed / evaluated as out of scope**: whether a suspended org's OTHER (non-retainer,
+pay-per-use) members should also be blocked was considered and left alone — the ticket's own scope
+explicitly ties enforcement to "the SAME call site as TT-7.3b-f1," which only ever fires for a
+retainer-covered engagement; a pay-per-use member's own transaction-based gate is unaffected by
+this ticket, matching the ticket's literal scope rather than expanding it.
+
+**Review findings, both real, neither a regression from this ticket**: reviewer + security-engineer
+subagents both approved the diff (no bypass, no uncaught-exception regression, no unsafe write
+pattern, tenant isolation verified). Three additional findings surfaced, all evaluated:
+1. (Medium, pre-existing) `EnsureCanSendMessageToForAction` (message CREATION) has never gone
+   through `EnsureStrictPaymentGateSatisfiedAction`/`EnsureUserCanAccessTherapyContentAction` at
+   all -- confirmed via `git log` to predate this whole epic (a SCRUM-219/220 gap: only message
+   *reading* was ever gated). Consequence: a client blocked from reading messages in a
+   suspended/strict-gated session can still create new ones there -- "blocked" isn't a full block
+   today. Filed as SCRUM-246 (not this ticket's scope to fix; this ticket only touches the
+   existing gate's retainer-bypass branch, not the message-send path that never called it).
+2. (Low, this ticket's own literal scope, not a gap) Suspension enforcement only ever fires inside
+   `EnsureStrictPaymentGateSatisfiedAction`'s STRICT-gate branch -- a retainer-covered engagement
+   on a non-strict ("trust-based") therapy is unaffected by its org's suspension, since the whole
+   method returns before ever resolving the covering org. This is the direct, literal consequence
+   of the ticket's own "enforced at the SAME call site as TT-7.3b-f1" instruction (f1 itself is
+   nested inside that same strict-gate branch) -- not deviated from, since expanding enforcement to
+   apply regardless of the strict/trust-based setting would have been scope expansion beyond what
+   was asked. Documented here rather than silently accepted, in case product later decides
+   suspension should be a harder, gate-setting-independent block.
+3. (Low, pre-existing, unrelated to this ticket) `GetRetainerCoveringOrganizationAction` (SCRUM-237)
+   resolves ONE covering org via `->first()` when a user could in principle hold overlapping active
+   retainer memberships across two orgs covering the same counsellor -- a suspended second org
+   covering the same engagement would never be consulted in that (narrow, likely-never-occurring)
+   scenario. Pre-existing in that action's own query, not touched or introduced by this ticket --
+   tracked informally alongside SCRUM-245 rather than filed as its own ticket, given the severity
+   and the fact that it requires an org-setup scenario (overlapping retainer coverage) this
+   codebase has no other support for creating today.
+
+## 2026-09-06 — SCRUM-241 (TT-7.3b-j): org-admin reconciliation view
+
+**Decision**: the ticket's own scope explicitly names 4 existing precedents to mirror rather than
+invent a new UI pattern (TT-6.6a's org-scoped-list shape, TT-6.3b's session-metadata-only
+visibility scoping, TT-6.4c's compensation-transparency formatting, TT-7.6e's admin-payout-table
+structure). A research pass across all 4 (`GetOrganizationMembersAction`/`OrganizationMemberResource`,
+`SessionResource`'s own metadata-only field set, `CounsellorsSection.vue`'s `compensationSummary()`,
+`AdminPayoutController`/`Admin/Payouts.vue`) confirmed each still exists and is still shaped the
+way the ticket assumes, before writing any new code — this ticket's own design was therefore mostly
+dictated by precedent, not a fresh judgment call.
+
+**Two sections, never merged into one query**: "Financed Sessions (Pay-Per-Use)" (one row per
+`Transaction` where `organization_id` is set and the subject is a Therapy/Session/GroupTherapy) and
+"Retainer Invoices" (one row per `OrganizationInvoice`, expandable to its lines). These read from
+genuinely different tables with different lifecycles (a pay-per-use charge happens once per
+engagement; a retainer invoice accrues over a whole period) — collapsing them into one table would
+have required an artificial, forced-common shape neither one actually has. A settlement
+`Transaction` (`for_type = OrganizationInvoice`) is explicitly excluded from the pay-per-use list
+via a `where('for_type', '!=', OrganizationInvoice::class)` clause -- it's covered by the Retainer
+Invoices section instead, never double-counted across both.
+
+**`OrganizationResource` gained `isBillingSuspended`/`billingSuspendedAt`/`billingSuspensionReason`
+directly, not a separate resource**: this claim was initially written as "used in exactly one place
+… both call sites admin-gated," which the reviewer correctly flagged as false -- it's actually
+constructed in 4 places (`OrganizationController::show()`/`dashboard()`/`update()`, all admin-gated,
+plus `store()`, which is genuinely NOT gated). Corrected: `store()` is still safe because it only
+ever describes the org the caller JUST created (which starts unsuspended, no reason set, and can
+never be a different, pre-existing org's row) -- so no cross-org leak exists today, but the
+original justification was wrong and has been fixed both here and in the resource's own comment
+rather than left standing.
+
+**Security-engineer findings, both applied**: (1) `subjectName`/`sessionName` (client-authored
+free text, e.g. a Therapy's own `name` field, typed in the same form step as `background_story`)
+were being shown verbatim to org billing admins -- a genuinely new category of viewer with no other
+route to therapy/session content, unlike the counsellor/client/full-access-admin viewers
+`TherapyResource`/`SessionResource` already serve `name` to. This is the same privacy category
+`TherapyResource::orgRetainerCoverage()`'s own masking (SCRUM-242) exists to prevent, just in the
+opposite direction (there: org name leaking to therapy viewers; here: therapy content leaking to
+an org). Fixed by replacing both with opaque, id-based labels ("Therapy #42", "Session #17") that
+carry zero client-authored content -- the counsellor's own name is left untouched, since that's
+professional/public information, not a client-anonymity concern. (2) The 3 new routes had no
+throttle, unlike `organizations.index`'s own more conservative precedent for exactly this class of
+concern (real financial data, not just a membership roster) -- added `throttle:60,1` to all 3.
+
+**Reviewer finding, applied**: a real (if minor, admin-only, 10-per-page) N+1 in
+`GetOrganizationFinancedTransactionsAction` -- `ResolveTransactionSubjectAction`'s own Session ->
+parent-Therapy resolution, plus that Therapy's `->counsellor`, were both lazy-loaded per row.
+Fixed with `Collection::loadMorph()` in two passes (never a nested `morphWith()` dot-path, which
+would risk calling `->counsellor` on a GroupTherapy row that has no such singular relation) --
+each pass only ever eager-loads a relation that actually exists on that specific resolved type.
+
+**GroupTherapy financed transactions show no counsellor name**: not an oversight -- GroupTherapy
+org billing was never built (TT-7.3b-b/-c's own scope boundary, carried forward through every
+sub-ticket in this epic that's touched `Transaction.organization_id` since). There is no
+single-counsellor share to show for one, so the resource returns `null` rather than picking an
+arbitrary "first counsellor" from the group.
+
+**Environment finding, not a code issue**: this repo's Docker Vite dev server (`npm run dev`)
+could not run in this session -- `EMFILE: too many open files` from the HOST's own
+`fs.inotify.max_user_instances` limit (128, confirmed exhausted by unrelated desktop
+processes -- VS Code extensions, GNOME session services -- via `/proc/*/fd` inspection, not by
+anything in this project or its containers). Worked around by running a one-off
+`docker compose run --rm --no-deps vite npm install && npm run build` (a production build, which
+doesn't need persistent file watchers) and serving the app through the existing `nginx`/`web`
+container instead of the dev server -- Playwright QA against `http://localhost:8000` then worked
+normally. Not fixed (would mean changing the HOST's kernel sysctl settings, entirely outside this
+project), just documented here so a future session hitting the identical `EMFILE` doesn't waste
+time assuming it's a project bug.
+
+**Found during QA, not fixed, filed as SCRUM-247**: the (pre-existing, unrelated) org-admin
+*dashboard* page intermittently 502s with nginx's "upstream sent too big header" -- confirmed via
+`docker/nginx/default.conf` having no `fastcgi_buffer_size`/`fastcgi_buffers` directives at all, so
+nginx falls back to a small compile-time default for FastCGI response headers. Reproduced
+independent of any change in this ticket's diff (the new reconciliation page, sharing the same
+nginx/php-fpm stack, loaded repeatedly in the same session with no issue) -- an nginx config gap,
+not something to fix inside this ticket's own scope.
+
+## 2026-09-06 — SCRUM-239 (TT-7.3b-g): org-paid refund reconciliation hook
+
+**Decision**: `ReconcileOrgFinancedRefundAction` is deliberately generic across BOTH org-billing
+modes -- a pay-per-use transaction has exactly one `CounsellorEarning`; a retainer SETTLEMENT
+transaction (`for` an `OrganizationInvoice`) has one per line. The action never special-cases
+either: it just reverses every earning still tied to the given `Transaction` that hasn't already
+been paid out. This wasn't a product fork -- both cases reduce to the identical operation once
+`Transaction->earnings` is the shared query surface, so building two code paths would have been
+pure duplication.
+
+**Resolving a genuine ticket-text ambiguity**: the ticket's own scope says this hook "adjusts the
+org's recorded ledger/invoice line and the counsellor's `CounsellorEarning` row" as if two distinct
+things need mutating. Resolved by treating `CounsellorEarning` as the ACTUAL financial ledger entry
+-- the org's own `OrganizationInvoiceLine`, once a retainer period has settled, is an immutable
+historical record of what was actually invoiced and charged (mirroring TT-7.7a's own architect
+decision to keep refund tracking in a separate, not-yet-built `refunds` table rather than mutating
+existing records — see that ticket's row in `documentation/implementation_plan.md`). Mutating a
+settled invoice line after the fact would corrupt that history for no real benefit; reversing the
+earning is the correct and sufficient adjustment. Not asked about explicitly since it's a technical
+implementation-detail resolution, not a product-behavior fork — reasoned from an existing,
+adjacent architect decision already on record.
+
+**New `CounsellorEarningStatusEnum::reversed` case, not a reuse of `failed`**: `failed` already
+means something specific and different (a Paystack transfer failed/reversed, the row immediately
+returns to `pending` for a fresh payout attempt -- TT-7.6c). Reusing it for a refund-driven
+reversal would have made a `failed` row ambiguous between "retry me" and "this money is gone,
+don't retry" -- a real correctness risk for a future payout-trigger query. `reversed` is
+terminal and distinct. Native MySQL enum columns on both `counsellor_earnings.status` and
+`counsellor_earning_status_histories.status` required a migration re-applying the full value list
+on each (mirrors `2026_09_03_100000_add_session_schedule_proposal_to_requests_type_enum.php`'s own
+precedent) -- caught before merge, not after, since this session has hit the identical
+"invisible under SQLite, breaks on real MySQL" gap before in this epic.
+
+**Never touches an already-`PAID_OUT` earning**: money that's already left the platform can't be
+un-sent by flipping a status column. Flagged via the notification (`needsManualReview` flag) for
+manual reconciliation instead of silently reversing it, which would have understated what was
+actually paid with no corresponding clawback -- a real money-integrity risk, not just a style
+choice.
+
+**Post-review fix: `PROCESSING` earnings are also never auto-reversed** (originally the action
+reversed both `pending` and `processing`; both the `reviewer` and `security-engineer` subagents
+independently flagged this as unsafe, HIGH severity). Confirmed by reading
+`RecordCounsellorPayoutStatusAction` and `CounsellorPayout` directly: `PROCESSING` means a specific
+`CounsellorPayout` has already claimed the earning, and that payout's own later resolution does a
+blanket, status-agnostic `$payout->earnings()->update([...])` with no `where('status', ...)` guard
+-- it would silently clobber a `reversed` status back to `paidOut` (money sent anyway, no trace the
+reversal was overwritten) or `pending` (the reconciliation undone entirely). Fixed by treating
+`processing` identically to `paidOut`: flagged via `needsManualReview`, never auto-mutated. The
+underlying gap -- `RecordCounsellorPayoutStatusAction`'s blanket update not being status-aware --
+is a real, more general issue outside this ticket's scope (it lives in already-merged TT-7.6c/
+SCRUM-227 code); worked around here rather than fixed at the source, and is a good candidate for
+its own follow-up ticket if a future ticket hits the same class of gap again.
+
+**Post-review fix: locking added.** `DB::transaction()` + `CounsellorEarning::query()->...
+->lockForUpdate()->get()` was added around the read-then-update loop (both subagents, MEDIUM),
+mirroring `TriggerCounsellorPayoutAction`'s own idiom -- without it, two concurrent/replayed
+invocations for the same `Transaction` could both read a `pending` earning before either commits,
+double-reversing it (duplicate status-history row, duplicate notification). The admin notification
+is now dispatched only after this transaction commits, matching
+`RecordCounsellorPayoutStatusAction`'s own identical "queued side-effect fires after commit"
+reasoning.
+
+**Post-review fix: soft-deleted financing organization.** `Organization` uses `SoftDeletes`, and
+`Transaction::organization()` is a plain `belongsTo`, which Eloquent's default query excludes
+trashed rows from -- both subagents flagged that a refund reconciled after the financing org was
+deactivated would otherwise crash on a null dereference. Fixed with `->withTrashed()` (mirrors
+`OrganizationInvoiceLine::counsellor()`'s own identical precedent from earlier in this epic); a
+soft-deleted org still resolves and reconciliation proceeds completely normally (its admin accounts
+still exist and still need to know), with a defensive null-guard kept for the separate, narrower
+edge case of a stale in-memory `Transaction` racing a hard-delete's FK-cascade nulling of
+`organization_id`.
+
+**Backend-only, no feature doc**: matches this epic's own established precedent (TT-7.3b-a/-b0/-b/-c/-d/-e/-f2,
+none of which got a dedicated `documentation/features/*.md` — only the two UI-facing sub-tickets,
+-j and -k, did). Callable-only per the ticket's own scope; TT-7.7d (not yet built) is its only
+future caller.
+
+## 2026-09-06 — SCRUM-240 (TT-7.3b-i): org payment-instrument onboarding UI
+
+**Decision**: TT-7.3b-a's backend (`organization_payment_instruments`,
+`InitiateOrganizationPaymentInstrumentRegistrationAction`, `EnsureCanRegisterOrganizationPaymentInstrumentAction`)
+had no controller/route/UI of its own — that was explicitly deferred to this ticket. New
+`OrganizationPaymentInstrumentController` mirrors `OrganizationReconciliationController`'s own
+page-controller shape for `index()` (admin-gated via `OrganizationService::getOrganization()`,
+redirect home on failure), but `initiate()` mirrors `TransactionController::initiate()`'s
+"return `{transaction, authorizationUrl}` JSON, let the frontend redirect via
+`window.location.href`" shape instead of `PayoutController::onboardDestination()`'s synchronous
+redirect-back one — this flow genuinely needs Paystack's hosted checkout redirect (no free "just
+verify this card" call), unlike the bank/momo destination flow's plain REST resolve+create calls.
+No new authorization action was written; both actions delegate entirely to the already-reviewed
+TT-7.3b-a Actions via `OrganizationService`.
+
+**`TransactionController::redirectUrlFor()` updated**: the Organization-subject branch (added
+speculatively in TT-7.3b-a, since no route reached it yet) now points at this ticket's own new
+page instead of `organizations.dashboard` — the admin came from there to start the checkout, and
+it's what re-renders the just-captured instrument. Updated the one existing test
+(`TransactionCallbackRedirectTest`) that pinned the old target.
+
+**`pendingCreditAmount` surfaced read-only despite being a dead field today**: a grep confirmed
+`SettingsEnum`'s own comment ("credited toward the org's first invoice once TT-7.3b-e exists") was
+never actually wired up — TT-7.3b-e's invoicing never reads/consumes this column, even though
+that ticket is done. Not a bug introduced or fixed by this ticket; flagged in both the Resource's
+own code comment and by both reviewer/security-engineer subagents independently. Surfaced anyway
+(read-only) since it's honest, meaningful context for the admin ("we owe you this"), not because
+anything currently acts on it. **Follow-up candidate**: wire `pending_credit_amount` into a future
+invoice-settlement ticket, or explicitly retire the field if that's decided against instead.
+
+**Reviewer suggestion, deferred rather than actioned now**: `PaymentInstrument.vue`'s status-banner
+and initiate/redirect logic structurally duplicates `usePayment.js` a third time (after
+`TherapyPaymentDetails.vue`/`UnifiedTherapy.vue`'s own shared use of it) — but this page's POST
+needs a `currency` body param and no `therapy` ref, which `usePayment()`'s current shape doesn't
+support without a change to the composable itself. Deferred to a follow-up ticket to generalize
+`usePayment.js` (e.g. an optional payload param on `initiate()`) rather than reshaping a shared
+composable mid-ticket for a single new caller.
+
+**Required review fix applied**: added `SettingsServiceTest` coverage for the new
+`getOrganizationPaymentInstrumentVerificationAmounts()` method (reviewer finding — its sibling
+`getSettingsForAdmin()` has equivalent coverage, this one didn't).
+
+## 2026-09-07 — SCRUM-245: manual billing-suspension lift + failed-invoice retry
+
+**Scope-narrowing decision, made with the user**: the ticket's own text left "who lifts a
+suspension" open, and the user's own answer went further than a plain lift action ("admin should
+get a notification when the pending payments are settled... or when pending payments are made,
+suspension checks are done and lifted automatically"). Investigated first: confirmed (via a
+dedicated research pass) that "a failed invoice becoming settled" was not a reachable event
+anywhere in the codebase at all -- the periodic sweep's own query filters to `status = OPEN`,
+`SettleOrganizationInvoiceAction` hard-guarded against anything but `open`, and no retry/dunning
+mechanism of any kind existed. Building full automatic detection-and-lift would mean designing a
+whole dunning policy (how many retries, when to give up, whether a settled invoice implies the
+*whole* org standing is fixed) -- a materially bigger, separate product decision than this
+"Task"-sized ticket's own scope. Landed on: (1) a platform-admin-only manual lift
+(`LiftOrganizationBillingSuspensionAction`, mirrors `Organization::verify()`'s own "trust decision
+made by staff, not self-service" precedent -- letting an org unsuspend itself would give the
+enforcement mechanism no teeth), (2) a platform-admin-only manual retry of a `failed` invoice's
+settlement (`RetryOrganizationInvoiceSettlementAction`, reusing `SettleOrganizationInvoiceAction`'s
+own claim/lock/charge logic rather than duplicating it, since that action's own comment already
+anticipated a future manual caller), and (3) a notification to 2 random platform admins
+(mirrors `RecordCounsellorPayoutStatusAction`'s own `whereAdmin()->inRandomOrder()->limit(2)`
+convention) when a retry succeeds while the org is still suspended -- directly answering "admin
+gets a notification when the pending payments are settled." Deliberately NOT auto-lifting on that
+notification: a settled invoice alone doesn't prove the org's broader payment standing is fixed,
+and auto-lifting without a human decision would blunt the whole point of suspending in the first
+place. Full automatic retry-then-lift is a real, larger follow-up candidate if this manual
+workflow proves too slow in practice -- not filed as its own ticket yet since it's speculative
+until the manual path has been used.
+
+**New admin surface**: no `Admin/Organizations`-anything existed before this ticket. Added a
+dedicated `Admin/OrganizationBilling.vue` page (mirrors `Admin/Payouts.vue`'s own "a dedicated
+page, not another `Admin.vue` dispatch-table tab" precedent) rather than folding it into the
+already-large `Admin.vue` monolith.
+
+**Required review fix applied**: `GetBillingSuspendedOrganizationsForAdminAction` had no
+authorization check of its own, relying solely on the controller's inline admin check (reviewer
+finding) -- fixed to independently call `EnsureCanManageOrganizationBillingSuspensionAction`,
+matching the two write actions' own defense-in-depth pattern and `PayoutService::getPayoutsForAdmin()`'s
+identical existing precedent.
+## 2026-09-06 — SCRUM-246: TT-7.3b follow-up cleanup (message creation bypassing the strict-payment gate)
+
+`EnsureCanSendMessageToForAction::validateForSession()`
+now also calls `EnsureUserCanAccessTherapyContentAction` (the same shared check
+`getSessionMessages`/`getTherapyTopicMessages`/`getMessageReplies` already use) after its existing
+`isParticipant()` check, closing the gap where a client blocked from *reading* a strict-gated (or
+org-suspended) session's messages could still *create* new ones there. `Discussion`-parented
+messages deliberately untouched — mirrors that action's own existing comment: a Discussion's
+participants are Counsellors, never the paying client, so there's no client-payment-gating
+scenario on that branch. Security-engineer review confirmed no false-positive blocking of
+legitimate senders (counsellor, group-therapy participants, non-suspended clients) and no
+remaining bypass path, but flagged one adjacent, out-of-scope gap as a candidate follow-up:
+`EnsureCanUpdateMessageAction` never re-checks this same gate, so a client whose access has since
+lapsed can still edit the content of a message they created while still gated — pre-existing
+behavior, not introduced here, not filed as its own ticket yet since it may be an intentional
+product choice (editing your own already-sent message vs. needing a live grant).
+
+## 2026-09-07 — SCRUM-244: abandoned as a terminal outcome for server-to-server charges
+
+`ChargeOrganizationForModelAction` (pay-per-use org charges) and `ProcessOrganizationInvoiceSettlementJob`
+(retainer settlement) both remap Paystack's `abandoned` charge status to `failed` (logged
+distinctly) rather than leaving it as `TransactionStatusEnum::abandoned`, which
+`RecordTransactionStatusAction`'s own `TERMINAL_STATUSES` never included — the transaction (and,
+for settlement, its `OrganizationInvoice`) was getting stuck non-terminal forever, since nothing
+ever re-resolves it. Deliberately reuses `UpdateOrganizationInvoiceStatusAction`'s EXISTING
+`failed`-handling branch (invoice → failed, org → suspended) rather than adding a third `abandoned`
+branch there. `VerifyPaystackTransactionAction` (the checkout-redirect flow for individual/personal
+payments) is deliberately untouched — a real customer at a hosted checkout page can still retry via
+a fresh link, unlike these two server-to-server flows where no human is ever present to complete
+whatever interactive step (e.g. an OTP challenge) Paystack was waiting on.
+
+**Accepted assumption, worth recording** (security-engineer review): a Paystack `abandoned`
+response on one of these two server-to-server charges is treated as permanently terminal — if
+Paystack ever actually completed such a charge asynchronously after reporting `abandoned`
+synchronously (not obviously possible per Paystack's docs, but not proven impossible either), the
+transaction would stay `failed` forever with no automatic reconciliation. Mitigated by the distinct
+log line and by the real `gateway_response`/status-history trail staying available for manual
+finance reconciliation if that scenario is ever actually observed — not treated as a blocker, since
+building a reconciliation sweep for a scenario with no confirmed real-world occurrence would be
+speculative engineering.
+
+## 2026-09-07 — SCRUM-243: charge-then-record ordering hardened
+
+`ChargeOrganizationForModelAction::chargeAndRecord()` now generates a `Transaction` reference
+locally and creates the row (as `pending`) BEFORE calling `PaystackClient::chargeAuthorization()`,
+passing that same reference explicitly — mirrors `SettleOrganizationInvoiceAction`/
+`ProcessOrganizationInvoiceSettlementJob`'s own already-proven identical pattern, confirming
+Paystack's endpoint does accept a caller-supplied reference (unconfirmed at SCRUM-231's own spike
+time). Previously, a failure creating the row AFTER a successful charge would have silently moved
+real money with no local record to reconcile against; now a failure there fails closed instead
+(the charge is never attempted). On a `RequestException` from the Paystack call itself, the
+already-created row is deliberately left `pending`, not marked `failed` — a webhook still arrives
+for every charge regardless of how it started, and marking it `failed` prematurely would let
+`RecordTransactionStatusAction`'s own terminal-status guard permanently block that later, genuine
+webhook from ever recording a real success.
+
+Security-engineer review surfaced a genuinely stronger side effect than the ticket text itself
+described: because a local row now exists bearing the exact reference sent to Paystack, a webhook
+for a charge whose synchronous HTTP response was lost (not just one that returned an unrecognized
+status) can now actually be found and resolved — previously such a webhook found nothing at all
+and silently no-opped, permanently.
+
+**Deferred, not fixed here** (security-engineer review, real but out of this bugfix's scope):
+no scheduled reconciliation job exists to verify a stale-`pending` org-charge Transaction against
+Paystack's own verify-transaction endpoint if its webhook is ever missed entirely — this synchronous
+action has no queue-retry infrastructure the way `ProcessOrganizationInvoiceSettlementJob` does.
+Filed as SCRUM-248.
+
+---
+
+## 2026-09-07 — SCRUM-249 (TT-7.7a): refund data model & eligibility implemented
+
+**Decision**: Implemented per the plan already approved in the 2026-09-02 SCRUM-223 entry above.
+Two schema/design choices made without a further round of user questions (both low-risk,
+reversible, and directly implied by that prior review, not new forks):
+
+1. The `refunds` table is split into `refunds` (one row per refund attempt, 1:many per
+   transaction) plus a new child `refund_status_histories` table, mirroring
+   `transactions`/`transaction_status_histories` field-for-field rather than folding status-change
+   history into `refunds` itself. This matches the "per-state-change-is-a-row" convention the
+   2026-09-02 entry attributed to `TransactionStatusHistory`, and gives TT-7.7d a place to record
+   its own pending → processing → success/failed lifecycle (including the later
+   refund.processed/refund.failed webhook) without mutating a settled row.
+2. `refunds.reference` is generated (`'refund_'.Str::uuid()`) and persisted at Refund-row creation
+   time — i.e. when an admin approves the request (`RespondToRefundRequestAction`), well before
+   TT-7.7d's queued job will ever call Paystack's refund endpoint. This directly reuses the
+   SCRUM-243 lesson (a caller-generated reference persisted before an external call fails closed
+   instead of risking a successful-but-unrecorded charge/refund) even though no Paystack call
+   exists yet in this ticket.
+
+**Security-engineer review surfaced two real findings, both fixed before merge**:
+- **Medium** — a TOCTOU race: `EnsureTransactionIsRefundEligibleAction`'s own reads are plain,
+  non-locking queries, so two different pending refund `Request`s for the same transaction being
+  approved concurrently (nothing yet prevents two such requests from existing — TT-7.7b's
+  one-active-request-per-transaction guard, not built yet, is what will) could both pass eligibility
+  before either commits, risking a double refund once TT-7.7d wires up the real Paystack call. This
+  is the same bug class already hit once before in this codebase (a lock on one row isn't enough
+  if the invariant-checking query itself is a plain read). Fixed by having
+  `RespondToRefundRequestAction` take `lockForUpdate()` on the `Transaction` row itself (not just
+  the `Request` row) before re-running the eligibility check, serializing concurrent accepts for
+  the same transaction.
+- **Low** — `RequestTypeEnum::refund` deliberately leaves `to` null (any admin may respond, per
+  `EnsureUserCanRespondToRequestAction`'s existing `isAdmin()` short-circuit) — but that action
+  dereferenced `$respondent->is(...)` unconditionally, so a non-admin caller against a null-`to`
+  request threw an uncaught `Error` instead of the intended `CannotRespondToRequestException`.
+  Fixed with a null-guard; refund is the first exercised case of `to === null` actually reaching
+  this check (`RequestTypeEnum::administrator`, the only other null-`to` case, has no live
+  creation path anywhere in the codebase).
+
+Both fixes have dedicated regression tests in `tests/Unit/RespondToRefundRequestActionTest.php`.
+No FK/read/write relationship to `payment_access_grants` anywhere in this diff — verified by the
+security-engineer's own grep, plus an explicit regression test in both new test files.
+
+---
+
+## 2026-09-07 — SCRUM-250 (TT-7.7b): client refund request implemented
+
+**Decision**: Implemented per the plan already approved in the 2026-09-02 SCRUM-223 entry. Client
+asks for a refund on their own transaction (`RequestRefundAction`), reusing TT-7.7a's
+`EnsureTransactionIsRefundEligibleAction`; creates a `refund`-type `Request` with `to = null`
+(any admin may respond); notifies 2 random platform admins (mirrors the established
+`whereAdmin()->inRandomOrder()->limit(2)` convention). UI added to both `TherapyPaymentDetails.vue`
+(PER_THERAPY) and `UnifiedTherapy.vue`'s session-actions modal (PER_SESSION), sharing
+`usePayment.js`'s new `canRequestRefund()`/`requestRefund()`.
+
+**Security-engineer review surfaced one High finding, fixed before merge**: `TherapyResource`/
+`SessionResource`'s new `transactionId`/`refundRequestStatus` fields were initially derived from
+the existing `latestTransaction` relation, which is documented as "latest across ALL eligible
+payers, not scoped to the current viewer." For a GroupTherapy session with several members, this
+would have leaked one member's transaction id and refund/dispute status to every other
+co-participant — a real cross-user information leak in a mental-health product, where "a fellow
+group member is disputing a payment" is itself sensitive. Fixed by scoping both fields to a
+`viewerTransaction` (the requesting user's OWN transaction for that Therapy/Session), which also
+resolves a secondary Low finding (whether the assigned counsellor should see a client's refund
+status) as a side effect — a counsellor is never the payer, so the scoped query correctly returns
+null for them too. The query is guarded to only run for a PAID engagement (mirrors
+`orgRetainerCoverage()`'s own early-return), verified against `CounsellorCalendarSessionsTest`'s
+existing N+1 regression test (a first implementation regressed it by running the guard check
+*after* the query instead of before — caught immediately by that test, fixed by moving the
+`payment_type` gate to guard the query itself, not just its result).
+
+**Two Low findings also fixed**: (1) `RequestRefundAction` previously returned a distinguishable
+422 for "transaction doesn't exist" vs. 403 for "exists but isn't yours" — a minor
+transaction-id-enumeration oracle, closed by returning the same 403 for both. (2) A follow-up
+ticket (SCRUM-254) was filed rather than fixed inline for a pre-existing, codebase-wide pattern
+(free-text `reason` fields interpolated unescaped into `MailMessage::line()`, vulnerable to
+Markdown injection) — out of scope for a single-ticket fix since it affects multiple existing
+notifications beyond this one, but flagged as higher-stakes now that `RefundRequestedNotification`
+is the first such field reaching platform admins rather than another regular user.
+
+**Reviewer suggestions applied**: unified `TherapyPaymentDetails.vue`'s inline refund-eligibility
+condition to call the same shared `canRequestRefund()` helper `UnifiedTherapy.vue` already used
+(closing a drift risk between the two sibling UI blocks), and added the `therapyType !== 'group'`
+guard to the PER_SESSION refund block for consistency with its sibling conditions in the same
+`v-if`/`v-else-if` chain (currently unreachable since group payments aren't built yet, but would
+otherwise silently start showing a refund control the moment they are).
+
+---
+
+## 2026-09-10 — SCRUM-251 (TT-7.7c): admin refund review queue implemented
+
+**Decision (deviation from the ticket's own literal wording, logged per CLAUDE.md)**: the
+originally-planned ticket text (`documentation/implementation_plan.md`'s TT-7.7c row, written
+during the 2026-09-02 SCRUM-223 planning pass, before TT-7.7a's actual implementation existed)
+named two separate actions, `ApproveRefundRequestAction`/`RejectRefundRequestAction`. By the time
+this ticket started, TT-7.7a (merged) had already built a single unified
+`RespondToRefundRequestAction`, dispatched generically via `RespondToRequestAction`'s per-type
+chain -- the same one-action-per-request-type shape every other request type in this codebase
+uses (`RespondToOrganizationCounsellorCompensationRequestAction`,
+`RespondToDiscussionRequestAction`, etc.). Splitting into two new classes just to match the
+earlier planning text would have introduced the only two-action request-type in the codebase, for
+no functional benefit. Chose instead to extend the existing `RespondToRefundRequestAction`'s
+reject branch in place -- a low-risk, purely internal-implementation-shape choice (the actual
+user-facing behavior is identical either way), not a product decision, so implemented directly
+rather than pausing to ask.
+
+**Scope reconciliation**: the ticket's own "RejectRefundRequestAction... notifies client
+immediately" requirement is legitimately distinct from TT-7.7e's later "client outcome
+notification" (refunded/refund-failed, once TT-7.7d's Paystack call resolves) -- a reject is a
+terminal decision with no further step coming, so it needs its own immediate notification; TT-7.7e
+covers the *execution* outcome, not the *request* outcome. Implemented both as separate,
+non-overlapping notifications (`RefundRequestRejectedNotification` here; the accept path still has
+no notification yet, correctly deferred to TT-7.7e since nothing has actually happened until
+TT-7.7d executes).
+
+**Reason-required-on-reject has no existing generic mechanism** (confirmed by reading
+`EnsureRequestResponseReasonIsValidAction`, which only validates type/length, never
+requiredness) -- enforced directly inside `RespondToRefundRequestAction`, checked before any DB
+write so a missing reason fails closed without touching the `Request` row. The admin's rejection
+note is stored in a new `data.rejectionReason` key, deliberately distinct from the client's own
+ask-time `data.reason` -- the existing `RejectSessionScheduleProposalAction` precedent reuses
+`data.reason` for its own (optional) reject reason, but that pattern doesn't apply here since a
+refund's `data.reason` already holds a real, unrelated fact (why the client asked) that must never
+be overwritten.
+
+**Adjacent fixes made while in this area**: `GetRequestResourceAction` had no `RequestTypeEnum::refund`
+branch (fell through to a resource assuming `from` was a `Counsellor`) and `RequestResource::getFor()`
+(the generic personal "my requests" listing) had no `Transaction` branch either -- both would have
+rendered nonsense for a refund request reaching those code paths. Fixed both, and reused the new
+`RefundRequestResource` for the first. Also applied the same Markdown-escaping stopgap (pending
+SCRUM-254's broader cleanup) to `RefundRequestedNotification`'s own reason interpolation while
+already touching that file to fix its "no queue page yet" action link -- proactive hardening on
+the ticket's own new/touched notifications, not a claim that SCRUM-254 is resolved.
+
+---
+
+## 2026-09-10 — SCRUM-252 (TT-7.7d): Paystack refund execution implemented
+
+**Highest-risk ticket in the epic** -- the real, external, money-moving Paystack call. No live
+Paystack sandbox credentials exist in this dev environment (`.env.docker`'s `PAYSTACK_SECRET_KEY`
+confirmed empty via `grep`) -- every claim about Paystack's actual refund API behavior below is a
+documented spike finding from public docs research (WebSearch/a third-party article; paystack.com
+itself returns 403 to WebFetch), not an empirically-verified sandbox call, mirroring the identical
+limitation already noted on `ProcessCounsellorPayoutJob`/TT-7.6c.
+
+**Architectural finding with real consequences**: unlike `initiateTransfer()`/`chargeAuthorization()`,
+Paystack's refund endpoint (`POST /refund`) takes NO caller-supplied idempotency reference -- it
+keys entirely off the ORIGINAL transaction's own reference/id. This means `Refund.reference` (a
+locally-generated UUID from TT-7.7a, originally documented as "the caller-supplied reference sent
+to Paystack") is in fact purely internal/audit-only -- never sent to Paystack, never used for
+webhook correlation. Updated that migration's own comment to stop implying a safety net that
+doesn't exist. The `refund.processed`/`refund.failed` webhook instead correlates back via the
+payload's `data.transaction.reference` (or a flatter `data.transaction_reference`), looking up the
+original `Transaction` and then its one currently-active (pending/processing) `Refund` row --
+`EnsureTransactionIsRefundEligibleAction`'s own invariant guarantees at most one exists.
+
+**Deliberate scope boundary**: client-facing "your refund succeeded/failed" notifications are
+explicitly OUT of this ticket's scope (reserved for TT-7.7e, which needs the "your platform/
+therapy access is unaffected" reassurance copy). Only a new admin-only `RefundExecutionFailedNotification`
+exists here, so a human can investigate a failed execution -- mirrors `PayoutFailedNotification`'s
+admin-recipient half, deliberately without its counsellor-facing half (no counsellor is involved
+in a refund).
+
+**Reviewer + security-engineer findings applied** (both subagents run in parallel on the full
+diff, per this ticket's own explicit "especially careful review" mandate): (1) **Required** --
+`ReconcileOrgFinancedRefundAction`'s call in `RecordRefundStatusAction` was moved from after its
+own DB transaction committed to INSIDE it (Laravel nests via savepoints) -- it had incorrectly
+inherited the "queue's after_commit is false" justification from the queued notification a few
+lines below, but `ReconcileOrgFinancedRefundAction` is a plain synchronous `Action`, not a queued
+job; left outside, a transient failure there could permanently strand a transaction's
+`CounsellorEarning` row(s) in `pending` while the `Refund` itself was already committed `success`
+forever, with no retry path. (2) **High/security** -- `RecordRefundStatusAction`'s terminal/
+same-status guard was a genuine TOCTOU race (checked against the caller's in-memory copy, not a
+locked re-read) -- fixed by re-fetching the `Refund` row with `lockForUpdate()` inside the
+transaction and re-running both checks against that freshly-locked read, mirroring
+`EnsureTransactionIsRefundEligibleAction`/`RespondToRefundRequestAction`'s own established fix for
+this exact bug class. (3) **High/security** -- `ProcessRefundJob` was forwarding the client's own
+free-text refund reason to Paystack via `merchant_note`; on a mental-health platform that text can
+plausibly contain sensitive personal/therapy detail, and Paystack has no legitimate need for it --
+replaced with a fixed, non-sensitive string carrying only this refund's own internal reference.
+(4) Added a `$backoff` to `ProcessRefundJob` (immediate retries gave neither Paystack's own async
+resolution nor an incoming webhook time to settle) and excluded HTTP 429 from the "definite 4xx
+failure" bucket (not a real rejection signal). (5) Rewrote all three new/touched
+`payment_access_grants` isolation regression tests (`RecordRefundStatusActionTest`,
+`ProcessRefundJobTest`, and the pre-existing one in `RespondToRefundRequestActionTest`) -- they
+originally seeded the grant against a brand-new, unrelated Therapy/User, which would have passed
+identically even if the isolation guarantee were entirely absent; now tied to the SAME
+transaction/therapy the refund under test actually belongs to. (6) Defensively escaped
+`RefundExecutionFailedNotification`'s `$reason`/`$message` interpolation via the existing
+`EscapesMarkdown` trait (TT-7.7c/SCRUM-251) -- no live injection risk today (every call site only
+ever passes a static string or one of Paystack's own short status enum values), but this choke
+point is explicitly meant to carry Paystack's own gateway response text later.
+
+**Deferred, not fixed inline (follow-up ticket filed: SCRUM-255)**: both `ProcessRefundJob` and the
+already-shipped `ProcessCounsellorPayoutJob` guard against re-calling Paystack once TERMINAL
+(success/failed), but not while `processing` -- a queue redelivery mid-flight (visibility-timeout,
+or an operator's `queue:retry`) could call Paystack a second time for the same reference before
+either the original response or a webhook resolves it. Filed as a shared follow-up covering both
+jobs (e.g. `WithoutOverlapping` keyed by refund/payout id) rather than fixed inline here, since
+this is an inherited pattern from the already-merged TT-7.6c, not a new regression introduced by
+this ticket, and fixing only one of the two jobs would leave the pattern inconsistent.
+
+---
+
+## 2026-09-10 — SCRUM-253 (TT-7.7e): refund outcome notifications implemented -- epic complete
+
+**Final sub-ticket in SCRUM-223 (TT-7.7)**. Closes the loop TT-7.7c/d deliberately left open
+("the client-facing outcome notification ... is TT-7.7e's own scope, not built yet") and extends
+TT-7.4c's counsellor-facing payment-status indicator to show "Refunded".
+
+**Judgment call: `refundStatus` exposure scope differs between TherapyResource and SessionResource**
+(logged since this wasn't spelled out in the ticket text, and the two resources ended up needing
+opposite treatment). Initial implementation exposed the new `refundStatus` field unscoped on both
+resources, mirroring the reasoning that it's "as coarse/non-identifying as the already-unscoped
+`paymentStatus` field." Security-engineer review correctly caught that this reasoning only holds
+for `TherapyResource` (individual Therapy, exactly one payer) -- `SessionResource` is shared with
+GroupTherapy sessions, where `latestTransaction` can belong to a DIFFERENT member entirely, so an
+unscoped `refundStatus` there would leak one member's refund outcome (a materially more sensitive,
+dispute-flavored fact than a generic payment failure) to every co-participant and the counsellor.
+Fixed by withholding `refundStatus` entirely (`null`) for a GroupTherapy session on
+`SessionResource`, rather than attempting the usual `$viewerTransaction`-scoping pattern used
+elsewhere on that same resource -- viewer-scoping would also hide it from the counsellor, which is
+the exact opposite of this ticket's own point (the counsellor is never the payer). Since refunds
+have no ask/admin-queue path anywhere in this epic for GroupTherapy, withholding it entirely for
+that case is a clean, no-functionality-lost fix, not a compromise.
+
+**Bug found via manual Playwright QA, fixed inline**: `usePayment.js`'s `canRequestRefund()` didn't
+check the new `refundStatus` field, so "request a refund" kept rendering even after a refund had
+already succeeded (`refundRequestStatus` only reflects the ASK-time request's own status, never set
+for an already-approved-and-executed refund). `EnsureTransactionIsRefundEligibleAction` already
+blocks a second refund server-side, but the control shouldn't invite the client to try in the first
+place. Caught before this reached review specifically because Playwright QA was run against real
+seed data (a new "Refund Demo Therapy (Refunded)" therapy, added for this reason) rather than
+relying on Pest coverage alone -- this class of bug (a stale client-side gate one field short of the
+new backend field) wouldn't have been caught by the backend resource-exposure tests alone.
+
+**Reviewer finding, applied**: the new `refundStatus` field's `latestTransaction->successfulRefund`
+access wasn't eager-loaded in either of `SessionResource`'s two bulk-render call sites
+(`GetCounsellorCalendarSessionsAction`, `TherapyController::show`'s `recentSessions`), reintroducing
+the exact N+1 class this codebase has already hardened against elsewhere. Fixed by adding the
+nested eager load to both; the existing N+1 regression test in
+`tests/Feature/CounsellorCalendarSessionsTest.php` didn't previously exercise this path at all (no
+session in that test ever had a `latestTransaction`), so it was extended to attach a real
+transaction to its growing sessions -- verified this addition actually catches the regression by
+confirming it fails when the eager load is reverted, not just that it passes once fixed.
+
+---
+
+## 2026-09-10 — SCRUM-255: queue-redelivery guard fix -- initial approach revised after security review
+
+**Bugfix-tier follow-up ticket** (filed during TT-7.7d's review), not a full-ceremony feature --
+implemented directly, still ran reviewer + security-engineer given both touched jobs make a real,
+external, money-moving Paystack call.
+
+**Initial fix was incomplete -- caught by security-engineer's second pass, not the first.** The
+ticket's own suggested fix (`WithoutOverlapping` middleware keyed by refund/payout id) was
+implemented first, and the `reviewer` subagent approved that version. Independently, the
+`security-engineer` subagent found (HIGH severity) that `WithoutOverlapping` alone does NOT close
+the gap the ticket is titled for: the lock is held only for the duration of the winning attempt's
+`handle()` call and releases the instant it returns -- including the normal, successful case where
+an async Paystack response is recorded as `processing` and the method returns cleanly. Since both
+jobs' own pre-flight guard only skipped a TERMINAL status (success/failed), a redelivery arriving
+*after* the first attempt had already finished (not during it -- the lock is long since free) would
+still see `processing`, pass the guard, and call Paystack a second time. This is not a narrow race;
+per both jobs' own existing comments, an async/`processing` outcome is the *documented common case*
+for live-mode Paystack calls, so the gap would have been hit routinely, not rarely.
+
+**Fix**: changed each job's pre-flight guard from "skip if terminal" to "proceed only if `pending`"
+(`ELIGIBLE_STATUS`) -- `pending` is the only status in which Paystack has definitely never been
+called yet for that refund/payout; every other status (`processing`, `success`/`succeeded`,
+`failed`) means either an attempt already happened or the outcome is final, so none of them should
+ever trigger a second call, only a webhook or admin action should resolve them further.
+`WithoutOverlapping` is kept as a belt-and-braces defense against a genuinely concurrent
+redelivery (arriving before the winning attempt even returns), not as the primary fix.
+
+**Verification discipline**: for both the original `WithoutOverlapping`-only fix and this revised
+one, added tests were verified to actually fail when the corresponding code change was temporarily
+reverted (not just that they pass once written) -- for the revised fix specifically, a new test
+per job ("a redelivered dispatch after the first attempt already finished as processing never
+calls Paystack again") was confirmed to fail against the original terminal-status-only guard,
+proving it exercises the exact gap the security review identified rather than a case the earlier
+fix already covered.
+
+---
+
+## 2026-09-10 — SCRUM-256/258 (TT-7.4d/TT-7.4d-a): group-therapy per-member payment scoped and started
+
+**Epic scoped via full `/start-feature` pass** (product-owner/project-manager/architect, all three
+subagents run in sequence): TT-7.4d had sat unscoped since SCRUM-118 (2026-08-29) because
+per-member GroupTherapy payment was assumed to need a schema change. The product-owner pass found
+this largely untrue -- `Transaction.user_id` already scopes ownership, `payment_access_grants` is
+already `(user_id, for_type, for_id)`-keyed, and `EnsureTransactionIsRefundEligibleAction`/
+`RequestRefundAction` already scope by transaction/user, not by model. Split into 5 sub-tickets
+(TT-7.4d-a through -e, SCRUM-258-262, 22 points total) rather than 26-34-point epics like TT-7.5a/
+TT-7.7, since the four decisions below closed off the expensive forks before any milestone
+planning happened.
+
+**Four product decisions made by the user, not guessed** (each was a genuine fork where a wrong
+guess would have been costly to unwind):
+1. **Pricing: flat per-head**, not a total-group-amount split -- avoids the entire class of
+   "what happens to already-paid members when the group's membership count changes" problem a
+   split model would have introduced.
+2. **Peer visibility: counsellor + self only** -- a member never sees another member's payment
+   status, matching this platform's existing mental-health-context sensitivity bar for payment/
+   dispute-adjacent facts.
+3. **Counsellor roster: informational only for now, but shaped for later readiness signaling** --
+   no "N of M paid" enforcement ships in this epic (that's TT-7.5b's job), but field naming is kept
+   generic so a later feature can reuse it without rework.
+4. **Anonymity exception, scoped narrowly**: the counsellor's per-member payment roster (TT-7.4d-d,
+   not yet built) will pierce this platform's otherwise-universal anonymity rule
+   (`TherapyTrait::addedByUserIsMaskedFor()`, `RequestResource`, `MessageResource` all currently
+   mask identity from the counsellor too, confirmed via architect review) -- but ONLY for the
+   payment-status field. Nothing else about an anonymous group becomes de-anonymized. Logged here
+   explicitly per the architect's own recommendation, since this is a genuine first-of-its-kind
+   departure from an established cross-cutting pattern, not a confirmation of existing behavior.
+
+**Live authorization defect found during scoping, fixed first and separately (SCRUM-257, merged
+ahead of TT-7.4d-a)**: `EnsureCanInitiateChargeAction`'s "already paid" guard had no `user_id`
+scoping at all -- for a GroupTherapy (`transactions.initiate.group_therapy` already exists as a
+route, already reachable by any participant), the first member to pay successfully would
+permanently block every other member from ever paying. This was real and live, not hypothetical,
+so the user chose (of four options offered) to fix it first, in isolation, ahead of the rest of
+the epic's UI/backend work.
+
+**TT-7.4d-a implemented**: `TherapyTrait::latestTransactionFor(User $user)` (also added directly
+to `Session`, which doesn't use the trait) promotes `SessionResource`'s own pre-existing inline
+viewer-scoped closure (TT-7.7b/TT-7.7e) into one shared method, now also feeding three new
+additive fields on `GroupTherapyResource` (`viewerPaymentStatus`, `transactionId`,
+`refundRequestStatus`) alongside its existing unscoped `paymentStatus` (kept as-is for TT-7.4c's
+counsellor consumer, out of scope here). Reviewer suggestion applied: guarded the new query behind
+a `PER_THERAPY` check too (mirrors `TherapyResource`'s identical guard), not just `PAID`, so a
+`PER_SESSION` group never runs a query against the wrong model. Security-engineer finding
+deferred as a follow-up (SCRUM-263, not blocking): the new `viewerPaymentStatus` field, combined
+with the pre-existing unscoped `paymentStatus`, makes it easier for a member to infer a *specific*
+other member's payment status by elimination in a small group -- a real, if modest, sensitivity
+concern on a mental-health platform, but a pre-existing exposure this ticket only makes marginally
+easier to exploit, not a new hole it opened outright, so it's tracked rather than blocking this
+ticket's merge.
+
+## 2026-09-10 — SCRUM-259 (TT-7.4d-b): group-therapy per-member "pay now" UI
+
+Lifted `usePayment.js`'s hardcoded `therapyType !== 'group'` exclusion in
+`canPayForTherapy`/`canPayForSession`. Added a `viewerScopedPaymentStatus(entity)` helper that
+reads `entity.viewerPaymentStatus` for a group (TT-7.4d-a's new field) and `entity.paymentStatus`
+otherwise (already viewer-scoped by construction for an individual Therapy/Session's single-payer
+model) -- centralizes the branch instead of repeating the ternary at each of the four call sites
+that needed it (the "Paid"/"Refunded" display and the retry-status/button-label checks, in both
+`TherapyPaymentDetails.vue` and `UnifiedTherapy.vue`'s session-actions modal). Also added the
+missing `viewerPaymentStatus` field to `SessionResource` itself (TT-7.4d-a only added it to
+`GroupTherapyResource`; `SessionResource` needed the same additive field for the PER_SESSION case,
+reusing its pre-existing `$viewerTransaction` computation -- no new query).
+
+**Live routing defect found during Playwright QA, fixed as part of this ticket (not filed
+separately, since it's a one-line fix directly in this ticket's own code path)**:
+`usePayment.js`'s `payForTherapy()` always POSTed to the individual-Therapy
+`transactions.initiate.therapy` route regardless of `therapyType`, even though a dedicated
+`transactions.initiate.group_therapy` route (`/group-therapies/{groupTherapyId}/transactions`)
+already existed and `TransactionController::getFor()` already correctly branches on it. This was
+unreachable before this ticket lifted the `therapyType !== 'group'` exclusion (no GroupTherapy id
+had ever reached `payForTherapy()` before), so it surfaced as a 403 the first time a real
+GroupTherapy id was posted to the wrong route during golden-path QA. Fixed by branching
+`payForTherapy()`'s route name on `therapyType`, mirroring how `getFor()` itself already
+disambiguates by route param. `payForSession()` needed no equivalent fix -- the session route
+(`transactions.initiate.session`) is shared and already correctly resolves either type via the
+`Session` model directly.
+
+**Deterministic seed data added** (`createGroupPaymentDemoData()` in `DatabaseSeeder.php`): two
+PAID GroupTherapies (one PER_THERAPY, one PER_SESSION) each with one already-paid and one
+never-paid member, since the existing random demo group therapies never deterministically produce
+a PAID group with a known payment split across members. Used for this ticket's own Playwright QA
+and left in place for TT-7.4d-c/d/e's QA too.
+
+**Playwright QA**: confirmed, logged in as each of the two seeded members, that the unpaid member
+sees a real "pay now" control (both PER_THERAPY and PER_SESSION) while the paid member sees
+"Paid"/"paid" for the same group/session -- and that clicking "pay now" as the unpaid member
+correctly reaches `InitiatePaystackChargeAction` (observed as the expected 502 "Paystack
+unreachable" response, the same pre-existing sandbox-environment limitation seen throughout the
+TT-7.7 refund work, not a defect) rather than failing authorization or hitting the wrong route.
+
+## 2026-09-10 — SCRUM-260 (TT-7.4d-c): group-therapy refund-request UI
+
+Ticket's own premise confirmed correct: `RequestRefundAction`/`EnsureTransactionIsRefundEligibleAction`
+were already transaction/user-scoped, not model-scoped (re-verified directly, including
+`RespondToRefundRequestAction`, `ProcessRefundJob`, and the admin review queue -- none assume
+individual-Therapy-only), so lifting the `therapyType !== 'group'` guard on the refund-request
+blocks in `TherapyPaymentDetails.vue`/`UnifiedTherapy.vue` needed no backend authorization change.
+
+**Two real gaps found and fixed during implementation, both flagged as known landmines in
+TT-7.4d-b's own code comments**:
+1. `usePayment.js`'s `canRequestRefund()` was reading the unscoped `entity?.paymentStatus`
+   directly instead of `viewerScopedPaymentStatus()` -- for a GroupTherapy this would have judged
+   a member's refund-request eligibility by a co-member's payment, not their own. Fixed.
+2. `GroupTherapyResource` had no `refundStatus` field at all, and `SessionResource`'s existing one
+   was hardcoded `null` for any GroupTherapy session (TT-7.7e's "refunds are individual-Therapy-only"
+   assumption, now outdated). Both now expose a viewer-scoped `refundStatus` derived from the same
+   `$viewerTransaction` already used for `transactionId`/`refundRequestStatus` -- without this, a
+   group member whose refund succeeds would keep seeing "Paid" forever.
+
+Reviewer finding (required, applied): the pre-existing test
+`'SessionResource never exposes refundStatus for a GroupTherapy session...'` asserted null for the
+counsellor's view, but its session fixture defaulted to `payment_type: 'FREE'`, so the assertion
+held for the wrong reason (the PAID-only guard short-circuiting before viewer identity was ever
+considered) rather than proving the counsellor-specific scoping it claimed to. Fixed by setting
+`payment_type: 'PAID'` on the fixture; confirmed via mutation testing that it now actually fails
+if viewer-scoping regresses.
+
+Security-engineer review: no High/Medium findings; the full refund pipeline re-verified
+model-agnostic end-to-end. One low-severity, pre-existing, non-blocking note not acted on here:
+`RefundRequestResource`'s admin-facing `UserMiniResource` exposes a requesting client's real
+identity regardless of anonymous group-therapy participation -- this is an intentional,
+need-to-know exception (an admin reconciling a Paystack refund needs the real payer identity,
+which `Transaction.user_id` already ties to the payment regardless of anonymous display), not a
+new leak this ticket introduces, and is recorded here per the review's own suggestion rather than
+filed as a follow-up ticket.
+
+## 2026-09-10 — SCRUM-261 (TT-7.4d-d): counsellor-facing per-member payment roster (anonymity exception)
+
+**Anonymity exception, executed as scoped during /start-feature (SCRUM-256)**: `GroupTherapyResource`
+gains a new `paymentRoster` field -- every `GroupTherapy::users()` member alongside their own
+scoped payment status, real identity included, visible ONLY to this specific group's own
+counsellor (`isCounsellor()`, not "any counsellor anywhere"). This is a deliberate, narrow
+departure from this codebase's otherwise-universal anonymity rule
+(`TherapyTrait::addedByUserIsMaskedFor()`, `RequestResource`, `MessageResource` all mask identity
+from the counsellor too, confirmed via architect review during SCRUM-256's own scoping) --
+confirmed via a new regression test (`'the roster shows real member identity to the counsellor
+even on an anonymous group'`) that the group's own `addedby` field stays correctly masked in the
+SAME response the roster's real identities appear in, so the exception is narrow and doesn't leak
+into any other field. Nothing else about an anonymous group becomes de-anonymized by this change.
+
+**N+1 requirement (architect finding, mandatory) implemented as specified**:
+`GetGroupTherapyPaymentRosterAction` eager-loads `users` and `transactions` (ordered once, via
+`latest('created_at')`) in exactly 2 queries regardless of member count, then matches each
+member's latest transaction in PHP via `groupBy('user_id')` -- never calls
+`latestTransactionFor($member)` in a per-member loop. Verified with a dedicated regression test
+asserting the query count stays fixed at 2 for an 8-member group.
+
+**Roster shape kept deliberately minimal (architect guidance)**: only a flat per-member list with
+each member's own `paymentStatus`/`transactionId` -- no aggregate "N of M paid" readiness
+abstraction was built, per the architect's explicit "don't build speculative, unused abstraction
+now" guidance from SCRUM-256's own scoping.
+
+**PER_SESSION excluded**: a PER_SESSION group's payment status lives per-session, not per-group
+(mirrors `viewerPaymentStatus`'s own PER_THERAPY-only guard, TT-7.4d-a) -- a single flat
+per-member roster row can't represent "paid for which session," so the field is guarded out
+entirely for that case rather than shown incorrectly. A per-session roster is a natural, distinct
+follow-up if ever needed, not folded into this ticket.
+
+**Playwright QA**: logged in as the group's own counsellor, confirmed the roster correctly lists
+both the paid and unpaid seeded members with their own individual status ("Paid"/"Awaiting
+payment"); confirmed it's entirely absent for the PER_SESSION seeded group; confirmed a group
+member (including the paying one) never sees the roster at all.
+
+**Follow-up decision, made mid-review (reviewer + security-engineer both independently flagged
+this, then put to the user rather than assumed)**: GroupTherapy has a SECOND, independent
+anonymity mechanism beyond the group-level `anonymous` flag this ticket's own approved exception
+covers -- a per-member opt-in (`group_therapy_user.anonymous`, set at join time), which
+`MessageResource`/`RequestResource` already mask identity for from everyone including the
+counsellor. The original scoping never addressed whether the roster's exception was meant to
+override this separate, member-owned signal too. Asked the user directly (a real fork, not a
+guessable default, on a mental-health platform): confirmed the roster must respect per-member
+anonymity -- a member who individually opted into anonymity is masked (`fullName`/`username`
+replaced/nulled, mirroring `GroupTherapyResource`'s own masked-`addedby` shape) even when the
+group itself is not anonymous, while their `paymentStatus`/`transactionId` stay visible (masking
+those would defeat the roster's entire reconciliation purpose). Implemented in
+`GetGroupTherapyPaymentRosterAction` by reading the member's own pivot flag directly --
+deliberately NOT `GroupTherapy::isAnonymousFor()`, which ORs in the group-level flag too and would
+incorrectly mask everyone on an anonymous group, contradicting this ticket's own approved
+exception for that case. Both a Unit test (action-level) and a Feature test (full HTTP
+round-trip) added and mutation-tested.
+
+**Two additional reviewer/security findings, addressed**: (1) added a Feature test confirming a
+counsellor whose assignment to this group was deactivated (`INACTIVE` pivot state) never sees the
+roster -- previously only "never attached" was tested, not "assignment revoked." (2) documented
+in the Action's own header comment that it performs no authorization of its own and must only be
+called after the caller verifies the viewer is this group's own counsellor, to guard against a
+future incorrect call site.
+
+## 2026-09-10 — SCRUM-262 (TT-7.4d-e): TT-7.4d epic closeout
+
+Closes the group-therapy per-member payment epic (SCRUM-256, TT-7.4d-a through -d, all merged).
+
+**`GetPayableAmountAction` locking-in test added, no code change**: confirmed and locked in
+(`tests/Unit/GetPayableAmountActionTest.php`) that this action already implements flat-per-head
+pricing correctly and by construction -- it reads `payment_data.amount` directly for a
+GroupTherapy exactly the same way it does for an individual Therapy, with no group-size-aware
+split/recalculation logic anywhere in it. Verified explicitly with two groups of very different
+sizes (5 vs. 50 max members) producing the identical payable amount.
+
+**One genuine test-coverage gap found and closed**: every other sub-ticket's own test suite
+(`EnsureCanInitiateChargeActionGroupTherapyTest`, `PaymentStatusExposureTest`,
+`TransactionControllerRequestRefundTest`, `GroupTherapyPaymentRosterTest`) exercises its own
+Action/Service/Resource layer directly, but none of them post through the real
+`transactions.initiate.group_therapy` HTTP route/controller -- exactly the route TT-7.4d-b's own
+`payForTherapy()` fix was written to actually use, and exactly the layer where that routing defect
+was originally found (only by Playwright QA, not by any existing Pest test). Added
+`tests/Feature/GroupTherapyPaymentEpicRegressionTest.php`: two different members of the same group
+each successfully initiate a charge via the real route (mutation-tested against SCRUM-257's own
+per-user guard to confirm it actually catches that regression), and a GroupTherapy id posted to
+the individual-Therapy route correctly fails closed (422) rather than ever resolving the wrong
+model.
+
+**Test-authoring note**: `Http::fake()` called twice with an overlapping URL pattern does NOT
+override the first registration for that pattern -- both requests in the "two members pay" test
+initially received the SAME fake response (including the same Paystack `reference`), which
+collided against `transactions.reference`'s own unique constraint on the second insert and
+surfaced as an opaque 500 rather than the expected 200. Fixed by using `Http::sequence()` instead,
+the correct pattern for asserting on multiple sequential calls to the same faked endpoint -- worth
+flagging here since the same mistake would silently produce misleading failures in any future test
+needing more than one distinct fake response from the same URL pattern.
+
+**Feature doc and seeded-data entry added**: `documentation/features/scrum-256-group-therapy-per-member-payment.md`
+covers the whole epic end to end; `documentation/seeded-data.md` gained a "Group therapy
+per-member payment (SCRUM-259, TT-7.4d)" section documenting the `group_payment_demo_*` accounts
+and two seeded PAID groups added during TT-7.4d-b's own implementation (previously undocumented).
+
+**Anonymity-vs-counsellor-roster-visibility exception**: already logged in full at TT-7.4d-d's own
+decision-log entry above, including the mid-review per-member-anonymity question resolved directly
+with the user -- referenced here rather than duplicated, per this ticket's own ask to ensure it's
+recorded somewhere durable.
+
+Full Pest suite: 1396 passed.
+
+## 2026-09-11 — SCRUM-216 (TT-7.5b): GroupTherapy payment-gated access -- scoped via /start-feature
+
+TT-7.4d's completion unblocked this ticket. Ran the full product-owner/project-manager/architect
+sequence; five genuinely open product/architecture questions surfaced, all resolved with the user
+before any code was written.
+
+1. **Toggle authority (multi-counsellor fork)**: any ACTIVE counsellor on the group may toggle
+   `strictPaymentGate` independently -- matches the existing `activeCounsellors()` convention used
+   for earnings split/org-payer eligibility elsewhere in this model, rather than inventing a new,
+   more restrictive authorization shape. Accepted trade-off (pre-existing debt, not new): one
+   active counsellor can silently override another's setting, with no audit trail -- individual
+   Therapy's own `UpdateTherapyAction` has no change-tracking on `payment_data` either.
+2. **Initial value at creation**: gated on whether the group already has an active counsellor at
+   creation time (`activeCounsellors()->isNotEmpty()`), not on the identity of `addedby` --
+   individual Therapy's "client sets it, no counsellor exists yet" premise doesn't hold for
+   GroupTherapy, since `createGroupTherapy` already accepts `counsellorIds` at creation time.
+3. **Creator membership (inherited TT-7.4d ambiguity)**: fixed at the shared membership
+   definition, not special-cased in TT-7.5b's own guards. `GroupTherapy::getUsers()` already treats
+   the creating User as a member; `group_therapy_user` (and by extension TT-7.4d's payment roster,
+   `GetGroupTherapyPaymentRosterAction`) will be updated to match, so "member" means the same thing
+   everywhere in this codebase rather than two silently-diverging definitions.
+4. **Late-joiner + historical content**: NOT hardcoded either way -- a new per-group setting,
+   `payment_data->allowFreeHistoricalAccess` (boolean, sibling to `strictPaymentGate`, same
+   toggle-authority rule, default `true`). When `strictPaymentGate` is on and this is `true`,
+   content dated before a member's own `group_therapy_user.created_at` (their join date) stays
+   visible regardless of payment, while content dated after is gated; when `false`, everything is
+   gated regardless of join date (the simpler binary check TT-7.5a already has). This is genuinely
+   new logic -- no existing TT-7.5a analogue does a temporal, per-member comparison -- so `b2`/`b3`
+   should be estimated with this in mind, not as a variant of the existing binary check.
+5. **Gate at join vs. content-access only**: content-access only. `JoinGroupTherapyAction` stays
+   payment-unaware, matching TT-7.5a's own precedent (never gated at Therapy-creation/
+   request-acceptance, only at content access) -- avoids a second, independent enforcement point
+   that could drift out of sync with the content-layer check.
+
+**Two non-optional widening fixes identified by the architect, to land atomically with whichever
+milestone widens `EnsureStrictPaymentGateSatisfiedAction`'s type-hint** (not as follow-up work):
+- `Therapy::getStrictPaymentGateAttribute()` exists only on `Therapy`, not `TherapyTrait` --
+  widening the gate action's type-hint without moving this accessor first means the gate would
+  silently NEVER trigger for any GroupTherapy (Eloquent returns null for an undefined dynamic
+  property, and `! null` is `true`) -- a silent bypass, not a crash, so it could ship undetected
+  without an explicit regression test proving the gate actually blocks a GroupTherapy member.
+- `GetRetainerCoveringOrganizationAction` (called unconditionally inside the gate check) reads
+  `$therapy->counsellor`, a property `GroupTherapy` doesn't have (only `counsellors()`/
+  `activeCounsellors()`) -- widening the outer action without fixing this causes a hard
+  `TypeError` on the very first strict-gated GroupTherapy check.
+
+Confirmed zero-schema-change: `payment_access_grants`' unique constraint is `(user_id, for_type,
+for_id)`, already scoped per-user and per-payable, so N members of the same GroupTherapy each get
+their own grant row with no migration needed.
+
+Milestones (project-manager, ~34-42 points, floor not ceiling): b0 (multi-counsellor toggle
+authorization) -> b1 (setting persistence, both `strictPaymentGate` and the new
+`allowFreeHistoricalAccess`) -> b2 (page-load enforcement, including the two widening fixes above)
+-> b3 (session/chat enforcement, including the new temporal late-joiner logic) -> b4 (confirmed
+near-zero: content-access-only means no join-time gating work) -> b5 (frontend) -> b6 (regression
+closeout). Filed as SCRUM sub-tickets under this epic.
+
+## 2026-09-11 — SCRUM-265 (TT-7.5b-b1): payment-gate settings persistence
+
+Added `strictPaymentGate`/`allowFreeHistoricalAccess` to `GroupTherapyDTO` and wired both through
+`CreateGroupTherapyAction`/`UpdateGroupTherapyAction`, mirroring TT-7.5a's own `strictPaymentGate`
+treatment on individual Therapy almost exactly (defaults, force-cast to bool, reset to defaults on
+FREE-to-PAID transition). No authorization check needed at create time -- whoever creates a group
+sets its own initial values, same as every other creation field.
+
+**Two-endpoint design, mirroring TT-7.5a's own already-shipped precedent**: the general
+`group.therapies.update` endpoint gained a defense-in-depth call to `EnsureCanSetGroupTherapyPaymentGateAction`
+(only when a gate field is actually present), but `EnsureCanUpdateTherapyAction` (which gates that
+general endpoint) only recognizes the group's own `addedby` -- it has no branch for an ACTIVE
+counsellor who became assigned via accepting an assistance request rather than being the creator.
+Without a separate path, such a counsellor could never reach any authorization check for this
+setting at all. Added a dedicated `group.therapies.payment_gate.update` endpoint
+(`GroupTherapyService::updateGroupTherapyPaymentGate()`) that bypasses `EnsureCanUpdateTherapyAction`
+entirely, relying solely on `EnsureCanSetGroupTherapyPaymentGateAction`'s own self-contained check --
+this is the exact same gap TT-7.5a found via live Playwright testing for individual Therapy,
+confirmed to apply identically here.
+
+Reviewer and security-engineer both approved with no required changes -- specifically verified the
+"at least one field required" validation doesn't coerce an omitted field to `false` via
+`Request::boolean()` (checked presence via `is_null()` first for each field independently), and
+that `allowFreeHistoricalAccess` being persisted-but-not-yet-enforced (enforcement is TT-7.5b-b3)
+creates no misleading intermediate state -- `strictPaymentGate` itself is equally inert for
+GroupTherapy today, since `EnsureStrictPaymentGateSatisfiedAction` doesn't yet accept a
+`GroupTherapy` at all (that's TT-7.5b-b2's job).
+
+Full Pest suite: 1421 passed. Both new authorization paths (general-endpoint defense-in-depth,
+dedicated-endpoint gate) mutation-tested to confirm the tests actually catch a regression if either
+check were removed.
+
+---
+
+## 2026-09-11 — SCRUM-266 (TT-7.5b-b2): page-load enforcement + mandatory widening fixes
+
+**Decision**: landed both architect-flagged mandatory widening fixes atomically with the gate
+widening itself, per the ticket's own explicit requirement -- moved `Therapy::getStrictPaymentGateAttribute()`
+into `TherapyTrait` (so GroupTherapy actually inherits it instead of silently reading `null`, which
+`! null` would have evaluated as "gate satisfied" -- a silent bypass, not a crash), and widened
+`GetRetainerCoveringOrganizationAction` to resolve retainer coverage against ANY of a GroupTherapy's
+`activeCounsellors()` rather than a single `$therapy->counsellor` (which GroupTherapy doesn't have).
+
+**Membership-ambiguity fix, "at the source" per the user's own earlier decision**: rather than
+attaching a User-type GroupTherapy creator to the `group_therapy_user` pivot at creation time (which
+a background investigation showed would silently shrink every future group's real joinable capacity
+by one, since `JoinGroupTherapyAction`'s `max_users` check counts pivot rows), fixed
+`GetGroupTherapyPaymentRosterAction` (TT-7.4d-d) directly to also treat the addedby as an implicit
+member when synthesizing its member list, mirroring `GroupTherapy::getUsers()`'s own existing
+addedby-is-implicit-member convention. `EnsureUserHasAccessToTherapyAction`'s own GroupTherapy
+membership check already worked correctly for the creator via `isParticipant()` without needing this
+fix (that method already treats a User-type addedby as a participant) -- the ambiguity was purely in
+the roster's own narrower, pivot-only iteration.
+
+**Bug caught mid-implementation, not by mutation testing but by an over-permissive test assertion**:
+`GrantPaymentAccessDTO::$for` was still typed `Therapy|Session|null` (missing GroupTherapy), so the
+very first GroupTherapy member with a successful transaction hit a `TypeError` inside
+`ensureGrantedOrPaid()` -- but the test asserting this used `->not->toThrow(PaymentRequiredException::class)`,
+which is blind to any other exception type, so it passed for the wrong reason (grant never actually
+persisted) until a separate `assertDatabaseHas` check caught the empty table. Fixed by widening the
+DTO and rewriting the test to call the action directly (no exception-class-scoped expectation) so
+any exception fails it. Widened the type across every `Therapy|Session`-only touchpoint in the
+grant/transaction path -- confirmed via review that this was the only remaining unwidened one.
+
+**Scope boundary confirmed against SCRUM-267 (b3), not a gap**: security review flagged that
+`EnsureUserCanAccessTherapyContentAction` (session/topic/reply message content) still only checks
+`$therapy instanceof Therapy`, so a strict-gated GroupTherapy member can still read chat/session
+content via the messages API even after this ticket's page-load redirect. Re-read both tickets'
+text to confirm this is SCRUM-267's own explicit, already-scoped job ("PER_SESSION enforcement:
+widen `EnsureUserCanAccessTherapyContentAction`... the GroupTherapy branch explicitly deferred"),
+not an omission from SCRUM-266 ("Widens `EnsureUserHasAccessToTherapyAction`/`EnsureStrictPaymentGateSatisfiedAction`
+to cover GroupTherapy (**PER_THERAPY case**)") -- no new follow-up ticket needed, b3 already covers
+it and is next in the dependency chain. Noted explicitly in this PR's description to avoid reviewer
+confusion about apparent incomplete coverage.
+
+**Accepted as intentional, not requiring further sign-off**: (1) "any one of a group's active
+counsellors having a retainer with the member's org waives that member's entire group payment
+obligation" -- matches the `activeCounsellors()`-based convention already used for
+earnings-split/org-payer-eligibility elsewhere, and was the architect's own explicit recommendation
+during this epic's `/start-feature` scoping pass. (2) A GroupTherapy's own creator has no
+`group_therapy_user` pivot row and therefore can never opt into the same per-member roster anonymity
+a joined member can (`GetGroupTherapyPaymentRosterAction`'s synthesized addedby entry is never
+masked) -- pre-existing asymmetry, not introduced by this ticket; flagged as a minor product-parity
+question worth a follow-up ticket if ever raised, not blocking here.
+
+Full Pest suite: 1448 passed (27 new tests). Three separate authorization-critical changes mutation-
+tested independently (GroupTherapy counsellor-exemption exclusion in `EnsureUserHasAccessToTherapyAction`,
+the active-counsellor-set widening in `GetRetainerCoveringOrganizationAction`, and the roster's
+addedby-inclusion fix) -- each confirmed to fail the relevant test(s) when reverted, then restored.
+Reviewer and security-engineer both reviewed; reviewer approved with no required changes; security-
+engineer's one high-severity finding (content-gating gap) confirmed to be SCRUM-267's own scope, not
+a regression or omission in this ticket.
+
+---
+
+## 2026-09-11 — SCRUM-267 (TT-7.5b-b3): session/chat enforcement + late-joiner temporal logic
+
+**Delivered the exact security gap SCRUM-266's own review flagged as its scope, not a regression**:
+`EnsureUserCanAccessTherapyContentAction` (shared by `MessageService::getSessionMessages()`/
+`getTherapyTopicMessages()`/`getMessageReplies()`) only ever checked `$therapy instanceof Therapy`,
+so a strict-gated GroupTherapy's own chat content stayed fully reachable through the messages API
+regardless of payment status, even after b2 correctly blocked the group's own page load. Widened
+with the identical `isParticipant() && !isCounsellor()` membership check b2 already added to
+`EnsureUserHasAccessToTherapyAction`.
+
+**Late-joiner "historical content" exemption design**: rather than defaulting the exemption's
+comparison timestamp from `$session->start_time` inside the shared action itself, made it an
+explicit, caller-supplied `?Carbon $contentTimestamp` parameter -- deliberately never passed by
+`EnsureCanSendMessageToForAction`'s message-CREATION call site, since a message being created right
+now has no historical timestamp to exempt on; auto-deriving it from session start_time there would
+have let a member in an old-but-still-open session send unlimited new messages for free forever,
+never just read old ones. Each of the 3 read call sites passes the timestamp that actually matches
+what it fetches: `getSessionMessages`/`getTherapyTopicMessages` pass the SESSION's own `start_time`
+(they fetch a whole session's worth of content at once, so "does this predate my join" is answered
+at session granularity); `getMessageReplies` passes the PARENT MESSAGE's own `created_at` (it
+fetches replies to one specific message, so gating happens at that finer granularity -- an old
+session that's still "in progress" can have a brand-new parent message whose replies are still
+gated, even though the session itself predates the join). New `GetGroupTherapyMemberJoinDateAction`
+resolves the member's own join date: their `group_therapy_user` pivot row's `created_at` if one
+exists, else (for a User-type creator with no pivot row, per b2's own membership-ambiguity fix) the
+group's own `created_at`.
+
+**Test-authoring pitfall found and documented**: `Session` factory's default `start_time` is
+`$this->faker->timezone()` (a junk string like "America/New_York"), which Carbon's cast silently
+coerces to roughly "now" rather than throwing -- this only mattered once GroupTherapy sessions
+started being compared against join dates (individual Therapy tests never triggered the comparison
+at all), and caused one new test to pass for the wrong reason until every GroupTherapy-parented
+`Session::factory()->create()` in the new test file was given an explicit `start_time` override.
+Added a one-line warning comment to the factory itself (reviewer suggestion) so a future test
+doesn't rediscover this the hard way.
+
+**Follow-up filed, not blocking**: security review surfaced that `routes/channels.php`'s broadcast-
+channel authorization for Therapy/GroupTherapy channels checks `isParticipant()` only, never the
+strict payment gate -- a subscribed, non-paying participant still receives *live*
+`MessageSentEvent`/`MessageUpdatedEvent` broadcasts regardless of payment status. Confirmed
+pre-existing (not introduced by this ticket or any other TT-7.5b ticket) and out of this epic's
+approved scope; filed as SCRUM-271 rather than silently left undocumented.
+
+Full Pest suite: 1479 passed (33 new tests across this ticket's own additions). Three separate
+authorization-critical changes mutation-tested independently (the GroupTherapy-member gating branch
+itself, the late-joiner date-comparison condition, and `GetGroupTherapyMemberJoinDateAction`'s
+creator-fallback branch), plus a fourth targeted mutation proving the message-creation call site
+would fail its own regression test if it ever gained the historical-exemption parameter -- each
+confirmed to fail the relevant test(s) when reverted/mutated, then restored. Reviewer and
+security-engineer both approved with no required changes; two minor reviewer suggestions (an
+additional `getTherapyTopicMessages` exemption test, and the factory comment above) applied before
+merge.
+
+---
+
+## 2026-09-11 — SCRUM-268 (TT-7.5b-b4): join-time gating confirmation, no code change
+
+**Confirmed (already decided during SCRUM-216's own scoping pass, re-stated here for the trail)**:
+payment is required only for GroupTherapy CONTENT access, never for joining itself.
+`JoinGroupTherapyAction` (both the immediate-attach and membership-request-then-accept paths)
+stays entirely payment-unaware -- this matches TT-7.5a's own precedent for individual Therapy,
+which is never gated at creation or assistance-request-acceptance time, only at content access via
+`EnsureUserHasAccessToTherapyAction`/`EnsureUserCanAccessTherapyContentAction`. Deliberately not
+adding a second, independent enforcement point at join-time: that would create two gates that could
+silently drift out of sync with each other as b2/b3's content-layer gate evolves, for zero added
+protection (a member who joins for free but can't pay is still fully blocked from actual content,
+per b2/b3).
+
+No production code changed. Added `tests/Feature/GroupTherapyJoinPaymentGateRegressionTest.php`
+locking in the existing correct behavior (mirrors TT-7.4d-e's own "prove it works, don't just leave
+it undocumented" pattern): joining a strict-gated, unpaid GroupTherapy succeeds via both the
+immediate-attach and request-then-accept paths, and an unrelated member's existing successful
+transaction has no bearing on a new joiner's own join attempt. Full Pest suite: 1482 passed (3 new
+tests). No mutation testing performed -- there is no authorization branch to mutate; the tests exist
+purely to catch a FUTURE regression if someone later, incorrectly, adds a payment check to the join
+path.
+
+---
+
+## 2026-09-11 — SCRUM-269 (TT-7.5b-b5): frontend -- toggle + payment-required banner
+
+**Widened, not forked**: per the architect's own finding during SCRUM-216's scoping,
+`PaymentRequiredBanner.vue` was widened to a payable-type-parameterized component
+(`payableId`/`payableType` props choosing between `transactions.initiate.therapy` and
+`transactions.initiate.group_therapy`) rather than forking a second `GroupPaymentRequiredBanner.vue`
+-- `GroupTherapyController` still renders its own separate Vue page today (`GroupTherapy/Index.vue`,
+itself a thin wrapper delegating to the same `UnifiedTherapy.vue` individual-Therapy already uses),
+so a fork would have been exactly the "third parallel pattern" this codebase is trying to move away
+from. `Home.vue` gained a sibling `paymentRequiredGroupTherapyId` prop (the backend already flashes
+this key, from TT-7.5b-b2) and a small computed pair resolving which of the two mutually-exclusive
+flash props is actually present.
+
+**Toggle surface confirmed live and correctly wired**: traced the actual page-component chain
+(`GroupTherapy/Index.vue` → `UnifiedTherapy.vue` → `BaseTherapyLayout.vue` → `TherapyInformation.vue`
+→ `TherapyPaymentDetails.vue`) to confirm `TherapyPaymentDetails.vue` -- not a dead/legacy
+component -- is the actual live surface for both Therapy and GroupTherapy today, despite
+`UnifiedTherapy.vue` itself not visibly referencing `strictPaymentGate` (it's several components
+deep). Widened its existing `therapyType !== 'group'`-excluded strict-gate toggle to cover both
+types, added a second, GroupTherapy-only toggle for `allowFreeHistoricalAccess`, and split the save
+handler by `therapyType` to post to the correct backend endpoint (`therapies.strict_payment_gate.update`
+vs. the dedicated `group.therapies.payment_gate.update` built in b1, specifically so an
+active-but-non-addedby counsellor can still reach it). `computedIsCounsellor` here is a display
+nicety only, matching the existing `paymentRoster` block's own precedent -- the real authorization
+boundary stays server-side (`EnsureCanSetGroupTherapyPaymentGateAction`).
+
+**Playwright-verified golden path** (mandatory per this ticket's own Process line): logged in as
+the seeded `group_payment_demo_counsellor`, toggled strict-gate on via the real UI (success toast
+confirmed, persisted across reload), confirmed `group_payment_demo_member_unpaid` gets redirected
+to Home with the working banner and a `pay now` button that initiates the correct backend request
+(gracefully failing only because no real Paystack key is configured in this dev environment),
+confirmed `group_payment_demo_member_paid` is unaffected, then toggled the setting back off to
+leave seeded demo data in its original state.
+
+**Two follow-ups filed from QA findings, both pre-existing and unrelated to this ticket's scope**:
+SCRUM-272 (Paystack initiation hangs to a 502 instead of failing fast when unreachable -- backend
+resilience, not a payment-gate correctness issue) and SCRUM-273 (a plain GroupTherapy member's UI
+shows counsellor-only update/delete actions -- unconfirmed whether the backend itself would also
+incorrectly allow it, flagged for its own triage rather than guessed at here).
+
+No backend/PHP files touched -- pure frontend change, full Pest suite unaffected (1482 passed,
+unchanged from b4). Reviewer approved with two minor suggestions (extracting repeated inline
+ternaries into computed properties, a pre-existing trailing-newline nit) applied before merge.
+
+---
+
+## 2026-09-11 — SCRUM-270 (TT-7.5b-b6): epic closeout, TT-7.5b (SCRUM-216) complete
+
+**Regression closeout**: added `tests/Feature/GroupTherapyPaymentGateEpicRegressionTest.php` --
+one end-to-end journey test through every stage of the gate for one group/one member via real HTTP
+routes (blocked → paid → historical-exemption proven both ways → counsellor never blocked →
+joining stays free), one explicit "individual Therapy's own strict-gate behavior is completely
+unaffected by the GroupTherapy widening" pinning test (page load + content access, both before and
+after payment), and one test confirming `payment_access_grants`' pre-existing schema needed no
+GroupTherapy-specific columns. Confirmed via `git log -- database/migrations` that no migration
+touched that table at any point across the whole epic -- the architect's own zero-schema-change
+assumption from the original scoping held all the way through.
+
+**Seed data added** (CLAUDE.md's seeding convention): `createGroupStrictPaymentGateDemoData()` in
+`DatabaseSeeder.php` -- a strict-gated `PER_THERAPY` GroupTherapy with `allowFreeHistoricalAccess`
+on, an active counsellor, an unpaid member, and a late-joining member (joined 5 days ago) with two
+sessions dated either side of their own join date, so the late-joiner exemption is directly
+observable by logging in and comparing the two sessions' chat access -- nothing in the existing
+TT-7.4d group-payment demo data (SCRUM-259) exercises `strictPaymentGate` at all (deliberately
+trust-based, to test the Pay Now flow itself).
+
+**Feature doc**: `documentation/features/scrum-216-group-therapy-payment-gated-access-tt-7-5b.md`,
+covering the whole 7-sub-ticket epic, mirroring TT-7.5a's own closeout doc's structure. No new
+decisions were resolved in this closeout ticket itself beyond what b0-b5's own entries already
+captured -- this entry exists primarily to record the epic-level confirmations (zero schema change,
+individual-Therapy non-regression) that don't belong to any single earlier sub-ticket.
+
+Full Pest suite: 1485 passed (3 new tests in this ticket). SCRUM-216 itself transitions straight to
+Done alongside SCRUM-270, following the same "epic-level ticket doesn't get individually worked"
+pattern TT-7.4d's own closeout (SCRUM-256) used.
+
+---
+
+## 2026-09-11 — SCRUM-7 (TT-3): Video & Audio Sessions -- scoped via /start-feature
+
+**Context**: first epic since TT-7.5b's closeout, and the first genuinely NEW capability (live
+media/WebRTC) in this codebase's history -- every prior epic this session widened existing
+patterns (payment gating, messaging, organizations). Went through a full product-owner →
+project-manager → architect pass (SCRUM-7/SCRUM-26), followed by two live web-research rounds on
+WebRTC infra vendors, since the infra choice here carries real recurring cost and vendor
+dependency unlike almost every other decision made in this backlog so far.
+
+**Scope decided this session**: TT-3.1 (SCRUM-26) only. TT-3.2 (multi-party, SCRUM-27) and TT-3.3
+(graceful degrade, SCRUM-28) are deliberately NOT scoped in depth yet -- both depend on TT-3.1's
+actual shape, per the project-manager's own explicit recommendation not to estimate them until
+TT-3.1's infra choice is proven out.
+
+**Infra decision (the epic's single highest-leverage question)**: initial architect recommendation
+was a managed SFU, specifically LiveKit Cloud, reasoning that its room model is multi-party-native
+from day one (TT-3.1 and TT-3.2 become the same infrastructure) and it avoids the real operational
+lift of self-hosting an SFU/TURN stack with no precedent in this project's Docker Compose setup.
+User asked for the actual LiveKit Cloud cost breakdown before deciding -- initial figures cited
+(Build tier free / Ship tier $50/mo) were **materially incomplete**: a follow-up, deeper research
+pass (comparing LiveKit against Daily.co, Agora, Vonage, Amazon Chime SDK, and Zoom Video SDK on
+cost/reliability/HIPAA-BAA support/multi-party pricing) surfaced that **LiveKit Cloud's HIPAA BAA
+is gated to its $500/mo Scale tier**, not the cheaper tiers -- since real client sessions are PHI
+from day one, the honest LiveKit Cloud cost floor is $500/mo flat, not $0-50/mo. Daily.co and
+Amazon Chime SDK both offer a self-serve BAA at no extra cost, at a small fraction of that price at
+this platform's likely launch scale (dozens to low-hundreds of sessions/month). Self-hosting
+LiveKit's own open-source server was researched and explicitly ruled out for now: LiveKit's own
+security documentation states it does not recommend self-hosting for compliance-sensitive
+production workloads without dedicated hardening/ops experience -- exactly this team's position
+today.
+
+**Final decision (user's own choice, not the architect's default)**: build a **dual-provider
+architecture** -- one `VideoProviderInterface` contract with two concrete adapters, `DailyVideoProvider`
+and `ChimeVideoProvider` (AWS Chime SDK), with the active provider selected via config per
+deployment (not a live per-session runtime switch, which would have meant running and maintaining
+two SDKs concurrently in production for no concrete reason). This was the user's own refinement
+after an initial "implement both, switch between them" ask was clarified down from "both live
+simultaneously, switchable at runtime" (rejected as unnecessarily expensive to build and maintain
+without a concrete reason to run both concurrently) to "one active provider per deployment, chosen
+by config, both fully implemented." Real cost impact: not a full doubling of the affected
+milestones (the second adapter reuses the interface/pattern the first establishes, and only one
+provider is ever active in a given deployment, so there's no concurrent-production complexity) but
+a genuine, material addition -- reflected as a ~40-50% uplift on the backend-integration (a) and
+frontend-client (c) milestones in `documentation/implementation_plan.md`'s updated TT-3.1 row,
+rather than a flat re-estimate from a fresh project-manager pass (user explicitly chose to proceed
+without one).
+
+**Signaling channel (resolved, architect recommendation accepted)**: the low-frequency "video call
+started/ended" app-level notification rides the existing per-session `sessions.{id}` `PrivateChannel`
+(already scoped via `Session::isParticipant()`, already low-traffic, matches `SessionUpdatedEvent`'s
+own precedent) -- NOT the busier per-therapy/group `PresenceChannel`. Actual WebRTC media signaling
+(SDP/ICE) is handled entirely by whichever provider's own SDK/servers are active, never Reverb --
+Reverb was validated (not assumed) to be a poor fit for trickle-ICE's rapid-small-message pattern,
+since every broadcast event in this app today is queued (`ShouldBroadcast`, not `ShouldBroadcastNow`).
+
+**Guardian/minor video consent (resolved, product/safeguarding decision, user's own call)**: a
+minor client requires an explicit new consent flow before joining video -- this does NOT silently
+extend `Guardianship`'s existing text-content-visibility model to a live camera/mic surface. Not
+yet scoped in detail (deliberately -- this is flagged as potentially deserving its own
+`/start-feature` pass rather than a same-epic sub-ticket, given the safeguarding stakes), sequenced
+as TT-3.1e, after the core video functionality (a-d) lands.
+
+**Data model (architect recommendation, accepted)**: new `VideoSession`/`video_session_participants`
+tables, designed for N participants from day one even though TT-3.1 only ever uses 2 -- so TT-3.2
+only relaxes a business-rule constant instead of needing new schema. Live/mid-call connection state
+(connected, muted, participant count) stays ephemeral (provider-side or client-side) and never
+touches `Session` columns -- a direct consequence of the product requirement that a transient
+disconnect must never mutate `Session.status`.
+
+Jira sub-tickets to be filed under SCRUM-26 as TT-3.1a through TT-3.1f (TT-3.1e pending its own
+scoping pass), per the breakdown now in `documentation/implementation_plan.md`.
+
+---
+
+## 2026-09-11 — SCRUM-275 (TT-3.1b): fail-open bug found in `Session::isNotParticipant()`
+
+**What happened**: security review of TT-3.1b (the ticket that first wires TT-3.1a's video
+backend to an HTTP route) found that `Session::isNotParticipant()` returned `null` (falsy)
+instead of `true` whenever the session's polymorphic `for` relation failed to resolve (an
+orphaned/soft-deleted parent, a `for_type`/`for_id` mismatch, or even `database/factories/SessionFactory.php`'s
+own default `for_id => 1` with no matching row). Every new authorization check this ticket added
+(`LeaveVideoSessionAction`, `EndVideoSessionAction`) does `if ($session->isNotParticipant($user)) { deny }`
+-- so a missing `for` would silently authorize *anyone*, not reject them. This predates TT-3.1b
+(the method has looked like this since it was written), but was only newly *exploitable* once
+this ticket gave it live authorization-check callers.
+
+**Decision**: fixed at the model level, not by adding a defensive null-check at each of the two
+new call sites -- `isNotParticipant()` now negates the already-fail-closed `isParticipant()`
+(`return ! $this->isParticipant($user);`), mirroring the exact convention `Therapy::isNotParticipant()`
+and `GroupTherapy::isNotParticipant()` already use. Both methods also gained a strict `bool`
+return type as a second line of defense: a future regression back to the old `$this->for?->...`
+form now throws a `TypeError` instead of silently returning `null` again.
+
+**Also fixed in the same review pass**: `EnsureVideoIsAvailableForSessionAction`'s four checks
+were reordered so the participant check runs first, not last -- this action became HTTP-reachable
+in TT-3.1b with no ownership scoping on the resolved `Session`, so with the participant check
+last, an unrelated authenticated user could distinguish an arbitrary session's therapy type,
+delivery mode, and live status from which of the four differently-worded exceptions came back,
+before ever failing authorization. All four checks are unchanged in logic, only reordered.
+
+**Why this belongs in the log**: both fixes touch shared, pre-existing code (`Session` model,
+an action from the already-merged TT-3.1a) rather than being scoped purely to this ticket's own
+new files -- exactly the kind of judgment call CLAUDE.md's decision-log is for.
+
+---
+
+## 2026-09-11 — SCRUM-276 (TT-3.1c): video call UI -- QA limitation and two bugs found in already-merged code
+
+**QA limitation (not a defect, flagging per the ticket's own instruction not to skip silently)**:
+this Docker dev environment has no `DAILY_API_KEY`/`DAILY_DOMAIN` configured, so
+`DailyClient`'s real outbound call to Daily.co's API fails auth before any join credentials ever
+reach the browser -- the actual SDK-connect step, tile rendering, and dynamic-import chunk-load
+could not be browser-verified end-to-end. Everything short of that (join-video button
+visibility/scoping for both participants, GroupTherapy exclusion, payment-gate/error-path
+wiring, no console errors on page load) was verified via Playwright. Needs either a sandbox
+Daily.co API key provisioned for this environment, or a decision to build a local stub video
+provider, before a full golden-path browser pass is possible -- flagging as a follow-up need,
+not blocking this ticket (the actions this UI drives were already backend-tested extensively in
+TT-3.1a/TT-3.1b, and the frontend wiring itself is now Pint/Pest/build-verified).
+
+**Two real bugs found in already-merged TT-3.1a/TT-3.1b code, surfaced by this ticket's own QA
+pass, fixed here since both are directly in files this ticket's video-join flow depends on**:
+
+1. `JoinVideoSessionAction::currentOrNewVideoSession()`'s call to `$provider->createRoom()` was
+   unguarded -- a real provider HTTP failure (`Illuminate\Http\Client\RequestException`, whose
+   `getCode()` equals the upstream's own HTTP status, not 500) sailed past
+   `ResolvesExceptionResponse::messageFor()`'s 500-only masking and leaked the provider's raw
+   response body (e.g. Daily's literal `{"error":"authorization-header-error",...}`) straight to
+   the end user -- an information-disclosure/UX gap, not something specific to the missing local
+   API key (any 4xx from a real deployment's provider, e.g. rate limiting or a stale key, would
+   leak the same way). Fixed by catching and rethrowing as a generic `VideoException`.
+2. `EndVideoSessionAction`'s own docblock claimed provider-teardown failures were "best-effort"
+   and must never block the local `ended_at` update -- but the code never actually caught
+   anything, so a provider failure DID propagate and block it, contradicting the stated contract.
+   Fixed to match.
+
+Both fixes mutation-tested (a throwing fake provider confirms the safe message/best-effort
+behavior in each case) and covered by new regression tests.
+
+---
+
+## 2026-09-11 — SCRUM-278 (TT-3.1e): urgent interim minor-video-block, ahead of the full consent-flow feature
+
+**What happened**: while scoping TT-3.1e (guardian/minor video-consent enforcement -- a
+deliberate placeholder ticket, not yet ready to implement per its own text and the earlier
+2026-09-11 epic-scoping entry above), a product-owner pass and independent code investigation
+both confirmed a real, live gap in already-merged code: TT-3.1a-d shipped with **zero** check
+blocking a minor client from joining video. `EnsureCanCreateTherapyAction` already allows a minor
+with a guardian on file (`$user->isAdult() || $user->hasGuardian()`) to create and own a `Therapy`
+as its `addedby`, and nothing in `app/Actions/Video/` inspected age before this fix -- meaning
+that same minor could click "Join video" today exactly like an adult client, on a mental-health
+platform, with live camera/microphone access. SCRUM-278's own ticket text explicitly anticipates
+and calls for exactly this stopgap: "Do not implement TT-3.1a-d in a way that ships minor video
+access by default -- until [a real consent flow] exists, minor clients should be blocked from the
+Join video control entirely (fail closed)."
+
+**Decision**: treated as an urgent bugfix (CLAUDE.md's "how much process a task needs": closing
+an already-identified, already-decided safeguarding gap in shipped code, not a new feature),
+landed on its own `bugfix/scrum-278-interim-minor-video-block` branch with the normal
+reviewer/security-engineer pass, rather than waiting for SCRUM-278's own full `/start-feature`
+scoping (still outstanding -- see below) to complete first. Every day that full scoping pass
+takes is a day the gap stays open in production-shape code.
+
+**Scope chosen (deliberately narrow, not the real consent flow)**: `EnsureVideoIsAvailableForSessionAction`
+now blocks the actual joiner (`$user`) if they are not an adult (`User::isAdult()`) AND not the
+therapy's own assigned counsellor -- the counsellor exemption mirrors this codebase's
+already-established "counsellor is never gated" convention from the whole TT-7.5 payment-gate
+epic (`EnsureUserCanAccessTherapyContentAction`'s identical pattern), and was chosen deliberately
+over an earlier draft that blocked the whole session (client AND counsellor) regardless of who
+was joining -- the ticket's own wording is "minor **clients**", not "sessions belonging to a
+minor," and blocking the counsellor too broke the counsellor-can-always-join invariant every
+other check in this codebase upholds. This interim block does no guardian lookup, no consent
+capture, and no notification -- it is a hard, unconditional "not yet" for the minor, matching
+"fail closed until [the real thing] exists" literally. It must be removed or superseded once
+SCRUM-278's real consent flow ships.
+
+**Also discovered and fixed as a consequence**: `database/factories/UserFactory.php`'s default
+`dob` is null, and `User::isAdult()` returns false for a null `dob` (age defaults to 0) -- meaning
+every existing video test's client user was already, accidentally, a "minor" by this platform's
+own definition, and would have been blocked by the new check. Added an explicit opt-in
+`UserFactory::adult()` state and applied it to every video test's client-user fixture rather than
+changing the factory's own default (which would have silently altered every OTHER test suite in
+the app relying on the implicit default, a far larger and riskier blast radius than this fix
+warrants).
+
+**Explicitly NOT resolved by this entry**: SCRUM-278's own full scope (who grants consent and
+when, what scope a grant covers -- per-therapy/per-session/platform-wide, revocation semantics,
+multiple-guardian handling, the `Guardianship`-deletion interaction, and a regulatory-awareness
+flag for COPPA-adjacent concerns given minors as young as 10 on this platform) remains open and
+was presented to the user as this ticket's required `/start-feature` Requirements/Questions/Risks
+output, pending their answers before any further engineering (project-manager/architect
+consultation, or implementation) proceeds.
+
+---
+
+## 2026-09-11 — SCRUM-278 (TT-3.1e): full guardian video-consent feature scoped and approved
+
+**What happened**: following the interim-fix entry above, the user answered all 5 open policy
+questions directly, resolving SCRUM-278's own full scope. project-manager then split the work
+into 7 sub-tickets (SCRUM-280 through SCRUM-286, TT-3.1e-a through -g), and architect designed
+the data model for the first of those (TT-3.1e-a). The user reviewed and approved the complete
+plan, including one architect-suggested addition, before any implementation began.
+
+**Final policy decisions (user's own answers, verbatim intent)**:
+1. **Notification cadence**: a guardian is reminded a day before AND an hour before a video
+   session, but only while consent is not yet given for the relevant scope -- no reminder once
+   granted. Approval happens via a button on the therapy, from the guardian's own account.
+2. **Consent scope -- both modes exist, as a per-therapy setting**: `PER_THERAPY` (one grant
+   covers all of that therapy's sessions) and `PER_SESSION` (each session needs its own grant),
+   selectable by either the assigned counsellor or any guardian. Reminders for `PER_THERAPY`
+   fire per upcoming session only until the one-time grant exists; `PER_SESSION` reminders fire
+   per session, independently.
+3. **Revocation is immediate**: it must both block all future joins AND end any currently-active
+   call for that scope right now -- not a flag checked lazily on next join.
+4. **Guardianship deletion**: lapses that specific guardian's video consent grants for that ward.
+   A broader, related idea the user raised -- "a minor with no guardian at all can't even keep
+   the whole therapy, not just video" -- was explicitly deferred to its own separate ticket, not
+   folded into this one, per the user's own direction.
+5. **Multiple guardians**: any one guardian's consent is sufficient (no unanimity requirement),
+   but every guardian of that ward must be able to see WHO gave consent (an audit trail visible
+   to all co-guardians, not just the one who acted).
+
+**Data-model decisions (architect, user-approved)**: `therapies.video_consent_mode` as a
+dedicated nullable column (not folded into the existing `payment_data` JSON blob, which is
+payment-specific and has its own documented whole-blob-overwrite fragility). A single
+`video_consents` table, polymorphic to `Therapy` (PER_THERAPY) or `Session` (PER_SESSION) scope,
+with grant rows never deleted -- revocation sets `revoked_at`/`revoked_by_guardian_id` on the
+existing row rather than creating a new "leave" row (unlike `VideoSessionParticipant`'s own
+append-only-per-cycle precedent, which doesn't fit here since a consent grant has exactly one
+lifecycle at a time per scope). Mode switches are prospective-only -- an existing valid grant
+survives a later mode change, which the enforcement query (an OR across both scope types) makes
+correct by construction without any special-case invalidation logic. Added a
+`revocation_reason` enum (`guardian_action` | `guardianship_removed`) per the architect's own
+suggestion, explicitly agreed to by the user, so the audit UI can explain why a grant lapsed.
+
+**Sequencing**: e-a (schema) → e-b (grant flow) → {e-c (invalidation, flagged highest-risk --
+real-time call termination), e-e (reminders) in parallel} → e-d (enforcement, must wait for e-c
+fully done, not just started) → e-f (frontend) → e-g (regression/QA closeout, retires the
+interim block). ~47pts total, floor not ceiling per this project's own recurring estimation
+pattern. `documentation/implementation_plan.md`'s TT-3.1 row updated with the full breakdown.
+
+---
+
+## 2026-09-11 — SCRUM-280 (TT-3.1e-a): no DB-level "one valid grant per scope" constraint
+
+**What happened**: reviewing TT-3.1e-a's `video_consents` schema, the reviewer noted nothing at
+the database level prevents two simultaneously non-revoked rows for the same
+`consentable_type`/`consentable_id` scope -- MySQL 8 has no native partial/filtered unique index
+(the kind that would let a unique constraint apply only to rows `WHERE revoked_at IS NULL`), so
+this can't be enforced at the schema layer without a workaround (e.g. a generated/stored column
+collapsing all `revoked_at IS NULL` rows to a shared sentinel value for a real unique index).
+
+**Decision**: accept this as a known, deliberate limitation rather than adding a workaround
+column now -- the "exactly one currently-valid grant per scope" invariant is enforced entirely by
+application logic (the grant-creation action) rather than the schema. Flagging explicitly here so
+TT-3.1e-b's grant-creation action is written knowing it is the SOLE enforcer of this invariant
+(e.g. it must check for an existing valid grant for the scope before inserting a new one, inside
+a transaction/lock if double-submission is a realistic risk), and so a future reviewer doesn't
+mistake the missing constraint for an oversight and "fix" it by adding a plain (non-partial)
+unique index, which would incorrectly block the legitimate revoke-then-re-grant cycle the whole
+table design exists to support.
+
+---
+
+## 2026-09-11 — SCRUM-281 (TT-3.1e-b): grant-flow design decisions and review fixes
+
+**Two design decisions made during implementation, not explicitly specified by TT-3.1e-a's
+architect pass**:
+
+1. **Fail closed on an unset `video_consent_mode`**: `GrantVideoConsentAction` rejects granting
+   consent until the therapy's `video_consent_mode` has been actively set (via
+   `SetVideoConsentModeAction`) -- it does not default a null/unset mode to either interpretation.
+   `PER_THERAPY` is the more permissive of the two modes (one grant covers every future session),
+   so silently defaulting to it whenever nobody has actively configured anything would be the
+   wrong direction to default on a safeguarding feature. The counsellor or a guardian must
+   explicitly choose a mode first.
+2. **Scope must match the therapy's current mode at grant time**: a `PER_THERAPY`-shaped grant
+   (consentable = `Therapy`) can only be created while the mode is `PER_THERAPY`, and likewise for
+   `PER_SESSION`/`Session`. Without this, a stray `PER_THERAPY` grant could coexist with a
+   `PER_SESSION` mode and silently authorize every session at once via e-d's eventual OR-based
+   enforcement query, defeating the point of the stricter mode. This does not conflict with
+   "mode switches are prospective-only" (TT-3.1e-a) -- it only gates what NEW grants may be
+   created under the CURRENT mode; an existing grant made under a prior mode is untouched.
+
+**Review findings, both fixed before commit**:
+
+- **Reviewer + security-engineer independently flagged the same issue**: the original
+  `GrantVideoConsentAction` locked the `video_consents` row (`lockForUpdate()` on the
+  `VideoConsent` query) to prevent a double-grant race, but on the very first grant for a scope
+  there is no existing row to lock -- InnoDB's protection there depends on gap-locking under
+  REPEATABLE READ specifically, which security-engineer traced through in detail: two concurrent
+  first-grants can both pass the "no existing valid grant" check, and their inserts then deadlock
+  against each other's gap locks (error 1213) rather than one gracefully returning the other's
+  row, with no retry/catch in place. This also silently loses ALL protection under READ COMMITTED
+  (gap locking is disabled there for InnoDB). **Fix**: lock the guaranteed-already-existing
+  consentable row itself (`Therapy` or `Session`) before checking/creating the grant, mirroring
+  `JoinVideoSessionAction::currentOrNewVideoSession()`'s actual pattern (locks the parent `Session`
+  before deciding whether to create the child `VideoSession`) instead of approximating it against
+  a possibly-empty child table. This removes the isolation-level dependency entirely, since the
+  locked row is real regardless of MySQL's isolation setting.
+- **Security-engineer**: `GetWardForVideoConsentableAction::therapyFor()` returned
+  `$consentable->for` unconditionally for a `Session` consentable, typed `?Therapy` -- but a
+  Session's `for` can be a `GroupTherapy` (this feature is 1:1-therapy-only; group therapies have
+  no single "the minor" to resolve), which would throw a `TypeError` on the return statement
+  rather than failing gracefully. Fixed to check `instanceof Therapy` and return `null` otherwise
+  (handled identically to "no ward" by callers), matching `execute()`'s own existing guard. Added
+  a regression test (`tests/Unit/GetWardForVideoConsentableActionTest.php`) constructing a
+  `GroupTherapy`-backed `Session` and asserting no crash; verified via mutation testing (reverted
+  the guard, confirmed the test fails with the exact `TypeError` described, restored the fix).
+
+No DB-level backstop for the one-valid-grant-per-scope invariant was added (still the accepted
+limitation from TT-3.1e-a's own entry) -- the row-lock fix above is what keeps
+`GrantVideoConsentAction` a correct sole enforcer of it, rather than an accidentally-correct one.
+
+---
+
+## 2026-09-11 — SCRUM-284 (TT-3.1e-e): reminder-sweep review fixes
+
+**Reviewer finding -- the same first-write locking bug already found and fixed in
+`GrantVideoConsentAction` (SCRUM-281's own decision-log entry) recurred here**:
+`AppService::sendGuardianVideoConsentReminders()`'s exactly-once guard originally did
+`VideoConsentReminder::query()->lockForUpdate()->firstOrCreate(['session_id' => $session->id])` --
+on a session's very first reminder there is no existing row to lock, so two overlapping sweep
+runs (realistic for the `everyFiveMinutes()` hour-before job if a run is ever slow) could both
+pass `firstOrCreate()`'s internal existence check before either commits. Unlike the grant-flow
+case, this can't produce a duplicate row (`video_consent_reminders.session_id` has a DB-level
+unique constraint), so the practical blast radius is a caught, logged exception and a
+delayed-by-one-cycle reminder rather than a lost or duplicated one -- still, the same fix applies:
+lock the guaranteed-already-existing `Session` row first, exactly as `GrantVideoConsentAction`
+now does, rather than relying on isolation-level-dependent gap-locking over a row that may not
+exist yet. **Pattern worth remembering**: `lockForUpdate()` immediately followed by
+`firstOrCreate()`/`first()-or-create` on the SAME table being locked is a recurring footgun in
+this codebase's find-or-create-under-lock idiom -- the row to lock must be one already guaranteed
+to exist (a parent, not the row being conditionally created), every time this shape is reused.
+
+**Reviewer finding, fixed**: `GuardianVideoConsentReminderNotification`'s day-before copy
+hardcoded "tomorrow", but the day-before sweep's window is "starts within the next 24 hours," not
+"starts exactly tomorrow" -- a session created or rescheduled with only a few hours' notice still
+matches that window and would get a misleadingly-worded reminder. Fixed via
+`$session->start_time->diffForHumans()`, which stays accurate regardless of how close start_time
+actually is when the sweep fires.
+
+**Opportunistic cleanup, reviewer-suggested**: extracted the `consentable_type`/`consentable_id`/
+`revoked_at IS NULL` where-chain (duplicated across `GrantVideoConsentAction` and twice in the new
+`IsVideoConsentOutstandingForSessionAction`) into `VideoConsent::scopeWhereValidFor()`. Applied to
+both call sites; `GrantVideoConsentAction`'s own existing test suite re-verified green.
+## 2026-09-11 — SCRUM-282 (TT-3.1e-c): invalidation-flow design decision and review fixes
+
+**Design decision, not explicitly specified by the parent ticket**: `RevokeVideoConsentAction`
+allows any ONE guardian of the ward to revoke a grant, not just the guardian who originally
+granted it -- symmetric with `GrantVideoConsentAction`'s own "any one guardian is sufficient, no
+unanimity" rule from TT-3.1e-b. Reasoning: guardians act as equals on the grant side, so requiring
+the *specific* granting guardian to be the only one who can revoke would be an inconsistent,
+unstated asymmetry. `revoked_by_guardian_id` correctly attributes to whichever guardian actually
+acted, verified by test and by the reviewer, so `GetVideoConsentAuditTrailForWardAction`'s
+existing co-guardian visibility guarantee stays accurate either way.
+
+**Reviewer finding, fixed before commit -- a real, currently-reachable crash/silent-skip**:
+`InvalidateVideoConsentAction::activeSessionsFor()` originally trusted `$consent->consentable`
+(a PER_SESSION consent's cached morphTo relation) or a plain `Session::query()` (for PER_THERAPY).
+`Session` uses `SoftDeletes`, and `Session::isNotDeleteable()` only blocks deletion during the
+"about to start" or "between start/end time" windows -- it never checks `wherePastEndTime()` or
+the session's `status`. A session whose call ran past its scheduled end time (still `in_session`,
+with a live `VideoSession`) can therefore legally be soft-deleted via the pre-existing
+`DeleteSessionAction`, which itself never calls `EndVideoSessionAction`. Reviewer reproduced this
+end-to-end: revoking a PER_SESSION consent for such a session threw an uncaught `TypeError`
+(the default morph query excludes trashed rows, so `$consent->consentable` resolved to `null`) --
+**after** `revoked_at` had already committed, leaving the consent marked revoked while the live
+call kept running unaddressed, in the exact scenario this ticket exists to prevent. The
+PER_THERAPY branch had the mirror-image problem silently: a trashed-but-still-`in_session` session
+was quietly skipped, no error, call left running. **Fix**: re-query fresh via
+`Session::withTrashed()->where(...)`/`whereTherapyId(...)` instead of trusting a possibly-null or
+possibly-stale relation, for both branches. Two regression tests added (PER_SESSION and
+PER_THERAPY, each with a soft-deleted-but-still-live session); verified via mutation testing
+(reverted the fix, confirmed both new tests fail with the exact crash/silent-skip described,
+restored).
+
+**Security-engineer's forward-looking recommendations for TT-3.1e-f (frontend/controller
+ticket), no code change needed now since neither action is HTTP-reachable yet**:
+1. The future controller/route MUST call `RevokeVideoConsentAction` (which self-authorizes via
+   `isGuardianOf`), never `InvalidateVideoConsentAction` directly (which has no authorization
+   check of its own by design -- it trusts both of its current callers to have already
+   authorized). Call this out as an explicit requirement on that ticket, not just left to this
+   class's own docblock.
+2. Add rate-limiting/cooldown on the future revoke endpoint (mirroring this codebase's existing
+   `throttle:60,1` pattern on `/users`), since nothing currently prevents a guardian from
+   grant-revoke looping to repeatedly force-end an in-progress call once a route exists -- a real
+   safeguarding concern given a custody-dispute scenario is plausible for this product. Consider
+   surfacing repeated grant/revoke cycling for the same scope via the existing
+   `GetVideoConsentAuditTrailForWardAction` so a counsellor/admin can see the pattern, not just a
+   silently-logged one.
+
+---
+
+## 2026-09-11 — SCRUM-283 (TT-3.1e-d): security finding deferred to a follow-up ticket
+
+**Security-engineer finding, pre-existing (not introduced by this ticket, not fixed here)**:
+the entire minor/adult determination this whole guardian-consent feature (and the interim block it
+replaces) relies on is `User::isAdult()`, computed live from the user's own self-editable `dob`
+field. `ProfileUpdateRequest` only guards against setting an age below 10
+(`prohibitedIf($age < 10)`) -- there is no floor preventing a user from RAISING their declared age
+past 18 once they already have an established minor-client `Therapy`/`Guardianship`. Since
+`EnsureVideoIsAvailableForSessionAction`'s whole consent gate is short-circuited by
+`! $user->isAdult()`, a minor client could self-edit their `dob` to appear 18+ and skip the
+consent check entirely -- no guardian action, no `VideoConsent` grant, nothing. This was equally
+true of the interim blanket block (SCRUM-278's original bugfix) this ticket replaces, so it is not
+a regression TT-3.1e-d introduces -- but it fully defeats both the old and new safeguards, and
+isn't specific to video (it would equally let a minor bypass `EnsureCanCreateTherapyAction`'s own
+`isAdult() || hasGuardian()` check's intent elsewhere).
+
+**Decision**: do not fix inline as part of TT-3.1e-d -- this is a cross-cutting identity/profile
+concern (locking or gating `dob` changes) that affects more than just video consent, and deserves
+its own scoped ticket rather than a narrow patch bolted onto this one. Filed as SCRUM-287 (see
+below). TT-3.1e-d itself ships as reviewed -- it is at least as strict as the interim block it
+replaces for every case that doesn't involve this pre-existing, orthogonal bypass.
+
+---
+
+## 2026-09-11 — SCRUM-285 (TT-3.1e-f): Playwright QA finding -- Inertia prop staleness in this page
+
+**Found during this ticket's own mandatory Playwright QA pass, not by the reviewer/security
+subagents (they don't run a browser)**: `UnifiedTherapy.vue` (the page component behind
+`therapies.get`/`Therapy/Index.vue`) snapshots its `therapy` prop into a local ref exactly once at
+setup (`const therapyRef = ref(props.therapy)`), and nothing in that file re-syncs `therapyRef`
+from later Inertia visits to the same page (confirmed: several existing actions elsewhere in that
+same file already call `router.reload({ only: ['therapy'] })` after a write, e.g. the session
+refund-request flow -- but based on this ticket's own testing, that reload's fresh props still
+never reach `therapyRef`, only a full browser navigation does). `TherapyPaymentDetails.vue`'s own
+existing `strictPaymentGate` toggle independently works around this exact gap with a local
+`ref(...)` + manual optimistic assignment in its `onSuccess`/`onError` handlers rather than
+re-deriving state from `props.therapy` after a write -- confirmed by reading that component after
+reproducing the bug live, not by assumption.
+
+**Decision**: not a bug to fix in THIS ticket (a page-wide, pre-existing architectural gap
+affecting multiple existing features, not something TT-3.1e-f introduced) -- `VideoConsentPanel.vue`
+instead follows the exact same already-established workaround: local `ref()`s for `mode`/`current`,
+manually updated optimistically in each write handler (`onSetMode`/`onGrant`/`onRevoke`), reverted
+on error. One deliberate, documented trade-off from this: switching the consent mode resets the
+displayed `current` grant to null (fail-closed) rather than guessing the new scope's real state,
+since this component has no cheap client-side way to know whether the new scope already has a
+valid grant without a server round trip -- verified live that the REAL state is still correct
+immediately on the backend and becomes visible again after any full page reload; only the
+optimistic display can lag, and only in the conservative (under-claim, never over-claim) direction.
+
+**Recommendation for a future ticket** (not filed as a tracked issue -- flagging in-line since it's
+a UI-polish/tech-debt observation, not a safety/security gap): consider adding a
+`watch(() => props.therapy, (val) => { therapyRef.value = val })` in `UnifiedTherapy.vue` itself,
+which would let every write-action on this page (not just this ticket's own) reflect
+server-truth immediately after `router.reload({ only: ['therapy'] })` without each feature needing
+its own local-ref workaround.
+
+---
+
+## 2026-09-11 — SCRUM-285 (TT-3.1e-f): two independent PII-leak findings, both fixed before merge
+
+**Security-engineer finding (HIGH)**: `TherapyResource::videoConsentData()` had no gate of its
+own, unlike its sibling fields on the same resource (`'user'`/`orgRetainerCoverage()`, both gated
+behind `addedByUserIsMaskedFor()`). Since `GET /therapies/{id}` (`therapies.get`) sits OUTSIDE the
+`auth` middleware group and `EnsureUserHasAccessToTherapyAction` explicitly returns early for a
+`public` Therapy before even checking whether a user exists, an unauthenticated guest (or any
+unrelated authenticated user) loading a `public` therapy whose client is a minor could learn: that
+the client is a minor, the therapy's consent mode, whether consent is currently valid, and the
+real name of the guardian who granted/revoked it. **Fixed**: `videoConsentData()` now requires the
+viewer to be a participant (client or counsellor, via the existing `Therapy::isParticipant()`) or
+a guardian of the resolved ward before returning anything but `null` -- resolved via
+`GetWardForVideoConsentableAction` first (not `$this->addedby` directly), since that action
+already safely returns null for a non-User addedby where calling `User::isGuardianOf()` on a
+non-User value would otherwise be a type error.
+
+**Reviewer finding (a related but distinct gap)**: even with the resource fixed, all four new
+`VideoConsentController` write/read endpoints still delegated straight into their underlying
+Action with no gate of the controller's own -- each Action's own denial MESSAGE differs by the
+therapy's actual state ("no minor client" vs "only applies to a minor client" vs "not a
+guardian"), so any authenticated stranger could probe an arbitrary `therapyId` and learn, purely
+from which message came back, whether that therapy's client is a minor -- the exact fact this
+whole feature exists to protect, and the exact class of oracle this codebase's own SCRUM-275
+review already fixed once for `EnsureVideoIsAvailableForSessionAction` by ordering its
+participant-check first. **Fixed**: `VideoConsentController::requireRelationshipToTherapy()` runs
+before any Action on every endpoint, returning one single generic denial regardless of the
+therapy's actual minor/adult/mode/guardian state. Regression test added proving all four endpoints
+return byte-identical denial text for an unrelated caller against both an adult-client and a
+minor-client therapy.
+
+**Security-engineer's other findings, also addressed**:
+- The revoke endpoint's `throttle:10,1` keys by user/IP, but a ward can have multiple guardians
+  (`RevokeVideoConsentAction`'s own "any one guardian, no unanimity" rule) -- colluding/adversarial
+  co-guardians would each get an independent bucket against the SAME child's session, undermining
+  the whole point of rate-limiting this specific disruptive action. Fixed via a named limiter
+  (`RateLimiter::for('video-consent-revoke', ...)` in `RouteServiceProvider`) keyed by the
+  resolved ward id instead, falling back to user/IP only if the ward can't be resolved at all.
+- `audit_trail` had no throttle at all, inconsistent with other sensitive read endpoints in this
+  file. Added `throttle:60,1`.
+
+**Testing-infrastructure note, not a product bug**: while adding a regression test for the guest
+case above, found that Laravel's `assertInertia()->where('path', null)` fluent helper reports a
+present-but-null property as "does not exist" specifically for an unauthenticated request in this
+app's setup (confirmed via raw payload dump: the property is genuinely present and correctly
+`null`; only the assertion helper mis-reports it). Worked around by extracting the raw page prop
+directly with `array_key_exists()` (not `??`, which has the identical isset()-based blind spot)
+for that one test case, rather than the fluent helper.
+
+---
+
+## 2026-09-12 — SCRUM-286 (TT-3.1e-g): closeout -- full regression matrix, stale-comment retirement, feature doc
+
+Closes out SCRUM-278 (TT-3.1e), the guardian/minor video-consent feature, after all seven
+sub-tickets (e-a through e-g) merged.
+
+**Full regression matrix** (`tests/Feature/GuardianVideoConsentRegressionTest.php`, 8 new
+end-to-end tests, exercised through the real HTTP routes wherever one exists, not just each
+sub-ticket's own unit-level Action tests -- this is the layer an integration gap between two
+independently-correct sub-tickets would actually surface at): PER_THERAPY mode covering a session
+created after the grant; PER_SESSION mode never leaking to a sibling session; revoke through the
+real controller route immediately ending a real, active `VideoSession` (not just
+`VideoConsent.isValid()` flipping); guardianship deletion through the real HTTP route (not just
+`DeleteGuardianshipAction` called directly) both lapsing consent and ending an active call; any
+one of two co-guardians acting while both can see the full, correctly-attributed audit trail;
+mode-switch prospective-only holding through the real controller routes, not just at the schema/
+unit level; a minor with NO guardian at all remaining permanently blocked (fails closed by
+construction -- there is no one who could ever grant on their behalf); and reminder suppression
+holding at the boundary between the grant controller route and the reminder sweep. **No gaps
+found** -- every sub-ticket's own individually-reviewed behavior held up under end-to-end
+exercise. One test-authoring mistake caught and fixed during this pass (not a product bug): an
+initial single test chaining a PER_THERAPY grant then a mode switch to PER_SESSION incorrectly
+expected the old PER_THERAPY grant to stop covering a sibling session -- that grant correctly
+kept covering it, per the feature's own prospective-only guarantee (TT-3.1e-a). Split into two
+independent tests instead of asserting a false expectation.
+
+**Stale-comment retirement**: `EnsureVideoIsAvailableForSessionAction`'s docblock previously said
+"final stale-comment/test cleanup for the interim era is TT-3.1e-g's job, not this ticket's" --
+that pointer is now itself stale (this is that ticket), reworded to describe what actually
+replaced the interim block rather than defer to a future ticket.
+
+**Final feature shape vs. the originally-scoped policy questions** (see SCRUM-278's own
+2026-09-11 entries for the original questions and the user's verbatim answers) -- all five
+delivered as scoped, no changes:
+1. Guardian reminded a day-before and hour-before, only while consent outstanding, via a button on
+   the therapy to approve -- delivered (TT-3.1e-e reminders, TT-3.1e-f approve button).
+2. Both PER_THERAPY and PER_SESSION modes, settable by counsellor or guardian -- delivered
+   (TT-3.1e-a schema, TT-3.1e-b/f mode-set action + UI).
+3. Revocation is immediate, ending any active call right now -- delivered (TT-3.1e-c, reusing
+   `EndVideoSessionAction`), now proven end-to-end through the real HTTP route in this closeout's
+   own regression matrix.
+4. Guardianship deletion lapses that guardian's own grants for that ward -- delivered
+   (TT-3.1e-c). The broader "minor with no guardian at all loses the whole therapy" idea remains
+   explicitly out of scope, filed separately as SCRUM-288 per the user's own "Separate ticket
+   (Recommended)" answer.
+5. Any one guardian's consent suffices; every guardian can see who acted -- delivered (grant/
+   revoke authorization throughout TT-3.1e-b/c, audit trail in TT-3.1e-b/f).
+
+**Known, accepted limitations carried forward** (not re-litigated here, already logged in their
+own sub-ticket's entry): no DB-level constraint preventing two simultaneously-valid grants for one
+scope (SCRUM-280); a join-time TOCTOU window between the consent check and credential issuance
+(SCRUM-283); `GetCurrentVideoConsentableForTherapyAction` resolving a single soonest session under
+PER_SESSION mode rather than supporting a full per-session management list (SCRUM-285's own
+review, an accepted simplification given the ticket's one-button scope). **Follow-up tickets
+filed during this epic, still open**: SCRUM-287 (self-editable `dob` bypasses every
+`isAdult()`-gated safeguard platform-wide, not specific to video) and SCRUM-288 (minor-loses-
+guardian losing the whole therapy, not just video).
+
+---
+
+## 2026-09-12 — SCRUM-287 (TT-4.10): dob self-edit bypass -- full scoping, all decisions final
+
+Full `/start-feature` pass (product-owner → user decisions → project-manager → architect) for
+SCRUM-287, the follow-up filed during TT-3.1e-d's own security review: `User::isAdult()` is
+computed live from the self-editable `dob` field, with no upper-boundary protection once a user
+already has a minor-relevant record on file -- a minor could self-edit past 18 to skip every
+`isAdult()`-gated safeguard platform-wide (13 call sites found, not just the two the original
+ticket named -- see below).
+
+**User's own final policy decisions (verbatim intent)**:
+1. **Approach**: snapshot + guardian/admin approval flow (not a hard permanent lock, not
+   snapshot-only with unrestricted editing).
+2. **Retroactive handling of already-existing accounts**: none needed -- nothing is in production
+   yet.
+3. **Scope**: relationship-gated, not platform-wide -- only a user who already has a
+   `Guardianship`-as-ward row or a minor-flagged `Therapy`/`GroupTherapy` on file gets the
+   snapshot/approval treatment.
+4. **Age/ID verification**: explicitly OUT of scope, split into its own future ticket (SCRUM-289)
+   per the user's own direction that it needs its own vendor/compliance/UX scoping pass, and
+   should run post-registration (hooking into the existing "preferences" step where `dob` is
+   already collected today) rather than gating signup itself.
+5. **Retroactivity of an approved change**: an approved dob correction ALSO corrects the "was this
+   person a minor" snapshot on the user's existing, still-relevant `Guardianship`/`Therapy`/
+   `GroupTherapy` records -- an approved change is treated as correcting the truth, not as a
+   prospective-only change. Deliberately the OPPOSITE of TT-3.1e-a's video-consent-mode switch
+   (which is prospective-only) -- that case is about not invalidating a past grant; this case is
+   about a person's actual historical age, which a guardian/admin has just vouched for.
+6. **Direction**: the approval gate applies in BOTH directions (minor-claiming-adult AND
+   adult-claiming-minor), not just the direction that removes an existing protection -- more
+   robust against gaming even though no reverse-direction benefit exists in the app today
+   (confirmed by the product-owner's own audit of every `isAdult()` call site).
+
+**Product-owner's own research, load-bearing for the plan**: `AdminUpdateUserRequest` has the
+IDENTICAL gap as `ProfileUpdateRequest` (only a lower floor, `prohibitedIf($age < 10)`, no
+ceiling) -- not named in the original ticket, found during this pass, now explicitly in scope
+(TT-4.10c). Confirmed 13 total `isAdult()` call sites (not the 2 the ticket named) -- full list
+in TT-4.10b's own Jira description. `dob` is 100% self-reported at every stage (registration
+doesn't even collect it) -- confirmed as the reason SCRUM-289 exists as its own ticket rather than
+being folded in here.
+
+**Architect's own data-model recommendation**: TWO separate nullable-boolean snapshot columns,
+not one shared mechanism -- `guardianship.ward_was_minor_at_creation` and a
+`client_was_minor_at_creation` column on BOTH `therapies` and `group_therapies` -- because a
+`Guardianship` row and a `Therapy`/`GroupTherapy` row answer different questions ("is the ward a
+minor" vs "is this specific therapy's client a minor") and don't necessarily correspond 1:1.
+Mirrors `video_consent_mode`'s own "nullable = not applicable" precedent from the guardian-consent
+epic. `EnsureCanCreateTherapyAction` and `EnsureUserCanBeGuardianAction` deliberately stay on live
+`isAdult()` -- the former is the trigger moment that WRITES the snapshot, not a consumer of it;
+the latter gates an unrelated question (the actor's own eligibility to become a guardian).
+
+**Approval mechanism**: reuses the existing generic `Request`/`RequestTypeEnum` system (new case),
+not a bespoke table -- the same system already used for guardianship/org-compensation/session-
+schedule/refund requests, since it already provides everything needed (morphs, `data` JSON,
+status, expiry sweep, reminder). Approval target: any one active guardian if one exists (mirrors
+`GrantVideoConsentAction`'s own "any one guardian, no unanimity" precedent), falling back to
+"any admin" only when no active guardian exists (mirrors `refund`'s existing null-`to` shape) --
+NOT an always-available admin bypass alongside an existing guardian, to avoid routinely
+short-circuiting the guardian-approval requirement.
+
+**Where the boundary-crossing decision lives**: a new shared Action invoked by BOTH
+`ProfileController::update()` and the admin update path -- NOT inside either `FormRequest`. This
+codebase's `FormRequest` layer does no custom model querying anywhere else (confirmed by the
+architect across all 42 existing FormRequests); doing DB lookups there would be new, unwanted
+coupling. This also closes an existing, unrelated duplication gap between the self-service and
+admin dob-floor-validation logic in the same pass.
+
+**Accepted limitation, logged proactively** (same class as SCRUM-280's own accepted gap): no
+DB-level constraint will prevent more than one outstanding dob-change approval request per user
+(MySQL 8's lack of partial/filtered unique indexes, same reason `video_consents` has the
+identical accepted limitation) -- application logic is the sole enforcer, per TT-4.10c's own Jira
+description.
+
+**Sequencing**: a (snapshot data model) → {b (call-site migration), c (approval gate + request
+type) in parallel} → d (approve/reject action, needs BOTH b and c fully done) → e (frontend) → f
+(regression closeout). ~39pts total (floor, not ceiling, per this project's own recurring
+estimation pattern -- see TT-2.2/TT-2.6/TT-6.3/TT-6.5/TT-7.2's own history of first-pass
+undersizing). Filed as SCRUM-290 through SCRUM-295. `documentation/implementation_plan.md`'s new
+TT-4.10 row (under Epic TT-4: Trust, Safety & Crisis Response) updated with the full breakdown.
+
+**Explicitly out of scope, tracked separately**: SCRUM-289 (post-registration age/identity
+verification) -- does not block and is not blocked by TT-4.10; no TT-4.10 sub-ticket should
+reference or wait on it.
+
+## 2026-09-12 — SCRUM-290 (TT-4.10a): security finding split into SCRUM-296, not fixed in-ticket
+
+During this ticket's security-engineer review, a real, exploitable gap was confirmed: a minor
+**with a guardian** legitimately passes `EnsureCanCreateTherapyAction` (`isAdult() ||
+hasGuardian()`) and can reach `GroupTherapyController::createGroupTherapy()`. Its `counsellorId`
+input has no validation at all (`CreateGroupTherapyRequest::rules()` only validates the plural
+`counsellorIds` array) and is not tied to the authenticated caller, so a minor can submit an
+arbitrary counsellor's id. `CreateGroupTherapyAction` then resolves `$addedby =
+$dto->counsellor ?: $dto->user` and -- per this ticket's own new logic -- writes
+`group_therapies.client_was_minor_at_creation = null` ("not applicable") instead of `true`,
+because `$addedby` is a `Counsellor`, not the real minor `User` who actually created the group.
+
+**Decision**: do not expand SCRUM-290's scope to fix this. The underlying trust-boundary gap
+(unvalidated `counsellorId`) is pre-existing, predates this ticket, and also appears in
+`TherapyController`/elsewhere -- fixing it properly touches `GroupTherapyController`/
+`CreateGroupTherapyRequest`/`GroupTherapyService` (none of which are in this ticket's
+data-model-only file scope) and raises its own product question (is there a legitimate case for
+a non-counsellor user to specify an arbitrary `counsellorId` at all?) that deserves its own look
+rather than a rushed fix bundled into a schema ticket. `CreateTherapyAction` (individual
+`Therapy`) is unaffected -- its snapshot always comes from `$request->user()`, never a
+client-suppliable value.
+
+**Filed as SCRUM-296** (High priority, Bug), with an explicit note that it must be resolved (or
+consciously risk-accepted) before or alongside TT-4.10b (SCRUM-291) starting to actually trust
+`group_therapies.client_was_minor_at_creation` for any authorization decision. Safe to ship
+SCRUM-290 itself in the meantime: nothing reads this column yet, so the corrupted-snapshot risk
+is inert until TT-4.10b lands -- but TT-4.10b's own kickoff must check SCRUM-296's status first.
+
+## 2026-09-12 — SCRUM-291 (TT-4.10b): bundled pre-existing bug fix + accepted pre-migration gap
+
+**Bundled bug fix**: while migrating `Therapy::getUsers()`/`getOtherUsers()` to
+`TherapyTrait::clientIsMinor()`, discovered that both methods called `$users->merge(...)` without
+reassigning the result -- `Collection::merge()` returns a NEW collection rather than mutating in
+place, so a minor client's guardians were never actually being added to the participant list at
+all, regardless of the isAdult() check this ticket replaces. `GroupTherapy`'s own identical
+methods already did this correctly (`$users = $users->merge(...)`). Fixed in the same diff rather
+than filed as a separate ticket: it's the exact same lines already being touched for the snapshot
+migration, a one-token change, and immediately covered by this ticket's own new
+`tests/Unit/TherapyParticipantMinorSnapshotTest.php` (which fails without it). Confirmed via
+security review that `getUsers()`/`getOtherUsers()` are only ever used as notification-recipient
+lists, never an authorization boundary (`isParticipant()`/`isNotParticipant()` are separate,
+unaffected methods) -- so this fix only means an affected minor's guardian(s) now correctly
+receive existing session/discussion lifecycle notifications for their ward's therapy, consistent
+with this feature's existing guardian-alerting design, not a new access grant.
+
+**Accepted, logged limitation**: `client_was_minor_at_creation` has no backfill migration -- any
+`Therapy`/`GroupTherapy` row created before TT-4.10a's migration lands has this column `null` and
+therefore falls through `clientIsMinor()`'s own live-`isAdult()` fallback branch, meaning the
+exact SCRUM-287 self-edit-dob bypass this epic exists to close still applies to any such
+pre-migration row. Accepted per this project's own current stage (nothing in production yet, per
+SCRUM-287's own decision-log entry) -- there is no real pre-migration data to backfill, and no
+way to reconstruct a pre-migration user's dob at their therapy's actual creation time regardless.
+No backfill migration or follow-up ticket filed; revisit if this ships before any real
+Guardianship/Therapy/GroupTherapy data exists.
+
+## 2026-09-12 — SCRUM-292 (TT-4.10c): partial-apply design, bundled fix, and accepted limitation
+
+**Partial-apply, not all-or-nothing**: when a dob edit is blocked (crosses the minor/adult
+boundary for a user with a qualifying relationship), only the `dob` field itself is deferred --
+every other field submitted in the same request (name, email, gender, country, etc.) still
+applies immediately, in both `ProfileController::update()` (self-service) and `UpdateUserAction`
+(admin path). The ticket text didn't specify this either way; the alternative (block the whole
+submission, mirroring `ProfileController::destroy()`'s own `ValidationException` idiom for
+`EnsureCanDeleteCounsellorAction`) would mean a user loses unrelated profile edits just because
+their dob happened to cross a boundary in the same form submission. Chosen for better UX and
+because nothing else in the request actually failed -- there was no validation error, just one
+field's write deferred pending approval.
+
+**Signaling deferral**: `ProfileController::update()` flashes `dobChangePendingApproval => true`
+on redirect; the admin JSON path currently signals nothing beyond a plain success response (the
+User resource doesn't carry any "dob change is pending" flag). Deliberately minimal --
+TT-4.10c is backend-only; TT-4.10e (frontend) is the ticket that builds the actual approval UI
+and can extend the response/flash shape as needed once that UI exists.
+
+**Bundled fix**: `UpdateUserAction` previously ran `new Carbon($updateUserDTO->dob)`
+unconditionally -- Carbon treats a `null` argument as "now", so an admin submitting an update that
+didn't touch `dob` at all would have silently reset the target's dob to today. Discovered while
+adding the gate to this exact line (which needed to skip the write entirely when blocked anyway);
+fixed by only including `dob` in the update array when a value was actually submitted, mirroring
+`CreateGroupTherapyAction`'s own established "omit the key, let the existing/default value stand"
+convention (SCRUM-77).
+
+**First custom validation `Rule` class in this codebase**: `app/Rules/MinimumAgeForDobRule.php`
+replaces the identical inline `Rule::prohibitedIf(...)` closure duplicated across
+`ProfileUpdateRequest` and `AdminUpdateUserRequest` (TT-4.10c's own explicit scope). No prior
+`app/Rules/` convention existed to follow -- a plain `ValidationRule` implementation (Laravel 12's
+current contract) was chosen over a static-helper alternative since it's directly usable in a
+rules array like any other rule object, matching how `Rule::in(...)`/`Rule::unique(...)` already
+read at each call site.
+
+**Accepted, logged limitation** (identical class of gap to `video_consents`, TT-3.1e-a, and
+TT-4.10b's own request-duplication note): no DB-level constraint prevents more than one
+outstanding dob-change approval request per user (MySQL 8 lacks partial/filtered unique indexes).
+`EnsureDobChangeIsAllowedAction` mitigates this at the application level (locks the target User
+row, then checks for and reuses an existing pending request before creating a new one, mirroring
+`GrantVideoConsentAction`'s own find-or-create-under-lock shape) but this is not a DB-level
+guarantee.
+
+**Scope boundary respected**: this ticket creates the pending `Request` correctly shaped (`from`/
+`to`/`for`/`data`/`type`) but does NOT implement approving/rejecting it, nor any new
+`EnsureUserCanRespondToRequestAction` branch for "any one guardian of the `for` user may respond"
+-- that authorization shape doesn't exist yet anywhere in this codebase and is explicitly
+TT-4.10d's job (the approve/reject action), which depends on both this ticket and TT-4.10b being
+fully done.
+
+**Security-review findings, addressed in this same ticket** (2026-09-12):
+- `createOrReuseApprovalRequest()`'s reuse path originally kept the FIRST attempt's `newDob`
+  forever, silently discarding every later attempt's actual value while still reporting success
+  -- fixed to refresh the existing pending request's `data.newDob` on every reuse (`priorDob`
+  stays untouched, since the real stored dob never changes while a request is outstanding).
+- Because `RequestTypeEnum::dobChange` now exists but has no dedicated `RespondTo*RequestAction`
+  yet (TT-4.10d's job), hitting the existing generic `/requests/respond` endpoint against a
+  dobChange request fell through every dispatch branch in `RespondToRequestAction` and reported a
+  misleading success while leaving the request untouched -- the exact response-honesty gap
+  SCRUM-171 already fixed for an already-decided request. Added an explicit guard (mirroring that
+  same precedent) that rejects with a 422 instead, to be removed once TT-4.10d ships the real
+  handler.
+
+**Confirmed intended, not a bug** (security-review question): a minor with an active guardian can
+clear their own `dob` to null with no approval required. `isAdult()` and `isAdultForDob(null)` both
+treat a null dob as age 0 (already-minor), so clearing it while already flagged a minor produces no
+status flip -- correctly out of this gate's scope per its own literal rule ("does this edit flip
+the person's current effective minor/adult status"). Not a path to adult status: any subsequent
+dob set is still gated relative to the now-null (still-minor) baseline.
+
+## 2026-09-12 — SCRUM-293 (TT-4.10d): approval action scope
+
+**Notifies only the requester (`$request->from`), not the target (`$request->for`) when they
+differ**: the ticket text says "requester is notified of the outcome," taken literally -- in the
+common self-service case `from === for`, so this only matters for an admin-initiated dob change
+(the admin, not the affected user, gets notified). Not expanded to also notify `for` separately,
+since that wasn't asked for and would be new scope; revisit if TT-4.10e's frontend surfaces a need
+for the target to be notified too.
+
+**Retroactive correction is an unconditional bulk update, not per-row nuance**: every
+currently-existing `Guardianship`/`Therapy`/`GroupTherapy` row for the target user gets its
+snapshot column set to the SAME newly-confirmed boolean, via a plain `Model::query()->where(...)
+->update([...])` per model (no individual-row logic, no partial application) -- matches "every
+currently-existing qualifying record," the literal scope TT-4.10c/TT-4.10a already established
+for what counts as "on file."
+
+**Closes the TT-4.10c stopgap**: `RespondToRequestAction`'s explicit 422 guard for `dobChange`
+(added in TT-4.10c specifically because this action didn't exist yet) is now replaced with a real
+dispatch to `RespondToDobChangeRequestAction`. The obsolete guard test
+(`RespondToRequestActionDobChangeGuardTest.php`) was deleted rather than kept alongside a
+contradictory new test.
+
+**`GetRequestResourceAction` still has no dedicated resource for `dobChange`** -- it falls through
+to `AdminCounsellorVerificationRequestResource`'s defensive null-degradation (confirmed safe, no
+data leak, by TT-4.10c's own security review). The underlying approve/reject state change is
+correct regardless; a proper display resource is frontend-adjacent work left for TT-4.10e.
+
+**Review finding, fixed in this same diff**: the first version notified `$request->from` based
+purely on the request's final status, not on whether THIS call actually caused that status --
+a second, redundant response to an already-decided request (a race, a stale UI, a double-click)
+re-sent the outcome notification. Fixed by threading a `$responded` flag out of the locked
+transaction (mirroring `RespondToGuardianshipRequestAction`'s own `$created` flag for the
+identical class of problem, SCRUM-80/91) and gating both notify() calls on it. Verified by
+temporarily reverting the fix and confirming the new regression test failed as expected, then
+restoring it.
+
+## 2026-09-13 — SCRUM-294 (TT-4.10e): frontend reuse, and a discovered gap
+
+**Refund's own null-`to` case does NOT actually go through the generic personal Requests
+list/modal** -- despite the ticket text's own premise ("reuse the existing generic UI already
+used for... refund requests"), refund's null-`to` ("any admin") case is surfaced via a completely
+separate, dedicated admin-only page (`AdminRefundRequestController`/`RefundRequests.vue`), never
+`RequestModal.vue`/`RequestBadge.vue` -- `RequestService::getRequests()`'s own query has no branch
+that would ever match a null `to_id` for any viewer, admin or not. Confirmed by reading the
+query directly, not assumed. Rather than build a second, equally-separate admin page for
+dobChange (a real option, and the literal precedent), added a small, targeted branch to
+`getRequests()` instead -- `$user->isAdmin()` OR-branch matching a null-`to` `dobChange` row --
+so the null-`to` case reaches the SAME generic modal the ticket asked to reuse, consistent with
+its explicit "do not build a new one" instruction. The guardian-addressed case already worked via
+the existing `whereTo($user)` branch with no changes needed.
+
+**Discovered during manual Playwright QA, not from the ticket text**: `RequestResource` (the
+resource `getRequests()`'s list endpoint actually returns -- a DIFFERENT class from
+`DobChangeRequestResource`, which only serves the accept/reject endpoint's response) had no idea
+about `dobChange` at all. Its `getTo()` would have resolved a null `to` via
+`CounsellorMiniResource(null)` -> `{deleted: true, ...}`, misrepresenting "not yet assigned to
+anyone" as "the guardian's account was deleted" (the same class of bug `DobChangeRequestResource`
+was written to avoid, in the OTHER resource); and `newDob`/`priorDob` were never included at all,
+so a guardian saw "Invalid Date" in the request badge instead of the proposed change. Fixed by
+adding a dobChange-specific null-`to` branch to `getTo()` and a whitelisted `dobChange: {newDob,
+priorDob}` field to `toArray()`, mirroring the existing `proposal` field's own "explicitly
+whitelisted, not a raw spread of `data`" precedent for `sessionScheduleProposal`. Caught before
+committing by actually clicking through the golden path in a real browser (as the ticket's own
+"Playwright-verified golden path" requirement asks), not just by unit-testing the two resources
+in isolation -- a reminder that this codebase's dual-resource-per-type convention (one for the
+list, one for the respond response) means a new type needs BOTH updated, and testing only one in
+isolation would have shipped this gap invisibly.
+
+**Security review finding, fixed in this same diff**: the admin-visibility branch above means a
+null-`to` dobChange request appears in *every* admin's personal requests list, not just whichever
+admin eventually opens and responds to it -- unlike a guardian, who only ever sees the one request
+addressed to them. `RequestResource::getFor()` was returning the full `UserMiniResource` for the
+minor (`gender`/`country`/`dob`, on top of identity fields) to every one of those admins merely by
+them opening their own requests list, which is broader exposure than any admin needs just to see
+a pending item exists. This is the same class of problem `isOrgMemberFlowUser()` already exists to
+solve (narrowing PII for a viewer with no established relationship to the user) -- narrowed
+`getFor()` the same way for this case (`narrowUserProjection`: id/fullName/username only), scoped
+specifically to a null-`to` dobChange row so a guardian's own to-scoped view (who already has an
+established guardianship relationship with the minor) is unaffected. `dob` specifically was
+redundant to drop anyway since the sibling `dobChange.priorDob` field already carries it.
+`DobChangeRequestResource` (the accept/reject response payload, not a list) was left unnarrowed --
+that endpoint returns only the single request whichever admin already committed to acting on, not
+a broadcast to every admin, so the "visible before anyone has earned it" concern doesn't apply
+there the same way.
+
+Also tightened, per code review: `RequestBadge.vue`'s `computedIsTo` originally granted
+"recipient" status to any admin for *any* request type with a null `to`, not just `dobChange` --
+harmless today (no other type with a null `to` reaches this generic modal yet: `refund` has its
+own separate admin page, and `administrator` has no creation path), but scoped it explicitly to
+`dobChange` to match how the two backend fixes above are scoped, rather than relying on that
+being true forever.
+
+**Second security-review pass caught the fix was incomplete**: narrowing `getFor()` alone still
+left `getFrom()` returning the full `UserMiniResource` (gender/country/dob) for the same null-`to`
+dobChange row. This mattered concretely because the common case -- a ward editing their own dob via
+`ProfileController::update()` -- sets `from = for` = that same ward (`EnsureDobChangeIsAllowedAction`
+is called with `actor == user` there), so the exact PII the first narrowing pass closed off through
+`for` was still reachable through the sibling `from` field for every admin. Factored the shared
+condition into a private `isNullToDobChange()` helper, reused by `getFrom()`/`getTo()`/`getFor()`,
+and narrowed `getFrom()` the same way -- specifically so this three-field asymmetry can't silently
+reappear if a future similar request type is added and only some of the three fields get updated.
+Added a matching regression test asserting `from` is narrowed for the self-service (from == for)
+case, mirroring the existing `for`-narrowing test.
+
+## 2026-09-13 — SCRUM-298: Requests UI redesign
+
+User-requested visual/UX pass on `RequestBadge.vue`/`RequestModal.vue` (the personal "User
+Requests" modal) -- filed as a chore-tier ticket per its own description, implemented directly.
+
+Removed `RequestBadge.vue`'s duplicate "visit therapy page" `StyledLink`, which only appeared for
+`RequestTypeEnum.therapy` inside the old hidden double-click-revealed actions row -- it navigated
+to the exact same `therapies.get` route the top-of-card "view therapy" link (covering both
+`discussion` and `therapy` types) already provides via `visitTherapy()`. Since the double-click
+reveal mechanism itself was removed (replaced with an always-visible accept/reject row when the
+viewer can act), keeping a second link to an identical destination would have been redundant
+clutter rather than a deliberate feature; this is a presentation-only simplification, not a
+behavior change -- same destination, same route.
+
+Discovered a false alarm while spot-checking a non-dobChange type (`guardianship`) during manual
+QA: `RequestBadge.vue`'s `computedTypeMessage` crashed with `Cannot read properties of null
+(reading 'forType')`. Root cause was my own malformed test data (created via raw tinker without
+`->for()->associate(...)`), not a real bug -- `UserController::sendGuardianshipRequest()` always
+sets `for = $request->user()` for a real guardianship request, so `for` is never actually null in
+production for this type. Confirmed by reading the controller directly rather than assuming;
+no code change was needed once the test data was fixed. (Noted for awareness: `computedTypeMessage`
+is a plain object literal, so Vue's `computed()` evaluates every key's expression on every
+access regardless of which key is ultimately selected by `[props.request?.type]` -- a request
+type whose `for`/`from` genuinely lacks a field another branch assumes exists could still crash
+this way in production. Out of scope for this presentation-only ticket; worth a future ticket if
+it's ever hit for real.)
+
+## 2026-09-13 — SCRUM-295 (TT-4.10f): closeout for SCRUM-287, one real bug found and fixed
+
+Final sub-ticket of the TT-4.10 split (a-f). Ran the full regression matrix this ticket's own
+scope calls for: all 13 `isAdult()` call sites (TT-4.10b), both boundary-crossing directions
+through real HTTP routes (self-service and admin), an ungated user's free edit, rejection leaving
+every snapshot untouched, and approval retroactively correcting every qualifying
+`Guardianship`/`Therapy`/`GroupTherapy` record -- all confirmed already correct and already
+covered by TT-4.10a-e's own test suites (216+ tests across the call-site migration, the gate, the
+approval action, and video-consent's own dependent behavior), so nothing needed rewriting there.
+
+**One item in this ticket's own regression matrix ("any one of multiple guardians can approve")
+turned up a real, confirmed bug**, per this ticket's own explicit instruction to fix a found bug
+in its owning sub-ticket's files rather than bolt a patch onto this one's scope. Reproduced first
+with a throwaway test before touching any code: a ward with TWO active guardians has their dob-
+change request's `to` fixed to whichever ONE guardian `EnsureDobChangeIsAllowedAction` happened to
+pick at creation time (`Guardianship::query()->where('ward_id', ...)->first()`) --
+`EnsureUserCanRespondToRequestAction` only ever checked "is the responder literally that one
+fixed `to`," so the ward's OTHER guardian got a 422 trying to respond at all. This directly
+contradicted TT-4.10c's own decision-log entry ("any one active guardian... mirrors
+GrantVideoConsentAction's own 'any one guardian, no unanimity' precedent") -- `GrantVideoConsentAction`
+actually checks the live relationship (`$guardian->isGuardianOf($ward)`), not a single fixed
+target, so the two features' behavior had silently diverged from their own stated shared design.
+
+**Fix**: added a dobChange-specific branch to `EnsureUserCanRespondToRequestAction` (shared across
+every request type) checking `$user->isGuardianOf($request->for)`, alongside the existing
+fixed-`to` check -- so either guardian may respond, matching the video-consent precedent this
+feature's own design explicitly cited. `RespondToDobChangeRequestAction` itself needed no change:
+it already reads `$request->for`/`$request->from`, never assumes the responding user IS
+`$request->to`, and its retroactive snapshot correction already updates every one of the ward's
+`Guardianship` rows (not just the addressed guardian's own row) -- so a second guardian responding
+correctly finishes the job. Added a permanent regression test to TT-4.10d's own
+`DobChangeRequestResponseTest.php` (the file this bug conceptually belongs to), plus one closing a
+smaller, related test-coverage gap this same matrix pass surfaced: the adult-to-minor direction
+had only ever been exercised at the Action level (`EnsureDobChangeIsAllowedActionTest`), never
+through the real `profile.update` HTTP route -- added to `ProfileDobChangeGateTest.php`.
+
+**Final shape vs. SCRUM-287's original decisions**: no other divergence found. Every one of the
+six user decisions in the 2026-09-12 scoping entry (snapshot+approval approach, no retroactive
+backfill needed, relationship-gated scope, age/ID verification split out as SCRUM-289, retroactive
+correction on approval, both-directions gating) landed exactly as decided, across a-f. Two
+accepted, logged limitations remain open by design (no DB-level unique constraint on outstanding
+dob-change requests, no backfill for pre-migration `client_was_minor_at_creation` -- both already
+documented in TT-4.10b/c's own entries above, neither revisited here since neither's precondition
+changed). SCRUM-296 (the group-therapy `counsellorId` trust-boundary gap, split out of TT-4.10a)
+was already fixed and merged (`acb4681`, PR #225) well before TT-4.10b started, per its own
+required precondition -- confirmed via `git log` rather than assumed. SCRUM-289 (age/ID
+verification) remains its own separate, unblocked ticket -- out of this epic's scope, as
+originally decided.
+
+**Second security-review pass, on this ticket's own diff, found one more real bug**: the
+multi-guardian fix above (a new `isGuardianOf` branch) was initially added ALONGSIDE the existing
+generic `respondent->is($user)` identity-match branch, rather than replacing it for dobChange --
+which meant a guardian whose `Guardianship` row was later hard-deleted (`DeleteGuardianshipAction`,
+a normal, reachable flow) could still respond to a dobChange request they were originally
+addressed to, forever, since the generic branch never re-verifies the relationship still exists.
+Unlike `GrantVideoConsentAction` (the precedent this feature explicitly cites), which re-checks
+`isGuardianOf` live with no legacy fallback at all. Fixed by giving dobChange its own fully
+separate authorization branch -- admin, or a LIVE `isGuardianOf` check, full stop -- instead of
+layering the new check on top of the old generic one. Regression test added proving a
+formerly-guardian `to` gets a 422 after their guardianship is deleted.
+
+**qa-engineer pass caught the backend fix was only half-shipped**: `EnsureUserCanRespondToRequestAction`
+now correctly AUTHORIZES a ward's second guardian, but `RequestService::getRequests()` (the query
+that populates the Requests list/modal a guardian would actually use to discover the request in
+the first place) was never given a matching branch -- it only ever matched `whereTo($user)`, so
+the second guardian had no way to ever find the request through the UI at all, verified by manual
+Playwright QA (their Pending tab showed "No pending requests"). This is the same "authority logic
+duplicated across layers, one layer not updated" root cause as the earlier `EnsureUserCanRespondTo
+RequestAction` bug itself. Fixed with an additive branch (mirrors the `$counsellor`/
+`$administeredOrganizationIds` blocks already in that method) matching any dobChange request whose
+`for` is one of the querying user's own wards (`$user->wards()->pluck('ward_id')`).
+
+**A third, related gap surfaced from the same root cause**: even once the second guardian could
+SEE the request, `RequestBadge.vue`'s frontend-only `computedIsTo` still compared `request.to.id`
+directly -- so the accept/reject buttons stayed hidden for anyone but the originally-addressed
+guardian, independently reinventing (and now disagreeing with) the backend's own authorization
+answer. Rather than have the frontend re-derive "can I respond" a third time (after the two
+backend layers above), extracted `EnsureUserCanRespondToRequestAction`'s boolean condition into a
+public `userCanRespond(User, Request): bool` method and exposed its answer directly on
+`RequestResource`'s existing `dobChange` field as `isRespondent`, so the frontend now simply
+trusts one server-computed answer instead of maintaining a fourth (now fifth, across all the
+places this logic had silently drifted) independent copy of the same authorization logic.
+`computedIsTo` now reads `request.dobChange?.isRespondent` for dobChange specifically, with the
+pre-existing `request.to.id` comparison kept only for every other request type (unaffected,
+confirmed via the full Pest suite plus a live Playwright check of an unrelated
+groupTherapyMembership accept/reject).
+
+Verified live end-to-end via Playwright, not just Pest: logged in as a hand-seeded ward's SECOND
+guardian, confirmed the request is now visible in their own Requests list, confirmed accept/reject
+buttons render, clicked accept, and confirmed via tinker that the dob was actually applied and the
+request transitioned to ACCEPTED.
+
+Added seed data for this scenario (per the QA finding that it wasn't independently verifiable via
+seeded-data.md otherwise): `createDobChangeMultiGuardianDemoData()` --
+`dobchange_demo_multi_guardian` (ward), `dobchange_demo_first_guardian` (the addressed `to`),
+`dobchange_demo_second_guardian` (the guardian this whole finding is about) -- documented in
+`documentation/seeded-data.md`.
+
+Feature doc: `documentation/features/scrum-287-dob-safeguard.md`. `documentation/seeded-data.md`
+carries all three of this feature's needed scenarios: `video_consent_demo_minor`/`_guardian` for
+the single-guardian-addressed path (added for SCRUM-285, equally valid here), `dobchange_demo_no_
+guardian` for the no-guardian/any-admin path (added in SCRUM-294), and the new multi-guardian trio
+above.
+
+## 2026-09-13 — SCRUM-289 (TT-4.11): scoping decisions and epic split
+
+Full `/start-feature` pass (product-owner → user decisions → project-manager → architect) for
+SCRUM-289, the age/identity-verification ticket split out of SCRUM-287's own original scoping.
+
+**User's own final policy decisions**:
+1. Method: self-attestation + document upload, manually admin-reviewed. No paid third-party
+   vendor (Persona/Stripe Identity/Onfido) -- no budget, no live production users yet to justify
+   the cost/compliance overhead. Revisit if the project reaches that stage.
+2. Document upload for a regular user/client is OPTIONAL -- self-attestation alone is always
+   sufficient to submit for review. Explicitly NOT required, since a mandatory document would be
+   a real barrier for someone who needs help right now. Contrast with the SEPARATE, already-
+   existing counsellor license/national-ID upload (currently `nullable` in
+   `VerifyCounsellorRequest`), which the user separately decided SHOULD become required -- filed
+   as its own ticket (SCRUM-301), not folded in here, since it's a different subject (professional
+   credentials, not age) with a different barrier calculus (a counsellor isn't a help-seeker in
+   crisis).
+3. Visibility: internal/admin-only, no user-facing verified/unverified badge -- avoids an
+   accusatory-feeling UX on a mental-health platform.
+4. A verified dob SUPERSEDES the self-reported one, authoritative for TT-4.10/SCRUM-287's
+   `ward_was_minor_at_creation`/`client_was_minor_at_creation` snapshot mechanism, consistent with
+   that epic's own "an approval retroactively corrects the truth" precedent.
+5. Consequence for a later-discovered misrepresentation: no automation -- admin can act manually.
+6. Document retention: configurable, 30-day default.
+
+**Architect finding, split into its own separate ticket rather than folded into TT-4.11a**: the
+existing generic file-upload path (`FileService`/`File`/`getUrlFor()`) serves every file type
+through a plain public `asset()` URL with ZERO authorization check -- confirmed this already
+affects counsellor license/ID documents collected TODAY, not just a hypothetical for this new
+epic. TT-4.11a's own storage design deliberately does not repeat this pattern (new private disk,
+no `filesystems.php` `links` entry, authorized retrieval route only) but does not retroactively
+fix the existing gap either -- filed separately as **SCRUM-300** (High priority), mirroring the
+SCRUM-296 precedent (found mid-epic, unrelated pre-existing debt, filed rather than silently
+expanding this ticket's scope).
+
+**Split into 5 sub-tickets** (TT-4.11a-e, SCRUM-302 through SCRUM-306), mirroring TT-4.10's own
+6-part precedent: (a) hardened identity-document storage, (b) submission at the preferences step,
+(c) admin approve/reject + dob supersession, (d) admin review queue UI, (e) regression closeout.
+Architect-recommended technical approach for (c) -- extracting `RespondToDobChangeRequestAction`'s
+retroactive-correction logic into a shared, `Request`-agnostic `ApplyVerifiedDobAction`, adding a
+`users.dob_verified_at` marker column, locking the target `User` row (not just the `Request` row)
+across both dobChange and ageVerification flows to avoid a race, and a one-directional
+`RequestStatusEnum::superseded` status for a dobChange request overtaken by a stronger
+verification -- is captured in SCRUM-304's own ticket description for implementation.
+
+## 2026-09-13 — SCRUM-302 (TT-4.11a): identity-document storage foundation
+
+First of the 5-part SCRUM-289 split. Purely foundational -- no submission/review UI yet (that's
+TT-4.11b/d), no `RequestTypeEnum::ageVerification` case yet (deliberately deferred to TT-4.11b;
+this ticket's own tests use an existing, unrelated enum value as a generic placeholder, since
+`Request::files()` itself is completely type-agnostic).
+
+**Reused, not rebuilt**: the existing generic `File`/`fileables` polymorphic pivot (already
+supports per-tag uniqueness) rather than a new table -- the actual gap was disk placement and
+retrieval authorization, not the schema. `Request::files()`/`File::requests()` mirror
+`License::files()`'s own exact shape.
+
+**Two review passes (reviewer + security-engineer) found real, fixed issues**:
+- `EnsureUserCanViewIdentityDocumentAction` originally threw a distinct 404 ("file not attached to
+  this request") vs. 403 ("not authorized") -- security review flagged this as a distinguishable-
+  response oracle: an unrelated authenticated caller could confirm a specific file/request pairing
+  exists (i.e., that a specific user submitted an identity document at all) without any real
+  authorization, just by observing which status code came back. Fixed by collapsing both failure
+  modes into a single, uniform `404 "Document not found."` regardless of cause.
+- The new retrieval route had no rate limiting, unlike its sibling `requests.respond` -- and this
+  codebase's general `api` throttle is confirmed disabled entirely (`RouteServiceProvider`). Since
+  the uniform-404 fix above specifically depends on a caller not being able to distinguish
+  responses, an *unthrottled* route would still let an attacker script through sequential id pairs
+  cheaply. Added `throttle:30,1`, matching the existing `requests.respond` precedent.
+- `AppService::deleteExpiredIdentityDocuments()` originally re-derived the storage path inline and
+  hardcoded `Storage::disk('identity_documents')` -- reviewer pointed out this duplicates
+  `FileService::deleteFile()`'s own existing logic (already used by `DeleteReportAction`) and is
+  less robust (assumes every file this sweep ever touches lives on that one disk, rather than
+  reading `$file->storage` like `FileService` already does). Switched to call
+  `FileService::new()->deleteFile($file)` instead.
+- Added, proactively, one more layer of defense-in-depth per security review's own forward-looking
+  note: `getUrlFor()` (`File::url`) now throws for any file on the `identity_documents` disk,
+  rather than silently producing a working public link the way it does for every other disk today
+  (that universal-URL-building behavior, unscoped to `$file->storage`, is the confirmed pre-
+  existing SCRUM-300 gap -- not fixed here, but this guard means a future careless `$file->url`
+  call on an identity document fails loudly instead of quietly recreating SCRUM-300 for this most
+  sensitive file type).
+
+**Known, accepted residual (flagged by security review, not fixed here)**: Laravel's own implicit
+route-model-binding throws its default `ModelNotFoundException` (a different JSON body shape) when
+the `{request}`/`{file}` route segment doesn't resolve to any DB row at all, before this ticket's
+own uniform-404 action ever runs -- so a very determined caller could in principle still
+distinguish "no such row exists" from "a row exists but you can't see it" by response *body*
+(not status code). This is a systemic, app-wide route-model-binding behavior, not specific to this
+route; left as an optional future hardening rather than this ticket's scope.
+
+---
+
+## 2026-09-13 — SCRUM-303 (TT-4.11b): submission UI placement, request shape, temporary respond guard
+
+**Decision 1 -- built the UI on the Profile page, not the "preferences step"**: the ticket's own
+text said to hook the age-verification submission form into "the existing preferences step where
+`dob` is already collected today." Direct inspection
+(`grep -n "dob" resources/js/Pages/Profile/Partials/UpdateProfileInformationForm.vue
+resources/js/Pages/Preferences.vue`) showed this premise was simply wrong: `dob` is edited
+exclusively on the Profile page's `UpdateProfileInformationForm.vue`; `Preferences.vue` is about
+cases/languages/religions/anonymity and has no `dob` field at all. Built `AgeVerificationSection.vue`
+as its own card on `resources/js/Pages/Profile/Show.vue`, directly under the existing profile-info
+card, instead of following the ticket's literal (inaccurate) instruction. This mirrors the identical
+class of correction made earlier in this epic for TT-4.10e's "refund reuses the generic modal"
+premise -- ticket text describing UI location/reuse is treated as a claim to verify against the
+actual code, not a given.
+
+**Decision 2 -- request shape**: `ageVerification` requests always have `to = null` (no guardian-style
+recipient makes sense here, unlike `dobChange`) and `for = from = the submitting user`, mirroring
+`refund`'s own null-`to` shape. `data` carries only the attestation text; the optional document is
+stored separately via a new tag-scoped `Request::identityDocument(): MorphToMany` relation
+(`withPivotValue('tag', 'identity-document')` on the `fileables` pivot), mirroring
+`User::avatarFile()`'s exact pattern -- chosen specifically so a re-submission can `->sync()` a new
+document cleanly in place of an old one without hand-rolled delete-then-attach logic.
+
+**Decision 3 -- idempotent resubmission**: `SubmitAgeVerificationAction` locks the user row
+(`lockForUpdate()` inside a `DB::transaction`) and looks for an existing PENDING `ageVerification`
+request `for` this user; if found, it updates that request's `data` in place instead of creating a
+second one. This mirrors `EnsureDobChangeIsAllowedAction`'s find-or-reuse-under-lock pattern from
+TT-4.10c exactly, for the same reason: prevents a user from accumulating unbounded duplicate pending
+requests (and unbounded orphaned document uploads) by resubmitting repeatedly.
+
+**Decision 4 -- temporary respond-pipeline guard**: `RespondToRequestAction` now throws a 422
+`BadRequestException` if anyone hits the shared respond endpoint against a pending `ageVerification`
+request, since the real approve/reject handler (dob supersession, retroactive snapshot correction,
+etc.) is TT-4.11c's job and doesn't exist yet. Without this guard the request would silently fall
+through every dispatch branch, leaving status untouched but reporting a misleading HTTP success.
+This exact pattern (guard now, remove once the real handler ships) was already used and later
+removed for `dobChange` in TT-4.10c/TT-4.10d -- same shape, same reason, expected to be removed
+again once SCRUM-304/TT-4.11c ships.
+
+---
+
+## 2026-09-13 — SCRUM-303 (TT-4.11b): dev-container storage permissions fix (found via QA)
+
+**What happened**: `qa-engineer`'s Playwright walkthrough of the age-verification submission
+feature found the document-upload path returned a 500 in the dev environment, while every Pest
+test covering the same code path passed. Root cause: `storage/` is bind-mounted from the host
+into the `php` container (`docker-compose.yml`'s `./storage:/var/www/html/storage`), so
+`storage/app/private/identity-documents` (the disk TT-4.11a/SCRUM-302 introduced) was owned by
+the host user (uid 1000), not `www-data`. `php-fpm`'s workers run as `www-data`
+(`docker/php/www.conf`'s `user`/`group`), and `755` permissions give a non-owning, non-group user
+no write bit at all -- so every real HTTP upload failed, while `docker compose exec` (which runs
+as root by default) and Pest's test runner (also invoked as root in this setup) both bypassed the
+problem entirely, masking it from every automated check.
+
+**Fix**: `docker/php/entrypoint.sh` now runs `chown -R www-data:www-data` on `storage/` and
+`bootstrap/cache/` before the existing `chmod -R 755`, on every container boot -- self-healing the
+same way the file's existing storage:link re-linking comment already reasons about bind-mount
+drift. Required rebuilding the `php` image (`entrypoint.sh` is `COPY`'d into the image, not bind-
+mounted, so editing the host file alone doesn't affect a running or restarted container). Verified
+by writing to the `identity_documents` disk explicitly as the `www-data` user
+(`docker compose exec -u www-data`) and by re-running the full Playwright walkthrough end-to-end
+(document upload now succeeds, file lands on disk, correctly associated via
+`Request::identityDocument()`).
+
+**Why this belongs in this ticket's log, not a separate one**: the bug was latent since
+TT-4.11a/SCRUM-302 (the first ticket to actually write to a *private*, non-`public`-disk path from
+this app), but had never been exercised end-to-end through a real browser until this ticket's own
+QA pass, since TT-4.11a's own QA only exercised the file-retrieval side, not a fresh upload.
+Fixing it here (rather than filing a separate ticket) matches this epic's "found mid-ticket,
+directly blocks or is caused by this ticket's own new code path" precedent -- distinct from
+SCRUM-300, which was pre-existing, unrelated debt discovered while scoping, not something this
+ticket's own new code triggered.
+
+---
+
+## 2026-09-13 — SCRUM-304 (TT-4.11c): dob_verified_at semantics, resource, and scope note for TT-4.11d
+
+**Decision 1 -- `dob_verified_at` is cleared, not just left stale, by an unverified edit**: the
+ticket's own rationale warned that "a later ordinary dobChange approval could silently
+overwrite/undo the 'this was verified' guarantee with no record it ever existed." Read literally
+this could mean either "block the overwrite" or "make sure the marker doesn't lie afterward." Since
+the user's own dobChange feature is explicitly allowed to keep editing dob going forward (no
+indication verification should freeze it), the correct read is the second: `ApplyVerifiedDobAction`
+now takes a `$verified` flag (default `false`) and *always* writes `dob_verified_at` -- `now()` when
+`true`, `null` otherwise -- so an ordinary dobChange approval after a prior verification explicitly
+clears the marker rather than leaving a stale timestamp attached to a new, unverified value. Covered
+by `RespondToDobChangeRequestActionTest`'s new "clears a previously-verified dob_verified_at" case.
+
+**Decision 2 -- `AgeVerificationRequestResource` built now, not deferred to TT-4.11d**: SCRUM-305
+(TT-4.11d)'s own ticket text plans to add "a new `AgeVerificationRequestResource`" for the admin
+review *queue listing*. But `GetRequestResourceAction` is also the resource used by the single
+respond-action's own return payload (`RequestService::respondToRequest()` calls it right after
+approving/rejecting) -- without a dedicated branch, an ageVerification request would fall through to
+`AdminCounsellorVerificationRequestResource`, which assumes `from` is a `Counsellor` and would
+silently return meaningless/empty data (not a crash, since it guards `from_type`, just wrong data)
+for every approve/reject response in this ticket's own scope. Built a minimal
+`AgeVerificationRequestResource` now (mirrors `DobChangeRequestResource`'s shape: whitelisted
+fields, `to` omitted since always null) so this ticket's own respond flow returns correct data.
+TT-4.11d should reuse this resource for its listing needs (extending it if the queue view needs
+more, e.g. a document-download link) rather than creating a second, competing resource for the
+same type.
+
+**Decision 3 -- `EnsureUserCanRespondToRequestAction` needed no code change**: the ticket asked for
+"isAdmin() only, no live-relationship check" for ageVerification. Since `to` is always null for
+this type and it isn't `dobChange`, every existing generic branch in that action already
+short-circuits to false, leaving only the `isAdmin()` clause able to match -- confirmed via the new
+Feature tests (a guardian of the submitting user, and the submitting user themselves, both get 422
+via the real endpoint). No special-casing added, avoiding unnecessary branching for a case the
+existing logic already handles correctly.
+
+**Decision 4 -- retention countdown needs no new code**: the ticket's third policy point ("reject/
+approve decisions trigger the retention countdown") is already satisfied by
+TT-4.11a/SCRUM-302's existing `AppService::deleteExpiredIdentityDocuments()` sweep, which keys off
+`requests.updated_at` for any non-pending request -- a status-changing `->update()` call (which
+every accept/reject already performs) bumps `updated_at` automatically, so the countdown starts the
+moment this ticket's own action runs. No changes needed to the sweep itself.
+
+**Decision 5 -- admin discoverability gap, not fixed here, explicitly deferred to TT-4.11d**: `reviewer`
+pointed out that `RequestService::getRequests()` has no branch surfacing a null-`to` `ageVerification`
+request to admins the way it already does for null-`to` `dobChange` (TT-4.10e) -- so although the
+respond endpoint built by this ticket works correctly (proven by `AgeVerificationRequestResponseTest`),
+there is currently no UI/listing path for an admin to discover a pending request's id without already
+knowing it. This is intentional sequencing, not an oversight: SCRUM-305/TT-4.11d's own scope is
+exactly "extend `RequestService::getRequests()`'s admin-visibility branch," so it isn't duplicated
+here. Noting it explicitly so this ticket isn't mistaken for fully wired end-to-end.
+
+**Post-review fixes (security-engineer, three findings, all addressed before merge)**:
+
+1. **Lock-order inversion / deadlock risk (Medium)**: `SubmitAgeVerificationAction` and
+   `EnsureDobChangeIsAllowedAction` (the submission side) both lock `User` then `Request` when
+   reusing an existing pending request. `RespondToDobChangeRequestAction`/
+   `RespondToAgeVerificationRequestAction` (this ticket's own respond side) locked `Request` then
+   `User` -- a genuine lock-order inversion that could deadlock under concurrent
+   resubmit-while-under-review. Fixed by reordering both respond actions to lock `User` first
+   (via `$requestResponseDTO->request->for_id`, no extra query), then `Request` -- one consistent
+   global order everywhere in the app that touches both rows.
+2. **TOCTOU on the verified value (High)**: `RespondToAgeVerificationRequestAction` originally
+   re-affirmed whatever `dob` was CURRENT on the `User` row at approval time, not necessarily the
+   value the attestation/document was actually about -- a value that drifted between submission and
+   (possibly days-later) admin review could be silently certified as verified. Fixed by having
+   `SubmitAgeVerificationAction` snapshot `data['attestedDob']` at submission time (refreshed on
+   every resubmission) and having the respond action verify/apply that snapshotted value instead of
+   the live column; surfaced in `AgeVerificationRequestResource` so an admin can see what's actually
+   being confirmed.
+3. **Stale `dob_verified_at` surviving an unrelated direct dob edit (High, latent)**: `dob` can also
+   be written directly, bypassing `ApplyVerifiedDobAction` entirely, via `ProfileController::update()`
+   (a same-side-of-the-adult/minor-line self-edit) or `UpdateUserAction` (an admin edit not crossing
+   that line) -- neither path touched `dob_verified_at`, so a previously-verified marker would
+   silently keep reading as "verified" for a brand-new, never-reviewed value. Fixed by clearing
+   `dob_verified_at` whenever `dob` is dirtied through either path, mirroring
+   `ProfileController::update()`'s own pre-existing `email_verified_at`-clearing convention exactly.
+
+**Incident note**: during this ticket's `reviewer` pass, the subagent deleted an untracked scratch
+file (`carbon_test_tmp.php`) at the repo root while reviewing -- outside its own mandate (report
+findings, never modify code). It disclosed this itself in its report. The file was untracked
+(no git history), unrelated to this ticket, and not restored. Flagged to the user; no other files
+were affected.
+
+---
+
+## 2026-09-13 — SCRUM-305 (TT-4.11d): admin queue UI scope decisions
+
+**Decision 1 -- generalized `RequestResource`'s null-`to` PII narrowing, didn't build a new
+mechanism**: `ageVerification` has the exact same shape TT-4.10e/SCRUM-294 already fixed for
+`dobChange` -- always null `to`, `from`/`for` the same self-submitting user, and visible to EVERY
+admin via `RequestService::getRequests()`'s admin-visibility branch (not just whichever admin
+eventually responds). Rather than duplicate that narrowing logic for a second type, renamed the
+existing `isNullToDobChange()` to `isNullToAdminOnlyType()` and extended its `in_array` check to
+include `ageVerification` -- one shared narrowing path for both types, consistent with this
+resource's own established "share the check across getFrom/getTo/getFor so a future type can't
+repeat the asymmetry" precedent.
+
+**Decision 2 -- added the admin-visibility branch to `RequestService::getRequests()`, mirroring
+dobChange's exactly**: without it, a null-`to` `ageVerification` request would never appear in any
+admin's personal requests listing, the same gap TT-4.10e fixed for dobChange. Added as a sibling
+`orWhere` inside the existing `$user->isAdmin()` closure rather than a new branch, since the shape
+is identical.
+
+**Decision 3 -- did NOT do the type-to-handler-map extraction the architect flagged as optional**:
+this ticket's own architect note said the growing per-type dispatch chain in
+`GetRequestResourceAction` "is worth considering (not required)" for extraction into a
+type-to-handler map. Left as-is -- it's already tracked, accepted debt (SCRUM-119/120,
+`RespondToRequestAction`'s own identical dispatch-chain comment), and a broad refactor of a
+working, well-tested dispatch mechanism is out of proportion to what this ticket actually needs
+(one more resource/branch). Deferring again, consistent with "don't fix pre-existing unrelated
+debt inside an unrelated ticket" unless it's a security-severity gap (SCRUM-300's own precedent
+for when that bar IS met).
+
+**Decision 4 -- document link is a plain authenticated-route link, not an inline image/fetch**:
+`FileComponent.vue` (used elsewhere for license/avatar files) renders `file.url` directly via
+`<img :src>`, which would throw for `identity_documents` (a private disk with no public URL,
+by TT-4.11a's own design) -- so it can't be reused here. Rendered `ageVerification.documentUrl`
+(built server-side via `route('requests.documents.show', ...)`, never a raw `File::url`) as a
+plain `<a target="_blank">` instead -- a full top-level browser navigation carries the session
+cookie Sanctum's stateful auth needs, is simpler than a fetch-and-blob-URL approach, and matches
+the ticket's own literal ask ("a link to the uploaded document").
+
+**Decision 5 -- no `isRespondent` field added to the new `ageVerification` resource block**:
+unlike `dobChange`, whose authorization is a non-trivial "any current guardian, re-verified live"
+check the frontend has no way to derive itself (hence TT-4.10f's own `isRespondent` field),
+`ageVerification`'s authorization is the simple, already-established `isAdmin()`-only check --
+the frontend derives this itself from `usePage().props.auth.user?.isAdmin`, the same way every
+other simple-authorization request type in `RequestBadge.vue` already does, avoiding an
+unnecessary field for a case with nothing to duplicate/drift out of sync.
+
+**Post-review fix (reviewer, one required change)**: `reviewer` found that this ticket's own new
+queue UI, for the first time, gives an admin who happens to also be an `ageVerification` request's
+own submitter a working, reachable way to approve their own submission -- defeating the type's
+whole purpose (an INDEPENDENT check on a self-attestation). Fixed by excluding self-response for
+this type specifically, both server-side (`EnsureUserCanRespondToRequestAction`, a new
+`$isSelfAgeVerification` check gating the existing unconditional `isAdmin()` clause) and
+client-side (`RequestBadge.vue`'s `computedIsTo`, so the accept/reject buttons don't even render
+for a self-submission, rather than rendering and then 422ing).
+
+**Scope note, not fixed here**: the identical self-response possibility (an admin who is also the
+request's own `from`/`for`) also exists today for `dobChange` and `refund`'s own "any admin" null-
+`to` fallback -- pre-existing, unrelated to this ticket's own new code, and each of those types'
+own admin-bypass is a deliberate stand-in for "no guardian/specific recipient exists" rather than
+this type's "an independent check must not be self-administered" rationale, so the fix isn't
+necessarily identical for those types either. Left as-is, consistent with the "fix only what this
+ticket's own new code newly exposes, file pre-existing/broader gaps separately" precedent
+(SCRUM-300). Worth a follow-up ticket if this is judged worth closing more broadly.
+
+---
+
+## 2026-09-13 — SCRUM-306 (TT-4.11e): closeout regression matrix results
+
+Full regression matrix run against SCRUM-289 (TT-4.11)'s 6 stated closeout items, per this
+ticket's own explicit "verification and documentation, not new behavior" scope. No behavioral bugs
+found in any prior sub-ticket -- every review pass across TT-4.11a-d already caught and fixed its
+own issues before merging. Three **test-coverage gaps** found and closed here (the ticket's own
+scope reserves *behavioral bug* fixes for the sub-ticket that introduced them; missing test
+coverage for already-correct behavior is this closeout's own job to fill):
+
+1. **Document-upload approve/reject was never tested end-to-end.** Submission (TT-4.11b) and
+   respond (TT-4.11c) each had thorough real-HTTP coverage independently, but no test ever chained
+   them for a request that actually had a document attached -- so "does approving/rejecting a
+   document-bearing request work, and does the document stay retrievable only via the authorized
+   route throughout (before AND after the decision)" was untested. Added
+   `tests/Feature/AgeVerificationDocumentApprovalTest.php` (3 tests: approve, reject, and an
+   unrelated user still blocked post-decision).
+2. **The retention window's configurability was never actually proven.** Every test in
+   `tests/Unit/DeleteExpiredIdentityDocumentsTest.php` set the config to the SAME value as its own
+   default (30 days) -- which would pass identically even if `AppService::deleteExpiredIdentityDocuments()`
+   had the window hardcoded rather than genuinely reading `config('identity_verification.document_retention_days')`.
+   Added a test using a non-default window (7 days) proving both sides of that window's own
+   boundary are respected. (Also parameterized the shared `anIdentityDocumentRequest()` test
+   helper's filename, since the new test needed two documents alive at once and the original
+   hardcoded `'doc.jpg'` for every call would have collided on the same fake-disk path.)
+3. **No seeded demo user had a `dob` set at all.** Confirmed independently by both this
+   investigation and `qa-engineer`'s own SCRUM-305 QA pass, which had to hand-pick
+   `dobchange_demo_no_guardian` (a dobChange fixture, not built for this feature) to get a
+   meaningful attested dob. Added `age_verification_demo_user` (adult, `dob` set, one pre-seeded
+   PENDING `ageVerification` request) to `DatabaseSeeder`, documented in
+   `documentation/seeded-data.md`'s new "Age verification" section.
+
+**Retroactive-correction item (TT-4.10b's 13 call sites) -- confirmed correct, no code change
+needed**: traced commit `9bcce0c` (SCRUM-291/TT-4.10b) -- 11 of the 13 `isAdult()` call sites were
+migrated to prefer `client_was_minor_at_creation`/`ward_was_minor_at_creation` via two shared
+helpers (`TherapyTrait::clientIsMinor()`, `GetWardForVideoConsentableAction::isMinor()`); the other
+2 (`EnsureCanCreateTherapyAction`, `EnsureUserCanBeGuardianAction`) are deliberately excluded
+(snapshot-writing trigger, and an unrelated eligibility question). `ApplyVerifiedDobAction`'s bulk
+`->update()` on `Guardianship`/`Therapy`/`GroupTherapy` reaches every row either shared helper could
+ever read, with the identical scope the original pre-extraction method already used -- no stale
+in-memory or cached copy of these columns exists anywhere in the codebase.
+
+**Supersession (both directions) and `dob_verified_at` set/cleared correctly** -- both already
+fully covered by existing tests from TT-4.11c's own security-review fixes (`SupersedePendingDobChangeRequestsActionTest`,
+the two cases added to `RespondToDobChangeRequestActionTest`/`ProfileDobChangeGateTest`/
+`AdminUpdateUserDobChangeGateTest`) -- confirmed by grepping every `users.dob` write site in
+`app/` (exactly three: `ProfileController::update()`, `UpdateUserAction`, `ApplyVerifiedDobAction`
+-- no fourth path exists), no additional tests needed.
+
+**Baseline**: full suite was 1829 passed before this closeout's new tests; 1837 passed
+(4864 assertions) after (8 new tests total: 3 document-approval, 1 retention-window, 4
+submitted-indicator). `documentation/features/scrum-289-age-identity-verification.md` written
+per CLAUDE.md's feature-documentation requirement, closing out the epic.
+
+**Real bug found by `qa-engineer`'s own closeout pass, fixed in TT-4.11b/SCRUM-303's own files
+(not this ticket's scope), per this ticket's explicit instruction**: `AgeVerificationSection.vue`'s
+"submit a statement"/"submit another statement" button label depended entirely on a local,
+in-session `submitted` ref initialized to `false` on every fresh page load -- a user with a
+genuinely already-submitted request (confirmed live via Playwright against the new
+`age_verification_demo_user` seed, logging in fresh with no prior submission in that browser
+session) always saw "submit a statement," implying no request existed, until they submitted again
+in that same session.
+
+**First fix attempt was incomplete (qa-engineer, second review pass)**: scoped the check to "has
+a PENDING request" (`GetPendingAgeVerificationRequestAction`, `hasPendingAgeVerification` prop).
+qa-engineer's re-verification pass caught that this reverted the label back to "submit a
+statement" the instant an admin decided the request (accepted or rejected) -- the exact same
+misleading-label bug, just shifted to a different state transition, since "submit another
+statement" is accurate regardless of whether the prior submission is pending, accepted, or
+rejected. Fixed by asking a different question -- "has this user ever submitted one at all,"
+any status -- via a new, separate `HasSubmittedAgeVerificationAction` (kept distinct from
+`GetPendingAgeVerificationRequestAction`, which is still correctly used, unchanged, by
+`SubmitAgeVerificationAction`'s own idempotent-reuse logic; that one genuinely does need
+PENDING-only semantics). Prop/component prop renamed accordingly
+(`hasSubmittedAgeVerification`/`hasSubmittedRequest`). Test file renamed
+`AgeVerificationPendingIndicatorTest.php` -> `AgeVerificationSubmittedIndicatorTest.php` with
+cases added for both the accepted and rejected outcomes asserting `true`, not just the original
+"was decided so reverts to false" case that the first attempt had gotten backwards.
+
+**Post-review refactor (reviewer suggestion, applied)**: the first fix attempt originally queried
+`Request::whereFrom($request->user())` in `ProfileController::show()`, while
+`SubmitAgeVerificationAction`'s own idempotency check used `whereFor($dto->user)` -- functionally
+identical today only because ageVerification's `from`/`for` are always the same user, but two
+independently-scoped queries expressing the same intent risk silently diverging if that invariant
+ever changed. Extracted `App\Actions\User\GetPendingAgeVerificationRequestAction`, shared by both
+call sites at that point (before the second fix above split the profile-page check off into its
+own, differently-scoped `HasSubmittedAgeVerificationAction`).
+
+---
+
+## 2026-09-14 — SCRUM-279 (TT-3.1f): closeout scope actually covers a-e, not just a-d
+
+**What happened**: this ticket's own text says "TT-3.1e's own consent scoping may still be
+pending -- this ticket covers a-d's closeout, and can be revisited once e lands." Checked before
+starting: TT-3.1e's own 7 sub-tickets (SCRUM-280 through 286, TT-3.1e-a through -g) are ALL Done,
+including TT-3.1e-g's own regression closeout (`GuardianVideoConsentRegressionTest.php`,
+`documentation/features/scrum-278-guardian-video-consent.md`). Since e has already fully landed,
+this closeout naturally covers the complete epic (a-e), not just a-d as the ticket's own text
+anticipated when it was written before e's scope split existed. No separate re-visit needed.
+
+**Regression matrix**: full Pest suite 1838 passed, no regressions. The ticket's own specific
+concern -- "confirming no regression to existing chat/status-change broadcast behavior on the
+sessions.{id}/therapies.{id}/groupTherapies.{id} Reverb channels under the new signaling event
+volume" -- is closed by DESIGN, not by adding a new test: `VideoSessionStatusChangedEvent`
+deliberately broadcasts only on `sessions.{id}` (never the busier `therapies.{id}`/
+`groupTherapies.{id}` channels), a decision already made and documented by the architect on
+2026-09-11 specifically to prevent this exact class of regression. The event that actually DOES
+share `sessions.{id}` with video is `SessionUpdatedEvent` (its own `broadcastOn()` returns both
+the `PresenceChannel` for `therapies.{id}`/`groupTherapies.{id}` AND a `PrivateChannel` for
+`sessions.{id}`) -- `SessionTopicSetEvent` only ever broadcasts on the `PresenceChannel`, never on
+`sessions.{id}` at all, so it was never actually the relevant coexistence pairing to begin with
+(reviewer finding, corrected below). Verified the real pairing holds by tracing both dispatch call
+sites (`JoinVideoSessionAction`/`EndVideoSessionAction`'s `VideoSessionStatusChangedEvent::dispatch()`
+vs. `SessionService`'s `broadcast(new SessionUpdatedEvent(...))->toOthers()`) -- genuinely separate
+code paths, no shared mutable state, so nothing about video's new event volume can interfere with
+chat/status-change broadcasts at the PHP level.
+
+**Attempted and abandoned: a literal combined-broadcast Pest test.** Tried writing a single test
+asserting both `VideoSessionStatusChangedEvent` and `SessionUpdatedEvent` fire correctly on the
+same `sessions.{id}` channel for the same session (the actual pairing that shares that channel --
+see the correction above). `Event::fake()` caught the video event (dispatched via the standard
+`::dispatch()`/`Dispatchable` trait) but NOT `SessionUpdatedEvent`, because `SessionService` fires
+it via the raw `broadcast()` helper + `->toOthers()` (three call sites, lines 122/140/158) -- a
+separate mechanism from Laravel's own event dispatcher that `Event::fake()` does not intercept.
+Testing that properly would need `Broadcast::fake()`, a pattern with zero precedent anywhere in
+this codebase's existing tests. Introducing a whole new test-fake pattern for one closeout-only
+assertion, when the architectural separation is already guaranteed by construction (confirmed
+above by direct code inspection), was judged disproportionate -- abandoned the test rather than
+force it. Incidental discovery while investigating this: any existing test asserting
+`Event::assertNotDispatched(...)` against a `broadcast()`-helper-dispatched event (e.g.
+`SessionTopicSetEvent`/`SessionUpdatedEvent` in `SessionNoteTest.php`/`MessageNoteTest.php`) may be
+vacuously true for the identical reason (`Event::fake()` never sees a `broadcast()`-helper dispatch
+either way, so it trivially "wasn't dispatched" from the fake's point of view regardless of what
+the real code did) -- pre-existing, unrelated to video, not fixed here; flagged for whoever next
+touches those tests' own assumptions.
+
+**Seed data added**: `DatabaseSeeder::createVideoCallDemoData()` -- every existing video-related
+seed (`createGuardianVideoConsentDemoData()`) is deliberately minor/consent-focused, so there was
+no plain adult client+counsellor+in-progress-session fixture for simply trying the base
+join/leave/end flow without consent-gate complexity in the way. New accounts:
+`video_call_demo_client`/`video_call_demo_counsellor`, both `password`.
+
+**Known, accepted limitation, not a gap in this ticket's own work**: this dev environment has no
+real `DAILY_API_KEY`/`DAILY_DOMAIN` or Chime AWS credentials configured (first flagged during
+TT-3.1c) -- a genuine live end-to-end video connection can't be manually verified for either
+provider without populating real credentials first. Every automated test already mocks the
+provider client directly, so this doesn't affect actual code coverage, only manual/Playwright
+verification depth. Documented plainly in the new feature doc rather than worked around.
+
+---
+
+## 2026-09-14 — SCRUM-27 (TT-3.2): scoping decisions and epic split
+
+**What happened**: TT-3.1 (SCRUM-26) fully landed, including TT-3.1e's own 7 sub-tickets. Ran the
+full `/start-feature` sequence for TT-3.2 (a brand-new epic per its own ticket text, "NOT yet
+scoped in depth" -- required per CLAUDE.md even mid-autonomous-execution). product-owner's first
+pass surfaced 7 open policy questions; presented 4 of the most consequential to the user via
+AskUserQuestion.
+
+**User's own scope-narrowing redirect (the most consequential decision)**: rather than pick a
+concurrent-video-participant cap number for "every group member joins video" (the epic's own
+original framing), the user proposed a materially different, narrower shape instead: "video for
+just counsellors for now and optional for a user who created the group therapy." This
+substantially reduces v1's risk surface -- ordinary members never get video access at all in this
+version, so most of the product-owner's original questions about large-N caps, per-member
+anonymity/payment/minor-status enforcement, and moderation-at-scale become moot for v1 (they're
+exactly what the SCRUM-314 full-membership follow-up will need to answer later, not TT-3.2).
+
+**Follow-up clarification, also resolved directly by the user**: since the creator could still be
+a minor even under this narrower shape, and group-scoped guardian consent doesn't exist yet
+(`VideoConsent` has no relation to `GroupTherapy` today), the user chose to hard-block a minor
+creator entirely (interim fail-closed, mirroring TT-3.1's own original 1:1 precedent) rather than
+allow it ungated -- and confirmed this counsellor+creator shape is intentionally v1, not the
+final, permanent shape of group video (full-membership access is a separate, later, tracked
+follow-up, SCRUM-314).
+
+**Final locked decisions** (user's own explicit answers):
+1. Group-scoped guardian video-consent: deferred to its own follow-up ticket (SCRUM-313), mirroring
+   how TT-3.1e was split out of TT-3.1 -- not solved in TT-3.2 itself.
+2. Video cap / access model: NOT a numeric cap on full membership -- narrowed to counsellors +
+   optional creator only (see redirect above).
+3. In-call moderation/removal: in scope for TT-3.2, despite being genuinely new interface surface
+   on both provider adapters -- judged a real clinical safety gap, not a nicety, for a live
+   multi-party mental-health session with no way to remove a disruptive/distressed participant.
+4. Multi-counsellor video credentials: every active counsellor gets equal host credentials, no
+   new "lead counsellor" concept -- consistent with this codebase's existing precedent (TT-7.5b-b0,
+   TT-2.6) of treating every active counsellor as an equal peer.
+5. Minor creator: hard-blocked from joining video entirely until SCRUM-313 lands.
+6. This is v1; full-membership group video is SCRUM-314, a separate, later, unscoped follow-up.
+
+**project-manager's own research corrected the product-owner's brief in three places, each
+REDUCING scope** (documenting since CLAUDE.md's decision-log covers judgment calls, not just user
+decisions): `GroupTherapy::isUser()` already correctly detects the creator (product-owner assumed
+this needed building); `TherapyTrait::clientIsMinor()` already correctly resolves against a
+GroupTherapy's own `addedby` (assumed a new, narrower method was needed); `JoinVideoSessionAction`'s
+`$isOwner` computation and `displayNameFor()` anonymity masking already generalize to GroupTherapy
+with zero code changes (both are already written polymorphically against `$session->for`). One
+item the brief under-stated: `DailyVideoProvider::createRoom()`'s `max_participants: 2` is a literal
+hardcoded API payload value, not an abstract "business rule" -- confirmed as real, required scope.
+
+**architect review added two corrections to the project-manager's own plan**:
+1. The proposed "bump the hardcoded 2 to a small shared constant" would have been a flat, global
+   bump -- wrong, since 1:1 `Therapy` legitimately needs to stay capped near 2 while `GroupTherapy`
+   needs headroom for the counsellor team + 1. Must be computed per session type, not a single
+   value. Constant belongs in `App\Enums\ConstantsEnum` (this codebase's existing home for this
+   kind of atomic cross-cutting value), not `config/video.php` (scoped strictly to
+   provider-selection config, not business rules).
+2. Real security gap in the proposed design: `Session::isNotParticipant()` -> `GroupTherapy::isParticipant()`
+   returns true for ANY pivot member, including ordinary members who must NOT get video under the
+   locked scope. The new GroupTherapy authorization branch must be a strict allow-list
+   (counsellor OR creator only) layered on top of that existing, broader check -- not "already a
+   participant, so let them in." Flagged as a required regression test in TT-3.2a
+   (SCRUM-308), not just a design note.
+
+Also confirmed (architect): keeping the new `EnsureVideoIsAvailableForSessionAction` branch inline
+rather than extracting a separate action is the right call here, since `$session->for` is a
+CLOSED two-type set (Therapy/GroupTherapy) -- the same pattern already used by
+`EnsureUserCanAccessTherapyContentAction` -- not the open-ended per-type dispatch anti-pattern
+`RespondToRequestAction` already carries as tracked debt (SCRUM-119/120). Keeping the new
+participant-removal capability as a 4th REQUIRED `VideoProviderInterface` method (not a separate
+optional trait) was also confirmed -- both current providers exist specifically for HIPAA-BAA
+reasons with no third provider on the roadmap, so pre-splitting for a hypothetical future
+ejection-incapable provider is premature abstraction.
+
+**Tickets filed**: SCRUM-308 (TT-3.2a), SCRUM-309 (TT-3.2b), SCRUM-310 (TT-3.2c), SCRUM-311
+(TT-3.2d), SCRUM-312 (TT-3.2e), plus placeholders SCRUM-313 (group-scoped guardian video-consent)
+and SCRUM-314 (full-membership group video), both explicitly not started. `documentation/implementation_plan.md`'s
+TT-3.2 row updated with the full breakdown and two new placeholder rows.
+
+---
+
+## 2026-09-14 — SCRUM-308 (TT-3.2a): Chime needs no cap fix; ordinary-member test coverage
+
+**Chime's own lack of a participant-cap parameter is deliberately left as-is, not fixed here**:
+`ChimeVideoProvider::createMeeting()` has no equivalent to Daily's `max_participants`. Unlike the
+ORIGINAL "every group member joins video" framing (where an uncapped Chime room really would risk
+hosting an unbounded number of people), this ticket's own locked v1 scope means the actual set of
+people who can ever reach `createParticipantCredentials()` for a GroupTherapy session is already
+bounded by `EnsureVideoIsAvailableForSessionAction`'s own new allow-list (active counsellors + at
+most one client) -- app-level authorization, not a provider-level room parameter, is what's doing
+the real limiting here. Chime being uncapped at the provider level carries no practical risk under
+this ticket's own scope; revisit if SCRUM-314 (full-membership) ever needs it.
+
+**`EnsureVideoIsAvailableForSessionAction`'s new `ensureGroupTherapyVideoIsAllowed()` is a strict
+allow-list layered on top of the existing, broader `Session::isNotParticipant()` check** (architect
+finding, applied as designed) -- confirmed via a dedicated regression test that an ordinary
+`group_therapy_user` pivot member, who legitimately passes the participant check (they're allowed
+in chat/roster), is still denied video access. A second test confirms a counsellor-created
+GroupTherapy (`addedby_type = Counsellor`) has no "creator client" concept at all -- `isUser()`
+correctly returns false for it, so only that group's own counsellors ever get video access, never
+its ordinary members.
+
+**Post-review: bundled TT-3.2d into this same branch, ahead of its own separate ticket
+(security-engineer finding)**: `security-engineer`'s review of this ticket found that opening
+group video authorization at join-time, without ALSO restricting who may END the call for
+everyone, left a live, exploitable gap -- `EndVideoSessionAction`/`LeaveVideoSessionAction` were
+untouched by this ticket and only checked `Session::isNotParticipant()`, which returns `true`
+("is a participant") for ANY `group_therapy_user` pivot member, not just the counsellor-or-creator
+allow-list this ticket just built for `join`. Before this ticket, this was harmless (GroupTherapy
+video was hard-blocked entirely, so no live `VideoSession` could exist to end). Now that
+counsellors/the creator can actually create one, an ordinary member -- correctly denied JOIN --
+could still `POST /sessions/{id}/video/end` and forcibly terminate the counsellor team's own call.
+`LeaveVideoSessionAction` was confirmed NOT exploitable the same way (it only ever updates the
+caller's own, non-existent participant row -- a no-op for a never-joined ordinary member).
+
+Rather than ship TT-3.2a alone with this window open (security-engineer's own explicit
+recommendation was either close it now or land TT-3.2d/SCRUM-311 in the same PR), implemented
+TT-3.2d's full scope in this same branch, since SCRUM-311's own scope already WAS exactly this
+fix, already next in the approved sequencing (`a → {b, d in parallel}`), and re-scoping it into a
+separate, immediately-following PR would have meant deliberately shipping a known, live gap in
+the interim. SCRUM-311 will be transitioned straight to Done alongside SCRUM-308 rather than
+tracked as separately in-progress work, since its own full scope is delivered here.
+
+---
+
+## 2026-09-14 — SCRUM-309 (TT-3.2b): participant-removal API shapes and no-new-column design
+
+**Research spike (per the ticket's own explicit "do not assume the shape" instruction)**: used
+live web search to confirm the real current API shapes for ejecting one participant without
+ending the whole room, rather than guessing:
+
+- **Daily.co**: `POST /rooms/{room_name}/eject` with body `{"user_ids": [...]}` (docs:
+  https://docs.daily.co/reference/rest-api/rooms/eject). Accepts our own `user_id` values
+  directly -- the same ones already sent to `createMeetingToken` at join time.
+- **AWS Chime SDK Meetings**: `DeleteAttendee(MeetingId, AttendeeId)` requires the
+  AWS-generated `AttendeeId`, which we never persist (docs:
+  https://docs.aws.amazon.com/chime/latest/APIReference/API_DeleteAttendee.html). `ListAttendees`
+  (docs: https://docs.aws.amazon.com/chime-sdk/latest/APIReference/API_meeting-chime_ListAttendees.html)
+  returns each attendee's own `ExternalUserId`, which `ChimeVideoProvider::createParticipantCredentials()`
+  already sets to `(string) $user->id` -- so the `AttendeeId` can always be looked up live at
+  removal time by matching on that, rather than needing a new migration/column on
+  `VideoSessionParticipant` to track a provider-specific id.
+
+**Design decision**: added `VideoProviderInterface::removeParticipant(VideoSession, User): void`
+as a new REQUIRED interface method (not an optional trait) -- both current providers support it
+and there is no third, ejection-incapable provider on this app's roadmap to justify pre-splitting
+for. Keyed only by our own `User`, matching `endRoom()`'s own best-effort contract (a provider-side
+failure never blocks the local `left_at` update).
+
+**Scope decision**: `RemoveParticipantFromVideoSessionAction` is GroupTherapy-only and
+counsellor-only (any active counsellor may remove any other participant, including another
+counsellor -- moderation is a team-wide capability per TT-3.2's own "every active counsellor gets
+host credentials" scoping, not host-only). 1:1 Therapy has exactly 2 participants, so
+`EndVideoSessionAction` already covers "get the other person out." Added a dedicated
+`sessions/{sessionId}/video/participants/{userId}/remove` route + controller action now (rather
+than deferring it to TT-3.2c) since TT-3.2c is frontend-only wiring against an existing backend
+surface, matching how join/leave/end were already split.
+
+**Post-review fixes**:
+
+1. **Security-engineer finding (Medium): user-id-existence oracle.** The controller originally
+   resolved `{userId}` via a global `User::find()` before authorization, throwing a distinct 422
+   ("User was not found") when the id didn't exist at all, versus the action's own silent no-op
+   when the id existed but simply wasn't a live participant of this call. That distinguishable
+   response gave any active counsellor (on any single group, unrelated to the target) a
+   system-wide oracle for "does user id N exist in the `users` table at all." Fixed by never
+   resolving the target against the global `users` table: `RemoveParticipantFromVideoSessionAction`
+   now takes a bare `int $targetUserId` and resolves the actual `User` model only via the
+   `VideoSession`'s own live `participants()` relation (`$participant->participant`, guaranteed a
+   real user since the row only exists because they actually joined) -- a nonexistent id and a
+   real-but-unrelated id now produce the byte-identical response. Added both a unit test
+   (`RemoveParticipantFromVideoSessionActionTest`) and a feature-level test asserting the
+   controller returns an identical JSON body for both cases.
+2. **Reviewer finding (non-blocking): duplicated "is this User an active counsellor of this
+   GroupTherapy" check**, now independently inlined in `GroupTherapy::isParticipant()`,
+   `EndVideoSessionAction`, and this ticket's own new `RemoveParticipantFromVideoSessionAction` --
+   three copies. Extracted into `GroupTherapy::isCounsellorUser(User $user): bool` and updated all
+   three call sites.
+
+Security-engineer's other finding (Low/Informational: a provider-side removal failure still marks
+the participant left locally, matching `EndVideoSessionAction`'s existing best-effort contract,
+but could leave a forcibly-removed participant with continued live media access if the provider
+call itself failed) was deliberately NOT fixed here -- filed as a follow-up ticket per the
+security-engineer's own recommendation, since retry/queued-job semantics are a larger design
+question than this ticket's own scope and the current behavior matches an already-shipped,
+accepted precedent.
+
+---
+
+## 2026-09-14 — SCRUM-310 (TT-3.2c): folded in the missing group-video frontend gate
+
+**Gap found**: none of TT-3.2's sub-tickets (SCRUM-308/309/310/311) ever called out that
+`TherapyComponent.vue`'s own `computedCanJoinVideo` -- the display gate that shows/hides the
+entire `VideoCallPanel.vue` "join video" button -- was hard-coded to `therapyType === 'individual'`
+only (a TT-3.1-era leftover, explicitly commented "GroupTherapy video is TT-3.2, unscoped"). The
+backend (SCRUM-308/309) already supports GroupTherapy video end-to-end, but the frontend had no way
+to ever reach it -- SCRUM-310's own "remove participant" control would have had nothing to attach
+to, and this ticket's own mandatory Playwright QA golden-path walk would have had no join button to
+click at all.
+
+**User decision** (asked directly, real product/scope fork -- not guessed): fold the fix into this
+ticket rather than filing a separate blocking ticket or skipping browser QA. `computedCanJoinVideo`
+now also allows an eligible GroupTherapy session (online, in-session, viewer is a counsellor OR the
+group's own creator) -- mirroring `EnsureVideoIsAvailableForSessionAction`'s own server-side
+allow-list. Deliberately did NOT add a new `clientIsMinor` display flag to `GroupTherapyResource`
+for this: the existing 1:1-Therapy precedent (`computedCanJoinVideo`'s own comment) already
+established that a display-only pre-check for the minor case is unnecessary -- a minor creator can
+still click "join video," the backend's existing `VideoException` (not a consent flow, per this
+epic's own earlier scoping) surfaces through the panel's own generic `error` state with a clear
+message, exactly like every other join-time rejection.
+
+**QA follow-ups (qa-engineer, conditional approval)**: browser QA could not exercise the actual
+remove-button/removed-screen flow live (no real Daily/Chime credentials in this dev environment --
+a pre-existing, already-documented limitation, not a defect in this diff), but flagged three gaps
+against this repo's own "done" criteria, all addressed before merge:
+1. Added `DatabaseSeeder::createGroupVideoCallDemoData()` (a counsellor, a non-minor creator, and
+   an ordinary member on a FREE, immediately in-progress GroupTherapy session) -- no such fixture
+   existed before this ticket, so verifying it required hand-building data via tinker.
+2. **Real, sitewide, pre-existing bug found while building that fixture, unrelated to this ticket**:
+   `Session::$fillable` has no `for_id`/`for_type`, so several existing seeder methods
+   (`createGroupPaymentDemoData()`, `createGroupStrictPaymentGateDemoData()`, etc.) that pass those
+   two keys into a relation's `->create([...])` call silently drop them -- `CreateSessionAction`
+   itself avoids this correctly via `->for()->associate()->save()`. Filed as SCRUM-316 rather than
+   fixed broadly here (out of this ticket's own scope); `createGroupVideoCallDemoData()` was written
+   using the same safe `associate()` pattern so it doesn't add a ninth broken instance.
+3. Added a "Group video (TT-3.2)" section to `documentation/features/scrum-26-video-calling.md`
+   (Test data + steps + what-success-looks-like) and a matching entry in
+   `documentation/seeded-data.md`, rather than deferring all documentation to the epic's own
+   closeout ticket (SCRUM-312) -- qa-engineer's own charter treats this as a per-ticket "done"
+   criterion, not an epic-level one.
+
+---
+
+## 2026-09-14 — SCRUM-312 (TT-3.2e): epic closeout, TT-3.2 (SCRUM-27) complete
+
+Mirrors TT-3.1f's own closeout shape (`documentation/features/scrum-26-video-calling.md`'s own
+precedent). All of a-d (SCRUM-308/309/310/311) merged into `develop` beforehand.
+
+**Regression result**: full Pest suite green (1872 passed). A dedicated cross-provider filtered
+run covering every GroupTherapy video path together (78 tests: `EnsureVideoIsAvailableForSessionActionTest`,
+`EndVideoSessionActionTest`, `RemoveParticipantFromVideoSessionActionTest`, both
+`DailyVideoProviderTest`/`ChimeVideoProviderTest`, `VideoSessionControllerTest`) also passed --
+authorization, minor-creator block, counsellor-only termination, and participant removal are all
+independently proven against BOTH providers, not just whichever one this environment happens to
+default to.
+
+**Feature doc split**: rather than leave the "Group video (TT-3.2)" section folded into
+`scrum-26-video-calling.md` (where SCRUM-310 had provisionally added it), extracted it into its own
+`documentation/features/scrum-27-group-therapy-video.md` per this ticket's own explicit
+instruction, cross-referencing back to `scrum-26` for the shared base infrastructure rather than
+duplicating it. The new doc consolidates the full v1 scope, all four prior sub-tickets' own
+findings, the regression matrix above, and both known-limitation notes (no live provider
+credentials; no consent flow for a minor creator) in one place, rather than requiring a reader to
+piece it together from four separate tickets' own Jira comments.
+
+**Playwright QA**: qa-engineer walked this ticket's own explicit checklist and approved. Findings:
+authorization passes cleanly for both counsellor and creator (reaching the documented, pre-existing
+502 "provider unavailable" failure only after authorization succeeds -- confirmed this is
+`JoinVideoSessionAction`'s own deliberate provider-exception translation from TT-3.1c, not a new
+bug); an ordinary member never sees "join video" at all; a minor creator DOES see "join video"
+(intentional, matching the 1:1 consent-banner precedent of never pre-checking this client-side) but
+is cleanly blocked on click with a 422 and the exact `EnsureGroupTherapyVideoIsAllowed()` message --
+visibly distinct from the counsellor/creator's 502. "One counsellor ejects a participant" could not
+be driven to completion, exactly as already documented (no call ever reaches `connected` without
+real provider credentials) -- not a new finding, re-confirms SCRUM-317's own scope.
+
+**Post-QA addendum**: no seeded fixture existed for the minor-creator case at all -- qa-engineer had
+to hand-build one via tinker to verify it. Added a fourth account,
+`group_video_call_demo_minor_creator` (its own separate GroupTherapy, "Group Video Call Demo (Minor
+Creator)", with `client_was_minor_at_creation` set explicitly the same way
+`createGuardianVideoConsentDemoData()` already does), to `DatabaseSeeder::createGroupVideoCallDemoData()`
+so this edge case doesn't require manual setup on every future regression pass. Full Pest suite
+re-confirmed green (1872 passed) after this addition.
+
+SCRUM-317 (filed after SCRUM-310 merged, per the user's own "we will do the sandboxed test later"
+instruction) remains the single tracked place a REAL live multi-party connection gets verified,
+covering both the 1:1 and group matrices together once real Daily/Chime credentials exist.
+
+**No application-code changes required for this closeout** beyond the seeded fixture addition above
+-- a-d's own reviews (reviewer/security-engineer/qa-engineer across all three PRs) already caught
+and fixed every real defect found during this epic's own development; this closeout's own
+regression pass and Playwright QA surfaced no new code defects.
+
+---
+
+## 2026-09-15 — SCRUM-319 (TT-3.2f-b): data model, and a MySQL identifier-length bug found + fixed
+
+Implemented the architect's own exact design from SCRUM-314's scoping: `video_session_speaking_grants`
+(new, append-only, modeled on `video_consents`, anchored to `video_session_participants.id`),
+`video_session_hand_raises` (new, small, deliberately mutable -- not append-only), and
+`group_therapy_user.was_minor_at_join` (new nullable column, closing the per-membership
+minor-detection gap `RespondToGroupTherapyMembershipRequestAction`'s own comment had already
+flagged as missing). New `GroupTherapy::memberIsMinor(User $user)` accessor, distinct from
+`clientIsMinor()` (which only ever answers "is the group's own creator a minor"), with the same
+null-fallback-to-live-`isAdult()` pattern `clientIsMinor()` already uses for a pre-existing row.
+
+**Real bug found and fixed during implementation**: `php artisan migrate` failed with a MySQL
+`1059 Identifier name ... is too long` error -- `video_session_speaking_grants`' own auto-generated
+foreign-key/index names (Laravel's default `{table}_{column}_foreign`/`_index` convention) exceed
+MySQL's 64-character identifier limit once combined with this table's own long name and long
+column names (e.g. `video_session_speaking_grants_video_session_participant_id_foreign` is 68
+characters). Not caught by a manual raw-SQL test with short placeholder constraint names during
+initial debugging -- only reproduced via the real `php artisan migrate` command, which uses
+Laravel's own auto-naming. Fixed by passing explicit, short constraint/index names
+(`vssg_participant_fk`, `vssg_granted_by_fk`, `vssg_revoked_by_fk`, `vssg_participant_revoked_idx`,
+and the sibling `vshr_participant_lowered_idx` on the hand-raises table) rather than relying on
+Laravel's auto-generated names. Worth remembering for any FUTURE migration on a similarly
+long-named table with long column names -- this is a real, previously-unencountered constraint in
+this codebase (no prior table name here has been long enough to trigger it).
+
+Also updated `JoinGroupTherapyAction`/`RespondToGroupTherapyMembershipRequestAction` to write the
+new snapshot at both attach points, and corrected `RespondToGroupTherapyMembershipRequestAction`'s
+own stale comment (previously stated flatly "there is no stable snapshot recorded anywhere for
+this" -- now there is, for the video speaking-permission path specifically, though
+`AlertGuardianAction`'s own live-isAdult() check at that exact call site is correctly left
+unchanged, since it fires at the moment of acceptance when the live value IS the accurate answer).
+
+**security-engineer review**: approved, no High/Critical findings -- confirmed the snapshot design
+genuinely closes the self-editable-dob bypass (mirrors `clientIsMinor()`'s own precedent exactly),
+no production path can set/overwrite the column incorrectly, and `memberIsMinor()` can't be
+confused with `isUser()`/`clientIsMinor()`/`isCounsellorUser()`. Three forward-looking, non-blocking
+observations accepted as deferred rather than expanding this ticket's own scope (this ticket is
+data-model only; no enforcement exists yet to bypass):
+1. `DatabaseSeeder.php`'s existing `GroupTherapy` member-attach calls don't pass `was_minor_at_join`
+   -- currently harmless (every seeded member is the factory's own default adult `dob`, so the
+   null-fallback still correctly evaluates to `false`), but TT-3.2f-k's own closeout ticket
+   (which already plans a seeded minor-member fixture for testing the later grant-blocking
+   enforcement) must set this column explicitly when it adds that fixture, not rely on the
+   fallback.
+2. No leave/rejoin flow exists for ordinary GroupTherapy membership today, so "does a re-attach
+   correctly refresh a stale snapshot" is currently unreachable -- if/when such a feature is ever
+   built, it must route through `JoinGroupTherapyAction`/`RespondToGroupTherapyMembershipRequestAction`
+   (or otherwise explicitly recompute `was_minor_at_join`), never a raw `attach()`.
+3. `EnsureDobChangeIsAllowedAction::hasQualifyingRelationship()` doesn't cover ordinary
+   `group_therapy_user` membership (only Guardianship/Therapy/a group's own creator) -- doesn't
+   bypass `memberIsMinor()`'s own snapshot (immutable post-attach regardless), but means an
+   ordinary member's dob stays freely editable, which matters only for the null-fallback case
+   above. Left as a known, accepted gap, not this ticket's own scope to close.
+## 2026-09-15 — SCRUM-320 (TT-3.2f-c): research spike, live participant-capability updates
+
+Research spike per the ticket's own explicit "do not assume the shape" instruction (mirrors the
+TT-3.2b/SCRUM-309 ejection-API spike precedent). Confirms whether Daily and Chime can change an
+ALREADY-CONNECTED participant's publish capability (grant/revoke speaking permission) without
+forcing a reconnect/new token -- the ticket's own "critical finding to report back" gate for
+TT-3.2f-e (SCRUM-322).
+
+**Finding: BOTH providers support this live, no reconnect required.** This is the good outcome the
+ticket flagged as uncertain, not the bad one -- `VideoProviderInterface::updateParticipantCapabilities()`
+can be a straightforward server-side interface method on both adapters, matching the original
+design assumption, with no "requires reissue" fallback branch needed after all.
+
+- **Daily.co**: `POST /rooms/{room_name}/update-permissions` (docs:
+  https://docs.daily.co/reference/rest-api/rooms/update-permissions). A real, documented REST
+  endpoint -- NOT the client-side-only `daily-js` `updateParticipant()`/`updateParticipants()`
+  instance methods a first search pass found first (those require an already-connected admin
+  browser call object, which would have meant a materially different, frontend-driven design; this
+  server-side sibling endpoint in the same `/rooms` family, alongside the already-implemented
+  `/rooms/{room}/eject`, resolves that). Request shape: `POST` body `{"data": {"<participant
+  identifier>": {"canSend": [...] | true | false, "hasPresence": ..., "canAdmin": ..., "canReceive":
+  {...}}}}`, keyed by a specific participant id or `"*"` for all. Response: `{"status": "sent"}`.
+  **One remaining implementation-detail uncertainty, not blocking**: the docs don't explicitly
+  confirm whether the participant-identifier key is the same `user_id` we already send at
+  `createMeetingToken` time (matching `ejectParticipants`'s own `user_ids` array, which IS confirmed
+  to use that same id) or a different Daily-generated identifier -- verify with a real test call
+  during SCRUM-322's own implementation rather than assuming; if it turns out to require a
+  different id, the design still holds (just needs a lookup step, same shape as
+  `ChimeVideoProvider::removeParticipant()`'s own `ListAttendees` lookup below), so this doesn't
+  change TT-3.2f-e's approach, just a detail to confirm.
+- **AWS Chime SDK Meetings**: `UpdateAttendeeCapabilities` (docs:
+  https://docs.aws.amazon.com/chime-sdk/latest/APIReference/API_meeting-chime_UpdateAttendeeCapabilities.html).
+  A real, confirmed AWS API action, keyed by `AttendeeId` (not our own user id) -- requires the same
+  `ListAttendees`-then-match-`ExternalUserId` lookup pattern `ChimeVideoProvider::removeParticipant()`
+  (SCRUM-309) already established, reusable as-is. Applies live: per AWS's own docs, changing an
+  audio/video capability from `None`/`Receive` to `Send`/`SendReceive` takes effect on the existing
+  connection (audio flows immediately if unmuted; video/content require a media renegotiation the
+  SDK already handles, not a full reconnect).
+
+**Implication for TT-3.2f-e (SCRUM-322)**: no design change needed from what was already planned --
+proceed with `updateParticipantCapabilities()` as a plain required interface method on both
+adapters, no "applied live vs. requires reissue" branching in the contract after all (the
+architect's own design allowed for either outcome; this is the simpler one). Chime's own
+implementation mirrors `removeParticipant()`'s existing lookup-then-act shape almost exactly.
+## 2026-09-14 — SCRUM-314 (TT-3.2f): full-membership group video scoped and approved
+
+Ran the full `/start-feature` sequence (product-owner -> project-manager -> architect) for
+SCRUM-314, a placeholder filed during TT-3.2's own scoping with vague "every member gets full
+two-way access" text. The user's own follow-up question ("is it doable to have others join without
+their video stream?") led directly into this ticket being pulled forward and given a concrete,
+materially different shape than the placeholder's original framing.
+
+**User's own product decision (the most consequential one)**: NOT full two-way access for every
+member. A moderated "town hall" instead -- ordinary members join **receive-only** (mic/camera never
+published, confirmed technically feasible and SERVER-enforced by both providers' own primitives:
+Daily meeting-token `permissions.canSend`, Chime attendee `Capabilities`, never client trust), can
+raise a hand, and any active counsellor can grant/revoke real speaking permission from a live
+queue.
+
+**Locked decisions, in the order asked**:
+1. Minor members: receive-only join allowed unconditionally now; being GRANTED speaking permission
+   is hard-blocked until SCRUM-313 (guardian consent) ships -- mirrors TT-3.2a's own interim-block
+   pattern, does not wait on SCRUM-313.
+2. Anonymity/speaking mode: user's own freeform redirect, not one of the offered options --
+   "when anonymity is set on group therapy or membership, then no video at all, just give reason
+   why." Follow-up clarified this means AUDIO-ONLY (not fully blocked from speaking) for an
+   anonymous member -- camera capability permanently disabled, with a shown reason; a
+   non-anonymous member gets full audio+video with a one-time pre-unmute reveal warning.
+3. Participant cap: user chose the "smaller fixed operational ceiling" option, but with a second
+   freeform addition -- "that means the cap for group therapy should be set to that as well," tying
+   the video-specific cap to the group's own membership ceiling (previously two independent
+   numbers). Follow-up confirmed the exact number (**25**) and that no grandfathering is needed
+   (nothing is in production yet; seeded data may be freely adjusted).
+4. Revoke semantics: any active counsellor can revoke any grant (peer model, matching the existing
+   TT-3.2b moderation precedent) manually, PLUS an idle auto-expiry.
+5. (Second round, after project-manager surfaced two new gaps) Minor detection for ordinary
+   members: user chose to add a REAL per-membership snapshot (`group_therapy_user.was_minor_at_join`)
+   rather than accept a live `isAdult()` re-check, which would have reopened the exact
+   self-editable-dob bypass TT-4.10/SCRUM-287 already closed for the creator case.
+6. Chime cap: user chose to add a real app-level enforced cap for Chime (which has no native
+   room-size limit), rather than leave it relying on the allow-list alone at the new, much larger
+   scale (up to 25 real members, vs. TT-3.2's own "counsellors + 1" scale where this was
+   deliberately accepted as low-risk).
+
+**project-manager's own research findings** (grounding the sizing, not guessed): `GROUP_THERAPY_MAX_USERS`
+is validated in exactly one place (`EnsureTherapyDataIsValidAction.php`), so unifying it with the
+video cap is a contained change, not a scattered one; `EnsureUserCanAccessTherapyContentAction`
+already returns a bool and is directly reusable for gating receive-only join, confirming no new
+payment logic is needed; no generic audit-log table exists anywhere in this codebase, so the
+auditability requirement needs a new table, not a slot into existing infrastructure; a scheduler
+precedent (`Schedule::call(...)->everyFiveMinutes()`) already exists for the idle-expiry sweep,
+no new infra needed there either.
+
+**architect's own design corrections** (full authority exercised, not just validation): rejected
+extending `video_session_participants` for hand-raise/grant state (that table's own migration
+comment explicitly rejects mutable current-status columns) in favor of two new tables --
+`video_session_speaking_grants` (append-only, modeled on `video_consents`' proven shape, anchored to
+`video_session_participants.id` rather than a bare `(session, participant)` pair, to remove
+rejoin-ambiguity) and a separate, deliberately mutable `video_session_hand_raises` table (raise/
+lower is current-state, not history-shaped, so forcing it append-only would be over-engineering by
+analogy). Required the Chime cap check to live INSIDE `JoinVideoSessionAction`'s existing
+`lockForUpdate()` transaction, not a separate check outside it, to avoid reintroducing the exact
+TOCTOU race that lock already exists to close. Required a single shared `RevokeSpeakingPermissionAction`
+reused by manual revoke, the idle sweep, and removal cleanup, rather than three separate
+implementations of the same operation with different `revocation_reason`s.
+
+**Tickets filed**: SCRUM-318 (a, cap unification), SCRUM-319 (b, data model), SCRUM-320 (c, provider
+research spike), SCRUM-321 (d, receive-only join + Chime cap), SCRUM-322 (e,
+`updateParticipantCapabilities()`), SCRUM-323 (f, raise-hand + grant/revoke backend), SCRUM-324 (g,
+minor-block + anonymity-aware speaking), SCRUM-325 (h, idle auto-expiry), SCRUM-326 (i, removal
+interop), SCRUM-327 (j, frontend), SCRUM-328 (k, closeout), plus SCRUM-329 (placeholder to replace
+g's interim minor-block once SCRUM-313 ships). SCRUM-314 itself updated from a vague placeholder to
+the full locked scope + sub-ticket index; `documentation/implementation_plan.md`'s
+`TT-3.2-follow-up-2` row replaced with the full breakdown.
+
+---
+
+## 2026-09-15 — SCRUM-321 (TT-3.2f-d): receive-only join, backend
+
+Widens `EnsureVideoIsAvailableForSessionAction::ensureGroupTherapyVideoIsAllowed()` -- the strict
+counsellor-or-creator-only allow-list from TT-3.2a's own v1 scope is removed for ordinary members
+entirely (only the group's own creator's minor status is still gated there); a new
+`JoinVideoSessionAction::isReceiveOnly()` decides the resulting capability independently, mirroring
+how `$isOwner` was already computed independently of that action rather than returned from it.
+
+**Provider changes, per SCRUM-320's own spike findings**: `VideoProviderInterface::createParticipantCredentials()`
+gains a `bool $receiveOnly = false` parameter. `DailyVideoProvider` sets meeting-token
+`permissions.canSend: false` when true (omitted entirely otherwise, not merely a permissive
+value); `ChimeVideoProvider` sets attendee `Capabilities: {Audio: Receive, Video: Receive, Content:
+Receive}` when true (also omitted entirely otherwise). Both server-enforced by the provider
+itself, never a client-side-only restriction.
+
+**Chime cap enforcement**: per the user's own decision, Chime (no native provider-level room-size
+limit, unlike Daily's `max_participants`) now gets an app-level enforced cap. Per the architect's
+own explicit design, this required restructuring `JoinVideoSessionAction`'s own
+`currentOrNewVideoSession()` (renamed `currentOrNewVideoSessionAndJoin()`) to move the
+`VideoSessionParticipant` row creation INSIDE the same `lockForUpdate()` transaction that already
+serializes concurrent joins -- it used to happen after the transaction returned. Without that move,
+the cap check itself would still race (two near-simultaneous joins against an already-full room
+could both read "room for one more" before either's insert committed). A no-op for Daily (already
+capped provider-side; checking again here would just duplicate that ceiling) and for 1:1 Therapy
+(never reaches a size where this matters, already bounded by the existing allow-list).
+
+Nothing in this ticket touches the frontend "join video" display gate
+(`TherapyComponent.vue`'s `computedCanJoinVideo`) -- it still only shows the button for a
+counsellor/creator, correctly deferred to TT-3.2f-j/SCRUM-327 (the dedicated frontend sub-ticket),
+not folded in here the way SCRUM-310 folded in an equivalent gap for TT-3.2's own v1 scope. That
+precedent was considered and deliberately NOT repeated: TT-3.2f's own sub-ticket sequencing already
+has a dedicated frontend ticket queued next-but-several, unlike TT-3.2c's situation where no such
+ticket existed at all for the gap found.
+
+**Reviewer finding, filed as SCRUM-330 (not fixed here)**: `ensureChimeGroupTherapyCapacity()`
+counts `VideoSessionParticipant` AUDIT rows (`whereNull('left_at')`), not distinct users -- a
+person who disconnects without an explicit leave (refresh, crash, network drop) leaves a stale row
+counted as "active" indefinitely, and TT-3.1d's own existing reconnect design (`handleDisconnected()`
+calling `join()` again) creates a brand-new row rather than reconciling the old one. Over a
+long-running group call with several reconnects, this could lock out real new joiners well before
+the group is actually near its 25-participant cap -- specific to Chime (Daily's own provider-level
+cap doesn't share this failure mode, since it's enforced against real live connections, not our own
+audit rows). A pre-existing characteristic of the audit-log table's own design, not a regression
+this ticket introduces -- this ticket is simply the first thing to actually COUNT those rows for an
+enforcement decision.
+
+---
+
+## 2026-09-15 — SCRUM-322 (TT-3.2f-e): VideoProviderInterface::updateParticipantCapabilities()
+
+Implemented the SCRUM-320 spike's own findings directly -- both providers support this live, no
+"applied live vs. requires reissue" branching needed in the interface contract after all (the
+architect's own design left room for either outcome; the spike found the simpler one).
+
+- **Daily**: new `DailyClient::updateRoomPermissions()` wraps `POST /rooms/{room}/update-permissions`,
+  keyed by our own `user_id` (same identification pattern as the existing `ejectParticipants()`).
+  `canSend` collapses to Daily's own simplest documented shape per case: `true` (both allowed),
+  `false` (both revoked), or an explicit `['audio']`/`['video']` array (the audio-only case
+  TT-3.2f-g's own anonymity rule needs).
+- **Chime**: new `ChimeClient::updateAttendeeCapabilities()` wraps AWS's `UpdateAttendeeCapabilities`,
+  keyed by the AWS-generated `AttendeeId` looked up via the same `ListAttendees`-then-match-`ExternalUserId`
+  pattern `ChimeVideoProvider::removeParticipant()` (SCRUM-309) already established -- no new
+  persisted id needed. `Content` is always sent as `'Receive'` regardless of the video capability
+  (this app has no screen-share feature to ever need `'Send'` for); AWS requires `Video` to be
+  `Receive`/`SendReceive` (never `None`) whenever `Content` is `Receive`/`SendReceive`, which is
+  always true here since Video is one of those two values in every call this app makes.
+- Deliberately did NOT wrap either provider call in a best-effort try/catch the way `endRoom()`/
+  `removeParticipant()` are -- the interface's own comment now explicitly requires the CALLER
+  (TT-3.2f-f, not yet built) to make its own explicit decision about failure handling, per the
+  security-engineer's own SCRUM-309 finding that a silent failure on a GRANT (counsellor believes
+  a member can now speak, but the provider call silently failed) is a materially different, likely
+  worse risk than a silent failure on a teardown/removal.
+- All ~9 test files with fake/anonymous `VideoProviderInterface` implementations mechanically
+  patched to add the new required method as a no-op, same approach as every prior interface
+  addition this epic (TT-3.2b's `removeParticipant()`).
+
+---
+
+## 2026-10-30 — SCRUM-323 (TT-3.2f-f): raise-hand + grant/revoke speaking permission, backend
+
+- **Provider-failure handling (the ticket's required explicit call)**: a GRANT is not best-effort.
+  `updateParticipantCapabilities()` runs inside the grant's transaction, so a provider failure rolls
+  the grant row (and the hand-raise closure) back and returns a 502. Local state never claims a grant
+  the provider didn't apply. A MANUAL revoke also fails loudly and leaves the grant open, so the
+  counsellor can retry or remove the member instead of wrongly believing the member is muted. An
+  `idle_auto_expiry` revoke that fails logs a warning and leaves the grant open, so the next sweep
+  retries. The first draft closed it locally, but the reviewer found that leaves a member still
+  publishing with no open grant for anyone to revoke. A `participant_removed` revoke logs and closes
+  the grant locally anyway, since the member is being ejected regardless.
+- **Revoking a grant on a stale join row** (left open by a leave or reconnect, see SCRUM-330) closes
+  the row locally without calling the provider. The provider keys on user id, not join-cycle, so the
+  call would mute the member's CURRENT join, which may hold its own valid grant (reviewer finding).
+  All speaking-state changes now lock the participant row, so grant and revoke serialize.
+- **One revoke implementation**: `RevokeSpeakingPermissionAction::execute()` is the counsellor's manual
+  path. `revokeGrant($grant, $reason, ?$revokedBy)` is the shared core that SCRUM-325's sweep and
+  SCRUM-326's removal cleanup call directly.
+- **Interim capability = audio-only for everyone**: SCRUM-324 owns the anonymity rule (anonymous →
+  audio-only, others → audio+video). Until it lands, every grant is audio-only, so an anonymous
+  member's camera can't be enabled in between. The minor hard-block also stays in SCRUM-324 as
+  ticketed. Nothing in the UI can reach grant until SCRUM-327, which is sequenced after SCRUM-324.
+- **Grant doesn't require a raised hand** (a counsellor may invite someone to speak). Granting
+  closes any open raise. A re-grant while a grant is open is an idempotent no-op.
+- **Grant to a target not in the call → uniform 422** (removal uses a 200 no-op instead). It's still
+  oracle-safe: a nonexistent id and a real-but-absent id get the identical response, because the
+  lookup only ever touches this call's own participant rows. A no-op felt wrong for an action whose
+  caller expects a state change.
+- **Small refactors**: `VideoSession::activeParticipantFor()` is now the single participant-lookup
+  helper (`RemoveParticipantFromVideoSessionAction` reuses it). `JoinVideoSessionAction`'s private
+  `isReceiveOnly()` moved to `GroupTherapy::isReceiveOnlyVideoParticipant()` so join and moderation
+  can't drift.
+- `last_activity_at` is seeded at grant time, so SCRUM-325's sweep measures from the grant until the
+  first ping.
+- **Security-review fixes, applied in this PR**:
+  - A manual revoke closes every open grant the user holds in the call, across all their join rows,
+    and always finishes by pushing receive-only to the provider for their live join. Before this,
+    after a reconnect the live row could have no grant while a stale row did; the revoke then
+    returned "revoked" without calling the provider, and a reused Chime attendee could still be
+    able to speak.
+  - `ChimeClient::listAttendees()` now walks every page (MaxResults 100).
+    `ChimeVideoProvider::updateParticipantCapabilities()` now THROWS when the attendee isn't found
+    (it used to return silently), so a grant or revoke can't report success while the provider
+    changed nothing.
+  - `DailyClient` now has `connectTimeout(5)` / `timeout(10)`, because grant and revoke hold a row
+    lock across the call.
+  - Grant now requires the target to still be a group participant (`GroupTherapy::isParticipant()`),
+    using the same "not in this call" message.
+- **Known and accepted, not fixed here**:
+  - An idle revoke for a member whose join row is open but who has no live provider attendee (a
+    crash, see SCRUM-330) will fail at the provider and be retried by every sweep until that row
+    closes. That produces noisy logs but is safe.
+  - All `throttle:N,1` routes share one per-user counter (security F6, info only). For example, a
+    member who toggles their hand 20+ times in a minute can get a 429 on rejoin. Named limiters
+    would be the fix if this shows up in practice.
+
+---
+
+## 2026-10-30 — SCRUM-326 (TT-3.2f-i): removal clears hand-raise/speaking state
+
+- **Order**: the grant is revoked (and the member muted at the provider) BEFORE their row is marked
+  left and they're ejected. The mute has to happen while the row is still the live one, otherwise
+  `revokeGrant()` treats the grant as stale and only closes it locally. It's also defence in depth:
+  if the best-effort eject fails, the member still can't speak. It uses the shared
+  `RevokeSpeakingPermissionAction::revokeAllFor()` (extracted from the manual revoke) with reason
+  `participant_removed`. The removing counsellor is recorded as `revoked_by_user_id` (reviewer): it
+  is their action, and the grant row is the only place it would be recorded.
+- **Cleanup covers every one of the user's join rows** in the call, via
+  `VideoSession::participantRowsFor()`. Removal now marks every open row left, not just the latest,
+  so a stale row from a reconnect (SCRUM-330) no longer keeps a removed user grantable or able to
+  raise a hand (security F1 / reviewer). If only a stale row held the grant, removal still pushes
+  receive-only to the provider (security F2).
+- **Race**: the cleanup can't be behind the participant-row lock, because it must mute before
+  marking left. A second cleanup pass after marking left catches any grant or hand-raise that landed
+  in between (security F4).
+- **Accepted residual risk (security F3)**: if BOTH the provider mute and the eject fail, the member
+  can still publish while local state says removed. The only record is two `Log::warning` lines, and
+  nothing retries. This needs two provider failures in a row. Revisit if provider failures turn out
+  to be common in practice (SCRUM-315 covers making provider failures visible).
+## 2026-10-30 — SCRUM-324 (TT-3.2f-g): minor-grant hard-block + anonymity-aware speaking mode
+
+- **Minor block**: `GrantSpeakingPermissionAction` refuses a target for whom
+  `GroupTherapy::memberIsMinor()` is true (the join-time snapshot, falling back to live age). It's an
+  interim block until SCRUM-313's group-scoped guardian consent exists, and SCRUM-329 replaces it then.
+  A minor can still join receive-only.
+- **Not in the ticket text**: `RaiseHandAction` also refuses minors, with the same message. Their hand
+  could never be granted, so it would only be a dead-end entry in every counsellor's queue. Both
+  actions call the one `EnsureMemberMayBeGrantedSpeakingAction`, so SCRUM-329 replaces a single
+  place.
+- **Capabilities**: anonymous members (`isAnonymousFor()`: the group flag OR the member's own pivot
+  flag) get audio-only at the provider; everyone else gets audio + video. This replaces SCRUM-323's
+  interim audio-only-for-all. The frontend's one-time reveal warning (SCRUM-327) uses the
+  `canSendVideo` flag already carried by `SpeakingPermissionChangedEvent`, so no new payload field
+  is needed.
+- **Fixed here, out of the ticket's literal scope (both reviewers rated it High)**:
+  `JoinVideoSessionAction::displayNameFor()` used to mask only a group's CREATOR. Since SCRUM-321 let
+  ordinary members join, an anonymous member (group flag or pivot flag) was labelled with their real
+  name for every other participant and in what Daily receives. Masking now matches
+  `routes/channels.php`: any non-counsellor anonymous participant. Fixed in this PR rather than
+  deferred, because this ticket is what lets anonymous members speak, and its own design assumes
+  "your name stays masked".
+- **Security hardening**: the capability choice reads the membership row directly and enables video
+  only for a confirmed, non-anonymous member of a non-anonymous group. It no longer relies on
+  `isAnonymousFor()`'s cached relation, which treats a non-member as non-anonymous; any doubt now
+  falls back to audio-only.
+- **Filed, not fixed (decisions needed)**:
+  - SCRUM-331 (High): Daily `is_owner` tokens let a counsellor's browser change any participant's
+    permissions, which goes around these server-side rules. Not reachable through the current UI.
+    Fixing it means revisiting TT-3.2's "equal host credentials" product decision, so it was left
+    for the user rather than changed here.
+  - SCRUM-332: the group `anonymous` flag being turned on mid-call doesn't downgrade open grants, and
+    the anonymous group's creator still gets a camera (product question).
+## 2026-10-30 — SCRUM-325 (TT-3.2f-h): idle auto-expiry for unused speaking permission
+
+- **Sweep runs `everyMinute()`, not the ticket's `everyFiveMinutes()`**: with the 300s default
+  timeout, a 5-minute sweep would let an idle grant stay open for up to ~10 minutes. Every minute
+  caps it at ~6. The query is cheap, and `broadcastStartedSessionsAndDiscussions` already runs
+  every minute. Reviewer endorsed this.
+- `AppService::expireIdleSpeakingGrants()` revokes through the shared `revokeGrant()` with reason
+  `idle_auto_expiry`. A provider failure leaves the grant open for the next run (per SCRUM-323). Any
+  other failure is logged per grant (`Log::error`, the same pattern as the other AppService sweeps)
+  and doesn't stop the rest. Only grants in still-open calls are swept. A grant with no
+  `last_activity_at` falls back to `granted_at`.
+- **Ping endpoint** `POST /sessions/{id}/video/speaking-activity` (`RecordSpeakingActivityAction`):
+  - Self-service only, and only ever touches the caller's own open grant on their live join.
+  - A single conditional UPDATE, so it can't write to a grant revoked in the same instant.
+  - Silent 200 otherwise, so the response doesn't reveal whether the caller holds a grant.
+  - It has its own named limiter (`video-speaking-activity`, 12/min) so ~30s background pings never
+    use up the shared per-user `throttle:N,1` bucket that join/raise/grant count against.
+- `config('video.speaking_grant_idle_timeout')` comes from `VIDEO_SPEAKING_GRANT_IDLE_TIMEOUT`
+  (default 300). It's floored at 30s, because a blank value would otherwise make it 0 and revoke
+  every open grant at once.
+- **Found, filed as SCRUM-333 (High)**: nothing in the Docker stack runs the Laravel scheduler, so
+  this sweep never fires locally, and neither do the other 14 scheduled jobs. Production may have a
+  host crontab outside the repo; that's unconfirmed.
+- **Security-review fixes**:
+  - `revokeGrant()` takes an optional `$idleCutoff` and re-checks it under the lock, so a ping that
+    lands after the sweep's own query never mutes an active speaker (L2).
+  - `revokeGrant()` resolves the target with `User::withTrashed()`. A soft-deleted user's
+    polymorphic participant resolved to null and would have made every sweep throw on their grant
+    forever (L1).
+  - The schedule is named and `withoutOverlapping()` (I1).
+  - L3 (on Chime, an idle grant left on a stale join row is closed locally without muting the
+    reconnected attendee) is pre-existing and noted on SCRUM-330.
+
+---
+
+## 2026-10-30 — SCRUM-331 + SCRUM-332: group-video credential hardening (user decisions)
+
+- **SCRUM-331 (user: yes)**: group-therapy counsellors no longer get Daily `is_owner` tokens. An
+  owner's browser can change ANY participant's permissions client-side, which would bypass the
+  server-enforced rules (minors never speak; anonymous members are audio-only). Every moderation
+  action (remove, end, grant/revoke) goes through our server, so counsellors lose nothing they use
+  and remain equal peers. This revisits TT-3.2's "equal host credentials" decision: counsellors keep
+  equal rights, they just aren't Daily owners. 1:1 Therapy is unchanged (two participants, no such
+  rules).
+- **SCRUM-332 (user: anonymous creator is audio-only)**: the creator of an anonymous group joins
+  video audio-only, enforced by the provider. This uses a new `canSendVideo` parameter on
+  `VideoProviderInterface::createParticipantCredentials()` (appended, default `true`; `receiveOnly`
+  wins if both are set). `JoinVideoSessionAction::isMaskedGroupParticipant()` is now the single
+  rule both for masking the name and for withholding the camera: any non-counsellor anonymous
+  group participant.
+- **SCRUM-332, mid-call anonymity change**: I chose to REFUSE switching a group to anonymous while
+  one of its video calls is live (`EnsureGroupTherapyCanBecomeAnonymousAction`, 422 "End the current
+  video call before making this group anonymous."), rather than downgrading people mid-call.
+  Everyone in that call has already seen names and faces, so a mid-call downgrade couldn't honestly
+  undo the exposure. After the call ends, every new join is masked and audio-only.
+- **Review follow-ups**:
+  - The anonymity-flip guard counts a call as "live" only while someone is still in it (reviewer).
+    An abandoned call stays open until an explicit End, and the creator can't end group calls, so
+    counting abandoned calls would have blocked the change forever.
+  - Daily's audio-only token now reuses `canSendValueFor()`.
+  - The join passes named arguments.
+- **Accepted / deferred**:
+  - The guard and the update aren't atomic with a concurrent first join (a milliseconds window, one
+    unmasked token). Filed as SCRUM-334, along with three issues the security review found that
+    already existed: Daily self-renaming, real user ids visible in calls, and implicit Daily room
+    defaults.
+  - A group creator who is ALSO a counsellor of that group is never masked or audio-only. This is
+    consistent with the app-wide "counsellors are never anonymous" rule and only exposes their own
+    identity.
+  - Tokens minted before deploy (owner, or full-video creator) stay valid until they expire (session
+    end + 2h).
+  - The browser isn't told that a participant is audio-only (the camera toggle shows "on" but the
+    provider refuses). Handle this in SCRUM-327 by returning the capability with the credentials.
+
+## SCRUM-327 (TT-3.2f-j): group video speaking-moderation frontend — 2026-10-31
+
+- **Join response carries a `participant` key**: a sibling of the provider credentials, not a
+  separate endpoint. It describes what the joiner may do (`receiveOnly`, `canSendAudio`,
+  `canSendVideo`, `isAnonymous`, `canRaiseHand`, `isMinorMember`, `canModerate`,
+  `speakingGrantIdleTimeout`). For a group counsellor it also includes `raisedHandUserIds` /
+  `speakerUserIds`, so someone joining mid-call sees hands and speakers that were broadcast before
+  they subscribed. It's display-only: the provider token and per-endpoint authorization still
+  enforce everything. Neither provider's credentials use the key.
+- **Revocation reason on the broadcast**: `SpeakingPermissionChangedEvent` gained `reason` (null
+  on a grant), so a member is told "you stayed muted" (idle expiry) as opposed to "a counsellor
+  ended it".
+- **Revoke broadcasts only describe the live join**:
+  - Closing a grant stranded on a stale reconnect row no longer broadcasts "muted". Doing so would
+    have told the member's client (and the counsellors' speaker list) that someone who can still
+    speak was muted.
+  - `muteAtProvider()` does broadcast, because it changes the live join.
+- **Scope choice: queue-only moderation.** Counsellors grant from the raised-hand queue and revoke
+  from the speaker list. There's no per-tile "let speak" for members who haven't raised a hand.
+  The backend supports it, but the UI can't tell which tiles are receive-only without exposing
+  more per-participant state.
+- **Reveal warning**: shown once per call, before the first unmute or camera-on of a granted
+  non-anonymous member. Anonymous members are audio-only under a masked name, so the warning
+  doesn't apply to them.
+- **Idle warning**: the client pings `speaking_activity` every 30s while sending, and mirrors the
+  countdown locally. It warns in the final `min(60s, timeout/2)` while muted with the camera off.
+- **"join video" for every group participant**: the frontend gate now uses `isParticipant`. The
+  backend already admitted ordinary members receive-only (SCRUM-321); the button had simply never
+  been widened.
+- **Spotlight layout (user request, added to this ticket)**:
+  - Focusing a tile shows it large, with everyone else in a narrow, vertically scrollable strip
+    beside it. It's a local view state only.
+  - Tiles were extracted into a presentational `VideoTile.vue`, so the grid, spotlight and strip
+    can't drift. This isn't a new call surface: `VideoCallPanel.vue` still owns everything.
+- **Review follow-ups applied**:
+  - The idle timer stops on disconnect and failed rejoin.
+  - Listeners subscribe right after the join POST, and the counsellor lists are merged instead of
+    replaced.
+  - Mute/camera toggles are serialized. Chime flips state only after a device starts and releases
+    devices on revoke.
+  - The reveal dialog closes on revoke.
+  - No revoke notice is shown to someone who never held a grant.
+  - The counsellor snapshot counts only each user's live row.
+- **Deferred**:
+  - The idle sweep closing a grant on a stale row never mutes a reused Chime attendee (security
+    review, Low, pre-existing) — added to SCRUM-330.
+  - A token-minting failure leaks the raw provider error and leaves an open participant row —
+    SCRUM-335.
+- **Environment finding (not code)**: the dev queue worker had been FATAL since 00:00 UTC, because
+  the `mailpit` hostname didn't resolve and Laravel treats getaddrinfo failures as lost
+  connections. Mailpit's host ports moved to 1027/8027 in a separate PR (#256).
+
+## SCRUM-328 (TT-3.2f-k): epic closeout, full-membership group video (SCRUM-314) — 2026-10-31
+
+- **How the spike's findings held up (SCRUM-320 → SCRUM-322)**: both providers did support live
+  capability changes server-side, as the spike found, so `updateParticipantCapabilities()` shipped as
+  a plain interface method with no "requires reissue" branch, which is the design originally
+  proposed. The spike left one detail open: whether Daily's `update-permissions` is keyed by the same
+  `user_id` we send at token mint. The adapter keys by our user id, matching `/eject`'s confirmed
+  `user_ids`. That still hasn't been checked against a live Daily account (no sandbox credentials,
+  SCRUM-317), so it's part of that ticket's live pass.
+- **Regression suite design**: a closeout suite that only re-ran the action tests' fake providers
+  would only re-check our database. Instead, `GroupVideoSpeakingModerationRegressionTest` drives the
+  real HTTP routes through the **real** adapters for both providers, and fakes only the transport. The
+  assertions then check what each provider would enforce: Daily's `canSend` from token minting and
+  update-permissions, and Chime attendee `Capabilities`.
+- **Seed fixtures**: no new seeding was needed. SCRUM-327 already added the adult, minor and
+  anonymous members the golden path needs (the old demo "member" had a null dob, so it was silently a
+  minor).
+- **Judgment calls made across a–j**: each is logged under its own ticket entry above. The
+  consequential ones were:
+  - refusing the anonymity switch during a live call (SCRUM-332), rather than downgrading people
+    mid-call;
+  - per-reason provider-failure semantics for revokes (SCRUM-323);
+  - broadcasting only live-join revokes (SCRUM-327);
+  - the extra scope the user asked for: the spotlight view (SCRUM-327) and moving mailpit's host ports
+    (#256).
+- **Epic status**: TT-3.2f is complete. Open follow-ups: SCRUM-313/329 (guardian consent for minor
+  speakers), SCRUM-317 (live-provider QA), SCRUM-330 (stale reconnect rows), SCRUM-334 (identity
+  exposure in calls), SCRUM-335 (token-mint error leak).
+
+## SCRUM-204 + SCRUM-210: two small information leaks — 2026-10-31
+
+- **SCRUM-204**: a discussion's counsellor roster is now only returned to admins and the discussion's
+  own counsellors, using the same gate as `showChat`. Anyone else gets the same `[]` as a nonexistent
+  discussion. `DiscussionModal` tolerates that empty response.
+- **SCRUM-210**: `EnsureCanCreateSessionAction` now authorizes FIRST, with a generic message. The
+  ticket assumed the "has an active session" message only fired after the participancy check, but
+  it ran before it, so it also leaked the therapy's name and live status to anyone.
+- **Hardening done alongside**: `Discussion::isParticipant` and `Therapy::isCounsellor` are now
+  null-safe. An unmatched therapy used to crash with a 500, which a counsellor could use to tell
+  "unmatched" apart from "someone else's".
+- **Deferred to SCRUM-339**:
+  - other session actions that still name the session before authorizing (update, delete, topic,
+    end, status);
+  - the `CreateSessionRequest` check that lets a caller confirm a guessed session name;
+  - therapy-exists vs not-allowed giving different answers.
+## SCRUM-195: confidential messages, and the leaks found around them — 2026-10-31
+
+- **The ticket**: confidential messages were broadcast in full on the shared `sessions.{id}` channel.
+- **Worse than reported**: `Message::isParty()` ran an unscoped query over the whole table, so it was
+  true for anyone who had ever sent or received ANY message. The page-load redaction the ticket
+  assumed worked was therefore ineffective too, and almost anyone could subscribe to any
+  `messages.{id}` channel. It is now a per-message comparison of `from`/`to` against the user or
+  their counsellor account.
+- **Design: broadcasts never carry per-viewer data.**
+  - `MessageResource::present(Message, ?User)` is now the one request-free place a message's shape
+    is decided. The broadcast uses it with NO viewer, which by construction gives the most
+    restricted view: no confidential content or replied-to content, and anonymous sender and
+    recipient ids masked. This replaces a hand-copied second shape in `MessageBroadcastTrait`.
+  - A confidential message's recipient fetches the full message from the new `api.messages.show`,
+    which uses the same visibility rule as replies (`MessageService::userCanSeeMessage`).
+  - The `messages.{id}` channel reuses that rule too.
+  - Frontend listeners run through a per-channel queue (`createBroadcastMessageQueue`), so waiting
+    on a fetch never reorders messages.
+- **Further holes found by the security review and fixed here**, because each defeated this
+  ticket's guarantee:
+  - **Reply target:** `replyId` accepted any message id, so the reply preview could read any message
+    in the system. Replies are now limited to the same conversation, and the preview is
+    confidential-aware.
+  - **Edit:** editing a confidential message silently cleared the flag. It is now only changed when
+    the edit request actually sends it.
+  - **Anonymous recipient:** the recipient's real user id was exposed. It is now masked, with
+    `recipientMasked` so the recipient's client still fetches.
+  - **Deleting files:** `deletedFiles` could delete ANY file by id. It is now scoped to the
+    message's own files.
+  - **Private notes:** a counsellor's note can never reach a broadcast.
+- **Behaviour change to confirm**: admins are no longer treated as parties to confidential messages,
+  so they see the redacted view like any other non-party. Before, they saw everything, but only
+  through the `isParty` bug.
+- **Known limitation**: `toOthers()` only skips the sending socket, so the sender's other tabs show
+  their own message in its restricted form.
+## SCRUM-300 + SCRUM-191: counsellor license/ID documents made private — 2026-10-31
+
+- **Scope**:
+  - Moves counsellor verification documents (national ID scans and professional licenses) off the
+    publicly symlinked `licenses/` path and onto a private `license_documents` disk.
+  - Serves them only through `licenses.documents.show`, to admins and the license's own counsellor.
+    Any other request gets a uniform 404.
+  - SCRUM-191 asked whether `licenses/` was meant to be public. It holds national ID scans, so it
+    isn't, and both tickets close together.
+  - Avatars, covers and logos stay public as intended.
+- **Pattern**: this mirrors SCRUM-302's identity-document route, so `getUrlFor()` now refuses every
+  disk in `File::PRIVATE_DISKS`.
+  - Ownership rules differ between the two (the request's `for` user versus the license's counsellor),
+    so the authorizers stay separate.
+  - The response hardening is shared: `StreamsPrivateDocuments`.
+- **Security-review fix, beyond the ticket**: the new route originally served files inline with the
+  uploader's claimed `Content-Type`, and verification uploads accepted any file. A counsellor could
+  have uploaded HTML/SVG that ran in an admin's session. Now:
+  - uploads only accept jpg/png/pdf, up to 10MB;
+  - the response uses the server-detected type, inline only for images;
+  - responses carry `nosniff` and a `sandbox` CSP;
+  - the identity-document route gets the same hardening.
+  Also: unknown ids get the same 404 body as refusals (`->missing()`), the owner check uses the
+  relation, and only license disks are ever streamed.
+- **Existing files**: a data migration moves them, along with orphans under `licenses/`, and removes
+  the stale `public/storage/licenses` symlink, which `storage:link --force` never prunes.
+  - It hands the new folder to the web-server user. The devops review found that a root or deploy-user
+    migration otherwise creates `0700` directories php-fpm can't read.
+  - The disk now uses group-shared permissions.
+  - It is skipped under the test runner, because `RefreshDatabase` migrates before a test can fake its
+    disks. While developing this, an unguarded version moved real dev files during a test run.
+- **Follow-ups filed**:
+  - SCRUM-336 (High): chat attachments are still on a public symlink.
+  - SCRUM-337: report evidence sits in the public `others/` folder.
+  - SCRUM-338: license documents are never deleted.
+- **Not fixable in code**: these scans were publicly reachable for as long as the link existed. Whether
+  anything further is owed to the affected counsellors is a privacy-owner decision.
+
+## SCRUM-336 + SCRUM-339: private chat attachments, session-name leaks — 2026-10-31
+
+The user asked for both in one PR.
+
+- **SCRUM-336 (chat attachments)**:
+  - Attachments move to a private `message_attachments` disk, and the public `messages` link is
+    removed.
+  - The only way to fetch one is `messages.attachments.show`. It serves whoever may see the message
+    (the same rule as `api.messages.show` and the `messages.{id}` channel), but a confidential
+    message's files go only to its parties.
+- **Reuse instead of a third copy**:
+  - SCRUM-300's license move was extracted into `MovePublicFilesToPrivateDiskAction`. The license
+    action is now a thin wrapper, kept because its already-run migration refers to it.
+  - `StreamsPrivateDocuments::authorizedDocumentResponse()` is now the shared body of all three
+    private-document controllers (identity, license, attachment).
+- **Media**:
+  - Chat attachments may play inline as images, video or audio, chosen by server-detected type. SVG
+    and HTML are never inline. Everything else downloads with `nosniff` and a sandbox CSP.
+  - The response is a `BinaryFileResponse`, so HTTP Range works. Code and devops review found the
+    first version, a plain stream, would break video seeking and Safari playback.
+- **Transitional disks**: attachments still on `public` (deployed before the migration runs) or on
+  `local` (host-run installs) are served through the route until SCRUM-341 removes them.
+- **SCRUM-339 (session names)**:
+  - Session actions authorize first.
+  - "Session not found", "therapy not found" and every session refusal now share the same message,
+    so a caller can't probe which ids exist.
+  - The topic lookup runs after authorization.
+  - End now explains the end-time rule only to participants.
+  - The `CreateSessionRequest` unique-name rule was removed rather than fixed. It checked a
+    client-chosen `requestId` the app never sends, so it never applied to real requests and was only
+    useful for confirming guessed names. Enforcing unique names would be a new product rule.
+- **Deferred**:
+  - SCRUM-342 (High, blocks the first promotion to production): the EC2 deploy runs migrations as
+    `ubuntu`, so private-storage ownership, `config:clear` and `queue:restart` need handling.
+  - SCRUM-343: the same name-leak pattern in therapy and discussion actions.
+  - SCRUM-341: remove the transitional disks.
+
+## SCRUM-341 + SCRUM-342 + SCRUM-343: follow-ups boxed into one PR — 2026-10-31
+
+The user asked for the three follow-ups in one PR. SCRUM-340 (admin access to confidential messages on a complaint) is excluded: it's a new feature that needs `/start-feature` and approval first.
+
+- **SCRUM-342, deploy design** (`scripts/deploy.sh` and `.github/workflows/main.yml`):
+  - The workflow extracts the script from the exact commit being deployed and runs it as root. The commit must be on `main`, and deploys are serialized.
+  - Root only handles ownership and removes stale symlinks. It never runs PHP: the security review showed that root artisan over the web-writable `storage/` and `bootstrap/cache` would hand the web user root.
+  - Every artisan command, including migrations, runs as the web server user. That user already owns the uploads being moved, and is detected from the php-fpm workers. The script aborts rather than guess, because a wrong user makes every private document unreadable.
+  - Maintenance mode is fatal if it can't be switched on. After a failure past the checkout, the site stays down rather than serving half-deployed code.
+  - Output is printed only on failure, because the repo is public.
+  - Not verifiable from here: the production box itself, its php-fpm user and process manager, and `ubuntu`'s sudo rights. The script's checks make the first deploy fail loudly rather than silently misconfigure.
+- **SCRUM-341**: the transitional `public`/`local` allowances were removed now, rather than "once every environment migrated". With the site down from checkout to migrate, nothing can serve a row before its move.
+  - A new migration moves `local`-disk message attachments from host-run installs.
+  - The move action refuses symlinks and uses `lchown`.
+- **SCRUM-343**: the SCRUM-339 pattern applied to the therapy update check and to every discussion management action.
+  - There is now one shared check, `Discussion::isManageableBy()`, and one refusal, `DiscussionException::notAllowed()`, which is also used for "discussion not found".
+  - Therapy "not found" now gives the same answer as the therapy refusal.
+  - End and Fail split authorization from the time rule. The semantics are unchanged: admins still bypass the time rule.
+  - `EnsureCanEndTherapyAction` no longer dumps the whole therapy model into its message.
+- **Deferred to SCRUM-344**: assistance-request and topic endpoints that name counsellors, therapies or topics before authorization, and the discussion-request existence probe.
+
+## SCRUM-344: assistance-request, topic and discussion-request name leaks — 2026-10-31
+
+- **Authorize before anything else, and give one generic refusal.** This is the SCRUM-339/343 pattern applied to assistance requests, therapy topics and counsellor discussion requests. "Therapy, topic or discussion not found" now gives the same answer as "not allowed". "Already has a counsellor" no longer names the counsellor. A discussion request now requires an actual `Discussion`.
+- **Who may send an assistance request** (new `EnsureCanSendTherapyAssistanceRequestAction`):
+  - the therapy's own client;
+  - any counsellor, but **only for a public therapy**, the only kind a counsellor can discover.
+  - Everyone else is refused, on purpose. This includes counsellors who have only seen the therapy through a discussion request, and admin-counsellors. Before this, any counsellor could POST any therapy id and learn its counsellor's name. If counsellors need to offer on private therapies, that is a product decision for a new ticket.
+- **Fixes found by the security review and included here, rather than ticketed:**
+  - `RequestResource` showed an anonymous client's real name on their own therapy, group-therapy and session-proposal requests. These are now masked with the anonymous label for everyone but the client, using the same check the therapy resources use (`addedByUserIsMaskedFor`).
+  - The `CreateTherapyTopicRequest` unique-name rule was removed rather than fixed, as SCRUM-339 did for sessions. It queried the dropped `therapy_id` column, so every topic create failed with a 500. Fixed naively, it would have let anyone confirm guessed topic names on any therapy before authorization.
+  - `TherapyTopic::therapy()` (a belongsTo on the dropped column) was replaced with `topicable()`, so topic update and delete work again.
+  - The owner check on topic update is now null-safe.
+  - The pending-request guard on "assist" now checks for a pending request in either direction. Before, it needed both at once, so it almost never fired.
+- **Pre-existing bug fixed along the way:** an assistance request on a therapy with no payment terms crashed, because `requests.data` is NOT NULL. It now stores `[]`.
+- **Security re-review follow-ups:**
+  - Topic session validation now checks against the topic's own owner. Before, group-therapy topic updates always crashed after authorization.
+  - The dead `therapy_id` fillable and scope are removed.
+  - Masked users still return their real user `id`, so a viewer can link the same anonymous client across requests. This isn't new and has the same shape as the existing masking, so it's deferred to **SCRUM-345**.
+- **Left as is:** `EnsureIsCounsellorAction` in the counsellor branch is now redundant but harmless. The frontend's `group.therapies.assist` route doesn't exist (dead code, untouched).
+
+## SCRUM-337 + SCRUM-345: report evidence private, masked users carry no id — 2026-10-31
+
+The user asked for both in one PR.
+
+- **SCRUM-337, report evidence:**
+  - New uploads go to a private `report_evidence` disk (`reports/`). They are served only through `reports.evidence.show`, to admins and the reporter. This follows the chat-attachment pattern: the file must be attached to that report, the private disk only, a uniform 404, and server-detected content types (images inline, everything else downloaded).
+  - The data migration moves existing evidence out of the public `others/` folder **without** sweeping the whole directory, because post and how-to images live there too and must stay public. `MovePublicFilesToPrivateDiskAction` gained a `sweepDirectory` option for this.
+- **Fixed in the same area rather than ticketed, because evidence would have leaked through each of them:**
+  - `GET /reports` and `GET /reports/{id}` had no permission check, so any signed-in user could read every report. Reads are now for admins and the reporter only, and a non-admin listing is always limited to their own reports.
+  - `ReportResource` was a raw model dump. It now has an explicit shape, and evidence links go through the authorized route.
+  - Report update deleted any file id it was given. It is now scoped to the report's own files, matching the SCRUM-195 message fix. The HTTP route doesn't pass `deletedFiles` today; the guard lives in the action.
+  - Update, delete and get give the same "Report not found." 404 for a missing report as for someone else's.
+  - The report-list endpoint returned a 500 on every call, because it passed a `like` key that the DTO lacks.
+  - The report-create validation named the therapy for any therapy id.
+  - Report updates that didn't re-send the reportable always crashed. The validation is now null-safe.
+- **From the reviews, also fixed here:**
+  - **High:** post update deleted any file id it was sent, so a reported user could wipe the evidence against them, or anyone's documents. It's now scoped to the post's own files.
+  - `SessionResource` sent a masked member's real id (`updatedById`/`userId`) when they confirmed or added a session. It's now masked like the others.
+  - The guest checks in `UnifiedTherapy.vue`, `useTherapyState.js` and `SessionBadge.vue` used `undefined == null`, so with masked ids now null a guest would have counted as the client. Each now checks for a signed-in user first.
+  - The migration also moves evidence from the `local` disk (host-run installs). It logs any report evidence still public afterwards, and any file in `others/` with no row. Those are never moved blindly, because they can't be told apart from post images.
+  - Migrated evidence keeps its stored `others/` path on the private disk, while new uploads go to `reports/`. Both work, because each row stores its own path. Leave it as is.
+  - The report list now eager-loads files.
+- **Deferred:**
+  - **SCRUM-347 (Medium, needs a product decision):** report create and update still let anyone test who is in a therapy, through the different error messages or success. The recommended fix is to let only participants report a therapy.
+  - **SCRUM-348 (Low):** a therapy's counsellor still receives the anonymous client's id, because counsellor→client messages are addressed with it. The fix is for the server to resolve the recipient.
+  - `ReportController::updateReport` never passes `deletedFiles`, so evidence removal is unreachable over HTTP. It's safe now, but left unwired.
+  - Report uploads have no type, size or count limit. Serving is safe; disk use is not capped.
+- **SCRUM-345, masked users:**
+  - Masked people now get `id: null` in `RequestResource`, `GroupTherapyResource` and `GroupTherapyMiniResource`.
+  - `TherapyResource` keeps the real id only for the therapy's own counsellor, because `TherapyComponent.vue` addresses chat messages to it. Removing it would break counsellor-to-client messaging on anonymous therapies.
+  - The other frontend uses of these ids only compare them with the viewer's own id, and a masked party is never the viewer.
+  - The counsellor of an anonymous *group* already couldn't address the creator (the masked entry has no `isUser`). That's unchanged here.
+
+## SCRUM-347: only participants may report a therapy — 2026-10-31
+
+The user chose "only the therapy's participants", and asked for the two frontend gaps to go in the same PR.
+
+- **Rule** (`EnsureCanReportReportableAction`): a Therapy, GroupTherapy or Session can be reported only by its participants. A missing reportable gets the same refusal. Posts are public, so anyone may report one. Update runs the same check when `reportable` changes, so a report can't be re-pointed at someone else's therapy. Checking who the report names now runs only after that, with one generic message, so it can't be used to probe who is in a therapy.
+- **Individual therapy:** a report must name at least one person. It used to demand both the client and the counsellor, so "report the client" or "report the counsellor" alone always failed.
+- **Client can report:** the "make a report" button was hidden from the client (`v-if="!computedIsUser"`). It now shows for every participant; the panel itself only renders for participants. The form offers only the *other* participants, never yourself, and defaults to the other party.
+- **Group reports:** they always failed for two reasons. The DTO didn't accept a GroupTherapy, and `GetModelWithModelNameAndIdAction` lowercases names, turning "GroupTherapy" into "Grouptherapy", which the autoloader can't find. `ReportController` now resolves GroupTherapy itself; the shared action is left alone because 58 call sites depend on it. A group report can be about the group in general or name one of its counsellors. Members aren't listed on the group page (and may be anonymous), so a member is reported through "the group in general" and named in the description. The API also accepts a member's `userId` when it's known.
+- **Form bugs fixed:** fallbacks assigned `addedbyId = 'User'` and `reportableId = props.type`, so a report made without picking a type always failed.
+- **From the reviews:**
+  - Group reports never accept a member's `userId`. A member and a non-member get the same answer, so membership (anonymous members included) can't be probed. Only the group's *active* counsellors can be named, and the form lists only those (`activeCounsellorIds`).
+  - Updates are validated against the report's own therapy when none is sent, so an update can't name arbitrary people. Re-pointing a report *replaces* the people it names instead of merging in the old therapy's people. A re-point to a therapy id that doesn't exist gets the same refusal as one you're not in.
+  - `data` accepts only `userId` and `counsellorId`, both ids. Post reports can't name people. Session reports are checked against the session's therapy. Nobody can name themselves.
+  - The `ReportController` GroupTherapy workaround stays for now. The shared lookup is ticketed as **SCRUM-349**.
+- **Browser-tested:** `maria_garcia` reporting her counsellor on therapy 1, and reporting group 1 as a member, both succeed. The QA reports were removed afterwards.
+
+## SCRUM-348 + SCRUM-349: server-chosen message recipient, allowlisted model lookup — 2026-10-31
+
+The user asked for both in one PR.
+
+- **SCRUM-349, an allowlist rather than a generic StudlyCase lookup:**
+  - `GetModelWithModelNameAndIdAction` lowercased names, so no multi-word model ever resolved. That silently broke group alerts (the `/api/alerts` 422 on every group page), the discussion filter for groups, and group reports.
+  - It also resolved *any* single-word model, so the 500-vs-422 difference on a typed DTO revealed which ids existed in unrelated tables.
+  - It now resolves only the models some caller's DTO accepts: User, Counsellor, Therapy, GroupTherapy, Discussion, Session, Post, Organization, Transaction. Matching is case-insensitive, and non-scalar ids are rejected.
+  - The ReportController workaround from SCRUM-347 is removed.
+- **Groups stay out of likes and comments.** A security audit of every path the fix makes reachable found that `getComments` and `getLikes` have no authorization and need no login. Resolving groups there would have published private and anonymous group comments, so `GroupTherapy` was removed from those two DTOs, which no UI uses for groups. The existing problem for therapies is **SCRUM-351**.
+- **Paths that are now safe to reach:** alerts, discussion create and filter, link listing, and reports. Creating a group link is reachable but does nothing, because no handler exists.
+- **SCRUM-348, the server picks the recipient** of an individual-therapy session message: always the other party, ignoring any client-sent `toId`. So `TherapyResource` sends a masked client's id to nobody, their counsellor included. Group and discussion messages keep their optional, participant-checked `to`.
+- **Counsellor reporting an anonymous client** (from SCRUM-347): without the id, a report on an individual therapy that names nobody now means the other party, filled in by the server (`DefaultReportedPartyAction`). The form sends `{}` for an anonymous client.
+- **Tests updated to the new behaviour:** two MessageServiceTest tests that expected "recipient required" and "recipient not participating" on individual therapy sessions, and one assertion in MaskedUsersExposeNoIdTest.
+- **From the reviews:**
+  - **The recipient fails closed.** On an individual-therapy session, any sender who isn't exactly the therapy's Counsellor or its client is refused. Before, a counsellor posting as their User account kept their own `to`, which let them confirm a guessed client id.
+  - **No id guessing through reports.** A report naming an anonymous client by id is always refused, right or wrong, on both create and update; the server default is the only way to name them.
+  - **The report response hides the client.** `ReportResource` nulls `data.userId` for non-admins when the client is masked for them, and adds `reportedClient: true`. Admins still see the real id.
+  - **Link type checks.** Each link type now requires its own kind of target. Otherwise a THERAPY_COUNSELLOR link aimed at a group, which now resolves, would assign a counsellor to the unrelated Therapy with the same id. Who may create a link is still **SCRUM-350**.
+  - **Likes and comments.** Their controllers narrow the lookup to the models they support (a new `$only` parameter), so a group gives a clean 422. Listing likes and comments now checks that the target exists first; a missing one used to cause a 500.
+  - `Transaction` was dropped from the allowlist, because no caller uses it.
+  - **Chat page.** `TherapyChat.vue` read the active session without unwrapping the resource. That's fixed, but sending from the chat page still makes no request, which is **SCRUM-353**. The server path is covered by HTTP tests, including a send with no recipient id.
+- **Existing bugs the audit found:**
+  - **SCRUM-350 (Critical):** link creation has no authorization over its target, which allows a guardianship takeover and joining someone else's therapy or a discussion.
+  - **SCRUM-351 (High):** comments and likes are public and unauthorized.
+  - **SCRUM-352:** discussion session binding, and the alert participant check.
+  - **SCRUM-353:** sending from the therapy chat page makes no request.
+
+## SCRUM-350 + SCRUM-351 + SCRUM-354: link authorization, public-only likes and comments — 2026-10-31
+
+The user asked for likes and comments on public individual and group therapies, ticketed as SCRUM-354 and boxed into the same PR as SCRUM-350 and SCRUM-351.
+
+- **SCRUM-350, link authorization:**
+  - New `EnsureUserCanCreateLinkForAction`, run in both `createLink` and `createMultipleLinks`. Each type follows the one place the app creates it:
+    - GUARDIANSHIP: only for yourself.
+    - THERAPY_COUNSELLOR: only the therapy's client.
+    - GROUP_THERAPY_*: only the group's creator (a user, or a counsellor's user).
+    - DISCUSSION: anyone who can manage the discussion (`Discussion::isManageableBy`, which includes admins).
+  - Every refusal is the same 403, including for a missing target.
+  - The misrouted `/links/multiple` route (it pointed at `createLink`; nothing used it) is removed. `createMultipleLinks` stays, because it's tested directly, and it gets the same check.
+- **SCRUM-351/354, who can like and comment.**
+  - "Public" (`public = true`) is the only rule, with no participant exception. A participant of a private therapy doesn't need likes or comments on it, and one rule is simpler to reason about.
+  - A private therapy is refused exactly like a missing one, and so are reads of comments already on it.
+- **Anonymity in comments.**
+  - **Masked:** a commenter who is one of the therapy's own anonymous people (`isAnonymousParticipant`).
+  - **Not masked:** outsiders, even on an anonymous therapy, because `isAnonymousFor()` alone is true for *anyone* there. Authors also always see their own comments.
+- **Therapy likes** return `{count, liked}`, never ids. Post and counsellor likes keep their id list, which their UI uses.
+- **The UI** is a self-contained `TherapyEngagementBar` that reuses `CommentsModal`, shown only when the resource includes `engagement`.
+- **From the reviews:**
+  - **Links are re-checked when used.** `EnsureCanUseLinkAction` now asks whether the link's creator could still issue it (`creatorMayStillIssue`), giving the same answer as an inactive link. Old malicious links stop working, a creator can't revive one through `changeLinkStatus`, and a link stops working once its creator loses authority.
+  - **Link clean-up migration** (`2026_10_31_150000`): deletes every link its creator couldn't have issued. Any that were already *used* are logged with their type and target first, for a manual audit of guardianships, therapy counsellors and discussion members. Production must check `laravel.log` for "SCRUM-350: removing a USED link" after deploy. Dev had none.
+  - **Creator must be the requester.** A link's `addedby` must be the requester or their counsellor profile, so an admin can't issue a link in someone else's name.
+  - **Comment anonymity is snapshotted** (`comments.anonymous`, migration `2026_10_31_140000`). The decision: a later change never unmasks a comment, whether the author leaves the group or anonymity is switched off. Older comments fall back to the live check.
+  - **Unliking always works.** Removing your own like is allowed after a therapy turns private.
+  - **Smaller fixes:**
+    - `Therapy::isUser` is null-safe.
+    - `instanceof` replaces `method_exists`, which a typo would have silently disabled.
+    - Group membership comes from the loaded relation, avoiding a query per comment.
+    - The CommentsModal delete removed the first comment, not the deleted one (an existing bug, reachable now).
+  - **Dead code removed:** the unreachable `createMultipleLinks` controller and service methods, and their test.
+  - **Follow-up:** **SCRUM-355**. Post and counsellor likes still list who liked them publicly.
+
+## SCRUM-352 + SCRUM-353 + SCRUM-355: chat send, discussion sessions, alerts, post likes — 2026-11-01
+
+The user asked for the three follow-ups in one PR.
+
+- **SCRUM-353, chat send: no code change needed beyond what's already merged.**
+  - In the browser, a freshly loaded `/therapies/{id}/chat` sends reliably, once a session is actually current. The counsellor and the client each sent on an anonymous therapy, and the server picked the right recipient (confirming SCRUM-348 in the browser).
+  - The real fix was the `TherapyChat.vue` activeSession unwrap merged in #267. My earlier failed checks were down to the demo session having expired.
+  - The ticket was wrong that the seed uses fixed past times: it seeds the demo sessions live, but only for an hour.
+  - Added a local `php artisan demo:refresh-chat` command, documented in `seeded-data.md`. It makes the demo sessions and discussion live again without a reseed. It runs **only in `local`**, and only on records belonging to the seeded demo therapy and group, never on anything matched by name alone (security review).
+  - **Live delivery checked:** two browser sessions, the counsellor and the client, on the same chat page. Messages arrived over Reverb in both directions without a reload, on both a normal and an anonymous therapy, and the counsellor never saw the client's name on the anonymous one.
+- **SCRUM-352:**
+  - A discussion's session must belong to its own therapy. Both `for_type` and `for_id` are checked, so a group session with the same id is refused too. Adding a session to a discussion that had none used to 500; the update is now null-safe.
+  - Waiting for a therapy's alerts now needs participation. A stranger gets the same answer as for a missing therapy.
+- **SCRUM-355:**
+  - Posts and counsellors now follow the therapy rule: likes are `{count, liked}` from the API, and `likesCount`/`isLiked` on `PostResource`, never who liked.
+  - `PostComponent.vue` uses the server's `isLiked`, with optimistic count updates.
+- **From the reviews:**
+  - **Existing bad links:** migration `2026_11_01_100000` unlinks discussions already tied to another therapy's session. The discussion stays; each unlink is logged. Dev's random seed data had one.
+  - **Alerts:** the endpoint narrows the model lookup to Therapy and GroupTherapy, so other model types get the same 422.
+  - `Therapy::isParticipant` is null-safe, now that it's on every alert request.
+  - The comment and docs no longer blame `failUnheldSessions()`, which never touches `in_session` records.
+  - **Not done here:** the post feed loads every like row per post just to count them. That predates this PR, so it's noted rather than changed.
+
+## SCRUM-55 + SCRUM-56 + SCRUM-57: anonymity in notifications — 2026-11-01
+
+The user asked for all three in one PR.
+
+- **SCRUM-55:** the two "assistance request sent" notifications now decide what to say by who **sent** the request (`from instanceof Counsellor`), not by who receives it. A counsellor sender is named. A user sender never is, even on a non-anonymous therapy.
+  - In every current flow the recipient is always the opposite type, so users see no change. This is a robustness fix, plus a wording fix ("him/her" removed).
+  - The two classes are still identical copies; merging them is a follow-up (SCRUM-356).
+- **SCRUM-56:** the per-member anonymity flag (`group_therapy_user.anonymous`) is now read in many places: comments, session ids, video, and `isAnonymousFor`. So the audit was due.
+  - **Correction (code review):** I first called this a real leak, but it **isn't reachable today**. A group's creator never gets a `group_therapy_user` row (they're a participant through `isUser()`), so `isAnonymousFor($creator)` always equals the group-wide flag on real data.
+  - The change is defensive and makes every place agree on one rule. The membership-accepted emails (to the member and to their guardian) and `RequestResource`'s membership `to` now use the existing `addedByUserIsMaskedFor()`, the rule `GroupTherapyResource` already uses. The assistance-accepted email and broadcast use `isAnonymousFor()`.
+  - The tests set up the creator-pivot state on purpose, as an invariant guard. They fail against the old code, and positive controls check the names do appear when nobody is anonymous.
+  - A since-deleted accepting user is never named, and no longer crashes.
+  - Other uses of the anonymity flag check out:
+    - the resource `anonymous` fields are just the setting;
+    - `GrantSpeakingPermissionAction` already reads the member's own setting;
+    - `RequestResource`'s membership `from` already honours the requester's choice.
+- **SCRUM-57:** there were no notification tests. The new tests render the real email (`toMail()->render()`) and broadcast payloads for anonymous therapies and groups, and assert the anonymous person's first name, last name and username never appear, with a non-anonymous sanity check.
+- **Found by the security sweep, outside this PR's scope and ticketed:**
+  - **SCRUM-357 (Medium):** presence channels and video events broadcast anonymous members' real user ids.
+  - **SCRUM-358:** a guardian alert can go to a counsellor's guardian. Also, group-therapy assistance requests can't actually be accepted, so the group acceptance path tested here is only reachable in tests.
+
+## SCRUM-356 + SCRUM-357 + SCRUM-358: notification cleanup, no real ids in realtime, group invites — 2026-11-01
+
+The user asked for the three follow-ups in one PR.
+
+- **SCRUM-356:**
+  - `GroupTherapyAssistanceRequestSentNotification` now just extends `TherapyAssistanceRequestSentNotification`; the class name is kept for existing callers.
+  - Notifications share one phrase for someone they mustn't name: `ConstantsEnum::anonymousPersonPhrase`.
+- **SCRUM-357, the design:** two opaque identities, both keyed hashes (HMAC with the app key), so they can't be reversed or resolved through `/api/users`.
+  - **Video:** a per-session **participant key** (`App\Support\VideoParticipantKey`) replaces the user id everywhere another participant can see it:
+    - the provider's own participant identity (Daily `user_id`, Chime `ExternalUserId`), which every client in the room can read, so masking only our events wouldn't have been enough;
+    - the hand-raise, speaking and removal broadcasts, and the join snapshot;
+    - the moderation routes (`{participantKey}`), which the server maps back to the user, with an unknown key treated exactly like an absent participant.
+
+    Because the key is per session, nobody can link the same person across calls.
+  - **Presence:** `therapies.*` and `groupTherapies.*` list members by a **per-channel** key (`User::broadcastKeyFor($channelName)`, served as `getAuthIdentifierForBroadcasting()` inside `/broadcasting/auth`), so the Pusher/Reverb member id isn't the real id either.
+    - **Why per channel:** both reviews caught that my first version (one key per user) let anyone in two channels link someone who's anonymous in one to their name in the other.
+    - Each browser reads its own key from the channel (`members.me`), so no key is shipped to the browser.
+  - **`APP_KEY` rotation:** both kinds of key derive from `APP_KEY`. Rotating it mid-call breaks moderation targeting until participants rejoin, and presence self-recognition until a reload. Plan rotations outside live sessions.
+  - **`/api/users`:** `UserMiniResource` no longer returns `dob` except to the user themselves and admins.
+  - **Not changed:** the counsellor-only `discussions.*` presence channel, because counsellors aren't anonymous.
+- **SCRUM-358:**
+  - **Guardian alert:** the "assistance accepted" guardian alert now always goes to the therapy **client's** guardians. Before, a counsellor's offer alerted the counsellor's own guardians, and the client's guardians weren't told at all.
+  - **Group invites (product decision, 2026-11-01):** accepting one adds the counsellor to the group as an active, normal-role counsellor, unless the group is full. A full group refuses with a clear message and leaves the invite pending. Once it fills, the remaining invites close.
+  - The accepted email links to the right page for groups.
+  - No guardian alert is sent for groups: the guardian notification is written for a single counsellor.
+  - **Who can accept** (security review): accepting now really adds a counsellor, so it's refused unless the responder is the invited counsellor themselves (an admin can't accept for them, because joining is their consent), still verified, not the group's own client or a member (who would gain moderation powers over the others), and the group hasn't ended. One generic message covers all of these.
+    - Creating a group validates `counsellorIds.*` (they must exist, at most 50).
+    - A re-joining counsellor keeps their previous role.
+    - A counsellor-created group's invite gets group wording, and its database notification uses `group_therapy_id`.
+
+## SCRUM-340 + SCRUM-338: complaint review with confidential access, license document retention — 2026-11-01
+
+One PR, as the user asked. The product decisions were made in the `/start-feature` round:
+disclose and notify at close; show deleted-for-everyone messages, labelled; delete the ID scan but
+keep the license; any admin may unlock with a reason, except one who is part of the report.
+
+- **Report lifecycle:** `open` → `under_review` → `resolved` (outcome + note required) or
+  `dismissed` (note required); a closed report can only be reopened to `under_review`. Every step
+  is a `report_status_histories` row. Recording an outcome takes no action by itself; suspension
+  is SCRUM-359.
+- **Reporter lock:** once a report leaves `open`, the reporter can no longer edit or delete it
+  (422). Otherwise they could change what is being reviewed, and whose messages can be unlocked.
+- **Who is "part of the report":** the reporter, the reported person, the author of a reported
+  post, or a participant of the reported therapy/group, past group counsellors included
+  (`Report::involves()`). Such an admin can't change the report or open the conversation (403 with a
+  clear message; non-admins get the uniform 404). After the security review they also don't get the
+  report page or its evidence, and see only "you are part of this report" in the queue. Otherwise a
+  reported admin would learn who reported them and which admins reviewed it.
+- **One answer to "who is this report about"** (`Report::reportedParty()`, review finding): the scope,
+  `involves()`, the admin page and the close notifications all use it. It is whoever
+  `data.userId`/`data.counsellorId` names, **minus the reporter** (reports from before SCRUM-347 had
+  to name both parties). If that isn't exactly one person, it's treated as nobody, and an admin
+  records who it is.
+- **Recording the reported person starts the review** (security review): it moves an open report
+  to `under_review`, so the reporter can't then re-point or delete the report and wipe the admin's
+  choice. `report_status_histories` is `restrictOnDelete`, so review history never goes with its report.
+- **Deleted-for-everyone messages follow the confidential rule:** their content shows only when the
+  reported person sent or received them, and each one shown is recorded (review finding, M3).
+- **Everything in an unlock is decided from the locked report row**, so a concurrent close, re-point
+  or edit can't leave a read made under a stale scope.
+- **Unlock scope** (`ResolveReportUnlockScopeAction`, the single place this is decided): nothing
+  unless the report is open/under review **and** names a reported person. Then the reported session,
+  or every session of the reported therapy/group. Inside those, a confidential message is shown
+  only when the reported person sent or received it. A person is matched as their User **and** their
+  Counsellor profile, since counsellors write as the Counsellor. Posts and discussions unlock nothing.
+- **Group reports name nobody** (reporters can't name members by id, SCRUM-347), so an admin records
+  the reported person (`RecordReportedPartyAction`): a current participant, not the reporter, only
+  while the report is active. Recorded in the history.
+- **Non-confidential messages** of an unlocked session are shown too, for context. They're already
+  visible to every participant; auditing admin reads of them is SCRUM-360.
+- **Audit:** `confidential_message_accesses` gets one row per unlock (the session, with the reason,
+  IP and user agent), one per confidential message revealed, and one per confidential attachment
+  opened. No foreign keys and no update/delete through the model, so deleting anything else never
+  rewrites the trail. Kept indefinitely.
+- **The first unlock moves an open report to `under_review`**, under the same row lock.
+- **People appear by role in the conversation** ("Reported person", "Reporter", "Counsellor",
+  "Client"), never by name or id. The admin already sees the names on the report itself.
+- **Close notifications** (`ReportClosedNotification`) go to the reporter and the reported person.
+  They never name the reviewing admin and never tell the reported person who reported them. When a
+  confidential message was read, both are told so.
+- **Deviation: where the standing disclosure lives.** The plan put it on the chat's confidential
+  toggle and in the privacy text. Neither exists: there is no confidential toggle in the chat UI
+  (messages only become confidential through the API) and the footer's Privacy Policy link is a
+  placeholder. The disclosure is in the report form instead (therapy and group reports), and the
+  close notification covers the people involved. Adding it to the toggle and privacy policy once
+  they exist is SCRUM-361. Review items left for later (the JSON report list for involved admins,
+  former group members and guardians in `involves()`, database-level append-only, abandoned-upload
+  licenses, a shared file-deletion action) are SCRUM-362.
+- **SCRUM-338, the bug:** `RespondToCounsellorVerificationRequestAction` validated both licenses
+  (and a not-yet-validated licensing authority) before reading the response, so a rejection left
+  them validated. Now only an accept validates.
+  `licenses:repair-rejected-validations {--dry-run}` un-validates licenses that only ever appeared
+  on rejected requests. Licensing authorities are only listed, not changed: another accepted
+  request or an admin may have validated them legitimately.
+- **SCRUM-338, retention** (`LicenseService::applyDocumentRetention`, daily at 04:15, plus
+  `licenses:apply-retention {--dry-run}` to apply it to existing data now):
+  - every request citing a license was rejected, the newest more than
+    `COUNSELLOR_LICENSE_REJECTED_RETENTION_DAYS` (30) ago: delete its documents;
+  - accepted: only the national ID loses its scan, after `COUNSELLOR_NATIONAL_ID_RETENTION_DAYS`
+    (30); the professional license stays as the record of what verified the counsellor;
+  - cited by a pending request: never touched;
+  - a national ID's **number** is cleared along with its scan (accepted or rejected), since the
+    number is itself identity data. The License row and its `validated` flag stay, so
+    `hasNationalIdentification()` still holds for a verified counsellor.
+  - A purged soft-deleted counsellor's license documents are deleted first. One counsellor failing
+    is logged and skipped rather than stopping the rest.
+  - "National ID" is decided one way everywhere: by the license's licensing authority
+    (`License::isNationalId()`, the same rule as `hasNationalIdentification()`).
+  - Every deletion is written to the log, since the files can't be restored.
+  - Accepting a verification request whose licenses no longer exist is now refused. It used to be
+    accepted with nothing validated.
+  - **Before the first run against real data:** run `licenses:apply-retention --dry-run` and check
+    the list. Run `licenses:repair-rejected-validations` by hand after deploy, keeping its
+    `--dry-run` output, because it logs only the ids.
+- **Supersedes SCRUM-134's "never hard-delete licenses or verification documents":** the License
+  *records* are still never deleted; their uploaded *files* now are, under this policy.
+  `licenses.documents_removed_at` says when, and the admin license card says so.
+
+
+## SCRUM-359 + SCRUM-362: suspension as a report outcome, report/retention hardening — 2026-11-01
+
+One PR, as the user asked. The user approved the plan with these defaults: two scopes (whole account or
+counsellor role), 7/30/90 days or until lifted, super admin only and only from a report resolved
+with "suspension recommended", a suspended counsellor's clients keep their therapies and are told
+"unavailable", one appeal decided by a different admin.
+
+- **Deviation: a suspended account can still sign in.** The plan said login would be refused. But the
+  appeal form is on a page that needs a signed-in session, so refusing sign-in would leave no way to
+  appeal. Instead, `EnsureAccountIsNotSuspended` (web and api groups, `/broadcasting/auth` included)
+  sends every page to `/suspended` and refuses every API call with `403 account_suspended`. Only the
+  suspended page, the appeal form and sign-out are allowed. It also checks the `sanctum` guard,
+  because the api group runs it before a route's `auth:sanctum` (security review).
+- **"Active" is worked out from the dates** (`Suspension::scopeActive`) on every request, with no
+  `users.suspended_until` cache. A missed scheduler run can never lengthen a block. The
+  five-minute sweep only records the end and emails the person.
+- **Appeals are columns on `suspensions`**, because there is one per suspension. Lifting while an appeal
+  is waiting also answers the appeal (review finding).
+- **No cancelled status: `FAILED` (scheduled, "not held") and `ABANDONED` (already running).**
+  Neither status bills (only `HELD` does). A cancelled status would touch everything that reads session
+  status. Sessions already running are ended too, so a suspended counsellor can't keep writing in
+  them (security review). Nothing is refunded automatically. Clients are told they can request a
+  refund through the normal flow.
+- **Group sessions only fail when no other active, unsuspended counsellor can run them.**
+- **Which requests are affected:** `RequestTypeEnum::counsellingTypes()`, the one list for all of
+  these:
+  - creating requests (`CreateRequestAction`, where every request is created);
+  - accepting them (`RequestService::respondToRequest`);
+  - declining the ones a suspended counsellor has received;
+  - withdrawing the ones they sent.
+  An organisation's compensation change is about the counsellor's own terms, so it stays pending.
+- **Messages are checked against the role the writer holds in the conversation**, not the identity they
+  send as. The client picks `fromType`, so a counsellor could otherwise write as their User
+  (security review).
+- **Guards sit at each entry point** (`EnsureCanActAsCounsellorAction`,
+  `EnsureTherapyCounsellorIsAvailableAction`). An arch test lists every class that must call them.
+  `EnsureAddedbyIsValidAction` was rejected as the choke point, because it would also stop a
+  suspended counsellor from filing a report.
+- **Notifications are queued after commit** (`afterCommit()`, the existing convention), so effects
+  are sent from inside the transaction. The live sign-out broadcast is wrapped in `rescue()`: it's
+  only a convenience, and Reverb being down mustn't fail a committed suspension (devops review).
+- **The duplicate-suspension check uses a locking read** after locking the person. Under REPEATABLE
+  READ a plain read could miss another admin's suspension committed meanwhile (architect and
+  reviewer). Effects lock and re-check each request and session row, so one accepted or started at
+  the same moment isn't overwritten.
+- **Reopening a report keeps its suspension.** Lifting is always explicit. The report can't be
+  re-pointed while a suspension from it is in force.
+- **Who is "involved" in a suspension** (may not handle or see it): anyone involved in the report, plus
+  the suspended person and their guardians, even if the report was later re-pointed (security review).
+- **Suspended admins are no longer picked for admin alerts** (`User::scopeWhereAdmin`).
+- **The counsellor profile says "isn't taking new requests"** through a page prop, not a
+  `CounsellorResource` field. The field would add a query per counsellor in every list.
+- **SCRUM-362:**
+  - *Former group members:* no "sent a message" heuristic. Nothing ever removes a group membership
+    row, so `isParticipant()` already covers them. A comment and a test pin this.
+  - *Guardians:* those of the reporter, the reported person and the therapy's creator count as
+    involved. Guardians of other group members don't yet (SCRUM-363).
+  - *Party lock:* after a confidential read, only a super admin with a reason may change who a
+    report is about. A second admin's approval was judged too heavy for a small team.
+  - *Append-only:* triggers, not REVOKE. The deployed DB user's grants aren't under our control.
+    They stop row updates and deletes, not `TRUNCATE`/`DROP`. They need
+    `log_bin_trust_function_creators=1` on MySQL with binlog (set in docker-compose; production
+    must set it before deploying, see README).
+  - *`responded_at`:* set by a `saving` hook the first time a request leaves PENDING (accepted,
+    rejected, superseded or made moot), not only on accept/reject. Both retention sweeps treat
+    "not pending" as decided. The four query-builder updates set it themselves.
+  - *File deletion:* `FileService::deleteFile` now returns false, and keeps the row, when the stored
+    file couldn't be deleted. A deleted report that leaves such a file logs an error with the file ids.
+- **Left for SCRUM-363:** cutting live websocket and video access server-side, holding payouts, account
+  deletion while suspended, guardians of all group members, live session-status broadcast, search
+  wildcard escaping, a future GDPR purge and the `restrictOnDelete` foreign keys, and MySQL in CI.
+
+## SCRUM-360 + 361 + 363 + 316 + 254: admin read log, confidential switch and privacy page, suspension follow-ups — 2026-11-01
+
+One PR, as the user asked ("the 36* ones and another task or 2"). SCRUM-316 and SCRUM-254 were picked
+as the extra two because both touched this work: the seeder bug QA hit on PR #273, and the suspension
+emails carrying admin-written reasons. User decisions: admins keep reading ordinary messages but
+every read is recorded; the log is kept forever; build the confidential switch now; we write
+`/privacy`, marked for legal review (SCRUM-364); payouts are held during a suspension and
+counsellors are told; self-deletion is blocked while suspended (user's reason: otherwise someone
+could delete the account and sign up again with the same email).
+
+- **New `admin_content_accesses` table, not a wider `confidential_message_accesses`.** That table needs
+  a report and a session and means "confidential read under a review". It feeds the close
+  notification, so widening it would blur both. Same append-only pattern: a shared `AppendOnly`
+  model trait plus database triggers.
+- **What counts as an admin read:** a read the admin could only make as an admin. That means an
+  admin who isn't a participant, of a non-public therapy or discussion, or of someone else's
+  licence or identity document. Recorded at the read points, after their own check passed, by
+  `RecordAdminContentReadAction`. Never recorded inside the boolean access checks: those also run
+  for sending and channel auth.
+- **One row per fetch, with a ten-minute de-duplication for files.** A chat page loads every
+  attachment in it, so per-file rows would flood the log.
+- **Not recorded:** subscriptions to the `messages.{id}` channel (restricted payload, SCRUM-365) and
+  page loads that only show therapy metadata.
+- **The confidential switch appears only when a message has one recipient.** The server refuses
+  `confidential` without a recipient, since only the sender could read it. An edit is checked only
+  when it newly makes a message confidential, so older confidential messages stay editable.
+- **Disclosure wording** says "the people the report is about are told when the review closes",
+  not "you are told". Only the reporter and the reported person get the close notification.
+- **`/privacy` uses a plain layout and is reachable by a suspended account.** `AuthenticatedLayout`
+  calls APIs that a suspended account is refused.
+- **Live sockets are not closed server-side (deviation, SCRUM-366).** An attempt used Reverb's
+  terminate-user API, keyed by a per-user `connections.{id}` presence channel. It worked in a
+  two-user browser test. But the devops and code reviews showed Reverb v1.10's handler fails with a
+  500 whenever a connection's first channel is a private one (it reads `user_id`, which only presence
+  subscriptions carry), and the earlier pass only worked because of channel creation order. It also
+  relied on the client joining that channel. Removed rather than shipped as a false guarantee.
+  Enforcement is unchanged: the open page is sent to `/suspended`, and every request and channel
+  re-authorisation is refused. Residual risk: a modified client keeps receiving broadcasts on
+  subscriptions it already has open.
+- **Video:** removal reuses the counsellor-removal steps, now `EjectVideoParticipantAction`, with the
+  existing `participant_removed` reason. A new reason would need a MySQL enum ALTER. Provider calls
+  run after commit and are best effort.
+- **Payout hold** is checked in `TriggerCounsellorPayoutAction`, which both the counsellor and an admin
+  use. It is not checked in `ProcessCounsellorPayoutJob`: a transfer already started would need a
+  new status. "Released when it ends" needs no job; the check simply stops refusing.
+- **Self-deletion** is refused for the person's own account or counsellor profile while any
+  suspension is active. An admin deleting it is unaffected.
+- **Guardians of every group member** count as part of a report. That is the cautious choice: more
+  admins are kept away from a case, never fewer.
+- **Search:** a `whereContains` query macro escapes `%`, `_` and `!` with an explicit `ESCAPE '!'`, so
+  MySQL and SQLite agree. Applied to user, counsellor and discussion search. The other `LIKE`
+  sites are a mechanical follow-up.
+- **Purge note (SCRUM-363 #9):** `suspensions.user_id` and `report_id` are `restrictOnDelete`. No path
+  hard-deletes such a user or report today. A future GDPR purge must delete or anonymise
+  suspension rows first.
+- **MySQL CI** runs only the migrations and the trigger tests (`phpunit.mysql.xml`), not the whole
+  suite: the full suite on MySQL has known failures (SCRUM-365). `TestCase`'s sqlite-only guard
+  allows exactly one other database, `talktherapy_mysql_ci`, so a dev database can still never be
+  wiped.
+- **SCRUM-316:** `Session::$fillable` stays as it is (no mass assignment of the parent). Seeders use one
+  `seedSession()` helper. The ticket overstated the bug: `db:seed` runs unguarded, so seeded rows
+  were fine, and only the seeder run by hand dropped the parent.
+- **SCRUM-254:** Laravel's `Markdown::withSecuredEncoding()` is switched on once, for every email, in
+  place of a per-string helper. It escapes `[` and `<` in the HTML part only, so plain text has no
+  stray backslashes. The old `EscapesMarkdown` trait was removed, because escaping twice would
+  bring link injection back.
+- **Review fixes:**
+  - *Message search* only matches messages the searcher can read. It used to match confidential
+    and deleted text, letting someone guess its content letter by letter (security, high).
+  - *Private therapy pages* opened by an admin are logged (resource `therapy`).
+  - *A queued payout* is held by the job itself while the counsellor is suspended, and sent again
+    when the suspension ends, is lifted, or an appeal succeeds.
+  - *Self-delete through the admin panel* is blocked while suspended.
+  - *`isSuperAdmin`* is only sent about the signed-in user.
+  - *Everything after a suspension is saved* runs in one best-effort step, so a failure can't stop
+    the person being told: the session broadcasts and the video clean-up. The video clean-up
+    picks each person's latest join row.
+  - *Broadcast client* timeouts are 3s/2s.
+  - *Read-log migration* can be re-run if its triggers failed.
+  - *MySQL CI* runs `--group=mysql-triggers --fail-on-empty-test-suite` through Pest directly.
+  - *`TestCase`'s database guard* also runs before RefreshDatabase migrates.
+- **Left for SCRUM-366:** server-side socket close, the remaining unescaped `LIKE` sites, Markdown
+  formatting spoofing (headings or bold, not links) in mail, and a subject filter plus
+  access-history link on the read-log page.
+
+## SCRUM-364 + 365 + 366 + 271 + 209 + 205 + 199 + 192: messaging and realtime hardening — 2026-11-01
+
+One PR, as the user asked: the three new follow-ups, plus older tickets that touch the same code.
+
+- **Live updates announce, never deliver (user's choice).** Message created/updated broadcasts carry
+  only `{id, fromUserId, withheld}`. Every page fetches through `api.messages.show`, the same check
+  as a page load. This closes both the suspended-socket gap (SCRUM-366 #1) and unpaid participants
+  receiving live content (SCRUM-271), without depending on Reverb's terminate API or touching
+  channel authorisation. Cost: one GET per message per open page, so `api.messages.show`'s throttle
+  went from 60 to 240 a minute. Deleted-for-everyone broadcasts keep their content-free payload.
+  Channel authorisation for therapies was left as it is: a subscription now reveals only that a
+  message arrived.
+- **groupBy removed, not fixed (SCRUM-365).** No caller used it, and grouping `messages.*` by a
+  topic or session name can't return messages under MySQL's ONLY_FULL_GROUP_BY anyway.
+- **Admins off `messages.{id}`** only when they reach the message solely as an admin
+  (`RecordAdminContentReadAction::isBypass`, now shared). A party, or an admin who takes part in
+  the conversation, keeps the channel.
+- **Mail block formatting (SCRUM-366 #3).** `App\Support\MailText::inline()` in the published
+  notification template collapses newlines and escapes a leading Markdown marker in the greeting and
+  every line. Inline emphasis is left alone: it can't add a link, and escaping `_` would put
+  backslashes into usernames in the plain-text part.
+- **Access history** is the read log filtered by administrator. It is reached from the admin user
+  list, which now eager-loads `administrator` so the flag costs no query per row.
+- **Privacy policy (SCRUM-364).** Written from what the code does, with the controller details the
+  user gave. It deliberately says what deletion keeps, and that only essential cookies are used. It
+  names an "email delivery provider" generically, because the production mail provider isn't fixed
+  in config. The lawyer review can't be done here, so SCRUM-364 stays open after this PR, for that
+  alone.
+- **SCRUM-209:** the topic-messages session filter now uses `for_type`/`for_id`.
+- **SCRUM-205:** eager-loads `files`, `replying` and `to`.
+- **SCRUM-199/192:** rate limits of 30 a minute for session mutations and 10 a minute for image
+  uploads.
+- **Review fixes:**
+  - *A temporary fetch failure* (429, 5xx, network) is retried twice with backoff (honouring
+    `Retry-After`). Only 401, 403 and 404 drop the message, so a real message isn't silently lost.
+  - *Separate rate-limit counters.* The touched routes got their own prefixes (`message-show`,
+    `session-actions`, `image-uploads`, `counsellor-update`). A bare `throttle:N,M` shares one
+    per-user counter across every such route, so the extra fetches could otherwise lock people out
+    of unrelated actions. The other ~76 routes are SCRUM-367.
+  - *Session badges* only fetch when a parent listens for the message, and subscribe once.
+  - *The single-message fetch* eager-loads what the resource reads.
+  - *`counsellor.update`* allows 30 a minute, since four profile forms share it.
+  - *`AdminBypass`* (App\Support) holds the "reached only as an admin" rule. It used to live as
+    static methods on a write-side Action, which is now gone.
+  - *`recipientMasked` and the viewer-id argument* were removed; they were dead code.
+  - *Escaping in emails:* `MailText` puts a zero-width space before a leading Markdown marker
+    instead of a backslash, so neither the HTML nor the plain-text part shows a backslash. It now
+    also covers horizontal rules and the salutation.
+  - *Deletion broadcasts* fall back to the announcement if the message isn't actually deleted.
+  - *The typing whisper* sends a random per-page token, not the user id (it was leaking an
+    anonymous client's id).
+  - *Leftover test events* (`PingTherapyEvent`, `TestEvent`) were removed.
+- **Privacy wording corrected (security review):** the draft implied that deleting an account
+  removes its data. It doesn't (users are only closed). The page now says so and offers erasure on
+  request. It also says visit records are deleted daily, and lists Bunny Fonts. A purge job is
+  SCRUM-367, along with the older leaks the review found in discussion and session broadcasts.
+
+## SCRUM-367 + 263 + 273 + 335 + 95 + 144 + 307: privacy and access hardening — 2026-11-01
+
+One PR, as the user asked. User decisions ("go with the recommendations"): case discussions are
+counsellors-only, clients never see them; closed accounts are erased 30 days after closing, with
+messages kept as "Deleted user" and payment, complaint and audit records kept; a group's
+payment status goes only to its counsellors and admins.
+
+- **SCRUM-273 closed as not a bug.** The seeded "member" in the report is the group's creator, and
+  creators may update and delete their group. The server already refused other members; a test
+  now proves it. No UI change.
+- **Admins see the group-wide payment status too** (not only counsellors), matching how admins see
+  everything else they moderate. `null` (not omitted) for everyone else, so the field keeps its shape.
+- **Discussions go to counsellors' own channels** (`counsellors.{id}`, already authorised and
+  already joined by the layout) rather than a new per-therapy counsellor channel: no new channel to
+  authorise. The therapy page filters by `forType`/`forId`. A consulted counsellor was also removed
+  from the therapy presence channels (security review): their presence revealed the consult to the
+  client. One definition of discussion participant (creator as profile or account, plus added
+  counsellors); the old scope also matched a creator of the wrong type by id.
+- **Sessions follow messages' announce-then-fetch.** One payload shape for all four session events,
+  `{sessionId}`; a new `api.sessions.show` with the session-messages access rule. Admin-only fetches
+  go in the read log as "session details", once per ten minutes (an open page refetches on every
+  update). Two session notifications that were never sent were deleted; the one that is sent now
+  carries only the id.
+- **Rate-limit prefix = route name**, except families that should share one allowance: Paystack
+  initiations (`transactions-initiate`) and video-provider calls (`video-provider`) (security
+  review: separate counters would have tripled those allowances), plus the existing shared ones.
+- **Erasure scope.** Beyond the fields the user listed, the job also clears what would otherwise
+  keep them: the dates of birth inside age/DOB requests and any identity scan still attached (a
+  pending request is closed as inconsequential, since nobody will review it), notifications,
+  password-reset token, API tokens, the name/email on contact messages, the visit-record link, and
+  the counsellor profile's contact details (the profile row is still purged at 60 days).
+  Guardianship and organisation rows hold only ids and stay.
+- **Held accounts.** Not erased while a suspension hasn't ended (including one not yet started) or a
+  complaint about them is open, so nobody can re-register with the same email to escape it (the
+  user's earlier reason for blocking self-deletion while suspended). A permanent suspension holds
+  the account indefinitely, as the privacy page says ("once that is over").
+- **Retention floor of 7 days** on `CLOSED_ACCOUNT_RETENTION_DAYS`, so an empty or mistyped value
+  can't erase accounts the day they close.
+- **Exceptions:** an abstract `AppException` base rather than a marker interface: all 64 extended
+  `Exception` directly, and a base class can't be implemented by accident outside the app.
+- **Deferred to SCRUM-368:** an individual public therapy's payment status visible to viewers,
+  counsellor-channel ownership, retention periods on /privacy from config, naming.
+
+## SCRUM-368 + 369 + 211 + 201 + 142 + 143 + 97 + 200: review follow-ups, live session updates, cleanups — 2026-11-02
+
+The user chose the group (2026-11-02, "Recommended + 97 + 200") and closed SCRUM-174 (clients
+seeing discussions) as won't do, since discussions are counsellors-only (SCRUM-367).
+
+- **Individual payment status** goes to the client, the therapy's counsellor and admins. One
+  `showsPaymentStatusTo()` on Therapy, GroupTherapy and Session (renamed from the group-only
+  method). Free sessions are not exempt from the check: some have transactions in existing data.
+- **Payment status, guardians:** a guardian isn't a participant, so they no longer get the ward's
+  individual-therapy payment status. That is deliberate: only participants can pay, and the guardian
+  is not the payer (security review, F4).
+- **Shared channels:** `sharedChannel.js` is a ref-counted module (`acquireChannel(name)`, with an
+  `acquireCounsellorChannel(id)` wrapper), not a `use*` composable. Both callers acquire the channel
+  once the user is known (in a watcher, or in a function the page calls later), so a setup-time
+  `onBeforeUnmount` wrapper would never be used. Each handle removes only its own handlers; the
+  channel is left when the last handle is released. It is generic because `sessions.{id}` and
+  `discussions.{id}` have the same several-owners problem (architecture review). Moving them onto it
+  is ticketed rather than done here.
+- **/privacy periods** come from an invokable `PrivacyController`, read on each request. The first
+  version used `Route::inertia` props, which `route:cache` would freeze separately from config.
+- **Renames:** `resolveBroadcastMessage.js` → `announcements.js` (`createAnnouncementQueue`,
+  `resolveAnnouncedMessage`, `resolveAnnouncedSession`); `config/accounts.php` → `config/user.php`.
+  The erased-columns list is `User::ANONYMISED_ATTRIBUTES`: it includes `remember_token` and
+  `email_verified_at`, which aren't "personal details".
+- **Active session (SCRUM-369):** `TherapyTrait::getActiveSessionAttribute` filtered on
+  `for_type = Therapy`, so a group looked up the individual therapy with the same id (its
+  `session.started` was announced on the group's channel, though the fetch refused outsiders). It
+  now uses the `sessions()` relation, and a session that has finished (held, abandoned, failed)
+  inside its window no longer counts. The new `activeDiscussion` accessor is what the scheduler
+  had been asking for; it never existed, so `discussion.started` never fired.
+- **One definition of "active"** (`Session::whereActive`, `Discussion::whereActive`), used by both
+  the page (`getActiveSession`/`getActiveDiscussion`) and the scheduler's accessors:
+  - **active** means in session, or not finished and starting within five minutes or inside its
+    window;
+  - for sessions, "finished" (`SessionStatusEnum::finished()`) is failed, abandoned or held;
+  - **HELD_CONFIRMATION stays active** for the party who still has to confirm.
+
+  The page's old `whereIsOngoing` had no five-minute window and ignored status. That made the
+  once-only announcement unsafe: someone opening the page in the five minutes before the start would
+  get neither (architecture review). `whereIsOngoing` was then unused and was removed.
+- **Started broadcasts:** grouped per therapy, and each session or discussion is announced once.
+  The `Cache::add` key includes the start time, so a rescheduled session is announced again, and it
+  lasts until an hour after the end. A page loaded later already has it. Alerts are still deleted on
+  every run, as before.
+- **Recent-session cards** are refreshed from the therapy channel's session events, not by giving
+  each card its own `sessions.{id}` subscription. That would be a second subscriber on a channel
+  the header badge leaves on unmount.
+- **Discussion modal** always counts down from the discussion's own times, through one helper
+  (`countdown.js`) shared with the header's timer. It no longer takes the page's timer, which
+  follows the active *session* when there is one (review).
+- **Double booking (SCRUM-211):** "within 30 minutes of another session" is now an interval overlap
+  with the range widened by 30 minutes on each side. The inclusive bounds are kept, so an exact
+  30-minute gap is still refused, as before.
+- **Link failures (SCRUM-97):** found while writing the tests. A non-422 failure went to
+  `returnFailure`, whose `acceptsJson()` is true for a browser's `*/*` Accept, so a person opening
+  a link got a raw JSON page. Browser visits now always go home with the alert; JSON only for XHR.
+  The alert is now flashed: it was `put` into the session, so it showed on every later visit home.
+  The same `acceptsJson()` pattern in about 23 other controllers' `returnFailure` is ticketed.
+- **SCRUM-142:** the four duplicated per-branch status filters and the trailing no-op became one
+  grouped OR block, with the status applied once outside it.
+- **SCRUM-200:** the unused `web.php` session-notes routes were removed; the `api.php` routes, with
+  their throttles, are the only surface.
+- **Follow-ups filed:** SCRUM-370 (session and discussion channels onto `sharedChannel.js`),
+  SCRUM-371 (`returnFailure` with `expectsJson` in the base controller), SCRUM-372
+  (`discussion.request.response` dot, Discussion casts, per-viewer resources in notifications).
+
+## SCRUM-370 + 371 + 372 + 145 + 151: shared channels, one failure response, realtime leftovers — 2026-11-02
+
+The user asked for the next group, to include the three follow-ups. I added SCRUM-145 and SCRUM-151
+(small, already-scoped fixes in the same areas). The video tickets (SCRUM-330, 315, 334) were left
+out: each still needs a scoping decision.
+
+- **Shared channels (SCRUM-370):** `sessions.{id}` and the `discussions.{id}` presence channel now go
+  through `sharedChannel.js`, like `counsellors.{id}`. The module gained:
+  - presence support: `here`, `joining` and `leaving`, bound to the Pusher subscription so each
+    holder can unbind its own;
+  - a `here()` registered after the channel has already subscribed is called straight away with the
+    current members (Echo's own `here` would never fire for a second holder, and every discussion
+    card mounts its own DiscussionModal);
+  - whispers;
+  - leaving by full channel name (`Echo.leaveChannel`), so a private and a presence channel with the
+    same base name can't take each other down.
+- **One `returnFailure` (SCRUM-371):** it is now on the base `Controller`, and the 23 copies are
+  gone. JSON goes to every request **except** an Inertia visit and a request whose Accept asks for
+  HTML (a browser navigation); those get back-with-alert.
+  - Not `expectsJson()`, as the ticket suggested: Inertia sends `X-Requested-With`, so it would have
+    sent JSON to Inertia visits. The SCRUM-97 LinkController change had that gap too (harmless,
+    since nothing visits `/links/` through Inertia); it now uses the same rule.
+  - A request with no Accept header keeps its JSON.
+  - Behaviour changes:
+    - The four controllers that always answered JSON (organisation admin, member, counsellor, and
+      message notes) now redirect Inertia visits too. The organisation update form is an Inertia
+      form, so a refused update used to come back as plain JSON, which Inertia can't show.
+    - Tests that called axios-only endpoints with the test client's browser-like Accept were
+      asserting the old bug; they now send JSON, as their real callers do.
+- **Realtime leftovers (SCRUM-372):**
+  - `.discussion.request.response` now has its leading dot. Fixing it exposed a misrouting: the event
+    addressed `counsellors.{addedby->id}`, which is a *user* id when a counsellor created the
+    discussion as their account. It now goes to the creator's counsellor id, and the alert names the
+    counsellor rather than repeating the discussion's name.
+  - Discussion `start_time`/`end_time` are cast to datetime, like Session's, so both reach the
+    browser in the same ISO/UTC form.
+  - Notification resources are resolved as their **recipient**, using a **fresh** request (built from
+    APP_URL) that is bound in the container while the payload is encoded, then put back. Nested
+    resources serialise through the container request.
+    - Why fresh rather than swapping the user on the current request (security and architecture
+      review): resources cache viewer facts on the request. `UserMiniResource`'s `viewerIsAdmin`
+      decides whether `dob` is shown, and a queue worker keeps one request for its whole life. So the
+      first recipient's admin flag reached every later recipient. The cache is now also keyed by
+      viewer.
+    - Why APP_URL rather than `/`: binding a request re-roots the URL generator, and `/` made every
+      asset URL in the payload `http://localhost`.
+    - Applies to the session and discussion notifications and the three guardianship notifications
+      (which carried the acting user's `dob` under a sync queue).
+    - Chosen over id-only payloads because the layout's alerts read names from them; small
+      purpose-built payloads are ticketed (SCRUM-374).
+  - Unexpected failures (500) are now `report()`ed in the one `returnFailure`; before, they were only
+    turned into a generic message.
+  - **Deploy:** `cache:clear` (scripts/deploy.sh) wipes the `scheduler-once:*` keys, so a deploy inside
+    a 30-minute window sends one more reminder. That is ticketed with the other ops gaps (SCRUM-373).
+    Discussion times now display shifted for non-UTC viewers: they are correct now, but this is not a
+    regression.
+  - Non-participants no longer join a therapy's presence channel (the 403 on public therapies).
+  - An open dropdown sits above a flash alert.
+  - The countdown rounds "to start" up and "to end" down, so a button is never enabled up to 59
+    seconds early.
+  - **"Due" reminders once.** Found while including the discussion's creator: the session sweep (every
+    five minutes) and the discussion sweep (every minute) both match anything starting in the next 30
+    minutes. Each participant got the reminder, and its email, up to 6 and 30 times. Both are now
+    sent once per session or discussion (the same `Cache::add` guard as the start announcements,
+    keys now `scheduler-once:*`). The discussion's due and failed notices also go to its creator.
+- **FormLoader (SCRUM-145):** the audit found the strip still took clicks while shown, covering a
+  full-width band along the bottom of the screen during loading. It is now always click-through; it
+  is a status line, never a target.
+- **SCRUM-151:** a counter-offer whose counterparty is gone (counsellor soft-deleted, organisation
+  with no admins) is recorded and logged, not failed, as in `AppService` since SCRUM-149.
+- **Browser QA fixes:**
+  - **Chat crash.** `TherapyComponent` declared its shared-channel handle below the watcher that
+    calls `listenToMessages()` during setup, so the chat crashed whenever a session was active (a
+    temporal dead zone error). It is now declared first.
+  - **Failed page visits now show their alert.** `returnFailure` redirected back with
+    `errors.alert`, which only forms display. A failed GET also flashes `failureAlert` (a shared
+    Inertia prop), and the layout shows it. GET only, because a form submission's own `onError`
+    already shows the alert and two alerts would stack.
+  - **Create-discussion form** no longer locks up on a 422 that carries only a message.
+    `useErrorHandler.setErrorData` now ignores missing errors.
+  - **"Already online"** in the discussion modal no longer counts the viewer: it compares the
+    viewer's user id with `userId`, not the counsellor id.
+  - **Discussion modal clock** ticks every 10 seconds, not 30, so "start" enables within about 10
+    seconds of the start time.
+- **Tests never reach the network** (`Http::preventStrayRequests()` for every test in
+  `tests/Pest.php`). `AdminRefundRequestControllerTest` failed intermittently: approving a refund runs
+  `ProcessRefundJob` inline under the sync test queue, which called Paystack for real. It now fakes
+  HTTP, and no other test was making real calls.
+- **The unused `HandleInertiaRequests` middleware was deleted.** `bootstrap/app.php` registers
+  `HandleInertiaRequestsV2`. The `failureAlert` prop first went into the old file, so it never reached
+  the browser (caught by the second browser QA pass). An end-to-end test now checks the prop on the
+  landing page.
+- **Known minor issue, left as is:** on a therapy page, the page-level DiscussionModal and the
+  discussion card's modal both join the presence channel, so the "already online" alert can show
+  twice, stacked. Before, the second modal's `here()` never fired.
+
+## SCRUM-373 + 374 + 375 + 272 + 248 + 193: ops and architecture follow-ups, Paystack resilience — 2026-11-02
+
+The user asked for the next set of follow-ups, grouped with existing tickets. I added SCRUM-272 and
+SCRUM-248 (Paystack resilience, and a new scheduled sweep beside the ones being moved) and SCRUM-193
+(small). SCRUM-138 (TrustProxies) was left out: its own ticket says to configure it only once a real
+proxy sits in front of the app. The user also approved reseeding the local database, which restored
+therapy 18 after the last QA pass.
+
+- **SCRUM-375, timezones.** The server stores true UTC: the forms send `toISOString()` of the picked
+  local time, and the app timezone is UTC. So the countdown's `+ getTimezoneOffset()` was simply
+  wrong. It was hidden in Ghana (UTC+0) and hours out elsewhere, and is removed. The forms also
+  filled `<input type="datetime-local">` (which is local) with a UTC string, which shifted the
+  default and minimum times outside UTC; `toLocalInputValue()` (date-fns `format`) replaces it.
+- **SCRUM-375, a discussion's therapy.** A discussion's therapy can't change: the update always
+  passed the discussion's own `for`, and the `associate()` was never saved. The dead
+  re-association was removed rather than made to save. Moving a discussion would carry its
+  counsellors and sessions into another client's therapy.
+- **SCRUM-373, ops:**
+  - **Restart policies.** `restart: unless-stopped` on `vite`, `web` and `queue`.
+  - **Heartbeat.** A one-minute scheduler task, plus `/api/health/scheduler` (200 or 503, the last-run
+    time only, throttled) for an uptime monitor.
+  - **Scheduler cache store.** A dedicated file store (`cache.scheduler_store`) holds the heartbeat
+    and the once-only keys. The deploy's `cache:clear` clears only the default store, so it no
+    longer re-sends reminders. Tests use `array` (phpunit).
+  - **Seed marker.** It moved to the bind-mounted `storage/framework/.seeded`, and `flock` makes the
+    php and queue containers take turns. Reverb's entrypoint no longer migrates or seeds.
+- **SCRUM-374, architecture:**
+  - **One rule.** `Request::wantsJsonResponse()` (an AppServiceProvider macro) is used by every
+    success path (27 `acceptsJson()` calls), by the base `returnFailure`, and by a new
+    `AppException` renderer in `bootstrap/app.php`, for refusals thrown outside a controller's
+    catch. Both use one `App\Support\FailureResponse` (status, message, JSON or redirect, report
+    on 500), so they can't drift (architecture review). A 4xx AppException in a web request is not
+    reported, since it is an expected refusal. One in a queued job or scheduled task still is, and a
+    5xx or uncoded one always is. The controllers' try/catch
+    blocks stay, to be removed as each one is touched, as the ticket says.
+  - **Sweeps.** The session and discussion due, started and failed sweeps moved into
+    `app/Actions/{Session,Discussion,Alert}`. `firstTime` became `App\Support\SchedulerOnce`, and
+    `Discussion::participantCounsellors()` replaces AppService's private helper.
+  - **Therapy presence channel.** It is now on `sharedChannel.js` (with a new `me()`). Only
+    `users.{id}` and `messages.{id}` remain direct, each with a single owner. The suggested ESLint
+    rule doesn't apply: the repo has no ESLint.
+  - **Notification payloads.** The session, discussion and guardianship notifications now carry small
+    fixed summaries (id, name, times, status; or id, name). Nothing in the frontend read the old
+    resources. `ResolvesResourceForRecipient` is deleted: a payload with no per-viewer fields has
+    nothing to resolve.
+  - **Cleanup.** Redundant `use ResolvesExceptionResponse` removed from 8 controllers.
+- **SCRUM-272, Paystack.**
+  - Timeouts: connect 5s and total 15s (`PAYSTACK_CONNECT_TIMEOUT`, `PAYSTACK_TIMEOUT`).
+  - The synchronous call sites catch `HttpClientException`, the parent of `ConnectionException`
+    (unreachable or timed out), so those get the "try again" message instead of a generic error.
+  - Account resolution tells "Paystack unreachable" (502) apart from "bad account number" (422).
+  - The three queued jobs are unchanged: they rethrow on purpose, so the queue retries the same
+    reference.
+- **SCRUM-248, reconciliation.**
+  - Every 15 minutes (`withoutOverlapping`, `onOneServer`), org-financed pay-per-use charges pending
+    for more than 30 minutes are verified with Paystack through `ResolveTransactionWithPaystackAction`.
+    That action was extracted from the browser-callback verify, so both resolve a charge the same
+    way.
+  - The status history records `RECONCILE`, which needed a migration to re-apply the native enum.
+  - One row's failure never stops the others.
+  - A charge still unresolved after 24 hours is logged for manual follow-up on every run.
+- **SCRUM-193:** `AdminUserResource.avatar`, with `avatarFile` eager-loaded in the admin list.
+- **Tests.** Tests that sent a browser-style Accept header to axios-only success endpoints now send
+  JSON, as their real callers do. The recipient-resolution tests became "every recipient gets the same
+  summary".
+- **Review fixes:**
+  - **Boot steps.** Migrations run on every boot (a persisted marker had stopped them). Seeding needs
+    no marker, an empty database (a probe), and `APP_ENV` other than production, because the seed
+    creates known passwords.
+  - **Health route.** It moved to `/api/health/scheduler`, so a poll starts no session, and visit
+    tracking skips it.
+  - **Reconcile.** It became an artisan command (`payments:reconcile-stale-org-charges`, runnable by
+    hand), scheduled `runInBackground()->withoutOverlapping(30)`, with scheduler locks in its own
+    store (`Schedule::useCache`).
+  - **Double charges (security review M1).** A new org charge is refused (409) while an earlier one
+    for the same thing is still pending. Once that one is past the grace period, Paystack is asked
+    first, and only a definite failure lets a new charge go ahead. The timeout message no longer
+    invites a retry.
+  - **Never-received charges (M2).** For org charges only, "reference not found" after the grace
+    period and `abandoned` both mean failed, since no money moved. The 24-hour alert also fires when
+    the check itself fails.
+  - **Sweep scope (L2).** Only real org charges (`org_charge_` references), not a member's own card
+    checkout.
+  - **Stale writes.** `RecordTransactionStatusAction` re-reads the row under a lock and re-checks it,
+    so no stale writer re-applies a terminal status.
+  - **Job retries (M3).** A Paystack 4xx on a retry is ambiguous, not a definite failure: the earlier
+    attempt may have gone through. It is rethrown instead of recording failed, which would invite a
+    second payout or charge.
+  - **Redirect loops.** A GET failure whose "back" is the same URL goes home instead of looping.
+  - **Tidying.** `app/Exceptions/Handler.php` (unused since Laravel 11) was deleted. The time
+    previews show local time, and the modals use the shared `toLocalInputValue`.
+- **Follow-ups (SCRUM-376):**
+  - move the remaining AppService sweeps;
+  - look a payout, settlement or refund up by reference on a retry, rather than only rethrowing;
+  - the `chmod -R 777 storage` in docker-compose.
+- **Browser QA fixes:**
+  - **Admin avatars.** The admin users list renders `AdminUserComponent`, not `UserComponent`, so
+    the avatar now shows beside the username there.
+  - **Presence alerts.** "Already online", "came online" and "went offline" never showed (an older
+    bug): `useTherapyState` used its own `useAlert()` that no page rendered. Pages now pass in their
+    own alert setter.
+  - **Lost failure alert.** A failed GET's alert is `put` in the session and pulled by the first page
+    that renders (not flashed), so a "back" that itself redirects (e.g. `/login` right after signing
+    in) no longer loses it.
+  - **Older bugs filed as SCRUM-377:** the create-session default start fails the 30-minute rule;
+    the `prohibited_if` message key never matches; a country-flag 404 on the profile page.
+
+## SCRUM-376 + 377 + 141 + 315: sweeps out of AppService, Paystack retry lookups, storage permissions, form fixes, payment-data audit, video removal retries — 2026-11-03
+
+- **Grouping.** The user asked for the next group of work to include the two follow-ups (SCRUM-376, 377).
+  Added SCRUM-141 (payments clean-up, like 376's Paystack item) and SCRUM-315 (a provider call that
+  fails silently, like 376's retry item).
+  - **SCRUM-52 left out.** Its "Get Started" button in the HowTo step modal can't be reached:
+    `HowToModal` only opens from `HowToComponent` with `useModal`, and its one caller (`HelpModal`)
+    passes `useModal=false`. Picking a guided tour already closes the help modal and starts the tour.
+    Left for the user to decide whether it's obsolete.
+  - **SCRUM-138 and 181 left out.** 138 is "only once a real proxy exists"; 181 needs a product decision.
+- **Sweeps (376.1).** Every scheduled sweep left in `AppService` now has its own Action under
+  `app/Actions/<Domain>`; AppService keeps only `alertAdminWithReport`, `alertAdminsOfFailedJob` and
+  `getStats`. Same queries, locks and per-row isolation; same schedule (`schedule:list` checked).
+  - The guardian video-consent reminders are one Action, taking a `VideoConsentReminderWindowEnum`
+    that carries each window's column and look-ahead (architect review).
+  - The daily visitors status became `Visitor/SendVisitorsStatusToSuperAdminAction` (not `Alert/`,
+    which is the Alert model's domain). It logs instead of crashing when there's no super admin.
+  - The counter-offer action's copy of "notify the request's recipient" was the same logic as the
+    sweeps', so both now use `NotifyCompensationRequestRecipientAction`. Its warning text changed from
+    "counter-offer" to "compensation-change request".
+- **Paystack retry lookups (376.2).** On a retry, a 4xx from Paystack is checked by reference:
+  `GET /transfer/verify/{ref}` for payouts, `GET /transaction/verify/{ref}` for retainer settlements.
+  Only a definite answer is recorded, through each job's existing path (`success`, `failed`, and
+  `reversed` for transfers). Anything else (not found, pending, unreachable) rethrows as before.
+  - **Security review.** A payout lookup must match the payout's own reference, amount and currency,
+    or it's left for manual follow-up. A settlement lookup must match the transaction's reference (a
+    success's amount and currency are already checked). A settlement lookup that says `abandoned` isn't final:
+    Paystack also reports a charge that hasn't been attempted yet that way, and a failed invoice
+    suspends the org with no way back. Both verify calls URL-encode the reference.
+  - **Not `ResolveTransactionWithPaystackAction`.** Its server-charge mode records "reference not found"
+    as failed, which is the ambiguous case here (the timed-out first call may not be registered yet).
+    Its other mode records `abandoned` as abandoned, which would bring back SCRUM-244.
+  - **Refunds unchanged.** `GET /refund/{id}` needs Paystack's refund id, which isn't stored, and the
+    published API documents no "refunds for this transaction" filter. The refund webhook still resolves
+    them. Ticketed.
+- **Storage permissions (376.3).** No more `chmod -R 777 storage` in the queue command or the reverb
+  entrypoint. One script, `docker/php/storage-permissions.sh`, now run by the php, queue and reverb
+  entrypoints, sets storage and `bootstrap/cache` to:
+  - owner www-data, which every PHP process runs as;
+  - group = the host user's group (read from the bind-mounted project directory), group-writable
+    with setgid, so the host user keeps write access (devops review: without it, git and host-side
+    artisan broke once 777 was gone);
+  - never world-writable; `storage/app/private` and `storage/logs` not world-readable (security
+    review: the old `chmod -R 755` made identity, licence and report-evidence files readable by
+    anyone, and +x; reviewer: logs carry user ids and emails).
+- **Alert noise (376.4).** The "follow up by hand" warning for a stuck org charge logs once a day per
+  charge (a key in the scheduler store), not every 15 minutes.
+- **Form times (377.1).** Defaults are "now + minutes + 1", rounded up to the next 5-minute mark, with
+  the end 40 minutes after the start. The input drops seconds, so "now + 30" was under the rule as
+  soon as it was shown. The session forms' own check is now 30 minutes, the server's rule (it was 25).
+  Discussions have no server rule for this, so their check stays at 25.
+- **Message keys (377.2).** `Rule::prohibitedIf()` adds the plain `prohibited` rule, so the keys are
+  `startTime.prohibited` / `endTime.prohibited`. The leftover `Log::info` of every create-session
+  request was removed.
+- **Countries (377.3).** One `useCountries` composable replaces three copies of the fetch. It only
+  calls `VITE_COUNTRIES_API` when that's an http(s) URL (`.env` ships the placeholder `123`). It uses
+  `fetch` with JSON parsing, no app headers, no cookies and no Referer (security review), and caches
+  the list in localStorage behind try/catch.
+- **Payment-data audit (141).** `php artisan payments:audit-paid-therapies` (a closure in
+  `routes/console.php`, like the other commands: architect review) lists PAID therapies and
+  group therapies missing `amount`, `currency` or `per` (what `EnsureTherapyDataIsValidAction` falls
+  back to), with their owners. It's read-only and exits 1 when it finds any. Fixing the data stays
+  manual (contact the owner), as the ticket asks.
+- **Video removal (315).** A removal is still local-first: the person is marked left with no grants or
+  hands, and broadcast as removed, whatever the provider says. Now, when the provider's eject fails:
+  - the counsellor's response says `providerConfirmed: false`, and the call panel shows an amber notice;
+  - `RetryVideoParticipantRemovalJob` asks again (4 tries, 10/30/90s backoff), then the failed-job
+    alert tells the admins.
+  - The retry is skipped once the call has ended, or when the person has an open join row again (the
+    removal closed all of theirs, so an open row means they were let back in).
+  - Suspension removals use the same path, so they get the retry too.
+- **Browser QA fixes:**
+  - **Stale defaults.** The create modals stay mounted on the therapy page, so defaults set at mount were
+    under 30 minutes away a few minutes later. They're now set each time the form opens, keeping a
+    start the user picked if it's still far enough ahead.
+  - **Update-session crash (older bug).** `UpdateSessionFormModal`'s in-person watcher read an undefined
+    `sessionForm`, which threw on open and broke the page until reload. It reads `sessionData` now.
+  - **Reverb wouldn't start after a recreate (older bug).** Its entrypoint is bind-mounted and git
+    stores it without the execute bit. Compose now runs it through `bash`, and the scripts are marked
+    executable in git.
+- **Follow-ups (SCRUM-378):**
+  - a refund lookup on retry (store Paystack's refund id first);
+  - a lock against the video retry/rejoin race;
+  - one Paystack charge-outcome mapping, and its own status source for lookup outcomes;
+  - the form helpers in `countdown.js`;
+  - a JSON or server-side country list;
+  - deleting `app/Console/Kernel.php`, and the `routes/console.php` style;
+  - a generic `SchedulerOnce` key;
+  - running the storage script once, and documenting `exec -u www-data`.
+
+## SCRUM-378 + 330 + 334: refund retry lookup, one Paystack outcome mapping, video join locking and hardening, tidy-ups — 2026-11-03
+
+- **Grouping.** The user asked for the next group of work to include the follow-up (SCRUM-378). Its
+  video item (a lock against the removal-retry/rejoin race) is about how joins are serialised, so
+  SCRUM-330 (the Chime cap counting join rows) and SCRUM-334 (group video hardening, including the
+  anonymity/join race) came with it. SCRUM-52 was closed as won't do (user's decision).
+- **Refund retry lookup (378.1).** The refund id from `POST /refund` is stored (`refunds.paystack_refund_id`)
+  before the outcome is recorded, so a rollback still leaves it. A refused retry with a stored id
+  calls `GET /refund/{id}` and records only `processed` or `failed`, and only if it matches the
+  refund's own id, transaction reference, amount and currency. Anything else rethrows.
+  - **Still not looked up:** a first attempt that timed out before any response has no id, and
+    Paystack documents no "refunds for a transaction" filter. The refund webhook and the failed-job
+    alert remain the way that case is resolved.
+  - **Security review:** once an id is stored, the job looks the refund up and never sends a second
+    refund request. An unclear answer throws, so the queue checks again later.
+  - **Unverified:** the response fields the match relies on (`transaction_reference`, `amount`) come
+    from Paystack's OpenAPI spec and haven't been checked against a live sandbox. A different shape
+    fails safe: the job rethrows rather than recording anything.
+- **One mapping for Paystack responses (378.3).** `RecordPaystackChargeOutcomeAction` (maps the status,
+  checks amount and currency on success, records) is used by `ResolveTransactionWithPaystackAction`,
+  the retainer settlement job, and `ChargeOrganizationForModelAction` (a third copy, folded in too).
+  - The webhook job still has its own "check amount, then record" half (keyed by event name), so this
+    is the one mapping for charge and verify responses, not for webhooks (architect review; ticketed).
+  - The SCRUM-244 "abandoned treated as a failure" warning now lives in the action. Its wording is
+    generic, with the source in its context, and it also fires for the reconcile sweep's server
+    charges. No alert matched on the old wording.
+  `abandonedIsFailure` is its one option. "Reference not found means failed" stays in Resolve's catch
+  block, since it comes from an exception rather than a response. The settlement retry lookup still
+  treats `abandoned` and "not found" as unclear.
+- **Own status source (378.4).** Outcomes found by a retry lookup are recorded as `RETRY_LOOKUP` on
+  transactions, payouts and refunds (DB enums re-applied on MySQL; the down migration is a no-op, like
+  the earlier enum additions).
+- **Join lock (378.2).** `VideoJoinLock` (a cache lock per session and person) covers a join, from
+  opening the row to minting the token, and the removal retry's check-and-eject. A join that can't get
+  it in 10s gets a 409 "Still joining you…"; a retry that can't throws and is retried by the queue.
+  - **Architect and reviewer.** It's held for 90s, since a slow first join (two Daily calls of up to
+    15s each, plus waiting on another join's room creation) could outlive 30s.
+  - **Store.** It lives in the scheduler store, which the deploy's `cache:clear` doesn't flush.
+    php-fpm, the queue worker and cron now all write there, so on a server they must run as one user
+    (as in Docker, where all are www-data), or share a group with a 002 umask.
+  - **Not `permission` 0664.** It was tried at the devops review's suggestion. Laravel's file store
+    applies that mode to new folders too, which then can't be entered, and browser QA caught every
+    once-only scheduler key failing. It was removed and the broken folders repaired.
+  - **One host only.** Several app hosts would need `SCHEDULER_CACHE_STORE` on redis or the database.
+  - **Chime timeouts.** Chime calls now time out (5s connect, 10s request), like Daily's. The SDK
+    default had none, so a stall could outlive the lock.
+  - **Not covered.** The first eject (`EjectVideoParticipantAction`) isn't under the lock; only the
+    retry is. Its window is the eject call itself, much narrower than the retry's delay.
+- **Chime cap (330).** It counts distinct people with an open row, not open rows, and never counts the
+  joiner. A reconnect no longer uses up a place, and someone already in a full call can rejoin.
+  - **Not changed:** someone who dropped without leaving and never came back still holds their place
+    until the call ends. That's the safe side for a cap, and closing stale rows would interfere with
+    the speaking-grant cleanup that relies on them (SCRUM-326).
+- **Mask race (334.4).** Making a group anonymous now checks "no one in a call" and saves the change
+  inside one transaction that locks the group's Session rows (`VideoJoinLock::lockSessionRows`, the
+  same method the join uses, so the two can't drift). Security review:
+  - The "becoming anonymous" decision is made after the lock and a refresh, not from the copy loaded
+    beforehand.
+  - A **1:1 therapy** gets the same guard and lock. It had none, and its counsellor has already seen
+    the client's name in a live call.
+  - Accepted: "in a call" means an open join row, which the client closes by leaving. Someone who
+    leaves but stays connected on a still-valid token isn't counted. A join locks its Session row and then
+  re-reads the therapy before deciding the masking. Either the join's row exists and the change is
+  refused, or the join sees the group as anonymous.
+- **Renaming in Daily (334.1).** Daily has no room or token setting that stops `setUserName()` (its
+  permissions are only `hasPresence`, `canSend`, `canReceive`, `canAdmin`). So the call UI no longer
+  shows the provider's name. Each tile's label comes from `GET sessions/{id}/video/participants/{key}`,
+  keyed by the token's `user_id` (set by us, not changeable in the browser):
+  - only someone in the current call can ask, and gets `{key, displayName}`, never a user id;
+  - someone who is no longer the group's counsellor, creator or a member is labelled Anonymous.
+    Security review: once members can leave, a missing membership row would otherwise have read as
+    "not anonymous" and shown their real name;
+  - names follow the therapy's current anonymity, like chat does (`routes/channels.php`). Turning a
+    group's anonymity off mid-call shows real names to anyone who joins after that;
+  - a forged key, an outsider and a past participant all get the same 404;
+  - names are decided in one place, `App\Support\VideoDisplayName`, shared with the join action.
+  - **Chime:** names were never provider-side there, and tiles now get real labels from the same lookup.
+- **Room defaults (334.3).** Daily rooms set `eject_at_room_exp` and tokens `eject_at_token_exp`
+  (security review: `exp` alone only stops new joins), `enable_screenshare: false` (nothing in the UI
+  shares a screen; tokens say so too), `enable_knocking: false` (a lobby would let someone without our token ask
+  a 1:1 owner to admit them), and `enable_chat: false` as before.
+  - **Recording:** `enable_recording` has no "off" value, and recording only works when a room or token
+    enables it, so it's never sent. A test fails if it ever is.
+- **334.2 already done.** Real user ids in calls were replaced by SCRUM-357's per-session participant key.
+- **Tidy-ups (378.5–8):**
+  - `isMinutesBefore` and `addMinutesToInputValue` live in `countdown.js`, and the modals' copies and
+    wrappers are gone. Discussions now check 30 minutes on the client too, matching sessions. This
+    tightens the check: a discussion start 25–30 minutes away, including when editing one, is now
+    refused before it's sent. The server has no "minutes from now" rule for discussions.
+  - The country list is cached as JSON (an old comma-joined value is still read once). It is not
+    moved server-side: no request carries user data, and cookies and the Referer are already off
+    (SCRUM-376).
+  - `app/Console/Kernel.php` is deleted (not booted since Laravel 11).
+  - Every schedule in `routes/console.php` is named, and one-liners use `fn () =>`.
+  - `SchedulerOnce::key()` is the general once-only guard, used for the stuck-charge alert. Its key
+    changed, so one extra alert may go out on deploy day.
+  - The storage permissions script runs in the php container only. CLAUDE.md now says to use
+    `exec -u www-data` for artisan commands that write to storage.
+  - **Rebuild needed.** The php entrypoint is copied into the image at build time, so this needs
+    `docker compose build php queue reverb`. Recreating alone kept the old entrypoint, which reset
+    storage to `www-data:www-data 755` and locked the host user out; found while checking locally.
+- **Follow-ups (SCRUM-379):**
+  - the webhook's own charge-outcome copy;
+  - one masking rule across video, chat and notifications;
+  - a cheaper label lookup or a roster;
+  - Daily `canSend`, `canAdmin` and dial-out checks;
+  - `TherapyController::updateTherapy` always redirecting;
+  - the video session-not-found response;
+  - a live Paystack sandbox check of the lookup fields;
+  - Docker startup ordering;
+  - a shared form-time composable.
+
+## SCRUM-379 + 301 + 194: follow-ups, verification documents, how-to step files — 2026-11-03
+
+- **Grouping.** The user asked for the follow-up ticket (SCRUM-379) with a group of other tickets.
+  Added two small, self-contained ones:
+  - SCRUM-301, required verification documents ("small, direct validation-tightening change");
+  - SCRUM-194, how-to step files onto the shared file pivot.
+- **Left out:** SCRUM-288 (a minor who loses their last guardian), which needs product decisions first.
+- **Not doable from here (left on SCRUM-379):**
+  - item 7, a live Paystack sandbox check, needs credentials;
+  - item 15, checking the production server's process users, needs access to the server.
+- **Webhook mapping (379.1).** `RecordPaystackChargeOutcomeAction::recordOutcome()` (amount/currency
+  check on success, then record) is now used by the webhook. Its status comes from the event name,
+  not `data.status`, and it never logs the abandoned warning. `execute()` maps `data.status` and calls
+  `recordOutcome()`.
+- **TherapyController JSON (379.5).** `updateTherapy`, `updateStrictPaymentGate`, `endTherapy` and
+  `deleteTherapy` answer JSON callers with JSON, and give Inertia and browser visits the same redirects
+  as before. Unexpected failures are now reported too.
+  - `returnSuccess` is a private method, like in the other controllers: the base Controller has only
+    `returnFailure`.
+  - `GroupTherapyController` has the same always-redirect pattern; ticketed.
+- **One masking rule for names (379.2).** `isMaskedToOthers(User)` on Therapy and GroupTherapy
+  decides anonymity, declared abstract on `TherapyTrait`. It's used by `displayNameOf()` (video labels
+  and tokens, presence channels) and by `addedByUserIsMaskedFor()` (pages, requests, notifications).
+  - **Not yet everywhere (architect review).** Message and session id masking (`MessageResource`,
+    `SessionResource`), one notification and comments still use `isAnonymousFor()` /
+    `isAnonymousParticipant()`, and the speaking-grant camera rule reads the membership row itself.
+    Those differ for leavers and counsellors. Moving them is a security-sensitive change of its own,
+    ticketed (SCRUM-380). The camera rule is a separate
+  `allowsCameraFor()`, and `App\Support\VideoDisplayName` is gone. Every existing case is
+  unchanged, except:
+  - **A group creator who is also its active counsellor** is now masked in calls when the group is
+    anonymous. Video and the channel used to check "counsellor" first and show their name, while the
+    group page masked them. The stricter side was kept, so one check order holds everywhere.
+    - **Reviewer:** in practice they now join an anonymous group's call as "Anonymous" with no
+      camera, while still able to moderate. For the product owner to confirm.
+  - **The channel's "counsellor who created a 1:1 Therapy" branch** was dropped: only clients create
+    Therapies.
+- **Lookup cost (379.3).** `GroupTherapy::membershipOf()` reads one membership row, or reuses an
+  eager-loaded member list. With the group flag set, no membership query runs. A test pins the same
+  query count for 2 and for 17 members.
+- **Daily permissions (379.4).** Every non-owner token sends an explicit `canSend`, never `true`
+  (which also allows screen and custom tracks): `['audio','video']`, `['audio']` or `false`. It also
+  sends `canAdmin: false` (no changing others' permissions, no streaming, no transcription).
+  - Live grants send the explicit value too, and also `canAdmin: false` (security review). That way
+    an update never relies on how Daily merges permissions. Rooms also send
+  `enable_dialout: false`; SIP and dial-in exist only when configured, so they stay unset.
+  - **Open question:** the 1:1 counsellor is still a Daily *owner*. Daily's permissions don't apply
+    to owners, so on a paid plan they could start a live stream or transcription. The UI uses no
+    owner powers, so ending ownership for 1:1 (as SCRUM-331 did for groups) would close it. 1:1 was
+    left as the user decided earlier, and the question is raised with them.
+- **Unknown session (379.6).** The participant lookup answers an unknown session id with the same 404
+  as its other refusals. The other video routes keep their 422.
+- **Verification documents (301).** The server now requires the licensing authority, a national ID
+  number or scan, and the licence **in the form its authority issues it** (`license_type`): a copy of
+  the document for FILE, the number for NUMBER, both for BOTH. These are the same parts the form shows
+  for that authority, and the form now checks them too.
+  - **First version wrong.** It required the number *and* the file for every authority. The browser
+    check found that all four seeded authorities are FILE-only, and their form has no number field,
+    so every real request would have been refused.
+  - **Messages:** `Rule::requiredIf()` reports as plain `required`, so that's the message key.
+  - **Seed:** `unverified_counsellor` added, since no seeded counsellor could reach the form.
+  - Pickers accept `.jpg,.jpeg,.png,.pdf` (the server's types; it used to suggest `.docx`).
+  - `verifyCounsellor` always redirects, even for JSON callers; ticketed with the GroupTherapyController
+    parity.
+- **How-to actions (security and review tests).**
+  - Editing a how-to looks its steps up within that how-to (`howToSteps()->findOrFail`). Before, any
+    step id worked, so an admin editing one how-to could replace or delete another's step files.
+  - A test of that refusal found that `CreateHowToAction` and `UpdateHowToAction` used a hand-rolled
+    `beginTransaction()`/`commit()`. An exception left the transaction open for the rest of the
+    request. Both now use `DB::transaction()`.
+  - A step's stored file, deleted or replaced, is removed only after commit (`DB::afterCommit`), and
+    a failed delete is logged.
+- **How-to step files (194). `HowToStep::stepFile()` is a tagged (`step`) `fileables` relation, and
+  `$step->file` still returns File|null.
+  - The migration copies every `file_id` into the pivot before dropping the column, and `down()`
+    copies them back. Checked locally up, down and up with a real row.
+  - The how-to list eager-loads the files (one query, not one per step).
+- **Group/1:1 edit forms (379.10, 11).**
+  - Inertia's `onError` gets the errors object, so the refusal reason is `errors.alert`. The update
+    forms and the therapy page's delete/end read it now, instead of always showing "Something
+    unfortunate happened".
+  - The therapy page now follows Inertia's refreshed `therapy` prop, so reopening the edit form shows
+    what was just saved.
+- **Topics on group pages (379.13).** Topics exist for 1:1 therapies only. The group chat page asked
+  `api.topics.get` for the 1:1 therapy sharing the group's id, so it no longer asks. The page key was
+  also wrong (`session` for `topic`).
+- **Form times (379.9, 12).** `useScheduleTimes` is now the one copy of the four modals' start/end
+  handling: defaults when opening, the end following the start, the submit check, the time previews.
+  - Editing the end is no longer snapped back to start + 30. That snap left the input showing the
+    typed value while the summary showed another, and the end-time message could never be reached.
+    A short end is now refused on submit.
+  - `countdown.js` and `isMinutesBefore` keep their names, to avoid churn in places this didn't touch.
+- **Seed gap (379.14).** `Editable Demo Discussion`: PENDING, three days out, owned by sarah_johnson,
+  on the Chat Demo therapy. Also added to the local database, since a reseed needs the user's say-so.
+- **Docker startup (379.8).** The php entrypoint touches `/tmp/talktherapy-entrypoint-ready` when it
+  finishes (after removing it at the start). php's healthcheck tests for it, and queue and reverb
+  `depends_on: php: service_healthy`, so migrations, the seed and storage permissions finish first.
+- **CLAUDE.md:** `tinker` as www-data also needs `-e HOME=/tmp` (its config directory isn't writable
+  otherwise). Found while checking the how-to migration.
+- **Follow-ups (SCRUM-380):**
+  - for the user to decide: the 1:1 counsellor as a Daily owner;
+  - the remaining `isAnonymousFor` callers and the speaking-grant camera rule;
+  - JSON responses in GroupTherapyController and `verifyCounsellor`;
+  - one shared success response;
+  - the unknown-session response on the other video routes;
+  - `useScheduleTimes` polish and a `FileTagEnum`;
+  - skipping migrate/seed outside the php container;
+  - small UI leftovers.
+
+## SCRUM-380 + 288: follow-ups, and a minor with no guardian has their therapy paused — 2026-11-03
+
+- **Grouping.** The user asked for the next group of work to include the follow-up (SCRUM-380), and
+  chose to add SCRUM-288 through the `/start-feature` gate (product-owner, project-manager and
+  architect passes; plan approved by the user before any SCRUM-288 code).
+- **1:1 Daily ownership (380.1, the user's decision).** Nobody is a Daily meeting owner any more.
+  `$isOwner` is removed from `VideoProviderInterface`, both providers and the join. Every token sends
+  `is_owner: false` with explicit `canSend` and `canAdmin: false`, so a 1:1 counsellor can no longer
+  start a live stream or transcription from their browser. Nothing in the UI used owner powers.
+- **Remaining masking (380.2).** `TherapyTrait::hidesIdentityOf(User)` = therapy anonymous, OR
+  `isMaskedToOthers()`, OR (group) the person's own membership row is anonymous. That is the old
+  `isAnonymousFor()` rule plus `isMaskedToOthers()`'s extra masking, so it can only mask more.
+  - Used by `MessageResource`, `SessionResource::maskedUserId`, `TherapyAssistanceRequestAcceptedNotification`
+    and `Session`. `isAnonymousFor()` is removed.
+  - **Not just `isMaskedToOthers`:** that alone would have unmasked people the old rule hid (a
+    counsellor acting through their User account on an anonymous therapy). Whether to drop that is
+    a product question, left as is.
+  - **Fail-closed changes, listed:**
+    - someone with no membership row in a non-anonymous group is now masked in message and session ids;
+    - a session whose therapy is gone masks everyone;
+    - a group admin on a non-anonymous group's session `maskedUserId` is masked.
+  - **Comments (`isAnonymousParticipant`) unchanged:** non-participant commenters stay public, as
+    SCRUM-354 requires.
+  - **Speaking grants:** `GrantSpeakingPermissionAction::capabilitiesFor` uses
+    `fresh()?->allowsCameraFor()`, keeping its "read a fresh row" rule and now also re-reading the
+    group's own anonymity flag.
+- **Unknown sessions on video routes (380.5).** An unknown session answers exactly like a real one
+  the caller isn't allowed in: each route's own not-allowed message.
+  - Remove, grant, revoke and raise-hand used to answer outsiders differently for 1:1 and group calls,
+    which revealed the session's type. Every outsider now gets the group answer.
+- **Controllers (380.3, 4).**
+  - **`SuccessResponse::make($request, $json, $redirect)`**, next to `FailureResponse`, behind a base
+    `successResponse()`. Not `returnSuccess`: a protected parent method with that name would clash
+    fatally with private child copies on other branches. It replaces every controller's private copy,
+    keeping each endpoint's JSON shape and redirect.
+  - **MessageNoteController stays always-JSON** (api-only, axios caller).
+  - **`GroupTherapyController` and `verifyCounsellor`** give JSON callers JSON. The group payment
+    gate's "no setting given" is now a 422.
+  - **Bug fixed on the way:** ending a group therapy always failed, because it passed `therapy` to
+    `GroupTherapyDTO` instead of `groupTherapy`.
+- **Small items (380.6–9):**
+  - **`useScheduleTimes`** takes one option, `defaultsWhen`, plus `isOpen` for update forms, and
+    refreshes `now` (the inputs' `min`) on open.
+  - **Files:** `FileTagEnum` for the fileables tags; how-to create/update responses eager-load step files.
+  - **Docker:** only php-fpm seeds. The queue container still migrates under the flock, because after
+    a host reboot Docker ignores `depends_on`, and that keeps the worker from running ahead of
+    migrations.
+  - **Group form:** its checkbox booleans are coerced (Vue warning), and "create topic" is hidden on
+    group pages.
+  - **Seed:** random paid groups get valid payment settings (`per` was 'session'; no counsellor share,
+    so the 70% rule refused every save). The 7 local groups were fixed too.
+  - **Clean-up:** success `console.log`s removed.
+- **SCRUM-288, the user's answers (2026-11-03):**
+  - **Q1 history:** read-only. A paused minor can open and read their therapy; every write is refused.
+  - **Q2 upcoming sessions:** kept and blocked; no automatic cancellation or refund.
+  - **Q3 suspended guardian:** does NOT count. Account-scope suspension of a guardian pauses their
+    wards, and lifting or expiry resumes them.
+  - **Q4 admin override:** later, its own ticket (SCRUM-381).
+  - **Q5 counsellor in a paused 1:1:** read-only too.
+  - **Q6 turning 18:** drops the guardian video-consent requirement. The consent check also requires
+    the live `! isAdult()`. That's safe because dob changes across 18 need approval (SCRUM-292).
+  - **Q7 no date of birth:** treated as minors (the current rule), so they are paused too. The count
+    ran: 42 local accounts had no dob, and 21 had open therapies, including maria_garcia. With that in
+    hand, the user confirmed "pause them", noting there is no production deployment or data yet.
+    - **Demo seed:** the seed gives every demo adult without a dob an adult one
+      (`giveDemoAdultsADateOfBirth`), so the demos aren't paused. The 45 local accounts were
+      updated the same way, which leaves only the `paused_minor` demo paused.
+- **SCRUM-288 implementation decisions (not pinned by the plan):**
+  - **Status codes:** paused writes get 403 with code `guardian_required`, like SuspensionException.
+    Creating or joining a therapy stays 422 (its existing message), now with the same code.
+    `FailureResponse` adds `code` to JSON and `errors.alertCode` to redirects, through a
+    `HasErrorCode` interface.
+  - **Counsellors:** someone acting as the therapy's own counsellor isn't checked for their own age;
+    only their 1:1 client is.
+  - **More writes gated (Q1 "every write"):** therapy and group settings updates, payment gates,
+    assistance requests, and a counsellor accepting a paused minor's assistance request.
+  - **Accepting only:** accepting a proposal or membership is gated; rejecting stays allowed.
+  - **Guardianship requests stay allowed**, since that is how a paused minor gets access back.
+  - **Allowlist** (stop or withdraw actions): delete, delete-for-me, end, abandon, fail, video leave
+    and end, lower hand, revoke, remove. The test enumerates every write route against it.
+  - **Consent lapse:** a guardian's still-valid video consents lapse when the guardianship ends or the
+    guardian's account is deleted (reason `guardianship_removed`, so no enum migration). A suspension
+    doesn't lapse consents.
+  - **Exactly once:** the ward's row lock is taken guardian first, then wards in id order. The loss
+    handler re-checks after commit, and the expiry sweep announces one resume even when several
+    suspensions expire together.
+  - **Who is told:** notifications and broadcasts go out only when the ward has an open therapy or
+    group. The audit log has ids only.
+  - **Video:** a 1:1 room is ended for both people with the session status untouched. In a group only
+    the minor is ejected. Both happen under `VideoJoinLock`.
+  - **Q6:** only `EnsureVideoIsAvailableForSessionAction`'s consent check gained the live
+    `! isAdult()`. It reverses SCRUM-291's "an edited adult dob is still gated", which an approved dob
+    change makes safe (SCRUM-292). The consent UI may still show for a ward who turned 18.
+  - **Seed:** `group_video_call_demo_guardian` was added so the group-video demo's minors aren't
+    paused.
+
+- **SCRUM-288 review fixes:**
+  - **Faking adulthood (security H1).** A dob edit crossing 18 needs approval when the user has a
+    guardianship, an accepted guardianship request as the ward, a 1:1 therapy, a group they created or
+    **belong to**, or a dob already set while they are paused. Before, a paused group member could
+    simply edit to an adult dob.
+    - A first dob on an account with no relationship stays free (otherwise sign-up would need
+      approval).
+    - An admin editing an account with no relationship stays free, since the admin is who the request
+      would go to.
+    - The request goes to an active guardian, or to an admin if there is none.
+  - **Who counts as a guardian (M3).** An active guardian must exist, be an adult (dob set and 18+),
+    and not be account-suspended (`Guardianship::scopeActive`). The guardianship link route now runs
+    the same eligibility check as the request route.
+  - **More writes gated (M1, M4).**
+    - Therapy-counsellor links can't be created by a paused client, and can't be used on a paused
+      client's therapy.
+    - Payment can't be started while paused (Q2 means no automatic refunds).
+    - Comments are gated only on a therapy the user takes part in; posts and other public therapies
+      aren't.
+  - **Allowed for the counsellor of a paused 1:1 (my call):** private session and message notes, and
+    case discussions. They never reach the client, so Q5's "no contact" isn't affected. These sit on
+    the allowlist with that reason, along with refund requests, the Paystack webhook, the guardian's
+    own consent actions, link status changes and comment delete.
+  - **Live-call removal (M2):** if removal fails or times out on the join lock, it's retried by
+    `RemovePausedMinorFromVideoJob` (4 tries, backoff), which re-checks under the lock.
+  - **Smaller security fixes:**
+    - A consent counts only while its guardian is active (checked at read time).
+    - Message participation is checked before the pause, so a paused minor can't probe session ids.
+    - Accepting a paused requester tells the counsellor "This request can't be accepted right now."
+    - The consent-lapse callback is wrapped in `rescue()`.
+  - **Exactly once under REPEATABLE READ (reviewer).** Every pause/resume decision read is a locking
+    read (`sharedLock`, on the subqueries too). `Guardianship::lockedWardsOf()` locks the guardian,
+    then the wards in id order.
+    - A lift and an apply on the same person at the same moment could deadlock. MySQL aborts one,
+      which is accepted.
+  - **Joining video:** the pause is checked before video consent, so a paused minor is told the
+    therapy is paused rather than asked for consent.
+  - **Architect.** One `isPausedForMissingGuardian($fresh, $exceptGuardianIds)`; the composed gate
+    passes `counterparty` / `actsAsCounsellor`; `HandleGuardianRestoredAction::around()`; shared video
+    refusal constants.
+    - `hidesIdentityOf` was **not** simplified: its membership-row term covers a group counsellor who
+      is also an anonymous member. A test pins that case.
+  - **Browser QA.** The chat page now follows Inertia's reloaded `therapy` prop. Before, the live pause
+    and resume never showed there until a hard reload. The overview pages show the banner too.
+  - **Stale pages:** an axios interceptor reloads once when a write is refused with `guardian_required`.
+- **Follow-ups (SCRUM-382):**
+  - pause entry paths that skip removal (dob change to under 18, minors already without a guardian at
+    deploy);
+  - group links by a paused creator;
+  - one live-call removal action;
+  - a shared announce step;
+  - `pauseStateFor`;
+  - queued loss handling;
+  - the lift/apply lock order;
+  - tidy-ups.
+- **Admin override:** SCRUM-381.
+
+## SCRUM-382 + 381 — follow-ups and the safeguarding exception (2026-11-04)
+
+- **SCRUM-381 product decisions (user):**
+  - Only the super admin can grant, renew or end an exception.
+  - Each exception lasts at most 30 days, needs a reason, and can be renewed with a new reason.
+  - Both 1:1 and group counsellors can ask the super admin for one.
+  - At expiry with still no guardian, the therapy pauses again with the usual notices.
+- **Who is told, and what:**
+  - The minor and the counsellor(s) are told neutrally when an exception is granted, including the
+    end date. They are never told the reason or any family detail.
+  - Every party gets the 3-day expiry warning: the minor, their counsellors and the super admin.
+- **Group counsellors are told about pauses (user, changes SCRUM-288):** a group counsellor now
+  gets the same paused/resumed notice and banner as a 1:1 counsellor, using the member's masked
+  display name.
+- **Video (user):** an exception does not stand in for a guardian's video consent. Video stays
+  blocked until a guardian consents; chat and sessions carry on.
+- **My calls (from the architect design):**
+  - **Scope:** an exception covers the whole minor, so all their therapies and groups, and is
+    checked inside `User::isPausedForMissingGuardian()` with no call-site changes.
+  - **Storage:** a `safeguarding_exceptions` table, not Request rows. A counsellor's ask is a
+    Request with `to` = null, linked to the exception, and the super-admin check runs when someone
+    responds.
+  - **Enforcement:** live from `ends_at`. The minute sweep only does the side effects, such as
+    ending live calls and sending notices.
+  - **A known gap, accepted (user):** if a guardian is removed in the minute between `ends_at` and
+    the sweep, the minor may get a duplicate "paused" notice. The user accepted it on one condition:
+    lifting a pause checks every pause. A "resumed" notice goes out only when nothing else still
+    blocks that therapy. The ward's account suspension, a suspended counsellor and an ended therapy
+    all count. Lifting a suspension on a minor who is still paused for a missing guardian doesn't
+    promise that therapy resumes.
+  - **A super admin who counsels the minor can't grant them an exception.**
+  - **Closed accounts:** the exception row is kept, but the free-text reason is redacted when the
+    minor's account is anonymised.
+- **SCRUM-382 implementation calls (mine):**
+  - **Dob changes:** every dob write goes through `HandleGuardianLossAction::around`. That covers an
+    approved change, an age verification, a self edit and an admin edit. Going from not paused to
+    paused runs the usual loss handling. A dob change that makes someone an adult announces nothing,
+    the same as turning 18.
+  - **Backfill:** `guardians:announce-existing-pauses` runs once per account, with a marker in the
+    scheduler cache store. A minor paused normally after deploy and then caught by the backfill
+    could be told twice. That's accepted because the backfill is a one-off run at deploy time.
+  - **Group links:**
+    - Creating a participant, admin or counsellor link for a paused user's group is refused.
+    - Using a link into a paused creator's group gets a neutral "This link can't be used right
+      now.".
+    - Groups created through a counsellor profile, and counsellor links, are exempt.
+    - Finding: using a group link does nothing at all today. Ticketed as SCRUM-383.
+  - **Removing people from live calls:** one `RemovePersonFromLiveCallsAction` with two policies,
+    guardian loss and suspension. Every removal is under `VideoJoinLock` and has a queued retry.
+    Suspension removal now waits on the join lock. The old job and the suspension removal action are
+    deleted; there is no production, so there are no queued payloads to migrate.
+  - **Queued loss handling:** it runs in `HandleGuardianLossJob` with `tries = 1`, so a retry can't
+    notify twice. Every step in it is best effort, and live-call removal has its own retry.
+  - **Error handling:** a single `BestEffort::attempt()` replaces the three copies, with one generic
+    log message.
+  - **`pauseStateFor`:** someone acting as the therapy's counsellor is now exempt in the page state
+    too, matching the gate.
+  - **Lock order:** `Suspension::lockWithPerson()` locks the person, then the suspension. Wards
+    follow in id order. Lift, appeal decisions and the expiry sweep all use it now, not just lift
+    and apply.
+  - **"Resumed" only when nothing else blocks:** `IsTherapyBlockedForAction` checks for an ended
+    therapy, the person's own suspension and the gate. The suspension-ended notice no longer
+    promises therapy while the minor is still paused.
+- **SCRUM-381 implementation calls (mine):**
+  - **Requests:**
+    - A request stores the minor as `data.wardId`, and that id is never sent to the counsellor.
+    - A group counsellor names a member by a key that isn't a user id: `creator` or the membership
+      row id. This keeps to the SCRUM-345 rule.
+    - The super admin who decides sees the anonymous minor's real name, because they need it to
+      decide. Counsellors only ever see the display name.
+  - **Granting and renewing:**
+    - One grant route both grants and renews.
+    - A request can't be accepted while an exception is in force, or once the minor has a
+      guardian ("no longer needed"). The request stays pending for the super admin to reject.
+    - A direct grant closes the minor's other pending requests as "Closed", not "Rejected".
+    - Accepting needs the super admin's own reason, prefilled with the counsellor's.
+    - Every admin can see the reasons. Ending early needs a reason.
+  - **Reminders:**
+    - A reminder is claimed but not sent when the minor has a guardian again.
+    - It goes to every super admin.
+    - It's sent even for an exception shorter than 3 days.
+  - **`requests.type` is a MySQL enum:** a migration adds the new type. SQLite tests didn't catch
+    this.
+  - **Date-of-birth changes:** any exception row, past or present, counts as a reason to require
+    approval for a dob change. Without it, a minor under an exception could make themselves an
+    adult.
+  - **Side effect of telling group counsellors:** a counsellor who runs both the minor's 1:1 and
+    their group gets two notices.
+- **Group video (user, 2026-11-05, replaces the 2026-09-14 decision):** group video now follows the
+  same rule as 1:1. A minor needs a guardian's video consent before joining group video, receive-only
+  included, and a safeguarding exception does not stand in for that consent. Group-scoped consent
+  doesn't exist yet (SCRUM-313), so for now every minor is refused group video: creators and ordinary
+  members alike. SCRUM-313 will add the way for a guardian to consent.
+- **Review fixes (mine):**
+  - A super admin who counsels the minor, or who sent the request, can't approve or reject it. On
+    the admin page and in the requests list, they see a "you're involved" summary instead of the
+    minor's identity and the reason, as SCRUM-362 does for reports.
+  - A reject that arrives after the request was already answered is refused, and no notice is sent.
+  - The neutral link and request refusals no longer carry the `guardian_required` code.
+  - A renewal that moves the end date earlier gets neutral copy, not "for longer".
+  - A profile save takes the pause lock only when the dob changes.
+  - Creating a group link is also refused when the group's creator is paused.
+  - The backfill marks each person as done only once their notice is queued. It must be run as the
+    web user (www-data), never root.
+  - Every remaining review item is ticketed as SCRUM-384.
+- **Accepted edge:** a grant that lands in the minute between an expired exception's `ends_at` and
+  the sweep can send "resumed" without an earlier "paused". This is the same family as the accepted
+  duplicate-notice gap.
+- **Review follow-ups (2026-11-05):**
+  - **Group video (user, changes the 2026-09-14 decision):** group video follows the 1:1 rule: a
+    minor needs a guardian's video consent first, and an exception doesn't stand in for it. Group
+    consent doesn't exist yet (SCRUM-313), so every minor in a group is refused group video for now:
+    the creator and ordinary members, receive-only included. "Minor" is the group's snapshot
+    (creator at creation, member at joining) or the dob now; either is enough, so it fails closed.
+    The group page replaces "join video" with a short note for them (`viewerNeedsGuardianVideoConsent`).
+  - **Involved administrators (my call on the wording "or who sent the request"):** on the admin
+    page, an administrator who counsels the minor or sent any of the requests about them sees only a
+    summary. In the requests list, the summary is for a super administrator who counsels the minor
+    but didn't send it. The sender still sees their own request as its counsellor does (display name,
+    their own reason, their therapy), because nothing there is new to them. Neither can answer it.
+  - **Recipients:** the "requested" notice skips super administrators who counsel the minor or whose
+    account is suspended. The 3-day reminder skips suspended ones only, as asked. A co-counselling
+    super administrator still gets the counsellor copy of the reminder.
+  - **Neutral refusals:** `GuardianRequiredException::linkUnavailable()` and `requestUnavailable()`
+    keep their 403 and message but return a null error code (the `HasErrorCode` interface now
+    allows null), so the frontend's guardian_required reload doesn't fire for them.
+  - **Renewal copy:** one neutral copy for every renewal ("The date a therapy can continue until has
+    changed"). `TherapyContinuationNotification::EXTENDED` is renamed `RENEWED`, and the database type
+    is now `guardian_access.continuation_renewed`. There is no production, so no stored rows need it.
+  - **Stored end:** the terms action truncates `ends_at` to whole seconds, so `continuesUntil` in
+    the notices equals the stored value (a DATETIME column would round the fraction).
+  - **Pending-request checks without locking reads:** the duplicate check in Send and the
+    close-the-others step in Grant no longer take locking reads on `requests` (no index on
+    `data.wardId`). The minor's row lock serialises every writer. Grant locks the found ids by key.
+  - **Suspension sweep:** the dead `! $suspension` check is removed. `lockWithPerson()` throws on a
+    missing row, the sweep's catch logs it, and suspensions are never deleted.
+  - **Group links:** creating a group link is also refused while the group's creator (a user) is
+    paused, whoever creates it. Today only the creator can create group links, so this guards a
+    future co-admin rule.
+
+- **Re-verification fixes (mine):**
+  - **Group video at 18:** group video drops the consent requirement once the member's dob says 18,
+    the same as the 1:1 rule (SCRUM-288 Q6), and no longer goes by the membership snapshot. No dob
+    still counts as a minor, so it fails closed.
+  - **Expiry reminder:** the 3-day reminder to super admins skips one who counsels the minor.
+  - **Anonymisation:** anonymising an account locks the safeguarding requests it closes.
+  - **Requests modal:** fixed a crash when a super admin who counsels the minor opened it, because a
+    masked request has no `for`.
+  - **Mobile:** the group-video consent note wraps on phones.
+
+## SCRUM-73 + 383 + 384 — leave a group, group links, review clean-ups (2026-11-05)
+
+- **User decisions:**
+  - **Group links:** "invite a counsellor" and a new "invite a member" link both work. The "group
+    admin" link is switched off at creation and when used, because the app has no group-admin
+    role.
+  - **Member links:** a member link skips the creator's approval, since the creator issued it. The
+    invitee confirms on the group page and chooses anonymity before joining. Each link works once.
+  - **A leaver's messages** stay in the chat, shown as anonymous. Anything sent anonymously stays
+    anonymous forever, even after rejoining as named, as with comments. A
+    `messages.sender_anonymous` snapshot is stored when a message is sent, and the display rule is
+    that snapshot OR the live rule.
+  - **Who is told:** the creator and counsellors, with the name the group shows. A minor's
+    guardians are told in neutral wording.
+  - **Rejoining and payments:** rejoining follows the normal join rules. Nothing is refunded
+    automatically: the usual refund request still works, and an earlier payment that wasn't refunded
+    still counts on rejoin.
+- **Defaults approved with the plan:**
+  - The creator can't leave; they end or delete the group instead.
+  - Nobody can leave a group that has already ended.
+  - A leaver loses the group's history unless the group is public.
+  - On rejoin, the original join date counts for free history.
+  - `was_minor_at_join` sticks on rejoin.
+  - Former memberships count for the dob-change rule.
+  - An immediate join now alerts a minor's guardians too, a behaviour change.
+- **Design:**
+  - Leaving sets `group_therapy_user.left_at`. `users()` is current members only; a separate
+    `allMemberships()` keeps former members for history.
+  - Every way of joining (the join button, an accepted request, a member link) uses one
+    add-member step, and both counsellor routes use one add-counsellor step.
+  - Leaving locks the group, then the user.
+  - Group links lock the link, then the group, then the request.
+- **SCRUM-384 calls (mine):**
+  - **Requests list:** loads each page of requests with a fixed number of queries; the count is
+    pinned by a test.
+  - **"Is this admin involved with the minor?"** That check runs once per admin and minor instead of
+    once per row. A super admin who is also a counsellor still costs a few queries per distinct
+    minor.
+  - **Group members for masking:** the group's full member list is loaded, so an anonymous
+    creator's membership is never missed.
+  - **Admin page paging:** "Paused now" uses its own `pausedPage`; the exceptions list keeps
+    `page`.
+  - **"No longer needed" list:** requests for a minor whose account was deleted, who turned 18, has
+    a guardian, or has an exception in force.
+  - **The 30-day limit** reaches the forms through page and resource props, not a value shared on
+    every page.
+  - **End date:** the field is called `endsAt` everywhere.
+  - **Closed accounts:** counsellors' stored notices now carry an opaque `wardRef` (an HMAC with
+    the app key), so anonymising an account can change `clientName` to "a closed account".
+    Rotating `APP_KEY` stops that matching for older notices.
+  - **The dob-change form** wasn't split out: RequestBadge has no such form.
+  - **Monitoring:** notes are in `documentation/operations/monitoring.md`.
+- **SCRUM-73/383 implementation calls (mine):**
+  - **Suspended members can leave:** the leave route is allowed for a suspended account
+    (`EnsureAccountIsNotSuspended::ALLOWED_ROUTES`), the same as during a pause.
+  - **Order of leave checks:** creator → not a member → already left → ended. The membership check
+    comes before the ended check, so a stranger can't learn a private group's status.
+  - **Counsellor links:** these are also single use, like the 1:1 counsellor link.
+  - **Member-link joins:**
+    - The joiner's pending membership request closes as "Closed" ("Joined through an invitation
+      link.").
+    - Accepting a request for a group that has since ended rejects it with a reason.
+  - **Invitation view (corrected after the security review):** someone holding a valid member
+    link gets a reduced preview of a private group: name, about, cases and counts. The creator is
+    masked unless they created the group through a counsellor profile, and only active counsellors
+    are listed, by their public name. The invitation is one more grant in the normal access check,
+    and it isn't usable for an ended group or a paused creator.
+  - **Leaver's page:** it always goes home after leaving, even for a public group.
+  - **Guardian notices:** the "joined" notice to a guardian reads "joined" for direct and link
+    joins, and "accepted" for an approved request.
+  - **Live refresh:** leaving and joining both send the members-changed refresh (after review).
+  - **Writes to the membership table** go through `allMemberships()`, because `users()` filters out
+    former members and would silently skip their rows.
+- **Former members can report (user, 2026-11-05):** someone who has left a group can still report
+  the group, its sessions and its messages. Admins see them as a "former member". They reach the
+  report button from a minimal "You left this group" view, which shows no content.
+- **Review fixes (mine):**
+  - A former member can't become one of that group's counsellors, the cautious choice.
+  - Invitation and former-member viewers get a reduced preview of the group. The creator is masked
+    unless they are a counsellor profile, and only active counsellors are listed, by their public
+    counsellor name. A usable invitation is one more grant inside the normal access check. It isn't
+    usable for an ended group or a paused creator.
+  - A `messages.recipient_anonymous` snapshot is added, so messages sent to an anonymous member stay
+    masked after they rejoin as named.
+  - Notices about a member leaving get the same closed-account name clean-up as the other notices.
+  - Joining is throttled.
+  - Joins also refresh other members' pages live.
+- **IDs in user-facing text (user, 2026-11-05):** messages and alerts that refer to records by ID
+  get swept across the app as SCRUM-385, in this PR.
+- **Review-fix calls (mine):**
+  - **Former-member reporting:** this covers the group and its sessions. Messages aren't reportable
+    on their own in this app; they're reported through their session or group.
+  - **Session masking:** `sessions.updatedby_anonymous` was added alongside
+    `messages.recipient_anonymous`, so a member who changed a session's status stays masked after
+    rejoining as named.
+  - **Preview counsellors:** each one carries their counsellor id, so the report form can name
+    them. Counsellor ids are already public on profiles.
+  - **Former members' view of the group:**
+    - A former member of a private group gets the preview with a "You left this group" box, which
+      offers report and rejoin.
+    - A former member of a public group sees the normal page with that box.
+  - **Duplicate guardian alerts:** accepting a request for someone who is already a member no
+    longer sends a second guardian alert.
+  - **Closed-account names:** the rename also matches refs made under previous app keys
+    (`APP_PREVIOUS_KEYS`).
+  - **Closing safeguarding requests:**
+    - A super admin can close a request whose minor's account is gone.
+    - That rejection, a rejection from the "no longer needed" list, and leaving the group all use
+      the "no longer needed, so it has been closed" wording.
+  - **Leaver's live connection (revised after testing on the running stack):** this is not
+    closed from the server.
+    - Reverb 1.10's terminate-connections endpoint fails (500) whenever the user also holds a
+      private channel, which is always the case here (`users.{id}`), so the call was removed.
+    - The leaver's page drops its channels when it gets `group-therapy.left`.
+    - A deliberately modified client can keep existing subscriptions until it disconnects. That
+      gives the group's presence roster (display names) and id-only "a message arrived"
+      announcements, never message content, because messages are announced and fetched under
+      access checks (SCRUM-366).
+    - Accepted, and tracked in SCRUM-386.
+  - **End group therapy:** the button now shows only to the group's creator. The server already
+    refused everyone else.
+  - **Deleted-person wording:** "a deleted account" is kept for deleted staff and reporter names
+    outside safeguarding.
+  - **Query-count test:** the list-page test was dropped, because group lists use the Mini resource.
+    Its per-group queries are ticketed separately.
+- **SCRUM-385, IDs in user-facing text (mine):**
+  - **Access refusals:** these now read "You are not allowed to access this therapy." or "...this
+    group therapy.", with no name and no id.
+  - **Org billing labels:** these never show names that clients write. They read:
+    - "Therapy with {counsellor}";
+    - "Group therapy (started {date})";
+    - "Session on {date}".
+  - **Admin read logs:**
+    - show the subject's name ("Therapy: …", "A message in …", "A licence", "A verification
+      request"), with "a deleted {type}" as the fallback;
+    - show the file's name;
+    - show the session's name in a report's access log.
+  - **Report numbers:** "Report #12" stays, as the case reference.
+  - **Form errors:** validation messages use plain field names.
+  - **Requests modal (user):** the line under a Pending chip is removed, except "It is waiting
+    for review." for an involved admin.
+
+## SCRUM-387 + 386 + 49 — admin area redesign and follow-ups (2026-11-05)
+
+- **Layout (user):** one admin area with a grouped left sidebar:
+  - Overview;
+  - People: users, counsellors, counsellor verification;
+  - Requests to resolve;
+  - Safety: reports, suspensions, safeguarding, read log (super admins only);
+  - Money: payouts, refunds, organisation billing;
+  - Content: testimonials, how-tos.
+
+  It's a slide-out menu on phones. Every section gets its own URL, and the existing URLs keep
+  working.
+- **Overview (user):** to-do counts linking to their sections, and platform stats. This covers
+  SCRUM-49; its "system health" becomes a failed-jobs count for super admins.
+- **Verifications (user):** every admin can review and approve both counsellor and organisation
+  verifications. Organisation requests used to be visible only to one super admin.
+- **Money (user):** all admins see money figures, as on the money pages today. Totals are always
+  per currency, from successful, non-reversed rows only.
+- **Stats (user):** this week, this month and all time, each with the change compared with the
+  previous period. Only totals are shown, never names or lists of people.
+- **Requests to resolve (user):** one queue for everything waiting on an admin. That covers
+  counsellor and organisation verification, age verification, date-of-birth changes with no
+  guardian, refunds, and safeguarding (super admins only). Refunds and counsellor verification keep
+  their own pages too. The queue is defined by a fixed list of types, not by "can respond", because
+  admins can technically answer any request type; that wider permission goes to security as its
+  own item. The personal Requests pop-up is unchanged.
+- **My calls (approved with the plan):**
+  - **Access checks:** one admin route middleware on top of the per-controller checks. Super-admin
+    checks stay on the server.
+  - **Moved tab views:** they keep their current components and axios paging, and only gain a page
+    shell and a URL.
+  - **Caching:** the cheap counts are cached for about a minute and cleared when someone responds.
+    The paused-minors count is cached for about 5 minutes, on the overview only. Stats are cached
+    for about 15 minutes, with an "as of" time.
+  - **Layout nesting:** AdminLayout sits inside AuthenticatedLayout, so the live suspension and
+    guardian listeners keep working. The SCRUM-386 channel change comes after the admin shell is
+    built.
+- **SCRUM-386 calls (mine):**
+  - **Group lists:** `PreloadGroupTherapyListAction` loads each page's creator, members,
+    counsellors and counts in one go, and the counsellor calendar uses it too.
+    `GroupTherapy::isCounsellor()` now reads a loaded counsellors relation, the same way
+    `membershipOf()` reads loaded users. The request list also runs it for group requests.
+  - **Notices to rename on account closure:** these are found through a generated, indexed
+    `notifications.ward_ref` column (stored on MySQL, virtual on SQLite).
+    - It's guarded with `json_valid`, so a malformed row gets null instead of breaking the
+      migration or later writes.
+    - The LIKE scan is gone.
+    - Adding the column rebuilds the `notifications` table on MySQL, so it needs a quiet deploy
+      window.
+  - **Reverb limit:** the Reverb 1.10 connection limit is recorded as known technical debt in
+    `.claude/memory.md`, to re-test when Reverb is upgraded past 1.10.
+- **SCRUM-387 implementation calls (mine):**
+  - **Layout:** AdminLayout is an Inertia persistent layout that wraps AuthenticatedLayout.
+    Moving between admin pages keeps the live channel joined.
+  - **Sidebar:** defined once in `AdminNavigation::for($user)` and filtered by role. ReportShow
+    highlights Reports.
+  - **Access:** the new `admin` middleware is on every `/administrator*` page, and the inline
+    checks stay as a backstop.
+  - **Requests queue:** the queue, the personal list and the counts share
+    `Request::scopeAwaitingAdmin($viewer, $types)`.
+    - The two verification types match whatever their `to` is; every other type needs a null `to`.
+    - The queue shows only when a request was answered, not who answered it, because nothing stores
+      the responder.
+  - **Badges:**
+    - The requests badge is the viewer's pending queue total.
+    - Other badges: counsellor verification, reports, suspension appeals, failed payouts, failed
+      refunds and organisation billing.
+    - Safeguarding gets no badge, because its count is the expensive one.
+    - The client is Inertia 1.3, so there are no deferred props. Badges load with a partial reload
+      after each navigation.
+  - **To-do count definitions:**
+    - Failed payouts counts failures not yet paid again.
+    - Failed refunds counts every failed row, because nothing retries them.
+    - Organisation billing counts organisations that are billing-suspended or have any failed
+      invoice.
+    - For super admins, "involved" safeguarding means pending minus answerable.
+  - **Stat periods:**
+    - Weeks start on Monday and months are calendar months, in the app's timezone.
+    - The current period runs up to now and is compared with the whole previous period.
+    - Rows are counted by `created_at`, sessions by `start_time` and video by `started_at`.
+    - The "failed or abandoned" share is out of held, failed and abandoned sessions.
+  - **Counting rules:** "Awaiting" counsellors are unverified ones with a pending request. Users
+    exclude soft-deleted and anonymised accounts.
+  - **Moved lists:** the users and how-tos lists keep their load-more paging, so only the counsellor
+    search and the verification status filter go in the URL.
+  - **Indexes:** added only where they were missing: requests (status, type, to_id), and status plus
+    date on transactions, sessions, payouts, earnings, refunds and invoices, plus users.created_at
+    and video_sessions.started_at.
+- **SCRUM-386 realtime calls (mine):**
+  - **Shared channel:** the private `users.{id}` channel has one ref-counted owner,
+    `acquireUserChannel()` in `sharedChannel.js`. The layout and the group page each release only
+    their own handlers, and the `Echo.leave` that cut off other listeners is gone.
+  - **Live join requests:** they reach the creator through
+    `GroupTherapyMembershipRequestReceivedEvent` on the creator's `users.{id}` channel, sent after
+    commit.
+    - It is queued, so delivery needs the queue worker.
+    - The payload is ids only. The creator's page reloads `pendingMembershipRequest`, which for the
+      creator is the incoming request (`pendingMembershipRequestFor` matches from or to the viewer), so
+      masking stays on the server. The notice uses a neutral grey "info" alert style. (Corrected
+      after review.)
+    - A counsellor-created group sends it to the counsellor's user.
+    - The group page shows a neutral alert, "Someone has asked to join this group therapy." The
+      Requests pop-up refreshes if it is open on Pending. There is no new nav badge.
+  - **Admin page widths:** the older admin pages are full width inside the admin layout
+    (`max-w-6xl`).
+- **SCRUM-387 review fixes (mine, 2026-11-06).** Where these contradict a line above, these win.
+  - **Answering:** an administrator now answers only the admin queue's types
+    (`App\Support\AdminRequestQueue`): counsellor and organisation verification, age verification
+    (never their own), a dob change with no `to`, a refund, and a safeguarding exception (super
+    admin, not involved, not the sender). Every other type needs its real party. No admin page or
+    flow relied on answering any other type, so nothing needed keeping.
+  - **Who answered:** `requests.responded_by_id` is stamped by the Request model's saving hook, in
+    the same write that first moves a request out of PENDING, while `RespondToRequestAction` has
+    marked it as being answered (`Request::answeredBy()`). So a no-op re-answer or a system close
+    (superseded, made moot) records no one. The queue shows "answered by {name}" to administrators
+    only, never on a row the viewer is involved in.
+  - **One registry:** `AdminRequestQueue` holds each queue type's label, count key, overview label,
+    own page, super-only flag and whether only a request with no `to` counts. Only the dob change has
+    that flag: safeguarding, refund and age verification never have a `to`, so the one definition of
+    "pending safeguarding" is `scopePendingSafeguardingException()` (type only), and the queue's
+    `ofAdminQueueTypes()` agrees with it.
+  - **Respondent:** `RequestResource` sends one `isRespondent` for every type; `RequestBadge` uses
+    it for the buttons (pending only) and the "from:" line, and the per-type branches are gone.
+  - **PII:** a verification's and a refund's `to` is null in `RequestResource` (shown as "any
+    admin"); a refund's payer is name and username only there and in `RefundRequestResource`.
+  - **Cache:** cleared by a Request model `saved` hook, only for an admin queue type that was just
+    created or changed status, after commit and best effort (`admin-todo-cache-forget`). The
+    paused-minors key is outside the generation. The shared counts are worked out without a viewer.
+  - **Badges:** a JSON route, `GET /administrator/badges` (`admin.badges`), fetched by AdminLayout
+    on mount, on navigate and after any successful visit (form posts that redirect back fire no
+    navigate), throttled to one a second. Axios-only actions (the queue, counsellor verification,
+    refund requests) force a refresh. The Refund requests item's badge is pending refund requests
+    plus failed refunds (`refunds`), since that page now lists both.
+  - **Pages behind counts:** the refund requests page lists failed refunds (latest 50, with the
+    total; nothing retries them, so no action). Organisation billing lists organisations with a
+    failed invoice that aren't suspended too (`Organization::scopeNeedsBillingAttention()`, shared
+    with the count); retry shows for any with a failed invoice, lift only for a suspended one.
+  - **Queue filter:** a `?type` the viewer can't filter by (unknown, or safeguarding for an ordinary
+    admin) is ignored rather than refused or listing nothing, so the filter shown always matches.
+  - **Middleware:** `admin` now also covers the `admin.*` write routes and `/api/administrator/*`,
+    answering JSON with a 403. Non-admins on those now get the middleware's refusal instead of each
+    action's own; the tests were updated to match.
+  - **Group lists:** the preload loads `activeCounsellorLinks` (ACTIVE pivot, id and user_id only)
+    and `isCounsellor()` reads only that relation, so the full `counsellors` relation is never a
+    cut-down copy.
+  - **Live join requests:** the reload now asks for `pendingMembershipRequest` only. That prop is
+    `GroupTherapy::pendingMembershipRequestFor()` -- the latest pending membership request from OR
+    to the viewer -- so for the creator it is the incoming request that drives the Membership box.
+    The alert uses a new neutral `info` style.
+  - **Seed:** testimonials, a how-to, `suspendable_demo_admin` and `involved_demo_super_admin` (see
+    `documentation/seeded-data.md`).
+- **Security re-check fixes (mine, 2026-11-06):**
+  - **Organisation verification response:** answering one no longer returns the super admin's
+    profile. `OrganizationRequestResource` sends `to` as null for that type.
+  - **No self-answering:** an administrator can't answer a queue request they raised, or one that is
+    about them. That covers their own counsellor verification (from their counsellor profile),
+    refund, date-of-birth change and age verification. Another admin answers it
+    (`Request::isOwnRequestOf`).
+  - **"Answered by":** it isn't shown on the viewer's own requests.
+  - **Report review routes:** `/api/admin/reports/*` keeps its own admin-review checks
+    (`EnsureAdminCanReviewReportAction`) and doesn't use the `admin` middleware.
+- **Counsellor details in queue data (mine):** on counsellor-verification and safeguarding rows,
+  admins still get the nested counsellor `user` (including date of birth and gender) in the page
+  data, although the page doesn't display it. Admins already see users' dates of birth on the Users
+  page, so this is left as it is. Narrowing it would be a separate change.
+
+## SCRUM-30 + 31 + 388 — counsellor verification badge, renewal and audit trail; admin-area follow-ups (2026-11-06)
+
+- **The user's decisions (2026-11-06):**
+  - Unverified counsellors stay listed, with a "Not verified yet" warning everyone can see (signed
+    out too). Hiding them can be a later ticket.
+  - A verification lasts 12 months. Counsellors already verified get 12 months from release, not
+    from their old `verified_at`, so nobody lapses on release day.
+  - Before it ends, the people involved in verifying them are told so re-verification can start:
+    the counsellor (30 and 7 days before, with a re-verify link), and admins.
+  - When it ends, it blocks new work only: new clients, group joins, posts, payout set-up and
+    organisation links. Current therapies carry on.
+  - Admins can revoke with a required reason, in this PR. Revoking has the same effect as ending
+    (a suspension stays the tool for stopping everything).
+  - **Blocking new therapies applies to every counsellor not currently verified**, never-verified
+    ones included. That is a product change: before this, unverified counsellors could take clients.
+  - The revocation reason is kept in the append-only trail after the counsellor closes their
+    account. The Privacy page says so.
+  - Renewals use the same national ID rule as the first verification (a file or a number).
+  - After the security review: joining or starting a **discussion** counts as new work (blocked),
+    and a **group** whose counsellors are none of them currently verified **admits no new members**
+    until one is (paused, not closed: a waiting membership request stays waiting).
+- **Mine:**
+  - **Who "the admins involved" are:** the admin who last accepted their verification
+    (`requests.responded_by_id`, recorded only since SCRUM-387), if still an admin and not the
+    counsellor, by database and mail; plus every admin through a to-do count ("Counsellor
+    verifications ending soon, not yet renewed") and a Renewals list. The count is what does the
+    work for older verifications, which have no recorded approver.
+  - **`isVerified()` now means currently verified** (verified, not ended, not revoked), so every
+    existing gate picked the rule up: group joins, posts, a first payout destination, organisation
+    links (all named in the user's decision) and the profile's onboarding step. `wasEverVerified()`
+    is the old meaning. A `verified_at` with no end date reads as ended (the cautious reading; the
+    backfill and the factory set one).
+  - **The onboarding step:** a counsellor whose verification has ended drops back to step 1, where
+    their status card offers "Re-verify now". The later steps' prompts ("assist a user", "hold a
+    session") are about new work, which they can't do until re-verified.
+  - **Payouts:** a counsellor whose verification ended can still change where they're paid (their
+    current clients and earnings carry on). After a revocation they can't -- the one place revoking
+    differs from ending: a verification revoked as possibly fraudulent mustn't redirect payouts.
+    Their existing destination keeps working, and payouts themselves are never gated.
+  - **Renewing:** a counsellor may ask from 30 days before the end (the largest reminder day), or any
+    time once it ended or was revoked. Accepting early extends from the current end; accepting after
+    it ended or was revoked starts from now and lifts the revocation. The first verified date is
+    kept. A rejected renewal leaves a current verification until it ends.
+  - **Revoking:** any admin, not their own, and only a super admin a super admin's (security review:
+    otherwise an ordinary admin could revoke the super admin's counsellor profile, which only the super
+    admin can re-verify). A verification that has already ended can still be revoked, so fraud found
+    later is on the record. Revoking closes a waiting verification request, so an older submission
+    can't be accepted without its reviewer seeing the revocation.
+  - **Reminders** go for the narrowest window the counsellor is in, once (a `dedupe_key` of counsellor,
+    window and end date), so a missed run never sends two and renewing starts them afresh. Not while a
+    re-verification request is waiting. The ended sweep looks back 30 days; the block itself never
+    waits for it.
+  - **The history** is a new append-only `counsellor_verification_events` table (triggers as for
+    `admin_content_accesses`), not more request types: ending, revoking and reminders aren't requests,
+    and the requests table is mutable and wired into the admin queue. Licences by id only. An admin who
+    is also a counsellor can't read their own history (who answered or revoked theirs is for others).
+  - **What each viewer sees:** the public gets only the state, and a revocation reads as "ended"; the
+    counsellor and admins get the dates and the true state; only the counsellor whether a request is
+    waiting (the one query). The admin counsellor pop-up used to say "Verified Counsellor" for everyone.
+  - **Taking on clients is checked where it happens** (therapy creation and assist, accepting assist,
+    the therapy link, group creation and its invitees, discussions), in one action
+    (`EnsureCounsellorMayTakeOnClientsAction`), not at `CreateRequestAction`: creating a therapy or a
+    group isn't transactional, so the check has to run before the row exists. Accepting locks the
+    counsellor (therapy, request, then counsellor), and a respondent with no counsellor to assign is
+    refused.
+  - **Lock order:** revoking locks the waiting requests before the counsellor, the order accepting
+    takes, so the two can't deadlock (architect and security reviews).
+  - Profile data: `hasNationalIdentification` (a query per view, unused) was dropped, and
+    `hasPendingCounsellorVerificationRequest` moved into the owner-only part of the projection.
+- **SCRUM-388:**
+  - **The Membership box:** `pendingMembershipRequestFor()` also matches `to` = the viewer's counsellor
+    profile. New requests go to a User, so this catches older rows.
+  - **Refused answers** (a 422, e.g. answered in another tab) reload the list and the badges on
+    "Requests to resolve" and Counsellor verification.
+  - **Admin data:** decided to narrow. Admin queue rows (counsellor verification, safeguarding) carry
+    the counsellor's user as `narrowUserProjection` -- including, after the security review, the
+    safeguarding request's therapy's counsellor and a group's creator.
+  - **`/api/admin/reports/*`** now uses the `admin` middleware too (a non-admin gets a JSON 403). This
+    **supersedes** the SCRUM-387 security re-check line that it "doesn't use the admin middleware";
+    the routes keep their own review checks.
+  - **Cache after bulk writes:** `Request::adminQueueChanged()` (now
+    `GetAdminToDoCountsAction::forgetAfterCommit()`) runs after the only two writes to admin queue
+    requests that skip the model hook: `DeleteCounsellorAction`'s "made moot" update and
+    `AnonymiseClosedAccountAction`. The other bulk updates close only therapy, group and membership
+    requests, which no count reads. Revoking and the ended sweep call it too (the renewals count).
+- **Left as they are (noted):** `verified_at` stays fillable (the seeder creates counsellors with it;
+  every app write uses `forceFill`); the revocation email puts the reason through the mail template's
+  Markdown (only admins write it); every pre-existing verification ends on the same day a year after
+  release (`documentation/operations/monitoring.md` says to watch the renewals count then).
+
+## SCRUM-113 + 114 + 389 — ranking by preferences, card buttons, offering to help (2026-11-07)
+
+- **Grouping (the user's decisions, 2026-11-07):** with SCRUM-389's follow-ups went SCRUM-113 and 114,
+  plus two new requests (SCRUM-390 admin search, SCRUM-391 counsellor dashboard). Split into two PRs:
+  this one (113, 114, 389); 390 and 391 after it merges (the dashboard needs these offers and ranking).
+- **Found first and shipped on its own (PR #288):** the Home "Public Therapies" row listed other
+  people's PRIVATE therapies to every signed-in user (an ungrouped `orWhereNot`). This branch carries
+  the same fix inside the refactored query.
+- **SCRUM-113, the user's decisions:**
+  - Ranked lists: the Home public therapies, groups and counsellors rows, and the Public Therapies page.
+    Not posts; not the Home "best"/"leading" counsellor rows (top 5 by stars -- mine).
+  - Inside the existing rows: matches first, then the rest, with a "Matches your preferences" label
+    for the viewer only (a boolean -- never the score or what matched).
+  - Each matched kind (case, language, religion) counts the same; more kinds rank higher (mine:
+    "matches first" read as a count, not a yes/no).
+  - A counsellor browsing therapies is matched on the therapy's cases against theirs, and on the
+    client's saved languages against theirs. The user first chose "both" (languages and religions);
+    after the security review showed a counsellor could work out a client's religion (set one on their
+    profile, watch the label), the user chose cases + languages only. Language could be guessed the
+    same way; it is less sensitive, and the user accepted that.
+- **Mine (SCRUM-113):**
+  - Ranked in SQL before paging, then a seeded order kept for the visit (`?seed=`, carried in `links.next`)
+    -- "load more" used to repeat or skip rows (`inRandomOrder` + paging). Integer arithmetic, so it
+    works the same on MySQL and SQLite; the multiplier is kept to the middle of its range so an order
+    never looks like plain ids.
+  - The Public Therapies page used to load every public therapy and group into memory and shuffle them
+    on each request; it is now one SQL union, ranked and paged (`GetPublicTherapyFeedAction`), and
+    `PublicTherapyResource` now delegates to the two mini resources instead of being a third copy.
+  - The Home groups row used to drop every group a counsellor created and keep the viewer's own
+    memberships; both fixed (grouped ANDs).
+  - Saving preferences: real ids only, at most 20 of each; an empty list clears one (it used to be
+    ignored). QA found the Preferences page never showed saved preferences (it read `.data` from lists
+    that arrive unwrapped), so saving wiped them; fixed.
+  - The client's settings are read inside SQL only; never sent, cached or logged by the app (a failed
+    query's exception report does carry the viewer's own ids -- noted in monitoring.md).
+- **SCRUM-114, the user's decisions:** joining from a card opens a small centred modal with the one
+  choice joining needs (by name or anonymously; locked for an anonymous group); counsellors see "Offer
+  to help" where they can take the therapy or group on.
+- **Mine (SCRUM-114):**
+  - The button is decided on the server (`ResolveTherapyCardStateAction`, `TherapyCardActionEnum`) from
+    the same model rules the actions enforce (`GroupTherapy::isFull`, `canTakeCounsellor`,
+    `admitsNewMembers`), in at most two queries a page, so the card and the action can't disagree.
+  - An administrator with a counsellor profile sees "Offer to help" like any counsellor (the offer
+    endpoint allows them); an administrator without one sees "View".
+  - A card doesn't check "former member" for a counsellor's offer (that would be a query per row); the
+    offer is refused if so.
+  - The card modal starts from the person's saved "stay anonymous" preference; the group page's own
+    join modal still starts from the group's flag (SCRUM-392 merges the two).
+- **SCRUM-389:**
+  - **Offering to help a group** (new `POST /api/group-therapies/{id}/assist`): a counsellor offers to
+    help a public group that can take another counsellor; the request goes to the creator's User (a
+    counsellor creator's account) and the creator accepts. The group's creator can also invite more
+    counsellors after setting it up (the user's decision). Checked and sent under the group's lock.
+    Refused alike for a missing, private, ended group or one whose creator has gone.
+  - The request's direction is named (`Request::isAssistanceOffer()`, `assistanceCounsellor()`,
+    `direction` on `RequestResource`) instead of being worked out from the parties' types.
+  - Accepting an offer: the creator's consent plus the offer itself (`AddCounsellorToGroupTherapyAction`
+    `$offer`); the counsellor is locked and re-checked (verification, suspension), and a counsellor
+    creator must not be suspended. Joining closes the counsellor's other invites and offers for the
+    group (saved one by one, keeping their payment data); this replaces the link path's own copy.
+  - An offer's recipient (a client or creator) is shown to the counsellor by name only.
+  - **End dates spread** (the user's decision): pre-existing verifications end between 12 months and
+    12 months + 60 days after release, by counsellor id. SCRUM-31 hasn't reached `main`, so the
+    unreleased backfill migration was edited; databases that already ran it from `develop` keep one
+    date (re-seed, or null the column and re-run it).
+  - **Backstop:** `CreateRequestAction` also refuses a counsellor who isn't currently verified on
+    therapy, group and discussion requests. The checks where each request is made stay the main ones.
+  - `verified_at` is no longer fillable (supersedes the SCRUM-30/31/388 "left as is" line); the revoke
+    reason goes through the existing `MailText::inline` (SCRUM-366).
+  - One narrow-person projection (`App\Support\NarrowUserProjection`); the platform "awaiting
+    verification" stat now counts ended, revoked and undated verifications with a request waiting.
+  - DevOps review: an index on `counsellor_group_therapy (group_therapy_id, state, counsellor_id)`, the
+    group counsellor match split into two EXISTS halves, and a `mysql-json` CI group so the MySQL-only
+    ranking SQL runs in CI.
+- **Left for SCRUM-392 (follow-up ticket):** one join modal for the card and the page; moving the public
+  filters into model scopes; the remaining inline copies of `creatorUser()`/`isFull()`; a daily cap on
+  offers; hiding unverified counsellors from the picker; dialog roles; Home refreshing member counts
+  after a join.
+
+## SCRUM-390 + 391 + 393 — admin search, counsellor dashboard, UI polish (2026-11-07)
+
+- **Grouping (the user's decisions):** SCRUM-390/391 are the second PR of the discovery work; the TODO
+  list's UI items became SCRUM-393 and joined this PR. Admin search goes on every list page; the
+  dashboard is its own page with six blocks (a first version, to be improved later).
+- **SCRUM-390, search:**
+  - One helper (`App\Support\AdminSearch`): 2-100 characters (one character searches nothing, more
+    than 100 is refused), wildcards literal (`whereContains`), ORs grouped so a search never escapes
+    the page's own filters, and a counsellor matched through the existing `Counsellor::whereName`.
+  - People are matched on names and username (email on Users) -- details any administrator already
+    sees on People -- never a masked or narrowed field.
+  - **Involved rows never match:** a row the viewer may only see as an "involved" summary (their
+    report, a ward's suspension, a minor they counsel...) is filtered out of search results by the
+    page's own `involves()` rule, in PHP, reading at most 200 matches (ordered by id); more asks for a
+    narrower search. Unsearched lists still show them as summaries. Accepted cost: a query or so per
+    row read on Reports/Suspensions; revisit in SQL if those tables grow.
+  - Searches live in the URL (`?search=`), so they can be bookmarked and survive paging; accepted
+    (security review, Low) that an administrator's search text can reach access logs -- production
+    logging of `/administrator/*` query strings should be checked.
+  - No indexes: `LIKE '%term%'` can't use one (devops review).
+- **SCRUM-391, dashboard:**
+  - "Needs your action" is a dashboard view (`Request::scopeAwaitingCounsellor`, by request type),
+    not the authority on who may respond (`EnsureUserCanRespondToRequestAction`); the two point at
+    each other so a new request type is added to both.
+  - "Therapies you could help" reuses the public feed with a `needsCounsellor` flag; a group's free
+    counsellor place is a model scope (`GroupTherapy::whereCanTakeCounsellor`) counted exactly as
+    `canTakeCounsellor()` (architect review: the first raw-SQL copy counted soft-deleted counsellors
+    and a creator twice). Only while the counsellor's verification is current.
+  - Current therapies and groups are only active ones; sessions are the next 7 days.
+- **SCRUM-393, UI:**
+  - Preferences: one `PreferencePicker` per kind (search first, chips with a tick, Load more, "Add
+    a ..." which also chooses it, up to 20 as the server enforces); "Set preferences" compares with
+    what's saved, so it re-enables after a save.
+  - Cards: the kind is colour plus icon (blue/person individual, orange/group group) with its name
+    kept for screen readers; "Matches your preferences" is a sparkles mark (stars already mean
+    starred counsellors) with a tooltip on hover and focus, explained on Preferences.
+  - "Find a counsellor" cards: summary lines in small text and a Select button.
+- **Review fixes:**
+  - The safeguarding *request* masking rule is one method
+    (`EnsureCanManageSafeguardingExceptionAction::masksRequestFrom`), used by `RequestResource` and the
+    requests search alike, so the two can't drift.
+  - Failed refunds are searched by the refund's own reference (what the row shows) as well as the
+    payment's; organisation billing by name only (legal name isn't shown); the Counsellors page moved
+    onto the shared search box; a report search without a viewer is refused.
+  - Search boxes no longer drop text typed while a search is on its way, and every API-fed admin list
+    shows only its latest answer.
+  - Left as accepted: the involvement check runs per row (bounded by the cap); search limits (2/100/200,
+    20 preferences) are repeated in the frontend.
+
+## SCRUM-392 — review follow-ups; plans for SCRUM-33 and SCRUM-32 (2026-11-07)
+
+- **Planning (the user's decisions):** the next group was crisis + safety. The architect recommended
+  splitting; the user chose three PRs in this order: SCRUM-392 alone, then SCRUM-33, then SCRUM-32.
+  - **SCRUM-33 re-scoped by the user** from a static hotline list to a **quick help chat**: signed-in
+    users start a chat that can go to audio; counsellors who are "available for urgent help" are rung
+    and the first to accept is connected; admins watch a live queue and can pull in a counsellor or
+    quickly set up a therapy and session. The country's emergency number is always shown (numbers
+    verified by a person, never invented); guests see it and a sign-in prompt; minors can chat, and
+    audio follows the existing guardian video-consent rules. It will be planned in detail before code.
+  - **SCRUM-32:** all non-involved admins + super admins are alerted; the client is told with a
+    neutral notice (the handling admin may delay it); a minor's guardians are told on imminent/urgent
+    flags unless a safeguarding reason is recorded. Its other defaults (re-alert windows, a suspended
+    counsellor may still flag, anonymity only to the handling admin) are in the Jira comment and
+    confirmed in its own plan.
+- **SCRUM-392:**
+  - The public-list queries became the model scope `publicForOutsider(?User)` (named so it isn't
+    mistaken for an access check; grouped as a whole). A counsellor who left a group (inactive) still
+    sees it in the public lists and may offer again -- unchanged.
+  - `GroupTherapy::isCreatedBy()` and `hasFreeCounsellorPlace()` replace the inline copies;
+    `canTakeCounsellor()` is built on the latter, so callers that refuse an ended group with their own
+    message keep it. `Request::pendingGroupAssistance()` + `whereToOrFrom()` replace the copied
+    "pending between group and counsellor" queries; the batched card-state query keeps its own shape.
+  - **Offer cap:** 5 offers to help per rolling 24 hours (`COUNSELLOR_DAILY_OFFER_CAP`), therapies and
+    groups together, every status counted; a group creator's invites don't count. Not locked:
+    parallel offers to different therapies/groups can go a few over, bounded by the routes'
+    10-a-minute throttle -- accepted as low impact (security review L1). A value of 0 blocks every
+    offer (fails closed).
+  - The find-a-counsellor picker lists only currently verified counsellors; the public directory is
+    unchanged (it shows verification).
+  - Status: resources send the raw value (e.g. `IN_SESSION`) plus `statusLabel` for display.
+  - **One join modal** (`JoinGroupTherapyModal`) for cards, the group page and member invitation links;
+    its anonymity choice starts from the person's saved preference everywhere (the page used to start
+    from the group's flag).
+  - `Modal`/`MiniModal` carry `role="dialog"`, `aria-modal` and an accessible name; focus trapping is
+    left as debt.
+  - Architect review: an offer is defined once (`Request::isAssistanceOffer()` and its query twin
+    `whereAssistanceOfferFrom()`, used by the cap); offers closed by the system (the place went)
+    still count toward the cap -- a deliberate choice. `Request::ASSISTANCE_TYPES` replaces the copied
+    type pair. The API's `status` changed from "IN SESSION" to `IN_SESSION` (+ `statusLabel`); nothing
+    read the old form. Left for SCRUM-394: one member-count name (`memberCount` vs `membersCount`),
+    modal focus trapping, a hard (locked) offer cap and logging cap refusals.
+  - Reviewer: a group joined from a Home card goes into "Your Recent Group Therapies" shaped like the
+    server's rows (no card button or match mark) and the row stays at three; the shared join modal
+    sends an expired session to login again.
+  - QA found two older bugs, fixed here: Home scrolled sideways at 375px (the cards' screen-reader
+    label was positioned outside its card -- the card is now `relative`), and the find-a-counsellor
+    search asked for the next page of the previous search after the text changed (it now starts from
+    page 1).
+
+## SCRUM-33 — quick help chat: plan approved (2026-11-08)
+
+- **Approved by the user** after product-owner, architect and project-manager passes. Three PRs, in order:
+  TT-4.4a (core), TT-4.4b (admin queue + escalation), TT-4.4c (follow-up, retention, closeout).
+  SCRUM-32 follows TT-4.4b (it reuses the admin alert channel).
+- **The user's decisions:**
+  - After a help chat ends it stays a private, read-only record that both the person and the
+    counsellor can see; the counsellor or an admin can invite the person into a regular therapy, and
+    the crisis transcript isn't copied into it.
+  - **Everyone signed in can use it, restricted accounts included:** a paused minor (no active
+    guardian) can text (no audio); a **suspended account** can too (the user asked for this; agreed:
+    a crisis outranks a conduct suspension), with safeguards -- one request an hour, the counsellor
+    isn't told of the suspension, the admin queue shows it, and the chat can be ended and reported.
+  - Anonymity is optional (from the person's saved preference); a ringing counsellor sees only a
+    short summary (first name or "Anonymous", adult/minor, country, languages, the optional one-line
+    note). Handling admins see the identity, each view logged.
+  - Emergency numbers are an admin-managed table (country, number, label, source, verified by, date),
+    only verified ones shown, reviewed every 6 months, Ghana first. Numbers are never invented: seed
+    rows are clearly fake, and release waits for a verified Ghana number. Countries are chosen with a
+    **searchable picker**, which also replaces the existing country fields (profile, admin user,
+    licensing authority) -- the user's request.
+- **Defaults accepted with the plan:** free for the person; counsellors unpaid in v1; one help chat at a
+  time per counsellor (not counted in the daily offer cap); on-call self-expires after 4 hours; admins
+  alerted at 60 s and 3 min, a request expires at 10 min; admins coordinate, never chat; audio only (no
+  video); minors' audio only with the existing guardian consent; guardians aren't told automatically
+  (a counsellor escalates through a SCRUM-32 flag); transcripts kept 1 year.
+- **Design (architect):** a `HelpRequest` handles ringing, the first-accept race (a conditional update),
+  escalation and the queue; accepting creates a real free, private, single-session Therapy + an
+  in-session online Session, so chat, audio, consent, reports and admin read-logging are reused rather
+  than rebuilt. The button and ring are mounted once at the app root. Help therapies are excluded from
+  every other list and count (`withoutHelpChats`). The PM moved the expiry and overdue-session sweeps
+  into TT-4.4a (the one-live-request lock needs them).
+
+## SCRUM-33 (TT-4.4a) — quick help chat core: implementation decisions (2026-11-08)
+
+- **Country list (the user's choice):** bundled, generated from the ISO 3166 dataset
+  (`i18n-iso-countries` 7.14.0, `npm run countries:generate`) into `resources/data/countries.json`,
+  shared by the server (`App\Support\Countries`) and the searchable `CountrySelect`. The external
+  countries API (`VITE_COUNTRIES_API`) and the 4-country fallback are gone. A few long official names
+  are shown in their everyday form (e.g. "Taiwan", "Laos"); every other English spelling is an alias,
+  so names saved earlier still match; an alias two countries share ("Congo") is dropped. Profile and
+  licensing-authority country fields still accept any saved name (no new validation on existing data);
+  emergency numbers are keyed by ISO code.
+- **Emergency numbers** (super admins; every change in an append-only history). Every field
+  (source, verified by, date) is required, so there is no "unverified" state to hide. Numbers over
+  6 months old are flagged "review due" but still shown -- hiding the only number would be worse.
+- **A dedicated help chat page and routes** (`/help/chat/{id}`, `help.*`) instead of the therapy chat
+  page: the user allowed suspended accounts and paused minors to use help, and the therapy chat routes
+  and gates refuse them -- opening those generic routes would be far broader. Messages are still
+  ordinary messages on the help session. **Suspended accounts get text only** (the video routes aren't
+  exempted) -- a narrowing of "suspended accounts may use it", kept small on purpose; revisit in
+  TT-4.4c if needed.
+- `EnsureAccountIsNotSuspended` lets `help.*` routes through, and broadcasting auth only for a
+  `private-help-requests.{id}` channel (whose own rule checks participation).
+- **Help chats out of everything else** with an explicit `withoutHelpChats()` on therapies and sessions
+  (a global scope would break a session's `for` lookups that audio relies on): the person's and
+  counsellor's therapy lists, recent therapies, ward therapies, counsellor counts and clients, the
+  dashboard, the calendar, platform stats and the home stats. The therapy page redirects a help
+  therapy to its chat.
+- Rings, status changes and messages are broadcast immediately (not queued) with ids only; a waiting
+  person also re-checks every 15 seconds in case the socket is down.
+- Help chats close on their own: requests nobody answers expire after 10 minutes, chats end after 60
+  (a sweep every minute).
+- **DevOps review:** every help broadcast goes through `App\Support\HelpBroadcast` -- sent after the
+  database commit, and a broadcasting failure (Reverb down) is reported, never thrown, so asking,
+  answering, sending and the sweep still succeed (a waiting person re-checks every 15 s). The sweep's
+  overlap lock is 5 minutes (not the 24-hour default). Production needs
+  `log_bin_trust_function_creators=1` for the emergency-number history triggers (as for the earlier
+  trigger migrations). Prefer a code-only rollback: rolling the migrations back would drop the help
+  audit trail and un-flag help therapies.
+- **Security, architect and reviewer findings (all fixed here):**
+  - **Help chats are only written through the help actions.** `EnsureTherapyCanProceedAction` (the
+    gate generic messages, sessions, topics and schedule proposals go through) refuses a help chat,
+    except its audio call (video join); `EnsureCanUpdateTherapyAction` refuses editing, ending or
+    deleting one; therapy and content access is the two participants only (an administrator's logged
+    read is unchanged), so a guardian can't see a ward's help chat and it can't be made public.
+    `publicForOutsider` leaves help chats out too. The therapy page and therapy chat page send the two
+    participants to the help chat.
+  - **A counsellor suspended or whose verification is revoked mid-chat** is taken out of it: the chat
+    ends for both (`ended_by` suspension/revoked), their on-call is switched off, and a suspended
+    counsellor can't send.
+  - **Never rung for their ward:** a counsellor who is the person's guardian isn't rung, can't see the
+    summary and can't accept; only a rung counsellor can accept, and a refusal never tells whether a
+    request exists. The counsellor row is locked on accept (one help chat at a time, even for two
+    accepts at once).
+  - Help chats are out of the guardian-loss "open therapies" and the admin "minors without guardian"
+    lists, and out of a counsellor's session counts.
+  - The suspension exemption names each help route (not `help.*`), and the channel pattern is anchored.
+    Accepting and going on call aren't exempt. Audio isn't offered to a suspended account.
+  - Also a per-address limit on asking (10 an hour); sources must be https; a counsellor who comes on
+    call (or reloads) is shown anyone already waiting; rings that arrive while one shows wait their
+    turn; signing out clears the last person's help state; the country picker loads only when used.
+- **Deferred (SCRUM-395):** a platform-wide ring cap and "report this request", web push, task
+  monitoring and a kill switch, retention and admin-read policy (TT-4.4c), small UI items.
+- **Noted:** a help chat counts as a counsellor relationship for the date-of-birth change lock
+  (`EnsureDobChangeIsAllowedAction`) -- deliberately, for safeguarding.
+- **QA (Playwright, two browsers):** all flows passed. Fixed: on a phone the help button is a round
+  button raised above the bottom of the screen (it covered chat message boxes); a minor's chat says
+  audio needs a guardian's consent again; "Ask again" clears the old note and restores the saved
+  anonymity choice; the country picker's search box is named "Country" for screen readers. Noted for
+  product: the 3-an-hour limit counts answered chats too (a refusal always points to the emergency
+  number) -- revisit with SCRUM-395.
+
+## SCRUM-33 (TT-4.4b) — urgent help admin queue and alerts (2026-11-08)
+
+- In the approved plan; built without a new approval round (CLAUDE.md: the next milestone of an
+  approved plan).
+- **Alerts:** at 60 s and 3 min (config), to every administrator not involved, by notification and
+  email with no name or note. Sent by a delayed job dispatched when someone asks, with the every-minute
+  sweep as the backstop; each alert is claimed by a conditional update, so it's never sent twice.
+- **Ring one counsellor:** an administrator rings a counsellor directly; they may accept even if not
+  on call, if they could take it (verified, not suspended, not the person's guardian, not in another
+  help chat). Only the latest pick is kept. It's a ring, never an assignment -- they still accept.
+  "Ring again" rings the counsellors on call (not everyone).
+- **Close:** a new `CLOSED` status, with an optional note; the person is told and shown the number.
+- **Who asked:** shown only on "Show who asked", every look written to the read log (a new
+  `help_request_identity` resource, recorded through `RecordAdminContentReadAction` -- see the review
+  fixes below). The queue rows show the counsellor's short summary (first name or
+  "Anonymous").
+- **Involved administrators** (they asked, their ward asked, they're the counsellor in it or rung) see
+  only that a request exists; no actions, no alerts; excluded from search. Search is by the
+  counsellor's name, never the person's.
+- **Live:** a private `admin.help-requests` channel (ids only) refreshes the queue and every admin
+  page's badge; the Urgent help badge isn't cached (the others are, for a minute).
+- **Help button:** bottom right from small screens up (it covered the admin sidebar at bottom left);
+  still raised at bottom left on phones.
+- **Review fixes (security, architect, reviewer, devops):**
+  - **An administrator who could answer is involved:** besides asking, being the person's guardian, or
+    being the counsellor in it or rung for it, an administrator who is a counsellor *on call* is
+    involved in everything waiting -- so nobody can look at who asked and then answer. Someone who
+    looked can't answer that request later either, and an administrator can't ring their own counsellor
+    profile. (An on-call administrator-counsellor doesn't see the waiting queue; they can switch off
+    call to coordinate.)
+  - **Involved requests aren't shown at all**, nor counted in their badge (a guardian mustn't learn
+    their ward asked -- not even from "you're involved").
+  - "Show who asked" only for requests live or closed in the last day, through the read log's own
+    write path (`RecordAdminContentReadAction`; no therapy context, so always recorded).
+  - One rule for who can take a help chat (`Counsellor::ableToTakeUrgentHelp`, `availableForUrgentHelp`,
+    `mayHelpWith`), and one list of everyone a request is ringing (`ringingFor`: on call + rung
+    directly) -- so a counsellor rung directly has their ring closed on cancel, expiry, accept, close,
+    or when another is rung instead (only the latest pick may answer).
+  - An administrator's close sets who and the note in the same update as the status; a direct ring
+    only while it still waits; "ring again" once every 15 s a request; the second alert only a while
+    after the first, and one alert if both were overdue; a queued alert is dropped if the request is no
+    longer waiting by the time it's sent; an index on `updated_at` for the queue's "last day".
+- **Deferred (added to SCRUM-395):** a per-administrator email cooldown (alerts scale with the number
+  of administrators), a database/mail notice for a counsellor rung directly who hasn't the app open
+  (today the ring is live only; the admin is told so), and monitoring of a queue-job backlog.
+- **QA fixes (Playwright, three browsers -- approved with minor fixes):**
+  - A counsellor with no counsellor name was a blank row in "Ring a counsellor" (and would be blank in
+    the queue's "Rang …" and "with …"): every help screen now uses `Counsellor::getName()` (falls back
+    to the account name), with the user eager-loaded.
+  - The floating "I need help now" button isn't shown on the help chat page: on a phone it sat over the
+    message box, and the chat has its own "Emergency numbers" button opening the same dialog.
+  - Small: the first alert email says "about a minute" (not "1 minutes"); "No counsellor is on call"
+    is a neutral notice, not a success; the queue page doesn't pass shared props on as attributes.
+  - **Deferred (SCRUM-395):** an in-app notification list. The escalation's database notifications are
+    stored but the app has no bell yet, so an administrator learns of an escalation by email, or from
+    the queue badge if the app is open.
+
+## SCRUM-33 (TT-4.4c) — after the help chat: invitation, retention, closeout (2026-11-08)
+
+- **Invitation, not a new therapy (judgment call, within the approved plan).** "The counsellor or an
+  admin can invite the person into a regular therapy" is built as an *invitation only*: two columns on
+  the request (`invited_at`, `invited_by_id`), once per request, and a link that opens the counsellor's
+  profile with the individual-therapy form already open (`CreateTherapyButton :open-individual-form`).
+  The person then starts it through the usual form and assistance request, so payment, a minor's
+  guardian, a suspension and the counsellor's limits apply unchanged, with no second way into a
+  therapy. The architect agreed: a new `RequestTypeEnum` case would duplicate the accept path and tie a
+  counsellor to an anonymous person's identity. Nothing links the resulting therapy to the help chat,
+  so the chat is never copied and the counsellor learns who it is only if the person chooses (this
+  also means conversion can't be measured).
+- **Who and when.**
+  - The counsellor who was in the chat can invite from the chat page, at any time until its messages
+    are deleted.
+  - An administrator who isn't involved can invite from the queue, which lists ended chats for a day,
+    so administrators have a one-day window. That's deliberate: the counsellor is the main route, and
+    the administrator path is for when the counsellor asks them to.
+  - Only after an ended chat that took place.
+  - Not while the counsellor is unverified, suspended (counsellor or account) or deleted.
+  - Not while a report about the chat is open (security review).
+  - The two paths are separate. The counsellor's route answers 404 for anyone else, administrators
+    included.
+- **Wording (security review).** An administrator's invitation reads as our team's *suggestion*
+  ("You could continue with …"), never as the counsellor inviting. The person's invitation is hidden
+  once that counsellor can't take clients.
+- **Where the person sees it.** On the help chat page and by email, plus a database notification. There
+  is no notification list yet (SCRUM-395, item 9), so someone without a verified email only sees it on
+  the chat page. Accepted for now.
+- **Retention: one year (the user's decision).**
+  - **Deleted for good:** the chat's messages, the counsellor's message and session notes on it
+    (including ones already soft-deleted; reviewer and security review), the person's note, and an
+    administrator's close note (part of the content, by the user's decision).
+  - **Kept:** the request row, as the record. The help Therapy and Session rows also stay, without
+    content (existing TT-4.4a modelling).
+  - **Held back:** a chat with an open or under-review report (on its therapy, session or one of its
+    messages) is kept until the report is resolved. A report reopened after its chat was pruned has no
+    messages to look at; accepted.
+  - **Schedule:** daily at 01:45, logged, failure-logged, with a 60-minute lock.
+  - **Safety:** a retention setting that is missing a number or under 30 days skips the run with an
+    error, so a typo can never shorten the year (devops review).
+- **Anonymisation** clears the notes on a closed account's help requests. The note's text also opens the
+  chat as its first message. That message follows the chat's own one-year retention, like every other
+  message a closed account sent, which stays as from "Deleted user" (security review, noted rather than
+  changed).
+- **Administrators reading a help chat's messages** keep the existing recorded path (SCRUM-395, item 4:
+  confirmed rather than limited to super administrators). An administrator *involved* in the request
+  (they asked, are the person's guardian, or are the counsellor in it) is now refused there too
+  (security review). /privacy says so.
+- **Smaller fixes:**
+  - The on-call badge lapses on its own.
+  - A connected request without a session row still ends after `accepted_at` plus the chat length.
+  - SCRUM-395, item 5: done.
+- **QA fixes (Playwright, four browsers; approved with minor fixes):**
+  - The admin queue's "last day" now goes by when a request *ended*, not when it was last updated, so
+    an invitation or the retention sweep no longer brings an old request back into it.
+  - An administrator's invitation is confirmed first, since it emails the person and can't be taken
+    back.
+  - The person's invitation is hidden once they've asked that counsellor for a therapy (a pending
+    request, or a therapy with them).
+  - A chat whose messages were deleted no longer says "You can read it here".
+
+## SCRUM-32 — counsellor safety flag: plan approved (2026-11-08)
+
+- **Approved by the user** after product-owner, project-manager and architect passes. It ships as three PRs in
+  order:
+  - **TT-4.3a (13):** the flag, alerts, the admin list, acknowledge and reassign, and logged views.
+  - **TT-4.3b (8):** handling, re-alerts and withdrawal.
+  - **TT-4.3c (8):** notices and closeout.
+
+  About 29 points in total, revised from 26.
+- **The user's answers (2026-11-08):**
+  - **Notices** to the client and to a minor's guardians are **held for the handling administrator**. Once
+    acknowledged they're sent, unless the administrator holds them for a recorded safety reason. If nobody
+    acknowledges by the re-alert time, they're sent automatically.
+  - **Release gate:** the feature sits behind an **off-by-default switch** (`SAFETY_FLAGS_ENABLED`) that hides
+    its routes, menu item and alerts. Other work can still be promoted while the Ghana Act 846/843 legal read
+    is pending.
+  - **"In-app"** means a **persistent, dismissable notice** at the top of the app plus a stored notification.
+    It isn't a notification list (that stays SCRUM-395 item 9).
+- **Defaults the user accepted with the plan:**
+  - **Suspended counsellors:** one whose whole account is suspended can't flag (they can't reach a therapy
+    page) and contacts support instead. A suspension of only the counsellor role doesn't stop flagging.
+  - **Re-alert:** super administrators are re-alerted once, at 1h / 4h / 24h by urgency. When nobody who
+    isn't involved can be told, the alert goes to a configured fallback mailbox and is logged as critical.
+  - **Held notices:** a held client notice must be sent, or withheld with a recorded reason, when the flag is
+    resolved.
+  - **Notice channels:** guardians are told in-app and by email (imminent and urgent). The client is told
+    in-app only.
+  - **When a flag can be raised:** up to 14 days after a therapy or help chat ended. A member who has left a
+    group can be flagged.
+  - **Who sees what:**
+    - Co-counsellors in a group see that a flag exists and its status, never the reason.
+    - The flagging counsellor sees "resolved", not the outcome.
+  - **Retention:**
+    - Flags are kept indefinitely. On account closure their free text is cleared, as for safeguarding
+      exceptions.
+    - An open flag keeps a help chat's messages past its one-year deletion.
+  - **Label and outcomes:** the label is "Safety flag: recommend specialist or inpatient care", not
+    "institutionalisation", and it lives in one place so a legal rename is cheap. The outcome list:
+    - referred to specialist or inpatient care
+    - emergency services attended
+    - safety plan, therapy continues
+    - client declined
+    - couldn't reach the client
+    - not warranted
+    - other
+- **Design (architect):**
+  - **Data:** a `SafetyFlag` morph model (a Therapy or a GroupTherapy; a help chat is a Therapy) and an
+    append-only `safety_flag_events` table with triggers, like the emergency-number history. Flags can't be
+    deleted, which is also enforced by a trigger. Reason, notes and hold reasons are encrypted.
+  - **One open flag per client per therapy:** an app-maintained unique `open_client_key`, the same pattern as
+    `help_requests.active_user_id`.
+  - **Shared rules, extracted first with no behaviour change:**
+    - the therapy-involvement rule, moved out of `Report::involves`;
+    - group member keys, moved out of `GetPausedGroupMembersAction`;
+    - the best-effort broadcast, moved out of `HelpBroadcast`;
+    - "notify the administrators who aren't involved".
+  - **Escalation:** the help chat's pattern is copied (claim with a conditional update; a delayed job plus a
+    sweep). It is deliberately not made into a generic engine.
+  - **Gates:** the flag actions never call `EnsureTherapyCanProceedAction`. (The architect proposed listing each
+    flag route in the suspension allowlist. The user's later default replaced that: a counsellor whose whole
+    account is suspended can't flag, so the flag routes are *not* allowlisted. See TT-4.3a below.)
+  - **Privacy:**
+    - The counsellor's status comes from its own endpoint, so nothing the client receives changes.
+    - The admin channel's ping carries no id.
+    - The admin list has no search by person.
+
+## SCRUM-32 (TT-4.3a) — raising a safety flag and alerting: implementation decisions (2026-11-08)
+
+- **Shared rules extracted first, with no change in behaviour:**
+  - `TherapyTrait::involvesInOversight`: the therapy part of `Report::involves`. Reports and safety
+    flags now use the same rule.
+  - `App\Support\GroupMemberKeys`, extracted from `GetPausedGroupMembersAction`. It now also covers
+    former members.
+  - `App\Support\BestEffortBroadcast`, extracted from `HelpBroadcast`.
+  - `NotifyUninvolvedAdminsAction`, which logs as critical when nobody can be told.
+  - `EmergencyNumbersPanel.vue`, extracted from the help dialog.
+- **The off switch** is a `safety_flags` route middleware that returns a plain 404. It also hides the
+  menu item, the badge key and the counsellor's UI (`features.safetyFlags`).
+- **"Ended in the last 14 days":**
+  - A help chat uses the request's `ended_at`.
+  - A therapy or group has no end time of its own, so `updated_at` stands in for when it ended
+    (`EndTherapyAction` writes it).
+- **"Already flagged" (409)** tells a second counsellor of the same therapy that an open flag exists.
+  That matches the default the user accepted, "co-counsellors see that a flag exists, never the
+  reason".
+- **Privacy:**
+  - The admin channel's ping carries no id.
+  - The list has no search by person.
+  - Notifications and emails carry only the urgency and a link.
+  - `SafetyFlag` hides the client id and every free-text field from serialisation.
+  - The reason must be at least 10 characters.
+- **Seeding:** the demo flags are written straight to the tables, so seeding doesn't email every
+  administrator.
+- **Review fixes (reviewer, security, architect, devops; no blocker but Pint):**
+  - **The live ping goes only to administrators who aren't involved,** on each one's own `users.{id}`
+    channel, and never carries an id (security review). A ping to every administrator, followed by no
+    change, would have told an involved one that something happened. The shared `admin.safety-flags`
+    channel was dropped.
+  - **Flags have a public ULID** (`public_id`). Pages, routes and notifications use it instead of the
+    sequential id, whose gaps would show an involved administrator that a flag exists.
+  - **The read log** names "A safety flag" with no id, and offers no filter by it.
+  - **Reassign:** the picker lists every administrator whose account isn't suspended. Leaving out the
+    involved ones would name them. Refusing one gives the same answer as any other failure. **Accepted
+    residual risk:** a super administrator could still learn who is involved by trying to hand the flag
+    to them. Each attempt that works really moves the flag and is recorded.
+  - **Former members** are told apart without a name ("Former member, left Mar 2026", numbered when two
+    match). A flag on the wrong person is a harm of its own.
+  - **"Can I flag here?" is one rule:**
+    - `EnsureCanFlagClientAction::forGroupCounsellor`, used by the member list and the flag.
+    - `canRaiseSafetyFlag` on the therapy, group and help chat resources, only for their counsellors, so
+      a button is never offered and then refused after the counsellor has typed a crisis.
+  - **A flag that fails for an unexpected reason** is reported, never silent.
+    `NotifyUninvolvedAdminsAction` is wrapped whole in `rescue`.
+  - **Help escalation now uses `NotifyUninvolvedAdminsAction` too,** so it also logs as critical when
+    there's nobody to tell.
+  - **Data:**
+    - Notice states are an enum (`SafetyFlagNoticeStateEnum`).
+    - One snapshot rule, `SafetyFlag::snapshotFor`, serves the action and the seeder. The seeded group
+      flag records its membership.
+    - `reason` is nullable, for account anonymisation (TT-4.3c).
+    - `SafetyFlag` serialises only its public id, status, urgency, kind and created time.
+  - **Performance:** the list and the badge load what the involvement check reads with the flags,
+    instead of once per row. Closed flags list newest first.
+  - **Off-switch hygiene:**
+    - The test configuration pins `SAFETY_FLAGS_ENABLED=false`, so Docker and CI agree.
+    - A queued alert isn't sent once the feature is off.
+    - The admin layout only listens while it's on.
+- **Decided for later PRs:**
+  - **TT-4.3b:** note text goes somewhere it can be cleared on account anonymisation (a clearable column
+    or table that the append-only events refer to), never only in the events. Unless the user says
+    otherwise, that's how the "free text cleared on closure" default holds.
+  - **Follow-up:** a real `ended_at` on therapies and groups. Today `updated_at` stands in for when one
+    ended, and a later write moves the 14-day window.
+- **Operations (devops review):**
+  - **Don't switch the feature on in production before TT-4.3b** (re-alerts and the fallback mailbox).
+    Until then, alerts rely on the queue worker alone.
+  - **The encrypted, append-only history needs its key for as long as it's kept.** An old `APP_KEY` must
+    stay in `APP_PREVIOUS_KEYS`, and a backup is useless without its key.
+  - **Never `migrate:rollback` this migration in testing or production:** it drops the safety record.
+    Turning it off is `SAFETY_FLAGS_ENABLED=false` plus `queue:restart`, after handing any open flags
+    over.
+
+- **QA (Playwright, five browsers): approved.** Fixed: after handing a flag on, "Hand to" is cleared (it
+  kept the new handler, so a second click was refused). The reason's hint now says "10 characters or more".
+
+## SCRUM-32 (TT-4.3b) — handling, re-alerts and withdrawal: implementation decisions (2026-11-08)
+
+- **Notes and actions live in `safety_flag_notes`,** not in the append-only events. Each event points
+  at a note by id. The text is encrypted and can be cleared on account anonymisation (TT-4.3c), which
+  is the architect's TT-4.3a should-fix. The outcome note and the withdrawal reason are encrypted
+  columns on the flag.
+- **Who sees what:**
+  - **The handling administrator only:** notes, action details, the withdrawal reason and the outcome
+    note. These come with **Show the reason**, under the same logged read (`safety_flag_reason`).
+  - **Every administrator who isn't involved:** the outcome's category and the history (what happened
+    and when, never what was written). The counsellor is never named there.
+  - **Counsellors:** the status only, never the outcome. That follows the user's defaults: the flagging
+    counsellor sees "resolved", and co-counsellors see that a flag exists and its status.
+- **Resolving** works on acknowledged flags and on ones withdrawn after an administrator took them. It
+  is done by the handler only, in one conditional update that also frees `open_client_key`.
+- **Withdrawing:**
+  - Only the counsellor who raised the flag can withdraw it, while it's open or acknowledged. Anyone
+    else gets a 404.
+  - It frees the key and stops the re-alert.
+  - **Who is told:** the handler (if not involved), or, if nobody had acknowledged it, the
+    administrators who were alerted. Either way it's notified without content.
+- **Re-alert (the user's default):**
+  - **Once,** at 1h, 4h or 24h by urgency, to the super administrators who aren't involved.
+  - **How:** a delayed job dispatched on raise, plus a sweep every five minutes. Both claim the
+    re-alert with a conditional update on `realerted_at`.
+  - **Bad settings:** `SafetyFlag::realertMinutes` falls back to the default and logs an error.
+- **Fallback mailbox:** `NotifyUninvolvedAdminsAction` takes a fallback address, so the help escalation
+  could use it too. When nobody can be told, it emails `SAFETY_FALLBACK_MAILBOX` on demand. The safety
+  notifications accept an address as well as an account. The history records it.
+- **Review fixes (reviewer, security, architect, devops). Blockers were Pint and the "Add note" / "Record" buttons:**
+  - **The buttons** didn't submit their forms (`SecondaryButton` defaults to `type="button"`). Fixed.
+  - **No false "fallback mailbox alerted" in the append-only history.** `NotifyUninvolvedAdminsAction`
+    now returns what really happened (told N, fell back, or failed; `AdminNotifyResult`).
+    `SafetyFlag::alertUninvolved` records a fallback only when it went out. `REALERTED` is recorded
+    only when someone was told.
+  - **A re-alert is never silently lost.** If sending fails, the claim on `realerted_at` is released, so
+    the next sweep tries again. The delayed job is pushed inside its `rescue` (a `PendingDispatch` would
+    push after it returned).
+  - **One "still needs someone" rule** (`SafetyFlag::scopeWhereUnresolved` / `isBeingHandled`): open,
+    acknowledged, or withdrawn after someone took it on.
+    - The default admin list uses it.
+    - Notes, actions, resolving and handing on accept a flag withdrawn after acknowledgement.
+    - TT-4.3c's help-chat hold will use it, not "open" alone.
+  - **Adding a note or action no longer reads (and logs) the reason** on the handler's behalf. The
+    endpoints return the new note, which is shown only if the reason is already open.
+  - **Withdrawal notices are worded for who is told:**
+    - the handler;
+    - the alerted administrators, if nobody had acknowledged it;
+    - or, if the handler can't act on it any more (gone, no longer an administrator, or now involved),
+      the super administrators, to hand it on.
+  - **`safety_flag_notes` has triggers like its sibling tables:** never deleted, and the only change
+    allowed is clearing `content`.
+  - **One place for each rule:**
+    - who counsels where (`EnsureCanFlagClientAction::isTherapyCounsellor` / `isGroupCounsellor` /
+      `answeredHelpChat`, which the statuses reuse without the time window);
+    - the fallback mailbox (`SafetyFlag::fallbackMailbox`, validated as an address);
+    - the encrypted value for query updates (`SafetyFlag::encryptedValue`);
+    - counsellor-facing status labels (`SafetyFlagStatusEnum::counsellorLabel`).
+  - **A missing or invalid fallback mailbox while the feature is on** is logged as critical once a day by
+    the sweep.
+  - **Small fixes:** an anonymised client shows as anonymous in the statuses, status endpoints report
+    500s, and a flag from a previous counsellor reads "by another counsellor".
+- **Deferred:**
+  - **Monitoring and paging (devops):** paging on critical logs, `failed_jobs`, and a stopped queue
+    worker. Before the feature goes live, external alerting must watch `/health/scheduler`, critical
+    log lines and `failed_jobs`. The queue container runs both the delayed job and the sweep.
+  - **The re-alert failure path** (claim released when sending fails) has no automated test:
+    `Action::new()` isn't container-resolved, so it can't be faked. It was checked by reading the
+    code.
+- **For TT-4.3c (to settle there):** what happens to pending client and guardian notices when a flag is
+  withdrawn. Before acknowledgement, the re-alert never fires for a withdrawn flag, so its notices would
+  never go out automatically. After acknowledgement, the handler decides.
+- **QA (Playwright, five browsers): approved.** Fixed the spacing in the handler's notes list, and the
+  seeded flags' times, which now run raised → acknowledged → withdrawn or resolved in order. The QA
+  confirmed: adding a note writes no read-log entry, a flag withdrawn after acknowledgement stays in the
+  handler's list, the withdrawal email carries no reason, and re-alerts reach only uninvolved super
+  administrators.
+
+
+## SCRUM-32 (TT-4.3c) — the client's and guardians' notices: the user's answers (2026-11-08)
+
+- **After an administrator acknowledges a flag,** the handler chooses: **send the notices now, or hold
+  them** for a recorded safety reason. If they do neither, the notices go out automatically at the
+  flag's re-alert time after acknowledgement (1h / 4h / 24h by urgency). Before anyone acknowledges,
+  they go out automatically at the re-alert time after the flag was raised, as already decided.
+- **When the counsellor withdraws a flag:**
+  - **Before anyone acknowledged it:** its unsent notices are cancelled and never sent.
+  - **After acknowledgement:** the notices stay pending, and the handler still decides (send, or
+    withhold with a reason) before resolving.
+- **Implementation (TT-4.3c):**
+  - **One send path** (`SendSafetyFlagNoticeAction`) for the handler, the sweep and the guardians:
+    - it claims the notice (pending or held → sent) with a conditional update, and releases it if
+      sending fails;
+    - the guardians are the person's active guardians at sending time (none: recorded as sent to 0);
+    - the history records who sent it, or that it went automatically.
+  - **Automatic sending** happens only for flags that are open (from raising) or acknowledged (from
+    acknowledging). A held notice, or one on a flag withdrawn after acknowledgement, waits for the
+    handler.
+  - **The client's notice is a database notification** shown by a persistent dialog at the app root
+    (`SafetyNotice.vue`, through `GetSafetyNoticeAction`). It returns a fixed projection (id, kind,
+    message), never the notification row, so the WardRef stays on the server.
+  - **The guardians' notice** is a database notification plus an email naming only the ward. Its
+    `wardName` is renamed on anonymisation, like the other notices that name a person.
+  - **A counsellor's safeguarding reason** puts the guardians' notice in "held". The history and
+    **Show the reason** say whose reason it is.
+  - **Anonymisation** clears `SafetyFlag::FREE_TEXT` and the notes' content (the trigger allows exactly
+    that).
+  - **The help-chat prune** keeps a chat while `HelpRequest::hasUnresolvedSafetyFlag()` is true, using
+    the same "unresolved" rule as the admin list.
+- **Review fixes (reviewer, security, architect, devops; blockers: the sweep race and Pint):**
+  - **The sweep can no longer send a notice the handler has just held,** or one on a flag withdrawn a
+    moment before (found by three reviewers). The claim checks the state, the flag's status and the due
+    time in the same UPDATE (`SafetyFlag::scopeWhereNoticesDue`, the one rule shared with
+    `noticesDueAt`):
+    - automatic sends claim `pending` only;
+    - the handler claims `held` or `pending`.
+
+    A failed queueing releases the claim to the state actually claimed, and only if it's still `sent`.
+    After some recipients it stays sent (at least once; a guardian may get a second copy).
+  - **Every hold or withhold reason is its own encrypted note** (`NOTICE_P` / `NOTICE_G`) with its
+    author, and its event points at it.
+    - Nothing overwrites another reason, so the counsellor's safeguarding reason is kept even after the
+      handler sends or withholds.
+    - The counsellor's hold is in the history as "by the counsellor", never their name. Who an event
+      shows as is one rule, `SafetyFlagEvent::shownBy()`.
+    - The old reason columns are no longer written (they stay in `FREE_TEXT`).
+  - **"Sent" means someone was told.** A new `NO_RECIPIENT` state covers a closed account, a person who
+    has turned 18 since (re-checked at sending time, security review), or no active guardian. A guardian
+    notice also checks, at delivery, that the ward hasn't been closed meanwhile.
+  - **Closing the person's account cancels their waiting notices.**
+  - **The person's notice:**
+    - Escape or a click outside only puts it aside; only "I've read this" dismisses it.
+    - It is checked again on every page visit, since it sits outside the Inertia page.
+    - It reads through the user's guarded notifications.
+    - Its wording lives on the notification classes, one place for the legal read.
+  - **Failed-job alerts** never name a safety notification or show its error (which could carry a
+    guardian's address); those details stay in the server log.
+  - **Smaller:**
+    - a waiting notice on a flag withdrawn after acknowledgement reads "Waiting for the handling
+      administrator to decide";
+    - the sweep broadcasts only when something went, and one flag failing doesn't stop the rest;
+    - buttons are disabled while a decision is sent;
+    - the seeded history matches the seeded notices.
+- **Decided and recorded:**
+  - **Handing a flag on doesn't restart the notices' clock.** The notices are about the person, not the
+    administrator, and the new handler can hold them.
+  - **For SCRUM-395 (the notification list):** "dismissed" is `read_at`. The list must never mark these
+    two notice types read on its own; it shows them through each class's `message()`.
+  - **For the legal read:** /privacy says a guardian "may be asked to check in" when a counsellor raises a
+    safety concern. A guardian who reads that can infer the minor saw a counsellor (security review). The
+    wording is part of the legal read.
+- **Playwright closeout (seven browser contexts): conditionally approved, conditions now fixed.**
+  - Every administrator who sees a flag now sees where its notices stand (no reasons), not only its
+    handler. "Cancelled", "Sent" and "Withheld" were hidden on rows nobody was handling.
+  - /privacy's help-chat retention line now says an unresolved safety concern also keeps the chat.
+  - **Smaller:**
+    - hold and withhold reasons are told apart ("Why the notice … was held / withheld");
+    - a decision's reason appears in the open panel straight away;
+    - the history reads "Unsent notices cancelled";
+    - the notice is fetched once on page load.
+  - Confirmed in the browser:
+    - the one-open-flag rule;
+    - the resolve gate;
+    - the counsellor masked in the history;
+    - the neutral, in-app-only notice to the person, which comes back after Escape until it's read;
+    - the guardian's dialog and email naming only the ward;
+    - notices cancelled on an early withdrawal.
+
+## SCRUM-39 — in-app notification center: plan approved (2026-11-08)
+
+- **Approved by the user** after product-owner, project-manager and architect passes. It ships as four
+  PRs, about 24 points (revised from 5):
+  - **TT-5.4a:** the backend.
+  - **TT-5.4b:** wording for the classes that store only ids.
+  - **TT-5.4c:** the bell.
+  - **TT-5.4d:** pruning.
+
+  TT-5.4a goes first; b, c and d can follow in parallel. The bell isn't promoted past `develop` before
+  TT-5.4b. It covers SCRUM-395 item 9.
+- **The user's answers:**
+  - **One list** of the person's and their counsellor profile's notifications, the latter labelled "As
+    counsellor".
+  - **Classes that store only ids** get fixed wording plus a link, with no live look-ups.
+  - **Marking read:** a notification can be marked read on its own and is marked read when it is clicked,
+    except the two safety notices, which only their dialog dismisses.
+  - **Pruning:** a default period set by an environment variable, which each user can override in their
+    own settings (TT-5.4d).
+- **Defaults accepted with the plan:**
+  - every database type is shown, except admin-only types for non-administrators and safety types while
+    safety flags are off;
+  - suspended accounts don't get the list;
+  - per-event email or in-app preferences stay in TT-5.5 (SCRUM-40);
+  - a reason already emailed to the person (a revoked verification, a rejected schedule proposal) may
+    show in the list;
+  - the live ping goes only to the person's own `users.{id}` channel;
+  - a dropdown with "Show more", and no separate page.
+- **Design (architect):**
+  - **Display:** each notification class implements `ShownInNotificationCenter::present(array $data)`,
+    which returns a `NotificationEntry` built from saved data and fixed text only. The safety notices
+    reuse their `message()`.
+  - **The rules live in `App\Support\NotificationCenter`:** admin-only, safety-gated, never marked by the
+    list. `GetSafetyNoticeAction` shares the last list.
+  - **Reading:** one query through `App\Models\DatabaseNotification` over both owners, with hidden types
+    filtered in SQL, ordered by `created_at` and `id` with a cursor.
+  - **Index:** `(notifiable_type, notifiable_id, read_at)` for the count.
+  - **Live updates:** a `NotificationSent` listener sends a content-free `notifications.changed` on
+    `users.{owner}` through `BestEffortBroadcast`.
+
+## SCRUM-39 (TT-5.4a) — notification center backend: implementation decisions (2026-11-08)
+
+- **Endpoints:** `GET /notifications` (cursor, 15 a page), `GET /notifications/count`,
+  `POST /notifications/{uuid}/read` and `POST /notifications/read-all`, all JSON and each with its own
+  throttle. A suspended account gets 403 from the global middleware.
+- **Cursor:** a cursor that wasn't made by this list (garbage or tampered with) falls back to the first page
+  instead of a 500 (security review). The paginator's own cursor parameter isn't named `cursor`, so Laravel
+  never reads the raw query string itself.
+- **Admin-only types are marked on the class:** `SentOnlyToAdministrators` /
+  `SentOnlyToSuperAdministrators`, and a test keeps `NotificationCenter::ADMIN_ONLY` / `SUPER_ADMIN_ONLY`
+  equal to the marked classes. Super-admin-only types (re-alert, appeal submitted, safeguarding exception
+  requested and ending soon) are hidden from an administrator who isn't a super administrator now
+  (security review). The raised and withdrawn alerts go to every uninvolved administrator, so they are
+  admin-only, not super-only.
+- **Safety notice types are defined once:** in `GetSafetyNoticeAction::TYPES`. The center's
+  `NEVER_MARKED_BY_LIST` and `SAFETY_GATED` reuse that list.
+- **Wording never points to an email:** someone with an unverified address gets the database notification
+  only, so the in-app text says what the email says, briefly (reviewer). That includes:
+  - a revoked verification's reason;
+  - an appeal's outcome;
+  - for a suspension, "on your suspension page".
+
+  A paused group member reads "participation is paused", not "therapy is paused".
+- **Links:** counsellor verification items link to the counsellor dashboard, which has the re-verify card. They
+  don't link to the profile, because `present()` only gets the saved data and the profile's id isn't in
+  it. A wrong route name in a link is reported to the log instead of silently dropped.
+- **Unworded types** log a warning once per type per process, not on every row of every list load.
+- **Index:** `(notifiable_type, notifiable_id, read_at)`. It makes the `morphs()` index redundant, but that
+  one is kept for a trivial rollback and can be dropped later (devops review). It is online DDL on
+  MySQL 8.
+- **Deferred:** a closed counsellor's name stays in clients' `counsellorName` notices, which are not
+  anonymised. Ticketed as **SCRUM-396**. The bell must render the text with `{{ }}`, never `v-html` (for
+  TT-5.4c).
+
+## SCRUM-394 — SCRUM-392 review follow-ups (2026-11-08)
+
+- **One name for a group's member count:** `membersCount`, as the full and preview resources already
+  used. The mini resource and its Vue readers follow.
+- **Focus in dialogs** (`useFocusTrap`, used by `Modal` and `MiniModal`):
+  - Tab and Shift+Tab stay inside the open dialog, including after a click on its text.
+  - Focus moves in when it opens and returns to the opener when it closes.
+  - Only the dialog on top traps focus and closes on Escape. Before, one Escape closed every open dialog.
+  - Content a dialog teleports elsewhere, such as a toast, counts as outside it. This is documented.
+- **A hard daily cap on offers to help:**
+  - The counsellor's row is locked first in the transaction, before any plain read. Under REPEATABLE READ
+    a read first would fix the snapshot, and the count could miss an offer committed meanwhile (review).
+  - On the group path the counsellor lock comes straight after the group lock, the accept path's order.
+  - On the therapy path the "already pending" check now runs inside the same transaction too, which
+    closes a double-submit race.
+  - Refusals are logged.
+
+## SCRUM-39 (TT-5.4b) — wording for the id-only notifications (2026-11-08)
+
+- **Every database notification is now worded** (41 more classes), and the pending list is gone. The guard
+  test fails for any new database class without `present()`.
+- **Fixed text from saved ids only:** there are no look-ups, and nothing says more than the email.
+  - **Links:** only where a saved id maps to a page the recipient can open. For example, discussion links go
+    only to participants. A discussion invitation has no link to the chat, because the invitee would get a
+    403; it links home, like the guardianship request.
+  - **No link:** refunds, report outcomes, a declined group request and a deleted discussion.
+- **Saving one more id from now on, so new rows can link** (old rows simply have no link):
+  - `Session*` notifications and `GuardianVideoConsentReminder` now save `TherapyLink::ids()` of the
+    session's therapy or group;
+  - `DiscussionInclusion` now saves `discussion_id`.
+- **`TherapyCreatedNotification` now saves `TherapyLink::ids()`:**
+  - **Why:** it is sent for group therapies too, and its `therapy_id` held the group's id.
+  - **Old rows** can't be told apart, so they get no link rather than a possibly wrong one.
+  - **The email** linked groups to a therapy URL; it now uses `TherapyLink::to()`.
+  - **Readers:** no other code read the old key, it has no broadcast channel, and it isn't in the
+    anonymisation list.
+- **`TherapyAssistanceRequestAcceptedNotification` now saves a `kind`** (`offer`, `invite`, `assist` or
+  `help`), the email's four wordings. Old rows get wording that's true for all four.
+- **Crisis line:** client notices whose email ends with the crisis-line sentence carry it in the center too
+  (security review): counsellor unavailable, therapy paused, can continue, and will be paused soon.
+- **Report outcome:** the email and the center share one wording (`ReportClosedNotification::summaryFor`).
+- **Declined session time:** the reason is shown, as the email shows it, capped at 300 characters.
+  - **Gap:** it isn't cleared when the writer's account is anonymised. That is added to **SCRUM-396**.
+  - **For TT-5.4c:** render `message` as text (`{{ }}`), never `v-html`.
+
+## SCRUM-39 (TT-5.4c) — the notification bell (2026-11-08)
+
+- **Where:** in `AuthenticatedLayout`'s nav at every size, so admins get it too (AdminLayout sits inside it).
+  - `NotificationBell.vue` holds the panel; `useNotifications.js` is the one shared state, like
+    `useAdminBadges`.
+  - The count comes from its own route, throttled to one fetch per 15s per page visit and refreshed
+    straight away on the `notifications.changed` ping.
+- **One person's state only:** `forUser()` clears everything when the signed-in user changes (reviews,
+  security: logging out and in are Inertia visits, so the module survives them).
+  - The list always loads from empty, never showing an earlier list while loading.
+  - Every list response carries a generation; stale ones (an old "Show more", an earlier refresh) are dropped.
+- **Live refresh never collapses the list:** a ping while the panel is open merges the newest page into what
+  is shown, keeping older pages and the scroll position (review, QA).
+- **Focus:**
+  - Escape is handled on the document, wherever focus is (QA).
+  - When a control removes itself, focus moves on: a mark-one check goes to its item, "Mark all" to the
+    heading, and "Show more" to the first item it loaded.
+  - "Show more" uses `aria-disabled` while loading.
+- **Safety notices:**
+  - **Unread:** opens the existing dialog (state moved into `useSafetyNotice.js`), and focus returns to the
+    bell when it closes.
+  - **Dismissed:** kept in the list by its neutral title only, with no message and nothing to open (security
+    review: a guardian's notice names their ward). `NotificationCenter::present()` blanks the message.
+  - Dismissing now also pings the person's other pages.
+- **Links** are followed only when they point to this site (defence in depth; they are built server-side).
+- **Phones:** below `sm` the panel is fixed under the nav and closes when the page scrolls.
+- **Removed:** the two `console.log` calls in `AuthenticatedLayout`, which printed broadcast notification
+  payloads.
+- **Seed data:** `NotificationCenterSeeder` (see `seeded-data.md`), idempotent through a marker key in the
+  data. The center never shows that key.
+- **Deferred:** `trustHosts` / forced root URL in production is **SCRUM-397**. The old `'broadcast'`-channel
+  toasts for session or discussion due/status still run alongside the bell; that is existing behaviour, left
+  as is.
+
+## SCRUM-39 (TT-5.4d) — notification pruning (2026-11-08)
+
+- **The user's decision:** a default set by an environment variable, which each person can override in their
+  profile.
+- **Defaults (mine):**
+  - `NOTIFICATIONS_RETENTION_DAYS` is 90.
+  - The options are 30, 90 and 180 days and 1 year, plus "the default".
+  - The minimum is 7: a number under it, or a value that isn't a number, skips the run and logs an error.
+    An empty value or 0 means 90.
+  - Choosing the default's own number keeps it even if the default changes, and the profile says so.
+- **What's deleted:** everything older than the owner's period, read or unread.
+  - **Never deleted:** an unread safety notice (`NotificationCenter::NEVER_MARKED_BY_LIST`).
+  - **Admin alerts:** unread admin-only alerts (safety flag, help waiting, appeal submitted) are pruned
+    like the rest. Their own records (`SafetyFlag`, `HelpRequest`, the appeal) are the source of truth,
+    not the notification (security review).
+- **Who follows which period:**
+  - A counsellor profile's notifications follow its owner's choice.
+  - Soft-deleted owners are included.
+  - Notifications whose owner row is gone for good (a counsellor profile purged after its grace period;
+    morph relations don't cascade) follow the default, so the /privacy promise holds (reviews).
+- **Storage:** a nullable `users.notification_retention_days` column, not `users.settings`, so the prune
+  groups people in SQL.
+- **The run:** one pass per period in use, with users and counsellor profiles in separate passes so each
+  uses its index. It deletes the oldest first, in batches of 1000 by id, on a new `notifications.created_at`
+  index (devops review: without it each batch scanned the table). It runs daily at 02:30 with an
+  `onFailure` log, and logs `Notifications pruned.` with counts.
+- **Closing an account** now also deletes the counsellor profile's notifications (`AnonymiseClosedAccountAction`,
+  security review). Before, only the user's own were deleted.
+- **One reading of the default** (`PruneNotificationsAction::defaultDays()`): the job, the profile and
+  /privacy all use it. An unusable value shows no number anywhere; /privacy then leaves the line out.
+- **Suspended accounts** can't change the setting: it is on the profile page, which they can't open
+  either. Their last choice, or the default, keeps applying.
+- **Wording:** /privacy and the profile name the kept message precisely, as the "check in" support
+  message. /privacy also says counsellor profiles follow the owner and that closing an account deletes
+  notifications.
+- **Deployment:** the first night deletes everything older than 90 days, permanently. See the deployment
+  notes in `documentation/features/scrum-39d-notification-pruning.md` (size it with a count; back up first
+  if it must be recoverable; optionally start higher and step down).
+
+## SCRUM-395 — urgent help safeguards (2026-11-09)
+
+- **Scope (the user's decision):** the safeguards and fixes in one PR.
+  - **Split out:** "report this request" is **SCRUM-398**, and web push is **SCRUM-399**.
+  - **Already done earlier:**
+    - help-chat retention and admin reads (TT-4.4b/c);
+    - anonymising `help_requests.note`;
+    - the "Available" badge clearing on its own;
+    - ending a connected request whose session row is missing (TT-4.4c).
+- **Limits (the user's decision):**
+  - At most 30 requests ring counsellors per minute, platform-wide (`HELP_RINGS_PER_MINUTE`). Past that,
+    the request is still made and shown to administrators, who are alerted as usual and can "Ring again"
+    (not capped). Only the automatic ring is skipped, with a warning logged.
+  - An account under 24 hours old (`HELP_NEW_ACCOUNT_HOURS`) or without a verified email may ask once an
+    hour (`HELP_NEW_ACCOUNT_REQUESTS_PER_HOUR`); others 3 times; the strictest limit that applies wins
+    (a suspended account's 1 included). The per-address limit stays as it was.
+- **Kill switch:** `HELP_ENABLED`, on by default. Off, starting a new request gets a 503 whose message points
+  to the emergency number, and the dialog still leads with the numbers. A request already made, waiting or
+  connected, carries on, and the person still gets theirs back.
+- **Monitoring:**
+  - `sweep-help-requests` logs on failure.
+  - The scheduler health endpoint is also 503 when a request has waited past its expiry plus two
+    minutes. It reports only yes or no, never which request.
+- **Tests:** the existing help tests use fresh accounts, so they raise the new-account limit to the usual
+  one. `HelpSafeguardsTest` covers it on its own.
+- **After the reviews (the user's decisions, 2026-11-09):**
+  - **Username-only accounts** have nothing to verify, so they are "new" only by age: the first 24 hours.
+    The unverified-email rule applies only to accounts with an email.
+  - **Two ring buckets of 30 a minute:** established, verified accounts in one, and new or unverified ones in
+    the other. A flood of throwaway accounts then can't stop established ones being rung.
+    - A request whose ring is skipped is marked (`help_requests.ring_skipped_at`) and listed first among
+      the waiting in the admin queue as "Not rung", and administrators are alerted at once.
+    - "Ring again" clears the mark.
+    - A counsellor who comes on call or opens the app still sees it, through the ringing catch-up.
+  - **An unanswered request that expired gives the person their allowance back.** They may have asked only
+    once, so the once-an-hour refusal has its own wording.
+  - **Trusted proxies:** there's no production yet, but it will sit behind a proxy. `TRUSTED_PROXIES` is a
+    comma-separated list of the proxy's own addresses, empty by default and never `*`, so the per-address
+    help limit isn't shared by everyone.
+- **Review fixes:**
+  - Per-hour limits are never under 1, so a blank or 0 setting can't shut anyone out of crisis help.
+  - The kill switch's 503 carries `code: help_unavailable`, and only that 503 shows its message. Any other
+    503 (maintenance, a proxy) keeps the emergency-number fallback.
+  - The kill-switch runbook now recreates the containers, because `config:clear` alone does nothing in
+    Docker.
+- **Follow-up:** registration has no throttle or CAPTCHA, so accounts are free to create. That is
+  **SCRUM-400**.
+
+## SCRUM-402 — the next set of work: hardening follow-ups (2026-11-09)
+
+- **The user's request:** box the open follow-ups into the next set of work.
+- **Grouping:** a Jira epic, **SCRUM-402** (TT-11 in the plan), holding six tickets:
+  - SCRUM-400, throttle registration;
+  - SCRUM-397, trust only our host;
+  - SCRUM-396, anonymise names and reasons in stored notifications;
+  - SCRUM-401, the signed-out login link (a new ticket, from the SCRUM-39c QA);
+  - SCRUM-398, report a help request;
+  - SCRUM-399, web push.
+- **Working order:** shown by Jira priority, in the order above (Highest, High, High, Medium, Medium, Low).
+  - **Why this order:** small security items first, since every per-account limit depends on
+    registration not being free; then privacy; then the bug; then the two features.
+- **No sprint label:** the `sprint-N` labels stopped at `sprint-5`, and the plan's roadmap groups work by
+  epic. So the epic is the box, and the roadmap gets a "Next" row.
+- **Approval:** SCRUM-398 and SCRUM-399 are user-facing features, so each goes through `/start-feature`
+  and waits for approval. The other four go ahead directly.
+
+## SCRUM-400 — throttling registration (2026-11-09)
+
+- **The limit:** accounts created from one network address are limited to 10 an hour
+  (`REGISTRATIONS_PER_HOUR_PER_ADDRESS`, never under 1).
+  - **Only accounts actually created count:** a typo or a taken username gives the slot back. Each
+    sign-up is counted before creating, so requests at the same moment can't all slip under.
+  - **Why 10:** generous enough for a group signing up together on one network. Watch the refusal
+    log after launch and raise it if real people on carrier NAT hit it.
+  - **Floods:** the route also has `throttle:30,1,register.store` against scripted floods of attempts.
+- **The refusal:** a validation error, with a message that ends with the crisis line. It comes before
+  the uniqueness check, so it reveals nothing about which usernames exist.
+- **No CAPTCHA for now (mine):** it adds an accessibility cost and a third-party privacy cost on a
+  mental-health product. Revisit if abuse continues despite the limit.
+- **One address key, `App\Support\ClientAddress::key()` (security review):**
+  - an IPv6 address counts by its /64, since one device can rotate through it;
+  - the key is an HMAC with the app key, so an address can't be recovered from logs or cache keys.
+  - Urgent help's per-address limit uses it too.
+- **Found and fixed:** signing up with a username only sent an email-verification message to an empty
+  address. That job failed, and in tests it failed the sign-up too. Accounts with no email are now
+  skipped, and asking for a link with no email says "add an email first".
+- **Deployment:** `TRUSTED_PROXIES` must be set before production goes live behind its proxy. Without it,
+  every visitor has the proxy's address, and the whole site would get 10 sign-ups an hour and share one
+  urgent-help limit.
+
+## SCRUM-397 — only our own host in production (2026-11-09)
+
+- **Trusted hosts:** `TrustHosts` is on, with exact patterns: `APP_URL`'s host, plus an optional
+  `TRUSTED_HOSTS` list.
+  - No wildcard subdomains: Laravel's default would trust every subdomain, and nothing here needs that.
+  - Any other Host header gets a 400.
+  - Laravel turns it off in local and testing by design, so localhost:8000 and CI are unaffected.
+- **Links:** in production every absolute link (emails, redirects, notification links) is built on
+  `APP_URL`, over https when `APP_URL` is https (`URL::forceRootUrl` / `forceScheme`), never on the
+  request's Host. `App\Support\AppHost` holds both rules.
+- **After the security review:**
+  - **One environment rule for both halves** (`AppHost::applies()`): on everywhere except APP_ENV
+    `local` and `testing`, so a staging server gets forced links as well as the host check. A deployed
+    environment must never be called "testing".
+  - **`TRUSTED_HOSTS` entries are reduced to bare hostnames,** so an entry written with a scheme or a port
+    still works. A second public domain should be redirected at the proxy, not listed: pages served on it
+    would post to `APP_URL`'s host and lose the session cookie.
+  - **A test covers the wiring:** removing the `trustHosts` line now fails a test.
+- **Deployment:** `documentation/operations/production-checklist.md` gathers everything production behind
+  the proxy needs:
+  - `APP_URL` (https), `TRUSTED_PROXIES` and `TRUSTED_HOSTS`;
+  - the proxy forwarding the scheme and host, otherwise signed email-verification links return 403;
+  - health checks sending the public Host header, since one by IP gets a 400;
+  - restarting workers after an env change.
+- **Follow-up:** Reverb's `allowed_origins` is `*`. That is **SCRUM-403**, under the follow-ups epic.
+
+## SCRUM-396 — names and reasons in stored notices on account closure (2026-11-09)
+
+- **New notices carry a reference to the person they name (WardRef),** so anonymising that person's closed
+  account finds them:
+  - "your counsellor is unavailable" and the help-chat invitation name the counsellor;
+  - a declined session time names whoever declined it, and only when they wrote a reason.
+- **What anonymisation does:** it renames `counsellorName`, as it already did `clientName`, `memberName` and
+  `wardName`. It **clears** `reason`, because that is the person's own words, which may identify them.
+  `AnonymiseClosedAccountAction::withoutPerson()` is the one place this happens.
+- **Display:** a counsellor anonymised this way reads as "Your counsellor" or "a counsellor", never "a
+  closed account" (`NotificationEntry::personName`).
+- **Backfill (a one-off data migration)** for notices saved before:
+  - the help invite is traced through its help request's counsellor;
+  - the declined time through the request's recipient;
+  - "counsellor unavailable" is traced through the suspension that sent it, whose end date is saved as
+    `until`. Suspensions outlive anonymisation and purged profiles, which the name never could: an
+    anonymised counsellor's name is already erased. The name only breaks a tie, and a tie it can't break is
+    left alone.
+  - Where that person is already anonymised, the name or reason is taken out at once.
+  - It pages by id, never by offset, because each row it updates leaves the filtered set (security review).
+  - What it can't trace, such as a counsellor profile purged for good on a help invite, is counted in the
+    log and left as it is.
+- **The decline reason on the request itself** (`requests.data.reason`, which the proposer can see) is
+  cleared too, both when its author's account is anonymised and in the backfill for those already
+  anonymised (security review).
+
+## SCRUM-403 — Reverb's allowed websocket origins (2026-11-09)
+
+- **Before:** `allowed_origins` was `*`, so any website could open websocket connections. Private
+  channels were still protected by `/broadcasting/auth`.
+- **Now (`App\Support\AppHost::reverbOrigins()`, read from the raw env as config loads):**
+  - an explicit `REVERB_ALLOWED_ORIGINS` (comma-separated host patterns) wins;
+  - otherwise `*` for APP_ENV `local` and `testing`;
+  - otherwise the same hosts the app answers for: `APP_URL`'s plus `TRUSTED_HOSTS`.
+  - With no usable host, every origin is refused rather than all allowed.
+- **Local Docker and the Vite dev server are unchanged** (`local`).
+- **Deployment:** the production checklist now has a Reverb line. If the pages come from a host Reverb
+  doesn't accept, real-time updates silently stop.
+
+## SCRUM-398 + SCRUM-399 — reporting an urgent help request, and web push: plan approved (2026-11-09)
+
+- **The user's decisions:**
+  - **One PR for both stories.** Each story gets its own commits (398 first), so either can be reverted
+    alone. Push ships switched off behind `HELP_PUSH_ENABLED`.
+  - **The report leak is fixed in this same PR** rather than in a separate fast PR. The architect had
+    confirmed it: reporting a help chat's Session (or Therapy) through the generic `POST /api/reports`
+    showed admins an anonymous requester's name and username, with no `help_request_identity` read log.
+    Related gaps fixed alongside:
+    - raw `data.userId` returned by `ReportResource`;
+    - the create-time guess oracle for any anonymous one-to-one therapy;
+    - report emails sent to involved admins;
+    - a closing notice sent to the requester.
+  - **An involved admin sees the usual bare report stub** (id, status, date), never anything about who asked.
+    "Involved" for a help report is `HelpRequest::involvesAdmin`.
+  - **Defaults accepted:**
+    1. A report doesn't stop the person asking for help.
+    2. After an upheld report and a suspension, their requests still ring counsellors. Routing them to
+       admins first would be a separate decision, because it changes SCRUM-33.
+    3. An admin must reveal who asked (logged) before suspending from a help report.
+    4. A requester reporting the counsellor is not in this PR; that is a follow-up.
+    5. The notification bell doesn't use push.
+- **Design (architect):**
+  - **What gets reported:** the `HelpRequest` itself, through a `help.requests.report` route, never the
+    generic endpoint.
+    - **Who may report:** the answering counsellor until the transcript is deleted, or a rung counsellor
+      while the ring is live (`mayAnswer`).
+    - **Reported party:** set on the server from the request; no `data` is stored.
+    - **Limit:** one report per counsellor per request.
+  - **One masking rule:** `Report::masksReportedIdentity()`.
+    - **Revealing who asked:** reuses `RevealHelpRequesterAction`'s logging, with a report-context gate.
+    - **Retention:** `hasOpenReport()` covers the `HelpRequest` reportable.
+  - **Push:**
+    - **Library:** `minishlink/web-push` called directly.
+    - **Storage:** a `push_subscriptions` table owned by the user.
+    - **Sending:** a queued job on an `urgent` queue, triggered through `HelpBroadcast` so it still goes out
+      when Reverb is down. Recipients are re-checked against `ringingFor` at send time. Pushes carry ids
+      only, with generic text, a TTL of about 2 minutes, `Urgency: high` and a `Topic`, and are withdrawn
+      on close.
+    - **Browser side:** `public/sw.js` handles push and notification clicks only, with no caching.
+
+
+## SCRUM-398 + SCRUM-399 — review findings: what changed, and what was left (2026-11-09)
+
+- **Fixed from the reviews** (reviewer, security-engineer, devops-engineer):
+  - **Push endpoint SSRF:** a device's endpoint must be https at an allowlisted push service host
+    (`help.push.endpoint_hosts`). It is checked when saved and again before sending. Redirects are off, and the HTTP
+    client is passed in explicitly (Guzzle, 3s connect / 5s total). The earlier `['timeout' => 10]` was silently ignored.
+  - **One bad key failing the batch:** keys are validated (65-byte uncompressed p256dh, 16-byte auth). Each device is
+    sent on its own, and an unusable one is removed.
+  - **Request id in clear:** the push topic and tag are an HMAC reference, not `help-{id}`.
+  - **Sign-out:** every sign-out link first removes and unsubscribes this browser, by its endpoint (app.js
+    `router.on('before')`). "This device" is matched by the endpoint's SHA-256, not the session, which changes on a
+    remember-me sign-in.
+  - **Suspensions:**
+    - shown to an admin who hasn't revealed who asked with the request's label only, on the report and in the list;
+    - never matched by a name search in Suspensions.
+  - **Reveal window:** after review, only a super admin, and only until a suspension is applied. The response is name
+    and username only (no email), with `Cache-Control: no-store`.
+  - **Queue list:** the help request's note and details appear only on the report page.
+  - **Docker:** a dedicated `urgent` worker, so a ring never waits behind a long default job.
+  - **Smaller fixes:**
+    - ledger writes locked;
+    - a re-ring no longer withdraws an on-call counsellor it is still ringing;
+    - withdraw notifications only where the ring still shows;
+    - one report per counsellor and request, under a lock;
+    - devices deleted at account closure, not only at anonymisation;
+    - requesters eager-loaded in the admin lists.
+- **Left, deliberately:**
+  - **Older help-chat reports (security R2):** reports filed on a help chat's therapy or session before the generic
+    endpoint refused them aren't masked. The help chat has never reached `main`, so such rows exist only in dev/testing
+    databases. Check `testing` for reports on a help chat's therapy or session before promoting it, and delete or mask
+    them there.
+  - **"Who was rung" isn't stored:** a counsellor-admin counts as involved only while a request rings them. The feature
+    doc says so. Storing who was rung is a larger change for a narrow case.
+  - **The report reasons** are listed in both `ReportHelpRequestAction::REASONS` and the modal. The server validates
+    against its list, so drift shows up as a 422, not a silent mismatch.
+  - **Existing advisories:** `composer audit` reports advisories in packages that predate this branch (guzzle, symfony
+    http-client, laravel/framework and others; 56 in all). They belong in their own dependency-update ticket.
+  - **web-token/jwt-library:** pinned in the lock to 4.2.6, not 4.2.7, which was released the day before this branch.
+    A routine `composer update` moves it on later.
+## SCRUM-401 — the signed-out "login" link: cannot reproduce (2026-11-09)
+
+- The link works in a clean headless Chrome:
+  - on `/`, signed out;
+  - after signing in and out through the menu;
+  - at phone width through the menu, on `/` and `/about`.
+  In every case nothing covers it, the click sends `GET /login`, and the login page opens.
+- The failure in the SCRUM-39c QA came from that browser session's broken state: a hung, cancelled
+  script, after which clicks did nothing anywhere. It didn't come from the app.
+- Closed with no code change.
+
+
+## SCRUM-138 — trusted proxies: what was left after SCRUM-395/400 (2026-11-10)
+
+- **Already in place:** `TRUSTED_PROXIES` feeds Laravel's global `TrustProxies` (`bootstrap/app.php`, SCRUM-395),
+  with the production-checklist item (SCRUM-400). The ticket's "configure it when a proxy arrives" is therefore
+  covered by the env value. The real topology isn't known yet: no production, and the user said it will sit behind
+  a proxy.
+- **Closed here:**
+  - **"Never `*`" is now enforced, not just written in a comment.** `App\Support\TrustedProxies` keeps only explicit
+    addresses or CIDR ranges and drops:
+    - `*` and `**`;
+    - `REMOTE_ADDR` and `PRIVATE_SUBNETS` (shortcuts that trust whoever connects, or any private address);
+    - ranges wider than /8 (IPv4) or /29 (IPv6, Cloudflare's widest);
+    - IPv6 entries in the IPv4-mapped/compatible space (first 80 bits zero), except `::1` (security review: through
+      a dual-stack listener, `::ffff:0:0/96` would match every IPv4 visitor);
+    - anything malformed.
+
+    A dropped entry fails safe (the proxy isn't trusted) and logs `TRUSTED_PROXIES entries ignored.` at boot, so a
+    typo doesn't silently bring back "everyone shares one address".
+  - **Only the forwarded For/Port/Proto headers (plus AWS ELB) are believed, not Host or Prefix.** Links are built on
+    APP_URL anyway (AppHost). Some proxies pass a client's own X-Forwarded-Host/-Prefix through, and `trustHosts`
+    doesn't check Prefix. This is defence in depth.
+  - **A test proves the wiring end to end:** the env value is set, the app boots, and forwarded headers are believed
+    from a listed proxy and ignored from anyone else. That includes `PRIVATE_SUBNETS`/`REMOTE_ADDR`, which Laravel
+    would otherwise honour, and a mapped range. The test fails if the filter is removed (checked).
+  - **The unused `App\Http\Middleware\TrustProxies` is removed.** It was the class the ticket described, but nothing
+    has used it since the move to `bootstrap/app.php`, so it only misled.
+- **Noted, not code:** on Forge/Vapor hosts or Laravel Cloud, Laravel trusts every proxy when the list is empty. The
+  checklist says to set it explicitly there.
+## SCRUM-404 — dependency updates: what moved, and the supply-chain rule (2026-11-10)
+
+- **Scope:** clear `composer audit` (56 advisories, including a critical Laravel TokenGuard bypass, and Guzzle's
+  noncanonical-host bypass, which matters since web push posts through Guzzle) and `npm audit`. Updates stay inside the
+  existing version constraints; no major upgrades. No app code needed changing for any of the fixes (security review).
+  The TokenGuard bypass didn't affect us: we have no `token` guard.
+- **The rule:** a package that isn't itself fixing an advisory doesn't move to a release under about a week old. That
+  applies to build tools too.
+  - **Taken even though recent, because they are the fix:**
+    - laravel/framework 12.71.0 and Symfony 7.4.23 (3–4 Nov);
+    - symfony/console 7.4.23, exactly 7 days old.
+  - **Composer, held at older releases:**
+    - laravel/prompts 0.3.26;
+    - nunomaduro/termwind 2.4.0;
+    - league/uri and league/uri-interfaces 7.9.1;
+    - web-token/jwt-library 4.2.4. See the correction below.
+  - **npm, held at older releases:**
+    - axios 1.21.0, not 1.21.1;
+    - vue 3.5.44, not 3.5.45 (the advisory needs ≥3.5.42);
+    - vite 6.4.5, not 6.4.6.
+  - **npm, held through `overrides` in `package.json`:**
+    - follow-redirects 1.16.2;
+    - postcss-selector-parser 6.1.5 (6.1.6 also dropped a dependency without explanation);
+    - @babel/parser 7.29.12;
+    - @babel/helper-string-parser 7.29.11.
+
+    These pins are exact. Remove them at the next routine update, once those releases are older.
+  - **Accepted as recent:** browserslist data packages (caniuse-lite, electron-to-chromium,
+    baseline-browser-mapping). They are data only and republish constantly.
+- **Correction (SCRUM-398/399 entry):** the earlier pin of web-token/jwt-library to 4.2.6 rested on a wrong premise.
+  4.2.6 was released three hours before 4.2.7, on the same day, so develop had already taken a one-day-old release. It
+  is now 4.2.4 (30 Oct), which minishlink/web-push accepts (`^4.0.6`). A real send to FCM was re-checked after the
+  change. Don't move it back up without the rule above.
+- **get-blob-duration** (used by `MediaCapture.vue`) bundles an old @babel/runtime with a moderate advisory. The only
+  fix npm offers is a downgrade to an older major. Instead, an `overrides` entry lifts its nested copy to 7.29.7 (May);
+  Babel runtime 7.x is backward compatible.
+- **Left: deepmerge 4.3.1** (via @inertiajs/core 1.3.0), low severity, GHSA-gcqx-w48m-w2h4. No patched version exists.
+  Inertia v1 uses it only when building a GET visit's URL: it merges `qs.parse(location.search)` (which drops
+  `__proto__`) with the visit data, and the result is stringified straight away. So the effect is nil. Inertia 2.x
+  dropped deepmerge after 2.0.7, so moving the client to a current 2.x removes it.
+- **Suggested, not done here:** a minimum release age in automated dependency updates (Renovate/Dependabot
+  `minimumReleaseAge: 7 days`), so a routine update can't pull same-day releases.
+
+## SCRUM-405 — Inertia client v2, and a minimum release age for dependency updates (2026-11-10)
+
+- **Inertia client 1.3 → 2.3.29.** The server was already v2.
+  - **Why this version:** 2.3.29 is a month old, so it meets the SCRUM-404 rule. It removes the last npm
+    advisory, deepmerge, which @inertiajs/core dropped after 2.0.7. `npm audit` is now clean.
+  - **New transitive packages**, all over a week old and with no install scripts: lodash-es, laravel-precognition,
+    @types/lodash(-es). Removed: deepmerge, nprogress, lodash.clonedeep, lodash.isequal.
+  - **v1 → v2 breaking changes checked:**
+    - No `router.replace` anywhere.
+    - The 15 partial reloads (`router.reload({ only })`) don't read props synchronously afterwards. Browser QA
+      covered "Show who asked" on a help report, a partial reload of `report` that keeps component state.
+    - Every import we use from `@inertiajs/vue3` (createInertiaApp, Head, Link, router, useForm, usePage)
+      still exists.
+    - The sign-out hook (SCRUM-399) still cancels with `return false` from `router.on('before')`: v2 prevents
+      a cancelable event when the callback returns false.
+  - **Not done here:** the admin badges stay on their JSON route. Moving them to `Inertia::defer` is the
+    follow-up whose trigger this meets (.claude/memory.md).
+- **`.github/dependabot.yml`:**
+  - Covers composer, npm and GitHub Actions, targets `develop`, and runs weekly (Actions monthly). Minor and patch
+    updates are grouped; majors arrive one at a time.
+  - `cooldown: default-days: 7` builds in the SCRUM-404 rule for version updates.
+  - **Security updates** (security review) are a repository setting, currently off, and alerts aren't enabled
+    either. If they are turned on, their PRs target `main` and ignore `target-branch`; retarget any such PR to
+    `develop`, because a merge into `main` deploys. Enabling alerts is the user's call (repo settings).
+- **Follow-ups from the security review:**
+  - Inertia history encryption, with `clearHistory` on sign-out, so the back button after signing out can't
+    show cached chats. It's a behaviour change and needs its own QA.
+  - Pinning GitHub Actions to commit hashes. They are pinned by tag today, and `main.yml` holds the AWS secrets.
+- **Left for later:** SCRUM-404's exact npm overrides. Three of the releases they hold back are under a week old
+  (4 and 8 Nov). Dependabot doesn't move overrides, so they're removed by hand after about 15 Nov.
+
+## SCRUM-407 — GitHub Actions pinned to commit hashes (2026-11-10)
+
+- Every `uses:` in `ci.yml` and `main.yml` is pinned to a full commit hash, with the version in a trailing comment
+  (`@<sha> # v4.4.0`). A tag can be moved to point at different code; a hash can't. `main.yml`, the production deploy,
+  holds the AWS secrets.
+- **No version changed:** each hash is the commit its tag pointed to on 2026-11-10. `main.yml` keeps
+  `actions/checkout` v4.1.7 and `ci.yml` keeps v4 (now v4.4.0), as before. All of those commits are over a month old,
+  so the SCRUM-404 rule is met.
+- **Keeping them current:** Dependabot's github-actions updates (SCRUM-405: monthly, 7-day cooldown) bump hash pins
+  and their version comments together.
+- **Also from the devops review:**
+  - Both workflows get a read-only token through `permissions:`: `contents: read`, plus `pull-requests: read` in CI
+    for `dorny/paths-filter`. Before, they ran with the repo's default token, which may be read/write.
+  - `persist-credentials: false` is set on every checkout. Nothing fetches or pushes afterwards; the lint job's
+    `git diff` is local.
+  - The Dependabot github-actions group now takes minor and patch updates only, so majors come one at a time, as the
+    file's header says. Majors for checkout, setup-node and configure-aws-credentials are pending, and one of them
+    touches the deploy.
+  - `ramsey/composer-install@v3` was a moving *branch*, not a tag; it's now a fixed commit.
+- **Follow-up:** the deploy authenticates with long-lived IAM keys. It should move to GitHub OIDC (`role-to-assume`),
+  which needs AWS-side setup by the user. That's its own ticket.
+- **Repo setting, the user's call:** Dependabot alerts are off. If automated security PRs are turned on, they target
+  `main` and must be retargeted to `develop` (see `.github/dependabot.yml`).
+## SCRUM-406 — encrypt Inertia history and clear it when a session ends (2026-11-10)
+
+- **Encrypted, decided per request.**
+  - `config/inertia.php` `history.encrypt` is the switch. It defaults to true; `INERTIA_ENCRYPT_HISTORY=false` turns it
+    off.
+  - `HandleInertiaRequestsV2` asks the browser to encrypt only when it can: an https request, or a localhost host
+    (`App\Support\InertiaHistory::encrypts`, the browser's own secure-context rule).
+  - **Why per request (security review, confirmed in the browser):** without `crypto.subtle`, Inertia 2.3.29 throws
+    "Unable to encrypt history" and Link navigation stops working. My first version's comment ("nothing breaks") was
+    wrong. Over plain http on a non-localhost host (`http://talktherapy.lan`), the server now sends
+    `encryptHistory: false` and navigation works.
+  - Behind a TLS-terminating proxy, `isSecure()` needs `TRUSTED_PROXIES` (SCRUM-138). Without it, history isn't
+    encrypted; that's less private, but not broken.
+- **Where history is cleared:**
+  - **Sign-out and account closure:** after `session()->invalidate()` / `regenerateToken()`, because the flag lives in
+    the session.
+  - **The login page:** this also covers a session that simply expired. The security review found no other path
+    that ends a session or changes the user.
+- **No browser cache for signed-in pages:** `Cache-Control: no-store, private` on a signed-in person's Inertia
+  responses, both the full HTML and the visits (security review). A cached full page carries its props in plain text
+  in `data-page`, and back/forward could serve it from cache. Public pages are unchanged.
+- **What it doesn't cover** (the key is in `sessionStorage`, one per tab):
+  - other tabs left open after signing out in one, until they make a visit;
+  - tabs duplicated before signing out;
+  - walking away without signing out;
+  - a script injected into the page (which could read the page anyway).
+- **Browser QA on the real v2 client:**
+  - `history.state.page` is an ArrayBuffer.
+  - Signed in, back and forward between a help chat and another page work.
+  - After signing out, pressing back three times never shows the chat message; each step refetches and lands on
+    /login or /.
+  - A non-secure host keeps working, with encryption off.
+- **Correction (SCRUM-405):** that ticket's browser QA ran against Inertia v1. The vite dev server's pre-bundle cache
+  (`node_modules/.vite`) didn't rebuild after the upgrade; the production build and the tests used v2. Found here,
+  because history wasn't encrypted. After clearing the cache, the SCRUM-405 walkthrough passes on the real v2 client:
+  sign-in and its errors, Link navigation and back, admin pages, the partial reload of "Show who asked", urgent help
+  end to end, and sign-out.
+  - The host's own `node_modules` is still v1, so assets must be built in the `vite` container, not on the host.
+    Both points are in `.claude/memory.md`.
+
+## SCRUM-410 — the admin badges stay on their JSON route; won't move to Inertia::defer (2026-11-10)
+
+- **The ticket:** move the admin sidebar's badges from `GET /administrator/badges` to a deferred prop. The trigger
+  was my own note in `.claude/memory.md` ("once the client is v2"), and SCRUM-405 met it.
+- **Why not (found before any code, the user's choice):**
+  - A deferred prop is fetched with a partial reload of the same URL. Laravel runs the page's controller in full,
+    and Inertia only filters which props it returns, so every eagerly built prop is built again.
+  - Every admin navigation would run its controller twice, plus once more after each action that refreshes the
+    badges.
+  - SCRUM-387's review removed exactly that cost, which is why it moved the badges from a partial reload to their
+    own route. My trigger note had missed it.
+- **What changed:** documentation only. The memory note and the two code comments that gave the wrong reason ("the
+  client is v1") now give the real one.
+- **When to revisit:** only if every admin page's props become lazy closures, so that a partial reload computes
+  nothing but the badges.
+
+## SCRUM-413 — release-readiness fixes before the first develop → testing promotion (2026-11-10)
+
+From the SCRUM-411 readiness check (devops-engineer). All in one PR, by the user's choice ("fix all small items").
+
+- **The blocker: Pint.** The promotion PR's lint job checks every PHP file changed since `testing`, 1,547 of them.
+  One legacy migration failed (`2025_02_10_084703`). It's formatted now; its `up()` logic is unchanged (Pint
+  wrapped a brace-less `if`'s body). All 1,547 pass.
+- **`env()` outside config, widened from one finding to the whole class.** The check flagged
+  `DISCUSSION_MAX_COUNSELLORS_CEILING`. The same mistake was in four more places:
+  - the therapy and group-therapy caps, and FileService's default disk;
+  - **`TRUSTED_PROXIES`** itself, in `bootstrap/app.php` and `AppServiceProvider` (SCRUM-395/138, partly mine).
+
+  Once config is cached, `env()` returns null: the caps would fall back to their defaults and, worse, the proxy would
+  silently stop being trusted. Nothing caches config today, but one `config:cache` would break it.
+  - Caps: new `config/limits.php`. Disk: `config('filesystems.default')`.
+  - Proxies: `config('app.trusted_proxies')`, applied in `AppServiceProvider::boot`, which runs before the global
+    middleware sees a request.
+  - Checked with `config:cache`: `env()` gives NULL, the config value comes through, and `TrustProxies::at` is set.
+- **Migration `down()`s that failed on SQLite.** The check found one; a full reset found two more (`2026_09_04_100002`,
+  `2025_02_10_084703`). Fixed as follows:
+  - each index is dropped before its column;
+  - the foreign key before its unique index (MySQL needs the index while the key exists);
+  - a re-added column is made nullable.
+
+  Only `down()` changed. Round trip (migrate, full reset, migrate) is OK on SQLite and on a throwaway MySQL database.
+- **Env examples:**
+  - the mail settings were swapped. The host example now uses Mailpit's published port (127.0.0.1:1027); the Docker
+    example uses `mailpit:1025`, with Mailgun commented for deployed environments.
+  - `.env.docker.example` gains the 31 keys only `.env.example` documented, plus `DISCUSSION_MAX_COUNSELLORS_CEILING`.
+- **README:** the trigger recovery list adds `ene_no_*` and `sfn_*`.
+- **Conventions,** in `.claude/memory.md`: no `env()` outside config; no future-dated migration names (14 are dated
+  2026-11-12..21); drop an index before its column.
+- **Not here; they gate `testing` → `main`, not this step:** the production database flag, the worker command, the
+  production env, backups and restore, alert transport, the real-device push test, and Dependabot alerts.

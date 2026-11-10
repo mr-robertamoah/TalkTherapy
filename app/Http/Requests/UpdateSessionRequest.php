@@ -5,8 +5,8 @@ namespace App\Http\Requests;
 use App\Enums\SessionTypeEnum;
 use App\Enums\TherapyPaymentTypeEnum;
 use Carbon\Carbon;
+use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 
 class UpdateSessionRequest extends FormRequest
@@ -20,17 +20,31 @@ class UpdateSessionRequest extends FormRequest
     }
 
     /**
+     * Normalize blank startTime/endTime to null so every downstream consumer of
+     * $request->startTime/endTime (this class's own rules(), and SessionController's direct
+     * property access feeding CreateSessionDTO/EnsureSessionDataIsValidAction) sees either a
+     * real value or null, never a blank string that Carbon::parse() would silently turn into
+     * "now" (SCRUM-128).
+     */
+    protected function prepareForValidation(): void
+    {
+        $this->merge([
+            'startTime' => $this->filled('startTime') ? $this->get('startTime') : null,
+            'endTime' => $this->filled('endTime') ? $this->get('endTime') : null,
+        ]);
+    }
+
+    /**
      * Get the validation rules that apply to the request.
      *
-     * @return array<string, \Illuminate\Contracts\Validation\ValidationRule|array<mixed>|string>
+     * @return array<string, ValidationRule|array<mixed>|string>
      */
     public function rules(): array
     {
-        $startTime = Carbon::parse($this->get('startTime'))->setTimezone(config('app.timezone'));
-        $endTime = Carbon::parse($this->get('endTime'))->setTimezone(config('app.timezone'));
+        $startTime = $this->filled('startTime') ? Carbon::parse($this->get('startTime'))->setTimezone(config('app.timezone')) : null;
+        $endTime = $this->filled('endTime') ? Carbon::parse($this->get('endTime'))->setTimezone(config('app.timezone')) : null;
         $now = Carbon::now(config('app.timezone'));
 
-        Log::info('update session request', [$startTime, $endTime, $now, now()]);
         return [
             'name' => ['nullable', 'string', 'max:255'],
             'about' => ['nullable', 'string'],
@@ -38,10 +52,10 @@ class UpdateSessionRequest extends FormRequest
             'lat' => ['nullable', Rule::requiredIf($this->get('type') == SessionTypeEnum::in_person->value), 'numeric', 'between:-90,90'],
             'lng' => ['nullable', Rule::requiredIf($this->get('type') == SessionTypeEnum::in_person->value), 'numeric', 'between:-180,180'],
             'startTime' => ['nullable', 'date', Rule::prohibitedIf(
-                !($now->addMinutes(30)->lessThanOrEqualTo($startTime))
+                $startTime !== null && ! $now->copy()->addMinutes(30)->lessThanOrEqualTo($startTime)
             )],
             'endTime' => ['nullable', 'date', Rule::prohibitedIf(
-                !($startTime->addMinutes(30)->lessThanOrEqualTo($endTime))
+                $endTime !== null && $startTime !== null && ! $startTime->copy()->addMinutes(30)->lessThanOrEqualTo($endTime)
             )],
             'cases' => ['nullable', 'array'],
             'topics' => ['nullable', 'array'],
@@ -50,11 +64,13 @@ class UpdateSessionRequest extends FormRequest
         ];
     }
 
+    // SCRUM-377: Rule::prohibitedIf() applies the plain `prohibited` rule, so the keys are
+    // `*.prohibited`; the old `*.prohibited_if` keys never matched and Laravel's default showed.
     public function messages()
     {
         return [
-            'startTime.prohibited_if' => 'The :attribute has to be at least 30 minutes from now.',
-            'endTime.prohibited_if' => 'The :attribute has to be at least 30 minutes from the start time.',
+            'startTime.prohibited' => 'The :attribute has to be at least 30 minutes from now.',
+            'endTime.prohibited' => 'The :attribute has to be at least 30 minutes from the start time.',
         ];
     }
 }

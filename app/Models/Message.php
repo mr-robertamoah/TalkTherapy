@@ -10,18 +10,28 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 class Message extends Model
 {
     use HasFactory,
-    SoftDeletes;
+        SoftDeletes;
 
     protected $fillable = ['content', 'type', 'confidential', 'status', 'message_id', 'therapy_topic_id', 'deleted_for'];
 
+    // SCRUM-73: sender_anonymous and recipient_anonymous are snapshots set once, when the message is
+    // sent (CreateMessageAction) -- deliberately not fillable, so an update can't unmask a message.
+    protected $casts = [
+        'sender_anonymous' => 'boolean',
+        'recipient_anonymous' => 'boolean',
+    ];
+
     public function from()
     {
-        return $this->morphTo();
+        // withTrashed: see Therapy::counsellor() -- the sender (User or Counsellor) may have
+        // since deleted their account.
+        return $this->morphTo()->withTrashed();
     }
 
     public function to()
     {
-        return $this->morphTo();
+        // withTrashed: see from() above.
+        return $this->morphTo()->withTrashed();
     }
 
     public function for()
@@ -51,28 +61,64 @@ class Message extends Model
             ->withTimestamps();
     }
 
-    public function isParty(?User $user)
+    // SCRUM-203/TT-2.3b: a counsellor's own private note(s) on this message -- never eager-loaded
+    // for a client viewer (see MessageService's own comment on scoping this to the requesting
+    // counsellor), so a non-counsellor's message list never even queries this table.
+    public function notes()
     {
-        if (!$user) return false;
-        
-        return $this->query()
-            ->whereTo($user)
-            ->orWhere(function ($query) use ($user) {
-                $query->whereFrom($user);
-            })
-            ->exists();
+        return $this->hasMany(MessageNote::class);
+    }
+
+    // Whether $user sent THIS message or it was addressed to them (as a user, or through their
+    // counsellor account). SCRUM-195: this used to run $this->query()->whereTo()->orWhereFrom()
+    // ->exists() -- a fresh, unscoped query over the whole table -- so it was true for anyone who
+    // had ever sent or received ANY message, which made every confidential message readable to
+    // almost everyone and let them subscribe to any messages.{id} channel.
+    public function isParty(?User $user): bool
+    {
+        if (! $user) {
+            return false;
+        }
+
+        return $this->morphRefersTo($this->from_type, $this->from_id, $user)
+            || $this->morphRefersTo($this->to_type, $this->to_id, $user);
+    }
+
+    // The recipient as a USER id, whichever kind of account the message was addressed to -- the
+    // frontend compares it against the viewer's own user id. SCRUM-195: previously derived from the
+    // SENDER's type, which gave a counsellor id for a counsellor-to-counsellor message.
+    public function recipientUserId(): ?int
+    {
+        return match ($this->to_type) {
+            User::class => (int) $this->to_id,
+            Counsellor::class => $this->to?->user_id,
+            default => null,
+        };
+    }
+
+    // Whether this from/to morph is $user, directly or through their counsellor account.
+    private function morphRefersTo(?string $type, $id, User $user): bool
+    {
+        return match ($type) {
+            User::class => (int) $id === $user->id,
+            Counsellor::class => $user->counsellor !== null && (int) $id === $user->counsellor->id,
+            default => false,
+        };
     }
 
     public function isNotParty(?User $user)
     {
-        if (!$user) return false;
-
-        return !$this->isParty($user);
+        // No special-case for a null $user here: isParty(null) already correctly returns
+        // false, so this correctly evaluates to true ("not a party") for a guest. The previous
+        // version's own `if (! $user) return false;` incorrectly treated a guest as IS a party,
+        // which meant MessageResource's confidential-message guard never applied to guests.
+        return ! $this->isParty($user);
     }
 
     public function scopeWhereTo($query, User $user)
     {
         $counsellor = $user->counsellor;
+
         return $query->where(function ($query) use ($user, $counsellor) {
             $query->where(function ($query) use ($user) {
                 $query
@@ -93,6 +139,7 @@ class Message extends Model
     public function scopeWhereFrom($query, User $user)
     {
         $counsellor = $user->counsellor;
+
         return $query->where(function ($query) use ($user, $counsellor) {
             $query->where(function ($query) use ($user) {
                 $query
@@ -110,22 +157,42 @@ class Message extends Model
         });
     }
 
-    public function scopeWhereLike($query, String $like)
+    // SCRUM-363 (security review): searching must not reveal text the searcher can't see -- a hit on
+    // a confidential message would leak its content letter by letter. So only messages they can
+    // read are matched: not confidential, or confidential and they sent or received it; never one
+    // deleted for everyone. Wildcards are matched literally.
+    public function scopeWhereLike($query, string $like, ?User $viewer = null)
     {
-        return $query->where('content', 'LIKE', "%{$like}%");
+        $counsellorId = $viewer?->counsellor?->id;
+
+        return $query
+            ->whereNull('messages.deleted_at')
+            ->whereContains('messages.content', $like)
+            ->where(fn ($query) => $query
+                ->where('messages.confidential', false)
+                ->when($viewer, fn ($query) => $query->orWhere(fn ($query) => $query
+                    ->where(fn ($q) => $q->where('from_type', User::class)->where('from_id', $viewer->id))
+                    ->orWhere(fn ($q) => $q->where('to_type', User::class)->where('to_id', $viewer->id))
+                    ->when($counsellorId, fn ($query) => $query
+                        ->orWhere(fn ($q) => $q->where('from_type', Counsellor::class)->where('from_id', $counsellorId))
+                        ->orWhere(fn ($q) => $q->where('to_type', Counsellor::class)->where('to_id', $counsellorId))))));
     }
 
-    public function scopeWhereTherapyTopicId($query, String|int|null $topicId)
+    public function scopeWhereTherapyTopicId($query, string|int|null $topicId)
     {
-        if (!$topicId) return $query;
-        
+        if (! $topicId) {
+            return $query;
+        }
+
         return $query->where('therapy_topic_id', $topicId);
     }
 
-    public function scopeWhereReplyId($query, String|int|null $replyId)
+    public function scopeWhereReplyId($query, string|int|null $replyId)
     {
-        if (!$replyId) return $query;
-        
+        if (! $replyId) {
+            return $query;
+        }
+
         return $query->where('message_id', $replyId);
     }
 }

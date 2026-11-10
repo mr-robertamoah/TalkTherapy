@@ -2,13 +2,15 @@
 
 namespace App\Notifications;
 
+use App\Contracts\ShownInNotificationCenter;
 use App\Models\Discussion;
+use App\Support\NotificationEntry;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
-class DiscussionRequestNotification extends Notification implements ShouldQueue
+class DiscussionRequestNotification extends Notification implements ShouldQueue, ShownInNotificationCenter
 {
     use Queueable;
 
@@ -29,9 +31,10 @@ class DiscussionRequestNotification extends Notification implements ShouldQueue
     {
         $via = ['database'];
 
-        if ($notifiable->email_verified_at)
+        if ($notifiable->email_verified_at) {
             $via[] = 'mail';
-        
+        }
+
         return $via;
     }
 
@@ -44,13 +47,13 @@ class DiscussionRequestNotification extends Notification implements ShouldQueue
 
         return (new MailMessage)
             ->success()
-            ->subject("Discussion Request")
+            ->subject('Discussion Request')
             ->greeting("Hello {$notifiable->getName()}!")
             ->line("A counsellor with name: '{$this->discussion->addedby->getName()}' has sent you a request inviting you to be part of a discussion on TalkTherapy app.")
             ->line("'{$this->discussion->name}' is the name of the discussion.")
-            ->line("Click on the link below to check out the therapy/group therapy.")
+            ->line('Click on the link below to check out the therapy/group therapy.')
             ->action("Visit {$type} Page", $url)
-            ->line("Please make sure to you check your pending requests in other to respond to this request.")
+            ->line('Please make sure to you check your pending requests in other to respond to this request.')
             ->line("Thank you for choosing to 'TalkTherapy'.");
     }
 
@@ -62,7 +65,13 @@ class DiscussionRequestNotification extends Notification implements ShouldQueue
     public function toArray(object $notifiable): array
     {
         return [
-            'discussion_id' => $this->discussion->id
+            'discussion_id' => $this->discussion->id,
         ];
+    }
+
+    // SCRUM-39 (TT-5.4b): in the notification center -- from the saved ids only, never more than the email.
+    public static function present(array $data): NotificationEntry
+    {
+        return new NotificationEntry('You are invited to a discussion', 'A counsellor invited you. You can respond from your pending requests.', NotificationEntry::link('home', []));
     }
 }

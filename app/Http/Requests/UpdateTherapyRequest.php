@@ -3,7 +3,9 @@
 namespace App\Http\Requests;
 
 use App\Enums\TherapyPaymentTypeEnum;
+use App\Enums\TherapyPerPaymentEnum;
 use App\Enums\TherapySessionTypeEnum;
+use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -20,7 +22,7 @@ class UpdateTherapyRequest extends FormRequest
     /**
      * Get the validation rules that apply to the request.
      *
-     * @return array<string, \Illuminate\Contracts\Validation\ValidationRule|array<mixed>|string>
+     * @return array<string, ValidationRule|array<mixed>|string>
      */
     public function rules(): array
     {
@@ -33,11 +35,12 @@ class UpdateTherapyRequest extends FormRequest
             'cases' => ['nullable', 'array'],
             'sessionType' => ['nullable', Rule::in(TherapySessionTypeEnum::values())],
             'paymentType' => ['nullable', Rule::in(TherapyPaymentTypeEnum::values())],
-            'maxSessions' => ['nullable', 'integer'],
-            'per' => ['nullable', 'string'],
+            'maxSessions' => ['nullable', 'integer', 'min:1'],
+            'per' => ['nullable', Rule::in(TherapyPerPaymentEnum::values())],
             'amount' => ['nullable', 'numeric'],
             'inPersonAmount' => ['nullable', 'numeric'],
-            'currency' => ['nullable', 'string'],
+            'currency' => ['nullable', Rule::in(config('currencies.supported'))],
+            'strictPaymentGate' => ['nullable', 'boolean'],
         ];
     }
 }

@@ -1,15 +1,22 @@
 <script setup>
+import CountrySelect from '@/Components/CountrySelect.vue';
 import InputError from '@/Components/InputError.vue';
 import InputLabel from '@/Components/InputLabel.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import Select from '@/Components/Select.vue';
-import SelectSearch from '@/Components/SelectSearch.vue';
 import TextInput from '@/Components/TextInput.vue';
 import ProfileInformationDisplay from '@/Components/ProfileInformationDisplay.vue';
 import { Link, useForm, usePage } from '@inertiajs/vue3';
-import { onBeforeMount, ref } from 'vue';
+import { ref } from 'vue';
 import { computed } from 'vue';
 import { subYears } from 'date-fns';
+
+defineProps({
+    dobChangePendingApproval: {
+        type: Boolean,
+        default: false,
+    },
+});
 
 const user = usePage().props.auth.user;
 
@@ -23,20 +30,7 @@ const form = useForm({
     country: user.country ?? '',
 });
 
-const countries = ref([
-    'Ghana',
-    'Nigeria',
-    'Uganda',
-    'Rwanda'
-])
-
 const update = ref(false)
-
-onBeforeMount(() => {
-    const c = localStorage.getItem('countries')
-    if (c) countries.value = c.split(',')
-    getCountries()
-})
 
 const computedGender = computed(() => {
     const u = usePage().props.auth.user
@@ -45,9 +39,6 @@ const computedGender = computed(() => {
 })
 const computedMaxDOB = computed(() => {
     return subYears(new Date(), 10).toISOString().slice(0, 10)
-})
-const computedFormCountry = computed(() => {
-    return !form.country ? null : {name: form.country}
 })
 const computedUserDOB = computed(() => {
     return form.dob ? (new Date(form.dob)).toDateString() : ''
@@ -59,23 +50,6 @@ function getDate(dob) {
     if (dateSplit.length) return dateSplit[0]
 
     return ''
-}
-
-async function getCountries() {
-    await new axios.Axios({
-        baseURL: `${import.meta.env.VITE_COUNTRIES_API}`,
-    })
-    .get('/countries/flag/images')
-    .then(res => {
-
-        const retrievedCountries = JSON.parse(res.data).data
-
-       countries.value = retrievedCountries.map(c => c.name)
-       localStorage.setItem('countries', [...countries.value].toString())
-    })
-    .catch(err => {
-        console.log(err)
-    })
 }
 
 function updateProfileInformation() {
@@ -133,6 +107,10 @@ function clickedUpdate() {
                         :capitalize="false"
                         :text="$page.props.auth.user?.dob ? new Date($page.props.auth.user.dob).toDateString() : ''"
                     />
+                    <div
+                        v-if="dobChangePendingApproval"
+                        class="mt-2 mb-6 p-4 bg-indigo-50 border border-indigo-200 rounded-lg text-sm text-indigo-700"
+                    >Your date-of-birth change has been submitted for your guardian's (or an admin's) approval and will take effect once approved. Everything else you changed has already been saved.</div>
                     <ProfileInformationDisplay
                         class="my-8"
                         label="gender"
@@ -242,22 +220,7 @@ function clickedUpdate() {
             <div>
                 <InputLabel for="country" value="Country" />
 
-                <SelectSearch
-                    id="country"
-                    class="mt-1 block w-full"
-                    @selected="(data) => {
-                        if (data) {
-                            form.country = data.name
-                            return
-                        }
-
-                        form.country = ''
-                    }"
-                    :options="countries.map(c => {
-                        return {name: c}
-                    })"
-                    :value="computedFormCountry"
-                />
+                <CountrySelect v-model="form.country" input-id="country" class="mt-1 block w-full" />
 
                 <InputError class="mt-2" :message="form.errors.country" />
             </div>

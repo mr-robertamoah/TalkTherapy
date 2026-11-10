@@ -15,7 +15,10 @@ return [
     |
     */
 
-    'default' => env('CACHE_DRIVER', 'file'),
+    // CACHE_STORE is checked first (not just CACHE_DRIVER) so phpunit.xml's CACHE_STORE=array
+    // override actually takes effect during tests -- see tests/Feature/MessageRateLimitTest.php
+    // (SCRUM-105) for the flaky-under-`--parallel` symptom this mismatch caused.
+    'default' => env('CACHE_STORE', env('CACHE_DRIVER', 'file')),
 
     /*
     |--------------------------------------------------------------------------
@@ -31,7 +34,18 @@ return [
     |
     */
 
+    // SCRUM-373: the scheduler's own store -- its once-only keys (reminders sent, sessions announced)
+    // and its heartbeat. Separate from the default store so the deploy's `cache:clear` (which only
+    // clears the default store) doesn't make every reminder due in the next 30 minutes go out again.
+    'scheduler_store' => env('SCHEDULER_CACHE_STORE', 'scheduler'),
+
     'stores' => [
+
+        'scheduler' => [
+            'driver' => 'file',
+            'path' => storage_path('framework/cache/scheduler'),
+            'lock_path' => storage_path('framework/cache/scheduler'),
+        ],
 
         'apc' => [
             'driver' => 'apc',

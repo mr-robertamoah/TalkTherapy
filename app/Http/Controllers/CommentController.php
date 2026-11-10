@@ -6,14 +6,18 @@ use App\Actions\GetModelWithModelNameAndIdAction;
 use App\DTOs\CreateCommentDTO;
 use App\Http\Resources\CommentResource;
 use App\Models\Comment;
+use App\Models\GroupTherapy;
+use App\Models\Post;
+use App\Models\Therapy;
 use App\Services\CommentService;
-use Exception;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Redirect;
 use Throwable;
 
 class CommentController extends Controller
 {
+    // SCRUM-354: groups too -- only public therapies and groups get through EnsureCommentableExistsAction.
+    private const COMMENTABLE_MODELS = [Post::class, Therapy::class, GroupTherapy::class];
+
     public function createComment(Request $request)
     {
         try {
@@ -21,31 +25,33 @@ class CommentController extends Controller
                 CreateCommentDTO::new()->fromArray([
                     'user' => $request->user(),
                     'content' => $request->content,
-                    'commentable' => GetModelWithModelNameAndIdAction::new()->execute($request->commentableType, $request->commentableId),
+                    'commentable' => GetModelWithModelNameAndIdAction::new()->execute($request->commentableType, $request->commentableId, self::COMMENTABLE_MODELS),
                 ])
             );
 
-            return $this->returnSuccess($request, $comment);
+            return $this->successResponse($request, ['comment' => new CommentResource($comment)]);
         } catch (Throwable $th) {
-            
-            return $this->returnFailure($request, $th);
+
+            return $this->failureResponse($request, $th);
         }
     }
 
+    // Reads $request->route('commentId') rather than the magic ->commentId property -- see the
+    // identical fix/rationale in SessionController (SCRUM-116/SCRUM-130/SCRUM-133).
     public function deleteComment(Request $request)
     {
         try {
             CommentService::new()->deleteComment(
                 CreateCommentDTO::new()->fromArray([
                     'user' => $request->user(),
-                    'comment' => $comment = Comment::find($request->commentId),
+                    'comment' => $comment = Comment::find($request->route('commentId')),
                 ])
             );
 
-            return $this->returnSuccess($request, $comment);
+            return $this->successResponse($request, ['comment' => new CommentResource($comment)]);
         } catch (Throwable $th) {
-            
-            return $this->returnFailure($request, $th);
+
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -54,31 +60,12 @@ class CommentController extends Controller
         try {
             return CommentService::new()->getComments(
                 CreateCommentDTO::new()->fromArray([
-                    'commentable' => GetModelWithModelNameAndIdAction::new()->execute($request->commentableType, $request->commentableId),
+                    'commentable' => GetModelWithModelNameAndIdAction::new()->execute($request->commentableType, $request->commentableId, self::COMMENTABLE_MODELS),
                 ])
             );
         } catch (Throwable $th) {
-            
-            return $this->returnFailure($request, $th);
+
+            return $this->failureResponse($request, $th);
         }
-    }
-
-    private function returnSuccess(Request $request, Comment $comment)
-    {
-        $comment = new CommentResource($comment);
-        
-        if ($request->acceptsJson()) return response()->json(['comment' => $comment]);
-        
-        return Redirect::back()->with(['comment' => $comment]);
-    }
-
-    private function returnFailure(Request $request, Throwable $th)
-    {
-        $message = $th->getCode() == 500 ? "Something unfortunate happened. Please try again shortly." : $th->getMessage();
-        
-        ds($th);
-
-        if ($request->acceptsJson()) throw new Exception($message);
-        return Redirect::back()->withErrors(['alert'=> $message]);
     }
 }

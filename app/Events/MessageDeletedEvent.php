@@ -6,7 +6,6 @@ use App\Models\Message;
 use App\Traits\MessageBroadcastTrait;
 use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
-use Illuminate\Broadcasting\PresenceChannel;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Foundation\Events\Dispatchable;
@@ -14,7 +13,7 @@ use Illuminate\Queue\SerializesModels;
 
 class MessageDeletedEvent implements ShouldBroadcast
 {
-    use Dispatchable, InteractsWithSockets, SerializesModels, MessageBroadcastTrait;
+    use Dispatchable, InteractsWithSockets, MessageBroadcastTrait, SerializesModels;
 
     /**
      * Create a new event instance.
@@ -27,12 +26,12 @@ class MessageDeletedEvent implements ShouldBroadcast
     /**
      * Get the channels the event should broadcast on.
      *
-     * @return array<int, \Illuminate\Broadcasting\Channel>
+     * @return array<int, Channel>
      */
     public function broadcastOn(): array
     {
         return [
-            new PrivateChannel("messages.{$this->message->id}")
+            new PrivateChannel("messages.{$this->message->id}"),
         ];
     }
 
@@ -44,7 +43,7 @@ class MessageDeletedEvent implements ShouldBroadcast
     public function broadcastWith(): array
     {
         return [
-            'message' => $this->getMessageBroadcastData($this->message)
+            'message' => $this->getDeletedMessageBroadcastData($this->message),
         ];
     }
 }

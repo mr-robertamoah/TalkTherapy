@@ -4,6 +4,7 @@ namespace App\Actions\TherapyTopic;
 
 use App\Actions\Action;
 use App\DTOs\CreateTherapyTopicDTO;
+use App\Exceptions\TherapyException;
 use App\Exceptions\TherapyTopicException;
 
 class EnsureCanCreateTherapyTopicAction extends Action
@@ -17,8 +18,12 @@ class EnsureCanCreateTherapyTopicAction extends Action
                 $createTherapyTopicDTO->therapy->isCounsellor($createTherapyTopicDTO->user->counsellor)
             )
             // TODO not banned from creating or suspending from the app
-        ) return;
+        ) {
+            return;
+        }
 
-        throw new TherapyTopicException("You are not allowed to create a topic for therapy with name: {$createTherapyTopicDTO->therapy->name}.", 422);
+        // SCRUM-344: the same answer as a missing therapy (EnsureTherapyExistsAction), and never its
+        // name -- any signed-in user can reach this.
+        throw new TherapyTopicException(TherapyException::NOT_ALLOWED, 422);
     }
 }

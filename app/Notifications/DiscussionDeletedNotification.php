@@ -2,16 +2,17 @@
 
 namespace App\Notifications;
 
-use App\Http\Resources\DiscussionResource;
+use App\Contracts\ShownInNotificationCenter;
 use App\Models\Counsellor;
 use App\Models\Discussion;
+use App\Support\NotificationEntry;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\BroadcastMessage;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
-class DiscussionDeletedNotification extends Notification implements ShouldQueue
+class DiscussionDeletedNotification extends Notification implements ShouldQueue, ShownInNotificationCenter
 {
     use Queueable;
 
@@ -32,9 +33,10 @@ class DiscussionDeletedNotification extends Notification implements ShouldQueue
     {
         $via = ['database', 'broadcast'];
 
-        if ($notifiable->email_verified_at)
+        if ($notifiable->email_verified_at) {
             $via[] = 'mail';
-        
+        }
+
         return $via;
     }
 
@@ -52,7 +54,7 @@ class DiscussionDeletedNotification extends Notification implements ShouldQueue
             ->line("The discussion with name: '{$this->discussion->name}' for '{$this->discussion->for->name}' {$type} has been deleted.")
             ->action("Visit {$type} Page", $url)
             ->line("Thank you for choosing to 'TalkTherapy'.");
-    
+
     }
 
     /**
@@ -66,16 +68,30 @@ class DiscussionDeletedNotification extends Notification implements ShouldQueue
             'discussion_id' => $this->discussion->id,
         ];
     }
-    
+
     public function toBroadcast(object $notifiable): BroadcastMessage
     {
-        return (new BroadcastMessage([
-            'discussion' => new DiscussionResource($this->discussion)
-        ]));
+        // SCRUM-374: a small fixed summary -- the same for every recipient, never a per-viewer
+        // resource (payment status, dob) built for whoever happened to be signed in.
+        return new BroadcastMessage([
+            'discussion' => [
+                'id' => $this->discussion->id,
+                'name' => $this->discussion->name,
+                'startTime' => $this->discussion->start_time,
+                'endTime' => $this->discussion->end_time,
+                'status' => $this->discussion->status,
+            ],
+        ]);
     }
 
     public function broadcastType(): string
     {
         return 'discussion.deleted';
+    }
+
+    // SCRUM-39 (TT-5.4b): in the notification center -- from the saved ids only, never more than the email.
+    public static function present(array $data): NotificationEntry
+    {
+        return new NotificationEntry('A discussion was deleted');
     }
 }

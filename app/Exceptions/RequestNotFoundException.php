@@ -2,9 +2,7 @@
 
 namespace App\Exceptions;
 
-use Exception;
-
-class RequestNotFoundException extends Exception
+class RequestNotFoundException extends AppException
 {
     //
 }

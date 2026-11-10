@@ -2,15 +2,33 @@
 
 namespace App\Http\Controllers;
 
+use App\Actions\Counsellor\EnsureCanDeleteCounsellorAction;
 use App\Actions\EnsureNameStaysRetrievableAction;
+use App\Actions\Guardianship\HandleGuardianLossAction;
+use App\Actions\Guardianship\RemoveGuardianFromWardAction;
+use App\Actions\Notification\PruneNotificationsAction;
+use App\Actions\Suspension\EnsureCanDeleteOwnAccountWhileSuspendedAction;
+use App\Actions\User\EnsureDobChangeIsAllowedAction;
 use App\Actions\User\GetCounsellorCreationStepOfUserAction;
+use App\Actions\User\HasSubmittedAgeVerificationAction;
+use App\Actions\User\UpdateUserAvatarAction;
 use App\DTOs\CheckNameRetrievabilityDTO;
+use App\DTOs\DeleteCounsellorDTO;
+use App\DTOs\EnsureDobChangeIsAllowedDTO;
+use App\DTOs\UpdateUserAvatarDTO;
+use App\Exceptions\CannotDeleteCounsellorException;
+use App\Exceptions\DobChangeRequiresApprovalException;
+use App\Exceptions\SuspensionException;
 use App\Http\Requests\ProfileUpdateRequest;
+use App\Http\Requests\UpdateUserAvatarRequest;
+use App\Models\PushSubscription;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Redirect;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -24,7 +42,37 @@ class ProfileController extends Controller
         return Inertia::render('Profile/Show', [
             'mustVerifyEmail' => $request->user() instanceof MustVerifyEmail,
             'status' => session('status'),
-            'counsellorCreationStep' => GetCounsellorCreationStepOfUserAction::new()->execute($request->user())
+            'counsellorCreationStep' => GetCounsellorCreationStepOfUserAction::new()->execute($request->user()),
+            // TT-4.10e/SCRUM-294: flashed by update() below when a dob edit was held for
+            // guardian/admin approval instead of applied immediately -- only present on the one
+            // page load immediately after that redirect (standard Laravel flash semantics).
+            'dobChangePendingApproval' => (bool) session('dobChangePendingApproval'),
+            // TT-4.11b/SCRUM-303 bug (found during TT-4.11e/SCRUM-306's closeout QA pass):
+            // AgeVerificationSection.vue previously tracked whether a request was pending using
+            // only its own local, in-session `submitted` ref -- initialized to `false` on every
+            // fresh page load regardless of actual server-side state, so a user with a genuinely
+            // still-pending request saw "submit a statement" (implying none exists) instead of
+            // "submit another statement" until they submitted again in that same session. Unlike
+            // `dobChangePendingApproval` above (a one-time flash, correct for a notice that only
+            // matters right after its own redirect), this needs to reflect DURABLE state on every
+            // load, so it's a real query, not a flash.
+            //
+            // Deliberately "has ever submitted," not "has a pending one" (qa-engineer finding,
+            // second pass): "submit another statement" is accurate whether the prior submission
+            // is still pending, accepted, or rejected -- a decided request doesn't retroactively
+            // make it as if none was ever sent. Scoping this to pending-only left the label
+            // silently reverting to "submit a statement" the moment a request was decided, the
+            // same class of bug this ticket set out to fix, just shifted to a different state
+            // transition. See HasSubmittedAgeVerificationAction's own doc comment for why this is
+            // a distinct question from GetPendingAgeVerificationRequestAction (still used,
+            // correctly, by SubmitAgeVerificationAction's own idempotent-reuse logic).
+            'hasSubmittedAgeVerification' => HasSubmittedAgeVerificationAction::new()->execute($request->user()),
+            // SCRUM-39 (TT-5.4d): how long their notifications are kept.
+            'notificationRetention' => [
+                'days' => $request->user()->notification_retention_days,
+                'defaultDays' => PruneNotificationsAction::defaultDays(),
+                'options' => array_values(array_map('intval', config('notifications.retention_options'))),
+            ],
         ]);
     }
 
@@ -41,20 +89,74 @@ class ProfileController extends Controller
                     $request->otherNames,
                 ),
                 'user' => $request->user(),
-                'changing' => 'user'
+                'changing' => 'user',
             ])
         );
-        
-        $request->user()->fill(array_merge(
-            $request->validated(), 
-            ['dob' => !!$request->dob ? $request->dob : null]
-        ));
+
+        $newDob = $request->dob ?: null;
+        $dobChangeRequiresApproval = false;
+
+        // TT-4.10c/SCRUM-292: dob is deliberately excluded from the direct fill()/save() below
+        // when this throws -- everything else the user submitted in the same form still saves
+        // immediately (a pending guardian/admin approval for the dob specifically shouldn't hold
+        // an unrelated name/email/gender/country edit hostage). EnsureDobChangeIsAllowedAction has
+        // already created the pending approval Request by the time this throws.
+        try {
+            EnsureDobChangeIsAllowedAction::new()->execute(
+                EnsureDobChangeIsAllowedDTO::new()->fromArray([
+                    'user' => $request->user(),
+                    'actor' => $request->user(),
+                    'newDob' => $newDob,
+                ])
+            );
+        } catch (DobChangeRequiresApprovalException) {
+            $dobChangeRequiresApproval = true;
+        }
+
+        $fillData = $request->validated();
+        $fillData['dob'] = $dobChangeRequiresApproval ? $request->user()->dob : $newDob;
+
+        $request->user()->fill($fillData);
 
         if ($request->user()->isDirty('email')) {
             $request->user()->email_verified_at = null;
         }
 
-        $request->user()->save();
+        // TT-4.11c/SCRUM-304 security-review finding: an admin-verified dob (SubmitAgeVerification
+        // /RespondToAgeVerificationRequestAction) must not silently keep reading as "verified"
+        // once dob itself changes through this direct, unrelated path -- mirrors the email_verified_at
+        // clearing just above exactly. $dobChangeRequiresApproval requests never reach here with an
+        // actually-changed dob (the gate above holds `dob` at its current value in that case), so
+        // this only ever fires for a genuine, immediately-applied dob edit.
+        if ($request->user()->isDirty('dob')) {
+            $request->user()->dob_verified_at = null;
+        }
+
+        // SCRUM-382: a dob edit (clearing it included) that leaves them paused for a missing guardian
+        // runs the loss handling, as a guardian going would. Any other edit just saves (no row lock).
+        if ($request->user()->isDirty('dob')) {
+            HandleGuardianLossAction::new()->around($request->user(), HandleGuardianLossAction::DOB_CHANGED, fn () => $request->user()->save());
+        } else {
+            $request->user()->save();
+        }
+
+        return Redirect::route('profile.show')->with(
+            $dobChangeRequiresApproval ? ['dobChangePendingApproval' => true] : []
+        );
+    }
+
+    /**
+     * Update (or delete) the authenticated user's own avatar.
+     */
+    public function updateAvatar(UpdateUserAvatarRequest $request): RedirectResponse
+    {
+        UpdateUserAvatarAction::new()->execute(
+            UpdateUserAvatarDTO::new()->fromArray([
+                'user' => $request->user(),
+                'avatar' => $request->file('avatar'),
+                'deleteAvatar' => $request->boolean('deleteAvatar'),
+            ])
+        );
 
         return Redirect::route('profile.show');
     }
@@ -70,12 +172,56 @@ class ProfileController extends Controller
 
         $user = $request->user();
 
-        Auth::logout();
+        // SCRUM-363
+        try {
+            EnsureCanDeleteOwnAccountWhileSuspendedAction::new()->execute($user);
+        } catch (SuspensionException $e) {
+            throw ValidationException::withMessages(['password' => $e->getMessage()]);
+        }
 
-        $user->delete();
+        // A counsellor with pending sessions can't just stop being a counsellor (see
+        // CounsellorController::deleteCounsellor / EnsureCanDeleteCounsellorAction) -- deleting
+        // the whole account shouldn't be a way around that same safeguard, so it's enforced
+        // here too before anything is deleted.
+        if ($user->counsellor) {
+            try {
+                EnsureCanDeleteCounsellorAction::new()->execute(
+                    DeleteCounsellorDTO::new()->fromArray([
+                        'user' => $user,
+                        'counsellor' => $user->counsellor,
+                    ])
+                );
+            } catch (CannotDeleteCounsellorException) {
+                throw ValidationException::withMessages([
+                    'password' => 'You have pending counsellor sessions. Please complete or cancel them before deleting your account.',
+                ]);
+            }
+        }
+
+        DB::transaction(function () use ($user) {
+            // Soft-delete the linked Counsellor record too -- otherwise it's left active with a
+            // deleted user behind it, and anything that renders that counsellor (random
+            // counsellor listings, a therapy's assigned counsellor, etc.) crashes trying to read
+            // properties off the now-missing user relationship.
+            $user->counsellor?->delete();
+
+            // SCRUM-288: before the account goes -- each ward this leaves with no active guardian
+            // is paused, and this guardian's video consents for them lapse.
+            RemoveGuardianFromWardAction::new()->forAllWardsOf($user, RemoveGuardianFromWardAction::GUARDIAN_DELETED);
+
+            // SCRUM-399: none of their devices is alerted again (anonymisation would remove them much later).
+            PushSubscription::query()->where('user_id', $user->id)->delete();
+
+            $user->delete();
+        });
+
+        Auth::logout();
 
         $request->session()->invalidate();
         $request->session()->regenerateToken();
+
+        // SCRUM-406: as on sign-out -- the closed account's pages don't stay readable in the browser's history.
+        Inertia::clearHistory();
 
         return Redirect::to('/');
     }

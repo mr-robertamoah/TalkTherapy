@@ -6,8 +6,9 @@ import DangerButton from './DangerButton.vue';
 import useAlert from '@/Composables/useAlert';
 import Alert from './Alert.vue';
 import FormLoader from './FormLoader.vue';
-import StyledLink from './StyledLink.vue';
 import useEnums from '@/Composables/useEnums';
+import SafeguardingExceptionApprovalForm from './SafeguardingExceptionApprovalForm.vue';
+import RefundRejectionReasonForm from './RefundRejectionReasonForm.vue';
 
 
 const { alertData, clearAlertData, setFailedAlertData, setSuccessAlertData } = useAlert()
@@ -15,15 +16,14 @@ const { alertData, clearAlertData, setFailedAlertData, setSuccessAlertData } = u
 const props = defineProps({
     request: {
         default: null
-    }
+    },
 })
 
-const emits = defineEmits(['onData', 'alert'])
+const emits = defineEmits(['onData', 'alert', 'refused'])
 
 const { RequestStatusEnum, RequestTypeEnum } = useEnums()
 const userId = usePage().props.auth.user?.id;
 
-const showActions = ref(false)
 const responding = ref(false)
 const status = ref(null)
 
@@ -34,27 +34,89 @@ watchEffect(() => {
 
 const computedTypeMessage = computed(() => {
     return {
-        [RequestTypeEnum.discussion]: computedIsFrom.value ? `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}sent a request inviting counsellor for a discussion in a ${props.request.for.forType}.` : `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}received a request to take part in a discussion for a ${props.request.for.forType}.`,
+        [RequestTypeEnum.discussion]: computedIsFrom.value ? `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}sent a request inviting counsellor for a discussion in a ${props.request.for?.forType}.` : `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}received a request to take part in a discussion for a ${props.request.for?.forType}.`,
         [RequestTypeEnum.guardianship]: computedIsFrom.value ? `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}sent a guardianship request.` : `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}received a guardianship request.`,
         [RequestTypeEnum.counsellor]: computedIsFrom.value ? `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}sent a counsellor verification request.` : `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}received a counsellor verification request.`,
         [RequestTypeEnum.administrator]: computedIsFrom.value ? '' : 'You accepted the request.',
-        [RequestTypeEnum.therapy]: computedIsFrom.value ? `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}sent an assistance request for therapy with name: ${props.request.for.name}.` 
-            : `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}received an assistance request for therapy with name: ${props.request.for.name}.`,
-        [RequestTypeEnum.groupTherapy]: computedIsFrom.value ? '' : 'You accepted the request.',
+        [RequestTypeEnum.therapy]: computedIsFrom.value ? `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}sent an assistance request for therapy with name: ${props.request.for?.name}.` 
+            : `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}received an assistance request for therapy with name: ${props.request.for?.name}.`,
+        // SCRUM-389: a creator's invitation to a counsellor, or a counsellor's own offer to help (to the creator).
+        [RequestTypeEnum.groupTherapy]: props.request.direction === 'offer'
+            ? (computedIsFrom.value
+                ? `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}offered to help with the group therapy: ${props.request.for?.name}.`
+                : `A counsellor ${props.request.status == RequestStatusEnum.pending ? 'has ' : ''}offered to help with your group therapy: ${props.request.for?.name}.`)
+            : (computedIsFrom.value
+                ? `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}invited a counsellor to the group therapy: ${props.request.for?.name}.`
+                : `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}been invited to help with the group therapy: ${props.request.for?.name}.`),
+        // SCRUM-175: previously missing entirely (fell through to `undefined`, a blank line) --
+        // this is SCRUM-72's join-a-group-therapy request type, distinct from RequestTypeEnum.groupTherapy above.
+        [RequestTypeEnum.groupTherapyMembership]: computedIsFrom.value ? `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}requested to join the group therapy "${props.request.for?.name}".`
+            : `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}received a request to join your group therapy "${props.request.for?.name}".`,
+        // SCRUM-167: these org-context types previously fell through to `undefined` here (blank
+        // text) -- this generic badge is also where a counsellor/user sees them in their own
+        // personal Requests modal, alongside the fuller detail on the dedicated my-organizations
+        // dashboard (which additionally supports counter-offering the compensation-change type).
+        [RequestTypeEnum.organizationCounsellorInvite]: computedIsFrom.value ? `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}invited a counsellor to affiliate with your organization.` : `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}been invited to affiliate as a counsellor with an organization.`,
+        [RequestTypeEnum.organizationCounsellorApplication]: computedIsFrom.value ? `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}applied to affiliate with an organization as a counsellor.` : `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}received an application to affiliate as a counsellor with your organization.`,
+        [RequestTypeEnum.organizationMemberInvite]: computedIsFrom.value ? `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}invited a member to join your organization.` : `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}been invited to join an organization as a member.`,
+        [RequestTypeEnum.organizationMemberApplication]: computedIsFrom.value ? `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}applied to join an organization as a member.` : `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}received an application to join your organization as a member.`,
+        [RequestTypeEnum.organizationCounsellorCompensationChange]: 'A compensation negotiation for an organization affiliation is in progress.',
+        // TT-4.10e/SCRUM-294: `for` is the User whose dob is changing -- may or may not be the
+        // same person as `from` (an admin can initiate this on someone else's behalf), so this
+        // deliberately names `for` explicitly rather than assuming "your own" the way most other
+        // types above do.
+        [RequestTypeEnum.dobChange]: computedIsFrom.value
+            ? `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}requested a date-of-birth change for ${partyLabel(props.request.for)}.`
+            : `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}received a request to approve a date-of-birth change for ${partyLabel(props.request.for)}.`,
+        // TT-4.11d/SCRUM-305: always a self-submission (from == for), admin-only recipient (no
+        // guardian counterpart), so this never needs the "for someone else" framing dobChange's
+        // own message above does.
+        [RequestTypeEnum.ageVerification]: computedIsFrom.value
+            ? `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}submitted an age-verification statement for review.`
+            : `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}received an age-verification submission to review.`,
+        // SCRUM-387: shown in the admin queue (they were blank before).
+        [RequestTypeEnum.organization]: computedIsFrom.value
+            ? `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}sent an organisation verification request.`
+            : `${props.request.for?.name ?? 'An organisation'} has asked to be verified as an organisation.`,
+        [RequestTypeEnum.refund]: computedIsFrom.value
+            ? `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}asked for a refund.`
+            : `${partyLabel(props.request.from)} has asked for a refund${props.request.for?.amount != null ? ` of ${props.request.for.currency} ${(props.request.for.amount / 100).toFixed(2)}` : ''}.`,
+        // SCRUM-381: a counsellor asking the super administrator to let a paused minor carry on.
+        [RequestTypeEnum.safeguardingException]: props.request.safeguardingException?.involved
+            ? 'A counsellor has asked for a safeguarding exception for a client you are involved with, so you can\'t see or decide it.'
+            : computedIsFrom.value
+            ? `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}asked for a safeguarding exception for ${props.request.safeguardingException?.client?.fullName ?? 'your client'} in "${props.request.for?.name ?? 'a therapy'}".`
+            : `A counsellor has asked for a safeguarding exception for ${props.request.safeguardingException?.client?.fullName ?? 'a client'} in "${props.request.for?.name ?? 'a therapy'}".`,
     }[props.request?.type]
 })
 const computedStatus = computed(() => {
+    if (props.request.safeguardingException?.involved && status.value == RequestStatusEnum.pending)
+        return 'It is waiting for review.'
+
+    // SCRUM-385: no line for an ordinary pending request -- the Pending chip already says it.
     return {
         [RequestStatusEnum.accepted]: computedIsFrom.value ? 'Your request has been accepted.' : 'You accepted the request.',
         [RequestStatusEnum.rejected]: computedIsFrom.value ? 'Your request has been rejected.' : 'You rejected the request.',
-        [RequestStatusEnum.pending]: computedIsFrom.value ? 'Your request is pending.' : 'You have not responded to this request.',
+        [RequestStatusEnum.inconsequencial]: 'This request was closed: it is no longer needed.',
     }[status.value]
 })
+// SCRUM-298: softer, calmer chip colors -- the previous bg-*-300/text-*-800 pairing was
+// jarringly saturated next to the rest of the app's muted palette (e.g. PaymentRequiredBanner's
+// bg-blue-50/border-blue-200).
 const computedStatusClasses = computed(() => {
     return {
-        [RequestStatusEnum.accepted]: 'text-green-800 bg-green-300',
-        [RequestStatusEnum.rejected]: 'text-red-800 bg-red-300',
-        [RequestStatusEnum.pending]: 'text-yellow-800 bg-yellow-300',
+        [RequestStatusEnum.accepted]: 'text-green-700 bg-green-50 border border-green-200',
+        [RequestStatusEnum.rejected]: 'text-red-700 bg-red-50 border border-red-200',
+        [RequestStatusEnum.pending]: 'text-amber-700 bg-amber-50 border border-amber-200',
+        [RequestStatusEnum.inconsequencial]: 'text-gray-700 bg-gray-50 border border-gray-200',
+    }[props.request?.status]
+})
+const computedStatusLabel = computed(() => {
+    return {
+        [RequestStatusEnum.accepted]: 'Accepted',
+        [RequestStatusEnum.rejected]: 'Rejected',
+        [RequestStatusEnum.pending]: 'Pending',
+        [RequestStatusEnum.inconsequencial]: 'Closed',
     }[props.request?.status]
 })
 const computedIsFrom = computed(() => {
@@ -65,14 +127,58 @@ const computedIsFrom = computed(() => {
 
     return userId == props.request.from.id
 })
+// Whether the viewer is the one this request waits on -- for every type, the server's own answer
+// (RequestResource's `isRespondent`, from EnsureUserCanRespondToRequestAction, SCRUM-387): a dob
+// change's current guardians (TT-4.10f/SCRUM-295), any admin for the admin queue's types but never
+// on their own age verification (TT-4.11d/SCRUM-305), the super administrator for a safeguarding
+// exception (SCRUM-381). Working it out here from `to` is exactly what drifted out of sync before.
+// A request from a resource without the field (none today) falls back to matching `to`.
 const computedIsTo = computed(() => {
-    if (!props.request.from) return
+    if (props.request.isRespondent !== undefined) return !!props.request.isRespondent
+
+    if (!props.request.to) return
 
     if (props.request.to.isCounsellor)
-        return userId == props.request.to.userId 
+        return userId == props.request.to.userId
 
     return userId == props.request.to.id
 })
+
+// SCRUM-387: the accept/reject buttons -- only while it is pending. computedIsTo alone still
+// drives the "from:" line on an answered one.
+const computedCanRespond = computed(() => status.value == RequestStatusEnum.pending && !!computedIsTo.value)
+
+// TT-4.11d/SCRUM-305: mirrors RequestResource's own isNullToAdminOnlyType() naming -- a single
+// named list a third null-`to`, admin-only type gets added to once, instead of two separate
+// array literals (here and in the template below) that could drift apart.
+// SCRUM-387: the two verification types too -- their `to` is no longer sent (it was the first
+// super administrator, whose details every admin then saw), and any admin reviews them.
+const nullToAdminOnlyTypes = [RequestTypeEnum.dobChange, RequestTypeEnum.ageVerification, RequestTypeEnum.safeguardingException, RequestTypeEnum.counsellor, RequestTypeEnum.organization, RequestTypeEnum.refund]
+
+// SCRUM-298: collapses the exact three-way OR the template's wrapping v-if and its inner
+// v-if/v-else-if/v-if branches would otherwise have to repeat in sync -- a future edit to one
+// inner condition without updating the wrapper could silently render empty spacing with no
+// content.
+const computedShowsPartyLine = computed(() => {
+    return (computedIsFrom.value && props.request.to) ||
+        (computedIsFrom.value && !props.request.to && nullToAdminOnlyTypes.includes(props.request.type)) ||
+        (computedIsTo.value && props.request.from)
+})
+
+// SCRUM-168: the from/to party can also be an Organization (org invite/application/compensation
+// types) -- falling through to `@${party.username}` for a party with no `username` rendered a
+// literal "@undefined" here before this was ever exercised for a plain member. Mirrors
+// Organization/Partials/RequestQueueSection.vue's own partyLabel() for the org-scoped queues.
+function partyLabel(party) {
+    if (!party) return '--'
+    if (party.deleted) return 'deleted'
+    if (party.isOrganization) return party.name
+    if (party.isCounsellor) return party.name
+    // SCRUM-73 QA: a masked (anonymous) party has no username -- name them as the request does,
+    // e.g. "Client (Anonymous User)", never "@undefined".
+    if (party.username) return `@${party.username}`
+    return party.fullName ?? party.name ?? '--'
+}
 
 function visitTherapy() {
     let therapyId
@@ -84,13 +190,37 @@ function visitTherapy() {
     router.get(route('therapies.get', {therapyId}))
 }
 
-async function clickedResponse(response) {
+// SCRUM-381: approving a safeguarding exception request needs the administrator's own end date
+// and reason (SafeguardingExceptionApprovalForm, prefilled with what the counsellor proposed).
+const approving = ref(false)
+
+// SCRUM-387 (QA): declining a refund request needs a reason for the client
+// (RefundRejectionReasonForm, as on the refund requests page).
+const rejectingRefund = ref(false)
+
+function clickedReject() {
+    if (props.request.type != RequestTypeEnum.refund)
+        return clickedResponse('rejected')
+
+    rejectingRefund.value = true
+}
+
+function clickedAccept() {
+    if (props.request.type != RequestTypeEnum.safeguardingException)
+        return clickedResponse('accepted')
+
+    approving.value = true
+}
+
+async function clickedResponse(response, extra = {}) {
     responding.value = true
-    await axios.post(route('requests.respond', { requestId: props.request.id }), { response })
+    await axios.post(route('requests.respond', { requestId: props.request.id }), { response, ...extra })
         .then((res) => {
             console.log(res)
 
             emits('onData', res.data.request)
+            approving.value = false
+            rejectingRefund.value = false
             status.value = res.data.request.status
             if (res.data.request?.status !== status.value && status.value == RequestStatusEnum.accepted) {
                 emits('alert', {
@@ -104,53 +234,109 @@ async function clickedResponse(response) {
             emits('alert', {
                 type: 'success',
                 time: 5000,
-                message: 'You have successful responded to the request.'
+                message: 'You have successfully responded to the request.'
             })
         })
         .catch((err) => {
             console.log(err)
 
+            // SCRUM-387 (QA): a refusal (422) says why, for every type -- requests.respond's failure
+            // shape uses an "error" key (RequestController::respond()).
+            const serverMessage = err.response?.status == 422
+                ? (err.response?.data?.error ?? err.response?.data?.message)
+                : null
+
             emits('alert', {
                 type: 'failed',
                 time: 5000,
-                message: 'Something unfortunate happened. Please try again shortly.'
+                message: serverMessage || 'Something unfortunate happened. Please try again shortly.'
             })
+
+            // SCRUM-388: refused (e.g. already answered elsewhere) -- the parent reloads what's shown.
+            if (err.response?.status == 422)
+                emits('refused')
         })
     responding.value = false
 }
 </script>
 
 <template>
-    <div v-bind="$attrs" class="bg-stone-300 rounded w-full max-w-[400px] select-none p-2 relative">
+    <div v-bind="$attrs" class="bg-white shadow-sm border border-gray-200 rounded-lg w-full max-w-[440px] p-4 relative">
         <FormLoader v-if="responding" class="relative" :show="responding" :text="'responding to request'"/>
-        <div class="text-gray-600 text-sm tracking-wide">{{ computedTypeMessage }}<span 
-                v-if="[RequestTypeEnum.discussion, RequestTypeEnum.therapy].includes(request.type)"
-                class="ml-2 text-xs text-blue-600 cursor-pointer"
-                @click="visitTherapy"
-            >view therapy</span></div>
-        <div class="flex justify-end items-center w-full text-xs my-2">
-            <div v-if="computedIsFrom && request.to" class="flex text-gray-600">to: {{ request.to.isCounsellor ? request.to.name : `@${request.to.username}` }}</div>
-            <div v-if="computedIsTo && request.from" class="flex text-gray-600">from: {{ request.from.isCounsellor ? request.from.name : `@${request.from.username}` }}</div>
-            <div 
-                @dblclick="() => {
-                    if (computedIsTo)
-                        showActions = !showActions
-                }"
-                :title="computedIsTo && request.status == 'PENDING' ? 'double click to show/hide actions' : ''"
+
+        <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0 text-sm text-gray-900 leading-snug">{{ computedTypeMessage }}<span
+                    v-if="[RequestTypeEnum.discussion, RequestTypeEnum.therapy].includes(request.type)"
+                    class="ml-1 text-xs text-blue-600 hover:text-blue-800 cursor-pointer whitespace-nowrap"
+                    @click="visitTherapy"
+                >view therapy</span></div>
+            <span
                 :class="computedStatusClasses"
-                class="text-center p-2 rounded w-fit ml-auto cursor-pointer"
-            >{{ computedStatus }}</div>
+                class="shrink-0 px-2.5 py-1 rounded-full text-xs font-medium"
+            >{{ computedStatusLabel }}</span>
         </div>
-            
-        <template v-if="showActions">
-            <div class="flex justify-end items-center space-x-2 p-2 overflow-hidden overflow-x-auto">
-                    <StyledLink class="shrink-0" v-if="request.type == RequestTypeEnum.therapy" :href="route('therapies.get', { therapyId: request.for.id })" :text="'visit therapy page'"/>
-                    <template v-if="request.status == RequestStatusEnum.pending && computedIsTo">
-                        <PrimaryButton :disabled="responding" @click="() => clickedResponse('accepted')" class="shrink-0">accept</PrimaryButton>
-                        <DangerButton :disabled="responding" @click="() => clickedResponse('rejected')" class="shrink-0">reject</DangerButton>
-                    </template>
-            </div>
-        </template>
+
+        <div
+            v-if="request.type == RequestTypeEnum.dobChange"
+            class="text-xs text-gray-500 mt-2"
+        >proposed: {{ request.dobChange?.newDob ? new Date(request.dobChange.newDob).toDateString() : '--' }} (currently: {{ request.dobChange?.priorDob ? new Date(request.dobChange.priorDob).toDateString() : '--' }})</div>
+
+        <div
+            v-if="request.type == RequestTypeEnum.ageVerification"
+            class="text-xs text-gray-500 mt-2 space-y-1"
+        >
+            <div>dob attested: {{ request.ageVerification?.attestedDob ? new Date(request.ageVerification.attestedDob).toDateString() : '--' }}</div>
+            <div v-if="request.ageVerification?.attestation" class="text-gray-700 italic">"{{ request.ageVerification.attestation }}"</div>
+            <a
+                v-if="request.ageVerification?.documentUrl"
+                :href="request.ageVerification.documentUrl"
+                target="_blank"
+                rel="noopener"
+                class="inline-block text-blue-600 hover:text-blue-800 underline"
+            >view submitted document</a>
+        </div>
+
+        <div
+            v-if="request.type == RequestTypeEnum.safeguardingException && !request.safeguardingException?.involved"
+            class="text-xs text-gray-500 mt-2 space-y-1"
+        >
+            <div>proposed end: {{ request.safeguardingException?.proposedEndsAt ? new Date(request.safeguardingException.proposedEndsAt).toLocaleString() : '--' }}</div>
+            <div v-if="request.safeguardingException?.reason" class="text-gray-700 italic whitespace-pre-line">"{{ request.safeguardingException.reason }}"</div>
+        </div>
+
+        <div
+            v-if="computedShowsPartyLine"
+            class="flex flex-wrap gap-x-4 text-xs text-gray-500 mt-2"
+        >
+            <div v-if="computedIsFrom && request.to">to: {{ partyLabel(request.to) }}</div>
+            <div v-else-if="computedIsFrom && !request.to && nullToAdminOnlyTypes.includes(request.type)">to: {{ request.type == RequestTypeEnum.safeguardingException ? 'the super administrator' : 'any admin' }}</div>
+            <div v-if="computedIsTo && request.from">from: {{ partyLabel(request.from) }}</div>
+        </div>
+
+        <div v-if="computedStatus" class="text-xs text-gray-500 mt-2">{{ computedStatus }}</div>
+
+        <SafeguardingExceptionApprovalForm
+            v-if="request.status == RequestStatusEnum.pending && request.safeguardingException?.isRespondent && approving"
+            :request-id="request.id"
+            :safeguarding-exception="request.safeguardingException"
+            :responding="responding"
+            @cancel="approving = false"
+            @submit="(terms) => clickedResponse('accepted', terms)"
+        />
+
+        <RefundRejectionReasonForm
+            v-else-if="computedCanRespond && rejectingRefund"
+            class="mt-3 border-t border-gray-200 pt-3"
+            :request-id="request.id"
+            :responding="responding"
+            @cancel="rejectingRefund = false"
+            @submit="(reason) => clickedResponse('rejected', { reason })"
+        />
+
+        <div v-else-if="computedCanRespond" class="flex justify-end gap-2 mt-3">
+            <PrimaryButton :disabled="responding" @click="clickedAccept">accept</PrimaryButton>
+            <DangerButton :disabled="responding" @click="clickedReject">reject</DangerButton>
+        </div>
     </div>
 
     <Alert

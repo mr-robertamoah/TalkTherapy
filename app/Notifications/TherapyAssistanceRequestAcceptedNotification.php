@@ -2,16 +2,20 @@
 
 namespace App\Notifications;
 
+use App\Contracts\ShownInNotificationCenter;
+use App\Enums\ConstantsEnum;
 use App\Models\Counsellor;
 use App\Models\Request;
 use App\Models\Therapy;
+use App\Models\User;
+use App\Support\NotificationEntry;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\BroadcastMessage;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
-class TherapyAssistanceRequestAcceptedNotification extends Notification implements ShouldQueue
+class TherapyAssistanceRequestAcceptedNotification extends Notification implements ShouldQueue, ShownInNotificationCenter
 {
     use Queueable;
 
@@ -32,9 +36,10 @@ class TherapyAssistanceRequestAcceptedNotification extends Notification implemen
     {
         $via = ['database', 'broadcast'];
 
-        if ($notifiable->email_verified_at)
+        if ($notifiable->email_verified_at) {
             $via[] = 'mail';
-        
+        }
+
         return $via;
     }
 
@@ -44,26 +49,44 @@ class TherapyAssistanceRequestAcceptedNotification extends Notification implemen
     public function toMail(object $notifiable): MailMessage
     {
         $isCounsellor = false;
-        if ($notifiable::class == Counsellor::class) $isCounsellor = true;
+        if ($notifiable::class == Counsellor::class) {
+            $isCounsellor = true;
+        }
 
         $name = $notifiable::class == Counsellor::class ? $notifiable->getName() : $notifiable->name;
 
         return (new MailMessage)
             ->success()
-            ->subject("Assistance Request Accepted")
+            ->subject('Assistance Request Accepted')
             ->greeting("Hello {$name}!")
-            ->when($isCounsellor, function ($mail) {
+            // SCRUM-358: a group invite -- sent by the group's creator (a user OR a counsellor) and
+            // accepted by a counsellor joining the group. Its own wording either way.
+            // SCRUM-389: a counsellor's own offer to help a group, accepted by its creator.
+            ->when(! $this->request->for->isTherapy && $this->request->isAssistanceOffer(), function ($mail) {
+                $mail->line("Your offer to help the group therapy with name: '{$this->request->for->name}' has been accepted. You are now one of its counsellors.");
+            })
+            ->when(! $this->request->for->isTherapy && ! $this->request->isAssistanceOffer(), function ($mail) {
+                $acceptedBy = $this->request->to instanceof Counsellor
+                    ? "counsellor with name: '{$this->request->to->getName()}'"
+                    : $this->acceptedByPhrase();
+                $mail->line("Your invitation to join the group therapy with name: '{$this->request->for->name}' has been accepted by {$acceptedBy}.");
+            })
+            ->when($this->request->for->isTherapy && $isCounsellor, function ($mail) {
                 $mail
-                    ->line("Your request to render assistance for the therapy with name: '{$this->request->for->name}' has been accepted by user with name: '{$this->request->to->name}'.")
+                    ->line("Your request to render assistance for the therapy with name: '{$this->request->for->name}' has been accepted by {$this->acceptedByPhrase()}.")
                     ->line("Start creating sessions and lets help make user's wellbeing better.");
             })
-            ->when(!$isCounsellor, function ($mail) {
+            ->when($this->request->for->isTherapy && ! $isCounsellor, function ($mail) {
                 $mail
                     ->line("Your request for assistance for the therapy with name: '{$this->request->for->name}' has been accepted by counsellor with name: '{$this->request->to->getName()}'.")
-                    ->action("Visit Counsellor Page", url("counsellors/{$this->request->to_id}"));
+                    ->action('Visit Counsellor Page', url("counsellors/{$this->request->to_id}"));
             })
-            ->line("You may receive other reminders before the starting time.")
-            ->action("Visit Therapy Page", url("therapies/{$this->request->for->id}"))
+            ->line('You may receive other reminders before the starting time.')
+            // SCRUM-358: also sent for group invites now -- link to the right page.
+            ->action(
+                $this->request->for->isTherapy ? 'Visit Therapy Page' : 'Visit Group Therapy Page',
+                url(($this->request->for->isTherapy ? 'therapies/' : 'group-therapies/').$this->request->for->id)
+            )
             ->line("Thank you for choosing to 'TalkTherapy'.");
     }
 
@@ -75,26 +98,75 @@ class TherapyAssistanceRequestAcceptedNotification extends Notification implemen
     public function toArray(object $notifiable): array
     {
         return [
-            'therapy_id' => $this->request->for_id,
+            // SCRUM-358: group invites use this notification too -- never label a group as a therapy.
+            $this->request->for->isTherapy ? 'therapy_id' : 'group_therapy_id' => $this->request->for_id,
+            // SCRUM-39 (review): which of the email's four wordings, for the notification center. Old rows have none.
+            'kind' => match (true) {
+                ! $this->request->for->isTherapy && $this->request->isAssistanceOffer() => 'offer',
+                ! $this->request->for->isTherapy => 'invite',
+                $notifiable instanceof Counsellor => 'assist',
+                default => 'help',
+            },
         ];
     }
-    
+
     public function toBroadcast(object $notifiable): BroadcastMessage
     {
-        return (new BroadcastMessage([
+        return new BroadcastMessage([
             'therapy' => [
                 'id' => $this->request->for->id,
                 'name' => $this->request->for->name,
                 'backgroundStory' => $this->request->for->background_story,
             ],
-            'to' => $this->request->to_type == Counsellor::class
+            'to' => $this->request->to instanceof Counsellor
                 ? $this->request->to->getName()
-                : $this->request->to->name
-        ]));
+                : $this->acceptedByName(),
+        ]);
     }
 
     public function broadcastType(): string
     {
         return 'therapy.assistance';
+    }
+
+    // SCRUM-56: masked by the therapy's anonymity *for that user*, so a group member's own
+    // anonymity choice counts, not just the group-level flag. Only ever a User here -- a counsellor
+    // is never masked. SCRUM-380: TherapyTrait::hidesIdentityOf(). In practice the User is always
+    // the 1:1 client (a counsellor's offer goes to the therapy's addedby; group invites go to a
+    // Counsellor), for whom it gives exactly the old answer.
+    private function acceptedByName(): string
+    {
+        $user = $this->request->to;
+
+        // Only reached for a User `to` (toBroadcast handles a Counsellor first). A deleted user is
+        // never named either.
+        if (! $user instanceof User) {
+            return ConstantsEnum::anonymousPersonPhrase->value;
+        }
+
+        return $this->request->for->hidesIdentityOf($user) ? ConstantsEnum::anonymousPersonPhrase->value : $user->name;
+    }
+
+    private function acceptedByPhrase(): string
+    {
+        $name = $this->acceptedByName();
+
+        return $name === ConstantsEnum::anonymousPersonPhrase->value ? $name : "user with name: '{$name}'";
+    }
+
+    // SCRUM-39 (TT-5.4b): in the notification center -- from the saved ids only, never more than the email.
+    public static function present(array $data): NotificationEntry
+    {
+        $link = isset($data['group_therapy_id'])
+            ? NotificationEntry::link('group.therapies.get', ['groupTherapyId' => $data['group_therapy_id']])
+            : NotificationEntry::link('therapies.get', ['therapyId' => $data['therapy_id'] ?? null]);
+
+        return match ($data['kind'] ?? null) {
+            'offer' => new NotificationEntry('Your offer to help a group was accepted', 'You are now one of its counsellors.', $link),
+            'invite' => new NotificationEntry('Your invitation to your group was accepted', '', $link),
+            'assist' => new NotificationEntry('Your request to help with a therapy was accepted', 'You can start creating sessions.', $link),
+            'help' => new NotificationEntry('A counsellor accepted your request for help', '', $link),
+            default => new NotificationEntry('Your request or invitation was accepted', '', $link),
+        };
     }
 }

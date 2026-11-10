@@ -2,9 +2,8 @@
 
 namespace App\Http\Requests;
 
-use App\Models\TherapyTopic;
+use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Validation\Rule;
 
 class CreateTherapyTopicRequest extends FormRequest
 {
@@ -19,14 +18,18 @@ class CreateTherapyTopicRequest extends FormRequest
     /**
      * Get the validation rules that apply to the request.
      *
-     * @return array<string, \Illuminate\Contracts\Validation\ValidationRule|array<mixed>|string>
+     * @return array<string, ValidationRule|array<mixed>|string>
      */
     public function rules(): array
     {
         return [
-            'name' => ['required', 'string', 'max:255', Rule::prohibitedIf(TherapyTopic::query()->whereTherapyId($this->get('requestId'))->whereName($this->get('name'))->exists())],
+            // SCRUM-344 (security review): a former prohibitedIf() here queried the dropped
+            // therapy_id column (every topic create 500ed) using a client-chosen `requestId`, before
+            // any authorization -- "fixed", it would have let anyone confirm guessed topic names on
+            // any therapy. Removed, as SCRUM-339 did for session names.
+            'name' => ['required', 'string', 'max:255'],
             'description' => ['required', 'string'],
-            'sessions' => ['nullable', 'array']
+            'sessions' => ['nullable', 'array'],
         ];
     }
 }

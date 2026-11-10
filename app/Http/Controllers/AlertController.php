@@ -5,9 +5,9 @@ namespace App\Http\Controllers;
 use App\Actions\GetModelWithModelNameAndIdAction;
 use App\DTOs\AlertServiceDTO;
 use App\Enums\AlertStatusEnum;
-use App\Models\Alert;
+use App\Models\GroupTherapy;
+use App\Models\Therapy;
 use App\Services\AlertService;
-use Exception;
 use Illuminate\Http\Request;
 use Throwable;
 
@@ -20,21 +20,22 @@ class AlertController extends Controller
                 AlertServiceDTO::new()->fromArray([
                     'user' => $request->user(),
                     'status' => AlertStatusEnum::waiting->value,
+                    // SCRUM-352 (security review): only the models alerts are for -- anything else
+                    // is the same 422, never a TypeError 500 that confirms the id exists.
                     'alertable' => GetModelWithModelNameAndIdAction::new()->execute(
-                        $request->alertableType, $request->alertableId
-                    )
+                        $request->alertableType, $request->alertableId, [Therapy::class, GroupTherapy::class]
+                    ),
                 ])
             );
-            
+
             return response()->json([
-                'status' => true
+                'status' => true,
             ]);
         } catch (Throwable $th) {
-            $message = $th->getCode() == 500 ? "Something unfortunate happened. Please try again shortly." : $th->getMessage();
-            
-            ds($th);
+            $status = $this->statusFor($th);
+            $message = $this->messageFor($th, $status);
 
-            throw new Exception($message);
+            return response()->json(['message' => $message], $status);
         }
     }
 }

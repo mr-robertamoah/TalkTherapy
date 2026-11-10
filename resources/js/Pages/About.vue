@@ -9,7 +9,6 @@ import Avatar from '@/Components/Avatar.vue';
 import useModal from '@/Composables/useModal';
 import useFeatures from '@/Composables/useFeatures';
 import CreateTestimonialModal from '@/Components/CreateTestimonialModal.vue';
-import ContactUsModal from '../Components/ContactUsModal.vue';
 import PrimaryButton from '../Components/PrimaryButton.vue';
 import ApplicationLogo from '@/Components/ApplicationLogo.vue';
 
@@ -59,70 +58,107 @@ async function getStats() {
     <Head title="About" />
 
     <AuthenticatedLayout>
-        <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 mt-4 top-2 sticky">
-            <div class="p-2 bg-gradient-to-br from-blue-800 to-violet-500 text-lg md:text-2xl w-full sm:w-[90%] rounded-lg text-center text-white md:w-[70%] mx-auto">
-                talk your way to a better mental state
+        <!-- Hero Section -->
+        <div class="relative bg-gradient-to-br from-gray-50 via-stone-100 to-slate-100 overflow-hidden">
+            <div class="absolute inset-0">
+                <svg class="absolute bottom-0 left-0 transform translate-y-1/2" width="404" height="404" fill="none" viewBox="0 0 404 404">
+                    <defs>
+                        <pattern id="85737c0e-0916-41d7-917f-596dc7edfa27" x="0" y="0" width="20" height="20" patternUnits="userSpaceOnUse">
+                            <rect x="0" y="0" width="4" height="4" class="text-gray-200" fill="currentColor" />
+                        </pattern>
+                    </defs>
+                    <rect width="404" height="404" fill="url(#85737c0e-0916-41d7-917f-596dc7edfa27)" />
+                </svg>
+            </div>
+            
+            <div class="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
+                <div class="text-center">
+                    <div class="animate-fade-in-up">
+                        <h1 class="text-4xl md:text-6xl font-bold text-gray-800 mb-6">
+                            {{ greetings }}
+                        </h1>
+                        <div class="w-24 h-1 bg-gray-600 mx-auto mb-8 animate-scale-in"></div>
+                    </div>
+                    
+                    <div class="animate-fade-in-up animation-delay-300">
+                        <h2 class="text-xl md:text-2xl text-gray-600 mb-8">
+                            Welcome to <span class="font-bold text-gray-800">TalkTherapy</span>
+                        </h2>
+                        <p class="text-lg text-gray-600 max-w-3xl mx-auto mb-12">
+                            Your journey to mental wellness starts here. Connect with verified mental health professionals in a secure, supportive environment.
+                        </p>
+                    </div>
+                    
+                    <div class="animate-bounce-in animation-delay-600">
+                        <svg class="w-8 h-8 mx-auto text-gray-400 animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"></path>
+                        </svg>
+                        <p class="text-sm text-gray-500 mt-2">Scroll to learn more</p>
+                    </div>
+                </div>
             </div>
         </div>
-        <div class="pt-6 pb-12">
-            <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 mt-4 relative">
-                <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg min-h-[80vh] p-4 relative">
-                    <div class="mt-32 ml-6 text-5xl font-bold w-fit bg-gradient-to-br from-blue-800 to-violet-500 bg-clip-text text-transparent uppercase">
-                        {{ greetings }}
-                    </div>
-
-                    <div class="mt-20 mb-5 flex flex-col justify-center items-start w-[90%] sm:w-[80%] mx-auto">
-                        <div class="text-2xl">Welcome to <span class="bg-gradient-to-br from-blue-800 to-violet-500 bg-clip-text text-transparent font-bold">#TalkTherapy</span> app.</div>
-                        <WriteableText
-                            :message="'Scroll down to know a bit more about what I am.'"
-                            class="text-gray-600 text-lg mt-4"
-                        />
-                    </div>
-                    <div class="bg-gradient-to-br from-blue-800 to-violet-500 w-full h-2 absolute bottom-0 right-0"></div>
+        <!-- Logo Section -->
+        <div class="py-16 bg-white">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+                <div class="animate-fade-in">
+                    <ApplicationLogo class="w-32 h-32 md:w-48 md:h-48 mx-auto mb-8 transform hover:scale-105 transition-transform duration-300"/>
+                    <div class="w-16 h-1 bg-gray-300 mx-auto"></div>
                 </div>
             </div>
-            
-            <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 mt-4 relative">
-                <ApplicationLogo class="w-56 h-56 mx-auto"/>
-            </div>
-            
-            <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 mt-4 bg-white">
-                <div class="overflow-hidden min-h-[20vh] p-4 flex flex-col justify-center items-start mx-auto w-[90%] sm:w-[80%]">
-                    <div class="bg-gradient-to-br from-blue-800 to-violet-500 bg-clip-text text-transparent font-bold text-2xl">Mission</div>
-
-                    <div class="text-gray-600 text-lg mt-4 font-medium">A holistic (emotional, psycological and social) wellbeing is achievable.</div>
-
-                    <p class="text-gray-600 text-base mt-8 text-justify">
-                        We seek to do this by connecting people with verified, professional counsellors.
-                        These counsellors are verified based on their ties with recognisable governmental, professional or religious institutions.
-                    </p>
-                    <p class="text-gray-600 text-base mt-2 text-justify">
-                        This connection between counsellors and users on this platform creates a relationship that helps individuals to either get out of existing mental health issues or prevent them all together.
-                    </p>
+        </div>
+        <!-- Mission & Vision Section -->
+        <div class="py-20 bg-gray-50">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-16">
+                    <!-- Mission -->
+                    <div class="animate-fade-in-left">
+                        <div class="bg-white p-8 rounded-2xl shadow-lg hover:shadow-xl transition-shadow duration-300">
+                            <div class="flex items-center mb-6">
+                                <div class="w-3 h-12 bg-gray-600 rounded-full mr-4"></div>
+                                <h3 class="text-3xl font-bold text-gray-800">Our Mission</h3>
+                            </div>
+                            <div class="mb-6">
+                                <svg class="w-16 h-16 text-gray-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"></path>
+                                </svg>
+                            </div>
+                            <p class="text-lg text-gray-600 mb-6 font-medium">
+                                Holistic wellbeing - emotional, psychological, and social - is achievable for everyone.
+                            </p>
+                            <p class="text-gray-600 leading-relaxed">
+                                We connect individuals with verified, professional counsellors who are certified through recognized governmental, professional, or religious institutions. This creates meaningful relationships that help people overcome existing mental health challenges or prevent them altogether.
+                            </p>
+                        </div>
+                    </div>
+                    
+                    <!-- Vision -->
+                    <div class="animate-fade-in-right">
+                        <div class="bg-white p-8 rounded-2xl shadow-lg hover:shadow-xl transition-shadow duration-300">
+                            <div class="flex items-center mb-6">
+                                <div class="w-3 h-12 bg-gray-600 rounded-full mr-4"></div>
+                                <h3 class="text-3xl font-bold text-gray-800">Our Vision</h3>
+                            </div>
+                            <div class="mb-6">
+                                <svg class="w-16 h-16 text-gray-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
+                                </svg>
+                            </div>
+                            <div class="text-center">
+                                <div class="text-lg text-gray-600 mb-4">To build understanding and focus on</div>
+                                <div class="bg-gray-800 text-white px-6 py-3 rounded-lg font-bold text-xl mb-6">
+                                    MENTAL HEALTH ISSUES
+                                </div>
+                                <p class="text-gray-600 leading-relaxed">
+                                    Enhancing the use of social and systematic approaches in handling matters regarding mental health through innovative technology and human connection.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
                 </div>
-                
-                <div class="overflow-hidden min-h-[20vh] p-4 flex flex-col justify-center items-start mx-auto w-[90%] sm:w-[80%]">
-                    <div class="bg-gradient-to-br from-blue-800 to-violet-500 bg-clip-text text-transparent font-bold text-2xl">Vision</div>
-
-                    <div class="w-fit">
-                        <div class="text-gray-600 text-lg mt-2 font-medium">To build our understanding in</div>
-                        <div class="bg-gradient-to-br from-blue-800 to-violet-500 w-full h-1 rounded"></div>
-                    </div>
-                    <div class="w-fit ml-auto">
-                        <div class="text-gray-600 text-lg mt-2 font-medium">To grow our focus on</div>
-                        <div class="bg-gradient-to-br from-blue-800 to-violet-500 w-full h-1 rounded"></div>
-                    </div>
-
-                    <div class="w-fit relative mx-auto mt-2 p-2">
-                        <div class="text-gray-600 text-lg font-medium">MENTAL HEALTH ISSUES</div>
-                        <div class="absolute bottom-0 right-0 bg-gradient-to-br from-blue-800 to-violet-500 w-full h-1 rounded"></div>
-                        <div class="absolute top-0 right-0 bg-gradient-to-br from-blue-800 to-violet-500 w-full h-1 rounded"></div>
-                    </div>
-                    <div
-                        class="bg-gradient-to-br from-blue-800 mt-4 to-violet-500 bg-clip-text text-transparent font-bold text-base mx-auto"
-                    >to enhance the use of a more social and systematic approach in handling matters regarding a person's mental health</div>
-                </div>
             </div>
+        </div>
 
             <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 mt-4 relative">
                 <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg min-h-[80vh] p-4">
@@ -130,37 +166,74 @@ async function getStats() {
                         What we are to you
                     </div>
 
-                    <div class="mt-10 mb-5 flex flex-col justify-center items-start w-[90%] sm:w-[80%] mx-auto">
-                        <div class="text-lg">To <span class="bg-gradient-to-br from-blue-800 to-violet-500 bg-clip-text text-transparent font-bold">User</span></div>
-                        <div class="text-gray-600 text-base mt-4 text-justify">
-                            <p>
-                                There are countless issues facing us every second of every day. We deal with these issues differently. How we deal with the issues tend to either make us better or worse.
-                                We do not have to deal with these issues alone. You can decide to '<strong>TalkTherapy</strong>' with a counsellor so you can navigate your emotional, psycological and social life with some tact and confidence.
+                    <div class="mt-10 mb-5 flex flex-col justify-center items-start w-[90%] sm:w-[80%] mx-auto relative">
+                        <!-- Floating SVG Shape -->
+                        <div class="absolute -top-8 -right-8 opacity-10 animate-float">
+                            <svg width="80" height="80" viewBox="0 0 100 100" class="text-blue-300">
+                                <circle cx="50" cy="50" r="40" fill="currentColor" />
+                            </svg>
+                        </div>
+                        
+                        <div class="text-lg mb-6">For <span class="bg-gradient-to-br from-blue-800 to-violet-500 bg-clip-text text-transparent font-bold">Individuals</span></div>
+                        <div class="text-gray-600 text-base text-justify space-y-4">
+                            <p class="leading-relaxed">
+                                Life presents us with countless challenges every day. The way we handle these challenges shapes who we become. 
+                                But you don't have to face them alone. <strong>TalkTherapy</strong> connects you with professional counsellors 
+                                who can guide you through your emotional, psychological, and social journey with confidence and clarity.
                             </p>
-                            <p>
-                                There are times you do not know what is really wrong, you just do not feel alright. Yes, you can '<strong>TalkTherapy</strong>'.
+                            <p class="leading-relaxed">
+                                Sometimes you can't pinpoint what's wrong—you just don't feel right. That's exactly when 
+                                <strong>TalkTherapy</strong> becomes your safe haven for healing and self-discovery.
                             </p>
-                            <p>
-                                On this app, the power is in your hands. You decide whether you stay anonymous or not, whether you pay or not, as well as the amount you choose to pay. Remember though, that these counsellors are using their time, expertise and experience to help make your life better hence try to at least make a donation to them when they help you.
+                            <p class="leading-relaxed">
+                                <strong>You're in complete control:</strong> Choose to remain anonymous, decide on payment terms, 
+                                and set your own pace. Our verified counsellors invest their time, expertise, and care to help 
+                                transform your life—consider supporting them as they support you.
                             </p>
-                            <p class="font-bold">Not everyone with an advice to give can give you a helpful advice.</p>
+                            <p class="font-semibold text-gray-800 bg-gray-100 p-3 rounded-lg">
+                                Remember: Not all advice is helpful advice. Choose verified professionals who truly understand your journey.
+                            </p>
                         </div>
                     </div>
 
-                    <div class="mt-10 mb-5 flex flex-col justify-center items-start w-[90%] sm:w-[80%] mx-auto">
-                        <div class="text-lg">To <span class="bg-gradient-to-br from-blue-800 to-violet-500 bg-clip-text text-transparent font-bold">Counsellor</span></div>
-                        <div class="text-gray-600 text-base mt-4 text-justify">
-                            We help counsellors express themselves through creating <strong>posts</strong> on this platform which is created solely to promote mental health issues.
-                            Counsellors get to send or receive requests to assist individuals with <strong>therapies</strong> that have been created. Therapies can be free or paid (payment can be suggested for the entire therapy or for individual sessions).
-                            Even with free sessions, you can still receive donations from the user you are assisting or from other users on the platform.
+                    <div class="mt-10 mb-5 flex flex-col justify-center items-start w-[90%] sm:w-[80%] mx-auto relative">
+                        <!-- Floating SVG Shape -->
+                        <div class="absolute -top-6 -left-6 opacity-10 animate-pulse">
+                            <svg width="60" height="60" viewBox="0 0 100 100" class="text-violet-300">
+                                <polygon points="50,10 90,90 10,90" fill="currentColor" />
+                            </svg>
+                        </div>
+                        
+                        <div class="text-lg mb-6">For <span class="bg-gradient-to-br from-blue-800 to-violet-500 bg-clip-text text-transparent font-bold">Mental Health Professionals</span></div>
+                        <div class="text-gray-600 text-base text-justify space-y-4">
+                            <p class="leading-relaxed">
+                                <strong>Share your expertise</strong> through meaningful posts on our dedicated mental health platform. 
+                                Build your professional presence while contributing to a community focused on mental wellness and healing.
+                            </p>
+                            <p class="leading-relaxed">
+                                <strong>Connect with those who need you most.</strong> Send or receive therapy requests, offer both 
+                                individual and group sessions, and set your own terms—whether free, paid, or donation-based. 
+                                Your flexibility helps make mental health support accessible to everyone.
+                            </p>
+                            <p class="leading-relaxed bg-blue-50 p-3 rounded-lg">
+                                <strong>Professional Growth:</strong> Even with free sessions, receive donations and build lasting 
+                                relationships with clients who value your expertise and dedication to their mental health journey.
+                            </p>
                         </div>
                     </div>
                 </div>
             </div>
             
             <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 mt-4">
-                <div class="overflow-hidden min-h-[20vh] p-4 flex flex-col justify-center items-start mx-auto w-[90%] sm:w-[80%]">
-                    <div class="bg-gradient-to-br from-blue-800 to-violet-500 bg-clip-text text-transparent font-bold text-2xl">Founder</div>
+                <div class="overflow-hidden min-h-[20vh] p-4 flex flex-col justify-center items-start mx-auto w-[90%] sm:w-[80%] relative">
+                    <!-- Floating SVG Shape -->
+                    <div class="absolute -top-4 -right-4 opacity-10 animate-bounce">
+                        <svg width="50" height="50" viewBox="0 0 100 100" class="text-gray-300">
+                            <rect x="25" y="25" width="50" height="50" fill="currentColor" transform="rotate(45 50 50)" />
+                        </svg>
+                    </div>
+                    
+                    <div class="bg-gradient-to-br from-blue-800 to-violet-500 bg-clip-text text-transparent font-bold text-2xl">Meet the Founder</div>
 
                     <div class="text-gray-600 text-lg mt-4 font-medium relative">
                         <div class="flex justify-start items-center space-x-3">
@@ -199,10 +272,17 @@ async function getStats() {
             </div>
             
             <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 mt-4">
-                <div class="overflow-hidden min-h-[20vh] p-4 flex flex-col justify-center items-start mx-auto w-[90%] sm:w-[80%]">
-                    <div class="bg-gradient-to-br from-blue-800 to-violet-500 bg-clip-text text-transparent font-bold text-2xl">Background Story</div>
+                <div class="overflow-hidden min-h-[20vh] p-4 flex flex-col justify-center items-start mx-auto w-[90%] sm:w-[80%] relative">
+                    <!-- Floating SVG Shape -->
+                    <div class="absolute -bottom-4 -left-4 opacity-10 animate-spin-slow">
+                        <svg width="60" height="60" viewBox="0 0 100 100" class="text-blue-200">
+                            <path d="M50,10 L90,50 L50,90 L10,50 Z" fill="currentColor" />
+                        </svg>
+                    </div>
+                    
+                    <div class="bg-gradient-to-br from-blue-800 to-violet-500 bg-clip-text text-transparent font-bold text-2xl">Our Story</div>
 
-                    <div class="text-gray-600 text-base mt-4 font-medium">Sometimes a bad situation can lead to something positive.</div>
+                    <div class="text-gray-600 text-lg mt-4 font-medium italic">"Sometimes our greatest challenges become the foundation for our most meaningful contributions."</div>
 
                     <p class="text-gray-600 text-sm mt-8 text-justify">
                         I was expectant of a positive result from the selection process of a program in which I was very much interested. Throughout the selection process, I gave my all and I was very certain about getting picked for the program.
@@ -316,19 +396,14 @@ async function getStats() {
                 </div>
             </div>
 
-            <!-- TODO add whats in the pipeline for the future -->
-            <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 mt-4">
-                <div class="overflow-hidden p-4 py-8">
-                    <div class="cursor-pointer bg-gradient-to-br from-blue-800 to-violet-500 bg-clip-text text-transparent font-bold text-lg">#TalkTherapy</div>
-                    <div class="cursor-pointer mt-2 text-gray-600" @click="() => showModal('contact')">Contact us</div>
+            <!-- Call to Action -->
+            <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 mt-12">
+                <div class="overflow-hidden p-4 py-8 text-center">
+                    <p class="text-gray-600 text-lg">Your mental wellness journey starts with a single conversation.</p>
                 </div>
             </div>
-        </div>
 
-        <ContactUsModal
-            :show="modalData.show && modalData.type == 'contact'"
-            @close-modal="closeModal"
-        />
+
         
         <CreateTestimonialModal
             :show="modalData.show && modalData.type == 'testimonial'"
@@ -336,3 +411,133 @@ async function getStats() {
         />
     </AuthenticatedLayout>
 </template>
+<style scoped>
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeInLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes fadeInRight {
+  from {
+    opacity: 0;
+    transform: translateX(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+@keyframes bounceIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.05);
+  }
+  70% {
+    transform: scale(0.9);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.8s ease-out forwards;
+}
+
+.animate-fade-in-left {
+  animation: fadeInLeft 0.8s ease-out forwards;
+}
+
+.animate-fade-in-right {
+  animation: fadeInRight 0.8s ease-out forwards;
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.8s ease-out forwards;
+}
+
+.animate-scale-in {
+  animation: scaleIn 0.8s ease-out forwards;
+}
+
+.animate-bounce-in {
+  animation: bounceIn 1s ease-out forwards;
+}
+
+.animation-delay-300 {
+  animation-delay: 0.3s;
+  opacity: 0;
+}
+
+.animation-delay-600 {
+  animation-delay: 0.6s;
+  opacity: 0;
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+@keyframes spin-slow {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+.animate-spin-slow {
+  animation: spin-slow 8s linear infinite;
+}
+</style>

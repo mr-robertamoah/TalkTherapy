@@ -11,8 +11,12 @@ class EnsureDiscussionExistsAction extends Action
 {
     public function execute(CreateDiscussionDTO|GetDiscussionsDTO $createDiscussionDTO)
     {
-        if ($createDiscussionDTO->discussion) return;
+        if ($createDiscussionDTO->discussion) {
+            return;
+        }
 
-        throw new DiscussionException("Discussion was not found.", 422);
+        // SCRUM-343: see DiscussionException::notAllowed() -- otherwise the difference reveals which
+        // discussion ids exist.
+        throw DiscussionException::notAllowed();
     }
 }

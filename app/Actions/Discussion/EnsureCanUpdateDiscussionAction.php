@@ -11,17 +11,13 @@ class EnsureCanUpdateDiscussionAction extends Action
 {
     public function execute(CreateDiscussionDTO|GetDiscussionsDTO $createDiscussionDTO)
     {
-        if ($createDiscussionDTO->discussion->isNotUpdateable())
+        // SCRUM-343: authorize before the state check below, which names the discussion.
+        if (! $createDiscussionDTO->discussion->isManageableBy($createDiscussionDTO->user)) {
+            throw DiscussionException::notAllowed();
+        }
+
+        if ($createDiscussionDTO->discussion->isNotUpdateable()) {
             throw new DiscussionException("'{$createDiscussionDTO->discussion->name}' discussion cannot be updated because it is either in session or has ended.", 422);
-
-        if (
-            $createDiscussionDTO->user->isAdmin() ||
-            (
-                $createDiscussionDTO->discussion->addedby->is($createDiscussionDTO->user) ||
-                $createDiscussionDTO->discussion->addedby->is($createDiscussionDTO->user->counsellor)
-            )
-        ) return;
-
-        throw new DiscussionException("You are not allowed to update discussion with name: {$createDiscussionDTO->discussion->name}.", 422);
+        }
     }
 }

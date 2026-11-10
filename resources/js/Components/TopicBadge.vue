@@ -4,12 +4,13 @@
         <div class="capitalize text-gray-600 text-sm sm:text-base text-center font-bold tracking-wide px-2">
             {{ topic.name }}
         </div>
-        <div class="text-gray-600 text-sm my-2 p-2 px-4 text-justify" v-if="computedDescription">
-            <span>{{ getShowMoreContent(computedDescription) }}</span>
-            <span
-                @click="toggleShowMore"
-                v-if="computedDescription.length > 100"
-                class="ml-2 cursor-pointer text-xs my-1 text-blue-600 underline">show {{ showMore ? 'less' : 'more' }}</span>
+        <div class="text-gray-600 text-sm my-2 p-2 px-4 text-justify" v-if="topic.description">
+            <span>{{ showMore ? topic.description : (topic.description.length > 100 ? topic.description.slice(0, 100) + '...' : topic.description) }}</span>
+            <button
+                @click.stop="toggleShowMore"
+                v-if="topic.description.length > 100"
+                class="ml-2 text-xs bg-blue-100 hover:bg-blue-200 text-blue-700 px-2 py-1 rounded transition-colors duration-200"
+            >{{ showMore ? 'Show Less' : 'Show More' }}</button>
         </div>
         <div class="flex justify-end items-center my-2">
             <div 
@@ -100,7 +101,11 @@ import useShowMore from '@/Composables/useShowMore';
 
 const { modalData, closeModal, showModal } = useModal()
 const { alertData, setAlertData, setFailedAlertData, clearAlertData } = useAlert()
-const { showMore, toggleShowMore, getShowMoreContent } = useShowMore()
+const showMore = ref(false)
+
+function toggleShowMore() {
+    showMore.value = !showMore.value
+}
 
 const emits = defineEmits(['onUpdate', 'onDelete'])
 
@@ -132,9 +137,7 @@ watch(() => props.topic?.id, () => {
     if (props.topic?.id) mainSession.value = {...props.topic}
 })
 
-const computedDescription = computed(() => {
-    return props.topic?.description?.length > 100 ? props.topic?.description?.slice(0, 100) + '...' : props.topic?.description
-})
+
 const computedCanPerformActions = computed(() => {
     return props.hasActions && props.topic?.userId == usePage().props.auth.user?.id
 })

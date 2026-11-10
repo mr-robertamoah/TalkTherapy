@@ -1,5 +1,11 @@
 <?php
 
+use App\Providers\AppServiceProvider;
+use App\Providers\RouteServiceProvider;
+use App\Providers\VideoServiceProvider;
+
 return [
-    App\Providers\AppServiceProvider::class,
+    AppServiceProvider::class,
+    RouteServiceProvider::class,
+    VideoServiceProvider::class,
 ];

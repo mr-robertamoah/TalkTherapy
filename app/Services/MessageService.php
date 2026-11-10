@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Actions\Admin\RecordAdminContentReadAction;
+use App\Actions\Guardianship\EnsureMinorHasActiveGuardianAction;
 use App\Actions\Message\CreateMessageAction;
 use App\Actions\Message\DeleteMessageAction;
 use App\Actions\Message\DeleteMessageForMeAction;
@@ -9,10 +11,17 @@ use App\Actions\Message\EnsureCanDeleteMessageForSelfAction;
 use App\Actions\Message\EnsureCanSendMessageToForAction;
 use App\Actions\Message\EnsureCanSendMessageToRecepientAction;
 use App\Actions\Message\EnsureCanUpdateMessageAction;
+use App\Actions\Message\EnsureConfidentialMessageHasRecipientAction;
 use App\Actions\Message\EnsureIsFromUserAction;
 use App\Actions\Message\EnsureMessageDataIsValidAction;
 use App\Actions\Message\EnsureMessageExistsAction;
+use App\Actions\Message\EnsureReplyIsInSameConversationAction;
+use App\Actions\Message\EnsureUserCanAccessTherapyContentAction;
+use App\Actions\Message\ResolveTherapyMessageRecipientAction;
 use App\Actions\Message\UpdateMessageAction;
+use App\Actions\Suspension\EnsureCanActAsCounsellorAction;
+use App\Actions\Suspension\EnsureTherapyCounsellorIsAvailableAction;
+use App\Actions\Therapy\EnsureTherapyCanProceedAction;
 use App\DTOs\CreateMessageDTO;
 use App\DTOs\GetDiscussionMessagesDTO;
 use App\DTOs\GetSessionMessagesDTO;
@@ -22,156 +31,317 @@ use App\Events\MessageDeletedEvent;
 use App\Events\MessageSentEvent;
 use App\Events\MessageUpdatedEvent;
 use App\Http\Resources\MessageResource;
+use App\Models\AdminContentAccess;
+use App\Models\Discussion;
+use App\Models\GroupTherapy;
 use App\Models\Message;
 use App\Models\Session;
-use Illuminate\Support\Facades\DB;
+use App\Models\User;
+use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 
 /**
  * Class MessageService
- * 
+ *
  * This service handles messaging between users or counsellors for sessions and discussions.
- * 
- * @package App/Services
  */
 class MessageService extends Service
 {
     /**
      * Gets messages for a particular session (public or private)
-     * 
-     * @param \App\DTOs\GetSessionMessagesDTO $getSessionMessagesDTO
-     * @return array|\Illuminate\Http\Resources\Json\AnonymousResourceCollection
+     *
+     * @return array|AnonymousResourceCollection
      */
     public function getSessionMessages(GetSessionMessagesDTO $getSessionMessagesDTO)
     {
-        if (
-            $getSessionMessagesDTO->user?->isNotAdmin() &&
-            !$getSessionMessagesDTO->session?->for?->public &&
-            $getSessionMessagesDTO->session?->for?->isNotParticipant($getSessionMessagesDTO->user)
-        ) return [];
-        
+        $user = $getSessionMessagesDTO->user;
+
+        // SCRUM-74: a null $user must deny by default. The previous `$user?->isNotAdmin() && ...`
+        // form short-circuited to null (falsy) whenever $user was null, so this guard clause was
+        // silently skipped entirely for an unauthenticated caller -- it never actually denied
+        // anyone, it just never ran.
+        if (! $user) {
+            return [];
+        }
+
+        // SCRUM-220/TT-7.5a: also enforces the strict payment gate for the therapy's own client
+        // (PER_SESSION-payable, scoped to this specific session; PER_THERAPY-payable, scoped to
+        // the parent therapy) -- consolidated here from what used to be a bare participant check,
+        // since a strict-gated therapy's chat would otherwise stay reachable through this
+        // endpoint even when the main page correctly blocks it (EnsureUserHasAccessToTherapyAction).
+        //
+        // TT-7.5b-b3/SCRUM-267: the session's own start_time is the late-joiner exemption's
+        // comparison point here -- this fetches a WHOLE session's worth of messages at once, so
+        // "does this content predate my join" is answered at the session level, not per message.
+        if (! EnsureUserCanAccessTherapyContentAction::new()->execute(
+            $getSessionMessagesDTO->session?->for,
+            $user,
+            $getSessionMessagesDTO->session,
+            $getSessionMessagesDTO->session?->start_time
+        )) {
+            return [];
+        }
+
         $query = $getSessionMessagesDTO->session->messages()
             ->withTrashed()
-            ->with(['therapyTopic'])
-            ->when($getSessionMessagesDTO->like, function($query) use ($getSessionMessagesDTO) {
-                $query->whereLike($getSessionMessagesDTO->like);
+            // SCRUM-205: MessageResource reads files, the replied-to message and the recipient of
+            // every row -- loaded in batches, not one query per message.
+            ->with(['therapyTopic', 'from', 'to', 'files', 'replying'])
+            // Scoped to the requesting counsellor's own id -- never eager-loaded at all for a
+            // client viewer, so their message list never even queries message_notes
+            // (SCRUM-203/TT-2.3b; isolation guarantee mirrors GetOwnMessageNoteAction's own
+            // counsellor_id scope).
+            ->when($user->counsellor, function ($query) use ($user) {
+                $query->with(['notes' => fn ($q) => $q->where('counsellor_id', $user->counsellor->id)]);
             })
-            ->when($getSessionMessagesDTO->topicId, function($query) use ($getSessionMessagesDTO) {
+            ->when($getSessionMessagesDTO->like, function ($query) use ($getSessionMessagesDTO, $user) {
+                $query->whereLike($getSessionMessagesDTO->like, $user);
+            })
+            ->when($getSessionMessagesDTO->topicId, function ($query) use ($getSessionMessagesDTO) {
                 $query->whereTherapyTopicId($getSessionMessagesDTO->topicId);
             })
-            ->when($getSessionMessagesDTO->replyId, function($query) use ($getSessionMessagesDTO) {
+            ->when($getSessionMessagesDTO->replyId, function ($query) use ($getSessionMessagesDTO) {
                 $query->whereReplyId($getSessionMessagesDTO->replyId);
-            })
-            ->when($getSessionMessagesDTO->groupBy, function ($query) {
-                $query
-                    ->leftJoin('therapy_topics', 'messages.therapy_topic_id', '=', 'therapy_topic.id')
-                    ->select('messages.*', DB::raw('COALESCE(therapy_topic.name, "No Topic") as topic_name'))
-                    ->groupBy('topic_name');
             });
-        
-        return MessageResource::collection($query->latest()->paginate(
+
+        // Every message here is scoped through this single session (session->messages()), so
+        // its `for` (and, for a GroupTherapy, that GroupTherapy's `users` anonymity pivot) is
+        // identical for every row -- resolve it once and share the same instance across all of
+        // them, rather than letting each Message independently re-resolve for/for.for/users.
+        $session = $getSessionMessagesDTO->session;
+        $session->loadMissing('for');
+        if ($session->for instanceof GroupTherapy) {
+            $session->for->loadMissing('users');
+        }
+
+        $messages = $query->latest()->paginate(
             PaginationEnum::preferencesPagination->value
-        ));
+        );
+        $messages->getCollection()->each(fn (Message $message) => $message->setRelation('for', $session));
+
+        // SCRUM-360
+        RecordAdminContentReadAction::new()->execute($user, AdminContentAccess::SESSION_MESSAGES, $session, $session->for, page: $messages->currentPage());
+
+        return MessageResource::collection($messages);
     }
-    
+
     /**
      * Gets messages for a particular discussion
-     * 
-     * @param \App\DTOs\GetDiscussionMessagesDTO $getDiscussionMessagesDTO
-     * @return array|\Illuminate\Http\Resources\Json\AnonymousResourceCollection
+     *
+     * @return array|AnonymousResourceCollection
      */
     public function getDiscussionMessages(GetDiscussionMessagesDTO $getDiscussionMessagesDTO)
     {
+        $user = $getDiscussionMessagesDTO->user;
+
+        // SCRUM-74: same null-user-defaults-to-allow bug pattern as getSessionMessages(), fixed
+        // for consistency/defense-in-depth even though this route already sits behind auth:sanctum.
+        // Also guard a null discussion (bad/nonexistent discussionId) explicitly, rather than
+        // falling through to a crash on ->messages() below.
+        if (! $user || ! $getDiscussionMessagesDTO->discussion) {
+            return [];
+        }
+
         if (
-            $getDiscussionMessagesDTO->user?->isNotAdmin() &&
-            $getDiscussionMessagesDTO->discussion?->isNotParticipant($getDiscussionMessagesDTO->user?->counsellor)
-        ) return [];
-        
+            $user->isNotAdmin() &&
+            $getDiscussionMessagesDTO->discussion->isNotParticipant($user->counsellor)
+        ) {
+            return [];
+        }
+
         $query = $getDiscussionMessagesDTO->discussion->messages()
             ->withTrashed()
-            ->when($getDiscussionMessagesDTO->like, function($query) use ($getDiscussionMessagesDTO) {
-                $query->whereLike($getDiscussionMessagesDTO->like);
+            ->with(['from', 'to', 'files', 'replying'])
+            ->when($user->counsellor, function ($query) use ($user) {
+                $query->with(['notes' => fn ($q) => $q->where('counsellor_id', $user->counsellor->id)]);
             })
-            ->when($getDiscussionMessagesDTO->replyId, function($query) use ($getDiscussionMessagesDTO) {
+            ->when($getDiscussionMessagesDTO->like, function ($query) use ($getDiscussionMessagesDTO, $user) {
+                $query->whereLike($getDiscussionMessagesDTO->like, $user);
+            })
+            ->when($getDiscussionMessagesDTO->replyId, function ($query) use ($getDiscussionMessagesDTO) {
                 $query->whereReplyId($getDiscussionMessagesDTO->replyId);
             });
-        
-        return MessageResource::collection($query->latest()->paginate(
-            PaginationEnum::preferencesPagination->value
-        ));
+
+        $messages = $query->latest()->paginate(PaginationEnum::preferencesPagination->value);
+
+        // SCRUM-360
+        RecordAdminContentReadAction::new()->execute($user, AdminContentAccess::DISCUSSION_MESSAGES, $getDiscussionMessagesDTO->discussion, $getDiscussionMessagesDTO->discussion, page: $messages->currentPage());
+
+        return MessageResource::collection($messages);
     }
 
     /**
      * Gets messages for a particular therapy topic
-     * 
-     * @param \App\DTOs\GetTherapyTopicMessagesDTO $getTherapyTopicMessagesDTO
-     * @return array|\Illuminate\Http\Resources\Json\AnonymousResourceCollection
+     *
+     * @return array|AnonymousResourceCollection
      */
     public function getTherapyTopicMessages(GetTherapyTopicMessagesDTO $getTherapyTopicMessagesDTO)
     {
-        if (!$getTherapyTopicMessagesDTO->topic) return [];
-        
-        $therapy = $getTherapyTopicMessagesDTO->topic->sessions()
-            ->where('session_id', $getTherapyTopicMessagesDTO->sessionId)->first()
-            ?->for;
+        if (! $getTherapyTopicMessagesDTO->topic) {
+            return [];
+        }
 
-        if (
-            $getTherapyTopicMessagesDTO->user?->isNotAdmin() &&
-            !$therapy?->public &&
-            $therapy?->isNotParticipant($getTherapyTopicMessagesDTO->user)
-        ) return [];
-        
+        $session = $getTherapyTopicMessagesDTO->topic->sessions()
+            ->where('session_id', $getTherapyTopicMessagesDTO->sessionId)->first();
+        $therapy = $session?->for;
+
+        $user = $getTherapyTopicMessagesDTO->user;
+
+        // SCRUM-74: same null-user-defaults-to-allow bug pattern as getSessionMessages().
+        if (! $user) {
+            return [];
+        }
+
+        // SCRUM-220/TT-7.5a: see getSessionMessages()'s identical comment -- same shared check,
+        // same reason. TT-7.5b-b3/SCRUM-267: same session-level late-joiner comparison point too.
+        if (! EnsureUserCanAccessTherapyContentAction::new()->execute($therapy, $user, $session, $session?->start_time)) {
+            return [];
+        }
+
         $query = $getTherapyTopicMessagesDTO->topic->messages()
             ->withTrashed()
-            ->with(['for'])
-            ->when($getTherapyTopicMessagesDTO->like, function($query) use ($getTherapyTopicMessagesDTO) {
-                $query->whereLike($getTherapyTopicMessagesDTO->like);
+            // A topic's messages can span several sessions, so (unlike getSessionMessages())
+            // there's no single shared `for` instance to reuse here -- eager-load the nested
+            // for.for (Session -> Therapy) in one batched query instead of letting each message
+            // resolve it independently. TherapyTopic's topicable relation (TherapyTrait) is
+            // technically polymorphic across Therapy/GroupTherapy, but no current write path
+            // (TherapyTopicController::createTherapyTopic() resolves via Therapy::find()) ever
+            // creates one for a GroupTherapy, so `for.for` is a Therapy in practice today --
+            // if that ever changes, this eager-load also needs GroupTherapy's `users` pivot
+            // (see Session::hidesIdentityOf()) to avoid reintroducing this same N+1.
+            ->with(['for.for', 'from', 'to', 'files', 'replying'])
+            ->when($user->counsellor, function ($query) use ($user) {
+                $query->with(['notes' => fn ($q) => $q->where('counsellor_id', $user->counsellor->id)]);
             })
-            ->when($getTherapyTopicMessagesDTO->sessionId, function($query) use ($getTherapyTopicMessagesDTO) {
-                $query->whereSessionId($getTherapyTopicMessagesDTO->sessionId);
+            ->when($getTherapyTopicMessagesDTO->like, function ($query) use ($getTherapyTopicMessagesDTO, $user) {
+                $query->whereLike($getTherapyTopicMessagesDTO->like, $user);
             })
-            ->when($getTherapyTopicMessagesDTO->replyId, function($query) use ($getTherapyTopicMessagesDTO) {
+            // SCRUM-209: messages have no session_id column -- they belong to a session through for_*.
+            ->when($getTherapyTopicMessagesDTO->sessionId, function ($query) use ($getTherapyTopicMessagesDTO) {
+                $query->where('messages.for_type', Session::class)->where('messages.for_id', $getTherapyTopicMessagesDTO->sessionId);
+            })
+            ->when($getTherapyTopicMessagesDTO->replyId, function ($query) use ($getTherapyTopicMessagesDTO) {
                 $query->whereReplyId($getTherapyTopicMessagesDTO->replyId);
-            })
-            ->when($getTherapyTopicMessagesDTO->groupBy, function ($query) {
-                $query
-                    ->where('for_type', Session::class)
-                    ->leftJoin('sessions', 'messages.for_id', '=', 'session.id')
-                    ->select('messages.*', DB::raw('COALESCE(session.name, "No Session") as session_name'))
-                    ->groupBy('session_name');
             });
-        
-        return MessageResource::collection($query->latest()->paginate(
-            PaginationEnum::preferencesPagination->value
-        ));
+
+        $messages = $query->latest()->paginate(PaginationEnum::preferencesPagination->value);
+
+        // SCRUM-360
+        RecordAdminContentReadAction::new()->execute($user, AdminContentAccess::TOPIC_MESSAGES, $getTherapyTopicMessagesDTO->topic, $therapy, page: $messages->currentPage());
+
+        return MessageResource::collection($messages);
     }
-    
-    public function getMessageReplies(?Message $message)
+
+    public function getMessageReplies(?Message $message, ?User $user)
     {
-        if (!$message) return [];
-        
+        if (! $message || ! $this->userCanSeeMessage($message, $user)) {
+            return [];
+        }
+
         $query = $message->replies()->withTrashed();
-        
-        return MessageResource::collection($query->latest()->paginate(
-            PaginationEnum::preferencesPagination->value
-        ));
+        $replies = $query->latest()->paginate(PaginationEnum::preferencesPagination->value);
+
+        // SCRUM-360
+        RecordAdminContentReadAction::new()->execute($user, AdminContentAccess::MESSAGE_REPLIES, $message, page: $replies->currentPage());
+
+        return MessageResource::collection($replies);
+    }
+
+    // SCRUM-195: one message, through MessageResource's own per-viewer rules (confidential
+    // redaction, anonymity masking) -- how a confidential message's parties get its content, since
+    // broadcasts never carry it. Same visibility rule as getMessageReplies().
+    public function getMessage(?Message $message, ?User $user): ?MessageResource
+    {
+        if (! $message || ! $this->userCanSeeMessage($message, $user)) {
+            return null;
+        }
+
+        // SCRUM-360
+        RecordAdminContentReadAction::new()->execute($user, AdminContentAccess::MESSAGE, $message);
+
+        // SCRUM-366: every live message is fetched here, once per open page -- load what the
+        // resource reads in one go.
+        $message->loadMissing(['from', 'to', 'files', 'replying']);
+
+        return new MessageResource($message);
+    }
+
+    // Whether $user may see $message at all, based on whatever it belongs to. Extracted from
+    // getMessageReplies() (SCRUM-195) so getMessage() and the messages.{id} channel can't drift
+    // from it.
+    public function userCanSeeMessage(Message $message, ?User $user): bool
+    {
+        // SCRUM-74: this previously had NO authorization check at all -- any caller (including,
+        // before this route moved behind auth:sanctum, an unauthenticated one) could fetch
+        // replies to any message by id. Mirror the same participant checks used by
+        // getSessionMessages()/getDiscussionMessages(), based on whatever the parent message
+        // belongs to.
+        if (! $user) {
+            return false;
+        }
+
+        // This outer isNotAdmin() stays (rather than letting EnsureUserCanAccessTherapyContentAction
+        // own the admin bypass alone, as the other two consolidated call sites do) because the
+        // Discussion branch below doesn't route through that action at all and still needs its
+        // own admin exemption -- the Session branch's own internal isAdmin() check is therefore
+        // redundant here specifically, not dead code at the other two call sites.
+        if ($user->isNotAdmin()) {
+            $for = $message->for;
+
+            if ($for instanceof Session) {
+                // SCRUM-220/TT-7.5a: see getSessionMessages()'s identical comment -- same shared
+                // check, same reason.
+                //
+                // TT-7.5b-b3/SCRUM-267: unlike getSessionMessages()/getTherapyTopicMessages()
+                // above, this concerns ONE specific $message (itself, or its replies), not a whole
+                // session's worth of content -- so the late-joiner comparison point here is that
+                // message's own created_at, not the session's start_time. A message posted before
+                // a member joined stays visible; one posted after is gated normally.
+                if (! EnsureUserCanAccessTherapyContentAction::new()->execute($for->for, $user, $for, $message->created_at)) {
+                    return false;
+                }
+            } elseif ($for instanceof Discussion) {
+                if ($for->isNotParticipant($user->counsellor)) {
+                    return false;
+                }
+            } else {
+                // $for is null (the message's own Session/Discussion has been soft-deleted --
+                // Message::for() isn't withTrashed()) or an unexpected type -- deny by default
+                // instead of silently falling through to the unguarded query below.
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**
      * Creates and broadcasts a message
-     * 
-     * @param \App\DTOs\CreateMessageDTO $createMessageDTO
-     * @return \App\Models\Message
      */
     public function createMessage(CreateMessageDTO $createMessageDTO): Message
     {
         EnsureIsFromUserAction::new()->execute($createMessageDTO);
 
+        // SCRUM-359: a suspended counsellor can read their conversations but not write in them --
+        // judged by the role they hold in the conversation, not the identity they send as (which
+        // the client picks).
+        $this->ensureCanWriteIn($createMessageDTO->user, $createMessageDTO->for, guardian: false);
+
         EnsureCanSendMessageToForAction::new()->execute($createMessageDTO);
+
+        // SCRUM-288: nor can anyone in a therapy paused for a missing guardian -- checked after
+        // participation (security review), so it can't tell an outsider anything about a session.
+        $this->ensureCanWriteIn($createMessageDTO->user, $createMessageDTO->for, suspension: false);
+
+        ResolveTherapyMessageRecipientAction::new()->execute($createMessageDTO);
 
         EnsureCanSendMessageToRecepientAction::new()->execute($createMessageDTO);
 
+        EnsureConfidentialMessageHasRecipientAction::new()->execute($createMessageDTO);
+
         EnsureMessageDataIsValidAction::new()->execute($createMessageDTO);
-        
+
+        EnsureReplyIsInSameConversationAction::new()->execute($createMessageDTO);
+
         $message = CreateMessageAction::new()->execute($createMessageDTO);
 
         broadcast(new MessageSentEvent($message))->toOthers();
@@ -181,9 +351,6 @@ class MessageService extends Service
 
     /**
      * Updates and broadcasts a message
-     * 
-     * @param \App\DTOs\CreateMessageDTO $createMessageDTO
-     * @return \App\Models\Message
      */
     public function updateMessage(CreateMessageDTO $createMessageDTO): Message
     {
@@ -191,8 +358,14 @@ class MessageService extends Service
 
         EnsureCanUpdateMessageAction::new()->execute($createMessageDTO);
 
+        $this->ensureCanWriteIn($createMessageDTO->user, $createMessageDTO->message?->for);
+
         EnsureMessageDataIsValidAction::new()->execute($createMessageDTO, true);
-        
+
+        EnsureConfidentialMessageHasRecipientAction::new()->execute($createMessageDTO);
+
+        EnsureReplyIsInSameConversationAction::new()->execute($createMessageDTO);
+
         $message = UpdateMessageAction::new()->execute($createMessageDTO);
 
         broadcast(new MessageUpdatedEvent($message))->toOthers();
@@ -202,16 +375,13 @@ class MessageService extends Service
 
     /**
      * Deletes and broadcasts the deleted message
-     * 
-     * @param \App\DTOs\CreateMessageDTO $createMessageDTO
-     * @return \App\Models\Message
      */
     public function deleteMessage(CreateMessageDTO $createMessageDTO): Message
     {
         EnsureMessageExistsAction::new()->execute($createMessageDTO);
 
         EnsureCanUpdateMessageAction::new()->execute($createMessageDTO);
-        
+
         $message = DeleteMessageAction::new()->execute($createMessageDTO);
 
         broadcast(new MessageDeletedEvent($message))->toOthers();
@@ -221,18 +391,36 @@ class MessageService extends Service
 
     /**
      * Deletes a message for a particular user/counsellor alone
-     * 
-     * @param \App\DTOs\CreateMessageDTO $createMessageDTO
-     * @return \App\Models\Message
      */
     public function deleteMessageForMe(CreateMessageDTO $createMessageDTO): Message
     {
         EnsureMessageExistsAction::new()->execute($createMessageDTO);
 
         EnsureCanDeleteMessageForSelfAction::new()->execute($createMessageDTO);
-        
+
         $message = DeleteMessageForMeAction::new()->execute($createMessageDTO);
 
         return $message;
+    }
+
+    // The two halves of EnsureTherapyCanProceedAction, which createMessage() runs either side of
+    // the participation check; updateMessage() runs both at once.
+    private function ensureCanWriteIn(?User $user, mixed $for, bool $suspension = true, bool $guardian = true): void
+    {
+        if ($for instanceof Discussion && $suspension) {
+            EnsureCanActAsCounsellorAction::new()->execute($user?->counsellor);
+        }
+
+        if (! $for instanceof Session) {
+            return;
+        }
+
+        if ($suspension && $guardian) {
+            EnsureTherapyCanProceedAction::new()->execute($user, $for->for, includeTarget: false);
+        } elseif ($suspension) {
+            EnsureTherapyCounsellorIsAvailableAction::new()->execute($user, $for->for, includeTarget: false);
+        } elseif ($guardian) {
+            EnsureMinorHasActiveGuardianAction::new()->execute($user, $for->for);
+        }
     }
 }

@@ -11,6 +11,14 @@ import useAlert from "@/Composables/useAlert";
 import Alert from "@/Components/Alert.vue";
 import RequestModal from "@/Components/RequestModal.vue";
 import CreateTherapyButton from "@/Components/CreateTherapyButton.vue";
+import Footer from "@/Components/Footer.vue";
+import useModal from '@/Composables/useModal';
+import ContactUsModal from '@/Components/ContactUsModal.vue';
+import { acquireCounsellorChannel, acquireUserChannel } from '@/Composables/sharedChannel';
+import NotificationBell from '@/Components/Notifications/NotificationBell.vue';
+import { notificationsChanged } from '@/Composables/useNotifications';
+
+const { modalData, showModal, closeModal } = useModal()
 
 const { alertData, clearAlertData, setAlertData, setSuccessAlertData } = useAlert();
 
@@ -21,12 +29,16 @@ const props = defineProps({});
 const listening = ref(false);
 
 onBeforeUnmount(() => {
-  if (page.props.auth.user?.id) 
-    Echo.leave(`users.${page.props.auth.user?.id}`);
-  
-  if (page.props.auth.user?.counsellor?.id) 
-    Echo.leave(`counsellors.${page.props.auth.user?.counsellor?.id}`);
+  // SCRUM-368/386: both shared with the therapy page -- released, not left (see sharedChannel.js),
+  // so a group page's own handlers on users.{id} survive this layout unmounting.
+  userChannel?.release();
+  userChannel = null;
+  counsellorChannel?.release();
+  counsellorChannel = null;
 });
+
+let userChannel = null;
+let counsellorChannel = null;
 
 watchEffect(() => {
   if (page.props.errorMessage?.length) {
@@ -34,6 +46,15 @@ watchEffect(() => {
       show: true,
       type: "failed",
       message: page.props.errorMessage,
+    });
+  }
+
+  // SCRUM-371: a page visit that failed and was sent back here.
+  if (page.props.failureAlert?.length) {
+    setAlertData({
+      show: true,
+      type: "failed",
+      message: page.props.failureAlert,
     });
   }
 
@@ -48,12 +69,25 @@ watchEffect(() => {
 
   if (page.props.auth.user?.id && !listening.value) {
     listening.value = true;
-    Echo.private(`users.${page.props.auth.user?.id}`).notification(
+    userChannel = acquireUserChannel(page.props.auth.user.id);
+    userChannel
+      // SCRUM-359: leave for the suspended page the moment an account is suspended (the server
+      // refuses everything else from then on anyway).
+      .listen(".account.suspended", () => router.visit(route("suspended.show")))
+      // SCRUM-288: this account's therapy was paused (no active guardian) or resumed. The events
+      // carry nothing; reloading the page's props shows the banner and locks or unlocks the controls.
+      .listen(".guardian-access.paused", () => router.reload({ preserveScroll: true }))
+      .listen(".guardian-access.resumed", () => router.reload({ preserveScroll: true }))
+      // SCRUM-386: a new request to join one of this account's groups (ids only) -- an open
+      // Requests list picks it up; the group's own page refetches itself (useTherapyState).
+      .listen(".group-therapy.membership-requested", () => requestsRefreshKey.value++)
+      // SCRUM-39: a notification was stored or marked read (nothing in it) -- the bell refetches.
+      .listen(".notifications.changed", () => notificationsChanged())
+      .notification(
       (notification) => {
-        console.log(notification, "notification");
 
         const therapyRoute =
-          notification.forType == "Therapy" ? "therapies.get" : "grouptherapies.get";
+          notification.forType == "Therapy" ? "therapies.get" : "group.therapies.get";
 
         if (
           ["session.due", "discussion.due"].includes(notification.type) &&
@@ -96,9 +130,9 @@ watchEffect(() => {
     );
 
     if (page.props.auth.user.counsellor) {
-      Echo.private(`counsellors.${page.props.auth.user.counsellor.id}`)
+      counsellorChannel = acquireCounsellorChannel(page.props.auth.user.counsellor.id);
+      counsellorChannel
         .notification((notification) => {
-          console.log(notification, "notification");
 
           if (notification.type == "discussion.counsellor.removed") {
 
@@ -116,15 +150,12 @@ watchEffect(() => {
             });
           }
         })
-        .listen("discussion.request.response", (data) => {
+        .listen(".discussion.request.response", (data) => {
           const key = data.forType == "Therapy" ? "therapyId" : "groupTherapyId";
 
           setSuccessAlertData({
-            message: `${
-              data.forName
-            } (counsellor) has ${data.status.toLowerCase()} your request inviting him/her to join discussion regarding ${
-              data.forName
-            } (${data.forType}). Visit the ${data.forType} page by click this alert.`,
+            // SCRUM-372: this listener lacked its leading dot, so it never fired.
+            message: `${data.counsellorName ?? "A counsellor"} has ${data.status.toLowerCase()} your invitation to join the discussion "${data.forName}". Click this alert to visit the ${data.forType == "Therapy" ? "therapy" : "group therapy"}.`,
             time: 20000,
             data: {
               [key]: data.forId,
@@ -136,6 +167,7 @@ watchEffect(() => {
 });
 
 const showRequest = ref(false);
+const requestsRefreshKey = ref(0);
 const showingNavigationDropdown = ref(false);
 const showBecomeCounsellorButton = computed(() => {
   return !(
@@ -158,6 +190,27 @@ const showAdministratorLink = computed(() => {
 const showTherapiesLink = computed(() => {
   return usePage().props.auth.user && route().current() != "therapies";
 });
+// SCRUM-168: any authenticated user, not just counsellors -- the page itself (SCRUM-167/168)
+// shows counsellor-only sections conditionally and always shows the member-memberships section.
+const showMyOrganizationsLink = computed(() => {
+  return (
+    usePage().props.auth.user &&
+    route().current() != "organizations.mine.dashboard"
+  );
+});
+// SCRUM-213/TT-2.6b: counsellor-only, unlike My Organizations above -- a calendar has no meaning
+// at all for a non-counsellor, so this is gated the same way showCounsellorLink is.
+const showCalendarLink = computed(() => {
+  return (
+    usePage().props.auth.user?.counsellor &&
+    route().current() != "counsellor.calendar"
+  );
+});
+
+// SCRUM-391: counsellors only, like the calendar.
+const showDashboardLink = computed(() => {
+  return usePage().props.auth.user?.counsellor && route().current() != "counsellor.dashboard";
+});
 
 function goToTherapy(data) {
   router.get(route(`therapies.get`, { therapyId: data.therapyId }));
@@ -166,7 +219,7 @@ function goToTherapy(data) {
 
 <template>
   <div v-bind="$attrs">
-    <div class="min-h-screen bg-stone-100">
+    <div class="min-h-screen bg-stone-100 flex flex-col">
       <nav class="bg-white border-b border-gray-100">
         <!-- Primary Navigation Menu -->
         <div class="mx-auto px-4 sm:px-6 lg:px-8">
@@ -196,8 +249,10 @@ function goToTherapy(data) {
               </div>
             </div>
 
-            <template v-if="$page.props.auth.user">
-              <div class="hidden sm:flex sm:items-center sm:ms-6">
+            <div v-if="$page.props.auth.user" class="flex items-center">
+              <!-- SCRUM-39: the notification bell, on every size. -->
+              <NotificationBell />
+              <div class="hidden sm:flex sm:items-center sm:ms-3">
                 <!-- Settings Dropdown -->
                 <div class="ms-3 relative">
                   <Dropdown align="right" width="48">
@@ -242,6 +297,15 @@ function goToTherapy(data) {
                       </DropdownLink>
                       <DropdownLink v-if="showTherapiesLink" :href="route('therapies')">
                         Therapies
+                      </DropdownLink>
+                      <DropdownLink v-if="showMyOrganizationsLink" :href="route('organizations.mine.dashboard')">
+                        My Organizations
+                      </DropdownLink>
+                      <DropdownLink v-if="showDashboardLink" :href="route('counsellor.dashboard')">
+                        My Dashboard
+                      </DropdownLink>
+                      <DropdownLink v-if="showCalendarLink" :href="route('counsellor.calendar')">
+                        My Calendar
                       </DropdownLink>
                       <div
                         v-if="showRequestLink"
@@ -309,7 +373,7 @@ function goToTherapy(data) {
                   </svg>
                 </button>
               </div>
-            </template>
+            </div>
             <div class="flex justify-start items-center" v-else>
               <div
                 class="hidden sm:flex justify-start items-center overflow-hidden overflow-x-auto gap-2"
@@ -422,6 +486,15 @@ function goToTherapy(data) {
               <ResponsiveNavLink v-if="showTherapiesLink" :href="route('therapies')">
                 Therapies
               </ResponsiveNavLink>
+              <ResponsiveNavLink v-if="showMyOrganizationsLink" :href="route('organizations.mine.dashboard')">
+                My Organizations
+              </ResponsiveNavLink>
+              <ResponsiveNavLink v-if="showDashboardLink" :href="route('counsellor.dashboard')">
+                My Dashboard
+              </ResponsiveNavLink>
+              <ResponsiveNavLink v-if="showCalendarLink" :href="route('counsellor.calendar')">
+                My Calendar
+              </ResponsiveNavLink>
               <div
                 v-if="showRequestLink"
                 @click="
@@ -480,15 +553,15 @@ function goToTherapy(data) {
       </header>
 
       <!-- Page Content -->
-      <main>
+      <main class="flex-1">
         <slot />
       </main>
+      
+      <!-- Footer -->
+      <Footer @contact-us="() => showModal('contact')" />
     </div>
   </div>
 
-  <div
-    class="hidden w-[40px] h-[40px] sm:w-[50px] sm:h-[50px] w-[120px] h-[120px] sm:w-[150px] sm:h-[150px] w-[80px] h-[80px] sm:w-[100px] sm:h-[100px]"
-  ></div>
   <Alert
     :show="alertData.show"
     :type="alertData.type"
@@ -505,10 +578,16 @@ function goToTherapy(data) {
 
   <RequestModal
     :show="showRequest"
+    :refresh-key="requestsRefreshKey"
     @close-modal="
       () => {
         showRequest = false;
       }
     "
+  />
+
+  <ContactUsModal
+    :show="modalData.show && modalData.type == 'contact'"
+    @close-modal="closeModal"
   />
 </template>

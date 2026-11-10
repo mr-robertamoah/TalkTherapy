@@ -13,10 +13,12 @@ class FileService extends Service
 {
     public function uploadFile(FileUploadDTO $fileUploadDTO)
     {
-        if (is_null($fileUploadDTO->file)) return null;
+        if (is_null($fileUploadDTO->file)) {
+            return null;
+        }
 
-        $disk = $fileUploadDTO->disk ?: env('FILESYSTEM_DISK');
-        
+        $disk = $fileUploadDTO->disk ?: config('filesystems.default');
+
         $data = [];
         $data['mime'] = $fileUploadDTO->file->getClientMimeType();
         $data['size'] = $fileUploadDTO->file->getSize();
@@ -25,7 +27,7 @@ class FileService extends Service
 
         $result = Storage::disk($disk)->put($fileUploadDTO->path, $fileUploadDTO->file);
 
-        $data['name'] = str_replace(strlen($data['path']) ? $data['path'] . '/' : '', '', $result);
+        $data['name'] = str_replace(strlen($data['path']) ? $data['path'].'/' : '', '', $result);
 
         return $data;
     }
@@ -42,14 +44,18 @@ class FileService extends Service
         return $file;
     }
 
-    public function deleteFile(File|null $file)
+    // False, keeping the row, when the stored blob couldn't be deleted (SCRUM-362) -- deleting the
+    // row anyway would orphan a blob nothing points at.
+    public function deleteFile(?File $file): bool
     {
-        if (is_null($file)) return;
+        if (is_null($file)) {
+            return false;
+        }
 
-        $path = (strlen($file->path) ? $file->path . '/' : '') . $file->name;
-        
-        Storage::disk($file->storage)->delete($path);
+        if (! Storage::disk($file->storage)->delete($file->diskPath())) {
+            return false;
+        }
 
-        return $file->delete();
+        return (bool) $file->delete();
     }
 }

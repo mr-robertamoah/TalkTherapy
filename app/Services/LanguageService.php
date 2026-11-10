@@ -17,21 +17,25 @@ use App\Models\User;
 
 class LanguageService extends Service
 {
-    public function getLanguages(String $name = '') {
+    public function getLanguages(string $name = '')
+    {
         $query = Language::query();
 
-        if ($name) $query->where('name', 'LIKE', "%{$name}%");
+        if ($name) {
+            $query->whereContains('name', (string) $name);
+        }
 
         return LanguageResource::collection($query->paginate(
             PaginationEnum::preferencesPagination->value
         ));
     }
 
-    public function createLanguage(CreateLanguageDTO $createLanguageDTO) {
+    public function createLanguage(CreateLanguageDTO $createLanguageDTO)
+    {
         EnsureAddedbyIsValidAction::new()->execute($createLanguageDTO);
-        
+
         EnsureUserCanCreateLanguageAction::new()->execute($createLanguageDTO->user);
-        
+
         EnsureLanguageNameIsUniqueAction::new()->execute($createLanguageDTO->name);
 
         $language = CreateLanguageAction::new()->execute($createLanguageDTO);
@@ -39,18 +43,18 @@ class LanguageService extends Service
         CreateStarAction::new()->execute(
             CreateStarDTO::fromArray([
                 'starredby' => null,
-                'starred' => $createLanguageDTO->addedby 
+                'starred' => $createLanguageDTO->addedby
                     ? (
                         $createLanguageDTO->addedby::class == User::class
                             ? $createLanguageDTO->addedby
                             : $createLanguageDTO->addedby->user
-                    ) 
+                    )
                     : $createLanguageDTO->user,
                 'starreable' => $language,
                 'type' => StarTypeEnum::contribution->value,
             ])
         );
-        
+
         return $language;
     }
 }

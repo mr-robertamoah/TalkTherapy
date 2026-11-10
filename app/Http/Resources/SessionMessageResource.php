@@ -14,7 +14,6 @@ class SessionMessageResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
-        ds($this->resource);
         return parent::toArray($request);
     }
 }

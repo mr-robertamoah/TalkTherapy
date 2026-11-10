@@ -2,9 +2,11 @@
 
 namespace App\Notifications;
 
-use App\Http\Resources\SessionResource;
+use App\Contracts\ShownInNotificationCenter;
 use App\Models\Counsellor;
 use App\Models\Session;
+use App\Support\NotificationEntry;
+use App\Support\TherapyLink;
 use Carbon\Carbon;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -12,7 +14,7 @@ use Illuminate\Notifications\Messages\BroadcastMessage;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
-class SessionUpdatedNotification extends Notification implements ShouldQueue
+class SessionUpdatedNotification extends Notification implements ShouldQueue, ShownInNotificationCenter
 {
     use Queueable;
 
@@ -33,9 +35,10 @@ class SessionUpdatedNotification extends Notification implements ShouldQueue
     {
         $via = ['database', 'broadcast'];
 
-        if ($notifiable->email_verified_at)
+        if ($notifiable->email_verified_at) {
             $via[] = 'mail';
-        
+        }
+
         return $via;
     }
 
@@ -49,7 +52,7 @@ class SessionUpdatedNotification extends Notification implements ShouldQueue
         $duration = $start->diffInMinutes(new Carbon($this->session->end_time));
         [$type, $url] = $this->session->getNotificationActionData();
         $name = $notifiable::class == Counsellor::class ? $notifiable->getName() : $notifiable->name;
-        
+
         return (new MailMessage)
             ->success()
             ->subject("'{$this->session->name}' Session")
@@ -57,7 +60,7 @@ class SessionUpdatedNotification extends Notification implements ShouldQueue
             ->line("The session with name: '{$this->session->name}' has been updated.")
             ->line("This session will start on {$startTime}. The session will last {$duration} minutes. Please take notice.")
             ->action("Visit {$type} Page", $url)
-            ->line("You may receive other reminders before the starting time.")
+            ->line('You may receive other reminders before the starting time.')
             ->line("Thank you for choosing to 'TalkTherapy'.");
     }
 
@@ -70,18 +73,28 @@ class SessionUpdatedNotification extends Notification implements ShouldQueue
     {
         return [
             'session_id' => $this->session->id,
+            // SCRUM-39: the therapy or group, so the notification center can link it (old rows have none).
+            ...($this->session->for ? TherapyLink::ids($this->session->for) : []),
         ];
     }
-    
+
     public function toBroadcast(object $notifiable): BroadcastMessage
     {
-        return (new BroadcastMessage([
-            'session' => new SessionResource($this->session)
-        ]));
+        // SCRUM-367: the id only, like the session events -- nothing reads more, and this channel
+        // also reaches a participant who has since been suspended or not paid.
+        return new BroadcastMessage([
+            'sessionId' => $this->session->id,
+        ]);
     }
 
     public function broadcastType(): string
     {
         return 'session.updated';
+    }
+
+    // SCRUM-39 (TT-5.4b): in the notification center -- from the saved ids only, never more than the email.
+    public static function present(array $data): NotificationEntry
+    {
+        return new NotificationEntry('A session was updated', 'Its time or details changed.', TherapyLink::fromIds($data));
     }
 }

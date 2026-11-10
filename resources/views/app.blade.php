@@ -6,8 +6,13 @@
 
         <title inertia>{{ config('app.name', 'Laravel') }}</title>
 
+        <link rel="icon" href="{{ asset('favicon.svg') }}" type="image/svg+xml">
         <link rel="shortcut icon" href="{{ asset('favicon.ico') }}" type="image/x-icon">
         <link rel="icon" href="{{ asset('favicon.ico') }}" type="image/x-icon">
+        {{-- SCRUM-399: so a counsellor can add it to their home screen (needed for web push on iPhone and iPad). --}}
+        <link rel="manifest" href="{{ asset('manifest.webmanifest') }}">
+        <link rel="apple-touch-icon" href="{{ asset('apple-touch-icon.png') }}">
+        <meta name="theme-color" content="#271424">
 
         <!-- Fonts -->
         <link rel="preconnect" href="https://fonts.bunny.net">

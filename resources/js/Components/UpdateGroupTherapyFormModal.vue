@@ -12,14 +12,21 @@ import PrimaryButton from "./PrimaryButton.vue";
 import Checkbox from "./Checkbox.vue";
 import Select from "./Select.vue";
 import ProfileCaseSection from "@/Pages/Profile/Partials/ProfileCaseSection.vue";
-import { useForm } from '@inertiajs/vue3';
+import { useForm, usePage } from '@inertiajs/vue3';
 import useEnums from '@/Composables/useEnums';
 import CounsellorComponent from './CounsellorComponent.vue';
 import useLoader from '@/Composables/useLoader';
+import useTherapyFormValidation from '@/Composables/useTherapyFormValidation';
 
 const { alertData, clearAlertData, setFailedAlertData, setSuccessAlertData } = useAlert()
 const { PaymentTypeEnum, SessionTypeEnum } = useEnums()
 const { loader, showLoader, hideLoader } = useLoader()
+const { validateTherapyForm } = useTherapyFormValidation()
+// SCRUM-153 (TT-7.2a): sourced from the backend's config('currencies.supported') (shared via
+// Inertia), not hardcoded -- previously defaulted to the Cedi symbol 'GHȻ', a free-text value
+// that would fail the backend's new supported-currency validation unless manually overwritten.
+const supportedCurrencies = usePage().props.supportedCurrencies ?? []
+const defaultCurrency = supportedCurrencies.includes('GHS') ? 'GHS' : (supportedCurrencies[0] ?? '')
 const props = defineProps({
     show: {
         default: false,
@@ -46,7 +53,7 @@ const therapyForm = useForm({
     'amount': '',
     'maxSessions': '',
     'counsellorId': '',
-    'currency': 'GHȻ',
+    'currency': defaultCurrency,
     'cases': [],
     'counsellorIds': [],
     'maxUsers': '',
@@ -55,6 +62,17 @@ const therapyForm = useForm({
     'shareEqually': false,
     'asCounsellor': false,
     'sharePercentage': '',
+})
+// A therapy's stored currency can predate the current supported list (e.g. it was set before
+// SUPPORTED_CURRENCIES was narrowed, or while the field was still free-text) -- keep it selectable
+// in the dropdown instead of silently desyncing the Select from therapyForm.currency, which would
+// otherwise surface as a confusing "currency" validation error on an unrelated field update.
+const currencyOptions = computed(() => {
+    const codes = therapyForm.currency && !supportedCurrencies.includes(therapyForm.currency)
+        ? [therapyForm.currency, ...supportedCurrencies]
+        : supportedCurrencies
+
+    return codes.map(code => ({ name: code, value: code }))
 })
 
 watchEffect(() => {
@@ -70,7 +88,7 @@ watch(
         if (therapyForm.paymentType == PaymentTypeEnum.free) {
             therapyForm.public = true
             therapyForm.amount = ''
-            therapyForm.currency = 'GHȻ'
+            therapyForm.currency = defaultCurrency
             therapyForm.per = ''
         }
     }
@@ -86,16 +104,18 @@ watch(
             therapyForm.maxSessions = props.therapy.maxSessions
             therapyForm.maxUsers = props.therapy.maxUsers
             therapyForm.maxCounsellors = props.therapy.maxCounsellors
-            therapyForm.allowAnyone = props.therapy.allowAnyone
-            therapyForm.public = props.therapy.public
-            therapyForm.allowInPerson = props.therapy.allowInPerson
-            therapyForm.anonymous = props.therapy.anonymous
+            therapyForm.allowAnyone = !!props.therapy.allowAnyone
+            therapyForm.public = !!props.therapy.public
+            therapyForm.allowInPerson = !!props.therapy.allowInPerson
+            therapyForm.anonymous = !!props.therapy.anonymous
+            // SCRUM-380: booleans the resource may leave out arrive as undefined, which the Checkbox's
+            // `checked` prop rejects (a Vue warning) -- coerced above.
             if (props.therapy.paymentData) {
                 therapyForm.inPersonAmount = props.therapy.paymentData['inPersonAmount']
                 therapyForm.amount = props.therapy.paymentData['amount']
                 therapyForm.currency = props.therapy.paymentData['currency']
                 therapyForm.per = props.therapy.paymentData['per']
-                therapyForm.shareEqually = props.therapy.paymentData['shareEqually']
+                therapyForm.shareEqually = !!props.therapy.paymentData['shareEqually']
                 therapyForm.sharePercentage = props.therapy.paymentData['sharePercentage']
             }
             therapyForm.cases = [...props.therapy.cases.map((c) => c.id)]
@@ -114,55 +134,11 @@ const computedShowInPersonAmount = computed(() => {
 })
  
 async function updateTherapy() {
-    if (!therapyForm.name) {
+    const validationError = validateTherapyForm(therapyForm)
+    if (validationError) {
         setFailedAlertData({
-            message: "Name is required for a therapy.",
+            message: validationError,
             time: 10000,
-        });
-        return
-    }
-
-    if (
-        therapyForm.paymentType == PaymentTypeEnum.paid &&
-        !(therapyForm.amount && therapyForm.currency && therapyForm.per)
-    ) {
-        setFailedAlertData({
-            message: "Amount, currency and per what? All of these are required since you selected PAID payment type.",
-            time: 10000,
-        });
-        return
-    }
-        
-    if (
-        therapyForm.paymentType == PaymentTypeEnum.free &&
-        !therapyForm.public
-    ) {
-        setFailedAlertData({
-            message: "FREE payment types requires that you set public to true.",
-            time: 10000,
-        });
-        return
-    }
-
-    if (
-        therapyForm.paymentType == PaymentTypeEnum.paid &&
-        therapyForm.sessionType == SessionTypeEnum.once &&
-        therapyForm.per !== 'PER_THERAPY'
-    ) {
-        setFailedAlertData({
-            message: "Since ONCE and PAID have been selected for session and payment types respectively, you must select per THERAPY.",
-            time: 10000,
-        });
-        return
-    }
-
-    if (
-        therapyForm.sessionType == SessionTypeEnum.periodic &&
-        (!therapyForm.maxSessions || therapyForm.maxSessions < 2)
-    ) {
-        setFailedAlertData({
-            time: 10000,
-            message: "Since PERIODIC has been selected for the session type, the maximum number of sessions must be at least 2."
         });
         return
     }
@@ -177,11 +153,13 @@ async function updateTherapy() {
         onFinish: () => {
             hideLoader()
         },
-        onError: (err) => {
-            console.log(err)
-            if (err.response?.data?.message) {
+        // SCRUM-379: Inertia passes the server's errors object here (the refusal reason arrives as
+        // `alert`), never an axios response, so the old check always fell through to the generic
+        // message. Field errors show beside their fields (therapyForm.errors).
+        onError: (errors) => {
+            if (errors?.alert) {
                 setFailedAlertData({
-                    message: err.response.data.message,
+                    message: errors.alert,
                     time: 10000,
                 })
                 return
@@ -274,7 +252,7 @@ function clearData() {
     therapyForm.shareEqually = false
     therapyForm.sharePercentage = ''
     therapyForm.amount = ''
-    therapyForm.currency = 'GHȻ'
+    therapyForm.currency = defaultCurrency
     therapyForm.per = ''
     therapyForm.cases = []
     therapyForm.counsellorIds = []
@@ -565,11 +543,12 @@ function closeModal() {
 
                                     <InputLabel class="mt-4" for="amount" value="Amount" />
                                     <div class="flex justify-start items-center">
-                                        <TextInput
+                                        <Select
                                             id="currency"
-                                            type="text"
-                                            class="mt-1 block w-[30%] max-w-[100px] text-end"
+                                            class="mt-1 block w-[30%] max-w-[100px]"
                                             v-model="therapyForm.currency"
+                                            :options="currencyOptions"
+                                            :default-option="'currency'"
                                             required
                                         />
                                         <TextInput

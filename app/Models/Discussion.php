@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\DiscussionStatusEnum;
 use App\Traits\Starreable;
 use App\Traits\Timeable;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -12,20 +13,29 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 class Discussion extends Model
 {
     use HasFactory,
-    Timeable,
-    SoftDeletes,
-    Starreable;
+        SoftDeletes,
+        Starreable,
+        Timeable;
 
-    protected $fillable = ['name', 'description', 'start_time', 'end_time', 'status', 'session_id'];
+    protected $fillable = ['name', 'description', 'start_time', 'end_time', 'status', 'session_id', 'max_counsellors'];
+
+    // SCRUM-372: like Session's, so the two reach the browser in the same format (ISO, UTC) and
+    // callers get Carbon, not a string they each have to parse.
+    protected $casts = [
+        'start_time' => 'datetime',
+        'end_time' => 'datetime',
+    ];
 
     public function addedby()
     {
-        return $this->morphTo( 'addedby');
+        // withTrashed: see Therapy::counsellor() -- addedby (User or Counsellor) may have
+        // since deleted their account.
+        return $this->morphTo('addedby')->withTrashed();
     }
 
     public function for()
     {
-        return $this->morphTo( 'for');
+        return $this->morphTo('for');
     }
 
     public function session()
@@ -45,7 +55,7 @@ class Discussion extends Model
 
     public function isNotParticipant(?Counsellor $counsellor)
     {
-        return !$this->isParticipant($counsellor);
+        return ! $this->isParticipant($counsellor);
     }
 
     public function counsellors()
@@ -54,13 +64,37 @@ class Discussion extends Model
             ->withTimestamps();
     }
 
+    // SCRUM-343: who may manage a discussion (update, delete, start/end/fail, remove counsellors) --
+    // an admin or its creator, whether they act as themselves or as their counsellor account.
+    public function isManageableBy(User $user): bool
+    {
+        return $user->isAdmin()
+            || (bool) $this->addedby?->is($user)
+            || (bool) $this->addedby?->is($user->counsellor);
+    }
+
     public function isParticipant(?Counsellor $counsellor)
     {
-        if (!$counsellor) return false;
-        return $this->addedby->is($counsellor) ||
-            $this->counsellors()
-                ->where('counsellor_id', $counsellor->id)
-                ->exists();
+        return $counsellor && in_array($counsellor->id, $this->participantCounsellorIds());
+    }
+
+    // Everyone taking part, as Counsellor models (soft-deleted ones excluded) -- who the due and
+    // failed notices go to (SCRUM-372).
+    public function participantCounsellors(): Collection
+    {
+        return Counsellor::query()->whereKey($this->participantCounsellorIds())->get();
+    }
+
+    // SCRUM-367: the counsellor profiles taking part -- its creator and every added counsellor.
+    // Discussion broadcasts go to these counsellors' own channels only: a discussion is
+    // counsellors-only, and the therapy's channel also reaches its client and members.
+    public function participantCounsellorIds(): array
+    {
+        $creator = $this->addedby instanceof User ? $this->addedby->counsellor : $this->addedby;
+
+        return $this->counsellors()->pluck('counsellors.id')
+            ->push($creator instanceof Counsellor ? $creator->id : null)
+            ->filter()->unique()->values()->all();
     }
 
     public function getOtherUsers(User $user)
@@ -69,14 +103,15 @@ class Discussion extends Model
             ->whereNot('id', $user->id)
             ->whereHas('counsellor', function ($query) {
                 $query
-                ->whereHas('discussions', function ($query) {
-                    $query->where('discussion_id', $this->id);
-                });
+                    ->whereHas('discussions', function ($query) {
+                        $query->where('discussion_id', $this->id);
+                    });
             })
             ->get();
 
-        if (!$this->addedby->user?->is($user))
+        if (! $this->addedby->user?->is($user)) {
             $users = $users->push($this->addedby->user);
+        }
 
         return $users;
     }
@@ -114,14 +149,31 @@ class Discussion extends Model
         });
     }
 
+    // SCRUM-367: the one definition of a discussion's participants -- its creator (as a counsellor
+    // profile, or as that profile's own user account) and every added counsellor. isParticipant()
+    // and participantCounsellorIds() agree with it. Grouped, and checks addedby_type: it used to
+    // match any creator whose id merely equalled the counsellor's.
     public function scopeWhereIsParticipant($query, Counsellor $counsellor)
     {
         return $query->where(function ($query) use ($counsellor) {
-                $query->whereCounsellor($counsellor);
-            })
-            ->orWhere(function ($query) use ($counsellor) {
-                $query->where('addedby_id', $counsellor->id);
-            });
+            $query
+                ->where(fn ($q) => $q->where('addedby_type', Counsellor::class)->where('addedby_id', $counsellor->id))
+                ->orWhere(fn ($q) => $q->where('addedby_type', User::class)->where('addedby_id', $counsellor->user_id))
+                ->orWhereHas('counsellors', fn ($q) => $q->where('counsellor_id', $counsellor->id));
+        });
+    }
+
+    // SCRUM-369: see Session::scopeWhereActive -- only a PENDING discussion can be about to start or
+    // inside its window; held, abandoned and failed ones are over.
+    public function scopeWhereActive($query)
+    {
+        return $query->where(fn ($query) => $query
+            ->whereInSession()
+            ->orWhere(fn ($query) => $query
+                ->whereStatusIn([DiscussionStatusEnum::pending->value])
+                ->where(fn ($query) => $query
+                    ->whereFiveOrLessMinutesToStart()
+                    ->orWhere(fn ($query) => $query->whereHasStartedAndNotEnded()))));
     }
 
     public function scopeWhereInSession($query)
@@ -142,21 +194,13 @@ class Discussion extends Model
         if ($this->for_type == Therapy::class) {
             return ['Therapy', url("therapies/{$this->for->id}")];
         }
-            
-        return ['Group Therapy', url("group_therapies/{$this->for->id}")];
-    }
 
-    public function getForChannelName()
-    {
-        if ($this->for_type == Therapy::class)
-            return "therapies.{$this->for_id}";
-        
-        return "grouptherapies.{$this->for_id}";
+        return ['Group Therapy', url("group-therapies/{$this->for->id}")];
     }
 
     public function doesNotAcceptMessage()
     {
-        return !$this->acceptsMessage();
+        return ! $this->acceptsMessage();
     }
 
     public function acceptsMessage()

@@ -3,30 +3,43 @@
     "type": "module",
     "scripts": {
         "dev": "vite",
-        "build": "vite build"
+        "build": "vite build",
+        "countries:generate": "node scripts/generate-countries.mjs"
     },
     "devDependencies": {
-        "@inertiajs/vue3": "^1.0.0",
+        "@inertiajs/vue3": "^2.3.29",
         "@tailwindcss/forms": "^0.5.3",
         "@vitejs/plugin-vue": "^5.0.0",
         "autoprefixer": "^10.4.12",
-        "axios": "^1.6.4",
+        "axios": "^1.21.0",
+        "i18n-iso-countries": "7.14.0",
         "laravel-echo": "^1.16.0",
         "laravel-vite-plugin": "^1.0.0",
         "postcss": "^8.4.31",
         "pusher-js": "^8.4.0-rc2",
-        "tailwindcss": "^3.2.1",
-        "vite": "^5.0.0",
-        "vue": "^3.4.0"
+        "tailwindcss": "^3.4.0",
+        "vite": "^6.4.5",
+        "vue": "^3.5.44"
     },
     "dependencies": {
+        "@daily-co/daily-js": "^0.89.1",
         "@googlemaps/js-api-loader": "^1.16.2",
         "@popperjs/core": "^2.11.8",
+        "amazon-chime-sdk-js": "^3.31.0",
         "date-fns": "^3.6.0",
         "date-fns-tz": "^3.1.3",
         "get-blob-duration": "^1.2.0",
         "lodash": "^4.17.21",
         "vue-popper": "^0.3.8",
         "vue-select": "^4.0.0-beta.6"
+    },
+    "overrides": {
+        "get-blob-duration": {
+            "@babel/runtime": "7.29.7"
+        },
+        "follow-redirects": "1.16.2",
+        "postcss-selector-parser": "6.1.5",
+        "@babel/parser": "7.29.12",
+        "@babel/helper-string-parser": "7.29.11"
     }
 }

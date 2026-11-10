@@ -12,12 +12,15 @@ class StoreVisitationMiddleware
     /**
      * Handle an incoming request.
      *
-     * @param  \Closure(\Illuminate\Http\Request): (\Symfony\Component\HttpFoundation\Response)  $next
+     * @param  Closure(Request): (Response)  $next
      */
     public function handle(Request $request, Closure $next): Response
     {
-        if ($request->getPathInfo() !== '/login');
+        // SCRUM-373: health checks are a monitor polling every minute, not visits.
+        if ($request->getPathInfo() !== '/login' && ! $request->is('up', 'api/health/*')) {
             StoreVisitationJob::dispatch($request->user(), $request->ip());
+        }
+
         return $next($request);
     }
 }

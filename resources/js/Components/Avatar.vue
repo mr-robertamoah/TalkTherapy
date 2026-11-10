@@ -21,11 +21,14 @@ const props = defineProps({
     },
 })
 
-const classes = computed(() => {
-    const mainSize =  props.size + (props.size / 4)
-
-    return `w-[${props.size}px] h-[${props.size}px] rounded-full sm:w-[${mainSize}px] sm:h-[${mainSize}px] bg-white`
-})
+// Inline style, not a dynamic Tailwind arbitrary-value class (`w-[${size}px]`): Tailwind's JIT
+// compiler only generates CSS for class strings it can find via static source scanning, so any
+// runtime-interpolated size not already present verbatim somewhere in the scanned source (see the
+// safelist hack in AuthenticatedLayout.vue) silently gets NO width/height rule at all -- the
+// element renders unconstrained at its image's intrinsic size. Caught in practice during TT-10.5
+// (SCRUM-187) with size=64, which wasn't safelisted. Inline style has no such requirement and
+// works for every size without needing to extend a safelist each time a new one is used.
+const sizeStyle = computed(() => ({ width: `${props.size}px`, height: `${props.size}px` }))
 
 const computedPadding = computed(() => {
     let padding = 'p-2'
@@ -36,12 +39,12 @@ const computedPadding = computed(() => {
 </script>
 
 <template>
-    <div :class="`${classes} ${computedPadding}`" >
-        <div class="w-full h-full bg-gray-300 rounded-full flex items-center justify-center" :class="computedPadding">
+    <div class="rounded-full bg-white aspect-square" :style="sizeStyle" :class="computedPadding">
+        <div class="w-full h-full bg-gray-300 rounded-full flex items-center justify-center overflow-hidden" :class="computedPadding">
             <img 
                 v-if="src.length"
                 :src="src" :alt="alt"
-                class="object-cover rounded-full w-full h-full text-xs"
+                class="object-cover w-full h-full text-xs"
             >
             <div v-else class="w-full h-full flex justify-center items-center text-sm text-gray-600">{{ avatarText }}</div>
         </div>

@@ -5,9 +5,11 @@ namespace App\Http\Controllers;
 use App\DTOs\AssistTherapyDTO;
 use App\DTOs\CreateTherapyDTO;
 use App\DTOs\GetTherapyDTO;
-use App\Http\Requests\TherapyAssistanceRequest;
+use App\Exceptions\PaymentRequiredException;
 use App\Http\Requests\CreateTherapyRequest;
+use App\Http\Requests\TherapyAssistanceRequest;
 use App\Http\Requests\UpdateTherapyRequest;
+use App\Http\Resources\PublicTherapyResource;
 use App\Http\Resources\RequestResource;
 use App\Http\Resources\SessionResource;
 use App\Http\Resources\TherapyMiniResource;
@@ -16,7 +18,7 @@ use App\Http\Resources\TherapyTopicResource;
 use App\Models\Counsellor;
 use App\Models\Therapy;
 use App\Services\TherapyService;
-use Exception;
+use App\Support\FailureResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Redirect;
 use Inertia\Inertia;
@@ -27,46 +29,61 @@ class TherapyController extends Controller
     public function getRandomTherapies(Request $request)
     {
         try {
-            $therapies = TherapyService::new()->getRandomTherapies($request->user());        
+            $therapies = TherapyService::new()->getRandomTherapies($request->user(), $request->query('seed'));
 
             return TherapyMiniResource::collection($therapies);
         } catch (Throwable $th) {
-            $message = $th->getCode() == 500 ? "Something unfortunate happened. Please try again shortly." : $th->getMessage();
-            ds($th);
-            throw new Exception($message);
+            $status = $this->statusFor($th);
+            $message = $this->messageFor($th, $status);
+
+            return response()->json(['message' => $message], $status);
+        }
+    }
+
+    public function getPublicTherapies(Request $request)
+    {
+        try {
+            $therapies = TherapyService::new()->getPublicTherapies($request->user(), $request->query('seed'));
+
+            return PublicTherapyResource::collection($therapies);
+        } catch (Throwable $th) {
+            $status = $this->statusFor($th);
+            $message = $this->messageFor($th, $status);
+
+            return response()->json(['message' => $message], $status);
         }
     }
 
     public function getUserTherapies(Request $request)
     {
         try {
-            $therapies = TherapyService::new()->getUserTherapies($request->user());        
+            $therapies = TherapyService::new()->getUserTherapies($request->user());
 
             return TherapyMiniResource::collection($therapies);
         } catch (Throwable $th) {
-           $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
     public function getWardTherapies(Request $request)
     {
         try {
-            $therapies = TherapyService::new()->getWardTherapies($request->user());        
+            $therapies = TherapyService::new()->getWardTherapies($request->user());
 
             return TherapyMiniResource::collection($therapies);
         } catch (Throwable $th) {
-           $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
     public function getCounsellorTherapies(Request $request)
     {
         try {
-            $therapies = TherapyService::new()->getCounsellorTherapies($request->user());        
+            $therapies = TherapyService::new()->getCounsellorTherapies($request->user());
 
             return TherapyMiniResource::collection($therapies);
         } catch (Throwable $th) {
-           $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -90,26 +107,31 @@ class TherapyController extends Controller
                     'paymentType' => $request->paymentType,
                     'maxSessions' => $request->maxSessions,
                     'cases' => $request->cases,
+                    'strictPaymentGate' => $request->strictPaymentGate,
                 ])
             );
+
             return response()->json([
                 'status' => true,
-                'therapy' => new TherapyMiniResource($therapy)
+                'therapy' => new TherapyMiniResource($therapy),
             ]);
         } catch (Throwable $th) {
-            $message = $th->getCode() == 500 ? "Something unfortunate happened. Please try again shortly." : $th->getMessage();
-            ds($th);
-            throw new Exception($message);
+            return FailureResponse::json($th);
         }
     }
-    
+
+    // Every lookup below reads $request->route(...) rather than the magic ->therapyId property
+    // -- see the identical fix/rationale in SessionController (SCRUM-116).
+    // SCRUM-379: update/strict-gate/end/delete are reached both by Inertia forms (web routes -- they
+    // expect the redirect, and read a failure from errors.alert) and by JSON callers (api.therapies.*).
+    // successResponse()/failureResponse() give each its own answer.
     public function updateTherapy(UpdateTherapyRequest $request)
     {
         try {
-            TherapyService::new()->updateTherapy(
+            $therapy = TherapyService::new()->updateTherapy(
                 CreateTherapyDTO::new()->fromArray([
                     'user' => $request->user(),
-                    'therapy' => Therapy::find($request->therapyId),
+                    'therapy' => Therapy::find($request->route('therapyId')),
                     'name' => $request->name,
                     'backgroundStory' => $request->backgroundStory,
                     'per' => $request->per,
@@ -123,51 +145,68 @@ class TherapyController extends Controller
                     'paymentType' => $request->paymentType,
                     'maxSessions' => $request->maxSessions,
                     'cases' => $request->cases,
+                    'strictPaymentGate' => $request->strictPaymentGate,
                 ])
             );
 
-            return Redirect::back();
+            return $this->successResponse($request, ['status' => true, 'therapy' => new TherapyMiniResource($therapy)], Redirect::back());
         } catch (Throwable $th) {
-            $message = $th->getCode() == 500 ? "Something unfortunate happened. Please try again shortly." : $th->getMessage();
-
-            ds($th);
-            throw new Exception($message);
+            return $this->failureResponse($request, $th);
         }
     }
-    
+
+    // SCRUM-221/TT-7.5a: see the route comment -- deliberately separate from updateTherapy()
+    // above so the assigned counsellor (who cannot pass EnsureCanUpdateTherapyAction for an
+    // ordinarily client-created therapy) can still reach EnsureCanSetStrictPaymentGateAction's
+    // own, self-contained authorization check.
+    public function updateStrictPaymentGate(Request $request)
+    {
+        $request->validate(['strictPaymentGate' => ['required', 'boolean']]);
+
+        try {
+            TherapyService::new()->updateStrictPaymentGate(
+                CreateTherapyDTO::new()->fromArray([
+                    'user' => $request->user(),
+                    'therapy' => Therapy::find($request->route('therapyId')),
+                    'strictPaymentGate' => $request->boolean('strictPaymentGate'),
+                ])
+            );
+
+            return $this->successResponse($request, ['status' => true], Redirect::back());
+        } catch (Throwable $th) {
+            return $this->failureResponse($request, $th);
+        }
+    }
+
     public function deleteTherapy(Request $request)
     {
         try {
             TherapyService::new()->deleteTherapy(
                 CreateTherapyDTO::new()->fromArray([
                     'user' => $request->user(),
-                    'therapy' => Therapy::find($request->therapyId),
+                    'therapy' => Therapy::find($request->route('therapyId')),
                 ])
             );
 
-            return Redirect::route('home');
+            return $this->successResponse($request, ['status' => true], Redirect::route('home'));
         } catch (Throwable $th) {
-            $message = $th->getCode() == 500 ? "Something unfortunate happened. Please try again shortly." : $th->getMessage();
-
-            throw new Exception($message);
+            return $this->failureResponse($request, $th);
         }
     }
-    
+
     public function endTherapy(Request $request)
     {
         try {
             TherapyService::new()->endTherapy(
                 CreateTherapyDTO::new()->fromArray([
                     'user' => $request->user(),
-                    'therapy' => Therapy::find($request->therapyId),
+                    'therapy' => Therapy::find($request->route('therapyId')),
                 ])
             );
 
-            return Redirect::back();
+            return $this->successResponse($request, ['status' => true], Redirect::back());
         } catch (Throwable $th) {
-            $message = $th->getCode() == 500 ? "Something unfortunate happened. Please try again shortly." : $th->getMessage();
-
-            throw new Exception($message);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -177,23 +216,84 @@ class TherapyController extends Controller
             $therapy = TherapyService::new()->getTherapy(
                 GetTherapyDTO::new()->fromArray([
                     'user' => $request->user(),
-                    'therapy' => Therapy::find($request->therapyId),
+                    'therapy' => Therapy::find($request->route('therapyId')),
                 ])
             );
 
+            // SCRUM-33: a quick help chat has its own page.
+            if ($therapy->isHelpChat() && $therapy->helpRequest) {
+                return redirect()->route('help.chat', ['helpRequest' => $therapy->helpRequest->id]);
+            }
+
             $pendingRequest = $therapy->pendingRequestFor($request->user()?->counsellor);
+            $pendingSessionScheduleProposal = $therapy->pendingSessionScheduleProposal();
 
             return Inertia::render('Therapy/Index', [
                 'therapy' => new TherapyResource($therapy),
                 'session' => session('session'),
+                'transactionStatus' => session('transactionStatus'),
                 'pendingRequest' => $pendingRequest ? new RequestResource($pendingRequest) : null,
-                'recentSessions' => SessionResource::collection($therapy->sessions()->latest()->take(5)->get()),
+                'pendingSessionScheduleProposal' => $pendingSessionScheduleProposal ? new RequestResource($pendingSessionScheduleProposal) : null,
+                // TT-7.7e/SCRUM-253 (reviewer finding): nested-eager-load successfulRefund too --
+                // SessionResource's refundStatus field reads it for every individual-Therapy
+                // session in this bulk render (GroupTherapy sessions never touch it, so
+                // GroupTherapyController's own identical query doesn't need this).
+                // SCRUM-368: each session's `for` is this therapy -- set, not queried per session.
+                'recentSessions' => SessionResource::collection($therapy->sessions()->with('latestTransaction.successfulRefund')->latest()->take(5)->get()->each->setRelation('for', $therapy)),
                 'recentTopics' => TherapyTopicResource::collection($therapy->topics()->latest()->take(5)->get()),
             ]);
+        } catch (PaymentRequiredException $th) {
+            return $this->redirectForPaymentRequired($th, $request);
         } catch (Throwable $th) {
-            ds($th);
-            return Redirect::route('home')->with('message', $th->getMessage());
+            $status = $this->statusFor($th);
+            $message = $this->messageFor($th, $status);
+
+            return Redirect::route('home')->with('message', $message);
         }
+    }
+
+    public function chat(Request $request)
+    {
+        try {
+            $therapy = TherapyService::new()->getTherapy(
+                GetTherapyDTO::new()->fromArray([
+                    'user' => $request->user(),
+                    'therapy' => Therapy::find($request->route('therapyId')),
+                ])
+            );
+
+            // SCRUM-33: a quick help chat has its own page (only its two participants get this far).
+            if ($therapy->isHelpChat() && $therapy->helpRequest) {
+                return redirect()->route('help.chat', ['helpRequest' => $therapy->helpRequest->id]);
+            }
+
+            return Inertia::render('Therapy/Chat', [
+                'therapy' => new TherapyResource($therapy),
+            ]);
+        } catch (PaymentRequiredException $th) {
+            // SCRUM-219/TT-7.5a: chat() is reached through the same EnsureUserHasAccessToTherapyAction
+            // as getTherapy() above, so it can throw this exact exception too -- keep both entry
+            // points consistent rather than letting this one fall through to the generic message.
+            return $this->redirectForPaymentRequired($th, $request);
+        } catch (Throwable $th) {
+            $status = $this->statusFor($th);
+            $message = $this->messageFor($th, $status);
+
+            return Redirect::route('home')->with('message', $message);
+        }
+    }
+
+    // SCRUM-219/TT-7.5a: distinct from the generic access-denied catch in both callers above --
+    // flags a recoverable "pay to continue" state (not a hard access denial) via a distinguishable
+    // flash key, rather than a plain message a blocked client has no way to act on. The actual
+    // "resume payment from here" UI is SCRUM-221's job; this only keeps the information needed
+    // for it flowing through, matching TT-7.4a's transactionStatus flash-prop precedent.
+    private function redirectForPaymentRequired(PaymentRequiredException $th, Request $request)
+    {
+        return Redirect::route('home')
+            ->with('message', $th->getMessage())
+            ->with('paymentRequired', true)
+            ->with('paymentRequiredTherapyId', $request->route('therapyId'));
     }
 
     public function sendAssistanceRequest(TherapyAssistanceRequest $request)
@@ -203,33 +303,20 @@ class TherapyController extends Controller
                 AssistTherapyDTO::new()->fromArray([
                     'user' => $request->user(),
                     'counsellors' => Counsellor::findMany($request->counsellorIds),
-                    'therapy' => Therapy::find($request->therapyId)
+                    'therapy' => Therapy::find($request->route('therapyId')),
                 ])
             );
 
             return response()->json([
-                'status' => true
+                'status' => true,
             ]);
         } catch (Throwable $th) {
-            $message = $th->getCode() == 500 ? "Something unfortunate happened. Please try again shortly." : $th->getMessage();
-
-            ds($th);
-            throw new Exception($message);
+            return FailureResponse::json($th);
         }
     }
 
     public function show()
     {
         return Inertia::render('Therapy/Show');
-    }
-
-    private function returnFailure(Request $request, Throwable $th)
-    {
-        $message = $th->getCode() == 500 ? "Something unfortunate happened. Please try again shortly." : $th->getMessage();
-        
-        ds($th);
-
-        if ($request->acceptsJson()) throw new Exception($message);
-        return Redirect::back()->withErrors(['alert'=> $message]);
     }
 }

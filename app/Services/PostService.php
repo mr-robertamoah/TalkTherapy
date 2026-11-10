@@ -11,11 +11,11 @@ use App\Actions\Post\EnsurePostDataIsValidAction;
 use App\Actions\Post\EnsurePostExistsAction;
 use App\Actions\Post\UpdatePostAction;
 use App\Actions\Star\CreateStarAction;
+use App\Actions\Suspension\EnsureCanActAsCounsellorAction;
 use App\DTOs\CreatePostDTO;
 use App\DTOs\CreateStarDTO;
 use App\Enums\PaginationEnum;
 use App\Enums\StarTypeEnum;
-use App\Http\Resources\PostResource;
 use App\Models\Post;
 
 class PostService extends Service
@@ -24,10 +24,13 @@ class PostService extends Service
     {
         EnsureAddedbyIsValidAction::new()->execute(
             $createPostDTO,
-            "You are not allowed to use the account to add the post."
+            'You are not allowed to use the account to add the post.'
         );
 
         EnsureCanCreatePostAction::new()->execute($createPostDTO);
+
+        // SCRUM-359: a suspended counsellor can't publish as one.
+        EnsureCanActAsCounsellorAction::new()->execute($createPostDTO->addedby);
 
         EnsurePostDataIsValidAction::new()->execute($createPostDTO);
 
@@ -50,6 +53,8 @@ class PostService extends Service
         EnsurePostExistsAction::new()->execute($createPostDTO);
 
         EnsureCanUpdatePostAction::new()->execute($createPostDTO);
+
+        EnsureCanActAsCounsellorAction::new()->execute($createPostDTO->post?->addedby);
 
         EnsurePostDataIsValidAction::new()->execute($createPostDTO, 'update');
 

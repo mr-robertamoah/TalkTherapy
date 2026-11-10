@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Support\CounsellorVerification;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -30,21 +31,22 @@ class CounsellorResource extends JsonResource
             'cover' => $this->cover?->url,
             'contactVisible' => (bool) $this->contact_visible,
             'emailVerified' => (bool) $this->email_verified_at,
-            'verified' => (bool) $this->verified_at,
+            // SCRUM-30/31: the public state for anyone; more for the counsellor and administrators.
+            'verification' => CounsellorVerification::projection($this->resource, $request->user()),
             'overallStarsCount' => $this->overallStarsCount,
             'currentMonthStarsCount' => $this->currentMonthStarsCount,
             // TODO therapies
             'cases' => $this->when($this->cases, TherapyCaseResource::collection($this->cases), []),
             'religions' => $this->when($this->religions, TherapyCaseResource::collection($this->religions), []),
             'languages' => $this->when($this->languages, TherapyCaseResource::collection($this->languages), []),
+            // SCRUM-154 (TT-7.2b): informational only -- never used to compute an actual charge.
+            'pricings' => $this->when($this->pricings, CounsellorPricingResource::collection($this->pricings), []),
             'createdAt' => $this->created_at->diffForHumans(),
             'freeTherapiesCount' => $this->freeTherapiesCount,
             'paidTherapiesCount' => $this->paidTherapiesCount,
             'groupTherapiesCount' => $this->groupTherapiesCount,
             'onlineSessionsHeldCount' => $this->onlineSessionsHeldCount,
             'inPersonSessionsCount' => $this->inPersonSessionsCount,
-            'hasNationalIdentification' => $this->hasNationalIdentification(),
-            'hasPendingCounsellorVerificationRequest' => $this->hasPendingCounsellorVerificationRequest()
         ];
     }
 }

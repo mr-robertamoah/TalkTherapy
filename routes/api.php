@@ -1,7 +1,10 @@
 <?php
 
 use App\Http\Controllers\AboutController;
+use App\Http\Controllers\AdminCounsellorVerificationController;
 use App\Http\Controllers\AdministratorController;
+use App\Http\Controllers\AdminPayoutController;
+use App\Http\Controllers\AdminReportController;
 use App\Http\Controllers\AlertController;
 use App\Http\Controllers\CommentController;
 use App\Http\Controllers\ContactController;
@@ -9,24 +12,34 @@ use App\Http\Controllers\CounsellorController;
 use App\Http\Controllers\DiscussionController;
 use App\Http\Controllers\GroupTherapyController;
 use App\Http\Controllers\HowToController;
+use App\Http\Controllers\IdentityDocumentController;
 use App\Http\Controllers\LanguageController;
+use App\Http\Controllers\LicenseDocumentController;
 use App\Http\Controllers\LicensingAuthorityController;
 use App\Http\Controllers\LikeController;
 use App\Http\Controllers\LinkController;
+use App\Http\Controllers\MessageAttachmentController;
 use App\Http\Controllers\MessageController;
+use App\Http\Controllers\MessageNoteController;
 use App\Http\Controllers\PostController;
 use App\Http\Controllers\ProfessionController;
 use App\Http\Controllers\ReligionController;
 use App\Http\Controllers\ReportController;
+use App\Http\Controllers\ReportEvidenceController;
 use App\Http\Controllers\RequestController;
+use App\Http\Controllers\SafeguardingExceptionRequestController;
+use App\Http\Controllers\SafetyFlagController;
+use App\Http\Controllers\SchedulerHealthController;
 use App\Http\Controllers\SessionController;
+use App\Http\Controllers\SessionNoteController;
+use App\Http\Controllers\SessionScheduleProposalController;
 use App\Http\Controllers\TestimonialController;
 use App\Http\Controllers\TherapyCaseController;
 use App\Http\Controllers\TherapyController;
 use App\Http\Controllers\TherapyTopicController;
+use App\Http\Controllers\TransactionController;
 use App\Http\Controllers\UserController;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -48,17 +61,26 @@ Route::get('/therapies/{therapyId}/topics', [TherapyTopicController::class, 'get
 Route::get('/therapies/{therapyId}/sessions', [SessionController::class, 'getSessions'])->name('api.sessions.get');
 
 Route::get('/therapies/random', [TherapyController::class, 'getRandomTherapies'])->name('api.therapies.random');
-Route::get('/group-therapies/random', [TherapyController::class, 'getRandomGroupTherapies'])->name('api.group.therapies.random');
+Route::get('/therapies/public', [TherapyController::class, 'getPublicTherapies'])->name('api.therapies.public');
+Route::get('/group-therapies/random', [GroupTherapyController::class, 'getRandomGroupTherapies'])->name('api.group.therapies.random');
+// SCRUM-373: for an uptime monitor -- 503 when the scheduler hasn't run in 5 minutes. In api.php so a
+// monitor's poll (no Referer) starts no session; StoreVisitationMiddleware skips it too.
+Route::get('/health/scheduler', SchedulerHealthController::class)->name('health.scheduler')->middleware('throttle:60,1,health.scheduler');
 Route::get('/counsellors/random', [CounsellorController::class, 'getRandomCounsellors'])->name('api.counsellors.random');
-Route::get('/counsellors', [CounsellorController::class, 'getCounsellors'])->name('api.counsellors');
-
-Route::get('/sessions/{sessionId}/messages', [MessageController::class, 'getSessionMessages'])->name('api.session.messages.get');
-Route::get('/topics/{topicId}/messages', [MessageController::class, 'getTopicMessages'])->name('api.topic.messages.get');
-Route::get('/messages/{messageId}/replies', [MessageController::class, 'getMessageReplies'])->name('api.message.replies.get');
+// SCRUM-177: the general 'api' RateLimiter is disabled (see RouteServiceProvider/bootstrap/app.php),
+// so this search endpoint had no rate limiting despite gaining more UI call sites (SCRUM-172) --
+// 60/minute matches the existing precedent for a similar read/search route (organizations.index).
+Route::get('/counsellors', [CounsellorController::class, 'getCounsellors'])->name('api.counsellors')->middleware('throttle:60,1,api.counsellors');
 
 Route::get('/testimonials', [TestimonialController::class, 'getTestimonials'])->name('api.testimonials');
 
 Route::post('/contacts', [ContactController::class, 'createContact'])->name('api.contacts.create');
+
+// Unauthenticated by design -- Paystack's server calls this directly, not a browser. Trust
+// boundary is the signature check inside TransactionService::handleWebhook(), not auth:sanctum.
+// Throttled generously (not per-user, since there's no auth) purely as abuse protection, not to
+// constrain legitimate Paystack retries.
+Route::post('/paystack/webhook', [TransactionController::class, 'webhook'])->name('api.paystack.webhook')->middleware('throttle:120,1,api.paystack.webhook');
 
 Route::get('/therapy-cases', [TherapyCaseController::class, 'getCases'])->name('cases.get');
 Route::get('/languages', [LanguageController::class, 'getLanguages'])->name('languages.get');
@@ -76,41 +98,89 @@ Route::get('/comments', [CommentController::class, 'getComments'])->name('api.co
 Route::get('/about/stats', [AboutController::class, 'getStats'])->name('api.about.stats');
 
 Route::middleware('auth:sanctum')->group(function () {
-    
+
     Route::get('/links', [LinkController::class, 'getLinks'])->name('api.links');
     Route::post('/links', [LinkController::class, 'createLink'])->name('api.links.create');
-    Route::post('/links/multiple', [LinkController::class, 'createLink'])->name('api.links.createmultiple');
     Route::post('/links/{linkId}/status', [LinkController::class, 'changeLinkStatus'])->name('api.links.status');
     Route::post('/links/status/multiple', [LinkController::class, 'changeMultipleLinkStatuses'])->name('api.links.statusmultiple');
     Route::post('/links/{linkId}/delete', [LinkController::class, 'deleteLink'])->name('api.links.delete');
+    // SCRUM-383: confirming a member invitation link (the GET links.get only shows the confirmation).
+    Route::post('/links/{uuid}/join', [LinkController::class, 'joinGroupByLink'])->name('api.links.join')->middleware('throttle:10,1,api.links.join');
     Route::post('/links/delete/multiple', [LinkController::class, 'deleteMultipleLinks'])->name('api.links.deletemultiple');
 
-    Route::get('/users', [UserController::class, 'getUsers'])->name('api.users');
+    // SCRUM-177: see the matching comment on api.counsellors above.
+    Route::get('/users', [UserController::class, 'getUsers'])->name('api.users')->middleware('throttle:60,1,api.users');
     Route::get('/users/guardianship', [UserController::class, 'getGuardianship'])->name('api.users.guardianship');
     Route::post('/users/{userId}/guardianship', [UserController::class, 'sendGuardianshipRequest'])->name('api.users.guardianshiprequest');
+
+    // TT-4.11b/SCRUM-303: self-attestation (+ optional document) that a user's own dob is
+    // accurate -- always admin-reviewed, never auto-applied.
+    Route::post('/age-verification', [UserController::class, 'submitAgeVerification'])->name('api.users.age-verification')->middleware('throttle:10,1,api.users.age-verification');
     Route::delete('/guardianship/{guardianshipId}', [UserController::class, 'deleteGuardianship'])->name('api.guardianship.delete');
 
-    Route::get('/administrator/verification/requests', [AdministratorController::class, 'getVerificationRequests'])->name('admin.verification.requests');
-    Route::get('/administrator/counsellors', [AdministratorController::class, 'getCounsellors'])->name('admin.counsellors');
-    Route::get('/administrator/counsellors/{counsellorId}/stats', [AdministratorController::class, 'getCounsellorStats'])->name('admin.counsellors.stats');
-    Route::get('/administrator/users', [AdministratorController::class, 'getUsers'])->name('admin.users');
-    Route::post('/administrator/users/{userId}', [AdministratorController::class, 'updateUser'])->name('admin.users.update');
-    Route::delete('/administrator/users/{userId}', [AdministratorController::class, 'deleteUser'])->name('admin.users.delete');
-    
-    Route::post('/administrator/how-tos', [HowToController::class, 'createHowTo'])->name('admin.how-tos.create');
-    Route::post('/administrator/how-tos/{howToId}', [HowToController::class, 'updateHowTo'])->name('admin.how-tos.update');
-    Route::delete('/administrator/how-tos/{howToId}', [HowToController::class, 'deleteHowTo'])->name('admin.how-tos.delete');
+    // SCRUM-387 (security review): the `admin` middleware answers a non-admin with a JSON 403 before
+    // any of these run; each keeps its own check too.
+    Route::middleware('admin')->group(function () {
+        Route::get('/administrator/verification/requests', [AdministratorController::class, 'getVerificationRequests'])->name('admin.verification.requests');
+        Route::get('/administrator/counsellors', [AdministratorController::class, 'getCounsellors'])->name('admin.counsellors');
+        Route::get('/administrator/counsellors/{counsellorId}/stats', [AdministratorController::class, 'getCounsellorStats'])->name('admin.counsellors.stats');
+        // SCRUM-31: renewals due, ended and revoked verifications; a counsellor's history; revoking.
+        Route::get('/administrator/counsellors/verification-renewals', [AdminCounsellorVerificationController::class, 'renewals'])->name('admin.counsellors.verification.renewals');
+        Route::get('/administrator/counsellors/{counsellorId}/verification-events', [AdminCounsellorVerificationController::class, 'events'])->name('admin.counsellors.verification.events')->whereNumber('counsellorId');
+        Route::post('/administrator/counsellors/{counsellorId}/verification/revoke', [AdminCounsellorVerificationController::class, 'revoke'])->name('admin.counsellors.verification.revoke')->whereNumber('counsellorId')->middleware('throttle:10,1,admin.counsellors.verification.revoke');
+        // SCRUM-134: admin-triggered counsellor deletion (e.g. revoking a counsellor found practicing
+        // without a valid license) -- reuses the same CounsellorService::deleteCounsellor()/
+        // EnsureCanDeleteCounsellorAction chain as self-service deletion, which already requires
+        // isSuperAdmin() for the admin branch, mirroring admin.users.delete's super-admin gate below.
+        Route::delete('/administrator/counsellors/{counsellorId}', [AdministratorController::class, 'deleteCounsellor'])->name('admin.counsellors.delete');
+        Route::get('/administrator/users', [AdministratorController::class, 'getUsers'])->name('admin.users');
+        Route::post('/administrator/users/{userId}', [AdministratorController::class, 'updateUser'])->name('admin.users.update');
+        Route::delete('/administrator/users/{userId}', [AdministratorController::class, 'deleteUser'])->name('admin.users.delete');
+
+        // TT-7.6e/SCRUM-229: getPayoutsForAdmin's own guard also answers a non-admin with an empty
+        // result, behind the `admin` middleware's 403 above (SCRUM-387).
+        Route::get('/administrator/payouts', [AdminPayoutController::class, 'payouts'])->name('admin.payouts');
+        Route::get('/administrator/payouts/counsellors/{counsellorId}/overview', [AdminPayoutController::class, 'counsellorOverview'])->name('admin.payouts.counsellor-overview');
+
+        Route::post('/administrator/how-tos', [HowToController::class, 'createHowTo'])->name('admin.how-tos.create');
+        Route::post('/administrator/how-tos/{howToId}', [HowToController::class, 'updateHowTo'])->name('admin.how-tos.update');
+        Route::delete('/administrator/how-tos/{howToId}', [HowToController::class, 'deleteHowTo'])->name('admin.how-tos.delete');
+    });
 
     Route::get('/requests/counsellors', [CounsellorController::class, 'getRequestCounsellors'])->name('counsellors.request.get');
 
     Route::post('/alerts', [AlertController::class, 'waitingForAlert'])->name('alert.wait');
-    
+
     Route::get('/licensing_authorities', [LicensingAuthorityController::class, 'getLicensingAuthorities'])->name('licensing_authorities');
     Route::post('/licensing_authorities', [LicensingAuthorityController::class, 'createLicensingAuthority'])->name('licensing_authorities.create');
-    
+
     Route::get('/requests', [RequestController::class, 'getRequests'])->name('requests.get');
-    Route::post('/requests/{requestId}', [RequestController::class, 'respond'])->name('requests.respond');
-    
+    // Throttled (security review, SCRUM-207): every accept/reject now also runs a lockForUpdate()
+    // transaction (session-schedule-proposal accept/reject reuse this same generic endpoint), so
+    // this needed the same rate limit already applied to the newer schedule-proposal routes below.
+    Route::post('/requests/{requestId}', [RequestController::class, 'respond'])->name('requests.respond')->middleware('throttle:30,1,requests.respond');
+
+    // TT-4.11a/SCRUM-302: the only retrieval path for an identity-verification document -- an
+    // authenticated, authorized stream, never a public asset() URL. Throttled (security review):
+    // this codebase's general 'api' rate limiter is disabled entirely (see RouteServiceProvider),
+    // and this route's own uniform-404 response is specifically designed to resist enumeration --
+    // rate limiting is the second, load-bearing layer against scripting through sequential
+    // request/file id pairs to map out who has submitted an identity document.
+    // SCRUM-300 (security review): ->missing() keeps a nonexistent request/file id on the same 404
+    // body as a refusal -- otherwise route-model binding's own 404 tells ids that exist apart.
+    Route::get('/requests/{request}/documents/{file}', [IdentityDocumentController::class, 'show'])->name('requests.documents.show')->middleware('throttle:30,1,requests.documents.show')
+        ->missing(fn () => response()->json(['status' => false, 'error' => 'Document not found.'], 404));
+
+    // SCRUM-300: the counsellor-verification equivalent of the route above (national ID scans,
+    // professional licenses) -- same authenticated, authorized, throttled, uniform-404 shape.
+    Route::get('/licenses/{license}/documents/{file}', [LicenseDocumentController::class, 'show'])->name('licenses.documents.show')->middleware('throttle:30,1,licenses.documents.show')
+        ->missing(fn () => response()->json(['status' => false, 'error' => 'Document not found.'], 404));
+
+    // SCRUM-337: the only retrieval path for report evidence -- same authenticated, authorized,
+    // throttled, uniform-404 shape as the document routes above.
+    Route::get('/reports/{report}/evidence/{file}', [ReportEvidenceController::class, 'show'])->name('reports.evidence.show')->middleware('throttle:30,1,reports.evidence.show')
+        ->missing(fn () => response()->json(['status' => false, 'error' => 'Evidence not found.'], 404));
+
     Route::post('/testimonials', [TestimonialController::class, 'createTestimonial'])->name('api.testimonials.create');
     Route::delete('/testimonials/{testimonialId}', [TestimonialController::class, 'deleteTestimonial'])->name('api.testimonials.delete');
     Route::post('/testimonials/{testimonialId}', [TestimonialController::class, 'updateTestimonial'])->name('api.testimonials.update');
@@ -120,6 +190,12 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/contacts/{contactId}', [ContactController::class, 'updateContact'])->name('api.contacts.update');
     Route::get('/contacts', [ContactController::class, 'getContacts'])->name('api.contacts');
 
+    // SCRUM-340: an admin reading a reported conversation (reason required, every confidential
+    // message recorded), and the attachments of messages they unlocked. Uniform 404s for an admin.
+    // SCRUM-388: the `admin` middleware turns non-admins away first (a 403 that depends on nothing
+    // about the report), as on every other admin route.
+    Route::post('/admin/reports/{report}/sessions/{session}/messages', [AdminReportController::class, 'conversation'])->name('admin.reports.conversation')->whereNumber(['report', 'session'])->middleware(['admin', 'throttle:20,1,admin.reports.conversation']);
+    Route::get('/admin/reports/{report}/messages/{message}/attachments/{file}', [AdminReportController::class, 'attachment'])->name('admin.reports.attachments.show')->whereNumber(['report', 'message', 'file'])->middleware(['admin', 'throttle:120,1,admin.reports.attachments.show']);
     Route::get('/reports', [ReportController::class, 'getReports'])->name('api.reports');
     Route::get('/reports/{reportId}', [ReportController::class, 'getReport'])->name('api.reports.get');
     Route::post('/reports', [ReportController::class, 'createReport'])->name('api.reports.create');
@@ -135,8 +211,8 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::post('/likes', [LikeController::class, 'like'])->name('api.likes.create');
     Route::post('/likes/delete', [LikeController::class, 'dislike'])->name('api.likes.delete');
-    
-    Route::post('/therapies/{therapyId}/assist', [TherapyController::class, 'sendAssistanceRequest'])->name('therapies.assist');
+
+    Route::post('/therapies/{therapyId}/assist', [TherapyController::class, 'sendAssistanceRequest'])->name('therapies.assist')->middleware('throttle:10,1,therapies.assist');
     Route::get('/therapies', [TherapyController::class, 'show'])->name('api.therapies');
     Route::get('/therapies/{therapyId}', [TherapyController::class, 'getTherapy'])->name('api.therapies.get');
     Route::get('/user/therapies', [TherapyController::class, 'getUserTherapies'])->name('api.therapies.user');
@@ -146,26 +222,89 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/therapies/{therapyId}', [TherapyController::class, 'deleteTherapy'])->name('api.therapies.delete');
     Route::post('/therapies/{therapyId}', [TherapyController::class, 'endTherapy'])->name('api.therapies.end');
     Route::post('/therapies', [TherapyController::class, 'createTherapy'])->name('api.therapies.create');
-    
+
     Route::post('/therapies/{therapyId}/sessions', [SessionController::class, 'createSession'])->name('api.sessions.create');
     Route::patch('/sessions/{sessionId}', [SessionController::class, 'updateSession'])->name('api.sessions.update');
     Route::delete('/sessions/{sessionId}', [SessionController::class, 'deleteSession'])->name('api.sessions.delete');
-    Route::post('/sessions/{sessionId}/end', [SessionController::class, 'endSession'])->name('api.sessions.end');
-    Route::post('/sessions/{sessionId}/in_session', [SessionController::class, 'getInSession'])->name('api.sessions.in_session');
-    Route::post('/sessions/{sessionId}/fail', [SessionController::class, 'failSession'])->name('api.sessions.fail');
-    Route::post('/sessions/{sessionId}/topics/set', [SessionController::class, 'setCurrentTopic'])->name('api.session.topic.set');
-    Route::post('/sessions/{sessionId}/topics/unset', [SessionController::class, 'unsetCurrentTopic'])->name('api.session.topic.unset');
-    Route::post('/sessions/{sessionId}/abandon', [SessionController::class, 'abandonSession'])->name('api.sessions.abandon');
+    // SCRUM-199: session status, topic and note changes are rate limited like messages -- with their
+    // own counter (the prefix): a bare throttle:N,M counts every such route against one per-user total.
+    Route::post('/sessions/{sessionId}/end', [SessionController::class, 'endSession'])->name('api.sessions.end')->middleware('throttle:30,1,session-actions');
+    Route::post('/sessions/{sessionId}/in_session', [SessionController::class, 'getInSession'])->name('api.sessions.in_session')->middleware('throttle:30,1,session-actions');
+    Route::post('/sessions/{sessionId}/fail', [SessionController::class, 'failSession'])->name('api.sessions.fail')->middleware('throttle:30,1,session-actions');
+    Route::post('/sessions/{sessionId}/topics/set', [SessionController::class, 'setCurrentTopic'])->name('api.session.topic.set')->middleware('throttle:30,1,session-actions');
+    Route::post('/sessions/{sessionId}/topics/unset', [SessionController::class, 'unsetCurrentTopic'])->name('api.session.topic.unset')->middleware('throttle:30,1,session-actions');
+    Route::post('/sessions/{sessionId}/abandon', [SessionController::class, 'abandonSession'])->name('api.sessions.abandon')->middleware('throttle:30,1,session-actions');
+
+    // SCRUM-212/TT-2.6a: a counsellor's own sessions aggregated across every Therapy/GroupTherapy
+    // they're currently assigned to, date-range bounded for a calendar week/month view.
+    Route::get('/counsellor/calendar/sessions', [SessionController::class, 'getCalendarSessions'])->name('api.sessions.calendar');
+
+    // SCRUM-206/TT-2.5a: a client or counsellor proposing a session day/time for a Therapy --
+    // creates a pending Request only, never a Session directly (that only happens on accept,
+    // TT-2.5b). No web.php duplicate registration -- see SCRUM-200 for why that pattern is
+    // avoided now.
+    Route::post('/therapies/{therapyId}/schedule-proposals', [SessionScheduleProposalController::class, 'store'])->name('api.session_schedule_proposals.store')->middleware('throttle:30,1,api.session_schedule_proposals.store');
+    // SCRUM-381: a counsellor asks the super administrator for a safeguarding exception for a paused
+    // client (1:1) or group member.
+    Route::post('/therapies/{therapyId}/safeguarding-exception-requests', [SafeguardingExceptionRequestController::class, 'storeForTherapy'])->name('api.safeguarding_exception_requests.therapy')->whereNumber('therapyId')->middleware('throttle:10,1,api.safeguarding_exception_requests.therapy');
+    Route::post('/group-therapies/{groupTherapyId}/safeguarding-exception-requests', [SafeguardingExceptionRequestController::class, 'storeForGroup'])->name('api.safeguarding_exception_requests.group')->whereNumber('groupTherapyId')->middleware('throttle:10,1,api.safeguarding_exception_requests.group');
+    // SCRUM-32: a counsellor raises a safety flag for their 1:1 client or a group member (by key). Not
+    // open to a suspended account (the user's decision); a suspended counsellor role doesn't stop it.
+    Route::middleware('safety_flags')->group(function () {
+        Route::post('/therapies/{therapyId}/safety-flags', [SafetyFlagController::class, 'storeForTherapy'])->name('api.safety_flags.therapy')->whereNumber('therapyId')->middleware('throttle:10,1,api.safety_flags.therapy');
+        Route::post('/group-therapies/{groupTherapyId}/safety-flags', [SafetyFlagController::class, 'storeForGroup'])->name('api.safety_flags.group')->whereNumber('groupTherapyId')->middleware('throttle:10,1,api.safety_flags.group');
+        Route::get('/group-therapies/{groupTherapyId}/safety-flag-members', [SafetyFlagController::class, 'groupMembers'])->name('api.safety_flags.group_members')->whereNumber('groupTherapyId')->middleware('throttle:30,1,api.safety_flags.group_members');
+        // TT-4.3b: the flags' status for the therapy's or group's counsellors, and withdrawing one.
+        Route::get('/therapies/{therapyId}/safety-flags', [SafetyFlagController::class, 'statusesForTherapy'])->name('api.safety_flags.therapy_statuses')->whereNumber('therapyId')->middleware('throttle:60,1,api.safety_flags.therapy_statuses');
+        Route::get('/group-therapies/{groupTherapyId}/safety-flags', [SafetyFlagController::class, 'statusesForGroup'])->name('api.safety_flags.group_statuses')->whereNumber('groupTherapyId')->middleware('throttle:60,1,api.safety_flags.group_statuses');
+        Route::post('/safety-flags/{flag}/withdraw', [SafetyFlagController::class, 'withdraw'])->name('api.safety_flags.withdraw')->where('flag', '[0-9A-Za-z]{26}')->middleware('throttle:10,1,api.safety_flags.withdraw');
+    });
+    // SCRUM-207/TT-2.5b: accept/reject reuse the existing generic requests.respond endpoint
+    // (RespondToRequestAction's per-type dispatch already covers this type) -- only
+    // counter-offer needs its own endpoint, mirroring requests.compensation_counter_offer.
+    Route::post('/requests/{requestId}/schedule-counter-offer', [SessionScheduleProposalController::class, 'counterOffer'])->name('api.session_schedule_proposals.counter_offer')->middleware('throttle:30,1,api.session_schedule_proposals.counter_offer');
+
+    // SCRUM-197/198 (TT-2.2b/c): a counsellor's own private notes on a session, fetched/mutated via
+    // axios from the therapy page -- never broadcast, never reaches the client/participant side.
+    // SCRUM-200: these are the only routes; the unused web.php duplicates were removed.
+    Route::get('/sessions/{sessionId}/notes', [SessionNoteController::class, 'index'])->name('api.session.notes.index');
+    Route::post('/sessions/{sessionId}/notes', [SessionNoteController::class, 'store'])->name('api.session.notes.store')->middleware('throttle:30,1,session-actions');
+    Route::patch('/sessions/notes/{noteId}', [SessionNoteController::class, 'update'])->name('api.session.notes.update')->middleware('throttle:30,1,session-actions');
+    Route::delete('/sessions/notes/{noteId}', [SessionNoteController::class, 'destroy'])->name('api.session.notes.destroy')->middleware('throttle:30,1,session-actions');
 
     Route::post('/therapies/{therapyId}/topics', [TherapyTopicController::class, 'createTherapyTopic'])->name('api.topics.create');
     Route::patch('/topics/{topicId}', [TherapyTopicController::class, 'updateTherapyTopic'])->name('api.topics.update');
     Route::delete('/topics/{topicId}', [TherapyTopicController::class, 'deleteTherapyTopic'])->name('api.topics.delete');
 
+    // SCRUM-74: these three were previously registered outside the auth:sanctum group, meaning
+    // a fully unauthenticated request could read a private, non-public session/topic's full
+    // message history (including confidential messages and files) -- moved behind auth here,
+    // matching every other message-reading route in this group.
+    // SCRUM-367: session broadcasts only announce a session; each open page fetches it here.
+    Route::get('/sessions/{sessionId}', [SessionController::class, 'getSession'])->name('api.sessions.show')->whereNumber('sessionId')->middleware('throttle:120,1,api.sessions.show');
+    Route::get('/sessions/{sessionId}/messages', [MessageController::class, 'getSessionMessages'])->name('api.session.messages.get');
+    Route::get('/topics/{topicId}/messages', [MessageController::class, 'getTopicMessages'])->name('api.topic.messages.get');
+    Route::get('/messages/{messageId}/replies', [MessageController::class, 'getMessageReplies'])->name('api.message.replies.get');
+    // SCRUM-336: chat attachments -- authorized, uniform-404, throttled generously since a chat page
+    // loads every visible message's attachments at once.
+    Route::get('/messages/{message}/attachments/{file}', [MessageAttachmentController::class, 'show'])->name('messages.attachments.show')->middleware('throttle:300,1,messages.attachments.show')
+        ->missing(fn () => response()->json(['status' => false, 'error' => 'Attachment not found.'], 404));
+    // SCRUM-195: how a confidential message's parties fetch its content -- broadcasts never carry it.
+    Route::get('/messages/{messageId}', [MessageController::class, 'getMessage'])->name('api.messages.show')->whereNumber('messageId')->middleware('throttle:240,1,message-show'); // SCRUM-366: every live message is now fetched here -- its own counter
     Route::get('/messages/discussions/{discussionId}', [MessageController::class, 'getDiscussionMessages'])->name('api.discussion.messages.get');
-    Route::post('/messages', [MessageController::class, 'createMessage'])->name('api.messages.create');
-    Route::post('/messages/{messageId}', [MessageController::class, 'updateMessage'])->name('api.messages.update');
-    Route::delete('/messages/{messageId}', [MessageController::class, 'deleteMessage'])->name('api.messages.delete');
-    Route::delete('/messages/{messageId}/me', [MessageController::class, 'deleteMessageForMe'])->name('api.messages.delete.me');
+    Route::post('/messages', [MessageController::class, 'createMessage'])->name('api.messages.create')->middleware('throttle:messages');
+    Route::post('/messages/{messageId}', [MessageController::class, 'updateMessage'])->name('api.messages.update')->middleware('throttle:messages');
+    Route::delete('/messages/{messageId}', [MessageController::class, 'deleteMessage'])->name('api.messages.delete')->middleware('throttle:messages');
+    Route::delete('/messages/{messageId}/me', [MessageController::class, 'deleteMessageForMe'])->name('api.messages.delete.me')->middleware('throttle:messages');
+
+    // SCRUM-202/TT-2.3a: a counsellor's own private note on one specific chat Message -- never
+    // exposed to the client/other participants, see MessageNoteController's own comment on how
+    // counsellor_id is always derived server-side, never accepted as input. Registered only here
+    // (not also in web.php), like session notes (SCRUM-200).
+    Route::get('/messages/{messageId}/notes', [MessageNoteController::class, 'index'])->name('api.message.notes.index');
+    Route::post('/messages/{messageId}/notes', [MessageNoteController::class, 'store'])->name('api.message.notes.store')->middleware('throttle:messages');
+    Route::patch('/messages/notes/{noteId}', [MessageNoteController::class, 'update'])->name('api.message.notes.update')->middleware('throttle:messages');
+    Route::delete('/messages/notes/{noteId}', [MessageNoteController::class, 'destroy'])->name('api.message.notes.destroy')->middleware('throttle:messages');
 
     Route::post('/discussions', [DiscussionController::class, 'createDiscussion'])->name('api.discussions.create');
     Route::post('/discussions/{discussionId}', [DiscussionController::class, 'updateDiscussion'])->name('api.discussions.update');
@@ -184,6 +323,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/group-therapies/{groupTherapyId}', [GroupTherapyController::class, 'deleteGroupTherapy'])->name('api.group.therapies.delete');
     Route::post('/group-therapies/{groupTherapyId}', [GroupTherapyController::class, 'endGroupTherapy'])->name('api.group.therapies.end');
     Route::post('/group-therapies', [GroupTherapyController::class, 'createGroupTherapy'])->name('group.therapies.create');
+    Route::post('/group-therapies/{groupTherapyId}/join', [GroupTherapyController::class, 'joinGroupTherapy'])->name('api.group.therapies.join')->middleware('throttle:10,1,api.group.therapies.join');
+    // SCRUM-389: the creator invites more counsellors, or a counsellor offers to help a public group.
+    Route::post('/group-therapies/{groupTherapyId}/assist', [GroupTherapyController::class, 'sendAssistanceRequest'])->name('group.therapies.assist')->whereNumber('groupTherapyId')->middleware('throttle:10,1,group.therapies.assist');
+    // SCRUM-73: allowed while paused or suspended (EnsureAccountIsNotSuspended's allowlist).
+    Route::post('/group-therapies/{groupTherapyId}/leave', [GroupTherapyController::class, 'leaveGroupTherapy'])->name('api.group.therapies.leave')->middleware('throttle:10,1,api.group.therapies.leave');
     Route::get('/user/group-therapies', [GroupTherapyController::class, 'getUserGroupTherapies'])->name('api.group.therapies.user');
     Route::get('/ward/group-therapies', [GroupTherapyController::class, 'getWardGroupTherapies'])->name('api.group.therapies.ward');
     Route::get('/counsellor/group-therapies', [GroupTherapyController::class, 'getCounsellorGroupTherapies'])->name('api.group.therapies.counsellor');

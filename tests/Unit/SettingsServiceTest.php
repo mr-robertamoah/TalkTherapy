@@ -1,0 +1,178 @@
+<?php
+
+use App\DTOs\SettingDTO;
+use App\Enums\AdministratorTypeEnum;
+use App\Enums\SettingsEnum;
+use App\Exceptions\UserException;
+use App\Models\Administrator;
+use App\Models\PlatformSetting;
+use App\Models\User;
+use App\Services\SettingsService;
+
+// TT-7.6b/SCRUM-226: the generic settings mechanism the platform fee and minimum-payout
+// threshold both share (per the user's explicit decision -- not two separate config paths).
+
+test('getPlatformFeePercentage falls back to the env-backed config default when unset', function () {
+    expect(SettingsService::new()->getPlatformFeePercentage())->toBe((float) config('settings.platform_fee_percentage'));
+});
+
+test('an explicitly-stored empty string is treated as unset, not cast to a 0% fee', function () {
+    PlatformSetting::create(['key' => SettingsEnum::platformFeePercentage->value, 'value' => '']);
+
+    // Reviewer finding: a plain `??` null-coalesce would let '' through as "the fee is 0%",
+    // silently different from "no override was ever set" -- must fall back to the config default.
+    expect(SettingsService::new()->getPlatformFeePercentage())->toBe((float) config('settings.platform_fee_percentage'));
+});
+
+test('a super admin can set the platform fee percentage, and it then overrides the config default', function () {
+    $superAdmin = User::factory()->has(Administrator::factory())->create();
+
+    SettingsService::new()->update(SettingDTO::new()->fromArray([
+        'user' => $superAdmin,
+        'key' => SettingsEnum::platformFeePercentage,
+        'value' => '15',
+    ]));
+
+    expect(SettingsService::new()->getPlatformFeePercentage())->toBe(15.0);
+    $this->assertDatabaseHas('platform_settings', ['key' => SettingsEnum::platformFeePercentage->value, 'value' => '15']);
+});
+
+test('a non-super-admin cannot change a platform setting', function () {
+    $plainUser = User::factory()->create();
+
+    SettingsService::new()->update(SettingDTO::new()->fromArray([
+        'user' => $plainUser,
+        'key' => SettingsEnum::platformFeePercentage,
+        'value' => '15',
+    ]));
+})->throws(UserException::class);
+
+test('an admin who is not a super admin cannot change a platform setting either', function () {
+    $admin = User::factory()->has(Administrator::factory()->state(['type' => AdministratorTypeEnum::normal->value]))->create();
+
+    SettingsService::new()->update(SettingDTO::new()->fromArray([
+        'user' => $admin,
+        'key' => SettingsEnum::platformFeePercentage,
+        'value' => '15',
+    ]));
+})->throws(UserException::class);
+
+test('setting the same key twice updates it rather than creating a second row', function () {
+    $superAdmin = User::factory()->has(Administrator::factory())->create();
+
+    SettingsService::new()->update(SettingDTO::new()->fromArray([
+        'user' => $superAdmin,
+        'key' => SettingsEnum::platformFeePercentage,
+        'value' => '12',
+    ]));
+
+    SettingsService::new()->update(SettingDTO::new()->fromArray([
+        'user' => $superAdmin,
+        'key' => SettingsEnum::platformFeePercentage,
+        'value' => '20',
+    ]));
+
+    $this->assertDatabaseCount('platform_settings', 1);
+    expect(SettingsService::new()->getPlatformFeePercentage())->toBe(20.0);
+});
+
+test('getMinimumPayoutAmount falls back to the per-currency config default when unset', function () {
+    expect(SettingsService::new()->getMinimumPayoutAmount('GHS'))->toBe(config('settings.minimum_payout_amount.GHS'));
+    expect(SettingsService::new()->getMinimumPayoutAmount('USD'))->toBe(config('settings.minimum_payout_amount.USD'));
+});
+
+test('a super admin can set the minimum payout threshold as a per-currency JSON map', function () {
+    $superAdmin = User::factory()->has(Administrator::factory())->create();
+
+    SettingsService::new()->update(SettingDTO::new()->fromArray([
+        'user' => $superAdmin,
+        'key' => SettingsEnum::minimumPayoutAmount,
+        'value' => json_encode(['GHS' => 8000, 'USD' => 1500]),
+    ]));
+
+    expect(SettingsService::new()->getMinimumPayoutAmount('GHS'))->toBe(8000);
+    expect(SettingsService::new()->getMinimumPayoutAmount('USD'))->toBe(1500);
+});
+
+test('a platform setting records which super admin last updated it', function () {
+    $superAdmin = User::factory()->has(Administrator::factory())->create();
+
+    $setting = SettingsService::new()->update(SettingDTO::new()->fromArray([
+        'user' => $superAdmin,
+        'key' => SettingsEnum::platformFeePercentage,
+        'value' => '15',
+    ]));
+
+    expect($setting->updated_by_id)->toBe($superAdmin->id);
+});
+
+// TT-7.3b-a/SCRUM-231: the nominal charge that captures a reusable Paystack authorization when
+// registering an organization's payment instrument -- same per-currency JSON-map shape as
+// getMinimumPayoutAmount(), for the same reason (reuse the one generic settings mechanism).
+
+test('getOrganizationPaymentInstrumentVerificationAmount falls back to the per-currency config default when unset', function () {
+    expect(SettingsService::new()->getOrganizationPaymentInstrumentVerificationAmount('GHS'))
+        ->toBe(config('settings.organization_payment_instrument_verification_amount.GHS'));
+    expect(SettingsService::new()->getOrganizationPaymentInstrumentVerificationAmount('USD'))
+        ->toBe(config('settings.organization_payment_instrument_verification_amount.USD'));
+});
+
+test('a super admin can set the organization payment-instrument verification amount as a per-currency JSON map', function () {
+    $superAdmin = User::factory()->has(Administrator::factory())->create();
+
+    SettingsService::new()->update(SettingDTO::new()->fromArray([
+        'user' => $superAdmin,
+        'key' => SettingsEnum::organizationPaymentInstrumentVerificationAmount,
+        'value' => json_encode(['GHS' => 200, 'USD' => 150]),
+    ]));
+
+    expect(SettingsService::new()->getOrganizationPaymentInstrumentVerificationAmount('GHS'))->toBe(200);
+    expect(SettingsService::new()->getOrganizationPaymentInstrumentVerificationAmount('USD'))->toBe(150);
+});
+
+// TT-7.6e/SCRUM-229: getSettingsForAdmin() prefills the admin platform-settings form -- minimum
+// payout amounts are converted back to major units for display/editing, the reverse of the *100
+// conversion AdminPayoutController applies on save.
+test('getSettingsForAdmin converts minimum payout amounts back to major units for display', function () {
+    config(['currencies.supported' => ['GHS', 'USD']]);
+    $superAdmin = User::factory()->has(Administrator::factory())->create();
+
+    SettingsService::new()->update(SettingDTO::new()->fromArray([
+        'user' => $superAdmin,
+        'key' => SettingsEnum::minimumPayoutAmount,
+        'value' => json_encode(['GHS' => 6000, 'USD' => 1200]),
+    ]));
+    SettingsService::new()->update(SettingDTO::new()->fromArray([
+        'user' => $superAdmin,
+        'key' => SettingsEnum::platformFeePercentage,
+        'value' => '12',
+    ]));
+
+    $settings = SettingsService::new()->getSettingsForAdmin();
+
+    expect($settings['platformFeePercentage'])->toBe(12.0);
+    expect($settings['minimumPayoutAmounts'])->toBe([
+        ['currency' => 'GHS', 'amount' => 60],
+        ['currency' => 'USD', 'amount' => 12],
+    ]);
+});
+
+// TT-7.3b-i/SCRUM-240: getOrganizationPaymentInstrumentVerificationAmounts() lets the org-admin
+// payment-instrument page preview the nominal verification charge per currency -- unlike
+// getSettingsForAdmin()'s minimum payout amounts, this stays in minor units (that page's other
+// money fields already are), so there is no *100/divide-by-100 conversion to pin here.
+test('getOrganizationPaymentInstrumentVerificationAmounts reflects a super-admin override, in minor units', function () {
+    config(['currencies.supported' => ['GHS', 'USD']]);
+    $superAdmin = User::factory()->has(Administrator::factory())->create();
+
+    SettingsService::new()->update(SettingDTO::new()->fromArray([
+        'user' => $superAdmin,
+        'key' => SettingsEnum::organizationPaymentInstrumentVerificationAmount,
+        'value' => json_encode(['GHS' => 200, 'USD' => 150]),
+    ]));
+
+    expect(SettingsService::new()->getOrganizationPaymentInstrumentVerificationAmounts())->toBe([
+        ['currency' => 'GHS', 'amount' => 200],
+        ['currency' => 'USD', 'amount' => 150],
+    ]);
+});

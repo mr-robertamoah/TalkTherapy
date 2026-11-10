@@ -2,174 +2,65 @@
 
 namespace App\Services;
 
-use App\Enums\DiscussionStatusEnum;
-use App\Enums\SessionStatusEnum;
-use App\Events\DiscussionStartedEvent;
-use App\Events\SessionStartedEvent;
-use App\Models\Alert;
 use App\Models\Counsellor;
-use App\Models\Discussion;
-use App\Models\GroupTherapy;
 use App\Models\Report;
-use App\Models\Session;
 use App\Models\Therapy;
 use App\Models\User;
-use App\Models\Visitor;
-use App\Notifications\DiscussionDueNotification;
-use App\Notifications\DiscussionFailedNotification;
+use App\Notifications\QueueJobFailedNotification;
 use App\Notifications\ReportNotification;
-use App\Notifications\SessionDueNotification;
-use App\Notifications\SessionFailedNotification;
-use App\Notifications\SessionStartedNotification;
-use App\Notifications\VisitorsStatusNotification;
-use Illuminate\Database\Eloquent\Relations\MorphTo;
+use Illuminate\Queue\Events\JobFailed;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Notification;
+use Throwable;
 
+// SCRUM-374/376: the scheduled sweeps that used to live here are now Actions, called from
+// routes/console.php.
 class AppService extends Service
 {
-    public function alertSuperAdminWithStatus()
-    {
-        $superAdmin = User::query()->whereSuperAdmin()->first();
-
-        $superAdmin->notify( new VisitorsStatusNotification());
-    }
-
     public function alertAdminWithReport(Report $report)
     {
-        $admins = User::query()->whereAdmin()->inRandomOrder()->limit(2)->get();
+        // SCRUM-398: never an administrator involved in it (the reporter, the reported, their guardian, the
+        // therapy's people) -- the same rule the report queue uses (Report::involves).
+        $admins = User::query()->whereAdmin()->inRandomOrder()->limit(20)->get()
+            ->reject(fn (User $admin) => $report->involves($admin))
+            ->take(2);
 
         Notification::send($admins->unique(), new ReportNotification($report));
     }
-    
-    public function clearVisitors()
+
+    // SCRUM-82: a job reaching Queue::failing() has already exhausted its retries, so this is
+    // the last chance to surface it -- logged first, ahead of the try/catch, so it's captured
+    // even if notifying admins itself fails (this still relies on the log channel itself not
+    // throwing, but that's true of every other Log::error() call in this codebase too), then a
+    // best-effort admin email on top.
+    public function alertAdminsOfFailedJob(JobFailed $jobFailed): void
     {
-        Visitor::query()
-            ->whereUser()
-            ->orWhere(function ($query) {
-                $query->whereNonUser();
-            })
-            ->delete();
-    }
+        Log::error('A queued job failed.', [
+            'connection' => $jobFailed->connectionName,
+            'queue' => $jobFailed->job->getQueue(),
+            'job' => $jobFailed->job->resolveName(),
+            'exception' => $jobFailed->exception->getMessage(),
+        ]);
 
-    public function notifyParticipantsOfStartingSessions()
-    {
-        $this->alertSessionParticipants();
-    }
+        try {
+            $admins = User::query()->whereAdmin()->inRandomOrder()->limit(2)->get();
 
-    private function alertSessionParticipants()
-    {
-        $sessions = Session::query()
-            ->whereAboutToStart()
-            ->with(['for' => function (MorphTo $morphTo) {
-                $morphTo->morphWith([
-                    Therapy::class => ['addedby', 'counsellor.user'],
-                ]);
-            }])
-            ->get();
+            // SCRUM-32 (devops review): a failed safety notice or alert mustn't tell an administrator -- maybe
+            // one involved -- which family was told, nor that a flag exists: its name and error stay in the log.
+            $sensitive = str_contains($jobFailed->job->resolveName(), 'Safety');
 
-        $sessions->each(function ($session) {
-            Notification::send(
-                $session->users, 
-                new SessionDueNotification($session)
-            );
-        });
-
-    }
-
-    public function broadcastStartedSessionsAndDiscussions()
-    {
-        $alerts = Alert::query()
-            ->whereWaiting()
-            ->with(['alertable' => function (MorphTo $query) {
-                $query->morphWith([
-                    Therapy::class => ['sessions.addedby', 'sessions.addedby.user', 'discussions.addedby'],
-                    GroupTherapy::class => ['sessions.addedby', 'discussions.addedby'],
-                ]);
-            }, 'user'])
-            ->get();
-        // ds('alerts', $alerts);
-
-        $alerts->each(function ($alert) {
-            $activeSession = $alert->alertable?->activeSession;
-
-            if ($activeSession)
-                SessionStartedEvent::broadcast($activeSession);
-
-            $activeDiscussion = $alert->alertable?->activeDiscussion;
-
-            if ($activeDiscussion)
-                DiscussionStartedEvent::broadcast($activeDiscussion);
-            // ds('activeDiscussion', $activeDiscussion);
-            // ds('activeSession', $activeSession);
-            $alert->delete();
-        });
-    }
-
-    public function failUnheldSessions()
-    {
-        $sessions = Session::query()
-            ->whereStatusIn([
-                SessionStatusEnum::pending->value,
-                SessionStatusEnum::in_session_confirmation->value
-            ])
-            ->wherePastEndTime()
-            ->get();
-            
-        $sessions->each(function ($session) {
-            Notification::send(
-                $session->users, 
-                new SessionFailedNotification($session)
-            );
-
-            $session->status = SessionStatusEnum::failed->value;
-            $session->save();
-        });
-    }
-
-    public function notifyParticipantsOfStartingDiscussions()
-    {
-        $this->alertDiscussionParticipants();
-    }
-
-    private function alertDiscussionParticipants()
-    {
-        $discussions = Discussion::query()
-            ->whereAboutToStart()
-            ->with(['for' => function (MorphTo $morphTo) {
-                $morphTo->morphWith([
-                    Therapy::class => ['addedby', 'counsellor.user'], // TODO auto load group therapy
-                ]);
-            }])
-            ->get();
-
-        // ds('discussions', $discussions);
-        $discussions->each(function ($discussion) {
-            Notification::send(
-                $discussion->counsellors, 
-                new DiscussionDueNotification($discussion)
-            );
-        });
-
-    }
-
-    public function failUnheldDiscussions()
-    {
-        $discussions = Discussion::query()
-            ->whereStatusIn([
-                DiscussionStatusEnum::pending->value,
-            ])
-            ->wherePastEndTime()
-            ->get();
-            
-        $discussions->each(function ($discussion) {
-            Notification::send(
-                $discussion->counsellors, 
-                new DiscussionFailedNotification($discussion)
-            );
-
-            $discussion->status = DiscussionStatusEnum::failed->value;
-            $discussion->save();
-        });
+            Notification::send($admins->unique(), new QueueJobFailedNotification(
+                $sensitive ? 'A safety notification (details in the server log)' : $jobFailed->job->resolveName(),
+                $jobFailed->connectionName,
+                $jobFailed->job->getQueue(),
+                $sensitive ? 'Withheld -- see the server log.' : $jobFailed->exception->getMessage(),
+            ));
+        } catch (Throwable $exception) {
+            // Never let the alerting path itself crash the queue worker -- log and move on.
+            Log::error('Failed to notify admins about a failed queue job.', [
+                'exception' => $exception->getMessage(),
+            ]);
+        }
     }
 
     public function getStats()
@@ -177,7 +68,7 @@ class AppService extends Service
         return ['stats' => [
             'counsellors' => Counsellor::count(),
             'users' => User::count(),
-            'therapies' => Therapy::count(),
+            'therapies' => Therapy::query()->withoutHelpChats()->count(),
         ]];
     }
 }

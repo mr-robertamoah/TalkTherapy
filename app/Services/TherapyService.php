@@ -2,13 +2,21 @@
 
 namespace App\Services;
 
+use App\Actions\Admin\RecordAdminContentReadAction;
+use App\Actions\Counsellor\EnsureCounsellorOfferCapAction;
+use App\Actions\CounsellorVerification\EnsureCounsellorMayTakeOnClientsAction;
+use App\Actions\GroupTherapy\EnsureGroupTherapyCanBecomeAnonymousAction;
+use App\Actions\Guardianship\EnsureMinorHasActiveGuardianAction;
 use App\Actions\Request\SendTherapyAssistanceRequestAction;
 use App\Actions\Star\CreateStarAction;
+use App\Actions\Suspension\EnsureCanActAsCounsellorAction;
 use App\Actions\Therapy\CreateTherapyAction;
 use App\Actions\Therapy\DeleteTherapyAction;
 use App\Actions\Therapy\EndTherapyAction;
 use App\Actions\Therapy\EnsureCanCreateTherapyAction;
 use App\Actions\Therapy\EnsureCanEndTherapyAction;
+use App\Actions\Therapy\EnsureCanSendTherapyAssistanceRequestAction;
+use App\Actions\Therapy\EnsureCanSetStrictPaymentGateAction;
 use App\Actions\Therapy\EnsureCanUpdateTherapyAction;
 use App\Actions\Therapy\EnsureIsCounsellorAction;
 use App\Actions\Therapy\EnsureIsNotACounsellorAction;
@@ -18,6 +26,9 @@ use App\Actions\Therapy\EnsureTherapyHasNoAssistanceAction;
 use App\Actions\Therapy\EnsureThereIsNoPendingRequestForCounsellorAction;
 use App\Actions\Therapy\EnsureThereIsNoPendingRequestForCounsellorsAction;
 use App\Actions\Therapy\EnsureUserHasAccessToTherapyAction;
+use App\Actions\Therapy\GetPublicTherapyFeedAction;
+use App\Actions\Therapy\PreloadTherapyListAction;
+use App\Actions\Therapy\ResolveTherapyCardStateAction;
 use App\Actions\Therapy\UpdateTherapyAction;
 use App\Actions\User\AlertGuardianAction;
 use App\Actions\User\EnsureUserMeetsTherapyRequirementsAction;
@@ -29,9 +40,14 @@ use App\DTOs\GuardianAlertDTO;
 use App\DTOs\TherapyAssistanceRequestDTO;
 use App\Enums\PaginationEnum;
 use App\Enums\StarTypeEnum;
+use App\Models\AdminContentAccess;
 use App\Models\Therapy;
 use App\Models\User;
 use App\Notifications\TherapyCreatedNotification;
+use App\Support\PreferenceMatch;
+use App\Support\PreferenceRanking;
+use App\Support\VideoJoinLock;
+use Illuminate\Support\Facades\DB;
 
 class TherapyService extends Service
 {
@@ -42,6 +58,11 @@ class TherapyService extends Service
         EnsureCanCreateTherapyAction::new()->execute($createTherapyDTO->user);
 
         EnsureTherapyDataIsValidAction::new()->execute($createTherapyDTO);
+
+        // SCRUM-359: before anything is created (the request to them is refused too, later).
+        EnsureCanActAsCounsellorAction::new()->execute($createTherapyDTO->counsellor, asTarget: true);
+        // SCRUM-31: nor to a counsellor who isn't currently verified.
+        EnsureCounsellorMayTakeOnClientsAction::new()->execute($createTherapyDTO->counsellor, asTarget: true);
 
         $therapy = CreateTherapyAction::new()->execute($createTherapyDTO);
 
@@ -57,7 +78,11 @@ class TherapyService extends Service
         AlertGuardianAction::new()->execute(
             GuardianAlertDTO::new()->fromArray([
                 'user' => $createTherapyDTO->user,
-                'notification' => new TherapyCreatedNotification($therapy)
+                'notification' => new TherapyCreatedNotification($therapy),
+                // TT-4.10b/SCRUM-291: safe to always pass -- CreateTherapyAction's only creation
+                // path always sets addedby to $createTherapyDTO->user, so this record's snapshot
+                // always corresponds to the same person being alerted about here.
+                'for' => $therapy,
             ])
         );
 
@@ -78,7 +103,56 @@ class TherapyService extends Service
 
         EnsureCanUpdateTherapyAction::new()->execute($createTherapyDTO);
 
+        EnsureCanSetStrictPaymentGateAction::new()->execute($createTherapyDTO);
+
+        // SCRUM-288: settings can't change while the therapy is paused for a missing guardian.
+        EnsureMinorHasActiveGuardianAction::new()->execute($createTherapyDTO->user, $createTherapyDTO->therapy);
+
         EnsureTherapyDataIsValidAction::new()->execute($createTherapyDTO);
+
+        // SCRUM-334 (security review): the same rule and lock as a group -- no turning anonymity on while
+        // a video call is live, decided under the Session-row lock a join takes (see
+        // GroupTherapyService::updateGroupTherapy).
+        if ($createTherapyDTO->anonymous) {
+            return DB::transaction(function () use ($createTherapyDTO) {
+                VideoJoinLock::lockSessionRows($createTherapyDTO->therapy);
+
+                EnsureGroupTherapyCanBecomeAnonymousAction::new()->execute($createTherapyDTO->therapy->refresh(), $createTherapyDTO->anonymous);
+
+                return UpdateTherapyAction::new()->execute($createTherapyDTO);
+            });
+        }
+
+        return UpdateTherapyAction::new()->execute($createTherapyDTO);
+    }
+
+    // SCRUM-221/TT-7.5a: a separate, narrow entry point for the strict-payment-gate toggle,
+    // deliberately NOT going through EnsureCanUpdateTherapyAction/updateTherapy() above.
+    // EnsureCanUpdateTherapyAction only recognizes the therapy's addedby (creator) or a counsellor
+    // who happens to BE the addedby (the "a counsellor created this therapy" case) -- it has no
+    // branch for the normal flow of "a counsellor got ASSIGNED via counsellor_id after a client
+    // created the therapy", so the assigned counsellor can never reach updateTherapy() at all for
+    // an ordinary client-created therapy (found via live Playwright testing, not a unit test,
+    // since EnsureCanSetStrictPaymentGateAction's own tests only ever exercised it in isolation).
+    // EnsureCanSetStrictPaymentGateAction is already a complete, self-contained authorization
+    // check (admin or the assigned counsellor) for this one field, so it doesn't need
+    // EnsureCanUpdateTherapyAction's blessing too -- and deliberately shouldn't get it, since
+    // broadening EnsureCanUpdateTherapyAction itself to recognize the assigned counsellor would
+    // hand them write access to every other therapy field (name, background story, pricing, ...),
+    // a materially larger authorization change this ticket has no reason to make.
+    //
+    // Also deliberately skips EnsureTherapyDataIsValidAction (unlike updateTherapy() above), so
+    // -- unlike every other therapy field -- this setting stays toggleable after the therapy has
+    // ended. Accepted as a low-risk gap (an ended therapy has no further sessions/access left to
+    // gate) rather than adding a narrow one-line status check for a single field's sake.
+    public function updateStrictPaymentGate(CreateTherapyDTO $createTherapyDTO)
+    {
+        EnsureTherapyExistsAction::new()->execute($createTherapyDTO);
+
+        EnsureCanSetStrictPaymentGateAction::new()->execute($createTherapyDTO);
+
+        // SCRUM-288: settings can't change while the therapy is paused for a missing guardian.
+        EnsureMinorHasActiveGuardianAction::new()->execute($createTherapyDTO->user, $createTherapyDTO->therapy);
 
         return UpdateTherapyAction::new()->execute($createTherapyDTO);
     }
@@ -109,26 +183,33 @@ class TherapyService extends Service
 
         EnsureUserHasAccessToTherapyAction::new()->execute($getTherapyDTO);
 
+        // SCRUM-360 (security review): a private therapy's page shows its background story.
+        RecordAdminContentReadAction::new()->execute($getTherapyDTO->user, AdminContentAccess::THERAPY, $getTherapyDTO->therapy, $getTherapyDTO->therapy);
+
         // TODO load relationships for efficiency
         return $getTherapyDTO->therapy;
     }
 
     public function getTherapies(User $user)
     {
-        $query = Therapy::query();
+        // SCRUM-33: a quick help chat is seen through the help chat only.
+        $query = Therapy::query()->withoutHelpChats();
 
         $query->whereParticipant($user);
-        
+
         $query->orderByDesc('created_at');
 
         return $query->paginate(PaginationEnum::homePagination->value);
     }
 
-    public function getRecentTherapies(User|null $user)
+    public function getRecentTherapies(?User $user)
     {
-        if (is_null($user)) return [];
+        if (is_null($user)) {
+            return [];
+        }
 
         return Therapy::query()
+            ->withoutHelpChats()
             ->whereParticipant($user)
             ->orderBy('created_at', 'desc')
             ->limit(3)
@@ -139,15 +220,25 @@ class TherapyService extends Service
     {
         EnsureTherapyExistsAction::new()->execute($assistTherapyDTO);
 
+        EnsureCanSendTherapyAssistanceRequestAction::new()->execute($assistTherapyDTO);
+
+        // SCRUM-288: no new counsellor is asked in while the therapy is paused for a missing guardian.
+        EnsureMinorHasActiveGuardianAction::new()->execute($assistTherapyDTO->user, $assistTherapyDTO->therapy);
+
         EnsureTherapyHasNoAssistanceAction::new()->execute($assistTherapyDTO);
 
         if ($assistTherapyDTO->therapy->isUser($assistTherapyDTO->user)) {
-            
+
             EnsureIsNotACounsellorAction::new()->execute($assistTherapyDTO);
 
             EnsureThereIsNoPendingRequestForCounsellorsAction::new()->execute($assistTherapyDTO);
 
-            foreach ($assistTherapyDTO->counsellors as $counsellor)
+            // SCRUM-31: only currently verified counsellors are asked in.
+            foreach ($assistTherapyDTO->counsellors as $counsellor) {
+                EnsureCounsellorMayTakeOnClientsAction::new()->execute($counsellor, asTarget: true);
+            }
+
+            foreach ($assistTherapyDTO->counsellors as $counsellor) {
                 SendTherapyAssistanceRequestAction::new()->execute(
                     TherapyAssistanceRequestDTO::new()->fromArray([
                         'from' => $assistTherapyDTO->user,
@@ -155,76 +246,84 @@ class TherapyService extends Service
                         'for' => $assistTherapyDTO->therapy,
                     ])
                 );
+            }
 
             return;
         }
 
         EnsureIsCounsellorAction::new()->execute($assistTherapyDTO);
 
-        EnsureThereIsNoPendingRequestForCounsellorAction::new()->execute($assistTherapyDTO);
-        
-        SendTherapyAssistanceRequestAction::new()->execute(
-            TherapyAssistanceRequestDTO::new()->fromArray([
-                'from' => $assistTherapyDTO->user->counsellor,
-                'to' => $assistTherapyDTO->therapy->addedby,
-                'for' => $assistTherapyDTO->therapy,
-            ])
-        );
+        EnsureCounsellorMayTakeOnClientsAction::new()->execute($assistTherapyDTO->user->counsellor);
+
+        // SCRUM-394: the cap check and the new request together, under the counsellor's lock (a hard cap) --
+        // taken first, before any read; the pending check inside too, so a double submit sends one.
+        DB::transaction(function () use ($assistTherapyDTO) {
+            EnsureCounsellorOfferCapAction::lockCounsellor($assistTherapyDTO->user->counsellor);
+            EnsureThereIsNoPendingRequestForCounsellorAction::new()->execute($assistTherapyDTO);
+            EnsureCounsellorOfferCapAction::new()->execute($assistTherapyDTO->user->counsellor);
+
+            SendTherapyAssistanceRequestAction::new()->execute(
+                TherapyAssistanceRequestDTO::new()->fromArray([
+                    'from' => $assistTherapyDTO->user->counsellor,
+                    'to' => $assistTherapyDTO->therapy->addedby,
+                    'for' => $assistTherapyDTO->therapy,
+                ])
+            );
+        });
     }
 
-    public function getRandomTherapies(?User $user)
+    // The Home page's public therapies. Public only, always, and each narrowing a grouped AND (an
+    // ungrouped orWhereNot here once listed other people's PRIVATE therapies to every signed-in user).
+    // SCRUM-113: ranked by the viewer's preferences (a counsellor by their profile), in a seeded
+    // order that stays the same for the visit.
+    public function getRandomTherapies(?User $user, mixed $seed = null)
     {
-        $query = Therapy::query();
+        $seed = PreferenceRanking::seed($seed);
 
-        $query->wherePublic();
-        
-        $query
-            ->when($user, function ($query) use ($user) {
-                $query->wherePublic();
-                $query->orWhereNot('addedby_id', $user->id);
-            })
-            ->when($user?->counsellor, function ($query) use ($user) {
-                $query->wherePublic();
-                $query->where(function ($query) use ($user) {
-                    $query->whereHasNoCounsellor($user->counsellor);
-                    $query->orWhereNot('counsellor_id', $user->counsellor->id);
-                });
-            })
-            ->inRandomOrder();
+        $query = Therapy::query()->publicForOutsider($user);
 
-        return $query->paginate(PaginationEnum::preferencesPagination->value);
+        PreferenceRanking::apply($query, PreferenceMatch::forTherapiesViewedBy($user), $seed);
+
+        $page = PreloadTherapyListAction::new()->execute(
+            $query->paginate(PaginationEnum::preferencesPagination->value)->appends(['seed' => $seed])
+        );
+
+        return ResolveTherapyCardStateAction::new()->execute($page, $user);
     }
 
     public function getCounsellorTherapies(?User $user)
     {
-        if (!$user->counsellor) return [];
+        if (! $user->counsellor) {
+            return [];
+        }
 
-        $query = Therapy::query();
-        
-        $query->where('counsellor_id', $user->counsellor->id);
+        // SCRUM-33: the ORs grouped, so leaving quick help chats out applies to all of them.
+        $query = Therapy::query()->withoutHelpChats()->where(function ($query) use ($user) {
+            $query->where('counsellor_id', $user->counsellor->id);
 
-        $query->orWhere(function ($query) use ($user) {
-            $query->whereHas('discussions', function ($query) use ($user) {
-                $query->whereHas('counsellors', function ($query) use ($user) {
-                    $query->where('counsellor_id', $user->counsellor->id);
+            $query->orWhere(function ($query) use ($user) {
+                $query->whereHas('discussions', function ($query) use ($user) {
+                    $query->whereHas('counsellors', function ($query) use ($user) {
+                        $query->where('counsellor_id', $user->counsellor->id);
+                    });
                 });
             });
-        });
 
-        $query->orWhere(function ($query) use ($user) {
-            $query->whereHas('discussions', function ($query) use ($user) {
-                $query->whereHas('requests', function ($query) use ($user) {
-                    $query
-                        ->wherePending()
-                        ->whereTo($user->counsellor);
+            $query->orWhere(function ($query) use ($user) {
+                $query->whereHas('discussions', function ($query) use ($user) {
+                    $query->whereHas('requests', function ($query) use ($user) {
+                        $query
+                            ->wherePending()
+                            ->whereTo($user->counsellor);
+                    });
                 });
             });
-        });
-        
-        $query->orWhereHas('requests', function ($query) use ($user) {
-            $query
-                ->wherePending()
-                ->whereTo($user->counsellor);
+
+            $query->orWhereHas('requests', function ($query) use ($user) {
+                $query
+                    ->wherePending()
+                    ->whereTo($user->counsellor);
+            });
         });
 
         $query->latest();
@@ -234,10 +333,12 @@ class TherapyService extends Service
 
     public function getUserTherapies(?User $user)
     {
-        if (!$user) return [];
+        if (! $user) {
+            return [];
+        }
 
-        $query = Therapy::query();
-        
+        $query = Therapy::query()->withoutHelpChats();
+
         $query->where('addedby_id', $user->id);
         $query->where('addedby_type', User::class);
 
@@ -248,12 +349,15 @@ class TherapyService extends Service
 
     public function getWardTherapies(?User $user)
     {
-        if (!$user) return [];
+        if (! $user) {
+            return [];
+        }
 
-        $query = Therapy::query();
-        
+        // SCRUM-33: a ward's quick help chat isn't shown to guardians (the user's decision).
+        $query = Therapy::query()->withoutHelpChats();
+
         $query->whereHasMorph('addedby', [User::class], function ($query) use ($user) {
-            $query->whereHas('guardians', function($query) use ($user) {
+            $query->whereHas('guardians', function ($query) use ($user) {
                 $query->where('guardian_id', $user->id);
             });
         });
@@ -261,5 +365,12 @@ class TherapyService extends Service
         $query->latest();
 
         return $query->paginate(PaginationEnum::preferencesPagination->value);
+    }
+
+    // SCRUM-113: the Public Therapies page -- public therapies and groups together, ranked and paged
+    // in SQL (it used to load every one into memory and shuffle them on each request).
+    public function getPublicTherapies(?User $user, mixed $seed = null)
+    {
+        return GetPublicTherapyFeedAction::new()->execute($user, PreferenceRanking::seed($seed));
     }
 }

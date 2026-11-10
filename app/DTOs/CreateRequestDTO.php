@@ -5,51 +5,66 @@ namespace App\DTOs;
 use App\Models\Counsellor;
 use App\Models\Discussion;
 use App\Models\GroupTherapy;
+use App\Models\Organization;
+use App\Models\OrganizationCounsellor;
 use App\Models\Therapy;
+use App\Models\Transaction;
 use App\Models\User;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use MrRobertAmoah\DTO\BaseDTO;
 
 class CreateRequestDTO extends BaseDTO
 {
-    public User|Counsellor|null $from = null;
-    public User|Counsellor|null $to = null;
-    public User|Counsellor|Discussion|Therapy|GroupTherapy|null $for = null;
+    public User|Counsellor|Organization|null $from = null;
+
+    public User|Counsellor|Organization|null $to = null;
+
+    // TT-7.7a/SCRUM-249: Transaction added for RequestTypeEnum::refund's own `for` -- the
+    // transaction being refunded.
+    public User|Counsellor|Discussion|Therapy|GroupTherapy|Organization|OrganizationCounsellor|Transaction|null $for = null;
+
     public ?array $data = [];
+
     public ?string $type = null;
-    
+
+    // SCRUM-146 (TT-6.4c): generic, optional -- unset for every request type that doesn't need
+    // an expiry/round-tracking mechanism.
+    public ?Carbon $expiresAt = null;
+
+    public ?int $round = null;
+
     /**
-     * assign data (filled or validated) to the dto properties as an 
+     * assign data (filled or validated) to the dto properties as an
      * addition to the fromRequest function.
      *
      * @param  Illuminate\Http\Request  $request
      * @return MrRobertAmoah\DTO\BaseDTO
      */
-    protected function fromRequestExtension(Request $request) : self
+    protected function fromRequestExtension(Request $request): self
     {
         return $this;
     }
 
     /**
-     * assign values of keys of an array to the corresponding dto properties 
+     * assign values of keys of an array to the corresponding dto properties
      * as an additional function for the fromData function.
      *
-     * @param  array  $data
      * @return MrRobertAmoah\DTO\BaseDTO
      */
-    protected function fromArrayExtension(array $data = []) : self
+    protected function fromArrayExtension(array $data = []): self
     {
         return $this;
     }
 
     /**
-    * uncomment and use this function if you want to 
+    * uncomment and use this function if you want to
     * customize the key and value pairs
-    * to be used to create your dto and still get the 
+    * to be used to create your dto and still get the
     * other features of the dto
     */
-//    public function requestToArray($request)
-//    {
-//       return [];
-//    }
+    //    public function requestToArray($request)
+    //    {
+    //       return [];
+    //    }
 }

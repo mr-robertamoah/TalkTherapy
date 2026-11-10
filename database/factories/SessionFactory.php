@@ -5,11 +5,12 @@ namespace Database\Factories;
 use App\Enums\SessionStatusEnum;
 use App\Enums\SessionTypeEnum;
 use App\Enums\TherapyPaymentTypeEnum;
+use App\Models\Session;
 use App\Models\Therapy;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
- * @extends \Illuminate\Database\Eloquent\Factories\Factory<\App\Models\Session>
+ * @extends Factory<Session>
  */
 class SessionFactory extends Factory
 {
@@ -23,14 +24,19 @@ class SessionFactory extends Factory
         return [
             'name' => $this->faker->name,
             'about' => $this->faker->sentence(10),
+            // TT-7.5b-b3/SCRUM-267 (reviewer suggestion): these aren't real datetimes -- the
+            // 'datetime' cast coerces a timezone string like "America/New_York" via Carbon's
+            // fuzzy parsing, which silently resolves to roughly "now" rather than throwing.
+            // Any test asserting on start_time/end_time (e.g. comparing it to another timestamp)
+            // MUST override these explicitly rather than relying on this default.
             'start_time' => $this->faker->timezone(),
             'end_time' => $this->faker->timezone(),
             'payment_type' => TherapyPaymentTypeEnum::free->value,
             'type' => SessionTypeEnum::online->value,
             'status' => SessionStatusEnum::in_session_confirmation->value,
-            'longitude' => "",
-            'latitude' => "",
-            'landmark' => "",
+            'longitude' => null,
+            'latitude' => null,
+            'landmark' => null,
             'for_id' => 1,
             'for_type' => Therapy::class,
         ];

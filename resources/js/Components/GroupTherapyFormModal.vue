@@ -1,5 +1,5 @@
 <script setup>
-import { inject, ref, watch, watchEffect } from 'vue';
+import { computed, inject, ref, watch, watchEffect } from 'vue';
 import TextInput from '@/Components/TextInput.vue';
 import InputLabel from '@/Components/InputLabel.vue';
 import InputError from '@/Components/InputError.vue';
@@ -24,6 +24,12 @@ import useEnums from '@/Composables/useEnums';
 const { setErrorData } = useErrorHandler()
 const { alertData, clearAlertData, setFailedAlertData, setSuccessAlertData } = useAlert()
 const { PaymentTypeEnum, SessionTypeEnum } = useEnums()
+// SCRUM-153 (TT-7.2a): sourced from the backend's config('currencies.supported') (shared via
+// Inertia), not hardcoded -- previously defaulted to the Cedi symbol 'GHȻ', a free-text value
+// that would fail the backend's new supported-currency validation unless manually overwritten.
+const supportedCurrencies = usePage().props.supportedCurrencies ?? []
+const defaultCurrency = supportedCurrencies.includes('GHS') ? 'GHS' : (supportedCurrencies[0] ?? '')
+const currencyOptions = computed(() => supportedCurrencies.map(code => ({ name: code, value: code })))
 const counsellors = ref({ data: [], page: 1, selected: [] });
 const counsellorSearch = ref("");
 const loading = ref(false)
@@ -51,7 +57,7 @@ const therapyData = ref({
     'amount': '',
     'maxSessions': '',
     'counsellorId': '',
-    'currency': 'GHȻ',
+    'currency': defaultCurrency,
     'cases': [],
     'counsellorIds': [],
     'maxUsers': '',
@@ -60,6 +66,8 @@ const therapyData = ref({
     'shareEqually': false,
     'asCounsellor': false,
     'sharePercentage': '',
+    'strictPaymentGate': false,
+    'allowFreeHistoricalAccess': true,
 })
 const therapyErrors = ref({
     'name': '',
@@ -80,6 +88,8 @@ const therapyErrors = ref({
     'allowAnyone': '',
     'shareEqually': '',
     'sharePercentage': '',
+    'strictPaymentGate': '',
+    'allowFreeHistoricalAccess': '',
 })
 
 watchEffect(() => {
@@ -95,8 +105,10 @@ watch(
         if (therapyData.value.paymentType == PaymentTypeEnum.free) {
             therapyData.value.public = true
             therapyData.value.amount = ''
-            therapyData.value.currency = 'GHȻ'
+            therapyData.value.currency = defaultCurrency
             therapyData.value.per = ''
+            therapyData.value.strictPaymentGate = false
+            therapyData.value.allowFreeHistoricalAccess = true
         }
     }
 )
@@ -261,7 +273,7 @@ async function createTherapy() {
             setErrorData(therapyErrors, err.response.data.errors, [
                 'name', 'about', 'anonymous', 'allowInPerson', 'public', 'sessionType',
                 'paymentType', 'per', 'amount', 'currency', 'maxSessions', 'maxUsers', 'maxCounsellors',
-                'allowAnyone'
+                'allowAnyone', 'strictPaymentGate', 'allowFreeHistoricalAccess'
             ])
             return
         }
@@ -293,10 +305,12 @@ function clearData() {
     therapyData.value.shareEqually = false
     therapyData.value.sharePercentage = ''
     therapyData.value.amount = ''
-    therapyData.value.currency = 'GHȻ'
+    therapyData.value.currency = defaultCurrency
     therapyData.value.per = ''
     therapyData.value.cases = []
     therapyData.value.counsellorIds = []
+    therapyData.value.strictPaymentGate = false
+    therapyData.value.allowFreeHistoricalAccess = true
 }
 
 function closeModal() {
@@ -530,7 +544,6 @@ function closeModal() {
                                 id="maxUsers"
                                 type="number"
                                 class="mt-1 block w-full"
-                                default="50"
                                 v-model="therapyData.maxUsers"
                             />
                             
@@ -586,11 +599,12 @@ function closeModal() {
 
                                     <InputLabel class="mt-4" for="amount" value="Amount" />
                                     <div class="flex justify-start items-center">
-                                        <TextInput
-                                            id="name"
-                                            type="text"
-                                            class="mt-1 block w-[30%] max-w-[100px] text-end"
+                                        <Select
+                                            id="currency"
+                                            class="mt-1 block w-[30%] max-w-[100px]"
                                             v-model="therapyData.currency"
+                                            :options="currencyOptions"
+                                            :default-option="'currency'"
                                             required
                                         />
                                         <TextInput
@@ -606,6 +620,28 @@ function closeModal() {
                                 <div class="mt-2 text-xs text-gray-500">Payment will automatically be PER THERAPY when session type is ONCE.</div>
                                 <InputError class="mt-2" :message="therapyErrors.amount" />
                             </div>
+
+                            <!-- TT-7.5b-b5/SCRUM-269: initial values only -- mirrors
+                                 IndividualTherapyFormModal.vue's own identical strictPaymentGate
+                                 initial-value block. Once an active counsellor is assigned, only
+                                 they (or an admin) can change either setting
+                                 (EnsureCanSetGroupTherapyPaymentGateAction). -->
+                            <div class="mt-4 mx-auto max-w-[400px]">
+                                <label class="flex items-center">
+                                    <Checkbox name="strictPaymentGate" v-model:checked="therapyData.strictPaymentGate" />
+                                    <span class="ms-2 text-sm text-gray-600">Require payment before a member can access this group.</span>
+                                </label>
+                                <div class="mt-2 text-xs text-gray-500">Once a counsellor is assigned, only an active counsellor can change this setting.</div>
+                                <InputError class="mt-2" :message="therapyErrors.strictPaymentGate" />
+
+                                <label class="flex items-center mt-4">
+                                    <Checkbox name="allowFreeHistoricalAccess" v-model:checked="therapyData.allowFreeHistoricalAccess" />
+                                    <span class="ms-2 text-sm text-gray-600">Let new joiners see content posted before they joined for free.</span>
+                                </label>
+                                <div class="mt-2 text-xs text-gray-500">When on (default), a member who joins after payment is required can still see resources posted before they joined -- only new content requires payment.</div>
+                                <InputError class="mt-2" :message="therapyErrors.allowFreeHistoricalAccess" />
+                            </div>
+
                             <div v-if="therapyData.asCounsellor" class="mt-4 mx-auto max-w-[400px]">
                                 <div class="text-gray-600">How do you want earnings shared?</div>
                                 <div class="mt-4">

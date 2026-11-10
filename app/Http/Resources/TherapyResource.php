@@ -2,6 +2,14 @@
 
 namespace App\Http\Resources;
 
+use App\Actions\Organization\GetRetainerCoveringOrganizationAction;
+use App\Actions\Safety\EnsureCanFlagClientAction;
+use App\Actions\VideoConsent\GetCurrentValidVideoConsentForTherapyAction;
+use App\Actions\VideoConsent\GetWardForVideoConsentableAction;
+use App\Enums\ConstantsEnum;
+use App\Enums\TherapyPaymentTypeEnum;
+use App\Models\SafeguardingException;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -19,30 +27,74 @@ class TherapyResource extends JsonResource
         $activeDiscussion = null;
         $user = $request->user();
         $counsellor = $this->counsellor()->withTrashed()->first();
+        $pause = $this->pauseStateFor($user);
 
-        if ($user && $this->isParticipant($user))
+        if ($user && $this->isParticipant($user)) {
             $activeSession = $this->getActiveSession($user);
+        }
 
-        if ($user?->counsellor)
+        if ($user?->counsellor) {
             $activeDiscussion = $this->getActiveDiscussion($user->counsellor);
+        }
 
-        
+        // TT-7.7b/SCRUM-250 (security-engineer finding, HIGH -- SessionResource's own identical
+        // fix): `latestTransaction` is "latest across ALL eligible payers", not scoped to the
+        // current viewer. Scoped here to the viewer's own transaction so a co-participant (or the
+        // assigned counsellor, never the payer) can never see another client's transactionId or
+        // refund/dispute status. Only queried for a PAID, PER_THERAPY engagement -- guarded BEFORE
+        // running the query, mirroring orgRetainerCoverage()'s own early-return.
+        $viewerTransaction = $user && $this->payment_type === TherapyPaymentTypeEnum::paid->value && ($this->payment_data['per'] ?? null) === 'PER_THERAPY'
+            ? $this->transactions()->where('user_id', $user->id)->latest('created_at')->first()
+            : null;
+
+        $showsPaymentStatus = $this->showsPaymentStatusTo($user);
+
         return [
             'id' => $this->id,
             'name' => $this->name,
             'user' => $this->when(
-                    $this->addedby->is($user) || !$this->anonymous, 
-                    new UserMiniResource($this->addedby), 
-                    ['id' => $this->addedby->id, 'fullName' => 'anonymous']
-                ),
+                ! $this->addedByUserIsMaskedFor($user),
+                new UserMiniResource($this->addedby),
+                // SCRUM-345/348: never the real id -- a stable id would let a viewer (the counsellor
+                // included) link the same anonymous client across therapies. The server picks the
+                // recipient of a therapy message itself (ResolveTherapyMessageRecipientAction).
+                ['id' => null, 'fullName' => ConstantsEnum::anonymousUserLabel->value]
+            ),
             'public' => (bool) $this->public,
+            // SCRUM-354: likes and comments exist only on public therapies -- a count and the viewer's
+            // own like, never who liked it.
+            'engagement' => $this->when($this->acceptsPublicEngagement(), fn () => [
+                'likesCount' => $this->likes()->count(),
+                'isLiked' => (bool) $user && $this->likes()->where('user_id', $user->id)->exists(),
+                'commentsCount' => $this->comments()->count(),
+            ]),
             'anonymous' => (bool) $this->anonymous,
             'allowInPerson' => (bool) $this->allow_in_person,
             'counsellor' => $this->when($counsellor, new CounsellorMiniResource($counsellor)),
             'backgroundStory' => $this->background_story,
             'sessionsHeld' => $this->sessionsHeld,
-            'status' => $this->getStatus(),
+            'status' => $this->status,
+            'statusLabel' => $this->getStatusLabel(),
             'paymentData' => $this->payment_data,
+            // SCRUM-368: the client's own payment -- only for the client, the counsellor and
+            // administrators, never for someone browsing a public therapy.
+            'paymentStatus' => $showsPaymentStatus ? $this->latestTransaction?->status : null,
+            // TT-7.7e/SCRUM-253: unlike refundRequestStatus below (deliberately viewer-scoped --
+            // it discloses a specific client's own pending/rejected ask), "has this transaction
+            // actually been refunded" is a coarse, non-identifying fact about the same
+            // latestTransaction paymentStatus already exposes above -- so it's
+            // exposed the same way (to the same viewers since SCRUM-368). Safe specifically BECAUSE an individual Therapy has
+            // exactly one payer -- GroupTherapy (multiple payers) uses its own separate
+            // GroupTherapyResource, not this one, and deliberately does NOT get this field (see
+            // SessionResource's identical field for why its own shared, multi-payer-capable
+            // version of this exact field needs the opposite treatment). Once set, the
+            // client/counsellor UI shows "Refunded" instead of a now-stale "Paid" (paymentStatus
+            // itself never changes on refund -- see
+            // TT-7.7a's own decision-log entry on why refunds live in their own table).
+            'refundStatus' => $showsPaymentStatus ? $this->latestTransaction?->successfulRefund?->status : null,
+            // TT-7.7b/SCRUM-250
+            'transactionId' => $viewerTransaction?->id,
+            'refundRequestStatus' => $viewerTransaction?->latestRefundRequest?->status,
             'sessionsCreated' => $this->sessionsCreated,
             'paymentType' => $this->payment_type,
             'sessionType' => $this->session_type,
@@ -54,6 +106,103 @@ class TherapyResource extends JsonResource
             'createdAt' => $this->created_at,
             'activeSession' => $activeSession ? new SessionResource($activeSession) : null,
             'activeDiscussion' => $activeDiscussion ? new DiscussionResource($activeDiscussion) : null,
+            'orgRetainerCoverage' => $this->orgRetainerCoverage($user),
+            'videoConsent' => $this->videoConsentData($user),
+            // SCRUM-288: the viewer's own state -- paused for a missing guardian (memoised on the
+            // request's user, so one query at most for a minor and none for an adult). SCRUM-382: the
+            // gate's own rule (pauseStateFor()), so someone acting as its counsellor is never paused here.
+            'viewerAccessPaused' => $pause['viewer'],
+            // Only for this therapy's own counsellor: their client's state (it makes them read-only too).
+            'clientAccessPaused' => $this->when(! is_null($pause['client']), $pause['client']),
+            // SCRUM-381: only for that counsellor, while their client is paused -- whether a request
+            // for a safeguarding exception is already waiting for the super administrator.
+            'safeguardingExceptionRequested' => $this->when($pause['client'] === true, fn () => $this->requests()->pendingSafeguardingException()->exists()),
+            // SCRUM-32: only for its counsellor, and only while the feature is on -- whether they can raise a
+            // safety flag here now (the client's resource never has the key).
+            'canRaiseSafetyFlag' => $this->when(
+                config('safety.enabled') && $user?->counsellor && (int) $this->counsellor_id === (int) $user->counsellor->id,
+                fn () => EnsureCanFlagClientAction::new()->canFlag(fn (EnsureCanFlagClientAction $can) => $can->forTherapy($user, $this->resource)),
+            ),
+            // SCRUM-384: the request form's limit, from the model rather than a copy in the UI.
+            'safeguardingExceptionMaxDays' => $this->when($pause['client'] === true, SafeguardingException::MAX_DAYS),
         ];
+    }
+
+    // TT-3.1e-f/SCRUM-285: null (the whole section doesn't apply) unless this therapy actually
+    // has a minor client -- avoids the ward/guardian/consent lookups below on every ordinary
+    // (adult-client) therapy page load. `viewerIsGuardian` is display-only, matching
+    // computedIsCounsellor's own existing role elsewhere on this page -- the real authorization
+    // boundary is always the backend Action itself (GrantVideoConsentAction/
+    // RevokeVideoConsentAction/SetVideoConsentModeAction), not this flag.
+    //
+    // Security-review finding (2026-09-11, HIGH): a `public` Therapy is reachable by ANY
+    // visitor, including a guest, before this method ran at all -- EnsureUserHasAccessToTherapyAction
+    // explicitly returns for `$therapy->public` before even checking whether $user exists. Unlike
+    // this resource's own 'user'/orgRetainerCoverage fields (both gated behind
+    // addedByUserIsMaskedFor()), this method had NO gate of its own, so it disclosed that a
+    // public therapy's client is a minor, the therapy's consent mode, whether consent is
+    // currently valid, and the granting/revoking guardian's real name, to a completely
+    // unauthenticated/unrelated visitor. Gated the same way every other guardian-facing surface
+    // in this feature already is: the viewer must actually be a participant (client or
+    // counsellor) OR a guardian of this specific ward.
+    private function videoConsentData(?User $user): ?array
+    {
+        // Resolved before the participant/guardian gate below (not $this->addedby directly) --
+        // GetWardForVideoConsentableAction already safely returns null for a non-User addedby
+        // (e.g. an org-owned Therapy), where calling User::isGuardianOf() on a non-User value
+        // would otherwise be a type error.
+        $wardResolver = GetWardForVideoConsentableAction::new();
+        $ward = $wardResolver->execute($this->resource);
+
+        // TT-4.10b/SCRUM-291: "adult client" was a live $ward->isAdult() re-check -- now prefers
+        // the therapy's own stable client_was_minor_at_creation snapshot (TT-4.10a) via
+        // GetWardForVideoConsentableAction::isMinor(), closing the self-editable-dob bypass
+        // SCRUM-287 found.
+        if (! $ward || ! $wardResolver->isMinor($this->resource)) {
+            return null;
+        }
+
+        if (! $user || ! ($this->isParticipant($user) || $user->isGuardianOf($ward))) {
+            return null;
+        }
+
+        $currentConsent = GetCurrentValidVideoConsentForTherapyAction::new()->execute($this->resource);
+
+        return [
+            'mode' => $this->video_consent_mode,
+            'viewerIsGuardian' => (bool) ($user && $user->isGuardianOf($ward)),
+            'current' => $currentConsent ? new VideoConsentResource($currentConsent) : null,
+        ];
+    }
+
+    // TT-7.3b-k/SCRUM-242: a non-financial disclosure for the paying client (never scoped to the
+    // currently viewing user beyond the anonymity check below -- the fact that itself isn't
+    // sensitive, so it's fine to also surface it to the counsellor). Only the org's name is
+    // exposed, never fee/compensation/payout figures, matching this ticket's deliberately narrow
+    // client-facing-disclosure scope. Applies to Therapy only, not GroupTherapy -- retainer
+    // coverage checks a therapy's single counsellor, and GroupTherapy org billing is out of scope
+    // here the same way TT-7.5a's strict-gate feature excluded it.
+    private function orgRetainerCoverage(?User $user): ?array
+    {
+        if (! $this->addedby instanceof User) {
+            return null;
+        }
+
+        // Same anonymity guarantee as the 'user' field above (security-engineer finding,
+        // SCRUM-242 review): naming the covering org to a non-participant on a public+anonymous
+        // therapy would re-identify the addedby, narrowing down who they are.
+        if ($this->addedByUserIsMaskedFor($user)) {
+            return null;
+        }
+
+        // Skip the query entirely for a therapy the frontend could never show a Pay control for
+        // in the first place -- avoids a join-heavy lookup on every FREE-therapy page load.
+        if ($this->payment_type !== TherapyPaymentTypeEnum::paid->value) {
+            return null;
+        }
+
+        $organization = GetRetainerCoveringOrganizationAction::new()->execute($this->resource, $this->addedby);
+
+        return $organization ? ['organizationName' => $organization->name] : null;
     }
 }

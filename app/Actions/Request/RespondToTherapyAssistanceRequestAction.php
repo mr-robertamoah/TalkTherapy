@@ -3,67 +3,124 @@
 namespace App\Actions\Request;
 
 use App\Actions\Action;
+use App\Actions\CounsellorVerification\EnsureCounsellorMayTakeOnClientsAction;
+use App\Actions\Guardianship\EnsureMinorHasActiveGuardianAction;
 use App\Actions\User\AlertGuardianAction;
 use App\DTOs\GuardianAlertDTO;
 use App\DTOs\RequestResponseDTO;
 use App\Enums\RequestStatusEnum;
 use App\Enums\TherapyStatusEnum;
+use App\Exceptions\CounsellorException;
 use App\Models\Counsellor;
 use App\Models\Request;
+use App\Models\Therapy;
+use App\Models\User;
 use App\Notifications\TherapyAssistanceRequestAcceptedGuardianNotification;
 use App\Notifications\TherapyAssistanceRequestAcceptedNotification;
+use Illuminate\Support\Facades\DB;
 
 class RespondToTherapyAssistanceRequestAction extends Action
 {
+    public const NO_COUNSELLOR = 'There is no counsellor to take this therapy on.';
+
     public function execute(RequestResponseDTO $requestResponseDTO)
     {
-        // TODO counsellor must have a certain number of free therapies
-        $response = is_null($requestResponseDTO->response)
-            ? RequestStatusEnum::rejected->value
-            : strtoupper($requestResponseDTO->response);
+        // Locking the request row and re-checking its status inside the lock closes the
+        // double-submission race SCRUM-80 fixed for group therapy membership requests. But a
+        // therapy can have several other pending assistance requests (from other counsellors)
+        // at once, so the *therapy* row -- not just this request -- is the shared mutable
+        // resource: two different pending requests for the same therapy being accepted at
+        // nearly the same time could otherwise both see no counsellor assigned yet and both
+        // "win", losing one of the two counsellor_id writes and notifying both requesters that
+        // their acceptance succeeded (SCRUM-91). Locking the therapy row FIRST, before the
+        // request row, keeps every path through here using the same lock order as the
+        // sibling-invalidation update below (which itself locks other Request rows) -- taking
+        // the request lock first here instead would let a blocked second call hold its own
+        // request row while waiting on the therapy lock, while the first call (holding the
+        // therapy lock) waits on that same request row for the sibling update: a deadlock.
+        [$request, $accepted] = DB::transaction(function () use ($requestResponseDTO) {
+            $therapy = Therapy::query()->lockForUpdate()->findOrFail($requestResponseDTO->request->for_id);
+            $request = Request::query()->lockForUpdate()->findOrFail($requestResponseDTO->request->id);
 
-        if ($requestResponseDTO->request->for->counsellor)
-            $response = RequestStatusEnum::rejected->value;
+            if ($request->status != RequestStatusEnum::pending->value) {
+                return [$request, false];
+            }
 
-        $requestResponseDTO->request->update([
-            'status' => $response
-        ]);
+            // TODO counsellor must have a certain number of free therapies
+            $response = is_null($requestResponseDTO->response)
+                ? RequestStatusEnum::rejected->value
+                : strtoupper($requestResponseDTO->response);
 
-        if ($response == RequestStatusEnum::accepted->value) {
-            $requestResponseDTO->request->for->update([
-                'counsellor_id' => $this->getCounsellorId($requestResponseDTO),
-                'status' => TherapyStatusEnum::in_session->value
-            ]);
+            if ($therapy->counsellor) {
+                $response = RequestStatusEnum::rejected->value;
+            }
 
-            Request::query()
-                ->whereNot('id', $requestResponseDTO->request->id)
-                ->wherePending()
-                ->whereFor($requestResponseDTO->request->for)
-                ->update([
-                    'status' => RequestStatusEnum::inconsequencial->value,
-                    'data' => [
-                        'reason' => 'A similar request for therapy assistance has been accepted by someone else.'
-                    ]
+            // SCRUM-288: a counsellor can't take on an individual therapy while it is paused for its
+            // minor client's missing guardian. Re-read under the therapy lock; declining stays allowed.
+            // Checks the client whoever accepts (actsAsCounsellor: the counsellor taking it on, or the
+            // client accepting a counsellor's offer -- the client is then checked as the actor).
+            if ($response == RequestStatusEnum::accepted->value) {
+                $acceptedByClient = $therapy->addedby instanceof User && $therapy->addedby->is($requestResponseDTO->user);
+                EnsureMinorHasActiveGuardianAction::new()->execute($requestResponseDTO->user, $therapy, fresh: true, actsAsCounsellor: ! $acceptedByClient);
+
+                // SCRUM-31: the counsellor taking it on must be currently verified (declining stays
+                // allowed) -- a client accepting an offer is told it's the counsellor's.
+                // Locked (therapy, request, then counsellor), so a revocation can't land in between;
+                // no counsellor to take it on means no accepting it.
+                $taking = Counsellor::query()->lockForUpdate()->find($this->getCounsellorId($requestResponseDTO));
+                if (! $taking) {
+                    throw new CounsellorException(self::NO_COUNSELLOR, 422);
+                }
+                EnsureCounsellorMayTakeOnClientsAction::new()->execute($taking, asTarget: $acceptedByClient);
+            }
+
+            $request->update(['status' => $response]);
+
+            if ($response == RequestStatusEnum::accepted->value) {
+                $therapy->update([
+                    'counsellor_id' => $taking->id,
+                    'status' => TherapyStatusEnum::in_session->value,
                 ]);
 
+                Request::query()
+                    ->whereNot('id', $request->id)
+                    ->wherePending()
+                    ->whereFor($therapy)
+                    ->update([
+                        'status' => RequestStatusEnum::inconsequencial->value,
+                        'responded_at' => now(),
+                        'data' => [
+                            'reason' => 'A similar request for therapy assistance has been accepted by someone else.',
+                        ],
+                    ]);
+            }
+
+            return [$request->refresh(), $response == RequestStatusEnum::accepted->value];
+        });
+
+        if ($accepted) {
             // TODO dispatch counsellor to frontend
-            $requestResponseDTO->request->from->notify(
-                new TherapyAssistanceRequestAcceptedNotification($requestResponseDTO->request)
+            $request->from->notify(
+                new TherapyAssistanceRequestAcceptedNotification($request)
             );
 
-            AlertGuardianAction::new()->execute(
-                GuardianAlertDTO::new()->fromArray([
-                    'user' => $requestResponseDTO->request->from::class == Counsellor::class
-                        ? $requestResponseDTO->request->from->user
-                        : $requestResponseDTO->request->from,
-                    'notification' => new TherapyAssistanceRequestAcceptedGuardianNotification(
-                        $requestResponseDTO->request->for
-                    )
-                ])
-            );
+            // SCRUM-358: the guardians to tell are the THERAPY CLIENT's -- whoever sent the request.
+            // This used to alert the guardians of `$request->from`, which for a counsellor's offer
+            // was the counsellor's own account: a (minor) counsellor's guardian would have been
+            // told a client's name. The client is never a Counsellor.
+            $client = $request->for->addedby;
+            if ($client instanceof User) {
+                AlertGuardianAction::new()->execute(
+                    GuardianAlertDTO::new()->fromArray([
+                        'user' => $client,
+                        'notification' => new TherapyAssistanceRequestAcceptedGuardianNotification($request->for),
+                        'for' => $request->for,
+                    ])
+                );
+            }
         }
-        
-        return $requestResponseDTO->request->refresh();
+
+        return $request;
     }
 
     private function getCounsellorId(RequestResponseDTO $requestResponseDTO)
@@ -71,12 +128,16 @@ class RespondToTherapyAssistanceRequestAction extends Action
         if (
             $requestResponseDTO->user->counsellor &&
             $requestResponseDTO->user->counsellor->is($requestResponseDTO->request->to)
-        ) return $requestResponseDTO->user->counsellor->id;
-        
+        ) {
+            return $requestResponseDTO->user->counsellor->id;
+        }
+
         if (
             $requestResponseDTO->request->to->is($requestResponseDTO->user) &&
             $requestResponseDTO->request->from_type == Counsellor::class
-        ) return $requestResponseDTO->request->from->id;
+        ) {
+            return $requestResponseDTO->request->from->id;
+        }
 
         return null;
     }

@@ -20,6 +20,12 @@ import useEnums from '@/Composables/useEnums';
 const { PaymentTypeEnum, SessionTypeEnum } = useEnums()
 const { setErrorData } = useErrorHandler()
 const { alertData, clearAlertData, setFailedAlertData, setSuccessAlertData } = useAlert()
+// SCRUM-153 (TT-7.2a): sourced from the backend's config('currencies.supported') (shared via
+// Inertia), not hardcoded -- previously defaulted to the Cedi symbol 'GHȻ', a free-text value
+// that would fail the backend's new supported-currency validation unless manually overwritten.
+const supportedCurrencies = usePage().props.supportedCurrencies ?? []
+const defaultCurrency = supportedCurrencies.includes('GHS') ? 'GHS' : (supportedCurrencies[0] ?? '')
+const currencyOptions = computed(() => supportedCurrencies.map(code => ({ name: code, value: code })))
 const props = defineProps({
     show: {
         default: false,
@@ -45,8 +51,9 @@ const therapyData = ref({
     'amount': 0,
     'inPersonAmount': 0,
     'maxSessions': 0,
-    'currency': 'GHȻ',
-    'cases': []
+    'currency': defaultCurrency,
+    'cases': [],
+    'strictPaymentGate': false
 })
 const therapyErrors = ref({
     'name': '',
@@ -60,7 +67,8 @@ const therapyErrors = ref({
     'amount': '',
     'currency': '',
     'maxSessions': '',
-    'cases': ''
+    'cases': '',
+    'strictPaymentGate': ''
 })
 
 watchEffect(() => {
@@ -76,8 +84,9 @@ watch(
         if (therapyData.value.paymentType == PaymentTypeEnum.free) {
             therapyData.value.public = true
             therapyData.value.amount = ''
-            therapyData.value.currency = 'GHȻ'
+            therapyData.value.currency = defaultCurrency
             therapyData.value.per = ''
+            therapyData.value.strictPaymentGate = false
         }
     }
 )
@@ -191,7 +200,7 @@ async function createTherapy() {
         if (err.response?.status == 422 && err.response?.data?.errors) {
             setErrorData(therapyErrors, err.response.data.errors, [
                 'name', 'backgroundStory', 'anonymous', 'allowInPerson', 'public', 'sessionType',
-                'paymentType', 'per', 'amount', 'currency', 'maxSessions'
+                'paymentType', 'per', 'amount', 'currency', 'maxSessions', 'strictPaymentGate'
             ])
             return
         }
@@ -216,9 +225,10 @@ function clearData() {
     therapyData.value.allowInPerson = false
     therapyData.value.anonymous = false
     therapyData.value.amount = ''
-    therapyData.value.currency = 'GHȻ'
+    therapyData.value.currency = defaultCurrency
     therapyData.value.per = ''
     therapyData.value.cases = []
+    therapyData.value.strictPaymentGate = false
 }
 
 function closeModal() {
@@ -402,11 +412,12 @@ function closeModal() {
 
                                     <InputLabel class="mt-4" for="amount" value="Amount" />
                                     <div class="flex justify-start items-center">
-                                        <TextInput
+                                        <Select
                                             id="currency"
-                                            type="text"
-                                            class="mt-1 block w-[30%] max-w-[100px] text-end"
+                                            class="mt-1 block w-[30%] max-w-[100px]"
                                             v-model="therapyData.currency"
+                                            :options="currencyOptions"
+                                            :default-option="'currency'"
                                             required
                                         />
                                         <TextInput
@@ -434,6 +445,18 @@ function closeModal() {
                                 <div class="mt-2 text-xs text-gray-500">Payment will automatically be PER THERAPY when session type is ONCE.</div>
                                 <div class="mt-2 text-xs text-gray-500" v-if="computedShowInPersonAmount">We recommend that in-person therapies amount should be at least twice that of your online session amount.</div>
                                 <InputError class="mt-2" :message="therapyErrors.amount" />
+                            </div>
+
+                            <!-- SCRUM-221/TT-7.5a: initial value only -- once a counsellor is
+                                 assigned, only they (or an admin) can change this (EnsureCanSetStrictPaymentGateAction). -->
+                            <div class="mt-4 mx-auto max-w-[400px]" v-if="therapyData.paymentType == PaymentTypeEnum.paid">
+                                <label class="flex items-center">
+                                    <Checkbox name="strictPaymentGate" v-model:checked="therapyData.strictPaymentGate" />
+                                    <span class="ms-2 text-sm text-gray-600">Require payment before you can access this therapy.</span>
+                                </label>
+
+                                <div class="mt-2 text-xs text-gray-500">Once a counsellor is assigned, only they can change this setting.</div>
+                                <InputError class="mt-2" :message="therapyErrors.strictPaymentGate" />
                             </div>
                         </div>
                     </div>

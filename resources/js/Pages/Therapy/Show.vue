@@ -256,7 +256,7 @@ function updatePage(res, items, type = 'individual') {
                                     :key="therapy.id"
                                     :therapy="therapy"
                                     :show-go-to="true"
-                                    class="w-[250px] shrink-0"
+                                    class="w-[320px] shrink-0"
                                 />
 
                                 <div
@@ -282,7 +282,7 @@ function updatePage(res, items, type = 'individual') {
                                     :key="therapy.id"
                                     :groupTherapy="therapy"
                                     :show-go-to="true"
-                                    class="w-[250px] shrink-0"
+                                    class="w-[320px] shrink-0"
                                 />
 
                                 <div
@@ -313,7 +313,7 @@ function updatePage(res, items, type = 'individual') {
                                     v-for="therapy in wardTherapies.individual.data"
                                     :key="therapy.id"
                                     :therapy="therapy"
-                                    class="w-[250px] shrink-0"
+                                    class="w-[320px] shrink-0"
                                 />
 
                                 <div
@@ -338,7 +338,7 @@ function updatePage(res, items, type = 'individual') {
                                     v-for="therapy in wardTherapies.group.data"
                                     :key="therapy.id"
                                     :groupTherapy="therapy"
-                                    class="w-[250px] shrink-0"
+                                    class="w-[320px] shrink-0"
                                 />
 
                                 <div
@@ -369,7 +369,7 @@ function updatePage(res, items, type = 'individual') {
                                     v-for="therapy in therapies.individual.data"
                                     :key="therapy.id"
                                     :therapy="therapy"
-                                    class="w-[250px] shrink-0"
+                                    class="w-[320px] shrink-0"
                                 />
 
                                 <div
@@ -394,7 +394,7 @@ function updatePage(res, items, type = 'individual') {
                                     v-for="therapy in therapies.group.data"
                                     :key="therapy.id"
                                     :groupTherapy="therapy"
-                                    class="w-[250px] shrink-0"
+                                    class="w-[320px] shrink-0"
                                 />
 
                                 <div

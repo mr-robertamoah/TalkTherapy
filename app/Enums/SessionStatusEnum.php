@@ -4,7 +4,8 @@ namespace App\Enums;
 
 use App\Traits\EnumTrait;
 
-enum SessionStatusEnum : string {
+enum SessionStatusEnum: string
+{
     use EnumTrait;
 
     case pending = 'PENDING'; // scheduled
@@ -14,4 +15,12 @@ enum SessionStatusEnum : string {
     case abandoned = 'ABANDONED'; // held but ended before end time
     case held = 'HELD';
     case held_confirmation = 'HELD_CONFIRMATION';
+
+    // SCRUM-369: a session in one of these is over, even inside its time window. Not
+    // HELD_CONFIRMATION: the other party still has to confirm it (see
+    // Session::scopeWhereIsNotUserWhoConfirmedHeld).
+    public static function finished(): array
+    {
+        return [self::failed->value, self::abandoned->value, self::held->value];
+    }
 }

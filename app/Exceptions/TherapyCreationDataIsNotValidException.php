@@ -2,9 +2,7 @@
 
 namespace App\Exceptions;
 
-use Exception;
-
-class TherapyCreationDataIsNotValidException extends Exception
+class TherapyCreationDataIsNotValidException extends AppException
 {
     //
 }

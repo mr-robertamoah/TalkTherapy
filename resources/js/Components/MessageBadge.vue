@@ -66,6 +66,12 @@
                 </div>
             </div>
             <div class="flex justify-end items-center space-x-2" v-if="!reply">
+                <!-- SCRUM-361: only the sender and the recipient ever see a confidential message. -->
+                <div
+                    v-if="msg.confidential"
+                    class="text-xs text-indigo-700 lowercase"
+                    title="Only its sender and its recipient can read a confidential message."
+                >confidential .</div>
                 <div 
                     class="text-gray-600 text-xs"
                     v-if="msg.createdAt && msg.createdAt !== msg.updatedAt">edited .</div>
@@ -78,10 +84,36 @@
                         if (status == 'failed' && msg.id) updateMessage()
                     }"
                 >{{ ['sending', 'retrying'].includes(status) ? `${status}...` : status }}</div>
-                <div 
+                <div
                     class="text-xs text-end my-1 lowercase text-gray-600"
                     v-if="msg.updatedAt"
                 >{{ computedUpdatedAt }}</div>
+            </div>
+
+            <div v-if="isCounsellor && msg.id && !reply" class="mt-1">
+                <div
+                    class="text-xs text-teal-700 underline cursor-pointer w-fit"
+                    :class="[computedLeft ? 'mr-auto' : 'ml-auto']"
+                    @click="toggleNote"
+                >{{ noteExpanded ? 'hide note' : (note.id ? 'view note' : 'add note') }}</div>
+
+                <div v-if="noteExpanded" class="mt-1 bg-yellow-50 border border-yellow-200 rounded p-2 text-xs">
+                    <template v-if="editingNote || !note.id">
+                        <TextBox rows="2" class="w-full text-xs" v-model="noteContent" placeholder="private note..." />
+                        <div class="flex justify-end space-x-2 mt-1">
+                            <button v-if="editingNote" type="button" class="text-gray-500" @click="cancelEditNote">cancel</button>
+                            <PrimaryButton class="text-xs" :disabled="noteLoading || !noteContent.trim()" @click="saveNote">save</PrimaryButton>
+                        </div>
+                    </template>
+                    <template v-else>
+                        <div class="whitespace-pre-wrap text-gray-800">{{ note.content }}</div>
+                        <div class="flex justify-end space-x-2 mt-1">
+                            <button type="button" class="text-gray-500 underline" @click="startEditNote">edit</button>
+                            <button type="button" class="text-red-600 underline" @click="deleteNote">delete</button>
+                        </div>
+                    </template>
+                    <InputError class="mt-1" :message="noteError" />
+                </div>
             </div>
         </div>
     </div>
@@ -269,6 +301,9 @@ import DangerButton from "./DangerButton.vue";
 import { formatDistance } from 'date-fns';
 import FilePreview from "./FilePreview.vue";
 import FileModal from "./FileModal.vue";
+import TextBox from "./TextBox.vue";
+import InputError from "./InputError.vue";
+import { createAnnouncementQueue } from "@/Composables/announcements";
 
 
 const { goToLogin } = useAuth()
@@ -276,6 +311,15 @@ const { alertData, setFailedAlertData, clearAlertData } = useAlert()
 const { modalData, showModal, closeModal } = useModal()
 
 const emits = defineEmits(['onSuccess', 'onDelete', 'onUpdate', 'selectAsReply', 'selectForUpdate', 'unsetTopic'])
+
+function handleRateLimitError(err) {
+    if (err.response?.status !== 429) return false
+
+    setFailedAlertData({
+        message: 'You have made too many requests within a short period. Try again shortly.',
+    })
+    return true
+}
 
 const props = defineProps({
     msg: {
@@ -308,6 +352,9 @@ const props = defineProps({
     show: {
         default: true,
     },
+    isCounsellor: {
+        default: false,
+    },
 })
 
 const userId = usePage().props.auth.user?.id
@@ -321,6 +368,22 @@ const item = ref(null)
 const id = ref(null)
 const replies = ref({ data: [], page: 1 })
 
+// SCRUM-203/TT-2.3b: a counsellor's own private note on this specific message -- never fetched
+// on mount, since MessageService already eager-loads it into msg.note for a counsellor viewer;
+// this only ever falls back to axios calls for create/update/delete.
+const note = ref({ id: null, content: '' })
+const noteExpanded = ref(false)
+const editingNote = ref(false)
+const noteContent = ref('')
+const noteLoading = ref(false)
+const noteError = ref('')
+
+watchEffect(() => {
+    if (props.msg?.note) {
+        note.value = { id: props.msg.note.id, content: props.msg.note.content }
+    }
+})
+
 onBeforeUnmount(() => {
     Echo.leave(`messages.${id.value}`)
 })
@@ -332,13 +395,14 @@ watchEffect(() => {
 
     if (listening.value) return
     listening.value = true
+    const enqueueUpdate = createAnnouncementQueue()
 
     Echo
         .private(`messages.${props.msg?.id}`)
         .listen('.message.updated', (data) => {
             if (data.message?.fromUserId == userId)
                 return
-            emits('onUpdate', data.message)
+            enqueueUpdate(data.message, (message) => emits('onUpdate', message))
         })
         .listen('.message.deleted', (data) => {
             console.log(data, 'message.deleted');
@@ -468,6 +532,9 @@ async function updateMessage() {
             console.log(err)
             goToLogin(err)
             status.value = 'failed'
+
+            if (handleRateLimitError(err)) return
+
             setFailedAlertData({
                 message: "Message was not sent. Clicked 'failed' to retry."
             })
@@ -494,6 +561,9 @@ async function deleteMessage() {
             console.log(err)
             goToLogin(err)
             status.value = 'sent'
+
+            if (handleRateLimitError(err)) return
+
             setFailedAlertData({
                 message: "Message was not deleted. Try again in a short while."
             })
@@ -520,6 +590,9 @@ async function clickedDeleteForMe() {
             console.log(err)
             goToLogin(err)
             status.value = 'sent'
+
+            if (handleRateLimitError(err)) return
+
             setFailedAlertData({
                 message: "Message was not deleted for you. Try again in a short while."
             })
@@ -532,8 +605,12 @@ async function clickedDeleteForMe() {
 async function scrollToItem() {
     await nextTick()
 
+    // block/inline: 'nearest' keeps the scroll adjustment confined to the chat's own
+    // scrollable container -- a bare scrollIntoView() defaults to block: 'start', which
+    // scrolls every scrollable ancestor (including the page itself) to align this message
+    // with the top of the viewport.
     if (item.value)
-        item.value.scrollIntoView()
+        item.value.scrollIntoView({ block: 'nearest', inline: 'nearest' })
 }
 
 async function createMessage() {
@@ -568,7 +645,9 @@ async function createMessage() {
             console.log(err)
             goToLogin(err)
             status.value = 'failed'
-            
+
+            if (handleRateLimitError(err)) return
+
             if (err.response?.data?.message) {
                 setFailedAlertData({
                     message: err.response.data.message,
@@ -618,6 +697,69 @@ async function getMessageReplies() {
         })
         .finally(() => {
             getting.value = false
+        })
+}
+
+function toggleNote() {
+    noteExpanded.value = !noteExpanded.value
+
+    if (noteExpanded.value && !note.value.id) {
+        editingNote.value = false
+        noteContent.value = ''
+    }
+}
+
+function startEditNote() {
+    editingNote.value = true
+    noteContent.value = note.value.content
+}
+
+function cancelEditNote() {
+    editingNote.value = false
+    noteContent.value = ''
+}
+
+function saveNote() {
+    if (!noteContent.value.trim() || noteLoading.value) return
+
+    noteLoading.value = true
+    noteError.value = ''
+
+    const request = note.value.id
+        ? axios.patch(route('api.message.notes.update', { noteId: note.value.id }), { content: noteContent.value })
+        : axios.post(route('api.message.notes.store', { messageId: props.msg.id }), { content: noteContent.value })
+
+    request
+        .then((res) => {
+            note.value = { id: res.data.note.id, content: res.data.note.content }
+            editingNote.value = false
+            noteContent.value = ''
+        })
+        .catch((err) => {
+            noteError.value = err.response?.data?.message || 'Could not save your note.'
+        })
+        .finally(() => {
+            noteLoading.value = false
+        })
+}
+
+function deleteNote() {
+    if (noteLoading.value || !note.value.id) return
+
+    noteLoading.value = true
+    noteError.value = ''
+
+    axios
+        .delete(route('api.message.notes.destroy', { noteId: note.value.id }))
+        .then(() => {
+            note.value = { id: null, content: '' }
+            noteExpanded.value = false
+        })
+        .catch((err) => {
+            noteError.value = err.response?.data?.message || 'Could not delete your note.'
+        })
+        .finally(() => {
+            noteLoading.value = false
         })
 }
 </script>

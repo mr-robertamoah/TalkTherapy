@@ -46,6 +46,61 @@ return [
             'throw' => false,
         ],
 
+        // TT-4.11a/SCRUM-302: identity-adjacent documents (age/identity verification) must never
+        // be reachable via a public URL, unlike every other disk above -- deliberately has NO
+        // matching entry in the 'links' array below, so `php artisan storage:link` never symlinks
+        // it into public/. The only access path is the authorized, authenticated retrieval route
+        // (EnsureUserCanViewIdentityDocumentAction), never File::url/getUrlFor().
+        'identity_documents' => [
+            'driver' => 'local',
+            'root' => storage_path('app/private/identity-documents'),
+            'throw' => true,
+        ],
+
+        // SCRUM-300/SCRUM-191: counsellor verification documents (national ID scans, professional
+        // licenses) -- private for the same reason as identity_documents above, and likewise has
+        // NO 'links' entry. They used to live on the public disk under licenses/, symlinked into
+        // public/ and reachable by anyone with the URL. Retrieved only via licenses.documents.show
+        // (EnsureUserCanViewLicenseDocumentAction). See File::PRIVATE_DISKS.
+        'license_documents' => [
+            'driver' => 'local',
+            'root' => storage_path('app/private/license-documents'),
+            'throw' => true,
+            // Group-shared rather than Flysystem's owner-only 0700/0600 default: whichever user
+            // first creates a directory (a root migration, a deploy user) must not lock the web
+            // server user out of it. Still never world-readable.
+            'permissions' => [
+                'file' => ['public' => 0660, 'private' => 0660],
+                'dir' => ['public' => 0770, 'private' => 0770],
+            ],
+        ],
+
+        // SCRUM-336: therapy/group chat attachments -- private for the same reason as the two disks
+        // above, with no 'links' entry (messages/ used to be symlinked into public/, reachable by
+        // anyone with a URL, forever, regardless of who could still see the message). Retrieved
+        // only via messages.attachments.show (EnsureUserCanViewMessageAttachmentAction).
+        'message_attachments' => [
+            'driver' => 'local',
+            'root' => storage_path('app/private/message-attachments'),
+            'throw' => true,
+            'permissions' => [
+                'file' => ['public' => 0660, 'private' => 0660],
+                'dir' => ['public' => 0770, 'private' => 0770],
+            ],
+        ],
+
+        // SCRUM-337: report evidence (often screenshots of private conversations). Served only by
+        // reports.evidence.show, to admins and the reporter.
+        'report_evidence' => [
+            'driver' => 'local',
+            'root' => storage_path('app/private/report-evidence'),
+            'throw' => true,
+            'permissions' => [
+                'file' => ['public' => 0660, 'private' => 0660],
+                'dir' => ['public' => 0770, 'private' => 0770],
+            ],
+        ],
+
         's3' => [
             'driver' => 's3',
             'key' => env('AWS_ACCESS_KEY_ID'),
@@ -74,9 +129,15 @@ return [
     'links' => [
         public_path('storage/avatars') => storage_path('app/public/avatars'),
         public_path('storage/covers') => storage_path('app/public/covers'),
-        public_path('storage/licenses') => storage_path('app/public/licenses'),
-        public_path('storage/messages') => storage_path('app/public/messages'),
         public_path('storage/others') => storage_path('app/public/others'),
+        // SCRUM-182/TT-10.5: organization logos (UpdateOrganizationAction's 'logos' upload path)
+        // were 404ing in the browser -- uploads succeeded and saved fine (Pest's $this->patch()
+        // test helper doesn't exercise the public URL at all), but nothing symlinked this new
+        // top-level folder into public/storage, so every logo URL pointed nowhere. This project
+        // links each upload subdirectory individually rather than the Laravel-default single
+        // public/storage -> storage/app/public symlink (see docker/php/entrypoint.sh's
+        // `storage:link --force` on every boot) -- any brand-new upload path needs an entry here.
+        public_path('storage/logos') => storage_path('app/public/logos'),
     ],
 
 ];

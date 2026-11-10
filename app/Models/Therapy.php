@@ -13,21 +13,24 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Therapy extends Model
 {
-    use HasFactory,
-    Starreable,
-    Alertable,
-    Likeable,
-    Commentable,
-    SoftDeletes,
-    TherapyTrait;
+    use Alertable,
+        Commentable,
+        HasFactory,
+        Likeable,
+        SoftDeletes,
+        Starreable,
+        TherapyTrait;
 
     protected $fillable = [
         'session_type', 'payment_type', 'background_story', 'allow_in_person', 'name',
-        'public', 'anonymous', 'payment_data', 'status', 'max_sessions', 'counsellor_id'
+        'public', 'anonymous', 'payment_data', 'status', 'max_sessions', 'counsellor_id',
+        'video_consent_mode', 'client_was_minor_at_creation',
     ];
 
     protected $casts = [
-        'payment_data' => 'array'
+        'payment_data' => 'array',
+        'client_was_minor_at_creation' => 'boolean',
+        'is_help_chat' => 'boolean',
     ];
 
     public function getIsTherapyAttribute()
@@ -47,21 +50,85 @@ class Therapy extends Model
 
     public function counsellor()
     {
-        return $this->belongsTo(Counsellor::class);
+        // withTrashed: a therapy's counsellor may have since deleted their account (which
+        // soft-deletes the Counsellor too) -- isParticipant()/notifications/etc. below all
+        // assume this relation resolves rather than crashing on a null counsellor.
+        return $this->belongsTo(Counsellor::class)->withTrashed();
+    }
+
+    // TT-3.1e-a/SCRUM-280: PER_THERAPY-scoped video consent grants for this therapy -- a
+    // PER_SESSION grant lives on the Session's own morphMany instead (see Session model).
+    public function videoConsents()
+    {
+        return $this->morphMany(VideoConsent::class, 'consentable');
     }
 
     public function isParticipant(User $user)
     {
-        if ($this->addedby->is($user)) return true;
+        // Null-safe: a deleted client used to 500 here -- now on every alert request (SCRUM-352).
+        if ($this->addedby?->is($user)) {
+            return true;
+        }
 
-        if (!$this->counsellor?->user) return false;
+        if (! $this->counsellor?->user) {
+            return false;
+        }
 
         return $this->counsellor->user->is($user);
     }
 
+    // SCRUM-368: an individual therapy's payment and refund status is the client's own payment --
+    // shown to the client, the therapy's counsellor and administrators, never to someone browsing
+    // a public therapy (GroupTherapy::showsPaymentStatusTo is the group counterpart).
+    // Remembered per viewer on this instance: a session list shares one parent therapy.
+    private array $showsPaymentStatusCache = [];
+
+    public function showsPaymentStatusTo(?User $user): bool
+    {
+        if (! $user) {
+            return false;
+        }
+
+        return $this->showsPaymentStatusCache[$user->id] ??= $this->isParticipant($user) || $user->isAdmin();
+    }
+
     public function isNotParticipant(User $user)
     {
-        return !$this->isParticipant($user);
+        return ! $this->isParticipant($user);
+    }
+
+    // SCRUM-379: the one masking rule for a 1:1 therapy (TherapyTrait::displayNameOf() and
+    // addedByUserIsMaskedFor() use it). Only the client can be anonymous; the counsellor never is.
+    // A Therapy is only ever created by its client (CreateTherapyAction), so `addedby` is a User.
+    public function isMaskedToOthers(User $subject): bool
+    {
+        return (bool) $this->anonymous && $this->addedby_type === User::class && $this->isUser($subject);
+    }
+
+    // SCRUM-332/379: an anonymous 1:1 client keeps their camera -- the counsellor is the only other
+    // person in the call. GroupTherapy::allowsCameraFor() is the rule that withholds it.
+    // SCRUM-33: a quick help chat is audio only, for everyone in it.
+    public function allowsCameraFor(User $user): bool
+    {
+        return ! $this->is_help_chat;
+    }
+
+    public function helpRequest()
+    {
+        return $this->hasOne(HelpRequest::class);
+    }
+
+    // SCRUM-33: the private therapy a quick help chat runs in (CreateHelpChatAction).
+    public function isHelpChat(): bool
+    {
+        return (bool) $this->is_help_chat;
+    }
+
+    // SCRUM-33: every list and count of therapies leaves quick help chats out -- they are seen only
+    // through the help chat itself.
+    public function scopeWithoutHelpChats($query)
+    {
+        return $query->where($this->qualifyColumn('is_help_chat'), false);
     }
 
     public function scopeWhereCounsellor($query, Counsellor $counsellor)
@@ -76,6 +143,22 @@ class Therapy extends Model
         return $query->where(function ($query) use ($counsellor) {
             $query->whereNot('counsellor_id', $counsellor->id);
         });
+    }
+
+    // SCRUM-392 (from TherapyService): public therapies $user isn't part of -- not their own, not one
+    // they counsel. NOT an access check (it hides a viewer's own therapy from them); for the public
+    // lists only. Grouped as a whole, so a caller's orWhere can't reach past it to private rows.
+    public function scopePublicForOutsider($query, ?User $user)
+    {
+        return $query->where(fn ($query) => $query
+            ->wherePublic()
+            ->withoutHelpChats()
+            ->when($user, fn ($query) => $query->whereNot(fn ($query) => $query
+                ->where('addedby_type', User::class)
+                ->where('addedby_id', $user->id)))
+            ->when($user?->counsellor, fn ($query) => $query->where(fn ($query) => $query
+                ->whereNull('counsellor_id')
+                ->orWhere('counsellor_id', '!=', $user->counsellor->id))));
     }
 
     public function scopeWhereHasNoCounsellor($query)
@@ -122,28 +205,42 @@ class Therapy extends Model
 
     public function doesNotHaveAssistance()
     {
-        return !$this->hasAssistance();
+        return ! $this->hasAssistance();
     }
 
     public function isUser(User $user)
     {
-        return $this->addedby->is($user);
+        // Null-safe: a deleted client used to make callers 500 (security review, SCRUM-350).
+        return (bool) $this->addedby?->is($user);
     }
 
     public function getUsers()
     {
         $users = collect();
-        if ($this->addedby_type == User::class)
+        if ($this->addedby_type == User::class) {
             $users->push($this->addedby);
+        }
 
-        if ($this->counsellor)
+        if ($this->counsellor) {
             $users->push($this->counsellor->user);
+        }
 
+        // TT-4.10b/SCRUM-291: was `! $this->addedby->isAdult()` -- prefers the stable
+        // client_was_minor_at_creation snapshot (TT-4.10a) over a live re-check, closing the
+        // self-editable-dob bypass SCRUM-287 found.
+        //
+        // Also fixes a pre-existing bug surfaced while writing this ticket's own regression
+        // tests: Collection::merge() returns a NEW collection rather than mutating in place, so
+        // the bare `$users->merge(...)` below silently discarded its result -- a minor client's
+        // guardians were never actually being added to this list at all, regardless of the
+        // isAdult() check this replaces. GroupTherapy's own identical method already reassigns
+        // correctly (`$users = $users->merge(...)`); this brings Therapy in line with it.
         if (
-            $this->addedby_type == User::class &&
-            !$this->addedby->isAdult() && 
+            $this->clientIsMinor() &&
             $this->addedby->guardians()->count()
-        ) $users->merge(User::query()->whereWard($this->addedby)->get());
+        ) {
+            $users = $users->merge(User::query()->whereWard($this->addedby)->get());
+        }
 
         return $users;
     }
@@ -173,21 +270,26 @@ class Therapy extends Model
     public function getOtherUsers(User $user)
     {
         $users = collect();
-        if ($this->addedby_type == User::class && $this->addedby_id !== $user->id)
+        if ($this->addedby_type == User::class && $this->addedby_id !== $user->id) {
             $users->push($this->addedby);
+        }
 
-        if (!$this->counsellor->user->is($user))
+        if (! $this->counsellor->user->is($user)) {
             $users->push($this->counsellor->user);
+        }
 
-        if (!$this->addedby->isAdult() && $this->addedby->guardians()->count())
-            $users->merge(User::query()->whereNot('id', $user->id)
+        // TT-4.10b/SCRUM-291: was `! $this->addedby->isAdult()` -- see getUsers()'s identical
+        // comment above (including the pre-existing missing-reassignment bug fix).
+        if ($this->clientIsMinor() && $this->addedby->guardians()->count()) {
+            $users = $users->merge(User::query()->whereNot('id', $user->id)
                 ->whereWard($this->addedby)->get());
+        }
 
         return $users;
     }
 
     public function isCounsellor(Counsellor $counsellor)
     {
-        return $this->counsellor->is($counsellor);
+        return (bool) $this->counsellor?->is($counsellor);
     }
 }

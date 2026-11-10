@@ -17,21 +17,25 @@ use App\Models\User;
 
 class TherapyCaseService extends Service
 {
-    public function getCases(String $name = '') {
+    public function getCases(string $name = '')
+    {
         $query = TherapyCase::query();
 
-        if ($name) $query->where('name', 'LIKE', "%{$name}%");
+        if ($name) {
+            $query->whereContains('name', (string) $name);
+        }
 
         return TherapyCaseResource::collection($query->paginate(
             PaginationEnum::preferencesPagination->value
         ));
     }
 
-    public function createCase(CreateCaseDTO $createCaseDTO) {
+    public function createCase(CreateCaseDTO $createCaseDTO)
+    {
         EnsureAddedbyIsValidAction::new()->execute($createCaseDTO);
 
         EnsureUserCanCreateCaseAction::new()->execute($createCaseDTO->user);
-        
+
         EnsureCaseNameIsUniqueAction::new()->execute($createCaseDTO->name);
 
         $therapyCase = CreateCaseAction::new()->execute($createCaseDTO);
@@ -44,13 +48,13 @@ class TherapyCaseService extends Service
                         $createCaseDTO->addedby::class == User::class
                             ? $createCaseDTO->addedby
                             : $createCaseDTO->addedby->user
-                    ) 
+                    )
                     : $createCaseDTO->user,
                 'starreable' => $therapyCase,
                 'type' => StarTypeEnum::contribution->value,
             ])
         );
-        
+
         return $therapyCase;
     }
 }

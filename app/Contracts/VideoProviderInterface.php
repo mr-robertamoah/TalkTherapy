@@ -1,0 +1,98 @@
+<?php
+
+namespace App\Contracts;
+
+use App\Models\User;
+use App\Models\VideoSession;
+
+// TT-3.1a/SCRUM-274: the one abstraction every caller in this app depends on -- never a concrete
+// DailyVideoProvider/ChimeVideoProvider directly (resolve this interface from the container,
+// bound in App\Providers\VideoServiceProvider per config('video.provider')). Deliberately thin:
+// each provider's own actual join-credential SHAPE differs completely (Daily: a room URL + a
+// bearer token; Chime: a full Meeting response object + an Attendee response object), so this
+// contract does not attempt to normalize that shape -- createParticipantCredentials() returns
+// whatever provider-specific, JSON-serializable payload the frontend passes straight through to
+// whichever SDK is actually active. What IS normalized is the lifecycle contract every provider
+// must satisfy: create a room, mint one participant's credentials against it, end it.
+interface VideoProviderInterface
+{
+    // Creates a room with the provider for this VideoSession. Returns the raw, provider-specific
+    // data the caller should persist on VideoSession itself (provider_room_id / provider_meta) --
+    // this method does not persist anything itself, callers own that (keeps this class a pure
+    // API wrapper, testable without touching the database).
+    //
+    // Returns ['room_id' => string, 'meta' => array] -- `meta` holds whatever raw provider
+    // response fields are needed later to mint participant credentials (e.g. Chime's Meeting
+    // object; empty for Daily, which only needs the room name/URL already captured in room_id).
+    public function createRoom(VideoSession $videoSession): array;
+
+    // Mints this specific user's own join credentials for an already-created room. $displayName
+    // is the name OTHER participants in the room will see labeled next to this user -- resolved
+    // by the caller (JoinVideoSessionAction), never derived from $user->name here: an anonymous
+    // individual Therapy's client must never have their real name handed to a third-party
+    // provider (security-review finding, 2026-09-11) -- this interface deliberately stays
+    // ignorant of Therapy's own anonymity rules, receiving only the name it should actually use.
+    // SCRUM-380: no participant is ever a provider-side owner/host (SCRUM-331 ended it for groups,
+    // the user decided the same for 1:1). A Daily owner's permissions aren't limited by the token,
+    // and every moderation action (end, remove, grant/revoke) goes through our server instead.
+    //
+    // TT-3.2f-d/SCRUM-321: $receiveOnly mints a participant who can watch/listen but never
+    // publish their own audio/video -- SERVER-enforced by the provider itself (Daily's
+    // `permissions.canSend`, Chime's attendee `Capabilities`), never a client-side-only
+    // restriction the browser could bypass. Resolved by the caller (JoinVideoSessionAction's own
+    // isReceiveOnly()), same reasoning as $displayName above -- this interface stays
+    // ignorant of GroupTherapy's own authorization rules, receiving only the capability it should
+    // actually mint.
+    //
+    // SCRUM-332: $canSendVideo = false mints a participant who may publish AUDIO but never video
+    // (server-enforced the same way as $receiveOnly) -- the creator of an anonymous GroupTherapy.
+    // Only meaningful when $receiveOnly is false; $receiveOnly always wins.
+    //
+    // Returns a provider-specific, JSON-serializable array handed straight through to the
+    // frontend's provider SDK -- never inspected or reshaped by callers of this interface.
+    public function createParticipantCredentials(VideoSession $videoSession, User $user, string $displayName, bool $receiveOnly = false, bool $canSendVideo = true): array;
+
+    // Ends/tears down the room with the provider. Best-effort: providers also expire rooms
+    // naturally (Daily via `exp`, Chime meetings end when empty), so a failure here should never
+    // block the caller from marking VideoSession.ended_at locally.
+    public function endRoom(VideoSession $videoSession): void;
+
+    // TT-3.2b/SCRUM-309: ejects one specific participant from an otherwise-still-open room,
+    // without ending it for anyone else -- distinct from endRoom(), which tears the whole room
+    // down. Deliberately identifies $user by OUR OWN known id, never a provider-generated
+    // participant/attendee id the caller would have to persist -- Daily's own eject endpoint
+    // accepts `user_ids` (matching the `user_id` this same interface's createParticipantCredentials()
+    // already sends it); Chime has no equivalent "eject by external id" call, so
+    // ChimeVideoProvider looks the live attendee up by its own stored ExternalUserId (also
+    // $user->id) via ListAttendees before calling DeleteAttendee -- either way, no new
+    // provider-specific id needs to be persisted on VideoSessionParticipant.
+    //
+    // A required interface method, not a separate optional trait (architect decision,
+    // 2026-09-14): both current providers support this, and there is no third,
+    // ejection-incapable provider on this app's roadmap to justify pre-splitting for.
+    //
+    // Best-effort, matching endRoom()'s own contract: a provider-side failure here must never
+    // block the caller from marking the participant left locally.
+    public function removeParticipant(VideoSession $videoSession, User $user): void;
+
+    // TT-3.2f-e/SCRUM-322: changes an ALREADY-CONNECTED participant's own publish capability --
+    // the mechanism behind granting/revoking speaking permission for a receive-only GroupTherapy
+    // member (TT-3.2f-f). Confirmed via the SCRUM-320 research spike that BOTH current providers
+    // support this live, with no reconnect/token-reissue required -- unlike removeParticipant()
+    // above, this contract does NOT need to signal "applied live vs. requires reissue" (the
+    // architect's own design left room for either outcome; the spike found the simpler one).
+    //
+    // $canSendAudio/$canSendVideo are independent -- an anonymous member granted speaking
+    // permission gets audio-only (canSendAudio: true, canSendVideo: false; TT-3.2f-g's own
+    // anonymity rule), a non-anonymous member gets both true. Revoking sets both false, identical
+    // in shape to the receive-only credentials createParticipantCredentials() already mints at
+    // join time -- deliberately not a separate "revoke" method, since it's the same operation.
+    //
+    // Deliberately identified by OUR OWN known $user, never a provider-generated id the caller
+    // would have to persist -- same reasoning as removeParticipant()'s own identical comment.
+    // Best-effort is NOT assumed here the way it is for endRoom()/removeParticipant() -- callers
+    // must make their own explicit decision about failure handling (see TT-3.2f-f's own scope),
+    // since a silent failure on a GRANT is a materially different risk than a silent failure on a
+    // teardown/removal.
+    public function updateParticipantCapabilities(VideoSession $videoSession, User $user, bool $canSendAudio, bool $canSendVideo): void;
+}

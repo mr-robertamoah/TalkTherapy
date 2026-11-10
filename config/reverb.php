@@ -1,5 +1,7 @@
 <?php
 
+use App\Support\AppHost;
+
 return [
 
     /*
@@ -71,7 +73,8 @@ return [
                     'scheme' => env('REVERB_SCHEME', 'https'),
                     'useTLS' => env('REVERB_SCHEME', 'https') === 'https',
                 ],
-                'allowed_origins' => ['*'],
+                // SCRUM-403: only our own host(s) once deployed; anything locally (App\Support\AppHost::reverbOrigins).
+                'allowed_origins' => AppHost::reverbOrigins(env('REVERB_ALLOWED_ORIGINS'), env('APP_ENV', 'production'), env('APP_URL'), env('TRUSTED_HOSTS')),
                 'ping_interval' => env('REVERB_APP_PING_INTERVAL', 60),
                 'max_message_size' => env('REVERB_APP_MAX_MESSAGE_SIZE', 10_000),
             ],

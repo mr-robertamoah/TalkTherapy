@@ -14,13 +14,10 @@ class UpdateDiscussionAction extends Action
     {
         $this->setData($createDiscussionDTO);
 
+        // SCRUM-375: a discussion never moves to another therapy -- its participants and its sessions
+        // belong to that therapy. The update always passed the discussion's own `for`, and an
+        // associate() here was never saved anyway, so the dead re-association was removed.
         $createDiscussionDTO->discussion->update($this->data);
-
-        if ($createDiscussionDTO->for) {
-            
-            $createDiscussionDTO->discussion->for()->disassociate();
-            $createDiscussionDTO->discussion->for()->associate($createDiscussionDTO->for);
-        }
 
         return $createDiscussionDTO->discussion->refresh();
     }
@@ -31,34 +28,48 @@ class UpdateDiscussionAction extends Action
         $this->setValueOnData('description', $createDiscussionDTO);
         $this->setValueOnData('start_time', $createDiscussionDTO, 'startTime');
         $this->setValueOnData('end_time', $createDiscussionDTO, 'endTime');
+        $this->setValueOnData('max_counsellors', $createDiscussionDTO, 'maxCounsellors');
 
         if (
-            $createDiscussionDTO->deletedSession && 
-            $createDiscussionDTO->discussion->session->id == $createDiscussionDTO->deletedSession->id
-        )
+            $createDiscussionDTO->deletedSession &&
+            $createDiscussionDTO->discussion->session?->id == $createDiscussionDTO->deletedSession->id
+        ) {
             $this->data['session_id'] = null;
+        }
 
         if (
-            $createDiscussionDTO->session && 
-            $createDiscussionDTO->discussion->session->id !== $createDiscussionDTO->session->id
-        )
+            $createDiscussionDTO->session &&
+            // Null-safe: adding a session to a discussion that had none used to 500 (SCRUM-352).
+            $createDiscussionDTO->discussion->session?->id !== $createDiscussionDTO->session->id
+        ) {
             $this->data['session_id'] = $createDiscussionDTO->session->id;
-        
+        }
+
     }
-    
+
     private function setValueOnData(
-        String $dataKey,
+        string $dataKey,
         CreateDiscussionDTO $createDiscussionDTO,
-        String|null $objectKey = null
+        ?string $objectKey = null
     ) {
         $objectKey = $objectKey ?: $dataKey;
 
-        if (
-            !is_null($createDiscussionDTO->$objectKey) &&
-            $createDiscussionDTO->$objectKey !== $createDiscussionDTO->discussion->$dataKey
-        ) {
-            if (in_array($dataKey, ['start_time', 'end_time'])) return $this->data[$dataKey] = (new Carbon($createDiscussionDTO->$objectKey))->utc();
-            
+        if (is_null($createDiscussionDTO->$objectKey)) {
+            return;
+        }
+
+        // SCRUM-372: times are Carbon now (Discussion casts them), so they're compared as instants.
+        if (in_array($dataKey, ['start_time', 'end_time'])) {
+            $time = (new Carbon($createDiscussionDTO->$objectKey))->utc();
+
+            if (! $createDiscussionDTO->discussion->$dataKey?->equalTo($time)) {
+                $this->data[$dataKey] = $time;
+            }
+
+            return;
+        }
+
+        if ($createDiscussionDTO->$objectKey !== $createDiscussionDTO->discussion->$dataKey) {
             $this->data[$dataKey] = $createDiscussionDTO->$objectKey;
         }
     }

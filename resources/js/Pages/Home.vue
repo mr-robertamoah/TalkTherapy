@@ -1,10 +1,14 @@
 <script setup>
 import MiniTherapyComponent from '@/Components/MiniTherapyComponent.vue';
+import MiniGroupTherapyComponent from '@/Components/MiniGroupTherapyComponent.vue';
 import CreatePostModal from '@/Components/CreatePostModal.vue';
 import StarredCounsellorComponent from '@/Components/StarredCounsellorComponent.vue';
 import HelpButton from '@/Components/HelpButton.vue';
 import PostComponent from '@/Components/PostComponent.vue';
 import PostModal from '@/Components/PostModal.vue';
+import CounsellorCardLoader from '@/Components/PlaceholderLoaders/CounsellorCardLoader.vue';
+import TherapyCardLoader from '@/Components/PlaceholderLoaders/TherapyCardLoader.vue';
+import PostCardLoader from '@/Components/PlaceholderLoaders/PostCardLoader.vue';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { Head, usePage } from '@inertiajs/vue3';
 import { computed, onBeforeMount, provide, ref, watch, watchEffect } from 'vue';
@@ -14,6 +18,7 @@ import useAlert from '@/Composables/useAlert';
 import Alert from '@/Components/Alert.vue';
 import GuidedTour from '@/Components/GuidedTour.vue';
 import useGuidedTours from '@/Composables/useGuidedTours';
+import PaymentRequiredBanner from '@/Components/PaymentRequiredBanner.vue';
 
 
 const { modalData, showModal, closeModal } = useModal()
@@ -39,16 +44,44 @@ const props = defineProps({
     alert: {
         default: null
     },
+    paymentRequired: {
+        type: Boolean,
+        default: false,
+    },
+    paymentRequiredTherapyId: {
+        default: null,
+    },
+    // TT-7.5b-b5/SCRUM-269: sibling flash prop for a GroupTherapy-triggered redirect (see
+    // GroupTherapyController::redirectForPaymentRequired(), TT-7.5b-b2) -- a GroupTherapy id
+    // isn't in the same id-space as a Therapy id, so it can't reuse paymentRequiredTherapyId.
+    paymentRequiredGroupTherapyId: {
+        default: null,
+    },
+    paymentRequiredMessage: {
+        type: String,
+        default: '',
+    },
 })
+
+// TT-7.5b-b5/SCRUM-269: the two flash props above are mutually exclusive (a single redirect is
+// ever either Therapy- or GroupTherapy-triggered) -- resolves which one PaymentRequiredBanner
+// should actually target.
+const paymentRequiredPayableId = computed(() => props.paymentRequiredTherapyId ?? props.paymentRequiredGroupTherapyId)
+const paymentRequiredPayableType = computed(() => props.paymentRequiredGroupTherapyId ? 'group' : 'individual')
 
 const newTherapy = ref(null)
 const newGroupTherapy = ref(null)
 const getting = ref({ show: false, type: '' })
+const loading = ref(true)
 const recentTherapies = ref([])
 const recentGroupTherapies = ref([])
 const posts = ref({ data: [], page: 1 })
 const randomTherapies = ref({ data: [], page: 1 })
+const randomGroupTherapies = ref({ data: [], page: 1 })
 const randomCounsellors = ref({ data: [], page: 1 })
+
+// SCRUM-113: one seed for this visit, so ranked lists keep their order while paging (no repeats).
+const visitSeed = Math.floor(Math.random() * 2147483646) + 1
 
 watch(() => newTherapy.value, () => {
     if (newTherapy.value)
@@ -104,6 +137,17 @@ const computedCanCreatePost = computed(() => {
     return (!!user.counsellor) ? true : false
 })
 
+// SCRUM-392: joining from a public card updates its member count and puts the group first in
+// "Your Recent Group Therapies", without reloading the rows.
+function joinedGroup(group, { joined, membersCount }) {
+    if (!joined) return
+    // `group` is this page's own row (from randomGroupTherapies).
+    group.membersCount = membersCount ?? (group.membersCount ?? 0) + 1
+    // Shaped like the server's recent rows (no card button or match mark), and still three at most.
+    const { viewer, membersCount: _count, ...own } = group
+    recentGroupTherapies.value = [own, ...recentGroupTherapies.value.filter((item) => item.id !== group.id)].slice(0, 3)
+}
+
 function updateNewTherapy(value) {
     newTherapy.value = value
 }
@@ -118,13 +162,20 @@ function updatePage(res, items) {
 }
 
 function loadContent() {
+    loading.value = true
     randomCounsellors.value.page = 1
     randomTherapies.value.page = 1
+    randomGroupTherapies.value.page = 1
     posts.value.page = 1
 
-    getRandomCounsellors()
-    getRandomTherapies()
-    getPosts()
+    Promise.all([
+        getRandomCounsellors(),
+        getRandomTherapies(),
+        getRandomGroupTherapies(),
+        getPosts()
+    ]).finally(() => {
+        loading.value = false
+    })
 }
 
 function showAlert() {
@@ -137,7 +188,7 @@ async function getRandomCounsellors() {
     if (!randomCounsellors.value.page) return
 
     setGetting('counsellors')
-    await axios.get(route('api.counsellors.random', {page: randomCounsellors.value.page}))
+    await axios.get(route('api.counsellors.random', { page: randomCounsellors.value.page, seed: visitSeed }))
         .then((res) => {
             console.log(res)
             if (randomCounsellors.value.page == 1)
@@ -187,7 +238,7 @@ function getRandomTherapies() {
     if (!randomTherapies.value.page) return
 
     setGetting('therapies')
-    axios.get(route('api.therapies.random', {page: randomTherapies.value.page}))
+    axios.get(route('api.therapies.random', { page: randomTherapies.value.page, seed: visitSeed }))
         .then((res) => {
             console.log(res)
             if (randomTherapies.value.page == 1)
@@ -199,6 +250,31 @@ function getRandomTherapies() {
             ]
 
             updatePage(res, randomTherapies)
+        })
+        .catch((err) => {
+            console.log(err)
+        })
+        .finally(() => {
+            clearGetting()
+        })
+}
+
+function getRandomGroupTherapies() {
+    if (!randomGroupTherapies.value.page) return
+
+    setGetting('group-therapies')
+    axios.get(route('api.group.therapies.random', { page: randomGroupTherapies.value.page, seed: visitSeed }))
+        .then((res) => {
+            console.log(res)
+            if (randomGroupTherapies.value.page == 1)
+                randomGroupTherapies.value.data = []
+            
+            randomGroupTherapies.value.data = [
+                ...randomGroupTherapies.value.data,
+                ...res.data.data,
+            ]
+
+            updatePage(res, randomGroupTherapies)
         })
         .catch((err) => {
             console.log(err)
@@ -257,6 +333,13 @@ function showPost() {
     <Head title="Home" />
 
     <AuthenticatedLayout>
+        <PaymentRequiredBanner
+            v-if="paymentRequired"
+            :message="paymentRequiredMessage"
+            :payable-id="paymentRequiredPayableId"
+            :payable-type="paymentRequiredPayableType"
+        />
+
         <div class="pt-6 pb-12">
             <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 my-4 flex justify-end">
                 <HelpButton
@@ -273,7 +356,10 @@ function showPost() {
                     <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 mt-4">
                         <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
                             <div class="p-6 text-gray-900">Starred Counsellors (previous month)</div>
-                            <div class="m-2 px-4 pb-6 overflow-hidden overflow-x-auto space-x-4 flex justify-start items-center" v-if="computedBestCounsellors?.length">
+                            <div v-if="loading" class="m-2 px-4 pb-6 overflow-hidden overflow-x-auto space-x-4 flex justify-start items-center">
+                                <CounsellorCardLoader v-for="i in 3" :key="i" />
+                            </div>
+                            <div v-else-if="computedBestCounsellors?.length" class="m-2 px-4 pb-6 overflow-hidden overflow-x-auto space-x-4 flex justify-start items-center">
                                 <StarredCounsellorComponent
                                     v-for="(counsellor, idx) in computedBestCounsellors"
                                     :key="counsellor.id"
@@ -290,7 +376,10 @@ function showPost() {
                     <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 mt-4">
                         <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
                             <div class="p-6 text-gray-900">Leading Counsellors (current month)</div>
-                            <div class="m-2 px-4 pb-6 overflow-hidden overflow-x-auto space-x-4 flex justify-start items-center" v-if="computedLeadingCounsellors?.length">
+                            <div v-if="loading" class="m-2 px-4 pb-6 overflow-hidden overflow-x-auto space-x-4 flex justify-start items-center">
+                                <CounsellorCardLoader v-for="i in 3" :key="i" />
+                            </div>
+                            <div class="m-2 px-4 pb-6 overflow-hidden overflow-x-auto space-x-4 flex justify-start items-center" v-else-if="computedLeadingCounsellors?.length">
                                 <StarredCounsellorComponent
                                     v-for="(counsellor, idx) in computedLeadingCounsellors"
                                     :key="counsellor.id"
@@ -306,7 +395,10 @@ function showPost() {
                     <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 mt-4">
                         <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
                             <div class="p-6 text-gray-900">Counsellors</div>
-                            <div class="m-2 px-4 pb-6 overflow-hidden overflow-x-auto space-x-4 flex justify-start items-center" v-if="randomCounsellors.data?.length">
+                            <div v-if="loading" class="m-2 px-4 pb-6 overflow-hidden overflow-x-auto space-x-4 flex justify-start items-center">
+                                <CounsellorCardLoader v-for="i in 3" :key="i" />
+                            </div>
+                            <div class="m-2 px-4 pb-6 overflow-hidden overflow-x-auto space-x-4 flex justify-start items-center" v-else-if="randomCounsellors.data?.length">
                                 <StarredCounsellorComponent
                                     v-for="(counsellor) in randomCounsellors.data"
                                     :key="counsellor.id"
@@ -324,12 +416,15 @@ function showPost() {
                             >...</div>
                         </div>
                     </div>
-                    <!-- TODO show recent and random group therapies -->
+                    <!-- TODO show recent and random therapies -->
                     <div id="home-therapies-id" class="relative"></div>
                     <div class="max-w-7xl mx-auto sm:px-6 lg:px-8" v-if="$page.props.auth.user">
                         <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
                             <div class="p-6 text-gray-900">Your Recent Therapies</div>
-                            <div class="m-2 px-4 pb-6 overflow-hidden overflow-x-auto space-x-5 flex justify-start items-center" v-if="recentTherapies?.length">
+                            <div v-if="loading" class="m-2 px-4 pb-6 overflow-hidden overflow-x-auto space-x-5 flex justify-start items-center">
+                                <TherapyCardLoader v-for="i in 3" :key="i" />
+                            </div>
+                            <div class="m-2 px-4 pb-6 overflow-hidden overflow-x-auto space-x-5 flex justify-start items-center" v-else-if="recentTherapies?.length">
                                 <MiniTherapyComponent
                                     v-for="therapy in recentTherapies"
                                     :key="therapy.id"
@@ -337,15 +432,39 @@ function showPost() {
                                     class="w-[250px] shrink-0"
                                 />
                             </div>
-                            <div v-else class="text-center text-sm w-full my-4 text-gray-600">you have no therapies</div>
+                            <div v-else class="text-center text-sm w-full my-4 text-gray-600">you have no individual therapies</div>
+                        </div>
+                    </div>
+                    
+                    <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 mt-4" v-if="$page.props.auth.user">
+                        <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
+                            <div class="p-6 text-gray-900">Your Recent Group Therapies</div>
+                            <div v-if="loading" class="m-2 px-4 pb-6 overflow-hidden overflow-x-auto space-x-5 flex justify-start items-center">
+                                <TherapyCardLoader v-for="i in 3" :key="i" />
+                            </div>
+                            <div class="m-2 px-4 pb-6 overflow-hidden overflow-x-auto space-x-5 flex justify-start items-center" v-else-if="recentGroupTherapies?.length">
+                                <MiniGroupTherapyComponent
+                                    v-for="therapy in recentGroupTherapies"
+                                    :key="therapy.id"
+                                    :group-therapy="therapy"
+                                    class="w-[250px] shrink-0"
+                                />
+                            </div>
+                            <div v-else class="text-center text-sm w-full my-4 text-gray-600">you have no group therapies</div>
                         </div>
                     </div>
                     
                     <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 mt-8">
                         <div class="bg-white shadow-sm sm:rounded-lg">
-                            <div class="p-6 text-gray-900">Public Therapies</div>
+                            <div class="p-6 text-gray-900 flex justify-between items-center">
+                                <span>Public Therapies</span>
+                                <a :href="route('public.therapies')" class="text-blue-600 hover:text-blue-800 text-sm font-medium">View All →</a>
+                            </div>
                             <div class="px-6 flex min-h-[100px] justify-start py-4 items-start overflow-hidden overflow-x-auto space-x-5">
-                                <template v-if="randomTherapies.data?.length">
+                                <template v-if="loading">
+                                    <TherapyCardLoader v-for="i in 3" :key="i" />
+                                </template>
+                                <template v-else-if="randomTherapies.data?.length">
                                     <MiniTherapyComponent
                                         v-for="therapy in randomTherapies.data"
                                         :key="therapy.id"
@@ -353,7 +472,7 @@ function showPost() {
                                         class="w-[250px] shrink-0"
                                     />
                                 </template>
-                                <div v-else-if="!getting.show && getting.type !== 'therapies'" class="text-center text-sm w-full text-gray-600">there are no therapies for public at the moment.</div>
+                                <div v-else-if="!getting.show && getting.type !== 'therapies'" class="text-center text-sm w-full text-gray-600">there are no individual therapies for public at the moment.</div>
                                 <div v-if="getting.show && getting.type == 'therapies'" class="text-center text-sm w-full text-green-600">getting more therapies.</div>
                                 <div
                                     v-if="randomTherapies.page > 1 && !getting.show && getting.type !== 'therapies'"
@@ -363,9 +482,39 @@ function showPost() {
                             </div>
                         </div>
                     </div>
+                    
+                    <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 mt-4">
+                        <div class="bg-white shadow-sm sm:rounded-lg">
+                            <div class="p-6 text-gray-900 flex justify-between items-center">
+                                <span>Public Group Therapies</span>
+                                <a :href="route('public.therapies')" class="text-blue-600 hover:text-blue-800 text-sm font-medium">View All →</a>
+                            </div>
+                            <div class="px-6 flex min-h-[100px] justify-start py-4 items-start overflow-hidden overflow-x-auto space-x-5">
+                                <template v-if="loading">
+                                    <TherapyCardLoader v-for="i in 3" :key="i" />
+                                </template>
+                                <template v-else-if="randomGroupTherapies.data?.length">
+                                    <MiniGroupTherapyComponent
+                                        v-for="therapy in randomGroupTherapies.data"
+                                        :key="therapy.id"
+                                        :group-therapy="therapy"
+                                        class="w-[250px] shrink-0"
+                                        @joined="(event) => joinedGroup(therapy, event)"
+                                    />
+                                </template>
+                                <div v-else-if="!getting.show && getting.type !== 'group-therapies'" class="text-center text-sm w-full text-gray-600">there are no group therapies for public at the moment.</div>
+                                <div v-if="getting.show && getting.type == 'group-therapies'" class="text-center text-sm w-full text-green-600">getting more group therapies.</div>
+                                <div
+                                    v-if="randomGroupTherapies.page > 1 && !getting.show && getting.type !== 'group-therapies'"
+                                    class="text-center text-sm w-fit mx-auto p-4 text-gray-600 cursor-pointer"
+                                    @click="getRandomGroupTherapies"
+                                >...</div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
                 <div
-                    class="w-full mx-auto relative md:w-[70%] md:mr-auto lg:mx-auto lg:w-[50%] shrink-0"
+                    class="w-full mx-auto relative md:w-[70%] lg:w-[50%] shrink-0"
                 >
                     <div id="home-posts-id" class="relative"></div>
                     <div class="mx-auto sm:px-6 lg:px-8 mt-4">
@@ -376,7 +525,10 @@ function showPost() {
                                     v-if="computedCanCreatePost"
                                     @click="() => showModal('create post')">create post</PrimaryButton>
                             </div>
-                            <div class="p-2 space-y-4 w-full" v-if="posts.data?.length">
+                            <div v-if="loading" class="p-2 space-y-4 w-full">
+                                <PostCardLoader v-for="i in 3" :key="i" />
+                            </div>
+                            <div v-else-if="posts.data?.length" class="p-2 space-y-4 w-full">
                                 <PostComponent
                                     v-for="(post, idx) in posts.data"
                                     :key="post.id"

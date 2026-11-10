@@ -5,9 +5,9 @@ namespace App\Events;
 use App\Models\Counsellor;
 use App\Models\Request;
 use App\Models\Therapy;
+use App\Models\User;
 use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
-use Illuminate\Broadcasting\PresenceChannel;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Foundation\Events\Dispatchable;
@@ -28,13 +28,17 @@ class DiscussionRequestResponseEvent implements ShouldBroadcast
     /**
      * Get the channels the event should broadcast on.
      *
-     * @return array<int, \Illuminate\Broadcasting\Channel>
+     * @return array<int, Channel>
      */
     public function broadcastOn(): array
     {
-        return [
-            new PrivateChannel("counsellors.{$this->request->for->addedby->id}"),
-        ];
+        // SCRUM-372: to the discussion's creator as a counsellor. A creator recorded as their user
+        // account used to be addressed by their USER id on the counsellors channel -- some other
+        // counsellor's channel, with this discussion's name.
+        $creator = $this->request->for?->addedby;
+        $counsellorId = $creator instanceof User ? $creator->counsellor?->id : $creator?->id;
+
+        return $counsellorId ? [new PrivateChannel("counsellors.{$counsellorId}")] : [];
     }
 
     public function broadcastAs(): string

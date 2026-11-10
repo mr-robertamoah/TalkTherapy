@@ -12,9 +12,11 @@ class EnsureCanUpdateTherapyTopicAction extends Action
     {
         if (
             $createTherapyTopicDTO->user->isAdmin() ||
-            $createTherapyTopicDTO->therapyTopic->counsellor->user->is($createTherapyTopicDTO->user)
-        ) return;
+            (bool) $createTherapyTopicDTO->therapyTopic->counsellor?->user?->is($createTherapyTopicDTO->user)
+        ) {
+            return;
+        }
 
-        throw new TherapyTopicException("You are not authorized to update the topic with name: {$createTherapyTopicDTO->therapyTopic->name}.", 422);
+        throw TherapyTopicException::notAllowed();
     }
 }

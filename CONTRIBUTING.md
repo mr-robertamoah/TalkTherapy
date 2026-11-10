@@ -155,11 +155,56 @@ If you prefer not to use Docker:
 - **JavaScript/Vue**: Use ESLint configuration provided
 - **Database**: Use descriptive migration names and follow Laravel conventions
 
-### Git Workflow
-1. Create feature branches from `main`: `feature/your-feature-name`
-2. Use conventional commits: `feat:`, `fix:`, `docs:`, `style:`, `refactor:`, `test:`
-3. Write descriptive commit messages
-4. Create pull requests for all changes
+### Git Workflow & Branch Strategy
+
+We follow a **three-branch workflow** for organized development and deployment:
+
+#### **Branch Structure**
+- **`main`**: Production-ready code (protected - maintainer only)
+- **`testing`**: Pre-production testing environment (protected - maintainer only)  
+- **`develop`**: Main development branch (all contributions merge here)
+
+#### **Contribution Workflow**
+
+**Option 1: Fork & Pull Request (Recommended for external contributors)**
+1. Fork the repository on GitHub
+2. Clone your fork: `git clone https://github.com/YOUR_USERNAME/TalkTherapy.git`
+3. Add upstream remote: `git remote add upstream https://github.com/mr-robertamoah/TalkTherapy.git`
+4. Create feature branch from develop: `git checkout -b feature/your-feature-name develop`
+5. Make your changes and commit with conventional commits
+6. Push to your fork: `git push origin feature/your-feature-name`
+7. Create Pull Request targeting the **`develop`** branch
+
+**Option 2: Direct Clone (For collaborators with write access)**
+1. Clone the repository: `git clone https://github.com/mr-robertamoah/TalkTherapy.git`
+2. Switch to develop: `git checkout develop`
+3. Create feature branch: `git checkout -b feature/your-feature-name`
+4. Make your changes and commit
+5. Push feature branch: `git push origin feature/your-feature-name`
+6. Create Pull Request targeting the **`develop`** branch
+
+#### **Commit Convention**
+Use conventional commits for clear history:
+- `feat:` - New features
+- `fix:` - Bug fixes
+- `docs:` - Documentation changes
+- `style:` - Code formatting (no logic changes)
+- `refactor:` - Code refactoring
+- `test:` - Adding or updating tests
+- `chore:` - Maintenance tasks
+
+#### **Branch Progression**
+```
+feature/issue → develop → testing → main
+     ↑              ↑         ↑        ↑
+   Your work    Integration  QA    Production
+```
+
+#### **Important Rules**
+- ⚠️ **Never push directly to `main` or `testing`** - These are protected branches
+- ✅ **Always target `develop`** in your pull requests
+- 🔄 **Keep your branch updated**: Regularly sync with `develop`
+- 🧪 **Test thoroughly** before submitting PRs
 
 ### Testing
 - Write unit tests for Services and Actions
@@ -222,13 +267,14 @@ When reporting bugs, please include:
 
 ## 🚦 Pull Request Process
 
-1. **Fork and Branch**: Create a feature branch from main
+1. **Fork/Clone and Branch**: Create a feature branch from `develop`
 2. **Develop**: Implement your changes following our guidelines
 3. **Test**: Ensure all tests pass and add new tests if needed
 4. **Document**: Update documentation if needed
-5. **Submit**: Create a pull request with detailed description
+5. **Submit**: Create a pull request targeting **`develop`** branch
 
 ### PR Requirements
+- [ ] **Targets `develop` branch** (not main or testing)
 - [ ] All tests pass
 - [ ] Code follows style guidelines
 - [ ] Documentation updated (if applicable)

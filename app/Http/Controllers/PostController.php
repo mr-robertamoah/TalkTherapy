@@ -8,7 +8,6 @@ use App\Http\Requests\CreatePostRequest;
 use App\Http\Resources\PostResource;
 use App\Models\Post;
 use App\Services\PostService;
-use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Redirect;
 use Throwable;
@@ -28,13 +27,15 @@ class PostController extends Controller
                 ])
             );
 
-            return $this->returnSuccess($request, $post);
+            return $this->successResponse($request, ['post' => new PostResource($post)]);
         } catch (Throwable $th) {
-            
-            return $this->returnFailure($request, $th);
+
+            return $this->failureResponse($request, $th);
         }
     }
 
+    // Reads $request->route('postId') rather than the magic ->postId property -- see the
+    // identical fix/rationale in SessionController (SCRUM-116/SCRUM-130/SCRUM-133).
     public function updatePost(Request $request)
     {
         try {
@@ -43,22 +44,22 @@ class PostController extends Controller
                     'user' => $request->user(),
                     'content' => $request->content,
                     'deletedFiles' => $request->deletedFiles,
-                    'post' => Post::find($request->postId),
+                    'post' => Post::find($request->route('postId')),
                     'files' => $request->file('files'),
                     'postable' => GetModelWithModelNameAndIdAction::new()->execute($request->postableType, $request->postableId),
                 ])
             );
 
-            return $this->returnSuccess($request, $post);
+            return $this->successResponse($request, ['post' => new PostResource($post)]);
         } catch (Throwable $th) {
-            
-            return $this->returnFailure($request, $th);
+
+            return $this->failureResponse($request, $th);
         }
     }
-    
+
     public function deletePost(Request $request)
     {
-        $post = Post::find($request->postId);
+        $post = Post::find($request->route('postId'));
         try {
             PostService::new()->deletePost(
                 CreatePostDTO::new()->fromArray([
@@ -67,22 +68,24 @@ class PostController extends Controller
                 ])
             );
 
-            return $this->returnSuccess($request, $post);
+            return $this->successResponse($request, ['post' => new PostResource($post)]);
         } catch (Throwable $th) {
-            
-            return $this->returnFailure($request, $th);
+
+            return $this->failureResponse($request, $th);
         }
     }
 
+    // Route-bound too: session()->put() below would otherwise stash a client-spoofed postId
+    // (from a query string on this GET route) instead of the URL's own record.
     public function getPost(Request $request)
     {
         try {
-            session()->put('postId', $request->postId);
-            
+            session()->put('postId', $request->route('postId'));
+
             return Redirect::route('home');
         } catch (Throwable $th) {
-            
-            return $this->returnFailure($request, $th);
+
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -99,28 +102,8 @@ class PostController extends Controller
 
             return PostResource::collection($posts);
         } catch (Throwable $th) {
-            
-            return $this->returnFailure($request, $th);
+
+            return $this->failureResponse($request, $th);
         }
-    }
-
-    private function returnSuccess(Request $request, Post $post)
-    {
-        $post = new PostResource($post);
-        
-        if ($request->acceptsJson()) return response()->json(['post' => $post]);
-        
-        return Redirect::back()->with(['post' => $post]);
-    }
-
-    private function returnFailure(Request $request, Throwable $th)
-    {
-        $message = $th->getCode() == 500 ? "Something unfortunate happened. Please try again shortly." : $th->getMessage();
-        
-        ds($th);
-
-        if ($request->acceptsJson()) throw new Exception($message);
-
-        return Redirect::back()->withErrors(['alert'=> $message]);
     }
 }

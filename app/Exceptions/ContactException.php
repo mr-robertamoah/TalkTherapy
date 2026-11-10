@@ -2,9 +2,7 @@
 
 namespace App\Exceptions;
 
-use Exception;
-
-class ContactException extends Exception
+class ContactException extends AppException
 {
     //
 }

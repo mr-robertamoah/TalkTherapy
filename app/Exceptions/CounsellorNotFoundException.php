@@ -2,9 +2,7 @@
 
 namespace App\Exceptions;
 
-use Exception;
-
-class CounsellorNotFoundException extends Exception
+class CounsellorNotFoundException extends AppException
 {
     //
 }

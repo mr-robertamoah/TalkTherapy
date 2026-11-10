@@ -7,18 +7,19 @@
             class="flex justify-start items-center overflow-hidden overflow-x-auto space-x-2"
             :class="{'pb-2': !session.status}"
         >
-            <div v-if="session.status" class="text-xs rounded bg-gray-500 text-white p-1">{{ getReadableStatus(session.status) }}</div>
+            <div v-if="session.status" class="text-xs rounded text-white p-1" :class="getStatusColor(session.status)">{{ getReadableStatus(session.status) }}</div>
             <div v-if="session.createdAt" class="text-xs text-nowrap my-2 w-fit ml-auto mr-2 text-gray-600">{{ toDiffForHumans(session.createdAt) }}</div>
         </div>
         <div class="capitalize text-gray-600 text-sm sm:text-base text-center font-bold tracking-wide px-2">
             {{ session.name }}
         </div>
-        <div class="text-gray-600 text-xs sm:text-sm my-2 p-2 px-4 text-justify" v-if="computedAbout">
-            <span>{{ getShowMoreContent(computedAbout) }}</span>
-            <span
-                @click="toggleShowMore"
-                v-if="computedAbout?.length > 100"
-                class="ml-2 cursor-pointer text-xs my-1 text-blue-600 underline">show {{ showMore ? 'less' : 'more' }}</span>
+        <div class="text-gray-600 text-xs sm:text-sm my-2 p-2 px-4 text-justify" v-if="session.about">
+            <span>{{ showMore ? session.about : (session.about.length > 100 ? session.about.slice(0, 100) + '...' : session.about) }}</span>
+            <button
+                @click.stop="toggleShowMore"
+                v-if="session.about.length > 100"
+                class="ml-2 text-xs bg-blue-100 hover:bg-blue-200 text-blue-700 px-2 py-1 rounded transition-colors duration-200"
+            >{{ showMore ? 'Show Less' : 'Show More' }}</button>
         </div>
         <div class="flex justify-end items-center my-2">
             <div 
@@ -99,7 +100,7 @@
 <script setup>
 import useModal from '@/Composables/useModal';
 import { usePage } from '@inertiajs/vue3';
-import { computed, onBeforeUnmount, ref, watch, watchEffect } from 'vue';
+import { computed, getCurrentInstance, onBeforeUnmount, ref, watch, watchEffect } from 'vue';
 import SessionModal from './SessionModal.vue';
 import MiniModal from './MiniModal.vue';
 import PrimaryButton from './PrimaryButton.vue';
@@ -111,11 +112,30 @@ import useLocalDateTime from '@/Composables/useLocalDateTime';
 import Alert from './Alert.vue';
 import useShowMore from '@/Composables/useShowMore';
 import useUtilities from '@/Composables/useUtilities';
+import { createAnnouncementQueue, resolveAnnouncedSession } from '@/Composables/announcements';
+import { acquireChannel } from '@/Composables/sharedChannel';
 
 const { modalData, closeModal, showModal } = useModal()
 const { toDiffForHumans } = useLocalDateTime()
 const { alertData, setAlertData, setFailedAlertData, clearAlertData } = useAlert()
-const { showMore, toggleShowMore, getShowMoreContent } = useShowMore()
+const showMore = ref(false)
+
+function toggleShowMore() {
+    showMore.value = !showMore.value
+}
+
+function getStatusColor(status) {
+    const colors = {
+        'PENDING': 'bg-yellow-500',
+        'IN_SESSION': 'bg-green-500', 
+        'IN_SESSION_CONFIRMATION': 'bg-blue-500',
+        'HELD': 'bg-gray-500',
+        'HELD_CONFIRMATION': 'bg-purple-500',
+        'FAILED': 'bg-red-500',
+        'ABANDONED': 'bg-orange-500'
+    }
+    return colors[status] || 'bg-gray-500'
+}
 const { getReadableStatus } = useUtilities()
 
 const emits = defineEmits(['onUpdate', 'onDelete', 'onMessageCreated'])
@@ -152,11 +172,15 @@ const props = defineProps({
 
 const mainSession = ref(null)
 const loading = ref(false)
+// SCRUM-366: each live message is now fetched, so only fetch when a parent actually listens for
+// it (DiscussionModal's badges don't), and subscribe to a session's channel once.
+const hasMessageListener = !!getCurrentInstance()?.vnode.props?.onOnMessageCreated
+let subscribedSessionId = null
+// SCRUM-370: the session channel is shared with the chat, its video call and other badges, so a
+// badge releases its own handle -- never Echo.leave(), which silenced the open chat.
+let sessionChannel = null
 
-onBeforeUnmount(() => {
-    if (props.listen)
-        Echo.leave(`sessions.${props.session.id}`)
-})
+onBeforeUnmount(() => sessionChannel?.release())
 
 watchEffect(() => {
     const user = usePage().props.auth.user
@@ -164,26 +188,32 @@ watchEffect(() => {
     if (!user || !props.listen || !props.session?.id) return
 
     mainSession.value = {...props.session}
+    if (subscribedSessionId === props.session.id) return
+    subscribedSessionId = props.session.id
+    const enqueueMessage = createAnnouncementQueue()
+    const enqueueSession = createAnnouncementQueue(resolveAnnouncedSession)
 
-    Echo
-        .private(`sessions.${props.session.id}`)
+    sessionChannel?.release()
+    sessionChannel = acquireChannel(`sessions.${props.session.id}`)
+    sessionChannel
         .listen('.message.created', (data) => {
             console.log(data, 'message created');
-            if (data.message?.fromUserId == user?.id)
+            if (!hasMessageListener || data.message?.fromUserId == user?.id)
                 return
 
-            emits('onMessageCreated', data.message)
+            enqueueMessage(data.message, (message) => emits('onMessageCreated', message))
         })
+        // SCRUM-367: only the session's id arrives; it is fetched (null if no longer ours to see).
         .listen('.session.updated', (data) => {
-            emits('onUpdate', data.session)
+            enqueueSession(data.sessionId, (session) => emits('onUpdate', session))
         })
 })
 
-const computedAbout = computed(() => {
-    return props.session?.about?.length > 100 ? props.session?.about?.slice(0, 100) + '...' : props.session?.about
-})
+
 const computedCanPerformActions = computed(() => {
-    return props.hasActions && props.session?.userId == usePage().props.auth.user?.id
+    // !!user: a masked id is null (SCRUM-345), and a guest's undefined == null.
+    const user = usePage().props.auth.user
+    return props.hasActions && !!user && props.session?.userId == user.id
 })
 
 async function deleteSession() {

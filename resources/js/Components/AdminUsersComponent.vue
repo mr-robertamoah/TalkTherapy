@@ -51,6 +51,16 @@ const props = defineProps({
         type: Boolean,
         default: false
     },
+    // SCRUM-390: the page's search (names, username, email).
+    search: {
+        type: String,
+        default: '',
+    },
+})
+
+watch(() => props.search, () => {
+    users.value.page = 1
+    getUsers()
 })
 
 const loading = ref(false)
@@ -89,15 +99,20 @@ function deleteUser(user) {
     users.value.data.splice(users.value.data.findIndex((u) => u.id == user.id), 1)
 }
 
+// Only the latest load's answer is shown, so a slow older search can't mix into a newer one (review).
+let latestLoad = 0
+
 async function getUsers() {
+    const ticket = ++latestLoad
     loading.value = true
 
     await axios.get(route('admin.users', {
         page: users.value.page,
-        ...getFilters()
+        ...getFilters(),
+        ...(props.search ? { search: props.search } : {}),
     }))
         .then((res) => {
-            console.log(res)
+            if (ticket !== latestLoad) return
             if (users.value.page == 1)
                 users.value.data = []
             
@@ -116,7 +131,7 @@ async function getUsers() {
             goToLogin(err)
         })
         .finally(() => {
-            loading.value = false
+            if (ticket === latestLoad) loading.value = false
         })
 }
 

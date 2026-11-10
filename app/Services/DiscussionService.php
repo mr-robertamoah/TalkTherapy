@@ -2,25 +2,29 @@
 
 namespace App\Services;
 
+use App\Actions\CounsellorVerification\EnsureCounsellorMayTakeOnClientsAction;
 use App\Actions\Discussion\ChangeDiscussionStatusAction;
 use App\Actions\Discussion\CreateDiscussionAction;
+use App\Actions\Discussion\CreateDiscussionRequestAction;
 use App\Actions\Discussion\DeleteDiscussionAction;
+use App\Actions\Discussion\EnsureCanCreateDiscussionForAction;
 use App\Actions\Discussion\EnsureCanDeleteDiscussionAction;
 use App\Actions\Discussion\EnsureCanEndDiscussionAction;
+use App\Actions\Discussion\EnsureCanFailDiscussionAction;
+use App\Actions\Discussion\EnsureCanRemoveCounsellorFromDiscussionAction;
+use App\Actions\Discussion\EnsureCanSendDiscussionRequestAction;
 use App\Actions\Discussion\EnsureCanUpdateDiscussionAction;
 use App\Actions\Discussion\EnsureCanUpdateDiscussionStatusAction;
 use App\Actions\Discussion\EnsureDiscussionDataIsValidAction;
 use App\Actions\Discussion\EnsureDiscussionExistsAction;
 use App\Actions\Discussion\EnsureDoesNotHaveDiscussionRequestAction;
 use App\Actions\Discussion\EnsureNotAlreadyPartOfDiscussionAction;
+use App\Actions\Discussion\RemoveCounsellorFromDiscussionAction;
 use App\Actions\Discussion\UpdateDiscussionAction;
 use App\Actions\EnsureAddedbyIsValidAction;
 use App\Actions\Star\CreateStarAction;
+use App\Actions\Suspension\EnsureCanActAsCounsellorAction;
 use App\Actions\Therapy\EnsureIsCounsellorAction;
-use App\Actions\Discussion\CreateDiscussionRequestAction;
-use App\Actions\Discussion\EnsureCanFailDiscussionAction;
-use App\Actions\Discussion\EnsureCanRemoveCounsellorFromDiscussionAction;
-use App\Actions\Discussion\RemoveCounsellorFromDiscussionAction;
 use App\Actions\User\EnsureRequestDataIsValidAction;
 use App\Actions\User\EnsureUserExistsAction;
 use App\DTOs\CreateDiscussionDTO;
@@ -49,26 +53,40 @@ class DiscussionService extends Service
         EnsureDiscussionExistsAction::new()->execute($getDiscussionsDTO);
 
         EnsureCanRemoveCounsellorFromDiscussionAction::new()->execute($getDiscussionsDTO);
-        
+
         RemoveCounsellorFromDiscussionAction::new()->execute($getDiscussionsDTO);
     }
 
     public function sendCounsellorRequest(CreateRequestDTO $createRequestDTO)
     {
+        // SCRUM-344: authorize (which also covers a missing discussion) before validating the rest.
+        EnsureCanSendDiscussionRequestAction::new()->execute($createRequestDTO);
+
         EnsureRequestDataIsValidAction::new()->execute($createRequestDTO);
-        
+
         EnsureNotAlreadyPartOfDiscussionAction::new()->execute($createRequestDTO);
-        
+
         EnsureDoesNotHaveDiscussionRequestAction::new()->execute($createRequestDTO);
-        
+
+        // SCRUM-31: only a currently verified counsellor is invited in.
+        EnsureCounsellorMayTakeOnClientsAction::new()->execute($createRequestDTO->to instanceof Counsellor ? $createRequestDTO->to : null, asTarget: true, forDiscussion: true);
+
         return CreateDiscussionRequestAction::new()->execute($createRequestDTO);
     }
 
-    public function createDiscussion(CreateDiscussionDTO $createDiscussionDTO) : Discussion
+    public function createDiscussion(CreateDiscussionDTO $createDiscussionDTO): Discussion
     {
         EnsureIsCounsellorAction::new()->execute($createDiscussionDTO);
 
         EnsureAddedbyIsValidAction::new()->execute($createDiscussionDTO, force: true);
+
+        // SCRUM-359
+        EnsureCanActAsCounsellorAction::new()->execute($createDiscussionDTO->addedby);
+        EnsureCanActAsCounsellorAction::new()->execute($createDiscussionDTO->user?->counsellor);
+        // SCRUM-31: and only a currently verified counsellor starts one.
+        EnsureCounsellorMayTakeOnClientsAction::new()->execute($createDiscussionDTO->user?->counsellor, forDiscussion: true);
+
+        EnsureCanCreateDiscussionForAction::new()->execute($createDiscussionDTO);
 
         EnsureDiscussionDataIsValidAction::new()->execute($createDiscussionDTO);
 
@@ -85,15 +103,15 @@ class DiscussionService extends Service
 
         return $discussion;
     }
-    
-    public function updateDiscussion(CreateDiscussionDTO $createDiscussionDTO) : Discussion
+
+    public function updateDiscussion(CreateDiscussionDTO $createDiscussionDTO): Discussion
     {
         EnsureIsCounsellorAction::new()->execute($createDiscussionDTO);
 
         EnsureDiscussionExistsAction::new()->execute($createDiscussionDTO);
 
         EnsureCanUpdateDiscussionAction::new()->execute($createDiscussionDTO);
-        
+
         EnsureDiscussionDataIsValidAction::new()->execute($createDiscussionDTO);
 
         UpdateDiscussionAction::new()->execute($createDiscussionDTO);
@@ -101,7 +119,7 @@ class DiscussionService extends Service
         $discussion = $createDiscussionDTO->discussion->refresh();
 
         Notification::send(
-            $discussion->getOtherUsers($createDiscussionDTO->user), 
+            $discussion->getOtherUsers($createDiscussionDTO->user),
             new DiscussionUpdatedNotification($discussion)
         );
 
@@ -117,9 +135,9 @@ class DiscussionService extends Service
         $discussion = ChangeDiscussionStatusAction::new()->execute($createDiscussionDTO, DiscussionStatusEnum::held->value);
 
         broadcast(new DiscussionUpdatedEvent($discussion))->toOthers();
-        
+
         Notification::send(
-            $createDiscussionDTO->discussion->getOtherUsers($createDiscussionDTO->user), 
+            $createDiscussionDTO->discussion->getOtherUsers($createDiscussionDTO->user),
             new DiscussionStatusChangedNotification($discussion)
         );
 
@@ -132,12 +150,14 @@ class DiscussionService extends Service
 
         EnsureCanUpdateDiscussionStatusAction::new()->execute($createDiscussionDTO);
 
+        EnsureCanActAsCounsellorAction::new()->execute($createDiscussionDTO->user?->counsellor);
+
         $discussion = ChangeDiscussionStatusAction::new()->execute($createDiscussionDTO, DiscussionStatusEnum::in_session->value);
 
         broadcast(new DiscussionUpdatedEvent($discussion))->toOthers();
-        
+
         Notification::send(
-            $createDiscussionDTO->discussion->getOtherUsers($createDiscussionDTO->user), 
+            $createDiscussionDTO->discussion->getOtherUsers($createDiscussionDTO->user),
             new DiscussionStatusChangedNotification($discussion)
         );
 
@@ -153,9 +173,9 @@ class DiscussionService extends Service
         $discussion = ChangeDiscussionStatusAction::new()->execute($createDiscussionDTO, DiscussionStatusEnum::abandoned->value);
 
         broadcast(new DiscussionUpdatedEvent($discussion))->toOthers();
-        
+
         Notification::send(
-            $createDiscussionDTO->discussion->getOtherUsers($createDiscussionDTO->user), 
+            $createDiscussionDTO->discussion->getOtherUsers($createDiscussionDTO->user),
             new DiscussionStatusChangedNotification($discussion)
         );
 
@@ -171,7 +191,7 @@ class DiscussionService extends Service
         $discussion = ChangeDiscussionStatusAction::new()->execute($createDiscussionDTO, DiscussionStatusEnum::failed->value);
 
         Notification::send(
-            $createDiscussionDTO->discussion->getOtherUsers($createDiscussionDTO->user), 
+            $createDiscussionDTO->discussion->getOtherUsers($createDiscussionDTO->user),
             new DiscussionStatusChangedNotification($discussion)
         );
 
@@ -187,7 +207,7 @@ class DiscussionService extends Service
         $discussion = DeleteDiscussionAction::new()->execute($createDiscussionDTO);
 
         Notification::send(
-            $createDiscussionDTO->discussion->getOtherUsers($createDiscussionDTO->user), 
+            $createDiscussionDTO->discussion->getOtherUsers($createDiscussionDTO->user),
             new DiscussionDeletedNotification($discussion)
         );
 
@@ -197,28 +217,34 @@ class DiscussionService extends Service
     public function getDiscussions(GetDiscussionsDTO $getDiscussionsDTO)
     {
         $counsellor = $getDiscussionsDTO->user?->counsellor;
-        if (is_null($counsellor)) return [];
+        if (is_null($counsellor)) {
+            return [];
+        }
 
         $query = Discussion::query();
 
         $query->where(function ($query) use ($counsellor, $getDiscussionsDTO) {
 
-            if ($getDiscussionsDTO->name)
-                $query->where('name', 'LIKE', "%{$getDiscussionsDTO->name}%");
-    
-            if ($getDiscussionsDTO->for)
+            if ($getDiscussionsDTO->name) {
+                $query->whereContains('name', $getDiscussionsDTO->name);
+            }
+
+            if ($getDiscussionsDTO->for) {
                 $query->whereFor($getDiscussionsDTO->for);
-            
+            }
+
             $query->whereAddedby($counsellor);
         });
 
         $query->orWhere(function ($query) use ($counsellor, $getDiscussionsDTO) {
 
-            if ($getDiscussionsDTO->name)
-                $query->where('name', 'LIKE', "%{$getDiscussionsDTO->name}%");
-    
-            if ($getDiscussionsDTO->for)
+            if ($getDiscussionsDTO->name) {
+                $query->whereContains('name', $getDiscussionsDTO->name);
+            }
+
+            if ($getDiscussionsDTO->for) {
                 $query->whereFor($getDiscussionsDTO->for);
+            }
 
             $query->whereCounsellor($counsellor);
         });
@@ -230,14 +256,32 @@ class DiscussionService extends Service
 
     public function getDiscussionCounsellors(GetDiscussionsDTO $getDiscussionsDTO)
     {
-        if (is_null($getDiscussionsDTO->discussion)) return [];
+        if (is_null($getDiscussionsDTO->discussion)) {
+            return [];
+        }
+
+        // SCRUM-204: only an admin or a counsellor in the discussion may see its roster -- the
+        // same gate DiscussionController::showChat() applies. Anyone else gets the same empty list
+        // as a nonexistent discussion, so this endpoint's response says nothing either way.
+        $user = $getDiscussionsDTO->user;
+        if (! $user || ($user->isNotAdmin() && $getDiscussionsDTO->discussion->isNotParticipant($user->counsellor))) {
+            return [];
+        }
 
         $query = Counsellor::query();
 
         $query->whereDiscussion($getDiscussionsDTO->discussion);
 
-        if ($getDiscussionsDTO->name)
+        if ($getDiscussionsDTO->name) {
             $query->whereName($getDiscussionsDTO->name);
+        }
+
+        // CounsellorMiniResource reads ->user->username and ->avatar. avatarFile needs an
+        // explicit eager load because, unlike the old FK belongsTo, this MorphToMany always
+        // queries when accessed (see GetOrganizationCounsellorsAction's comment) -- user was
+        // already a pre-existing, unrelated N+1 here, fixed alongside since it's the same
+        // one-line pattern already used in that sibling query.
+        $query->with(['user', 'avatarFile']);
 
         return CounsellorMiniResource::collection($query->paginate(PaginationEnum::pagination->value));
     }

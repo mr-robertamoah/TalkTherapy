@@ -19,6 +19,10 @@ class AuthenticatedSessionController extends Controller
      */
     public function create(): Response
     {
+        // SCRUM-406: whoever reaches the login page -- signed out, or a session that expired -- leaves no
+        // readable history behind: earlier pages' props can't be decrypted, so the back button refetches them.
+        Inertia::clearHistory();
+
         return Inertia::render('Auth/Login', [
             'canResetPassword' => Route::has('password.request'),
             'status' => session('status'),
@@ -47,6 +51,10 @@ class AuthenticatedSessionController extends Controller
         $request->session()->invalidate();
 
         $request->session()->regenerateToken();
+
+        // SCRUM-406: after the session is replaced (the flag lives in it), so the next page clears the browser's
+        // history -- the back button can't show the chats and admin views from before signing out.
+        Inertia::clearHistory();
 
         return redirect('/');
     }

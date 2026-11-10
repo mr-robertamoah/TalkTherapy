@@ -18,9 +18,13 @@ class EnsureCanEndTherapyAction extends Action
         if (
             $dto->user->isAdmin() ||
             ($sessionsHeld && $therapy->session_type == TherapySessionTypeEnum::periodic->value)
-        ) return;
+        ) {
+            return;
+        }
 
-        $type = $dto::class == GroupTherapyDTO::class ? 'group' : $dto->therapy;
+        // Security review (SCRUM-343): was `: $dto->therapy`, which put the whole Therapy model
+        // (as JSON) into this message.
+        $type = $dto::class == GroupTherapyDTO::class ? 'group therapy' : 'therapy';
         throw new TherapyException("You are not allowed to end {$type} with name: {$therapy->name}. You are either not authorized or there are less than the required held sessions.", 422);
     }
 }

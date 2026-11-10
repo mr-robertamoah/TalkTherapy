@@ -2,9 +2,10 @@
 
 namespace App\Notifications;
 
-use App\Http\Resources\DiscussionResource;
+use App\Contracts\ShownInNotificationCenter;
 use App\Models\Counsellor;
 use App\Models\Discussion;
+use App\Support\NotificationEntry;
 use Carbon\Carbon;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -12,7 +13,7 @@ use Illuminate\Notifications\Messages\BroadcastMessage;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
-class DiscussionUpdatedNotification extends Notification implements ShouldQueue
+class DiscussionUpdatedNotification extends Notification implements ShouldQueue, ShownInNotificationCenter
 {
     use Queueable;
 
@@ -33,9 +34,10 @@ class DiscussionUpdatedNotification extends Notification implements ShouldQueue
     {
         $via = ['database', 'broadcast'];
 
-        if ($notifiable->email_verified_at)
+        if ($notifiable->email_verified_at) {
             $via[] = 'mail';
-        
+        }
+
         return $via;
     }
 
@@ -49,7 +51,7 @@ class DiscussionUpdatedNotification extends Notification implements ShouldQueue
         $duration = $start->diffInMinutes(new Carbon($this->discussion->end_time));
         [$type, $url] = $this->discussion->getNotificationActionData();
         $name = $notifiable::class == Counsellor::class ? $notifiable->getName() : $notifiable->name;
-        
+
         return (new MailMessage)
             ->success()
             ->subject("'{$this->discussion->name}' Discussion")
@@ -57,7 +59,7 @@ class DiscussionUpdatedNotification extends Notification implements ShouldQueue
             ->line("The discussion with name: '{$this->discussion->name}' has been updated.")
             ->line("This discussion will start on {$startTime}. The discussion will last {$duration} minutes. Please take notice.")
             ->action("Visit {$type} Page", $url)
-            ->line("You may receive other reminders before the starting time.")
+            ->line('You may receive other reminders before the starting time.')
             ->line("Thank you for choosing to 'TalkTherapy'.");
     }
 
@@ -72,16 +74,30 @@ class DiscussionUpdatedNotification extends Notification implements ShouldQueue
             'discussion_id' => $this->discussion->id,
         ];
     }
-    
+
     public function toBroadcast(object $notifiable): BroadcastMessage
     {
-        return (new BroadcastMessage([
-            'discussion' => new DiscussionResource($this->discussion)
-        ]));
+        // SCRUM-374: a small fixed summary -- the same for every recipient, never a per-viewer
+        // resource (payment status, dob) built for whoever happened to be signed in.
+        return new BroadcastMessage([
+            'discussion' => [
+                'id' => $this->discussion->id,
+                'name' => $this->discussion->name,
+                'startTime' => $this->discussion->start_time,
+                'endTime' => $this->discussion->end_time,
+                'status' => $this->discussion->status,
+            ],
+        ]);
     }
 
     public function broadcastType(): string
     {
         return 'discussion.updated';
+    }
+
+    // SCRUM-39 (TT-5.4b): in the notification center -- from the saved ids only, never more than the email.
+    public static function present(array $data): NotificationEntry
+    {
+        return new NotificationEntry('A discussion was updated', 'Its time or details changed.', NotificationEntry::link('discussions.chat', ['discussionId' => $data['discussion_id'] ?? null]));
     }
 }

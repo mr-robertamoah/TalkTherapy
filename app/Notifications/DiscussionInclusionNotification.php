@@ -2,17 +2,16 @@
 
 namespace App\Notifications;
 
-use App\Http\Resources\UserMiniResource;
+use App\Contracts\ShownInNotificationCenter;
 use App\Models\Counsellor;
 use App\Models\Discussion;
-use App\Models\User;
+use App\Support\NotificationEntry;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
-use Illuminate\Notifications\Messages\BroadcastMessage;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
-class DiscussionInclusionNotification extends Notification implements ShouldQueue
+class DiscussionInclusionNotification extends Notification implements ShouldQueue, ShownInNotificationCenter
 {
     use Queueable;
 
@@ -33,9 +32,10 @@ class DiscussionInclusionNotification extends Notification implements ShouldQueu
     {
         $via = ['database'];
 
-        if ($notifiable->email_verified_at)
+        if ($notifiable->email_verified_at) {
             $via[] = 'mail';
-        
+        }
+
         return $via;
     }
 
@@ -48,7 +48,7 @@ class DiscussionInclusionNotification extends Notification implements ShouldQueu
 
         return (new MailMessage)
             ->success()
-            ->subject("Discussion Request")
+            ->subject('Discussion Request')
             ->greeting("Hello {$notifiable->getName()}!")
             ->line("Counsellor with name: '{$this->counsellor->getName()}' has accepted your request to take part in the discussion with name: '{$this->discussion->name}' on TalkTherapy app.")
             ->line("Click on the link below to go the {$type}.")
@@ -65,6 +65,14 @@ class DiscussionInclusionNotification extends Notification implements ShouldQueu
     {
         return [
             'counsellor_id' => $this->counsellor->id,
+            // SCRUM-39: so the notification center can link it (the recipient created it).
+            'discussion_id' => $this->discussion->id,
         ];
+    }
+
+    // SCRUM-39 (TT-5.4b): in the notification center -- from the saved ids only, never more than the email.
+    public static function present(array $data): NotificationEntry
+    {
+        return new NotificationEntry('A counsellor accepted your discussion invitation', '', NotificationEntry::link('discussions.chat', ['discussionId' => $data['discussion_id'] ?? null]));
     }
 }

@@ -7,9 +7,7 @@ use App\DTOs\CreateTestimonialDTO;
 use App\Http\Resources\TestimonialResource;
 use App\Models\Testimonial;
 use App\Services\TestimonialService;
-use Exception;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Redirect;
 use Throwable;
 
 class TestimonialController extends Controller
@@ -25,16 +23,19 @@ class TestimonialController extends Controller
                 ])
             );
 
-            return $this->returnSuccess($request, $testimonial);
+            return $this->successResponse($request, ['testimonial' => new TestimonialResource($testimonial)]);
         } catch (Throwable $th) {
-            
-            return $this->returnFailure($request, $th);
+
+            return $this->failureResponse($request, $th);
         }
     }
 
+    // Every lookup below reads $request->route('testimonialId') rather than the magic
+    // ->testimonialId property -- see the identical fix/rationale in SessionController
+    // (SCRUM-116/SCRUM-130).
     public function updateTestimonial(Request $request)
     {
-        $testimonial = Testimonial::find($request->testimonialId);
+        $testimonial = Testimonial::find($request->route('testimonialId'));
         try {
             $testimonial = TestimonialService::new()->updateTestimonial(
                 CreateTestimonialDTO::new()->fromArray([
@@ -44,16 +45,16 @@ class TestimonialController extends Controller
                 ])
             );
 
-            return $this->returnSuccess($request, $testimonial);
+            return $this->successResponse($request, ['testimonial' => new TestimonialResource($testimonial)]);
         } catch (Throwable $th) {
-            
-            return $this->returnFailure($request, $th);
+
+            return $this->failureResponse($request, $th);
         }
     }
 
     public function deleteTestimonial(Request $request)
     {
-        $testimonial = Testimonial::find($request->testimonialId);
+        $testimonial = Testimonial::find($request->route('testimonialId'));
         try {
             TestimonialService::new()->deleteTestimonial(
                 CreateTestimonialDTO::new()->fromArray([
@@ -62,32 +63,31 @@ class TestimonialController extends Controller
                 ])
             );
 
-            return $this->returnSuccess($request, $testimonial);
+            return $this->successResponse($request, ['testimonial' => new TestimonialResource($testimonial)]);
         } catch (Throwable $th) {
-            
-            return $this->returnFailure($request, $th);
+
+            return $this->failureResponse($request, $th);
         }
     }
 
     public function markTestimonial(Request $request)
     {
-        $testimonial = Testimonial::find($request->testimonialId);
+        $testimonial = Testimonial::find($request->route('testimonialId'));
         try {
             TestimonialService::new()->markTestimonial(
                 CreateTestimonialDTO::new()->fromArray([
                     'user' => $request->user(),
                     'testimonial' => $testimonial,
-                    'use' => (bool) $request->use,
+                    'use' => $request->boolean('use'),
                 ])
             );
 
-            return $this->returnSuccess($request, $testimonial);
+            return $this->successResponse($request, ['testimonial' => new TestimonialResource($testimonial)]);
         } catch (Throwable $th) {
-            
-            return $this->returnFailure($request, $th);
+
+            return $this->failureResponse($request, $th);
         }
     }
-    
 
     public function getTestimonials(Request $request)
     {
@@ -102,28 +102,8 @@ class TestimonialController extends Controller
 
             return TestimonialResource::collection($testimonials);
         } catch (Throwable $th) {
-            
-            return $this->returnFailure($request, $th);
+
+            return $this->failureResponse($request, $th);
         }
-    }
-
-    private function returnSuccess(Request $request, Testimonial $testimonial)
-    {
-        $testimonial = new TestimonialResource($testimonial);
-        
-        if ($request->acceptsJson()) return response()->json(['testimonial' => $testimonial]);
-        
-        return Redirect::back()->with(['testimonial' => $testimonial]);
-    }
-
-    private function returnFailure(Request $request, Throwable $th)
-    {
-        $message = $th->getCode() == 500 ? "Something unfortunate happened. Please try again shortly." : $th->getMessage();
-        
-        ds($th);
-
-        if ($request->acceptsJson()) throw new Exception($message);
-
-        return Redirect::back()->withErrors(['alert'=> $message]);
     }
 }

@@ -2,7 +2,17 @@
 
 namespace App\Http\Resources;
 
+use App\Actions\GroupTherapy\GetGroupTherapyPaymentRosterAction;
+use App\Actions\SafeguardingException\GetPausedGroupMembersAction;
+use App\Actions\Safety\EnsureCanFlagClientAction;
+use App\Actions\Video\EnsureVideoIsAvailableForSessionAction;
+use App\Enums\ConstantsEnum;
+use App\Enums\CounsellorGroupTherapyStateEnum;
+use App\Enums\TherapyPaymentTypeEnum;
+use App\Enums\TherapyPerPaymentEnum;
+use App\Enums\TherapyStatusEnum;
 use App\Models\Counsellor;
+use App\Models\SafeguardingException;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -19,27 +29,114 @@ class GroupTherapyResource extends JsonResource
         $activeDiscussion = null;
         $user = $request->user();
 
-        if ($user && $this->isParticipant($user))
+        if ($user && $this->isParticipant($user)) {
             $activeSession = $this->getActiveSession($user);
+        }
 
-        if ($user?->counsellor)
+        if ($user?->counsellor) {
             $activeDiscussion = $this->getActiveDiscussion($user->counsellor);
-        
+        }
+
+        $isAnonymous = $this->addedByUserIsMaskedFor($user);
+
+        // TT-7.4d-a/SCRUM-258: `paymentStatus` below is "the group's latest transaction by ANY
+        // member" -- correct for TT-7.4c's existing counsellor-facing indicator (which cares
+        // whether the group has at least one paid transaction on record), but meaningless as an
+        // answer to "have I, the viewer, paid my own share" once more than one member can have
+        // their own Transaction row. Scoped to the viewer specifically, via the same
+        // latestTransactionFor() method SessionResource now also uses -- only queried for a PAID,
+        // PER_THERAPY group (reviewer finding: mirrors TherapyResource's own identical guard) --
+        // a PER_SESSION group's transactions live on its Sessions, not here, so this query would
+        // just return empty for one; guarding it out entirely avoids the wasted round-trip, same
+        // as the FREE-case guard already does.
+        $isPaidPerTherapyGroup = $this->payment_type === TherapyPaymentTypeEnum::paid->value
+            && ($this->payment_data['per'] ?? null) === TherapyPerPaymentEnum::therapy->value;
+
+        $viewerTransaction = $isPaidPerTherapyGroup && $user
+            ? $this->latestTransactionFor($user)
+            : null;
+
+        // TT-7.4d-d/SCRUM-261: the counsellor-facing per-member payment roster -- a deliberate,
+        // scoped exception to this codebase's otherwise-universal anonymity rule
+        // (TherapyTrait::addedByUserIsMaskedFor(), RequestResource, MessageResource all mask
+        // identity from the counsellor too). Only THIS group's own counsellor (not any counsellor
+        // anywhere) ever receives it, and only real identity for payment reconciliation -- nothing
+        // else about an anonymous group becomes de-anonymized. PER_SESSION excluded, same reasoning
+        // as $viewerTransaction above: a PER_SESSION group's payment status lives per-session, not
+        // per-group, so a single flat per-member roster row can't represent it correctly.
+        $isRosterEligibleCounsellor = $isPaidPerTherapyGroup
+            && $user?->counsellor
+            && $this->isCounsellor($user->counsellor);
+
+        // SCRUM-381/384: what this group's active counsellors see about paused members (one query).
+        $seesPausedMembers = $user && $this->status !== TherapyStatusEnum::ended->value && $this->isCounsellorUser($user);
+
         return [
             'id' => $this->id,
             'name' => $this->name,
-            'addedby' => $this->addedby_type == Counsellor::class ? 
-                new CounsellorMiniResource($this->addedby) : 
-                new UserMiniResource($this->addedby),
+            // Recognizes pivot-attached members too (SCRUM-69/SCRUM-72), not just the creator
+            // or an assigned counsellor -- lets the frontend hide the "join" action for an
+            // already-joined member.
+            'isParticipant' => $user ? $this->isParticipant($user) : false,
+            // SCRUM-73: an ordinary member (not the creator, not a counsellor) -- who may leave.
+            'isMember' => $user && ! $this->isUser($user) && ! $this->isCounsellorUser($user) && $this->membershipOf($user) !== null,
+            // Current members only (a member who left frees their place). From the loaded list when a
+            // caller eager-loaded it (as the masking rule does), not one more query.
+            'membersCount' => $this->relationLoaded('users') ? $this->users->count() : $this->users()->count(),
+            'addedby' => $this->addedby_type == Counsellor::class
+                ? new CounsellorMiniResource($this->addedby)
+                : $this->when(
+                    ! $isAnonymous,
+                    new UserMiniResource($this->addedby),
+                    // SCRUM-345: never the real id -- it would let viewers link the anonymous creator
+                    // across groups and requests. Nothing in the frontend needs it for a masked creator.
+                    ['id' => null, 'fullName' => ConstantsEnum::anonymousUserLabel->value]
+                ),
             'public' => (bool) $this->public,
+            // SCRUM-354: likes and comments exist only on public therapies -- a count and the viewer's
+            // own like, never who liked it.
+            'engagement' => $this->when($this->acceptsPublicEngagement(), fn () => [
+                'likesCount' => $this->likes()->count(),
+                'isLiked' => (bool) $user && $this->likes()->where('user_id', $user->id)->exists(),
+                'commentsCount' => $this->comments()->count(),
+            ]),
             'anonymous' => (bool) $this->anonymous,
             'allowInPerson' => (bool) $this->allow_in_person,
             'allowAnyone' => (bool) $this->allow_anyone,
-            'counsellors' =>  CounsellorMiniResource::collection($this->counsellors),
+            'counsellors' => CounsellorMiniResource::collection($this->counsellors),
+            // SCRUM-347: `counsellors` includes invited/left ones; the report form offers only these.
+            'activeCounsellorIds' => $this->counsellors
+                ->filter(fn ($counsellor) => $counsellor->pivot?->state === CounsellorGroupTherapyStateEnum::active->value)
+                ->pluck('id')->values(),
             'about' => $this->about,
             'sessionsHeld' => $this->sessionsHeld,
-            'status' => $this->getStatus(),
+            'status' => $this->status,
+            'statusLabel' => $this->getStatusLabel(),
             'paymentData' => $this->payment_data,
+            // SCRUM-263: null for anyone but this group's counsellors and administrators.
+            'paymentStatus' => $this->showsPaymentStatusTo($user) ? $this->latestTransaction?->status : null,
+            // TT-7.4d-a/SCRUM-258: viewer-scoped counterparts to the model-wide `paymentStatus`
+            // above, additive so TT-7.4c's existing counsellor consumer of `paymentStatus` is
+            // unaffected -- mirrors TherapyResource/SessionResource's own `transactionId`/
+            // `refundRequestStatus` naming exactly. `viewerPaymentStatus` is the one genuinely new
+            // concept: TherapyResource never needed it, since an individual Therapy's single-payer
+            // model means its own `paymentStatus` already IS the viewer's own status.
+            'viewerPaymentStatus' => $viewerTransaction?->status,
+            // TT-7.4d-c/SCRUM-260: viewer-scoped counterpart to TherapyResource's own unscoped
+            // `refundStatus` -- safe unscoped there (one payer), but this resource is multi-payer,
+            // so it's derived from the same $viewerTransaction as viewerPaymentStatus/transactionId
+            // above rather than the group-wide `latestTransaction`. Needed once TT-7.4d-c enables
+            // real refund requests for group members: without it, a member whose refund succeeds
+            // would keep seeing "Paid" forever (paymentStatus/viewerPaymentStatus never flip off
+            // SUCCESS on refund -- see TT-7.7a's decision-log entry).
+            'refundStatus' => $viewerTransaction?->successfulRefund?->status,
+            'transactionId' => $viewerTransaction?->id,
+            'refundRequestStatus' => $viewerTransaction?->latestRefundRequest?->status,
+            // TT-7.4d-d/SCRUM-261
+            'paymentRoster' => $this->when(
+                $isRosterEligibleCounsellor,
+                fn () => GetGroupTherapyPaymentRosterAction::new()->execute($this->resource)
+            ),
             'sessionsCreated' => $this->sessionsCreated,
             'paymentType' => $this->payment_type,
             'sessionType' => $this->session_type,
@@ -49,10 +146,40 @@ class GroupTherapyResource extends JsonResource
             'maxSessions' => $this->max_sessions,
             'maxUsers' => $this->max_users,
             'maxCounsellors' => $this->max_counsellors,
+            // SCRUM-389: on the group's page -- whether it can take another counsellor (its creator's
+            // "find a counsellor") and the viewer's own button (an offer, or one waiting).
+            'canTakeCounsellor' => $this->resource->canTakeCounsellor(),
+            ...($this->resource->viewerCard ? ['viewer' => $this->resource->viewerCard] : []),
             'topicsCount' => $this->topicsCount,
             'createdAt' => $this->created_at,
             'activeSession' => $activeSession ? new SessionResource($activeSession) : null,
             'activeDiscussion' => $activeDiscussion ? new DiscussionResource($activeDiscussion) : null,
+            // SCRUM-288: the viewer's own state only -- never another member's.
+            'viewerAccessPaused' => $this->pauseStateFor($user, counterparty: false)['viewer'],
+            // The user's decision (2026-11-05): a minor needs a guardian's video consent for group
+            // video, which doesn't exist yet (SCRUM-313) -- so the page doesn't offer them "join
+            // video" (EnsureVideoIsAvailableForSessionAction re-checks every join). Only about the
+            // viewer, never another member.
+            'viewerNeedsGuardianVideoConsent' => $user && $this->isParticipant($user)
+                && EnsureVideoIsAvailableForSessionAction::new()->groupVideoNeedsGuardianConsent($this->resource, $user),
+            // SCRUM-381 (changing SCRUM-288): only for this group's active counsellors -- the members
+            // paused for a missing guardian, named as the group shows them (an anonymous member stays
+            // "Anonymous") and keyed by something other than their user id. The group carries on.
+            'pausedMembers' => $this->when(
+                $seesPausedMembers,
+                fn () => GetPausedGroupMembersAction::new()->execute($this->resource)
+                    ->map(fn (array $member) => ['key' => $member['key'], 'name' => $member['name'], 'exceptionRequested' => $member['exceptionRequested']])
+                    ->values(),
+            ),
+            // SCRUM-384: the request form's limit (SafeguardingExceptionRequestModal), for the same
+            // counsellors, from the model rather than a copy in the UI.
+            'safeguardingExceptionMaxDays' => $this->when($seesPausedMembers, SafeguardingException::MAX_DAYS),
+            // SCRUM-32: only for its counsellors, while the feature is on -- whether they can raise a safety
+            // flag for a member now.
+            'canRaiseSafetyFlag' => $this->when(
+                config('safety.enabled') && $user && $this->isCounsellorUser($user),
+                fn () => EnsureCanFlagClientAction::new()->canFlag(fn (EnsureCanFlagClientAction $can) => $can->forGroupCounsellor($user, $this->resource)),
+            ),
         ];
     }
 }

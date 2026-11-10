@@ -15,20 +15,31 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 class Session extends Model
 {
     use HasFactory,
-    Starreable,
-    Timeable,
-    SoftDeletes;
+        SoftDeletes,
+        Starreable,
+        Timeable;
 
     protected $fillable = [
-        'name', 'about', 'start_time', 'end_time', 'payment_type',
+        'name', 'about', 'start_time', 'end_time', 'ended_at', 'payment_type',
         'type', 'status', 'longitude', 'latitude', 'landmark', 'therapy_id',
-        'updatedby_type', 'updatedby_id'
+        'updatedby_type', 'updatedby_id',
     ];
-    
+
+    // SCRUM-73: updatedby_anonymous is a snapshot set with updatedby (ChangeSessionStatusAction) --
+    // deliberately not fillable.
     protected $casts = [
         'end_time' => 'datetime',
         'start_time' => 'datetime',
+        'ended_at' => 'datetime',
+        'updatedby_anonymous' => 'boolean',
+        'is_help_chat' => 'boolean',
     ];
+
+    // SCRUM-33: calendars and session lists leave a quick help chat's session out.
+    public function scopeWithoutHelpChats($query)
+    {
+        return $query->where($this->qualifyColumn('is_help_chat'), false);
+    }
 
     public function therapy()
     {
@@ -65,14 +76,81 @@ class Session extends Model
         return $this->hasMany(TherapyTopicSession::class, 'session_id');
     }
 
+    // SCRUM-212: uses an already-eager-loaded `therapyTopicSessions` relation when present (the
+    // counsellor calendar aggregate renders many sessions in one response and eager-loads this to
+    // avoid two queries per session) -- falls back to the original live query otherwise, so every
+    // existing single-session call site is unaffected.
     public function getCurrentTopicAttribute()
     {
+        if ($this->relationLoaded('therapyTopicSessions')) {
+            return $this->therapyTopicSessions->firstWhere('current', true)?->therapyTopic;
+        }
+
         return $this->therapyTopicSessions()->whereCurrent()->first()?->therapyTopic;
     }
 
     public function messages()
     {
         return $this->morphMany(Message::class, 'for');
+    }
+
+    // TT-3.1a/SCRUM-274: every video "epoch" this Session has ever had -- ended and current.
+    // Callers looking for the currently-open one filter ->whereNull('ended_at') themselves
+    // (see JoinVideoSessionAction/LeaveVideoSessionAction) rather than this relation assuming
+    // there's always exactly one to find.
+    public function videoSessions()
+    {
+        return $this->hasMany(VideoSession::class);
+    }
+
+    // TT-3.1e-a/SCRUM-280: PER_SESSION-scoped video consent grants for this specific session --
+    // a PER_THERAPY grant lives on the parent Therapy's own morphMany instead (see Therapy model).
+    public function videoConsents()
+    {
+        return $this->morphMany(VideoConsent::class, 'consentable');
+    }
+
+    // TT-3.1e-e/SCRUM-284: exactly-once guardian video-consent reminder tracking for this
+    // session -- see VideoConsentReminder's own docblock.
+    public function videoConsentReminder()
+    {
+        return $this->hasOne(VideoConsentReminder::class);
+    }
+
+    public function transactions()
+    {
+        return $this->morphMany(Transaction::class, 'for');
+    }
+
+    // See TherapyTrait::latestTransaction()'s comment: explicit 'created_at' column (not the
+    // id-based default), and "latest" is across all eligible payers, not the current viewer.
+    public function latestTransaction()
+    {
+        return $this->morphOne(Transaction::class, 'for')->latestOfMany('created_at');
+    }
+
+    // TT-7.4d-a/SCRUM-258: mirrors TherapyTrait::latestTransactionFor()'s identical counterpart --
+    // Session doesn't use TherapyTrait (it duplicates transactions()/latestTransaction()
+    // independently above), so this is added here too rather than left missing for the one model
+    // SessionResource's own viewer-scoped field actually needs it on.
+    public function latestTransactionFor(User $user)
+    {
+        return $this->transactions()->where('user_id', $user->id)->latest('created_at')->first();
+    }
+
+    // SCRUM-263/368: see Therapy:: and GroupTherapy::showsPaymentStatusTo(). For a group, the cheap
+    // checks come first, so a plain member's session list never loads the group.
+    public function showsPaymentStatusTo(?User $user): bool
+    {
+        if (! $user) {
+            return false;
+        }
+
+        if ($this->for_type === GroupTherapy::class && ! $user->counsellor && ! $user->isAdmin()) {
+            return false;
+        }
+
+        return (bool) $this->for?->showsPaymentStatusTo($user);
     }
 
     public function addedby()
@@ -115,32 +193,69 @@ class Session extends Model
             ]);
     }
 
+    // SCRUM-369: the one definition of "active" -- in session, or not finished and either starting
+    // within five minutes or inside its time window. Used both by the page (getActiveSession) and by
+    // the scheduler's session.started announcement (TherapyTrait::activeSession), so a page loaded
+    // after the one announcement already shows what was announced.
+    public function scopeWhereActive($query)
+    {
+        return $query->where(fn ($query) => $query
+            ->whereInSession()
+            ->orWhere(fn ($query) => $query
+                ->whereStatusNotIn(SessionStatusEnum::finished())
+                ->where(fn ($query) => $query
+                    ->whereFiveOrLessMinutesToStart()
+                    ->orWhere(fn ($query) => $query->whereHasStartedAndNotEnded()))));
+    }
+
     public function scopeWhereIsNotUserWhoConfirmedHeld($query, User|Counsellor $model)
     {
+        // Excludes a session only when it's HELD_CONFIRMATION *and* the given model is the one
+        // who set it there (waiting on the other party). The previous version's `Status` column
+        // (wrong case) combined with independent `whereNot`/`orWhereNot` clauses meant this
+        // excluded nearly every row: `updatedby_type`/`updatedby_id` are null until a session has
+        // gone through at least one status change, so `updatedby_type != $model::class` evaluated
+        // to SQL NULL (falsy) for any freshly "IN_SESSION" session, hiding it from
+        // Therapy/GroupTherapy::getActiveSession() entirely.
         return $query
-            ->where(function ($query) use ($model) {
+            ->whereNot(function ($query) use ($model) {
                 $query
-                    ->where('Status', SessionStatusEnum::held_confirmation->value)
-                    ->whereNot('updatedby_id', $model->id)
-                    ->orWhereNot('updatedby_type', $model::class);
+                    ->where('status', SessionStatusEnum::held_confirmation->value)
+                    ->where('updatedby_id', $model->id)
+                    ->where('updatedby_type', $model::class);
             });
     }
 
-    public function isParticipant(User $user)
+    public function isParticipant(User $user): bool
     {
-        return $this->for?->isParticipant($user);
+        return (bool) $this->for?->isParticipant($user);
     }
 
-    public function isNotParticipant(User $user)
+    // TT-3.1b/SCRUM-275 security-review finding: was `$this->for?->isNotParticipant($user)`,
+    // which returned null (falsy) rather than true when `for` doesn't resolve (an orphaned/
+    // soft-deleted parent, a for_type/for_id mismatch, SessionFactory's own default `for_id => 1`
+    // with no matching row) -- fail-OPEN for any authorization check that does
+    // `if ($session->isNotParticipant($user)) { deny }`, since a missing `for` would silently
+    // authorize everyone instead of no one. Mirrors Therapy::isNotParticipant()/
+    // GroupTherapy::isNotParticipant()'s own established convention (negate isParticipant(),
+    // which already fails closed via the same `?->` chain: `!null === true`).
+    public function isNotParticipant(User $user): bool
     {
-        return $this->for?->isNotParticipant($user);
+        return ! $this->isParticipant($user);
+    }
+
+    // SCRUM-380: TherapyTrait::hidesIdentityOf() of this session's therapy. Fails closed: a session
+    // whose therapy can't be resolved hides everyone (the old isAnonymousFor() showed everyone).
+    public function hidesIdentityOf(User $subject): bool
+    {
+        return ! $this->for || $this->for->hidesIdentityOf($subject);
     }
 
     public function scopeWhereIsParticipant($query, User $user)
     {
         return $query
             ->where(function ($query) use ($user) {
-                $query->whereHasMorph('for', '*', function($query) use ($user) {
+                $query->whereHasMorph('for', '*', function ($query) use ($user) {
                     $query->whereIsParticipant($user);
                 });
             });
@@ -163,7 +278,7 @@ class Session extends Model
 
     public function doesNotAcceptMessage()
     {
-        return !$this->acceptsMessage();
+        return ! $this->acceptsMessage();
     }
 
     public function acceptsMessage()
@@ -225,7 +340,7 @@ class Session extends Model
 
     public function scopeWhereNameLike($query, $name)
     {
-        return $query->where('name', 'LIKE', "%{$name}%");
+        return $query->whereContains('name', (string) $name);
     }
 
     public function scopeWhereOnline($query)
@@ -248,20 +363,24 @@ class Session extends Model
         if ($this->for_type == Therapy::class) {
             $type = 'Therapy';
             $url = url("therapies/{$this->for->id}");
-        }
-        else {
+        } else {
             $type = 'Group Therapy';
-            $url = url("group_therapies/{$this->for->id}");
+            $url = url("group-therapies/{$this->for->id}");
         }
-        
+
         return [$type, $url];
     }
 
     public function getForChannelName()
     {
-        if ($this->for_type == Therapy::class)
+        if ($this->for_type == Therapy::class) {
             return "therapies.{$this->for_id}";
-        
-        return "grouptherapies.{$this->for_id}";
+        }
+
+        // groupTherapies (camelCase): must match the presence channel registered in
+        // routes/channels.php and joined by useTherapyState.js -- channel names are
+        // case-sensitive on the wire, so a casing mismatch here means broadcasts silently
+        // never reach the channel the frontend actually joined.
+        return "groupTherapies.{$this->for_id}";
     }
 }

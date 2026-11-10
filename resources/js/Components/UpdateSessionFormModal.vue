@@ -1,5 +1,6 @@
 <script setup>
-import { computed, ref, unref, watch, watchEffect } from 'vue';
+import { ref, unref, watch, watchEffect } from 'vue';
+import useScheduleTimes from '@/Composables/useScheduleTimes'
 import TextInput from '@/Components/TextInput.vue';
 import InputLabel from '@/Components/InputLabel.vue';
 import InputError from '@/Components/InputError.vue';
@@ -13,7 +14,6 @@ import Alert from "./Alert.vue";
 import PrimaryButton from "./PrimaryButton.vue";
 import TopicSection from "./TopicSection.vue";
 import Select from "./Select.vue";
-import { addMinutes, format } from 'date-fns';
 import useErrorHandler from '@/Composables/useErrorHandler';
 import PreferenceItem from './PreferenceItem.vue';
 
@@ -45,8 +45,8 @@ const emits = defineEmits(['close', 'onUpdate'])
 
 const loading = ref(false)
 const sessionUpdatingMap = ref(null)
-const startTime = ref('')
-const endTime = ref('')
+// SCRUM-379: shared start/end handling (resources/js/Composables/useScheduleTimes.js).
+const { startTime, endTime, setTimes, clearTimes, timesError, computedStartTime, computedEndTime, computedNow } = useScheduleTimes({ isOpen: () => props.show })
 const selectedCases = ref([])
 const selectedTopics = ref([])
 const sessionData = ref({
@@ -85,7 +85,7 @@ watchEffect(() => {
     if (
         !props.show ||
         !props.therapy.allowInPerson || 
-        sessionForm.type !== 'IN_PERSON'
+        sessionData.value.type !== 'IN_PERSON' // SCRUM-377 (browser QA): was an undefined `sessionForm`, which threw on open
     ) return
 
     initMap()
@@ -110,53 +110,7 @@ watch(() => props.therapy.cases?.length, () => {
     if (props.therapy.cases?.length)
         sessionData.value.cases = props.therapy.cases.map((c) => c.id)
 })
-watch(() => startTime.value, () => {
-    if (
-        !isMinutesBefore({
-            firstTime: endTime.value, 
-            secondTime: startTime.value, 
-            minutes: 30
-        })
-    ) endTime.value = addMinitesToDate(startTime.value, 30)
-})
-watch(() => endTime.value, () => {
-    if (
-        !isMinutesBefore({
-            firstTime: endTime.value, 
-            secondTime: startTime.value, 
-            minutes: 30
-        })
-    ) endTime.value = addMinitesToDate(startTime.value, 30)
-})
 
-const computedStartTime = computed(() => {
-    return new Date(startTime.value).toGMTString()
-})
-const computedEndTime = computed(() => {
-    return new Date(endTime.value).toGMTString()
-})
-const computedNow = computed(() => {
-    return new Date().toISOString().slice(0, 16)
-})
-
-function isMinutesBefore({firstTime, secondTime = null, minutes}) {
-    if (!firstTime) return null
-
-    const comparisonDate = addMinutes(secondTime ? new Date(secondTime) : new Date(), minutes)
-
-    return new Date(firstTime) >= comparisonDate
-}
-
-function formatDateTimeForFrontend(dateTime) {
-    return format(dateTime, "yyyy-MM-dd'T'HH:mm")
-}
-
-function addMinitesToDate(time, minutes) {
-    if (!time) return null
-    const newTime = formatDateTimeForFrontend(addMinutes(time, minutes))
-    
-    return newTime
-}
 
 async function updateSession() {
     if (!sessionData.value.name) {
@@ -166,17 +120,9 @@ async function updateSession() {
         return
     }
 
-    if (!isMinutesBefore({ firstTime: startTime.value, minutes: 25 })) {
-        setFailedAlertData({
-            message: 'Start time must be at least 25 minutes away from current time. Please increase the start time.',
-        })
-        return
-    }
-    
-    if (!isMinutesBefore({ firstTime: endTime.value, secondTime: startTime.value, minutes: 30})) {
-        setFailedAlertData({
-            message: 'End time must be at least 30 minutes away from start time. Please increase the end time.',
-        })
+    const timeError = timesError()
+    if (timeError) {
+        setFailedAlertData({ message: timeError })
         return
     }
 
@@ -190,7 +136,6 @@ async function updateSession() {
 
     await axios.patch(route(`api.sessions.update`, { sessionId: props.session.id }), {...sessionData.value})
         .then((res) => {
-            console.log(res)
             
             setAlertData({
                 message: 'Your session has been successfully updated.',
@@ -244,8 +189,7 @@ function clearData() {
     sessionData.value.lat = ''
     sessionData.value.landmark = ''
     sessionData.value.startTime = ''
-    startTime.value = ''
-    endTime.value = ''
+    clearTimes()
     sessionData.value.endTime = ''
     sessionData.value.type = ''
     sessionData.value.cases = []
@@ -257,8 +201,7 @@ function setSessionFormData() {
     sessionData.value.about = props.session.about
     sessionData.value.paymentType = props.session.paymentType
     sessionData.value.startTime = props.session.startTime
-    startTime.value = formatDateTimeForFrontend(props.session.startTime)
-    endTime.value = formatDateTimeForFrontend(props.session.endTime)
+    setTimes(props.session.startTime, props.session.endTime)
     sessionData.value.endTime = props.session.endTime
     sessionData.value.type = props.session.type
     sessionData.value.lng = props.session.longitude

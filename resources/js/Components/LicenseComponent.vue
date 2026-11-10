@@ -29,6 +29,10 @@ defineProps({
             />
         </div>
         <div
+            v-else-if="license.documentsRemovedAt"
+            class="mt-3 text-xs text-center text-stone-500"
+        >Documents removed under the retention policy on {{ new Date(license.documentsRemovedAt).toLocaleDateString() }}.</div>
+        <div
             class="text-sm text-end mt-2"
             :class="[license.validated ? 'text-green-600' : 'text-red-600']"
         >{{ license.validated ? 'validated' : 'unvalidated' }}</div>

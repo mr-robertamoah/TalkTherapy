@@ -17,22 +17,25 @@ use App\Models\User;
 
 class ProfessionService extends Service
 {
-    
-    public function getProfessions(String $name = '') {
+    public function getProfessions(string $name = '')
+    {
         $query = Profession::query();
 
-        if ($name) $query->where('name', 'LIKE', "%{$name}%");
+        if ($name) {
+            $query->whereContains('name', (string) $name);
+        }
 
         return ProfessionResource::collection($query->paginate(
             PaginationEnum::preferencesPagination->value
         ));
     }
 
-    public function createProfession(CreateProfessionDTO $createProfessionDTO) {
+    public function createProfession(CreateProfessionDTO $createProfessionDTO)
+    {
         EnsureAddedbyIsValidAction::new()->execute($createProfessionDTO);
-        
+
         EnsureUserCanCreateProfessionAction::new()->execute($createProfessionDTO);
-        
+
         EnsureProfessionNameIsUniqueAction::new()->execute($createProfessionDTO->name);
 
         $profession = CreateProfessionAction::new()->execute($createProfessionDTO);
@@ -45,7 +48,7 @@ class ProfessionService extends Service
                     $createProfessionDTO->addedby::class == User::class
                         ? $createProfessionDTO->addedby
                         : $createProfessionDTO->addedby->user
-                ) 
+                )
                 : $createProfessionDTO->user,
                 'starreable' => $profession,
                 'type' => StarTypeEnum::contribution->value,

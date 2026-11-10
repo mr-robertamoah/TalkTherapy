@@ -2,9 +2,9 @@
 
 namespace App\Http\Requests;
 
-use Carbon\Carbon;
+use App\Rules\MinimumAgeForDobRule;
+use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Validation\Rule;
 
 class AdminUpdateUserRequest extends FormRequest
 {
@@ -19,19 +19,17 @@ class AdminUpdateUserRequest extends FormRequest
     /**
      * Get the validation rules that apply to the request.
      *
-     * @return array<string, \Illuminate\Contracts\Validation\ValidationRule|array<mixed>|string>
+     * @return array<string, ValidationRule|array<mixed>|string>
      */
     public function rules(): array
     {
-        $date = $this->get('dob');
-
         return [
             'firstName' => ['nullable', 'string'],
             'lastName' => ['nullable', 'string'],
             'otherNames' => ['nullable', 'string'],
             'email' => ['nullable', 'string'],
             'emailVerified' => ['nullable', 'boolean'],
-            'dob' => ['nullable', 'date', Rule::prohibitedIf(!!$date && now()->diffInYears(new Carbon($date), true) < 10)],
+            'dob' => ['nullable', 'date', new MinimumAgeForDobRule],
         ];
     }
 }

@@ -8,14 +8,10 @@ use App\Exceptions\DiscussionException;
 
 class EnsureCanUpdateDiscussionStatusAction extends Action
 {
-    public function execute(CreateDiscussionDTO $createDiscussionDTO, string $type = 'start')
+    public function execute(CreateDiscussionDTO $createDiscussionDTO)
     {
-        if (
-            $createDiscussionDTO->user->isAdmin() ||
-            $createDiscussionDTO->discussion->addedby->is($createDiscussionDTO->user) ||
-            $createDiscussionDTO->discussion->addedby->is($createDiscussionDTO->user->counsellor)
-        ) return;
-
-        throw new DiscussionException("You cannot {$type} discussion with name: {$createDiscussionDTO->discussion->name}.", 422);
+        if (! $createDiscussionDTO->discussion->isManageableBy($createDiscussionDTO->user)) {
+            throw DiscussionException::notAllowed();
+        }
     }
 }

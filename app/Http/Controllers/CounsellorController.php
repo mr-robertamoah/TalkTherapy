@@ -16,7 +16,6 @@ use App\Http\Resources\CounsellorResource;
 use App\Http\Resources\StarredCounsellorResource;
 use App\Models\Counsellor;
 use App\Services\CounsellorService;
-use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Redirect;
 use Illuminate\Validation\Rule;
@@ -25,47 +24,53 @@ use Throwable;
 
 class CounsellorController extends Controller
 {
+    // Every lookup below reads $request->route('counsellorId') rather than the magic
+    // ->counsellorId property -- see the identical fix/rationale in SessionController
+    // (SCRUM-116/SCRUM-130).
     public function verifyEmail(Request $request)
     {
         try {
             CounsellorService::new()->verifyEmail(
                 UpdateCounsellorDTO::new()->fromArray([
-                    'counsellor' => Counsellor::find($request->counsellorId),
+                    'counsellor' => Counsellor::find($request->route('counsellorId')),
                     'request' => $request,
                 ])
-            );        
+            );
 
-            return redirect()->route('counsellor.show', ['counsellorId' => $request->counsellorId]);
+            return redirect()->route('counsellor.show', ['counsellorId' => $request->route('counsellorId')]);
         } catch (Throwable $th) {
-            $message = $th->getCode() == 500 ? "Something unfortunate happened. Please try again shortly." : $th->getMessage();
-            ds($th);
-            return redirect()->route('counsellor.show', ['counsellorId' => $request->counsellorId])->withErrors('message', $message);
+            $status = $this->statusFor($th);
+            $message = $this->messageFor($th, $status);
+
+            return redirect()->route('counsellor.show', ['counsellorId' => $request->route('counsellorId')])->withErrors(['alert' => $message]);
         }
     }
-    
+
     public function getRandomCounsellors(Request $request)
     {
         try {
-            $counsellors = CounsellorService::new()->getRandomCounsellors($request->user());        
+            $counsellors = CounsellorService::new()->getRandomCounsellors($request->user(), $request->query('seed'));
 
             return StarredCounsellorResource::collection($counsellors);
         } catch (Throwable $th) {
-            $message = $th->getCode() == 500 ? "Something unfortunate happened. Please try again shortly." : $th->getMessage();
-            ds($th);
-            throw new Exception($message);
+            $status = $this->statusFor($th);
+            $message = $this->messageFor($th, $status);
+
+            return response()->json(['message' => $message], $status);
         }
     }
-    
+
     public function getCounsellors(Request $request)
     {
         try {
-            $counsellors = CounsellorService::new()->getCounsellors($request->user(), $request->name);        
+            $counsellors = CounsellorService::new()->getCounsellors($request->user(), $request->name);
 
             return CounsellorMiniResource::collection($counsellors);
         } catch (Throwable $th) {
-            $message = $th->getCode() == 500 ? "Something unfortunate happened. Please try again shortly." : $th->getMessage();
-            ds($th);
-            throw new Exception($message);
+            $status = $this->statusFor($th);
+            $message = $this->messageFor($th, $status);
+
+            return response()->json(['message' => $message], $status);
         }
     }
 
@@ -73,20 +78,20 @@ class CounsellorController extends Controller
     {
         CounsellorService::new()->sendVerificationEmail(
             UpdateCounsellorDTO::new()->fromArray([
-                'counsellor' => Counsellor::find($request->counsellorId),
+                'counsellor' => Counsellor::find($request->route('counsellorId')),
                 'user' => $request->user(),
             ])
-        );        
+        );
 
         return redirect()->back()->with('message', 'verification email sent.');
     }
-        
+
     public function createCounsellor(Request $request)
     {
         try {
             $request->validate([
-                'name' => ['nullable', 'string', 'max:255', Rule::requiredIf((bool) !$request->user()->name)],
-                'about' => ['nullable', 'string',]
+                'name' => ['nullable', 'string', 'max:255', Rule::requiredIf((bool) ! $request->user()->name)],
+                'about' => ['nullable', 'string'],
             ]);
 
             $counsellor = CounsellorService::new()->createCounsellor(
@@ -96,21 +101,23 @@ class CounsellorController extends Controller
                     'about' => $request->about,
                 ])
             );
+
             return response()->json([
                 'status' => true,
-                'counsellor' => new CounsellorMiniResource($counsellor)
+                'counsellor' => new CounsellorMiniResource($counsellor),
             ]);
         } catch (Throwable $th) {
-            $message = $th->getCode() == 500 ? "Something unfortunate happened. Please try again shortly." : $th->getMessage();
+            $status = $this->statusFor($th);
+            $message = $this->messageFor($th, $status);
 
-            throw new Exception($message);
+            return response()->json(['message' => $message], $status);
         }
     }
 
     public function show(Request $request)
     {
         try {
-            $counsellor = GetCounsellorAccountForProfileViewAction::new()->execute($request->counsellorId);
+            $counsellor = GetCounsellorAccountForProfileViewAction::new()->execute($request->route('counsellorId'));
 
             $counsellorResource = new CounsellorResource($counsellor);
 
@@ -118,22 +125,29 @@ class CounsellorController extends Controller
 
             $data = [
                 'counsellor' => $counsellorResource,
-                'counsellorCreationStep' => GetCounsellorCreationStepOfUserAction::new()->execute($counsellor->user)
+                'counsellorCreationStep' => GetCounsellorCreationStepOfUserAction::new()->execute($counsellor->user),
+                // SCRUM-359: offered to nobody while suspended -- the profile says so, never why.
+                'counsellorUnavailable' => $counsellor->isSuspended(),
             ];
 
             if ($counsellor->user->is($request->user())) {
-                $data = array_merge($data, CounsellorService::new()->getCounsellorData());
+                $data = array_merge($data, CounsellorService::new()->getCounsellorData($counsellor));
             }
 
             $page = Inertia::render('Profile/Counsellor/Show', $data);
 
             $message = session('message');
 
-            if ($message) $page->with('message', $message);
+            if ($message) {
+                $page->with('message', $message);
+            }
 
             return $page;
         } catch (Throwable $th) {
-            return Redirect::route('home')->with('message', $th->getMessage());
+            $status = $this->statusFor($th);
+            $message = $this->messageFor($th, $status);
+
+            return Redirect::route('home')->with('message', $message);
         }
     }
 
@@ -156,40 +170,50 @@ class CounsellorController extends Controller
                     'selectedReligions' => $request->selectedReligions,
                     'professionId' => $request->professionId,
                     'user' => $request->user(),
-                    'counsellor' => Counsellor::find($request->counsellorId)
+                    'counsellor' => Counsellor::find($request->route('counsellorId')),
                 ])
             );
 
             return Redirect::back();
         } catch (Throwable $th) {
-            $message = $th->getCode() == 500 ? "Something unfortunate happened. Please try again shortly." : $th->getMessage();
+            $status = $this->statusFor($th);
+            $message = $this->messageFor($th, $status);
 
-            throw new Exception($message);
+            return Redirect::back()->withErrors(['alert' => $message]);
         }
     }
 
+    // Self-service deletion -- requires re-confirming the current password, mirroring
+    // ProfileController::destroy's equivalent full-account deletion (SCRUM-134). Admin-triggered
+    // deletion is a separate endpoint (AdministratorController::deleteCounsellor) that doesn't
+    // have the counsellor's password to check.
     public function deleteCounsellor(Request $request)
     {
+        $request->validate([
+            'password' => ['required', 'current_password'],
+        ]);
+
         try {
             CounsellorService::new()->deleteCounsellor(
                 DeleteCounsellorDTO::new()->fromArray([
                     'user' => $request->user(),
-                    'counsellor' => Counsellor::find($request->counsellorId)
+                    'counsellor' => Counsellor::find($request->route('counsellorId')),
                 ])
             );
 
             return Redirect::route('profile.show');
         } catch (Throwable $th) {
-            $message = $th->getCode() == 500 ? "Something unfortunate happened. Please try again shortly." : $th->getMessage();
+            $status = $this->statusFor($th);
+            $message = $this->messageFor($th, $status);
 
-            throw new Exception($message);
+            return Redirect::back()->withErrors(['alert' => $message]);
         }
     }
-    
+
     public function getRequestCounsellors(Request $request)
     {
         return AssistanceRequestCounsellorResource::collection(
-            CounsellorService::new()->getCounsellors($request->user(), $request->name)
+            CounsellorService::new()->getCounsellors($request->user(), $request->name, requestableOnly: true)
         );
     }
 
@@ -204,15 +228,14 @@ class CounsellorController extends Controller
                     'nationalIdNumber' => $request->nationalIdNumber,
                     'licensingAuthorityId' => $request->licensingAuthorityId,
                     'user' => $request->user(),
-                    'counsellor' => Counsellor::find($request->counsellorId)
+                    'counsellor' => Counsellor::find($request->route('counsellorId')),
                 ])
             );
 
-            return Redirect::back();
+            // SCRUM-380: JSON for a script; the Inertia form (Profile/Counsellor/Show) still gets the redirect.
+            return $this->successResponse($request, ['status' => true], Redirect::back());
         } catch (Throwable $th) {
-            $message = $th->getCode() == 500 ? "Something unfortunate happened. Please try again shortly." : $th->getMessage();
-
-            throw new Exception($message);
+            return $this->failureResponse($request, $th);
         }
     }
 }

@@ -1,33 +1,41 @@
 <template>
     <div v-bind="$attrs" class="relative">
-        <div class="relative bg-stone-200 rounded p-2">
+        <div class="relative bg-white rounded-xl shadow-lg border border-gray-100 p-4">
             <FormLoader :show="loading" :text="post?.id ? 'updating' : 'creating' "/>
-            <div class="flex space-x-2 justify-end items-center w-full p-2" v-if="computedIsAddedby">
-                <PrimaryButton @click="() => showModal('update')" class="shrink-0">update</PrimaryButton>
-                <DangerButton @click="() => showModal('delete')" class="shrink-0">delete</DangerButton>
+            <div class="flex space-x-2 justify-end items-center w-full mb-2" v-if="computedIsAddedby">
+                <PrimaryButton @click="() => showModal('update')" class="shrink-0 text-xs px-3 py-1">update</PrimaryButton>
+                <DangerButton @click="() => showModal('delete')" class="shrink-0 text-xs px-3 py-1">delete</DangerButton>
             </div>
-            <div v-if="computedIsAddedby" class="my-1 h-1 bg-white"></div>
-            <div class="text-xs text-gray-600 font-bold text-end mt-2" v-if="post?.id">
-                <div v-if="post?.fromAdmin">Posted by Admin</div>
-                <div v-else>Posted by Counsellor</div>
+            <div v-if="computedIsAddedby" class="mb-3 h-px bg-gray-200"></div>
+            <div class="text-xs font-medium text-end mb-3" v-if="post?.id">
+                <span class="bg-blue-100 text-blue-800 px-2 py-1 rounded-full">
+                    <span v-if="post?.fromAdmin">Posted by Admin</span>
+                    <span v-else>Posted by Counsellor</span>
+                </span>
             </div>
 
-            <div v-if="post?.counsellor" class="flex justify-start items-center my-3 cursor-pointer space-x-2 p-2 bg-stone-100 rounded">
-                <Avatar class="shrink-0" :avatar-text="'...'" :size="40" :src="post?.counsellor?.avatar ?? ''"/>
-                <div class="text-gray-600 flex justify-start items-center shrink space-x-2 text-xs">
-                    <div class="capitalize">{{ post?.counsellor.name }}</div>
-                    <div>{{ post?.counsellor.username ? `(${post?.counsellor.username})` : '' }}</div>
+            <div v-if="post?.counsellor" class="flex justify-start items-center mb-4 cursor-pointer space-x-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors" @click="() => $inertia.visit(route('counsellor.show', { counsellorId: post.counsellor.id }))">
+                <Avatar class="shrink-0" :avatar-text="'...'" :size="52" :src="post?.counsellor?.avatar ?? ''"/>
+                <div class="text-gray-700 flex flex-col space-y-1">
+                    <div class="capitalize font-semibold text-sm hover:text-blue-600 transition-colors">{{ post?.counsellor.name }}</div>
+                    <div class="text-xs text-gray-500">{{ post?.counsellor.username ? `@${post?.counsellor.username}` : '' }}</div>
                 </div>
             </div>
             <div 
                 v-if="post?.content" 
-                class="text-sm text-gray-600 text-pretty my-2 w-[90%] mx-auto"
+                class="text-sm text-gray-700 leading-relaxed mb-4"
             >
                 <span>{{ getShowMoreContent(post.content) }}</span>
-                <span
+                <button
                     @click="toggleShowMore"
                     v-if="post?.content?.length > 100"
-                    class="ml-2 cursor-pointer text-xs my-1 text-blue-600 underline">show {{ showMore ? 'less' : 'more' }}</span>
+                    class="ml-2 inline-flex items-center px-2 py-1 text-xs font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-full transition-colors"
+                >
+                    {{ showMore ? 'Show less' : 'Show more' }}
+                    <svg class="ml-1 w-3 h-3 transition-transform" :class="{ 'rotate-180': showMore }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                    </svg>
+                </button>
             </div>
             <div v-if="post.files?.length" class="w-[90%] mx-auto my-2">
                 <div 
@@ -63,36 +71,31 @@
                 <div v-if="post?.createdAt" class="text-xs text-gray-600">{{ post.createdAt }}</div>
             </div>
         </div>
-        <div class="w-full h-2 bg-white"></div>
-        <div class="relative bg-stone-200 rounded p-2 flex justify-between text-xs items-center space-x-2 select-none">
-            <div class="flex flex-col justify-center p-2 items-center space-x-2"
-                @click="() => {
-                    if (computedHasLiked) {
-                        clickedDislike()
-                        return
-                    }
-                    clickedLike()
-                }"
-            >
-                <div class="flex justify-start items-center space-x-4">
+        <div class="border-t border-gray-100 mt-4 pt-3">
+            <div class="flex justify-around items-center">
+                <div class="flex items-center space-x-2 px-4 py-2 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
+                    @click="() => {
+                        if (computedHasLiked) {
+                            clickedDislike()
+                            return
+                        }
+                        clickedLike()
+                    }"
+                >
                     <DarkLikeIcon
-                        title="unlike post" v-if="computedHasLiked" class="cursor-pointer w-5 h-5 text-green-600"/>
+                        title="unlike post" v-if="computedHasLiked" class="w-5 h-5 text-blue-600"/>
                     <LikeIcon
-                        :title="$page.props.auth.user ? 'like post' : ''" v-else class="cursor-pointer w-5 h-5 text-green-600"/>
-                    <div class="text-sm font-bold">{{ post.likes?.length }}</div>
+                        :title="$page.props.auth.user ? 'like post' : ''" v-else class="w-5 h-5 text-gray-500 hover:text-blue-600 transition-colors"/>
+                    <span class="text-sm font-medium text-gray-700">{{ post.likesCount || 0 }}</span>
+                    <span class="text-sm text-gray-500">likes</span>
                 </div>
-                <div class="mt-2 text-stone-400 font-bold">likes</div>
-            </div>
-            <div class="flex flex-col justify-center p-2 items-center space-x-2"
-                @click="() => showModal('comments')"
-            >
-                <div class="flex justify-start items-center space-x-4">
-                    <CommentIcon
-                        title="show comments"
-                        class="cursor-pointer w-5 h-5 text-green-600"/>
-                    <div class="text-sm font-bold">{{ post.comments }}</div>
+                <div class="flex items-center space-x-2 px-4 py-2 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
+                    @click="() => showModal('comments')"
+                >
+                    <CommentIcon class="w-5 h-5 text-gray-500 hover:text-blue-600 transition-colors"/>
+                    <span class="text-sm font-medium text-gray-700">{{ post.comments || 0 }}</span>
+                    <span class="text-sm text-gray-500">comments</span>
                 </div>
-                <div class="mt-2 text-stone-400 font-bold">comments</div>
             </div>
         </div>
         <div v-if="showShare" class="flex justify-end mb-2">
@@ -184,7 +187,7 @@
                         title="copy"
                         class="cursor-pointer w-5 h-5 text-green-600"/>
                 </div>
-                <div class="text-sm text-center w-[90%] mx-auto text-blue-600">talktherapy.tech/posts/{{ post.id }}</div>
+                <div class="text-sm text-center w-[90%] mx-auto text-blue-600">{{ postUrl }}</div>
                 <div v-if="copying" class="text-xs text-gray-600 my-2 text-end w-full">{{ copying }}</div>
             </div>
         </div>
@@ -254,15 +257,10 @@ watchEffect(() => {
         id.value = props.post.id
 })
 
-const computedHasLiked = computed(() => {
-    const user = usePage().props.auth.user
-
-    if (!user || !props.post?.likes?.length) return false
-
-    if (props.post.likes.find((userId) => userId == user.id)) return true
-
-    return false
-})
+// SCRUM-355: the server says whether you liked it; it never sends who did.
+// The app's own address, not a hard-coded domain, so a copied link works in every environment.
+const postUrl = computed(() => `${window.location.origin}${route('posts.get', { postId: props.post.id }, false)}`)
+const computedHasLiked = computed(() => !!usePage().props.auth.user && !!props.post?.isLiked)
 
 const computedIsAddedby = computed(() => {
     const user = usePage().props.auth.user
@@ -281,7 +279,7 @@ function copyLink() {
     setTimeout(() => {
         copying.value = 'copied.'
     }, 1000)
-    navigator.clipboard.writeText(`www.talktherapy.tech/posts/${props.post.id}`)
+    navigator.clipboard.writeText(postUrl.value)
     setTimeout(() => {
         copying.value = ''
     }, 2000)
@@ -345,10 +343,8 @@ async function clickedDislike() {
     
     liking.value = true
 
-    let likes = [...props.post.likes]
-    likes.splice(props.post.likes.indexOf(user.id), 1)
-    console.log(likes)
-    emits('updated', {...props.post, likes})
+    const likesCount = props.post.likesCount || 0
+    emits('updated', {...props.post, isLiked: false, likesCount: Math.max(0, likesCount - 1)})
     await axios
         .post(route('api.likes.delete'), {
             likeableType: 'Post',
@@ -361,7 +357,7 @@ async function clickedDislike() {
             console.log(err)
             goToLogin(err)
             
-            emits('updated', {...props.post, likes: [user.id, ...likes]})
+            emits('updated', {...props.post, isLiked: true, likesCount})
             
             if (err.response?.data?.message) {
                 setFailedAlertData({
@@ -387,8 +383,8 @@ async function clickedLike() {
     
     liking.value = true
 
-    let likes = [user.id, ...props.post.likes]
-    emits('updated', {...props.post, likes})
+    const likesCount = props.post.likesCount || 0
+    emits('updated', {...props.post, isLiked: true, likesCount: likesCount + 1})
     await axios
         .post(route('api.likes.create'), {
             likeableType: 'Post',
@@ -401,8 +397,7 @@ async function clickedLike() {
             console.log(err)
             goToLogin(err)
             
-            likes.splice(likes.indexOf(user.id), 1)
-            emits('updated', {...props.post, likes})
+            emits('updated', {...props.post, isLiked: false, likesCount})
             
             if (err.response?.data?.message) {
                 setFailedAlertData({

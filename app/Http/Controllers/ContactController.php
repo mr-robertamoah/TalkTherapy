@@ -7,9 +7,7 @@ use App\DTOs\CreateContactDTO;
 use App\Http\Resources\ContactResource;
 use App\Models\Contact;
 use App\Services\ContactService;
-use Exception;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Redirect;
 use Throwable;
 
 class ContactController extends Controller
@@ -29,16 +27,18 @@ class ContactController extends Controller
                 ])
             );
 
-            return $this->returnSuccess($request, $contact);
+            return $this->successResponse($request, ['contact' => new ContactResource($contact)]);
         } catch (Throwable $th) {
-            
-            return $this->returnFailure($request, $th);
+
+            return $this->failureResponse($request, $th);
         }
     }
 
+    // Reads $request->route('contactId') rather than the magic ->contactId property -- see the
+    // identical fix/rationale in SessionController (SCRUM-116/SCRUM-130/SCRUM-133).
     public function updateContact(Request $request)
     {
-        $contact = Contact::find($request->contactId);
+        $contact = Contact::find($request->route('contactId'));
         try {
             $contact = ContactService::new()->updateContact(
                 CreateContactDTO::new()->fromArray([
@@ -52,16 +52,16 @@ class ContactController extends Controller
                 ])
             );
 
-            return $this->returnSuccess($request, $contact);
+            return $this->successResponse($request, ['contact' => new ContactResource($contact)]);
         } catch (Throwable $th) {
-            
-            return $this->returnFailure($request, $th);
+
+            return $this->failureResponse($request, $th);
         }
     }
 
     public function deleteContact(Request $request)
     {
-        $contact = Contact::find($request->contactId);
+        $contact = Contact::find($request->route('contactId'));
         try {
             ContactService::new()->deleteContact(
                 CreateContactDTO::new()->fromArray([
@@ -70,10 +70,10 @@ class ContactController extends Controller
                 ])
             );
 
-            return $this->returnSuccess($request, $contact);
+            return $this->successResponse($request, ['contact' => new ContactResource($contact)]);
         } catch (Throwable $th) {
-            
-            return $this->returnFailure($request, $th);
+
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -90,28 +90,8 @@ class ContactController extends Controller
 
             return ContactResource::collection($contacts);
         } catch (Throwable $th) {
-            
-            return $this->returnFailure($request, $th);
+
+            return $this->failureResponse($request, $th);
         }
-    }
-
-    private function returnSuccess(Request $request, Contact $contact)
-    {
-        $contact = new ContactResource($contact);
-        
-        if ($request->acceptsJson()) return response()->json(['contact' => $contact]);
-        
-        return Redirect::back()->with(['contact' => $contact]);
-    }
-
-    private function returnFailure(Request $request, Throwable $th)
-    {
-        $message = $th->getCode() == 500 ? "Something unfortunate happened. Please try again shortly." : $th->getMessage();
-        
-        ds($th);
-
-        if ($request->acceptsJson()) throw new Exception($message);
-
-        return Redirect::back()->withErrors(['alert'=> $message]);
     }
 }

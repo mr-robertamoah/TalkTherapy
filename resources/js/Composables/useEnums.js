@@ -6,11 +6,33 @@ export default function useEnums() {
         therapy: 'THERAPY_ASSISTANCE_REQUEST',
         discussion: 'THERAPY_DISCUSSION_REQUEST',
         groupTherapy: 'GROUP_THERAPY_ASSISTANCE_REQUEST',
+        groupTherapyMembership: 'GROUP_THERAPY_MEMBERSHIP_REQUEST',
+        organization: 'ORGANIZATION_VERIFICATION_REQUEST',
+        organizationCounsellorInvite: 'ORGANIZATION_COUNSELLOR_INVITE_REQUEST',
+        organizationCounsellorApplication: 'ORGANIZATION_COUNSELLOR_APPLICATION_REQUEST',
+        organizationMemberInvite: 'ORGANIZATION_MEMBER_INVITE_REQUEST',
+        organizationMemberApplication: 'ORGANIZATION_MEMBER_APPLICATION_REQUEST',
+        organizationCounsellorCompensationChange: 'ORGANIZATION_COUNSELLOR_COMPENSATION_CHANGE_REQUEST',
+        sessionScheduleProposal: 'SESSION_SCHEDULE_PROPOSAL_REQUEST',
+        dobChange: 'DOB_CHANGE_REQUEST',
+        ageVerification: 'AGE_VERIFICATION_REQUEST',
+        safeguardingException: 'SAFEGUARDING_EXCEPTION_REQUEST',
+        refund: 'REFUND_REQUEST',
     }
     const RequestStatusEnum = {
         accepted: 'ACCEPTED',
         pending: 'PENDING',
         rejected: 'REJECTED',
+        inconsequencial: 'INCONSEQUENCIAL',
+    }
+    // SCRUM-387: how each request status reads in a filter or list (the admin requests queue and
+    // counsellor verification). Every status the server has (RequestStatusEnum::values()).
+    const RequestStatusLabels = {
+        PENDING: 'Pending',
+        ACCEPTED: 'Accepted',
+        REJECTED: 'Rejected',
+        INCONSEQUENCIAL: 'Closed',
+        SUPERSEDED: 'Superseded',
     }
     const SessionStatusEnum = {
         pending: 'PENDING',
@@ -39,8 +61,23 @@ export default function useEnums() {
         periodic: 'PERIODIC'
     }
 
+    // Mirrors App\Enums\TherapyCardActionEnum (SCRUM-114): the button a therapy/group card shows its viewer.
+    const TherapyCardActionEnum = {
+        view: 'view',
+        open: 'open',
+        join: 'join',
+        ask: 'ask',
+        requestSent: 'requestSent',
+        full: 'full',
+        ended: 'ended',
+        offer: 'offer',
+        offerSent: 'offerSent',
+        invited: 'invited',
+        blocked: 'blocked',
+    }
+
     return {
-        SessionStatusEnum, DiscussionStatusEnum, RequestStatusEnum, RequestTypeEnum,
-        PaymentTypeEnum, SessionTypeEnum
+        SessionStatusEnum, DiscussionStatusEnum, RequestStatusEnum, RequestStatusLabels, RequestTypeEnum,
+        PaymentTypeEnum, SessionTypeEnum, TherapyCardActionEnum
     }
 }

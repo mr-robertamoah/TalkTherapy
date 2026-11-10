@@ -2,18 +2,16 @@
 
 namespace App\Http\Controllers;
 
-use App\Actions\GetModelWithModelNameAndIdAction;
 use App\DTOs\CreateRequestDTO;
 use App\DTOs\GetGuardianshipDTO;
 use App\DTOs\GetUsersDTO;
+use App\DTOs\SubmitAgeVerificationDTO;
+use App\Http\Requests\SubmitAgeVerificationRequest;
 use App\Http\Resources\GuardianshipResource;
-use App\Http\Resources\UserMiniResource;
 use App\Models\Guardianship;
 use App\Models\User;
 use App\Services\UserService;
-use Exception;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Redirect;
 use Throwable;
 
 class UserController extends Controller
@@ -28,8 +26,8 @@ class UserController extends Controller
                 ])
             );
         } catch (Throwable $th) {
-            
-            return $this->returnFailure($request, $th);
+
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -44,25 +42,27 @@ class UserController extends Controller
                 ])
             );
         } catch (Throwable $th) {
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
+    // Reads $request->route('guardianshipId') rather than the magic ->guardianshipId property --
+    // see the identical fix/rationale in SessionController (SCRUM-116/SCRUM-130).
     public function deleteGuardianship(Request $request)
     {
         try {
             UserService::new()->deleteGuardianship(
                 GetGuardianshipDTO::new()->fromArray([
                     'user' => $request->user(),
-                    'guardianship' => $guardianship = Guardianship::find($request->guardianshipId),
+                    'guardianship' => $guardianship = Guardianship::find($request->route('guardianshipId')),
                 ])
             );
 
             return response()->json([
-                'guardianship' => new GuardianshipResource($guardianship)
+                'guardianship' => new GuardianshipResource($guardianship),
             ]);
         } catch (Throwable $th) {
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
@@ -71,26 +71,28 @@ class UserController extends Controller
         try {
             return UserService::new()->getGuardianship($request->user());
         } catch (Throwable $th) {
-            return $this->returnFailure($request, $th);
+            return $this->failureResponse($request, $th);
         }
     }
 
-    private function returnSuccess(Request $request, User $user)
+    // TT-4.11b/SCRUM-303
+    public function submitAgeVerification(SubmitAgeVerificationRequest $request)
     {
-        $user = new UserMiniResource($user);
-        
-        if ($request->acceptsJson()) return response()->json(['user' => $user]);
-        
-        return Redirect::back()->with(['user' => $user]);
-    }
+        try {
+            $requestModel = UserService::new()->submitAgeVerification(
+                SubmitAgeVerificationDTO::new()->fromArray([
+                    'user' => $request->user(),
+                    'attestation' => $request->attestation,
+                    'document' => $request->file('document'),
+                ])
+            );
 
-    private function returnFailure(Request $request, Throwable $th)
-    {
-        $message = $th->getCode() == 500 ? "Something unfortunate happened. Please try again shortly." : $th->getMessage();
-        
-        ds($th);
-
-        if ($request->acceptsJson()) throw new Exception($message);
-        return Redirect::back()->withErrors(['alert'=> $message]);
+            return response()->json([
+                'status' => true,
+                'request' => $requestModel,
+            ], 201);
+        } catch (Throwable $th) {
+            return $this->failureResponse($request, $th);
+        }
     }
 }

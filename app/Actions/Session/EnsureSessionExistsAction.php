@@ -10,8 +10,12 @@ class EnsureSessionExistsAction extends Action
 {
     public function execute(CreateSessionDTO $createSessionDTO)
     {
-        if ($createSessionDTO->session) return;
+        if ($createSessionDTO->session) {
+            return;
+        }
 
-        throw new SessionException("Session was not found.", 422);
+        // SCRUM-339: the same answer every session action gives a caller it refuses -- otherwise the
+        // difference reveals which session ids exist.
+        throw new SessionException('You are not allowed to do that with this session.', 422);
     }
 }

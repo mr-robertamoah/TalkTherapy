@@ -15,40 +15,45 @@ class EnsureDiscussionDataIsValidAction extends Action
 {
     public function execute(CreateDiscussionDTO $createDiscussionDTO)
     {
-        if (is_null($createDiscussionDTO->for)) 
-            throw new DiscussionException("No therapy or group therapy for the discussion was given.", 422);
-        
+        if (is_null($createDiscussionDTO->for)) {
+            throw new DiscussionException('No therapy or group therapy for the discussion was given.', 422);
+        }
+
+        // SCRUM-352: a discussion's session must be one of its own therapy's -- any session id used
+        // to be accepted, exposing another therapy's session to this discussion's counsellors. One
+        // answer for a session that's someone else's or doesn't belong here.
+        $session = $createDiscussionDTO->session;
+        if ($session && ! ($session->for_type === $createDiscussionDTO->for::class && (int) $session->for_id === (int) $createDiscussionDTO->for->id)) {
+            throw new DiscussionException('That session is not part of this therapy.', 422);
+        }
+
+        if (! is_null($createDiscussionDTO->maxCounsellors)) {
+            // Upper ceiling mirrors the identical GroupTherapy.max_counsellors precedent
+            // (EnsureTherapyDataIsValidAction) -- a separate, independently-configurable env var
+            // since these are different features (payout-sharing cap vs. discussion-membership
+            // cap) despite the coincidentally identical field name. Without this, a value near
+            // the `unsignedInteger` column's ~4.29 billion ceiling would surface as an uncaught
+            // QueryException (500) instead of a clean 422 (security review, SCRUM-23).
+            $maxCounsellorsCeiling = (int) config('limits.discussion_max_counsellors_ceiling');
+
+            if ($createDiscussionDTO->maxCounsellors < 1 || $createDiscussionDTO->maxCounsellors > $maxCounsellorsCeiling) {
+                throw new DiscussionException("The maximum number of counsellors must be between 1 and {$maxCounsellorsCeiling}.", 422);
+            }
+        }
+
         $therapy = $createDiscussionDTO->for;
 
-        if ($therapy->status == TherapyStatusEnum::ended->value) 
-            throw new DiscussionException("You cannot a create discussion for a therapy which has ended.", 422);
+        if ($therapy->status == TherapyStatusEnum::ended->value) {
+            throw new DiscussionException('You cannot a create discussion for a therapy which has ended.', 422);
+        }
 
         $startTime = Carbon::parse($createDiscussionDTO->startTime)->setTimezone(config('app.timezone'));
         $endTime = Carbon::parse($createDiscussionDTO->endTime)->setTimezone(config('app.timezone'));
         if (
-            $startTime->addMinutes(30)->greaterThan($endTime)
-        ) 
-            throw new DiscussionException("The end time must be at least 30 minutes from the start time.", 422);
-            
-        if (
-            Discussion::query()
-                ->when($createDiscussionDTO->discussion, function ($query) use ($createDiscussionDTO) {
-                    $query->whereNot('id', $createDiscussionDTO->discussion->id);
-                })
-                ->where(function ($query) use ($createDiscussionDTO) {
-                    $query
-                        ->wherePending()
-                        ->whereAddedby($createDiscussionDTO->addedby);
-                })
-                ->orWhere(function ($query) use ($createDiscussionDTO) {
-                    $query
-                        ->wherePending()
-                        ->whereCounsellor($createDiscussionDTO->addedby);
-                })
-                ->whereDateIsBetweenStartAndEndTimes($startTime)
-                ->exists()
-        ) 
-            throw new DiscussionException("The start time of a discussion cannot fall within the start and end time of other discussions.", 422);
+            $startTime->copy()->addMinutes(30)->greaterThan($endTime)
+        ) {
+            throw new DiscussionException('The end time must be at least 30 minutes from the start time.', 422);
+        }
 
         if (
             Discussion::query()
@@ -57,36 +62,68 @@ class EnsureDiscussionDataIsValidAction extends Action
                 })
                 ->where(function ($query) use ($createDiscussionDTO) {
                     $query
-                        ->wherePending()
-                        ->whereAddedby($createDiscussionDTO->addedby);
+                        ->where(function ($query) use ($createDiscussionDTO) {
+                            $query
+                                ->wherePending()
+                                ->whereAddedby($createDiscussionDTO->addedby);
+                        })
+                        ->orWhere(function ($query) use ($createDiscussionDTO) {
+                            $query
+                                ->wherePending()
+                                ->whereCounsellor($createDiscussionDTO->addedby);
+                        });
                 })
-                ->orWhere(function ($query) use ($createDiscussionDTO) {
+                ->whereDateIsBetweenStartAndEndTimes($startTime)
+                ->exists()
+        ) {
+            throw new DiscussionException('The start time of a discussion cannot fall within the start and end time of other discussions.', 422);
+        }
+
+        if (
+            Discussion::query()
+                ->when($createDiscussionDTO->discussion, function ($query) use ($createDiscussionDTO) {
+                    $query->whereNot('id', $createDiscussionDTO->discussion->id);
+                })
+                ->where(function ($query) use ($createDiscussionDTO) {
                     $query
-                        ->wherePending()
-                        ->whereCounsellor($createDiscussionDTO->addedby);
+                        ->where(function ($query) use ($createDiscussionDTO) {
+                            $query
+                                ->wherePending()
+                                ->whereAddedby($createDiscussionDTO->addedby);
+                        })
+                        ->orWhere(function ($query) use ($createDiscussionDTO) {
+                            $query
+                                ->wherePending()
+                                ->whereCounsellor($createDiscussionDTO->addedby);
+                        });
                 })
                 ->whereIsThirtyMinituesBeforeOrAfter($startTime, $endTime)
                 ->exists()
-        ) 
-            throw new DiscussionException("The discussion must start at least 30 minutes before or after other discussions of this therapy.", 422);
-            
+        ) {
+            throw new DiscussionException('The discussion must start at least 30 minutes before or after other discussions of this therapy.', 422);
+        }
+
         if (
             $therapy
                 ->sessions()
                 ->whereDateIsBetweenStartAndEndTimes($startTime)
                 ->exists()
-        ) 
-            throw new DiscussionException("The start time of a discussion cannot fall within the start and end time of other sessions.", 422);
+        ) {
+            throw new DiscussionException('The start time of a discussion cannot fall within the start and end time of other sessions.', 422);
+        }
 
         if (
             $therapy
                 ->sessions()
                 ->whereIsThirtyMinituesBeforeOrAfter($startTime, $endTime)
                 ->exists()
-        ) 
-            throw new DiscussionException("The discussion must start at least 30 minutes before or after other sessions of this therapy.", 422);
-        
-        if ($therapy::class == GroupTherapy::class) return; // TODO add some for group therapy
+        ) {
+            throw new DiscussionException('The discussion must start at least 30 minutes before or after other sessions of this therapy.', 422);
+        }
+
+        if ($therapy::class == GroupTherapy::class) {
+            return;
+        } // TODO add some for group therapy
 
         if (
             Session::query()
@@ -96,7 +133,8 @@ class EnsureDiscussionDataIsValidAction extends Action
                 })
                 ->whereIsThirtyMinituesBeforeOrAfter($startTime, $endTime)
                 ->exists()
-        ) 
-            throw new DiscussionException("Counsellor has therapy sessions less than 30 minutes before or after the time for this discussion.", 422);
+        ) {
+            throw new DiscussionException('Counsellor has therapy sessions less than 30 minutes before or after the time for this discussion.', 422);
+        }
     }
 }

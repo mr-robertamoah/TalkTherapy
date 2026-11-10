@@ -1,0 +1,272 @@
+<?php
+
+use App\Enums\CounsellorEarningStatusEnum;
+use App\Enums\CounsellorPayoutStatusEnum;
+use App\Enums\CounsellorPayoutStatusSourceEnum;
+use App\Jobs\ProcessCounsellorPayoutJob;
+use App\Models\Counsellor;
+use App\Models\CounsellorEarning;
+use App\Models\CounsellorPayout;
+use App\Models\CounsellorPayoutAccount;
+use App\Models\Therapy;
+use App\Models\Transaction;
+use App\Models\User;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\RequestException;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Http;
+
+function aPendingPayoutWithClaimedEarning(): array
+{
+    $counsellor = Counsellor::factory()->create(['user_id' => User::factory()]);
+    CounsellorPayoutAccount::factory()->create(['counsellor_id' => $counsellor->id, 'recipient_code' => 'RCP_test']);
+    $payout = CounsellorPayout::factory()->create(['counsellor_id' => $counsellor->id, 'amount' => 10000]);
+
+    $therapy = Therapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => User::factory()]);
+    $transaction = Transaction::factory()->create(['for_type' => Therapy::class, 'for_id' => $therapy->id]);
+    $earning = CounsellorEarning::factory()->create([
+        'transaction_id' => $transaction->id,
+        'counsellor_id' => $counsellor->id,
+        'counsellor_payout_id' => $payout->id,
+        'net_amount' => 10000,
+        'status' => CounsellorEarningStatusEnum::processing->value,
+    ]);
+
+    return [$payout, $earning];
+}
+
+test('a synchronous success response from Paystack records the payout as succeeded immediately', function () {
+    Http::fake(['*/transfer' => Http::response([
+        'status' => true,
+        'data' => ['transfer_code' => 'TRF_1', 'status' => 'success'],
+    ], 200)]);
+    [$payout, $earning] = aPendingPayoutWithClaimedEarning();
+
+    ProcessCounsellorPayoutJob::dispatchSync($payout->id);
+
+    expect($payout->fresh()->status)->toBe(CounsellorPayoutStatusEnum::succeeded->value);
+    expect($payout->fresh()->transfer_code)->toBe('TRF_1');
+    expect($earning->fresh()->status)->toBe(CounsellorEarningStatusEnum::paidOut->value);
+});
+
+test('an asynchronous pending response leaves the payout processing, awaiting the webhook', function () {
+    Http::fake(['*/transfer' => Http::response([
+        'status' => true,
+        'data' => ['transfer_code' => 'TRF_2', 'status' => 'pending'],
+    ], 200)]);
+    [$payout, $earning] = aPendingPayoutWithClaimedEarning();
+
+    ProcessCounsellorPayoutJob::dispatchSync($payout->id);
+
+    expect($payout->fresh()->status)->toBe(CounsellorPayoutStatusEnum::processing->value);
+    expect($earning->fresh()->status)->toBe(CounsellorEarningStatusEnum::processing->value);
+});
+
+test('a 4xx (client error) response from Paystack records the payout as a definite failure', function () {
+    Http::fake(['*/transfer' => Http::response(['status' => false, 'message' => 'Insufficient balance'], 400)]);
+    [$payout, $earning] = aPendingPayoutWithClaimedEarning();
+
+    ProcessCounsellorPayoutJob::dispatchSync($payout->id);
+
+    expect($payout->fresh()->status)->toBe(CounsellorPayoutStatusEnum::failed->value);
+    expect($earning->fresh()->status)->toBe(CounsellorEarningStatusEnum::pending->value);
+});
+
+// Reviewer finding: a 5xx means Paystack may or may not have actually processed the transfer --
+// recording it as a definite failure would release the earnings for a fresh
+// TriggerCounsellorPayoutAction attempt, which mints a NEW payout/reference, risking a real
+// double-payment if the original transfer did go through. This must instead fail the QUEUED JOB
+// itself (so its own retry re-attempts the SAME payout/reference), not the payout record.
+test('a 5xx (server error) response from Paystack does not record a definite failure -- it fails the job for retry instead', function () {
+    Http::fake(['*/transfer' => Http::response(['status' => false, 'message' => 'Internal server error'], 500)]);
+    [$payout, $earning] = aPendingPayoutWithClaimedEarning();
+
+    expect(fn () => ProcessCounsellorPayoutJob::dispatchSync($payout->id))
+        ->toThrow(RequestException::class);
+
+    expect($payout->fresh()->status)->toBe(CounsellorPayoutStatusEnum::pending->value);
+    expect($earning->fresh()->status)->toBe(CounsellorEarningStatusEnum::processing->value);
+});
+
+// Security review (second pass): closes the residual race where a job retried after a 5xx could
+// re-send the same reference to Paystack even though a transfer.success webhook had already
+// landed for it in the meantime -- Paystack's own "duplicate reference" 4xx would otherwise be
+// treated as a genuine failure, releasing earnings that had actually already been paid out.
+test('a retried job never calls Paystack again once the payout has already reached a terminal status', function () {
+    Http::fake(); // any call here would be a bug -- no stub means the test fails loudly if reached.
+    [$payout, $earning] = aPendingPayoutWithClaimedEarning();
+    $payout->update(['status' => CounsellorPayoutStatusEnum::succeeded->value]);
+
+    ProcessCounsellorPayoutJob::dispatchSync($payout->id);
+
+    Http::assertNothingSent();
+});
+
+// SCRUM-255: closes the gap the terminal-status guard above doesn't cover -- a queue-redelivered
+// dispatch (visibility-timeout mid-flight, or an operator's queue:retry) while ANOTHER attempt for
+// the SAME payout is still actually in flight (not yet terminal). Simulated here by holding the
+// WithoutOverlapping lock the job's own middleware() would acquire, exactly as a real in-flight
+// attempt would.
+test('a redelivered dispatch while another attempt for the same payout is in flight never calls Paystack', function () {
+    Http::fake(); // any call here would be a bug -- no stub means the test fails loudly if reached.
+    [$payout, $earning] = aPendingPayoutWithClaimedEarning();
+
+    $lock = Cache::lock('laravel-queue-overlap:App\\Jobs\\ProcessCounsellorPayoutJob:'.$payout->id, 120);
+    $lock->get();
+
+    try {
+        ProcessCounsellorPayoutJob::dispatchSync($payout->id);
+
+        Http::assertNothingSent();
+        expect($payout->fresh()->status)->toBe(CounsellorPayoutStatusEnum::pending->value);
+        expect($earning->fresh()->status)->toBe(CounsellorEarningStatusEnum::processing->value);
+    } finally {
+        $lock->release();
+    }
+});
+
+// SCRUM-255 (security-engineer finding, HIGH, second pass): the WithoutOverlapping lock alone
+// does NOT close this gap -- it releases the instant the first dispatch's handle() returns, which
+// happens the moment an async response is recorded as `processing`. A redelivery arriving AFTER
+// that (the common case for a live-mode async Transfer, not just a narrow race) would find the
+// lock free; only checking for `pending` (not "any non-terminal status") stops it calling Paystack
+// a second time. Deliberately does NOT hold any lock here -- proves the fix holds even when the
+// earlier attempt has already fully finished and released it.
+test('a redelivered dispatch after the first attempt already finished as processing never calls Paystack again', function () {
+    Http::fake(['*/transfer' => Http::response([
+        'status' => true,
+        'data' => ['transfer_code' => 'TRF_3', 'status' => 'pending'],
+    ], 200)]);
+    [$payout, $earning] = aPendingPayoutWithClaimedEarning();
+
+    ProcessCounsellorPayoutJob::dispatchSync($payout->id);
+    expect($payout->fresh()->status)->toBe(CounsellorPayoutStatusEnum::processing->value);
+
+    Http::fake(); // any call here would be a bug -- no stub means the test fails loudly if reached.
+    ProcessCounsellorPayoutJob::dispatchSync($payout->id);
+
+    Http::assertNothingSent();
+    expect($payout->fresh()->status)->toBe(CounsellorPayoutStatusEnum::processing->value);
+    expect($earning->fresh()->status)->toBe(CounsellorEarningStatusEnum::processing->value);
+});
+
+// SCRUM-376: a retry refused with a 4xx (typically "duplicate reference" because the earlier,
+// timed-out attempt actually went through) looks the real outcome up by the same reference.
+// handle() is called directly on a fake-queue job so attempts() can be set above 1.
+function payoutJobRunAsRetry(int $payoutId): void
+{
+    $job = (new ProcessCounsellorPayoutJob($payoutId))->withFakeQueueInteractions();
+    $job->job->attempts = 2;
+
+    $job->handle();
+}
+
+test('a retry refused with a 4xx records success when Paystack reports the transfer by that reference succeeded', function () {
+    [$payout, $earning] = aPendingPayoutWithClaimedEarning();
+    Http::fake([
+        '*/transfer/verify/*' => Http::response([
+            'status' => true,
+            'data' => ['reference' => $payout->reference, 'amount' => $payout->amount, 'currency' => $payout->currency, 'transfer_code' => 'TRF_V1', 'status' => 'success'],
+        ], 200),
+        '*/transfer' => Http::response(['status' => false, 'message' => 'Duplicate Transfer Reference'], 400),
+    ]);
+
+    payoutJobRunAsRetry($payout->id);
+
+    expect($payout->fresh()->status)->toBe(CounsellorPayoutStatusEnum::succeeded->value);
+    expect($payout->fresh()->transfer_code)->toBe('TRF_V1');
+    expect($earning->fresh()->status)->toBe(CounsellorEarningStatusEnum::paidOut->value);
+    Http::assertSent(fn ($request) => str_ends_with($request->url(), '/transfer/verify/'.$payout->reference));
+});
+
+test('a retry refused with a 4xx records failure when Paystack reports the transfer by that reference failed or was reversed', function (string $paystackStatus) {
+    [$payout, $earning] = aPendingPayoutWithClaimedEarning();
+    Http::fake([
+        '*/transfer/verify/*' => Http::response([
+            'status' => true,
+            'data' => ['reference' => $payout->reference, 'amount' => $payout->amount, 'currency' => $payout->currency, 'status' => $paystackStatus, 'reason' => 'Bank declined'],
+        ], 200),
+        '*/transfer' => Http::response(['status' => false, 'message' => 'Duplicate Transfer Reference'], 400),
+    ]);
+
+    payoutJobRunAsRetry($payout->id);
+
+    expect($payout->fresh()->status)->toBe(CounsellorPayoutStatusEnum::failed->value);
+    expect($earning->fresh()->status)->toBe(CounsellorEarningStatusEnum::pending->value);
+})->with(['failed', 'reversed']);
+
+test('a retry refused with a 4xx rethrows and leaves the payout untouched when the lookup is inconclusive', function (Closure $verifyResponse) {
+    [$payout, $earning] = aPendingPayoutWithClaimedEarning();
+    Http::fake([
+        '*/transfer/verify/*' => $verifyResponse,
+        '*/transfer' => Http::response(['status' => false, 'message' => 'Duplicate Transfer Reference'], 400),
+    ]);
+
+    expect(fn () => payoutJobRunAsRetry($payout->id))->toThrow(RequestException::class);
+
+    expect($payout->fresh()->status)->toBe(CounsellorPayoutStatusEnum::pending->value);
+    expect($earning->fresh()->status)->toBe(CounsellorEarningStatusEnum::processing->value);
+})->with([
+    'not found' => fn () => fn () => Http::response(['status' => false, 'message' => 'Transfer not found'], 404),
+    'still pending' => fn () => fn () => Http::response(['status' => true, 'data' => ['status' => 'pending']], 200),
+    'Paystack unreachable' => fn () => fn () => throw new ConnectionException('timed out'),
+    // Security review: a "success" that isn't this payout's own transfer is never recorded.
+    'another reference' => fn () => fn () => Http::response(['status' => true, 'data' => ['reference' => 'payout_other', 'amount' => 1, 'currency' => 'GHS', 'status' => 'success']], 200),
+]);
+
+test('a retry lookup whose amount or currency differs from the payout is left for manual follow-up', function (array $mismatch) {
+    [$payout, $earning] = aPendingPayoutWithClaimedEarning();
+    Http::fake([
+        '*/transfer/verify/*' => Http::response(['status' => true, 'data' => array_merge(
+            ['reference' => $payout->reference, 'amount' => $payout->amount, 'currency' => $payout->currency, 'status' => 'success'],
+            $mismatch,
+        )], 200),
+        '*/transfer' => Http::response(['status' => false, 'message' => 'Duplicate Transfer Reference'], 400),
+    ]);
+
+    expect(fn () => payoutJobRunAsRetry($payout->id))->toThrow(RequestException::class);
+
+    expect($payout->fresh()->status)->toBe(CounsellorPayoutStatusEnum::pending->value);
+    expect($earning->fresh()->status)->toBe(CounsellorEarningStatusEnum::processing->value);
+})->with([
+    'amount' => [['amount' => 1]],
+    'currency' => [['currency' => 'USD']],
+]);
+
+test('a first attempt refused with a 4xx is still a definite failure, with no lookup', function () {
+    [$payout] = aPendingPayoutWithClaimedEarning();
+    Http::fake(['*/transfer' => Http::response(['status' => false, 'message' => 'Insufficient balance'], 400)]);
+
+    $job = (new ProcessCounsellorPayoutJob($payout->id))->withFakeQueueInteractions();
+    $job->handle();
+
+    expect($payout->fresh()->status)->toBe(CounsellorPayoutStatusEnum::failed->value);
+    Http::assertSentCount(1);
+});
+
+// SCRUM-378: a status recorded from the lookup is audited as such, not as the transfer call's own answer.
+test('a status recorded from a retry lookup has its own status-history source', function () {
+    [$payout] = aPendingPayoutWithClaimedEarning();
+    Http::fake([
+        '*/transfer/verify/*' => Http::response([
+            'status' => true,
+            'data' => ['reference' => $payout->reference, 'amount' => $payout->amount, 'currency' => $payout->currency, 'status' => 'success'],
+        ], 200),
+        '*/transfer' => Http::response(['status' => false, 'message' => 'Duplicate Transfer Reference'], 400),
+    ]);
+
+    payoutJobRunAsRetry($payout->id);
+
+    expect($payout->fresh()->statusHistories()->latest('id')->first()->source)
+        ->toBe(CounsellorPayoutStatusSourceEnum::retryLookup->value);
+});
+
+test('a status recorded from the transfer call itself is still sourced as initiate', function () {
+    [$payout] = aPendingPayoutWithClaimedEarning();
+    Http::fake(['*/transfer' => Http::response(['status' => true, 'data' => ['status' => 'success']], 200)]);
+
+    ProcessCounsellorPayoutJob::dispatchSync($payout->id);
+
+    expect($payout->fresh()->statusHistories()->latest('id')->first()->source)
+        ->toBe(CounsellorPayoutStatusSourceEnum::initiate->value);
+});
