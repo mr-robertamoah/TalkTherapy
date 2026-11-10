@@ -11483,3 +11483,46 @@ therapy 18 after the last QA pass.
   script, after which clicks did nothing anywhere. It didn't come from the app.
 - Closed with no code change.
 
+
+## SCRUM-404 — dependency updates: what moved, and the supply-chain rule (2026-11-10)
+
+- **Scope:** clear `composer audit` (56 advisories, including a critical Laravel TokenGuard bypass, and Guzzle's
+  noncanonical-host bypass, which matters since web push posts through Guzzle) and `npm audit`. Updates stay inside the
+  existing version constraints; no major upgrades. No app code needed changing for any of the fixes (security review).
+  The TokenGuard bypass didn't affect us: we have no `token` guard.
+- **The rule:** a package that isn't itself fixing an advisory doesn't move to a release under about a week old. That
+  applies to build tools too.
+  - **Taken even though recent, because they are the fix:**
+    - laravel/framework 12.71.0 and Symfony 7.4.23 (3–4 Nov);
+    - symfony/console 7.4.23, exactly 7 days old.
+  - **Composer, held at older releases:**
+    - laravel/prompts 0.3.26;
+    - nunomaduro/termwind 2.4.0;
+    - league/uri and league/uri-interfaces 7.9.1;
+    - web-token/jwt-library 4.2.4. See the correction below.
+  - **npm, held at older releases:**
+    - axios 1.21.0, not 1.21.1;
+    - vue 3.5.44, not 3.5.45 (the advisory needs ≥3.5.42);
+    - vite 6.4.5, not 6.4.6.
+  - **npm, held through `overrides` in `package.json`:**
+    - follow-redirects 1.16.2;
+    - postcss-selector-parser 6.1.5 (6.1.6 also dropped a dependency without explanation);
+    - @babel/parser 7.29.12;
+    - @babel/helper-string-parser 7.29.11.
+
+    These pins are exact. Remove them at the next routine update, once those releases are older.
+  - **Accepted as recent:** browserslist data packages (caniuse-lite, electron-to-chromium,
+    baseline-browser-mapping). They are data only and republish constantly.
+- **Correction (SCRUM-398/399 entry):** the earlier pin of web-token/jwt-library to 4.2.6 rested on a wrong premise.
+  4.2.6 was released three hours before 4.2.7, on the same day, so develop had already taken a one-day-old release. It
+  is now 4.2.4 (30 Oct), which minishlink/web-push accepts (`^4.0.6`). A real send to FCM was re-checked after the
+  change. Don't move it back up without the rule above.
+- **get-blob-duration** (used by `MediaCapture.vue`) bundles an old @babel/runtime with a moderate advisory. The only
+  fix npm offers is a downgrade to an older major. Instead, an `overrides` entry lifts its nested copy to 7.29.7 (May);
+  Babel runtime 7.x is backward compatible.
+- **Left: deepmerge 4.3.1** (via @inertiajs/core 1.3.0), low severity, GHSA-gcqx-w48m-w2h4. No patched version exists.
+  Inertia v1 uses it only when building a GET visit's URL: it merges `qs.parse(location.search)` (which drops
+  `__proto__`) with the visit data, and the result is stringified straight away. So the effect is nil. Inertia 2.x
+  dropped deepmerge after 2.0.7, so moving the client to a current 2.x removes it.
+- **Suggested, not done here:** a minimum release age in automated dependency updates (Renovate/Dependabot
+  `minimumReleaseAge: 7 days`), so a routine update can't pull same-day releases.
