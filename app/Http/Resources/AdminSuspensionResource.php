@@ -7,7 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 // SCRUM-359: a suspension as administrators see it. An admin involved in it (Suspension::involves)
-// sees only that it exists, as in the reports queue.
+// sees only that it exists, as in the reports queue. Over an urgent help request, who asked is masked (person()).
 /** @mixin Suspension */
 class AdminSuspensionResource extends JsonResource
 {
@@ -30,11 +30,7 @@ class AdminSuspensionResource extends JsonResource
             'id' => $this->id,
             'involved' => false,
             'status' => $status,
-            'person' => [
-                'id' => $this->user?->id,
-                'name' => $this->user?->name ?? 'a deleted account',
-                'username' => $this->user?->username,
-            ],
+            'person' => $this->person($viewer),
             'scope' => $this->scope->value,
             'scopeLabel' => $this->scope->label(),
             'startsAt' => $this->starts_at,
@@ -59,6 +55,22 @@ class AdminSuspensionResource extends JsonResource
             ] : null,
             'canLift' => $isSuper && $this->isActive(),
             'canDecideAppeal' => $isSuper && $this->appealIsPending() && $this->created_by !== $viewer?->id,
+        ];
+    }
+
+    // SCRUM-398: a suspension over an urgent help request names who asked only to an administrator who has
+    // seen it through the logged reveal -- anyone else gets the request's label, as on the report.
+    private function person($viewer): array
+    {
+        $help = $this->report?->masksReportedIdentity() ? $this->report->helpRequest() : null;
+        if ($help && ! ($viewer && $help->wasRevealedTo($viewer))) {
+            return ['id' => null, 'name' => $help->personLabel(), 'username' => null, 'masked' => true];
+        }
+
+        return [
+            'id' => $this->user?->id,
+            'name' => $this->user?->name ?? 'a deleted account',
+            'username' => $this->user?->username,
         ];
     }
 }

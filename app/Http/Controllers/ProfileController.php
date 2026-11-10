@@ -21,6 +21,7 @@ use App\Exceptions\DobChangeRequiresApprovalException;
 use App\Exceptions\SuspensionException;
 use App\Http\Requests\ProfileUpdateRequest;
 use App\Http\Requests\UpdateUserAvatarRequest;
+use App\Models\PushSubscription;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -207,6 +208,9 @@ class ProfileController extends Controller
             // SCRUM-288: before the account goes -- each ward this leaves with no active guardian
             // is paused, and this guardian's video consents for them lapse.
             RemoveGuardianFromWardAction::new()->forAllWardsOf($user, RemoveGuardianFromWardAction::GUARDIAN_DELETED);
+
+            // SCRUM-399: none of their devices is alerted again (anonymisation would remove them much later).
+            PushSubscription::query()->where('user_id', $user->id)->delete();
 
             $user->delete();
         });

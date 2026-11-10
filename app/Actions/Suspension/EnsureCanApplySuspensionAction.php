@@ -17,6 +17,8 @@ use App\Models\User;
 // report row inside ApplySuspensionAction.
 class EnsureCanApplySuspensionAction extends Action
 {
+    public const REVEAL_FIRST = 'See who asked for help (it is recorded) before suspending them.';
+
     public const SUPER_ADMIN_ONLY = 'Only a super administrator can suspend someone.';
 
     public function execute(?User $admin, ?Report $report, SuspensionScopeEnum $scope): User
@@ -29,6 +31,12 @@ class EnsureCanApplySuspensionAction extends Action
 
         if ($report->status != ReportStatusEnum::resolved || $report->outcome != ReportOutcomeEnum::suspension_recommended) {
             throw new SuspensionException('Resolve the report with the outcome "suspension recommended" first.', 422);
+        }
+
+        // SCRUM-398 (the user's decision): nobody is suspended over an urgent help request without the
+        // administrator first seeing -- logged -- who asked.
+        if ($report->helpRequest() && ! $report->helpRequest()->wasRevealedTo($admin)) {
+            throw new SuspensionException(self::REVEAL_FIRST, 422);
         }
 
         $target = $report->reportedUser();

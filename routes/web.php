@@ -36,6 +36,7 @@ use App\Http\Controllers\PostController;
 use App\Http\Controllers\PreferenceController;
 use App\Http\Controllers\PrivacyController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\PushSubscriptionController;
 use App\Http\Controllers\SafetyFlagController;
 use App\Http\Controllers\SafetyNoticeController;
 use App\Http\Controllers\SessionController;
@@ -103,6 +104,15 @@ Route::get('/posts/{postId}', [PostController::class, 'getPost'])->name('posts.g
 // SCRUM-33: the "I need help now" dialog's emergency numbers -- for everyone, signed in or not.
 Route::get('/help/emergency-numbers', [HelpController::class, 'emergencyNumbers'])->name('help.emergency_numbers')->middleware('throttle:60,1,help.emergency_numbers');
 
+// SCRUM-399: a counsellor's devices for urgent help web push (JSON, their own only). Removing this device is
+// open to a suspended account too.
+Route::middleware('auth')->prefix('push/subscriptions')->name('push.subscriptions.')->group(function () {
+    Route::get('/', [PushSubscriptionController::class, 'index'])->name('index')->middleware('throttle:30,1,push.subscriptions.index');
+    Route::post('/', [PushSubscriptionController::class, 'store'])->name('store')->middleware('throttle:10,1,push.subscriptions.store');
+    Route::post('/current/remove', [PushSubscriptionController::class, 'destroyCurrent'])->name('destroy_current')->middleware('throttle:20,1,push.subscriptions.destroy_current');
+    Route::delete('/{device}', [PushSubscriptionController::class, 'destroy'])->name('destroy')->whereNumber('device')->middleware('throttle:20,1,push.subscriptions.destroy');
+});
+
 // SCRUM-39: the notification center (JSON). Not open to a suspended account.
 Route::middleware('auth')->prefix('notifications')->name('notifications.')->group(function () {
     Route::get('/', [NotificationController::class, 'index'])->name('index')->middleware('throttle:60,1,notifications.index');
@@ -133,6 +143,9 @@ Route::middleware('auth')->prefix('help')->name('help.')->group(function () {
     // TT-4.4c: the counsellor in an ended chat invites the person to a regular therapy (not open to a
     // suspended account -- not in EnsureAccountIsNotSuspended's list).
     Route::post('/requests/{helpRequest}/invite', [HelpRequestController::class, 'invite'])->name('requests.invite')->whereNumber('helpRequest')->middleware('throttle:10,1,help.requests.invite');
+    // SCRUM-398: a counsellor reports the request -- the one who answered, or one it is ringing (not open to a
+    // suspended account -- not in EnsureAccountIsNotSuspended's list).
+    Route::post('/requests/{helpRequest}/report', [HelpRequestController::class, 'report'])->name('requests.report')->whereNumber('helpRequest')->middleware('throttle:10,1,help.requests.report');
     // SCRUM-32: the counsellor who answered raises a safety flag for the person (not open to a suspended account).
     Route::post('/requests/{helpRequest}/safety-flag', [SafetyFlagController::class, 'storeForHelpChat'])->name('requests.safety_flag')->whereNumber('helpRequest')->middleware(['safety_flags', 'throttle:10,1,help.requests.safety_flag']);
     Route::get('/requests/{helpRequest}/safety-flags', [SafetyFlagController::class, 'statusesForHelpChat'])->name('requests.safety_flags')->whereNumber('helpRequest')->middleware(['safety_flags', 'throttle:60,1,help.requests.safety_flags']);
@@ -215,6 +228,8 @@ Route::middleware('auth')->group(function () {
     Route::get('/administrator/reports/{report}', [AdminReportController::class, 'show'])->name('administrator.reports.show')->whereNumber('report')->middleware('admin');
     Route::post('/administrator/reports/{report}/status', [AdminReportController::class, 'transition'])->name('admin.reports.status')->whereNumber('report')->middleware(['admin', 'throttle:30,1,admin.reports.status']);
     Route::post('/administrator/reports/{report}/party', [AdminReportController::class, 'recordParty'])->name('admin.reports.party')->whereNumber('report')->middleware(['admin', 'throttle:30,1,admin.reports.party']);
+    // SCRUM-398: who asked for urgent help, on a report about their request (logged every time).
+    Route::post('/administrator/reports/{report}/help-requester', [AdminReportController::class, 'revealHelpRequester'])->name('admin.reports.help_requester')->whereNumber('report')->middleware(['admin', 'throttle:20,1,admin.reports.help_requester']);
     // SCRUM-360: the admin content-read log (super admins only).
     Route::get('/administrator/content-accesses', [AdminContentAccessController::class, 'index'])->name('administrator.content-accesses')->middleware('admin');
     // SCRUM-359: suspensions -- applied from a resolved report, lifted early, appeals decided.

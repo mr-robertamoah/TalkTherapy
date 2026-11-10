@@ -19,7 +19,11 @@ class AppService extends Service
 {
     public function alertAdminWithReport(Report $report)
     {
-        $admins = User::query()->whereAdmin()->inRandomOrder()->limit(2)->get();
+        // SCRUM-398: never an administrator involved in it (the reporter, the reported, their guardian, the
+        // therapy's people) -- the same rule the report queue uses (Report::involves).
+        $admins = User::query()->whereAdmin()->inRandomOrder()->limit(20)->get()
+            ->reject(fn (User $admin) => $report->involves($admin))
+            ->take(2);
 
         Notification::send($admins->unique(), new ReportNotification($report));
     }

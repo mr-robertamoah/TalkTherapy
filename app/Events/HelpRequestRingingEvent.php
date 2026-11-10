@@ -15,7 +15,7 @@ class HelpRequestRingingEvent implements ShouldBroadcastNow
     use Dispatchable, InteractsWithSockets;
 
     /** @param list<int> $counsellorIds */
-    public function __construct(private int $helpRequestId, private array $counsellorIds) {}
+    public function __construct(public readonly int $helpRequestId, public readonly array $counsellorIds) {}
 
     public function broadcastOn(): array
     {

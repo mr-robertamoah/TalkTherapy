@@ -10,6 +10,7 @@ import PrimaryButton from '@/Components/PrimaryButton.vue'
 import SecondaryButton from '@/Components/SecondaryButton.vue'
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue'
 import RequestBadge from '@/Components/RequestBadge.vue'
+import HelpPushSettings from '@/Components/HelpNow/HelpPushSettings.vue'
 import CounsellorVerificationStatusCard from '@/Components/CounsellorVerificationStatusCard.vue'
 import MiniTherapyComponent from '@/Components/MiniTherapyComponent.vue'
 import MiniGroupTherapyComponent from '@/Components/MiniGroupTherapyComponent.vue'
@@ -141,6 +142,8 @@ const more = 'text-sm font-medium text-blue-700 underline'
                         </PrimaryButton>
                         <SecondaryButton v-if="isAvailable" type="button" :disabled="savingAvailability" @click="setAvailable(false)">Stop being available</SecondaryButton>
                     </div>
+                    <!-- SCRUM-399: web push on this device, while switched on for the platform. -->
+                    <HelpPushSettings />
                 </section>
 
                 <!-- Verification -->

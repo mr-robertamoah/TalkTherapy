@@ -6,6 +6,7 @@ use App\Actions\Action;
 use App\DTOs\ReportUnlockScope;
 use App\Models\Counsellor;
 use App\Models\GroupTherapy;
+use App\Models\HelpRequest;
 use App\Models\Report;
 use App\Models\Session;
 use App\Models\Therapy;
@@ -29,6 +30,8 @@ class ResolveReportUnlockScopeAction extends Action
         $sessionIds = match (true) {
             $reportable instanceof Session && ($reportable->for instanceof Therapy || $reportable->for instanceof GroupTherapy) => collect([$reportable->id]),
             $reportable instanceof Therapy, $reportable instanceof GroupTherapy => $reportable->sessions()->pluck('id'),
+            // SCRUM-398: an urgent help request's chat, while its messages are kept.
+            $reportable instanceof HelpRequest => collect($reportable->session_id && ! $reportable->transcript_deleted_at ? [$reportable->session_id] : []),
             default => collect(),
         };
 

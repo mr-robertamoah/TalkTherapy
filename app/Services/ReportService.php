@@ -25,6 +25,7 @@ use App\Models\ConfidentialMessageAccess;
 use App\Models\Counsellor;
 use App\Models\File;
 use App\Models\GroupTherapy;
+use App\Models\HelpRequest;
 use App\Models\Message;
 use App\Models\Report;
 use App\Models\Session;
@@ -115,7 +116,7 @@ class ReportService extends Service
         $query->with([
             'files',
             'addedby' => fn (MorphTo $morph) => $morph->morphWith([Counsellor::class => ['user']]),
-            'reportable' => fn (MorphTo $morph) => $morph->morphWith([Session::class => ['for']]),
+            'reportable' => fn (MorphTo $morph) => $morph->morphWith([Session::class => ['for'], HelpRequest::class => ['user']]),
         ])->orderByDesc('created_at');
 
         return $query->paginate(PaginationEnum::preferencesPagination->value);
@@ -148,7 +149,7 @@ class ReportService extends Service
                 ->orWhereHasMorph('reportable', [Session::class], fn ($query) => $query->whereHasMorph('for', [Therapy::class, GroupTherapy::class], $therapyName))))
             ->with([
                 'addedby' => fn (MorphTo $morph) => $morph->morphWith([Counsellor::class => ['user']]),
-                'reportable' => fn (MorphTo $morph) => $morph->morphWith([Session::class => ['for']]),
+                'reportable' => fn (MorphTo $morph) => $morph->morphWith([Session::class => ['for'], HelpRequest::class => ['user']]),
             ]);
 
         $tooMany = $search ? AdminSearch::withoutInvolved($query, $viewer, fn (Report $report, User $viewer) => $report->involves($viewer)) : false;

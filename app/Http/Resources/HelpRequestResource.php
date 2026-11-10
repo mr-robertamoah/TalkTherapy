@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Actions\Report\EnsureCanReportReportableAction;
 use App\Actions\Safety\EnsureCanFlagClientAction;
 use App\Enums\HelpRequestStatusEnum;
 use App\Models\HelpRequest;
@@ -64,6 +65,9 @@ class HelpRequestResource extends JsonResource
                 fn () => EnsureCanFlagClientAction::new()->canFlag(fn (EnsureCanFlagClientAction $can) => $can->forHelpChat($viewer, $this->resource)),
             ),
             'canInvite' => ! $isPerson && $viewer && $this->resource->isAnsweredBy($viewer) && $this->resource->canInviteToTherapy(),
+            // SCRUM-398: a counsellor may report it now -- the one who answered, or one it is ringing. Once.
+            'canReport' => ! $isPerson && $viewer?->counsellor !== null
+                && EnsureCanReportReportableAction::new()->mayReportHelpRequest($viewer, $this->resource),
         ];
     }
 

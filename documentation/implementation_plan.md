@@ -501,13 +501,22 @@ working order. Rows 1 to 4 are fixes and chores and go ahead directly; rows 5 an
 
 | # | Key | Story | Type | Priority | Jira | Depends on |
 |---|---|---|---|---|---|---|
-| 1 | TT-11.1 | Throttle registration per address (and decide on a CAPTCHA): every per-account limit, urgent help's included, depends on accounts not being free. **Done (#304).** | Task | Highest | SCRUM-400 | — |
-| 2 | TT-11.2 | Trust only the app's own host in production (`trustHosts`, forced root URL), alongside SCRUM-395's `TRUSTED_PROXIES`. **Done (#305).** | Task | High | SCRUM-397 | — |
-| 3 | TT-11.3 | Anonymise names and free-text reasons in stored notifications on account closure (`counsellorName`, a declined session time's reason), with a backfill. **Done (#306).** | Task | High | SCRUM-396 | — |
-| 4 | TT-11.4 | The signed-out "login" link doesn't navigate (seen in Playwright): confirm, then fix. **Closed: cannot reproduce** (a broken browser session in that QA, not the app). | Bug | Medium | SCRUM-401 | — |
-| 5 | TT-11.5 | A counsellor can report an urgent help request (prank or abuse), through the existing Report flow | Story | Medium | SCRUM-398 | — |
-| 6 | TT-11.6 | Web push to on-call counsellors, so they're rung with the app closed | Story | Low | SCRUM-399 | — |
-| 7 | TT-11.7 | Restrict Reverb's allowed websocket origins to the app's own host once deployed (from the SCRUM-397 review). **Done (#307).** | Task | Medium | SCRUM-403 | — |
+| 1 | TT-11.1 | Throttle registration per address (and decide on a CAPTCHA): every per-account limit, urgent help's included, depends on accounts not being free | Task | Highest | SCRUM-400 | — |
+| 2 | TT-11.2 | Trust only the app's own host in production (`trustHosts`, forced root URL), alongside SCRUM-395's `TRUSTED_PROXIES` | Task | High | SCRUM-397 | — |
+| 3 | TT-11.3 | Anonymise names and free-text reasons in stored notifications on account closure (`counsellorName`, a declined session time's reason), with a backfill | Task | High | SCRUM-396 | — |
+| 4 | TT-11.4 | The signed-out "login" link doesn't navigate (seen in Playwright): confirm, then fix | Bug | Medium | SCRUM-401 | — |
+| 5 | TT-11.5 | A counsellor can report an urgent help request (prank or abuse), through the existing Report flow. **In progress**: plan approved 2026-11-09, ships in one PR with TT-11.6 (the user's request), with its own commits. | Story | Medium | SCRUM-398 | — |
+| 5a | TT-11.5a | Close the report leak: help chats refused on the generic report endpoint; raw `data.userId` masked; the create-time guess oracle closed for anonymous therapies; report emails skip involved admins | Task | Medium | SCRUM-398 | — |
+| 5b | TT-11.5b | `HelpRequest` as a reportable through `help.requests.report`: answering counsellor until transcript deletion, rung counsellor while ringing; reported party set server-side; one per counsellor | Task | Medium | SCRUM-398 | TT-11.5a |
+| 5c | TT-11.5c | Admin side: one masking rule; involved admins get the bare stub; logged reveal in the report context; reveal before suspending; no closing notice to the requester | Task | Medium | SCRUM-398 | TT-11.5b |
+| 5d | TT-11.5d | `hasOpenReport()` covers the HelpRequest reportable (retention hold, invite block); Report buttons in the help chat and the ring modal | Task | Medium | SCRUM-398 | TT-11.5b |
+| 6 | TT-11.6 | Web push to on-call counsellors, so they're rung with the app closed. **In progress**: same PR as TT-11.5, with its own commits, behind `HELP_PUSH_ENABLED`. | Story | Low | SCRUM-399 | — |
+| 6a | TT-11.6a | `minishlink/web-push` + VAPID config, key command, an `urgent` queue, the production checklist and monitoring | Task | Low | SCRUM-399 | — |
+| 6b | TT-11.6b | `push_subscriptions` (owned by the user): subscribe, list and remove own devices; cleanup on sign-out, suspension and closure | Task | Low | SCRUM-399 | TT-11.6a |
+| 6c | TT-11.6c | `public/sw.js` (push and notification clicks only, no caching), nginx no-cache, per-device opt-in UI with iOS guidance | Task | Low | SCRUM-399 | TT-11.6b |
+| 6d | TT-11.6d | Queued push through `HelpBroadcast` to `ringingFor()` (incl. direct ring), re-checked at send, generic payload, TTL ~2 min; withdrawn on every close; 404/410 pruned | Task | Low | SCRUM-399 | TT-11.6b |
+| 6e | TT-11.6e | Shared wrap-up: seed data, feature docs, /privacy lines, Pest, Playwright with two browsers, manual device push check | Task | Medium | SCRUM-398, SCRUM-399 | 5a-6d |
+| 7 | TT-11.7 | Restrict Reverb's allowed websocket origins to the app's own host once deployed (from the SCRUM-397 review) | Task | Medium | SCRUM-403 | — |
 
 ---
 

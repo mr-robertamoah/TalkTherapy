@@ -569,6 +569,7 @@ See `documentation/features/scrum-113-114-389-ranking-cards-offers.md`.
 | `help_demo_minor` | `password` | Kofi, 15: a minor's help chat is text only (audio needs a guardian's consent). |
 | `help_demo_counsellor` | `password` | Dr. Efua Help, verified and **available for urgent help** for 4 hours from seeding (switch on again from **My Dashboard → Urgent help**). |
 | `help_demo_counsellor_two` | `password` | Dr. Yaw Help, the same -- so two counsellors are rung (first to accept wins). |
+| `help_demo_prank` | `password` | Ama (SCRUM-398): asked anonymously, nobody answered, and Dr. Yaw Help reported it as a prank -- an open report in **Administrator → Reports**, shown as "Anonymous" until an admin presses **Show who asked** (recorded). |
 
 Outside production only: a clearly fake Ghana emergency number, "TEST ONLY - not a real number" (0000).
 Replace it with Ghana's verified number(s) in **Administration → Emergency numbers** before release.

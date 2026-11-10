@@ -82,6 +82,14 @@ class Report extends Model
             return $this->reportedPartyCache;
         }
 
+        // SCRUM-398: an urgent help request is about the person who asked -- from the request, never from
+        // data (nothing is stored there, so no id can travel to a reporter or a list).
+        if ($help = $this->helpRequest()) {
+            $this->reportedPartyResolved = true;
+
+            return $this->reportedPartyCache = User::withTrashed()->find($help->user_id);
+        }
+
         $data = is_array($this->data) ? $this->data : [];
         $named = array_filter([
             ($data['userId'] ?? null) ? User::withTrashed()->find($data['userId']) : null,
@@ -113,6 +121,12 @@ class Report extends Model
     // allMemberships(); isParticipant() is current members only.
     public function involves(User $user): bool
     {
+        // SCRUM-398: for an urgent help request, the help rule -- who asked, their guardian, the counsellor
+        // who answered or was rung for it (HelpRequest::involvesAdmin) -- and the reporter.
+        if ($help = $this->helpRequest()) {
+            return $this->isReportedBy($user) || $help->involvesAdmin($user);
+        }
+
         if ($this->isReportedBy($user) || $this->reportedUser()?->is($user)) {
             return true;
         }
@@ -133,6 +147,21 @@ class Report extends Model
         $author = $this->reportable?->addedby;
 
         return (bool) ($author instanceof Counsellor ? $author->user?->is($user) : $author?->is($user));
+    }
+
+    // SCRUM-398: the urgent help request a report is about, if it is one.
+    public function helpRequest(): ?HelpRequest
+    {
+        return $this->reportable instanceof HelpRequest ? $this->reportable : null;
+    }
+
+    // SCRUM-398: whether who this report is about is hidden -- an urgent help request, revealed only through the
+    // logged path (RevealReportedHelpRequesterAction). Asked by the closing notices and the suspension view; the
+    // report's own views also need the request itself (helpRequest()). Older reports filed on a help chat's
+    // therapy/session (before the generic endpoint refused them) aren't covered: see the decision log.
+    public function masksReportedIdentity(): bool
+    {
+        return $this->helpRequest() !== null;
     }
 
     // SCRUM-340/362: all an admin who is part of a report sees of it in any list -- that it exists.

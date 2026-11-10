@@ -2,9 +2,11 @@
 
 namespace App\Providers;
 
+use App\Contracts\PushSender;
 use App\Listeners\FailHealthCheckOnPendingMigrations;
 use App\Services\AppService;
 use App\Support\AppHost;
+use App\Support\MinishlinkPushSender;
 use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Foundation\Events\DiagnosingHealth;
 use Illuminate\Http\Request;
@@ -21,7 +23,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        // SCRUM-399: web push for urgent help rings (tests bind a fake).
+        $this->app->bind(PushSender::class, MinishlinkPushSender::class);
     }
 
     /**

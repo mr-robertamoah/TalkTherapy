@@ -42,6 +42,23 @@ return [
     // numbers, and says so); requests already made carry on.
     'enabled' => filter_var(env('HELP_ENABLED', true), FILTER_VALIDATE_BOOL),
 
+    // SCRUM-399: web push to on-call counsellors' devices, so a ring reaches them with the app closed. Off
+    // until switched on (it needs the VAPID keys -- `php artisan push:vapid-keys` -- and the `urgent` queue).
+    // Keys are made once per environment and kept: changing them silently ends every subscription.
+    'push' => [
+        'enabled' => filter_var(env('HELP_PUSH_ENABLED', false), FILTER_VALIDATE_BOOL),
+        'vapid_public_key' => env('VAPID_PUBLIC_KEY'),
+        'vapid_private_key' => env('VAPID_PRIVATE_KEY'),
+        'vapid_subject' => env('VAPID_SUBJECT', 'mailto:support@talktherapy.local'),
+        // Seconds a push may wait at the push service for a device: a ring is pointless once it's stale.
+        'ttl' => (int) env('HELP_PUSH_TTL', 120),
+        'devices_per_user' => 10,
+        // The push services a device may name (https only): the server posts to a device's endpoint, so anything
+        // else would let a counsellor point the queue at an internal address. "*." also matches subdomains.
+        'endpoint_hosts' => array_values(array_filter(array_map('trim', explode(',', (string) env('HELP_PUSH_ENDPOINT_HOSTS',
+            'fcm.googleapis.com,android.googleapis.com,*.push.services.mozilla.com,*.push.apple.com,*.notify.windows.com'))))),
+    ],
+
     // TT-4.4c: a help chat's messages, and the person's note, are deleted this many days after it
     // ended (the user's decision: one year). The request itself stays, without them. Under 30 (or not a
     // number) and the nightly run is skipped with an error logged -- never a shorter retention.

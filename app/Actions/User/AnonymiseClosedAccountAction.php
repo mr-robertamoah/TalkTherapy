@@ -10,6 +10,7 @@ use App\Enums\SafetyFlagNoticeStateEnum;
 use App\Models\Contact;
 use App\Models\Counsellor;
 use App\Models\HelpRequest;
+use App\Models\PushSubscription;
 use App\Models\Request;
 use App\Models\SafeguardingException;
 use App\Models\SafetyFlag;
@@ -146,6 +147,8 @@ class AnonymiseClosedAccountAction extends Action
                     SafetyFlagEvent::query()->create(['safety_flag_id' => $flagId, 'action' => SafetyFlagEvent::NOTICES_CANCELLED]);
                 }
             }
+            // SCRUM-399: their devices for web push.
+            PushSubscription::query()->where('user_id', $user->id)->delete();
             // SCRUM-396: the reason they gave for declining someone's proposed session time, on the request.
             Request::query()->where('type', RequestTypeEnum::sessionScheduleProposal->value)
                 ->where(fn ($query) => $query->where(fn ($query) => $query->where('to_type', $user->getMorphClass())->where('to_id', $user->id))

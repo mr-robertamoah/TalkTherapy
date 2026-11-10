@@ -10,6 +10,7 @@ use App\Enums\SuspensionScopeEnum;
 use App\Events\AccountSuspendedEvent;
 use App\Events\SessionUpdatedEvent;
 use App\Exceptions\SuspensionException;
+use App\Models\PushSubscription;
 use App\Models\Report;
 use App\Models\ReportStatusHistory;
 use App\Models\Session;
@@ -91,6 +92,8 @@ class ApplySuspensionAction extends Action
             ]);
 
             $endedSessions = ApplySuspensionEffectsAction::new()->execute($suspension->setRelation('user', $target->forgetActiveSuspension()));
+            // SCRUM-399: their devices are no longer alerted for urgent help.
+            PushSubscription::query()->where('user_id', $target->id)->delete();
 
             return [$suspension, $endedSessions];
         });

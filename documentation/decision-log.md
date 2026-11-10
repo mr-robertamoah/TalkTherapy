@@ -11391,6 +11391,87 @@ therapy 18 after the last QA pass.
 - **Deployment:** the production checklist now has a Reverb line. If the pages come from a host Reverb
   doesn't accept, real-time updates silently stop.
 
+## SCRUM-398 + SCRUM-399 — reporting an urgent help request, and web push: plan approved (2026-11-09)
+
+- **The user's decisions:**
+  - **One PR for both stories.** Each story gets its own commits (398 first), so either can be reverted
+    alone. Push ships switched off behind `HELP_PUSH_ENABLED`.
+  - **The report leak is fixed in this same PR** rather than in a separate fast PR. The architect had
+    confirmed it: reporting a help chat's Session (or Therapy) through the generic `POST /api/reports`
+    showed admins an anonymous requester's name and username, with no `help_request_identity` read log.
+    Related gaps fixed alongside:
+    - raw `data.userId` returned by `ReportResource`;
+    - the create-time guess oracle for any anonymous one-to-one therapy;
+    - report emails sent to involved admins;
+    - a closing notice sent to the requester.
+  - **An involved admin sees the usual bare report stub** (id, status, date), never anything about who asked.
+    "Involved" for a help report is `HelpRequest::involvesAdmin`.
+  - **Defaults accepted:**
+    1. A report doesn't stop the person asking for help.
+    2. After an upheld report and a suspension, their requests still ring counsellors. Routing them to
+       admins first would be a separate decision, because it changes SCRUM-33.
+    3. An admin must reveal who asked (logged) before suspending from a help report.
+    4. A requester reporting the counsellor is not in this PR; that is a follow-up.
+    5. The notification bell doesn't use push.
+- **Design (architect):**
+  - **What gets reported:** the `HelpRequest` itself, through a `help.requests.report` route, never the
+    generic endpoint.
+    - **Who may report:** the answering counsellor until the transcript is deleted, or a rung counsellor
+      while the ring is live (`mayAnswer`).
+    - **Reported party:** set on the server from the request; no `data` is stored.
+    - **Limit:** one report per counsellor per request.
+  - **One masking rule:** `Report::masksReportedIdentity()`.
+    - **Revealing who asked:** reuses `RevealHelpRequesterAction`'s logging, with a report-context gate.
+    - **Retention:** `hasOpenReport()` covers the `HelpRequest` reportable.
+  - **Push:**
+    - **Library:** `minishlink/web-push` called directly.
+    - **Storage:** a `push_subscriptions` table owned by the user.
+    - **Sending:** a queued job on an `urgent` queue, triggered through `HelpBroadcast` so it still goes out
+      when Reverb is down. Recipients are re-checked against `ringingFor` at send time. Pushes carry ids
+      only, with generic text, a TTL of about 2 minutes, `Urgency: high` and a `Topic`, and are withdrawn
+      on close.
+    - **Browser side:** `public/sw.js` handles push and notification clicks only, with no caching.
+
+
+## SCRUM-398 + SCRUM-399 — review findings: what changed, and what was left (2026-11-09)
+
+- **Fixed from the reviews** (reviewer, security-engineer, devops-engineer):
+  - **Push endpoint SSRF:** a device's endpoint must be https at an allowlisted push service host
+    (`help.push.endpoint_hosts`). It is checked when saved and again before sending. Redirects are off, and the HTTP
+    client is passed in explicitly (Guzzle, 3s connect / 5s total). The earlier `['timeout' => 10]` was silently ignored.
+  - **One bad key failing the batch:** keys are validated (65-byte uncompressed p256dh, 16-byte auth). Each device is
+    sent on its own, and an unusable one is removed.
+  - **Request id in clear:** the push topic and tag are an HMAC reference, not `help-{id}`.
+  - **Sign-out:** every sign-out link first removes and unsubscribes this browser, by its endpoint (app.js
+    `router.on('before')`). "This device" is matched by the endpoint's SHA-256, not the session, which changes on a
+    remember-me sign-in.
+  - **Suspensions:**
+    - shown to an admin who hasn't revealed who asked with the request's label only, on the report and in the list;
+    - never matched by a name search in Suspensions.
+  - **Reveal window:** after review, only a super admin, and only until a suspension is applied. The response is name
+    and username only (no email), with `Cache-Control: no-store`.
+  - **Queue list:** the help request's note and details appear only on the report page.
+  - **Docker:** a dedicated `urgent` worker, so a ring never waits behind a long default job.
+  - **Smaller fixes:**
+    - ledger writes locked;
+    - a re-ring no longer withdraws an on-call counsellor it is still ringing;
+    - withdraw notifications only where the ring still shows;
+    - one report per counsellor and request, under a lock;
+    - devices deleted at account closure, not only at anonymisation;
+    - requesters eager-loaded in the admin lists.
+- **Left, deliberately:**
+  - **Older help-chat reports (security R2):** reports filed on a help chat's therapy or session before the generic
+    endpoint refused them aren't masked. The help chat has never reached `main`, so such rows exist only in dev/testing
+    databases. Check `testing` for reports on a help chat's therapy or session before promoting it, and delete or mask
+    them there.
+  - **"Who was rung" isn't stored:** a counsellor-admin counts as involved only while a request rings them. The feature
+    doc says so. Storing who was rung is a larger change for a narrow case.
+  - **The report reasons** are listed in both `ReportHelpRequestAction::REASONS` and the modal. The server validates
+    against its list, so drift shows up as a 422, not a silent mismatch.
+  - **Existing advisories:** `composer audit` reports advisories in packages that predate this branch (guzzle, symfony
+    http-client, laravel/framework and others; 56 in all). They belong in their own dependency-update ticket.
+  - **web-token/jwt-library:** pinned in the lock to 4.2.6, not 4.2.7, which was released the day before this branch.
+    A routine `composer update` moves it on later.
 ## SCRUM-401 — the signed-out "login" link: cannot reproduce (2026-11-09)
 
 - The link works in a clean headless Chrome:

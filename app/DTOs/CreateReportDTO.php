@@ -4,6 +4,7 @@ namespace App\DTOs;
 
 use App\Models\Counsellor;
 use App\Models\GroupTherapy;
+use App\Models\HelpRequest;
 use App\Models\Post;
 use App\Models\Report;
 use App\Models\Session;
@@ -20,7 +21,8 @@ class CreateReportDTO extends BaseDTO
     public Counsellor|User|null $addedby = null;
 
     // SCRUM-347: GroupTherapy too -- the group page's report button always failed here.
-    public GroupTherapy|Post|Session|Therapy|null $reportable = null;
+    // SCRUM-398: HelpRequest -- only through help.requests.report (never the generic endpoint's allowlist).
+    public GroupTherapy|HelpRequest|Post|Session|Therapy|null $reportable = null;
 
     public ?string $description = null;
 

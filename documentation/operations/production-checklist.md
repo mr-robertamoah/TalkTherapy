@@ -26,6 +26,29 @@ Check every item before going live.
   updates (chat, the bell, urgent help rings) silently stop. Restart the `reverb` container after changing
   any of these.
 
+- [ ] **Web push for urgent help (SCRUM-399), if switched on (`HELP_PUSH_ENABLED=true`):**
+  - `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` generated once with `php artisan push:vapid-keys`, stored as secrets,
+    **backed up and never rotated casually** -- new keys silently end every counsellor's device subscription.
+  - `VAPID_SUBJECT` a real `mailto:` the push services can reach.
+  - **Whatever supervises the production queue worker** (the EC2 supervisor/systemd unit -- not in this repo;
+    `docker/queue/supervisord.conf` only covers Docker) runs `queue:work --queue=urgent,default`. A worker on the
+    default queue alone never sends a push: the jobs sit in `urgent` without any error.
+  - The PHP on the host has `curl`, `openssl` and `mbstring` (`php -m`) -- minishlink/web-push requires them, and a
+    missing one fails `composer install` mid-deploy, leaving the site in maintenance mode. `bcmath` or `gmp` makes
+    sending faster.
+  - After changing `HELP_PUSH_ENABLED` or the keys in the env file: `php artisan config:clear` and
+    `php artisan queue:restart` -- the running worker keeps the config it started with.
+  - Rotating `APP_KEY` goes through `APP_PREVIOUS_KEYS`: devices are stored encrypted, and without the old key every
+    push job fails to decrypt them.
+  - nginx serves `/sw.js` with `Cache-Control: no-cache` and `/manifest.webmanifest` as `application/manifest+json`
+    (docker/nginx/default.conf).
+  - Outbound HTTPS from the queue workers to the push services (Google FCM, Mozilla, Apple, Microsoft) is allowed, and
+    `HELP_PUSH_ENDPOINT_HOSTS` (the allowlist a device's address must match) left at its default unless a browser's
+    push service is missing from it.
+  - With queue workers on more than one host, the cache store is shared (redis or database, not `file`): who was pushed
+    for each request is kept there, so the withdrawal reaches them all. A `cache:clear` loses it -- rings already sent
+    then stay on devices until they expire or are tapped.
+
 ## The proxy
 
 - [ ] It sets `X-Forwarded-Proto` (https), `X-Forwarded-For`, and `Host` / `X-Forwarded-Host` equal to

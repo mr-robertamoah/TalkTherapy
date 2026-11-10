@@ -14,6 +14,7 @@
         "laravel/reverb": "^1.0",
         "laravel/sanctum": "^4.0",
         "laravel/tinker": "^2.9",
+        "minishlink/web-push": "^11.0",
         "mr-robertamoah/dto": "^1.0",
         "symfony/http-client": "^7.0",
         "symfony/mailgun-mailer": "^7.0",

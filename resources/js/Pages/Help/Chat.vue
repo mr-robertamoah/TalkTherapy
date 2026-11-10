@@ -12,6 +12,7 @@ import DangerButton from '@/Components/DangerButton.vue'
 import MiniModal from '@/Components/MiniModal.vue'
 import VideoCallPanel from '@/Components/VideoCallPanel.vue'
 import SafetyFlagModal from '@/Components/Safety/SafetyFlagModal.vue'
+import ReportHelpRequestModal from '@/Components/HelpNow/ReportHelpRequestModal.vue'
 import SafetyFlagStatusList from '@/Components/Safety/SafetyFlagStatusList.vue'
 import { acquireChannel } from '@/Composables/sharedChannel'
 import useHelpNow, { helpRefusal } from '@/Composables/useHelpNow'
@@ -32,6 +33,8 @@ const confirmingEnd = ref(false)
 const ending = ref(false)
 const inCall = ref(false)
 const flagging = ref(false)
+// SCRUM-398: the counsellor reports the request (a prank, abuse).
+const reporting = ref(false)
 const flagStatuses = ref(null)
 const list = ref(null)
 let channel = null
@@ -145,6 +148,8 @@ onBeforeUnmount(() => channel?.release())
                     <SecondaryButton v-if="connected && help.audioPossible && !inCall" type="button" @click="inCall = true">Start audio call</SecondaryButton>
                     <!-- SCRUM-32: the counsellor can raise a safety flag (during the chat, or for a while after). -->
                     <SecondaryButton v-if="help.canRaiseSafetyFlag" type="button" @click="flagging = true">Raise a safety flag</SecondaryButton>
+                    <!-- SCRUM-398: the counsellor reports the request; nothing changes for the person. -->
+                    <SecondaryButton v-if="help.canReport" type="button" @click="reporting = true">Report</SecondaryButton>
                     <DangerButton v-if="connected" type="button" @click="confirmingEnd = true">End chat</DangerButton>
                 </div>
             </div>
@@ -213,6 +218,13 @@ onBeforeUnmount(() => channel?.release())
             :url="route('help.requests.safety_flag', { helpRequest: help.id })"
             :person-name="otherName"
             @close="flagging = false"
+        />
+
+        <ReportHelpRequestModal
+            :show="reporting"
+            :help-request-id="help.id"
+            @reported="loadRequest"
+            @close="reporting = false"
         />
 
         <MiniModal :show="confirmingEnd" labelledby="help-end-title" @close="confirmingEnd = false">
