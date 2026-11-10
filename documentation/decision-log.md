@@ -11483,3 +11483,32 @@ therapy 18 after the last QA pass.
   script, after which clicks did nothing anywhere. It didn't come from the app.
 - Closed with no code change.
 
+
+## SCRUM-138 — trusted proxies: what was left after SCRUM-395/400 (2026-11-10)
+
+- **Already in place:** `TRUSTED_PROXIES` feeds Laravel's global `TrustProxies` (`bootstrap/app.php`, SCRUM-395),
+  with the production-checklist item (SCRUM-400). The ticket's "configure it when a proxy arrives" is therefore
+  covered by the env value. The real topology isn't known yet: no production, and the user said it will sit behind
+  a proxy.
+- **Closed here:**
+  - **"Never `*`" is now enforced, not just written in a comment.** `App\Support\TrustedProxies` keeps only explicit
+    addresses or CIDR ranges and drops:
+    - `*` and `**`;
+    - `REMOTE_ADDR` and `PRIVATE_SUBNETS` (shortcuts that trust whoever connects, or any private address);
+    - ranges wider than /8 (IPv4) or /29 (IPv6, Cloudflare's widest);
+    - IPv6 entries in the IPv4-mapped/compatible space (first 80 bits zero), except `::1` (security review: through
+      a dual-stack listener, `::ffff:0:0/96` would match every IPv4 visitor);
+    - anything malformed.
+
+    A dropped entry fails safe (the proxy isn't trusted) and logs `TRUSTED_PROXIES entries ignored.` at boot, so a
+    typo doesn't silently bring back "everyone shares one address".
+  - **Only the forwarded For/Port/Proto headers (plus AWS ELB) are believed, not Host or Prefix.** Links are built on
+    APP_URL anyway (AppHost). Some proxies pass a client's own X-Forwarded-Host/-Prefix through, and `trustHosts`
+    doesn't check Prefix. This is defence in depth.
+  - **A test proves the wiring end to end:** the env value is set, the app boots, and forwarded headers are believed
+    from a listed proxy and ignored from anyone else. That includes `PRIVATE_SUBNETS`/`REMOTE_ADDR`, which Laravel
+    would otherwise honour, and a mapped range. The test fails if the filter is removed (checked).
+  - **The unused `App\Http\Middleware\TrustProxies` is removed.** It was the class the ticket described, but nothing
+    has used it since the move to `bootstrap/app.php`, so it only misled.
+- **Noted, not code:** on Forge/Vapor hosts or Laravel Cloud, Laravel trusts every proxy when the list is empty. The
+  checklist says to set it explicitly there.
