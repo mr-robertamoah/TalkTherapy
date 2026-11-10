@@ -4,7 +4,10 @@ namespace App\Http\Middleware;
 
 use App\Http\Resources\UserResource;
 use App\Support\AdminNavigation;
+use App\Support\InertiaHistory;
+use Closure;
 use Illuminate\Http\Request;
+use Inertia\Inertia;
 use Inertia\Middleware;
 
 class HandleInertiaRequestsV2 extends Middleware
@@ -17,6 +20,22 @@ class HandleInertiaRequestsV2 extends Middleware
      * @var string
      */
     protected $rootView = 'app';
+
+    // SCRUM-406: history encrypted when the browser can do it (InertiaHistory), and a signed-in person's pages are
+    // never stored by the browser cache -- a cached full page carries its props in plain text, and the back button
+    // after signing out could otherwise show it from there.
+    public function handle(Request $request, Closure $next)
+    {
+        Inertia::encryptHistory(InertiaHistory::encrypts($request));
+
+        $response = parent::handle($request, $next);
+
+        if ($request->user() && InertiaHistory::isPage($response)) {
+            $response->headers->set('Cache-Control', 'no-store, private');
+        }
+
+        return $response;
+    }
 
     /**
      * Determines the current asset version.

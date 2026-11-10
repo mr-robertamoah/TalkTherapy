@@ -220,6 +220,9 @@ class ProfileController extends Controller
         $request->session()->invalidate();
         $request->session()->regenerateToken();
 
+        // SCRUM-406: as on sign-out -- the closed account's pages don't stay readable in the browser's history.
+        Inertia::clearHistory();
+
         return Redirect::to('/');
     }
 }
