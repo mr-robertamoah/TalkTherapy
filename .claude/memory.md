@@ -98,10 +98,12 @@ See "Common commands" in `CLAUDE.md`.
   Signed-in Inertia responses get `Cache-Control: no-store`. In the browser, `history.state.page` is an ArrayBuffer.
   The host's `node_modules` is not the app's: build assets in the `vite` container only (a host build would ship stale packages).
 - The Inertia client and server are both v2 since SCRUM-405 (2026-11-10): `@inertiajs/vue3` 2.3.x with
-  `inertiajs/inertia-laravel` 2.x. Until then the client was 1.x (SCRUM-387), so the admin sidebar's
-  badges are still fetched from their own JSON route (`GET /administrator/badges`, `useAdminBadges.js`)
-  instead of a deferred prop. **Open follow-up (trigger met):** move the badges to `Inertia::defer` on the
-  admin pages and drop the route. v2 behaviour to remember: partial reloads (`router.reload({ only })`) are
+  `inertiajs/inertia-laravel` 2.x. **The admin sidebar's badges stay on their own JSON route on purpose**
+  (`GET /administrator/badges`, `useAdminBadges.js`) -- decided in SCRUM-410 (2026-11-10, the user's choice). A
+  deferred prop (`Inertia::defer`) loads through a partial reload, and a partial reload runs the page's whole
+  controller again (only the props it returns are filtered): each admin navigation would run it twice, the cost
+  SCRUM-387's review removed by moving the badges off a partial reload. Don't re-raise it unless every admin page's
+  props become lazy closures. v2 behaviour to remember: partial reloads (`router.reload({ only })`) are
   async -- they don't cancel other visits and show no progress bar; `router.replace` is client-side only
   (use `router.get(url, data, { replace: true })` for a server visit).
 
