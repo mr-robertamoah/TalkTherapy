@@ -107,7 +107,12 @@ return [
 
     'history' => [
 
-        'encrypt' => (bool) env('INERTIA_ENCRYPT_HISTORY', false),
+        // SCRUM-406: on by default -- page props (therapy and help chats, admin views) are kept in the
+        // browser's history, and the back button after signing out must not show them. Encrypted with a
+        // key kept in sessionStorage; cleared on sign-out, account closure and the login page (so an expired
+        // session is covered too). Applied per request only where the browser can encrypt -- https, or a
+        // localhost host (App\Support\InertiaHistory): asked to elsewhere, Inertia breaks navigation.
+        'encrypt' => filter_var(env('INERTIA_ENCRYPT_HISTORY', true), FILTER_VALIDATE_BOOL),
 
     ],
 
