@@ -36,7 +36,9 @@ return new class extends Migration
     public function down(): void
     {
         // Nullable, and the morph columns dropped with their index: SQLite can't add a NOT NULL column without a
-        // default, nor drop an indexed column (SCRUM-413).
+        // default, nor drop an indexed column (SCRUM-413). No foreign key to restore: the table's original
+        // therapy_id (2024_03_24 create migration) was foreignIdFor() without constrained(). Topics of a group
+        // therapy, which the old schema had no place for, are left with a null therapy_id (SCRUM-414).
         Schema::table('therapy_topics', function (Blueprint $table) {
             $table->foreignIdFor(Therapy::class)->nullable();
         });
@@ -64,11 +66,14 @@ return new class extends Migration
             return false;
         }
 
-        // MySQL/PostgreSQL: Use information_schema
-        return DB::select('
+        // MySQL/PostgreSQL: information_schema, in this connection's own database/schema only -- on a server
+        // shared by several databases, a constraint of the same name elsewhere must not count (SCRUM-414).
+        $schema = $connection === 'pgsql' ? 'current_schema()' : 'DATABASE()';
+
+        return DB::select("
             SELECT CONSTRAINT_NAME
             FROM information_schema.KEY_COLUMN_USAGE
-            WHERE TABLE_NAME = ? AND CONSTRAINT_NAME = ?
-        ', [$table, $foreignKeyName]) ? true : false;
+            WHERE TABLE_SCHEMA = {$schema} AND TABLE_NAME = ? AND CONSTRAINT_NAME = ?
+        ", [$table, $foreignKeyName]) ? true : false;
     }
 };
