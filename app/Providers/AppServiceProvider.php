@@ -7,12 +7,14 @@ use App\Listeners\FailHealthCheckOnPendingMigrations;
 use App\Services\AppService;
 use App\Support\AppHost;
 use App\Support\MinishlinkPushSender;
+use App\Support\TrustedProxies;
 use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Foundation\Events\DiagnosingHealth;
 use Illuminate\Http\Request;
 use Illuminate\Mail\Markdown;
 use Illuminate\Queue\Events\JobFailed;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\ServiceProvider;
 
@@ -34,6 +36,12 @@ class AppServiceProvider extends ServiceProvider
     {
         // SCRUM-397: absolute links on APP_URL once deployed, never on the request's Host header.
         AppHost::enforceLinks($this->app);
+
+        // SCRUM-138: a TRUSTED_PROXIES entry that would trust more than a proxy is dropped (bootstrap/app.php),
+        // which fails safe -- but silently brings back "everyone shares one address". Said once per boot.
+        if ($ignored = TrustedProxies::ignored(env('TRUSTED_PROXIES'))) {
+            Log::warning('TRUSTED_PROXIES entries ignored.', ['ignored' => $ignored]);
+        }
 
         // SCRUM-371/374: the one rule for "answer with JSON or redirect back" -- success and failure
         // alike. JSON for every request except an Inertia visit (which must get a redirect, never
