@@ -12,7 +12,16 @@ Check every item before going live.
 - [ ] **`APP_URL`** is the real public URL, over **https**, with no trailing path. Every absolute link (emails,
   redirects, notification links) is built on it (SCRUM-397). If it's missing, the default
   `http://127.0.0.1:8000` makes every real request a 400.
-- [ ] **`TRUSTED_PROXIES`** lists the proxy's own addresses, comma-separated, **never `*`** (SCRUM-395/400).
+- [ ] **`TRUSTED_PROXIES`** lists the proxy's own addresses or CIDR ranges, comma-separated (SCRUM-395/400/138). For a
+  CDN such as Cloudflare, that is its published ranges.
+  - Wildcards (`*`), `REMOTE_ADDR`, `PRIVATE_SUBNETS`, ranges wider than /8 (IPv4) or /29 (IPv6) and IPv4-mapped IPv6
+    ranges are ignored, so they never trust everyone. Each one ignored logs `TRUSTED_PROXIES entries ignored.` at boot.
+  - Only the visitor's address, port and scheme are taken from the proxy (`X-Forwarded-For/-Port/-Proto`), not
+    `X-Forwarded-Host` or `-Prefix`.
+  - On Laravel Forge or Vapor hosts (`*.on-forge.com`, `*.on-vapor.com`) or Laravel Cloud, Laravel itself trusts every
+    proxy when this is empty. Set it explicitly there.
+  - Check after deploying: sign in from two networks and confirm the admin's user list (or the logs) shows different
+    addresses, not the proxy's.
   Without it every visitor looks like the proxy, which gives:
   - 10 sign-ups an hour for the whole site;
   - one urgent-help per-address limit for everyone;

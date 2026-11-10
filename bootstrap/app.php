@@ -8,6 +8,7 @@ use App\Http\Middleware\HandleInertiaRequestsV2;
 use App\Http\Middleware\StoreVisitationMiddleware;
 use App\Support\AppHost;
 use App\Support\FailureResponse;
+use App\Support\TrustedProxies;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -25,12 +26,12 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
-        // SCRUM-395 (the user: production will sit behind a proxy): the proxy's own addresses, from
-        // TRUSTED_PROXIES (comma-separated; never "*", which would let anyone set their address). Without
-        // it, behind a proxy every person would share its address -- and the per-address urgent-help limit.
-        $proxies = array_values(array_filter(array_map('trim', explode(',', (string) env('TRUSTED_PROXIES', '')))));
+        // SCRUM-395/138 (the user: production will sit behind a proxy): the proxy's own addresses or ranges,
+        // from TRUSTED_PROXIES. Wildcards and anything else that would trust more are dropped (TrustedProxies).
+        // Without it, behind a proxy every person would share its address -- and the per-address limits.
+        $proxies = TrustedProxies::fromEnv(env('TRUSTED_PROXIES'));
         if ($proxies) {
-            $middleware->trustProxies(at: $proxies);
+            $middleware->trustProxies(at: $proxies, headers: TrustedProxies::HEADERS);
         }
 
         // SCRUM-397: only our own host (APP_URL's, plus TRUSTED_HOSTS) once deployed; off for APP_ENV local and testing.
