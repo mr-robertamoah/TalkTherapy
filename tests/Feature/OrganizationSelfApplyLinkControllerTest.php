@@ -1,10 +1,12 @@
 <?php
 
+use App\Actions\Link\EnsureUserCanCreateOrganizationSelfApplyLinkAction;
 use App\Enums\LinkStateEnum;
 use App\Enums\LinkTypeEnum;
 use App\Enums\OrganizationAdminRoleEnum;
 use App\Enums\RequestStatusEnum;
 use App\Enums\RequestTypeEnum;
+use App\Models\Administrator;
 use App\Models\Link;
 use App\Models\Organization;
 use App\Models\Request;
@@ -90,4 +92,48 @@ test('the org admin who generated the link cannot use it themselves', function (
 
     expect(Request::query()->whereFor($organization)->exists())->toBeFalse();
     expect($link->fresh()->state)->toBe(LinkStateEnum::active->value);
+});
+
+// SCRUM-214: the link is the admin's own, and only for an organization people can actually join through it.
+function oslPost($test, User $admin, Organization $organization, ?int $addedbyId = null)
+{
+    return $test->actingAs($admin)->postJson('/api/links', [
+        'type' => LinkTypeEnum::organizationSelfApply->value,
+        'addedbyType' => 'User',
+        'addedbyId' => $addedbyId ?? $admin->id,
+        'forType' => 'Organization',
+        'forId' => $organization->id,
+    ]);
+}
+
+test('an admin can\'t create a self-apply link in someone else\'s name', function () {
+    $organization = Organization::factory()->create(['is_provider' => false, 'is_consumer' => true, 'verified_at' => now(), 'self_apply_enabled' => true]);
+    [$owner, $other] = [User::factory()->create(), User::factory()->create()];
+    $organization->admins()->attach($owner->id, ['role' => OrganizationAdminRoleEnum::owner->value]);
+
+    // Refused before this type's own checks, by the generic addedby validation (EnsureAddedbyIsValidAction).
+    oslPost($this, $owner, $organization, $other->id)->assertStatus(422);
+    expect(Link::query()->where('type', LinkTypeEnum::organizationSelfApply->value)->exists())->toBeFalse();
+
+    // A platform administrator may name anyone as addedby elsewhere -- not on a self-apply link.
+    $platformAdmin = User::factory()->has(Administrator::factory())->create();
+    $organization->admins()->attach($platformAdmin->id, ['role' => OrganizationAdminRoleEnum::admin->value]);
+    oslPost($this, $platformAdmin, $organization, $other->id)->assertStatus(403);
+    expect(Link::query()->where('type', LinkTypeEnum::organizationSelfApply->value)->exists())->toBeFalse();
+});
+
+test('no self-apply link while it couldn\'t work -- self-apply off, not verified, or not a consumer organization', function () {
+    $owner = User::factory()->create();
+    foreach ([
+        ['self_apply_enabled' => false],
+        ['verified_at' => null],
+        ['is_consumer' => false, 'is_provider' => true],
+    ] as $state) {
+        $organization = Organization::factory()->create(['is_provider' => false, 'is_consumer' => true, 'verified_at' => now(), 'self_apply_enabled' => true, ...$state]);
+        $organization->admins()->attach($owner->id, ['role' => OrganizationAdminRoleEnum::owner->value]);
+
+        oslPost($this, $owner, $organization)->assertStatus(422)
+            ->assertJsonPath('message', EnsureUserCanCreateOrganizationSelfApplyLinkAction::NOT_ACCEPTING);
+    }
+    expect(Link::query()->where('type', LinkTypeEnum::organizationSelfApply->value)->exists())->toBeFalse();
 });
