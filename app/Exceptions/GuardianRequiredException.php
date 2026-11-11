@@ -18,6 +18,8 @@ class GuardianRequiredException extends AppException implements HasErrorCode
 
     public const LINK_UNAVAILABLE = 'This link can\'t be used right now.';
 
+    public const ORGANIZATION_PAUSED = 'You can join an organization once a guardian is added to your account.';
+
     // SCRUM-382 review: set for the neutral refusals below -- they carry no code, so nothing can tell
     // them apart from any other refusal (and the frontend doesn't reload for them).
     private bool $neutral = false;
@@ -30,6 +32,12 @@ class GuardianRequiredException extends AppException implements HasErrorCode
     public static function forClient(): self
     {
         return new self(self::CLIENT_PAUSED, 403);
+    }
+
+    // SCRUM-416: to the minor themselves, applying to an organisation or accepting its invitation.
+    public static function forOrganizationMember(): self
+    {
+        return new self(self::ORGANIZATION_PAUSED, 403);
     }
 
     // To someone who isn't the minor's counsellor (e.g. a group's, answering their request to join).

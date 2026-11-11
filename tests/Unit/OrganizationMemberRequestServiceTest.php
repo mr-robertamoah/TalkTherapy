@@ -30,7 +30,7 @@ function verifiedConsumerOrganization(array $overrides = []): Organization
 
 function consumerOrgOwner(Organization $organization): User
 {
-    $owner = User::factory()->create();
+    $owner = User::factory()->adult()->create();
     $organization->admins()->attach($owner->id, ['role' => OrganizationAdminRoleEnum::owner->value]);
 
     return $owner;
@@ -39,7 +39,7 @@ function consumerOrgOwner(Organization $organization): User
 test('an org admin can invite a user to a verified consumer organization', function () {
     $organization = verifiedConsumerOrganization();
     $owner = consumerOrgOwner($organization);
-    $invitee = User::factory()->create();
+    $invitee = User::factory()->adult()->create();
 
     $request = OrganizationMemberRequestService::new()->inviteMember(
         OrganizationMemberRequestDTO::new()->fromArray([
@@ -57,8 +57,8 @@ test('an org admin can invite a user to a verified consumer organization', funct
 
 test('a non-admin cannot invite a user to an organization', function () {
     $organization = verifiedConsumerOrganization();
-    $outsider = User::factory()->create();
-    $invitee = User::factory()->create();
+    $outsider = User::factory()->adult()->create();
+    $invitee = User::factory()->adult()->create();
 
     expect(fn () => OrganizationMemberRequestService::new()->inviteMember(
         OrganizationMemberRequestDTO::new()->fromArray([
@@ -72,7 +72,7 @@ test('a non-admin cannot invite a user to an organization', function () {
 test('a user cannot be invited to an unverified organization', function () {
     $organization = Organization::factory()->create(['is_provider' => false, 'is_consumer' => true, 'verified_at' => null]);
     $owner = consumerOrgOwner($organization);
-    $invitee = User::factory()->create();
+    $invitee = User::factory()->adult()->create();
 
     expect(fn () => OrganizationMemberRequestService::new()->inviteMember(
         OrganizationMemberRequestDTO::new()->fromArray([
@@ -86,7 +86,7 @@ test('a user cannot be invited to an unverified organization', function () {
 test('a user cannot be invited to a non-consumer organization', function () {
     $organization = verifiedConsumerOrganization(['is_provider' => true, 'is_consumer' => false]);
     $owner = consumerOrgOwner($organization);
-    $invitee = User::factory()->create();
+    $invitee = User::factory()->adult()->create();
 
     expect(fn () => OrganizationMemberRequestService::new()->inviteMember(
         OrganizationMemberRequestDTO::new()->fromArray([
@@ -99,7 +99,7 @@ test('a user cannot be invited to a non-consumer organization', function () {
 
 test('a user can self-apply to a verified consumer organization with self-apply enabled', function () {
     $organization = verifiedConsumerOrganization(['self_apply_enabled' => true]);
-    $applicant = User::factory()->create();
+    $applicant = User::factory()->adult()->create();
 
     $request = OrganizationMemberRequestService::new()->applyAsMember(
         OrganizationMemberRequestDTO::new()->fromArray([
@@ -126,7 +126,7 @@ test('self-applying is rejected identically for a disabled self-apply org, an in
         try {
             OrganizationMemberRequestService::new()->applyAsMember(
                 OrganizationMemberRequestDTO::new()->fromArray([
-                    'user' => $user = User::factory()->create(),
+                    'user' => $user = User::factory()->adult()->create(),
                     'organization' => $organization,
                     'member' => $user,
                 ])
@@ -150,7 +150,7 @@ test('self-applying is rejected identically for a disabled self-apply org, an in
 test('enabling self-apply through the organization update flow allows a subsequent self-application', function () {
     $organization = verifiedConsumerOrganization(['self_apply_enabled' => false]);
     $owner = consumerOrgOwner($organization);
-    $applicant = User::factory()->create();
+    $applicant = User::factory()->adult()->create();
 
     expect(fn () => OrganizationMemberRequestService::new()->applyAsMember(
         OrganizationMemberRequestDTO::new()->fromArray([
@@ -182,7 +182,7 @@ test('enabling self-apply through the organization update flow allows a subseque
 test('a second pending request between the same organization and user is rejected regardless of direction', function () {
     $organization = verifiedConsumerOrganization(['self_apply_enabled' => true]);
     $owner = consumerOrgOwner($organization);
-    $user = User::factory()->create();
+    $user = User::factory()->adult()->create();
 
     OrganizationMemberRequestService::new()->inviteMember(
         OrganizationMemberRequestDTO::new()->fromArray([
@@ -204,7 +204,7 @@ test('a second pending request between the same organization and user is rejecte
 test('accepting an invite creates an active membership with source invited', function () {
     $organization = verifiedConsumerOrganization();
     $owner = consumerOrgOwner($organization);
-    $invitee = User::factory()->create();
+    $invitee = User::factory()->adult()->create();
 
     $inviteRequest = OrganizationMemberRequestService::new()->inviteMember(
         OrganizationMemberRequestDTO::new()->fromArray([
@@ -237,7 +237,7 @@ test('accepting an invite creates an active membership with source invited', fun
 test('an org admin can accept a member application addressed to the organization itself', function () {
     $organization = verifiedConsumerOrganization(['self_apply_enabled' => true]);
     $owner = consumerOrgOwner($organization);
-    $applicant = User::factory()->create();
+    $applicant = User::factory()->adult()->create();
 
     $applicationRequest = OrganizationMemberRequestService::new()->applyAsMember(
         OrganizationMemberRequestDTO::new()->fromArray([
@@ -266,7 +266,7 @@ test('an org admin can accept a member application addressed to the organization
 test('a user who does not administer the organization cannot respond to a member application', function () {
     $organization = verifiedConsumerOrganization(['self_apply_enabled' => true]);
     consumerOrgOwner($organization);
-    $applicant = User::factory()->create();
+    $applicant = User::factory()->adult()->create();
 
     $applicationRequest = OrganizationMemberRequestService::new()->applyAsMember(
         OrganizationMemberRequestDTO::new()->fromArray([
@@ -276,7 +276,7 @@ test('a user who does not administer the organization cannot respond to a member
         ])
     );
 
-    $outsider = User::factory()->create();
+    $outsider = User::factory()->adult()->create();
 
     expect(fn () => RequestService::new()->respondToRequest(
         RequestResponseDTO::new()->fromArray([
@@ -292,7 +292,7 @@ test('a user can be an active member of multiple organizations at once', functio
     $organizationB = verifiedConsumerOrganization();
     $ownerA = consumerOrgOwner($organizationA);
     $ownerB = consumerOrgOwner($organizationB);
-    $user = User::factory()->create();
+    $user = User::factory()->adult()->create();
 
     foreach ([[$organizationA, $ownerA], [$organizationB, $ownerB]] as [$organization, $owner]) {
         $inviteRequest = OrganizationMemberRequestService::new()->inviteMember(
@@ -318,7 +318,7 @@ test('a user can be an active member of multiple organizations at once', functio
 test('accepting a member application for an organization that is no longer eligible is rejected', function () {
     $organization = verifiedConsumerOrganization(['self_apply_enabled' => true]);
     $owner = consumerOrgOwner($organization);
-    $applicant = User::factory()->create();
+    $applicant = User::factory()->adult()->create();
 
     $applicationRequest = OrganizationMemberRequestService::new()->applyAsMember(
         OrganizationMemberRequestDTO::new()->fromArray([
@@ -343,8 +343,8 @@ test('accepting a member application for an organization that is no longer eligi
 });
 
 test('inviting a member to a non-existent organization returns a clean error, not a crash', function () {
-    $owner = User::factory()->create();
-    $invitee = User::factory()->create();
+    $owner = User::factory()->adult()->create();
+    $invitee = User::factory()->adult()->create();
 
     expect(fn () => OrganizationMemberRequestService::new()->inviteMember(
         OrganizationMemberRequestDTO::new()->fromArray([
@@ -360,8 +360,8 @@ test('inviting a member to a non-existent organization returns a clean error, no
 // SCRUM-170 closed on the read-only org endpoints, closed here the same way.
 test('inviting a member to a nonexistent organization and a real one the caller cannot administer fail identically', function () {
     $organization = verifiedConsumerOrganization();
-    $outsider = User::factory()->create();
-    $invitee = User::factory()->create();
+    $outsider = User::factory()->adult()->create();
+    $invitee = User::factory()->adult()->create();
 
     $message = 'You are not authorized to invite members to this organization.';
 

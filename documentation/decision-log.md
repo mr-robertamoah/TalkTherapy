@@ -11795,3 +11795,44 @@ URLs or link previews, everyone in a chat sees everyone typing.
   discussion — should confirm by POST, from the security review).
 - **Deploy:** run the migration; Reverb reads the new setting only at start — `deploy.sh` runs `reverb:restart`,
   check it came back. If it doesn't, group/discussion typing names stay empty; nothing else changes.
+
+## SCRUM-417, SCRUM-416, SCRUM-418 — withdraw an application, minors joining organisations, links confirmed first (2026-11-11)
+
+One PR at the user's request, one commit per ticket (417, 416, 418) so each can be reverted alone. Planned with
+product-owner, project-manager and architect; the user chose SCRUM-416 option B and the background-story rule below.
+Defaults taken: a withdrawal is INCONSEQUENCIAL with a reason (no new status), a suspended account may withdraw,
+admins can't cancel invites yet, a guardianship page never says the person is a minor, one shared confirm page.
+
+- **SCRUM-417.** Withdrawing locks the request, scoped to the caller's own applications (someone else's or a missing
+  one: the same 404; not pending: 409). It sets INCONSEQUENCIAL, a reason and `data.withdrawn` (`Request::wasWithdrawn()`
+  reads the flag, not the reason text). An admin answering a withdrawn application is told "This application was
+  withdrawn." both before the lock (`EnsureRequestIsStillPendingAction`) and under it
+  (`RespondToOrganizationMemberRequestAction`, which used to return silently). No notification -- applications never
+  had one. A 404 or 409 on withdrawing drops the row with the server's message (an admin answered meanwhile).
+- **SCRUM-416 (option B, the group-join rule).** A minor paused for a missing guardian can't join: refused in
+  `ensureCanApplyAsMember` (after the organisation's own generic check, so the guardian message never says anything
+  about the organisation, SCRUM-179) -- this covers applying and join links -- and under the request lock when they
+  accept an invitation (told plainly) or an admin accepts their application (told neutrally, no code, as for groups).
+  **Admins can still invite a paused minor:** refusing the invite would tell any admin who is a minor without a
+  guardian; accepting is what's refused (security review). Guardians are told when a minor joins
+  (`OrganizationMemberJoinedGuardianNotification`, after commit, best effort) by the live `isAdult()` check -- a
+  membership has no minor-at-creation snapshot, the same weakness as group joins (SCRUM-287). Tests that meant adults
+  now say so: a bare `User::factory()` user is a minor without a guardian.
+- **SCRUM-418.** Guardianship, therapy-counsellor, discussion and group-counsellor links no longer act on GET.
+  `PreviewLinkAction` runs `EnsureCanUseLinkAction` and the action's own `preview()` and renders `Links/Confirm`;
+  confirming is `api.links.join` → `LinkService::confirmLink`, which returns `LinkConfirmation{message, redirect}`.
+  Each action shares its checks between opening (unlocked) and confirming (locked); the locked transactions are
+  otherwise unchanged.
+  - Summaries are whitelisted from the masking resources. Guardianship: name, username, avatar -- no age, date of
+    birth, email or minor status. Therapy: name, kind, started, the client as others see them (`displayNameOf`), and
+    the **background story only when the link was addressed to them or the therapy is public** (the user's decision:
+    a general link can be held by anyone). Discussion: its name, description, times, who started it, "about a
+    therapy/group" -- never the client or the therapy's name. Group: name, about, the creator as others see them, no
+    members. A refusal is only its message.
+  - After joining a discussion the counsellor lands on its chat (`therapies.get` was a page they may not open).
+  - Found and fixed: confirming skipped the suspended-counsellor check (it ran only on opening) -- moved into
+    `EnsureCanUseLinkAction` with `COUNSELLOR_TYPES`; a therapy-counsellor link was marked used without being
+    re-read under a lock -- now locked after the therapy (that path's order has always been therapy first); a refused
+    therapy-counsellor link said the client was a minor without a guardian -- now the neutral `linkUnavailable()`,
+    as group links say; the discussion capacity refusal no longer names the discussion.
+  - `Links/OrganizationJoin` stays separate for now; folding it into `Links/Confirm` is SCRUM-419.

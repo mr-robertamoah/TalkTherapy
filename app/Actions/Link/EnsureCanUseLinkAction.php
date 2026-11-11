@@ -3,12 +3,22 @@
 namespace App\Actions\Link;
 
 use App\Actions\Action;
+use App\Actions\Suspension\EnsureCanActAsCounsellorAction;
 use App\DTOs\CreateLinkDTO;
 use App\Enums\LinkStateEnum;
+use App\Enums\LinkTypeEnum;
 use App\Exceptions\LinkException;
 
 class EnsureCanUseLinkAction extends Action
 {
+    // SCRUM-359/383: the links that make the person using them a counsellor of something -- a
+    // discussion, a 1:1 therapy, or a group's team. A suspended counsellor can't take on work.
+    public const COUNSELLOR_TYPES = [
+        LinkTypeEnum::discussion->value,
+        LinkTypeEnum::therapyCounsellor->value,
+        LinkTypeEnum::groupTherapyCounsellor->value,
+    ];
+
     public function execute(CreateLinkDTO $createLinkDTO)
     {
         // A link is deactivated (see PerformLinkAction's siblings) once it has been used to
@@ -29,6 +39,12 @@ class EnsureCanUseLinkAction extends Action
             $createLinkDTO->link->addedby->is($createLinkDTO->user->counsellor)
         ) {
             throw new LinkException('You cannot use a link you created.', 422);
+        }
+
+        // SCRUM-418: here, so opening a link and confirming it both check it (it used to be checked only
+        // on opening).
+        if (in_array($createLinkDTO->link->type, self::COUNSELLOR_TYPES, true)) {
+            EnsureCanActAsCounsellorAction::new()->execute($createLinkDTO->user?->counsellor);
         }
 
         if (

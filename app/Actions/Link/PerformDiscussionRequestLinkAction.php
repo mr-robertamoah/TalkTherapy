@@ -12,27 +12,51 @@ use App\DTOs\UpdateCounsellorDTO;
 use App\Enums\LinkStateEnum;
 use App\Exceptions\DiscussionException;
 use App\Exceptions\LinkException;
+use App\Http\Resources\DiscussionMiniResource;
+use App\Models\Counsellor;
 use App\Models\Discussion;
 use App\Models\Link;
 use App\Models\Therapy;
 use App\Notifications\DiscussionInclusionNotification;
+use App\Support\LinkConfirmation;
 use Illuminate\Database\UniqueConstraintViolationException;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Redirect;
 
+// SCRUM-418: opening a discussion link only shows the discussion (preview()); confirming adds the
+// counsellor to it (execute()). Both run the same checks (ensureCanJoin()); execute() again under the
+// link's and the discussion's locks. Afterwards they go to the discussion's chat -- the therapy's page
+// it is about isn't theirs to open.
 class PerformDiscussionRequestLinkAction extends Action
 {
-    public function execute(CreateLinkDTO $createLinkDTO)
+    public const JOINED = 'You have joined the discussion.';
+
+    public const ALREADY_IN = 'You cannot use link because you are already part of this discussion.';
+
+    public const FULL = 'This discussion already has its maximum number of counsellors.';
+
+    // The discussion's name, description and times, the counsellor who started it, and whether it is
+    // about a therapy or a group -- never the client, or the therapy's or group's own name.
+    public function preview(CreateLinkDTO $createLinkDTO): array
     {
-        EnsureCounsellorExistsAction::new()->execute(
-            UpdateCounsellorDTO::new()->fromArray(['counsellor' => $createLinkDTO->user?->counsellor]),
-            LinkException::NO_COUNSELLOR
-        );
+        $this->ensureCounsellor($createLinkDTO);
 
-        // SCRUM-31: only a currently verified counsellor joins.
-        EnsureCounsellorMayTakeOnClientsAction::new()->execute($createLinkDTO->user->counsellor, forDiscussion: true);
+        $discussion = $this->discussionOf($createLinkDTO->link);
 
-        DB::transaction(function () use ($createLinkDTO) {
+        $this->ensureCanJoin($discussion, $createLinkDTO->user->counsellor);
+
+        return [
+            ...Arr::only((new DiscussionMiniResource($discussion))->resolve(request()), ['name', 'description', 'startTime', 'endTime']),
+            'startedBy' => $discussion->addedby instanceof Counsellor ? $discussion->addedby->getName() : null,
+            'about' => $discussion->for_type === Therapy::class ? 'therapy' : 'group',
+        ];
+    }
+
+    public function execute(CreateLinkDTO $createLinkDTO): LinkConfirmation
+    {
+        $this->ensureCounsellor($createLinkDTO);
+
+        $discussion = DB::transaction(function () use ($createLinkDTO) {
             // A general link (to=null) can be used by any counsellor, so the
             // counsellor_discussion(counsellor_id, discussion_id) unique index below -- keyed on
             // the ACTING counsellor -- doesn't stop two different counsellors both racing this
@@ -51,28 +75,9 @@ class PerformDiscussionRequestLinkAction extends Action
             // for the same discussion -- serialize against each other for the capacity check
             // below, not just against duplicate use of this one link. See
             // EnsureDiscussionCanAcceptCounsellorAction's comment (SCRUM-23/TT-2.4).
-            $discussion = Discussion::query()->lockForUpdate()->findOrFail($createLinkDTO->link->for->id);
+            $discussion = Discussion::query()->lockForUpdate()->findOrFail($this->discussionOf($link)->id);
 
-            // lockForUpdate() here too, defensively -- see EnsureDiscussionCanAcceptCounsellorAction's
-            // comment on why a plain read isn't safe against REPEATABLE-READ snapshot staleness
-            // regardless of statement ordering (security review, SCRUM-23).
-            if (
-                $discussion
-                    ->counsellors()
-                    ->lockForUpdate()
-                    ->where('counsellor_id', $createLinkDTO->user->counsellor->id)
-                    ->exists()
-            ) {
-                throw new LinkException('You cannot use link because you are already part of this discussion.', 422);
-            }
-
-            try {
-                EnsureDiscussionCanAcceptCounsellorAction::new()->execute(
-                    GetDiscussionsDTO::new()->fromArray(['discussion' => $discussion])
-                );
-            } catch (DiscussionException $exception) {
-                throw new LinkException($exception->getMessage(), 422);
-            }
+            $this->ensureCanJoin($discussion, $createLinkDTO->user->counsellor, lock: true);
 
             // The existence check above is a courtesy for the common (sequential) case -- the
             // counsellor_discussion(counsellor_id, discussion_id) unique index (SCRUM-100) is what
@@ -83,23 +88,59 @@ class PerformDiscussionRequestLinkAction extends Action
             try {
                 $discussion->counsellors()->attach($createLinkDTO->user->counsellor->id);
             } catch (UniqueConstraintViolationException) {
-                throw new LinkException('You cannot use link because you are already part of this discussion.', 422);
+                throw new LinkException(self::ALREADY_IN, 422);
             }
 
             // Marking it used (SCRUM-101; used_at, SCRUM-415) keeps this link from being replayed by
             // whoever still holds the URL -- safe from the race described above because it
             // happens inside the same lockForUpdate transaction as the active-state check.
             $link->markUsed();
+
+            return $discussion;
         });
 
-        $createLinkDTO->link->for->addedby->notify(
-            new DiscussionInclusionNotification($createLinkDTO->user->counsellor, $createLinkDTO->link->for)
+        $discussion->addedby->notify(
+            new DiscussionInclusionNotification($createLinkDTO->user->counsellor, $discussion)
         );
 
-        if ($createLinkDTO->link->for->for_type == Therapy::class) {
-            return Redirect::route('therapies.get', ['therapyId' => $createLinkDTO->link->for->for_id]);
+        return new LinkConfirmation(self::JOINED, route('discussions.chat', ['discussionId' => $discussion->id]));
+    }
+
+    private function ensureCounsellor(CreateLinkDTO $createLinkDTO): void
+    {
+        EnsureCounsellorExistsAction::new()->execute(
+            UpdateCounsellorDTO::new()->fromArray(['counsellor' => $createLinkDTO->user?->counsellor]),
+            LinkException::NO_COUNSELLOR
+        );
+
+        // SCRUM-31: only a currently verified counsellor joins.
+        EnsureCounsellorMayTakeOnClientsAction::new()->execute($createLinkDTO->user->counsellor, forDiscussion: true);
+    }
+
+    // Not already in it, and room for another counsellor. $lock: a locking read, under the discussion's lock
+    // (see EnsureDiscussionCanAcceptCounsellorAction's comment on REPEATABLE-READ staleness, SCRUM-23) --
+    // the capacity count always is one. The capacity refusal doesn't repeat the discussion's name.
+    private function ensureCanJoin(Discussion $discussion, Counsellor $counsellor, bool $lock = false): void
+    {
+        if ($discussion->counsellors()->when($lock, fn ($query) => $query->lockForUpdate())->where('counsellor_id', $counsellor->id)->exists()) {
+            throw new LinkException(self::ALREADY_IN, 422);
         }
 
-        return Redirect::route('home');
+        try {
+            EnsureDiscussionCanAcceptCounsellorAction::new()->execute(
+                GetDiscussionsDTO::new()->fromArray(['discussion' => $discussion])
+            );
+        } catch (DiscussionException) {
+            throw new LinkException(self::FULL, 422);
+        }
+    }
+
+    private function discussionOf(Link $link): Discussion
+    {
+        if (! $link->for instanceof Discussion) {
+            throw LinkException::inactive();
+        }
+
+        return $link->for;
     }
 }

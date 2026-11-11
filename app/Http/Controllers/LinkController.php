@@ -3,17 +3,13 @@
 namespace App\Http\Controllers;
 
 use App\Actions\GetModelWithModelNameAndIdAction;
-use App\Actions\Link\PerformGroupTherapyLinkAction;
-use App\Actions\Link\PerformOrganizationSelfApplyLinkAction;
 use App\DTOs\CreateLinkDTO;
 use App\DTOs\GetLinksDTO;
 use App\Http\Resources\LinkResource;
-use App\Models\GroupTherapy;
 use App\Models\Link;
 use App\Services\LinkService;
 use App\Support\FailureResponse;
 use App\Support\PendingLink;
-use App\Support\TherapyLink;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Redirect;
 use Throwable;
@@ -118,12 +114,13 @@ class LinkController extends Controller
         }
     }
 
-    // Confirming a link that opening only showed: a group's member invitation, on the group's page
-    // (SCRUM-383), or an organisation join link, on its own page (SCRUM-415).
+    // Confirming a link that opening only showed (LinkService::confirmLink): a group's member invitation
+    // (SCRUM-383), an organisation join link (SCRUM-415), or a link that acts (SCRUM-418). JSON: what
+    // happened and where to go next; a plain form post is taken there with it.
     public function confirmLink(Request $request)
     {
         try {
-            $joined = LinkService::new()->confirmLink(
+            $confirmation = LinkService::new()->confirmLink(
                 CreateLinkDTO::new()->fromArray([
                     'user' => $request->user(),
                     'link' => Link::where('uuid', $request->route('uuid'))->first(),
@@ -131,18 +128,10 @@ class LinkController extends Controller
                 ])
             );
 
-            if ($joined instanceof GroupTherapy) {
-                return $this->successResponse(
-                    $request,
-                    ['status' => true, 'message' => PerformGroupTherapyLinkAction::JOINED],
-                    Redirect::to(TherapyLink::to($joined))->with('message', PerformGroupTherapyLinkAction::JOINED),
-                );
-            }
-
             return $this->successResponse(
                 $request,
-                ['status' => true, 'message' => PerformOrganizationSelfApplyLinkAction::APPLIED],
-                Redirect::route('organizations.mine.dashboard')->with('message', PerformOrganizationSelfApplyLinkAction::APPLIED),
+                ['status' => true, 'message' => $confirmation->message, 'redirect' => $confirmation->redirect],
+                Redirect::to($confirmation->redirect ?? route('home'))->with('message', $confirmation->message),
             );
         } catch (Throwable $th) {
             return $this->failureResponse($request, $th);

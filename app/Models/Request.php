@@ -96,6 +96,13 @@ class Request extends Model
         return $this->morphTo();
     }
 
+    // SCRUM-417: the person who sent it took it back (WithdrawOrganizationMemberApplicationAction) -- closed
+    // like a request made moot (INCONSEQUENCIAL), flagged so whoever would have answered can be told why.
+    public function wasWithdrawn(): bool
+    {
+        return (bool) ($this->data['withdrawn'] ?? false);
+    }
+
     // SCRUM-392: the request types that ask a counsellor onto a therapy or a group.
     public const ASSISTANCE_TYPES = [RequestTypeEnum::therapy->value, RequestTypeEnum::groupTherapy->value];
 

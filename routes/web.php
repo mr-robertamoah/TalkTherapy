@@ -400,6 +400,8 @@ Route::middleware('auth')->group(function () {
     // throttle: same reasoning as the counsellor-invite/apply routes above (SCRUM-124).
     Route::post('/organizations/{organizationId}/member-invites', [OrganizationMemberController::class, 'invite'])->name('organizations.members.invite')->middleware('throttle:30,1,organizations.members.invite');
     Route::post('/organizations/{organizationId}/member-applications', [OrganizationMemberController::class, 'apply'])->name('organizations.members.apply')->middleware('throttle:30,1,organizations.members.apply');
+    // SCRUM-417: the applicant takes back their own pending application.
+    Route::post('/organization-member-applications/{requestId}/withdraw', [OrganizationMemberController::class, 'withdrawApplication'])->name('organizations.members.applications.withdraw')->middleware('throttle:10,1,organizations.members.applications.withdraw');
 
     // Owner-only co-admin management (SCRUM-163). throttle: mutating actions on shared org state,
     // same modest cap as the other Organization write routes above.

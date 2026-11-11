@@ -6,6 +6,7 @@ use App\Actions\Action;
 use App\Actions\Organization\CreateOrganizationMemberAction;
 use App\DTOs\RequestResponseDTO;
 use App\Enums\RequestStatusEnum;
+use App\Exceptions\GuardianRequiredException;
 use App\Exceptions\OrganizationException;
 use App\Models\Request;
 use Illuminate\Support\Facades\DB;
@@ -18,6 +19,11 @@ class RespondToOrganizationMemberRequestAction extends Action
     {
         return DB::transaction(function () use ($requestResponseDTO) {
             $request = Request::query()->lockForUpdate()->findOrFail($requestResponseDTO->request->id);
+
+            // SCRUM-417: withdrawn while they answered -- say so, not a silent no-op that looks like an answer.
+            if ($request->wasWithdrawn()) {
+                throw new OrganizationException(EnsureRequestIsStillPendingAction::WITHDRAWN, 422);
+            }
 
             if ($request->status != RequestStatusEnum::pending->value) {
                 return $request;
@@ -35,6 +41,17 @@ class RespondToOrganizationMemberRequestAction extends Action
 
                 if ($organization->isNotVerified() || ! $organization->is_consumer) {
                     throw new OrganizationException('This organization is no longer eligible to accept members.', 422);
+                }
+
+                // SCRUM-416: a minor waiting for a guardian doesn't become a member -- told plainly to the
+                // minor accepting an invitation, neutrally to an admin accepting their application (as a
+                // group's creator is, RespondToGroupTherapyMembershipRequestAction).
+                $member = CreateOrganizationMemberAction::memberOf($request);
+
+                if ($member?->isPausedForMissingGuardian(fresh: true)) {
+                    throw $member->is($requestResponseDTO->user)
+                        ? GuardianRequiredException::forOrganizationMember()
+                        : GuardianRequiredException::requestUnavailable();
                 }
             }
 

@@ -480,9 +480,14 @@ test('a counsellor link adds the counsellor, closes their invite, deactivates th
     ]);
     $link = gtlLink($group, $minorCreator, LinkTypeEnum::groupTherapyCounsellor->value);
 
-    $this->actingAs($counsellor->user)->get(route('links.get', ['uuid' => $link->uuid]))
-        ->assertRedirect(route('group.therapies.get', ['groupTherapyId' => $group->id]))
-        ->assertSessionHas('message', PerformGroupTherapyLinkAction::COUNSELLOR_JOINED);
+    // SCRUM-418: opening it shows the group and changes nothing; confirming joins.
+    $this->actingAs($counsellor->user)->get(route('links.get', ['uuid' => $link->uuid]))->assertOk()
+        ->assertInertia(fn ($page) => $page->component('Links/Confirm')->where('type', LinkTypeEnum::groupTherapyCounsellor->value)->where('summary.name', $group->name));
+    expect($group->fresh()->isCounsellor($counsellor))->toBeFalse()->and($link->fresh()->state)->toBe(LinkStateEnum::active->value);
+
+    $this->postJson(route('api.links.join', ['uuid' => $link->uuid]))->assertOk()
+        ->assertJsonPath('message', PerformGroupTherapyLinkAction::COUNSELLOR_JOINED)
+        ->assertJsonPath('redirect', route('group.therapies.get', ['groupTherapyId' => $group->id]));
 
     expect($group->fresh()->isCounsellor($counsellor))->toBeTrue()
         ->and($invite->fresh()->status)->toBe(RequestStatusEnum::inconsequencial->value)
@@ -496,7 +501,10 @@ test('a counsellor link refuses each case that may not join', function (Closure 
     [$group, $creator] = gtlGroup();
     [$user, $link] = $setup($group, $creator);
 
-    $this->actingAs($user)->getJson(route('links.get', ['uuid' => $link->uuid]))
+    // SCRUM-418: the page says why (and nothing else); confirming is refused the same way.
+    $this->actingAs($user)->get(route('links.get', ['uuid' => $link->uuid]))->assertOk()
+        ->assertInertia(fn ($page) => $page->component('Links/Confirm')->where('refusal', $message)->missing('summary'));
+    $this->postJson(route('api.links.join', ['uuid' => $link->uuid]))
         ->assertStatus($status)->assertJsonPath('message', $message);
     expect($link->fresh()->state)->toBe(LinkStateEnum::active->value);
 })->with([
@@ -533,7 +541,9 @@ test('a counsellor link into a paused minor\'s group is refused neutrally, with 
     $group = GroupTherapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => $minor->id]);
     $link = gtlLink($group, $minor, LinkTypeEnum::groupTherapyCounsellor->value);
 
-    $this->actingAs(gtlCounsellor()->user)->getJson(route('links.get', ['uuid' => $link->uuid]))
+    $this->actingAs(gtlCounsellor()->user)->get(route('links.get', ['uuid' => $link->uuid]))->assertOk()
+        ->assertInertia(fn ($page) => $page->where('refusal', GuardianRequiredException::LINK_UNAVAILABLE)->missing('summary'));
+    $this->postJson(route('api.links.join', ['uuid' => $link->uuid]))
         ->assertForbidden()->assertJsonPath('message', GuardianRequiredException::LINK_UNAVAILABLE)->assertJsonMissingPath('code');
 });
 
@@ -609,13 +619,14 @@ test('a member link refuses a full group, an ended one, a member, a paused minor
         ->assertForbidden()->assertJsonPath('message', GuardianRequiredException::LINK_UNAVAILABLE)->assertJsonMissingPath('code');
 });
 
-test('a counsellor link can\'t be confirmed as a member link', function () {
+test('a counsellor link confirmed by someone without a counsellor profile makes nobody a member', function () {
     [$group, $creator] = gtlGroup();
     $link = gtlLink($group, $creator, LinkTypeEnum::groupTherapyCounsellor->value);
 
     $this->actingAs(User::factory()->adult()->create())->postJson(route('api.links.join', ['uuid' => $link->uuid]))
-        ->assertStatus(422)->assertJsonPath('message', 'This link is no longer active.');
-    expect($group->users()->count())->toBe(0);
+        ->assertStatus(422)->assertJsonPath('message', LinkException::NO_COUNSELLOR);
+    expect($group->users()->count())->toBe(0)
+        ->and($link->fresh()->state)->toBe(LinkStateEnum::active->value);
 });
 
 test('two people racing one member link: exactly one gets in', function () {

@@ -9,6 +9,9 @@ use App\Exceptions\BadRequestException;
 
 class EnsureRequestIsStillPendingAction extends Action
 {
+    // SCRUM-417: only organisation member applications can be withdrawn (wasWithdrawn()), hence "application".
+    public const WITHDRAWN = 'This application was withdrawn.';
+
     // SCRUM-171: corrects a *response-honesty* gap, not a data-integrity one -- every
     // RespondTo*RequestAction already re-checks the request's status under a DB lock and
     // silently no-ops (returning the request unchanged) if it's no longer PENDING (SCRUM-80/91),
@@ -30,6 +33,11 @@ class EnsureRequestIsStillPendingAction extends Action
     {
         if ($requestResponseDTO->request->status === RequestStatusEnum::pending->value) {
             return;
+        }
+
+        // SCRUM-417: say why, when the person who sent it took it back.
+        if ($requestResponseDTO->request->wasWithdrawn()) {
+            throw new BadRequestException(self::WITHDRAWN, 422);
         }
 
         throw new BadRequestException('This request is no longer pending and can no longer be responded to.', 422);

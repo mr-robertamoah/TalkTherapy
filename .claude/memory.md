@@ -194,8 +194,11 @@ See "Common commands" in `CLAUDE.md`.
   `Report::masksReportedIdentity()` -- a new place that shows a report must too. Who asked is revealed only through
   `help_request_identity` (logged). Web push goes through `HelpBroadcast::send` (ring and close events) into
   `SendHelpPushJob` on the `urgent` queue; never push anything about the person. `public/sw.js` must never cache pages.
-- **Links and whispers (SCRUM-415/68, 2026-11-11).** A link that acts goes GET-shows-a-page, POST-confirms
-  (`LinkService::confirmLink`; organisation join links and group invitations so far, the rest is SCRUM-418). Mark a
+- **Links and whispers (SCRUM-415/68/418, 2026-11-11).** No link acts on GET: opening shows a page
+  (`Links/Confirm` via `PreviewLinkAction`, or `Links/OrganizationJoin` until SCRUM-419), POST `api.links.join`
+  (`LinkService::confirmLink`) acts. A new acting link type needs a `preview()` built from the masking resources and
+  checks shared with its locked act; `EnsureCanUseLinkAction` holds the per-link checks, the suspended-counsellor
+  one included. Mark a
   link used with `Link::markUsed()`, never `deactivate()` -- a used link is never switched back on. Whispers that need
   to know who sent them go on a **presence** channel and read `metadata.user_id` (Reverb stamps it,
   `accept_client_events_from = members`); a name comes from the member list (`handle.member(id)`), never the payload.

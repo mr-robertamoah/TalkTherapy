@@ -12,7 +12,7 @@ use App\Models\Request;
 use App\Models\User;
 
 test('a counsellor can load their my-organizations dashboard', function () {
-    $user = User::factory()->create();
+    $user = User::factory()->adult()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $user->id, 'verified_at' => now()]);
     $organization = Organization::factory()->create(['is_provider' => true, 'verified_at' => now()]);
     OrganizationCounsellor::factory()->create(['organization_id' => $organization->id, 'counsellor_id' => $counsellor->id]);
@@ -37,7 +37,7 @@ test('a counsellor can load their my-organizations dashboard', function () {
 // counsellor-exclusive, since "My Organizations" applies to a member's own memberships too. The
 // counsellor-only sections are simply omitted (null), not an error/redirect.
 test('a user with no counsellor account can load the dashboard, seeing only their memberships', function () {
-    $user = User::factory()->create();
+    $user = User::factory()->adult()->create();
     $organization = Organization::factory()->create(['is_consumer' => true, 'verified_at' => now()]);
     OrganizationMember::factory()->create([
         'organization_id' => $organization->id,
@@ -57,7 +57,7 @@ test('a user with no counsellor account can load the dashboard, seeing only thei
 });
 
 test('a counsellor also sees their own memberships on the same dashboard', function () {
-    $user = User::factory()->create();
+    $user = User::factory()->adult()->create();
     Counsellor::factory()->create(['user_id' => $user->id, 'verified_at' => now()]);
     $organization = Organization::factory()->create(['is_consumer' => true, 'verified_at' => now()]);
     OrganizationMember::factory()->create([
@@ -81,7 +81,7 @@ test('a guest is redirected to login', function () {
 });
 
 test('a counsellor can fetch their paginated request queue via the real JSON route', function () {
-    $user = User::factory()->create();
+    $user = User::factory()->adult()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $user->id, 'verified_at' => now()]);
     $organization = Organization::factory()->create(['is_provider' => true, 'verified_at' => now()]);
     Request::factory()->for($counsellor, 'from')->for($organization, 'to')->create([
@@ -102,7 +102,7 @@ test('a counsellor can fetch their paginated request queue via the real JSON rou
 // /organizations/{organizationId}/dashboard route (organizationId="mine") -- caught during
 // development when this route was registered after organizations.dashboard instead of before it.
 test('the my-organizations dashboard route does not collide with the organizations/{organizationId}/dashboard route', function () {
-    $user = User::factory()->create();
+    $user = User::factory()->adult()->create();
     Counsellor::factory()->create(['user_id' => $user->id, 'verified_at' => now()]);
     $this->actingAs($user);
 
@@ -112,7 +112,7 @@ test('the my-organizations dashboard route does not collide with the organizatio
 });
 
 test('a counsellor can apply to a verified provider organization from the directory', function () {
-    $user = User::factory()->create();
+    $user = User::factory()->adult()->create();
     Counsellor::factory()->create(['user_id' => $user->id, 'verified_at' => now()]);
     $organization = Organization::factory()->create(['is_provider' => true, 'verified_at' => now()]);
 
@@ -132,7 +132,7 @@ test('a counsellor can apply to a verified provider organization from the direct
 // requests.respond endpoint (reused unchanged) -- no new backend needed for this ticket's AC2,
 // only pinning that the existing infrastructure genuinely covers it.
 test('a member can accept an organization invite via the generic respond endpoint', function () {
-    $user = User::factory()->create();
+    $user = User::factory()->adult()->create();
     $organization = Organization::factory()->create(['is_consumer' => true, 'verified_at' => now()]);
     $invite = Request::factory()->for($organization, 'from')->for($user, 'to')->for($organization, 'for')->create([
         'type' => RequestTypeEnum::organizationMemberInvite->value,
@@ -154,7 +154,7 @@ test('a member can accept an organization invite via the generic respond endpoin
 // SCRUM-173 (TT-6.5d) AC1/AC3: a user who administers an org sees it here, with their role,
 // reusing the pre-existing organizations.mine.administered endpoint unchanged.
 test('a user sees every organization they administer, with their role', function () {
-    $user = User::factory()->create();
+    $user = User::factory()->adult()->create();
     $organization = Organization::factory()->create(['is_provider' => true, 'verified_at' => now()]);
     $organization->admins()->attach($user->id, ['role' => OrganizationAdminRoleEnum::owner->value]);
 
@@ -170,7 +170,7 @@ test('a user sees every organization they administer, with their role', function
 
 // SCRUM-173 AC2: a user who administers nothing sees an empty state, not a broken page.
 test('a user who administers no organization sees an empty administered-organizations list', function () {
-    $user = User::factory()->create();
+    $user = User::factory()->adult()->create();
     $this->actingAs($user);
 
     $response = $this->get(route('organizations.mine.dashboard'));

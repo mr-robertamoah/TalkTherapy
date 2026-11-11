@@ -503,7 +503,8 @@ arch('counsellor entry points call the suspension check')
         'App\Services\GroupTherapyService',
         'App\Services\DiscussionService',
         'App\Services\PostService',
-        'App\Actions\Link\PerformLinkAction',
+        // SCRUM-418: opening and confirming a link both check it here.
+        'App\Actions\Link\EnsureCanUseLinkAction',
         'App\Services\SessionNoteService',
         'App\Services\MessageNoteService',
     ])

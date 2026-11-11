@@ -114,7 +114,7 @@ test('performAction sends a 422 failure home with the alert in the session', fun
     $this->get(route('home'))->assertInertia(fn ($page) => $page->where('alert', null));
 });
 
-test('performAction sends any other failure home too, and answers XHR with JSON', function () {
+test('a link that acts, refused: the page says why (no flash), and confirming answers with JSON', function () {
     $client = User::factory()->adult()->create();
     $therapy = Therapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => $client->id, 'counsellor_id' => null, 'public' => false]);
     $link = new Link(['uuid' => (string) Str::uuid(), 'type' => LinkTypeEnum::therapyCounsellor->value, 'state' => LinkStateEnum::active->value]);
@@ -124,15 +124,17 @@ test('performAction sends any other failure home too, and answers XHR with JSON'
     $suspendedCounsellor = icfCounsellor();
     icfSuspendAsCounsellor($suspendedCounsellor->user);
 
-    // A browser navigation (Accept: text/html,...,*/*) -- used to get a raw JSON 403 page.
+    // A browser navigation (Accept: text/html,...,*/*). SCRUM-418: opening a link that acts shows
+    // Links/Confirm with the reason, never a flashed alert.
     $this->actingAs($suspendedCounsellor->user)
         ->withHeader('Accept', 'text/html,application/xhtml+xml,*/*;q=0.8')
         ->get(route('links.get', ['uuid' => $link->uuid]))
-        ->assertRedirect(route('home'))
-        ->assertSessionHas('alert');
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page->component('Links/Confirm')->has('refusal')->missing('summary'))
+        ->assertSessionMissing('alert');
 
     $this->actingAs($suspendedCounsellor->user)
-        ->getJson(route('links.get', ['uuid' => $link->uuid]))
+        ->postJson(route('api.links.join', ['uuid' => $link->uuid]))
         ->assertForbidden()
         ->assertJsonStructure(['message']);
 

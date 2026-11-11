@@ -9,31 +9,56 @@ use App\Actions\User\AlertGuardianAction;
 use App\DTOs\CreateLinkDTO;
 use App\DTOs\GuardianAlertDTO;
 use App\DTOs\UpdateCounsellorDTO;
+use App\Enums\LinkStateEnum;
 use App\Enums\RequestStatusEnum;
 use App\Exceptions\GuardianRequiredException;
 use App\Exceptions\LinkException;
+use App\Http\Resources\TherapyMiniResource;
+use App\Models\Link;
 use App\Models\Request;
 use App\Models\Therapy;
 use App\Models\User;
 use App\Notifications\TherapyAssistanceLinkNotification;
 use App\Notifications\TherapyAssistanceRequestAcceptedGuardianNotification;
+use App\Support\LinkConfirmation;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Redirect;
 
+// SCRUM-418: opening a therapy's counsellor link only shows the therapy as a counsellor's request card
+// does (preview()); confirming makes them its counsellor (execute()). Both run the same checks; execute()
+// again under the therapy's and the link's locks.
 class PerformTherapyCounsellorLinkAction extends Action
 {
-    public function execute(CreateLinkDTO $createLinkDTO)
-    {
-        // Without this, a non-counsellor user reaching this action (e.g. via a bug elsewhere
-        // in the auth chain) would hit an uncaught Error dereferencing a null ->counsellor
-        // below, instead of a clean LinkException -- SCRUM-101.
-        EnsureCounsellorExistsAction::new()->execute(
-            UpdateCounsellorDTO::new()->fromArray(['counsellor' => $createLinkDTO->user?->counsellor]),
-            LinkException::NO_COUNSELLOR
-        );
+    public const JOINED = 'You are now the counsellor of this therapy.';
 
-        // SCRUM-31: only a currently verified counsellor takes on a client.
-        EnsureCounsellorMayTakeOnClientsAction::new()->execute($createLinkDTO->user->counsellor);
+    public const HAS_COUNSELLOR = 'Sorry, link cannot be used because therapy already has a counsellor';
+
+    // What a counsellor's request card shows (TherapyMiniResource, masked as it masks): the name, whether
+    // it's public or anonymous, when it started, and the client by the name others see. The background
+    // story only when the link was addressed to them or the therapy is public (the user's decision) -- a
+    // general link can be held by anyone.
+    public function preview(CreateLinkDTO $createLinkDTO): array
+    {
+        $this->ensureCounsellor($createLinkDTO);
+
+        $therapy = $this->therapyOf($createLinkDTO->link);
+
+        $this->ensureCanTakeOn($therapy);
+
+        $card = (new TherapyMiniResource($therapy))->resolve(request());
+        $to = $createLinkDTO->link->to;
+        $addressed = $to && ($to->is($createLinkDTO->user) || $to->is($createLinkDTO->user->counsellor));
+
+        return [
+            ...Arr::only($card, ['name', 'public', 'anonymous', 'createdAt']),
+            'client' => $therapy->addedby instanceof User ? $therapy->displayNameOf($therapy->addedby) : null,
+            'backgroundStory' => $addressed || $therapy->public ? $card['backgroundStory'] : null,
+        ];
+    }
+
+    public function execute(CreateLinkDTO $createLinkDTO): LinkConfirmation
+    {
+        $this->ensureCounsellor($createLinkDTO);
 
         // Locking the therapy row before deciding whether it already has a counsellor closes
         // the same TOCTOU race SCRUM-91 fixed for RespondToTherapyAssistanceRequestAction: two
@@ -44,17 +69,19 @@ class PerformTherapyCounsellorLinkAction extends Action
         // therapy-before-request lock order as RespondToTherapyAssistanceRequestAction, so the
         // two code paths can never deadlock against each other.
         $therapy = DB::transaction(function () use ($createLinkDTO) {
-            $therapy = Therapy::query()->lockForUpdate()->findOrFail($createLinkDTO->link->for->id);
+            $therapy = Therapy::query()->lockForUpdate()->findOrFail($this->therapyOf($createLinkDTO->link)->id);
 
-            if ($therapy->counsellor) {
-                throw new LinkException('Sorry, link cannot be used because therapy already has a counsellor', 422);
+            // SCRUM-418: the link too, and still unused -- it used to be marked used without being re-read,
+            // leaving only the therapy's lock against a replay. After the therapy (the other link types lock
+            // their link first): this path has always locked the therapy first, as
+            // RespondToTherapyAssistanceRequestAction does, and nothing else locks a therapy-counsellor link.
+            $link = Link::query()->lockForUpdate()->find($createLinkDTO->link->id);
+
+            if (! $link || $link->state !== LinkStateEnum::active->value) {
+                throw LinkException::inactive();
             }
 
-            // SCRUM-288: no counsellor is taken on while the therapy is paused for its minor client's
-            // missing guardian -- re-read under the therapy lock.
-            if ($therapy->addedby instanceof User && $therapy->addedby->isPausedForMissingGuardian(fresh: true)) {
-                throw GuardianRequiredException::forClient();
-            }
+            $this->ensureCanTakeOn($therapy);
 
             $therapy->update([
                 'counsellor_id' => $createLinkDTO->user->counsellor->id,
@@ -74,7 +101,7 @@ class PerformTherapyCounsellorLinkAction extends Action
             // Marking it used (SCRUM-101; used_at, SCRUM-415) keeps this link from being replayed --
             // done inside the same transaction so a rollback (e.g. the already-has-a-counsellor
             // throw above) never leaves the link deactivated without an actual assignment.
-            $createLinkDTO->link->markUsed();
+            $link->markUsed();
 
             return $therapy->refresh();
         });
@@ -95,6 +122,43 @@ class PerformTherapyCounsellorLinkAction extends Action
             );
         }
 
-        return Redirect::route('therapies.get', ['therapyId' => $therapy->id]);
+        return new LinkConfirmation(self::JOINED, route('therapies.get', ['therapyId' => $therapy->id]));
+    }
+
+    private function ensureCounsellor(CreateLinkDTO $createLinkDTO): void
+    {
+        // Without this, a non-counsellor user reaching this action (e.g. via a bug elsewhere
+        // in the auth chain) would hit an uncaught Error dereferencing a null ->counsellor
+        // below, instead of a clean LinkException -- SCRUM-101.
+        EnsureCounsellorExistsAction::new()->execute(
+            UpdateCounsellorDTO::new()->fromArray(['counsellor' => $createLinkDTO->user?->counsellor]),
+            LinkException::NO_COUNSELLOR
+        );
+
+        // SCRUM-31: only a currently verified counsellor takes on a client.
+        EnsureCounsellorMayTakeOnClientsAction::new()->execute($createLinkDTO->user->counsellor);
+    }
+
+    // Still without a counsellor, and not paused for its minor client's missing guardian (SCRUM-288) --
+    // told neutrally (SCRUM-418 security review): whoever holds a general link isn't told the client is a
+    // minor without a guardian, as with a group's links (PerformGroupTherapyLinkAction).
+    private function ensureCanTakeOn(Therapy $therapy): void
+    {
+        if ($therapy->counsellor) {
+            throw new LinkException(self::HAS_COUNSELLOR, 422);
+        }
+
+        if ($therapy->addedby instanceof User && $therapy->addedby->isPausedForMissingGuardian(fresh: true)) {
+            throw GuardianRequiredException::linkUnavailable();
+        }
+    }
+
+    private function therapyOf(Link $link): Therapy
+    {
+        if (! $link->for instanceof Therapy) {
+            throw LinkException::inactive();
+        }
+
+        return $link->for;
     }
 }

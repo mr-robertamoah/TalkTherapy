@@ -59,6 +59,7 @@ use App\Notifications\OrganizationCounsellorCompensationChangeExpiryReminderNoti
 use App\Notifications\OrganizationCounsellorCompensationChangeProposedNotification;
 use App\Notifications\OrganizationCounsellorCompensationChangeRejectedNotification;
 use App\Notifications\OrganizationFinancedTransactionRefundedNotification;
+use App\Notifications\OrganizationMemberJoinedGuardianNotification;
 use App\Notifications\RefundFailedNotification;
 use App\Notifications\RefundRequestRejectedNotification;
 use App\Notifications\RefundSucceededNotification;
@@ -199,6 +200,7 @@ dataset('ncent worded notifications', function () {
         'counsellor joined ward group' => [fn () => new GroupTherapyCounsellorLinkUsedNotification($group(), $counsellor(), true), fn () => route('group.therapies.get', ['groupTherapyId' => 4244]), "ward's group"],
         'ward joined group' => [fn () => new GroupTherapyMemberJoinedGuardianNotification($group()), fn () => route('group.therapies.get', ['groupTherapyId' => 4244]), 'joined'],
         'ward joined group (link)' => [fn () => new GroupTherapyMemberJoinedGuardianNotification($group(), GroupTherapyMemberJoinedGuardianNotification::VIA_LINK), fn () => route('group.therapies.get', ['groupTherapyId' => 4244]), 'joined'],
+        'ward joined organization' => [fn () => new OrganizationMemberJoinedGuardianNotification(tap(new Organization, fn (Organization $organization) => $organization->forceFill(['id' => 4245, 'name' => 'Harbour Wellbeing'])), 'APPLIED'), null, 'Harbour Wellbeing'],
         'membership accepted' => [fn () => new GroupTherapyMembershipRequestAcceptedNotification($forRequest($group())), fn () => route('group.therapies.get', ['groupTherapyId' => 4244]), 'accepted'],
         'membership declined' => [fn () => new GroupTherapyMembershipRequestRejectedNotification($forRequest($group())), null, 'declined'],
         'guardianship established' => [fn () => new GuardianshipEstablishedNotification($ward()), $profile, 'guardian'],

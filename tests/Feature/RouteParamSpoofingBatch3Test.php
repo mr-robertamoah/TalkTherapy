@@ -126,9 +126,10 @@ test('LinkController::performAction applies to the URL\'s link, not a spoofed uu
     ]);
     Link::reguard();
 
+    // SCRUM-418: confirming uses it (opening only shows it) -- the same uuid rule on both.
     $this
         ->actingAs($guardian)
-        ->get("/links/{$ownedLink->uuid}?uuid={$unrelatedLink->uuid}");
+        ->postJson("/api/links/{$ownedLink->uuid}/join?uuid={$unrelatedLink->uuid}", ['uuid' => $unrelatedLink->uuid]);
 
     expect($guardian->wards()->where('ward_id', $ownedWard->id)->exists())->toBeTrue();
     expect($guardian->wards()->where('ward_id', $unrelatedWard->id)->exists())->toBeFalse();

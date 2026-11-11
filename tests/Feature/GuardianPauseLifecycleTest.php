@@ -591,6 +591,12 @@ test('a counsellor can\'t be taken on by link while the therapy is paused, and a
     gplDeleteGuardianship($f['guardian'], $f['minor']);
 
     expect(fn () => PerformTherapyCounsellorLinkAction::new()->execute(CreateLinkDTO::new()->fromArray(['user' => $f['counsellorUser'], 'link' => $link])))
-        ->toThrow(GuardianRequiredException::class, GuardianRequiredException::CLIENT_PAUSED);
+        ->toThrow(GuardianRequiredException::class, GuardianRequiredException::LINK_UNAVAILABLE);
     expect($therapy->fresh()->counsellor_id)->toBeNull();
+
+    // SCRUM-418: told neutrally on the page and on confirming -- not that the client is a minor without a guardian.
+    $this->actingAs($f['counsellorUser'])->get(route('links.get', ['uuid' => $link->uuid]))->assertOk()
+        ->assertInertia(fn ($page) => $page->where('refusal', GuardianRequiredException::LINK_UNAVAILABLE)->missing('summary'));
+    $this->postJson(route('api.links.join', ['uuid' => $link->uuid]))
+        ->assertForbidden()->assertJsonPath('message', GuardianRequiredException::LINK_UNAVAILABLE)->assertJsonMissingPath('code');
 });

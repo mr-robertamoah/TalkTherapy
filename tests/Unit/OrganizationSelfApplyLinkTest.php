@@ -26,7 +26,7 @@ function organizationForSelfApplyLink(bool $selfApplyEnabled = true): array
         'verified_at' => now(),
         'self_apply_enabled' => $selfApplyEnabled,
     ]);
-    $owner = User::factory()->create();
+    $owner = User::factory()->adult()->create();
     $organization->admins()->attach($owner->id, ['role' => OrganizationAdminRoleEnum::owner->value]);
 
     return [$organization, $owner];
@@ -46,7 +46,7 @@ test('an org admin can generate a self-apply link for their organization', funct
 
 test('a user with no admin relationship to the organization cannot generate a self-apply link for it', function () {
     [$organization] = organizationForSelfApplyLink();
-    $outsider = User::factory()->create();
+    $outsider = User::factory()->adult()->create();
 
     expect(fn () => EnsureUserCanCreateOrganizationSelfApplyLinkAction::new()->execute(
         CreateLinkDTO::new()->fromArray([
@@ -61,7 +61,7 @@ test('a user with no admin relationship to the organization cannot generate a se
 // administer must be indistinguishable -- both hit this same guard's generic 403, since it now
 // runs before EnsureLinkDataIsValidAction's "for is missing" 422 ever would.
 test('generating a self-apply link for a nonexistent organization gets the same rejection as an unadministered one', function () {
-    $outsider = User::factory()->create();
+    $outsider = User::factory()->adult()->create();
 
     expect(fn () => EnsureUserCanCreateOrganizationSelfApplyLinkAction::new()->execute(
         CreateLinkDTO::new()->fromArray([
@@ -74,7 +74,7 @@ test('generating a self-apply link for a nonexistent organization gets the same 
 
 test('the organization self-apply authorization guard is a no-op for every other link type', function () {
     [$organization] = organizationForSelfApplyLink();
-    $outsider = User::factory()->create();
+    $outsider = User::factory()->adult()->create();
 
     EnsureUserCanCreateOrganizationSelfApplyLinkAction::new()->execute(
         CreateLinkDTO::new()->fromArray([
@@ -87,7 +87,7 @@ test('the organization self-apply authorization guard is a no-op for every other
 
 test('using a self-apply link creates a pending member application for the specific organization it was generated for', function () {
     [$organization, $owner] = organizationForSelfApplyLink();
-    $applicant = User::factory()->create();
+    $applicant = User::factory()->adult()->create();
 
     $link = CreateLinkAction::new()->execute(
         CreateLinkDTO::new()->fromArray([
@@ -109,7 +109,7 @@ test('using a self-apply link creates a pending member application for the speci
 
 test('using a self-apply link deactivates it so it cannot be replayed (SCRUM-101 convention)', function () {
     [$organization, $owner] = organizationForSelfApplyLink();
-    $applicant = User::factory()->create();
+    $applicant = User::factory()->adult()->create();
 
     $link = CreateLinkAction::new()->execute(
         CreateLinkDTO::new()->fromArray([
@@ -128,8 +128,8 @@ test('using a self-apply link deactivates it so it cannot be replayed (SCRUM-101
 
 test('using an already-used self-apply link throws instead of applying twice', function () {
     [$organization, $owner] = organizationForSelfApplyLink();
-    $firstApplicant = User::factory()->create();
-    $secondApplicant = User::factory()->create();
+    $firstApplicant = User::factory()->adult()->create();
+    $secondApplicant = User::factory()->adult()->create();
 
     $link = CreateLinkAction::new()->execute(
         CreateLinkDTO::new()->fromArray([
@@ -154,7 +154,7 @@ test('using an already-used self-apply link throws instead of applying twice', f
 // a self_apply_enabled=false organization must reject via the link too, not just the direct POST.
 test('using a self-apply link for an organization that has self-apply disabled is rejected', function () {
     [$organization, $owner] = organizationForSelfApplyLink(selfApplyEnabled: false);
-    $applicant = User::factory()->create();
+    $applicant = User::factory()->adult()->create();
 
     $link = CreateLinkAction::new()->execute(
         CreateLinkDTO::new()->fromArray([
@@ -175,7 +175,7 @@ test('using a self-apply link for an organization that has self-apply disabled i
 // isolated Action -- a nonexistent organization gets the same rejection as an unadministered one
 // via the real LinkService::createLink() entry point, closing the 422-vs-403 existence oracle.
 test('LinkService::createLink rejects a self-apply link for a nonexistent organization the same way as an unadministered one', function () {
-    $outsider = User::factory()->create();
+    $outsider = User::factory()->adult()->create();
 
     expect(fn () => LinkService::new()->createLink(
         CreateLinkDTO::new()->fromArray([
