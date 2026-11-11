@@ -139,6 +139,14 @@ class Organization extends Model
         return ! $this->isVerified();
     }
 
+    // SCRUM-214: whether people can apply to join as members -- THE one rule, shared by applying
+    // (EnsureOrganizationCanReceiveMemberApplicationsAction) and by creating a join link for it
+    // (EnsureUserCanCreateOrganizationSelfApplyLinkAction), so a link can never outlive what applying accepts.
+    public function acceptsMemberApplications(): bool
+    {
+        return $this->isVerified() && $this->is_consumer && $this->self_apply_enabled;
+    }
+
     public function verify(): void
     {
         $this->verified_at = now()->utc();

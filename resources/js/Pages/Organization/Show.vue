@@ -11,6 +11,7 @@ import CounsellorsSection from './Partials/CounsellorsSection.vue';
 import MembersSection from './Partials/MembersSection.vue';
 import RequestQueueSection from './Partials/RequestQueueSection.vue';
 import AdminsSection from './Partials/AdminsSection.vue';
+import SelfApplyLinkPanel from './Partials/SelfApplyLinkPanel.vue';
 
 const props = defineProps({
     organization: {
@@ -120,6 +121,11 @@ function onChildAlert(alert) {
                     billing reconciliation
                     <span v-if="organization.isBillingSuspended" class="ml-1 text-xs font-semibold px-2 py-1 rounded-full bg-red-100 text-red-700">suspended</span>
                 </Link>
+            </div>
+
+            <!-- SCRUM-214: join (self-apply) links, for a consumer org -- right above the members they bring in. -->
+            <div v-if="organization.isConsumer" class="w-full sm:w-[90%] md:w-[85%] lg:w-[75%] mx-auto sm:px-6 lg:px-8 mt-8">
+                <SelfApplyLinkPanel :organization="organization" />
             </div>
 
             <div v-if="organization.isConsumer" class="w-full sm:w-[90%] md:w-[85%] lg:w-[75%] mx-auto sm:px-6 lg:px-8 mt-8">

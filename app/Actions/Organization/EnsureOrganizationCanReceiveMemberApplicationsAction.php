@@ -18,7 +18,7 @@ class EnsureOrganizationCanReceiveMemberApplicationsAction extends Action
     // EnsureOrganizationExistsAction call -- folded in here instead, same as SCRUM-170/178.
     public function execute(?Organization $organization): void
     {
-        if (is_null($organization) || $organization->isNotVerified() || ! $organization->is_consumer || ! $organization->self_apply_enabled) {
+        if (is_null($organization) || ! $organization->acceptsMemberApplications()) {
             throw new OrganizationException('You cannot apply to this organization.', 422);
         }
     }
