@@ -333,7 +333,10 @@ test('a group link can\'t be used while the group\'s creator is paused; it can o
 
     $this->actingAs($adult)->getJson(route('links.get', ['uuid' => $link->uuid]))
         ->assertForbidden()->assertJsonPath('message', GuardianRequiredException::LINK_UNAVAILABLE)->assertJsonMissingPath('code');
-    $this->actingAs($counsellor->user)->getJson(route('links.get', ['uuid' => $counsellorLink->uuid]))
+    // SCRUM-418: a counsellor link's page says so; confirming is refused the same way.
+    $this->actingAs($counsellor->user)->get(route('links.get', ['uuid' => $counsellorLink->uuid]))->assertOk()
+        ->assertInertia(fn ($page) => $page->where('refusal', GuardianRequiredException::LINK_UNAVAILABLE)->missing('summary'));
+    $this->postJson(route('api.links.join', ['uuid' => $counsellorLink->uuid]))
         ->assertForbidden()->assertJsonPath('message', GuardianRequiredException::LINK_UNAVAILABLE)->assertJsonMissingPath('code');
 
     Guardianship::query()->create(['guardian_id' => User::factory()->adult()->create()->id, 'ward_id' => $creator->id]);

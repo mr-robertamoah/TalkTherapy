@@ -12,9 +12,13 @@ use App\Actions\Link\EnsureLinkDataIsValidAction;
 use App\Actions\Link\EnsureLinkExistsAction;
 use App\Actions\Link\EnsureUserCanCreateLinkForAction;
 use App\Actions\Link\EnsureUserCanCreateOrganizationSelfApplyLinkAction;
+use App\Actions\Link\PerformDiscussionRequestLinkAction;
 use App\Actions\Link\PerformGroupTherapyLinkAction;
+use App\Actions\Link\PerformGuardianshipLinkAction;
 use App\Actions\Link\PerformLinkAction;
 use App\Actions\Link\PerformOrganizationSelfApplyLinkAction;
+use App\Actions\Link\PerformTherapyCounsellorLinkAction;
+use App\Actions\Link\PreviewLinkAction;
 use App\Actions\User\EnsureUserExistsAction;
 use App\DTOs\CreateLinkDTO;
 use App\DTOs\GetLinksDTO;
@@ -22,9 +26,9 @@ use App\Enums\LinkTypeEnum;
 use App\Enums\PaginationEnum;
 use App\Exceptions\LinkException;
 use App\Http\Resources\LinkResource;
-use App\Models\GroupTherapy;
 use App\Models\Link;
-use App\Models\Request;
+use App\Support\LinkConfirmation;
+use App\Support\TherapyLink;
 use Illuminate\Support\Facades\DB;
 
 class LinkService extends Service
@@ -41,15 +45,20 @@ class LinkService extends Service
             return PerformOrganizationSelfApplyLinkAction::new()->preview($createLinkDTO);
         }
 
+        // SCRUM-418: the links that act are shown first, and used only by confirming.
+        if (in_array($createLinkDTO->link->type, PreviewLinkAction::TYPES, true)) {
+            return PreviewLinkAction::new()->execute($createLinkDTO);
+        }
+
         EnsureCanUseLinkAction::new()->execute($createLinkDTO);
 
         return PerformLinkAction::new()->execute($createLinkDTO);
     }
 
     // Confirming a link that opening only showed: a group's member invitation (SCRUM-383 -- on the
-    // group's page, with their anonymity choice) or an organisation join link (SCRUM-415). Returns what
-    // was joined or applied to.
-    public function confirmLink(CreateLinkDTO $createLinkDTO): GroupTherapy|Request
+    // group's page, with their anonymity choice), an organisation join link (SCRUM-415), and the links
+    // that act (SCRUM-418). What happened, and where to go next.
+    public function confirmLink(CreateLinkDTO $createLinkDTO): LinkConfirmation
     {
         EnsureUserExistsAction::new()->execute($createLinkDTO->user);
 
@@ -58,10 +67,24 @@ class LinkService extends Service
         EnsureCanUseLinkAction::new()->execute($createLinkDTO);
 
         return match ($createLinkDTO->link->type) {
-            LinkTypeEnum::groupTherapyParticipant->value => PerformGroupTherapyLinkAction::new()->joinAsMember($createLinkDTO),
-            LinkTypeEnum::organizationSelfApply->value => PerformOrganizationSelfApplyLinkAction::new()->applyByLink($createLinkDTO),
+            LinkTypeEnum::groupTherapyParticipant->value => new LinkConfirmation(
+                PerformGroupTherapyLinkAction::JOINED,
+                TherapyLink::to(PerformGroupTherapyLinkAction::new()->joinAsMember($createLinkDTO)),
+            ),
+            LinkTypeEnum::organizationSelfApply->value => $this->applyByLink($createLinkDTO),
+            LinkTypeEnum::guardianship->value => PerformGuardianshipLinkAction::new()->execute($createLinkDTO),
+            LinkTypeEnum::therapyCounsellor->value => PerformTherapyCounsellorLinkAction::new()->execute($createLinkDTO),
+            LinkTypeEnum::discussion->value => PerformDiscussionRequestLinkAction::new()->execute($createLinkDTO),
+            LinkTypeEnum::groupTherapyCounsellor->value => PerformGroupTherapyLinkAction::new()->joinAsCounsellor($createLinkDTO),
             default => throw LinkException::inactive(),
         };
+    }
+
+    private function applyByLink(CreateLinkDTO $createLinkDTO): LinkConfirmation
+    {
+        PerformOrganizationSelfApplyLinkAction::new()->applyByLink($createLinkDTO);
+
+        return new LinkConfirmation(PerformOrganizationSelfApplyLinkAction::APPLIED, route('organizations.mine.dashboard'));
     }
 
     public function createLink(CreateLinkDTO $createLinkDTO)

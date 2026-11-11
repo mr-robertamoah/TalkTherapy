@@ -95,7 +95,7 @@ test('a non-counsellor user reaching this action gets a clean exception instead 
     ))->toThrow(CounsellorNotFoundException::class);
 });
 
-test('a therapy-counsellor link cannot be replayed through LinkService::performAction once used (SCRUM-101)', function () {
+test('a therapy-counsellor link cannot be replayed through LinkService::confirmLink once used (SCRUM-101, SCRUM-418)', function () {
     Notification::fake();
 
     $therapyOwner = User::factory()->adult()->create();
@@ -113,13 +113,22 @@ test('a therapy-counsellor link cannot be replayed through LinkService::performA
         ])
     );
 
-    LinkService::new()->performAction(
+    LinkService::new()->confirmLink(
         CreateLinkDTO::new()->fromArray(['user' => $firstCounsellorUser, 'link' => $link])
     );
 
-    expect(fn () => LinkService::new()->performAction(
+    expect(fn () => LinkService::new()->confirmLink(
         CreateLinkDTO::new()->fromArray(['user' => $secondCounsellorUser, 'link' => $link->fresh()])
     ))->toThrow(LinkException::class, 'This link is no longer active.');
+
+    // SCRUM-418: and through the action with a stale (still active) copy, as a racer would hold it -- the
+    // link is re-read under its lock now, not only guarded by the therapy's.
+    $stale = $link->fresh()->replicate()->forceFill(['id' => $link->id, 'state' => 'ACTIVE']);
+    $therapy->update(['counsellor_id' => null]);
+    expect(fn () => PerformTherapyCounsellorLinkAction::new()->execute(
+        CreateLinkDTO::new()->fromArray(['user' => $secondCounsellorUser, 'link' => $stale])
+    ))->toThrow(LinkException::class, 'This link is no longer active.');
+    $therapy->update(['counsellor_id' => Counsellor::query()->where('user_id', $firstCounsellorUser->id)->value('id')]);
 
     expect($therapy->fresh()->counsellor_id)->toBe(Counsellor::query()->where('user_id', $firstCounsellorUser->id)->value('id'));
 });

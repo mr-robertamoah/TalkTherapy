@@ -37,12 +37,7 @@ class AddCounsellorToGroupTherapyAction extends Action
     {
         $this->ensureCanJoin($lockedGroup, $counsellor, $actor, $offer);
 
-        $activeCounsellors = $lockedGroup->activeCounsellors();
-        $alreadyActive = $activeCounsellors->contains('id', $counsellor->id);
-
-        if (! $alreadyActive && ! $lockedGroup->hasFreeCounsellorPlace($activeCounsellors->count())) {
-            throw new CannotJoinGroupTherapyException(self::GROUP_FULL, 422);
-        }
+        $this->ensureHasPlace($lockedGroup, $counsellor);
 
         $existing = $lockedGroup->counsellors()->whereKey($counsellor->id)->first();
         $lockedGroup->counsellors()->syncWithoutDetaching([
@@ -76,6 +71,17 @@ class AddCounsellorToGroupTherapyAction extends Action
                 'status' => RequestStatusEnum::inconsequencial->value,
                 'data' => [...($request->data ?? []), 'reason' => $reason],
             ])->save());
+    }
+
+    // A free counsellor place, unless they're already on the team. SCRUM-418: public, so a counsellor
+    // invitation link's page can say so before they confirm (unlocked there; locked here).
+    public function ensureHasPlace(GroupTherapy $group, Counsellor $counsellor): void
+    {
+        $activeCounsellors = $group->activeCounsellors();
+
+        if (! $activeCounsellors->contains('id', $counsellor->id) && ! $group->hasFreeCounsellorPlace($activeCounsellors->count())) {
+            throw new CannotJoinGroupTherapyException(self::GROUP_FULL, 422);
+        }
     }
 
     // Security review (SCRUM-358): it must be someone who may join: the counsellor themselves (an

@@ -99,13 +99,14 @@ test('an old guardianship link for someone else can\'t be used, even though it i
     $link = anOldLinkFor350($attacker, 'GUARDIANSHIP', $victim);
     $accomplice = User::factory()->adult()->create();
 
-    expect(fn () => LinkService::new()->performAction(CreateLinkDTO::new()->fromArray(['user' => $accomplice, 'link' => $link])))
+    // SCRUM-418: confirming is what uses it.
+    expect(fn () => LinkService::new()->confirmLink(CreateLinkDTO::new()->fromArray(['user' => $accomplice, 'link' => $link])))
         ->toThrow(LinkException::class, 'This link is no longer active.');
     expect($accomplice->wards()->where('ward_id', $victim->id)->exists())->toBeFalse();
 
     // A legitimate one still works.
     $own = anOldLinkFor350($victim, 'GUARDIANSHIP', $victim);
-    LinkService::new()->performAction(CreateLinkDTO::new()->fromArray(['user' => $accomplice, 'link' => $own]));
+    LinkService::new()->confirmLink(CreateLinkDTO::new()->fromArray(['user' => $accomplice, 'link' => $own]));
     expect($accomplice->wards()->where('ward_id', $victim->id)->exists())->toBeTrue();
 });
 

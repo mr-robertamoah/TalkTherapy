@@ -201,9 +201,10 @@ test('using an invite link succeeds while under the cap', function () {
     $link = anActiveDiscussionLinkForDiscussionCapRoute($discussion, $creator);
     $joiningCounsellor = aCounsellorForDiscussionCapRoute();
 
+    // SCRUM-418: opening only shows it; confirming joins.
     $this
         ->actingAs($joiningCounsellor->user)
-        ->get(route('links.get', ['uuid' => $link->uuid]));
+        ->postJson(route('api.links.join', ['uuid' => $link->uuid]));
 
     expect($discussion->counsellors()->where('counsellor_id', $joiningCounsellor->id)->exists())->toBeTrue();
 });
@@ -216,9 +217,10 @@ test('using an invite link fails once the cap is already reached', function () {
     $link = anActiveDiscussionLinkForDiscussionCapRoute($discussion, $creator);
     $joiningCounsellor = aCounsellorForDiscussionCapRoute();
 
+    // SCRUM-418: opening only shows it; confirming joins.
     $this
         ->actingAs($joiningCounsellor->user)
-        ->get(route('links.get', ['uuid' => $link->uuid]));
+        ->postJson(route('api.links.join', ['uuid' => $link->uuid]));
 
     expect($discussion->counsellors()->where('counsellor_id', $joiningCounsellor->id)->exists())->toBeFalse();
     // The link must not be silently consumed by a failed, over-cap join attempt -- it should

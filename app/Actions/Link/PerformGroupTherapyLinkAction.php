@@ -11,12 +11,14 @@ use App\Actions\User\AlertGuardianAction;
 use App\DTOs\CreateLinkDTO;
 use App\DTOs\GuardianAlertDTO;
 use App\DTOs\UpdateCounsellorDTO;
+use App\Enums\ConstantsEnum;
 use App\Enums\LinkStateEnum;
 use App\Enums\LinkTypeEnum;
 use App\Enums\RequestStatusEnum;
 use App\Enums\RequestTypeEnum;
 use App\Exceptions\GuardianRequiredException;
 use App\Exceptions\LinkException;
+use App\Http\Resources\GroupTherapyMiniResource;
 use App\Models\Counsellor;
 use App\Models\GroupTherapy;
 use App\Models\Link;
@@ -24,14 +26,17 @@ use App\Models\Request;
 use App\Models\User;
 use App\Notifications\GroupTherapyCounsellorLinkUsedNotification;
 use App\Notifications\GroupTherapyMemberJoinedGuardianNotification;
+use App\Support\LinkConfirmation;
 use App\Support\TherapyLink;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Redirect;
 
-// SCRUM-383: using a group's invitation links (all group link types come here from PerformLinkAction).
-//  - COUNSELLOR: the counsellor joins the group's team (AddCounsellorToGroupTherapyAction), the same
-//    as accepting an invite, whose pending invite then closes.
+// SCRUM-383: using a group's invitation links.
+//  - COUNSELLOR (SCRUM-418): opening it only shows the group (previewAsCounsellor()); confirming
+//    (joinAsCounsellor(), from api.links.join) joins the group's team (AddCounsellorToGroupTherapyAction),
+//    the same as accepting an invite, whose pending invite then closes.
 //  - PARTICIPANT: opening it only takes the invitee to the group's page with a "join?" confirmation
 //    (a GET can't carry their anonymity choice); confirming (joinAsMember()) adds them without the
 //    creator's approval -- the creator issued the link -- through the same step as every other join.
@@ -40,7 +45,7 @@ use Illuminate\Support\Facades\Redirect;
 // active under its lock, so two people racing one link can't both use it. Each link works once.
 // SCRUM-382/384: nobody is let into (or onto the team of) a group whose creator is a minor paused for
 // a missing guardian -- told neutrally, re-read under the lock. A suspended counsellor is refused
-// before this (PerformLinkAction::COUNSELLOR_TYPES).
+// before this (EnsureCanUseLinkAction::COUNSELLOR_TYPES).
 class PerformGroupTherapyLinkAction extends Action
 {
     public const INVITED = 'You have been invited to join this group. Confirm on this page to join.';
@@ -49,13 +54,35 @@ class PerformGroupTherapyLinkAction extends Action
 
     public const COUNSELLOR_JOINED = 'You are now a counsellor of this group therapy.';
 
+    // Opening a group link (PerformLinkAction): a member invitation goes to the group's page; a counsellor
+    // invitation is shown by LinkService (previewAsCounsellor()), never used by opening it.
     public function execute(CreateLinkDTO $createLinkDTO): RedirectResponse
     {
         return match ($createLinkDTO->link->type) {
-            LinkTypeEnum::groupTherapyCounsellor->value => $this->joinAsCounsellor($createLinkDTO),
             LinkTypeEnum::groupTherapyParticipant->value => $this->inviteToJoin($createLinkDTO),
             default => throw LinkException::inactive(),
         };
+    }
+
+    // SCRUM-418: what a counsellor invitation shows before they confirm -- the group as its card shows it
+    // (GroupTherapyMiniResource: name, about, anonymous), its creator by the name they're shown (masked for
+    // an anonymous one), and none of its members. The same checks as joinAsCounsellor(), unlocked.
+    public function previewAsCounsellor(CreateLinkDTO $createLinkDTO): array
+    {
+        $counsellor = $this->counsellorOf($createLinkDTO);
+        $group = $createLinkDTO->link->for;
+
+        if (! $group instanceof GroupTherapy) {
+            throw LinkException::inactive();
+        }
+
+        $this->ensureCreatorIsNotPaused($group);
+        $this->ensureCanJoinAsCounsellor($group, $counsellor, $createLinkDTO->user);
+
+        return [
+            ...Arr::only((new GroupTherapyMiniResource($group))->resolve(request()), ['name', 'about', 'anonymous']),
+            'createdBy' => $this->creatorName($group),
+        ];
     }
 
     // The invitee confirmed on the group's page, with their anonymity choice.
@@ -89,16 +116,10 @@ class PerformGroupTherapyLinkAction extends Action
         });
     }
 
-    private function joinAsCounsellor(CreateLinkDTO $createLinkDTO): RedirectResponse
+    public function joinAsCounsellor(CreateLinkDTO $createLinkDTO): LinkConfirmation
     {
         $user = $createLinkDTO->user;
-
-        EnsureCounsellorExistsAction::new()->execute(
-            UpdateCounsellorDTO::new()->fromArray(['counsellor' => $user?->counsellor]),
-            LinkException::NO_COUNSELLOR
-        );
-
-        $counsellor = $user->counsellor;
+        $counsellor = $this->counsellorOf($createLinkDTO);
 
         $group = DB::transaction(function () use ($createLinkDTO, $user, $counsellor) {
             [$link, $group] = $this->lockLinkAndGroup($createLinkDTO->link, LinkTypeEnum::groupTherapyCounsellor->value);
@@ -126,7 +147,34 @@ class PerformGroupTherapyLinkAction extends Action
             );
         }
 
-        return Redirect::to(TherapyLink::to($group))->with('message', self::COUNSELLOR_JOINED);
+        return new LinkConfirmation(self::COUNSELLOR_JOINED, TherapyLink::to($group));
+    }
+
+    private function counsellorOf(CreateLinkDTO $createLinkDTO): Counsellor
+    {
+        EnsureCounsellorExistsAction::new()->execute(
+            UpdateCounsellorDTO::new()->fromArray(['counsellor' => $createLinkDTO->user?->counsellor]),
+            LinkException::NO_COUNSELLOR
+        );
+
+        return $createLinkDTO->user->counsellor;
+    }
+
+    // Who may join a team, and a free place (AddCounsellorToGroupTherapyAction runs both again, locked).
+    private function ensureCanJoinAsCounsellor(GroupTherapy $group, Counsellor $counsellor, User $user): void
+    {
+        AddCounsellorToGroupTherapyAction::new()->ensureCanJoin($group, $counsellor, $user);
+        AddCounsellorToGroupTherapyAction::new()->ensureHasPlace($group, $counsellor);
+    }
+
+    private function creatorName(GroupTherapy $group): ?string
+    {
+        if ($group->addedby instanceof Counsellor) {
+            return $group->addedby->getName();
+        }
+
+        // The name others see (the one masking rule, displayNameOf()) -- never their own view of it.
+        return $group->addedby instanceof User ? $group->displayNameOf($group->addedby) : ConstantsEnum::anonymousUserLabel->value;
     }
 
     // Opening a member invitation: the same checks confirming will make (none of them locked -- they
