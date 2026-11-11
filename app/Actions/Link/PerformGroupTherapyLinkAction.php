@@ -83,7 +83,7 @@ class PerformGroupTherapyLinkAction extends Action
                     'data' => ['reason' => 'Joined through an invitation link.'],
                 ]);
 
-            $link->deactivate();
+            $link->markUsed();
 
             return $group->refresh();
         });
@@ -108,7 +108,7 @@ class PerformGroupTherapyLinkAction extends Action
             // Their own pending invites and offers for this group are closed by joining
             // (AddCounsellorToGroupTherapyAction, SCRUM-389).
 
-            $link->deactivate();
+            $link->markUsed();
 
             return $group->refresh();
         });

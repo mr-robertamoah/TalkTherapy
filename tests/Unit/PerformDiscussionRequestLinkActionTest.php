@@ -84,7 +84,8 @@ test('using a discussion link deactivates it so it cannot be replayed (SCRUM-101
         ])
     );
 
-    expect($link->fresh()->state)->toBe(LinkStateEnum::inactive->value);
+    expect($link->fresh()->state)->toBe(LinkStateEnum::inactive->value)
+        ->and($link->fresh()->used_at)->not->toBeNull(); // SCRUM-415: marked used, never to be switched back on
 });
 
 test('using a discussion link a second time (even by the same counsellor) throws instead of an uncaught exception', function () {

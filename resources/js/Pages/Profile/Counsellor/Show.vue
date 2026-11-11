@@ -36,6 +36,7 @@ import CreateTherapyButton from '@/Components/CreateTherapyButton.vue';
 import TestimonialSection from '@/Components/TestimonialSection.vue';
 import CounsellorVerificationBadge from '@/Components/CounsellorVerificationBadge.vue';
 import CounsellorVerificationStatusCard from '@/Components/CounsellorVerificationStatusCard.vue';
+import CopyLinkField from '@/Components/CopyLinkField.vue';
 
 const { modalData, showModal } = useModal()
 const { alertData, clearAlertData, setAlertData, setFailedAlertData, setSuccessAlertData } = useAlert()
@@ -43,6 +44,8 @@ const { alertData, clearAlertData, setAlertData, setFailedAlertData, setSuccessA
 const props = defineProps({
     counsellor: {},
     counsellorUnavailable: { type: Boolean, default: false },
+    // SCRUM-51: verified and not suspended -- the profile is offered for sharing.
+    shareable: { type: Boolean, default: false },
     counsellorCreationStep: {
         type: Number,
     },
@@ -107,6 +110,9 @@ watchEffect(
 const isCounsellor = computed(() => {
     return props.counsellor.userId == usePage().props.auth.user?.id
 })
+
+// SCRUM-51: this profile's own address, the same for whoever copies it.
+const profileUrl = computed(() => `${window.location.origin}${route('counsellor.show', { counsellorId: props.counsellor.id }, false)}`)
 
 // SCRUM-31: a reminder's link (?verify=1) opens the verify form, when they may ask now.
 onMounted(() => {
@@ -753,6 +759,30 @@ function closeModal() {
                         </div>
                     </div>
                 </div>
+            </div>
+
+            <!-- SCRUM-51: share the profile -- its counsellor always sees this (and why not, until they can);
+                 visitors only while it's shareable. -->
+            <div class="w-full sm:w-[90%] md:w-[75%] lg:w-[60%] mx-auto sm:px-6 lg:px-8 mt-8" v-if="isCounsellor || shareable">
+                <section class="bg-white overflow-hidden shadow-sm sm:rounded-lg" aria-labelledby="share-profile-title">
+                    <div class="p-6 text-gray-900">
+                        <h3 id="share-profile-title" class="text-lg font-medium text-gray-900">{{ isCounsellor ? 'Share your profile' : 'Share this profile' }}</h3>
+                        <template v-if="shareable">
+                            <p class="mt-1 mb-4 text-sm text-gray-600">
+                                {{ isCounsellor ? 'Send this link to anyone who might want to work with you.' : 'Know someone this counsellor could help? Send them this link.' }}
+                            </p>
+                            <CopyLinkField
+                                id="profile-share-url"
+                                :url="profileUrl"
+                                label="Profile link"
+                                :share="{ title: counsellor.name, text: `${counsellor.name} on TalkTherapy` }"
+                            />
+                        </template>
+                        <p v-else class="mt-1 text-sm text-gray-600">
+                            {{ counsellorUnavailable ? "Your profile can't be shared while your account is suspended." : 'Your profile can be shared once you are verified.' }}
+                        </p>
+                    </div>
+                </section>
             </div>
 
             <div class="w-full sm:w-[90%] md:w-[75%] lg:w-[60%] mx-auto sm:px-6 lg:px-8 mt-8" v-if="!isCounsellor">

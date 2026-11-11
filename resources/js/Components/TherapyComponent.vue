@@ -197,6 +197,13 @@
                 v-if="therapyType === 'individual' && otherPartyTyping"
                 class="text-xs text-gray-500 italic mb-1"
             >typing&hellip;</div>
+            <!-- SCRUM-68: who else is typing in this session's chat (names from the group's presence list). -->
+            <div
+                v-if="therapyType === 'group'"
+                class="text-xs text-gray-500 italic mb-1 min-h-4"
+                role="status"
+                aria-live="polite"
+            >{{ groupTypingLabel }}</div>
             <div class="w-[90%] mx-auto min-h-10 flex justify-center items-start space-x-2">
                 <TextBox
                     rows="3"
@@ -375,6 +382,7 @@ import VideoCallPanel from './VideoCallPanel.vue';
 import TherapyPausedBanner from './TherapyPausedBanner.vue';
 import { createAnnouncementQueue } from '@/Composables/announcements';
 import { acquireChannel } from '@/Composables/sharedChannel';
+import useTypingIndicator from '@/Composables/useTypingIndicator';
 
 const { goToLogin } = useAuth()
 const {
@@ -602,6 +610,35 @@ watch(() => message.value.content, (value) => {
     emitTypingWhisper()
 })
 
+// SCRUM-68: group chat typing, on the group's presence channel (useTypingIndicator) -- a participant's
+// own handle on it (useTherapyState holds one too; sharedChannel keeps them apart). Matched to the session
+// being looked at: typing in one session's chat never shows in another's.
+const groupTyping = useTypingIndicator({
+    payload: () => ({ sessionId: props.activeSession?.id }),
+    accepts: (data) => !!props.activeSession?.id && data.sessionId === props.activeSession.id,
+})
+const groupTypingLabel = groupTyping.label
+let groupChannel = null
+
+watch(() => [props.therapyType, props.isParticipant, props.therapy?.id], () => {
+    groupChannel?.release()
+    groupChannel = props.therapyType === 'group' && props.isParticipant && props.therapy?.id
+        ? acquireChannel(`groupTherapies.${props.therapy.id}`, { presence: true })
+        : null
+    groupTyping.attach(groupChannel)
+}, { immediate: true })
+
+watch(() => props.activeSession?.id, () => groupTyping.reset())
+
+watch(() => message.value.content, (value, old) => {
+    // Not while editing a message already sent: choosing one fills the box without anyone typing.
+    if (props.therapyType !== 'group' || !groupChannel || !props.activeSession?.id || message.value.id) return
+
+    // Emptied -- sent, most often: the others stop seeing them typing straight away.
+    if (value) groupTyping.typing()
+    else if (old) groupTyping.stopped()
+})
+
 onMounted(() => {
     bindConnectionStatus()
 })
@@ -609,6 +646,9 @@ onMounted(() => {
 onBeforeUnmount(() => {
     // SCRUM-370: shared with the video call and session badges -- release, never leave.
     sessionChannel?.release()
+    groupTyping.dispose()
+    groupChannel?.release()
+    groupChannel = null
 
     clearTypingIdleTimer()
     emitTypingWhisper.cancel()
@@ -793,8 +833,8 @@ function listenToMessages() {
     // channel via useTherapyState's listenToTherapy() -- listening again here duplicated
     // every session-updated reaction (e.g. confirmInSession/confirmSessionHeld firing twice).
 
-    // Typing indicators are individual-therapy-only (SCRUM-20 M4); group/discussion chat
-    // are out of scope here and tracked separately under SCRUM-68.
+    // This is individual therapy's typing indicator (SCRUM-20 M4). Group chat's is useTypingIndicator,
+    // on the group's presence channel (SCRUM-68).
     if (props.therapyType === 'individual') {
         channel.listenForWhisper('typing', (data) => {
             // Echo does not exclude the sender's own client from whisper events (unlike

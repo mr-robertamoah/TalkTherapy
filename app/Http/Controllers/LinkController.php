@@ -4,15 +4,17 @@ namespace App\Http\Controllers;
 
 use App\Actions\GetModelWithModelNameAndIdAction;
 use App\Actions\Link\PerformGroupTherapyLinkAction;
+use App\Actions\Link\PerformOrganizationSelfApplyLinkAction;
 use App\DTOs\CreateLinkDTO;
 use App\DTOs\GetLinksDTO;
 use App\Http\Resources\LinkResource;
+use App\Models\GroupTherapy;
 use App\Models\Link;
 use App\Services\LinkService;
 use App\Support\FailureResponse;
+use App\Support\PendingLink;
 use App\Support\TherapyLink;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Redirect;
 use Throwable;
 
@@ -58,16 +60,13 @@ class LinkController extends Controller
     public function changeMultipleLinkStatuses(Request $request)
     {
         try {
-            DB::beginTransaction();
-
+            // All or none (LinkService). It used to open a transaction here that a failure never rolled back.
             $links = LinkService::new()->changeMultipleLinkStatuses(
                 CreateLinkDTO::new()->fromArray([
                     'user' => $request->user(),
                     'linksData' => $request->linksData,
                 ])
             );
-
-            DB::commit();
 
             return response()->json(['links' => LinkResource::collection($links)]);
         } catch (Throwable $th) {
@@ -93,6 +92,8 @@ class LinkController extends Controller
 
     public function performAction(Request $request)
     {
+        PendingLink::forget($request);
+
         try {
             return LinkService::new()->performAction(
                 CreateLinkDTO::new()->fromArray([
@@ -117,11 +118,12 @@ class LinkController extends Controller
         }
     }
 
-    // SCRUM-383: confirming a member invitation link on the group's page.
-    public function joinGroupByLink(Request $request)
+    // Confirming a link that opening only showed: a group's member invitation, on the group's page
+    // (SCRUM-383), or an organisation join link, on its own page (SCRUM-415).
+    public function confirmLink(Request $request)
     {
         try {
-            $group = LinkService::new()->joinGroupByLink(
+            $joined = LinkService::new()->confirmLink(
                 CreateLinkDTO::new()->fromArray([
                     'user' => $request->user(),
                     'link' => Link::where('uuid', $request->route('uuid'))->first(),
@@ -129,10 +131,18 @@ class LinkController extends Controller
                 ])
             );
 
+            if ($joined instanceof GroupTherapy) {
+                return $this->successResponse(
+                    $request,
+                    ['status' => true, 'message' => PerformGroupTherapyLinkAction::JOINED],
+                    Redirect::to(TherapyLink::to($joined))->with('message', PerformGroupTherapyLinkAction::JOINED),
+                );
+            }
+
             return $this->successResponse(
                 $request,
-                ['status' => true, 'message' => PerformGroupTherapyLinkAction::JOINED],
-                Redirect::to(TherapyLink::to($group))->with('message', PerformGroupTherapyLinkAction::JOINED),
+                ['status' => true, 'message' => PerformOrganizationSelfApplyLinkAction::APPLIED],
+                Redirect::route('organizations.mine.dashboard')->with('message', PerformOrganizationSelfApplyLinkAction::APPLIED),
             );
         } catch (Throwable $th) {
             return $this->failureResponse($request, $th);
@@ -142,16 +152,12 @@ class LinkController extends Controller
     public function deleteMultipleLinks(Request $request)
     {
         try {
-            DB::beginTransaction();
-
             LinkService::new()->deleteMultipleLinks(
                 CreateLinkDTO::new()->fromArray([
                     'user' => $request->user(),
                     'linksData' => $request->linksData,
                 ])
             );
-
-            DB::commit();
 
             return response()->json(['links' => $request->linksData]);
         } catch (Throwable $th) {

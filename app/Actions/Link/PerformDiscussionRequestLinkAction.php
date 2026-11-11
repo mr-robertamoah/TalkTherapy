@@ -37,7 +37,7 @@ class PerformDiscussionRequestLinkAction extends Action
             // counsellor_discussion(counsellor_id, discussion_id) unique index below -- keyed on
             // the ACTING counsellor -- doesn't stop two different counsellors both racing this
             // same link: without a lock on the link itself, both could read state=active and
-            // both attach before either commits deactivate() (SCRUM-101). Locking the link row
+            // both attach before either commits markUsed() (SCRUM-101). Locking the link row
             // makes every racer for this link serialize here, so only the first ever gets past
             // the active-state check.
             $link = Link::query()->lockForUpdate()->findOrFail($createLinkDTO->link->id);
@@ -86,10 +86,10 @@ class PerformDiscussionRequestLinkAction extends Action
                 throw new LinkException('You cannot use link because you are already part of this discussion.', 422);
             }
 
-            // Deactivating on successful use (SCRUM-101) keeps this link from being replayed by
+            // Marking it used (SCRUM-101; used_at, SCRUM-415) keeps this link from being replayed by
             // whoever still holds the URL -- safe from the race described above because it
             // happens inside the same lockForUpdate transaction as the active-state check.
-            $link->deactivate();
+            $link->markUsed();
         });
 
         $createLinkDTO->link->for->addedby->notify(

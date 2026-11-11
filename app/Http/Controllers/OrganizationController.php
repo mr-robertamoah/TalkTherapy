@@ -261,16 +261,32 @@ class OrganizationController extends Controller
             $administeredPaginator = OrganizationService::new()->getMyAdministeredOrganizations($user);
             $administeredPaginator->setPath(route('organizations.mine.administered'));
 
+            $applicationsPaginator = OrganizationService::new()->getMyPendingMemberApplications($user);
+            $applicationsPaginator->setPath(route('organizations.mine.applications'));
+
             return Inertia::render('Organization/MyOrganizations', [
                 'affiliations' => $affiliations,
                 'requestQueue' => $requestQueue,
                 'memberships' => $this->paginatedResource(MyOrganizationMembershipResource::collection($membershipsPaginator)),
+                'pendingApplications' => $this->paginatedResource(OrganizationRequestResource::collection($applicationsPaginator)),
                 'administeredOrganizations' => $this->paginatedResource(MyAdministeredOrganizationResource::collection($administeredPaginator)),
             ]);
         } catch (Throwable $th) {
             $message = $this->messageFor($th, $this->statusFor($th));
 
             return Redirect::route('home')->withErrors(['alert' => $message]);
+        }
+    }
+
+    // SCRUM-415: the member's own applications still waiting for an answer (the dashboard's next pages).
+    public function myPendingMemberApplications(Request $request)
+    {
+        try {
+            return OrganizationRequestResource::collection(
+                OrganizationService::new()->getMyPendingMemberApplications($request->user())
+            );
+        } catch (Throwable $th) {
+            return $this->failureResponse($request, $th);
         }
     }
 

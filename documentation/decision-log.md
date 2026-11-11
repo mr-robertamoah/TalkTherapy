@@ -11749,3 +11749,49 @@ From the SCRUM-411 readiness check (devops-engineer). All in one PR, by the user
   - success shows nothing;
   - the failure flash can be used up by concurrent requests on the same session (seen in browser QA; the server side
     is fine in a test).
+
+## SCRUM-415, SCRUM-51, SCRUM-68 — join links part 2, profile links, group typing (2026-11-11)
+
+One PR, at the user's choice; the plan (product-owner, project-manager, architect) is the 2026-11-11 comment on
+SCRUM-415. The user's decisions: a new sign-up is brought back to the link; every admin of an organisation sees and
+revokes its links; typing shows names. Defaults taken: no withdrawing an application (SCRUM-417), no vanity profile
+URLs or link previews, everyone in a chat sees everyone typing.
+
+- **Fixes (called out on their own in the PR; they share files with the feature, so one code commit).**
+  - `links.used_at` and `Link::markUsed()` at all six places a link is used. `ChangeLinkStatusAction` refuses to
+    switch a used link back on (any type) — it used to, undoing SCRUM-101's one-use rule — and never switches an
+    organisation join link back on (one used before `used_at` existed looks like a revoked one). Other types used
+    before the column keep today's behaviour; there's nothing to backfill from. The generic link list hides
+    "activate" where it would be refused (`LinkResource::canReactivate`).
+  - Bulk status and bulk delete are all or none, in `LinkService`. The controller opened a transaction a failure
+    never rolled back (it leaked into the next test on the same connection).
+  - Applying to an organisation refuses an existing member (`EnsureNotOrganizationMemberAction`) — accepting would
+    only have handed back the membership. One shared `ensureCanApplyAsMember()`; under the organisation's lock it
+    now reads the locked row, not the copy loaded before it (code review).
+- **SCRUM-415.** `GET /links/{uuid}` for a join link renders `Links/OrganizationJoin`
+  (`PerformOrganizationSelfApplyLinkAction::preview()`): the same checks as applying, no side effects. A refusal is
+  a page prop with nothing about the organisation; "not taking members" stays one generic reason (SCRUM-179). The
+  POST is `api.links.join`, generalised from SCRUM-383's group join (`LinkService::confirmLink`); the answer is the
+  POST's own JSON, so no flash can be consumed by another request.
+  - Admin list and revoke are organisation-scoped routes (`organizations.join_links.*`), not a widened generic
+    `getLinks`. **Organisation admins only** — the product-owner draft included platform administrators, but every
+    other organisation list is admin-only and they have no UI for it.
+  - Statuses: Active, Used (`used_at`), Revoked (inactive, never used — including links used before `used_at`).
+  - Sign-up return: `App\Support\PendingLink` reads the session's intended URL and offers only a `/links/{uuid}`
+    path rebuilt from the uuid (no open redirect). Opening the link forgets it.
+  - `links.get` throttled at 60/min per user; revoke 30/min; the list 60/min.
+- **SCRUM-51.** Counsellor profiles only (ordinary users have no public profile). `shareable` comes from the server
+  (verified and not suspended). `CopyLinkField` is shared with the join links card.
+- **SCRUM-68.** Whispers on the chat's **presence** channel. `config/reverb.php` sets
+  `accept_client_events_from = members`: Reverb then relays only from connections on the channel and stamps the
+  sender's own member id, which the browser can't forge (the config provider's default, `all`, relayed a whisper
+  as sent — a claimed `user_id` included — even from a connection not on the channel). The name is that member's
+  presence name (masked for an anonymous group member, SCRUM-379); the whisper carries only `{sessionId}` for a group
+  and `{stopped}` when they send. Security review accepted the residual risk: a member can only appear as
+  themselves. `DiscussionModal.vue` shows messages but has no composer, so typing is on the chat page only.
+  Individual therapy keeps its own path (private `sessions.{id}`); two paths is noted debt.
+- **Follow-ups filed:** SCRUM-416 (guardian rule for minors joining organisations — a product decision), SCRUM-417
+  (withdraw an application), SCRUM-418 (the link types that still act on GET — guardianship, therapy counsellor,
+  discussion — should confirm by POST, from the security review).
+- **Deploy:** run the migration; Reverb reads the new setting only at start — `deploy.sh` runs `reverb:restart`,
+  check it came back. If it doesn't, group/discussion typing names stay empty; nothing else changes.

@@ -49,6 +49,7 @@ Fields: **Key** (Epic-Story) · **Type** · **Priority** (Critical/High/Medium/L
 | TT-2.6a | Counsellor-scoped, date-range-bounded session aggregation across `Therapy` + `GroupTherapy` (new `GetCounsellorCalendarSessionsAction`, `SessionResource`/`SessionStatusEnum` reuse, N+1-safe eager loading on both legs of the union, extracts the duplicated addedby-anonymity-masking ternary into a shared helper as the first cross-therapy aggregate surface, self-scoped authorization, reassignment-correct scoping) | Story | High | 8 | New split of existing TT-2.6 (SCRUM-25 `/start-feature` review) | TT-2.5 |
 | TT-2.6b | Counsellor calendar UI: custom-built (no calendar library — architect decision) week/month view, event rendering (time/status/individual-vs-group/therapy name), drill-through only (no in-place mutation), individual-vs-group and upcoming-vs-past filtering, empty state mirroring `TherapyRecentSections.vue` | Story | High | 8 | New split of existing TT-2.6 (SCRUM-25 `/start-feature` review) | TT-2.6a |
 | TT-2.7 | Fix `groupTherapies` channel-name casing mismatch — group-therapy real-time updates may be silently broken | Bug | High | — | New (SCRUM-15 follow-up) | — |
+| TT-2.8 | ✅ **Implemented** (SCRUM-68). Typing indicators in group-therapy and discussion chat: names (two, then "and N others") from the presence member list, matched by the member id Reverb stamps on the whisper (`accept_client_events_from = members`); the whisper carries no identity. One composable (`useTypingIndicator`). Individual therapy unchanged. | Story | Medium | 5 | SCRUM-68 (deferred from SCRUM-20) | TT-2.1 |
 
 **Sprint:** 2 (unchanged from original plan).
 
@@ -228,6 +229,9 @@ the frontend, split a/b/c so it ships as independently-reviewable PRs.
 | TT-6.5b | Counsellor "my organizations" view + apply-to-provider-org flow. Corrected wizard reference: reuses `BecomeCounsellorButton.vue` (modal) + `CounsellorCreationSteps.vue` (progress indicator) — `BecomeCounsellorForm.vue` doesn't exist in this codebase. | Story | Medium | 5 | New split of existing TT-6.5 (SCRUM-111 product-owner/architect review); filed as SCRUM-167 | TT-6.6b, TT-6.6c, TT-6.4a |
 | TT-6.5c | Member "your organization" view — read-only: list memberships, org profile, billing-mode display. Narrowed from the original scope; the booking-time "which org pays" selection step is relocated to TT-7.3a's (not yet filed) frontend counterpart, since it's a charge-time concern, not a "view my memberships" one. | Story | Medium | 3 | New split of existing TT-6.5 (SCRUM-111 product-owner/architect review); filed as SCRUM-168 | TT-6.6b, TT-6.3a |
 | TT-6.5c2 | ✅ **Implemented** (SCRUM-169, PR #139, merged). Member self-apply UI (browse directory + apply, or follow a shareable org link) — split out of TT-6.5c since its dependency (TT-6.6c and TT-6.7, both being built) wasn't resolved until the 2026-08-29 decision round. Playwright-verified golden path for both the directory-apply and follow-a-link flows. Found while testing: org admins have no UI to actually generate a TT-6.7 self-apply link (backend fully supports it, tested, just no "generate" button anywhere) — filed as SCRUM-214, not fixed here. | Story | Low | 3–5 | New split of existing TT-6.5 (SCRUM-111 product-owner/architect review); filed as SCRUM-169 | TT-6.6c, TT-6.7 |
+
+| TT-6.8 | ✅ **Implemented** (SCRUM-214, PR #319, merged). Org-admin "Join links" card: create a single-use self-apply link and copy it. | Story | Medium | 3 | Gap found in TT-6.5c2 | TT-6.7 |
+| TT-6.9 | ✅ **Implemented** (SCRUM-415). Join links, the applicant's side and the admin list: opening shows a confirm page (no side effects), refusals say why on the page (never a flash), confirming applies once; admins list every admin's links (Active / Used / Revoked) and revoke unused ones; "Pending applications" on My organizations; a new sign-up is offered the link again on Preferences. With it: `links.used_at` so a used link can't be switched back on (every type), and applying refuses an existing member. | Story | High | 8 | SCRUM-415 `/start-feature` | TT-6.8 |
 
 **Epic status (2026-09-01): TT-6 fully implemented.** All rows above (TT-6.1 through TT-6.5c2)
 are merged; epic SCRUM-10 transitioned to Done. One known gap tracked separately (SCRUM-214,
@@ -416,7 +420,7 @@ TT-7.2 is fully implemented.
 ## Epic TT-9: Profile & Growth
 | Key | Story | Type | Priority | Points | Source | Depends on |
 |---|---|---|---|---|---|---|
-| TT-9.1 | Shareable, easy-to-copy profile links | Task | Low | 2 | Existing (8.2) | — |
+| TT-9.1 | ✅ **Implemented** (SCRUM-51). Shareable profile links, counsellors only: a "Share profile" card (copy, and the device's share sheet where there is one), shown while the counsellor is verified and not suspended. Shared `CopyLinkField` component. Clients and ordinary users have no public profile and get nothing. | Task | Low | 3 (was 2) | Existing (8.2) | — |
 | TT-9.2 | "Get Started" button in HowTo modal closes + scrolls to start | Task | Low | 1 | Existing (3.3) | — |
 | TT-9.3 | Multilingual support | Story | Low | 13 | Existing (8.3) — Icebox | — |
 | TT-9.4 | AI-mediated emergency assistance | Story | Low | 13 | Existing (8.4) — Icebox | TT-4.4 |

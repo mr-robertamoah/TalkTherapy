@@ -77,6 +77,11 @@ return [
                 'allowed_origins' => AppHost::reverbOrigins(env('REVERB_ALLOWED_ORIGINS'), env('APP_ENV', 'production'), env('APP_URL'), env('TRUSTED_HOSTS')),
                 'ping_interval' => env('REVERB_APP_PING_INTERVAL', 60),
                 'max_message_size' => env('REVERB_APP_MAX_MESSAGE_SIZE', 10_000),
+                // SCRUM-68: whispers (typing) only from a connection subscribed to the channel, and Reverb
+                // stamps them with the sender's own presence member id -- who is typing comes from that,
+                // never from what a browser sends. (The config provider's default, 'all', relays a
+                // whisper as sent, a claimed user_id included.)
+                'accept_client_events_from' => 'members',
             ],
         ],
 

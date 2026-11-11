@@ -104,8 +104,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/links/{linkId}/status', [LinkController::class, 'changeLinkStatus'])->name('api.links.status');
     Route::post('/links/status/multiple', [LinkController::class, 'changeMultipleLinkStatuses'])->name('api.links.statusmultiple');
     Route::post('/links/{linkId}/delete', [LinkController::class, 'deleteLink'])->name('api.links.delete');
-    // SCRUM-383: confirming a member invitation link (the GET links.get only shows the confirmation).
-    Route::post('/links/{uuid}/join', [LinkController::class, 'joinGroupByLink'])->name('api.links.join')->middleware('throttle:10,1,api.links.join');
+    // SCRUM-383/415: confirming a group member invitation or an organisation join link (the GET links.get only shows them).
+    Route::post('/links/{uuid}/join', [LinkController::class, 'confirmLink'])->name('api.links.join')->middleware('throttle:10,1,api.links.join');
     Route::post('/links/delete/multiple', [LinkController::class, 'deleteMultipleLinks'])->name('api.links.deletemultiple');
 
     // SCRUM-177: see the matching comment on api.counsellors above.
