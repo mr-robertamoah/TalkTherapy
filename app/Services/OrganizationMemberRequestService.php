@@ -13,6 +13,7 @@ use App\Actions\Organization\InviteMemberToOrganizationAction;
 use App\Actions\Organization\WithdrawOrganizationMemberApplicationAction;
 use App\Actions\User\EnsureUserExistsAction;
 use App\DTOs\OrganizationMemberRequestDTO;
+use App\Exceptions\GuardianRequiredException;
 use App\Models\Organization;
 use App\Models\Request;
 use App\Models\User;
@@ -75,6 +76,12 @@ class OrganizationMemberRequestService extends Service
     public function ensureCanApplyAsMember(OrganizationMemberRequestDTO $dto): void
     {
         EnsureOrganizationCanReceiveMemberApplicationsAction::new()->execute($dto->organization);
+
+        // SCRUM-416: a minor waiting for a guardian can't join one (as with therapies and groups) -- told
+        // to them, after the organisation's own check, so it never says anything about the organisation.
+        if ($dto->member->isPausedForMissingGuardian(fresh: true)) {
+            throw GuardianRequiredException::forOrganizationMember();
+        }
 
         EnsureNotOrganizationMemberAction::new()->execute($dto);
 

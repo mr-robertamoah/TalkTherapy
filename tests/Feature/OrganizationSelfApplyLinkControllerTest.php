@@ -15,7 +15,7 @@ use App\Models\User;
 
 test('an org admin can generate a self-apply link via the real route', function () {
     $organization = Organization::factory()->create(['is_provider' => false, 'is_consumer' => true, 'verified_at' => now(), 'self_apply_enabled' => true]);
-    $owner = User::factory()->create();
+    $owner = User::factory()->adult()->create();
     $organization->admins()->attach($owner->id, ['role' => OrganizationAdminRoleEnum::owner->value]);
 
     $this->actingAs($owner);
@@ -34,7 +34,7 @@ test('an org admin can generate a self-apply link via the real route', function 
 
 test('a user with no admin relationship to the organization cannot generate a self-apply link via the real route', function () {
     $organization = Organization::factory()->create(['is_provider' => false, 'is_consumer' => true, 'verified_at' => now(), 'self_apply_enabled' => true]);
-    $outsider = User::factory()->create();
+    $outsider = User::factory()->adult()->create();
 
     $this->actingAs($outsider);
 
@@ -51,9 +51,9 @@ test('a user with no admin relationship to the organization cannot generate a se
 
 test('visiting a self-apply link creates a pending member application via the real route', function () {
     $organization = Organization::factory()->create(['is_provider' => false, 'is_consumer' => true, 'verified_at' => now(), 'self_apply_enabled' => true]);
-    $owner = User::factory()->create();
+    $owner = User::factory()->adult()->create();
     $organization->admins()->attach($owner->id, ['role' => OrganizationAdminRoleEnum::owner->value]);
-    $applicant = User::factory()->create();
+    $applicant = User::factory()->adult()->create();
 
     $this->actingAs($owner);
     $this->postJson('/api/links', [
@@ -86,7 +86,7 @@ test('visiting a self-apply link creates a pending member application via the re
 
 test('the org admin who generated the link cannot use it themselves', function () {
     $organization = Organization::factory()->create(['is_provider' => false, 'is_consumer' => true, 'verified_at' => now(), 'self_apply_enabled' => true]);
-    $owner = User::factory()->create();
+    $owner = User::factory()->adult()->create();
     $organization->admins()->attach($owner->id, ['role' => OrganizationAdminRoleEnum::owner->value]);
 
     $this->actingAs($owner);
@@ -123,7 +123,7 @@ function oslPost($test, User $admin, Organization $organization, ?int $addedbyId
 
 test('an admin can\'t create a self-apply link in someone else\'s name', function () {
     $organization = Organization::factory()->create(['is_provider' => false, 'is_consumer' => true, 'verified_at' => now(), 'self_apply_enabled' => true]);
-    [$owner, $other] = [User::factory()->create(), User::factory()->create()];
+    [$owner, $other] = [User::factory()->adult()->create(), User::factory()->adult()->create()];
     $organization->admins()->attach($owner->id, ['role' => OrganizationAdminRoleEnum::owner->value]);
 
     // Refused before this type's own checks, by the generic addedby validation (EnsureAddedbyIsValidAction).
@@ -138,7 +138,7 @@ test('an admin can\'t create a self-apply link in someone else\'s name', functio
 });
 
 test('no self-apply link while it couldn\'t work -- self-apply off, not verified, or not a consumer organization', function () {
-    $owner = User::factory()->create();
+    $owner = User::factory()->adult()->create();
     foreach ([
         ['self_apply_enabled' => false],
         ['verified_at' => null],
