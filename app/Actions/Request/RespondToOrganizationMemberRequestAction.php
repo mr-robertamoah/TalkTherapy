@@ -19,6 +19,11 @@ class RespondToOrganizationMemberRequestAction extends Action
         return DB::transaction(function () use ($requestResponseDTO) {
             $request = Request::query()->lockForUpdate()->findOrFail($requestResponseDTO->request->id);
 
+            // SCRUM-417: withdrawn while they answered -- say so, not a silent no-op that looks like an answer.
+            if ($request->wasWithdrawn()) {
+                throw new OrganizationException(EnsureRequestIsStillPendingAction::WITHDRAWN, 422);
+            }
+
             if ($request->status != RequestStatusEnum::pending->value) {
                 return $request;
             }

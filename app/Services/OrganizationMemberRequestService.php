@@ -10,9 +10,12 @@ use App\Actions\Organization\EnsureOrganizationIsConsumerAction;
 use App\Actions\Organization\EnsureOrganizationIsVerifiedAction;
 use App\Actions\Organization\EnsureUserCanInviteOrganizationMemberAction;
 use App\Actions\Organization\InviteMemberToOrganizationAction;
+use App\Actions\Organization\WithdrawOrganizationMemberApplicationAction;
 use App\Actions\User\EnsureUserExistsAction;
 use App\DTOs\OrganizationMemberRequestDTO;
 use App\Models\Organization;
+use App\Models\Request;
+use App\Models\User;
 use Illuminate\Support\Facades\DB;
 
 class OrganizationMemberRequestService extends Service
@@ -58,6 +61,12 @@ class OrganizationMemberRequestService extends Service
 
             return ApplyToOrganizationAsMemberAction::new()->execute($dto);
         });
+    }
+
+    // SCRUM-417: self-scoped -- the action only ever finds the caller's own application.
+    public function withdrawApplication(User $user, mixed $requestId): Request
+    {
+        return WithdrawOrganizationMemberApplicationAction::new()->execute($user, $requestId);
     }
 
     // SCRUM-415: everything applying checks, in the order it checks it. A join link's page runs it

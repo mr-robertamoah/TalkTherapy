@@ -61,6 +61,18 @@ class OrganizationMemberController extends Controller
         }
     }
 
+    // SCRUM-417: the applicant withdraws their own pending application.
+    public function withdrawApplication(Request $request)
+    {
+        try {
+            $application = OrganizationMemberRequestService::new()->withdrawApplication($request->user(), $request->route('requestId'));
+
+            return $this->successResponse($request, ['request' => new OrganizationRequestResource($application)]);
+        } catch (Throwable $th) {
+            return $this->failureResponse($request, $th);
+        }
+    }
+
     public function apply(Request $request)
     {
         try {
