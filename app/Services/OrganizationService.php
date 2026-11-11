@@ -11,19 +11,23 @@ use App\Actions\Organization\GetMyAdministeredOrganizationsAction;
 use App\Actions\Organization\GetMyOrganizationCounsellorAffiliationsAction;
 use App\Actions\Organization\GetMyOrganizationMembershipsAction;
 use App\Actions\Organization\GetMyOrganizationRequestQueueAction;
+use App\Actions\Organization\GetMyPendingMemberApplicationsAction;
 use App\Actions\Organization\GetOrganizationCounsellorsAction;
 use App\Actions\Organization\GetOrganizationDirectoryAction;
 use App\Actions\Organization\GetOrganizationFinancedTransactionsAction;
+use App\Actions\Organization\GetOrganizationJoinLinksAction;
 use App\Actions\Organization\GetOrganizationMembersAction;
 use App\Actions\Organization\GetOrganizationRequestQueueAction;
 use App\Actions\Organization\GetOrganizationRetainerInvoicesAction;
 use App\Actions\Organization\InitiateOrganizationPaymentInstrumentRegistrationAction;
 use App\Actions\Organization\LiftOrganizationBillingSuspensionAction;
 use App\Actions\Organization\RetryOrganizationInvoiceSettlementAction;
+use App\Actions\Organization\RevokeOrganizationJoinLinkAction;
 use App\Actions\Organization\UpdateOrganizationAction;
 use App\DTOs\GetOrganizationDirectoryDTO;
 use App\DTOs\OrganizationDTO;
 use App\DTOs\OrganizationPaymentInstrumentDTO;
+use App\Models\Link;
 use App\Models\Organization;
 use App\Models\OrganizationInvoice;
 use App\Models\Transaction;
@@ -82,6 +86,22 @@ class OrganizationService extends Service
         EnsureUserIsOrganizationAdminAction::new()->execute($dto);
 
         return GetOrganizationMembersAction::new()->execute($dto);
+    }
+
+    // SCRUM-415: the organisation's join links, any admin's -- for its admins only (the same 403 whether
+    // or not the organisation exists, SCRUM-170).
+    public function getOrganizationJoinLinks(OrganizationDTO $dto): LengthAwarePaginator
+    {
+        EnsureUserIsOrganizationAdminAction::new()->execute($dto);
+
+        return GetOrganizationJoinLinksAction::new()->execute($dto);
+    }
+
+    public function revokeOrganizationJoinLink(OrganizationDTO $dto, mixed $linkId): Link
+    {
+        EnsureUserIsOrganizationAdminAction::new()->execute($dto);
+
+        return RevokeOrganizationJoinLinkAction::new()->execute($dto, $linkId);
     }
 
     public function getOrganizationCounsellors(OrganizationDTO $dto): LengthAwarePaginator
@@ -145,6 +165,12 @@ class OrganizationService extends Service
     public function getMyAdministeredOrganizations(User $user): LengthAwarePaginator
     {
         return GetMyAdministeredOrganizationsAction::new()->execute($user);
+    }
+
+    // SCRUM-415: self-scoped, like getMyOrganizationMemberships().
+    public function getMyPendingMemberApplications(User $user): LengthAwarePaginator
+    {
+        return GetMyPendingMemberApplicationsAction::new()->execute($user);
     }
 
     // Counsellor-facing counterpart to getOrganizationRequestQueue() above (SCRUM-167/TT-6.5b) --

@@ -58,7 +58,7 @@
                 class="ml-2 text-xs underline text-gray-600 cursor-pointer hover:text-blue-600"
             >{{ displayDetails ? 'hide' : 'show' }} details</div>
             <div 
-                v-if="link.state == 'IN_ACTIVE'"
+                v-if="link.state == 'IN_ACTIVE' && link.canReactivate !== false"
                 @click="changeStatus"
                 class="ml-2 text-xs underline text-gray-600 cursor-pointer hover:text-blue-600"
             >activate</div>

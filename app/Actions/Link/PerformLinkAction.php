@@ -36,9 +36,7 @@ class PerformLinkAction extends Action
             return PerformTherapyCounsellorLinkAction::new()->execute($createLinkDTO);
         }
 
-        if ($createLinkDTO->link->type == LinkTypeEnum::organizationSelfApply->value) {
-            return PerformOrganizationSelfApplyLinkAction::new()->execute($createLinkDTO);
-        }
+        // An organisation join link isn't used by opening it: LinkService shows its page instead (SCRUM-415).
 
         // SCRUM-383: every group link type, the paused-creator check included (under its locks).
         if (in_array($createLinkDTO->link->type, EnsureUserCanCreateLinkForAction::GROUP_TYPES, true)) {

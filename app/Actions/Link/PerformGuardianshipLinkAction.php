@@ -23,7 +23,7 @@ class PerformGuardianshipLinkAction extends Action
             // ward_id) unique index below -- keyed on the ACTING user -- doesn't stop two
             // different users both racing this same link: without a lock on the link itself,
             // both could read state=active and both attach as guardian before either commits
-            // deactivate() (SCRUM-101). Locking the link row makes every racer for this link
+            // markUsed() (SCRUM-101). Locking the link row makes every racer for this link
             // serialize here, so only the first ever gets past the active-state check.
             $link = Link::query()->lockForUpdate()->findOrFail($createLinkDTO->link->id);
 
@@ -63,10 +63,10 @@ class PerformGuardianshipLinkAction extends Action
                 throw new LinkException('You are already a guardian of this user.', 422);
             }
 
-            // Deactivating on successful use (SCRUM-101) keeps this link from being replayed by
+            // Marking it used (SCRUM-101; used_at, SCRUM-415) keeps this link from being replayed by
             // whoever still holds the URL -- safe from the race described above because it
             // happens inside the same lockForUpdate transaction as the active-state check.
-            $link->deactivate();
+            $link->markUsed();
         });
 
         return Redirect::route('profile.show');

@@ -1,6 +1,7 @@
 <?php
 
 use App\Actions\Link\EnsureUserCanCreateOrganizationSelfApplyLinkAction;
+use App\Actions\Link\PerformOrganizationSelfApplyLinkAction;
 use App\Enums\LinkStateEnum;
 use App\Enums\LinkTypeEnum;
 use App\Enums\OrganizationAdminRoleEnum;
@@ -64,8 +65,18 @@ test('visiting a self-apply link creates a pending member application via the re
     ]);
     $link = Link::where('type', LinkTypeEnum::organizationSelfApply->value)->where('for_id', $organization->id)->first();
 
+    // SCRUM-415: opening it shows the organisation and changes nothing; confirming applies.
     $this->actingAs($applicant);
-    $this->get("/links/{$link->uuid}")->assertRedirect(route('home'));
+    $this->get("/links/{$link->uuid}")->assertOk()
+        ->assertInertia(fn ($page) => $page->component('Links/OrganizationJoin')
+            ->where('uuid', $link->uuid)
+            ->where('organization.name', $organization->name)
+            ->missing('refusal'));
+    expect(Request::query()->whereFor($organization)->exists())->toBeFalse()
+        ->and($link->fresh()->state)->toBe(LinkStateEnum::active->value);
+
+    $this->postJson("/api/links/{$link->uuid}/join")->assertOk()
+        ->assertJsonPath('message', PerformOrganizationSelfApplyLinkAction::APPLIED);
 
     $request = Request::query()->whereFor($organization)->first();
     expect($request->type)->toBe(RequestTypeEnum::organizationMemberApplication->value);
@@ -88,7 +99,11 @@ test('the org admin who generated the link cannot use it themselves', function (
     ]);
     $link = Link::where('type', LinkTypeEnum::organizationSelfApply->value)->where('for_id', $organization->id)->first();
 
-    $this->get("/links/{$link->uuid}");
+    $this->get("/links/{$link->uuid}")->assertOk()
+        ->assertInertia(fn ($page) => $page->component('Links/OrganizationJoin')
+            ->where('refusal', 'You cannot use a link you created.')
+            ->missing('organization'));
+    $this->postJson("/api/links/{$link->uuid}/join")->assertStatus(422);
 
     expect(Request::query()->whereFor($organization)->exists())->toBeFalse();
     expect($link->fresh()->state)->toBe(LinkStateEnum::active->value);

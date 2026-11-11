@@ -3,13 +3,10 @@ import { ref, computed, onMounted } from 'vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 
 // SCRUM-169/TT-6.5c2 -- member-side mirror of BrowseProviderOrganizationsSection.vue (TT-6.5b).
-// No 'applied' emit here (unlike the counsellor-side sibling): a self-applied membership stays a
-// pending Request tracked by the existing global Requests UI, not by any section on this page --
-// MyMembershipsSection.vue itself says as much ("use the 'Requests' menu"), and there's no
-// member-facing request-queue partial on this page to refresh.
+// 'applied' (SCRUM-415): the parent reloads MyPendingApplicationsSection to show the new application.
 // useAlert() is deliberately non-singleton -- calling it locally here would update state
 // nothing renders, since only the parent MyOrganizations.vue mounts an <Alert>. Emit up instead.
-const emit = defineEmits(['alert'])
+const emit = defineEmits(['alert', 'applied'])
 
 const organizations = ref([])
 const nextPageUrl = ref(null)
@@ -53,6 +50,7 @@ async function apply(organization) {
     await axios.post(route('organizations.members.apply', { organizationId: organization.id }))
         .then(() => {
             emit('alert', { type: 'success', message: `Application sent to ${organization.name}.` })
+            emit('applied')
         })
         .catch((err) => {
             emit('alert', { type: 'failed', message: err.response?.data?.message ?? 'Could not send the application.' })

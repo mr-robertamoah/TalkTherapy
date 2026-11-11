@@ -8,6 +8,7 @@ import MyOrganizationRequestQueueSection from './Partials/MyOrganizationRequestQ
 import BrowseProviderOrganizationsSection from './Partials/BrowseProviderOrganizationsSection.vue';
 import BrowseConsumerOrganizationsSection from './Partials/BrowseConsumerOrganizationsSection.vue';
 import MyMembershipsSection from './Partials/MyMembershipsSection.vue';
+import MyPendingApplicationsSection from './Partials/MyPendingApplicationsSection.vue';
 import MyAdministeredOrganizationsSection from './Partials/MyAdministeredOrganizationsSection.vue';
 
 defineProps({
@@ -22,6 +23,11 @@ defineProps({
         default: null,
     },
     memberships: {
+        type: Object,
+        required: true,
+    },
+    // SCRUM-415: the person's own member applications still waiting.
+    pendingApplications: {
         type: Object,
         required: true,
     },
@@ -81,10 +87,14 @@ function onChildAlert(alert) {
                 <MyMembershipsSection :initial-memberships="memberships" @alert="onChildAlert" />
             </div>
 
+            <div class="w-full sm:w-[90%] md:w-[85%] lg:w-[75%] mx-auto sm:px-6 lg:px-8 mt-8">
+                <MyPendingApplicationsSection ref="pendingApplicationsSection" :initial-applications="pendingApplications" />
+            </div>
+
             <!-- Always shown (SCRUM-169/TT-6.5c2): any user can self-apply as a plain member,
                  independent of having a Counsellor account, unlike the provider-side section above. -->
             <div class="w-full sm:w-[90%] md:w-[85%] lg:w-[75%] mx-auto sm:px-6 lg:px-8 mt-8">
-                <BrowseConsumerOrganizationsSection @alert="onChildAlert" />
+                <BrowseConsumerOrganizationsSection @alert="onChildAlert" @applied="() => $refs.pendingApplicationsSection?.reload()" />
             </div>
         </div>
     </AuthenticatedLayout>

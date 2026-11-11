@@ -97,7 +97,7 @@ test('using a self-apply link creates a pending member application for the speci
         ])
     );
 
-    PerformOrganizationSelfApplyLinkAction::new()->execute(
+    PerformOrganizationSelfApplyLinkAction::new()->applyByLink(
         CreateLinkDTO::new()->fromArray(['user' => $applicant, 'link' => $link])
     );
 
@@ -119,7 +119,7 @@ test('using a self-apply link deactivates it so it cannot be replayed (SCRUM-101
         ])
     );
 
-    PerformOrganizationSelfApplyLinkAction::new()->execute(
+    PerformOrganizationSelfApplyLinkAction::new()->applyByLink(
         CreateLinkDTO::new()->fromArray(['user' => $applicant, 'link' => $link])
     );
 
@@ -139,11 +139,11 @@ test('using an already-used self-apply link throws instead of applying twice', f
         ])
     );
 
-    PerformOrganizationSelfApplyLinkAction::new()->execute(
+    PerformOrganizationSelfApplyLinkAction::new()->applyByLink(
         CreateLinkDTO::new()->fromArray(['user' => $firstApplicant, 'link' => $link])
     );
 
-    expect(fn () => PerformOrganizationSelfApplyLinkAction::new()->execute(
+    expect(fn () => PerformOrganizationSelfApplyLinkAction::new()->applyByLink(
         CreateLinkDTO::new()->fromArray(['user' => $secondApplicant, 'link' => $link])
     ))->toThrow(LinkException::class, 'This link is no longer active.');
 
@@ -164,7 +164,7 @@ test('using a self-apply link for an organization that has self-apply disabled i
         ])
     );
 
-    expect(fn () => PerformOrganizationSelfApplyLinkAction::new()->execute(
+    expect(fn () => PerformOrganizationSelfApplyLinkAction::new()->applyByLink(
         CreateLinkDTO::new()->fromArray(['user' => $applicant, 'link' => $link])
     ))->toThrow(OrganizationException::class);
 

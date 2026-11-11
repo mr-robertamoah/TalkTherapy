@@ -486,7 +486,8 @@ test('a counsellor link adds the counsellor, closes their invite, deactivates th
 
     expect($group->fresh()->isCounsellor($counsellor))->toBeTrue()
         ->and($invite->fresh()->status)->toBe(RequestStatusEnum::inconsequencial->value)
-        ->and($link->fresh()->state)->toBe(LinkStateEnum::inactive->value);
+        ->and($link->fresh()->state)->toBe(LinkStateEnum::inactive->value)
+        ->and($link->fresh()->used_at)->not->toBeNull(); // SCRUM-415: marked used, never to be switched back on
     Notification::assertSentTo($minorCreator, GroupTherapyCounsellorLinkUsedNotification::class);
     Notification::assertSentTo($guardian, GroupTherapyCounsellorLinkUsedNotification::class);
 });
@@ -564,7 +565,8 @@ test('a member link opens the group page with a confirmation; confirming joins w
 
     expect((bool) $group->fresh()->membershipOf($invitee)->anonymous)->toBeTrue()
         ->and($pending->fresh()->status)->toBe(RequestStatusEnum::inconsequencial->value)
-        ->and($link->fresh()->state)->toBe(LinkStateEnum::inactive->value);
+        ->and($link->fresh()->state)->toBe(LinkStateEnum::inactive->value)
+        ->and($link->fresh()->used_at)->not->toBeNull(); // SCRUM-415: marked used, never to be switched back on
 
     // Single use.
     $second = User::factory()->adult()->create();

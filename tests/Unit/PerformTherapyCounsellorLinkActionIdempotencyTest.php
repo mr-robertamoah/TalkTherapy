@@ -70,7 +70,8 @@ test('using a therapy-counsellor link deactivates it so it cannot be replayed (S
         ])
     );
 
-    expect($link->fresh()->state)->toBe(LinkStateEnum::inactive->value);
+    expect($link->fresh()->state)->toBe(LinkStateEnum::inactive->value)
+        ->and($link->fresh()->used_at)->not->toBeNull(); // SCRUM-415: marked used, never to be switched back on
 });
 
 test('a non-counsellor user reaching this action gets a clean exception instead of an uncaught Error (SCRUM-101)', function () {

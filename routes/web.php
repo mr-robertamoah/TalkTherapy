@@ -27,6 +27,7 @@ use App\Http\Controllers\OrganizationAdminController;
 use App\Http\Controllers\OrganizationController;
 use App\Http\Controllers\OrganizationCounsellorCompensationController;
 use App\Http\Controllers\OrganizationCounsellorController;
+use App\Http\Controllers\OrganizationJoinLinkController;
 use App\Http\Controllers\OrganizationMemberBillingConfigController;
 use App\Http\Controllers\OrganizationMemberController;
 use App\Http\Controllers\OrganizationPaymentInstrumentController;
@@ -156,7 +157,7 @@ Route::middleware('auth')->prefix('help')->name('help.')->group(function () {
 
 Route::middleware('auth')->group(function () {
 
-    Route::get('/links/{uuid}', [LinkController::class, 'performAction'])->name('links.get');
+    Route::get('/links/{uuid}', [LinkController::class, 'performAction'])->name('links.get')->middleware('throttle:60,1,links.get');
 
     Route::get('/discussions/{discussionId}/chat', [DiscussionController::class, 'showChat'])->name('discussions.chat');
 
@@ -350,6 +351,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/organizations/mine/administered', [OrganizationController::class, 'myAdministeredOrganizations'])->name('organizations.mine.administered');
     Route::get('/organizations/mine/dashboard', [OrganizationController::class, 'myOrganizationsDashboard'])->name('organizations.mine.dashboard');
     Route::get('/organizations/mine/requests', [OrganizationController::class, 'myOrganizationRequestQueue'])->name('organizations.mine.requests');
+    Route::get('/organizations/mine/applications', [OrganizationController::class, 'myPendingMemberApplications'])->name('organizations.mine.applications');
 
     // Org admin dashboard page (SCRUM-165/TT-6.5a) -- the browser-navigable Inertia page;
     // organizations.show above stays the JSON-only API endpoint, unchanged.
@@ -361,6 +363,9 @@ Route::middleware('auth')->group(function () {
     Route::get('/organizations/{organizationId}/members', [OrganizationMemberController::class, 'index'])->name('organizations.members.index');
     Route::get('/organizations/{organizationId}/counsellors', [OrganizationCounsellorController::class, 'index'])->name('organizations.counsellors.index');
     Route::get('/organizations/{organizationId}/requests', [OrganizationController::class, 'requestQueue'])->name('organizations.requests.index');
+    // SCRUM-415: the organisation's join links, and revoking one -- admin-gated like the lists above.
+    Route::get('/organizations/{organizationId}/join-links', [OrganizationJoinLinkController::class, 'index'])->name('organizations.join_links.index')->middleware('throttle:60,1,organizations.join_links.index');
+    Route::post('/organizations/{organizationId}/join-links/{linkId}/revoke', [OrganizationJoinLinkController::class, 'revoke'])->name('organizations.join_links.revoke')->middleware('throttle:30,1,organizations.join_links.revoke');
 
     // Org-admin reconciliation view (SCRUM-241/TT-7.3b-j) -- admin-gated like the 3 routes above,
     // but throttled (security-engineer finding): unlike a membership/counsellor roster, this

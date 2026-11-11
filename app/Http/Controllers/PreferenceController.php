@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\DTOs\SetPreferenceDTO;
 use App\Services\PreferenceService;
+use App\Support\PendingLink;
 use App\Support\PreferenceRanking;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -12,10 +13,11 @@ class PreferenceController extends Controller
 {
     public function show(Request $request)
     {
-        return Inertia::render(
-            'Preferences',
-            PreferenceService::new()->getPreferenceData($request->user())
-        );
+        return Inertia::render('Preferences', [
+            ...PreferenceService::new()->getPreferenceData($request->user()),
+            // SCRUM-415: a link they opened before signing up, to go back to.
+            'continueUrl' => PendingLink::continueUrl($request),
+        ]);
     }
 
     public function set(Request $request)

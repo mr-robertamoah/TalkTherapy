@@ -67,6 +67,13 @@ export function acquireChannel(name, { presence = false } = {}) {
             if (released || !presence) return null
             return channel().subscription?.members?.me?.id ?? null
         },
+        // Presence only (SCRUM-68): a member's info by their member id -- what the server's channel
+        // authorisation gave them (a masked name for an anonymous group member, SCRUM-379). Null if
+        // they're not (or no longer) on the channel.
+        member(id) {
+            if (released || !presence || id == null) return null
+            return channel().subscription?.members?.get(id)?.info ?? null
+        },
         joining(callback) {
             if (!released && presence) bind('pusher:member_added', (member) => callback(member.info))
             return handle

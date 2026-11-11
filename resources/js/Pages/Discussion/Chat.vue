@@ -1,6 +1,6 @@
 <script setup>
 import { Head, Link, usePage } from "@inertiajs/vue3";
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import AuthenticatedLayout from "@/Layouts/AuthenticatedLayout.vue";
 import Alert from "@/Components/Alert.vue";
 import MessageBadge from "@/Components/MessageBadge.vue";
@@ -19,6 +19,7 @@ import useEnums from "@/Composables/useEnums";
 import useConnectionStatus from "@/Composables/useConnectionStatus";
 import { createAnnouncementQueue } from "@/Composables/announcements";
 import { acquireChannel } from "@/Composables/sharedChannel";
+import useTypingIndicator from "@/Composables/useTypingIndicator";
 
 let discussionChannel = null;
 
@@ -75,7 +76,22 @@ onMounted(() => {
   bindConnectionStatus();
 });
 
+// SCRUM-68: who else is typing (names from the discussion's presence list).
+const typing = useTypingIndicator();
+const typingLabel = typing.label;
+
+watch(
+  () => message.value.content,
+  (value, old) => {
+    // Not while editing a message already sent: choosing one fills the box without anyone typing.
+    if (!discussionChannel || message.value.id) return;
+    if (value) typing.typing();
+    else if (old) typing.stopped();
+  }
+);
+
 onBeforeUnmount(() => {
+  typing.dispose();
   // SCRUM-370: shared with any DiscussionModal for the same discussion -- release, never leave.
   discussionChannel?.release();
   unbindConnectionStatus();
@@ -145,6 +161,7 @@ function listenToMessages() {
 
     enqueueMessage(data.message, addNewMessage);
   });
+  typing.attach(discussionChannel);
 }
 
 async function getDiscussionMessages() {
@@ -352,6 +369,7 @@ function addNewMessage(newMessage) {
           </div>
           <div class="text-xs text-gray-600 my-2 text-center">updating message</div>
         </div>
+        <div class="text-xs text-gray-500 italic min-h-4" role="status" aria-live="polite">{{ typingLabel }}</div>
         <div class="w-full mx-auto min-h-10 flex justify-center items-center gap-2">
           <TextBox rows="1" class="w-full shrink" v-model="message.content" />
           <div class="flex justify-end gap-2 items-start">

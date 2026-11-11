@@ -167,6 +167,15 @@ const card = 'bg-white overflow-hidden border border-gray-100 shadow-sm sm:round
                     />
                 </div>
 
+                <!-- SCRUM-415: they opened a link before signing up -- take them back to it. -->
+                <div v-if="page.props.continueUrl" class="bg-white rounded-lg shadow-sm border border-blue-200 p-4 sm:p-5 flex flex-wrap items-center justify-between gap-3">
+                    <p class="text-sm text-gray-700">You opened an invitation link before signing up. Your preferences can wait.</p>
+                    <a
+                        :href="page.props.continueUrl"
+                        class="inline-flex items-center px-4 py-2 bg-blue-600 rounded-md font-semibold text-xs text-white uppercase tracking-widest hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                    >Continue to your invitation</a>
+                </div>
+
                 <div :class="card">
                     <div class="flex flex-wrap items-start justify-between gap-3">
                         <div>

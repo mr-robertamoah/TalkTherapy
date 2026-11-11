@@ -128,6 +128,8 @@ class CounsellorController extends Controller
                 'counsellorCreationStep' => GetCounsellorCreationStepOfUserAction::new()->execute($counsellor->user),
                 // SCRUM-359: offered to nobody while suspended -- the profile says so, never why.
                 'counsellorUnavailable' => $counsellor->isSuspended(),
+                // SCRUM-51: the profile is offered for sharing only while it's one to recommend.
+                'shareable' => $counsellor->isVerified() && ! $counsellor->isSuspended(),
             ];
 
             if ($counsellor->user->is($request->user())) {

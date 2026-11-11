@@ -71,10 +71,10 @@ class PerformTherapyCounsellorLinkAction extends Action
                     ],
                 ]);
 
-            // Deactivating on successful use (SCRUM-101) keeps this link from being replayed --
+            // Marking it used (SCRUM-101; used_at, SCRUM-415) keeps this link from being replayed --
             // done inside the same transaction so a rollback (e.g. the already-has-a-counsellor
             // throw above) never leaves the link deactivated without an actual assignment.
-            $createLinkDTO->link->deactivate();
+            $createLinkDTO->link->markUsed();
 
             return $therapy->refresh();
         });

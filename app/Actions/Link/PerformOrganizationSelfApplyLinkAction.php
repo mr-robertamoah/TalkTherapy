@@ -6,46 +6,88 @@ use App\Actions\Action;
 use App\DTOs\CreateLinkDTO;
 use App\DTOs\OrganizationMemberRequestDTO;
 use App\Enums\LinkStateEnum;
+use App\Enums\LinkTypeEnum;
+use App\Exceptions\AppException;
 use App\Exceptions\LinkException;
 use App\Models\Link;
+use App\Models\Organization;
+use App\Models\Request;
 use App\Services\OrganizationMemberRequestService;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Redirect;
+use Inertia\Inertia;
+use Inertia\Response;
 
+// SCRUM-415: an organisation join (self-apply) link, from the side of the person opening it.
+//  - Opening it (preview()) changes nothing: it runs the checks applying will run and shows a page with
+//    the organisation and a "Request to join" button -- or, when they can't apply, why not, and nothing
+//    about the organisation (SCRUM-179: an organisation not taking applications says only that).
+//  - Confirming (applyByLink(), from api.links.join) locks the link, checks it again, applies, and marks
+//    the link used -- all in one transaction, so two people racing one link can't both use it (SCRUM-101).
+// The result is the page's or the POST's own answer, never a flashed message, which another request on
+// the same session could consume first.
 class PerformOrganizationSelfApplyLinkAction extends Action
 {
-    public function execute(CreateLinkDTO $createLinkDTO)
-    {
-        DB::transaction(function () use ($createLinkDTO) {
-            // A general link (to=null) can be used by any user, so locking the link row (not
-            // just relying on OrganizationMemberRequestService's own pending-request check)
-            // closes the same replay race SCRUM-101 fixed for the other link types: two
-            // concurrent uses of this same link could otherwise both read state=active and both
-            // apply before either commits deactivate().
-            $link = Link::query()->lockForUpdate()->findOrFail($createLinkDTO->link->id);
+    public const APPLIED = 'Your request to join has been sent. You will be notified when an admin responds.';
 
-            if ($link->state !== LinkStateEnum::active->value) {
-                throw new LinkException('This link is no longer active.', 422);
+    public function preview(CreateLinkDTO $createLinkDTO): Response
+    {
+        try {
+            EnsureCanUseLinkAction::new()->execute($createLinkDTO);
+
+            $organization = $this->organizationOf($createLinkDTO->link);
+
+            OrganizationMemberRequestService::new()->ensureCanApplyAsMember($this->applicationFor($createLinkDTO, $organization));
+        } catch (AppException $exception) {
+            return Inertia::render('Links/OrganizationJoin', ['refusal' => $exception->getMessage()]);
+        }
+
+        return Inertia::render('Links/OrganizationJoin', [
+            'uuid' => $createLinkDTO->link->uuid,
+            'organization' => [
+                'name' => $organization->name,
+                'description' => $organization->description,
+                'logoUrl' => $organization->logo?->url,
+            ],
+        ]);
+    }
+
+    public function applyByLink(CreateLinkDTO $createLinkDTO): Request
+    {
+        return DB::transaction(function () use ($createLinkDTO) {
+            $link = Link::query()->lockForUpdate()->find($createLinkDTO->link->id);
+
+            if (! $link || $link->state !== LinkStateEnum::active->value || $link->type !== LinkTypeEnum::organizationSelfApply->value) {
+                throw LinkException::inactive();
             }
 
-            // Reuses TT-6.3a's existing self-apply eligibility checks (organization verified,
-            // consumer-capable, self_apply_enabled) and pending-request guard unchanged (SCRUM-164
-            // AC2) -- this is the same service call OrganizationMemberController::apply() makes,
-            // just reached via a link instead of a direct POST.
-            OrganizationMemberRequestService::new()->applyAsMember(
-                OrganizationMemberRequestDTO::new()->fromArray([
-                    'user' => $createLinkDTO->user,
-                    'organization' => $createLinkDTO->link->for,
-                    'member' => $createLinkDTO->user,
-                ])
+            // Every check again, under the organisation's lock (applyAsMember).
+            $application = OrganizationMemberRequestService::new()->applyAsMember(
+                $this->applicationFor($createLinkDTO, $this->organizationOf($link))
             );
 
-            // Deactivating on successful use (SCRUM-101) keeps this link from being replayed by
-            // whoever still holds the URL -- safe from the race described above because it
-            // happens inside the same lockForUpdate transaction as the active-state check.
-            $link->deactivate();
-        });
+            $link->markUsed();
 
-        return Redirect::route('home');
+            return $application;
+        });
+    }
+
+    private function organizationOf(Link $link): Organization
+    {
+        $organization = $link->for;
+
+        if (! $organization instanceof Organization) {
+            throw LinkException::inactive();
+        }
+
+        return $organization;
+    }
+
+    private function applicationFor(CreateLinkDTO $createLinkDTO, Organization $organization): OrganizationMemberRequestDTO
+    {
+        return OrganizationMemberRequestDTO::new()->fromArray([
+            'user' => $createLinkDTO->user,
+            'organization' => $organization,
+            'member' => $createLinkDTO->user,
+        ]);
     }
 }
