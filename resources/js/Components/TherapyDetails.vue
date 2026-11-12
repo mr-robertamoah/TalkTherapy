@@ -7,6 +7,8 @@
       <div class="bg-gradient-to-br from-gray-50 to-gray-100 p-4 rounded-lg border border-gray-200">
         <span class="text-sm font-medium text-gray-600">Payment Type</span>
         <p class="text-lg font-semibold text-gray-800 capitalize mt-1">{{ therapy.paymentType }}</p>
+        <!-- SCRUM-180: only ever sent to its client. -->
+        <SponsoredBadge v-if="therapy.sponsor" :sponsor="therapy.sponsor" class="mt-2" />
       </div>
       
       <div class="bg-gradient-to-br from-stone-50 to-stone-100 p-4 rounded-lg border border-stone-200">
@@ -67,6 +69,7 @@
 
 <script setup>
 import NameAndValue from '@/Components/NameAndValue.vue'
+import SponsoredBadge from '@/Components/SponsoredBadge.vue'
 
 defineProps({
   therapy: { default: null },

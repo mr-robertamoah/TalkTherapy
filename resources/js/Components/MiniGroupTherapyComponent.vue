@@ -49,6 +49,7 @@ const facts = computed(() => {
         :description="groupTherapy.about"
         :facts="facts"
         :matches-preferences="!!groupTherapy.viewer?.matchesPreferences"
+        :sponsor="groupTherapy.sponsor"
     >
         <!-- Action: SCRUM-114, the viewer's button where the server decided it. -->
         <TherapyCardAction v-if="groupTherapy.viewer" :item="groupTherapy" kind="group" @joined="(event) => emit('joined', event)" />

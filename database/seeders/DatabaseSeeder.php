@@ -5,6 +5,7 @@ namespace Database\Seeders;
 use App\Actions\Help\CloseHelpRequestAction;
 use App\Actions\Help\CreateHelpChatAction;
 use App\Actions\Help\SendHelpMessageAction;
+use App\Actions\Transaction\ChargeOrganizationForModelAction;
 use App\Enums\AdministratorTypeEnum;
 use App\Enums\CounsellorEarningStatusEnum;
 use App\Enums\CounsellorPayoutStatusEnum;
@@ -3246,7 +3247,9 @@ class DatabaseSeeder extends Seeder
             'for_id' => $payPerUseTherapy->id,
             'user_id' => $payPerUseMember->id,
             'organization_id' => $organization->id,
-            'reference' => 'org_demo_charge_'.Str::uuid(),
+            // SCRUM-180: the prefix a real charge to the organisation's card has -- what the "Sponsored" badge
+            // counts (ResolveTherapySponsorAction).
+            'reference' => ChargeOrganizationForModelAction::REFERENCE_PREFIX.Str::uuid(),
             'amount' => 8000,
             'currency' => 'USD',
             'status' => TransactionStatusEnum::success->value,

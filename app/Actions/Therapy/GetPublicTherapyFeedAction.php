@@ -51,6 +51,7 @@ class GetPublicTherapyFeedAction extends Action
         PreloadTherapyListAction::new()->execute($models['individual']);
         PreloadGroupTherapyListAction::new()->execute($models['group']);
         ResolveTherapyCardStateAction::new()->execute($models['individual']->values()->concat($models['group']->values()), $viewer);
+        ResolveTherapySponsorAction::new()->execute($models['individual']->values()->concat($models['group']->values()), $viewer);
 
         $items = $rows->map(function ($row) use ($models) {
             $model = $models[$row->kind]->get($row->id);

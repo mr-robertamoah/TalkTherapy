@@ -29,6 +29,7 @@ use App\Actions\Therapy\EnsureUserHasAccessToTherapyAction;
 use App\Actions\Therapy\GetPublicTherapyFeedAction;
 use App\Actions\Therapy\PreloadTherapyListAction;
 use App\Actions\Therapy\ResolveTherapyCardStateAction;
+use App\Actions\Therapy\ResolveTherapySponsorAction;
 use App\Actions\Therapy\UpdateTherapyAction;
 use App\Actions\User\AlertGuardianAction;
 use App\Actions\User\EnsureUserMeetsTherapyRequirementsAction;
@@ -199,7 +200,8 @@ class TherapyService extends Service
 
         $query->orderByDesc('created_at');
 
-        return $query->paginate(PaginationEnum::homePagination->value);
+        // SCRUM-180: the "Sponsored" badge on their own.
+        return ResolveTherapySponsorAction::new()->execute($query->paginate(PaginationEnum::homePagination->value), $user);
     }
 
     public function getRecentTherapies(?User $user)
@@ -208,12 +210,12 @@ class TherapyService extends Service
             return [];
         }
 
-        return Therapy::query()
+        return ResolveTherapySponsorAction::new()->execute(Therapy::query()
             ->withoutHelpChats()
             ->whereParticipant($user)
             ->orderBy('created_at', 'desc')
             ->limit(3)
-            ->get();
+            ->get(), $user);
     }
 
     public function sendAssistanceRequest(AssistTherapyDTO $assistTherapyDTO)
@@ -288,6 +290,8 @@ class TherapyService extends Service
             $query->paginate(PaginationEnum::preferencesPagination->value)->appends(['seed' => $seed])
         );
 
+        ResolveTherapySponsorAction::new()->execute($page, $user);
+
         return ResolveTherapyCardStateAction::new()->execute($page, $user);
     }
 
@@ -344,7 +348,7 @@ class TherapyService extends Service
 
         $query->latest();
 
-        return $query->paginate(PaginationEnum::preferencesPagination->value);
+        return ResolveTherapySponsorAction::new()->execute($query->paginate(PaginationEnum::preferencesPagination->value), $user);
     }
 
     public function getWardTherapies(?User $user)

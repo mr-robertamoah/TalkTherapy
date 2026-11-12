@@ -51,7 +51,7 @@
       </template>
 
       <div v-if="therapy.paymentData.per === 'PER_THERAPY' && therapy.orgRetainerCoverage" class="text-sm text-gray-600">
-        This therapy is covered under {{ therapy.orgRetainerCoverage.organizationName }}'s plan with TalkTherapy -- no payment needed from you.
+        This therapy is covered under {{ therapy.orgRetainerCoverage.organizationName ? `${therapy.orgRetainerCoverage.organizationName}'s` : "an organization's" }} plan with TalkTherapy -- no payment needed.
       </div>
       <!-- TT-7.7e/SCRUM-253: paymentStatus itself never flips off SUCCESS on refund (refunds live
            in their own table, see TT-7.7a's decision-log entry) -- refundStatus is checked here so

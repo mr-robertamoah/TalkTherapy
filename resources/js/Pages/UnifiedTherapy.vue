@@ -1236,7 +1236,8 @@ function reportCreated(report) {
                   v-if="therapyType !== 'group' && computedTherapy?.paymentData?.per === 'PER_SESSION' && activeSession?.paymentType == 'PAID' && isOrgRetainerCovered()"
                   class="text-sm text-gray-600 text-center"
                 >
-                  This session is covered under {{ computedTherapy.orgRetainerCoverage.organizationName }}'s plan with TalkTherapy -- no payment needed from you.
+                  <!-- SCRUM-180: the organisation is named only to the client, or on a public, non-anonymous therapy. -->
+                  This session is covered under {{ computedTherapy.orgRetainerCoverage.organizationName ? `${computedTherapy.orgRetainerCoverage.organizationName}'s` : "an organization's" }} plan with TalkTherapy -- no payment needed.
                 </div>
                 <PrimaryButton
                   v-else-if="canPayForSession(activeSession, computedIsParticipant, computedIsCounsellor)"

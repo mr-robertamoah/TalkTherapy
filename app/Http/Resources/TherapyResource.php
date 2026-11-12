@@ -4,6 +4,7 @@ namespace App\Http\Resources;
 
 use App\Actions\Organization\GetRetainerCoveringOrganizationAction;
 use App\Actions\Safety\EnsureCanFlagClientAction;
+use App\Actions\Therapy\ResolveTherapySponsorAction;
 use App\Actions\VideoConsent\GetCurrentValidVideoConsentForTherapyAction;
 use App\Actions\VideoConsent\GetWardForVideoConsentableAction;
 use App\Enums\ConstantsEnum;
@@ -107,6 +108,8 @@ class TherapyResource extends JsonResource
             'activeSession' => $activeSession ? new SessionResource($activeSession) : null,
             'activeDiscussion' => $activeDiscussion ? new DiscussionResource($activeDiscussion) : null,
             'orgRetainerCoverage' => $this->orgRetainerCoverage($user),
+            // SCRUM-180: the "Sponsored" badge -- only for its client (the key isn't there for anyone else).
+            ...(($sponsor = ResolveTherapySponsorAction::new()->forOne($this->resource, $user)) ? ['sponsor' => $sponsor] : []),
             'videoConsent' => $this->videoConsentData($user),
             // SCRUM-288: the viewer's own state -- paused for a missing guardian (memoised on the
             // request's user, so one query at most for a minor and none for an adult). SCRUM-382: the
@@ -175,23 +178,29 @@ class TherapyResource extends JsonResource
         ];
     }
 
-    // TT-7.3b-k/SCRUM-242: a non-financial disclosure for the paying client (never scoped to the
-    // currently viewing user beyond the anonymity check below -- the fact that itself isn't
-    // sensitive, so it's fine to also surface it to the counsellor). Only the org's name is
-    // exposed, never fee/compensation/payout figures, matching this ticket's deliberately narrow
-    // client-facing-disclosure scope. Applies to Therapy only, not GroupTherapy -- retainer
-    // coverage checks a therapy's single counsellor, and GroupTherapy org billing is out of scope
-    // here the same way TT-7.5a's strict-gate feature excluded it.
+    // TT-7.3b-k/SCRUM-242: a non-financial disclosure -- that an organisation's retainer covers this therapy,
+    // so no payment is asked for (the payment banner, usePayment.js). Only the org's name is exposed, never
+    // fee/compensation/payout figures. Applies to Therapy only, not GroupTherapy -- retainer coverage checks
+    // a therapy's single counsellor, and GroupTherapy org billing is out of scope here the same way
+    // TT-7.5a's strict-gate feature excluded it.
+    //
+    // SCRUM-180 (the user's decision, 2026-11-12): which organisation is the client's own business -- it may
+    // be their employer or school. The name goes to the client, and to anyone only on a public,
+    // non-anonymous therapy (whose client everyone can already see). Its counsellor on a private or
+    // anonymous one is told it's covered (organizationName null), so their page doesn't show it unpaid;
+    // anyone else on an anonymous one, nothing (SCRUM-242 review: naming the organisation would narrow down
+    // who the client is).
     private function orgRetainerCoverage(?User $user): ?array
     {
         if (! $this->addedby instanceof User) {
             return null;
         }
 
-        // Same anonymity guarantee as the 'user' field above (security-engineer finding,
-        // SCRUM-242 review): naming the covering org to a non-participant on a public+anonymous
-        // therapy would re-identify the addedby, narrowing down who they are.
-        if ($this->addedByUserIsMaskedFor($user)) {
+        $isClient = $user && $this->isUser($user);
+        $namesIt = $isClient || ($this->public && ! $this->anonymous);
+        $isItsCounsellor = $user?->counsellor && (int) $this->counsellor_id === (int) $user->counsellor->id;
+
+        if (! $namesIt && ! $isItsCounsellor) {
             return null;
         }
 
@@ -203,6 +212,6 @@ class TherapyResource extends JsonResource
 
         $organization = GetRetainerCoveringOrganizationAction::new()->execute($this->resource, $this->addedby);
 
-        return $organization ? ['organizationName' => $organization->name] : null;
+        return $organization ? ['organizationName' => $namesIt ? $organization->name : null] : null;
     }
 }

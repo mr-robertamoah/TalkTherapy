@@ -176,6 +176,9 @@ trait TherapyTrait
     // SCRUM-114: the viewer's card state on a list (ResolveTherapyCardStateAction) -- never saved.
     public ?array $viewerCard = null;
 
+    // SCRUM-180: who pays for it, for its client only (ResolveTherapySponsorAction).
+    public ?array $viewerSponsor = null;
+
     public function pendingRequestFor(?Counsellor $counsellor)
     {
         if (is_null($counsellor)) {
