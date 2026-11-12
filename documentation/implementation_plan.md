@@ -234,6 +234,8 @@ the frontend, split a/b/c so it ships as independently-reviewable PRs.
 | TT-6.10 | ✅ **Implemented** (SCRUM-417). An applicant withdraws their own pending member application from "Pending applications" (after confirming): closed as INCONSEQUENCIAL with a reason and a `withdrawn` flag, under a lock; an admin answering it is told it was withdrawn; they can apply again. | Story | Medium | 3 | SCRUM-417 | TT-6.9 |
 | TT-6.11 | ✅ **Implemented** (SCRUM-416, the user's decision: option B). A minor waiting for a guardian can't join an organisation (applying, a join link, accepting an invitation, an admin accepting their application); a minor's guardians are told when they join. Admins can still invite them. | Story | Medium | 3 | SCRUM-416 | TT-6.3a |
 | TT-6.12 | ✅ **Implemented** (SCRUM-418). Links that act -- guardianship, a therapy's counsellor, a discussion, a group's counsellor -- are shown first (`Links/Confirm`, masked summaries) and used only by confirming (`api.links.join`). | Story | High | 8 | SCRUM-418 (SCRUM-415 security review) | TT-6.9 |
+| TT-6.13 | ✅ **Implemented** (SCRUM-419). Organisation join links use the shared `Links/Confirm` page (`PreviewLinkAction`); `Links/OrganizationJoin` removed, same wording and behaviour, opening still changes nothing. Link previews read their few fields directly. | Chore | Low | 3 | SCRUM-419 (SCRUM-418 follow-up) | TT-6.9, TT-6.12 |
+| TT-6.14 | ✅ **Implemented** (SCRUM-180). A "Sponsored" badge ("Paid by <org>" on hover) on a therapy's or group's cards and page, for its client only: a successful, unrefunded charge to the organisation's own card for the therapy or a session, or live retainer cover (a group: retainer only, SCRUM-420). The therapy page's retainer name now goes only to the client, or to anyone on a public, non-anonymous therapy. | Story | Medium | 7 | SCRUM-180 (SCRUM-111 deferred item) | TT-7.3a, TT-6.3b |
 
 **Epic status (2026-09-01): TT-6 fully implemented.** All rows above (TT-6.1 through TT-6.5c2)
 are merged; epic SCRUM-10 transitioned to Done. One known gap tracked separately (SCRUM-214,
@@ -259,10 +261,10 @@ milestone-wide, plus **TT-6.7** (shareable self-apply link, additive to TT-6.6c,
 Three decisions made by the user during planning: (1) owner-vs-admin roles get real behavioral
 enforcement now, not just a display badge; (2) organization discovery ships as both a directory
 (TT-6.6c) and a shareable admin-generated link (TT-6.7), not either/or; (3) the directory is
-verified-only. "Sponsored by [org]" indicator on therapy/counsellor cards (SCRUM-111's third
-flagged open item) deferred to a future TT-7.3a-adjacent ticket per product-owner/project-manager
-agreement, since it depends on TT-7.3a (not yet built) and an undecided definition of "sponsored"
-over time. Full history in `documentation/decision-log.md`'s 2026-08-29 entries.
+verified-only. "Sponsored by [org]" indicator (SCRUM-111's third flagged open item) was deferred
+until TT-7.3a existed and "sponsored" was defined; now built as TT-6.14 (SCRUM-180), on therapy and
+group cards and pages, for the client only. Full history in `documentation/decision-log.md`'s
+2026-08-29 and 2026-11-12 entries.
 
 **Sprint:** 5 — combined with the payments foundation (TT-7.1/7.2). **Dependency correction**
 (previously stated too broadly below TT-7): TT-6.1/6.2/6.4a/6.4b/6.3a/6.3b — the full org data

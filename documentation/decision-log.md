@@ -11836,3 +11836,44 @@ admins can't cancel invites yet, a guardianship page never says the person is a 
     therapy-counsellor link said the client was a minor without a guardian -- now the neutral `linkUnavailable()`,
     as group links say; the discussion capacity refusal no longer names the discussion.
   - `Links/OrganizationJoin` stays separate for now; folding it into `Links/Confirm` is SCRUM-419.
+
+## SCRUM-419, SCRUM-180 — one confirm page for every link; the "Sponsored" badge (2026-11-12)
+
+One PR, one commit per ticket. Planned with product-owner, project-manager and architect; the user decided who sees
+the badge, its wording, the group rule and the therapy page's retainer name (below). SCRUM-409 (date-gated) is its own
+PR after 2026-11-15. Filed from planning: SCRUM-420 (organisation billing for group one-offs) and SCRUM-421 (should
+organisations start therapies for members).
+
+- **SCRUM-419.** Organisation join links render `Links/Confirm` through `PreviewLinkAction` like the other acting
+  links; `Links/OrganizationJoin` and `LinkService`'s special case are gone. `Confirm.vue`'s per-type differences are
+  a `COPY` table over `DEFAULTS` (title, avatar, detail rows, success/failure titles, retry, way back, refusal copy)
+  instead of template branches. The join page keeps its wording and behaviour (no retry after an answer, "Go to My
+  organizations" after any answer). A refusal carries its `type` only for join links (`REFUSAL_NAMES_TYPE`) -- that
+  page always said "This join link can't be used"; every other refusal still never says what the link was for.
+  Visual change accepted: the kicker now sits beside the avatar for a guardianship link too (one layout for all).
+  The therapy, discussion and group previews read their few fields directly instead of resolving a card's resource
+  and keeping a few keys -- the same fields, without the card's per-viewer queries (pause state, card status, sponsor).
+- **SCRUM-180: who sees it (the user's decision).** Only the therapy's client -- never its counsellor, a guardian, an
+  admin or another viewer: the organisation may be their employer or school. A short "Sponsored" badge; "Paid by
+  <org>" on hover and for screen readers; no link. On individual and group cards and on the therapy and group pages.
+- **What "sponsored" means.** (a) a successful charge to the organisation's own card (`ChargeOrganizationForModelAction`,
+  recognised by its reference prefix -- `organization_id` alone is also set on a group's "my organisation pays",
+  which still charges the member's card, SCRUM-420) for the therapy or one of its sessions, paid by the viewer and
+  not refunded; the latest such charge names the organisation, a deleted organisation still named; else (b) a
+  retainer covering them now, for a paid therapy, asked as the payment gate asks it. **Groups: retainer only** (the
+  user's decision, after learning a group one-off is never paid by the organisation today); a group's client is each
+  member and its user creator. Precedence (a) then (b) -- our default.
+- **Batching.** `ResolveTherapySponsorAction` works out a page in a few queries (one for charges, one for the viewer's
+  retainers), next to `ResolveTherapyCardStateAction`. `GetRetainerCoveringOrganizationAction` gained `coverageFor()`
+  / `coveringOrganization()`; `execute()` is the two together, as narrow as before, so the gate and the badge can't
+  drift. Accepted: on the client's own therapy page the retainer lookup can run twice (badge and banner) -- a few
+  small queries on one page.
+- **The therapy page's retainer name (the user's decision, fixing SCRUM-242's exposure).** `orgRetainerCoverage` used
+  to name the organisation to anyone who could see an unmasked therapy (its counsellor, guardians, admins). Now: the
+  client always; anyone on a public, non-anonymous therapy (whose client everyone can already see -- the user's
+  explicit trade-off; the security review noted it still reveals the organisation there); its counsellor otherwise
+  only that it's covered (`organizationName: null`, so their page doesn't ask for payment); everyone else nothing.
+  Security review: a counsellor with a single retainer organisation can still infer it for an anonymous client --
+  unavoidable while their page must know it's covered; don't add organisation-specific copy to counsellor views.
+  The covered line now reads "...an organization's plan -- no payment needed" when there's no name.
+- **Seed.** The demo pay-per-use charge now uses the real `org_charge_` prefix, so the badge shows for it.
