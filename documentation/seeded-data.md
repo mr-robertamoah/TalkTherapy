@@ -234,6 +234,9 @@ Also for SCRUM-241 (org-admin reconciliation view): the demo org has a settled r
 still-accruing one (current calendar month, a second held session seeded specifically for it) —
 visit `/organizations/1/reconciliation` as `org_demo_admin` to see both, and expand either row to
 see its lines.
+SCRUM-420 adds "Org Retainer Demo Group" (PAID, per session, run by `org_demo_counsellor`, with
+`org_demo_member` as its one member) and a held session of it yesterday. The open invoice carries its
+line too, shown as "Group session on <date>", without naming the member.
 
 For SCRUM-245 (manual billing-suspension lift + failed-invoice retry): a separate "Suspended Demo
 Collective" org (`suspended_demo_admin` / `password` owns it) is seeded currently billing-suspended
