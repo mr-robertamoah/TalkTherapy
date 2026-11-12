@@ -64,7 +64,7 @@ function aRetainerCoveredSession(array $compensationOverrides = [], array $thera
 
 test('records an invoice and a line for a retainer-covered held session', function () {
     config(['settings.platform_fee_percentage' => 10]);
-    [$organization, $counsellor, , $session] = aRetainerCoveredSession([
+    [$organization, $counsellor, , $session, $member] = aRetainerCoveredSession([
         'type' => OrganizationCounsellorCompensationTypeEnum::fixed->value,
         'amount' => 5000,
         'currency' => 'GHS',
@@ -84,6 +84,8 @@ test('records an invoice and a line for a retainer-covered held session', functi
     expect($line->organization_invoice_id)->toBe($invoice->id);
     expect($line->session_id)->toBe($session->id);
     expect($line->counsellor_id)->toBe($counsellor->id);
+    // SCRUM-420: the line records whose session it billed -- the therapy's client.
+    expect($line->user_id)->toBe($member->id);
     // Listed rate GHS 100 (10000 minor units) -- fixed share 5000, fee 10% of 10000 = 1000.
     expect($line->net_amount)->toBe(5000);
     expect($line->fee_amount)->toBe(1000);

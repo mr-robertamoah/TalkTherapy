@@ -19,6 +19,7 @@ class OrganizationInvoiceLineFactory extends Factory
         return [
             'organization_invoice_id' => OrganizationInvoice::factory(),
             'session_id' => Session::factory(),
+            'user_id' => User::factory(),
             'counsellor_id' => Counsellor::factory(['user_id' => User::factory()]),
             'net_amount' => $this->faker->numberBetween(1000, 10000),
             'fee_amount' => $this->faker->numberBetween(100, 1000),

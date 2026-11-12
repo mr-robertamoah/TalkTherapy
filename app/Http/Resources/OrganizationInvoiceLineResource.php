@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Models\GroupTherapy;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -27,9 +28,9 @@ class OrganizationInvoiceLineResource extends JsonResource
         return [
             'id' => $this->id,
             'sessionId' => $this->session_id,
-            'sessionLabel' => $this->session?->start_time
-                ? 'Session on '.$this->session->start_time->format('j M Y')
-                : 'Session',
+            // SCRUM-420: a group session has a line per covered member and counsellor -- never naming the member.
+            'sessionLabel' => ($this->session?->for_type === GroupTherapy::class ? 'Group session' : 'Session')
+                .($this->session?->start_time ? ' on '.$this->session->start_time->format('j M Y') : ''),
             // The counsellor's own name is professional/public information, not a client-anonymity
             // concern (see OrganizationFinancedTransactionResource's identical reasoning).
             'counsellorName' => $this->whenLoaded('counsellor', fn () => $this->counsellor?->name),

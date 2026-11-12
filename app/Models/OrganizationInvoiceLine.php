@@ -10,7 +10,7 @@ class OrganizationInvoiceLine extends Model
     use HasFactory;
 
     protected $fillable = [
-        'organization_invoice_id', 'session_id', 'counsellor_id', 'net_amount', 'fee_amount', 'currency',
+        'organization_invoice_id', 'session_id', 'user_id', 'counsellor_id', 'net_amount', 'fee_amount', 'currency',
     ];
 
     protected $casts = [
