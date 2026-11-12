@@ -18,7 +18,6 @@ use App\Enums\RequestStatusEnum;
 use App\Enums\RequestTypeEnum;
 use App\Exceptions\GuardianRequiredException;
 use App\Exceptions\LinkException;
-use App\Http\Resources\GroupTherapyMiniResource;
 use App\Models\Counsellor;
 use App\Models\GroupTherapy;
 use App\Models\Link;
@@ -29,7 +28,6 @@ use App\Notifications\GroupTherapyMemberJoinedGuardianNotification;
 use App\Support\LinkConfirmation;
 use App\Support\TherapyLink;
 use Illuminate\Http\RedirectResponse;
-use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Redirect;
 
@@ -64,8 +62,8 @@ class PerformGroupTherapyLinkAction extends Action
         };
     }
 
-    // SCRUM-418: what a counsellor invitation shows before they confirm -- the group as its card shows it
-    // (GroupTherapyMiniResource: name, about, anonymous), its creator by the name they're shown (masked for
+    // SCRUM-418: what a counsellor invitation shows before they confirm -- the group's name, about and
+    // whether it's anonymous (read directly, not through its card's resource, SCRUM-419), its creator by the name they're shown (masked for
     // an anonymous one), and none of its members. The same checks as joinAsCounsellor(), unlocked.
     public function previewAsCounsellor(CreateLinkDTO $createLinkDTO): array
     {
@@ -80,7 +78,9 @@ class PerformGroupTherapyLinkAction extends Action
         $this->ensureCanJoinAsCounsellor($group, $counsellor, $createLinkDTO->user);
 
         return [
-            ...Arr::only((new GroupTherapyMiniResource($group))->resolve(request()), ['name', 'about', 'anonymous']),
+            'name' => $group->name,
+            'about' => $group->about,
+            'anonymous' => $group->anonymous,
             'createdBy' => $this->creatorName($group),
         ];
     }

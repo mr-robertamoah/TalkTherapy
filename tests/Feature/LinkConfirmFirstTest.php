@@ -187,8 +187,9 @@ test('a refusal shows only the reason, and confirming checks a suspended counsel
     expect($therapy->fresh()->counsellor_id)->toBeNull();
 });
 
-test('the four types are exactly the ones shown first', function () {
+test('the types shown first are these four and (SCRUM-419) the organisation join link; only that one names itself when refused', function () {
     expect(PreviewLinkAction::TYPES)->toEqualCanonicalizing([
         LinkTypeEnum::guardianship->value, LinkTypeEnum::therapyCounsellor->value, LinkTypeEnum::discussion->value, LinkTypeEnum::groupTherapyCounsellor->value,
-    ]);
+        LinkTypeEnum::organizationSelfApply->value,
+    ])->and(PreviewLinkAction::REFUSAL_NAMES_TYPE)->toBe([LinkTypeEnum::organizationSelfApply->value]);
 });

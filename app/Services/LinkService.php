@@ -39,13 +39,7 @@ class LinkService extends Service
 
         EnsureLinkExistsAction::new()->execute($createLinkDTO);
 
-        // SCRUM-415: its page says itself why it can't be used (no flashed alert), so it makes the
-        // link checks itself.
-        if ($createLinkDTO->link->type === LinkTypeEnum::organizationSelfApply->value) {
-            return PerformOrganizationSelfApplyLinkAction::new()->preview($createLinkDTO);
-        }
-
-        // SCRUM-418: the links that act are shown first, and used only by confirming.
+        // SCRUM-418/419: the links that act are shown first, and used only by confirming.
         if (in_array($createLinkDTO->link->type, PreviewLinkAction::TYPES, true)) {
             return PreviewLinkAction::new()->execute($createLinkDTO);
         }

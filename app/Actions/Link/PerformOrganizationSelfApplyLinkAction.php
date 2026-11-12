@@ -7,20 +7,17 @@ use App\DTOs\CreateLinkDTO;
 use App\DTOs\OrganizationMemberRequestDTO;
 use App\Enums\LinkStateEnum;
 use App\Enums\LinkTypeEnum;
-use App\Exceptions\AppException;
 use App\Exceptions\LinkException;
 use App\Models\Link;
 use App\Models\Organization;
 use App\Models\Request;
 use App\Services\OrganizationMemberRequestService;
 use Illuminate\Support\Facades\DB;
-use Inertia\Inertia;
-use Inertia\Response;
 
 // SCRUM-415: an organisation join (self-apply) link, from the side of the person opening it.
-//  - Opening it (preview()) changes nothing: it runs the checks applying will run and shows a page with
-//    the organisation and a "Request to join" button -- or, when they can't apply, why not, and nothing
-//    about the organisation (SCRUM-179: an organisation not taking applications says only that).
+//  - Opening it changes nothing: PreviewLinkAction runs the checks applying will run and shows
+//    Links/Confirm with the organisation (preview()) and a "request to join" button -- or, when they can't
+//    apply, why not, and nothing about the organisation (SCRUM-419; it had its own page before).
 //  - Confirming (applyByLink(), from api.links.join) locks the link, checks it again, applies, and marks
 //    the link used -- all in one transaction, so two people racing one link can't both use it (SCRUM-101).
 // The result is the page's or the POST's own answer, never a flashed message, which another request on
@@ -29,26 +26,19 @@ class PerformOrganizationSelfApplyLinkAction extends Action
 {
     public const APPLIED = 'Your request to join has been sent. You will be notified when an admin responds.';
 
-    public function preview(CreateLinkDTO $createLinkDTO): Response
+    // The organisation's name, description and logo -- nothing else. The link's own checks ran first
+    // (PreviewLinkAction); a refusal shows only why (SCRUM-179: one not taking applications says only that).
+    public function preview(CreateLinkDTO $createLinkDTO): array
     {
-        try {
-            EnsureCanUseLinkAction::new()->execute($createLinkDTO);
+        $organization = $this->organizationOf($createLinkDTO->link);
 
-            $organization = $this->organizationOf($createLinkDTO->link);
+        OrganizationMemberRequestService::new()->ensureCanApplyAsMember($this->applicationFor($createLinkDTO, $organization));
 
-            OrganizationMemberRequestService::new()->ensureCanApplyAsMember($this->applicationFor($createLinkDTO, $organization));
-        } catch (AppException $exception) {
-            return Inertia::render('Links/OrganizationJoin', ['refusal' => $exception->getMessage()]);
-        }
-
-        return Inertia::render('Links/OrganizationJoin', [
-            'uuid' => $createLinkDTO->link->uuid,
-            'organization' => [
-                'name' => $organization->name,
-                'description' => $organization->description,
-                'logoUrl' => $organization->logo?->url,
-            ],
-        ]);
+        return [
+            'name' => $organization->name,
+            'description' => $organization->description,
+            'logoUrl' => $organization->logo?->url,
+        ];
     }
 
     public function applyByLink(CreateLinkDTO $createLinkDTO): Request

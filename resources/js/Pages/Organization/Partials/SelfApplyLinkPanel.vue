@@ -2,8 +2,8 @@
 // SCRUM-214/415: an organization's admins create join (self-apply) links to send people, see every link
 // made for the organization (any admin's), and revoke one still unused -- say, one sent to the wrong
 // person. Each link works once, for one person (it is marked used when someone requests to join with it),
-// so they create one per person. Opening a link shows the organization and a "Request to join" button
-// (Links/OrganizationJoin); confirming files the request, which lands in the request queue below. The
+// so they create one per person. Opening a link shows the organization and a "request to join" button
+// (Links/Confirm, SCRUM-419); confirming files the request, which lands in the request queue below. The
 // server refuses a link that couldn't work (EnsureUserCanCreateOrganizationSelfApplyLinkAction); this card
 // says why up front instead.
 import { computed, onMounted, ref } from 'vue'

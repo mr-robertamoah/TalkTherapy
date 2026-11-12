@@ -6,8 +6,7 @@ use App\Actions\Action;
 use App\DTOs\CreateLinkDTO;
 use App\Exceptions\LinkException;
 
-// Opening a link that is neither shown first (PreviewLinkAction, SCRUM-418) nor an organisation join link
-// (SCRUM-415): only a group's links are left -- a member invitation goes to the group's page to confirm
+// Opening a link that isn't shown first (PreviewLinkAction, SCRUM-418/419): only a group's links are left -- a member invitation goes to the group's page to confirm
 // there (SCRUM-383); the switched-off admin type is told it's inactive. LinkService has checked the link.
 class PerformLinkAction extends Action
 {
