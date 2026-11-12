@@ -150,6 +150,9 @@ class GroupTherapyResource extends JsonResource
             // "find a counsellor") and the viewer's own button (an offer, or one waiting).
             'canTakeCounsellor' => $this->resource->canTakeCounsellor(),
             ...($this->resource->viewerCard ? ['viewer' => $this->resource->viewerCard] : []),
+            // SCRUM-180: only for its client, and only when an organisation pays (ResolveTherapySponsorAction) --
+            // for anyone else the key isn't there.
+            ...($this->resource->viewerSponsor ? ['sponsor' => $this->resource->viewerSponsor] : []),
             'topicsCount' => $this->topicsCount,
             'createdAt' => $this->created_at,
             'activeSession' => $activeSession ? new SessionResource($activeSession) : null,

@@ -68,9 +68,11 @@ test('visiting a self-apply link creates a pending member application via the re
     // SCRUM-415: opening it shows the organisation and changes nothing; confirming applies.
     $this->actingAs($applicant);
     $this->get("/links/{$link->uuid}")->assertOk()
-        ->assertInertia(fn ($page) => $page->component('Links/OrganizationJoin')
+        ->assertInertia(fn ($page) => $page->component('Links/Confirm')
             ->where('uuid', $link->uuid)
-            ->where('organization.name', $organization->name)
+            ->where('type', LinkTypeEnum::organizationSelfApply->value)
+            // SCRUM-419: the same three things its own page showed, and nothing more.
+            ->where('summary', ['name' => $organization->name, 'description' => $organization->description, 'logoUrl' => null])
             ->missing('refusal'));
     expect(Request::query()->whereFor($organization)->exists())->toBeFalse()
         ->and($link->fresh()->state)->toBe(LinkStateEnum::active->value);
@@ -100,9 +102,9 @@ test('the org admin who generated the link cannot use it themselves', function (
     $link = Link::where('type', LinkTypeEnum::organizationSelfApply->value)->where('for_id', $organization->id)->first();
 
     $this->get("/links/{$link->uuid}")->assertOk()
-        ->assertInertia(fn ($page) => $page->component('Links/OrganizationJoin')
+        ->assertInertia(fn ($page) => $page->component('Links/Confirm')
             ->where('refusal', 'You cannot use a link you created.')
-            ->missing('organization'));
+            ->missing('summary'));
     $this->postJson("/api/links/{$link->uuid}/join")->assertStatus(422);
 
     expect(Request::query()->whereFor($organization)->exists())->toBeFalse();

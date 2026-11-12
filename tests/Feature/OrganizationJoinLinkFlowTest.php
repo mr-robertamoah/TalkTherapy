@@ -56,7 +56,10 @@ function ojlLink(User $admin, Organization $organization): Link
 function ojlRefusal($test, User $user, Link $link): string
 {
     $response = $test->actingAs($user)->get("/links/{$link->uuid}")->assertOk();
-    $response->assertInertia(fn ($page) => $page->component('Links/OrganizationJoin')->missing('organization')->missing('uuid'));
+    $response->assertInertia(fn ($page) => $page->component('Links/Confirm')
+        ->missing('summary')->missing('uuid')
+        // SCRUM-419: a join link says it is one (as its own page always did), and nothing about the organisation.
+        ->where('type', LinkTypeEnum::organizationSelfApply->value));
     expect(session('alert'))->toBeNull();
 
     return $response->viewData('page')['props']['refusal'];

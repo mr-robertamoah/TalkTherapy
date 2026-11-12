@@ -5,6 +5,7 @@
 // mark (PreferenceMatchMark). Everything else is one quiet line of facts, the description, and the
 // card's action.
 import PreferenceMatchMark from './PreferenceMatchMark.vue'
+import SponsoredBadge from './SponsoredBadge.vue'
 
 defineProps({
     kind: { type: String, required: true }, // 'individual' | 'group'
@@ -12,6 +13,8 @@ defineProps({
     description: { type: String, default: '' },
     facts: { type: Array, default: () => [] }, // short strings, shown as "a · b · c"
     matchesPreferences: { type: Boolean, default: false },
+    // SCRUM-180: only ever sent for the card's own client.
+    sponsor: { type: Object, default: null },
 })
 
 const kinds = {
@@ -35,6 +38,7 @@ const kinds = {
                 <span class="sr-only">{{ kinds[kind].label }}:</span>
                 <h3 class="line-clamp-2 break-words text-base font-semibold leading-snug text-gray-900" :title="name">{{ name }}</h3>
                 <p v-if="facts.length" class="mt-0.5 text-xs text-gray-600">{{ facts.filter(Boolean).join(' · ') }}</p>
+                <SponsoredBadge v-if="sponsor" :sponsor="sponsor" class="mt-1.5" />
             </div>
             <!-- SCRUM-113: only the viewer sees this, and never why. -->
             <PreferenceMatchMark v-if="matchesPreferences" />

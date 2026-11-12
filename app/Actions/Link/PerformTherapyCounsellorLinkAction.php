@@ -13,7 +13,6 @@ use App\Enums\LinkStateEnum;
 use App\Enums\RequestStatusEnum;
 use App\Exceptions\GuardianRequiredException;
 use App\Exceptions\LinkException;
-use App\Http\Resources\TherapyMiniResource;
 use App\Models\Link;
 use App\Models\Request;
 use App\Models\Therapy;
@@ -21,7 +20,6 @@ use App\Models\User;
 use App\Notifications\TherapyAssistanceLinkNotification;
 use App\Notifications\TherapyAssistanceRequestAcceptedGuardianNotification;
 use App\Support\LinkConfirmation;
-use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 
 // SCRUM-418: opening a therapy's counsellor link only shows the therapy as a counsellor's request card
@@ -33,10 +31,11 @@ class PerformTherapyCounsellorLinkAction extends Action
 
     public const HAS_COUNSELLOR = 'Sorry, link cannot be used because therapy already has a counsellor';
 
-    // What a counsellor's request card shows (TherapyMiniResource, masked as it masks): the name, whether
-    // it's public or anonymous, when it started, and the client by the name others see. The background
-    // story only when the link was addressed to them or the therapy is public (the user's decision) -- a
-    // general link can be held by anyone.
+    // What a counsellor's request card shows, masked as it masks: the name, whether it's public or
+    // anonymous, when it started, and the client by the name others see. The background story only when
+    // the link was addressed to them or the therapy is public (the user's decision) -- a general link can
+    // be held by anyone. Read directly, not through TherapyMiniResource and its per-viewer extras
+    // (pause state, card status, sponsor -- SCRUM-419).
     public function preview(CreateLinkDTO $createLinkDTO): array
     {
         $this->ensureCounsellor($createLinkDTO);
@@ -45,14 +44,16 @@ class PerformTherapyCounsellorLinkAction extends Action
 
         $this->ensureCanTakeOn($therapy);
 
-        $card = (new TherapyMiniResource($therapy))->resolve(request());
         $to = $createLinkDTO->link->to;
         $addressed = $to && ($to->is($createLinkDTO->user) || $to->is($createLinkDTO->user->counsellor));
 
         return [
-            ...Arr::only($card, ['name', 'public', 'anonymous', 'createdAt']),
+            'name' => $therapy->name,
+            'public' => $therapy->public,
+            'anonymous' => $therapy->anonymous,
+            'createdAt' => $therapy->created_at->diffForHumans(),
             'client' => $therapy->addedby instanceof User ? $therapy->displayNameOf($therapy->addedby) : null,
-            'backgroundStory' => $addressed || $therapy->public ? $card['backgroundStory'] : null,
+            'backgroundStory' => $addressed || $therapy->public ? $therapy->background_story : null,
         ];
     }
 

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Actions\Therapy\ResolveTherapyCardStateAction;
+use App\Actions\Therapy\ResolveTherapySponsorAction;
 use App\DTOs\GetTherapyDTO;
 use App\DTOs\GroupTherapyDTO;
 use App\DTOs\JoinGroupTherapyDTO;
@@ -258,6 +259,8 @@ class GroupTherapyController extends Controller
             // SCRUM-389: the page's "offer to help" / "find a counsellor" from the same rules as the cards.
             if (! $preview) {
                 ResolveTherapyCardStateAction::new()->execute(collect([$therapy]), $user);
+                // SCRUM-180: the "Sponsored" badge, for a member a retainer covers.
+                ResolveTherapySponsorAction::new()->execute(collect([$therapy]), $user);
             }
             $pendingMembershipRequest = $user
                 ? $therapy->pendingMembershipRequestFor($user)

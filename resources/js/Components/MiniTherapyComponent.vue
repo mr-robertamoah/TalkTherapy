@@ -40,6 +40,7 @@ const facts = computed(() => {
         :description="therapy.backgroundStory"
         :facts="facts"
         :matches-preferences="!!therapy.viewer?.matchesPreferences"
+        :sponsor="therapy.sponsor"
     >
         <!-- Action: SCRUM-114, the viewer's button where the server decided it. -->
         <TherapyCardAction v-if="therapy.viewer" :item="therapy" kind="individual" />

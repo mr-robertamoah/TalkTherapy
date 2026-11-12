@@ -27,6 +27,7 @@ use App\Actions\Therapy\EnsureTherapyDataIsValidAction;
 use App\Actions\Therapy\EnsureTherapyExistsAction;
 use App\Actions\Therapy\EnsureUserHasAccessToTherapyAction;
 use App\Actions\Therapy\ResolveTherapyCardStateAction;
+use App\Actions\Therapy\ResolveTherapySponsorAction;
 use App\Actions\User\AlertGuardianAction;
 use App\Actions\User\EnsureUserMeetsTherapyRequirementsAction;
 use App\DTOs\CreateStarDTO;
@@ -301,7 +302,9 @@ class GroupTherapyService extends Service
 
         PreferenceRanking::apply($query, PreferenceMatch::forTherapiesViewedBy($user), $seed);
 
-        return ResolveTherapyCardStateAction::new()->execute($this->listPage($query, ['seed' => $seed]), $user);
+        $page = ResolveTherapySponsorAction::new()->execute($this->listPage($query, ['seed' => $seed]), $user);
+
+        return ResolveTherapyCardStateAction::new()->execute($page, $user);
     }
 
     public function getCounsellorGroupTherapies(?User $user)
@@ -363,7 +366,8 @@ class GroupTherapyService extends Service
 
         $query->latest();
 
-        return $this->listPage($query);
+        // SCRUM-180: the "Sponsored" badge on their own.
+        return ResolveTherapySponsorAction::new()->execute($this->listPage($query), $user);
     }
 
     public function getWardGroupTherapies(?User $user)
@@ -400,11 +404,11 @@ class GroupTherapyService extends Service
             return [];
         }
 
-        return GroupTherapy::query()
+        return ResolveTherapySponsorAction::new()->execute(GroupTherapy::query()
             ->whereParticipant($user)
             ->orderBy('created_at', 'desc')
             ->limit(3)
-            ->get();
+            ->get(), $user);
     }
 
     // SCRUM-386: one page of a GroupTherapyMiniResource list, with what each row reads preloaded.

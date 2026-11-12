@@ -12,7 +12,6 @@ use App\DTOs\UpdateCounsellorDTO;
 use App\Enums\LinkStateEnum;
 use App\Exceptions\DiscussionException;
 use App\Exceptions\LinkException;
-use App\Http\Resources\DiscussionMiniResource;
 use App\Models\Counsellor;
 use App\Models\Discussion;
 use App\Models\Link;
@@ -20,7 +19,6 @@ use App\Models\Therapy;
 use App\Notifications\DiscussionInclusionNotification;
 use App\Support\LinkConfirmation;
 use Illuminate\Database\UniqueConstraintViolationException;
-use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 
 // SCRUM-418: opening a discussion link only shows the discussion (preview()); confirming adds the
@@ -36,7 +34,8 @@ class PerformDiscussionRequestLinkAction extends Action
     public const FULL = 'This discussion already has its maximum number of counsellors.';
 
     // The discussion's name, description and times, the counsellor who started it, and whether it is
-    // about a therapy or a group -- never the client, or the therapy's or group's own name.
+    // about a therapy or a group -- never the client, or the therapy's or group's own name. Read directly,
+    // not through a card's resource and its per-viewer extras (SCRUM-419).
     public function preview(CreateLinkDTO $createLinkDTO): array
     {
         $this->ensureCounsellor($createLinkDTO);
@@ -46,7 +45,10 @@ class PerformDiscussionRequestLinkAction extends Action
         $this->ensureCanJoin($discussion, $createLinkDTO->user->counsellor);
 
         return [
-            ...Arr::only((new DiscussionMiniResource($discussion))->resolve(request()), ['name', 'description', 'startTime', 'endTime']),
+            'name' => $discussion->name,
+            'description' => $discussion->description,
+            'startTime' => $discussion->start_time,
+            'endTime' => $discussion->end_time,
             'startedBy' => $discussion->addedby instanceof Counsellor ? $discussion->addedby->getName() : null,
             'about' => $discussion->for_type === Therapy::class ? 'therapy' : 'group',
         ];
