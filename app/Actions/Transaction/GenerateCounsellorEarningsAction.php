@@ -91,8 +91,8 @@ class GenerateCounsellorEarningsAction extends Action
             if ($for instanceof GroupTherapy) {
                 // An org-financed group payment without a breakdown is the old "my organisation pays"
                 // attribution: the member's own card was charged at the listed price with organization_id
-                // set as a label only. The organisation-share formula doesn't apply to it, so still a no-op
-                // (SCRUM-420 part 3 removes that path).
+                // set as a label only. The organisation-share formula doesn't apply to it, so a no-op. That
+                // path is gone (SCRUM-420); this branch stays for the rows it left behind.
                 if ($transaction->organization_id !== null) {
                     return;
                 }

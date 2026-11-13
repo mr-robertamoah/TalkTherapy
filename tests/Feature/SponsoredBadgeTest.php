@@ -165,7 +165,7 @@ test('a group shows it to a member a retainer covers -- never for a payment the 
     $covered->users()->attach($member->id, ['anonymous' => false]);
     $labelled->users()->attach($member->id, ['anonymous' => false]);
     spbRetainer($member, $organization, $counsellor);
-    // What "my organisation pays" does for a group today: the member's card, the organisation as a label.
+    // What "my organisation pays" did for a group before SCRUM-420: the member's card, the organisation as a label.
     spbCharge($member, $organization, $labelled, ['reference' => (string) Str::uuid()]);
 
     $this->actingAs($member)->get(route('group.therapies.get', ['groupTherapyId' => $covered->id]))
@@ -190,6 +190,8 @@ test('working it out for a page costs the same queries for 4 cards as for 11', f
         }
         $group = GroupTherapy::factory()->create(['addedby_type' => Counsellor::class, 'addedby_id' => $counsellor->id, 'payment_type' => TherapyPaymentTypeEnum::paid->value]);
         $group->users()->attach($client->id, ['anonymous' => false]);
+        // SCRUM-420: and a group charge, by one of its sessions -- the group branch and the join, too.
+        spbCharge($client, $organization, Session::unguarded(fn () => Session::factory()->create(['for_type' => GroupTherapy::class, 'for_id' => $group->id])));
     };
     $count = function () use ($client) {
         $rows = Therapy::query()->get()->concat(GroupTherapy::query()->get());
@@ -231,18 +233,52 @@ test('a guardian\'s ward lists and the counsellor\'s home page never carry it', 
     expect(collect($own['data'] ?? $own)->firstWhere('id', $therapy->id)['sponsor'])->toBe(['organizationName' => 'Acme Wellness']);
 });
 
-test('a refunded session charge, or a charge for a group\'s session, never counts', function () {
+test('a refunded session charge never counts, nor a group session\'s charge for a therapy with the same id', function () {
     $client = User::factory()->adult()->create();
     $organization = spbOrganization();
     $therapy = spbTherapy($client);
     $session = Session::unguarded(fn () => Session::factory()->create(['for_type' => Therapy::class, 'for_id' => $therapy->id]));
     Refund::factory()->create(['transaction_id' => spbCharge($client, $organization, $session)->id, 'status' => RefundStatusEnum::success->value]);
-    // A group session whose id matches nothing of the therapy's -- and one whose for_id equals the therapy's id.
-    $group = GroupTherapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => $client->id, 'payment_type' => TherapyPaymentTypeEnum::paid->value]);
+    // A group session whose for_id equals the therapy's id.
     $groupSession = Session::unguarded(fn () => Session::factory()->create(['for_type' => GroupTherapy::class, 'for_id' => $therapy->id]));
     spbCharge($client, $organization, $groupSession);
 
     expect(spbOwnList($this, $client)[$therapy->id])->not->toHaveKey('sponsor');
-    expect(collect($this->actingAs($client)->getJson(route('api.group.therapies.user'))->assertOk()->json('data'))->firstWhere('id', $group->id))
-        ->not->toHaveKey('sponsor');
+});
+
+// SCRUM-420: the organisation's card pays for group places now -- each member sees only their own place's charge.
+test('a group the organisation\'s card paid for shows it to that member only, by the group or one of its sessions', function () {
+    [$member, $other] = [User::factory()->adult()->create(), User::factory()->adult()->create()];
+    $byGroup = GroupTherapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => $member->id, 'payment_type' => TherapyPaymentTypeEnum::paid->value]);
+    $bySession = GroupTherapy::factory()->create(['addedby_type' => Counsellor::class, 'addedby_id' => spbCounsellor()->id, 'payment_type' => TherapyPaymentTypeEnum::paid->value]);
+    $byGroup->users()->attach($other->id, ['anonymous' => false]);
+    $bySession->users()->attach([$member->id => ['anonymous' => false], $other->id => ['anonymous' => false]]);
+    spbCharge($member, spbOrganization('Acme Wellness'), $byGroup);
+    $session = Session::unguarded(fn () => Session::factory()->create(['for_type' => GroupTherapy::class, 'for_id' => $bySession->id]));
+    spbCharge($other, spbOrganization('Beta School'), $session);
+
+    $this->actingAs($member)->get(route('group.therapies.get', ['groupTherapyId' => $byGroup->id]))
+        ->assertOk()->assertInertia(fn ($page) => $page->where('therapy.sponsor', ['organizationName' => 'Acme Wellness']));
+    $this->actingAs($other)->get(route('group.therapies.get', ['groupTherapyId' => $bySession->id]))
+        ->assertOk()->assertInertia(fn ($page) => $page->where('therapy.sponsor', ['organizationName' => 'Beta School']));
+    // Not another member's charge.
+    $this->actingAs($other)->get(route('group.therapies.get', ['groupTherapyId' => $byGroup->id]))
+        ->assertOk()->assertInertia(fn ($page) => $page->missing('therapy.sponsor'));
+    $this->actingAs($member)->get(route('group.therapies.get', ['groupTherapyId' => $bySession->id]))
+        ->assertOk()->assertInertia(fn ($page) => $page->missing('therapy.sponsor'));
+});
+
+test('a group isn\'t sponsored by a therapy\'s charge with the same id, nor by a refunded group charge', function () {
+    $member = User::factory()->adult()->create();
+    $organization = spbOrganization();
+    $group = GroupTherapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => $member->id, 'payment_type' => TherapyPaymentTypeEnum::paid->value]);
+    // A therapy, and a therapy session, whose ids are the group's.
+    Therapy::unguarded(fn () => spbTherapy($member, ['id' => $group->id]));
+    spbCharge($member, $organization, Therapy::find($group->id));
+    spbCharge($member, $organization, Session::unguarded(fn () => Session::factory()->create(['id' => $group->id + 1000, 'for_type' => Therapy::class, 'for_id' => $group->id])));
+    $groupSession = Session::unguarded(fn () => Session::factory()->create(['for_type' => GroupTherapy::class, 'for_id' => $group->id]));
+    Refund::factory()->create(['transaction_id' => spbCharge($member, $organization, $groupSession)->id, 'status' => RefundStatusEnum::success->value]);
+
+    $this->actingAs($member)->get(route('group.therapies.get', ['groupTherapyId' => $group->id]))
+        ->assertOk()->assertInertia(fn ($page) => $page->missing('therapy.sponsor'));
 });

@@ -47,14 +47,14 @@ class OrganizationFinancedTransactionRefundedNotification extends Notification i
     public function toMail(object $notifiable): MailMessage
     {
         $mail = (new MailMessage)
-            ->subject('Financed Session Refunded')
+            ->subject('Financed Payment Refunded')
             ->greeting("Hello {$notifiable->name}!")
-            ->line("A session/therapy your organization financed (reference {$this->transaction->reference}) has been refunded.");
+            ->line("A session, therapy or group place your organization financed (reference {$this->transaction->reference}) has been refunded.");
 
         if ($this->needsManualReview) {
-            $mail->error()->line('The counsellor\'s earning for this engagement has already been paid out, or a payout is already in progress for it, and could not be automatically reversed -- this needs manual follow-up.');
+            $mail->error()->line('A counsellor\'s earning for this has already been paid out, or a payout is already in progress for it, and could not be automatically reversed -- this needs manual follow-up.');
         } else {
-            $mail->line('The counsellor\'s pending earning for this engagement has been reversed.');
+            $mail->line('The pending counsellor earnings for this have been reversed.');
         }
 
         return $mail->action('Go Home', url(''))->line("Thank you for choosing to 'TalkTherapy'.");
@@ -75,8 +75,8 @@ class OrganizationFinancedTransactionRefundedNotification extends Notification i
     public static function present(array $data): NotificationEntry
     {
         return new NotificationEntry(
-            'A session or therapy your organization financed was refunded',
-            ! empty($data['needsManualReview']) ? "The counsellor's earning couldn't be reversed automatically and needs manual follow-up." : "The counsellor's pending earning was reversed.",
+            'A session, therapy or group place your organization financed was refunded',
+            ! empty($data['needsManualReview']) ? "A counsellor's earning couldn't be reversed automatically and needs manual follow-up." : 'The pending counsellor earnings were reversed.',
             NotificationEntry::link('organizations.mine.dashboard', []),
         );
     }

@@ -22,14 +22,14 @@ use Illuminate\Support\Collection;
 // employer or school. On each model's viewerSponsor: ['organizationName' => ...], or null.
 //
 // Sponsored means the organisation itself paid, in one of two ways (the user's decision, 2026-11-12):
-//  (a) a therapy, or one of its sessions, charged to the organisation's own card
+//  (a) a therapy or group, or one of its sessions, charged to the organisation's own card for this viewer
 //      (ChargeOrganizationForModelAction -- its reference prefix, never organization_id alone: a group's
-//      "organisation pays" still charges the member's card and keeps the organisation only as a label,
-//      SCRUM-420), successful and not refunded. The most recent such payment names the organisation; a
-//      deleted organisation is still named for what it paid.
+//      "organisation pays" made before SCRUM-420 charged the member's card and kept the organisation only as
+//      a label), successful and not refunded. The most recent such payment names the organisation; a deleted
+//      organisation is still named for what it paid. The client of a group is each of its members, and its
+//      user creator -- each sees only their own place's charges.
 //  (b) otherwise, a retainer covering them now (GetRetainerCoveringOrganizationAction, as the payment gate
-//      asks it) -- for a paid therapy, and the only way for a group: the client of a group is each of its
-//      members, and its user creator.
+//      asks it) -- for a paid therapy or group.
 // A handful of queries per page, whatever its size: what it reads is loaded once for the page (kept when
 // PreloadTherapyListAction / PreloadGroupTherapyListAction already did), then one for the charges and one
 // for the viewer's retainers.
@@ -53,7 +53,7 @@ class ResolveTherapySponsorAction extends Action
             return $rows;
         }
 
-        $paidBy = $this->organizationCharges($models->filter(fn ($row) => $row instanceof Therapy), $viewer);
+        $paidBy = $this->organizationCharges($models, $viewer);
 
         // Keyed "class:id" => true: the paid ones (b) is asked for.
         $paid = $models
@@ -86,35 +86,41 @@ class ResolveTherapySponsorAction extends Action
         return $therapy->viewerSponsor;
     }
 
-    // "therapy id" => the organisation on its latest qualifying charge, the therapy's or a session's.
-    private function organizationCharges(Collection $therapies, User $viewer): Collection
+    // "class:id" => the organisation on the viewer's latest qualifying charge for that therapy or group, its own or
+    // one of its sessions'.
+    private function organizationCharges(Collection $models, User $viewer): Collection
     {
-        if ($therapies->isEmpty()) {
+        if ($models->isEmpty()) {
             return collect();
         }
 
-        $ids = $therapies->pluck('id');
+        $ids = $models->groupBy(fn ($row) => $row::class)->map(fn (Collection $rows) => $rows->pluck('id'));
 
         return Transaction::query()
             ->leftJoin('sessions', function ($join) {
                 $join->on('sessions.id', '=', 'transactions.for_id')
-                    ->where('transactions.for_type', Session::class)
-                    ->where('sessions.for_type', Therapy::class);
+                    ->where('transactions.for_type', Session::class);
             })
-            // The client starts every charge for their therapy (EnsureCanPayForModelAction: participants only).
+            // The client starts every charge for their place (EnsureCanPayForModelAction: participants only).
             ->where('transactions.user_id', $viewer->id)
             ->where('transactions.status', TransactionStatusEnum::success->value)
             ->whereNotNull('transactions.organization_id')
             ->where('transactions.reference', 'like', ChargeOrganizationForModelAction::REFERENCE_PREFIX.'%')
             ->whereDoesntHave('successfulRefund')
             ->where(function ($query) use ($ids) {
-                $query->where(fn ($query) => $query->where('transactions.for_type', Therapy::class)->whereIn('transactions.for_id', $ids))
-                    ->orWhere(fn ($query) => $query->where('transactions.for_type', Session::class)->whereIn('sessions.for_id', $ids));
+                // Each therapy or group's own charge, or one for one of its sessions.
+                foreach ($ids as $class => $classIds) {
+                    $query->orWhere(fn ($query) => $query->where('transactions.for_type', $class)->whereIn('transactions.for_id', $classIds))
+                        ->orWhere(fn ($query) => $query->where('transactions.for_type', Session::class)
+                            ->where('sessions.for_type', $class)->whereIn('sessions.for_id', $classIds));
+                }
             })
             ->with(['organization' => fn ($query) => $query->withTrashed()])
             ->orderByDesc('transactions.id')
-            ->get(['transactions.id', 'transactions.organization_id', 'transactions.for_type', 'transactions.for_id', 'sessions.for_id as session_therapy_id'])
-            ->groupBy(fn (Transaction $charge) => Therapy::class.':'.($charge->for_type === Therapy::class ? $charge->for_id : $charge->session_therapy_id))
+            ->get(['transactions.id', 'transactions.organization_id', 'transactions.for_type', 'transactions.for_id', 'sessions.for_type as session_parent_type', 'sessions.for_id as session_parent_id'])
+            ->groupBy(fn (Transaction $charge) => $charge->for_type === Session::class
+                ? $charge->session_parent_type.':'.$charge->session_parent_id
+                : $charge->for_type.':'.$charge->for_id)
             ->map(fn (Collection $charges) => $charges->first()->organization)
             ->filter(fn ($organization) => $organization instanceof Organization);
     }
