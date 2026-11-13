@@ -25,7 +25,7 @@ class GetOrganizationFinancedTransactionsAction extends Action
         $paginator = Transaction::query()
             ->where('organization_id', $dto->organization->id)
             ->where('for_type', '!=', OrganizationInvoice::class)
-            ->with(['for', 'earnings.payout'])
+            ->with(['for', 'earnings.payout', 'earnings.counsellor'])
             ->latest()
             ->paginate(PaginationEnum::preferencesPagination->value);
 

@@ -64,12 +64,21 @@ class GenerateCounsellorEarningsAction extends Action
                 return;
             }
 
+            // SCRUM-420: an organisation card charge records its split between counsellors when it's made -- each
+            // earning is that, not recomputed now (a group's counsellors or terms may have changed since).
+            if ($transaction->organization_id !== null && $transaction->breakdown) {
+                $this->generateFromBreakdown($transaction);
+
+                return;
+            }
+
             $for = ResolveTransactionSubjectAction::new()->execute($transaction->for);
 
             if ($for instanceof Therapy) {
                 // TT-7.3b-d/SCRUM-235: this used to be a blanket no-op for every org-financed
                 // transaction ($transaction->organization_id !== null) -- fully fixed now for the
-                // individual-Therapy/Session case (the live bug this ticket exists to close).
+                // individual-Therapy/Session case. Only an org charge made before SCRUM-420 has no
+                // breakdown and is recomputed here.
                 if ($transaction->organization_id !== null) {
                     $this->generateForOrgFinancedIndividual($transaction, $for);
                 } else {
@@ -80,14 +89,10 @@ class GenerateCounsellorEarningsAction extends Action
             }
 
             if ($for instanceof GroupTherapy) {
-                // Deliberately still a no-op for an org-financed GroupTherapy -- carried forward
-                // from TT-7.3b-b/-c's own scope boundary (GroupTherapy org billing was never
-                // built: this transaction's `amount` is the client's own listed price, charged to
-                // their personal card with organization_id set as pure attribution, not the
-                // fee+share figure TT-7.3b-b computes for an individual engagement -- the formula
-                // below does not apply to it). Paying a counsellor 100% of it here, because
-                // shareEqually/sharePercentage only govern same-therapy multi-counsellor splits
-                // and say nothing about org-vs-counsellor splits, would still be wrong.
+                // An org-financed group payment without a breakdown is the old "my organisation pays"
+                // attribution: the member's own card was charged at the listed price with organization_id
+                // set as a label only. The organisation-share formula doesn't apply to it, so still a no-op
+                // (SCRUM-420 part 3 removes that path).
                 if ($transaction->organization_id !== null) {
                     return;
                 }
@@ -95,6 +100,51 @@ class GenerateCounsellorEarningsAction extends Action
                 $this->generateForGroup($transaction, $for);
             }
         });
+    }
+
+    // SCRUM-420: one earning per counsellor line of an organisation card charge, as charged. Its gross is that line's
+    // net plus its fee, so the earnings add up to the transaction's amount -- they do by construction; if not, it's
+    // logged: an amount over the breakdown goes to the first written line's fee, and a breakdown over the amount pays out
+    // nothing (never more than was collected) until it's reconciled by hand. A counsellor deleted since is still paid
+    // (soft-deleted); one that's gone entirely is skipped and logged.
+    private function generateFromBreakdown(Transaction $transaction): void
+    {
+        $lines = collect($transaction->breakdown['lines'] ?? [])->values();
+        $difference = $transaction->amount - $lines->sum('net_amount') - $lines->sum('fee_amount');
+
+        if ($difference !== 0) {
+            Log::warning('Org-financed counsellor earning: the recorded breakdown does not add up to the amount charged. Flagging for manual reconciliation.', [
+                'transaction_id' => $transaction->id,
+                'transaction_amount' => $transaction->amount,
+                'difference' => $difference,
+            ]);
+
+            if ($difference < 0) {
+                return;
+            }
+        }
+
+        $counsellors = Counsellor::withTrashed()->whereIn('id', $lines->pluck('counsellor_id'))->get()->keyBy('id');
+
+        foreach ($lines as $line) {
+            $counsellor = $counsellors->get($line['counsellor_id']);
+
+            if (! $counsellor) {
+                Log::warning('Cannot generate an org-financed counsellor earning -- the counsellor no longer exists.', [
+                    'transaction_id' => $transaction->id,
+                    'counsellor_id' => $line['counsellor_id'],
+                ]);
+
+                continue;
+            }
+
+            $net = (int) $line['net_amount'];
+            // Any surplus goes on the first line actually written.
+            $fee = (int) $line['fee_amount'] + $difference;
+            $difference = 0;
+
+            $this->createEarning($transaction, $counsellor, $net + $fee, $fee, $net);
+        }
     }
 
     private function generateForIndividual(Transaction $transaction, Therapy $therapy): void

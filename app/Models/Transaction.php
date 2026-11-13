@@ -14,10 +14,15 @@ class Transaction extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['for_type', 'for_id', 'user_id', 'organization_id', 'reference', 'amount', 'currency', 'status'];
+    protected $fillable = ['for_type', 'for_id', 'user_id', 'organization_id', 'reference', 'amount', 'currency', 'status', 'breakdown'];
+
+    // SCRUM-420: an organisation card charge's split between counsellors -- their terms with the organisation, so
+    // never sent to the member who paid (TransactionController returns this model as JSON).
+    protected $hidden = ['breakdown'];
 
     protected $casts = [
         'amount' => 'integer',
+        'breakdown' => 'array',
     ];
 
     // TT-7.3b-a/SCRUM-231 (security-engineer finding): `for` (this relation) and `organization()`

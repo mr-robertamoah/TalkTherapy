@@ -5,6 +5,7 @@ namespace App\Actions\Transaction;
 use App\Actions\Action;
 use App\Enums\TransactionStatusEnum;
 use App\Enums\TransactionStatusSourceEnum;
+use App\Models\GroupTherapy;
 use App\Models\Session;
 use App\Models\Therapy;
 use App\Models\Transaction;
@@ -27,7 +28,8 @@ class ReconcileStalePendingOrganizationChargesAction extends Action
         Transaction::query()
             ->where('status', TransactionStatusEnum::pending->value)
             ->whereNotNull('organization_id')
-            ->whereIn('for_type', [Therapy::class, Session::class])
+            // SCRUM-420: a whole group, too -- the organisation's card pays for group places now.
+            ->whereIn('for_type', [Therapy::class, Session::class, GroupTherapy::class])
             // Only real org charges (ChargeOrganizationForModelAction's references) -- not a member's
             // own card checkout for a group session, which also carries organization_id.
             ->where('reference', 'like', ChargeOrganizationForModelAction::REFERENCE_PREFIX.'%')

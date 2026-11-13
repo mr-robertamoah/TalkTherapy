@@ -197,7 +197,8 @@ test('no organization throws', function () {
     ]));
 })->throws(TransactionException::class);
 
-test('a group therapy is rejected -- not yet supported', function () {
+// SCRUM-420: groups are charged now (ChargeOrganizationForGroupTest) -- but never one nobody runs.
+test('a group therapy with no active counsellor throws', function () {
     $organization = Organization::factory()->create();
     OrganizationPaymentInstrument::factory()->create(['organization_id' => $organization->id]);
     $groupTherapy = GroupTherapy::factory()->create([
@@ -210,11 +211,9 @@ test('a group therapy is rejected -- not yet supported', function () {
         'for' => $groupTherapy,
         'organization' => $organization,
     ]));
-})->throws(TransactionException::class);
+})->throws(TransactionException::class, 'This engagement has no assigned counsellor to bill via an organization.');
 
-// Reviewer finding: the GroupTherapy rejection must apply to a PER_SESSION session of a
-// GroupTherapy too, not just a GroupTherapy passed in directly.
-test('a session belonging to a group therapy is also rejected', function () {
+test('a session of a group therapy with no active counsellor throws', function () {
     $organization = Organization::factory()->create();
     OrganizationPaymentInstrument::factory()->create(['organization_id' => $organization->id]);
     $groupTherapy = GroupTherapy::factory()->create([
@@ -228,7 +227,7 @@ test('a session belonging to a group therapy is also rejected', function () {
         'for' => $session,
         'organization' => $organization,
     ]));
-})->throws(TransactionException::class);
+})->throws(TransactionException::class, 'This engagement has no assigned counsellor to bill via an organization.');
 
 test('a therapy with no assigned counsellor throws', function () {
     $organization = Organization::factory()->create();

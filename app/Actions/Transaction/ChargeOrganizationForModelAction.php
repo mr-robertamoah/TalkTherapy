@@ -3,34 +3,31 @@
 namespace App\Actions\Transaction;
 
 use App\Actions\Action;
-use App\Actions\Organization\ComputeCounsellorCompensationShareAction;
+use App\Actions\Organization\ComputeOrganizationChargeBreakdownAction;
 use App\Actions\Organization\GetActiveOrganizationCounsellorAction;
+use App\Actions\Therapy\GetTherapyClientsAction;
 use App\DTOs\TransactionDTO;
+use App\Enums\SessionStatusEnum;
 use App\Enums\TransactionStatusEnum;
 use App\Enums\TransactionStatusSourceEnum;
 use App\Exceptions\TransactionException;
+use App\Models\Counsellor;
 use App\Models\GroupTherapy;
-use App\Models\OrganizationCounsellor;
 use App\Models\OrganizationPaymentInstrument;
+use App\Models\Session;
+use App\Models\Therapy;
 use App\Models\Transaction;
+use App\Models\User;
 use App\Services\Paystack\PaystackClient;
 use Illuminate\Http\Client\HttpClientException;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 
 // TT-7.3b-b/SCRUM-233: charges an organization the actual cost of a SINGLE Therapy/Session
-// engagement with ONE counsellor -- computing the cost, charging the saved instrument, and
+// engagement (SCRUM-420: or one member's place in a group) -- computing the cost, charging the saved instrument, and
 // recording a Transaction, all in one place, so TT-7.3b-c (pay-per-use collection) builds no
 // independent implementation of that combination for its own per-session charges.
-//
-// Architect review (documentation/decision-log.md, 2026-09-04 SCRUM-233 entry): TT-7.3b-e
-// (retainer settlement) does NOT reuse this action's cost-computation half as-is -- its `for` will
-// be a whole settled invoice period (potentially many sessions, several counsellors), which this
-// action's single-counsellor/single-listed-amount resolution has no defined behavior for. TT-7.3b-e
-// must either extend this action with an invoice-aware branch or call the lower-level compensation
-// primitives (ComputeCounsellorCompensationShareAction, GetActiveOrganizationCounsellorAction)
-// directly per line item and only reuse this action's charge-and-record tail -- decide which when
-// that ticket starts, not assumed here.
 //
 // Callers own their OWN eligibility gate (mirrors TransactionService::initiateCharge()'s own
 // ensure-chain) before ever reaching this action -- this action only re-checks the hard
@@ -45,10 +42,11 @@ use Illuminate\Support\Str;
 // independent call creating a second successful charge) -- mirrors EnsureCanInitiateChargeAction's
 // role in the personal-pay flow.
 //
-// GroupTherapy is deliberately out of scope (rejected below), mirroring TT-7.5a/TT-7.5b's own
-// precedent of excluding group therapy from payment-gating features it hasn't been extended to
-// yet -- a group therapy can have several active counsellors, each with their own, potentially
-// different, org compensation terms, and "the actual cost" has no defined meaning here yet.
+// SCRUM-420: a GroupTherapy (or one of its sessions) is charged once per member -- each member's place, at the
+// split ComputeOrganizationChargeBreakdownAction works out across its active counsellors. Every active counsellor
+// must have terms with the organisation, or the charge is refused (no member's card is charged instead). The
+// lock, the "already paid" check and the "still being confirmed" check are the member's own for a group: one
+// member's charge never blocks another's.
 class ChargeOrganizationForModelAction extends Action
 {
     // SCRUM-248: every org charge's reference starts with this (the reconcile sweep selects by it).
@@ -60,26 +58,21 @@ class ChargeOrganizationForModelAction extends Action
             throw new TransactionException('An organization is required to charge via the org-charge primitive.', 422);
         }
 
-        // Reviewer finding: checked on the RESOLVED subject, not just $dto->for directly -- a
-        // PER_SESSION session belonging to a GroupTherapy must be rejected exactly the same way,
-        // not merely happen to fall through to the generic "no counsellor" exception below because
-        // GroupTherapy currently has no singular counsellor() accessor for $therapy?->counsellor
-        // to resolve.
         $therapy = ResolveTransactionSubjectAction::new()->execute($dto->for);
 
-        if ($dto->for instanceof GroupTherapy || $therapy instanceof GroupTherapy) {
-            throw new TransactionException('Organization billing is not yet supported for group therapies.', 422);
-        }
+        $counsellors = $therapy instanceof GroupTherapy
+            ? $therapy->activeCounsellors()->values()
+            : collect([$therapy?->counsellor])->filter()->values();
 
-        $counsellor = $therapy?->counsellor;
-
-        if (! $counsellor) {
+        if ($counsellors->isEmpty()) {
             throw new TransactionException('This engagement has no assigned counsellor to bill via an organization.', 422);
         }
 
-        $affiliation = GetActiveOrganizationCounsellorAction::new()->execute($counsellor, $dto->organization);
+        $terms = $counsellors->mapWithKeys(fn (Counsellor $counsellor) => [
+            $counsellor->id => GetActiveOrganizationCounsellorAction::new()->execute($counsellor, $dto->organization)?->latestCompensation,
+        ]);
 
-        if (! $affiliation || ! $affiliation->latestCompensation) {
+        if ($terms->containsStrict(null)) {
             throw new TransactionException('This counsellor has no active compensation terms with this organization.', 422);
         }
 
@@ -97,49 +90,57 @@ class ChargeOrganizationForModelAction extends Action
         // org's card twice. Keyed on the exact subject being charged, held for the full
         // charge-and-record sequence below, and re-checked (not just locked) since the caller's
         // own check ran before this lock was acquired.
-        $lock = Cache::lock('charge-organization-for:'.$dto->for::class.':'.$dto->for->id, 30);
+        $isGroup = $therapy instanceof GroupTherapy;
+        $lock = Cache::lock('charge-organization-for:'.$dto->for::class.':'.$dto->for->id.($isGroup ? ':'.$dto->user->id : ''), 30);
 
         if (! $lock->get()) {
             throw new TransactionException('This is already being charged. Please wait a moment before trying again.', 429);
         }
 
         try {
-            return $this->chargeAndRecord($dto, $affiliation, $instrument);
+            return $this->chargeAndRecord($dto, $therapy, $counsellors, $terms, $instrument);
         } finally {
             $lock->release();
         }
     }
 
-    private function chargeAndRecord(TransactionDTO $dto, OrganizationCounsellor $affiliation, OrganizationPaymentInstrument $instrument): Transaction
+    private function chargeAndRecord(TransactionDTO $dto, Therapy|GroupTherapy $therapy, Collection $counsellors, Collection $terms, OrganizationPaymentInstrument $instrument): Transaction
     {
-        if (
-            $dto->for->transactions()
-                ->where('status', TransactionStatusEnum::success->value)
-                ->exists()
-        ) {
+        if ($this->transactionsOf($dto, $therapy)->where('status', TransactionStatusEnum::success->value)->exists()) {
             throw new TransactionException('This has already been paid for.', 422);
         }
 
-        $this->ensureNoChargeIsStillBeingConfirmed($dto);
+        $this->ensureNoChargeIsStillBeingConfirmed($dto, $therapy);
+
+        // SCRUM-420 (security review): a group session that didn't take place has nothing for the organisation to pay.
+        if ($dto->for instanceof Session && $dto->for->status === SessionStatusEnum::failed->value) {
+            throw new TransactionException('This session did not take place, so there is nothing for your organization to pay.', 422);
+        }
 
         $currency = GetPayableAmountAction::new()->execute($dto->for)['currency'];
         // Minor units -- the counsellor's own listed rate for this specific engagement, used both
         // as ComputeCounsellorCompensationShareAction's COUNSELLOR_RATE basis AND as the platform
-        // fee's own basis below (never the org-compensation share itself -- see the fee comment).
+        // fee's own basis (never the org-compensation share itself).
         $counsellorListedAmount = ResolveCounsellorListedAmountAction::new()->execute($dto->for);
-
-        $counsellorShare = ComputeCounsellorCompensationShareAction::new()->execute($affiliation->latestCompensation, $counsellorListedAmount);
 
         // Decision 2 (SCRUM-230 review): the platform fee is charged on the counsellor's own
         // LISTED rate -- the "value of the service" -- never on the org-compensation share itself.
         // This is what makes a FREE compensation arrangement resolve cleanly and non-arbitrarily:
         // a $0 share still means a nonzero fee ("the org is simply charged the platform fee
-        // alone"), which a fee-on-share calculation could never produce. ComputePlatformFeeAction
-        // is the same shared primitive GenerateCounsellorEarningsAction uses -- only the base
-        // amount passed in differs between the two callers.
-        $feeAmount = $counsellorListedAmount !== null ? ComputePlatformFeeAction::new()->execute($counsellorListedAmount) : 0;
+        // alone"). SCRUM-420: worked out per counsellor by the breakdown action the retainer invoice
+        // uses too; a group member's seat shares a fixed rate across the group's members.
+        $breakdown = ComputeOrganizationChargeBreakdownAction::new()->execute(
+            $counsellors,
+            fn (Counsellor $counsellor) => $terms[$counsellor->id],
+            $counsellorListedAmount,
+            $this->seatOf($dto, $therapy)
+        );
 
-        $minorUnitsAmount = $counsellorShare + $feeAmount;
+        if ($breakdown['skipped']) {
+            throw new TransactionException('We could not work out this organization charge. Please contact support.', 422);
+        }
+
+        $minorUnitsAmount = array_sum(array_column($breakdown['lines'], 'net')) + array_sum(array_column($breakdown['lines'], 'fee'));
 
         // SCRUM-243: the Transaction row is created BEFORE the real charge, not after -- a
         // caller-generated reference (mirrors SettleOrganizationInvoiceAction/
@@ -160,6 +161,12 @@ class ChargeOrganizationForModelAction extends Action
             'amount' => $minorUnitsAmount,
             'currency' => $currency,
             'status' => TransactionStatusEnum::pending->value,
+            // SCRUM-420: what each counsellor is owed from this charge, as charged -- earnings are made from this.
+            'breakdown' => ['lines' => array_map(fn (array $line) => [
+                'counsellor_id' => $line['counsellor']->id,
+                'net_amount' => $line['net'],
+                'fee_amount' => $line['fee'],
+            ], $breakdown['lines'])],
         ]);
 
         $transaction->statusHistories()->create([
@@ -208,12 +215,25 @@ class ChargeOrganizationForModelAction extends Action
     // the same thing is settled first: while it is younger than the reconcile grace period Paystack
     // may simply not have it yet, so this refuses; once older, Paystack is asked, and only a definite
     // failure lets a new charge go ahead.
-    private function ensureNoChargeIsStillBeingConfirmed(TransactionDTO $dto): void
+    private function ensureNoChargeIsStillBeingConfirmed(TransactionDTO $dto, Therapy|GroupTherapy $therapy): void
     {
-        $pending = $dto->for->transactions()
+        $pending = $this->transactionsOf($dto, $therapy)
             ->where('status', TransactionStatusEnum::pending->value)
             ->where('reference', 'like', self::REFERENCE_PREFIX.'%')
             ->get();
+
+        // SCRUM-420 (security review): a checkout on the member's own card started moments ago may still be completed,
+        // and the place would be paid twice. Older ones are abandoned checkouts (Paystack's own page was left).
+        $personalCheckoutInProgress = $this->transactionsOf($dto, $therapy)
+            ->where('user_id', $dto->user->id)
+            ->where('status', TransactionStatusEnum::pending->value)
+            ->where('reference', 'not like', self::REFERENCE_PREFIX.'%')
+            ->where('created_at', '>', now()->subMinutes(config('organization.stale_charge_reconcile_after_minutes')))
+            ->exists();
+
+        if ($personalCheckoutInProgress) {
+            throw new TransactionException('A payment you started for this is still open. Finish or leave it, then try again later.', 409);
+        }
 
         foreach ($pending as $transaction) {
             $stillConfirming = new TransactionException('A previous charge for this is still being confirmed. It is checked automatically; please try again later.', 409);
@@ -236,5 +256,35 @@ class ChargeOrganizationForModelAction extends Action
                 throw $stillConfirming;
             }
         }
+    }
+
+    // SCRUM-420: a group has a payer per member, so "already paid" and "still being confirmed" are the member's own
+    // (EnsureCanInitiateChargeAction's rule); a therapy has one payer, so any charge for it counts.
+    private function transactionsOf(TransactionDTO $dto, Therapy|GroupTherapy $therapy)
+    {
+        return $dto->for->transactions()
+            ->when($therapy instanceof GroupTherapy, fn ($query) => $query->where('user_id', $dto->user->id));
+    }
+
+    // [this member's place, how many]: a fixed rate is shared across the group's places, by its maximum size (the
+    // user's decision, 2026-11-13) -- members pay at different times, so counting who's there when each pays could
+    // have the organisations together pay more than the rate. Refused if the payer isn't one of its members (the
+    // caller's gate already checked this; a counsellor never pays into a group).
+    private function seatOf(TransactionDTO $dto, Therapy|GroupTherapy $therapy): array
+    {
+        if ($therapy instanceof Therapy) {
+            return [0, 1];
+        }
+
+        // For a session, its members are who had joined before it ended (the retainer's rule): someone who joined
+        // later can't have their organisation pay for it.
+        $clients = GetTherapyClientsAction::new()->execute($therapy, $dto->for instanceof Session ? $dto->for->end_time : null);
+        $seat = $clients->search(fn (User $client) => $client->is($dto->user));
+
+        if ($seat === false) {
+            throw new TransactionException('You are not authorized to pay for this via this organization.', 403);
+        }
+
+        return [$seat, max($therapy->max_users, $clients->count())];
     }
 }

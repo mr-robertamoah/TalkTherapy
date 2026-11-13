@@ -33,14 +33,11 @@ class OrganizationFinancedTransactionResource extends JsonResource
     public function toArray(Request $request): array
     {
         $subject = ResolveTransactionSubjectAction::new()->execute($this->for);
-        // Reviewer finding: safe to take the first (and only) earning here without further checks
-        // -- a settlement Transaction (for_type = OrganizationInvoice, which DOES fan out into
-        // many earnings) is already excluded from this list entirely by
-        // GetOrganizationFinancedTransactionsAction's own query; every remaining subject type
-        // generates at most one earning (GenerateCounsellorEarningsAction: exactly one for an
-        // org-financed Therapy, none at all for an org-financed GroupTherapy, since org billing
-        // was never built for group therapies -- see the comment on `counsellorName` below).
-        $earning = $this->whenLoaded('earnings', fn () => $this->earnings->first());
+        // SCRUM-420: a group charge has one earning per counsellor running it (a settlement Transaction, which fans
+        // out per invoice line, is excluded from this list by GetOrganizationFinancedTransactionsAction), so the row
+        // shows their totals and every counsellor's name; a therapy has one.
+        $earnings = $this->whenLoaded('earnings', fn () => $this->earnings, collect());
+        $payoutStatuses = $earnings->map(fn (CounsellorEarning $earning) => $earning->payout?->status)->unique();
 
         return [
             'id' => $this->id,
@@ -49,17 +46,18 @@ class OrganizationFinancedTransactionResource extends JsonResource
             'subjectLabel' => $this->subjectLabel($subject),
             // The counsellor's own name is professional/public information (already shown
             // throughout this org's existing dashboard, e.g. CounsellorsSection.vue) -- unlike the
-            // client-authored subjectLabel above, this is not a client-anonymity concern. Only
-            // ever resolvable for an individual Therapy -- GroupTherapy org billing was never
-            // built (TT-7.3b-b/-c's own scope boundary, carried forward here), so this is
-            // deliberately null for a GroupTherapy row rather than an arbitrary "first counsellor".
-            'counsellorName' => $subject instanceof Therapy ? $subject->counsellor?->name : null,
+            // client-authored subjectLabel above, this is not a client-anonymity concern. For a group,
+            // the counsellors its earnings went to (none for a payment from before SCRUM-420).
+            'counsellorName' => $subject instanceof Therapy
+                ? $subject->counsellor?->name
+                : ($earnings->isNotEmpty() ? $earnings->map(fn (CounsellorEarning $earning) => $earning->counsellor?->name)->filter()->join(', ') : null),
             'amount' => $this->amount,
             'currency' => $this->currency,
             'status' => $this->status,
-            'counsellorShare' => $earning instanceof CounsellorEarning ? $earning->net_amount : null,
-            'platformFee' => $earning instanceof CounsellorEarning ? $earning->fee_amount : null,
-            'payoutStatus' => $earning instanceof CounsellorEarning ? $earning->payout?->status : null,
+            'counsellorShare' => $earnings->isNotEmpty() ? $earnings->sum('net_amount') : null,
+            'platformFee' => $earnings->isNotEmpty() ? $earnings->sum('fee_amount') : null,
+            // One status when they all agree; "MIXED" when some counsellors have been paid out and others not.
+            'payoutStatus' => $earnings->isEmpty() ? null : ($payoutStatuses->count() === 1 ? $payoutStatuses->first() : 'MIXED'),
             'createdAt' => $this->created_at,
         ];
     }
