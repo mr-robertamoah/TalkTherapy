@@ -3,6 +3,7 @@
 namespace App\Actions\Video;
 
 use App\Actions\Action;
+use App\Actions\VideoConsent\HasValidVideoConsentForSessionAction;
 use App\Enums\SuspensionScopeEnum;
 use App\Jobs\RemovePersonFromLiveCallJob;
 use App\Models\GroupTherapy;
@@ -30,6 +31,9 @@ use Throwable;
 //      applies while the suspension is active.
 //    - NO_LONGER_MEMBER (SCRUM-73): the person is ejected from a group's room once they are no
 //      longer one of its participants (they left the group). Never a 1:1 room.
+//    - VIDEO_CONSENT_WITHDRAWN (SCRUM-313): a minor is ejected from a group's room once their
+//      guardians' consent no longer covers that session. Never a 1:1 room (InvalidateVideoConsentAction
+//      ends a 1:1 call itself), and never the rest of the group's call.
 // A room it can't do now (the lock was busy, or a step failed) is retried from the queue
 // (RemovePersonFromLiveCallJob), which runs the same re-checked removal.
 class RemovePersonFromLiveCallsAction extends Action
@@ -39,6 +43,8 @@ class RemovePersonFromLiveCallsAction extends Action
     public const SUSPENSION = 'suspension';
 
     public const NO_LONGER_MEMBER = 'no_longer_member';
+
+    public const VIDEO_CONSENT_WITHDRAWN = 'video_consent_withdrawn';
 
     // How many rooms they were taken out of now.
     public function execute(User $person, string $reason, ?int $suspensionId = null): int
@@ -92,6 +98,16 @@ class RemovePersonFromLiveCallsAction extends Action
     {
         if ($reason === self::GUARDIAN_LOSS) {
             return $person->isPausedForMissingGuardian(fresh: true);
+        }
+
+        if ($reason === self::VIDEO_CONSENT_WITHDRAWN) {
+            $session = $live->videoSession->session;
+
+            // The join gate's own rule: an adult (or one of the group's counsellors) never needs consent, so a lapsed
+            // grant from when they were a minor never takes them out.
+            return $session->for instanceof GroupTherapy
+                && EnsureVideoIsAvailableForSessionAction::new()->groupVideoNeedsGuardianConsent($session->for, $person)
+                && ! HasValidVideoConsentForSessionAction::new()->forGroupMember($session, $person);
         }
 
         if ($reason === self::NO_LONGER_MEMBER) {

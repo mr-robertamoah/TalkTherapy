@@ -38,11 +38,11 @@ class IsVideoConsentOutstandingForSessionAction extends Action
         $therapy = $wardResolver->therapyFor($session);
 
         $hasValidSessionGrant = VideoConsent::query()
-            ->whereValidFor(Session::class, $session->id)
+            ->whereValidFor($ward->id, Session::class, $session->id)
             ->exists();
 
         $hasValidTherapyGrant = VideoConsent::query()
-            ->whereValidFor(Therapy::class, $therapy->id)
+            ->whereValidFor($ward->id, Therapy::class, $therapy->id)
             ->exists();
 
         return ! $hasValidSessionGrant && ! $hasValidTherapyGrant;

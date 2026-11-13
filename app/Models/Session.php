@@ -111,10 +111,10 @@ class Session extends Model
     }
 
     // TT-3.1e-e/SCRUM-284: exactly-once guardian video-consent reminder tracking for this
-    // session -- see VideoConsentReminder's own docblock.
-    public function videoConsentReminder()
+    // session -- see VideoConsentReminder's own docblock. SCRUM-313: one per ward.
+    public function videoConsentReminders()
     {
-        return $this->hasOne(VideoConsentReminder::class);
+        return $this->hasMany(VideoConsentReminder::class);
     }
 
     public function transactions()

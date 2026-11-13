@@ -3,6 +3,7 @@
 namespace App\Actions\VideoConsent;
 
 use App\Actions\Action;
+use App\Enums\VideoConsentLevelEnum;
 use App\Enums\VideoConsentModeEnum;
 use App\Exceptions\VideoConsentException;
 use App\Models\Session;
@@ -76,7 +77,7 @@ class GrantVideoConsentAction extends Action
             $consentable::query()->lockForUpdate()->find($consentable->id);
 
             $existing = VideoConsent::query()
-                ->whereValidFor($consentable::class, $consentable->id)
+                ->whereValidFor($ward->id, $consentable::class, $consentable->id)
                 ->first();
 
             if ($existing) {
@@ -88,6 +89,8 @@ class GrantVideoConsentAction extends Action
                 'guardian_id' => $guardian->id,
                 'consentable_type' => $consentable::class,
                 'consentable_id' => $consentable->id,
+                // SCRUM-313: one-to-one consent is to take full part.
+                'level' => VideoConsentLevelEnum::speak->value,
                 'granted_at' => now(),
             ]);
         });
