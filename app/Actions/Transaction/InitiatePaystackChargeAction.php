@@ -11,12 +11,9 @@ use App\Models\Transaction;
 use App\Services\Paystack\PaystackClient;
 use Illuminate\Http\Client\HttpClientException;
 
-// TT-7.3b-c/SCRUM-234: TransactionService::initiateCharge() now routes most org-financed charges
-// through ChargeOrganizationForModelAction instead (the org's own saved instrument, at actual
-// cost) -- this action remains the path for personal-pay AND for the one exception,
-// org-financed GroupTherapy (not yet supported by ChargeOrganizationForModelAction), where the
-// member's own card is still charged and organization_id is still set as pure attribution,
-// exactly as before this ticket.
+// TT-7.3b-c/SCRUM-234, SCRUM-420: TransactionService::initiateCharge() routes every org-financed
+// charge, groups included, through ChargeOrganizationForModelAction (the org's own saved
+// instrument, at actual cost) -- this action is the personal-pay path only.
 class InitiatePaystackChargeAction extends Action
 {
     /**

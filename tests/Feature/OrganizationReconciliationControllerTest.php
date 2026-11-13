@@ -166,7 +166,7 @@ test('a settlement transaction (for an OrganizationInvoice) is excluded from the
     $response->assertInertia(fn ($page) => $page->has('financedTransactions.data', 0));
 });
 
-test('a GroupTherapy financed transaction shows no counsellor (org billing was never built for group therapies)', function () {
+test('a GroupTherapy financed transaction with no earnings (a payment from before SCRUM-420) shows no counsellor', function () {
     [$organization, $owner] = anOrgAdmin();
     $groupTherapy = GroupTherapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => User::factory(), 'name' => 'Group Session', 'created_at' => '2026-01-15 09:00:00']);
     Transaction::factory()->create(['for_type' => GroupTherapy::class, 'for_id' => $groupTherapy->id, 'organization_id' => $organization->id]);
@@ -182,6 +182,31 @@ test('a GroupTherapy financed transaction shows no counsellor (org billing was n
         expect($row['subjectLabel'])->toBe('Group therapy (started 15 Jan 2026)');
         expect($row['subjectLabel'])->not->toContain('Group Session');
         expect($row['counsellorName'])->toBeNull();
+    });
+});
+
+// SCRUM-420: a group charge to the organisation's card has one earning per counsellor -- the row shows their totals.
+test('a GroupTherapy charge to the organization\'s card shows every counsellor and their totals', function () {
+    [$organization, $owner] = anOrgAdmin();
+    $groupTherapy = GroupTherapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => User::factory()]);
+    $transaction = Transaction::factory()->create(['for_type' => GroupTherapy::class, 'for_id' => $groupTherapy->id, 'organization_id' => $organization->id, 'amount' => 12000, 'status' => 'SUCCESS']);
+    foreach ([['Ama Mensah', 6000, true], ['Kofi Boateng', 4500, false]] as [$name, $net, $paidOut]) {
+        $counsellor = Counsellor::factory()->create(['user_id' => User::factory(), 'name' => $name]);
+        CounsellorEarning::factory()->create([
+            'transaction_id' => $transaction->id, 'counsellor_id' => $counsellor->id, 'net_amount' => $net, 'fee_amount' => 750,
+            'counsellor_payout_id' => $paidOut ? CounsellorPayout::factory()->create(['counsellor_id' => $counsellor->id, 'status' => CounsellorPayoutStatusEnum::succeeded->value])->id : null,
+        ]);
+    }
+
+    $this->actingAs($owner);
+
+    $this->get(route('organizations.reconciliation', ['organizationId' => $organization->id]))->assertInertia(function ($page) {
+        $row = collect($page->toArray()['props']['financedTransactions']['data'])->first();
+
+        expect($row['counsellorName'])->toContain('Ama Mensah')->toContain('Kofi Boateng')
+            ->and($row['counsellorShare'])->toBe(10500)
+            ->and($row['platformFee'])->toBe(1500)
+            ->and($row['payoutStatus'])->toBe('MIXED');
     });
 });
 

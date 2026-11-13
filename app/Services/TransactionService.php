@@ -10,11 +10,9 @@ use App\Actions\Transaction\EnsureOrganizationCanPayForModelAction;
 use App\Actions\Transaction\EnsureWebhookSignatureIsValidAction;
 use App\Actions\Transaction\InitiatePaystackChargeAction;
 use App\Actions\Transaction\RequestRefundAction;
-use App\Actions\Transaction\ResolveTransactionSubjectAction;
 use App\Actions\Transaction\VerifyPaystackTransactionAction;
 use App\DTOs\TransactionDTO;
 use App\Jobs\ProcessPaystackWebhookJob;
-use App\Models\GroupTherapy;
 use App\Models\Request;
 use App\Models\Transaction;
 use App\Models\User;
@@ -37,16 +35,10 @@ class TransactionService extends Service
         // TT-7.3b-c/SCRUM-234: by this point, a non-null $transactionDTO->organization has
         // already been fully validated as pay-per-use-eligible by the ensure-chain above --
         // route it through the real org-charge primitive (charges the ORG's saved instrument at
-        // actual cost) instead of the member's own card at the client's listed price.
-        //
-        // GroupTherapy is the one deliberate exception, unchanged from TT-7.3a's original
-        // behavior: ChargeOrganizationForModelAction doesn't support it yet (TT-7.3b-b's own
-        // scope boundary -- multiple counsellors, no defined "actual cost" model), so an org-paid
-        // GroupTherapy still falls through to the existing member's-card path below, exactly as
-        // it does today. Revisit once GroupTherapy org billing is actually designed.
-        $resolvedFor = ResolveTransactionSubjectAction::new()->execute($transactionDTO->for);
-
-        if ($transactionDTO->organization && ! $resolvedFor instanceof GroupTherapy) {
+        // actual cost) instead of the member's own card at the client's listed price. SCRUM-420:
+        // a group too, once per member -- the member's own card is never charged with the
+        // organisation as a label any more; if the organisation can't pay, it's refused.
+        if ($transactionDTO->organization) {
             return [
                 'transaction' => ChargeOrganizationForModelAction::new()->execute($transactionDTO),
                 'authorizationUrl' => null,

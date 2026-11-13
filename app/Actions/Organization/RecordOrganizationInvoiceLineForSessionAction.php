@@ -3,11 +3,9 @@
 namespace App\Actions\Organization;
 
 use App\Actions\Action;
-use App\Actions\Transaction\ComputePlatformFeeAction;
+use App\Actions\Therapy\GetTherapyClientsAction;
 use App\Actions\Transaction\GetPayableAmountAction;
 use App\Actions\Transaction\ResolveCounsellorListedAmountAction;
-use App\Enums\OrganizationCounsellorCompensationBasisEnum;
-use App\Enums\OrganizationCounsellorCompensationTypeEnum;
 use App\Enums\OrganizationInvoiceStatusEnum;
 use App\Enums\TherapyPaymentTypeEnum;
 use App\Models\Counsellor;
@@ -17,11 +15,9 @@ use App\Models\OrganizationCounsellorCompensation;
 use App\Models\OrganizationInvoice;
 use App\Models\OrganizationInvoiceLine;
 use App\Models\Session;
-use App\Models\Therapy;
 use App\Models\User;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
-use InvalidArgumentException;
 use Throwable;
 
 // TT-7.3b-e/SCRUM-236: hooked into ChangeSessionStatusAction's `held` transition (see the
@@ -76,7 +72,7 @@ class RecordOrganizationInvoiceLineForSessionAction extends Action
         // covers them. Therapy::addedby is polymorphic (User or Counsellor) -- an org retainer covers a
         // member, not a counsellor-initiated engagement.
         $retainer = GetRetainerCoveringOrganizationAction::new();
-        $clients = $this->clientsOf($therapy, $session);
+        $clients = GetTherapyClientsAction::new()->execute($therapy, $session->end_time);
         $covered = $clients
             ->map(fn (User $client, int $seat) => ['client' => $client, 'seat' => $seat, 'organization' => $retainer->execute($therapy, $client)])
             ->filter(fn (array $entry) => $entry['organization'] !== null)
@@ -113,28 +109,15 @@ class RecordOrganizationInvoiceLineForSessionAction extends Action
         }
     }
 
-    // One line per counsellor for this member. A group's price is split equally between its active counsellors
-    // (any remainder to the first), and each is billed their own terms with this organisation on their part;
-    // the platform fee is on the price of the parts billed, shared across the lines the same way. A rate that
-    // isn't a share of the price -- fixed, or a percentage of a negotiated rate -- is the counsellor's pay for
-    // the whole session (the user's decision, 2026-11-12), so each member's line carries an equal share of it
-    // across everyone in the session ($seat: [this member's place, how many]; any remainder on the first). A
-    // therapy has one counsellor and one client, so its one line is what it always was. A counsellor this
-    // organisation has no terms with is skipped (the retainer covers a group through any one of its
-    // counsellors -- the payment gate's rule).
+    // One line per counsellor for this member, as ComputeOrganizationChargeBreakdownAction works them out (the same
+    // rules as the organisation's card charge). A counsellor this organisation has no terms with is skipped (the
+    // retainer covers a group through any one of its counsellors -- the payment gate's rule).
     private function recordFor(Session $session, User $client, Organization $organization, Collection $counsellors, ?int $counsellorListedAmount, ?string $currency, array $context, array $seat): void
     {
         $context += ['organization_id' => $organization->id];
-        $parts = $this->split($counsellorListedAmount, $counsellors->count());
-        $billable = [];
+        $termsFor = fn (Counsellor $counsellor) => $this->termsFor($counsellor, $organization, $context);
 
-        foreach ($counsellors as $index => $counsellor) {
-            if ($compensation = $this->termsFor($counsellor, $organization, $context)) {
-                $billable[] = ['counsellor' => $counsellor, 'compensation' => $compensation, 'part' => $parts[$index]];
-            }
-        }
-
-        if (! $billable) {
+        if ($counsellors->filter($termsFor)->isEmpty()) {
             return;
         }
 
@@ -144,27 +127,20 @@ class RecordOrganizationInvoiceLineForSessionAction extends Action
             return;
         }
 
-        $shares = [];
+        $breakdown = ComputeOrganizationChargeBreakdownAction::new()->execute($counsellors, $termsFor, $counsellorListedAmount, $seat);
 
-        foreach ($billable as $entry) {
-            try {
-                $net = ComputeCounsellorCompensationShareAction::new()->execute($entry['compensation'], $entry['part']);
-                $shares[] = $entry + ['net' => $this->isForTheSession($entry['compensation']) ? $this->split($net, $seat[1])[$seat[0]] : $net];
-            } catch (InvalidArgumentException $exception) {
+        foreach ($breakdown['skipped'] as $skipped) {
+            if ($skipped['reason'] === 'unable_to_compute') {
                 Log::warning('Cannot record a retainer invoice line -- unable to compute the compensation-driven share.', $context + [
-                    'counsellor_id' => $entry['counsellor']->id,
-                    'exception' => $exception->getMessage(),
+                    'counsellor_id' => $skipped['counsellor']->id,
+                    'exception' => $skipped['message'],
                 ]);
             }
         }
 
-        if (! $shares) {
+        if (! $breakdown['lines']) {
             return;
         }
-
-        // The fee on the parts billed: a counsellor this organisation doesn't pay takes their part's fee with them.
-        $billed = $counsellorListedAmount !== null ? array_sum(array_column($shares, 'part')) : null;
-        $fees = $this->split($billed !== null ? ComputePlatformFeeAction::new()->execute($billed) : 0, count($shares));
 
         $periodStart = now()->startOfMonth()->toDateString();
         $periodEnd = now()->endOfMonth()->toDateString();
@@ -191,14 +167,14 @@ class RecordOrganizationInvoiceLineForSessionAction extends Action
         // idempotency guard. ChangeSessionStatusAction's `held` branch is not guaranteed to fire
         // only once per session (a replayed confirm, a retried request), so this must be
         // createOrFirst, never a bare create().
-        foreach ($shares as $index => $share) {
+        foreach ($breakdown['lines'] as $line) {
             $invoice->lines()->createOrFirst([
                 'session_id' => $session->id,
-                'counsellor_id' => $share['counsellor']->id,
+                'counsellor_id' => $line['counsellor']->id,
                 'user_id' => $client->id,
             ], [
-                'net_amount' => $share['net'],
-                'fee_amount' => $fees[$index],
+                'net_amount' => $line['net'],
+                'fee_amount' => $line['fee'],
                 'currency' => $currency,
             ]);
         }
@@ -227,51 +203,5 @@ class RecordOrganizationInvoiceLineForSessionAction extends Action
         return $group->activeCounsellors()
             ->reject(fn (Counsellor $counsellor) => $session->end_time && $counsellor->pivot?->created_at?->greaterThan($session->end_time))
             ->values();
-    }
-
-    // Whether these terms pay for the session whatever its price -- not a percentage of the price itself.
-    private function isForTheSession(OrganizationCounsellorCompensation $compensation): bool
-    {
-        return $compensation->type === OrganizationCounsellorCompensationTypeEnum::fixed->value
-            || ($compensation->type === OrganizationCounsellorCompensationTypeEnum::percentage->value
-                && $compensation->basis === OrganizationCounsellorCompensationBasisEnum::negotiatedRate->value);
-    }
-
-    // A therapy's client, or a group's user creator and its members -- the people its payment gate asks. A
-    // retainer pays for a member's place in a session, as for a therapy's client: who joined before it ended
-    // and hasn't left, whether or not they came (attendance isn't recorded).
-    private function clientsOf(Therapy|GroupTherapy $therapy, Session $session): Collection
-    {
-        if ($therapy instanceof Therapy) {
-            return collect([$therapy->addedby])->filter(fn ($addedby) => $addedby instanceof User);
-        }
-
-        $counsellorUserIds = $therapy->activeCounsellors()->pluck('user_id');
-
-        $members = $therapy->users();
-
-        // On the relation itself: when() would hand the closure the query, where wherePivot() means something else.
-        if ($session->end_time) {
-            $members->wherePivot('created_at', '<=', $session->end_time);
-        }
-
-        return $members->get()
-            ->when($therapy->addedby instanceof User, fn (Collection $users) => $users->prepend($therapy->addedby))
-            ->unique('id')
-            ->reject(fn (User $user) => $counsellorUserIds->contains($user->id))
-            ->values();
-    }
-
-    // $amount in $count whole parts, any remainder on the first; null stays null (no listed price).
-    private function split(?int $amount, int $count): array
-    {
-        if ($amount === null) {
-            return array_fill(0, $count, null);
-        }
-
-        $parts = array_fill(0, $count, intdiv($amount, $count));
-        $parts[0] += $amount % $count;
-
-        return $parts;
     }
 }

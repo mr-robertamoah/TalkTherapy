@@ -12,6 +12,11 @@ right now). Domain model centers on `Therapy`/`GroupTherapy` (currently being un
 `TherapyTopic`/`TherapyTopicSession` structuring what's discussed. Real-time chat is `Discussion`
 + `Message`, broadcast over Laravel Reverb.
 
+Organisation billing (SCRUM-420): `ComputeOrganizationChargeBreakdownAction` is the one place an organisation's
+bill for a member's place is split between counsellors -- used by the card charge (`ChargeOrganizationForModelAction`,
+groups charged per member) and the retainer invoice. Card charges store the split on `transactions.breakdown`
+(`$hidden`), and earnings are made from it. `GetTherapyClientsAction` is who a therapy's payment is for.
+
 ## Coding Standards
 
 - PSR-style PHP, formatted with Laravel Pint (`docker compose exec php ./vendor/bin/pint`).

@@ -99,6 +99,27 @@ function anEligibleOrgPayerSetup(array $organizationOverrides = [], array $billi
     return [$organization, $payer, $counsellor];
 }
 
+// SCRUM-420: a group is charged to the organisation's card too -- it needs a card on file and terms with every
+// active counsellor, and the fake answers the card charge. FREE terms: the charge is the platform fee alone, 10%
+// (config default) of the GHS 150 listed price.
+function orgPayerGivesTermsAndCard(Organization $organization, Counsellor ...$counsellors): void
+{
+    OrganizationPaymentInstrument::factory()->create(['organization_id' => $organization->id]);
+
+    foreach ($counsellors as $counsellor) {
+        OrganizationCounsellorCompensation::factory()->create([
+            'organization_counsellor_id' => OrganizationCounsellor::query()
+                ->where('organization_id', $organization->id)->where('counsellor_id', $counsellor->id)->first()->id,
+            'type' => OrganizationCounsellorCompensationTypeEnum::free->value,
+        ]);
+    }
+
+    Http::fake(['*/transaction/charge_authorization' => Http::response([
+        'status' => true,
+        'data' => ['status' => 'success', 'amount' => 1500, 'currency' => 'GHS', 'gateway_response' => 'Approved'],
+    ], 200)]);
+}
+
 test('personal-pay (no organizationId) is completely unaffected by the org-as-payer gate', function () {
     fakesPaystackForOrgPayer('personal_pay_ref');
 
@@ -173,13 +194,27 @@ test('a valid org-as-payer charge with no compensation terms set is rejected, no
     ))->toThrow(TransactionException::class, 'This counsellor has no active compensation terms with this organization.');
 });
 
-// GroupTherapy is the one deliberate exception (TT-7.3b-b's own scope boundary) -- an org-paid
-// GroupTherapy must keep using the OLD member's-card path, completely unaffected by this ticket,
-// so it needs neither a payment instrument nor compensation terms to succeed.
-test('an org-paid GroupTherapy still charges the member directly, needing no payment instrument or compensation terms', function () {
-    fakesPaystackForOrgPayer('org_pay_group_unaffected_ref');
+// SCRUM-420: an org-paid GroupTherapy is charged to the organisation's card, like a therapy -- never the
+// member's own card with the organisation as a label (the old path).
+test('an org-paid GroupTherapy with no compensation terms is refused, not charged to the member\'s card', function () {
+    fakesPaystackForOrgPayer('org_pay_group_label_only_ref');
 
     [$organization, $payer, $counsellor] = anEligibleOrgPayerSetup();
+    OrganizationPaymentInstrument::factory()->create(['organization_id' => $organization->id]);
+    $groupTherapy = aPaidGroupTherapyForOrgPayer(['addedby_id' => $payer->id]);
+    $groupTherapy->counsellors()->attach($counsellor->id, ['state' => CounsellorGroupTherapyStateEnum::active->value, 'role' => 'NORMAL']);
+
+    expect(fn () => TransactionService::new()->initiateCharge(
+        TransactionDTO::new()->fromArray(['user' => $payer, 'for' => $groupTherapy, 'organizationId' => $organization->id, 'organization' => $organization])
+    ))->toThrow(TransactionException::class, 'This counsellor has no active compensation terms with this organization.');
+
+    $this->assertDatabaseMissing('transactions', ['for_type' => GroupTherapy::class, 'for_id' => $groupTherapy->id]);
+    Http::assertNothingSent();
+});
+
+test('an org-paid GroupTherapy is charged to the organization\'s card', function () {
+    [$organization, $payer, $counsellor] = anEligibleOrgPayerSetup();
+    orgPayerGivesTermsAndCard($organization, $counsellor);
     $groupTherapy = aPaidGroupTherapyForOrgPayer(['addedby_id' => $payer->id]);
     $groupTherapy->counsellors()->attach($counsellor->id, ['state' => CounsellorGroupTherapyStateEnum::active->value, 'role' => 'NORMAL']);
 
@@ -187,8 +222,10 @@ test('an org-paid GroupTherapy still charges the member directly, needing no pay
         TransactionDTO::new()->fromArray(['user' => $payer, 'for' => $groupTherapy, 'organizationId' => $organization->id, 'organization' => $organization])
     );
 
-    expect($result['transaction']->organization_id)->toBe($organization->id);
-    expect($result['authorizationUrl'])->not->toBeNull();
+    expect($result['authorizationUrl'])->toBeNull()
+        ->and($result['transaction']->organization_id)->toBe($organization->id)
+        ->and($result['transaction']->reference)->toStartWith('org_charge_');
+    Http::assertNotSent(fn ($request) => str_contains($request->url(), 'transaction/initialize'));
 });
 
 test('an organizationId that does not resolve to a real organization is rejected, not silently charged personally', function () {
@@ -276,8 +313,6 @@ test('a member whose billing config excludes group therapies is rejected when pa
 });
 
 test('a GroupTherapy with every active counsellor covered by the organization succeeds', function () {
-    fakesPaystackForOrgPayer('org_pay_group_all_covered_ref');
-
     [$organization, $payer, $firstCounsellor] = anEligibleOrgPayerSetup();
     $secondCounsellor = Counsellor::factory()->create(['user_id' => User::factory()->adult()]);
     OrganizationCounsellor::factory()->create([
@@ -285,6 +320,7 @@ test('a GroupTherapy with every active counsellor covered by the organization su
         'counsellor_id' => $secondCounsellor->id,
         'status' => OrganizationCounsellorStatusEnum::active->value,
     ]);
+    orgPayerGivesTermsAndCard($organization, $firstCounsellor, $secondCounsellor);
 
     $groupTherapy = aPaidGroupTherapyForOrgPayer(['addedby_id' => $payer->id]);
     $groupTherapy->counsellors()->attach([$firstCounsellor->id, $secondCounsellor->id], [
@@ -313,9 +349,8 @@ test('a GroupTherapy with one active counsellor not covered by the organization 
 });
 
 test('an inactive (removed) counsellor on a GroupTherapy does not need organization coverage', function () {
-    fakesPaystackForOrgPayer('org_pay_group_inactive_counsellor_ignored_ref');
-
     [$organization, $payer, $coveredCounsellor] = anEligibleOrgPayerSetup();
+    orgPayerGivesTermsAndCard($organization, $coveredCounsellor);
     $removedCounsellor = Counsellor::factory()->create(['user_id' => User::factory()->adult()]);
 
     $groupTherapy = aPaidGroupTherapyForOrgPayer(['addedby_id' => $payer->id]);
@@ -345,9 +380,8 @@ test('a GroupTherapy created by a still-existing counsellor requires that counse
 });
 
 test('a GroupTherapy created by a since-deleted counsellor does not require that counsellor to be covered', function () {
-    fakesPaystackForOrgPayer('org_pay_group_deleted_addedby_ref');
-
     [$organization, $payer, $coveredCounsellor] = anEligibleOrgPayerSetup();
+    orgPayerGivesTermsAndCard($organization, $coveredCounsellor);
     $deletedCreatorCounsellor = Counsellor::factory()->create(['user_id' => User::factory()->adult()]);
     $deletedCreatorCounsellor->delete();
 

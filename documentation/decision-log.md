@@ -11913,3 +11913,44 @@ organisations start therapies for members).
   billing history). Rolling back needs the code and the migration together: the old code with the new key loses its
   duplicate-line guard.
 
+## SCRUM-420 part 2 — the organisation's card pays for group places (2026-11-13)
+
+- **What changed.** `ChargeOrganizationForModelAction` charges an organisation's saved card for a member's place in a
+  group, or in one of its sessions for a per-session group, as it already did for a therapy. `TransactionService`
+  sends every org-financed charge there, so a group's "my organisation pays" no longer charges the member's own card
+  with the organisation as a label: if the organisation can't pay (no card, a counsellor without terms), it's
+  refused. Part 3 removes what's left of the label-only path (its leftovers in `InitiatePaystackChargeAction`), adds
+  the Sponsored badge for group charges, refund tests, seeds and docs. There's no "my organisation pays" button in the
+  app yet, so this changes no screen.
+- **One breakdown for both bills** (architect's plan): `ComputeOrganizationChargeBreakdownAction` works out the lines
+  for the card charge and the retainer invoice, so the two can't drift. The invoice was refactored onto it with no
+  change in what it bills (its tests unchanged). The 1:1 card charge's amount is unchanged too.
+- **Per member** (the user's decision): the lock, "already paid" and "still being confirmed" are the paying member's
+  own for a group (`EnsureCanInitiateChargeAction`'s existing rule), the subject's for a therapy (one payer).
+- **A fixed rate shared by the group's size** (the user's decision, 2026-11-13, after the code and security reviews):
+  members pay at different times, so counting who's there when each pays would let a member paying early, alone, have
+  their organisation pay the whole rate, and the organisations more than it in all. A card charge divides a fixed rate
+  (or a percentage of a negotiated rate) by the group's maximum size: the organisations never pay more than the rate
+  together, and the counsellor gets less while the group isn't full. The member's place (who gets a remainder) is
+  their order among the members (creator first, then by joining). The retainer keeps counting who was in the held
+  session -- it's billed afterwards, when that's known.
+- **Who may be charged for a session** (security review): a member who joined after a session ended can't have their
+  organisation pay for it (the retainer's rule), and a session that didn't take place (failed) isn't charged. A
+  checkout on the member's own card started within the grace period also refuses an organisation charge for the same
+  place, so it can't be paid twice. A breakdown that can't be worked out (no price, or a place outside the group)
+  refuses the charge instead of billing a zero share.
+- **The stale-charge sweep** (devops review) now covers a whole-group charge too (`for_type` GroupTherapy); a group
+  session's was already covered as a Session.
+- **Earnings from the split as charged** (architect): `transactions.breakdown` holds each counsellor's net and fee,
+  written with the pending row; earnings are one per line from it, not recomputed when Paystack confirms (a group's
+  counsellors or terms may change in between). It's `$hidden`: the controller returns the transaction to the member,
+  and the split is the organisation's terms with its counsellors. A one-to-one org charge made by this code uses it
+  too; older ones without it recompute as before. Old label-only group payments still make no earnings. A breakdown
+  that adds up to more than was charged pays nothing out and is logged for manual reconciliation; less goes to the
+  first line written's fee (logged), as the one-to-one mismatch did. These warnings only reach the log file today
+  (devops: no alerting channel is configured); worth a log alarm in production.
+- **Any counsellor without terms refuses the charge** (the user's decision): the card charge is the organisation
+  paying for the whole place, unlike a retainer, which bills only the counsellors it has terms with.
+- **The organisation's reconciliation page** (found while writing this): a pay-per-use row read only the first
+  earning, so a group charge would have shown one counsellor's share. A group row now shows every counsellor it
+  paid, the totals, and a payout status of "mixed" when some have been paid out and others not.

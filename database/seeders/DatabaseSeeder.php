@@ -3368,6 +3368,44 @@ class DatabaseSeeder extends Seeder
         ]);
         RecordOrganizationInvoiceLineForSessionAction::new()->execute($orgRetainerGroupSession);
 
+        // SCRUM-420 part 2: a group org_demo_payperuse_member started, paid for by the demo org's card -- hand-seeded
+        // at its final state (a real charge goes through Paystack), as ChargeOrganizationForModelAction records it:
+        // the counsellor's fixed USD 20 over the group's 10 places (USD 2) plus a 10% fee on the USD 30 price, the
+        // split on `breakdown`, and its earning. Shown on the org's reconciliation page under pay-per-use.
+        $payPerUseGroup = $payPerUseMember->addedGroupTherapies()->create([
+            'name' => 'Org Pay-Per-Use Demo Group',
+            'about' => 'Seeded PAID, PER_THERAPY group, paid for by the demo org\'s card (SCRUM-420).',
+            'session_type' => 'Once',
+            'payment_type' => 'PAID',
+            'max_users' => 10,
+            'allow_anyone' => false,
+            'anonymous' => false,
+            'public' => false,
+            'status' => 'in_session',
+            'payment_data' => ['amount' => 30, 'currency' => 'USD', 'per' => 'PER_THERAPY'],
+        ]);
+        $payPerUseGroup->counsellors()->attach($affiliatedCounsellor->id, ['state' => 'ACTIVE', 'role' => 'NORMAL']);
+        $payPerUseGroupTransaction = Transaction::query()->create([
+            'for_type' => $payPerUseGroup::class,
+            'for_id' => $payPerUseGroup->id,
+            'user_id' => $payPerUseMember->id,
+            'organization_id' => $organization->id,
+            'reference' => ChargeOrganizationForModelAction::REFERENCE_PREFIX.Str::uuid(),
+            'amount' => 500,
+            'currency' => 'USD',
+            'status' => TransactionStatusEnum::success->value,
+            'breakdown' => ['lines' => [['counsellor_id' => $affiliatedCounsellor->id, 'net_amount' => 200, 'fee_amount' => 300]]],
+        ]);
+        CounsellorEarning::query()->create([
+            'transaction_id' => $payPerUseGroupTransaction->id,
+            'counsellor_id' => $affiliatedCounsellor->id,
+            'gross_amount' => 500,
+            'net_amount' => 200,
+            'fee_amount' => 300,
+            'currency' => 'USD',
+            'status' => CounsellorEarningStatusEnum::pending->value,
+        ]);
+
         $applicantMember = User::factory()->create([
             'firstName' => 'Org',
             'lastName' => 'DemoMemberApplicant',
