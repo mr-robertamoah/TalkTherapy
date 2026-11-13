@@ -11954,3 +11954,21 @@ organisations start therapies for members).
 - **The organisation's reconciliation page** (found while writing this): a pay-per-use row read only the first
   earning, so a group charge would have shown one counsellor's share. A group row now shows every counsellor it
   paid, the totals, and a payout status of "mixed" when some have been paid out and others not.
+
+## SCRUM-420 part 3 — the Sponsored badge for group charges, refunds (2026-11-13)
+
+- **The badge for groups** (changes SCRUM-180's "groups: retainer only", which was only because a group one-off was
+  never paid by the organisation then): an organisation card charge for a group or one of its sessions sponsors it for
+  the member who paid it -- `transactions.user_id` is the viewer, so a member never learns another member's
+  organisation, or that another member is sponsored. Everyone else (counsellors, guardians, admins, other members)
+  still sees nothing. Old label-only group payments (the member's own card) still don't count.
+- **Label-only path.** Part 2 already sent every "my organisation pays" to the organisation's card and refuses when
+  it can't pay; this removes the leftover `organization_id` write from the personal-pay action. Old label-only rows
+  stay as history: no earnings, no badge, not swept as organisation charges, refunded as before.
+- **Refunds** needed no code change: `ReconcileOrgFinancedRefundAction` already reverses every earning on a
+  transaction, so a group place's refund reverses each counsellor's (one already paid out is flagged for manual
+  follow-up, the others still reversed). Only the requesting member can ask for it. The org admins' notice is worded
+  for a session, therapy or group place, and for several counsellors.
+- **No "my organisation pays" button.** There's none in the app yet for therapies or groups (the API takes
+  `organizationId`), so no member-facing messages were added; a future ticket adding the button should show the
+  refusals part 2 returns.

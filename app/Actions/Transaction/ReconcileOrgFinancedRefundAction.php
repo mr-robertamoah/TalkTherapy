@@ -19,9 +19,9 @@ use Illuminate\Support\Facades\Notification;
 // documentation/implementation_plan.md. No live UI trigger exists yet; this is independently
 // testable via direct invocation today, exactly as this ticket's own scope calls for.
 //
-// Deliberately generic across BOTH org-billing modes -- a pay-per-use transaction has exactly one
-// CounsellorEarning; a retainer SETTLEMENT transaction (`for` an OrganizationInvoice) has one per
-// line, fanned out by GenerateCounsellorEarningsAction's own settled-invoice branch. This action
+// Deliberately generic across BOTH org-billing modes -- a pay-per-use transaction has one
+// CounsellorEarning per counsellor (SCRUM-420: a group's has one for each counsellor running
+// it); a retainer SETTLEMENT transaction (`for` an OrganizationInvoice) has one per line, fanned out by GenerateCounsellorEarningsAction's own settled-invoice branch. This action
 // never distinguishes the two: it just reverses every earning still tied to $transaction that is
 // still safely reversible.
 //
