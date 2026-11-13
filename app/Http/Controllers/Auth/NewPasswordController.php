@@ -56,6 +56,9 @@ class NewPasswordController extends Controller
 
                 $user->forceFill([
                     'password' => Hash::make($request->password),
+                    // SCRUM-35b: it has just met the whole policy, the breached-list check included.
+                    'password_weak_reason' => null,
+                    'password_checked_at' => config('auth.password_policy.uncompromised') ? now() : null,
                     'remember_token' => Str::random(60),
                 ])->save();
 

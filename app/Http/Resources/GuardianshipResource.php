@@ -20,7 +20,7 @@ class GuardianshipResource extends JsonResource
         return [
             'id' => $this->id,
             'ward' => $this->when($isWard, new UserMiniResource(User::find($this->ward_id))),
-            'guardian' => $this->when(!$isWard, new UserMiniResource(User::find($this->guardian_id))),
+            'guardian' => $this->when(! $isWard, new UserMiniResource(User::find($this->guardian_id))),
             'createdAt' => $this->created_at->diffForHumans(),
             'isWard' => $isWard,
         ];

@@ -20,9 +20,12 @@ class PasswordController extends Controller
             'password' => PasswordRules::for($request->user()),
         ]);
 
-        $request->user()->update([
+        $request->user()->forceFill([
             'password' => Hash::make($validated['password']),
-        ]);
+            // SCRUM-35b: it has just met the whole policy, the breached-list check included.
+            'password_weak_reason' => null,
+            'password_checked_at' => config('auth.password_policy.uncompromised') ? now() : null,
+        ])->save();
 
         return back();
     }

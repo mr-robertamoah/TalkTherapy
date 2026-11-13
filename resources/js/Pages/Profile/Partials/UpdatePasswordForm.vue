@@ -4,8 +4,8 @@ import PasswordHints from '@/Components/PasswordHints.vue';
 import InputLabel from '@/Components/InputLabel.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import TextInput from '@/Components/TextInput.vue';
-import { useForm } from '@inertiajs/vue3';
-import { ref } from 'vue';
+import { useForm, usePage } from '@inertiajs/vue3';
+import { computed, ref } from 'vue';
 
 const update = ref(false);
 const passwordInput = ref(null);
@@ -37,6 +37,14 @@ const updatePassword = () => {
     });
 };
 
+// SCRUM-35b: why their password doesn't meet today's rules (from their last sign-in), or null.
+const weakReason = computed(() => usePage().props.auth?.user?.passwordWeakReason)
+const weakReasonText = computed(() => ({
+    short_or_simple: 'It is shorter than the rules ask, or doesn\'t mix letters and numbers.',
+    identity: 'It contains your username or email.',
+    breached: 'It has turned up in a known data breach, so others may try it.',
+}[weakReason.value] ?? ''))
+
 function clickedUpdate() {
     update.value = true
 }
@@ -46,6 +54,12 @@ function clickedUpdate() {
     <section>
         <header>
             <h2 class="text-lg font-medium text-gray-900">Update Password</h2>
+
+            <!-- SCRUM-35b: checked when they last signed in; never blocks anything. -->
+            <div v-if="weakReason" role="status" class="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                <span class="font-medium">Your password could be stronger.</span>
+                {{ weakReasonText }} Please choose a new one{{ update ? ' below' : ': press "Update"' }}.
+            </div>
 
             <p v-if="update" class="mt-1 text-sm text-gray-600">
                 Ensure your account is using a long, random password to stay secure.

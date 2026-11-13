@@ -10,11 +10,13 @@ use Illuminate\Http\Request;
 
 class ReligionController extends Controller
 {
-    public function getReligions(Request $request) {
+    public function getReligions(Request $request)
+    {
         return ReligionService::new()->getReligions($request->name ?? '');
     }
 
-    public function createReligion(Request $request) {
+    public function createReligion(Request $request)
+    {
         $request->validate([
             'name' => ['required', 'string', 'unique:religions,name'],
             'about' => ['nullable', 'string'],
@@ -30,13 +32,13 @@ class ReligionController extends Controller
                 'addedby' => GetModelWithModelNameAndIdAction::new()->execute(
                     $request->addedbyType,
                     $request->addedbyId,
-                )
+                ),
             ])
         );
 
         return response()->json([
             'status' => true,
-            'religion' => new ReligionResource($religion)
+            'religion' => new ReligionResource($religion),
         ]);
     }
 }

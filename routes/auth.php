@@ -21,7 +21,10 @@ Route::middleware('guest')->group(function () {
     Route::get('login', [AuthenticatedSessionController::class, 'create'])
         ->name('login');
 
-    Route::post('login', [AuthenticatedSessionController::class, 'store']);
+    Route::post('login', [AuthenticatedSessionController::class, 'store'])
+        // SCRUM-35b (security review): a sign-in can call Have I Been Pwned afterwards; failures are limited per account already.
+        ->name('login.store')
+        ->middleware('throttle:30,1,login.store');
 
     Route::get('forgot-password', [PasswordResetLinkController::class, 'create'])
         ->name('password.request');

@@ -72,10 +72,17 @@ class RegisteredUserController extends Controller
             'password' => PasswordRules::for(),
         ]);
 
-        return User::create([
+        $user = User::create([
             'username' => $request->username,
             'email' => $request->email,
             'password' => Hash::make($request->password),
         ]);
+
+        // SCRUM-35b: it has just met the whole policy, the breached-list check included.
+        if (config('auth.password_policy.uncompromised')) {
+            $user->forceFill(['password_checked_at' => now()])->save();
+        }
+
+        return $user;
     }
 }

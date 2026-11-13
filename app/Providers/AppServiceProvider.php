@@ -7,6 +7,7 @@ use App\Listeners\FailHealthCheckOnPendingMigrations;
 use App\Services\AppService;
 use App\Support\AppHost;
 use App\Support\MinishlinkPushSender;
+use App\Support\PasswordRules;
 use App\Support\PwnedPasswordVerifier;
 use App\Support\TrustedProxies;
 use Illuminate\Contracts\Validation\UncompromisedVerifier;
@@ -49,7 +50,7 @@ class AppServiceProvider extends ServiceProvider
     {
         // SCRUM-35: the policy every new password meets (PasswordRules adds "not your username or email").
         Password::defaults(function () {
-            $policy = Password::min(config('auth.password_policy.min'))->letters()->numbers();
+            $policy = PasswordRules::basics();
 
             return config('auth.password_policy.uncompromised') ? $policy->uncompromised() : $policy;
         });

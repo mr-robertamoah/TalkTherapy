@@ -38,6 +38,8 @@ class UserResource extends JsonResource
             // SCRUM-360: only about the signed-in user themselves (it drives their own admin menu) --
             // never revealed about anyone else in a list.
             'isSuperAdmin' => $request->user()?->is($this->resource) && $this->isAdmin() && $this->isSuperAdmin(),
+            // SCRUM-35b: why their own password doesn't meet the policy (null when it does) -- only ever about themselves.
+            'passwordWeakReason' => $request->user()?->is($this->resource) ? $this->password_weak_reason : null,
         ];
     }
 }

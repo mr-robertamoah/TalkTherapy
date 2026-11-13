@@ -10,11 +10,13 @@ use Illuminate\Http\Request;
 
 class ProfessionController extends Controller
 {
-    public function getProfessions(Request $request) {
+    public function getProfessions(Request $request)
+    {
         return ProfessionService::new()->getProfessions($request->name ?? '');
     }
 
-    public function createProfession(Request $request) {
+    public function createProfession(Request $request)
+    {
         $request->validate([
             'name' => ['required', 'string', 'unique:professions,name'],
             'description' => ['nullable', 'string'],
@@ -30,13 +32,13 @@ class ProfessionController extends Controller
                 'addedby' => GetModelWithModelNameAndIdAction::new()->execute(
                     $request->addedbyType,
                     $request->addedbyId,
-                )
+                ),
             ])
         );
 
         return response()->json([
             'status' => true,
-            'profession' => new ProfessionResource($profession)
+            'profession' => new ProfessionResource($profession),
         ]);
     }
 }
