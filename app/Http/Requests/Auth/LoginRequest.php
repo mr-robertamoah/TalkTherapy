@@ -4,7 +4,9 @@ namespace App\Http\Requests\Auth;
 
 use App\Jobs\StoreVisitationJob;
 use App\Models\User;
+use App\Support\ClientAddress;
 use Illuminate\Auth\Events\Lockout;
+use Illuminate\Contracts\Validation\Rule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\RateLimiter;
@@ -24,7 +26,7 @@ class LoginRequest extends FormRequest
     /**
      * Get the validation rules that apply to the request.
      *
-     * @return array<string, \Illuminate\Contracts\Validation\Rule|array|string>
+     * @return array<string, Rule|array|string>
      */
     public function rules(): array
     {
@@ -38,7 +40,7 @@ class LoginRequest extends FormRequest
     /**
      * Attempt to authenticate the request's credentials.
      *
-     * @throws \Illuminate\Validation\ValidationException
+     * @throws ValidationException
      */
     public function authenticate(): void
     {
@@ -53,20 +55,22 @@ class LoginRequest extends FormRequest
             ]);
         }
 
-        if ($user = User::where($key, $this->get($key))->first())
+        if ($user = User::where($key, $this->get($key))->first()) {
             StoreVisitationJob::dispatch($user, $this->ip());
-        
+        }
+
         RateLimiter::clear($this->throttleKey());
     }
 
-    private function getMainKey() {
+    private function getMainKey()
+    {
         return $this->has('email') && $this->input('email', null) ? 'email' : 'username';
     }
 
     /**
      * Ensure the login request is not rate limited.
      *
-     * @throws \Illuminate\Validation\ValidationException
+     * @throws ValidationException
      */
     public function ensureIsNotRateLimited(): void
     {
@@ -89,8 +93,14 @@ class LoginRequest extends FormRequest
     /**
      * Get the rate limiting throttle key for the request.
      */
+    // Per account and address: the username or email being signed in with (whichever the request uses), and the IP.
+    // It used to read only `email`, so every username sign-in from one address (a school, a clinic, a mobile network)
+    // shared one counter -- five wrong passwords for anyone locked everyone there out.
     public function throttleKey(): string
     {
-        return Str::transliterate(Str::lower($this->input('email')).'|'.$this->ip());
+        $key = $this->getMainKey();
+
+        // The address as the rest of the app keys it (ClientAddress: hashed, IPv6 by /64), never the raw IP.
+        return $key.':'.Str::transliterate(Str::lower((string) $this->input($key))).'|'.ClientAddress::key($this->ip());
     }
 }
