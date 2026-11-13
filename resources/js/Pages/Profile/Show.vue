@@ -86,6 +86,18 @@ function changeStep(value) {
             </div>
             
             <div class="sm:w-[90%] md:w-[75%] lg:w-[60%] mx-auto sm:px-6 lg:px-8 space-y-8">
+                <!-- SCRUM-41: first, so it isn't missed. -->
+                <div
+                    class="p-8 bg-amber-50 border border-amber-200 shadow-xl rounded-xl"
+                    v-if="mustVerifyEmail && !$page.props.auth.user?.emailVerifiedAt"
+                >
+                    <VerifyEmailSection
+                        :status="status ?? $page.props.verificationStatus"
+                        :email="$page.props.auth.user?.email"
+                        class="max-w-xl"
+                    />
+                </div>
+
                 
                 <div id="profile-therapies-id" class="relative"></div>
                 <div class="p-8 bg-white shadow-xl border border-gray-100 rounded-xl">
@@ -117,17 +129,6 @@ function changeStep(value) {
 
                 <div class="p-8 bg-white shadow-xl border border-gray-100 rounded-xl">
                     <AgeVerificationSection class="max-w-xl" :has-submitted-request="hasSubmittedAgeVerification" />
-                </div>
-
-                <div
-                    class="p-8 bg-yellow-50 border border-yellow-200 shadow-xl rounded-xl"
-                    v-if="mustVerifyEmail && !$page.props.auth.user?.emailVerifiedAt"
-                >
-                    <VerifyEmailSection
-                        :status="status"
-                        :email="$page.props.auth.user?.email"
-                        class="max-w-xl"
-                    />
                 </div>
 
                 <div id="profile-pref-id" class="relative"></div>

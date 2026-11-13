@@ -87,6 +87,11 @@ class HandleInertiaRequestsV2 extends Middleware
             // SCRUM-371: a failed page visit's message (Controller::failureResponse), shown by the layout.
             // Pulled: shown on the first page that renders, then gone (FailureResponse puts it).
             'failureAlert' => fn () => $request->hasSession() ? $request->session()->pull('failureAlert') : null,
+            // SCRUM-41: the email-verification outcomes the layout's notice and toast show, from any page (a bare shared
+            // `status` would collide with the pages that pass their own).
+            'verificationStatus' => fn () => $request->hasSession() && in_array($request->session()->get('status'), ['verification-link-sent', 'verification-throttled', 'email-verified'], true)
+                ? $request->session()->get('status')
+                : null,
             ...$this->adminArea($request),
         ];
     }

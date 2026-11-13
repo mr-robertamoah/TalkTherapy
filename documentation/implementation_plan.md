@@ -201,7 +201,7 @@ the rest follows the original plan's timing.
 | TT-5.4c | The bell in the main layout (desktop and phones, admins too): a 9+ badge, a panel with "Show more", mark one/all and mark read on click, live refresh, safety notices opening the existing notice dialog, no toasts or previews, keyboard and screen readers down to 320px; seed data, feature doc, Playwright closeout (SCRUM-39). **Done (PR pending review).** | Story | Medium | 8 | New (SCRUM-39 split) | TT-5.4a |
 | TT-5.4d | Pruning (the user's decision): old notifications deleted after a default period set by an environment variable, which each user can override in their settings; never an unread safety notice; /privacy line (SCRUM-39). **Done (PR pending review).** | Story | Medium | 3 | New (SCRUM-39 split) | TT-5.4a |
 | TT-5.5 | Per-event notification channel preferences (email vs in-app) | Story | Low | 3 | Existing (6.3) | TT-5.4c |
-| TT-5.6 | More prominent email-verification UX | Task | Low | 2 | Existing (6.4) | — |
+| TT-5.6 | 🔄 **In review**. More prominent email verification (SCRUM-41): a slim notice on every page for an unverified account -- "add an email" (sign-up asks for none; the user's decision) or "verify <email>" with a resend -- dismissable until the browser session ends, never on the profile, the verify page, help or chats; the profile's verify section moved to the top with plain copy; "Your email is verified" once (a flash, not ?verified=1); too many resends answered on the page; clearer verification email and verify page; seeded unverified and no-email accounts. Nothing newly blocked. | Task | Low | 2 | Existing (6.4) | — |
 
 **Sprint:** 6
 
