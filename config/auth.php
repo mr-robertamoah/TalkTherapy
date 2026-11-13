@@ -128,11 +128,12 @@ return [
     ],
 
     /*
-    | SCRUM-34: two-factor sign-in with an authenticator app. `enabled` switches the feature on for everyone (off until
-    | sign-in asks for the code); `window` is how many 30-second steps either side a code may be off by.
+    | SCRUM-34: two-factor sign-in with an authenticator app. `enabled` shows setting it up on the profile (sign-in asks
+    | for the code whenever an account has it on, whatever this says); `window` is how many 30-second steps either side
+    | a code may be off by.
     */
     'two_factor' => [
-        'enabled' => (bool) env('TWO_FACTOR_ENABLED', false),
+        'enabled' => (bool) env('TWO_FACTOR_ENABLED', true),
         'recovery_codes' => 8,
         'window' => 1,
     ],

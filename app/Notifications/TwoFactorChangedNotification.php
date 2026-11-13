@@ -9,8 +9,9 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
-// SCRUM-34: a security notice when two-factor sign-in is turned on or off, or new recovery codes are made -- so
-// someone who got into the account and changed it can't do so unseen. Never carries a secret or a code.
+// SCRUM-34: a security notice when two-factor sign-in is turned on or off, new recovery codes are made, or a recovery
+// code is used to sign in -- so someone who got into the account and changed it can't do so unseen. Never carries a
+// secret or a code.
 class TwoFactorChangedNotification extends Notification implements ShouldQueue, ShownInNotificationCenter
 {
     use Queueable;
@@ -21,10 +22,14 @@ class TwoFactorChangedNotification extends Notification implements ShouldQueue, 
 
     public const RECOVERY_CODES_REGENERATED = 'recovery_codes_regenerated';
 
+    // SCRUM-34b: signing in with a recovery code.
+    public const RECOVERY_CODE_USED = 'recovery_code_used';
+
     private const TEXT = [
         self::ENABLED => ['Two-factor sign-in turned on', 'Two-factor sign-in was turned on for your account.'],
         self::DISABLED => ['Two-factor sign-in turned off', 'Two-factor sign-in was turned off for your account.'],
         self::RECOVERY_CODES_REGENERATED => ['New recovery codes made', 'New two-factor recovery codes were made for your account. The old ones no longer work.'],
+        self::RECOVERY_CODE_USED => ['Signed in with a recovery code', 'Someone signed in to your account with one of your two-factor recovery codes. That code no longer works.'],
     ];
 
     public function __construct(public string $change)

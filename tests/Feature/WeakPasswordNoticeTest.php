@@ -95,7 +95,8 @@ test('the reason is shown only to the person themselves, and never stored with t
 
     // As the next request would: the user read afresh.
     $this->actingAs($user->fresh())->get('/profile')->assertInertia(fn ($page) => $page->where('auth.user.passwordWeakReason', CheckPasswordStrengthAction::SHORT_OR_SIMPLE));
-    $this->actingAs(User::factory()->create())->get('/profile')->assertInertia(fn ($page) => $page->where('auth.user.passwordWeakReason', null));
+    // Someone else, in their own session (this one holds the first person's password hash -- SCRUM-34b).
+    $this->flushSession()->actingAs(User::factory()->create())->get('/profile')->assertInertia(fn ($page) => $page->where('auth.user.passwordWeakReason', null));
     expect($user->fresh()->toArray())->not->toHaveKey('password_weak_reason')->not->toHaveKey('password_checked_at')
         ->and(collect($user->fresh()->getAttributes())->filter(fn ($value) => $value === 'password'))->toBeEmpty();
 });

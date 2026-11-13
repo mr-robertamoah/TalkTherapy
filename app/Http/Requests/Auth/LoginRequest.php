@@ -3,7 +3,7 @@
 namespace App\Http\Requests\Auth;
 
 use App\Actions\Auth\CheckPasswordStrengthAction;
-use App\Jobs\StoreVisitationJob;
+use App\Models\User;
 use App\Support\ClientAddress;
 use Illuminate\Auth\Events\Lockout;
 use Illuminate\Contracts\Validation\Rule;
@@ -38,16 +38,21 @@ class LoginRequest extends FormRequest
     }
 
     /**
-     * Attempt to authenticate the request's credentials.
+     * Check the request's credentials and return the account they belong to -- without signing in: that waits for the
+     * second step when the account has two-factor sign-in (SCRUM-34b; CompleteLoginAction).
      *
      * @throws ValidationException
      */
-    public function authenticate(): void
+    public function authenticate(): User
     {
         $this->ensureIsNotRateLimited();
-        $key = $this->getMainKey();
+        // The guard's validate(): the same timing whether or not the account exists, and the usual events -- without
+        // signing in (security review).
+        $guard = Auth::guard('web');
+        $valid = $guard->validate($this->only($this->getMainKey(), 'password'));
+        $user = $guard->getLastAttempted();
 
-        if (! Auth::attempt($this->only($key, 'password'), $this->boolean('remember'))) {
+        if (! $valid || ! $user instanceof User) {
             RateLimiter::hit($this->throttleKey());
 
             throw ValidationException::withMessages([
@@ -55,16 +60,14 @@ class LoginRequest extends FormRequest
             ]);
         }
 
-        // SCRUM-35b (security review): the account that just signed in -- never looked up again from the request, where
-        // get() prefers the query string to the form (sign in as yourself, act on someone else).
-        if ($user = Auth::user()) {
-            StoreVisitationJob::dispatch($user, $this->ip());
-
-            // SCRUM-35b: whether this password meets today's policy -- only the result is kept.
-            CheckPasswordStrengthAction::new()->execute($user, (string) $this->input('password'));
-        }
+        // SCRUM-35b: whether this password meets today's policy -- only the result is kept. Here, at the password step:
+        // the plain password is never carried on to the second step (SCRUM-34b). The account is the one the
+        // credentials matched, never looked up again from the request.
+        CheckPasswordStrengthAction::new()->execute($user, (string) $this->input('password'));
 
         RateLimiter::clear($this->throttleKey());
+
+        return $user;
     }
 
     private function getMainKey()

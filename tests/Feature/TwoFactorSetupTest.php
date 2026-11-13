@@ -142,14 +142,14 @@ test('new recovery codes need the password and replace the old ones', function (
     Notification::assertSentTo($user, TwoFactorChangedNotification::class, fn ($notification) => $notification->change === TwoFactorChangedNotification::RECOVERY_CODES_REGENERATED);
 });
 
-test('none of it exists while the feature is switched off', function () {
+test('switched off, setting it up is hidden -- but those who have it can still manage it', function () {
+    [$user, $codes] = tfsEnabledUser($this);
     config(['auth.two_factor.enabled' => false]);
-    $user = User::factory()->create();
 
     $this->actingAs($user)->postJson(route('two_factor.setup'), ['current_password' => 'password'])->assertNotFound();
     $this->postJson(route('two_factor.confirm'), ['code' => '123456'])->assertNotFound();
-    $this->postJson(route('two_factor.recovery_codes'), ['current_password' => 'password', 'code' => '123456'])->assertNotFound();
-    $this->deleteJson(route('two_factor.destroy'), ['current_password' => 'password'])->assertNotFound();
+    $codes = $this->postJson(route('two_factor.recovery_codes'), ['current_password' => 'password', 'code' => $codes[0]])->assertOk()->json('recoveryCodes');
+    $this->deleteJson(route('two_factor.destroy'), ['current_password' => 'password', 'code' => $codes[0]])->assertNoContent();
 });
 
 test('signed-out people can\'t reach it', function () {

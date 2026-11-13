@@ -128,7 +128,8 @@ const passwordTitle = computed(() => ({
             <p class="mt-1 text-sm text-gray-600">
                 Add a second step when you sign in: a 6-digit code from an authenticator app on your phone (such as
                 Google Authenticator, Microsoft Authenticator or 1Password). Someone who learns your password still
-                can't get in without it.
+                can't get in without it. Turning it on or off, or making new recovery codes, signs you out on your other
+                devices.
             </p>
             <p class="mt-3 text-sm">
                 Status:
