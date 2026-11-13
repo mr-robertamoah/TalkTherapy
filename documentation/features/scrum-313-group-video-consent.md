@@ -20,8 +20,8 @@ Before this, a minor could never join a group's video: a blanket block, waiting 
   - "withdraw" for a consent already given;
 - withdrawing takes the child out of a call straight away, and the rest of the group carries on;
 - leaving the group cancels its consent, so coming back needs new consent;
-- for now consent means taking part. Members still join to watch and listen, and under-18s still can't be given the
-  floor until PR 3.
+- for now an under-18 let in by consent watches and listens only (microphone and camera off), a minor creator
+  included, and can't be given the floor; PR 3 lets a guardian choose "speak".
 
 ## Test data
 | Account | What to look at |
