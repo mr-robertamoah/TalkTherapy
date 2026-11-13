@@ -94,7 +94,7 @@ test('joining creates a new VideoSession, calls the provider to create a room, a
             'canSendVideo' => true,
             'isAnonymous' => false,
             'canRaiseHand' => false,
-            'isMinorMember' => false,
+            'speakingNote' => null,
             'canModerate' => false,
             'speakingGrantIdleTimeout' => (int) config('video.speaking_grant_idle_timeout'),
             'key' => VideoParticipantKey::for($session->id, $client->id),

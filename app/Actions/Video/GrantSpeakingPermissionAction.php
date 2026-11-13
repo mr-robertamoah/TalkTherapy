@@ -55,7 +55,7 @@ class GrantSpeakingPermissionAction extends Action
             throw new VideoException('This participant can already speak in this video call.', 422);
         }
 
-        EnsureMemberMayBeGrantedSpeakingAction::new()->execute($session->for, $targetUser);
+        EnsureMemberMayBeGrantedSpeakingAction::new()->execute($session, $targetUser);
 
         [$canSendAudio, $canSendVideo] = $this->capabilitiesFor($session->for, $targetUser);
 
@@ -64,10 +64,14 @@ class GrantSpeakingPermissionAction extends Action
         $wasNewlyGranted = false;
         $loweredHand = false;
 
-        $grant = DB::transaction(function () use ($participant, $actingUser, $videoSession, $targetUser, $canSendAudio, $canSendVideo, &$wasNewlyGranted, &$loweredHand) {
+        $grant = DB::transaction(function () use ($participant, $actingUser, $session, $videoSession, $targetUser, $canSendAudio, $canSendVideo, &$wasNewlyGranted, &$loweredHand) {
             // Serializes two counsellors granting the same member at the same instant, so only
             // one open grant row can ever exist per join-cycle.
             $participant = VideoSessionParticipant::query()->lockForUpdate()->find($participant->id);
+
+            // SCRUM-329 (review): asked again under the lock a guardian's "watch only" takes too
+            // (RemovePersonFromLiveCallsAction::stopSpeaking), so a grant can't land just after it.
+            EnsureMemberMayBeGrantedSpeakingAction::new()->execute($session, $targetUser);
 
             if (! $participant->isActive()) {
                 throw new VideoException('That person is not currently in this video call.', 422);

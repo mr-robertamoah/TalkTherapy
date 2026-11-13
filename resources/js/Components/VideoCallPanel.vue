@@ -323,7 +323,7 @@ onBeforeUnmount(() => {
               <div class="text-gray-600 mt-1">
                 Others in the call can't see or hear you.
                 <span v-if="capabilities.canRaiseHand">Raise your hand to ask a counsellor if you can speak.</span>
-                <span v-else-if="capabilities.isMinorMember">Speaking in group video isn't available to members under 18 yet.</span>
+                <span v-else-if="capabilities.speakingNote">{{ capabilities.speakingNote }}</span>
               </div>
             </div>
             <button

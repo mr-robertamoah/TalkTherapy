@@ -15,4 +15,6 @@ enum SpeakingPermissionRevocationReasonEnum: string
     case manual = 'MANUAL';
     case idle_auto_expiry = 'IDLE_AUTO_EXPIRY';
     case participant_removed = 'PARTICIPANT_REMOVED';
+    // SCRUM-329: an under-18's guardians' consent no longer lets them speak (watch only, or withdrawn).
+    case guardian_consent = 'GUARDIAN_CONSENT';
 }

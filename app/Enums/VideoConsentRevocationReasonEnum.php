@@ -15,4 +15,7 @@ enum VideoConsentRevocationReasonEnum: string
     case guardianship_removed = 'GUARDIANSHIP_REMOVED';
     // SCRUM-313: the ward left the group the grant was for.
     case membership_ended = 'MEMBERSHIP_ENDED';
+    // SCRUM-329: replaced by a new grant for the same scope -- a level change, or a fresh grant over a grant from a
+    // guardian who no longer counts. Not a withdrawal: the history says the consent went on.
+    case superseded = 'SUPERSEDED';
 }

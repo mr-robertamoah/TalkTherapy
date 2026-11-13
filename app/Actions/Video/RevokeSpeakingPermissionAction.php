@@ -75,11 +75,16 @@ class RevokeSpeakingPermissionAction extends Action
     // publish capability (Chime reuses attendees by ExternalUserId). Failure follows the same
     // per-reason rule as revokeGrant(). Broadcast like a live-join revoke (TT-3.2f-j/SCRUM-327): it
     // does change what the user's current join can do.
-    public function muteAtProvider(VideoSession $videoSession, User $targetUser, SpeakingPermissionRevocationReasonEnum $reason): void
+    // Whether the provider took their microphone and camera away.
+    public function muteAtProvider(VideoSession $videoSession, User $targetUser, SpeakingPermissionRevocationReasonEnum $reason): bool
     {
         if ($this->revokedAtProvider($videoSession, $targetUser, $reason)) {
             SpeakingPermissionChangedEvent::dispatch($videoSession, $targetUser->id, false, false, $reason->value);
+
+            return true;
         }
+
+        return false;
     }
 
     // Provider failure handling depends on WHY the grant is being revoked -- an explicit decision,
@@ -172,6 +177,8 @@ class RevokeSpeakingPermissionAction extends Action
                 SpeakingPermissionRevocationReasonEnum::manual => throw new VideoException('Unable to revoke speaking permission right now. Please try again, or remove them from the call.', 502),
                 SpeakingPermissionRevocationReasonEnum::idle_auto_expiry => false,
                 SpeakingPermissionRevocationReasonEnum::participant_removed => true,
+                // SCRUM-329: the caller takes them out of the call instead (RemovePersonFromLiveCallsAction).
+                SpeakingPermissionRevocationReasonEnum::guardian_consent => false,
             };
         }
     }

@@ -52,9 +52,9 @@ function gvcGroup(User ...$members): array
     return [$group, $session];
 }
 
-function gvcGrant($test, User $guardian, GroupTherapy $group, User $ward, string $scope = 'group')
+function gvcGrant($test, User $guardian, GroupTherapy $group, User $ward, string $scope = 'group', string $level = 'SPEAK')
 {
-    return $test->actingAs($guardian)->postJson(route('group.therapies.video_consent.grant', ['groupTherapyId' => $group->id]), ['wardId' => $ward->id, 'scope' => $scope]);
+    return $test->actingAs($guardian)->postJson(route('group.therapies.video_consent.grant', ['groupTherapyId' => $group->id]), ['wardId' => $ward->id, 'scope' => $scope, 'level' => $level]);
 }
 
 function gvcCanJoin(Session $session, User $user): bool
@@ -256,12 +256,13 @@ test('joining without consent is refused as needing consent, so the call panel s
         ->assertStatus(422)->assertJsonPath('videoConsentRequired', true);
 });
 
-test('a minor creator let in by consent watches and listens only, for now', function () {
+// SCRUM-329: with consent to speak they take part (MinorSpeakingConsentTest).
+test('a minor creator let in by consent to watch watches and listens only', function () {
     $provider = gvcProvider();
     [$minor, $guardian] = gvcMinor();
     [$group, $session] = gvcGroup();
-    $group->forceFill(['addedby_id' => $minor->id])->save();
-    gvcGrant($this, $guardian, $group->fresh(), $minor)->assertOk();
+    $group->forceFill(['addedby_id' => $minor->id, 'anonymous' => false])->save();
+    gvcGrant($this, $guardian, $group->fresh(), $minor, level: 'WATCH')->assertOk();
 
     $this->actingAs($minor)->postJson(route('sessions.video.join', ['sessionId' => $session->id]))->assertOk();
 
