@@ -16,13 +16,15 @@ class VerifyEmailController extends Controller
     public function __invoke(EmailVerificationRequest $request): RedirectResponse
     {
         if ($request->user()->hasVerifiedEmail()) {
-            return redirect()->intended(RouteServiceProvider::HOME.'?verified=1');
+            return redirect()->intended(RouteServiceProvider::HOME)->with('status', 'email-verified');
         }
 
         if ($request->user()->markEmailAsVerified()) {
             event(new Verified($request->user()));
         }
 
-        return redirect()->intended(RouteServiceProvider::HOME.'?verified=1');
+        // SCRUM-41: a flash the layout shows once ("Your email is verified"), not ?verified=1 -- nothing read that,
+        // and an intended URL dropped it anyway.
+        return redirect()->intended(RouteServiceProvider::HOME)->with('status', 'email-verified');
     }
 }

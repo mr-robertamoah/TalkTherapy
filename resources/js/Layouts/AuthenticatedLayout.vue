@@ -16,6 +16,7 @@ import useModal from '@/Composables/useModal';
 import ContactUsModal from '@/Components/ContactUsModal.vue';
 import { acquireCounsellorChannel, acquireUserChannel } from '@/Composables/sharedChannel';
 import NotificationBell from '@/Components/Notifications/NotificationBell.vue';
+import EmailVerificationNotice from '@/Components/EmailVerificationNotice.vue';
 import { notificationsChanged } from '@/Composables/useNotifications';
 
 const { modalData, showModal, closeModal } = useModal()
@@ -55,6 +56,16 @@ watchEffect(() => {
       show: true,
       type: "failed",
       message: page.props.failureAlert,
+    });
+  }
+
+  // SCRUM-41: back from the link in the verification email.
+  if (page.props.verificationStatus === "email-verified") {
+    setAlertData({
+      show: true,
+      type: "successs",
+      time: 5000,
+      message: "Your email is verified.",
     });
   }
 
@@ -544,6 +555,9 @@ function goToTherapy(data) {
           </div>
         </div>
       </nav>
+
+      <!-- SCRUM-41: in the page's flow, so it never covers the help button or a chat. -->
+      <EmailVerificationNotice />
 
       <!-- Page Heading -->
       <header class="bg-white shadow" v-if="$slots.header">

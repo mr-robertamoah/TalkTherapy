@@ -24,12 +24,13 @@ const verificationLinkSent = computed(() => props.status === 'verification-link-
         <Head title="Email Verification" />
 
         <div class="mb-4 text-sm text-gray-600">
-            Thanks for signing up! Before getting started, could you verify your email address by clicking on the link
-            we just emailed to you? If you didn't receive the email, we will gladly send you another.
+            Please verify your email address by opening the link we emailed you. If you can't find it, we can send you
+            another one. You can keep using TalkTherapy meanwhile; with a verified email you also get reminders by email
+            and can reset your password.
         </div>
 
         <div class="mb-4 font-medium text-sm text-green-600" v-if="verificationLinkSent">
-            A new verification link has been sent to the email address you provided during registration.
+            We've sent a new link to your email address.
         </div>
 
         <form @submit.prevent="submit">
