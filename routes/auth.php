@@ -8,6 +8,7 @@ use App\Http\Controllers\Auth\NewPasswordController;
 use App\Http\Controllers\Auth\PasswordController;
 use App\Http\Controllers\Auth\PasswordResetLinkController;
 use App\Http\Controllers\Auth\RegisteredUserController;
+use App\Http\Controllers\Auth\TwoFactorController;
 use App\Http\Controllers\Auth\VerifyEmailController;
 use Illuminate\Support\Facades\Route;
 
@@ -61,6 +62,15 @@ Route::middleware('auth')->group(function () {
     Route::put('password', [PasswordController::class, 'update'])->name('password.update')
         // SCRUM-35: a new password can ask Have I Been Pwned (and this checks the current password).
         ->middleware('throttle:10,1,password.update');
+
+    // SCRUM-34: two-factor sign-in, from the profile (a 404 while switched off) -- each step checks the password or a
+    // code, so a low ceiling.
+    Route::middleware('two_factor')->group(function () {
+        Route::post('two-factor/setup', [TwoFactorController::class, 'setup'])->name('two_factor.setup')->middleware('throttle:6,1,two_factor.setup');
+        Route::post('two-factor/confirm', [TwoFactorController::class, 'confirm'])->name('two_factor.confirm')->middleware('throttle:6,1,two_factor.confirm');
+        Route::post('two-factor/recovery-codes', [TwoFactorController::class, 'recoveryCodes'])->name('two_factor.recovery_codes')->middleware('throttle:6,1,two_factor.recovery_codes');
+        Route::delete('two-factor', [TwoFactorController::class, 'destroy'])->name('two_factor.destroy')->middleware('throttle:6,1,two_factor.destroy');
+    });
 
     Route::post('logout', [AuthenticatedSessionController::class, 'destroy'])
         ->name('logout');

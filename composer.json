@@ -7,6 +7,7 @@
     "require": {
         "php": "^8.2",
         "aws/aws-sdk-php": "^3.394",
+        "bacon/bacon-qr-code": "^3.0",
         "guzzlehttp/guzzle": "^7.2",
         "inertiajs/inertia-laravel": "^2.0",
         "laravel/breeze": "^2.3",
@@ -16,6 +17,7 @@
         "laravel/tinker": "^2.9",
         "minishlink/web-push": "^11.0",
         "mr-robertamoah/dto": "^1.0",
+        "pragmarx/google2fa": "^8.0",
         "symfony/http-client": "^7.0",
         "symfony/mailgun-mailer": "^7.0",
         "tightenco/ziggy": "^1.0"

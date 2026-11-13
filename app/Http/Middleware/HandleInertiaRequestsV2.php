@@ -81,7 +81,7 @@ class HandleInertiaRequestsV2 extends Middleware
             // rather than threaded through as a page prop.
             'videoProvider' => config('video.provider'),
             // SCRUM-32: features switched on or off by the deployment (the safety flag waits for a legal read).
-            'features' => ['safetyFlags' => (bool) config('safety.enabled')],
+            'features' => ['safetyFlags' => (bool) config('safety.enabled'), 'twoFactor' => (bool) config('auth.two_factor.enabled')],
             // SCRUM-35: what the password forms say before anyone types, from the same policy the server checks.
             'passwordPolicy' => PasswordRules::hints(),
             // SCRUM-371: a failed page visit's message (Controller::failureResponse), shown by the layout.
