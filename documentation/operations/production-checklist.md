@@ -52,6 +52,10 @@ Check every item before going live.
     `php artisan queue:restart` -- the running worker keeps the config it started with.
   - Rotating `APP_KEY` goes through `APP_PREVIOUS_KEYS`: devices are stored encrypted, and without the old key every
     push job fails to decrypt them.
+  - SCRUM-34: the same goes for two-factor sign-in -- each account's authenticator secret is encrypted with `APP_KEY`
+    and its recovery codes are hashed with it. Keep the old key in `APP_PREVIOUS_KEYS` for good (nothing re-encrypts
+    them); losing it means every account with two-factor on needs it reset. The host PHP needs `iconv` too
+    (bacon/bacon-qr-code; built into the usual packages).
   - nginx serves `/sw.js` with `Cache-Control: no-cache` and `/manifest.webmanifest` as `application/manifest+json`
     (docker/nginx/default.conf).
   - Outbound HTTPS from the queue workers to the push services (Google FCM, Mozilla, Apple, Microsoft) is allowed, and

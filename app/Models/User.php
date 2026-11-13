@@ -36,6 +36,8 @@ class User extends Authenticatable implements MustVerifyEmailContract
         'dob', 'dob_verified_at', 'gender', 'country', 'settings', 'remember_token',
         // SCRUM-35b
         'password_weak_reason', 'password_checked_at',
+        // SCRUM-34
+        'two_factor_secret', 'two_factor_recovery_codes', 'two_factor_confirmed_at', 'two_factor_last_used_step',
     ];
 
     /**
@@ -69,6 +71,11 @@ class User extends Authenticatable implements MustVerifyEmailContract
         // SCRUM-35b: only ever shown to the person themselves (UserResource).
         'password_weak_reason',
         'password_checked_at',
+        // SCRUM-34: never serialized -- the secret only reaches its owner's setup screen, once.
+        'two_factor_secret',
+        'two_factor_recovery_codes',
+        'two_factor_confirmed_at',
+        'two_factor_last_used_step',
     ];
 
     /**
@@ -85,6 +92,9 @@ class User extends Authenticatable implements MustVerifyEmailContract
         'notification_retention_days' => 'integer',
         'anonymised_at' => 'datetime',
         'password_checked_at' => 'datetime',
+        'two_factor_secret' => 'encrypted',
+        'two_factor_recovery_codes' => 'array',
+        'two_factor_confirmed_at' => 'datetime',
     ];
 
     public function getAgeAttribute()
@@ -159,6 +169,13 @@ class User extends Authenticatable implements MustVerifyEmailContract
     public function guardians()
     {
         return $this->hasMany(Guardianship::class, 'ward_id');
+    }
+
+    // SCRUM-34: on once set up and confirmed with a code. Never decrypts the secret: this runs on every page, and
+    // reading it would fail every page for the person if the app key were ever changed without keeping the old one.
+    public function hasTwoFactorEnabled(): bool
+    {
+        return $this->two_factor_confirmed_at !== null && $this->getRawOriginal('two_factor_secret') !== null;
     }
 
     public function isAdult()

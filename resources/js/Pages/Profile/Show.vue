@@ -3,6 +3,7 @@ import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import DeleteUserForm from './Partials/DeleteUserForm.vue';
 import UpdateAvatarForm from './Partials/UpdateAvatarForm.vue';
 import UpdatePasswordForm from './Partials/UpdatePasswordForm.vue';
+import TwoFactorSection from './Partials/TwoFactorSection.vue';
 import NotificationRetentionForm from './Partials/NotificationRetentionForm.vue';
 import UpdateProfileInformationForm from './Partials/UpdateProfileInformationForm.vue';
 import VerifyEmailSection from './Partials/VerifyEmailSection.vue';
@@ -157,6 +158,12 @@ function changeStep(value) {
                 <div id="profile-password-id" class="relative"></div>
                 <div class="p-8 bg-white shadow-xl border border-gray-100 rounded-xl">
                     <UpdatePasswordForm class="max-w-xl" />
+                </div>
+
+                <!-- SCRUM-34: only while the deployment has two-factor sign-in switched on. -->
+                <div id="profile-two-factor-id" class="relative"></div>
+                <div v-if="$page.props.features?.twoFactor" class="p-8 bg-white shadow-xl border border-gray-100 rounded-xl">
+                    <TwoFactorSection class="max-w-xl" />
                 </div>
 
                 <div id="profile-notifications-id" class="relative"></div>

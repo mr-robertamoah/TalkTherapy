@@ -127,4 +127,14 @@ return [
         'uncompromised_timeout' => max(1, (int) env('PASSWORD_BREACH_CHECK_TIMEOUT', 3)),
     ],
 
+    /*
+    | SCRUM-34: two-factor sign-in with an authenticator app. `enabled` switches the feature on for everyone (off until
+    | sign-in asks for the code); `window` is how many 30-second steps either side a code may be off by.
+    */
+    'two_factor' => [
+        'enabled' => (bool) env('TWO_FACTOR_ENABLED', false),
+        'recovery_codes' => 8,
+        'window' => 1,
+    ],
+
 ];

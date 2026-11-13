@@ -12175,3 +12175,30 @@ SCRUM-41:
   /login` is throttled (30 a minute); a password set while the breach check is off isn't marked checked; the quick
   write is keyed on the password too. Accepted: a password set while the service is down still counts as checked
   (sign-up, change and reset can't tell).
+
+## SCRUM-34a — two-factor sign-in setup (2026-11-13)
+
+- **Split in four** (TT-4.5a-d): setup on the profile first, behind `TWO_FACTOR_ENABLED` (off by default) -- until
+  sign-in asks for the code (34b) turning it on would protect nothing, so it stays hidden (routes are a 404).
+- **Own small implementation, not Fortify**: `pragmarx/google2fa` (TOTP, a window of one step either side) and
+  `bacon/bacon-qr-code` (SVG, no imagick). Four nullable columns on `users`: the secret (`encrypted` cast), recovery
+  codes, `two_factor_confirmed_at`, and the last time-step used, claimed with one conditional update so a code works
+  once even with two requests at the same moment.
+- **The unfinished secret lives in the session** (encrypted, 15 minutes), not on the account, and is saved only when a
+  code confirms it, under a row lock (security review: on the account, another session holding the password could
+  swap in its own secret before the person confirmed theirs).
+- **Recovery codes**: 8, random, shown once; kept as HMAC-SHA-256 with the app key (random codes don't need bcrypt;
+  the key means a leaked table alone can't be searched -- security review). Previous app keys are tried too, so a key
+  change doesn't break them. Any case, spaces or dashes are accepted.
+- **Proof asked**: setup needs the password; turning off and new recovery codes need the password and a current code
+  (security review: with the password alone, new codes could be made and then used to turn it off).
+- **A notice** (in-app, and email when the address is verified) whenever it's turned on or off or new codes are
+  made; never carries a secret or code. Turning it on also changes the remember-me token.
+- **Whether it's on** is told only to the person themselves, and never decrypts the secret (it's checked on every
+  page; a changed app key mustn't break every page for them). Closing an account wipes all four columns.
+- **Deferred to 34b** (security review, Low): one failure counter per person shared by confirm, turn-off, new codes and
+  the sign-in challenge (today each route has its own 6-a-minute ceiling); ending the person's other open sessions when
+  two-factor changes. **Follow-up ticket** (existing, not new here): an email address can be changed without the
+  password, which also stops the security emails until the new one is verified.
+- **Operations**: keep the old `APP_KEY` in `APP_PREVIOUS_KEYS` for good (production checklist). A rollback of the
+  migration deletes everyone's two-factor setup -- harmless now, but after 34b it would turn it off for them.

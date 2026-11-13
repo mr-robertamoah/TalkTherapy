@@ -3,6 +3,7 @@
 use App\Exceptions\AppException;
 use App\Http\Middleware\EnsureAccountIsNotSuspended;
 use App\Http\Middleware\EnsureSafetyFlagsAreEnabled;
+use App\Http\Middleware\EnsureTwoFactorIsEnabled;
 use App\Http\Middleware\EnsureUserIsAdmin;
 use App\Http\Middleware\HandleInertiaRequestsV2;
 use App\Http\Middleware\StoreVisitationMiddleware;
@@ -51,7 +52,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         // SCRUM-387: every /administrator page (routes/web.php).
         // SCRUM-32: and the safety flag routes, hidden until SAFETY_FLAGS_ENABLED. One call: alias() replaces.
-        $middleware->alias(['admin' => EnsureUserIsAdmin::class, 'safety_flags' => EnsureSafetyFlagsAreEnabled::class]);
+        $middleware->alias(['admin' => EnsureUserIsAdmin::class, 'safety_flags' => EnsureSafetyFlagsAreEnabled::class, 'two_factor' => EnsureTwoFactorIsEnabled::class]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
         // SCRUM-374: the app's own refusals (AppException) answer the same way wherever they are
