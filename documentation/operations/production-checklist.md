@@ -56,6 +56,12 @@ Check every item before going live.
     and its recovery codes are hashed with it. Keep the old key in `APP_PREVIOUS_KEYS` for good (nothing re-encrypts
     them); losing it means every account with two-factor on needs it reset. The host PHP needs `iconv` too
     (bacon/bacon-qr-code; built into the usual packages).
+  - SCRUM-34b: changing `APP_KEY` also signs everyone out (each session's check is keyed with it, as Laravel's own is).
+  - SCRUM-34b: two-factor setup is shown by default. Check the production `.env` doesn't still say
+    `TWO_FACTOR_ENABLED=false` (the earlier example suggested it) unless it should stay hidden; after changing it,
+    `php artisan config:clear`. Off hides setting it up only: accounts that have it are still asked for the code and
+    can still manage it. A code rollback past SCRUM-34b would let those accounts in with the password alone -- roll
+    back with the switch instead, and count them first (`users.two_factor_confirmed_at` not null).
   - nginx serves `/sw.js` with `Cache-Control: no-cache` and `/manifest.webmanifest` as `application/manifest+json`
     (docker/nginx/default.conf).
   - Outbound HTTPS from the queue workers to the push services (Google FCM, Mozilla, Apple, Microsoft) is allowed, and

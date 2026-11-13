@@ -12202,3 +12202,31 @@ SCRUM-41:
   password, which also stops the security emails until the new one is verified.
 - **Operations**: keep the old `APP_KEY` in `APP_PREVIOUS_KEYS` for good (production checklist). A rollback of the
   migration deletes everyone's two-factor setup -- harmless now, but after 34b it would turn it off for them.
+
+## SCRUM-34b — the code at sign-in (2026-11-13)
+
+- **The password step signs nobody in**: it checks the password with the guard's `validate()` (same timing whether
+  or not the account exists -- security review), runs the SCRUM-35b policy check there (the plain password never
+  reaches the code step), and, with two-factor on, keeps only the account id, "remember me", a 5-minute expiry and a
+  fingerprint of the password and two-factor state in a fresh session. A password reset or two-factor turned off
+  meanwhile cancels it. `CompleteLoginAction` signs in (new session id again) and records the visit.
+- **The switch only hides setting it up** (now shown by default): an account that turned two-factor on is always
+  asked for the code, and can always make new codes or turn it off -- switching the feature off must never quietly
+  remove anyone's protection or their way out.
+- **One count of wrong codes per account** across sign-in, confirming setup, new codes and turning off: 5, then 15
+  minutes. Counted before the code is checked (requests sent at once can't slip under it -- security review); a right
+  code clears it. Accepted: someone who knows the password can keep the owner's codes locked; the owner resets the
+  password. A deploy's `cache:clear` resets the counts. The code step also has a 30-a-minute ceiling per address.
+- **Other sessions end** when two-factor is turned on or off or new codes are made (`EndStaleSessions`: each session
+  keeps a fingerprint of the password and two-factor state; also on the app's API calls). Turning it on or off also
+  changes the remember-me token; new codes change the password hash (`logoutOtherDevices`), which both the
+  fingerprint and remember-me cookies carry. The session making the change stays signed in. Side effect, wanted: a
+  password change now signs out the person's other sessions too. Starting setup no longer does (security review:
+  the gap was between starting and confirming; the fingerprint closes it at confirm with no second password entry).
+  Accepted: a session from before this release takes the current fingerprint on its next request; a request still
+  running in the same browser when the change lands can sign that browser out (the file session race).
+- **Signing in with a recovery code sends a notice** (in-app, email when verified).
+- **Follow-up SCRUM-423**: an open websocket isn't closed when its session ends, and a signed-out tab's API calls
+  show failures instead of going to sign-in (both existing behaviour).
+- **Remember me** still skips the code for its lifetime, as intended; cookies from before two-factor was turned on
+  stop working. To say so in the feature doc (34c).

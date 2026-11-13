@@ -1,6 +1,7 @@
 <?php
 
 use App\Exceptions\AppException;
+use App\Http\Middleware\EndStaleSessions;
 use App\Http\Middleware\EnsureAccountIsNotSuspended;
 use App\Http\Middleware\EnsureSafetyFlagsAreEnabled;
 use App\Http\Middleware\EnsureTwoFactorIsEnabled;
@@ -34,6 +35,9 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->trustHosts(at: fn () => AppHost::trustedPatterns(), subdomains: false);
 
         $middleware->web(append: [
+            // SCRUM-34b: a session ends when its account's password or two-factor state changes elsewhere. Before
+            // anything reads the signed-in user.
+            EndStaleSessions::class,
             HandleInertiaRequestsV2::class,
             AddLinkHeadersForPreloadedAssets::class,
             // SCRUM-359: after the session has started, so the signed-in user resolves.
@@ -42,6 +46,8 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->api(append: [
             EnsureFrontendRequestsAreStateful::class,
+            // SCRUM-34b: the same for the app's own API calls (they share the browser session).
+            EndStaleSessions::class,
             // \Illuminate\Routing\Middleware\ThrottleRequests::class.':api',
             SubstituteBindings::class,
             // SCRUM-359: after EnsureFrontendRequestsAreStateful has started the session.

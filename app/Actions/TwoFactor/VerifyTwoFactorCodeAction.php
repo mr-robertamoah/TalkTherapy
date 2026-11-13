@@ -4,13 +4,15 @@ namespace App\Actions\TwoFactor;
 
 use App\Actions\Action;
 use App\Models\User;
+use App\Support\TwoFactorAttempts;
 use App\Support\TwoFactorCodes;
 use Illuminate\Support\Facades\DB;
 
 // SCRUM-34: whether $code is good for $user (who has two-factor sign-in on) -- a code from their authenticator app
 // (each one usable once: the time-step it was for is recorded, atomically, so two requests can't both use it), or one
 // of their recovery codes (used up, under a lock). 'totp', 'recovery', or null. Shared by sign-in (SCRUM-34b), new
-// recovery codes and turning it off.
+// recovery codes and turning it off. Wrong codes count towards the account's limit (TwoFactorAttempts) -- refused,
+// whatever the code, while it's reached.
 class VerifyTwoFactorCodeAction extends Action
 {
     public const TOTP = 'totp';
@@ -25,11 +27,11 @@ class VerifyTwoFactorCodeAction extends Action
 
         $code = TwoFactorCodes::normalise($code);
 
-        if (preg_match('/^\d{6}$/', $code)) {
-            return $this->totp($user, $code) ? self::TOTP : null;
-        }
-
-        return $code !== '' && $this->recovery($user, $code) ? self::RECOVERY : null;
+        return TwoFactorAttempts::attempt($user, fn () => match (true) {
+            (bool) preg_match('/^\d{6}$/', $code) => $this->totp($user, $code) ? self::TOTP : null,
+            $code !== '' => $this->recovery($user, $code) ? self::RECOVERY : null,
+            default => null,
+        });
     }
 
     private function totp(User $user, string $code): bool

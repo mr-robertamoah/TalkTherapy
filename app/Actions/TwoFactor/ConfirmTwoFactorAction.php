@@ -6,6 +6,7 @@ use App\Actions\Action;
 use App\Exceptions\TwoFactorException;
 use App\Models\User;
 use App\Notifications\TwoFactorChangedNotification;
+use App\Support\TwoFactorAttempts;
 use App\Support\TwoFactorCodes;
 use Illuminate\Contracts\Session\Session;
 use Illuminate\Support\Facades\DB;
@@ -13,7 +14,7 @@ use Illuminate\Support\Str;
 
 // SCRUM-34: turns two-factor sign-in on once a code from the newly scanned app proves it works -- only then is the
 // secret saved to the account. Returns the recovery codes: shown once, only their keyed hashes kept. A new remember-me
-// token stops other browsers' "remember me" (open sessions elsewhere are ended in SCRUM-34b).
+// token stops other browsers' "remember me", and other open sessions end (EndStaleSessions, SCRUM-34b).
 class ConfirmTwoFactorAction extends Action
 {
     /**
@@ -28,9 +29,14 @@ class ConfirmTwoFactorAction extends Action
         }
 
         // The step the code was for (0 = no earlier one), so this code can't then be used again.
-        $step = TwoFactorCodes::google2fa()->verifyKeyNewer($secret, TwoFactorCodes::normalise($code), 0);
+        $step = TwoFactorAttempts::attempt($user, function () use ($secret, $code) {
+            $step = TwoFactorCodes::google2fa()->verifyKeyNewer($secret, TwoFactorCodes::normalise($code), 0);
 
-        if (! is_int($step)) {
+            return is_int($step) ? $step : null;
+        });
+
+        if ($step === null) {
+
             throw new TwoFactorException('That code didn\'t work. Check the time on your phone and try the newest code.', 422);
         }
 
