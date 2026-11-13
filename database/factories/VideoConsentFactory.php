@@ -2,6 +2,7 @@
 
 namespace Database\Factories;
 
+use App\Enums\VideoConsentLevelEnum;
 use App\Models\Guardianship;
 use App\Models\Therapy;
 use App\Models\User;
@@ -26,6 +27,7 @@ class VideoConsentFactory extends Factory
             'guardian_id' => User::factory()->adult(),
             'consentable_type' => Therapy::class,
             'consentable_id' => Therapy::factory(),
+            'level' => VideoConsentLevelEnum::speak->value,
             'granted_at' => now(),
         ];
     }

@@ -21,8 +21,15 @@ class GetCurrentValidVideoConsentForTherapyAction extends Action
             return null;
         }
 
+        // SCRUM-313: a grant is per ward -- a therapy's is its client's.
+        $ward = GetWardForVideoConsentableAction::new()->execute($therapy);
+
+        if (! $ward) {
+            return null;
+        }
+
         return VideoConsent::query()
-            ->whereValidFor($consentable::class, $consentable->id)
+            ->whereValidFor($ward->id, $consentable::class, $consentable->id)
             ->first();
     }
 }

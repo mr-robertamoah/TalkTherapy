@@ -39,7 +39,9 @@ class SendGuardianVideoConsentRemindersAction extends Action
             ->where('status', SessionStatusEnum::pending->value)
             ->where('start_time', '>', now())
             ->where('start_time', '<=', $upperBound)
-            ->whereDoesntHave('videoConsentReminder', fn ($query) => $query->whereNotNull($column))
+            // Per session, while only one-to-one sessions are reminded (one ward each). SCRUM-313 PR 4 makes this per
+            // ward when group sessions are, or a second minor would never be reminded.
+            ->whereDoesntHave('videoConsentReminders', fn ($query) => $query->whereNotNull($column))
             ->get()
             ->each(function (Session $session) use ($window, $column) {
                 try {
@@ -52,19 +54,20 @@ class SendGuardianVideoConsentRemindersAction extends Action
                         // overlapping sweep runs correctly regardless of isolation level.
                         Session::query()->lockForUpdate()->find($session->id);
 
-                        $reminder = VideoConsentReminder::query()->firstOrCreate(['session_id' => $session->id]);
+                        $ward = GetWardForVideoConsentableAction::new()->execute($session);
+
+                        if (! $ward) {
+                            return;
+                        }
+
+                        // SCRUM-313: per ward (a group will have several).
+                        $reminder = VideoConsentReminder::query()->firstOrCreate(['session_id' => $session->id, 'ward_id' => $ward->id]);
 
                         if ($reminder->{$column}) {
                             return;
                         }
 
                         if (! IsVideoConsentOutstandingForSessionAction::new()->execute($session)) {
-                            return;
-                        }
-
-                        $ward = GetWardForVideoConsentableAction::new()->execute($session);
-
-                        if (! $ward) {
                             return;
                         }
 

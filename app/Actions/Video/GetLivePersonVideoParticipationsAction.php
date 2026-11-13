@@ -23,7 +23,9 @@ class GetLivePersonVideoParticipationsAction extends Action
             ->whereHas('videoSession', fn ($q) => $q
                 ->whereNull('ended_at')
                 ->when($sessionId, fn ($q) => $q->where('session_id', $sessionId)))
-            ->with('videoSession.session.for')
+            // SCRUM-313 (security review): a session soft-deleted while its call is still live is still that call's --
+            // without it, a removal would find no session and quietly leave the person in.
+            ->with(['videoSession.session' => fn ($q) => $q->withTrashed(), 'videoSession.session.for'])
             ->orderByDesc('joined_at')
             ->get()
             ->unique('video_session_id')

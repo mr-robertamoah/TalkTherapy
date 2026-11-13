@@ -2,14 +2,17 @@
 
 namespace App\Models;
 
+use App\Enums\VideoConsentLevelEnum;
 use App\Enums\VideoConsentRevocationReasonEnum;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use LogicException;
 
 // TT-3.1e-a/SCRUM-280: one grant-cycle per row, never deleted -- see the migration's own comment
 // for why this deliberately does NOT follow VideoSessionParticipant's append-only-per-cycle
 // precedent. `consentable` is Therapy (a PER_THERAPY grant, covers all of that therapy's
-// sessions) or Session (a PER_SESSION grant, that one session only) -- see
+// sessions), GroupTherapy (SCRUM-313: a group-wide grant for one minor member) or Session (a PER_SESSION grant, that
+// one session only) -- see
 // Therapy::video_consent_mode for which mode is currently selected, though enforcement
 // (EnsureVideoIsAvailableForSessionAction, TT-3.1e-d) checks BOTH scopes regardless of the
 // current mode, which is what makes a mode switch prospective-only "for free".
@@ -18,7 +21,7 @@ class VideoConsent extends Model
     use HasFactory;
 
     protected $fillable = [
-        'ward_id', 'guardian_id', 'consentable_type', 'consentable_id',
+        'ward_id', 'guardian_id', 'consentable_type', 'consentable_id', 'level',
         'granted_at', 'revoked_at', 'revoked_by_guardian_id', 'revocation_reason',
     ];
 
@@ -26,6 +29,17 @@ class VideoConsent extends Model
         'granted_at' => 'datetime',
         'revoked_at' => 'datetime',
     ];
+
+    // SCRUM-313 (security review): a grant says what it allows. The column's SPEAK default is only for the grants made
+    // before levels existed; a new grant that forgot its level must fail, not quietly allow the most.
+    protected static function booted(): void
+    {
+        static::creating(function (VideoConsent $consent) {
+            if (! in_array($consent->level, VideoConsentLevelEnum::values(), true)) {
+                throw new LogicException('A video consent grant needs its level (WATCH or SPEAK).');
+            }
+        });
+    }
 
     public function ward()
     {
@@ -52,15 +66,21 @@ class VideoConsent extends Model
         return is_null($this->revoked_at);
     }
 
-    // TT-3.1e-e/SCRUM-284 (reviewer suggestion): the exact-scope, currently-valid lookup that
-    // GrantVideoConsentAction and IsVideoConsentOutstandingForSessionAction each need -- extracted
-    // here to remove the repeated consentable_type/consentable_id/revoked_at IS NULL where-chain.
-    public function scopeWhereValidFor($query, string $consentableType, int $consentableId)
+    // TT-3.1e-e/SCRUM-284 (reviewer suggestion): the exact-scope, currently-valid lookup. SCRUM-313: for one ward --
+    // a group's minors each have their own guardians' grants on the same group or session, so a scope alone no longer
+    // identifies a grant.
+    public function scopeWhereValidFor($query, int $wardId, string $consentableType, int $consentableId)
     {
         return $query
+            ->where('ward_id', $wardId)
             ->where('consentable_type', $consentableType)
             ->where('consentable_id', $consentableId)
             ->whereNull('revoked_at');
+    }
+
+    public function allowsSpeaking(): bool
+    {
+        return $this->level === VideoConsentLevelEnum::speak->value;
     }
 
     // TT-3.1e-c: a Guardianship-deletion cascade revokes on the guardian's behalf, with no

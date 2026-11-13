@@ -4,8 +4,10 @@ namespace App\Actions\VideoConsent;
 
 use App\Actions\Action;
 use App\Actions\Video\EndVideoSessionAction;
+use App\Actions\Video\RemovePersonFromLiveCallsAction;
 use App\Enums\SessionStatusEnum;
 use App\Enums\VideoConsentRevocationReasonEnum;
+use App\Models\GroupTherapy;
 use App\Models\Session;
 use App\Models\User;
 use App\Models\VideoConsent;
@@ -24,7 +26,10 @@ use Illuminate\Support\Collection;
 //
 // Termination is synchronous, not a lazily-checked flag -- EndVideoSessionAction runs inline,
 // in-request, before this action returns, per the ticket's own explicit "not a flag checked on
-// next join" requirement.
+// next join" requirement. SCRUM-313: a grant for a group, or one of its sessions, is one minor's among
+// several -- ending the call would cut off everyone, so only that ward is taken out of the group's live
+// calls their consent no longer covers (RemovePersonFromLiveCallsAction: under the join lock, re-checked,
+// retried from the queue if it can't be done now).
 class InvalidateVideoConsentAction extends Action
 {
     public function execute(VideoConsent $consent, VideoConsentRevocationReasonEnum $reason, ?User $revokedByGuardian = null): VideoConsent
@@ -39,11 +44,30 @@ class InvalidateVideoConsentAction extends Action
             'revocation_reason' => $reason->value,
         ]);
 
+        if ($this->isForAGroup($consent)) {
+            // A deleted ward has no live calls to be taken out of.
+            if ($consent->ward) {
+                RemovePersonFromLiveCallsAction::new()->execute($consent->ward, RemovePersonFromLiveCallsAction::VIDEO_CONSENT_WITHDRAWN);
+            }
+
+            return $consent;
+        }
+
         $this->activeSessionsFor($consent)->each(
             fn (Session $session) => EndVideoSessionAction::new()->execute($session)
         );
 
         return $consent;
+    }
+
+    private function isForAGroup(VideoConsent $consent): bool
+    {
+        if ($consent->consentable_type === GroupTherapy::class) {
+            return true;
+        }
+
+        return $consent->consentable_type === Session::class
+            && Session::withTrashed()->whereKey($consent->consentable_id)->value('for_type') === GroupTherapy::class;
     }
 
     private function activeSessionsFor(VideoConsent $consent): Collection

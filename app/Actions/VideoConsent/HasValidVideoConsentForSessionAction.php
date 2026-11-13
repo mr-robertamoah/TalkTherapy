@@ -3,8 +3,10 @@
 namespace App\Actions\VideoConsent;
 
 use App\Actions\Action;
+use App\Models\GroupTherapy;
 use App\Models\Session;
 use App\Models\Therapy;
+use App\Models\User;
 use App\Models\VideoConsent;
 
 // TT-3.1e-d/SCRUM-283: the real, per-mode consent check that replaces the interim fail-closed
@@ -13,9 +15,9 @@ use App\Models\VideoConsent;
 // Session) rather than two round-trips -- deliberately NOT dependent on reading
 // Therapy.video_consent_mode first, which is what makes a later mode switch "prospective-only"
 // correct for free (an old grant under the previous mode still satisfies this check). No N+1 risk
-// regardless of guardian count -- the query doesn't filter by guardian at all, since "any one
-// guardian's grant suffices" is already baked into there being at most one currently-valid row
-// per scope (GrantVideoConsentAction's own job to enforce).
+// regardless of guardian count: any one active guardian's grant suffices (SCRUM-288: only a
+// guardian the ward still has), and there is at most one currently-valid row per ward and scope
+// (GrantVideoConsentAction's own job to enforce; SCRUM-313: per ward, as a group has several).
 //
 // This is the hot join-path version of the same check IsVideoConsentOutstandingForSessionAction
 // (TT-3.1e-e) makes for the low-frequency reminder sweep -- that action does two separate
@@ -25,6 +27,12 @@ class HasValidVideoConsentForSessionAction extends Action
 {
     public function execute(Session $session): bool
     {
+        // SCRUM-313 (security review): a group session's consent is each member's own (forGroupMember) -- never
+        // "no ward, so nothing to consent to".
+        if ($session->for_type === GroupTherapy::class) {
+            return false;
+        }
+
         $wardResolver = GetWardForVideoConsentableAction::new();
         $ward = $wardResolver->execute($session);
 
@@ -48,12 +56,30 @@ class HasValidVideoConsentForSessionAction extends Action
         // scopeActive -- still their guardian, account not deleted or suspended, adult). Checked at
         // read time, so a grant by a suspended guardian applies again once the suspension ends.
         return VideoConsent::query()
-            ->where('ward_id', $ward->id)
             ->whereIn('guardian_id', $ward->activeGuardianships()->select('guardianship.guardian_id'))
-            ->where(function ($query) use ($therapy, $session) {
+            ->where(function ($query) use ($therapy, $session, $ward) {
                 $query
-                    ->where(fn ($q) => $q->whereValidFor(Therapy::class, $therapy->id))
-                    ->orWhere(fn ($q) => $q->whereValidFor(Session::class, $session->id));
+                    ->where(fn ($q) => $q->whereValidFor($ward->id, Therapy::class, $therapy->id))
+                    ->orWhere(fn ($q) => $q->whereValidFor($ward->id, Session::class, $session->id));
+            })
+            ->exists();
+    }
+
+    // SCRUM-313: whether $ward may be in this group session's call by their guardians' consent -- a valid grant, at
+    // any level, for the whole group or for this session, from a guardian they still have. The same shape as the
+    // one-to-one check above, per ward: a group's minors each have their own.
+    public function forGroupMember(Session $session, User $ward): bool
+    {
+        if (! $session->for instanceof GroupTherapy) {
+            return false;
+        }
+
+        return VideoConsent::query()
+            ->whereIn('guardian_id', $ward->activeGuardianships()->select('guardianship.guardian_id'))
+            ->where(function ($query) use ($session, $ward) {
+                $query
+                    ->where(fn ($q) => $q->whereValidFor($ward->id, GroupTherapy::class, $session->for_id))
+                    ->orWhere(fn ($q) => $q->whereValidFor($ward->id, Session::class, $session->id));
             })
             ->exists();
     }

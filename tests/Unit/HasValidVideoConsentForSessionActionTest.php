@@ -104,11 +104,13 @@ test('an adult client\'s session always satisfies the check (nothing to gate on)
     expect(HasValidVideoConsentForSessionAction::new()->execute($session))->toBeTrue();
 });
 
-test('a group therapy session always satisfies the check (no ward concept)', function () {
+// SCRUM-313 (security review): was "always satisfies the check" -- a group's consent is each member's own
+// (forGroupMember), so the one-to-one check fails closed for a group session rather than open.
+test('a group therapy session never satisfies the one-to-one check', function () {
     $groupTherapy = GroupTherapy::factory()->create();
     $session = Session::factory()->create(['for_type' => GroupTherapy::class, 'for_id' => $groupTherapy->id]);
 
-    expect(HasValidVideoConsentForSessionAction::new()->execute($session))->toBeTrue();
+    expect(HasValidVideoConsentForSessionAction::new()->execute($session))->toBeFalse();
 });
 
 // TT-4.10b/SCRUM-291: the whole point of client_was_minor_at_creation is that it must NOT be
