@@ -34,6 +34,8 @@ class User extends Authenticatable implements MustVerifyEmailContract
     public const ANONYMISED_ATTRIBUTES = [
         'firstName', 'lastName', 'otherNames', 'username', 'email', 'email_verified_at',
         'dob', 'dob_verified_at', 'gender', 'country', 'settings', 'remember_token',
+        // SCRUM-35b
+        'password_weak_reason', 'password_checked_at',
     ];
 
     /**
@@ -64,6 +66,9 @@ class User extends Authenticatable implements MustVerifyEmailContract
     protected $hidden = [
         'password',
         'remember_token',
+        // SCRUM-35b: only ever shown to the person themselves (UserResource).
+        'password_weak_reason',
+        'password_checked_at',
     ];
 
     /**
@@ -79,6 +84,7 @@ class User extends Authenticatable implements MustVerifyEmailContract
         'settings' => 'array',
         'notification_retention_days' => 'integer',
         'anonymised_at' => 'datetime',
+        'password_checked_at' => 'datetime',
     ];
 
     public function getAgeAttribute()

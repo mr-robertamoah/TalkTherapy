@@ -2,8 +2,8 @@
 
 namespace App\Http\Requests\Auth;
 
+use App\Actions\Auth\CheckPasswordStrengthAction;
 use App\Jobs\StoreVisitationJob;
-use App\Models\User;
 use App\Support\ClientAddress;
 use Illuminate\Auth\Events\Lockout;
 use Illuminate\Contracts\Validation\Rule;
@@ -55,8 +55,13 @@ class LoginRequest extends FormRequest
             ]);
         }
 
-        if ($user = User::where($key, $this->get($key))->first()) {
+        // SCRUM-35b (security review): the account that just signed in -- never looked up again from the request, where
+        // get() prefers the query string to the form (sign in as yourself, act on someone else).
+        if ($user = Auth::user()) {
             StoreVisitationJob::dispatch($user, $this->ip());
+
+            // SCRUM-35b: whether this password meets today's policy -- only the result is kept.
+            CheckPasswordStrengthAction::new()->execute($user, (string) $this->input('password'));
         }
 
         RateLimiter::clear($this->throttleKey());
