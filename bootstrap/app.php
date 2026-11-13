@@ -11,6 +11,7 @@ use App\Support\FailureResponse;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\Exceptions\ThrottleRequestsException;
 use Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Middleware\SubstituteBindings;
@@ -63,4 +64,9 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->dontReportWhen(fn (Throwable $e) => $e instanceof AppException && FailureResponse::status($e) < 500 && ! app()->runningInConsole());
         $exceptions->dontReportDuplicates();
         $exceptions->render(fn (AppException $exception, Request $request) => FailureResponse::make($request, $exception));
+        // SCRUM-41: asking for another verification link too often (6 a minute) is answered on the page it came from,
+        // not with an error page.
+        $exceptions->render(fn (ThrottleRequestsException $exception, Request $request) => $request->routeIs('verification.send') && ! $request->expectsJson()
+            ? back()->with('status', 'verification-throttled')
+            : null);
     })->create();

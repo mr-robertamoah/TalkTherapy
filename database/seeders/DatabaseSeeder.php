@@ -187,6 +187,10 @@ class DatabaseSeeder extends Seeder
         // without creating this relationship chain by hand first.
         $this->createGuardianVideoConsentDemoData();
 
+        // SCRUM-41: the email-verification notice's two states -- an email not yet verified, and no email at all (how
+        // every account starts: sign-up doesn't ask for one).
+        $this->createEmailVerificationDemoData();
+
         // TT-4.10e/SCRUM-294: the golden path (a minor WITH a guardian) is already reachable via
         // createGuardianVideoConsentDemoData()'s minor/guardian pair above, but there was no
         // seeded way to try the "no guardian exists -> any admin may respond" path without
@@ -2494,6 +2498,27 @@ class DatabaseSeeder extends Seeder
             'type' => 'online',
             'status' => 'held',
             'payment_type' => 'PAID',
+        ]);
+    }
+
+    private function createEmailVerificationDemoData(): void
+    {
+        User::factory()->adult()->create([
+            'firstName' => 'Unverified',
+            'lastName' => 'EmailDemo',
+            'username' => 'unverified_email_demo',
+            'email' => 'unverified.email.demo@example.com',
+            'email_verified_at' => null,
+            'password' => Hash::make('password'),
+        ]);
+
+        User::factory()->adult()->create([
+            'firstName' => 'NoEmail',
+            'lastName' => 'Demo',
+            'username' => 'no_email_demo',
+            'email' => null,
+            'email_verified_at' => null,
+            'password' => Hash::make('password'),
         ]);
     }
 

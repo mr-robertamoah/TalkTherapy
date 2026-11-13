@@ -149,7 +149,7 @@ export default function useGuidedTours() {
                     messages: [
                         {
                             condition: CONDITION_NAMES.emailUnverified,
-                            message: "The email address you have provided is not verified. Please use the next section to verify your email. This will ensure you receive the right email notifications.",
+                            message: "Your email is not verified yet. Use the \"Email verification\" section at the top of this page to verify it, so you receive email notifications.",
                         },
                     ],
                     scroll: true,
