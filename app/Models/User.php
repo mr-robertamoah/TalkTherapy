@@ -178,6 +178,13 @@ class User extends Authenticatable implements MustVerifyEmailContract
         return $this->wards()->where('ward_id', $user->id)->exists();
     }
 
+    // SCRUM-313: whether this user is one of $ward's guardians that count (active) -- the guardians whose video consent
+    // lets them in.
+    public function isActiveGuardianOf(User $ward): bool
+    {
+        return $ward->activeGuardianships()->where('guardianship.guardian_id', $this->id)->exists();
+    }
+
     // SCRUM-288: the ward's guardianships that count (Guardianship::scopeActive()). $exceptGuardianIds
     // leaves those guardians out; $lock makes it a locking read (see hasActiveGuardian()).
     public function activeGuardianships(array $exceptGuardianIds = [], bool $lock = false)

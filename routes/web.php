@@ -18,6 +18,7 @@ use App\Http\Controllers\CounsellorDashboardController;
 use App\Http\Controllers\CounsellorPricingController;
 use App\Http\Controllers\DiscussionController;
 use App\Http\Controllers\GroupTherapyController;
+use App\Http\Controllers\GroupVideoConsentController;
 use App\Http\Controllers\HelpController;
 use App\Http\Controllers\HelpRequestController;
 use App\Http\Controllers\HomeController;
@@ -269,6 +270,11 @@ Route::middleware('auth')->group(function () {
     // multiple guardians (see RouteServiceProvider's own comment on this limiter).
     Route::delete('/therapies/{therapyId}/video-consent', [VideoConsentController::class, 'revoke'])->name('therapies.video_consent.revoke')->middleware('throttle:video-consent-revoke');
     Route::get('/therapies/{therapyId}/video-consent/audit-trail', [VideoConsentController::class, 'auditTrail'])->name('therapies.video_consent.audit_trail')->middleware('throttle:60,1,therapies.video_consent.audit_trail');
+    // SCRUM-313: a minor's video consent in a group -- their guardians answer from their ward's group list; the minor asks.
+    Route::get('/group-therapies/{groupTherapyId}/video-consent', [GroupVideoConsentController::class, 'show'])->name('group.therapies.video_consent.show')->middleware('throttle:60,1,group.therapies.video_consent.show');
+    Route::post('/group-therapies/{groupTherapyId}/video-consent', [GroupVideoConsentController::class, 'grant'])->name('group.therapies.video_consent.grant')->middleware('throttle:30,1,group.therapies.video_consent.grant');
+    Route::delete('/group-therapies/{groupTherapyId}/video-consent/{consentId}', [GroupVideoConsentController::class, 'revoke'])->name('group.therapies.video_consent.revoke')->middleware('throttle:10,1,group.therapies.video_consent.revoke');
+    Route::post('/group-therapies/{groupTherapyId}/video-consent/request', [GroupVideoConsentController::class, 'request'])->name('group.therapies.video_consent.request')->middleware('throttle:10,1,group.therapies.video_consent.request');
     Route::delete('/therapies/{therapyId}', [TherapyController::class, 'deleteTherapy'])->name('therapies.delete');
     Route::post('/therapies/{therapyId}', [TherapyController::class, 'endTherapy'])->name('therapies.end');
 

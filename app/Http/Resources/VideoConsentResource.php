@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Models\GroupTherapy;
 use App\Models\Session;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -20,7 +21,13 @@ class VideoConsentResource extends JsonResource
     {
         return [
             'id' => $this->id,
-            'scope' => $this->consentable_type === Session::class ? 'session' : 'therapy',
+            // SCRUM-313: 'group' for a whole group's.
+            'scope' => match ($this->consentable_type) {
+                Session::class => 'session',
+                GroupTherapy::class => 'group',
+                default => 'therapy',
+            },
+            'level' => $this->level,
             'grantedByName' => $this->guardian?->name,
             'grantedAt' => $this->granted_at,
             'isValid' => $this->isValid(),

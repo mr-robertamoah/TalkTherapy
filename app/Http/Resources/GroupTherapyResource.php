@@ -6,6 +6,7 @@ use App\Actions\GroupTherapy\GetGroupTherapyPaymentRosterAction;
 use App\Actions\SafeguardingException\GetPausedGroupMembersAction;
 use App\Actions\Safety\EnsureCanFlagClientAction;
 use App\Actions\Video\EnsureVideoIsAvailableForSessionAction;
+use App\Actions\VideoConsent\HasValidVideoConsentForSessionAction;
 use App\Enums\ConstantsEnum;
 use App\Enums\CounsellorGroupTherapyStateEnum;
 use App\Enums\TherapyPaymentTypeEnum;
@@ -160,11 +161,13 @@ class GroupTherapyResource extends JsonResource
             // SCRUM-288: the viewer's own state only -- never another member's.
             'viewerAccessPaused' => $this->pauseStateFor($user, counterparty: false)['viewer'],
             // The user's decision (2026-11-05): a minor needs a guardian's video consent for group
-            // video, which doesn't exist yet (SCRUM-313) -- so the page doesn't offer them "join
-            // video" (EnsureVideoIsAvailableForSessionAction re-checks every join). Only about the
-            // viewer, never another member.
+            // video. SCRUM-313: true while they have none for the live session (the whole group's or
+            // that session's), so the page offers "ask a parent or guardian" instead of "join video"
+            // (EnsureVideoIsAvailableForSessionAction re-checks every join). Only about the viewer,
+            // never another member.
             'viewerNeedsGuardianVideoConsent' => $user && $this->isParticipant($user)
-                && EnsureVideoIsAvailableForSessionAction::new()->groupVideoNeedsGuardianConsent($this->resource, $user),
+                && EnsureVideoIsAvailableForSessionAction::new()->groupVideoNeedsGuardianConsent($this->resource, $user)
+                && ! ($activeSession && HasValidVideoConsentForSessionAction::new()->forGroupMember($activeSession, $user)),
             // SCRUM-381 (changing SCRUM-288): only for this group's active counsellors -- the members
             // paused for a missing guardian, named as the group shows them (an anonymous member stays
             // "Anonymous") and keyed by something other than their user id. The group carries on.

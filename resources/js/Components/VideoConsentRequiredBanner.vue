@@ -5,6 +5,8 @@
 // grants consent on this same therapy page's Video Consent tab.
 defineProps({
   message: { type: String, default: 'Guardian video consent is required before this account can join video for this session.' },
+  // SCRUM-313: a group's guardians answer from their own account, not this page.
+  isGroup: { type: Boolean, default: false },
 })
 </script>
 
@@ -12,6 +14,7 @@ defineProps({
   <div class="p-6 bg-amber-50 border border-amber-200 rounded-lg text-center">
     <div class="text-amber-900 font-semibold mb-1">Guardian consent needed</div>
     <div class="text-sm text-amber-800">{{ message }}</div>
-    <div class="text-xs text-amber-700 mt-2">Ask a guardian to approve video access from the "video consent" section of this therapy's page.</div>
+    <div v-if="isGroup" class="text-xs text-amber-700 mt-2">Ask a parent or guardian to approve it from their own account, then join again.</div>
+    <div v-else class="text-xs text-amber-700 mt-2">Ask a guardian to approve video access from the "video consent" section of this therapy's page.</div>
   </div>
 </template>

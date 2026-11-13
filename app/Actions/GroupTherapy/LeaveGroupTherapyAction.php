@@ -6,6 +6,7 @@ use App\Actions\Action;
 use App\Actions\Video\RemovePersonFromLiveCallsAction;
 use App\Enums\RequestStatusEnum;
 use App\Enums\TherapyStatusEnum;
+use App\Enums\VideoConsentRevocationReasonEnum;
 use App\Events\GroupTherapyLeftEvent;
 use App\Events\GroupTherapyMembershipChangedEvent;
 use App\Exceptions\CannotLeaveGroupTherapyException;
@@ -13,6 +14,7 @@ use App\Models\Counsellor;
 use App\Models\GroupTherapy;
 use App\Models\Request;
 use App\Models\User;
+use App\Models\VideoConsent;
 use App\Notifications\GroupTherapyMemberLeftGuardianNotification;
 use App\Notifications\GroupTherapyMemberLeftNotification;
 use App\Notifications\SafeguardingExceptionRequestDecidedNotification;
@@ -56,6 +58,15 @@ class LeaveGroupTherapyAction extends Action
             $wasMinor = $group->memberIsMinor($user);
 
             $group->allMemberships()->updateExistingPivot($user->id, ['left_at' => now()]);
+
+            // SCRUM-313: their guardians' video consent was for them in this group -- it lapses (coming back needs new
+            // consent). Not through InvalidateVideoConsentAction on purpose: no guardian withdrew it, and they're taken
+            // out of its live call below anyway, as a member who left.
+            VideoConsent::query()
+                ->where('ward_id', $user->id)
+                ->whereNull('revoked_at')
+                ->whereForGroup($group)
+                ->update(['revoked_at' => now(), 'revocation_reason' => VideoConsentRevocationReasonEnum::membership_ended->value]);
 
             // A safeguarding exception asked for them in this group no longer has a member to cover.
             // No locking read (data.wardId has no index); the leaver's row lock above serialises
